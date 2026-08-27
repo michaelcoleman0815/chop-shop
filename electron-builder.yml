@@ -1,0 +1,44 @@
+appId: social.brewed.chopshop
+productName: Chop Shop
+copyright: Copyright © 2026 Michael Coleman
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - out/**
+  - package.json
+  - '!**/{.eslintrc,.editorconfig,.prettierrc,tsconfig*.json}'
+  # ffprobe-static ships every platform's binary; only macOS ones are useful here.
+  - '!**/node_modules/ffprobe-static/bin/{linux,win32}/**'
+
+# The ffmpeg/ffprobe binaries cannot be executed from inside app.asar.
+asarUnpack:
+  - '**/node_modules/ffmpeg-static/**'
+  - '**/node_modules/ffprobe-static/**'
+
+mac:
+  category: public.app-category.video
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Chop Shop mixes your microphone into buffered clips when you enable it.
+    NSCameraUsageDescription: Not used. Present only because Chromium requests media permissions as a pair.
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+publish:
+  provider: github
+  owner: michaelcoleman0815
+  repo: chop-shop
+  releaseType: release
