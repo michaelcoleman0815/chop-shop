@@ -1,9 +1,9 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, protocol, globalShortcut, desktopCapturer, systemPreferences } from 'electron'
 import { join, basename, extname } from 'path'
-import { createReadStream, statSync, promises as fs } from 'fs'
+import { createReadStream, existsSync, statSync, promises as fs } from 'fs'
 import { Readable } from 'stream'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { probe, exportClip, buildFromSegments } from './ffmpeg'
+import { probe, exportClip, buildFromSegments, FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
 import { getSettings, saveSettings } from './store'
 import { initUpdater, checkForUpdates, downloadUpdate, installUpdate, openReleasesPage, getUpdateState } from './updater'
 import type { AspectPreset, CaptureSource, ClipRequest, Settings, VideoMeta } from '../shared/types'
@@ -146,15 +146,32 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('dialog:openVideo', async (): Promise<VideoMeta | null> => {
-    const res = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'] }]
-    })
-    if (res.canceled || !res.filePaths[0]) return null
-    return describeVideo(res.filePaths[0])
+    console.log('[import] open dialog requested')
+    try {
+      const res = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'] }]
+      })
+      console.log('[import] dialog result', res.canceled, res.filePaths)
+      if (res.canceled || !res.filePaths[0]) return null
+      const meta = await describeVideo(res.filePaths[0])
+      console.log('[import] described', meta.fileName, meta.width, meta.height, meta.durationSec)
+      return meta
+    } catch (err) {
+      console.error('[import] failed', err)
+      throw err
+    }
   })
 
-  ipcMain.handle('video:describe', (_e, path: string) => describeVideo(path))
+  ipcMain.handle('video:describe', async (_e, path: string) => {
+    console.log('[import] describe requested', path)
+    try {
+      return await describeVideo(path)
+    } catch (err) {
+      console.error('[import] describe failed', err)
+      throw err
+    }
+  })
 
   ipcMain.handle('dialog:chooseOutputDir', async (): Promise<string | null> => {
     const res = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
@@ -285,6 +302,9 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle('media', serveMedia)
 
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+
+    console.log('[ffmpeg] ffmpeg:', FFMPEG_PATH, existsSync(FFMPEG_PATH))
+    console.log('[ffmpeg] ffprobe:', FFPROBE_PATH, existsSync(FFPROBE_PATH))
 
     registerIpc()
     createWindow()

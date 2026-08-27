@@ -51,7 +51,6 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      <UpdateBanner />
       <div className="titlebar">
         <div className="brand">
           CHOP<span>SHOP</span>
@@ -70,6 +69,7 @@ export default function App(): JSX.Element {
         <div className="spacer" />
         <div className="version mono">v{version}</div>
       </div>
+      <UpdateBanner />
 
       <div className="body">
         <div className="pane">

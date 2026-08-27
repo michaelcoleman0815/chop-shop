@@ -22,6 +22,14 @@ export function initUpdater(target: BrowserWindow): void {
   win = target
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+  // Update problems only show up on real installs, so leave the lifecycle
+  // visible in the app's stdout rather than debugging them blind.
+  autoUpdater.logger = {
+    info: (m: unknown) => console.log('[updater]', m),
+    warn: (m: unknown) => console.warn('[updater]', m),
+    error: (m: unknown) => console.error('[updater]', m),
+    debug: () => undefined
+  }
 
   autoUpdater.on('checking-for-update', () => push({ status: 'checking' }))
 
