@@ -21,9 +21,9 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "electron-updater": "^6.3.9",
-    "ffmpeg-static": "^5.2.0",
-    "ffprobe-static": "^3.1.0"
+    "ffmpeg-static": "^5.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

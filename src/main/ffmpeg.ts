@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import ffmpegStatic from 'ffmpeg-static'
-import ffprobeStatic from 'ffprobe-static'
+import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import type { AspectPreset } from '../shared/types'
 
 /**
@@ -17,7 +17,7 @@ function unpacked(p: string): string {
 
 export const FFMPEG_PATH = unpacked((ffmpegStatic as unknown as string) ?? 'ffmpeg')
 export const FFPROBE_PATH = unpacked(
-  (ffprobeStatic as unknown as { path: string })?.path ?? 'ffprobe'
+  (ffprobeInstaller as unknown as { path: string })?.path ?? 'ffprobe'
 )
 
 export interface ProbeResult {
