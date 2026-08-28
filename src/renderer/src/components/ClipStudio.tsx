@@ -118,7 +118,12 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   if (!meta) {
     return (
       <div>
-        {error && <div className="card" style={{ color: 'var(--bad)' }}>{error}</div>}
+        {error && (
+          <div className="card">
+            <div className="label">Import failed</div>
+            <p className="mono muted">{error}</p>
+          </div>
+        )}
         <div
           className={`dropzone ${hot ? 'hot' : ''}`}
           onDragOver={(e) => {
@@ -128,9 +133,9 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
           onDragLeave={() => setHot(false)}
           onDrop={onDrop}
         >
-          <p style={{ fontSize: 15, color: 'var(--text)' }}>Drop a video here</p>
-          <p>MP4, MOV, MKV, WebM, anything ffmpeg reads</p>
-          <button className="primary" style={{ marginTop: 12 }} onClick={open}>
+          <p className="title">Drop a video</p>
+          <p className="muted">MP4, MOV, MKV, WebM</p>
+          <button className="primary" style={{ marginTop: 16 }} onClick={open}>
             Choose a file
           </button>
         </div>
@@ -150,12 +155,14 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
           src={meta.mediaUrl}
           controls={false}
           onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
-          onClick={(e) => (e.currentTarget.paused ? void e.currentTarget.play() : e.currentTarget.pause())}
+          onClick={(e) =>
+            e.currentTarget.paused ? void e.currentTarget.play() : e.currentTarget.pause()
+          }
         />
 
         <div
           className="timeline"
-          style={{ marginTop: 12 }}
+          style={{ marginTop: 16 }}
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()
             seek(((e.clientX - rect.left) / rect.width) * meta.durationSec)
@@ -168,75 +175,89 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
           <div className="head" style={{ left: `${pct(current)}%` }} />
         </div>
 
-        <div className="row" style={{ marginTop: 12 }}>
-          <button onClick={() => (videoRef.current?.paused ? void videoRef.current.play() : videoRef.current?.pause())}>
-            Play / Pause
+        <div className="row" style={{ marginTop: 16 }}>
+          <button
+            onClick={() =>
+              videoRef.current?.paused ? void videoRef.current.play() : videoRef.current?.pause()
+            }
+          >
+            Play
           </button>
           <button onClick={() => setInSec(current)}>
-            Set In <kbd>I</kbd>
+            Set in <kbd>I</kbd>
           </button>
           <button onClick={() => setOutSec(current)}>
-            Set Out <kbd>O</kbd>
+            Set out <kbd>O</kbd>
           </button>
           <button onClick={playSelection}>Preview selection</button>
-          <div className="spacer" style={{ flex: 1 }} />
-          <span className="mono muted">{timecode(current)}</span>
+          <div className="spacer" />
+          <span className="mono">{timecode(current)}</span>
         </div>
       </div>
 
       <div className="card">
-        <h2>Clip</h2>
-        <div className="row wrap">
+        <div className="label" style={{ marginBottom: 12 }}>
+          Clip
+        </div>
+        <div className="row wrap" style={{ alignItems: 'flex-end', gap: 12 }}>
           <label className="field">
-            In
+            <span className="label">In</span>
             <input
               type="text"
               className="mono"
-              style={{ width: 110 }}
+              style={{ width: 104 }}
               value={timecode(inSec)}
               readOnly
               onClick={() => seek(inSec)}
             />
           </label>
           <label className="field">
-            Out
+            <span className="label">Out</span>
             <input
               type="text"
               className="mono"
-              style={{ width: 110 }}
+              style={{ width: 104 }}
               value={timecode(outSec)}
               readOnly
               onClick={() => seek(outSec)}
             />
           </label>
           <label className="field">
-            Length
-            <input type="text" className="mono" style={{ width: 110 }} value={timecode(duration)} readOnly />
+            <span className="label">Length</span>
+            <input
+              type="text"
+              className="mono"
+              style={{ width: 104 }}
+              value={timecode(duration)}
+              readOnly
+            />
           </label>
           <label className="field" style={{ flex: 1, minWidth: 180 }}>
-            Name
+            <span className="label">Name</span>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="field">
-            Aspect
+            <span className="label">Aspect</span>
             <select value={aspect} onChange={(e) => setAspect(e.target.value as AspectPreset)}>
               <option value="vertical">9:16 vertical</option>
               <option value="square">1:1 square</option>
               <option value="original">Original</option>
             </select>
           </label>
-          <button className="primary" disabled={duration < 0.2} onClick={exportClip} style={{ alignSelf: 'flex-end' }}>
+          <button className="primary" disabled={duration < 0.2} onClick={exportClip}>
             Export clip
           </button>
         </div>
       </div>
 
       <div className="card">
-        <h2>Source</h2>
-        <div className="muted mono" style={{ fontSize: 12 }}>
-          {meta.fileName} · {meta.width}×{meta.height} · {meta.fps} fps · {timecode(meta.durationSec)} ·{' '}
-          {bytes(meta.sizeBytes)}
+        <div className="label" style={{ marginBottom: 12 }}>
+          Source
         </div>
+        <p className="mono muted" style={{ fontSize: 12 }}>
+          {meta.fileName} · {meta.width}×{meta.height} · {meta.fps} fps ·{' '}
+          {timecode(meta.durationSec)} · {bytes(meta.sizeBytes)}
+        </p>
         <div className="row" style={{ marginTop: 12 }}>
           <button onClick={open}>Open another video</button>
           <button className="ghost" onClick={() => setMeta(null)}>

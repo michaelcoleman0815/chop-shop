@@ -18,10 +18,10 @@ export default function UpdateBanner(): JSX.Element | null {
   if (state.status === 'available') {
     return (
       <div className="banner">
-        <strong>Chop Shop {state.version} is available.</strong>
-        <div className="grow notes">{state.notes.replace(/<[^>]+>/g, ' ').slice(0, 140)}</div>
+        <span className="mono">{state.version}</span>
+        <span className="grow">available</span>
         <button className="primary" onClick={() => window.chop.downloadUpdate()}>
-          Download update
+          Download
         </button>
         <button className="ghost" onClick={() => setDismissed(true)}>
           Later
@@ -33,10 +33,11 @@ export default function UpdateBanner(): JSX.Element | null {
   if (state.status === 'downloading') {
     return (
       <div className="banner">
-        <strong>Downloading {state.version}…</strong>
-        <div className="grow">
+        <span className="mono">{state.version}</span>
+        <span className="grow">downloading</span>
+        <div style={{ width: 160 }}>
           <div className="bar">
-            <i style={{ width: `${state.percent}%` }} />
+            <i style={{ width: `${state.percent}%`, background: 'var(--accent)' }} />
           </div>
         </div>
         <span className="mono">{state.percent}%</span>
@@ -47,10 +48,10 @@ export default function UpdateBanner(): JSX.Element | null {
   if (state.status === 'ready') {
     return (
       <div className="banner">
-        <strong>Version {state.version} is ready to install.</strong>
-        <div className="grow notes">Chop Shop will restart. Stop any live buffer first.</div>
+        <span className="mono">{state.version}</span>
+        <span className="grow">ready. Stop any live buffer first.</span>
         <button className="primary" onClick={() => window.chop.installUpdate()}>
-          Restart &amp; install
+          Restart and install
         </button>
         <button className="ghost" onClick={() => setDismissed(true)}>
           Later
@@ -61,9 +62,9 @@ export default function UpdateBanner(): JSX.Element | null {
 
   if (state.status === 'error') {
     return (
-      <div className="banner error">
-        <strong>Update failed.</strong>
-        <div className="grow notes">{state.message}</div>
+      <div className="banner">
+        <span className="label">Update failed</span>
+        <span className="grow">{state.message}</span>
         <button onClick={() => window.chop.openReleasesPage()}>Open releases</button>
         <button className="ghost" onClick={() => setDismissed(true)}>
           Dismiss

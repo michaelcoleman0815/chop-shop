@@ -17,9 +17,17 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   return (
     <div>
       <div className="card">
-        <h2>Output</h2>
+        <div className="label" style={{ marginBottom: 12 }}>
+          Output
+        </div>
         <div className="row">
-          <input type="text" className="mono" value={settings.outputDir} readOnly style={{ flex: 1 }} />
+          <input
+            type="text"
+            className="mono"
+            value={settings.outputDir}
+            readOnly
+            style={{ flex: 1 }}
+          />
           <button
             onClick={async () => {
               const dir = await window.chop.chooseOutputDir()
@@ -32,8 +40,8 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
             Show
           </button>
         </div>
-        <label className="field" style={{ marginTop: 12, maxWidth: 220 }}>
-          Default aspect
+        <label className="field" style={{ marginTop: 16, maxWidth: 220 }}>
+          <span className="label">Default aspect</span>
           <select
             value={settings.defaultAspect}
             onChange={(e) => patch({ defaultAspect: e.target.value as AspectPreset })}
@@ -46,7 +54,9 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
       </div>
 
       <div className="card">
-        <h2>Grab hotkey</h2>
+        <div className="label" style={{ marginBottom: 12 }}>
+          Grab hotkey
+        </div>
         <div className="row">
           <input
             type="text"
@@ -57,30 +67,32 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
           />
           <button onClick={() => patch({ grabShortcut: shortcut })}>Save</button>
         </div>
-        <p className="muted" style={{ marginBottom: 0 }}>
-          Electron accelerator syntax, for example{' '}
-          <kbd>CommandOrControl+Shift+C</kbd> or <kbd>Alt+F9</kbd>. If another app already owns the
-          combination, registration silently fails and the old hotkey stops working.
+        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+          Electron accelerator syntax, such as <kbd>CommandOrControl+Shift+C</kbd> or{' '}
+          <kbd>Alt+F9</kbd>. If another app already owns the combination, registration fails and the
+          previous hotkey stops working.
         </p>
       </div>
 
       <div className="card">
-        <h2>Updates</h2>
+        <div className="label" style={{ marginBottom: 12 }}>
+          Updates
+        </div>
         <label className="row" style={{ gap: 8 }}>
           <input
             type="checkbox"
             checked={settings.autoCheckUpdates}
             onChange={(e) => patch({ autoCheckUpdates: e.target.checked })}
           />
-          Check for updates automatically
+          Check automatically
         </label>
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="row" style={{ marginTop: 16 }}>
           <button onClick={() => window.chop.checkForUpdates()}>Check now</button>
           <button className="ghost" onClick={() => window.chop.openReleasesPage()}>
             All releases
           </button>
-          <div style={{ flex: 1 }} />
-          <span className="muted mono">v{version}</span>
+          <div className="spacer" />
+          <span className="mono muted">{version}</span>
         </div>
       </div>
     </div>

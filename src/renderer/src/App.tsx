@@ -5,6 +5,7 @@ import ClipStudio from './components/ClipStudio'
 import LiveBuffer from './components/LiveBuffer'
 import SettingsPanel from './components/SettingsPanel'
 import JobList, { type Job } from './components/JobList'
+import Mark from './components/Mark'
 import { performGrab } from './lib/grab'
 
 type Tab = 'studio' | 'live' | 'settings'
@@ -52,8 +53,9 @@ export default function App(): JSX.Element {
   return (
     <div className="app">
       <div className="titlebar">
-        <div className="brand">
-          CHOP<span>SHOP</span>
+        <div className="wordmark">
+          <Mark height={22} />
+          <span>Chop Shop</span>
         </div>
         <nav className="tabs">
           <button className={tab === 'studio' ? 'on' : ''} onClick={() => setTab('studio')}>
@@ -67,7 +69,7 @@ export default function App(): JSX.Element {
           </button>
         </nav>
         <div className="spacer" />
-        <div className="version mono">v{version}</div>
+        <div className="mono muted">{version}</div>
       </div>
       <UpdateBanner />
 
@@ -78,7 +80,7 @@ export default function App(): JSX.Element {
           {tab === 'settings' && <SettingsPanel settings={settings} patch={patchSettings} />}
         </div>
         <aside className="sidebar">
-          <h2>Exports</h2>
+          <div className="label" style={{ marginBottom: 16 }}>Exports</div>
           <JobList jobs={jobs} />
         </aside>
       </div>

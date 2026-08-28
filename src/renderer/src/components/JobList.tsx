@@ -9,7 +9,7 @@ export interface Job {
 
 export default function JobList({ jobs }: { jobs: Job[] }): JSX.Element {
   if (jobs.length === 0) {
-    return <p className="muted">Nothing exported yet. Clips land here as they render.</p>
+    return <p className="muted">No exports yet.</p>
   }
 
   return (
@@ -17,12 +17,10 @@ export default function JobList({ jobs }: { jobs: Job[] }): JSX.Element {
       {jobs.map((job) => (
         <div key={job.id} className={`job ${job.stage}`}>
           <div className="row">
-            <div className="grow" style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {job.name}
-              </div>
-              <div className="muted mono" style={{ fontSize: 11 }}>
-                {job.stage === 'error' ? 'failed' : job.stage === 'done' ? 'done' : `${job.percent}%`}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="name">{job.name}</div>
+              <div className="label" style={{ letterSpacing: '0.1em' }}>
+                {job.stage === 'error' ? 'Failed' : job.stage === 'done' ? 'Done' : `${job.percent}%`}
               </div>
             </div>
             {job.stage === 'done' && job.outputPath && (
@@ -37,7 +35,7 @@ export default function JobList({ jobs }: { jobs: Job[] }): JSX.Element {
             )}
           </div>
           {job.stage === 'error' && job.message && (
-            <div className="muted mono" style={{ fontSize: 11, marginTop: 6 }}>
+            <div className="mono muted" style={{ fontSize: 11, marginTop: 8 }}>
               {job.message.split('\n').slice(-2).join(' ')}
             </div>
           )}

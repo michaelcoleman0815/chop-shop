@@ -12,6 +12,16 @@ interface Props {
 
 const LENGTHS = [15, 30, 60, 120, 300]
 
+function shortcutLabel(accelerator: string): string {
+  return accelerator
+    .replace('CommandOrControl', '⌘')
+    .replace('Command', '⌘')
+    .replace('Shift', '⇧')
+    .replace('Alt', '⌥')
+    .replace('Control', '⌃')
+    .replace(/\+/g, '')
+}
+
 export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Element {
   const [sources, setSources] = useState<CaptureSource[]>([])
   const [state, setState] = useState<BufferState>(rollingBuffer.getState())
@@ -50,12 +60,9 @@ export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Elem
   return (
     <div>
       {permission !== 'granted' && (
-        <div className="card" style={{ borderColor: 'rgba(248,113,113,0.4)' }}>
-          <strong>macOS has not granted screen recording yet.</strong>
-          <p className="muted">
-            Chop Shop needs Screen &amp; System Audio Recording permission to buffer anything. Grant
-            it, then quit and reopen the app.
-          </p>
+        <div className="card">
+          <div className="label">Permission needed</div>
+          <p>Grant Screen and System Audio Recording, then quit and reopen Chop Shop.</p>
           <button onClick={() => window.chop.openPermissionSettings()}>Open System Settings</button>
         </div>
       )}
@@ -63,11 +70,13 @@ export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Elem
       <div className="card">
         <div className="row">
           <div className={`dot ${state.running ? 'live' : ''}`} />
-          <strong>{state.running ? 'Buffering' : 'Idle'}</strong>
-          <span className="muted mono">
-            {state.running ? `${Math.min(state.bufferedSec, settings.bufferSeconds)}s held` : 'nothing held'}
+          <span>{state.running ? 'Buffering' : 'Idle'}</span>
+          <span className="mono muted">
+            {state.running
+              ? `${Math.min(state.bufferedSec, settings.bufferSeconds)}s held`
+              : 'nothing held'}
           </span>
-          <div style={{ flex: 1 }} />
+          <div className="spacer" />
           <button disabled={!selected} onClick={toggle}>
             {state.running ? 'Stop buffer' : 'Start buffer'}
           </button>
@@ -79,31 +88,33 @@ export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Elem
             Grab last {settings.bufferSeconds}s
           </button>
         </div>
-        <p className="muted" style={{ marginBottom: 0 }}>
-          Global hotkey <kbd>{settings.grabShortcut.replace('CommandOrControl', '⌘').replace(/\+/g, ' ')}</kbd>{' '}
-          grabs from anywhere, even when Chop Shop is behind another window.
+        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+          Grab from anywhere with <kbd>{shortcutLabel(settings.grabShortcut)}</kbd>, including when
+          Chop Shop sits behind another window.
         </p>
         {state.error && (
-          <p className="mono" style={{ color: 'var(--bad)', marginBottom: 0 }}>
+          <p className="mono muted" style={{ marginTop: 8, marginBottom: 0 }}>
             {state.error}
           </p>
         )}
       </div>
 
       <div className="card">
-        <h2>Buffer length</h2>
+        <div className="label" style={{ marginBottom: 12 }}>
+          Buffer length
+        </div>
         <div className="row wrap">
           {LENGTHS.map((n) => (
             <button
               key={n}
-              className={settings.bufferSeconds === n ? 'primary' : ''}
+              className={settings.bufferSeconds === n ? 'on' : ''}
               onClick={() => patch({ bufferSeconds: n })}
             >
               {n < 60 ? `${n}s` : `${n / 60}m`}
             </button>
           ))}
-          <div style={{ flex: 1 }} />
-          <label className="row" style={{ gap: 6 }}>
+          <div className="spacer" />
+          <label className="row" style={{ gap: 8 }}>
             <input
               type="checkbox"
               checked={settings.captureAudio}
@@ -112,18 +123,18 @@ export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Elem
             Include audio
           </label>
         </div>
-        <p className="muted" style={{ marginBottom: 0 }}>
-          Longer buffers hold more video in memory. Audio uses macOS system loopback where the OS
-          allows it and falls back to the microphone otherwise.
+        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+          5 minutes holds about 300 MB in memory. Audio uses system loopback where macOS allows it
+          and falls back to the microphone.
         </p>
       </div>
 
       <div className="card">
         <div className="row" style={{ marginBottom: 12 }}>
-          <h2 style={{ margin: 0 }}>Capture source</h2>
-          <div style={{ flex: 1 }} />
+          <div className="label">Capture source</div>
+          <div className="spacer" />
           <button className="ghost" onClick={refresh} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
+            {loading ? 'Refreshing' : 'Refresh'}
           </button>
         </div>
         <div className="sources">
@@ -136,12 +147,12 @@ export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Elem
               title={s.name}
             >
               <img src={s.thumbnailDataUrl} alt="" />
-              <div className="label">{s.name}</div>
+              <div className="name">{s.name}</div>
             </button>
           ))}
         </div>
         {state.running && (
-          <p className="muted" style={{ marginBottom: 0 }}>
+          <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
             Stop the buffer to switch sources.
           </p>
         )}

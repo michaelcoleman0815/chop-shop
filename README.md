@@ -121,3 +121,19 @@ Pin Electron forward rather than back, because old majors are what trip the malw
 **`npm ci` warns about node-abi and Node 20.** electron-builder 26 prefers Node 22.12+. Packaging
 works on Node 20 for this project because it has no native modules, but move to Node 22 if a build
 ever fails inside `app-builder`.
+
+## Brand
+
+The design system comes from [docs/brand-guidelines.pdf](docs/brand-guidelines.pdf), not from
+taste. If you change a colour, a type role or a piece of copy, check it against that document first.
+
+- **Colour.** Ink `#16151A` ground, Ink Raised `#242229` surfaces, Paper `#F2F1EE` type, Chop Red
+  Light `#FF6076` accent. Plain Chop Red `#EF3A5C` is for light grounds and the icon field only.
+- **Accent is punctuation.** Under 10% of any screen, and one element per view carries it: the
+  playhead and the primary action. If two things are red, neither is.
+- **Type.** Archivo Black for display, never below 24px and never for body. Sora for interface.
+  IBM Plex Mono for timecode, durations, filenames and keyboard hints.
+- **Voice.** Short, verb-first, specific about time. No exclamation marks, no hype, no emoji.
+
+The app icon is generated from the mark construction by `python3 build/make-icon.py`, so it stays
+correct at every size instead of drifting when someone re-exports it by eye.
