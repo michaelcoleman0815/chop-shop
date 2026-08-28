@@ -20,6 +20,18 @@ jobs:
 
       - run: npm ci
 
+      # electron-builder runs one publisher per target, and when the release
+      # does not exist yet they race to create it: the loser's uploads vanish
+      # and the release ends up missing latest-mac.yml, which silently breaks
+      # updates for everyone already installed. Creating it up front means both
+      # publishers only ever upload.
+      - name: Ensure the release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -40,3 +52,18 @@ jobs:
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
           npm run release
+
+      # A release missing any of these looks fine on the releases page and is
+      # broken for every updater that reads it.
+      - name: Verify the published assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          assets=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')
+          echo "$assets"
+          for required in latest-mac.yml .dmg -mac.zip; do
+            echo "$assets" | grep -q -- "$required" || {
+              echo "::error::release $GITHUB_REF_NAME is missing $required"
+              exit 1
+            }
+          done
