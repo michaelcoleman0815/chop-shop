@@ -46,6 +46,11 @@ const api = {
   setApiKey: (key: string): Promise<void> => ipcRenderer.invoke('ai:setKey', key),
   clearApiKey: (): Promise<void> => ipcRenderer.invoke('ai:clearKey'),
 
+  provider: (): Promise<string> => ipcRenderer.invoke('ai:provider'),
+  listModels: (): Promise<
+    { ok: true; models: { id: string; name: string }[] } | { ok: false; message: string }
+  > => ipcRenderer.invoke('ai:models'),
+
   hasModel: (model: string): Promise<boolean> => ipcRenderer.invoke('stt:hasModel', model),
   modelSizeMb: (model: string): Promise<number> => ipcRenderer.invoke('stt:modelSize', model),
   downloadModel: (model: string): Promise<boolean> =>

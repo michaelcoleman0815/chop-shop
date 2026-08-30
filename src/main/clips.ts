@@ -5,7 +5,6 @@ import { readApiKey } from './apikey'
 import type { SuggestedClip, Transcript } from '../shared/types'
 import { normaliseClips, transcriptLines } from './clip-shape'
 
-const MODEL = 'claude-opus-5'
 
 const ClipsSchema = z.object({
   clips: z.array(
@@ -37,10 +36,23 @@ Start and end on sentence boundaries from the transcript. Never overlap clips.
 Order them best first. Return fewer clips rather than padding the list: a video
 with two good moments should return two.`
 
+/** Models the key can actually reach, newest first, as the API reports them. */
+export async function listModels(): Promise<{ id: string; name: string }[]> {
+  const apiKey = readApiKey()
+  if (!apiKey) return []
+  const client = new Anthropic({ apiKey })
+  const models: { id: string; name: string }[] = []
+  for await (const model of client.models.list()) {
+    models.push({ id: model.id, name: model.display_name ?? model.id })
+  }
+  return models
+}
+
 export async function suggestClips(
   transcript: Transcript,
   durationSec: number,
-  maxClips: number
+  maxClips: number,
+  model: string
 ): Promise<SuggestedClip[]> {
   const apiKey = readApiKey()
   if (!apiKey) {
@@ -50,7 +62,7 @@ export async function suggestClips(
   const client = new Anthropic({ apiKey })
 
   const response = await client.messages.parse({
-    model: MODEL,
+    model,
     max_tokens: 16000,
     system: SYSTEM,
     thinking: { type: 'adaptive' },

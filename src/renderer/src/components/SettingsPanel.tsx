@@ -14,11 +14,33 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   const [modelReady, setModelReady] = useState(true)
   const [modelMb, setModelMb] = useState(0)
   const [downloading, setDownloading] = useState(0)
+  const [provider, setProvider] = useState('unknown')
+  const [models, setModels] = useState<{ id: string; name: string }[]>([])
+  const [modelError, setModelError] = useState<string | null>(null)
 
   useEffect(() => {
     window.chop.getVersion().then(setVersion)
     window.chop.hasApiKey().then(setKeySaved)
   }, [])
+
+  // Ask the API which models this key can reach rather than hardcoding a list
+  // that goes stale.
+  useEffect(() => {
+    if (!keySaved) {
+      setModels([])
+      setProvider('unknown')
+      return
+    }
+    window.chop.provider().then(setProvider)
+    window.chop.listModels().then((res) => {
+      if (res.ok) {
+        setModels(res.models)
+        setModelError(null)
+      } else {
+        setModelError(res.message)
+      }
+    })
+  }, [keySaved])
 
   useEffect(() => {
     window.chop.hasModel(settings.whisperModel).then(setModelReady)
@@ -110,6 +132,35 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
               Save
             </button>
           </div>
+        )}
+        {keySaved && (
+          <div className="row" style={{ marginTop: 16 }}>
+            <span className="label">{provider}</span>
+            <div className="spacer" />
+            {provider === 'anthropic' ? (
+              <label className="field" style={{ minWidth: 260 }}>
+                <span className="label">Model</span>
+                <select
+                  value={settings.clipModel}
+                  onChange={(e) => patch({ clipModel: e.target.value })}
+                >
+                  {models.length === 0 && <option value={settings.clipModel}>{settings.clipModel}</option>}
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span className="muted">Only Anthropic keys pick clips today</span>
+            )}
+          </div>
+        )}
+        {modelError && (
+          <p className="mono muted" style={{ marginTop: 12, marginBottom: 0 }}>
+            {modelError}
+          </p>
         )}
         <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
           Encrypted with your keychain and used only to pick clips. Roughly 10 to 15 cents per hour

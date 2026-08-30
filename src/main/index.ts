@@ -8,8 +8,8 @@ import { autoZooms } from './autozoom'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { detectFaces, buildTrack } from './track'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
-import { suggestClips } from './clips'
-import { hasApiKey, setApiKey, clearApiKey } from './apikey'
+import { suggestClips, listModels } from './clips'
+import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
 import { getSettings, saveSettings } from './store'
 import { initUpdater, checkForUpdates, downloadUpdate, installUpdate, openReleasesPage, getUpdateState } from './updater'
 import type { AspectPreset, CaptureSource, ClipRequest, Settings, VideoMeta } from '../shared/types'
@@ -326,6 +326,14 @@ function registerIpc(): void {
   ipcMain.handle('ai:hasKey', () => hasApiKey())
   ipcMain.handle('ai:setKey', (_e, key: string) => setApiKey(key))
   ipcMain.handle('ai:clearKey', () => clearApiKey())
+  ipcMain.handle('ai:provider', () => currentProvider())
+  ipcMain.handle('ai:models', async () => {
+    try {
+      return { ok: true as const, models: await listModels() }
+    } catch (err) {
+      return { ok: false as const, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
 
   ipcMain.handle('stt:hasModel', (_e, model: WhisperModel) => hasModel(model))
   ipcMain.handle('stt:modelSize', (_e, model: WhisperModel) => modelSizeMb(model))
@@ -372,7 +380,12 @@ function registerIpc(): void {
       )
       console.log('[ai] transcribed', transcript.words.length, 'words')
       safeSend(e.sender, 'ai:progress', { stage: 'Finding clips', percent: 88 })
-      const clips = await suggestClips(transcript, meta.durationSec, settings.maxSuggestedClips)
+      const clips = await suggestClips(
+        transcript,
+        meta.durationSec,
+        settings.maxSuggestedClips,
+        settings.clipModel
+      )
       console.log('[ai] Claude returned', clips.length, 'clips')
       safeSend(e.sender, 'ai:progress', { stage: 'Done', percent: 100 })
       return { ok: true as const, result: { transcript, clips } }

@@ -52,6 +52,7 @@ export interface Settings {
   autoCheckUpdates: boolean
   whisperModel: 'base.en' | 'small.en' | 'medium.en'
   maxSuggestedClips: number
+  clipModel: string
 }
 
 export type UpdateState =

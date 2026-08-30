@@ -14,7 +14,8 @@ const defaults = (): Settings => ({
   defaultAspect: 'vertical',
   autoCheckUpdates: true,
   whisperModel: 'small.en',
-  maxSuggestedClips: 8
+  maxSuggestedClips: 8,
+  clipModel: 'claude-opus-5'
 })
 
 let cache: Settings | null = null

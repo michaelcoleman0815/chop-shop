@@ -39,3 +39,22 @@ export function readApiKey(): string | null {
     return null
   }
 }
+
+export type Provider = 'anthropic' | 'openai' | 'google' | 'unknown'
+
+/**
+ * Works out who a key belongs to from its prefix. Only Anthropic is wired up;
+ * naming the others is still better than a confusing auth failure.
+ */
+export function detectProvider(key: string | null): Provider {
+  if (!key) return 'unknown'
+  const k = key.trim()
+  if (k.startsWith('sk-ant-')) return 'anthropic'
+  if (k.startsWith('sk-')) return 'openai'
+  if (k.startsWith('AIza')) return 'google'
+  return 'unknown'
+}
+
+export function currentProvider(): Provider {
+  return detectProvider(readApiKey())
+}
