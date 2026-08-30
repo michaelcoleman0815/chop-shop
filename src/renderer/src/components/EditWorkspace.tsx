@@ -552,6 +552,18 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
         </div>
         </div>
       </section>
+
+      <div className="statusbar">
+        <span>
+          {selected
+            ? 'Drag to move, drag the ends to trim. Delete removes the clip.'
+            : 'Add media from the bin, then drag clips to arrange them. Drag the ruler to scrub.'}
+        </span>
+        <div className="spacer" />
+        <span className="mono">
+          {timeline.clips.length} clip{timeline.clips.length === 1 ? '' : 's'} · {TRACKS.length} tracks
+        </span>
+      </div>
     </div>
   )
 }

@@ -1,0 +1,13 @@
+{
+  "artboards": [
+    { "file": "Home.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Project home" },
+    { "file": "Clipping.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "Clipping workspace" },
+    { "file": "Main.dc.html", "x": 3120, "y": 0, "w": 1440, "h": 900, "title": "Editing workspace" }
+  ],
+  "annotations": [
+    { "id": "note-density", "x": 0, "y": -150, "w": 460, "text": "Density comes from Premiere: 26px panel headers, 1px black seams between panels, 2-3px radii, no gradients. The accent appears once per screen." },
+    { "id": "note-clips", "x": 1560, "y": -150, "w": 460, "text": "Suggestions follow Opus Clip: thumbnail first, score as the only saturated element, reason underneath. The dock adds a transcript so you can read while you trim." },
+    { "id": "note-timeline", "x": 3120, "y": -150, "w": 460, "text": "Clips carry filmstrip over waveform with the name floated on top. Track headers use bare glyphs, no button chrome, and colour follows the source media type." }
+  ],
+  "launch": { "view": "canvas" }
+}

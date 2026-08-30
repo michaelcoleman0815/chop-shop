@@ -1464,3 +1464,125 @@ kbd {
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* Clip dock -------------------------------------------------------------- */
+
+.dock-body {
+  display: flex;
+  gap: var(--s6sp);
+}
+.dock-left {
+  width: 480px;
+  flex: 0 0 480px;
+}
+
+/* Reading the words while trimming beats scrubbing to find them. Lines inside
+   the current range are lit; the rest stay as context around it. */
+.dock-transcript {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.transcript-lines {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.transcript-line {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 3px 6px;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6b6874;
+}
+.transcript-line:hover {
+  background: var(--s2);
+  border-color: transparent;
+}
+.transcript-line.in-clip {
+  color: var(--paper);
+}
+.transcript-time {
+  flex: 0 0 52px;
+  font-size: 10px;
+  color: #57545c;
+  padding-top: 1px;
+}
+.transcript-line.in-clip .transcript-time {
+  color: var(--accent);
+}
+
+/* Status bar ------------------------------------------------------------- */
+
+.statusbar {
+  height: 22px;
+  flex: 0 0 22px;
+  background: var(--s2);
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: var(--s4sp);
+  padding: 0 var(--s3sp);
+  font-size: 11px;
+  color: var(--muted);
+}
+.statusbar .mono {
+  font-size: 10px;
+  color: #6b6874;
+}
+
+.home-title {
+  font-family: var(--display);
+  font-size: 26px;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.home-facts {
+  border-top: 1px solid var(--line);
+  padding-top: var(--s3sp);
+}
+.fact {
+  display: flex;
+  gap: var(--s2sp);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.fact span:first-child {
+  width: 78px;
+  flex: 0 0 78px;
+}
+
+/* The mode is stated on the card, so a glance down the list says which kind of
+   work each project holds. */
+.mode-tag {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  background: rgba(8, 8, 11, 0.8);
+  color: var(--muted);
+}
+.mode-tag.clip {
+  color: var(--accent);
+}
+
+.project-thumb {
+  position: relative;
+}

@@ -11,6 +11,7 @@ import ClipEditor, { type Segment } from './ClipEditor'
 import { CAPTION_PRESETS } from '../../../shared/caption-presets'
 import type { Job } from './JobList'
 import { bytes, slug, stamp, timecode } from '../lib/format'
+import { groupWords } from '../../../shared/words'
 
 interface Props {
   settings: Settings
@@ -495,6 +496,7 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
         </div>
 
         <div className="panel-body dock-body">
+          <div className="dock-left">
           <div className="dock-controls">
             <label className="field" style={{ flex: 1, minWidth: 180 }}>
               <span className="label">Name</span>
@@ -539,7 +541,7 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
             </label>
           </div>
 
-          <div className="chips" style={{ marginTop: 14 }}>
+          <div className="chips" style={{ marginTop: 12 }}>
             <button
               className={`chip ${captions && analysed ? 'on' : ''}`}
               disabled={!analysed}
@@ -569,12 +571,40 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
               </button>
             )}
           </div>
+          </div>
+
+          {analysed && (
+            <div className="dock-transcript">
+              <div className="label" style={{ marginBottom: 6 }}>
+                Transcript
+              </div>
+              <div className="transcript-lines">
+                {groupWords(words, 9)
+                  .filter((g) => g[g.length - 1].endSec > inSec - 20 && g[0].startSec < outSec + 20)
+                  .slice(0, 40)
+                  .map((g, i) => {
+                    const inClip = g[0].startSec >= inSec && g[g.length - 1].endSec <= outSec
+                    return (
+                      <button
+                        key={i}
+                        className={`transcript-line ${inClip ? 'in-clip' : ''}`}
+                        onClick={() => void seek(g[0].startSec)}
+                      >
+                        <span className="mono transcript-time">{timecode(g[0].startSec)}</span>
+                        <span>{g.map((w) => w.text).join(' ')}</span>
+                      </button>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
 
           {error && (
             <p className="mono muted" style={{ marginTop: 14 }}>
               {error}
             </p>
           )}
+
 
           {editorOpen && segments.length > 0 && (
             <div style={{ marginTop: 18 }}>
@@ -597,6 +627,19 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
           )}
         </div>
       </section>
+
+      <div className="statusbar">
+        <span>
+          {analysed
+            ? 'Click a suggestion to load its range. Drag the scrubber to move, I and O to mark in and out.'
+            : 'Drag the scrubber to move. I and O mark in and out. Analyse to find clips automatically.'}
+        </span>
+        <div className="spacer" />
+        <span className="mono">
+          {suggestions.length > 0 ? `${suggestions.length} clips · ` : ''}
+          {words.length > 0 ? `${words.length.toLocaleString()} words` : 'not analysed'}
+        </span>
+      </div>
     </div>
   )
 }
