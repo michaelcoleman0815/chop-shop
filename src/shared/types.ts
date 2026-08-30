@@ -1,4 +1,4 @@
-export type AspectPreset = 'original' | 'vertical' | 'square' | 'wide'
+export type AspectPreset = 'original' | 'vertical' | 'square' | 'wide' | 'preset'
 
 export interface VideoMeta {
   path: string
@@ -75,6 +75,14 @@ export interface Settings {
   clipModel: string
   captionPreset: string
   lutPath: string | null
+  /** Output size and bitrate read from an Adobe encoder preset. */
+  exportPreset: {
+    name: string
+    width: number | null
+    height: number | null
+    videoBitrate: number | null
+    fps: number | null
+  } | null
 }
 
 export type UpdateState =
@@ -193,8 +201,19 @@ export interface TimelineClip {
   muted: boolean
 }
 
+export type TransitionKind = 'dissolve' | 'dip-to-black'
+
+export interface Transition {
+  id: string
+  /** The clip this transition runs into. */
+  toClipId: string
+  kind: TransitionKind
+  durationSec: number
+}
+
 export interface Timeline {
   clips: TimelineClip[]
+  transitions?: Transition[]
   width: number
   height: number
   fps: number

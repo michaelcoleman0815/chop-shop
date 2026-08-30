@@ -13,6 +13,7 @@ import {
 } from './ffmpeg'
 import { autoZooms } from './autozoom'
 import { buildTimelineRender } from './timeline'
+import { readEpr } from './epr'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { mediaPreview } from './media-preview'
 import { detectFaces, buildTrack } from './track'
@@ -290,6 +291,7 @@ function registerIpc(): void {
         captions: req.captions && words.length > 0 ? { words } : undefined,
         captionStyle: presetById(settings.captionPreset).style,
         lutPath: settings.lutPath,
+        preset: settings.exportPreset,
         // Tightening needs the words even when captions are not being burned in.
         words,
         track,
@@ -566,6 +568,22 @@ function registerIpc(): void {
     return found.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 400)
   })
 
+  ipcMain.handle('preset:importEpr', async () => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      defaultPath: '/Applications',
+      filters: [{ name: 'Adobe encoder preset', extensions: ['epr'] }]
+    })
+    if (res.canceled || !res.filePaths[0]) return null
+    try {
+      const preset = await readEpr(res.filePaths[0])
+      console.log('[epr] read', preset.name, preset.width, preset.height, preset.videoBitrate)
+      return { ok: true as const, preset }
+    } catch (err) {
+      return { ok: false as const, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('lut:choose', async () => {
     const res = await dialog.showOpenDialog({
       properties: ['openFile'],
@@ -634,6 +652,7 @@ function registerIpc(): void {
         captions: req.captions && words.length > 0 ? { words } : undefined,
         captionStyle: presetById(settings.captionPreset).style,
         lutPath: settings.lutPath,
+        preset: settings.exportPreset,
         words,
         segments: req.segments,
         overlays: req.overlays,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Project, Timeline, TimelineClip } from '../../../shared/types'
+import type { Project, Timeline, TimelineClip, TransitionKind } from '../../../shared/types'
 import { clipAt, timelineDuration, mediaKind } from '../../../shared/timeline'
 import type { Job } from './JobList'
 import { timecode } from '../lib/format'
@@ -391,11 +391,41 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
           <button className="ghost" onClick={() => setZoom((z) => Math.min(8, z * 1.5))}>
             +
           </button>
+          <select
+            className="transition-picker"
+            value={
+              (timeline.transitions ?? []).find((t) => t.toClipId === selected)?.kind ?? ''
+            }
+            disabled={!selected}
+            title="Transition into the selected clip"
+            onChange={(e) => {
+              if (!selected) return
+              const rest = (timeline.transitions ?? []).filter((t) => t.toClipId !== selected)
+              const kind = e.target.value as TransitionKind | ''
+              setTimeline({
+                ...timeline,
+                transitions: kind
+                  ? [
+                      ...rest,
+                      { id: `${selected}-t`, toClipId: selected, kind, durationSec: 0.6 }
+                    ]
+                  : rest
+              })
+            }}
+          >
+            <option value="">No transition</option>
+            <option value="dissolve">Dissolve in</option>
+            <option value="dip-to-black">Dip to black</option>
+          </select>
           <button
             className="ghost"
             disabled={!selected}
             onClick={() => {
-              setTimeline({ ...timeline, clips: timeline.clips.filter((c) => c.id !== selected) })
+              setTimeline({
+                ...timeline,
+                clips: timeline.clips.filter((c) => c.id !== selected),
+                transitions: (timeline.transitions ?? []).filter((t) => t.toClipId !== selected)
+              })
               setSelected(null)
             }}
           >
@@ -501,7 +531,9 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                     return (
                       <div
                         key={c.id}
-                        className={`tl-clip kind-${mediaKind(c.mediaPath)} ${selected === c.id ? 'on' : ''}`}
+                        className={`tl-clip kind-${mediaKind(c.mediaPath)} ${
+                          selected === c.id ? 'on' : ''
+                        } ${(timeline.transitions ?? []).some((t) => t.toClipId === c.id) ? 'has-transition' : ''}`}
                         style={{
                           left: c.timelineStartSec * pxPerSec,
                           width: Math.max(8, length * pxPerSec)

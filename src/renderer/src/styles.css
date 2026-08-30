@@ -1621,3 +1621,23 @@ kbd {
 .mode-tag.clip {
   color: var(--accent);
 }
+
+.transition-picker {
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+/* A transition is a property of the cut, so it is marked at the edge it
+   affects rather than as a separate object on the track. */
+.tl-clip.has-transition::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 22px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.85), transparent);
+  pointer-events: none;
+  z-index: 2;
+}

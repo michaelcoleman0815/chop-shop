@@ -509,6 +509,12 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
                 <option value="square">1:1 square</option>
                 <option value="wide">16:9 wide</option>
                 <option value="original">Original</option>
+                {settings.exportPreset && (
+                  <option value="preset">
+                    {settings.exportPreset.name}
+                    {settings.exportPreset.width ? ` (${settings.exportPreset.width}×${settings.exportPreset.height})` : ''}
+                  </option>
+                )}
               </select>
             </label>
             <label className="field">

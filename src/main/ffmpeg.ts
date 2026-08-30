@@ -50,7 +50,14 @@ function scaleStyle(style: CaptionStyle, scale: number): CaptionStyle {
 }
 
 /** Output dimensions for each aspect preset, even-sized for H.264. */
-export function outputSize(aspect: AspectPreset, source: SourceInfo): { w: number; h: number } {
+export function outputSize(
+  aspect: AspectPreset,
+  source: SourceInfo,
+  preset?: { width: number | null; height: number | null } | null
+): { w: number; h: number } {
+  if (aspect === 'preset' && preset?.width && preset?.height) {
+    return { w: preset.width - (preset.width % 2), h: preset.height - (preset.height % 2) }
+  }
   if (aspect === 'vertical') return { w: 1080, h: 1920 }
   if (aspect === 'square') return { w: 1080, h: 1080 }
   if (aspect === 'wide') return { w: 1920, h: 1080 }
@@ -208,12 +215,14 @@ export async function exportClip(opts: {
   outputScale?: number
   /** Lower bitrate for throwaway renders. */
   previewQuality?: boolean
+  /** Output size and bitrate from an imported encoder preset. */
+  preset?: { width: number | null; height: number | null; videoBitrate: number | null } | null
   /** Cuts long pauses and filler words, re-timing captions and zooms to match. */
   tighten?: TightenOptions | false
   onProgress: (percent: number) => void
 }): Promise<string> {
   const duration = Math.max(0.1, opts.endSec - opts.startSec)
-  const full = outputSize(opts.aspect, opts.source)
+  const full = outputSize(opts.aspect, opts.source, opts.preset)
   const scale = opts.outputScale ?? 1
   // Even dimensions, or H.264 refuses the frame size.
   const out =
@@ -342,7 +351,11 @@ export async function exportClip(opts: {
         '-c:v',
         'h264_videotoolbox',
         '-b:v',
-        opts.previewQuality ? '3M' : '10M',
+        opts.previewQuality
+          ? '3M'
+          : opts.preset?.videoBitrate
+            ? String(opts.preset.videoBitrate)
+            : '10M',
         '-pix_fmt',
         'yuv420p',
         '-c:a',

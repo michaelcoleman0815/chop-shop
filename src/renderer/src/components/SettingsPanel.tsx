@@ -46,6 +46,7 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   const [modelReady, setModelReady] = useState(true)
   const [modelMb, setModelMb] = useState(0)
   const [downloading, setDownloading] = useState(0)
+  const [presetError, setPresetError] = useState<string | null>(null)
 
   useEffect(() => {
     window.chop.hasApiKey().then(setKeySaved)
@@ -210,6 +211,43 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
             )}
           </div>
         </Row>
+      </Section>
+
+      <Section title="Export presets">
+        <Row
+          name="Adobe encoder preset"
+          hint={
+            settings.exportPreset
+              ? `${settings.exportPreset.name} · ${settings.exportPreset.width}×${settings.exportPreset.height}${
+                  settings.exportPreset.fps ? ` · ${settings.exportPreset.fps} fps` : ''
+                }${
+                  settings.exportPreset.videoBitrate
+                    ? ` · ${Math.round(settings.exportPreset.videoBitrate / 1_000_000)} Mb/s`
+                    : ''
+                }`
+              : 'Read size and bitrate from a .epr file. Choose Preset as the aspect to use it.'
+          }
+        >
+          <div className="row" style={{ gap: 6 }}>
+            {settings.exportPreset && (
+              <button onClick={() => patch({ exportPreset: null })}>Clear</button>
+            )}
+            <button
+              onClick={async () => {
+                const res = await window.chop.importEpr()
+                if (res?.ok) await patch({ exportPreset: res.preset })
+                else if (res && !res.ok) setPresetError(res.message)
+              }}
+            >
+              Import .epr
+            </button>
+          </div>
+        </Row>
+        {presetError && (
+          <Row name="" hint={presetError}>
+            <span />
+          </Row>
+        )}
       </Section>
 
       <Section title="Live Buffer">

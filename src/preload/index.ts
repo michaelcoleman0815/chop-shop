@@ -113,6 +113,11 @@ const api = {
 
   listLuts: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke('lut:list'),
   chooseLut: (): Promise<string | null> => ipcRenderer.invoke('lut:choose'),
+  importEpr: (): Promise<
+    | { ok: true; preset: { name: string; width: number | null; height: number | null; videoBitrate: number | null; audioBitrate: number | null; fps: number | null } }
+    | { ok: false; message: string }
+    | null
+  > => ipcRenderer.invoke('preset:importEpr'),
 
   probeMedia: (
     path: string

@@ -40,6 +40,8 @@ export function buildTimelineRender(timeline: Timeline): TimelineRender | null {
   let videoLabel = 'bg'
   const audioLabels: string[] = []
 
+  const transitions = timeline.transitions ?? []
+
   clips.forEach((clip, i) => {
     const length = Math.max(0.05, clip.sourceOutSec - clip.sourceInSec)
     inputs.push(
@@ -57,14 +59,33 @@ export function buildTimelineRender(timeline: Timeline): TimelineRender | null {
         `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black,` +
         `setpts=PTS-STARTPTS+${clip.timelineStartSec.toFixed(3)}/TB,fps=${fps}[cv${i}]`
     )
-    parts.push(
-      `[${videoLabel}][cv${i}]overlay=0:0:enable='between(t,${clip.timelineStartSec.toFixed(3)},${end.toFixed(3)})'[vt${i}]`
-    )
+    const transition = transitions.find((t) => t.toClipId === clip.id)
+    if (transition && clip.timelineStartSec > 0) {
+      // A dissolve is a fade on the incoming clip over what is already there;
+      // a dip goes through black, so the outgoing side fades down first.
+      const dur = Math.min(transition.durationSec, length)
+      const fadeIn =
+        transition.kind === 'dip-to-black'
+          ? `fade=t=in:st=${(clip.timelineStartSec + dur / 2).toFixed(3)}:d=${(dur / 2).toFixed(3)}:alpha=1`
+          : `fade=t=in:st=${clip.timelineStartSec.toFixed(3)}:d=${dur.toFixed(3)}:alpha=1`
+      parts.push(`[cv${i}]format=yuva420p,${fadeIn}[cvf${i}]`)
+      parts.push(
+        `[${videoLabel}][cvf${i}]overlay=0:0:enable='between(t,${clip.timelineStartSec.toFixed(3)},${end.toFixed(3)})'[vt${i}]`
+      )
+    } else {
+      parts.push(
+        `[${videoLabel}][cv${i}]overlay=0:0:enable='between(t,${clip.timelineStartSec.toFixed(3)},${end.toFixed(3)})'[vt${i}]`
+      )
+    }
     videoLabel = `vt${i}`
 
     if (!clip.muted) {
+      const aTrans = transitions.find((t) => t.toClipId === clip.id)
+      const aFade = aTrans
+        ? `,afade=t=in:st=0:d=${Math.min(aTrans.durationSec, length).toFixed(3)}`
+        : ''
       parts.push(
-        `[${i}:a]asetpts=PTS-STARTPTS,adelay=${Math.round(clip.timelineStartSec * 1000)}|${Math.round(clip.timelineStartSec * 1000)}[ca${i}]`
+        `[${i}:a]asetpts=PTS-STARTPTS${aFade},adelay=${Math.round(clip.timelineStartSec * 1000)}|${Math.round(clip.timelineStartSec * 1000)}[ca${i}]`
       )
       audioLabels.push(`ca${i}`)
     }

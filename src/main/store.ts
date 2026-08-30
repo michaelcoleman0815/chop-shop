@@ -20,7 +20,8 @@ const defaults = (): Settings => ({
   maxSuggestedClips: 8,
   clipModel: 'claude-opus-5',
   captionPreset: 'chop',
-  lutPath: null
+  lutPath: null,
+  exportPreset: null
 })
 
 let cache: Settings | null = null
