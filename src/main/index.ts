@@ -3,8 +3,16 @@ import { join, basename, extname } from 'path'
 import { createReadStream, existsSync, statSync, promises as fs } from 'fs'
 import { Readable } from 'stream'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { probe, exportClip, buildFromSegments, FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
+import {
+  probe,
+  exportClip,
+  buildFromSegments,
+  runFfmpeg,
+  FFMPEG_PATH,
+  FFPROBE_PATH
+} from './ffmpeg'
 import { autoZooms } from './autozoom'
+import { buildTimelineRender } from './timeline'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
@@ -31,6 +39,7 @@ import type {
   Project,
   ProjectMode,
   SuggestedClip,
+  Timeline,
   TranscriptWord,
   VideoMeta
 } from '../shared/types'
@@ -650,6 +659,76 @@ function registerIpc(): void {
       return { ok: false as const, message }
     }
   })
+
+  ipcMain.handle('timeline:probe', async (_e, path: string) => {
+    const meta = await probe(path)
+    return { path, ...meta }
+  })
+
+  /** Renders a timeline to a file, at half size when it is only a preview. */
+  ipcMain.handle(
+    'timeline:render',
+    async (e, req: { jobId: string; timeline: Timeline; name: string; preview: boolean }) => {
+      const settings = getSettings()
+      try {
+        const render = buildTimelineRender(req.timeline)
+        if (!render) return { ok: false as const, message: 'The timeline is empty.' }
+
+        const outputPath = req.preview
+          ? join(
+              await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-tl-')),
+              'preview.mp4'
+            )
+          : uniquePath(settings.outputDir, req.name)
+        if (!req.preview) await fs.mkdir(settings.outputDir, { recursive: true })
+
+        const scale = req.preview ? 0.5 : 1
+        const args = [
+          '-y',
+          ...render.inputs,
+          '-filter_complex',
+          render.filterComplex,
+          '-map',
+          `[${render.videoLabel}]`,
+          ...(render.audioLabel ? ['-map', `[${render.audioLabel}]`] : []),
+          ...(scale !== 1
+            ? [
+                '-vf',
+                `scale=${Math.round((req.timeline.width * scale) / 2) * 2}:${Math.round((req.timeline.height * scale) / 2) * 2}`
+              ]
+            : []),
+          '-c:v',
+          'h264_videotoolbox',
+          '-b:v',
+          req.preview ? '4M' : '12M',
+          '-pix_fmt',
+          'yuv420p',
+          ...(render.audioLabel ? ['-c:a', 'aac', '-b:a', '192k'] : []),
+          '-movflags',
+          '+faststart',
+          outputPath
+        ]
+
+        await runFfmpeg(args, render.durationSec, (percent) =>
+          safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent, stage: 'running' })
+        )
+
+        safeSend(e.sender, 'clip:progress', {
+          jobId: req.jobId,
+          percent: 100,
+          stage: 'done',
+          outputPath
+        })
+        console.log('[timeline] rendered', outputPath)
+        return { ok: true as const, outputPath, mediaUrl: mediaUrlFor(outputPath) }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[timeline] render failed:', message)
+        safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 0, stage: 'error', message })
+        return { ok: false as const, message }
+      }
+    }
+  )
 
   ipcMain.handle('project:recent', () => recentProjects())
   ipcMain.handle('project:create', (_e, name: string, mode: ProjectMode) =>

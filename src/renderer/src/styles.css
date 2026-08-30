@@ -629,3 +629,181 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Editing workspace ------------------------------------------------------ */
+
+.edit {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 1px;
+  background: var(--line);
+}
+
+.edit-top {
+  flex: 1 1 58%;
+  min-height: 0;
+  display: flex;
+  gap: 1px;
+}
+
+.panel {
+  background: var(--ground);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.panel-head,
+.panel-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.panel-foot {
+  border-bottom: none;
+  border-top: 1px solid var(--line);
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s3);
+}
+
+.bin {
+  width: 300px;
+  flex: 0 0 300px;
+}
+
+.bin-item {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s2);
+}
+.bin-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor {
+  flex: 1;
+}
+.monitor-stage {
+  flex: 1;
+  min-height: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.monitor-stage video {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.timeline-panel {
+  flex: 1 1 42%;
+  min-height: 0;
+}
+
+.lanes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+.lane-inner {
+  position: relative;
+  min-height: 100%;
+  padding-top: 26px;
+}
+
+.ruler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.ruler .tick {
+  position: absolute;
+  top: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  border-left: 1px solid var(--line);
+  padding-left: 4px;
+}
+
+.lane {
+  position: relative;
+  height: 62px;
+  border-bottom: 1px solid var(--line);
+}
+.lane-label {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.tl-clip {
+  position: absolute;
+  top: 20px;
+  height: 38px;
+  background: #2f3a4a;
+  border: 1px solid #4a5a70;
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+.tl-clip.on {
+  border-color: var(--paper);
+}
+.tl-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-handle {
+  width: 8px;
+  align-self: stretch;
+  background: #4a5a70;
+  cursor: col-resize;
+  flex: 0 0 auto;
+}
+.tl-clip.on .tl-handle {
+  background: var(--paper);
+}
+
+.tl-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}

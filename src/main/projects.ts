@@ -89,7 +89,9 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
     primaryMedia: null,
     media: [],
     clips: [],
-    transcript: null
+    transcript: null,
+    timeline:
+      mode === 'edit' ? { clips: [], width: 1920, height: 1080, fps: 30 } : null
   }
 
   await saveProject(project)

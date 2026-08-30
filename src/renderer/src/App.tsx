@@ -8,6 +8,7 @@ import JobList, { type Job } from './components/JobList'
 import Mark from './components/Mark'
 import { performGrab } from './lib/grab'
 import Home from './components/Home'
+import EditWorkspace from './components/EditWorkspace'
 import type { Project } from '../../shared/types'
 
 type Tab = 'studio' | 'live' | 'settings'
@@ -101,9 +102,12 @@ export default function App(): JSX.Element {
       </div>
       <UpdateBanner />
 
+      {!clipping && tab === 'studio' ? (
+        <EditWorkspace project={project} onProject={setProject} addJob={addJob} />
+      ) : (
       <div className="body">
         <div className="pane">
-          {tab === 'studio' && <ClipStudio settings={settings} addJob={addJob} />}
+          {tab === 'studio' && clipping && <ClipStudio settings={settings} addJob={addJob} />}
           {tab === 'live' && clipping && (
             <LiveBuffer settings={settings} patch={patchSettings} addJob={addJob} />
           )}
@@ -114,6 +118,7 @@ export default function App(): JSX.Element {
           <JobList jobs={jobs} />
         </aside>
       </div>
+      )}
     </div>
   )
 }

@@ -10,6 +10,7 @@ import type {
   ProjectSummary,
   Settings,
   SuggestedClip,
+  Timeline,
   TranscriptWord,
   UpdateState,
   VideoMeta,
@@ -111,6 +112,19 @@ const api = {
 
   listLuts: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke('lut:list'),
   chooseLut: (): Promise<string | null> => ipcRenderer.invoke('lut:choose'),
+
+  probeMedia: (
+    path: string
+  ): Promise<{ path: string; durationSec: number; width: number; height: number; fps: number }> =>
+    ipcRenderer.invoke('timeline:probe', path),
+  renderTimeline: (req: {
+    jobId: string
+    timeline: Timeline
+    name: string
+    preview: boolean
+  }): Promise<
+    { ok: true; outputPath: string; mediaUrl: string } | { ok: false; message: string }
+  > => ipcRenderer.invoke('timeline:render', req),
 
   recentProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('project:recent'),
   createProject: (name: string, mode: ProjectMode): Promise<Project> =>

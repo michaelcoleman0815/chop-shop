@@ -141,7 +141,7 @@ function aspectFilter(aspect: AspectPreset, fit: 'cover' | 'contain' = 'cover'):
  * Runs ffmpeg and reports 0-100 progress by watching `-progress` output against
  * the clip's expected duration.
  */
-function runWithProgress(
+export function runFfmpeg(
   args: string[],
   totalSec: number,
   onProgress: (percent: number) => void
@@ -329,7 +329,7 @@ export async function exportClip(opts: {
           ...(audioFilter ? ['-af', audioFilter] : [])
         ]
 
-    await runWithProgress(
+    await runFfmpeg(
       [
         '-y',
         '-ss',
@@ -427,7 +427,7 @@ export async function buildFromSegments(opts: {
     const start = Math.max(0, durationSec - opts.tailSec)
     const keep = Math.max(0.5, durationSec - start)
 
-    await runWithProgress(
+    await runFfmpeg(
       [
         '-y',
         '-fflags',

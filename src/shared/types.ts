@@ -178,4 +178,24 @@ export interface Project extends ProjectSummary {
   /** Saved clips, so reopening a project restores the work rather than the file. */
   clips: SuggestedClip[]
   transcript: Transcript | null
+  /** Editing-mode timeline. Null for clipping projects. */
+  timeline: Timeline | null
+}
+
+export interface TimelineClip {
+  id: string
+  mediaPath: string
+  /** 0 is the base video track, 1 sits above it. */
+  track: number
+  timelineStartSec: number
+  sourceInSec: number
+  sourceOutSec: number
+  muted: boolean
+}
+
+export interface Timeline {
+  clips: TimelineClip[]
+  width: number
+  height: number
+  fps: number
 }
