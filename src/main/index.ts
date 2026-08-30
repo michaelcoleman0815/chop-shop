@@ -67,7 +67,9 @@ const MIME: Record<string, string> = {
   '.m4v': 'video/mp4',
   '.webm': 'video/webm',
   '.mkv': 'video/x-matroska',
-  '.avi': 'video/x-msvideo'
+  '.avi': 'video/x-msvideo',
+  // Preview filmstrips and waveforms come back down the same protocol.
+  '.png': 'image/png'
 }
 
 export function mediaUrlFor(path: string): string {

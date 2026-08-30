@@ -5,6 +5,7 @@ import type {
   CaptureSource,
   ClipRequest,
   ExportProgress,
+  MediaPreviews,
   Project,
   ProjectMode,
   ProjectSummary,
@@ -117,6 +118,9 @@ const api = {
     path: string
   ): Promise<{ path: string; durationSec: number; width: number; height: number; fps: number }> =>
     ipcRenderer.invoke('timeline:probe', path),
+
+  mediaPreviews: (path: string): Promise<MediaPreviews> =>
+    ipcRenderer.invoke('media:previews', path),
   renderTimeline: (req: {
     jobId: string
     timeline: Timeline

@@ -102,12 +102,21 @@ export default function App(): JSX.Element {
       </div>
       <UpdateBanner />
 
-      {!clipping && tab === 'studio' ? (
-        <EditWorkspace project={project} onProject={setProject} addJob={addJob} />
+      {tab === 'studio' ? (
+        <div className="body">
+          {clipping ? (
+            <ClipStudio settings={settings} patch={patchSettings} addJob={addJob} />
+          ) : (
+            <EditWorkspace project={project} onProject={setProject} addJob={addJob} />
+          )}
+          <aside className="sidebar">
+            <div className="label" style={{ marginBottom: 16 }}>Exports</div>
+            <JobList jobs={jobs} />
+          </aside>
+        </div>
       ) : (
       <div className="body">
         <div className="pane">
-          {tab === 'studio' && clipping && <ClipStudio settings={settings} patch={patchSettings} addJob={addJob} />}
           {tab === 'live' && clipping && (
             <LiveBuffer settings={settings} patch={patchSettings} addJob={addJob} />
           )}

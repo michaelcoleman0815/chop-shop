@@ -746,6 +746,8 @@ kbd {
 /* Editing workspace ------------------------------------------------------ */
 
 .edit {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1092,4 +1094,136 @@ kbd {
 .chip:disabled {
   opacity: 0.32;
   cursor: not-allowed;
+}
+
+/* Clip Studio workspace -------------------------------------------------- */
+
+.empty-stage {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s7sp);
+}
+.empty-stage .dropzone {
+  width: min(560px, 100%);
+}
+
+.clips-panel {
+  width: 320px;
+  flex: 0 0 320px;
+  border-right: 1px solid var(--line);
+}
+
+.analysis-strip {
+  padding: var(--s2sp) var(--s3sp);
+  background: var(--s2);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.analysis-strip .bar {
+  margin-top: 6px;
+}
+
+/* A suggestion is a thing to choose, so it gets a card of its own rather than
+   a row of text: title and score first, evidence underneath. */
+.suggestion {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--s3sp);
+  margin-bottom: var(--s2sp);
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: none;
+}
+.suggestion:hover:not(:disabled) {
+  border-color: var(--line-2);
+  background: var(--s3);
+}
+.suggestion.on {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(255, 96, 118, 0.08), var(--s2));
+}
+
+.suggestion-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2sp);
+}
+.suggestion-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.score {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--s0);
+  border: 1px solid var(--line-2);
+  color: var(--muted);
+}
+.suggestion.on .score {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.suggestion-meta {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.suggestion-reason {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* The scrubber belongs against the picture, not in a card below it. */
+.scrub {
+  position: relative;
+  height: 26px;
+  flex: 0 0 auto;
+  background: var(--s0);
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+.scrub-sel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.07);
+  border-left: 1px solid var(--grey-700);
+  border-right: 1px solid var(--grey-700);
+}
+.scrub-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+.dock {
+  flex: 0 0 auto;
+  max-height: 46%;
+  border-top: 1px solid var(--line);
+}
+.dock .panel-head {
+  height: 40px;
+}
+.dock-body {
+  padding: var(--s4sp);
+}
+.dock-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3sp);
+  align-items: flex-end;
 }
