@@ -20,6 +20,9 @@ function when(iso: string): string {
 
 export default function Home({ onOpen, version }: Props): JSX.Element {
   const [recent, setRecent] = useState<ProjectSummary[]>([])
+  // An empty placeholder box reads as a failed image. A project's own first
+  // frame says what it is at a glance.
+  const [posters, setPosters] = useState<Record<string, string>>({})
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState('')
   const [mode, setMode] = useState<ProjectMode>('clip')
@@ -29,6 +32,16 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
   }, [])
 
   useEffect(refresh, [refresh])
+
+  useEffect(() => {
+    for (const project of recent) {
+      if (!project.primaryMedia || posters[project.path]) continue
+      window.chop
+        .mediaPreviews(project.primaryMedia)
+        .then((p) => setPosters((prev) => ({ ...prev, [project.path]: p.posterUrl })))
+        .catch(() => undefined)
+    }
+  }, [recent, posters])
 
   const create = useCallback(async () => {
     const project = await window.chop.createProject(name.trim() || 'Untitled', mode)
@@ -159,10 +172,18 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
                     if (project) onOpen(project)
                   }}
                 >
-                  <div className="project-thumb">
+                  <div
+                    className="project-thumb"
+                    style={
+                      posters[p.path]
+                        ? { backgroundImage: `url("${posters[p.path]}")` }
+                        : undefined
+                    }
+                  >
                     <span className={`mode-tag ${p.mode}`}>
                       {p.mode === 'clip' ? 'Clipping' : 'Editing'}
                     </span>
+                    {!p.primaryMedia && <span className="thumb-empty">No media yet</span>}
                   </div>
                   <div className="project-meta">
                     <span className="project-name">{p.name}</span>

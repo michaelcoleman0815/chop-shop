@@ -549,7 +549,18 @@ kbd {
   bottom: -1px;
   width: 9px;
   cursor: col-resize;
-  background: var(--grey-700);
+  background: rgba(255, 255, 255, 0.12);
+}
+.editor-handle::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.45);
+  border-right: 1px solid rgba(255, 255, 255, 0.45);
 }
 .editor-handle.left {
   left: -1px;
@@ -713,14 +724,22 @@ kbd {
 }
 
 .project-thumb {
+  position: relative;
   aspect-ratio: 16 / 9;
-  background:
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.018) 0 8px, transparent 8px 16px),
-    var(--s0);
+  background-color: var(--s0);
+  background-size: cover;
+  background-position: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.thumb-empty {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  color: #4a4753;
 }
 
 .project-meta {
@@ -979,14 +998,34 @@ kbd {
   pointer-events: none;
 }
 .tl-handle {
-  width: 8px;
+  position: relative;
+  width: 9px;
   align-self: stretch;
-  background: #56657f;
+  background: rgba(255, 255, 255, 0.09);
   cursor: col-resize;
   flex: 0 0 auto;
 }
+/* A visible grip, not a bare bar: every reference tool draws the trim
+   affordance permanently rather than revealing it on hover. */
+.tl-handle::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.45);
+  border-right: 1px solid rgba(255, 255, 255, 0.45);
+}
+.tl-clip:hover .tl-handle {
+  background: rgba(255, 255, 255, 0.16);
+}
 .tl-clip.on .tl-handle {
   background: var(--paper);
+}
+.tl-clip.on .tl-handle::after {
+  border-color: rgba(0, 0, 0, 0.55);
 }
 
 .tl-head {
@@ -1581,8 +1620,4 @@ kbd {
 }
 .mode-tag.clip {
   color: var(--accent);
-}
-
-.project-thumb {
-  position: relative;
 }

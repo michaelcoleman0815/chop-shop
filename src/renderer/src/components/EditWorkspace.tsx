@@ -279,12 +279,30 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
           </div>
           <div className="panel-body">
             {media.length === 0 && <p className="muted">Import media to begin.</p>}
-            {media.map((m) => (
+            {media.map((m) => {
+              const pv = previews[m.path]
+              return (
               <div key={m.path} className="bin-item">
-                {previews[m.path] && (
+                {pv && (
                   <div
                     className="bin-poster"
-                    style={{ backgroundImage: `url("${previews[m.path].posterUrl}")` }}
+                    style={{ backgroundImage: `url("${pv.posterUrl}")` }}
+                    title="Move across to scrub"
+                    onPointerMove={(e) => {
+                      // Scrubbing the thumbnail beats opening a clip to find out
+                      // what is in it.
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      const ratio = Math.max(0, Math.min(0.999, (e.clientX - rect.left) / rect.width))
+                      const frame = Math.floor(ratio * pv.frames)
+                      e.currentTarget.style.backgroundImage = `url("${pv.filmstripUrl}")`
+                      e.currentTarget.style.backgroundSize = `${pv.frames * 100}% 100%`
+                      e.currentTarget.style.backgroundPositionX = `${(frame / Math.max(1, pv.frames - 1)) * 100}%`
+                    }}
+                    onPointerLeave={(e) => {
+                      e.currentTarget.style.backgroundImage = `url("${pv.posterUrl}")`
+                      e.currentTarget.style.backgroundSize = 'cover'
+                      e.currentTarget.style.backgroundPositionX = 'center'
+                    }}
                   />
                 )}
                 <div className="bin-name">{m.path.split('/').pop()}</div>
@@ -300,7 +318,8 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                   </button>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </section>
 
