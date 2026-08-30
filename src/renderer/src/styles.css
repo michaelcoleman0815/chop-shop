@@ -1266,3 +1266,24 @@ kbd {
   gap: var(--s3sp);
   align-items: flex-end;
 }
+
+/* A filmstrip across the scrubber, with the waveform behind its lower half, so
+   a long recording can be read without scrubbing through it. */
+.scrub.has-strip {
+  height: 56px;
+  background-repeat: no-repeat, no-repeat;
+  background-size: 100% 62%, 100% 38%;
+  background-position: top left, bottom left;
+}
+.scrub.has-strip .scrub-sel {
+  background: rgba(255, 96, 118, 0.14);
+  border-left-color: var(--accent);
+  border-right-color: var(--accent);
+}
+.scrub.has-strip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+}

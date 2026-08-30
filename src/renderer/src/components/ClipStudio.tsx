@@ -57,6 +57,9 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
   const [proof, setProof] = useState<string | null>(null)
   const [rendering, setRendering] = useState(false)
   const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
+  const [strip, setStrip] = useState<{ filmstripUrl: string; waveformUrl: string | null } | null>(
+    null
+  )
 
   const analysed = words.length > 0
 
@@ -87,7 +90,14 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
       setChosen(null)
       setWin(null)
       setProof(null)
+      setStrip(null)
       void openWindow(v.path, 0)
+      // The scrubber for a two hour recording is otherwise a blank bar. A
+      // filmstrip across it makes the whole source legible at a glance.
+      window.chop
+        .mediaPreviews(v.path)
+        .then((p) => setStrip({ filmstripUrl: p.filmstripUrl, waveformUrl: p.waveformUrl }))
+        .catch(() => undefined)
     },
     [openWindow]
   )
@@ -375,7 +385,16 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
           </div>
 
           <div
-            className="scrub"
+            className={`scrub ${strip ? 'has-strip' : ''}`}
+            style={
+              strip
+                ? {
+                    backgroundImage: strip.waveformUrl
+                      ? `url("${strip.filmstripUrl}"), url("${strip.waveformUrl}")`
+                      : `url("${strip.filmstripUrl}")`
+                  }
+                : undefined
+            }
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect()
               void seek(((e.clientX - rect.left) / rect.width) * meta.durationSec)
