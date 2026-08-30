@@ -121,26 +121,28 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
           {recent.length === 0 ? (
             <p className="muted">No projects yet.</p>
           ) : (
-            <table className="recent-table">
-              <tbody>
-                {recent.map((p) => (
-                  <tr
-                    key={p.path}
-                    onClick={async () => {
-                      const project = await window.chop.openProject(p.path)
-                      if (project) onOpen(project)
-                    }}
-                  >
-                    <td className="recent-name">{p.name}</td>
-                    <td className="muted">{p.mode === 'clip' ? 'Clipping' : 'Editing'}</td>
-                    <td className="muted">{when(p.openedAt)}</td>
-                    <td className="mono muted recent-media">
-                      {p.primaryMedia ? p.primaryMedia.split('/').pop() : ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="project-grid">
+              {recent.map((p) => (
+                <button
+                  key={p.path}
+                  className="project-card"
+                  onClick={async () => {
+                    const project = await window.chop.openProject(p.path)
+                    if (project) onOpen(project)
+                  }}
+                >
+                  <div className="project-thumb">
+                    <Mark height={26} />
+                  </div>
+                  <div className="project-meta">
+                    <span className="project-name">{p.name}</span>
+                    <span className="project-sub">
+                      {p.mode === 'clip' ? 'Clipping' : 'Editing'} · {when(p.openedAt)}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
           )}
         </section>
       </div>
