@@ -32,6 +32,12 @@ type Drag =
   | null
 
 const TRACKS = [1, 0]
+
+interface TrackState {
+  muted: boolean
+  locked: boolean
+  hidden: boolean
+}
 const PX_PER_SEC_BASE = 40
 
 export default function EditWorkspace({ project, onProject, addJob }: Props): JSX.Element {
@@ -44,6 +50,10 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
   const [playhead, setPlayhead] = useState(0)
   const [drag, setDrag] = useState<Drag>(null)
   const [zoom, setZoom] = useState(1)
+  const [trackState, setTrackState] = useState<Record<number, TrackState>>({
+    0: { muted: false, locked: false, hidden: false },
+    1: { muted: false, locked: false, hidden: false }
+  })
   const [playing, setPlaying] = useState(false)
   const [proof, setProof] = useState<string | null>(null)
   // Filmstrips and waveforms are generated once per file and cached on disk, so
@@ -132,6 +142,8 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
       const t = timeAt(e.clientX)
       const clips = timeline.clips.map((c) => {
         if (c.id !== drag.id) return c
+        // A locked track refuses edits, which is the whole point of locking it.
+        if (trackState[c.track]?.locked) return c
         if (drag.kind === 'move') {
           return { ...c, timelineStartSec: Math.max(0, t - drag.grabOffsetSec) }
         }
@@ -149,7 +161,7 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
       })
       setTimeline({ ...timeline, clips })
     },
-    [drag, timeline, timeAt, setTimeline]
+    [drag, timeline, timeAt, setTimeline, trackState]
   )
 
   // The monitor plays whichever clip covers the playhead, seeking into it.
@@ -191,15 +203,21 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
     async (preview: boolean) => {
       const jobId = `${Date.now()}`
       if (!preview) addJob({ id: jobId, name: project.name, percent: 0, stage: 'running' })
+      const visible = {
+        ...timeline,
+        clips: timeline.clips
+          .filter((c) => !trackState[c.track]?.hidden)
+          .map((c) => ({ ...c, muted: c.muted || !!trackState[c.track]?.muted }))
+      }
       const res = await window.chop.renderTimeline({
         jobId,
-        timeline,
+        timeline: visible,
         name: project.name,
         preview
       })
       if (res.ok && preview) setProof(res.mediaUrl)
     },
-    [timeline, project.name, addJob]
+    [timeline, project.name, addJob, trackState]
   )
 
   return (
@@ -314,6 +332,43 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
           </button>
         </div>
 
+        <div className="timeline-body">
+          <div className="track-headers">
+            <div className="track-headers-spacer" />
+            {TRACKS.map((track) => {
+              const st = trackState[track]
+              const set = (patch: Partial<TrackState>): void =>
+                setTrackState((prev) => ({ ...prev, [track]: { ...prev[track], ...patch } }))
+              return (
+                <div key={track} className={`track-header ${st.locked ? 'locked' : ''}`}>
+                  <span className="track-name">{track === 0 ? 'V1' : 'V2'}</span>
+                  <div className="spacer" />
+                  <button
+                    className={`glyph ${st.hidden ? '' : 'active'}`}
+                    title={st.hidden ? 'Show track' : 'Hide track'}
+                    onClick={() => set({ hidden: !st.hidden })}
+                  >
+                    {st.hidden ? '◌' : '◉'}
+                  </button>
+                  <button
+                    className={`glyph ${st.muted ? 'mute' : ''}`}
+                    title={st.muted ? 'Unmute' : 'Mute'}
+                    onClick={() => set({ muted: !st.muted })}
+                  >
+                    M
+                  </button>
+                  <button
+                    className={`glyph ${st.locked ? 'lock' : ''}`}
+                    title={st.locked ? 'Unlock track' : 'Lock track'}
+                    onClick={() => set({ locked: !st.locked })}
+                  >
+                    {st.locked ? '🔒' : '🔓'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+
         <div
           className="lanes"
           ref={laneRef}
@@ -337,8 +392,12 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
             </div>
 
             {TRACKS.map((track) => (
-              <div key={track} className="lane">
-                <div className="lane-label mono">{track === 0 ? 'V1' : 'V2'}</div>
+              <div
+                key={track}
+                className={`lane ${trackState[track]?.locked ? 'locked' : ''} ${
+                  trackState[track]?.hidden ? 'hidden' : ''
+                }`}
+              >
                 {timeline.clips
                   .filter((c) => c.track === track)
                   .map((c) => {
@@ -408,6 +467,7 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
 
             <div className="tl-head" style={{ left: playhead * pxPerSec }} />
           </div>
+        </div>
         </div>
       </section>
     </div>

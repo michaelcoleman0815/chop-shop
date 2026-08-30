@@ -52,12 +52,20 @@
   --s7sp: 40px;
   --s8sp: 56px;
 
-  --r-sm: 5px;
-  --r-md: 8px;
-  --r-lg: 14px;
-  --r-xl: 22px;
+  /* Premiere uses no radius at all and 3-4px padding; density is the aesthetic.
+     Opus Clip rounds at 6-10px. These sit between: square enough to read as a
+     tool, soft enough not to feel like 2009. */
+  --r-sm: 3px;
+  --r-md: 5px;
+  --r-lg: 7px;
+  --r-xl: 10px;
 
-  --shadow-panel: 0 1px 0 var(--edge) inset, 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-panel: 0 1px 0 var(--edge) inset, 0 4px 14px rgba(0, 0, 0, 0.3);
+  /* Media colours follow the source type, kept low-chroma so saturated state
+     badges and the playhead stay the loudest things on screen. */
+  --media-video: #7fa8d4;
+  --media-audio: #35b07a;
+  --media-image: #a98ce0;
   --shadow-control: 0 1px 0 var(--edge) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
 
   color-scheme: dark;
@@ -151,7 +159,7 @@ button {
   background: linear-gradient(180deg, var(--s4) 0%, var(--s3) 100%);
   border: 1px solid var(--line-2);
   border-radius: var(--r-md);
-  padding: 7px 13px;
+  padding: 5px 11px;
   cursor: pointer;
   box-shadow: var(--shadow-control);
   transition: background 0.12s ease, border-color 0.12s ease, transform 0.06s ease;
@@ -215,7 +223,7 @@ select {
   background: var(--s0);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  padding: 7px 10px;
+  padding: 5px 9px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35) inset;
 }
 input:focus-visible,
@@ -325,8 +333,8 @@ input[type='range'] {
   background: linear-gradient(180deg, var(--s2) 0%, #17161d 100%);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  padding: var(--s4sp);
-  margin-bottom: var(--s4sp);
+  padding: var(--s3sp) var(--s4sp);
+  margin-bottom: var(--s3sp);
   box-shadow: var(--shadow-panel);
 }
 
@@ -882,13 +890,22 @@ kbd {
   position: absolute;
   top: 0;
   height: 28px;
-  padding-left: 5px;
+  padding-left: 7px;
   font-family: var(--mono);
   font-size: 9px;
   line-height: 26px;
   letter-spacing: 0.06em;
   color: var(--muted);
-  border-left: 1px solid var(--line-2);
+}
+.ruler .tick::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 11px;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--grey-700);
 }
 
 .lane {
@@ -900,20 +917,7 @@ kbd {
 .lane:nth-child(odd) {
   background: transparent;
 }
-.lane-label {
-  position: sticky;
-  left: 0;
-  z-index: 3;
-  display: inline-block;
-  margin: 4px;
-  padding: 2px 7px;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  color: var(--muted);
-  background: var(--s2);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-}
+
 
 .tl-clip {
   position: absolute;
@@ -940,7 +944,8 @@ kbd {
 }
 .tl-clip.on {
   border-color: var(--paper);
-  box-shadow: 0 0 0 1px rgba(242, 241, 238, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px var(--paper);
+  filter: brightness(1.22);
 }
 .tl-body {
   position: relative;
@@ -1006,12 +1011,13 @@ kbd {
 .tl-head::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: -5px;
-  width: 12px;
-  height: 10px;
-  background: var(--accent);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  top: 3px;
+  left: -6px;
+  width: 14px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
 /* Settings --------------------------------------------------------------- */
@@ -1286,4 +1292,92 @@ kbd {
   inset: 0;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.45));
   pointer-events: none;
+}
+
+/* Track headers ---------------------------------------------------------- */
+
+.timeline-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* A fixed column beside the scrolling lanes, as every editor has. Controls are
+   bare glyphs with no button chrome: state is carried by colour, not by a box. */
+.track-headers {
+  width: 168px;
+  flex: 0 0 168px;
+  background: var(--s2);
+  border-right: 1px solid #000;
+}
+.track-headers-spacer {
+  height: 28px;
+  border-bottom: 1px solid var(--line);
+}
+
+.track-header {
+  height: 84px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--s2sp);
+  border-bottom: 1px solid #000;
+}
+.track-header.locked .glyph:not(.lock),
+.track-header.locked .track-name {
+  opacity: 0.4;
+}
+
+/* The track name is the target button, the way Premiere does it. */
+.track-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  background: var(--s0);
+  border: 1px solid var(--line-2);
+  color: var(--muted);
+}
+
+.glyph {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--grey-700);
+  border-radius: var(--r-sm);
+}
+.glyph:hover:not(:disabled) {
+  background: var(--s3);
+  color: var(--text);
+}
+.glyph.active {
+  color: var(--grey-500);
+}
+/* High-contrast state, unmissable at a glance, exactly as Premiere flags it. */
+.glyph.mute {
+  background: #7ce8a6;
+  color: #0d2418;
+}
+.glyph.lock {
+  color: #4ea3f0;
+}
+
+.lane.locked {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.05) 0 6px,
+    transparent 6px 12px
+  );
+}
+.lane.hidden .tl-clip {
+  opacity: 0.35;
 }
