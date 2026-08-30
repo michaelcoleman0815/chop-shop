@@ -1156,12 +1156,11 @@ kbd {
   border-top: 1px solid var(--line);
 }
 
-/* A disabled control with no explanation reads as a broken one. */
-.needs-analysis {
-  font-size: 12px;
-  line-height: 1.4;
-  max-width: 320px;
-  margin-right: auto;
+/* Duration is the number being decided, so it reads brighter than the range
+   it was derived from. */
+.dock-length {
+  color: var(--paper);
+  font-size: 13px;
 }
 
 .chip:disabled {

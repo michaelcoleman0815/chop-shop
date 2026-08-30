@@ -478,16 +478,23 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
       <section className="panel dock">
         <div className="panel-head">
           <span className="label">Clip</span>
-          <span className="mono muted" style={{ marginLeft: 8 }}>
+          <span className="mono muted" style={{ marginLeft: 6 }}>
             {timecode(inSec)} &rarr; {timecode(outSec)}
           </span>
-          <span className="mono">{timecode(duration)}</span>
+          <span className="dock-length mono">{timecode(duration)}</span>
           <div className="spacer" />
-          {!analysed && <span className="muted needs-analysis">Analyse to unlock captions, tightening and the editor.</span>}
-          <button disabled={!analysed} onClick={() => setEditorOpen((v) => !v)}>
+          <button
+            disabled={!analysed}
+            title="Adjust cuts, zooms and captions. Needs a transcript."
+            onClick={() => setEditorOpen((v) => !v)}
+          >
             {editorOpen ? 'Close editor' : 'Edit'}
           </button>
-          <button disabled={duration < 0.2 || rendering || !analysed} onClick={previewEdit}>
+          <button
+            disabled={duration < 0.2 || rendering || !analysed}
+            title="Render the edit at half size. Needs a transcript."
+            onClick={previewEdit}
+          >
             {rendering ? 'Rendering' : 'Preview'}
           </button>
           <button className="primary" disabled={duration < 0.2} onClick={exportClip}>
@@ -636,9 +643,11 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
 
       <div className="statusbar">
         <span>
-          {analysed
-            ? 'Click a suggestion to load its range. Drag the scrubber to move, I and O to mark in and out.'
-            : 'Drag the scrubber to move. I and O mark in and out. Analyse to find clips automatically.'}
+          {analysis
+            ? `${analysis.stage}. Captions, tightening and the editor unlock when it finishes.`
+            : analysed
+              ? 'Click a suggestion to load its range. Drag the scrubber to move, I and O to mark in and out.'
+              : 'Drag the scrubber to move. I and O mark in and out. Analyse to find clips automatically.'}
         </span>
         <div className="spacer" />
         <span className="mono">
