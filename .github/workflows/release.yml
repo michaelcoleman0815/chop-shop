@@ -43,6 +43,7 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
 
       - name: Build and publish
+        id: build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Set these two repo secrets once you have an Apple Developer ID and
@@ -52,16 +53,42 @@ jobs:
           # path of "", which fails the build.
           CERT_B64: ${{ secrets.CSC_LINK }}
           CERT_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # Signing alone stops the updater failing, but a freshly downloaded
+          # build is still refused by Gatekeeper until Apple has notarized it.
+          # These three enable that; without them the build is signed only.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          extra=""
           if [ -n "$CERT_B64" ]; then
             echo "Signing with the configured Developer ID certificate."
             export CSC_LINK="$CERT_B64"
             export CSC_KEY_PASSWORD="$CERT_PASSWORD"
+            # Notarization needs something validly signed to submit, so it is
+            # only ever switched on alongside a certificate.
+            if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+              echo "Notarizing with Apple as $APPLE_ID."
+              extra="-c.mac.notarize=true"
+              echo "notarized=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::warning::Signed but not notarized; a fresh download will be refused by Gatekeeper."
+            fi
           else
             echo "No certificate configured; building unsigned."
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
-          npm run release
+          npm run release -- $extra
+
+      # Notarization can report success while the ticket fails to attach, which
+      # looks fine until the first machine without a cached result opens it.
+      - name: Verify notarization
+        if: steps.build.outputs.notarized == 'true'
+        run: |
+          for dmg in dist/*.dmg; do
+            echo "Checking $dmg"
+            xcrun stapler validate "$dmg"
+          done
 
       # A release missing any of these looks fine on the releases page and is
       # broken for every updater that reads it.

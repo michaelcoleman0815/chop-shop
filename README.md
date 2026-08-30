@@ -60,6 +60,24 @@ a $99/yr Apple Developer ID, export the certificate as a `.p12`, base64 it, and 
 
 The workflow already passes both through, and updates then install on restart with no prompts.
 
+The certificate has to be a **Developer ID Application** one. "Apple Development" and "Mac App
+Distribution" are the two that get picked by mistake, and neither can sign an app distributed outside
+the App Store.
+
+### Notarization
+
+Signing is enough for the updater, but a build downloaded fresh is still refused by Gatekeeper until
+Apple has notarized it. Three more secrets turn that on:
+
+- `APPLE_ID`: the Apple ID that owns the membership
+- `APPLE_APP_SPECIFIC_PASSWORD`: generated at appleid.apple.com, not the account password
+- `APPLE_TEAM_ID`: the ten-character team ID from the developer portal
+
+Notarization is only attempted alongside a certificate, since Apple has to have something validly
+signed to accept. Set the certificate without these three and the build still succeeds, with a
+warning that the result will not open on a machine that has not seen it before. Notarization adds a
+few minutes to the release, most of it waiting on Apple.
+
 ## Permissions
 
 Live Buffer needs **Screen & System Audio Recording** in System Settings → Privacy & Security. The
