@@ -52,6 +52,10 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   const [editedWords, setEditedWords] = useState<TranscriptWord[]>([])
   const [overlays, setOverlays] = useState<OverlayClip[]>([])
   const [music, setMusic] = useState<MusicTrack | null>(null)
+  // A rendered preview of the edit, distinct from the source window the player
+  // otherwise shows.
+  const [proof, setProof] = useState<string | null>(null)
+  const [rendering, setRendering] = useState(false)
   // The player shows a window cut out of the source, not the source itself.
   const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
   // Where to land once a newly fetched window has loaded, in absolute time.
@@ -229,17 +233,13 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     }
   }, [inSec, outSec, words, autoZoom, editorOpen, clipWords])
 
-  const exportClip = useCallback(async () => {
-    if (!meta) return
-    const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const jobName = `${name || slug(meta.fileName)}-${stamp()}`
-    addJob({ id: jobId, name: jobName, percent: 0, stage: 'running' })
-    await window.chop.exportClip({
+  const buildRequest = useCallback(
+    (jobId: string, name: string) => ({
       jobId,
-      sourcePath: meta.path,
+      sourcePath: meta?.path ?? '',
       startSec: inSec,
       endSec: outSec,
-      name: jobName,
+      name,
       aspect,
       outputDir: settings.outputDir,
       captionWords: editorOpen ? rebaseToSource(editedWords, inSec) : words,
@@ -251,27 +251,48 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
       zooms,
       overlays,
       music
-    })
-  }, [
-    meta,
-    name,
-    inSec,
-    outSec,
-    aspect,
-    settings.outputDir,
-    addJob,
-    captions,
-    words,
-    autoZoom,
-    tighten,
-    trackSubject,
-    segments,
-    zooms,
-    overlays,
-    music,
-    editedWords,
-    editorOpen
-  ])
+    }),
+    [
+      meta,
+      inSec,
+      outSec,
+      aspect,
+      settings.outputDir,
+      editorOpen,
+      editedWords,
+      words,
+      captions,
+      autoZoom,
+      tighten,
+      trackSubject,
+      segments,
+      zooms,
+      overlays,
+      music
+    ]
+  )
+
+  const previewEdit = useCallback(async () => {
+    if (!meta) return
+    setRendering(true)
+    try {
+      const res = await window.chop.previewClip(
+        buildRequest(`preview-${Date.now()}`, 'preview')
+      )
+      if (res.ok) setProof(res.mediaUrl)
+      else setError(res.message)
+    } finally {
+      setRendering(false)
+    }
+  }, [meta, buildRequest])
+
+  const exportClip = useCallback(async () => {
+    if (!meta) return
+    const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const jobName = `${name || slug(meta.fileName)}-${stamp()}`
+    addJob({ id: jobId, name: jobName, percent: 0, stage: 'running' })
+    await window.chop.exportClip(buildRequest(jobId, jobName))
+  }, [meta, name, addJob, buildRequest])
 
   if (!meta) {
     return (
@@ -310,9 +331,12 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
         <video
           ref={videoRef}
           className="player"
-          src={win?.url ?? undefined}
+          src={proof ?? win?.url ?? undefined}
           controls={false}
-          onTimeUpdate={(e) => setCurrent((win?.start ?? 0) + e.currentTarget.currentTime)}
+          onTimeUpdate={(e) => {
+            if (proof) return
+            setCurrent((win?.start ?? 0) + e.currentTarget.currentTime)
+          }}
           onLoadedMetadata={(e) => {
             const target = pendingSeek.current
             pendingSeek.current = null
@@ -354,7 +378,14 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
           <button onClick={() => setOutSec(current)}>
             Set out <kbd>O</kbd>
           </button>
-          <button onClick={playSelection}>Preview selection</button>
+          <button onClick={playSelection} disabled={!!proof}>
+            Preview selection
+          </button>
+          {proof && (
+            <button className="ghost" onClick={() => setProof(null)}>
+              Back to source
+            </button>
+          )}
           <div className="spacer" />
           <span className="mono">{timecode(current)}</span>
         </div>
@@ -526,6 +557,13 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
             onClick={() => setEditorOpen((v) => !v)}
           >
             {editorOpen ? 'Close editor' : 'Edit'}
+          </button>
+          <button
+            disabled={duration < 0.2 || rendering || words.length === 0}
+            onClick={previewEdit}
+            title="Render the edit at half size to check it"
+          >
+            {rendering ? 'Rendering' : 'Preview edit'}
           </button>
           <button className="primary" disabled={duration < 0.2} onClick={exportClip}>
             Export clip

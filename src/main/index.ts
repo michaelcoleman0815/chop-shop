@@ -30,6 +30,9 @@ const SIX_HOURS = 6 * 60 * 60 * 1000
 let mainWindow: BrowserWindow | null = null
 let quitting = false
 
+/** Edit previews are kept briefly so the player is never reading a deleted file. */
+const previewDirs: string[] = []
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'media', privileges: { stream: true, supportFetchAPI: true, bypassCSP: true } }
 ])

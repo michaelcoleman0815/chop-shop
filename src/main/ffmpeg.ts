@@ -34,6 +34,21 @@ export interface SourceInfo {
   fps: number
 }
 
+/**
+ * Caption sizes are absolute pixels against the output resolution, so a
+ * half-size render needs half-size type. Without this a preview shows captions
+ * at twice their real proportion, which defeats the point of previewing.
+ */
+function scaleStyle(style: CaptionStyle, scale: number): CaptionStyle {
+  if (scale === 1) return style
+  return {
+    ...style,
+    fontSizePx: Math.max(8, Math.round(style.fontSizePx * scale)),
+    outlinePx: Math.max(1, Math.round(style.outlinePx * scale)),
+    shadowPx: Math.round(style.shadowPx * scale)
+  }
+}
+
 /** Output dimensions for each aspect preset, even-sized for H.264. */
 export function outputSize(aspect: AspectPreset, source: SourceInfo): { w: number; h: number } {
   if (aspect === 'vertical') return { w: 1080, h: 1920 }
@@ -174,12 +189,29 @@ export async function exportClip(opts: {
   lutPath?: string | null
   /** Caption look. Defaults to the first preset. */
   captionStyle?: CaptionStyle
+  /**
+   * Fraction of full output size. A preview at half scale renders in a fraction
+   * of the time and shows every decision, since captions and framing scale with
+   * it rather than being approximated.
+   */
+  outputScale?: number
+  /** Lower bitrate for throwaway renders. */
+  previewQuality?: boolean
   /** Cuts long pauses and filler words, re-timing captions and zooms to match. */
   tighten?: TightenOptions | false
   onProgress: (percent: number) => void
 }): Promise<string> {
   const duration = Math.max(0.1, opts.endSec - opts.startSec)
-  const out = outputSize(opts.aspect, opts.source)
+  const full = outputSize(opts.aspect, opts.source)
+  const scale = opts.outputScale ?? 1
+  // Even dimensions, or H.264 refuses the frame size.
+  const out =
+    scale === 1
+      ? full
+      : {
+          w: Math.max(2, Math.round((full.w * scale) / 2) * 2),
+          h: Math.max(2, Math.round((full.h * scale) / 2) * 2)
+        }
 
   // Cutting time shifts everything after it, so captions and zoom keyframes are
   // remapped onto the compacted timeline before any of them are rendered.
@@ -236,6 +268,8 @@ export async function exportClip(opts: {
     filters.push(`lut3d=file='${lut}'`)
   }
 
+  const baseStyle = opts.captionStyle ?? opts.captions?.style ?? DEFAULT_CAPTION_STYLE
+
   // The subtitle file lives for the length of the render only.
   let assDir: string | null = null
   let subtitles: string | null = null
@@ -244,12 +278,7 @@ export async function exportClip(opts: {
     const assPath = join(assDir, 'captions.ass')
     await fs.writeFile(
       assPath,
-      buildAss(
-        captionWords,
-        out.w,
-        out.h,
-        opts.captionStyle ?? opts.captions.style ?? DEFAULT_CAPTION_STYLE
-      )
+      buildAss(captionWords, out.w, out.h, scaleStyle(baseStyle, scale))
     )
     // ffmpeg filter syntax treats these as separators, so they need escaping.
     const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
@@ -302,7 +331,7 @@ export async function exportClip(opts: {
         '-c:v',
         'h264_videotoolbox',
         '-b:v',
-        '10M',
+        opts.previewQuality ? '3M' : '10M',
         '-pix_fmt',
         'yuv420p',
         '-c:a',

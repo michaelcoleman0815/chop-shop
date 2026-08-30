@@ -88,6 +88,11 @@ const api = {
     { ok: true; xmlPath: string; srtPath: string | null } | { ok: false; message: string }
   > => ipcRenderer.invoke('premiere:export', req),
 
+  previewClip: (
+    req: ClipRequest & { jobId: string }
+  ): Promise<{ ok: true; mediaUrl: string } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('clip:preview', req),
+
   planClip: (req: {
     words: TranscriptWord[]
     durationSec: number
