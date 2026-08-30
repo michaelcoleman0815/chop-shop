@@ -511,6 +511,135 @@ function registerIpc(): void {
     })
   )
 
+  ipcMain.handle('lut:list', async () => {
+    // Premiere and Media Encoder ship a Lumetri LUT library; if it is installed
+    // there is no reason to make anyone hunt for files.
+    const roots = [
+      '/Applications/Adobe Media Encoder 2026/Adobe Media Encoder 2026.app/Contents/Lumetri/LUTs',
+      '/Applications/Adobe Premiere Pro 2026/Adobe Premiere Pro 2026.app/Contents/Lumetri/LUTs',
+      join(app.getPath('userData'), 'luts')
+    ]
+    const found: { name: string; path: string }[] = []
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (depth > 2) return
+      let names: string[]
+      try {
+        names = (await fs.readdir(dir, { withFileTypes: true })).map((e) =>
+          e.isDirectory() ? `${e.name}/` : e.name
+        )
+      } catch {
+        return
+      }
+      for (const name of names) {
+        if (name.endsWith('/')) {
+          await walk(join(dir, name.slice(0, -1)), depth + 1)
+        } else if (name.toLowerCase().endsWith('.cube')) {
+          found.push({ name: name.replace(/\.cube$/i, ''), path: join(dir, name) })
+        }
+      }
+    }
+    for (const root of roots) await walk(root, 0)
+    return found.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 400)
+  })
+
+  ipcMain.handle('lut:choose', async () => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'LUT', extensions: ['cube'] }]
+    })
+    return res.canceled ? null : res.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:chooseMedia', async () => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        { name: 'B-roll', extensions: ['mp4', 'mov', 'm4v', 'webm', 'png', 'jpg', 'jpeg', 'gif'] }
+      ]
+    })
+    if (res.canceled || !res.filePaths[0]) return null
+    const path = res.filePaths[0]
+    const isImage = /\.(png|jpe?g|gif)$/i.test(path)
+    let durationSec = 4
+    if (!isImage) {
+      try {
+        durationSec = (await probe(path)).durationSec
+      } catch {
+        durationSec = 4
+      }
+    }
+    return { path, kind: isImage ? 'image' : 'video', durationSec }
+  })
+
+  ipcMain.handle('dialog:chooseAudio', async () => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'aiff', 'flac'] }]
+    })
+    return res.canceled ? null : res.filePaths[0]
+  })
+
+  /**
+   * Renders the current edit at half size to a temporary file so it can be
+   * watched before committing to a full export. Everything that affects the
+   * result is applied, since a preview that skips the expensive parts is not
+   * showing you the clip you are about to make.
+   */
+  ipcMain.handle('clip:preview', async (e, req: ClipRequest & { jobId: string }) => {
+    const settings = getSettings()
+    try {
+      const meta = await probe(req.sourcePath)
+      const words = (req.captionWords ?? [])
+        .filter((w) => w.endSec > req.startSec && w.startSec < req.endSec)
+        .map((w) => ({
+          text: w.text,
+          startSec: Math.max(0, w.startSec - req.startSec),
+          endSec: Math.max(0.05, w.endSec - req.startSec)
+        }))
+
+      const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-editpreview-'))
+      const outputPath = join(dir, 'preview.mp4')
+
+      await exportClip({
+        sourcePath: req.sourcePath,
+        startSec: req.startSec,
+        endSec: req.endSec,
+        outputPath,
+        aspect: req.aspect,
+        source: { width: meta.width, height: meta.height, fps: meta.fps },
+        captions: req.captions && words.length > 0 ? { words } : undefined,
+        captionStyle: presetById(settings.captionPreset).style,
+        lutPath: settings.lutPath,
+        words,
+        segments: req.segments,
+        overlays: req.overlays,
+        music: req.music,
+        zooms: req.zooms,
+        // Subject tracking is the slow step and does not change the edit, so a
+        // preview leaves it out.
+        outputScale: 0.5,
+        previewQuality: true,
+        onProgress: (percent) =>
+          safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent, stage: 'running' })
+      })
+
+      // Kept a few deep so the player is never reading a file just deleted.
+      previewDirs.push(dir)
+      while (previewDirs.length > 3) {
+        const stale = previewDirs.shift()
+        if (stale) await fs.rm(stale, { recursive: true, force: true }).catch(() => undefined)
+      }
+
+      safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 100, stage: 'done' })
+      return { ok: true as const, mediaUrl: mediaUrlFor(outputPath) }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[preview] failed:', message)
+      safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 0, stage: 'error', message })
+      return { ok: false as const, message }
+    }
+  })
+
   ipcMain.handle('shell:reveal', (_e, path: string) => shell.showItemInFolder(path))
   ipcMain.handle('shell:openPath', (_e, path: string) => shell.openPath(path))
 
