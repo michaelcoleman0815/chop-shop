@@ -6,3 +6,5 @@ dist/
 *.log
 *.tsbuildinfo
 build/icon.iconset/
+.build/
+resources/bin/

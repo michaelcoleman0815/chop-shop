@@ -16,6 +16,12 @@ asarUnpack:
   - '**/node_modules/ffmpeg-static/**'
   - '**/node_modules/@ffprobe-installer/**'
 
+extraResources:
+  - from: resources/bin
+    to: bin
+  - from: resources/fonts
+    to: fonts
+
 mac:
   category: public.app-category.video
   icon: build/icon.icns

@@ -20,6 +20,16 @@ jobs:
 
       - run: npm ci
 
+      # resources/bin is gitignored, so without this the release would package
+      # cleanly and ship an app whose transcription cannot start.
+      - name: Build whisper.cpp
+        run: ./scripts/build-whisper.sh
+
+      - name: Verify bundled binaries
+        run: |
+          test -x resources/bin/whisper-cli || { echo "::error::whisper-cli missing"; exit 1; }
+          test -f resources/fonts/ArchivoBlack-Regular.ttf || { echo "::error::caption font missing"; exit 1; }
+
       # electron-builder runs one publisher per target, and when the release
       # does not exist yet they race to create it: the loser's uploads vanish
       # and the release ends up missing latest-mac.yml, which silently breaks

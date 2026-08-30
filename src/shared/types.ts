@@ -53,3 +53,41 @@ export type UpdateState =
   | { status: 'ready'; version: string }
   | { status: 'none'; version: string }
   | { status: 'error'; message: string; releaseUrl?: string }
+
+export interface TranscriptWord {
+  text: string
+  startSec: number
+  endSec: number
+}
+
+export interface Transcript {
+  words: TranscriptWord[]
+  text: string
+  language: string
+}
+
+export interface CaptionStyle {
+  /** Words visible at once. Short groups read faster on a phone. */
+  wordsPerGroup: number
+  fontFamily: string
+  fontSizePx: number
+  /** Vertical position as a share of frame height, measured to the caption baseline. */
+  positionFrac: number
+  textColor: string
+  activeColor: string
+  outlineColor: string
+  outlinePx: number
+  shadowPx: number
+  uppercase: boolean
+  /** Scale applied to the word currently being spoken. 1 disables it. */
+  activeScale: number
+}
+
+export interface ZoomKeyframe {
+  atSec: number
+  /** 1 is the full frame; 1.3 is a 30% punch in. */
+  scale: number
+  /** Focus point in source coordinates, 0 to 1. */
+  cx: number
+  cy: number
+}
