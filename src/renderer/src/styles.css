@@ -1439,3 +1439,14 @@ kbd {
 .timecode-total {
   font-size: 13px;
 }
+
+.tl-head::before {
+  cursor: grab;
+}
+.tl-head {
+  pointer-events: auto;
+}
+.ruler,
+.scrub {
+  touch-action: none;
+}

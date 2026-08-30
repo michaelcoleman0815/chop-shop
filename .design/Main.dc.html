@@ -1,0 +1,197 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Sora:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Sora', -apple-system, system-ui, sans-serif; }
+    a { color: #ff6076; } a:hover { color: #ff8b9b; }
+    .lbl { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: #98959f; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #08080b; color: #f2f1ee; font-size: 12px; display: flex; flex-direction: column;">
+
+  <div style="height: 44px; flex: 0 0 auto; background: #17171e; border-bottom: 1px solid #2b2b35; display: flex; align-items: center; gap: 18px; padding: 0 14px 0 82px;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="19" height="14" viewBox="0 0 102 75" fill="none"><rect x="0" y="0" width="78" height="33" rx="8" fill="#f2f1ee"/><rect x="24" y="42" width="78" height="33" rx="8" fill="#ff6076"/></svg>
+      <span style="font-family: 'Archivo Black', sans-serif; font-size: 13px; letter-spacing: 0.05em;">CHURCH SERVICE</span>
+    </div>
+    <div style="display: flex; gap: 2px; padding: 2px; background: #08080b; border: 1px solid #2b2b35; border-radius: 3px;">
+      <div style="padding: 4px 12px; border-radius: 2px; background: #2d2d38; color: #f2f1ee; font-size: 11px; font-weight: 500;">Edit</div>
+      <div style="padding: 4px 12px; border-radius: 2px; color: #98959f; font-size: 11px;">Settings</div>
+    </div>
+    <div style="flex: 1;"></div>
+    <div style="display: flex; gap: 6px;">
+      <div style="padding: 4px 11px; background: #21212a; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 11px;">Preview</div>
+      <div style="padding: 4px 13px; background: #ff6076; color: #17090d; border-radius: 3px; font-size: 11px; font-weight: 600;">Export</div>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex; gap: 1px; background: #000;">
+
+    <div style="width: 238px; flex: 0 0 238px; background: #101015; display: flex; flex-direction: column;">
+      <div style="height: 26px; background: #17171e; border-bottom: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 10px; gap: 8px;">
+        <span class="lbl">Project</span>
+        <div style="flex: 1;"></div>
+        <span class="lbl" style="color: #6b6874;">3</span>
+      </div>
+      <div style="flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow: hidden;">
+        <div style="display: flex; gap: 8px; padding: 6px; background: #17171e; border: 1px solid #3d3d4a; border-radius: 3px;">
+          <div style="width: 56px; height: 32px; flex: 0 0 56px; border-radius: 2px; background: linear-gradient(110deg, #3a3f4d, #23282f 60%, #4a3f38);"></div>
+          <div style="min-width: 0;">
+            <div style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">service-2026-08-16.mp4</div>
+            <div class="mono" style="font-size: 9px; color: #98959f; margin-top: 2px;">1920×1080 · 2:17:33</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; padding: 6px; border: 1px solid #2b2b35; border-radius: 3px;">
+          <div style="width: 56px; height: 32px; flex: 0 0 56px; border-radius: 2px; background: linear-gradient(110deg, #2d3a33, #1f2a24);"></div>
+          <div style="min-width: 0;">
+            <div style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">worship-bed.wav</div>
+            <div class="mono" style="font-size: 9px; color: #98959f; margin-top: 2px;">stereo · 4:12</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; padding: 6px; border: 1px solid #2b2b35; border-radius: 3px;">
+          <div style="width: 56px; height: 32px; flex: 0 0 56px; border-radius: 2px; background: linear-gradient(110deg, #423a52, #2b2536);"></div>
+          <div style="min-width: 0;">
+            <div style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">lower-third.png</div>
+            <div class="mono" style="font-size: 9px; color: #98959f; margin-top: 2px;">1920×360</div>
+          </div>
+        </div>
+      </div>
+      <div style="height: 30px; border-top: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 8px; gap: 6px;">
+        <div style="padding: 3px 9px; background: #21212a; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 10px;">Import</div>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-width: 0; background: #101015; display: flex; flex-direction: column;">
+      <div style="height: 26px; background: #17171e; border-bottom: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 10px;">
+        <span class="lbl">Program</span>
+        <div style="flex: 1;"></div>
+        <span class="lbl" style="color: #6b6874;">1920×1080 · 60 fps</span>
+      </div>
+      <div style="flex: 1; min-height: 0; background: #000; display: flex; align-items: center; justify-content: center; padding: 14px;">
+        <div style="width: 640px; height: 360px; background: linear-gradient(160deg, #4a3f38 0%, #2a2420 45%, #1a1614 100%); box-shadow: 0 0 0 1px rgba(255,255,255,0.08); position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 46px;">
+          <div style="text-align: center; font-family: 'Archivo Black', sans-serif; font-size: 27px; line-height: 1.15; letter-spacing: 0.01em; color: #f2f1ee; text-shadow: 0 2px 10px rgba(0,0,0,0.9);">
+            GETTING BURNED<br>OUT <span style="color: #ff6076;">UNDER</span>
+          </div>
+        </div>
+      </div>
+      <div style="height: 38px; flex: 0 0 auto; border-top: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 10px; gap: 5px;">
+        <div style="display: flex; gap: 3px;">
+          <div style="width: 26px; height: 22px; background: #21212a; border: 1px solid #3d3d4a; border-radius: 3px; display: flex; align-items: center; justify-content: center;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#c9c6cf" stroke-width="2"><polygon points="19 20 9 12 19 4" fill="#c9c6cf" stroke="none"/><line x1="5" y1="19" x2="5" y2="5"/></svg></div>
+          <div style="width: 32px; height: 22px; background: #2d2d38; border: 1px solid #4a4658; border-radius: 3px; display: flex; align-items: center; justify-content: center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="#f2f1ee"><polygon points="6 4 20 12 6 20"/></svg></div>
+          <div style="width: 26px; height: 22px; background: #21212a; border: 1px solid #3d3d4a; border-radius: 3px; display: flex; align-items: center; justify-content: center;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#c9c6cf" stroke-width="2"><polygon points="5 4 15 12 5 20" fill="#c9c6cf" stroke="none"/><line x1="19" y1="5" x2="19" y2="19"/></svg></div>
+        </div>
+        <div style="width: 1px; height: 16px; background: #2b2b35; margin: 0 4px;"></div>
+        <div style="padding: 3px 9px; background: #21212a; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 10px;">Mark in</div>
+        <div style="padding: 3px 9px; background: #21212a; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 10px;">Mark out</div>
+        <div style="flex: 1;"></div>
+        <span class="mono" style="font-size: 16px; font-weight: 500; color: #f2f1ee;">00:06:54.12</span>
+        <span class="mono" style="font-size: 12px; color: #98959f;">/ 2:17:33.46</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 300px; flex: 0 0 300px; background: #101015; border-top: 1px solid #000; display: flex; flex-direction: column;">
+    <div style="height: 26px; background: #17171e; border-bottom: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 10px; gap: 8px;">
+      <span class="lbl">Timeline</span>
+      <div style="flex: 1;"></div>
+      <div style="display: flex; gap: 3px;">
+        <div style="width: 22px; height: 18px; border: 1px solid #3d3d4a; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #98959f; font-size: 11px;">−</div>
+        <div style="width: 22px; height: 18px; border: 1px solid #3d3d4a; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #98959f; font-size: 11px;">+</div>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: flex;">
+      <div style="width: 152px; flex: 0 0 152px; background: #17171e; border-right: 1px solid #000;">
+        <div style="height: 24px; border-bottom: 1px solid #2b2b35;"></div>
+        <div style="height: 74px; border-bottom: 1px solid #000; display: flex; align-items: center; gap: 4px; padding: 0 8px;">
+          <span class="mono" style="font-size: 10px; letter-spacing: 0.1em; padding: 2px 6px; background: #08080b; border: 1px solid #3d3d4a; border-radius: 2px; color: #98959f;">V2</span>
+          <div style="flex: 1;"></div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#98959f" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span class="mono" style="font-size: 10px; color: #6b6874; width: 13px; text-align: center;">M</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b6874" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0"/></svg>
+        </div>
+        <div style="height: 74px; border-bottom: 1px solid #000; display: flex; align-items: center; gap: 4px; padding: 0 8px;">
+          <span class="mono" style="font-size: 10px; letter-spacing: 0.1em; padding: 2px 6px; background: #ff6076; border: 1px solid #ff6076; border-radius: 2px; color: #17090d;">V1</span>
+          <div style="flex: 1;"></div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#98959f" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span class="mono" style="font-size: 10px; color: #6b6874; width: 13px; text-align: center;">M</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b6874" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0"/></svg>
+        </div>
+        <div style="height: 52px; display: flex; align-items: center; gap: 4px; padding: 0 8px;">
+          <span class="mono" style="font-size: 10px; letter-spacing: 0.1em; padding: 2px 6px; background: #08080b; border: 1px solid #3d3d4a; border-radius: 2px; color: #98959f;">A1</span>
+          <div style="flex: 1;"></div>
+          <span class="mono" style="font-size: 10px; color: #17090d; width: 15px; height: 15px; background: #7ce8a6; border-radius: 2px; display: flex; align-items: center; justify-content: center;">M</span>
+          <span class="mono" style="font-size: 10px; color: #6b6874; width: 13px; text-align: center;">S</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b6874" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0"/></svg>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-width: 0; position: relative; background: #08080b; overflow: hidden;">
+        <div style="height: 24px; background: #17171e; border-bottom: 1px solid #2b2b35; position: relative;">
+          <span class="mono" style="position: absolute; left: 6px; top: 5px; font-size: 9px; color: #98959f;">00:00</span>
+          <span class="mono" style="position: absolute; left: 166px; top: 5px; font-size: 9px; color: #98959f;">00:15</span>
+          <span class="mono" style="position: absolute; left: 326px; top: 5px; font-size: 9px; color: #98959f;">00:30</span>
+          <span class="mono" style="position: absolute; left: 486px; top: 5px; font-size: 9px; color: #98959f;">00:45</span>
+          <span class="mono" style="position: absolute; left: 646px; top: 5px; font-size: 9px; color: #98959f;">01:00</span>
+          <span class="mono" style="position: absolute; left: 806px; top: 5px; font-size: 9px; color: #98959f;">01:15</span>
+        </div>
+
+        <div style="height: 74px; border-bottom: 1px solid #000; position: relative;">
+          <div style="position: absolute; left: 220px; top: 8px; width: 210px; height: 56px; background: #332e47; border: 1px solid #a98ce0; border-radius: 2px; overflow: hidden;">
+            <div style="position: absolute; inset: 0; background: repeating-linear-gradient(90deg, #4a4266 0 34px, #3d3656 34px 68px); opacity: 0.5;"></div>
+            <span class="mono" style="position: absolute; top: 3px; left: 6px; font-size: 9px; color: #e6ecf5; text-shadow: 0 1px 3px #000;">lower-third.png</span>
+          </div>
+        </div>
+
+        <div style="height: 74px; border-bottom: 1px solid #000; position: relative;">
+          <div style="position: absolute; left: 0; top: 8px; width: 560px; height: 56px; background: #2a3444; border: 1px solid #f2f1ee; box-shadow: inset 0 0 0 1px #f2f1ee; border-radius: 2px; overflow: hidden; display: flex;">
+            <div style="width: 7px; background: #f2f1ee; flex: 0 0 7px;"></div>
+            <div style="flex: 1; position: relative;">
+              <div style="position: absolute; inset: 0 0 40% 0; background: repeating-linear-gradient(90deg, #4a3f38 0 44px, #3a4450 44px 88px, #2f3a44 88px 132px);"></div>
+              <div style="position: absolute; inset: 60% 0 0 0; background: #101820; overflow: hidden;">
+                <svg width="100%" height="100%" viewBox="0 0 540 24" preserveAspectRatio="none"><path d="M0 12 L8 8 L16 15 L24 5 L32 18 L40 9 L48 13 L56 4 L64 20 L72 10 L80 12 L88 6 L96 17 L104 9 L112 14 L120 3 L128 19 L136 11 L144 13 L152 7 L160 16 L168 10 L176 12 L184 5 L192 18 L200 9 L208 14 L216 8 L224 15 L232 11 L240 13 L248 6 L256 17 L264 10 L272 12 L280 4 L288 20 L296 9 L304 14 L312 7 L320 16 L328 11 L336 12 L344 8 L352 15 L360 10 L368 13 L376 5 L384 18 L392 9 L400 14 L408 11 L416 12 L424 7 L432 16 L440 10 L448 13 L456 6 L464 17 L472 11 L480 12 L488 9 L496 14 L504 8 L512 15 L520 11 L528 12 L536 10" stroke="#6f8fb5" stroke-width="1.5" fill="none"/></svg>
+              </div>
+              <span class="mono" style="position: absolute; top: 3px; left: 6px; font-size: 9px; color: #e6ecf5; text-shadow: 0 1px 3px #000;">service-2026-08-16.mp4</span>
+            </div>
+            <div style="width: 7px; background: #f2f1ee; flex: 0 0 7px;"></div>
+          </div>
+          <div style="position: absolute; left: 572px; top: 8px; width: 300px; height: 56px; background: #2a3444; border: 1px solid #46556d; border-radius: 2px; overflow: hidden;">
+            <div style="position: absolute; inset: 0 0 40% 0; background: repeating-linear-gradient(90deg, #3a4450 0 44px, #46403a 44px 88px);"></div>
+            <div style="position: absolute; inset: 60% 0 0 0; background: #101820;"></div>
+            <span class="mono" style="position: absolute; top: 3px; left: 6px; font-size: 9px; color: #e6ecf5; text-shadow: 0 1px 3px #000;">service-2026-08-16.mp4</span>
+          </div>
+        </div>
+
+        <div style="height: 52px; position: relative;">
+          <div style="position: absolute; left: 0; top: 6px; width: 872px; height: 38px; background: #20382a; border: 1px solid #35b07a; border-radius: 2px; overflow: hidden;">
+            <svg width="100%" height="100%" viewBox="0 0 860 38" preserveAspectRatio="none"><path d="M0 19 L10 14 L20 24 L30 12 L40 26 L50 16 L60 21 L70 11 L80 27 L90 17 L100 20 L110 13 L120 25 L130 15 L140 22 L150 12 L160 26 L170 18 L180 20 L190 14 L200 24 L210 16 L220 21 L230 13 L240 25 L250 17 L260 22 L270 15 L280 23 L290 18 L300 20 L310 14 L320 25 L330 17 L340 21 L350 12 L360 27 L370 16 L380 22 L390 15 L400 24 L410 18 L420 20 L430 14 L440 23 L450 17 L460 21 L470 13 L480 26 L490 16 L500 22 L510 18 L520 20 L530 15 L540 24 L550 17 L560 21 L570 14 L580 25 L590 18 L600 20 L610 16 L620 23 L630 15 L640 24 L650 18 L660 20 L670 13 L680 26 L690 17 L700 21 L710 15 L720 23 L730 18 L740 20 L750 14 L760 25 L770 17 L780 22 L790 16 L800 21 L810 18 L820 20 L830 15 L840 23 L850 18 L860 20" stroke="#4fd39a" stroke-width="1.2" fill="none"/></svg>
+            <span class="mono" style="position: absolute; top: 3px; left: 6px; font-size: 9px; color: #cdeadb; text-shadow: 0 1px 3px #000;">worship-bed.wav</span>
+          </div>
+        </div>
+
+        <div style="position: absolute; left: 328px; top: 0; bottom: 0; width: 2px; background: #ff6076;">
+          <div style="position: absolute; top: 3px; left: -6px; width: 14px; height: 20px; border-radius: 999px; background: #f2f1ee;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 22px; flex: 0 0 22px; background: #17171e; border-top: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 12px; gap: 14px;">
+    <span style="font-size: 10px; color: #98959f;">Drag a clip to move it, drag its ends to trim. Hold ⌥ to duplicate.</span>
+    <div style="flex: 1;"></div>
+    <span class="mono" style="font-size: 10px; color: #6b6874;">3 clips · 2 tracks</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

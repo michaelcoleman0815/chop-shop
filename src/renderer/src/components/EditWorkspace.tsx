@@ -29,6 +29,7 @@ interface Previews {
 type Drag =
   | { kind: 'move'; id: string; grabOffsetSec: number }
   | { kind: 'trim'; id: string; side: 'in' | 'out' }
+  | { kind: 'playhead' }
   | null
 
 const TRACKS = [1, 0]
@@ -140,6 +141,14 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
     (e: React.PointerEvent) => {
       if (!drag) return
       const t = timeAt(e.clientX)
+
+      // Scrubbing is a drag, not a series of clicks.
+      if (drag.kind === 'playhead') {
+        setPlayhead(Math.max(0, Math.min(duration, t)))
+        setPlaying(false)
+        return
+      }
+
       const clips = timeline.clips.map((c) => {
         if (c.id !== drag.id) return c
         // A locked track refuses edits, which is the whole point of locking it.
@@ -161,7 +170,7 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
       })
       setTimeline({ ...timeline, clips })
     },
-    [drag, timeline, timeAt, setTimeline, trackState]
+    [drag, timeline, timeAt, setTimeline, trackState, duration]
   )
 
   // The monitor plays whichever clip covers the playhead, seeking into it.
@@ -382,8 +391,10 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
           <div className="lane-inner" style={{ width: duration * pxPerSec + 200 }}>
             <div
               className="ruler"
-              onClick={(e) => {
-                setPlayhead(timeAt(e.clientX))
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId)
+                setDrag({ kind: 'playhead' })
+                setPlayhead(Math.max(0, Math.min(duration, timeAt(e.clientX))))
                 setPlaying(false)
               }}
             >
@@ -488,7 +499,15 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
               </div>
             ))}
 
-            <div className="tl-head" style={{ left: playhead * pxPerSec }} />
+            <div
+              className="tl-head"
+              style={{ left: playhead * pxPerSec }}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                setDrag({ kind: 'playhead' })
+                setPlaying(false)
+              }}
+            />
           </div>
         </div>
         </div>

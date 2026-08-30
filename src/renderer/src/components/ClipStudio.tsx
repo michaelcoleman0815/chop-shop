@@ -56,6 +56,7 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
   const [editorOpen, setEditorOpen] = useState(false)
   const [proof, setProof] = useState<string | null>(null)
   const [rendering, setRendering] = useState(false)
+  const [scrubbing, setScrubbing] = useState(false)
   const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
   const [strip, setStrip] = useState<{
     filmstripUrl: string
@@ -425,7 +426,24 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
                   }
                 : undefined
             }
-            onClick={(e) => {
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId)
+              setScrubbing(true)
+              const rect = e.currentTarget.getBoundingClientRect()
+              void seek(((e.clientX - rect.left) / rect.width) * meta.durationSec)
+            }}
+            onPointerMove={(e) => {
+              if (!scrubbing) return
+              const rect = e.currentTarget.getBoundingClientRect()
+              const t = ((e.clientX - rect.left) / rect.width) * meta.durationSec
+              // Move the marker with the pointer immediately; fetching a new
+              // window for every pixel would stutter, so the picture catches up
+              // when the drag settles.
+              setCurrent(Math.max(0, Math.min(meta.durationSec, t)))
+            }}
+            onPointerUp={(e) => {
+              if (!scrubbing) return
+              setScrubbing(false)
               const rect = e.currentTarget.getBoundingClientRect()
               void seek(((e.clientX - rect.left) / rect.width) * meta.durationSec)
             }}
