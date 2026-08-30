@@ -23,6 +23,17 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   const [analysis, setAnalysis] = useState<{ stage: string; percent: number } | null>(null)
   const [captions, setCaptions] = useState(true)
   const [autoZoom, setAutoZoom] = useState(true)
+  // The player shows a window cut out of the source, not the source itself.
+  const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
+
+  const openWindow = useCallback(
+    async (path: string, atSec: number): Promise<number> => {
+      const w = await window.chop.previewRange(path, Math.max(0, atSec - 2))
+      setWin({ url: w.mediaUrl, start: w.startSec, length: w.windowSec })
+      return w.startSec
+    },
+    []
+  )
 
   const load = useCallback((v: VideoMeta | null) => {
     if (!v) return
@@ -33,7 +44,9 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     setError(null)
     setWords([])
     setSuggestions([])
-  }, [])
+    setWin(null)
+    void openWindow(v.path, 0)
+  }, [openWindow])
 
   useEffect(() => {
     return window.chop.onAiProgress((p) => {
@@ -65,12 +78,28 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     [load]
   )
 
-  const seek = useCallback((t: number) => {
-    const v = videoRef.current
-    if (!v) return
-    v.currentTime = Math.max(0, t)
-    setCurrent(v.currentTime)
-  }, [])
+  /**
+   * Seeks in absolute source time, fetching a new window when the target falls
+   * outside the one currently loaded.
+   */
+  const seek = useCallback(
+    async (t: number) => {
+      const target = Math.max(0, t)
+      const v = videoRef.current
+      if (!meta) return
+
+      const inWindow = win && target >= win.start && target < win.start + win.length - 1
+      if (!inWindow) {
+        const start = await openWindow(meta.path, target)
+        setCurrent(Math.max(start, target))
+        return
+      }
+      if (!v) return
+      v.currentTime = Math.max(0, target - win.start)
+      setCurrent(target)
+    },
+    [meta, win, openWindow]
+  )
 
   // Keyboard shortcuts stay out of the way of text fields.
   useEffect(() => {
@@ -83,35 +112,36 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
         e.preventDefault()
         v.paused ? void v.play() : v.pause()
       } else if (e.key === 'i') {
-        setInSec(v.currentTime)
-        setOutSec((o) => (o <= v.currentTime ? Math.min(meta.durationSec, v.currentTime + 5) : o))
+        setInSec(current)
+        setOutSec((o) => (o <= current ? Math.min(meta.durationSec, current + 5) : o))
       } else if (e.key === 'o') {
-        setOutSec(v.currentTime)
+        setOutSec(current)
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
-        seek(v.currentTime - (e.shiftKey ? 5 : 1 / (meta.fps || 30)))
+        void seek(current - (e.shiftKey ? 5 : 1 / (meta.fps || 30)))
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
-        seek(v.currentTime + (e.shiftKey ? 5 : 1 / (meta.fps || 30)))
+        void seek(current + (e.shiftKey ? 5 : 1 / (meta.fps || 30)))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [meta, seek])
+  }, [meta, seek, current])
 
-  const playSelection = useCallback(() => {
+  const playSelection = useCallback(async () => {
+    await seek(inSec)
     const v = videoRef.current
     if (!v) return
-    v.currentTime = inSec
     void v.play()
     const stop = (): void => {
-      if (v.currentTime >= outSec) {
+      const absolute = (win?.start ?? 0) + v.currentTime
+      if (absolute >= outSec) {
         v.pause()
         v.removeEventListener('timeupdate', stop)
       }
     }
     v.addEventListener('timeupdate', stop)
-  }, [inSec, outSec])
+  }, [inSec, outSec, seek, win])
 
   const analyze = useCallback(async () => {
     if (!meta) return
@@ -132,7 +162,7 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
       setInSec(clip.startSec)
       setOutSec(clip.endSec)
       setName(slug(clip.title) || 'clip')
-      seek(clip.startSec)
+      void seek(clip.startSec)
     },
     [seek]
   )
@@ -192,9 +222,9 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
         <video
           ref={videoRef}
           className="player"
-          src={meta.mediaUrl}
+          src={win?.url ?? undefined}
           controls={false}
-          onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
+          onTimeUpdate={(e) => setCurrent((win?.start ?? 0) + e.currentTarget.currentTime)}
           onClick={(e) =>
             e.currentTarget.paused ? void e.currentTarget.play() : e.currentTarget.pause()
           }
@@ -205,7 +235,7 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
           style={{ marginTop: 16 }}
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()
-            seek(((e.clientX - rect.left) / rect.width) * meta.durationSec)
+            void seek(((e.clientX - rect.left) / rect.width) * meta.durationSec)
           }}
         >
           <div
@@ -298,7 +328,7 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
               style={{ width: 104 }}
               value={timecode(inSec)}
               readOnly
-              onClick={() => seek(inSec)}
+              onClick={() => void seek(inSec)}
             />
           </label>
           <label className="field">
@@ -309,7 +339,7 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
               style={{ width: 104 }}
               value={timecode(outSec)}
               readOnly
-              onClick={() => seek(outSec)}
+              onClick={() => void seek(outSec)}
             />
           </label>
           <label className="field">

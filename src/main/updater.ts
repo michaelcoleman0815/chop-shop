@@ -11,7 +11,13 @@ let win: BrowserWindow | null = null
 
 function push(state: UpdateState): void {
   current = state
-  win?.webContents.send('update:state', state)
+  try {
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send('update:state', state)
+    }
+  } catch {
+    // Same reason as safeSend: update events outlive the window.
+  }
 }
 
 export function getUpdateState(): UpdateState {

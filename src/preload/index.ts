@@ -65,6 +65,12 @@ const api = {
     return () => ipcRenderer.removeListener('ai:progress', handler)
   },
 
+  previewRange: (
+    sourcePath: string,
+    startSec: number
+  ): Promise<{ mediaUrl: string; startSec: number; windowSec: number }> =>
+    ipcRenderer.invoke('preview:range', sourcePath, startSec),
+
   reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
   openPath: (path: string): Promise<void> => ipcRenderer.invoke('shell:openPath', path),
 

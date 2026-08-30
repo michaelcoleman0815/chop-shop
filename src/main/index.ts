@@ -5,6 +5,7 @@ import { Readable } from 'stream'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { probe, exportClip, buildFromSegments, FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
 import { autoZooms } from './autozoom'
+import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips } from './clips'
 import { hasApiKey, setApiKey, clearApiKey } from './apikey'
@@ -20,6 +21,9 @@ let quitting = false
 protocol.registerSchemesAsPrivileged([
   { scheme: 'media', privileges: { stream: true, supportFetchAPI: true, bypassCSP: true } }
 ])
+
+/** Range responses are capped so huge sources stay seekable. */
+const CHUNK_SIZE = 8 * 1024 * 1024
 
 const MIME: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -44,6 +48,7 @@ function serveMedia(request: Request): Response {
   try {
     size = statSync(path).size
   } catch {
+    console.error('[media] 404', path)
     return new Response('Not found', { status: 404 })
   }
   const type = MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
@@ -52,11 +57,17 @@ function serveMedia(request: Request): Response {
   if (range) {
     const match = /bytes=(\d*)-(\d*)/.exec(range)
     const start = match?.[1] ? Number(match[1]) : 0
-    const end = match?.[2] ? Number(match[2]) : size - 1
+    // An open-ended range on a multi-gigabyte file would otherwise stream the
+    // whole thing. Chromium asks for bytes=0- first, and on a file whose moov
+    // atom sits at the end it cannot even read the duration until that request
+    // completes. Capping the chunk lets it seek instead of waiting.
+    const end = match?.[2] ? Number(match[2]) : Math.min(size - 1, start + CHUNK_SIZE - 1)
     if (start >= size) {
+      console.error('[media] 416', start, 'of', size, path)
       return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
     }
     const stream = createReadStream(path, { start, end })
+    stream.on('error', (err) => console.error('[media] read error', err.message, path))
     return new Response(Readable.toWeb(stream) as ReadableStream, {
       status: 206,
       headers: {
@@ -139,6 +150,20 @@ function uniquePath(dir: string, name: string): string {
   }
 }
 
+/**
+ * Progress arrives from long-running work: an ffmpeg render, a model download,
+ * a transcription. If the window is gone by then, WebContents.send throws
+ * "Object has been destroyed" from inside an async callback with nothing to
+ * catch it, which takes down the main process.
+ */
+function safeSend(sender: Electron.WebContents, channel: string, payload: unknown): void {
+  try {
+    if (!sender.isDestroyed()) sender.send(channel, payload)
+  } catch {
+    // The renderer went away mid-flight; the work itself is unaffected.
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('app:version', () => app.getVersion())
 
@@ -187,7 +212,7 @@ function registerIpc(): void {
     await fs.mkdir(req.outputDir, { recursive: true })
     const outputPath = uniquePath(req.outputDir, req.name)
     const send = (percent: number): void =>
-      e.sender.send('clip:progress', { jobId: req.jobId, percent, stage: 'running' })
+      safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent, stage: 'running' })
     try {
       const meta = await probe(req.sourcePath)
       const words = (req.captionWords ?? [])
@@ -209,11 +234,11 @@ function registerIpc(): void {
         zooms: req.autoZoom ? autoZooms(words, req.endSec - req.startSec) : undefined,
         onProgress: send
       })
-      e.sender.send('clip:progress', { jobId: req.jobId, percent: 100, stage: 'done', outputPath })
+      safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 100, stage: 'done', outputPath })
       return { ok: true as const, outputPath }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      e.sender.send('clip:progress', { jobId: req.jobId, percent: 0, stage: 'error', message })
+      safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 0, stage: 'error', message })
       return { ok: false as const, message }
     }
   })
@@ -258,9 +283,9 @@ function registerIpc(): void {
           outputPath,
           aspect: payload.aspect,
           onProgress: (percent) =>
-            e.sender.send('clip:progress', { jobId: payload.jobId, percent, stage: 'running' })
+            safeSend(e.sender, 'clip:progress', { jobId: payload.jobId, percent, stage: 'running' })
         })
-        e.sender.send('clip:progress', {
+        safeSend(e.sender, 'clip:progress', {
           jobId: payload.jobId,
           percent: 100,
           stage: 'done',
@@ -269,7 +294,7 @@ function registerIpc(): void {
         return { ok: true as const, outputPath }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        e.sender.send('clip:progress', { jobId: payload.jobId, percent: 0, stage: 'error', message })
+        safeSend(e.sender, 'clip:progress', { jobId: payload.jobId, percent: 0, stage: 'error', message })
         return { ok: false as const, message }
       }
     }
@@ -283,7 +308,7 @@ function registerIpc(): void {
   ipcMain.handle('stt:modelSize', (_e, model: WhisperModel) => modelSizeMb(model))
   ipcMain.handle('stt:downloadModel', async (e, model: WhisperModel) => {
     await downloadModel(model, (percent) =>
-      e.sender.send('ai:progress', { stage: 'Downloading model', percent })
+      safeSend(e.sender, 'ai:progress', { stage: 'Downloading model', percent })
     )
     return true
   })
@@ -294,19 +319,55 @@ function registerIpc(): void {
     const settings = getSettings()
     try {
       const meta = await probe(videoPath)
-      const transcript = await transcribe(videoPath, settings.whisperModel, (percent, stage) =>
-        e.sender.send('ai:progress', { stage, percent: Math.round(percent * 0.8) })
+
+      // Progress is one bar over three stages, so each stage gets a slice of it
+      // sized to how long it actually takes.
+      const needsDownload = !hasModel(settings.whisperModel)
+      const base = needsDownload ? 30 : 0
+      const span = 88 - base
+
+      // Fetch the model here rather than sending the user to Settings to do it.
+      if (needsDownload) {
+        console.log('[ai] downloading model', settings.whisperModel)
+        await downloadModel(settings.whisperModel, (percent) =>
+          safeSend(e.sender, 'ai:progress', {
+            stage: `Downloading ${settings.whisperModel}`,
+            percent: Math.round(percent * 0.3)
+          })
+        )
+      }
+
+      const transcript = await transcribe(
+        videoPath,
+        settings.whisperModel,
+        meta.durationSec,
+        (percent, stage) =>
+          safeSend(e.sender, 'ai:progress', {
+            stage,
+            percent: base + Math.round((percent * span) / 100)
+          })
       )
-      e.sender.send('ai:progress', { stage: 'Finding clips', percent: 85 })
+      console.log('[ai] transcribed', transcript.words.length, 'words')
+      safeSend(e.sender, 'ai:progress', { stage: 'Finding clips', percent: 88 })
       const clips = await suggestClips(transcript, meta.durationSec, settings.maxSuggestedClips)
-      e.sender.send('ai:progress', { stage: 'Done', percent: 100 })
+      console.log('[ai] Claude returned', clips.length, 'clips')
+      safeSend(e.sender, 'ai:progress', { stage: 'Done', percent: 100 })
       return { ok: true as const, result: { transcript, clips } }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      e.sender.send('ai:progress', { stage: 'Failed', percent: 0, message })
+      console.error('[ai] analyze failed:', message)
+      safeSend(e.sender, 'ai:progress', { stage: 'Failed', percent: 0, message })
       return { ok: false as const, message }
     }
   })
+
+  ipcMain.handle(
+    'preview:range',
+    async (_e, sourcePath: string, startSec: number) => {
+      const { path, startSec: actual } = await previewRange(sourcePath, startSec)
+      return { mediaUrl: mediaUrlFor(path), startSec: actual, windowSec: PREVIEW_WINDOW_SEC }
+    }
+  )
 
   ipcMain.handle('shell:reveal', (_e, path: string) => shell.showItemInFolder(path))
   ipcMain.handle('shell:openPath', (_e, path: string) => shell.openPath(path))
@@ -404,7 +465,10 @@ app.on('before-quit', () => {
   quitting = true
 })
 
-app.on('will-quit', () => globalShortcut.unregisterAll())
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+  void clearPreviews()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

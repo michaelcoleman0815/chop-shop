@@ -27,7 +27,13 @@ export function hasModel(model: WhisperModel): boolean {
   return existsSync(modelPath(model))
 }
 
-/** Fetches a model from the whisper.cpp model repository, reporting 0-100. */
+/**
+ * Fetches a model from the whisper.cpp model repository, reporting 0-100.
+ *
+ * Resumes a partial file rather than restarting it. These are hundreds of
+ * megabytes and the download only lives as long as the app does, so quitting
+ * mid-transfer is normal and should not cost the whole thing.
+ */
 export async function downloadModel(
   model: WhisperModel,
   onProgress: (percent: number) => void
@@ -39,27 +45,49 @@ export async function downloadModel(
   const url = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`
   const tmp = `${dest}.part`
 
-  const response = await net.fetch(url)
+  let have = 0
+  try {
+    have = (await fs.stat(tmp)).size
+  } catch {
+    have = 0
+  }
+
+  const response = await net.fetch(url, have > 0 ? { headers: { Range: `bytes=${have}-` } } : {})
   if (!response.ok || !response.body) {
     throw new Error(`Model download failed: HTTP ${response.status}`)
   }
 
-  const total = Number(response.headers.get('content-length') ?? 0)
-  let received = 0
-  const out = createWriteStream(tmp)
+  // A server that ignores the range header sends 200 and the whole file, so the
+  // partial has to be discarded rather than appended to.
+  const resuming = response.status === 206
+  if (!resuming) have = 0
 
+  const remaining = Number(response.headers.get('content-length') ?? 0)
+  const total = have + remaining
+  let received = have
+
+  const out = createWriteStream(tmp, resuming ? { flags: 'a' } : { flags: 'w' })
   const reader = response.body.getReader()
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
     received += value.byteLength
     out.write(Buffer.from(value))
-    if (total > 0) onProgress(Math.round((received / total) * 100))
+    if (total > 0) onProgress(Math.min(99, Math.round((received / total) * 100)))
   }
   await new Promise<void>((resolve, reject) => {
     out.end(() => resolve())
     out.on('error', reject)
   })
+
+  const finalSize = (await fs.stat(tmp)).size
+  if (total > 0 && finalSize < total) {
+    // Leave the partial in place so the next attempt can pick up where this
+    // one stopped.
+    throw new Error(
+      `Model download incomplete: ${Math.round(finalSize / 1e6)} of ${Math.round(total / 1e6)} MB.`
+    )
+  }
 
   await fs.rename(tmp, dest)
   onProgress(100)
@@ -67,12 +95,20 @@ export async function downloadModel(
 }
 
 /** Whisper wants 16 kHz mono PCM; anything else is resampled internally anyway. */
-async function extractAudio(videoPath: string, wavPath: string): Promise<void> {
+async function extractAudio(
+  videoPath: string,
+  wavPath: string,
+  durationSec: number,
+  onProgress: (percent: number) => void
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(FFMPEG_PATH, [
       '-hide_banner',
       '-loglevel',
       'error',
+      '-progress',
+      'pipe:1',
+      '-nostats',
       '-y',
       '-i',
       videoPath,
@@ -85,6 +121,15 @@ async function extractAudio(videoPath: string, wavPath: string): Promise<void> {
       wavPath
     ])
     let stderr = ''
+    child.stdout.on('data', (d) => {
+      for (const line of d.toString().split('\n')) {
+        const [key, value] = line.split('=')
+        if (key === 'out_time_ms' && durationSec > 0) {
+          const done = Number(value) / 1_000_000
+          onProgress(Math.max(0, Math.min(100, (done / durationSec) * 100)))
+        }
+      }
+    })
     child.stderr.on('data', (d) => (stderr += d.toString()))
     child.on('error', reject)
     child.on('close', (code) =>
@@ -96,6 +141,7 @@ async function extractAudio(videoPath: string, wavPath: string): Promise<void> {
 export async function transcribe(
   videoPath: string,
   model: WhisperModel,
+  durationSec: number,
   onProgress: (percent: number, stage: string) => void
 ): Promise<Transcript> {
   const bin = WHISPER_PATH()
@@ -109,11 +155,12 @@ export async function transcribe(
 
   const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-stt-'))
   try {
-    onProgress(5, 'Extracting audio')
     const wav = join(dir, 'audio.wav')
-    await extractAudio(videoPath, wav)
+    await extractAudio(videoPath, wav, durationSec, (p) =>
+      onProgress(Math.round(p * 0.12), 'Extracting audio')
+    )
 
-    onProgress(15, 'Transcribing')
+    onProgress(12, 'Transcribing')
     const prefix = join(dir, 'out')
     await new Promise<void>((resolve, reject) => {
       const child = spawn(bin, [
@@ -128,15 +175,24 @@ export async function transcribe(
         // whisper spreads words evenly across a whole segment.
         '-ml',
         '1',
-        '-np'
+        // --print-progress is the only way to see how far along a long file is.
+        // -np would suppress it along with everything else.
+        '-pp'
       ])
       let stderr = ''
+      // whisper prints a line per segment, and with -ml 1 that is one per word.
+      // Nothing reading stdout means the 64KB pipe fills and the process blocks
+      // forever at 0% CPU, which looks exactly like a hang.
+      child.stdout.on('data', (d) => {
+        const match = /progress\s*=\s*(\d+)%/.exec(d.toString())
+        if (match) onProgress(12 + Math.round(Number(match[1]) * 0.86), 'Transcribing')
+      })
       child.stderr.on('data', (d) => {
         const text = d.toString()
         stderr += text
         // whisper prints progress to stderr as it consumes the audio.
         const match = /progress\s*=\s*(\d+)%/.exec(text)
-        if (match) onProgress(15 + Math.round(Number(match[1]) * 0.8), 'Transcribing')
+        if (match) onProgress(12 + Math.round(Number(match[1]) * 0.86), 'Transcribing')
       })
       child.on('error', reject)
       child.on('close', (code) =>
