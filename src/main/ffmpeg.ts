@@ -17,8 +17,16 @@ import {
 } from './tighten'
 import ffmpegStatic from 'ffmpeg-static'
 import ffprobeInstaller from '@ffprobe-installer/ffprobe'
-import type { AspectPreset, CaptionStyle, TranscriptWord, ZoomKeyframe } from '../shared/types'
+import type {
+  AspectPreset,
+  CaptionStyle,
+  MusicTrack,
+  OverlayClip,
+  TranscriptWord,
+  ZoomKeyframe
+} from '../shared/types'
 import type { Segment } from './tighten'
+import { compose } from './compose'
 
 export interface SourceInfo {
   width: number
@@ -160,6 +168,8 @@ export async function exportClip(opts: {
    * the timeline; otherwise they are derived from the word timings.
    */
   segments?: Segment[]
+  overlays?: OverlayClip[]
+  music?: MusicTrack | null
   /** A .cube LUT applied to the picture, before captions are drawn over it. */
   lutPath?: string | null
   /** Caption look. Defaults to the first preset. */
@@ -228,6 +238,7 @@ export async function exportClip(opts: {
 
   // The subtitle file lives for the length of the render only.
   let assDir: string | null = null
+  let subtitles: string | null = null
   if (opts.captions && captionWords && captionWords.length > 0) {
     assDir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-ass-'))
     const assPath = join(assDir, 'captions.ass')
@@ -242,10 +253,42 @@ export async function exportClip(opts: {
     )
     // ffmpeg filter syntax treats these as separators, so they need escaping.
     const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    filters.push(`subtitles='${escaped}':fontsdir='${FONTS_DIR()}'`)
+    subtitles = `subtitles='${escaped}':fontsdir='${FONTS_DIR()}'`
   }
 
+  const overlays = opts.overlays ?? []
+  const music = opts.music ?? null
+  const multitrack = overlays.length > 0 || music !== null
+
   try {
+    // One layer stays on the simple path; anything more needs a filter graph.
+    const graph = multitrack
+      ? compose({
+          baseVideo: filters,
+          baseAudio: audioFilter,
+          overlays,
+          music,
+          outWidth: out.w,
+          outHeight: out.h,
+          subtitles
+        })
+      : null
+
+    const filterArgs = graph
+      ? [
+          ...graph.inputs,
+          '-filter_complex',
+          graph.filterComplex,
+          '-map',
+          `[${graph.videoLabel}]`,
+          ...(graph.audioLabel ? ['-map', `[${graph.audioLabel}]`] : [])
+        ]
+      : [
+          '-vf',
+          [...filters, subtitles].filter(Boolean).join(','),
+          ...(audioFilter ? ['-af', audioFilter] : [])
+        ]
+
     await runWithProgress(
       [
         '-y',
@@ -255,9 +298,7 @@ export async function exportClip(opts: {
         opts.sourcePath,
         '-t',
         duration.toFixed(3),
-        '-vf',
-        filters.join(','),
-        ...(audioFilter ? ['-af', audioFilter] : []),
+        ...filterArgs,
         '-c:v',
         'h264_videotoolbox',
         '-b:v',

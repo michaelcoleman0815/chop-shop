@@ -29,6 +29,8 @@ export interface ClipRequest {
   segments?: { start: number; end: number }[]
   /** Zoom keyframes from the editor, clip-relative. Overrides auto zoom. */
   zooms?: ZoomKeyframe[]
+  overlays?: OverlayClip[]
+  music?: MusicTrack | null
 }
 
 export interface ExportProgress {
@@ -120,4 +122,26 @@ export interface SuggestedClip {
   hook: string
   reason: string
   score: number
+}
+
+export type OverlayFit = 'full' | 'top' | 'bottom' | 'pip'
+
+export interface OverlayClip {
+  id: string
+  kind: 'video' | 'image'
+  path: string
+  /** Where it lands on the edited clip timeline, in seconds. */
+  atSec: number
+  durationSec: number
+  fit: OverlayFit
+  opacity: number
+  /** Video overlays only: mute or keep their own sound. */
+  muted: boolean
+}
+
+export interface MusicTrack {
+  path: string
+  gainDb: number
+  /** Pull the music down automatically while anyone is speaking. */
+  duck: boolean
 }

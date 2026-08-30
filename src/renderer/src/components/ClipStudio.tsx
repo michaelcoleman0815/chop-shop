@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AspectPreset,
+  MusicTrack,
+  OverlayClip,
   Settings,
   SuggestedClip,
   TranscriptWord,
@@ -48,6 +50,8 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   const [zooms, setZooms] = useState<ZoomKeyframe[]>([])
   const [editorOpen, setEditorOpen] = useState(false)
   const [editedWords, setEditedWords] = useState<TranscriptWord[]>([])
+  const [overlays, setOverlays] = useState<OverlayClip[]>([])
+  const [music, setMusic] = useState<MusicTrack | null>(null)
   // The player shows a window cut out of the source, not the source itself.
   const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
   // Where to land once a newly fetched window has loaded, in absolute time.
@@ -244,7 +248,9 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
       tighten,
       trackSubject,
       segments: tighten ? segments : undefined,
-      zooms
+      zooms,
+      overlays,
+      music
     })
   }, [
     meta,
@@ -258,7 +264,13 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     words,
     autoZoom,
     tighten,
-    trackSubject
+    trackSubject,
+    segments,
+    zooms,
+    overlays,
+    music,
+    editedWords,
+    editorOpen
   ])
 
   if (!meta) {
@@ -532,6 +544,10 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
           onSegments={setSegments}
           onZooms={setZooms}
           onWords={setEditedWords}
+          overlays={overlays}
+          music={music}
+          onOverlays={setOverlays}
+          onMusic={setMusic}
         />
       )}
 

@@ -268,6 +268,8 @@ function registerIpc(): void {
         words,
         track,
         segments: req.segments,
+        overlays: req.overlays,
+        music: req.music,
         zooms: req.zooms && req.zooms.length > 0
           ? req.zooms
           : req.autoZoom

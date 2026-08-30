@@ -94,6 +94,13 @@ const api = {
   }): Promise<{ segments: { start: number; end: number }[]; zooms: ZoomKeyframe[] }> =>
     ipcRenderer.invoke('clip:plan', req),
 
+  chooseMedia: (): Promise<{
+    path: string
+    kind: 'image' | 'video'
+    durationSec: number
+  } | null> => ipcRenderer.invoke('dialog:chooseMedia'),
+  chooseAudio: (): Promise<string | null> => ipcRenderer.invoke('dialog:chooseAudio'),
+
   listLuts: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke('lut:list'),
   chooseLut: (): Promise<string | null> => ipcRenderer.invoke('lut:choose'),
 

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import type { TranscriptWord, ZoomKeyframe } from '../../../shared/types'
+import type { MusicTrack, OverlayClip, TranscriptWord, ZoomKeyframe } from '../../../shared/types'
 import { groupWords, respaceGroup } from '../../../shared/words'
 import { timecode } from '../lib/format'
 
@@ -18,11 +18,16 @@ interface Props {
   onSegments: (s: Segment[]) => void
   onZooms: (z: ZoomKeyframe[]) => void
   onWords: (w: TranscriptWord[]) => void
+  overlays: OverlayClip[]
+  music: MusicTrack | null
+  onOverlays: (o: OverlayClip[]) => void
+  onMusic: (m: MusicTrack | null) => void
 }
 
 type Drag =
   | { kind: 'edge'; index: number; side: 'start' | 'end' }
   | { kind: 'zoom'; index: number }
+  | { kind: 'overlay'; index: number }
   | null
 
 const MIN_SEGMENT = 0.2
@@ -36,7 +41,11 @@ export default function ClipEditor({
   onSeek,
   onSegments,
   onZooms,
-  onWords
+  onWords,
+  overlays,
+  music,
+  onOverlays,
+  onMusic
 }: Props): JSX.Element {
   const trackRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<Drag>(null)
@@ -59,6 +68,16 @@ export default function ClipEditor({
       if (!drag) return
       const t = timeAt(e.clientX)
 
+      if (drag.kind === 'overlay') {
+        const next = overlays.map((o, i) =>
+          i === drag.index
+            ? { ...o, atSec: Math.max(0, Math.min(durationSec - o.durationSec, t)) }
+            : o
+        )
+        onOverlays(next)
+        return
+      }
+
       if (drag.kind === 'zoom') {
         const next = zooms.map((z, i) => (i === drag.index ? { ...z, atSec: t } : z))
         onZooms(next.sort((a, b) => a.atSec - b.atSec))
@@ -77,7 +96,7 @@ export default function ClipEditor({
 
       onSegments(next)
     },
-    [drag, segments, zooms, timeAt, durationSec, onSegments, onZooms]
+    [drag, segments, zooms, overlays, timeAt, durationSec, onSegments, onZooms, onOverlays]
   )
 
   const splitAtPlayhead = useCallback(() => {
@@ -183,6 +202,139 @@ export default function ClipEditor({
         <div className="spacer" />
         <span className="muted">{segments.length} cuts</span>
       </div>
+
+      <div className="label" style={{ marginTop: 24, marginBottom: 8 }}>
+        B-roll and music
+      </div>
+      <div
+        className="editor-track overlay-track"
+        onPointerMove={onPointerMove}
+        onPointerUp={() => setDrag(null)}
+        onPointerLeave={() => setDrag(null)}
+      >
+        {overlays.map((o, i) => (
+          <div
+            key={o.id}
+            className="editor-overlay"
+            style={{
+              left: `${pct(o.atSec)}%`,
+              width: `${Math.max(1, pct(o.durationSec))}%`
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              setDrag({ kind: 'overlay', index: i })
+            }}
+            title={o.path}
+          >
+            {o.kind === 'image' ? 'still' : 'clip'}
+          </div>
+        ))}
+        <div className="editor-head" style={{ left: `${pct(currentSec)}%` }} />
+      </div>
+
+      <div className="row wrap" style={{ marginTop: 12, gap: 8 }}>
+        <button
+          onClick={async () => {
+            const media = await window.chop.chooseMedia()
+            if (!media) return
+            onOverlays([
+              ...overlays,
+              {
+                id: `${Date.now()}`,
+                kind: media.kind,
+                path: media.path,
+                atSec: currentSec,
+                durationSec: Math.min(media.durationSec, Math.max(1, durationSec - currentSec)),
+                fit: 'full',
+                opacity: 1,
+                muted: true
+              }
+            ])
+          }}
+        >
+          Add B-roll
+        </button>
+        {overlays.length > 0 && (
+          <button className="ghost" onClick={() => onOverlays([])}>
+            Clear B-roll
+          </button>
+        )}
+        <div className="spacer" />
+        {music ? (
+          <>
+            <span className="muted mono" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {music.path.split('/').pop()}
+            </span>
+            <label className="row" style={{ gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={music.duck}
+                onChange={(e) => onMusic({ ...music, duck: e.target.checked })}
+              />
+              Duck
+            </label>
+            <input
+              type="range"
+              min={-40}
+              max={0}
+              value={music.gainDb}
+              style={{ width: 110 }}
+              onChange={(e) => onMusic({ ...music, gainDb: Number(e.target.value) })}
+            />
+            <span className="mono muted">{music.gainDb} dB</span>
+            <button className="ghost" onClick={() => onMusic(null)}>
+              Remove
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={async () => {
+              const path = await window.chop.chooseAudio()
+              if (path) onMusic({ path, gainDb: -16, duck: true })
+            }}
+          >
+            Add music
+          </button>
+        )}
+      </div>
+
+      {overlays.length > 0 && (
+        <div className="editor-captions" style={{ marginTop: 12 }}>
+          {overlays.map((o, i) => (
+            <div className="row" key={o.id} style={{ gap: 8 }}>
+              <span className="mono muted" style={{ minWidth: 74 }}>
+                {timecode(o.atSec)}
+              </span>
+              <span
+                style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {o.path.split('/').pop()}
+              </span>
+              <select
+                value={o.fit}
+                onChange={(e) =>
+                  onOverlays(
+                    overlays.map((x, j) =>
+                      j === i ? { ...x, fit: e.target.value as OverlayClip['fit'] } : x
+                    )
+                  )
+                }
+              >
+                <option value="full">Full frame</option>
+                <option value="top">Top</option>
+                <option value="bottom">Bottom</option>
+                <option value="pip">Corner</option>
+              </select>
+              <button
+                className="ghost"
+                onClick={() => onOverlays(overlays.filter((_, j) => j !== i))}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="label" style={{ marginTop: 24, marginBottom: 8 }}>
         Captions
