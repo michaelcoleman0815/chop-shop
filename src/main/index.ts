@@ -6,6 +6,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { probe, exportClip, buildFromSegments, FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
 import { autoZooms } from './autozoom'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
+import { detectFaces, buildTrack } from './track'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips } from './clips'
 import { hasApiKey, setApiKey, clearApiKey } from './apikey'
@@ -227,6 +228,20 @@ function registerIpc(): void {
           endSec: Math.max(0.05, w.endSec - req.startSec)
         }))
 
+      let track: { atSec: number; cx: number; cy: number }[] | undefined
+      if (req.trackSubject) {
+        try {
+          safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 2, stage: 'running' })
+          const samples = await detectFaces(req.sourcePath, req.startSec, req.endSec - req.startSec)
+          track = buildTrack(samples)
+          console.log('[track]', samples.length, 'samples,', track.length, 'points')
+        } catch (err) {
+          // A failed detection should fall back to a centred crop, not fail the
+          // export outright.
+          console.error('[track] failed:', err instanceof Error ? err.message : err)
+        }
+      }
+
       await exportClip({
         sourcePath: req.sourcePath,
         startSec: req.startSec,
@@ -237,6 +252,7 @@ function registerIpc(): void {
         captions: req.captions && words.length > 0 ? { words } : undefined,
         // Tightening needs the words even when captions are not being burned in.
         words,
+        track,
         zooms: req.autoZoom ? autoZooms(words, req.endSec - req.startSec) : undefined,
         tighten: req.tighten === false ? false : undefined,
         onProgress: send

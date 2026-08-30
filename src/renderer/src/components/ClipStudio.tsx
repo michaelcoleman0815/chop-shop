@@ -24,6 +24,7 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   const [captions, setCaptions] = useState(true)
   const [autoZoom, setAutoZoom] = useState(true)
   const [tighten, setTighten] = useState(true)
+  const [trackSubject, setTrackSubject] = useState(true)
   // The player shows a window cut out of the source, not the source itself.
   const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
   // Where to land once a newly fetched window has loaded, in absolute time.
@@ -187,7 +188,8 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
       captionWords: words,
       captions,
       autoZoom,
-      tighten
+      tighten,
+      trackSubject
     })
   }, [
     meta,
@@ -200,7 +202,8 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     captions,
     words,
     autoZoom,
-    tighten
+    tighten,
+    trackSubject
   ])
 
   if (!meta) {
@@ -418,6 +421,14 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
               onChange={(e) => setTighten(e.target.checked)}
             />
             Tighten
+          </label>
+          <label className="row" style={{ gap: 6 }} title="Keep the speaker in frame">
+            <input
+              type="checkbox"
+              checked={trackSubject}
+              onChange={(e) => setTrackSubject(e.target.checked)}
+            />
+            Track
           </label>
           <button className="primary" disabled={duration < 0.2} onClick={exportClip}>
             Export clip

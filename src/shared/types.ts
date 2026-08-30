@@ -24,6 +24,7 @@ export interface ClipRequest {
   captions?: boolean
   autoZoom?: boolean
   tighten?: boolean
+  trackSubject?: boolean
 }
 
 export interface ExportProgress {

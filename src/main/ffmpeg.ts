@@ -11,6 +11,7 @@ import {
   selectExpr,
   tightenWords,
   tightenZooms,
+  remapTime,
   DEFAULT_TIGHTEN,
   type TightenOptions
 } from './tighten'
@@ -146,6 +147,8 @@ export async function exportClip(opts: {
   /** Words already rebased so the clip starts at zero. */
   captions?: { words: TranscriptWord[]; style?: CaptionStyle }
   zooms?: ZoomKeyframe[]
+  /** Where the subject is over time, in normalised source coordinates. */
+  track?: { atSec: number; cx: number; cy: number }[]
   /**
    * Word timings used for tightening. Kept separate from captions so pauses can
    * be cut without also burning subtitles in.
@@ -163,6 +166,7 @@ export async function exportClip(opts: {
   let captionWords = opts.captions?.words
   let zooms = opts.zooms
   let audioFilter: string | null = null
+  let track = opts.track
   let outDuration = duration
   const preFilters: string[] = []
 
@@ -178,6 +182,12 @@ export async function exportClip(opts: {
       audioFilter = `aselect='${expr}',asetpts=N/SR/TB`
       if (captionWords) captionWords = tightenWords(captionWords, segments)
       if (zooms) zooms = tightenZooms(zooms, segments)
+      // The track is in original clip time too, so it shifts with everything else.
+      if (track) {
+        track = track
+          .map((p) => ({ ...p, atSec: remapTime(p.atSec, segments) }))
+          .filter((p, i, a) => i === 0 || p.atSec > a[i - 1].atSec)
+      }
       outDuration = kept
     }
   }
@@ -190,6 +200,7 @@ export async function exportClip(opts: {
       outWidth: out.w,
       outHeight: out.h,
       sourceFps: opts.source.fps,
+      track,
       zooms
     })
   ]
