@@ -434,3 +434,77 @@ kbd {
   border-radius: var(--r-sm);
   padding: 1px 6px;
 }
+
+/* Clip editor ------------------------------------------------------------ */
+
+.editor-track {
+  position: relative;
+  height: 64px;
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.editor-seg {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  background: #2d2a33;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.editor-seg.on {
+  border-color: var(--paper);
+}
+
+.editor-handle {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 10px;
+  cursor: col-resize;
+  background: var(--line-strong);
+}
+.editor-handle.left {
+  left: -1px;
+  border-radius: var(--r-sm) 0 0 var(--r-sm);
+}
+.editor-handle.right {
+  right: -1px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.editor-seg.on .editor-handle {
+  background: var(--paper);
+}
+
+/* The zoom is the thing being acted on, so it carries the accent. */
+.editor-zoom {
+  position: absolute;
+  top: 2px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 2px;
+  background: var(--accent);
+  cursor: grab;
+}
+
+.editor-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--paper);
+  pointer-events: none;
+}
+
+.editor-captions {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}

@@ -246,12 +246,16 @@ function sequenceXml(
   placed: Placed[],
   source: PremiereSource,
   seqIndex: number,
-  counter: { n: number },
+  counter: { n: number; fileWritten: boolean },
   markers: string[] = []
 ): string {
   const totalSec = placed.reduce((sum, p) => sum + (p.sourceOutSec - p.sourceInSec), 0)
-  const fileId = `file-${seqIndex}`
-  const masterId = `masterclip-${seqIndex}`
+  // One media file, so one file id and one master clip across the whole
+  // project. Giving each sequence its own produced a duplicate master clip per
+  // sequence, each named after the edit, which buries the real sequences among
+  // lookalikes in the project panel.
+  const fileId = 'file-1'
+  const masterId = 'masterclip-1'
 
   const groups = placed.map((p, i) => {
     const ids: Ids = {
@@ -259,11 +263,15 @@ function sequenceXml(
       audioLeft: `clipitem-${counter.n++}`,
       audioRight: `clipitem-${counter.n++}`
     }
-    return { placed: p, ids, clipIndex: i + 1, first: i === 0 }
+    return { placed: p, ids, clipIndex: i + 1 }
   })
 
-  const item = (g: (typeof groups)[number], kind: ItemOpts['kind'], pad: string): string =>
-    clipitemXml(
+  const item = (g: (typeof groups)[number], kind: ItemOpts['kind'], pad: string): string => {
+    // The file body appears exactly once in the project; everything after it
+    // refers to the same id.
+    const writeFileBody = kind === 'video' && !counter.fileWritten
+    if (writeFileBody) counter.fileWritten = true
+    return clipitemXml(
       {
         placed: g.placed,
         source,
@@ -271,13 +279,15 @@ function sequenceXml(
         clipIndex: g.clipIndex,
         masterId,
         fileId,
-        name,
-        // Only the very first clipitem in the sequence carries the file body.
-        writeFileBody: g.first && kind === 'video',
+        // Premiere names clipitems after the media, not the edit. The clip's
+        // own title belongs to the sequence.
+        name: basename(source.path),
+        writeFileBody,
         kind
       },
       pad
     )
+  }
 
   return [
     `\t<sequence id="sequence-${seqIndex}" explodedTracks="true">`,
@@ -337,7 +347,7 @@ export function buildProject(
   suggestions: SuggestedClip[],
   source: PremiereSource
 ): string {
-  const counter = { n: 1 }
+  const counter = { n: 1, fileWritten: false }
 
   const markers = suggestions.map((c) =>
     [

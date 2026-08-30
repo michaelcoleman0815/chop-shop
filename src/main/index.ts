@@ -263,7 +263,12 @@ function registerIpc(): void {
         // Tightening needs the words even when captions are not being burned in.
         words,
         track,
-        zooms: req.autoZoom ? autoZooms(words, req.endSec - req.startSec) : undefined,
+        segments: req.segments,
+        zooms: req.zooms && req.zooms.length > 0
+          ? req.zooms
+          : req.autoZoom
+            ? autoZooms(words, req.endSec - req.startSec)
+            : undefined,
         tighten: req.tighten === false ? false : undefined,
         onProgress: send
       })
@@ -478,6 +483,14 @@ function registerIpc(): void {
         return { ok: false as const, message }
       }
     }
+  )
+
+  ipcMain.handle(
+    'clip:plan',
+    (_e, req: { words: TranscriptWord[]; durationSec: number }) => ({
+      segments: buildKeepSegments(req.words, req.durationSec),
+      zooms: autoZooms(req.words, req.durationSec)
+    })
   )
 
   ipcMain.handle('shell:reveal', (_e, path: string) => shell.showItemInFolder(path))

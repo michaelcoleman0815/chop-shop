@@ -9,7 +9,8 @@ import type {
   SuggestedClip,
   TranscriptWord,
   UpdateState,
-  VideoMeta
+  VideoMeta,
+  ZoomKeyframe
 } from '../shared/types'
 
 const api = {
@@ -86,6 +87,12 @@ const api = {
   }): Promise<
     { ok: true; xmlPath: string; srtPath: string | null } | { ok: false; message: string }
   > => ipcRenderer.invoke('premiere:export', req),
+
+  planClip: (req: {
+    words: TranscriptWord[]
+    durationSec: number
+  }): Promise<{ segments: { start: number; end: number }[]; zooms: ZoomKeyframe[] }> =>
+    ipcRenderer.invoke('clip:plan', req),
 
   reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
   openPath: (path: string): Promise<void> => ipcRenderer.invoke('shell:openPath', path),

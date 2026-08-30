@@ -1,5 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AspectPreset, Settings, SuggestedClip, TranscriptWord, VideoMeta } from '../../../shared/types'
+import type {
+  AspectPreset,
+  Settings,
+  SuggestedClip,
+  TranscriptWord,
+  VideoMeta,
+  ZoomKeyframe
+} from '../../../shared/types'
+import ClipEditor, { type Segment } from './ClipEditor'
+
+/** The editor works in clip time; exports address the source. */
+function rebaseToSource(words: TranscriptWord[], offsetSec: number): TranscriptWord[] {
+  return words.map((w) => ({
+    text: w.text,
+    startSec: w.startSec + offsetSec,
+    endSec: w.endSec + offsetSec
+  }))
+}
 import type { Job } from './JobList'
 import { bytes, slug, stamp, timecode } from '../lib/format'
 
@@ -25,6 +42,12 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   const [autoZoom, setAutoZoom] = useState(true)
   const [tighten, setTighten] = useState(true)
   const [trackSubject, setTrackSubject] = useState(true)
+  // The edit for the current in/out range: which spans survive, and where the
+  // punch-ins sit. Planned automatically, then owned by the editor.
+  const [segments, setSegments] = useState<Segment[]>([])
+  const [zooms, setZooms] = useState<ZoomKeyframe[]>([])
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editedWords, setEditedWords] = useState<TranscriptWord[]>([])
   // The player shows a window cut out of the source, not the source itself.
   const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
   // Where to land once a newly fetched window has loaded, in absolute time.
@@ -172,6 +195,36 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     [seek]
   )
 
+  const clipWords = useCallback(
+    (): TranscriptWord[] =>
+      words
+        .filter((w) => w.endSec > inSec && w.startSec < outSec)
+        .map((w) => ({
+          text: w.text,
+          startSec: Math.max(0, w.startSec - inSec),
+          endSec: Math.max(0.05, w.endSec - inSec)
+        })),
+    [words, inSec, outSec]
+  )
+
+  // Re-plan whenever the range moves, unless the editor is open, where
+  // re-planning would throw away the edit in progress.
+  useEffect(() => {
+    if (editorOpen || words.length === 0 || outSec <= inSec) return
+    const local = clipWords()
+    if (local.length === 0) return
+    let cancelled = false
+    window.chop.planClip({ words: local, durationSec: outSec - inSec }).then((plan) => {
+      if (cancelled) return
+      setSegments(plan.segments)
+      setZooms(autoZoom ? plan.zooms : [])
+      setEditedWords(local)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [inSec, outSec, words, autoZoom, editorOpen, clipWords])
+
   const exportClip = useCallback(async () => {
     if (!meta) return
     const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -185,11 +238,13 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
       name: jobName,
       aspect,
       outputDir: settings.outputDir,
-      captionWords: words,
+      captionWords: editorOpen ? rebaseToSource(editedWords, inSec) : words,
       captions,
       autoZoom,
       tighten,
-      trackSubject
+      trackSubject,
+      segments: tighten ? segments : undefined,
+      zooms
     })
   }, [
     meta,
@@ -452,11 +507,33 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
             />
             Track
           </label>
+          <button
+            className={editorOpen ? 'on' : ''}
+            disabled={words.length === 0}
+            title={words.length === 0 ? 'Analyse first' : 'Adjust cuts, zooms and captions'}
+            onClick={() => setEditorOpen((v) => !v)}
+          >
+            {editorOpen ? 'Close editor' : 'Edit'}
+          </button>
           <button className="primary" disabled={duration < 0.2} onClick={exportClip}>
             Export clip
           </button>
         </div>
       </div>
+
+      {editorOpen && segments.length > 0 && (
+        <ClipEditor
+          durationSec={Math.max(0.1, outSec - inSec)}
+          segments={segments}
+          zooms={zooms}
+          words={editedWords}
+          currentSec={Math.max(0, Math.min(outSec - inSec, current - inSec))}
+          onSeek={(t) => void seek(inSec + t)}
+          onSegments={setSegments}
+          onZooms={setZooms}
+          onWords={setEditedWords}
+        />
+      )}
 
       <div className="card">
         <div className="label" style={{ marginBottom: 12 }}>

@@ -25,6 +25,10 @@ export interface ClipRequest {
   autoZoom?: boolean
   tighten?: boolean
   trackSubject?: boolean
+  /** Kept spans from the editor, clip-relative. Overrides automatic tightening. */
+  segments?: { start: number; end: number }[]
+  /** Zoom keyframes from the editor, clip-relative. Overrides auto zoom. */
+  zooms?: ZoomKeyframe[]
 }
 
 export interface ExportProgress {

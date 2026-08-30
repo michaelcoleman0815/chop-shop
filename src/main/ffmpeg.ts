@@ -18,6 +18,7 @@ import {
 import ffmpegStatic from 'ffmpeg-static'
 import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import type { AspectPreset, CaptionStyle, TranscriptWord, ZoomKeyframe } from '../shared/types'
+import type { Segment } from './tighten'
 
 export interface SourceInfo {
   width: number
@@ -154,6 +155,11 @@ export async function exportClip(opts: {
    * be cut without also burning subtitles in.
    */
   words?: TranscriptWord[]
+  /**
+   * Kept spans, clip-relative. When the editor has been used these come from
+   * the timeline; otherwise they are derived from the word timings.
+   */
+  segments?: Segment[]
   /** Cuts long pauses and filler words, re-timing captions and zooms to match. */
   tighten?: TightenOptions | false
   onProgress: (percent: number) => void
@@ -171,12 +177,16 @@ export async function exportClip(opts: {
   const preFilters: string[] = []
 
   const timingWords = opts.words ?? opts.captions?.words
-  if (opts.tighten !== false && timingWords && timingWords.length > 0) {
-    const settings = opts.tighten ?? DEFAULT_TIGHTEN
-    const segments = buildKeepSegments(timingWords, duration, settings)
+  const explicit = opts.segments && opts.segments.length > 0
+  if ((explicit || opts.tighten !== false) && (explicit || (timingWords && timingWords.length > 0))) {
+    const settings = opts.tighten === false ? DEFAULT_TIGHTEN : (opts.tighten ?? DEFAULT_TIGHTEN)
+    const segments = explicit
+      ? opts.segments!
+      : buildKeepSegments(timingWords!, duration, settings)
     const kept = keptDuration(segments)
-    // Only worth the extra filtering when it actually removes something.
-    if (kept < duration - 0.25) {
+    // Only worth the extra filtering when it actually removes something, though
+    // an explicit edit is always honoured even if it happens to keep everything.
+    if (explicit || kept < duration - 0.25) {
       const expr = selectExpr(segments)
       preFilters.push(`select='${expr}'`, 'setpts=N/FRAME_RATE/TB')
       audioFilter = `aselect='${expr}',asetpts=N/SR/TB`
