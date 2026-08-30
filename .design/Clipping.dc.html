@@ -1,0 +1,174 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Sora:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Sora', -apple-system, system-ui, sans-serif; }
+    a { color: #ff6076; } a:hover { color: #ff8b9b; }
+    .lbl { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: #98959f; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .chip { padding: 4px 10px; border: 1px solid #2b2b35; border-radius: 3px; font-size: 11px; color: #98959f; background: #08080b; }
+    .chip.on { background: #2d2d38; border-color: #57545c; color: #f2f1ee; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #08080b; color: #f2f1ee; font-size: 12px; display: flex; flex-direction: column;">
+
+  <div style="height: 44px; flex: 0 0 auto; background: #17171e; border-bottom: 1px solid #2b2b35; display: flex; align-items: center; gap: 18px; padding: 0 14px 0 82px;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="19" height="14" viewBox="0 0 102 75" fill="none"><rect x="0" y="0" width="78" height="33" rx="8" fill="#f2f1ee"/><rect x="24" y="42" width="78" height="33" rx="8" fill="#ff6076"/></svg>
+      <span style="font-family: 'Archivo Black', sans-serif; font-size: 13px; letter-spacing: 0.05em;">CHURCH SERVICE</span>
+    </div>
+    <div style="display: flex; gap: 2px; padding: 2px; background: #08080b; border: 1px solid #2b2b35; border-radius: 3px;">
+      <div style="padding: 4px 12px; border-radius: 2px; background: #2d2d38; font-size: 11px; font-weight: 500;">Clips</div>
+      <div style="padding: 4px 12px; border-radius: 2px; color: #98959f; font-size: 11px;">Live Buffer</div>
+      <div style="padding: 4px 12px; border-radius: 2px; color: #98959f; font-size: 11px;">Settings</div>
+    </div>
+    <div style="flex: 1;"></div>
+    <span class="mono" style="font-size: 10px; color: #6b6874;">16,055 words · 8 clips found</span>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex; gap: 1px; background: #000;">
+
+    <div style="width: 300px; flex: 0 0 300px; background: #101015; display: flex; flex-direction: column;">
+      <div style="height: 26px; background: #17171e; border-bottom: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 10px;">
+        <span class="lbl">Suggestions</span>
+        <div style="flex: 1;"></div>
+        <div style="padding: 2px 9px; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 10px; color: #98959f;">Re-analyse</div>
+      </div>
+      <div style="flex: 1; min-height: 0; padding: 12px; display: flex; flex-direction: column; gap: 22px; overflow: hidden;">
+
+        <div>
+          <div style="position: relative; aspect-ratio: 16/9; border-radius: 3px; overflow: hidden; border: 1px solid #ff6076; box-shadow: inset 0 0 0 1px #ff6076; background: linear-gradient(150deg, #4a3f38, #241f1c);">
+            <div style="position: absolute; right: 6px; bottom: 6px; background: rgba(8,8,11,0.85); border-radius: 3px; padding: 2px 7px; font-size: 10px; font-weight: 600; display: flex; gap: 5px;" class="mono"><span>1:16:33</span><span style="color: #98959f;">44s</span></div>
+          </div>
+          <div class="mono" style="font-size: 21px; font-weight: 600; color: #ff6076; margin-top: 8px; line-height: 1;">92</div>
+          <div style="font-size: 13px; font-weight: 500; margin-top: 4px; line-height: 1.35;">God told him to check his phone</div>
+          <div style="font-size: 11px; color: #98959f; margin-top: 3px; line-height: 1.4;">Opens on a question, resolves in one story, no setup needed.</div>
+        </div>
+
+        <div>
+          <div style="position: relative; aspect-ratio: 16/9; border-radius: 3px; overflow: hidden; border: 1px solid #2b2b35; background: linear-gradient(150deg, #37424f, #1e242b);">
+            <div style="position: absolute; right: 6px; bottom: 6px; background: rgba(8,8,11,0.85); border-radius: 3px; padding: 2px 7px; font-size: 10px; font-weight: 600; display: flex; gap: 5px;" class="mono"><span>0:42:08</span><span style="color: #98959f;">61s</span></div>
+          </div>
+          <div class="mono" style="font-size: 21px; font-weight: 600; color: #ff6076; margin-top: 8px; line-height: 1;">87</div>
+          <div style="font-size: 13px; font-weight: 500; margin-top: 4px; line-height: 1.35;">Burned out under pressure</div>
+          <div style="font-size: 11px; color: #98959f; margin-top: 3px; line-height: 1.4;">A confession that lands, then turns. Ends on its own beat.</div>
+        </div>
+
+        <div>
+          <div style="position: relative; aspect-ratio: 16/9; border-radius: 3px; overflow: hidden; border: 1px solid #2b2b35; background: linear-gradient(150deg, #2f3a44, #191d22);">
+            <div style="position: absolute; right: 6px; bottom: 6px; background: rgba(8,8,11,0.85); border-radius: 3px; padding: 2px 7px; font-size: 10px; font-weight: 600; display: flex; gap: 5px;" class="mono"><span>1:58:40</span><span style="color: #98959f;">38s</span></div>
+          </div>
+          <div class="mono" style="font-size: 21px; font-weight: 600; color: #ff6076; margin-top: 8px; line-height: 1;">81</div>
+          <div style="font-size: 13px; font-weight: 500; margin-top: 4px; line-height: 1.35;">The turning point</div>
+          <div style="font-size: 11px; color: #98959f; margin-top: 3px; line-height: 1.4;">Self-contained, though it leans on the previous line a little.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div style="flex: 1; min-width: 0; background: #101015; display: flex; flex-direction: column;">
+      <div style="height: 26px; background: #17171e; border-bottom: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 10px;">
+        <span class="lbl">Source</span>
+        <div style="flex: 1;"></div>
+        <span class="lbl" style="color: #6b6874;">1920×1080 · 60 fps · 7.9 GB</span>
+      </div>
+
+      <div style="flex: 1; min-height: 0; background: #000; display: flex; align-items: center; justify-content: center; padding: 16px;">
+        <div style="height: 100%; aspect-ratio: 9/16; background: linear-gradient(165deg, #4a3f38 0%, #2a2420 50%, #16120f 100%); box-shadow: 0 0 0 1px rgba(255,255,255,0.08); position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 74px;">
+          <div style="text-align: center; font-family: 'Archivo Black', sans-serif; font-size: 25px; line-height: 1.14; color: #f2f1ee; text-shadow: 0 2px 12px rgba(0,0,0,0.95); padding: 0 22px;">
+            SO HE <span style="color: #ff6076;">CHECKED</span><br>HIS PHONE
+          </div>
+        </div>
+      </div>
+
+      <div style="height: 52px; flex: 0 0 52px; background: #08080b; border-top: 1px solid #2b2b35; position: relative; overflow: hidden;">
+        <div style="position: absolute; inset: 0 0 38% 0; background: repeating-linear-gradient(90deg, #3a3128 0 26px, #2b3138 26px 52px, #33302a 52px 78px, #262d34 78px 104px);"></div>
+        <div style="position: absolute; inset: 62% 0 0 0; background: #0c1116;">
+          <svg width="100%" height="100%" viewBox="0 0 1090 20" preserveAspectRatio="none"><path d="M0 10 L20 6 L40 14 L60 4 L80 16 L100 8 L120 12 L140 3 L160 17 L180 9 L200 11 L220 5 L240 15 L260 8 L280 13 L300 4 L320 16 L340 10 L360 12 L380 6 L400 14 L420 9 L440 11 L460 3 L480 17 L500 8 L520 13 L540 7 L560 15 L580 10 L600 12 L620 5 L640 16 L660 9 L680 11 L700 4 L720 15 L740 8 L760 13 L780 6 L800 14 L820 10 L840 12 L860 7 L880 15 L900 9 L920 11 L940 5 L960 16 L980 8 L1000 13 L1020 10 L1040 12 L1060 6 L1080 14 L1090 10" stroke="#5a7b9e" stroke-width="1.2" fill="none"/></svg>
+        </div>
+        <div style="position: absolute; left: 592px; top: 0; bottom: 0; width: 176px; background: rgba(255,96,118,0.16); border-left: 1px solid #ff6076; border-right: 1px solid #ff6076;"></div>
+        <div style="position: absolute; left: 636px; top: 0; bottom: 0; width: 2px; background: #ff6076;"><div style="position: absolute; top: 2px; left: -6px; width: 14px; height: 18px; border-radius: 999px; background: #f2f1ee;"></div></div>
+      </div>
+
+      <div style="height: 38px; flex: 0 0 auto; border-top: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 10px; gap: 5px;">
+        <div style="width: 32px; height: 22px; background: #2d2d38; border: 1px solid #4a4658; border-radius: 3px; display: flex; align-items: center; justify-content: center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="#f2f1ee"><polygon points="6 4 20 12 6 20"/></svg></div>
+        <div style="padding: 3px 9px; background: #21212a; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 10px;">Mark in</div>
+        <div style="padding: 3px 9px; background: #21212a; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 10px;">Mark out</div>
+        <div style="flex: 1;"></div>
+        <span class="mono" style="font-size: 16px; font-weight: 500;">01:16:33.20</span>
+        <span class="mono" style="font-size: 12px; color: #98959f;">/ 2:17:33.46</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 224px; flex: 0 0 224px; background: #101015; border-top: 1px solid #000; display: flex; flex-direction: column;">
+    <div style="height: 32px; background: #17171e; border-bottom: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 12px; gap: 10px;">
+      <span class="lbl">Clip</span>
+      <span class="mono" style="font-size: 11px; color: #98959f;">1:16:33 → 1:17:17</span>
+      <span class="mono" style="font-size: 13px; font-weight: 500;">44.2s</span>
+      <div style="flex: 1;"></div>
+      <div style="padding: 4px 11px; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 11px; background: #21212a;">Edit</div>
+      <div style="padding: 4px 11px; border: 1px solid #3d3d4a; border-radius: 3px; font-size: 11px; background: #21212a;">Preview</div>
+      <div style="padding: 4px 14px; background: #ff6076; color: #17090d; border-radius: 3px; font-size: 11px; font-weight: 600;">Export clip</div>
+    </div>
+
+    <div style="flex: 1; padding: 14px; display: flex; gap: 26px;">
+      <div style="display: flex; flex-direction: column; gap: 12px; width: 470px; flex: 0 0 470px;">
+        <div style="display: flex; gap: 10px;">
+          <div style="flex: 1;">
+            <div class="lbl" style="margin-bottom: 4px;">Name</div>
+            <div style="height: 26px; background: #08080b; border: 1px solid #2b2b35; border-radius: 3px; display: flex; align-items: center; padding: 0 8px; font-size: 11px;">god-told-him-check-your-phone</div>
+          </div>
+          <div style="width: 120px;">
+            <div class="lbl" style="margin-bottom: 4px;">Aspect</div>
+            <div style="height: 26px; background: #08080b; border: 1px solid #2b2b35; border-radius: 3px; display: flex; align-items: center; padding: 0 8px; font-size: 11px;">9:16 vertical</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <div style="flex: 1;">
+            <div class="lbl" style="margin-bottom: 4px;">Captions</div>
+            <div style="height: 26px; background: #08080b; border: 1px solid #2b2b35; border-radius: 3px; display: flex; align-items: center; padding: 0 8px; font-size: 11px;">Punch</div>
+          </div>
+          <div style="flex: 1;">
+            <div class="lbl" style="margin-bottom: 4px;">Colour</div>
+            <div style="height: 26px; background: #08080b; border: 1px solid #2b2b35; border-radius: 3px; display: flex; align-items: center; padding: 0 8px; font-size: 11px;">Fuji ETERNA 250D</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 2px;">
+          <div class="chip on">Captions</div>
+          <div class="chip on">Zooms</div>
+          <div class="chip on">Tighten</div>
+          <div class="chip on">Track subject</div>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-width: 0;">
+        <div class="lbl" style="margin-bottom: 6px;">Transcript</div>
+        <div style="display: flex; flex-direction: column; gap: 5px; font-size: 12px; line-height: 1.5;">
+          <div style="display: flex; gap: 10px;"><span class="mono" style="font-size: 10px; color: #6b6874; flex: 0 0 46px;">1:16:33</span><span style="color: #98959f;">and he said the strangest thing to me</span></div>
+          <div style="display: flex; gap: 10px;"><span class="mono" style="font-size: 10px; color: #6b6874; flex: 0 0 46px;">1:16:38</span><span>God told him to <span style="background: rgba(255,96,118,0.22); border-radius: 2px; padding: 0 2px;">check his phone</span></span></div>
+          <div style="display: flex; gap: 10px;"><span class="mono" style="font-size: 10px; color: #6b6874; flex: 0 0 46px;">1:16:44</span><span style="color: #98959f;">so he checked his phone, and there it was</span></div>
+          <div style="display: flex; gap: 10px;"><span class="mono" style="font-size: 10px; color: #6b6874; flex: 0 0 46px;">1:16:52</span><span style="color: #98959f;">three years he had been waiting on that</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 22px; flex: 0 0 22px; background: #17171e; border-top: 1px solid #2b2b35; display: flex; align-items: center; padding: 0 12px;">
+    <span style="font-size: 10px; color: #98959f;">Click a suggestion to load its range. Drag the scrubber to move, I and O to mark in and out.</span>
+    <div style="flex: 1;"></div>
+    <span class="mono" style="font-size: 10px; color: #6b6874;">small.en · claude-opus-5</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

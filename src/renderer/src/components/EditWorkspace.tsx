@@ -57,6 +57,12 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
   })
   const [playing, setPlaying] = useState(false)
   const [proof, setProof] = useState<string | null>(null)
+  // The monitor plays a windowed copy, never the source. A screen recorder's
+  // output keeps its index at the end of the file, so a browser cannot decode
+  // one frame of a multi-gigabyte original.
+  const [win, setWin] = useState<{ path: string; url: string; start: number; length: number } | null>(
+    null
+  )
   // Filmstrips and waveforms are generated once per file and cached on disk, so
   // this map only ever holds URLs.
   const [previews, setPreviews] = useState<Record<string, Previews>>({})
@@ -178,33 +184,57 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
   const activeRef = useRef<string | null>(null)
 
   useEffect(() => {
+    if (!active || proof) return
+    const wantedSource = active.sourceInSec + (playhead - active.timelineStartSec)
+    const covered =
+      win &&
+      win.path === active.mediaPath &&
+      wantedSource >= win.start &&
+      wantedSource < win.start + win.length - 1
+    if (covered) return
+
+    let cancelled = false
+    window.chop
+      .previewRange(active.mediaPath, Math.max(0, wantedSource - 2))
+      .then((w) => {
+        if (cancelled) return
+        setWin({
+          path: active.mediaPath,
+          url: w.mediaUrl,
+          start: w.startSec,
+          length: w.windowSec
+        })
+      })
+      .catch((err) => console.error('[monitor] preview window failed:', err?.message ?? err))
+    return () => {
+      cancelled = true
+    }
+  }, [active, playhead, proof, win])
+
+  useEffect(() => {
     const v = videoRef.current
-    if (!v || proof) return
-    if (!active) {
-      activeRef.current = null
-      return
-    }
+    if (!v || proof || !active || !win || win.path !== active.mediaPath) return
 
-    const switching = activeRef.current !== active.id
-    if (switching) {
-      activeRef.current = active.id
-      v.src = `media://local/${encodeURIComponent(active.mediaPath)}`
-    }
+    const switching = activeRef.current !== `${active.id}:${win.url}`
+    if (switching) activeRef.current = `${active.id}:${win.url}`
 
-    // While playing, the element owns the clock: the playhead follows it.
-    // Seeking here too made the two fight, and playback stalled.
+    // While playing the element owns the clock and the playhead follows it.
+    // Seeking here as well made the two fight, and playback stalled.
     if (playing && !switching) return
 
-    const into = active.sourceInSec + (playhead - active.timelineStartSec)
-    if (Math.abs(v.currentTime - into) > 0.2) v.currentTime = into
-  }, [active, playhead, proof, playing])
+    const wantedSource = active.sourceInSec + (playhead - active.timelineStartSec)
+    const into = wantedSource - win.start
+    if (into >= 0 && Math.abs(v.currentTime - into) > 0.2) v.currentTime = into
+  }, [active, playhead, proof, playing, win])
 
   const onTimeUpdate = useCallback(() => {
     const v = videoRef.current
-    if (!v || !playing || !active || proof) return
-    const at = active.timelineStartSec + (v.currentTime - active.sourceInSec)
+    if (!v || !playing || !active || proof || !win) return
+    // Element time is inside the window; map it back to source, then timeline.
+    const sourceAt = win.start + v.currentTime
+    const at = active.timelineStartSec + (sourceAt - active.sourceInSec)
     setPlayhead(at)
-    if (v.currentTime >= active.sourceOutSec - 0.02) {
+    if (sourceAt >= active.sourceOutSec - 0.02) {
       // Roll onto whatever comes next rather than stopping at a clip boundary.
       const next = clipAt(timeline, at + 0.05)
       if (next) setPlayhead(next.timelineStartSec + 0.01)
@@ -213,7 +243,7 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
         setPlaying(false)
       }
     }
-  }, [playing, active, timeline, proof])
+  }, [playing, active, timeline, proof, win])
 
   const render = useCallback(
     async (preview: boolean) => {
@@ -286,7 +316,7 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
           <div className="monitor-stage">
             <video
               ref={videoRef}
-              src={proof ?? undefined}
+              src={proof ?? win?.url ?? undefined}
               onTimeUpdate={onTimeUpdate}
               controls={!!proof}
             />
