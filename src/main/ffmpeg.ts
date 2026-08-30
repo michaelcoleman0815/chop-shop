@@ -5,6 +5,15 @@ import { app } from 'electron'
 import { buildReframeFilter } from './reframe'
 import { buildAss, DEFAULT_CAPTION_STYLE } from './captions'
 import { FONTS_DIR } from './resources'
+import {
+  buildKeepSegments,
+  keptDuration,
+  selectExpr,
+  tightenWords,
+  tightenZooms,
+  DEFAULT_TIGHTEN,
+  type TightenOptions
+} from './tighten'
 import ffmpegStatic from 'ffmpeg-static'
 import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import type { AspectPreset, CaptionStyle, TranscriptWord, ZoomKeyframe } from '../shared/types'
@@ -137,30 +146,62 @@ export async function exportClip(opts: {
   /** Words already rebased so the clip starts at zero. */
   captions?: { words: TranscriptWord[]; style?: CaptionStyle }
   zooms?: ZoomKeyframe[]
+  /**
+   * Word timings used for tightening. Kept separate from captions so pauses can
+   * be cut without also burning subtitles in.
+   */
+  words?: TranscriptWord[]
+  /** Cuts long pauses and filler words, re-timing captions and zooms to match. */
+  tighten?: TightenOptions | false
   onProgress: (percent: number) => void
 }): Promise<string> {
   const duration = Math.max(0.1, opts.endSec - opts.startSec)
   const out = outputSize(opts.aspect, opts.source)
 
+  // Cutting time shifts everything after it, so captions and zoom keyframes are
+  // remapped onto the compacted timeline before any of them are rendered.
+  let captionWords = opts.captions?.words
+  let zooms = opts.zooms
+  let audioFilter: string | null = null
+  let outDuration = duration
+  const preFilters: string[] = []
+
+  const timingWords = opts.words ?? opts.captions?.words
+  if (opts.tighten !== false && timingWords && timingWords.length > 0) {
+    const settings = opts.tighten ?? DEFAULT_TIGHTEN
+    const segments = buildKeepSegments(timingWords, duration, settings)
+    const kept = keptDuration(segments)
+    // Only worth the extra filtering when it actually removes something.
+    if (kept < duration - 0.25) {
+      const expr = selectExpr(segments)
+      preFilters.push(`select='${expr}'`, 'setpts=N/FRAME_RATE/TB')
+      audioFilter = `aselect='${expr}',asetpts=N/SR/TB`
+      if (captionWords) captionWords = tightenWords(captionWords, segments)
+      if (zooms) zooms = tightenZooms(zooms, segments)
+      outDuration = kept
+    }
+  }
+
   const filters = [
+    ...preFilters,
     buildReframeFilter({
       sourceWidth: opts.source.width,
       sourceHeight: opts.source.height,
       outWidth: out.w,
       outHeight: out.h,
       sourceFps: opts.source.fps,
-      zooms: opts.zooms
+      zooms
     })
   ]
 
   // The subtitle file lives for the length of the render only.
   let assDir: string | null = null
-  if (opts.captions && opts.captions.words.length > 0) {
+  if (opts.captions && captionWords && captionWords.length > 0) {
     assDir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-ass-'))
     const assPath = join(assDir, 'captions.ass')
     await fs.writeFile(
       assPath,
-      buildAss(opts.captions.words, out.w, out.h, opts.captions.style ?? DEFAULT_CAPTION_STYLE)
+      buildAss(captionWords, out.w, out.h, opts.captions.style ?? DEFAULT_CAPTION_STYLE)
     )
     // ffmpeg filter syntax treats these as separators, so they need escaping.
     const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
@@ -179,6 +220,7 @@ export async function exportClip(opts: {
         duration.toFixed(3),
         '-vf',
         filters.join(','),
+        ...(audioFilter ? ['-af', audioFilter] : []),
         '-c:v',
         'h264_videotoolbox',
         '-b:v',
@@ -193,7 +235,7 @@ export async function exportClip(opts: {
         '+faststart',
         opts.outputPath
       ],
-      duration,
+      outDuration,
       opts.onProgress
     )
     return opts.outputPath

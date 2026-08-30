@@ -20,7 +20,10 @@ export interface ClipRequest {
   outputDir: string
   /** Words for the whole source; the export rebases them to the clip. */
   captionWords?: TranscriptWord[]
+  /** Burn the words in as captions. Tightening uses them either way. */
+  captions?: boolean
   autoZoom?: boolean
+  tighten?: boolean
 }
 
 export interface ExportProgress {

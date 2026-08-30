@@ -67,7 +67,11 @@ function serveMedia(request: Request): Response {
       return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
     }
     const stream = createReadStream(path, { start, end })
-    stream.on('error', (err) => console.error('[media] read error', err.message, path))
+    stream.on('error', (err) => {
+      // Chromium aborts in-flight ranges whenever it seeks or swaps source,
+      // which is routine. Only genuine read failures are worth reporting.
+      if (!/abort/i.test(err.message)) console.error('[media] read error', err.message, path)
+    })
     return new Response(Readable.toWeb(stream) as ReadableStream, {
       status: 206,
       headers: {
@@ -230,8 +234,11 @@ function registerIpc(): void {
         outputPath,
         aspect: req.aspect,
         source: { width: meta.width, height: meta.height, fps: meta.fps },
-        captions: words.length > 0 ? { words } : undefined,
+        captions: req.captions && words.length > 0 ? { words } : undefined,
+        // Tightening needs the words even when captions are not being burned in.
+        words,
         zooms: req.autoZoom ? autoZooms(words, req.endSec - req.startSec) : undefined,
+        tighten: req.tighten === false ? false : undefined,
         onProgress: send
       })
       safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 100, stage: 'done', outputPath })

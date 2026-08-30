@@ -23,8 +23,11 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   const [analysis, setAnalysis] = useState<{ stage: string; percent: number } | null>(null)
   const [captions, setCaptions] = useState(true)
   const [autoZoom, setAutoZoom] = useState(true)
+  const [tighten, setTighten] = useState(true)
   // The player shows a window cut out of the source, not the source itself.
   const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
+  // Where to land once a newly fetched window has loaded, in absolute time.
+  const pendingSeek = useRef<number | null>(null)
 
   const openWindow = useCallback(
     async (path: string, atSec: number): Promise<number> => {
@@ -90,6 +93,7 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
 
       const inWindow = win && target >= win.start && target < win.start + win.length - 1
       if (!inWindow) {
+        pendingSeek.current = target
         const start = await openWindow(meta.path, target)
         setCurrent(Math.max(start, target))
         return
@@ -180,10 +184,24 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
       name: jobName,
       aspect,
       outputDir: settings.outputDir,
-      captionWords: captions ? words : undefined,
-      autoZoom
+      captionWords: words,
+      captions,
+      autoZoom,
+      tighten
     })
-  }, [meta, name, inSec, outSec, aspect, settings.outputDir, addJob, captions, words, autoZoom])
+  }, [
+    meta,
+    name,
+    inSec,
+    outSec,
+    aspect,
+    settings.outputDir,
+    addJob,
+    captions,
+    words,
+    autoZoom,
+    tighten
+  ])
 
   if (!meta) {
     return (
@@ -225,6 +243,13 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
           src={win?.url ?? undefined}
           controls={false}
           onTimeUpdate={(e) => setCurrent((win?.start ?? 0) + e.currentTarget.currentTime)}
+          onLoadedMetadata={(e) => {
+            const target = pendingSeek.current
+            pendingSeek.current = null
+            if (target !== null && win) {
+              e.currentTarget.currentTime = Math.max(0, target - win.start)
+            }
+          }}
           onClick={(e) =>
             e.currentTarget.paused ? void e.currentTarget.play() : e.currentTarget.pause()
           }
@@ -380,6 +405,19 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
               onChange={(e) => setAutoZoom(e.target.checked)}
             />
             Zooms
+          </label>
+          <label
+            className="row"
+            style={{ gap: 6 }}
+            title={words.length === 0 ? 'Analyse first' : 'Cut long pauses and filler words'}
+          >
+            <input
+              type="checkbox"
+              checked={tighten && words.length > 0}
+              disabled={words.length === 0}
+              onChange={(e) => setTighten(e.target.checked)}
+            />
+            Tighten
           </label>
           <button className="primary" disabled={duration < 0.2} onClick={exportClip}>
             Export clip
