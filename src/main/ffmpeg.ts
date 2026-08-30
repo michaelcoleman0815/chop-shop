@@ -116,17 +116,25 @@ export async function probe(path: string): Promise<ProbeResult> {
   }
 }
 
-function aspectFilter(aspect: AspectPreset): string[] {
-  switch (aspect) {
-    case 'vertical':
-      return ['-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920']
-    case 'square':
-      return ['-vf', 'scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080']
-    case 'wide':
-      return ['-vf', 'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080']
-    default:
-      return ['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2']
+/**
+ * cover scales up until the frame is filled and crops the excess; contain
+ * scales down until everything fits and pads the remainder. A 16:10 screen
+ * covered into 16:9 loses roughly 120 rows, top and bottom.
+ */
+function aspectFilter(aspect: AspectPreset, fit: 'cover' | 'contain' = 'cover'): string[] {
+  const size = { vertical: [1080, 1920], square: [1080, 1080], wide: [1920, 1080] }[
+    aspect as 'vertical' | 'square' | 'wide'
+  ]
+  if (!size) return ['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2']
+
+  const [w, h] = size
+  if (fit === 'contain') {
+    return [
+      '-vf',
+      `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black`
+    ]
   }
+  return ['-vf', `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`]
 }
 
 /**
@@ -364,6 +372,7 @@ export async function buildFromSegments(opts: {
   tailSec: number
   outputPath: string
   aspect: AspectPreset
+  fit?: 'cover' | 'contain'
   onProgress: (percent: number) => void
 }): Promise<string> {
   const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-'))
@@ -429,7 +438,7 @@ export async function buildFromSegments(opts: {
         joined,
         '-t',
         keep.toFixed(3),
-        ...aspectFilter(opts.aspect),
+        ...aspectFilter(opts.aspect, opts.fit),
         '-c:v',
         'libx264',
         '-preset',

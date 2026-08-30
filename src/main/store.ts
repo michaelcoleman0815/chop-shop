@@ -13,6 +13,7 @@ const defaults = (): Settings => ({
   captureAudio: false,
   defaultAspect: 'vertical',
   bufferAspect: 'wide',
+  bufferFit: 'contain',
   autoCheckUpdates: true,
   whisperModel: 'small.en',
   maxSuggestedClips: 8,

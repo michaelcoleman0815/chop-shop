@@ -57,6 +57,12 @@ export interface Settings {
   defaultAspect: AspectPreset
   /** Screen grabs are usually wanted at 16:9, not cropped to vertical. */
   bufferAspect: AspectPreset
+  /**
+   * cover crops to fill the frame, contain letterboxes to keep everything. A
+   * screen recording loses its edges under cover, which matters when the point
+   * is what was on screen.
+   */
+  bufferFit: 'cover' | 'contain'
   autoCheckUpdates: boolean
   whisperModel: 'base.en' | 'small.en' | 'medium.en'
   maxSuggestedClips: number

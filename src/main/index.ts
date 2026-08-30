@@ -335,6 +335,7 @@ function registerIpc(): void {
           tailSec: payload.tailSec,
           outputPath,
           aspect: payload.aspect,
+          fit: settings.bufferFit,
           onProgress: (percent) =>
             safeSend(e.sender, 'clip:progress', { jobId: payload.jobId, percent, stage: 'running' })
         })
