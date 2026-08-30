@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AspectPreset, Settings } from '../../../shared/types'
+import { CAPTION_PRESETS } from '../../../shared/caption-presets'
 
 interface Props {
   settings: Settings
@@ -17,10 +18,12 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   const [provider, setProvider] = useState('unknown')
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
   const [modelError, setModelError] = useState<string | null>(null)
+  const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
 
   useEffect(() => {
     window.chop.getVersion().then(setVersion)
     window.chop.hasApiKey().then(setKeySaved)
+    window.chop.listLuts().then(setLuts)
   }, [])
 
   // Ask the API which models this key can reach rather than hardcoding a list
@@ -205,6 +208,54 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
         <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
           Runs on this Mac. Audio never leaves the machine; only the text transcript is sent to
           Claude.
+        </p>
+      </div>
+
+      <div className="card">
+        <div className="label" style={{ marginBottom: 12 }}>
+          Look
+        </div>
+        <div className="row wrap" style={{ alignItems: 'flex-end', gap: 12 }}>
+          <label className="field">
+            <span className="label">Captions</span>
+            <select
+              value={settings.captionPreset}
+              onChange={(e) => patch({ captionPreset: e.target.value })}
+            >
+              {CAPTION_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field" style={{ flex: 1, minWidth: 240 }}>
+            <span className="label">Colour LUT</span>
+            <select
+              value={settings.lutPath ?? ''}
+              onChange={(e) => patch({ lutPath: e.target.value || null })}
+            >
+              <option value="">None</option>
+              {luts.map((l) => (
+                <option key={l.path} value={l.path}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            onClick={async () => {
+              const path = await window.chop.chooseLut()
+              if (path) await patch({ lutPath: path })
+            }}
+          >
+            Load .cube
+          </button>
+        </div>
+        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+          {luts.length > 0
+            ? `${luts.length} LUTs found, including the Lumetri library Premiere installs.`
+            : 'Load any .cube file. Premiere ships a Lumetri library if it is installed.'}
         </p>
       </div>
 

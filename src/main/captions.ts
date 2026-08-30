@@ -1,19 +1,8 @@
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { groupWords } from '../shared/words'
+import { CAPTION_PRESETS } from '../shared/caption-presets'
 
-export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
-  wordsPerGroup: 4,
-  fontFamily: 'Archivo Black',
-  fontSizePx: 84,
-  positionFrac: 0.72,
-  textColor: '#F2F1EE',
-  activeColor: '#FF6076',
-  outlineColor: '#16151A',
-  outlinePx: 8,
-  shadowPx: 0,
-  uppercase: true,
-  activeScale: 1.08
-}
+export const DEFAULT_CAPTION_STYLE: CaptionStyle = CAPTION_PRESETS[0].style
 
 /** ASS colours are &HBBGGRR, the reverse of CSS hex. */
 function assColor(hex: string): string {

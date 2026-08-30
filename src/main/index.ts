@@ -9,6 +9,7 @@ import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
+import { presetById } from '../shared/caption-presets'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips, listModels } from './clips'
 import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
@@ -224,6 +225,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('clip:export', async (e, req: ClipRequest & { jobId: string }) => {
+    const settings = getSettings()
     await fs.mkdir(req.outputDir, { recursive: true })
     const outputPath = uniquePath(req.outputDir, req.name)
     const send = (percent: number): void =>
@@ -260,6 +262,8 @@ function registerIpc(): void {
         aspect: req.aspect,
         source: { width: meta.width, height: meta.height, fps: meta.fps },
         captions: req.captions && words.length > 0 ? { words } : undefined,
+        captionStyle: presetById(settings.captionPreset).style,
+        lutPath: settings.lutPath,
         // Tightening needs the words even when captions are not being burned in.
         words,
         track,

@@ -15,7 +15,9 @@ const defaults = (): Settings => ({
   autoCheckUpdates: true,
   whisperModel: 'small.en',
   maxSuggestedClips: 8,
-  clipModel: 'claude-opus-5'
+  clipModel: 'claude-opus-5',
+  captionPreset: 'chop',
+  lutPath: null
 })
 
 let cache: Settings | null = null

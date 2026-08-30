@@ -160,6 +160,10 @@ export async function exportClip(opts: {
    * the timeline; otherwise they are derived from the word timings.
    */
   segments?: Segment[]
+  /** A .cube LUT applied to the picture, before captions are drawn over it. */
+  lutPath?: string | null
+  /** Caption look. Defaults to the first preset. */
+  captionStyle?: CaptionStyle
   /** Cuts long pauses and filler words, re-timing captions and zooms to match. */
   tighten?: TightenOptions | false
   onProgress: (percent: number) => void
@@ -215,6 +219,13 @@ export async function exportClip(opts: {
     })
   ]
 
+  if (opts.lutPath) {
+    // Grading belongs to the footage; captions are drawn afterwards so they
+    // keep their own colour.
+    const lut = opts.lutPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
+    filters.push(`lut3d=file='${lut}'`)
+  }
+
   // The subtitle file lives for the length of the render only.
   let assDir: string | null = null
   if (opts.captions && captionWords && captionWords.length > 0) {
@@ -222,7 +233,12 @@ export async function exportClip(opts: {
     const assPath = join(assDir, 'captions.ass')
     await fs.writeFile(
       assPath,
-      buildAss(captionWords, out.w, out.h, opts.captions.style ?? DEFAULT_CAPTION_STYLE)
+      buildAss(
+        captionWords,
+        out.w,
+        out.h,
+        opts.captionStyle ?? opts.captions.style ?? DEFAULT_CAPTION_STYLE
+      )
     )
     // ffmpeg filter syntax treats these as separators, so they need escaping.
     const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")

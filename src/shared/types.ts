@@ -57,6 +57,8 @@ export interface Settings {
   whisperModel: 'base.en' | 'small.en' | 'medium.en'
   maxSuggestedClips: number
   clipModel: string
+  captionPreset: string
+  lutPath: string | null
 }
 
 export type UpdateState =
