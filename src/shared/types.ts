@@ -54,6 +54,12 @@ export interface Settings {
   grabShortcut: string
   captureSourceId: string | null
   captureAudio: boolean
+  /**
+   * Which input to record. macOS never hands over a live system-audio track, so
+   * game or app sound has to arrive through a virtual device such as BlackHole
+   * selected here. null means the system default.
+   */
+  audioInputId: string | null
   defaultAspect: AspectPreset
   /** Screen grabs are usually wanted at 16:9, not cropped to vertical. */
   bufferAspect: AspectPreset

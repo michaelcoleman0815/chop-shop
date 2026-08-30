@@ -11,6 +11,7 @@ const defaults = (): Settings => ({
   grabShortcut: 'CommandOrControl+Shift+C',
   captureSourceId: null,
   captureAudio: false,
+  audioInputId: null,
   defaultAspect: 'vertical',
   bufferAspect: 'wide',
   bufferFit: 'contain',

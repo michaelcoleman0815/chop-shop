@@ -111,7 +111,12 @@ class RollingBuffer {
     }, SEGMENT_MS)
   }
 
-  async start(sourceId: string, keepSec: number, withAudio: boolean): Promise<void> {
+  async start(
+    sourceId: string,
+    keepSec: number,
+    withAudio: boolean,
+    audioDeviceId?: string | null
+  ): Promise<void> {
     await this.stop()
     this.keepSec = keepSec
     try {
@@ -136,9 +141,11 @@ class RollingBuffer {
         // macOS only offers loopback audio on recent releases; fall back to the
         // microphone rather than silently recording nothing.
         try {
-          const mic = await navigator.mediaDevices.getUserMedia({ audio: true })
+          const mic = await navigator.mediaDevices.getUserMedia({
+            audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true
+          })
           mic.getAudioTracks().forEach((t) => video.addTrack(t))
-          console.log('[buffer] using the microphone instead of system audio')
+          console.log('[buffer] audio from', mic.getAudioTracks()[0]?.label ?? 'unknown input')
         } catch {
           // A missing or refused microphone should not stop the video buffer.
           console.warn('[buffer] no audio available; recording video only')

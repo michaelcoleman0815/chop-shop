@@ -27,6 +27,8 @@ export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Elem
   const [state, setState] = useState<BufferState>(rollingBuffer.getState())
   const [permission, setPermission] = useState<string>('granted')
   const [loading, setLoading] = useState(false)
+  const [inputs, setInputs] = useState<MediaDeviceInfo[]>([])
+  const [needsMicPermission, setNeedsMicPermission] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -38,10 +40,22 @@ export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Elem
     }
   }, [])
 
+  const refreshInputs = useCallback(async () => {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const audio = devices.filter((d) => d.kind === 'audioinput')
+    setInputs(audio)
+    // Device labels stay blank until microphone access has been granted once.
+    setNeedsMicPermission(audio.length > 0 && audio.every((d) => !d.label))
+  }, [])
+
   useEffect(() => {
     void refresh()
-    return rollingBuffer.subscribe(setState)
-  }, [refresh])
+    void refreshInputs()
+    navigator.mediaDevices.addEventListener('devicechange', refreshInputs)
+    return () => navigator.mediaDevices.removeEventListener('devicechange', refreshInputs)
+  }, [refresh, refreshInputs])
+
+  useEffect(() => rollingBuffer.subscribe(setState), [])
 
   useEffect(() => {
     rollingBuffer.setKeepSec(settings.bufferSeconds)
@@ -53,9 +67,14 @@ export default function LiveBuffer({ settings, patch, addJob }: Props): JSX.Elem
     if (state.running) {
       await rollingBuffer.stop()
     } else if (selected) {
-      await rollingBuffer.start(selected, settings.bufferSeconds, settings.captureAudio)
+      await rollingBuffer.start(
+        selected,
+        settings.bufferSeconds,
+        settings.captureAudio,
+        settings.audioInputId
+      )
     }
-  }, [state.running, selected, settings.bufferSeconds, settings.captureAudio])
+  }, [state.running, selected, settings.bufferSeconds, settings.captureAudio, settings.audioInputId])
 
   return (
     <div>
