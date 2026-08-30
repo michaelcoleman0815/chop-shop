@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { AspectPreset, Settings } from '../../../shared/types'
 import { CAPTION_PRESETS } from '../../../shared/caption-presets'
 
@@ -7,33 +7,53 @@ interface Props {
   patch: (patch: Partial<Settings>) => Promise<void>
 }
 
+/** One setting: what it is on the left, the control on the right. */
+function Row({
+  name,
+  hint,
+  children
+}: {
+  name: string
+  hint?: string
+  children: ReactNode
+}): JSX.Element {
+  return (
+    <div className="setting">
+      <div className="setting-text">
+        <div className="setting-name">{name}</div>
+        {hint && <div className="setting-hint">{hint}</div>}
+      </div>
+      <div className="setting-control">{children}</div>
+    </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
+  return (
+    <section className="settings-section">
+      <div className="label settings-title">{title}</div>
+      <div className="settings-rows">{children}</div>
+    </section>
+  )
+}
+
 export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   const [shortcut, setShortcut] = useState(settings.grabShortcut)
-  const [version, setVersion] = useState('')
   const [keyInput, setKeyInput] = useState('')
   const [keySaved, setKeySaved] = useState(false)
-  const [modelReady, setModelReady] = useState(true)
-  const [modelMb, setModelMb] = useState(0)
-  const [downloading, setDownloading] = useState(0)
   const [provider, setProvider] = useState('unknown')
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
   const [modelError, setModelError] = useState<string | null>(null)
   const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
+  const [modelReady, setModelReady] = useState(true)
+  const [modelMb, setModelMb] = useState(0)
+  const [downloading, setDownloading] = useState(0)
 
   useEffect(() => {
-    window.chop.getVersion().then(setVersion)
     window.chop.hasApiKey().then(setKeySaved)
-    window.chop
-      .listLuts()
-      .then((list) => {
-        console.log('[lut] renderer received', list.length)
-        setLuts(list)
-      })
-      .catch((err) => console.error('[lut] listLuts failed:', err?.message ?? err))
+    window.chop.listLuts().then(setLuts)
   }, [])
 
-  // Ask the API which models this key can reach rather than hardcoding a list
-  // that goes stale.
   useEffect(() => {
     if (!keySaved) {
       setModels([])
@@ -45,9 +65,7 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
       if (res.ok) {
         setModels(res.models)
         setModelError(null)
-      } else {
-        setModelError(res.message)
-      }
+      } else setModelError(res.message)
     })
   }, [keySaved])
 
@@ -56,191 +74,81 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
     window.chop.modelSizeMb(settings.whisperModel).then(setModelMb)
   }, [settings.whisperModel])
 
-  useEffect(() => {
-    return window.chop.onAiProgress((p) => {
-      if (p.stage === 'Downloading model') setDownloading(p.percent)
-    })
-  }, [])
+  useEffect(
+    () =>
+      window.chop.onAiProgress((p) => {
+        if (p.stage.startsWith('Downloading')) setDownloading(p.percent)
+      }),
+    []
+  )
+
+  const aspectOptions = (
+    <>
+      <option value="vertical">9:16 vertical</option>
+      <option value="square">1:1 square</option>
+      <option value="wide">16:9 wide</option>
+      <option value="original">Original</option>
+    </>
+  )
 
   return (
-    <div>
-      <div className="card">
-        <div className="label" style={{ marginBottom: 12 }}>
-          Output
-        </div>
-        <div className="row">
-          <input
-            type="text"
-            className="mono"
-            value={settings.outputDir}
-            readOnly
-            style={{ flex: 1 }}
-          />
-          <button
-            onClick={async () => {
-              const dir = await window.chop.chooseOutputDir()
-              if (dir) await patch({ outputDir: dir })
-            }}
-          >
-            Change
-          </button>
-          <button className="ghost" onClick={() => window.chop.reveal(settings.outputDir)}>
-            Show
-          </button>
-        </div>
-        <label className="field" style={{ marginTop: 16, maxWidth: 220 }}>
-          <span className="label">Default aspect</span>
+    <div className="settings">
+      <Section title="Output">
+        <Row name="Save clips to">
+          <div className="row" style={{ gap: 6 }}>
+            <input
+              type="text"
+              className="mono"
+              value={settings.outputDir}
+              readOnly
+              style={{ width: 260 }}
+            />
+            <button
+              onClick={async () => {
+                const dir = await window.chop.chooseOutputDir()
+                if (dir) await patch({ outputDir: dir })
+              }}
+            >
+              Change
+            </button>
+          </div>
+        </Row>
+        <Row name="Default aspect" hint="Used for clips exported from Clip Studio.">
           <select
             value={settings.defaultAspect}
             onChange={(e) => patch({ defaultAspect: e.target.value as AspectPreset })}
           >
-            <option value="vertical">9:16 vertical</option>
-            <option value="square">1:1 square</option>
-            <option value="wide">16:9 wide</option>
-            <option value="original">Original</option>
+            {aspectOptions}
           </select>
-        </label>
-      </div>
+        </Row>
+      </Section>
 
-      <div className="card">
-        <div className="label" style={{ marginBottom: 12 }}>
-          Anthropic API key
-        </div>
-        {keySaved ? (
-          <div className="row">
-            <span className="mono muted" style={{ flex: 1 }}>
-              Stored in the system keychain
-            </span>
-            <button
-              onClick={async () => {
-                await window.chop.clearApiKey()
-                setKeySaved(false)
-              }}
-            >
-              Remove
-            </button>
-          </div>
-        ) : (
-          <div className="row">
-            <input
-              type="password"
-              className="mono"
-              placeholder="sk-ant-..."
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button
-              className="primary"
-              disabled={keyInput.trim().length < 10}
-              onClick={async () => {
-                await window.chop.setApiKey(keyInput)
-                setKeyInput('')
-                setKeySaved(await window.chop.hasApiKey())
-              }}
-            >
-              Save
-            </button>
-          </div>
-        )}
-        {keySaved && (
-          <div className="row" style={{ marginTop: 16 }}>
-            <span className="label">{provider}</span>
-            <div className="spacer" />
-            {provider === 'anthropic' ? (
-              <label className="field" style={{ minWidth: 260 }}>
-                <span className="label">Model</span>
-                <select
-                  value={settings.clipModel}
-                  onChange={(e) => patch({ clipModel: e.target.value })}
-                >
-                  {models.length === 0 && <option value={settings.clipModel}>{settings.clipModel}</option>}
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <span className="muted">Only Anthropic keys pick clips today</span>
-            )}
-          </div>
-        )}
-        {modelError && (
-          <p className="mono muted" style={{ marginTop: 12, marginBottom: 0 }}>
-            {modelError}
-          </p>
-        )}
-        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
-          Encrypted with your keychain and used only to pick clips. Roughly 10 to 15 cents per hour
-          of video. Get one at console.anthropic.com.
-        </p>
-      </div>
-
-      <div className="card">
-        <div className="label" style={{ marginBottom: 12 }}>
-          Transcription
-        </div>
-        <div className="row">
-          <label className="field">
-            <span className="label">Model</span>
-            <select
-              value={settings.whisperModel}
-              onChange={(e) =>
-                patch({ whisperModel: e.target.value as Settings['whisperModel'] })
-              }
-            >
-              <option value="base.en">base.en, fastest</option>
-              <option value="small.en">small.en, balanced</option>
-              <option value="medium.en">medium.en, most accurate</option>
-            </select>
-          </label>
-          <div className="spacer" />
-          {modelReady ? (
-            <span className="mono muted">Downloaded</span>
-          ) : downloading > 0 && downloading < 100 ? (
-            <span className="mono muted">{downloading}%</span>
-          ) : (
-            <button
-              onClick={async () => {
-                await window.chop.downloadModel(settings.whisperModel)
-                setModelReady(await window.chop.hasModel(settings.whisperModel))
-              }}
-            >
-              Download {modelMb} MB
-            </button>
-          )}
-        </div>
-        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
-          Runs on this Mac. Audio never leaves the machine; only the text transcript is sent to
-          Claude.
-        </p>
-      </div>
-
-      <div className="card">
-        <div className="label" style={{ marginBottom: 12 }}>
-          Look
-        </div>
-        <div className="row wrap" style={{ alignItems: 'flex-end', gap: 12 }}>
-          <label className="field">
-            <span className="label">Captions</span>
-            <select
-              value={settings.captionPreset}
-              onChange={(e) => patch({ captionPreset: e.target.value })}
-            >
-              {CAPTION_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field" style={{ flex: 1, minWidth: 240 }}>
-            <span className="label">Colour LUT</span>
+      <Section title="Look">
+        <Row name="Caption style">
+          <select
+            value={settings.captionPreset}
+            onChange={(e) => patch({ captionPreset: e.target.value })}
+          >
+            {CAPTION_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Row>
+        <Row
+          name="Colour LUT"
+          hint={
+            luts.length > 0
+              ? `${luts.length} found, including the Lumetri library Premiere installs.`
+              : 'Load any .cube file.'
+          }
+        >
+          <div className="row" style={{ gap: 6 }}>
             <select
               value={settings.lutPath ?? ''}
               onChange={(e) => patch({ lutPath: e.target.value || null })}
+              style={{ maxWidth: 240 }}
             >
               <option value="">None</option>
               {luts.map((l) => (
@@ -249,65 +157,159 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
                 </option>
               ))}
             </select>
-          </label>
-          <button
-            onClick={async () => {
-              const path = await window.chop.chooseLut()
-              if (path) await patch({ lutPath: path })
-            }}
+            <button
+              onClick={async () => {
+                const path = await window.chop.chooseLut()
+                if (path) await patch({ lutPath: path })
+              }}
+            >
+              Load
+            </button>
+          </div>
+        </Row>
+      </Section>
+
+      <Section title="Finding clips">
+        <Row
+          name="API key"
+          hint={
+            keySaved
+              ? `Stored in your keychain. Provider: ${provider}.`
+              : 'Encrypted with your keychain. Roughly 10 to 15 cents per hour of video.'
+          }
+        >
+          {keySaved ? (
+            <button
+              onClick={async () => {
+                await window.chop.clearApiKey()
+                setKeySaved(false)
+              }}
+            >
+              Remove
+            </button>
+          ) : (
+            <div className="row" style={{ gap: 6 }}>
+              <input
+                type="password"
+                className="mono"
+                placeholder="sk-ant-..."
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                style={{ width: 220 }}
+              />
+              <button
+                className="primary"
+                disabled={keyInput.trim().length < 10}
+                onClick={async () => {
+                  await window.chop.setApiKey(keyInput)
+                  setKeyInput('')
+                  setKeySaved(await window.chop.hasApiKey())
+                }}
+              >
+                Save
+              </button>
+            </div>
+          )}
+        </Row>
+        {keySaved && (
+          <Row name="Model" hint={modelError ?? undefined}>
+            <select
+              value={settings.clipModel}
+              onChange={(e) => patch({ clipModel: e.target.value })}
+              disabled={provider !== 'anthropic'}
+              style={{ maxWidth: 240 }}
+            >
+              {models.length === 0 && (
+                <option value={settings.clipModel}>{settings.clipModel}</option>
+              )}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </Row>
+        )}
+        <Row
+          name="Transcription model"
+          hint="Runs on this Mac. Audio never leaves the machine; only the text goes to Claude."
+        >
+          <div className="row" style={{ gap: 6 }}>
+            <select
+              value={settings.whisperModel}
+              onChange={(e) => patch({ whisperModel: e.target.value as Settings['whisperModel'] })}
+            >
+              <option value="base.en">base.en, fastest</option>
+              <option value="small.en">small.en, balanced</option>
+              <option value="medium.en">medium.en, most accurate</option>
+            </select>
+            {modelReady ? (
+              <span className="mono muted">Ready</span>
+            ) : downloading > 0 && downloading < 100 ? (
+              <span className="mono muted">{downloading}%</span>
+            ) : (
+              <button
+                onClick={async () => {
+                  await window.chop.downloadModel(settings.whisperModel)
+                  setModelReady(await window.chop.hasModel(settings.whisperModel))
+                }}
+              >
+                Get {modelMb} MB
+              </button>
+            )}
+          </div>
+        </Row>
+      </Section>
+
+      <Section title="Live Buffer">
+        <Row name="Grab hotkey" hint="Electron accelerator syntax, such as CommandOrControl+Shift+C.">
+          <div className="row" style={{ gap: 6 }}>
+            <input
+              type="text"
+              className="mono"
+              value={shortcut}
+              onChange={(e) => setShortcut(e.target.value)}
+              style={{ width: 220 }}
+            />
+            <button onClick={() => patch({ grabShortcut: shortcut })}>Save</button>
+          </div>
+        </Row>
+        <Row name="Grab aspect">
+          <select
+            value={settings.bufferAspect}
+            onChange={(e) => patch({ bufferAspect: e.target.value as AspectPreset })}
           >
-            Load .cube
-          </button>
-        </div>
-        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
-          {luts.length > 0
-            ? `${luts.length} LUTs found, including the Lumetri library Premiere installs.`
-            : 'Load any .cube file. Premiere ships a Lumetri library if it is installed.'}
-        </p>
-      </div>
+            {aspectOptions}
+          </select>
+        </Row>
+        <Row name="Framing" hint="Fit keeps the whole screen; fill crops to the frame.">
+          <select
+            value={settings.bufferFit}
+            onChange={(e) => patch({ bufferFit: e.target.value as Settings['bufferFit'] })}
+          >
+            <option value="contain">Fit</option>
+            <option value="cover">Fill</option>
+          </select>
+        </Row>
+      </Section>
 
-      <div className="card">
-        <div className="label" style={{ marginBottom: 12 }}>
-          Grab hotkey
-        </div>
-        <div className="row">
-          <input
-            type="text"
-            className="mono"
-            value={shortcut}
-            onChange={(e) => setShortcut(e.target.value)}
-            style={{ flex: 1 }}
-          />
-          <button onClick={() => patch({ grabShortcut: shortcut })}>Save</button>
-        </div>
-        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
-          Electron accelerator syntax, such as <kbd>CommandOrControl+Shift+C</kbd> or{' '}
-          <kbd>Alt+F9</kbd>. If another app already owns the combination, registration fails and the
-          previous hotkey stops working.
-        </p>
-      </div>
-
-      <div className="card">
-        <div className="label" style={{ marginBottom: 12 }}>
-          Updates
-        </div>
-        <label className="row" style={{ gap: 8 }}>
+      <Section title="Updates">
+        <Row name="Check automatically">
           <input
             type="checkbox"
             checked={settings.autoCheckUpdates}
             onChange={(e) => patch({ autoCheckUpdates: e.target.checked })}
           />
-          Check automatically
-        </label>
-        <div className="row" style={{ marginTop: 16 }}>
-          <button onClick={() => window.chop.checkForUpdates()}>Check now</button>
-          <button className="ghost" onClick={() => window.chop.openReleasesPage()}>
-            All releases
-          </button>
-          <div className="spacer" />
-          <span className="mono muted">{version}</span>
-        </div>
-      </div>
+        </Row>
+        <Row name="Updates">
+          <div className="row" style={{ gap: 6 }}>
+            <button onClick={() => window.chop.checkForUpdates()}>Check now</button>
+            <button className="ghost" onClick={() => window.chop.openReleasesPage()}>
+              Releases
+            </button>
+          </div>
+        </Row>
+      </Section>
     </div>
   )
 }

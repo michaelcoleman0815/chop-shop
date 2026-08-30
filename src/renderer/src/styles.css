@@ -180,7 +180,7 @@ button.primary {
   border-color: #ff8b9b;
   color: #1a0a0e;
   font-weight: 600;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 2px 10px rgba(255, 96, 118, 0.25);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 button.primary:hover:not(:disabled) {
   background: linear-gradient(180deg, #ff8496 0%, #ff6d82 100%);
@@ -403,7 +403,6 @@ video.player {
   bottom: 0;
   width: 2px;
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(255, 96, 118, 0.6);
 }
 
 .field {
@@ -457,7 +456,7 @@ video.player {
 }
 .dot.live {
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(255, 96, 118, 0.8);
+  box-shadow: 0 0 0 3px rgba(255, 96, 118, 0.18);
 }
 
 /* Exports ---------------------------------------------------------------- */
@@ -569,7 +568,6 @@ kbd {
   margin-left: -4.5px;
   border-radius: 2px;
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(255, 96, 118, 0.7);
   cursor: grab;
 }
 
@@ -961,7 +959,6 @@ kbd {
   bottom: 0;
   width: 2px;
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(255, 96, 118, 0.65);
   pointer-events: none;
   z-index: 4;
 }
@@ -974,4 +971,62 @@ kbd {
   height: 10px;
   background: var(--accent);
   clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* Settings --------------------------------------------------------------- */
+
+.settings {
+  max-width: 760px;
+}
+
+.settings-section {
+  margin-bottom: var(--s6sp);
+}
+
+.settings-title {
+  padding-bottom: var(--s2sp);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
+}
+
+.settings-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Name and explanation on the left, the control on the right, every time.
+   The old layout put labels above some fields and beside others, so nothing
+   lined up and the eye had nowhere to run. */
+.setting {
+  display: flex;
+  align-items: center;
+  gap: var(--s5sp);
+  padding: var(--s3sp) 0;
+  border-bottom: 1px solid var(--line);
+  min-height: 52px;
+}
+.setting:last-child {
+  border-bottom: none;
+}
+
+.setting-text {
+  flex: 1;
+  min-width: 0;
+}
+.setting-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+.setting-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin-top: 1px;
+}
+
+.setting-control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
