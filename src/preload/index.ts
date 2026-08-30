@@ -5,6 +5,9 @@ import type {
   CaptureSource,
   ClipRequest,
   ExportProgress,
+  Project,
+  ProjectMode,
+  ProjectSummary,
   Settings,
   SuggestedClip,
   TranscriptWord,
@@ -108,6 +111,14 @@ const api = {
 
   listLuts: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke('lut:list'),
   chooseLut: (): Promise<string | null> => ipcRenderer.invoke('lut:choose'),
+
+  recentProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('project:recent'),
+  createProject: (name: string, mode: ProjectMode): Promise<Project> =>
+    ipcRenderer.invoke('project:create', name, mode),
+  openProject: (path?: string): Promise<Project | null> =>
+    ipcRenderer.invoke('project:open', path),
+  saveProject: (project: Project): Promise<void> => ipcRenderer.invoke('project:save', project),
+  forgetProject: (path: string): Promise<void> => ipcRenderer.invoke('project:forget', path),
 
   reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
   openPath: (path: string): Promise<void> => ipcRenderer.invoke('shell:openPath', path),

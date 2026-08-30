@@ -7,6 +7,8 @@ import SettingsPanel from './components/SettingsPanel'
 import JobList, { type Job } from './components/JobList'
 import Mark from './components/Mark'
 import { performGrab } from './lib/grab'
+import Home from './components/Home'
+import type { Project } from '../../shared/types'
 
 type Tab = 'studio' | 'live' | 'settings'
 
@@ -15,6 +17,7 @@ export default function App(): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [version, setVersion] = useState('')
   const [jobs, setJobs] = useState<Job[]>([])
+  const [project, setProject] = useState<Project | null>(null)
 
   useEffect(() => {
     window.chop.getSettings().then(setSettings)
@@ -50,20 +53,45 @@ export default function App(): JSX.Element {
 
   if (!settings) return <div className="app" />
 
+  // Nothing is open, so the app is a launcher rather than a workspace.
+  if (!project) return <Home version={version} onOpen={setProject} />
+
+  const clipping = project.mode === 'clip'
+
   return (
     <div className="app">
       <div className="titlebar">
-        <div className="wordmark">
-          <Mark height={22} />
-          <span>Chop Shop</span>
+        <button
+          className="ghost"
+          title="Back to projects"
+          onClick={() => {
+            void window.chop.saveProject(project)
+            setProject(null)
+          }}
+          style={{ padding: '4px 10px' }}
+        >
+          Projects
+        </button>
+        <div className="wordmark" style={{ gap: 10 }}>
+          <Mark height={18} />
+          <span style={{ fontSize: 18 }}>{project.name}</span>
         </div>
         <nav className="tabs">
-          <button className={tab === 'studio' ? 'on' : ''} onClick={() => setTab('studio')}>
-            Clip Studio
-          </button>
-          <button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>
-            Live Buffer
-          </button>
+          {clipping && (
+            <button className={tab === 'studio' ? 'on' : ''} onClick={() => setTab('studio')}>
+              Clip Studio
+            </button>
+          )}
+          {clipping && (
+            <button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>
+              Live Buffer
+            </button>
+          )}
+          {!clipping && (
+            <button className={tab === 'studio' ? 'on' : ''} onClick={() => setTab('studio')}>
+              Edit
+            </button>
+          )}
           <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>
             Settings
           </button>
@@ -76,7 +104,9 @@ export default function App(): JSX.Element {
       <div className="body">
         <div className="pane">
           {tab === 'studio' && <ClipStudio settings={settings} addJob={addJob} />}
-          {tab === 'live' && <LiveBuffer settings={settings} patch={patchSettings} addJob={addJob} />}
+          {tab === 'live' && clipping && (
+            <LiveBuffer settings={settings} patch={patchSettings} addJob={addJob} />
+          )}
           {tab === 'settings' && <SettingsPanel settings={settings} patch={patchSettings} />}
         </div>
         <aside className="sidebar">

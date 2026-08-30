@@ -530,3 +530,102 @@ kbd {
   justify-content: center;
   overflow: hidden;
 }
+
+/* Home ------------------------------------------------------------------- */
+
+.home {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ground);
+}
+
+.home-head {
+  -webkit-app-region: drag;
+  height: 60px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--s5) 0 92px;
+  border-bottom: 1px solid var(--line);
+}
+
+.home-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--s7);
+  padding: var(--s7) var(--s7) var(--s5);
+  overflow-y: auto;
+}
+
+.home-actions {
+  width: 340px;
+  flex: 0 0 340px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.home-primary,
+.home-secondary {
+  width: 100%;
+  padding: var(--s3) var(--s4);
+  font-size: 15px;
+  text-align: left;
+}
+
+.mode-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.mode-choice .mode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  text-align: left;
+  padding: var(--s3);
+  background: var(--ground);
+  border: 1px solid var(--line);
+}
+.mode-choice .mode.on {
+  border-color: var(--accent);
+}
+.mode-choice .mode span {
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.home-recent {
+  flex: 1;
+  min-width: 0;
+}
+
+.recent-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.recent-table tr {
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.recent-table tr:hover {
+  background: var(--surface);
+}
+.recent-table td {
+  padding: var(--s3) var(--s2);
+  font-size: 14px;
+}
+.recent-name {
+  font-weight: 500;
+}
+.recent-media {
+  font-size: 12px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

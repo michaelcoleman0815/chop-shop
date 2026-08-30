@@ -159,3 +159,23 @@ export interface MusicTrack {
   /** Pull the music down automatically while anyone is speaking. */
   duck: boolean
 }
+
+export type ProjectMode = 'clip' | 'edit'
+
+export interface ProjectSummary {
+  id: string
+  name: string
+  mode: ProjectMode
+  path: string
+  createdAt: string
+  openedAt: string
+  /** First source added, used for the card thumbnail and subtitle. */
+  primaryMedia: string | null
+}
+
+export interface Project extends ProjectSummary {
+  media: string[]
+  /** Saved clips, so reopening a project restores the work rather than the file. */
+  clips: SuggestedClip[]
+  transcript: Transcript | null
+}

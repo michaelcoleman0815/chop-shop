@@ -23,7 +23,13 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   useEffect(() => {
     window.chop.getVersion().then(setVersion)
     window.chop.hasApiKey().then(setKeySaved)
-    window.chop.listLuts().then(setLuts)
+    window.chop
+      .listLuts()
+      .then((list) => {
+        console.log('[lut] renderer received', list.length)
+        setLuts(list)
+      })
+      .catch((err) => console.error('[lut] listLuts failed:', err?.message ?? err))
   }, [])
 
   // Ask the API which models this key can reach rather than hardcoding a list

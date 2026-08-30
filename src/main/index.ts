@@ -10,6 +10,14 @@ import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
 import { presetById } from '../shared/caption-presets'
+import {
+  recentProjects,
+  createProject,
+  openProject,
+  saveProject,
+  removeFromRecent,
+  projectsDir
+} from './projects'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips, listModels } from './clips'
 import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
@@ -20,6 +28,8 @@ import type {
   CaptureSource,
   ClipRequest,
   Settings,
+  Project,
+  ProjectMode,
   SuggestedClip,
   TranscriptWord,
   VideoMeta
@@ -539,6 +549,7 @@ function registerIpc(): void {
       }
     }
     for (const root of roots) await walk(root, 0)
+    console.log('[lut] found', found.length, 'luts across', roots.length, 'roots')
     return found.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 400)
   })
 
@@ -637,6 +648,32 @@ function registerIpc(): void {
       console.error('[preview] failed:', message)
       safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 0, stage: 'error', message })
       return { ok: false as const, message }
+    }
+  })
+
+  ipcMain.handle('project:recent', () => recentProjects())
+  ipcMain.handle('project:create', (_e, name: string, mode: ProjectMode) =>
+    createProject(name, mode)
+  )
+  ipcMain.handle('project:save', (_e, project: Project) => saveProject(project))
+  ipcMain.handle('project:forget', (_e, path: string) => removeFromRecent(path))
+
+  ipcMain.handle('project:open', async (_e, path?: string) => {
+    let target = path
+    if (!target) {
+      const res = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        defaultPath: projectsDir(),
+        filters: [{ name: 'Chop Shop project', extensions: ['chopshop'] }]
+      })
+      if (res.canceled || !res.filePaths[0]) return null
+      target = res.filePaths[0]
+    }
+    try {
+      return await openProject(target)
+    } catch (err) {
+      console.error('[project] open failed:', err instanceof Error ? err.message : err)
+      return null
     }
   })
 
