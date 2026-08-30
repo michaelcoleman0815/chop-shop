@@ -408,12 +408,25 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                     const pv = previews[c.mediaPath]
                     // The filmstrip covers the whole source, so it is scaled to
                     // the full duration and shifted by the clip's in point.
+                    // Mapping the strip one to one with time means a background
+                    // as wide as the whole source, which for a two hour file at
+                    // any useful zoom is hundreds of thousands of pixels and
+                    // simply fails to paint. Past the cap the strip is squeezed
+                    // to the clip instead: no longer frame-accurate, but still
+                    // showing what is in the shot.
+                    const fullWidth = pv ? pv.durationSec * pxPerSec : 0
+                    const capped = fullWidth > 16000
                     const stripStyle = pv
-                      ? {
-                          backgroundImage: `url("${pv.filmstripUrl}")`,
-                          backgroundSize: `${pv.durationSec * pxPerSec}px 100%`,
-                          backgroundPositionX: `${-c.sourceInSec * pxPerSec}px`
-                        }
+                      ? capped
+                        ? {
+                            backgroundImage: `url("${pv.filmstripUrl}")`,
+                            backgroundSize: '100% 100%'
+                          }
+                        : {
+                            backgroundImage: `url("${pv.filmstripUrl}")`,
+                            backgroundSize: `${fullWidth}px 100%`,
+                            backgroundPositionX: `${-c.sourceInSec * pxPerSec}px`
+                          }
                       : undefined
                     return (
                       <div
@@ -445,11 +458,18 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                           {pv?.waveformUrl && (
                             <div
                               className="tl-wave"
-                              style={{
-                                backgroundImage: `url("${pv.waveformUrl}")`,
-                                backgroundSize: `${pv.durationSec * pxPerSec}px 100%`,
-                                backgroundPositionX: `${-c.sourceInSec * pxPerSec}px`
-                              }}
+                              style={
+                                capped
+                                  ? {
+                                      backgroundImage: `url("${pv.waveformUrl}")`,
+                                      backgroundSize: '100% 100%'
+                                    }
+                                  : {
+                                      backgroundImage: `url("${pv.waveformUrl}")`,
+                                      backgroundSize: `${fullWidth}px 100%`,
+                                      backgroundPositionX: `${-c.sourceInSec * pxPerSec}px`
+                                    }
+                              }
                             />
                           )}
                           <span className="tl-name">{c.mediaPath.split('/').pop()}</span>
