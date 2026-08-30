@@ -184,14 +184,20 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
       activeRef.current = null
       return
     }
-    const wantSrc = `media://local/${encodeURIComponent(active.mediaPath)}`
-    if (activeRef.current !== active.id) {
+
+    const switching = activeRef.current !== active.id
+    if (switching) {
       activeRef.current = active.id
-      v.src = wantSrc
+      v.src = `media://local/${encodeURIComponent(active.mediaPath)}`
     }
+
+    // While playing, the element owns the clock: the playhead follows it.
+    // Seeking here too made the two fight, and playback stalled.
+    if (playing && !switching) return
+
     const into = active.sourceInSec + (playhead - active.timelineStartSec)
-    if (Math.abs(v.currentTime - into) > 0.35) v.currentTime = into
-  }, [active, playhead, proof])
+    if (Math.abs(v.currentTime - into) > 0.2) v.currentTime = into
+  }, [active, playhead, proof, playing])
 
   const onTimeUpdate = useCallback(() => {
     const v = videoRef.current
@@ -201,7 +207,8 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
     if (v.currentTime >= active.sourceOutSec - 0.02) {
       // Roll onto whatever comes next rather than stopping at a clip boundary.
       const next = clipAt(timeline, at + 0.05)
-      if (!next) {
+      if (next) setPlayhead(next.timelineStartSec + 0.01)
+      else {
         v.pause()
         setPlaying(false)
       }
@@ -293,8 +300,11 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                   v.pause()
                   setPlaying(false)
                 } else {
-                  void v.play()
                   setPlaying(true)
+                  v.play().catch((err) => {
+                    console.error('[monitor] play failed:', err?.message ?? err)
+                    setPlaying(false)
+                  })
                 }
               }}
               disabled={!active && !proof}

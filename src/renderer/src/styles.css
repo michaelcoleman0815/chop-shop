@@ -1450,3 +1450,17 @@ kbd {
 .scrub {
   touch-action: none;
 }
+
+/* Dragging in a timeline was selecting the ruler's own timecode text, which is
+   what made a scrub end with half the panel highlighted. Nothing in the
+   timeline is prose, so none of it should be selectable. */
+.lanes,
+.ruler,
+.track-headers,
+.tl-clip,
+.editor-track,
+.scrub,
+.timeline {
+  user-select: none;
+  -webkit-user-select: none;
+}
