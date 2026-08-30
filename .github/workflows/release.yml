@@ -44,6 +44,11 @@ jobs:
 
       - name: Build and publish
         id: build
+        # Notarization waits on Apple with no timeout of its own, so a stalled
+        # submission would hold the runner for six hours and then fail with
+        # nothing useful in the log. Apple normally answers within fifteen
+        # minutes; three times that is a stall worth failing on.
+        timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Set these two repo secrets once you have an Apple Developer ID and
