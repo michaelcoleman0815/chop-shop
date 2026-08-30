@@ -65,9 +65,12 @@ const api = {
     ipcRenderer.invoke('stt:downloadModel', model),
 
   analyze: (
-    videoPath: string
+    videoPath: string,
+    force?: boolean
   ): Promise<{ ok: true; result: AnalysisResult } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('ai:analyze', videoPath),
+    ipcRenderer.invoke('ai:analyze', videoPath, force),
+  cachedAnalysis: (videoPath: string): Promise<AnalysisResult | null> =>
+    ipcRenderer.invoke('ai:cached', videoPath),
 
   onAiProgress: (
     cb: (p: { stage: string; percent: number; message?: string }) => void

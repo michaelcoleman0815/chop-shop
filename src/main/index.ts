@@ -14,6 +14,8 @@ import {
 import { autoZooms } from './autozoom'
 import { buildTimelineRender } from './timeline'
 import { readEpr } from './epr'
+import { readAnalysis, writeAnalysis } from './analysis-cache'
+import { sweepTemp } from './temp-sweep'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { mediaPreview } from './media-preview'
 import { detectFaces, buildTrack } from './track'
@@ -404,9 +406,21 @@ function registerIpc(): void {
 
   // One call does the whole analysis: audio out, words back, then Claude picks
   // the moments. Progress is reported across both halves as a single bar.
-  ipcMain.handle('ai:analyze', async (e, videoPath: string) => {
+  ipcMain.handle('ai:cached', (_e, videoPath: string) => readAnalysis(videoPath))
+
+  ipcMain.handle('ai:analyze', async (e, videoPath: string, force?: boolean) => {
     const settings = getSettings()
     try {
+      // Never spend minutes and an API call twice on an unchanged file.
+      if (!force) {
+        const cached = await readAnalysis(videoPath)
+        if (cached) {
+          console.log('[ai] cache hit,', cached.transcript.words.length, 'words')
+          safeSend(e.sender, 'ai:progress', { stage: 'Done', percent: 100 })
+          return { ok: true as const, result: cached }
+        }
+      }
+
       const meta = await probe(videoPath)
 
       // Progress is one bar over three stages, so each stage gets a slice of it
@@ -445,8 +459,10 @@ function registerIpc(): void {
         settings.clipModel
       )
       console.log('[ai] Claude returned', clips.length, 'clips')
+      const result = { transcript, clips }
+      await writeAnalysis(videoPath, result)
       safeSend(e.sender, 'ai:progress', { stage: 'Done', percent: 100 })
-      return { ok: true as const, result: { transcript, clips } }
+      return { ok: true as const, result }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error('[ai] analyze failed:', message)
@@ -831,6 +847,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
+  void sweepTemp()
     electronApp.setAppUserModelId('social.brewed.chopshop')
     protocol.handle('media', serveMedia)
 

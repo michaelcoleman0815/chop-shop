@@ -99,6 +99,15 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       setProof(null)
       setStrip(null)
       void openWindow(v.path, 0)
+      // If this file has been analysed before, its results come straight back.
+      window.chop
+        .cachedAnalysis(v.path)
+        .then((cached) => {
+          if (!cached) return
+          setWords(cached.transcript.words)
+          setSuggestions(cached.clips)
+        })
+        .catch(() => undefined)
       // The scrubber for a two hour recording is otherwise a blank bar. A
       // filmstrip across it makes the whole source legible at a glance.
       window.chop
@@ -203,7 +212,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     if (!meta) return
     setError(null)
     setAnalysis({ stage: 'Starting', percent: 0 })
-    const res = await window.chop.analyze(meta.path)
+    const res = await window.chop.analyze(meta.path, suggestions.length > 0)
     setAnalysis(null)
     if (!res.ok) return setError(res.message)
     setWords(res.result.transcript.words)
@@ -217,7 +226,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     }
     onProject(saved)
     void window.chop.saveProject(saved)
-  }, [meta, project, onProject])
+  }, [meta, project, onProject, suggestions.length])
 
   // Reopening a project brings back its analysis rather than asking for it
   // again: it costs minutes of transcription and a paid call to redo.
