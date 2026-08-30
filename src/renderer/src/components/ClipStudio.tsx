@@ -471,43 +471,19 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
       </div>
 
       <div className="card">
-        <div className="label" style={{ marginBottom: 12 }}>
-          Clip
+        <div className="row" style={{ marginBottom: 16 }}>
+          <div className="label">Clip</div>
+          <div className="spacer" />
+          <span className="mono muted">
+            {timecode(inSec)} &rarr; {timecode(outSec)}
+          </span>
+          <span className="mono" style={{ marginLeft: 8 }}>
+            {timecode(duration)}
+          </span>
         </div>
-        <div className="row wrap" style={{ alignItems: 'flex-end', gap: 12 }}>
-          <label className="field">
-            <span className="label">In</span>
-            <input
-              type="text"
-              className="mono"
-              style={{ width: 104 }}
-              value={timecode(inSec)}
-              readOnly
-              onClick={() => void seek(inSec)}
-            />
-          </label>
-          <label className="field">
-            <span className="label">Out</span>
-            <input
-              type="text"
-              className="mono"
-              style={{ width: 104 }}
-              value={timecode(outSec)}
-              readOnly
-              onClick={() => void seek(outSec)}
-            />
-          </label>
-          <label className="field">
-            <span className="label">Length</span>
-            <input
-              type="text"
-              className="mono"
-              style={{ width: 104 }}
-              value={timecode(duration)}
-              readOnly
-            />
-          </label>
-          <label className="field" style={{ flex: 1, minWidth: 180 }}>
+
+        <div className="row" style={{ gap: 12, alignItems: 'flex-end' }}>
+          <label className="field" style={{ flex: 1, minWidth: 200 }}>
             <span className="label">Name</span>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
@@ -520,58 +496,63 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
               <option value="original">Original</option>
             </select>
           </label>
-          <label className="row" style={{ gap: 6 }} title={words.length === 0 ? 'Analyse first' : ''}>
-            <input
-              type="checkbox"
-              checked={captions && words.length > 0}
-              disabled={words.length === 0}
-              onChange={(e) => setCaptions(e.target.checked)}
-            />
-            Captions
-          </label>
-          <label className="row" style={{ gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={autoZoom}
-              onChange={(e) => setAutoZoom(e.target.checked)}
-            />
-            Zooms
-          </label>
-          <label
-            className="row"
-            style={{ gap: 6 }}
-            title={words.length === 0 ? 'Analyse first' : 'Cut long pauses and filler words'}
-          >
-            <input
-              type="checkbox"
-              checked={tighten && words.length > 0}
-              disabled={words.length === 0}
-              onChange={(e) => setTighten(e.target.checked)}
-            />
-            Tighten
-          </label>
-          <label className="row" style={{ gap: 6 }} title="Keep the speaker in frame">
-            <input
-              type="checkbox"
-              checked={trackSubject}
-              onChange={(e) => setTrackSubject(e.target.checked)}
-            />
-            Track
-          </label>
+        </div>
+
+        <div className="label" style={{ marginTop: 20, marginBottom: 8 }}>
+          Treatments
+        </div>
+        <div className="chips">
           <button
-            className={editorOpen ? 'on' : ''}
+            className={`chip ${captions && words.length > 0 ? 'on' : ''}`}
             disabled={words.length === 0}
-            title={words.length === 0 ? 'Analyse first' : 'Adjust cuts, zooms and captions'}
+            title={words.length === 0 ? 'Analyse the video first' : 'Burn word-level captions in'}
+            onClick={() => setCaptions((v) => !v)}
+          >
+            Captions
+          </button>
+          <button
+            className={`chip ${autoZoom ? 'on' : ''}`}
+            title="Punch in on emphasis"
+            onClick={() => setAutoZoom((v) => !v)}
+          >
+            Zooms
+          </button>
+          <button
+            className={`chip ${tighten && words.length > 0 ? 'on' : ''}`}
+            disabled={words.length === 0}
+            title={words.length === 0 ? 'Analyse the video first' : 'Cut pauses and filler words'}
+            onClick={() => setTighten((v) => !v)}
+          >
+            Tighten
+          </button>
+          <button
+            className={`chip ${trackSubject ? 'on' : ''}`}
+            title="Keep the speaker in frame"
+            onClick={() => setTrackSubject((v) => !v)}
+          >
+            Track subject
+          </button>
+        </div>
+
+        <div className="card-actions">
+          {words.length === 0 && (
+            <span className="muted needs-analysis">
+              Captions, tightening and the editor need a transcript. Run Analyse first.
+            </span>
+          )}
+          <button
+            disabled={words.length === 0}
+            title={words.length === 0 ? 'Analyse the video first' : 'Adjust cuts, zooms and captions'}
             onClick={() => setEditorOpen((v) => !v)}
           >
             {editorOpen ? 'Close editor' : 'Edit'}
           </button>
+          <div className="spacer" />
           <button
             disabled={duration < 0.2 || rendering || words.length === 0}
             onClick={previewEdit}
-            title="Render the edit at half size to check it"
           >
-            {rendering ? 'Rendering' : 'Preview edit'}
+            {rendering ? 'Rendering' : 'Preview'}
           </button>
           <button className="primary" disabled={duration < 0.2} onClick={exportClip}>
             Export clip

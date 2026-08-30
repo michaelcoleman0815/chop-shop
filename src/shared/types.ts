@@ -199,3 +199,17 @@ export interface Timeline {
   height: number
   fps: number
 }
+
+export interface MediaPreviews {
+  /** Frames sampled across the file and tiled into one horizontal image. */
+  filmstripUrl: string
+  posterUrl: string
+  /** Null when the file has no audio stream to draw. */
+  waveformUrl: string | null
+  durationSec: number
+  /** Source dimensions, not the size of any of the images above. */
+  width: number
+  height: number
+  /** Tiles in the filmstrip, so a pixel offset can be turned back into a time. */
+  frames: number
+}

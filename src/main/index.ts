@@ -14,6 +14,7 @@ import {
 import { autoZooms } from './autozoom'
 import { buildTimelineRender } from './timeline'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
+import { mediaPreview } from './media-preview'
 import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
@@ -35,6 +36,7 @@ import type {
   AspectPreset,
   CaptureSource,
   ClipRequest,
+  MediaPreviews,
   Settings,
   Project,
   ProjectMode,
@@ -663,6 +665,19 @@ function registerIpc(): void {
   ipcMain.handle('timeline:probe', async (_e, path: string) => {
     const meta = await probe(path)
     return { path, ...meta }
+  })
+
+  ipcMain.handle('media:previews', async (_e, path: string): Promise<MediaPreviews> => {
+    const preview = await mediaPreview(path)
+    return {
+      filmstripUrl: mediaUrlFor(preview.filmstripPath),
+      posterUrl: mediaUrlFor(preview.posterPath),
+      waveformUrl: preview.waveformPath ? mediaUrlFor(preview.waveformPath) : null,
+      durationSec: preview.durationSec,
+      width: preview.width,
+      height: preview.height,
+      frames: preview.frames
+    }
   })
 
   /** Renders a timeline to a file, at half size when it is only a preview. */

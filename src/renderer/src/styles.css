@@ -1030,3 +1030,66 @@ kbd {
   align-items: center;
   justify-content: flex-end;
 }
+
+/* Toggle chips ----------------------------------------------------------- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Treatments are on/off states, not form fields. Checkboxes made four of them
+   read as a list of unrelated questions; chips read as a set you pick from. */
+.chip {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+  background: var(--s0);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  box-shadow: none;
+}
+.chip:hover:not(:disabled) {
+  border-color: var(--line-2);
+  color: var(--text);
+  background: var(--s2);
+}
+.chip.on {
+  background: linear-gradient(180deg, var(--s4) 0%, var(--s3) 100%);
+  border-color: var(--grey-700);
+  color: var(--text);
+  box-shadow: var(--shadow-control);
+}
+.chip.on::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 7px;
+  vertical-align: middle;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2sp);
+  margin-top: var(--s5sp);
+  padding-top: var(--s4sp);
+  border-top: 1px solid var(--line);
+}
+
+/* A disabled control with no explanation reads as a broken one. */
+.needs-analysis {
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 320px;
+  margin-right: auto;
+}
+
+.chip:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
