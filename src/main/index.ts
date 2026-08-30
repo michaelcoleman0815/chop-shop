@@ -4,6 +4,9 @@ import { createReadStream, existsSync, statSync, promises as fs } from 'fs'
 import { Readable } from 'stream'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { probe, exportClip, buildFromSegments, FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
+import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
+import { suggestClips } from './clips'
+import { hasApiKey, setApiKey, clearApiKey } from './apikey'
 import { getSettings, saveSettings } from './store'
 import { initUpdater, checkForUpdates, downloadUpdate, installUpdate, openReleasesPage, getUpdateState } from './updater'
 import type { AspectPreset, CaptureSource, ClipRequest, Settings, VideoMeta } from '../shared/types'
@@ -258,6 +261,39 @@ function registerIpc(): void {
       }
     }
   )
+
+  ipcMain.handle('ai:hasKey', () => hasApiKey())
+  ipcMain.handle('ai:setKey', (_e, key: string) => setApiKey(key))
+  ipcMain.handle('ai:clearKey', () => clearApiKey())
+
+  ipcMain.handle('stt:hasModel', (_e, model: WhisperModel) => hasModel(model))
+  ipcMain.handle('stt:modelSize', (_e, model: WhisperModel) => modelSizeMb(model))
+  ipcMain.handle('stt:downloadModel', async (e, model: WhisperModel) => {
+    await downloadModel(model, (percent) =>
+      e.sender.send('ai:progress', { stage: 'Downloading model', percent })
+    )
+    return true
+  })
+
+  // One call does the whole analysis: audio out, words back, then Claude picks
+  // the moments. Progress is reported across both halves as a single bar.
+  ipcMain.handle('ai:analyze', async (e, videoPath: string) => {
+    const settings = getSettings()
+    try {
+      const meta = await probe(videoPath)
+      const transcript = await transcribe(videoPath, settings.whisperModel, (percent, stage) =>
+        e.sender.send('ai:progress', { stage, percent: Math.round(percent * 0.8) })
+      )
+      e.sender.send('ai:progress', { stage: 'Finding clips', percent: 85 })
+      const clips = await suggestClips(transcript, meta.durationSec, settings.maxSuggestedClips)
+      e.sender.send('ai:progress', { stage: 'Done', percent: 100 })
+      return { ok: true as const, result: { transcript, clips } }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      e.sender.send('ai:progress', { stage: 'Failed', percent: 0, message })
+      return { ok: false as const, message }
+    }
+  })
 
   ipcMain.handle('shell:reveal', (_e, path: string) => shell.showItemInFolder(path))
   ipcMain.handle('shell:openPath', (_e, path: string) => shell.openPath(path))

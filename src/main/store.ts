@@ -12,7 +12,9 @@ const defaults = (): Settings => ({
   captureSourceId: null,
   captureAudio: false,
   defaultAspect: 'vertical',
-  autoCheckUpdates: true
+  autoCheckUpdates: true,
+  whisperModel: 'small.en',
+  maxSuggestedClips: 8
 })
 
 let cache: Settings | null = null

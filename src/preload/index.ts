@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
+  AnalysisResult,
   AspectPreset,
   CaptureSource,
   ClipRequest,
@@ -40,6 +41,29 @@ const api = {
     name: string
   }): Promise<{ ok: true; outputPath: string } | { ok: false; message: string }> =>
     ipcRenderer.invoke('buffer:grab', payload),
+
+  hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('ai:hasKey'),
+  setApiKey: (key: string): Promise<void> => ipcRenderer.invoke('ai:setKey', key),
+  clearApiKey: (): Promise<void> => ipcRenderer.invoke('ai:clearKey'),
+
+  hasModel: (model: string): Promise<boolean> => ipcRenderer.invoke('stt:hasModel', model),
+  modelSizeMb: (model: string): Promise<number> => ipcRenderer.invoke('stt:modelSize', model),
+  downloadModel: (model: string): Promise<boolean> =>
+    ipcRenderer.invoke('stt:downloadModel', model),
+
+  analyze: (
+    videoPath: string
+  ): Promise<{ ok: true; result: AnalysisResult } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('ai:analyze', videoPath),
+
+  onAiProgress: (
+    cb: (p: { stage: string; percent: number; message?: string }) => void
+  ): (() => void) => {
+    const handler = (_e: unknown, p: { stage: string; percent: number; message?: string }): void =>
+      cb(p)
+    ipcRenderer.on('ai:progress', handler)
+    return () => ipcRenderer.removeListener('ai:progress', handler)
+  },
 
   reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
   openPath: (path: string): Promise<void> => ipcRenderer.invoke('shell:openPath', path),

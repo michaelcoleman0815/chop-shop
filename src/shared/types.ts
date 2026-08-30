@@ -43,6 +43,8 @@ export interface Settings {
   captureAudio: boolean
   defaultAspect: AspectPreset
   autoCheckUpdates: boolean
+  whisperModel: 'base.en' | 'small.en' | 'medium.en'
+  maxSuggestedClips: number
 }
 
 export type UpdateState =
@@ -90,4 +92,18 @@ export interface ZoomKeyframe {
   /** Focus point in source coordinates, 0 to 1. */
   cx: number
   cy: number
+}
+
+export interface AnalysisResult {
+  transcript: Transcript
+  clips: SuggestedClip[]
+}
+
+export interface SuggestedClip {
+  startSec: number
+  endSec: number
+  title: string
+  hook: string
+  reason: string
+  score: number
 }
