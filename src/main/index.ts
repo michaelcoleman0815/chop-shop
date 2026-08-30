@@ -7,12 +7,22 @@ import { probe, exportClip, buildFromSegments, FFMPEG_PATH, FFPROBE_PATH } from 
 import { autoZooms } from './autozoom'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { detectFaces, buildTrack } from './track'
+import { buildProject, buildSrt, type PremiereClip } from './premiere'
+import { buildKeepSegments } from './tighten'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips, listModels } from './clips'
 import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
 import { getSettings, saveSettings } from './store'
 import { initUpdater, checkForUpdates, downloadUpdate, installUpdate, openReleasesPage, getUpdateState } from './updater'
-import type { AspectPreset, CaptureSource, ClipRequest, Settings, VideoMeta } from '../shared/types'
+import type {
+  AspectPreset,
+  CaptureSource,
+  ClipRequest,
+  Settings,
+  SuggestedClip,
+  TranscriptWord,
+  VideoMeta
+} from '../shared/types'
 
 const SIX_HOURS = 6 * 60 * 60 * 1000
 
@@ -402,6 +412,71 @@ function registerIpc(): void {
     async (_e, sourcePath: string, startSec: number) => {
       const { path, startSec: actual } = await previewRange(sourcePath, startSec)
       return { mediaUrl: mediaUrlFor(path), startSec: actual, windowSec: PREVIEW_WINDOW_SEC }
+    }
+  )
+
+  /**
+   * Writes a Premiere project beside the exports: one sequence per suggested
+   * clip with the tightening cuts as real edits, a master sequence carrying a
+   * marker per suggestion, and captions as an SRT sidecar. Everything points at
+   * the original recording rather than a re-encode.
+   */
+  ipcMain.handle(
+    'premiere:export',
+    async (
+      _e,
+      req: {
+        sourcePath: string
+        clips: SuggestedClip[]
+        words: TranscriptWord[]
+        tighten: boolean
+      }
+    ) => {
+      try {
+        const settings = getSettings()
+        const meta = await probe(req.sourcePath)
+        const source = {
+          path: req.sourcePath,
+          width: meta.width,
+          height: meta.height,
+          fps: meta.fps,
+          durationSec: meta.durationSec
+        }
+
+        const clips: PremiereClip[] = req.clips.map((c) => {
+          const within = req.words
+            .filter((w) => w.endSec > c.startSec && w.startSec < c.endSec)
+            .map((w) => ({
+              text: w.text,
+              startSec: w.startSec - c.startSec,
+              endSec: w.endSec - c.startSec
+            }))
+          return {
+            title: c.title,
+            startSec: c.startSec,
+            endSec: c.endSec,
+            segments:
+              req.tighten && within.length > 0
+                ? buildKeepSegments(within, c.endSec - c.startSec)
+                : undefined
+          }
+        })
+
+        await fs.mkdir(settings.outputDir, { recursive: true })
+        const base = basename(req.sourcePath).replace(/\.[^.]+$/, '')
+        const xmlPath = join(settings.outputDir, `${base}-chopshop.xml`)
+        const srtPath = join(settings.outputDir, `${base}-chopshop.srt`)
+
+        await fs.writeFile(xmlPath, buildProject(clips, req.clips, source))
+        if (req.words.length > 0) await fs.writeFile(srtPath, buildSrt(req.words))
+
+        console.log('[premiere] wrote', xmlPath)
+        return { ok: true as const, xmlPath, srtPath: req.words.length > 0 ? srtPath : null }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[premiere] export failed:', message)
+        return { ok: false as const, message }
+      }
     }
   )
 

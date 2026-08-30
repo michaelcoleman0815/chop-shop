@@ -336,6 +336,28 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
             ))}
           </div>
         )}
+        {suggestions.length > 0 && (
+          <div className="row" style={{ marginTop: 16 }}>
+            <span className="muted" style={{ flex: 1 }}>
+              Send every suggestion to Premiere as editable cuts on your original file.
+            </span>
+            <button
+              onClick={async () => {
+                if (!meta) return
+                const res = await window.chop.exportPremiere({
+                  sourcePath: meta.path,
+                  clips: suggestions,
+                  words,
+                  tighten
+                })
+                if (res.ok) window.chop.reveal(res.xmlPath)
+                else setError(res.message)
+              }}
+            >
+              Export for Premiere
+            </button>
+          </div>
+        )}
         {words.length > 0 && suggestions.length === 0 && !analysis && (
           <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
             Nothing in this one stands alone as a clip.

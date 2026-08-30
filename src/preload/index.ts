@@ -6,6 +6,8 @@ import type {
   ClipRequest,
   ExportProgress,
   Settings,
+  SuggestedClip,
+  TranscriptWord,
   UpdateState,
   VideoMeta
 } from '../shared/types'
@@ -75,6 +77,15 @@ const api = {
     startSec: number
   ): Promise<{ mediaUrl: string; startSec: number; windowSec: number }> =>
     ipcRenderer.invoke('preview:range', sourcePath, startSec),
+
+  exportPremiere: (req: {
+    sourcePath: string
+    clips: SuggestedClip[]
+    words: TranscriptWord[]
+    tighten: boolean
+  }): Promise<
+    { ok: true; xmlPath: string; srtPath: string | null } | { ok: false; message: string }
+  > => ipcRenderer.invoke('premiere:export', req),
 
   reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
   openPath: (path: string): Promise<void> => ipcRenderer.invoke('shell:openPath', path),
