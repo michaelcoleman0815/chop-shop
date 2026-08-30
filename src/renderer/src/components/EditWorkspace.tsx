@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Project, Timeline, TimelineClip } from '../../../shared/types'
-import { clipAt, timelineDuration } from '../../../shared/timeline'
+import { clipAt, timelineDuration, mediaKind } from '../../../shared/timeline'
 import type { Job } from './JobList'
 import { timecode } from '../lib/format'
 
@@ -262,7 +262,10 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
           <div className="panel-head">
             <span className="label">{proof ? 'Rendered preview' : 'Program'}</span>
             <div className="spacer" />
-            <span className="mono muted">{timecode(playhead)}</span>
+            <span className="timecode">
+              <b>{timecode(playhead)}</b>
+              <span className="timecode-total"> / {timecode(duration)}</span>
+            </span>
           </div>
           <div className="monitor-stage">
             <video
@@ -415,7 +418,7 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                     return (
                       <div
                         key={c.id}
-                        className={`tl-clip ${selected === c.id ? 'on' : ''}`}
+                        className={`tl-clip kind-${mediaKind(c.mediaPath)} ${selected === c.id ? 'on' : ''}`}
                         style={{
                           left: c.timelineStartSec * pxPerSec,
                           width: Math.max(8, length * pxPerSec)

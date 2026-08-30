@@ -17,3 +17,17 @@ export function clipAt(timeline: Timeline, atSec: number): TimelineClip | null {
   if (covering.length === 0) return null
   return covering.reduce((top, c) => (c.track > top.track ? c : top))
 }
+
+export type MediaKind = 'video' | 'audio' | 'image'
+
+/**
+ * Clip colour follows the source media, not the track it sits on, which is how
+ * Premiere does it: the linked audio of a video clip stays the video's colour,
+ * so a glance down a track tells you what the material is.
+ */
+export function mediaKind(path: string): MediaKind {
+  const ext = path.toLowerCase().split('.').pop() ?? ''
+  if (['mp3', 'm4a', 'aac', 'wav', 'aiff', 'flac', 'ogg'].includes(ext)) return 'audio'
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'].includes(ext)) return 'image'
+  return 'video'
+}

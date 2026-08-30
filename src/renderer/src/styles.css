@@ -1170,64 +1170,96 @@ kbd {
   margin-top: 6px;
 }
 
-/* A suggestion is a thing to choose, so it gets a card of its own rather than
-   a row of text: title and score first, evidence underneath. */
+/* A suggestion is a result, so the frame does the selling. Opus Clip drops the
+   card entirely: no background, no border, no shadow, just a thumbnail with the
+   score as the only saturated thing on it. Row gap runs wide against a narrow
+   column gap so results read as rows rather than a mosaic. */
+
+.suggestion-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  row-gap: var(--s5sp);
+}
+
 .suggestion {
   display: block;
   width: 100%;
   text-align: left;
-  padding: var(--s3sp);
-  margin-bottom: var(--s2sp);
-  background: var(--s2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  padding: 0;
+  background: transparent;
+  border: none;
   box-shadow: none;
-}
-.suggestion:hover:not(:disabled) {
-  border-color: var(--line-2);
-  background: var(--s3);
-}
-.suggestion.on {
-  border-color: var(--accent);
-  background: linear-gradient(180deg, rgba(255, 96, 118, 0.08), var(--s2));
+  border-radius: 0;
 }
 
-.suggestion-top {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s2sp);
+.suggestion-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-md);
+  background-color: #000;
+  background-repeat: no-repeat;
+  border: 1px solid var(--line);
+  overflow: hidden;
 }
-.suggestion-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.3;
+.suggestion:hover .suggestion-thumb {
+  border-color: var(--line-2);
 }
-.score {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--s0);
-  border: 1px solid var(--line-2);
-  color: var(--muted);
-}
-.suggestion.on .score {
-  color: var(--accent);
+.suggestion.on .suggestion-thumb {
   border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
-.suggestion-meta {
+
+.suggestion-time {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: var(--r-md);
+  background: rgba(13, 12, 16, 0.85);
   font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-top: 3px;
+  font-weight: 600;
+  color: var(--paper);
 }
+.suggestion-time em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+/* The score is the only saturated colour on the card, and the only large type.
+   It does not shift hue with the value: a relative ranking dressed as a traffic
+   light would imply a precision it does not have. */
+.suggestion-score {
+  margin-top: 9px;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.suggestion-title {
+  margin-top: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--paper);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .suggestion-reason {
+  margin-top: 4px;
   font-size: 12px;
   line-height: 1.45;
   color: var(--muted);
-  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* The scrubber belongs against the picture, not in a card below it. */
@@ -1380,4 +1412,41 @@ kbd {
 }
 .lane.hidden .tl-clip {
   opacity: 0.35;
+}
+
+/* Clip colour by source media -------------------------------------------- */
+
+.tl-clip.kind-video {
+  background: linear-gradient(180deg, #2f3a4c 0%, #232b39 100%);
+  border-color: #46556d;
+}
+.tl-clip.kind-audio {
+  background: linear-gradient(180deg, #23402f 0%, #1b3125 100%);
+  border-color: #35b07a;
+}
+.tl-clip.kind-image {
+  background: linear-gradient(180deg, #3a3350 0%, #2b263c 100%);
+  border-color: #a98ce0;
+}
+
+/* Timecode ---------------------------------------------------------------
+   The number read most often was the smallest text on screen. Current time is
+   now the loudest thing in the bar, with the total dimmed beside it, which is
+   the two-tone trick Opus Clip uses. The accent stays reserved for the primary
+   action, per the brand's own rule. */
+
+.timecode {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.timecode b {
+  font-weight: 500;
+  font-size: 17px;
+  color: var(--paper);
+}
+.timecode-total {
+  font-size: 13px;
 }

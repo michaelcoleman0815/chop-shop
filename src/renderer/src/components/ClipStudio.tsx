@@ -57,9 +57,11 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
   const [proof, setProof] = useState<string | null>(null)
   const [rendering, setRendering] = useState(false)
   const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
-  const [strip, setStrip] = useState<{ filmstripUrl: string; waveformUrl: string | null } | null>(
-    null
-  )
+  const [strip, setStrip] = useState<{
+    filmstripUrl: string
+    waveformUrl: string | null
+    frames: number
+  } | null>(null)
 
   const analysed = words.length > 0
 
@@ -96,7 +98,13 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
       // filmstrip across it makes the whole source legible at a glance.
       window.chop
         .mediaPreviews(v.path)
-        .then((p) => setStrip({ filmstripUrl: p.filmstripUrl, waveformUrl: p.waveformUrl }))
+        .then((p) =>
+          setStrip({
+            filmstripUrl: p.filmstripUrl,
+            waveformUrl: p.waveformUrl,
+            frames: p.frames
+          })
+        )
         .catch(() => undefined)
     },
     [openWindow]
@@ -329,22 +337,44 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
                 Analyse to find the moments worth clipping, or set in and out points by hand.
               </p>
             )}
-            {suggestions.map((c, i) => (
-              <button
-                key={i}
-                className={`suggestion ${chosen === i ? 'on' : ''}`}
-                onClick={() => pick(c, i)}
-              >
-                <div className="suggestion-top">
-                  <span className="suggestion-title">{c.title}</span>
-                  <span className="score">{c.score}</span>
-                </div>
-                <div className="suggestion-meta mono">
-                  {timecode(c.startSec)} · {Math.round(c.endSec - c.startSec)}s
-                </div>
-                <div className="suggestion-reason">{c.reason}</div>
-              </button>
-            ))}
+            <div className="suggestion-grid">
+              {suggestions.map((c, i) => {
+                // The filmstrip already holds a frame for every part of the
+                // source, so a thumbnail is a window onto it rather than
+                // another render.
+                const frame =
+                  strip && meta.durationSec > 0
+                    ? Math.min(
+                        strip.frames - 1,
+                        Math.floor((c.startSec / meta.durationSec) * strip.frames)
+                      )
+                    : 0
+                const thumb = strip
+                  ? {
+                      backgroundImage: `url("${strip.filmstripUrl}")`,
+                      backgroundSize: `${strip.frames * 100}% 100%`,
+                      backgroundPositionX: `${(frame / Math.max(1, strip.frames - 1)) * 100}%`
+                    }
+                  : undefined
+                return (
+                  <button
+                    key={i}
+                    className={`suggestion ${chosen === i ? 'on' : ''}`}
+                    onClick={() => pick(c, i)}
+                  >
+                    <div className="suggestion-thumb" style={thumb}>
+                      <span className="suggestion-time mono">
+                        {timecode(c.startSec)}
+                        <em>{Math.round(c.endSec - c.startSec)}s</em>
+                      </span>
+                    </div>
+                    <div className="suggestion-score">{c.score}</div>
+                    <div className="suggestion-title">{c.title}</div>
+                    <div className="suggestion-reason">{c.reason}</div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           <div className="panel-foot">
@@ -418,7 +448,10 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
             <button onClick={() => setInSec(current)}>Set in</button>
             <button onClick={() => setOutSec(current)}>Set out</button>
             <div className="spacer" />
-            <span className="mono">{timecode(current)}</span>
+            <span className="timecode">
+              <b>{timecode(current)}</b>
+              <span className="timecode-total"> / {timecode(meta.durationSec)}</span>
+            </span>
           </div>
         </section>
       </div>
