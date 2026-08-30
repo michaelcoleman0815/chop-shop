@@ -105,7 +105,13 @@ export default function App(): JSX.Element {
       {tab === 'studio' ? (
         <div className="body">
           {clipping ? (
-            <ClipStudio settings={settings} patch={patchSettings} addJob={addJob} />
+            <ClipStudio
+              settings={settings}
+              patch={patchSettings}
+              addJob={addJob}
+              project={project}
+              onProject={setProject}
+            />
           ) : (
             <EditWorkspace project={project} onProject={setProject} addJob={addJob} />
           )}

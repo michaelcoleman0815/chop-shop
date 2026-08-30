@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AspectPreset,
+  Project,
   Settings,
   SuggestedClip,
   TranscriptWord,
@@ -17,6 +18,8 @@ interface Props {
   settings: Settings
   patch: (patch: Partial<Settings>) => Promise<void>
   addJob: (job: Job) => void
+  project: Project
+  onProject: (p: Project) => void
 }
 
 /** The editor works in clip time; exports address the source. */
@@ -28,7 +31,7 @@ function rebaseToSource(words: TranscriptWord[], offsetSec: number): TranscriptW
   }))
 }
 
-export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Element {
+export default function ClipStudio({ settings, patch, addJob, project, onProject }: Props): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
   const pendingSeek = useRef<number | null>(null)
 
@@ -114,11 +117,17 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
 
   const open = useCallback(async () => {
     try {
-      load(await window.chop.openVideo())
+      const v = await window.chop.openVideo()
+      load(v)
+      if (v && !project.media.includes(v.path)) {
+        const saved = { ...project, media: [...project.media, v.path] }
+        onProject(saved)
+        void window.chop.saveProject(saved)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
-  }, [load])
+  }, [load, project, onProject])
 
   const seek = useCallback(
     async (t: number) => {
@@ -199,7 +208,34 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
     if (!res.ok) return setError(res.message)
     setWords(res.result.transcript.words)
     setSuggestions(res.result.clips)
-  }, [meta])
+
+    const saved = {
+      ...project,
+      media: project.media.includes(meta.path) ? project.media : [...project.media, meta.path],
+      transcript: res.result.transcript,
+      clips: res.result.clips
+    }
+    onProject(saved)
+    void window.chop.saveProject(saved)
+  }, [meta, project, onProject])
+
+  // Reopening a project brings back its analysis rather than asking for it
+  // again: it costs minutes of transcription and a paid call to redo.
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current || meta) return
+    const path = project.media[0]
+    if (!path) return
+    restored.current = true
+    window.chop
+      .describeVideo(path)
+      .then((v) => {
+        load(v)
+        if (project.transcript) setWords(project.transcript.words)
+        if (project.clips.length > 0) setSuggestions(project.clips)
+      })
+      .catch(() => undefined)
+  }, [project, meta, load])
 
   const pick = useCallback(
     (clip: SuggestedClip, index: number) => {
@@ -458,9 +494,29 @@ export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Elem
 
           <div className="panel-foot">
             <button
-              onClick={() =>
-                videoRef.current?.paused ? void videoRef.current.play() : videoRef.current?.pause()
-              }
+              onClick={() => {
+                const v = videoRef.current
+                if (!v) return
+                if (!v.paused) {
+                  v.pause()
+                  return
+                }
+                // Play the range that was picked, and stop where it ends, so a
+                // suggestion can be judged without watching past it.
+                void (async () => {
+                  if (current < inSec - 0.1 || current > outSec) await seek(inSec)
+                  const el = videoRef.current
+                  if (!el) return
+                  const stop = (): void => {
+                    if ((win?.start ?? 0) + el.currentTime >= outSec) {
+                      el.pause()
+                      el.removeEventListener('timeupdate', stop)
+                    }
+                  }
+                  el.addEventListener('timeupdate', stop)
+                  void el.play().catch(() => undefined)
+                })()
+              }}
             >
               Play
             </button>
