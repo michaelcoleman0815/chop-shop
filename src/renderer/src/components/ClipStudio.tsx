@@ -509,6 +509,7 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
             <select value={aspect} onChange={(e) => setAspect(e.target.value as AspectPreset)}>
               <option value="vertical">9:16 vertical</option>
               <option value="square">1:1 square</option>
+              <option value="wide">16:9 wide</option>
               <option value="original">Original</option>
             </select>
           </label>

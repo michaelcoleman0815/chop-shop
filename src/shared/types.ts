@@ -1,4 +1,4 @@
-export type AspectPreset = 'original' | 'vertical' | 'square'
+export type AspectPreset = 'original' | 'vertical' | 'square' | 'wide'
 
 export interface VideoMeta {
   path: string
@@ -55,6 +55,8 @@ export interface Settings {
   captureSourceId: string | null
   captureAudio: boolean
   defaultAspect: AspectPreset
+  /** Screen grabs are usually wanted at 16:9, not cropped to vertical. */
+  bufferAspect: AspectPreset
   autoCheckUpdates: boolean
   whisperModel: 'base.en' | 'small.en' | 'medium.en'
   maxSuggestedClips: number

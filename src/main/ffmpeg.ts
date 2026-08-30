@@ -53,6 +53,7 @@ function scaleStyle(style: CaptionStyle, scale: number): CaptionStyle {
 export function outputSize(aspect: AspectPreset, source: SourceInfo): { w: number; h: number } {
   if (aspect === 'vertical') return { w: 1080, h: 1920 }
   if (aspect === 'square') return { w: 1080, h: 1080 }
+  if (aspect === 'wide') return { w: 1920, h: 1080 }
   return { w: source.width - (source.width % 2), h: source.height - (source.height % 2) }
 }
 
@@ -121,6 +122,8 @@ function aspectFilter(aspect: AspectPreset): string[] {
       return ['-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920']
     case 'square':
       return ['-vf', 'scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080']
+    case 'wide':
+      return ['-vf', 'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080']
     default:
       return ['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2']
   }
@@ -365,6 +368,10 @@ export async function buildFromSegments(opts: {
 }): Promise<string> {
   const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-'))
   try {
+    console.log(
+      '[grab] segment sizes:',
+      opts.segments.map((b) => `${Math.round(b.byteLength / 1024)}KB`).join(' ')
+    )
     const files: string[] = []
     for (let i = 0; i < opts.segments.length; i++) {
       const f = join(dir, `seg-${String(i).padStart(4, '0')}.webm`)
@@ -388,6 +395,24 @@ export async function buildFromSegments(opts: {
       'copy',
       joined
     ])
+
+    // Which side loses the audio is worth knowing precisely: if the joined file
+    // has no audio track then MediaRecorder never wrote one, and no amount of
+    // encoder flags downstream will conjure it.
+    try {
+      const { stdout } = await run(FFPROBE_PATH, [
+        '-v',
+        'error',
+        '-show_entries',
+        'stream=codec_type,codec_name',
+        '-of',
+        'csv=p=0',
+        joined
+      ])
+      console.log('[grab] joined streams:', stdout.trim().split('\n').join(' | '))
+    } catch {
+      console.warn('[grab] could not probe the joined buffer')
+    }
 
     const { durationSec } = await probe(joined)
     const start = Math.max(0, durationSec - opts.tailSec)

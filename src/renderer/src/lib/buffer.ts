@@ -73,12 +73,27 @@ class RollingBuffer {
       mimeType: this.mimeType(),
       videoBitsPerSecond: 8_000_000
     })
+    if (this.segments.length === 0) {
+      const audio = this.stream.getAudioTracks()[0]
+      console.log(
+        '[buffer] recorder',
+        JSON.stringify({
+          mime: rec.mimeType,
+          audioTrack: audio
+            ? { label: audio.label, enabled: audio.enabled, muted: audio.muted, state: audio.readyState }
+            : null
+        })
+      )
+    }
     this.recorder = rec
 
     rec.ondataavailable = (e): void => {
       if (e.data && e.data.size > 0) {
         this.segments.push(e.data)
         this.trim()
+        console.log('[buffer] segment', this.segments.length, `${Math.round(e.data.size / 1024)}KB`)
+      } else {
+        console.warn('[buffer] empty segment')
       }
       if (this.flush) {
         const done = this.flush
@@ -107,22 +122,44 @@ class RollingBuffer {
         audio: withAudio
       })
 
+      // macOS can hand back a "System audio" track that has already ended.
+      // MediaRecorder then writes no audio at all, and the failure is invisible
+      // until someone plays the file back.
+      for (const track of video.getAudioTracks()) {
+        if (track.readyState === 'ended') {
+          console.warn('[buffer] system audio track arrived ended; dropping it')
+          video.removeTrack(track)
+        }
+      }
+
       if (withAudio && video.getAudioTracks().length === 0) {
         // macOS only offers loopback audio on recent releases; fall back to the
         // microphone rather than silently recording nothing.
         try {
           const mic = await navigator.mediaDevices.getUserMedia({ audio: true })
           mic.getAudioTracks().forEach((t) => video.addTrack(t))
+          console.log('[buffer] using the microphone instead of system audio')
         } catch {
           // A missing or refused microphone should not stop the video buffer.
+          console.warn('[buffer] no audio available; recording video only')
         }
       }
 
       this.stream = video
       this.segments = []
+      const track = video.getVideoTracks()[0]
+      console.log(
+        '[buffer] started',
+        JSON.stringify({
+          mime: this.mimeType(),
+          video: track?.getSettings?.() ?? null,
+          audioTracks: video.getAudioTracks().length
+        })
+      )
       this.set({ running: true, sourceId, error: null, bufferedSec: 0 })
       this.rotate()
     } catch (err) {
+      console.error('[buffer] start failed:', err instanceof Error ? err.message : err)
       this.set({
         running: false,
         error: err instanceof Error ? err.message : String(err)
@@ -160,7 +197,14 @@ class RollingBuffer {
         setTimeout(resolve, 2000)
       })
       const snapshot = [...this.segments]
-      return await Promise.all(snapshot.map((b) => b.arrayBuffer()))
+      const buffers = await Promise.all(snapshot.map((b) => b.arrayBuffer()))
+      console.log(
+        '[buffer] grab',
+        buffers.length,
+        'segments',
+        `${Math.round(buffers.reduce((n, b) => n + b.byteLength, 0) / 1048576)}MB`
+      )
+      return buffers
     } finally {
       this.set({ grabbing: false })
     }

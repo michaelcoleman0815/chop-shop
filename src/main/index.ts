@@ -323,6 +323,12 @@ function registerIpc(): void {
       const settings = getSettings()
       await fs.mkdir(settings.outputDir, { recursive: true })
       const outputPath = uniquePath(settings.outputDir, payload.name)
+      console.log(
+        '[grab] received',
+        payload.segments.length,
+        'segments, tail',
+        payload.tailSec + 's'
+      )
       try {
         await buildFromSegments({
           segments: payload.segments,
@@ -332,6 +338,7 @@ function registerIpc(): void {
           onProgress: (percent) =>
             safeSend(e.sender, 'clip:progress', { jobId: payload.jobId, percent, stage: 'running' })
         })
+        console.log('[grab] wrote', outputPath)
         safeSend(e.sender, 'clip:progress', {
           jobId: payload.jobId,
           percent: 100,
@@ -341,6 +348,7 @@ function registerIpc(): void {
         return { ok: true as const, outputPath }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
+        console.error('[grab] failed:', message)
         safeSend(e.sender, 'clip:progress', { jobId: payload.jobId, percent: 0, stage: 'error', message })
         return { ok: false as const, message }
       }
