@@ -813,6 +813,16 @@ kbd {
   margin-bottom: var(--s2sp);
   background: var(--s2);
 }
+.bin-poster {
+  aspect-ratio: 16 / 9;
+  background-size: cover;
+  background-position: center;
+  background-color: #000;
+  border-radius: var(--r-sm);
+  margin-bottom: var(--s2sp);
+  border: 1px solid var(--line);
+}
+
 .bin-name {
   font-size: 12px;
   font-weight: 500;
@@ -883,7 +893,7 @@ kbd {
 
 .lane {
   position: relative;
-  height: 66px;
+  height: 84px;
   border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent);
 }
@@ -908,7 +918,7 @@ kbd {
 .tl-clip {
   position: absolute;
   top: 22px;
-  height: 40px;
+  height: 58px;
   background: linear-gradient(180deg, #2f3a4c 0%, #232b39 100%);
   border: 1px solid #46556d;
   border-radius: var(--r-sm);
@@ -932,17 +942,46 @@ kbd {
   border-color: var(--paper);
   box-shadow: 0 0 0 1px rgba(242, 241, 238, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5);
 }
-.tl-name {
+.tl-body {
+  position: relative;
   flex: 1;
   min-width: 0;
-  padding: 0 8px;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.tl-strip {
+  position: absolute;
+  inset: 0 0 40% 0;
+  background-repeat: no-repeat;
+  opacity: 0.85;
+}
+
+/* The waveform sits along the foot of the clip, as it does in every editor,
+   so picture and sound can be read at a glance without competing. */
+.tl-wave {
+  position: absolute;
+  inset: 60% 0 0 0;
+  background-repeat: no-repeat;
+  opacity: 0.55;
+  border-top: 1px solid rgba(0, 0, 0, 0.4);
+  background-color: rgba(0, 0, 0, 0.25);
+}
+
+.tl-name {
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  right: 6px;
   font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.02em;
+  font-size: 9px;
+  letter-spacing: 0.04em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #cfd8e6;
+  color: #e6ecf5;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
 }
 .tl-handle {
   width: 8px;

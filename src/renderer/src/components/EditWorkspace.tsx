@@ -18,6 +18,14 @@ interface MediaInfo {
   fps: number
 }
 
+interface Previews {
+  filmstripUrl: string
+  posterUrl: string
+  waveformUrl: string | null
+  durationSec: number
+  frames: number
+}
+
 type Drag =
   | { kind: 'move'; id: string; grabOffsetSec: number }
   | { kind: 'trim'; id: string; side: 'in' | 'out' }
@@ -38,6 +46,9 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
   const [zoom, setZoom] = useState(1)
   const [playing, setPlaying] = useState(false)
   const [proof, setProof] = useState<string | null>(null)
+  // Filmstrips and waveforms are generated once per file and cached on disk, so
+  // this map only ever holds URLs.
+  const [previews, setPreviews] = useState<Record<string, Previews>>({})
 
   const duration = Math.max(10, timelineDuration(timeline))
   const pxPerSec = PX_PER_SEC_BASE * zoom
@@ -63,6 +74,18 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
       cancelled = true
     }
   }, [project.media])
+
+  // Ask for previews of anything on the timeline or in the bin that lacks them.
+  useEffect(() => {
+    const wanted = new Set([...project.media, ...timeline.clips.map((c) => c.mediaPath)])
+    for (const path of wanted) {
+      if (previews[path]) continue
+      window.chop
+        .mediaPreviews(path)
+        .then((p) => setPreviews((prev) => ({ ...prev, [path]: p })))
+        .catch(() => undefined)
+    }
+  }, [project.media, timeline.clips, previews])
 
   const importMedia = useCallback(async () => {
     const chosen = await window.chop.chooseMedia()
@@ -194,6 +217,12 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
             {media.length === 0 && <p className="muted">Import media to begin.</p>}
             {media.map((m) => (
               <div key={m.path} className="bin-item">
+                {previews[m.path] && (
+                  <div
+                    className="bin-poster"
+                    style={{ backgroundImage: `url("${previews[m.path].posterUrl}")` }}
+                  />
+                )}
                 <div className="bin-name">{m.path.split('/').pop()}</div>
                 <div className="mono muted" style={{ fontSize: 11 }}>
                   {m.width}×{m.height} · {timecode(m.durationSec)}
@@ -314,6 +343,16 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                   .filter((c) => c.track === track)
                   .map((c) => {
                     const length = c.sourceOutSec - c.sourceInSec
+                    const pv = previews[c.mediaPath]
+                    // The filmstrip covers the whole source, so it is scaled to
+                    // the full duration and shifted by the clip's in point.
+                    const stripStyle = pv
+                      ? {
+                          backgroundImage: `url("${pv.filmstripUrl}")`,
+                          backgroundSize: `${pv.durationSec * pxPerSec}px 100%`,
+                          backgroundPositionX: `${-c.sourceInSec * pxPerSec}px`
+                        }
+                      : undefined
                     return (
                       <div
                         key={c.id}
@@ -339,7 +378,20 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                             setDrag({ kind: 'trim', id: c.id, side: 'in' })
                           }}
                         />
-                        <span className="tl-name">{c.mediaPath.split('/').pop()}</span>
+                        <div className="tl-body">
+                          <div className="tl-strip" style={stripStyle} />
+                          {pv?.waveformUrl && (
+                            <div
+                              className="tl-wave"
+                              style={{
+                                backgroundImage: `url("${pv.waveformUrl}")`,
+                                backgroundSize: `${pv.durationSec * pxPerSec}px 100%`,
+                                backgroundPositionX: `${-c.sourceInSec * pxPerSec}px`
+                              }}
+                            />
+                          )}
+                          <span className="tl-name">{c.mediaPath.split('/').pop()}</span>
+                        </div>
                         <span
                           className="tl-handle right"
                           onPointerDown={(e) => {
