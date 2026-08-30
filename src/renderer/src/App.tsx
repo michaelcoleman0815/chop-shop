@@ -107,7 +107,7 @@ export default function App(): JSX.Element {
       ) : (
       <div className="body">
         <div className="pane">
-          {tab === 'studio' && clipping && <ClipStudio settings={settings} addJob={addJob} />}
+          {tab === 'studio' && clipping && <ClipStudio settings={settings} patch={patchSettings} addJob={addJob} />}
           {tab === 'live' && clipping && (
             <LiveBuffer settings={settings} patch={patchSettings} addJob={addJob} />
           )}

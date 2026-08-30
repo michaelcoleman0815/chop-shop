@@ -10,6 +10,7 @@ import type {
   ZoomKeyframe
 } from '../../../shared/types'
 import ClipEditor, { type Segment } from './ClipEditor'
+import { CAPTION_PRESETS } from '../../../shared/caption-presets'
 
 /** The editor works in clip time; exports address the source. */
 function rebaseToSource(words: TranscriptWord[], offsetSec: number): TranscriptWord[] {
@@ -24,10 +25,11 @@ import { bytes, slug, stamp, timecode } from '../lib/format'
 
 interface Props {
   settings: Settings
+  patch: (patch: Partial<Settings>) => Promise<void>
   addJob: (job: Job) => void
 }
 
-export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
+export default function ClipStudio({ settings, patch, addJob }: Props): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [meta, setMeta] = useState<VideoMeta | null>(null)
   const [current, setCurrent] = useState(0)
@@ -56,6 +58,7 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   // otherwise shows.
   const [proof, setProof] = useState<string | null>(null)
   const [rendering, setRendering] = useState(false)
+  const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
   // The player shows a window cut out of the source, not the source itself.
   const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
   // Where to land once a newly fetched window has loaded, in absolute time.
@@ -82,6 +85,10 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     setWin(null)
     void openWindow(v.path, 0)
   }, [openWindow])
+
+  useEffect(() => {
+    window.chop.listLuts().then(setLuts)
+  }, [])
 
   useEffect(() => {
     return window.chop.onAiProgress((p) => {
@@ -589,6 +596,51 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
           onMusic={setMusic}
         />
       )}
+
+      <div className="card">
+        <div className="label" style={{ marginBottom: 12 }}>
+          Look
+        </div>
+        <div className="row wrap" style={{ alignItems: 'flex-end', gap: 12 }}>
+          <label className="field">
+            <span className="label">Caption style</span>
+            <select
+              value={settings.captionPreset}
+              onChange={(e) => patch({ captionPreset: e.target.value })}
+              disabled={words.length === 0}
+            >
+              {CAPTION_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field" style={{ flex: 1, minWidth: 200 }}>
+            <span className="label">Colour</span>
+            <select
+              value={settings.lutPath ?? ''}
+              onChange={(e) => patch({ lutPath: e.target.value || null })}
+            >
+              <option value="">No grade</option>
+              {luts.map((l) => (
+                <option key={l.path} value={l.path}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="ghost"
+            onClick={async () => {
+              const path = await window.chop.chooseLut()
+              if (path) await patch({ lutPath: path })
+            }}
+          >
+            Load .cube
+          </button>
+        </div>
+      </div>
 
       <div className="card">
         <div className="label" style={{ marginBottom: 12 }}>

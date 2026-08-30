@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AspectPreset, Settings } from '../../../shared/types'
-import { CAPTION_PRESETS } from '../../../shared/caption-presets'
 
 interface Props {
   settings: Settings
@@ -44,14 +43,12 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   const [provider, setProvider] = useState('unknown')
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
   const [modelError, setModelError] = useState<string | null>(null)
-  const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
   const [modelReady, setModelReady] = useState(true)
   const [modelMb, setModelMb] = useState(0)
   const [downloading, setDownloading] = useState(0)
 
   useEffect(() => {
     window.chop.hasApiKey().then(setKeySaved)
-    window.chop.listLuts().then(setLuts)
   }, [])
 
   useEffect(() => {
@@ -120,52 +117,6 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
           >
             {aspectOptions}
           </select>
-        </Row>
-      </Section>
-
-      <Section title="Look">
-        <Row name="Caption style">
-          <select
-            value={settings.captionPreset}
-            onChange={(e) => patch({ captionPreset: e.target.value })}
-          >
-            {CAPTION_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </Row>
-        <Row
-          name="Colour LUT"
-          hint={
-            luts.length > 0
-              ? `${luts.length} found, including the Lumetri library Premiere installs.`
-              : 'Load any .cube file.'
-          }
-        >
-          <div className="row" style={{ gap: 6 }}>
-            <select
-              value={settings.lutPath ?? ''}
-              onChange={(e) => patch({ lutPath: e.target.value || null })}
-              style={{ maxWidth: 240 }}
-            >
-              <option value="">None</option>
-              {luts.map((l) => (
-                <option key={l.path} value={l.path}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={async () => {
-                const path = await window.chop.chooseLut()
-                if (path) await patch({ lutPath: path })
-              }}
-            >
-              Load
-            </button>
-          </div>
         </Row>
       </Section>
 
