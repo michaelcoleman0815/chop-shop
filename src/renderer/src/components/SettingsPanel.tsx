@@ -9,9 +9,26 @@ interface Props {
 export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   const [shortcut, setShortcut] = useState(settings.grabShortcut)
   const [version, setVersion] = useState('')
+  const [keyInput, setKeyInput] = useState('')
+  const [keySaved, setKeySaved] = useState(false)
+  const [modelReady, setModelReady] = useState(true)
+  const [modelMb, setModelMb] = useState(0)
+  const [downloading, setDownloading] = useState(0)
 
   useEffect(() => {
     window.chop.getVersion().then(setVersion)
+    window.chop.hasApiKey().then(setKeySaved)
+  }, [])
+
+  useEffect(() => {
+    window.chop.hasModel(settings.whisperModel).then(setModelReady)
+    window.chop.modelSizeMb(settings.whisperModel).then(setModelMb)
+  }, [settings.whisperModel])
+
+  useEffect(() => {
+    return window.chop.onAiProgress((p) => {
+      if (p.stage === 'Downloading model') setDownloading(p.percent)
+    })
   }, [])
 
   return (
@@ -51,6 +68,93 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
             <option value="original">Original</option>
           </select>
         </label>
+      </div>
+
+      <div className="card">
+        <div className="label" style={{ marginBottom: 12 }}>
+          Anthropic API key
+        </div>
+        {keySaved ? (
+          <div className="row">
+            <span className="mono muted" style={{ flex: 1 }}>
+              Stored in the system keychain
+            </span>
+            <button
+              onClick={async () => {
+                await window.chop.clearApiKey()
+                setKeySaved(false)
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="row">
+            <input
+              type="password"
+              className="mono"
+              placeholder="sk-ant-..."
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="primary"
+              disabled={keyInput.trim().length < 10}
+              onClick={async () => {
+                await window.chop.setApiKey(keyInput)
+                setKeyInput('')
+                setKeySaved(await window.chop.hasApiKey())
+              }}
+            >
+              Save
+            </button>
+          </div>
+        )}
+        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+          Encrypted with your keychain and used only to pick clips. Roughly 10 to 15 cents per hour
+          of video. Get one at console.anthropic.com.
+        </p>
+      </div>
+
+      <div className="card">
+        <div className="label" style={{ marginBottom: 12 }}>
+          Transcription
+        </div>
+        <div className="row">
+          <label className="field">
+            <span className="label">Model</span>
+            <select
+              value={settings.whisperModel}
+              onChange={(e) =>
+                patch({ whisperModel: e.target.value as Settings['whisperModel'] })
+              }
+            >
+              <option value="base.en">base.en, fastest</option>
+              <option value="small.en">small.en, balanced</option>
+              <option value="medium.en">medium.en, most accurate</option>
+            </select>
+          </label>
+          <div className="spacer" />
+          {modelReady ? (
+            <span className="mono muted">Downloaded</span>
+          ) : downloading > 0 && downloading < 100 ? (
+            <span className="mono muted">{downloading}%</span>
+          ) : (
+            <button
+              onClick={async () => {
+                await window.chop.downloadModel(settings.whisperModel)
+                setModelReady(await window.chop.hasModel(settings.whisperModel))
+              }}
+            >
+              Download {modelMb} MB
+            </button>
+          )}
+        </div>
+        <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+          Runs on this Mac. Audio never leaves the machine; only the text transcript is sent to
+          Claude.
+        </p>
       </div>
 
       <div className="card">

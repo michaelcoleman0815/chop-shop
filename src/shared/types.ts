@@ -18,6 +18,9 @@ export interface ClipRequest {
   name: string
   aspect: AspectPreset
   outputDir: string
+  /** Words for the whole source; the export rebases them to the clip. */
+  captionWords?: TranscriptWord[]
+  autoZoom?: boolean
 }
 
 export interface ExportProgress {

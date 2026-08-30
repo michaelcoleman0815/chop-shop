@@ -4,6 +4,7 @@ import { createReadStream, existsSync, statSync, promises as fs } from 'fs'
 import { Readable } from 'stream'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { probe, exportClip, buildFromSegments, FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
+import { autoZooms } from './autozoom'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips } from './clips'
 import { hasApiKey, setApiKey, clearApiKey } from './apikey'
@@ -188,12 +189,24 @@ function registerIpc(): void {
     const send = (percent: number): void =>
       e.sender.send('clip:progress', { jobId: req.jobId, percent, stage: 'running' })
     try {
+      const meta = await probe(req.sourcePath)
+      const words = (req.captionWords ?? [])
+        .filter((w) => w.endSec > req.startSec && w.startSec < req.endSec)
+        .map((w) => ({
+          text: w.text,
+          startSec: Math.max(0, w.startSec - req.startSec),
+          endSec: Math.max(0.05, w.endSec - req.startSec)
+        }))
+
       await exportClip({
         sourcePath: req.sourcePath,
         startSec: req.startSec,
         endSec: req.endSec,
         outputPath,
         aspect: req.aspect,
+        source: { width: meta.width, height: meta.height, fps: meta.fps },
+        captions: words.length > 0 ? { words } : undefined,
+        zooms: req.autoZoom ? autoZooms(words, req.endSec - req.startSec) : undefined,
         onProgress: send
       })
       e.sender.send('clip:progress', { jobId: req.jobId, percent: 100, stage: 'done', outputPath })

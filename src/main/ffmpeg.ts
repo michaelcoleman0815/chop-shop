@@ -2,9 +2,25 @@ import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
+import { buildReframeFilter } from './reframe'
+import { buildAss, DEFAULT_CAPTION_STYLE } from './captions'
+import { FONTS_DIR } from './resources'
 import ffmpegStatic from 'ffmpeg-static'
 import ffprobeInstaller from '@ffprobe-installer/ffprobe'
-import type { AspectPreset } from '../shared/types'
+import type { AspectPreset, CaptionStyle, TranscriptWord, ZoomKeyframe } from '../shared/types'
+
+export interface SourceInfo {
+  width: number
+  height: number
+  fps: number
+}
+
+/** Output dimensions for each aspect preset, even-sized for H.264. */
+export function outputSize(aspect: AspectPreset, source: SourceInfo): { w: number; h: number } {
+  if (aspect === 'vertical') return { w: 1080, h: 1920 }
+  if (aspect === 'square') return { w: 1080, h: 1080 }
+  return { w: source.width - (source.width % 2), h: source.height - (source.height % 2) }
+}
 
 /**
  * The static binaries live inside app.asar once packaged, where they cannot be
@@ -117,39 +133,73 @@ export async function exportClip(opts: {
   endSec: number
   outputPath: string
   aspect: AspectPreset
+  source: SourceInfo
+  /** Words already rebased so the clip starts at zero. */
+  captions?: { words: TranscriptWord[]; style?: CaptionStyle }
+  zooms?: ZoomKeyframe[]
   onProgress: (percent: number) => void
 }): Promise<string> {
   const duration = Math.max(0.1, opts.endSec - opts.startSec)
-  await runWithProgress(
-    [
-      '-y',
-      '-ss',
-      opts.startSec.toFixed(3),
-      '-i',
-      opts.sourcePath,
-      '-t',
-      duration.toFixed(3),
-      ...aspectFilter(opts.aspect),
-      '-c:v',
-      'libx264',
-      '-preset',
-      'veryfast',
-      '-crf',
-      '20',
-      '-pix_fmt',
-      'yuv420p',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '160k',
-      '-movflags',
-      '+faststart',
-      opts.outputPath
-    ],
-    duration,
-    opts.onProgress
-  )
-  return opts.outputPath
+  const out = outputSize(opts.aspect, opts.source)
+
+  const filters = [
+    buildReframeFilter({
+      sourceWidth: opts.source.width,
+      sourceHeight: opts.source.height,
+      outWidth: out.w,
+      outHeight: out.h,
+      sourceFps: opts.source.fps,
+      zooms: opts.zooms
+    })
+  ]
+
+  // The subtitle file lives for the length of the render only.
+  let assDir: string | null = null
+  if (opts.captions && opts.captions.words.length > 0) {
+    assDir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-ass-'))
+    const assPath = join(assDir, 'captions.ass')
+    await fs.writeFile(
+      assPath,
+      buildAss(opts.captions.words, out.w, out.h, opts.captions.style ?? DEFAULT_CAPTION_STYLE)
+    )
+    // ffmpeg filter syntax treats these as separators, so they need escaping.
+    const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
+    filters.push(`subtitles='${escaped}':fontsdir='${FONTS_DIR()}'`)
+  }
+
+  try {
+    await runWithProgress(
+      [
+        '-y',
+        '-ss',
+        opts.startSec.toFixed(3),
+        '-i',
+        opts.sourcePath,
+        '-t',
+        duration.toFixed(3),
+        '-vf',
+        filters.join(','),
+        '-c:v',
+        'h264_videotoolbox',
+        '-b:v',
+        '10M',
+        '-pix_fmt',
+        'yuv420p',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '160k',
+        '-movflags',
+        '+faststart',
+        opts.outputPath
+      ],
+      duration,
+      opts.onProgress
+    )
+    return opts.outputPath
+  } finally {
+    if (assDir) await fs.rm(assDir, { recursive: true, force: true }).catch(() => undefined)
+  }
 }
 
 /**

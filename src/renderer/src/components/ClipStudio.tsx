@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AspectPreset, Settings, VideoMeta } from '../../../shared/types'
+import type { AspectPreset, Settings, SuggestedClip, TranscriptWord, VideoMeta } from '../../../shared/types'
 import type { Job } from './JobList'
 import { bytes, slug, stamp, timecode } from '../lib/format'
 
@@ -18,6 +18,11 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
   const [name, setName] = useState('')
   const [hot, setHot] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [words, setWords] = useState<TranscriptWord[]>([])
+  const [suggestions, setSuggestions] = useState<SuggestedClip[]>([])
+  const [analysis, setAnalysis] = useState<{ stage: string; percent: number } | null>(null)
+  const [captions, setCaptions] = useState(true)
+  const [autoZoom, setAutoZoom] = useState(true)
 
   const load = useCallback((v: VideoMeta | null) => {
     if (!v) return
@@ -26,6 +31,15 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     setOutSec(Math.min(30, v.durationSec))
     setName(`${slug(v.fileName)}-clip`)
     setError(null)
+    setWords([])
+    setSuggestions([])
+  }, [])
+
+  useEffect(() => {
+    return window.chop.onAiProgress((p) => {
+      if (p.stage === 'Downloading model') return
+      setAnalysis(p.percent >= 100 || p.stage === 'Failed' ? null : p)
+    })
   }, [])
 
   const open = useCallback(async () => {
@@ -99,6 +113,30 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
     v.addEventListener('timeupdate', stop)
   }, [inSec, outSec])
 
+  const analyze = useCallback(async () => {
+    if (!meta) return
+    setError(null)
+    setAnalysis({ stage: 'Starting', percent: 0 })
+    const res = await window.chop.analyze(meta.path)
+    setAnalysis(null)
+    if (!res.ok) {
+      setError(res.message)
+      return
+    }
+    setWords(res.result.transcript.words)
+    setSuggestions(res.result.clips)
+  }, [meta])
+
+  const useSuggestion = useCallback(
+    (clip: SuggestedClip) => {
+      setInSec(clip.startSec)
+      setOutSec(clip.endSec)
+      setName(slug(clip.title) || 'clip')
+      seek(clip.startSec)
+    },
+    [seek]
+  )
+
   const exportClip = useCallback(async () => {
     if (!meta) return
     const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -111,9 +149,11 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
       endSec: outSec,
       name: jobName,
       aspect,
-      outputDir: settings.outputDir
+      outputDir: settings.outputDir,
+      captionWords: captions ? words : undefined,
+      autoZoom
     })
-  }, [meta, name, inSec, outSec, aspect, settings.outputDir, addJob])
+  }, [meta, name, inSec, outSec, aspect, settings.outputDir, addJob, captions, words, autoZoom])
 
   if (!meta) {
     return (
@@ -196,6 +236,56 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
       </div>
 
       <div className="card">
+        <div className="row">
+          <div className="label">Find clips</div>
+          <div className="spacer" />
+          {analysis ? (
+            <>
+              <span className="muted">{analysis.stage}</span>
+              <span className="mono muted">{analysis.percent}%</span>
+            </>
+          ) : (
+            <button className="primary" onClick={analyze}>
+              {suggestions.length > 0 ? 'Analyse again' : 'Analyse'}
+            </button>
+          )}
+        </div>
+        {analysis && (
+          <div className="bar" style={{ marginTop: 12 }}>
+            <i style={{ width: `${analysis.percent}%`, background: 'var(--accent)' }} />
+          </div>
+        )}
+        {suggestions.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            {suggestions.map((c, i) => (
+              <button
+                key={i}
+                className="job"
+                style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                onClick={() => useSuggestion(c)}
+              >
+                <div className="row">
+                  <span style={{ flex: 1, minWidth: 0 }}>{c.title}</span>
+                  <span className="mono muted">
+                    {timecode(c.startSec)} · {Math.round(c.endSec - c.startSec)}s
+                  </span>
+                  <span className="mono muted">{c.score}</span>
+                </div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {c.reason}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+        {words.length > 0 && suggestions.length === 0 && !analysis && (
+          <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+            Nothing in this one stands alone as a clip.
+          </p>
+        )}
+      </div>
+
+      <div className="card">
         <div className="label" style={{ marginBottom: 12 }}>
           Clip
         </div>
@@ -243,6 +333,23 @@ export default function ClipStudio({ settings, addJob }: Props): JSX.Element {
               <option value="square">1:1 square</option>
               <option value="original">Original</option>
             </select>
+          </label>
+          <label className="row" style={{ gap: 6 }} title={words.length === 0 ? 'Analyse first' : ''}>
+            <input
+              type="checkbox"
+              checked={captions && words.length > 0}
+              disabled={words.length === 0}
+              onChange={(e) => setCaptions(e.target.checked)}
+            />
+            Captions
+          </label>
+          <label className="row" style={{ gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={autoZoom}
+              onChange={(e) => setAutoZoom(e.target.checked)}
+            />
+            Zooms
           </label>
           <button className="primary" disabled={duration < 0.2} onClick={exportClip}>
             Export clip
