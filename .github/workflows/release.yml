@@ -90,9 +90,21 @@ jobs:
       - name: Verify notarization
         if: steps.build.outputs.notarized == 'true'
         run: |
-          for dmg in dist/*.dmg; do
-            echo "Checking $dmg"
-            xcrun stapler validate "$dmg"
+          # electron-builder writes to release/, and the ticket is stapled to
+          # the app rather than to the disk image around it. An unmatched glob
+          # passes its own pattern through as a filename, so the match is
+          # checked before it is trusted.
+          shopt -s nullglob
+          apps=(release/mac-arm64/*.app)
+          if [ ${#apps[@]} -eq 0 ]; then
+            echo "::error::no built app found under release/mac-arm64"
+            ls -R release | head -40
+            exit 1
+          fi
+          for app in "${apps[@]}"; do
+            echo "Checking $app"
+            xcrun stapler validate "$app"
+            spctl -a -vvv "$app"
           done
 
       # A release missing any of these looks fine on the releases page and is
