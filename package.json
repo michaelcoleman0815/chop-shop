@@ -1,6 +1,6 @@
 {
   "name": "chop-shop",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Chop Shop - clip long videos and grab the last N seconds of anything on screen.",
   "main": "./out/main/index.js",
   "author": "Michael Coleman",
