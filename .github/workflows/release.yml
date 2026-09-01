@@ -25,9 +25,15 @@ jobs:
       - name: Build whisper.cpp
         run: ./scripts/build-whisper.sh
 
+      # resources/bin is gitignored, so anything not built here is simply absent
+      # from the shipped app, and the feature that needs it fails quietly.
+      - name: Build the Vision helper
+        run: ./scripts/build-native.sh
+
       - name: Verify bundled binaries
         run: |
           test -x resources/bin/whisper-cli || { echo "::error::whisper-cli missing"; exit 1; }
+          test -x resources/bin/chopshop-vision || { echo "::error::chopshop-vision missing"; exit 1; }
           test -f resources/fonts/ArchivoBlack-Regular.ttf || { echo "::error::caption font missing"; exit 1; }
 
       # electron-builder runs one publisher per target, and when the release

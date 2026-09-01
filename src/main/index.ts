@@ -278,8 +278,17 @@ function registerIpc(): void {
           console.log('[track]', samples.length, 'samples,', track.length, 'points')
         } catch (err) {
           // A failed detection should fall back to a centred crop, not fail the
-          // export outright.
-          console.error('[track] failed:', err instanceof Error ? err.message : err)
+          // export outright. It must still say so: a silent fallback renders a
+          // perfectly good clip that simply ignores the setting, which reads as
+          // the feature being broken rather than unavailable.
+          const message = err instanceof Error ? err.message : String(err)
+          console.error('[track] failed:', message)
+          safeSend(e.sender, 'clip:progress', {
+            jobId: req.jobId,
+            percent: 2,
+            stage: 'running',
+            message: `Subject tracking unavailable, centred instead. ${message}`
+          })
         }
       }
 

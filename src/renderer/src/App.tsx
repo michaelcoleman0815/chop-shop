@@ -30,7 +30,7 @@ export default function App(): JSX.Element {
       setJobs((prev) =>
         prev.map((j) =>
           j.id === p.jobId
-            ? { ...j, percent: p.percent, stage: p.stage, outputPath: p.outputPath ?? j.outputPath, message: p.message }
+            ? { ...j, percent: p.percent, stage: p.stage, outputPath: p.outputPath ?? j.outputPath, message: p.message ?? j.message }
             : j
         )
       )

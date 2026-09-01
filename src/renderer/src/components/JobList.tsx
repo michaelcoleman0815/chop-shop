@@ -34,7 +34,7 @@ export default function JobList({ jobs }: { jobs: Job[] }): JSX.Element {
               </>
             )}
           </div>
-          {job.stage === 'error' && job.message && (
+          {job.message && (
             <div className="mono muted" style={{ fontSize: 11, marginTop: 8 }}>
               {job.message.split('\n').slice(-2).join(' ')}
             </div>
