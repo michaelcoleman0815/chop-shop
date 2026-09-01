@@ -343,6 +343,13 @@ export async function exportClip(opts: {
         '-y',
         '-ss',
         opts.startSec.toFixed(3),
+        // Bounds the read, not just the write. select drops every frame past
+        // the range, which stops the output clock advancing, so an output-only
+        // -t never fires and ffmpeg decodes the rest of the source at full
+        // speed producing nothing. On a two hour recording that is minutes of
+        // the export sitting at 99%.
+        '-t',
+        duration.toFixed(3),
         '-i',
         opts.sourcePath,
         '-t',

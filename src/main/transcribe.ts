@@ -175,6 +175,12 @@ export async function transcribe(
         // whisper spreads words evenly across a whole segment.
         '-ml',
         '1',
+        // A token is not a word: alone, -ml 1 cuts "epileptic" into "epile" and
+        // "ptic", and each fragment becomes its own caption. Splitting on word
+        // boundaries instead is what makes word-level captions read as speech.
+        // (-dtw was measured here too and changed no timing at all, so it is
+        // not worth the memory it costs.)
+        '-sow',
         // --print-progress is the only way to see how far along a long file is.
         // -np would suppress it along with everything else.
         '-pp'
