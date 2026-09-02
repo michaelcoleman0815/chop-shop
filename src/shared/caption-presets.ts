@@ -27,6 +27,43 @@ const BASE: CaptionStyle = {
  */
 export const CAPTION_PRESETS: CaptionPreset[] = [
   {
+    id: 'marker',
+    name: 'Marker',
+    style: {
+      ...BASE,
+      // A highlighter pen: one word at a time on a block of colour, dark text.
+      wordsPerGroup: 1,
+      fontSizePx: 78,
+      positionFrac: 0.28,
+      textColor: '#16151a',
+      activeColor: '#16151a',
+      outlinePx: 12,
+      shadowPx: 0,
+      uppercase: false,
+      activeScale: 1,
+      boxColor: '#c8f04a'
+    }
+  },
+  {
+    id: 'headline',
+    name: 'Headline',
+    style: {
+      ...BASE,
+      // Condensed and enormous, sitting high like a cover line.
+      wordsPerGroup: 2,
+      fontFamily: 'Anton',
+      fontSizePx: 132,
+      positionFrac: 0.68,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 4,
+      shadowPx: 0,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
     id: 'plate',
     name: 'Plate',
     style: {

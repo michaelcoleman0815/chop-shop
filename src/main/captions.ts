@@ -63,7 +63,10 @@ export function buildAss(
       style.fontSizePx,
       assColor(style.textColor),
       assColor(style.activeColor),
-      assColor(style.outlineColor),
+      // With BorderStyle 3 libass fills the plate from the OUTLINE colour, not
+      // the back colour, so a boxed style has to put its fill here or it draws
+      // a black box whatever colour was asked for.
+      assColor(style.boxColor ?? style.outlineColor),
       style.boxColor ? assColor(style.boxColor) : '&H64000000',
       style.bold ? '-1' : '0',
       '0',
