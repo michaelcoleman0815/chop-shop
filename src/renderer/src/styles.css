@@ -2453,3 +2453,32 @@ kbd {
   background: var(--accent);
   pointer-events: none;
 }
+
+.drop-or {
+  display: flex;
+  align-items: center;
+  gap: var(--s3sp);
+  width: min(420px, 100%);
+  margin-top: var(--s2sp);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--grey-700);
+}
+.drop-or i {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.drop-url {
+  display: flex;
+  gap: 7px;
+  width: min(520px, 100%);
+}
+.drop-url input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 11px;
+}

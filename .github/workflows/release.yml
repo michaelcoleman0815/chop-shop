@@ -30,10 +30,14 @@ jobs:
       - name: Build the Vision helper
         run: ./scripts/build-native.sh
 
+      - name: Fetch yt-dlp
+        run: ./scripts/fetch-ytdlp.sh
+
       - name: Verify bundled binaries
         run: |
           test -x resources/bin/whisper-cli || { echo "::error::whisper-cli missing"; exit 1; }
           test -x resources/bin/chopshop-vision || { echo "::error::chopshop-vision missing"; exit 1; }
+          test -x resources/bin/yt-dlp || { echo "::error::yt-dlp missing"; exit 1; }
           test -f resources/fonts/ArchivoBlack-Regular.ttf || { echo "::error::caption font missing"; exit 1; }
 
       # electron-builder runs one publisher per target, and when the release

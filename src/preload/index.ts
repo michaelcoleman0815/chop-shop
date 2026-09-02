@@ -72,6 +72,18 @@ const api = {
     options?: AnalysisOptions
   ): Promise<{ ok: true; result: AnalysisResult } | { ok: false; message: string }> =>
     ipcRenderer.invoke('ai:analyze', videoPath, force, options),
+  fetchVideo: (
+    url: string
+  ): Promise<{ ok: true; meta: VideoMeta } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('video:fromUrl', url),
+  onFetchProgress: (
+    cb: (p: { percent: number; stage: string; message?: string }) => void
+  ): (() => void) => {
+    const handler = (_e: unknown, p: { percent: number; stage: string; message?: string }): void =>
+      cb(p)
+    ipcRenderer.on('video:fetchProgress', handler)
+    return () => ipcRenderer.removeListener('video:fetchProgress', handler)
+  },
   cachedAnalysis: (videoPath: string): Promise<CachedAnalysis | null> =>
     ipcRenderer.invoke('ai:cached', videoPath),
 

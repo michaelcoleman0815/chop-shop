@@ -16,6 +16,7 @@ import { buildTimelineRender } from './timeline'
 import { readEpr } from './epr'
 import { readAnalysis, writeAnalysis, sameQuestion } from './analysis-cache'
 import { sweepTemp } from './temp-sweep'
+import { fetchVideo } from './fetch-video'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { mediaPreview } from './media-preview'
 import { detectFaces, buildTrack } from './track'
@@ -416,6 +417,22 @@ function registerIpc(): void {
 
   // One call does the whole analysis: audio out, words back, then Claude picks
   // the moments. Progress is reported across both halves as a single bar.
+  ipcMain.handle('video:fromUrl', async (e, url: string) => {
+    try {
+      const fetched = await fetchVideo(url, (percent, stage) =>
+        safeSend(e.sender, 'video:fetchProgress', { percent, stage })
+      )
+      const meta = await describeVideo(fetched.path)
+      safeSend(e.sender, 'video:fetchProgress', { percent: 100, stage: 'Done' })
+      return { ok: true as const, meta }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[fetch] failed:', message)
+      safeSend(e.sender, 'video:fetchProgress', { percent: 0, stage: 'Failed', message })
+      return { ok: false as const, message }
+    }
+  })
+
   ipcMain.handle('ai:cached', (_e, videoPath: string) => readAnalysis(videoPath))
 
   ipcMain.handle(

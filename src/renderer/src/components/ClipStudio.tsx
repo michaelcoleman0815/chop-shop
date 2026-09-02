@@ -68,6 +68,8 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [aspect, setAspect] = useState<AspectPreset>(settings.defaultAspect)
   const [name, setName] = useState('')
   const [hot, setHot] = useState(false)
+  const [url, setUrl] = useState('')
+  const [fetching, setFetching] = useState<{ percent: number; stage: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
 
@@ -111,6 +113,15 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [detail, setDetail] = useState<number | null>(null)
 
   const analysed = words.length > 0
+
+  useEffect(
+    () =>
+      window.chop.onFetchProgress((p) => {
+        setFetching(p.stage === 'Done' || p.stage === 'Failed' ? null : p)
+        if (p.stage === 'Failed' && p.message) setError(p.message)
+      }),
+    []
+  )
 
   useEffect(() => {
     window.chop.listLuts().then(setLuts)
@@ -175,6 +186,18 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     },
     [openWindow]
   )
+
+  const fetchUrl = useCallback(async () => {
+    const target = url.trim()
+    if (!target) return
+    setError(null)
+    setFetching({ percent: 0, stage: 'Starting' })
+    const res = await window.chop.fetchVideo(target)
+    setFetching(null)
+    if (!res.ok) return setError(res.message)
+    setUrl('')
+    load(res.meta)
+  }, [url, load])
 
   const open = useCallback(async () => {
     try {
@@ -502,10 +525,42 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
             captions them.
           </p>
           <div className="drop-actions">
-            <button className="primary" onClick={open}>
+            <button className="primary" onClick={open} disabled={!!fetching}>
               Choose a file
             </button>
           </div>
+
+          <div className="drop-or">
+            <i />
+            <span>or paste a link</span>
+            <i />
+          </div>
+
+          <div className="drop-url">
+            <input
+              type="text"
+              placeholder="https://www.youtube.com/watch?v=…"
+              value={url}
+              disabled={!!fetching}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void fetchUrl()
+              }}
+            />
+            <button onClick={() => void fetchUrl()} disabled={!url.trim() || !!fetching}>
+              {fetching ? `${fetching.percent}%` : 'Fetch'}
+            </button>
+          </div>
+
+          {fetching && (
+            <div className="analysis-strip" style={{ width: 'min(520px, 100%)' }}>
+              <span className="mono">{fetching.stage}</span>
+              <div className="bar">
+                <i style={{ width: `${fetching.percent}%` }} />
+              </div>
+              <span className="mono muted">{fetching.percent}%</span>
+            </div>
+          )}
           <div className="drop-facts">
             <span>MP4, MOV, MKV, WebM</span>
             <i />
