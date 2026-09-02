@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AspectPreset,
+  ClipGenre,
   Project,
   Settings,
   SuggestedClip,
@@ -21,6 +22,14 @@ interface Props {
   project: Project
   onProject: (p: Project) => void
 }
+
+const GENRES: { id: ClipGenre; name: string }[] = [
+  { id: 'auto', name: 'Auto' },
+  { id: 'sermon', name: 'Sermon' },
+  { id: 'podcast', name: 'Podcast' },
+  { id: 'talk', name: 'Talk' },
+  { id: 'comedy', name: 'Comedy' }
+]
 
 const LENGTHS = {
   auto: { min: 15, max: 90, label: 'Auto' },
@@ -90,6 +99,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [rangeEnd, setRangeEnd] = useState(0)
   const [maxClips, setMaxClips] = useState(settings.maxSuggestedClips)
   const [clipLength, setClipLength] = useState<'auto' | 'short' | 'mid' | 'long'>('auto')
+  const [genre, setGenre] = useState<ClipGenre>('auto')
   const [lookFor, setLookFor] = useState('')
   // The clips are the screen once there are any; the editor is where you go to
   // change one, not where you land.
@@ -138,6 +148,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
           setSuggestions(cached.clips)
           // Show the run that produced these clips, not the defaults.
           if (cached.options) {
+            setGenre(cached.options.genre ?? 'auto')
             setRangeStart(cached.options.startSec)
             setRangeEnd(cached.options.endSec)
             setMaxClips(cached.options.maxClips)
@@ -250,6 +261,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     setError(null)
     setAnalysis({ stage: 'Starting', percent: 0 })
     const res = await window.chop.analyze(meta.path, suggestions.length > 0, {
+      genre,
       startSec: rangeStart,
       endSec: rangeEnd > rangeStart ? rangeEnd : meta.durationSec,
       maxClips,
@@ -280,7 +292,8 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     rangeEnd,
     maxClips,
     clipLength,
-    lookFor
+    lookFor,
+    genre
   ])
 
   // Reopening a project brings back its analysis rather than asking for it
@@ -515,6 +528,26 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                   {clock(windowSec)} selected · about {transcribeMins} min to transcribe
                 </span>
               </div>
+            </div>
+          </div>
+
+          <div className="field">
+            <div className="row" style={{ gap: 10, alignItems: 'baseline' }}>
+              <span className="label">Genre</span>
+              <span className="muted" style={{ fontSize: 12 }}>
+                A sermon and an interview fail in different ways, so this changes what Claude looks for.
+              </span>
+            </div>
+            <div className="segs">
+              {GENRES.map((g) => (
+                <button
+                  key={g.id}
+                  className={`seg ${genre === g.id ? 'on' : ''}`}
+                  onClick={() => setGenre(g.id)}
+                >
+                  {g.name}
+                </button>
+              ))}
             </div>
           </div>
 

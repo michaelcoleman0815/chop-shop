@@ -475,7 +475,8 @@ function registerIpc(): void {
         options?.maxClips ?? settings.maxSuggestedClips,
         settings.clipModel,
         options ? { minSec: options.minClipSec, maxSec: options.maxClipSec } : undefined,
-        options?.lookFor
+        options?.lookFor,
+        options?.genre
       )
       console.log('[ai] Claude returned', clips.length, 'clips')
       const result = { transcript, clips }

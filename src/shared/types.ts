@@ -170,8 +170,12 @@ export interface MusicTrack {
 
 export type ProjectMode = 'clip' | 'edit'
 
+/** Which guidance applies. The failure modes differ by kind of recording. */
+export type ClipGenre = 'auto' | 'sermon' | 'podcast' | 'talk' | 'comedy'
+
 /** What the setup screen asks before a run, and what the cache is keyed on. */
 export interface AnalysisOptions {
+  genre: ClipGenre
   /** Only this stretch is transcribed, so a shorter range is a shorter wait. */
   startSec: number
   endSec: number

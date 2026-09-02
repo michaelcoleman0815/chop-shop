@@ -32,6 +32,7 @@ async function keyFor(path: string): Promise<string> {
 export function sameQuestion(a?: AnalysisOptions, b?: AnalysisOptions): boolean {
   if (!a || !b) return !a && !b
   return (
+    a.genre === b.genre &&
     Math.abs(a.startSec - b.startSec) < 0.5 &&
     Math.abs(a.endSec - b.endSec) < 0.5 &&
     a.maxClips === b.maxClips &&

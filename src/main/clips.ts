@@ -116,13 +116,25 @@ export async function listModels(): Promise<{ id: string; name: string }[]> {
   return models
 }
 
+const GENRE_NOTE: Record<string, string> = {
+  sermon:
+    'This is a sermon or church service. Apply the sermon guidance. Expect long stretches of announcements, giving appeals and worship that are not clips, and expect the strongest moments to be testimony or a story told whole.',
+  podcast:
+    'This is a podcast or interview with more than one speaker. Apply the interview guidance, and watch for answers that cannot stand without the question that prompted them.',
+  talk:
+    'This is a talk, lecture or keynote by one speaker. Expect a structured argument: prefer a single point made whole over a fragment of the through-line, and treat section transitions as boundaries rather than content.',
+  comedy:
+    'This is comedy or a performance. A bit starts at its first setup word and ends a beat after its punchline; never cut between a setup and its payoff, and never include a punchline whose setup is off-screen.'
+}
+
 export async function suggestClips(
   transcript: Transcript,
   durationSec: number,
   maxClips: number,
   model: string,
   length?: { minSec: number; maxSec: number },
-  lookFor?: string
+  lookFor?: string,
+  genre?: string
 ): Promise<SuggestedClip[]> {
   const apiKey = readApiKey()
   if (!apiKey) {
@@ -143,7 +155,7 @@ export async function suggestClips(
 
 ${transcriptLines(transcript.words)}
 
-Return at most ${maxClips} clips.${
+${genre && GENRE_NOTE[genre] ? `${GENRE_NOTE[genre]}\n\n` : ''}Return at most ${maxClips} clips.${
           length ? `\nEach clip should run between ${length.minSec} and ${length.maxSec} seconds.` : ''
         }${
           // Tagged rather than run together with the transcript: a recording
