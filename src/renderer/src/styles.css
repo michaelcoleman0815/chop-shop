@@ -2168,3 +2168,233 @@ kbd {
   font-size: 12px;
   color: #ff8f9e;
 }
+
+/* Editing one clip ------------------------------------------------------- */
+
+.clipedit {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.clipedit-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3sp);
+  padding: 12px var(--s5sp);
+  border-bottom: 1px solid var(--line);
+}
+.clipedit-title {
+  font-family: var(--display);
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+
+.clipedit-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 400px minmax(0, 1fr) 92px 260px;
+}
+
+.clipedit-script {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+.clipedit-panelhead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2sp);
+  padding: 12px var(--s4sp);
+  border-bottom: 1px solid var(--line);
+}
+.clipedit-foot {
+  padding: 10px var(--s4sp);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+
+/* The transcript is the edit surface, so a word is a control, not text. */
+.script-words {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4sp);
+  font-size: 15px;
+  line-height: 1.9;
+}
+.sw {
+  padding: 1px 3px;
+  margin: 0 1px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  box-shadow: none;
+  color: var(--text);
+}
+.sw:hover:not(:disabled) {
+  background: var(--s3);
+  border: none;
+  color: var(--text);
+}
+.sw.cut {
+  color: #4a4753;
+  text-decoration: line-through;
+}
+.sw.now {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.clipedit-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s5sp);
+  background: var(--s0);
+  min-width: 0;
+}
+/* The output is vertical, so the preview is too. */
+.stage-frame {
+  height: 100%;
+  aspect-ratio: 9 / 16;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.stage-frame.square {
+  aspect-ratio: 1 / 1;
+}
+.stage-frame.wide {
+  aspect-ratio: 16 / 9;
+}
+.stage-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.clipedit-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--s3sp) var(--s2sp);
+  background: var(--s0);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+.tool {
+  padding: 10px 4px;
+  font-size: 10px;
+  font-weight: 500;
+  text-align: center;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--muted);
+}
+.tool:hover:not(:disabled) {
+  background: var(--s2);
+  border-color: transparent;
+  color: var(--text);
+}
+.tool.on {
+  background: var(--s3);
+  border-color: transparent;
+  color: var(--text);
+}
+
+.clipedit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3sp);
+  padding: var(--s4sp);
+  background: var(--s1);
+  overflow-y: auto;
+}
+
+.clipedit-timeline {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px var(--s4sp) 14px;
+  background: var(--s0);
+  border-top: 1px solid var(--line);
+}
+.tl-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2sp);
+}
+.tl-label {
+  width: 56px;
+  flex: 0 0 56px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--grey-700);
+}
+.tl-lane {
+  position: relative;
+  flex: 1;
+  height: 20px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.tl-lane.video {
+  height: 44px;
+}
+.tl-film {
+  position: absolute;
+  inset: 0;
+  opacity: 0.75;
+}
+/* Kept ranges are drawn, not implied: the gaps are the cuts. */
+.tl-keep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+  background: rgba(255, 96, 118, 0.14);
+}
+.tl-zoom {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  margin-left: -1px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.tl-word {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 1px;
+  background: #2f4a63;
+}
+.tl-word.cut {
+  background: #2a2a33;
+}
+.tl-play {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}

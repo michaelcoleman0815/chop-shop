@@ -103,7 +103,8 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [lookFor, setLookFor] = useState('')
   // The clips are the screen once there are any; the editor is where you go to
   // change one, not where you land.
-  const [view, setView] = useState<'grid' | 'studio'>('grid')
+  const [view, setView] = useState<'grid' | 'studio' | 'editor'>('grid')
+  const [tool, setTool] = useState<'captions' | 'zooms' | 'subject' | 'broll' | 'music' | 'look'>('captions')
   const [detail, setDetail] = useState<number | null>(null)
 
   const analysed = words.length > 0
@@ -381,6 +382,42 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     await window.chop.exportClip(buildRequest(jobId, jobName))
   }, [meta, name, addJob, buildRequest])
 
+  /** Kept ranges are the source of truth; a struck word is a hole in them. */
+  const isKept = useCallback(
+    (w: TranscriptWord): boolean =>
+      segments.some((seg) => w.startSec >= seg.start - 0.01 && w.endSec <= seg.end + 0.01),
+    [segments]
+  )
+
+  const toggleWord = useCallback(
+    (w: TranscriptWord) => {
+      const cut = { start: w.startSec, end: w.endSec }
+      if (isKept(w)) {
+        // Remove the word's span, splitting whichever segment held it.
+        const next: Segment[] = []
+        for (const seg of segments) {
+          if (cut.end <= seg.start || cut.start >= seg.end) {
+            next.push(seg)
+            continue
+          }
+          if (cut.start > seg.start) next.push({ start: seg.start, end: cut.start })
+          if (cut.end < seg.end) next.push({ start: cut.end, end: seg.end })
+        }
+        setSegments(next)
+      } else {
+        // Put it back, then merge anything it now touches.
+        const merged: Segment[] = []
+        for (const seg of [...segments, cut].sort((a, b) => a.start - b.start)) {
+          const last = merged[merged.length - 1]
+          if (last && seg.start <= last.end + 0.02) last.end = Math.max(last.end, seg.end)
+          else merged.push({ ...seg })
+        }
+        setSegments(merged)
+      }
+    },
+    [segments, isKept]
+  )
+
   const exportSuggestion = useCallback(
     async (clip: SuggestedClip) => {
       if (!meta) return
@@ -624,6 +661,227 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     )
   }
 
+  if (view === 'editor') {
+    const clipLen = Math.max(0.1, outSec - inSec)
+    const kept = segments.reduce((n, sg) => n + (sg.end - sg.start), 0)
+    const cutCount = Math.max(0, segments.length - 1)
+    const pctOf = (t: number): number => Math.min(100, Math.max(0, (t / clipLen) * 100))
+    const localCurrent = Math.min(clipLen, Math.max(0, current - inSec))
+
+    const TOOLS: { id: typeof tool; name: string }[] = [
+      { id: 'captions', name: 'Captions' },
+      { id: 'zooms', name: 'Zooms' },
+      { id: 'subject', name: 'Subject' },
+      { id: 'broll', name: 'B-roll' },
+      { id: 'music', name: 'Music' },
+      { id: 'look', name: 'Look' }
+    ]
+
+    return (
+      <div className="clipedit">
+        <div className="clipedit-head">
+          <button className="ghost" onClick={() => setView('grid')}>← Clips</button>
+          <div className="clipedit-title">{name || 'clip'}</div>
+          <span className="mono muted">
+            {timecode(inSec)} → {timecode(outSec)} · {Math.round(kept || clipLen)}s
+          </span>
+          <div className="spacer" />
+          <button onClick={() => void previewEdit()} disabled={rendering}>
+            {rendering ? 'Rendering…' : 'Preview'}
+          </button>
+          <button className="primary" onClick={exportClip} disabled={rendering}>
+            Export
+          </button>
+        </div>
+
+        <div className="clipedit-body">
+          <div className="clipedit-script">
+            <div className="clipedit-panelhead">
+              <span className="label">Transcript</span>
+              <div className="spacer" />
+              <button className={`seg ${tighten ? 'on' : ''}`} onClick={() => setTighten(!tighten)}>
+                Tighten
+              </button>
+            </div>
+            <div className="script-words">
+              {editedWords.map((w, i) => (
+                <button
+                  key={i}
+                  className={`sw ${isKept(w) ? '' : 'cut'} ${
+                    localCurrent >= w.startSec && localCurrent < w.endSec ? 'now' : ''
+                  }`}
+                  onClick={() => toggleWord(w)}
+                >
+                  {w.text}
+                </button>
+              ))}
+            </div>
+            <div className="clipedit-foot muted">
+              Click a word to cut it, click again to keep it. {cutCount} cut
+              {cutCount === 1 ? '' : 's'}.
+            </div>
+          </div>
+
+          <div className="clipedit-stage">
+            <div className={`stage-frame ${aspect}`}>
+              <video
+                ref={videoRef}
+                src={proof ?? win?.url ?? undefined}
+                controls={!!proof}
+                onTimeUpdate={(e) => {
+                  if (proof) return
+                  setCurrent((win?.start ?? 0) + e.currentTarget.currentTime)
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="clipedit-tools">
+            {TOOLS.map((t) => (
+              <button
+                key={t.id}
+                className={`tool ${tool === t.id ? 'on' : ''}`}
+                onClick={() => setTool(t.id)}
+              >
+                <span>{t.name}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="clipedit-panel">
+            {tool === 'captions' && (
+              <>
+                <div className="row">
+                  <span className="label">Captions</span>
+                  <div className="spacer" />
+                  <button className={`seg ${captions ? 'on' : ''}`} onClick={() => setCaptions(!captions)}>
+                    {captions ? 'On' : 'Off'}
+                  </button>
+                </div>
+                <div className="segs">
+                  {CAPTION_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      className={`seg ${settings.captionPreset === preset.id ? 'on' : ''}`}
+                      onClick={() => void patch({ captionPreset: preset.id })}
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {tool === 'zooms' && (
+              <>
+                <div className="row">
+                  <span className="label">Punch-ins</span>
+                  <div className="spacer" />
+                  <button className={`seg ${autoZoom ? 'on' : ''}`} onClick={() => setAutoZoom(!autoZoom)}>
+                    {autoZoom ? 'On' : 'Off'}
+                  </button>
+                </div>
+                <p className="muted" style={{ fontSize: 12 }}>
+                  {zooms.length} keyframe{zooms.length === 1 ? '' : 's'} across this clip.
+                </p>
+              </>
+            )}
+            {tool === 'subject' && (
+              <>
+                <div className="row">
+                  <span className="label">Track subject</span>
+                  <div className="spacer" />
+                  <button
+                    className={`seg ${trackSubject ? 'on' : ''}`}
+                    onClick={() => setTrackSubject(!trackSubject)}
+                  >
+                    {trackSubject ? 'On' : 'Off'}
+                  </button>
+                </div>
+                <p className="muted" style={{ fontSize: 12 }}>
+                  Keeps the speaker centred as the crop moves. Falls back to a centred crop when no
+                  face is found, and says so.
+                </p>
+              </>
+            )}
+            {tool === 'look' && (
+              <>
+                <span className="label">Look</span>
+                <select
+                  value={settings.lutPath ?? ''}
+                  onChange={(e) => void patch({ lutPath: e.target.value || null })}
+                >
+                  <option value="">No grade</option>
+                  {luts.map((l) => (
+                    <option key={l.path} value={l.path}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            {(tool === 'broll' || tool === 'music') && (
+              <p className="muted" style={{ fontSize: 12 }}>
+                {tool === 'broll' ? 'B-roll' : 'Music'} lives in the timeline editor for now.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="clipedit-timeline">
+          <div className="tl-row">
+            <span className="tl-label mono">Video</span>
+            <div className="tl-lane video">
+              {strip && (
+                <div
+                  className="tl-film"
+                  style={{
+                    backgroundImage: `url("${strip.filmstripUrl}")`,
+                    backgroundSize: `${(meta.durationSec / clipLen) * 100}% 100%`,
+                    backgroundPositionX: `${(inSec / Math.max(0.1, meta.durationSec - clipLen)) * 100}%`
+                  }}
+                />
+              )}
+              {segments.map((sg, i) => (
+                <span
+                  key={i}
+                  className="tl-keep"
+                  style={{ left: `${pctOf(sg.start)}%`, width: `${pctOf(sg.end - sg.start)}%` }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="tl-row">
+            <span className="tl-label mono">Zoom</span>
+            <div className="tl-lane">
+              {zooms.map((z, i) => (
+                <span key={i} className="tl-zoom" style={{ left: `${pctOf(z.atSec)}%` }} />
+              ))}
+            </div>
+          </div>
+
+          <div className="tl-row">
+            <span className="tl-label mono">Captions</span>
+            <div className="tl-lane">
+              {editedWords.map((w, i) => (
+                <span
+                  key={i}
+                  className={`tl-word ${isKept(w) ? '' : 'cut'}`}
+                  style={{
+                    left: `${pctOf(w.startSec)}%`,
+                    width: `${Math.max(0.4, pctOf(w.endSec - w.startSec))}%`
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="tl-play" style={{ left: `calc(64px + ${pctOf(localCurrent)}% * 0.995)` }} />
+        </div>
+      </div>
+    )
+  }
+
   if (view === 'grid') {
     const clip = detail !== null ? suggestions[detail] : null
     return (
@@ -648,7 +906,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
               <div className="clip-title">{c.title}</div>
               <div className="clip-actions">
                 <button onClick={() => setDetail(i)}>Details</button>
-                <button onClick={() => { pick(c, i); setView('studio') }}>Edit</button>
+                <button onClick={() => { pick(c, i); setView('editor') }}>Edit</button>
                 <button className="primary" onClick={() => void exportSuggestion(c)}>Export</button>
               </div>
             </div>
@@ -687,7 +945,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                 </div>
               </div>
               <div className="dialog-foot">
-                <button onClick={() => { pick(clip, detail ?? 0); setDetail(null); setView('studio') }}>
+                <button onClick={() => { pick(clip, detail ?? 0); setDetail(null); setView('editor') }}>
                   Open in editor
                 </button>
                 <div className="spacer" />
