@@ -5,7 +5,7 @@ import { CAPTION_PRESETS } from '../shared/caption-presets'
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = CAPTION_PRESETS[0].style
 
 /** ASS colours are &HBBGGRR, the reverse of CSS hex. */
-function assColor(hex: string): string {
+export function assColor(hex: string): string {
   const h = hex.replace('#', '')
   const r = h.slice(0, 2)
   const g = h.slice(2, 4)
@@ -14,7 +14,7 @@ function assColor(hex: string): string {
 }
 
 /** ASS timestamps are H:MM:SS.cc with exactly two decimal places. */
-function assTime(sec: number): string {
+export function assTime(sec: number): string {
   const s = Math.max(0, sec)
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
@@ -27,7 +27,7 @@ function assTime(sec: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(whole + carry).padStart(2, '0')}.${String(cc).padStart(2, '0')}`
 }
 
-function escape(text: string): string {
+export function escapeAss(text: string): string {
   return text.replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}')
 }
 
@@ -131,9 +131,9 @@ export function buildAss(
       const end = i === group.length - 1 ? word.endSec : group[i + 1].startSec
 
       if (style.second) {
-        const big = escape(style.uppercase ? word.text.toUpperCase() : word.text)
+        const big = escapeAss(style.uppercase ? word.text.toUpperCase() : word.text)
         const restWords = group.filter((_, j) => j !== i).map((w) => w.text)
-        const rest = escape(
+        const rest = escapeAss(
           style.second.uppercase ? restWords.join(' ').toUpperCase() : restWords.join(' ')
         )
         const until = assTime(Math.max(end, word.startSec + 0.05))
@@ -145,7 +145,7 @@ export function buildAss(
 
       const line = group
         .map((w, j) => {
-          const text = escape(style.uppercase ? w.text.toUpperCase() : w.text)
+          const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
           if (j !== i) return text
           const scale =
             style.activeScale === 1 ? '' : `\\fscx${scalePct}\\fscy${scalePct}`

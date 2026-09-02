@@ -2313,7 +2313,7 @@ kbd {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr) 92px 260px;
+  grid-template-columns: 360px minmax(0, 1fr) 92px 340px;
 }
 
 .clipedit-script {
@@ -2548,7 +2548,7 @@ kbd {
 /* Caption styles shown as themselves, not as a list of names. */
 .caption-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   gap: var(--s2sp);
 }
 .caption-tile {
@@ -2561,7 +2561,7 @@ kbd {
   box-shadow: none;
 }
 .caption-shot {
-  aspect-ratio: 9 / 16;
+  aspect-ratio: 1 / 1;
   background-color: var(--s0);
   background-size: cover;
   background-position: center;

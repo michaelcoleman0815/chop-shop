@@ -278,7 +278,27 @@ function registerIpc(): void {
           safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 2, stage: 'running' })
           const samples = await detectFaces(req.sourcePath, req.startSec, req.endSec - req.startSec)
           track = buildTrack(samples)
+          const withFace = samples.filter((s) => s.faces.length > 0).length
+          const span =
+            track.length > 1
+              ? Math.max(...track.map((p) => p.cx)) - Math.min(...track.map((p) => p.cx))
+              : 0
           console.log('[track]', samples.length, 'samples,', track.length, 'points')
+          // Say what tracking did, not only when it failed. A silent success is
+          // indistinguishable from never having run, which is exactly how this
+          // looked when the helper was missing from the build entirely.
+          safeSend(e.sender, 'clip:progress', {
+            jobId: req.jobId,
+            percent: 3,
+            stage: 'running',
+            message:
+              withFace === 0
+                ? 'No face found in this clip, so the crop is centred.'
+                : `Tracking ${withFace} of ${samples.length} samples, moving ${Math.round(
+                    span * 100
+                  )}% of frame width.`
+          })
+          if (withFace === 0) track = undefined
         } catch (err) {
           // A failed detection should fall back to a centred crop, not fail the
           // export outright. It must still say so: a silent fallback renders a
@@ -759,7 +779,9 @@ function registerIpc(): void {
       endSec: i * 0.4 + 0.38
     }))
     return mediaUrlFor(
-      await captionSample(presetId, (w, h) => buildAss(words, w, h, preset.style))
+      await captionSample(presetId, preset.style.positionFrac, (w, h) =>
+        buildAss(words, w, h, preset.style)
+      )
     )
   })
 

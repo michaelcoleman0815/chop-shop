@@ -138,6 +138,26 @@ export interface CaptionStyle {
   second?: CaptionTier | null
 }
 
+/**
+ * Something drawn over the picture that is not a caption: a title card, or the
+ * bar of counters that sits along the top of a stream clip.
+ */
+export interface ClipGraphic {
+  id: string
+  kind: 'title' | 'bar'
+  text: string
+  /** Clip time. An absent end means it holds to the end of the clip. */
+  startSec: number
+  endSec: number | null
+  position: 'top' | 'middle' | 'bottom'
+  textColor: string
+  /** Null draws the text with an outline instead of on a plate. */
+  boxColor: string | null
+  fontFamily: string
+  fontSizePx: number
+  uppercase: boolean
+}
+
 /** The smaller line of a two-tier caption. */
 export interface CaptionTier {
   fontFamily: string
