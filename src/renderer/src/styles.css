@@ -2583,3 +2583,24 @@ kbd {
 .caption-tile.on .caption-name {
   color: var(--text);
 }
+
+.graphic-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: var(--s3sp);
+  background: var(--s0);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.graphic-row textarea {
+  font-family: var(--ui);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 7px 8px;
+  resize: vertical;
+}

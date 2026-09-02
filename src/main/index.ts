@@ -361,6 +361,7 @@ function registerIpc(): void {
         segments: req.segments,
         overlays: req.overlays,
         music: req.music,
+        graphics: req.graphics,
         zooms: req.zooms && req.zooms.length > 0
           ? req.zooms
           : req.autoZoom
@@ -763,6 +764,7 @@ function registerIpc(): void {
         segments: req.segments,
         overlays: req.overlays,
         music: req.music,
+        graphics: req.graphics,
         zooms: req.zooms,
         // Subject tracking is the slow step and does not change the edit, so a
         // preview leaves it out.

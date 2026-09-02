@@ -31,6 +31,8 @@ export interface ClipRequest {
   zooms?: ZoomKeyframe[]
   overlays?: OverlayClip[]
   music?: MusicTrack | null
+  /** Titles and bars drawn over the picture, in clip time. */
+  graphics?: ClipGraphic[]
 }
 
 export interface ExportProgress {

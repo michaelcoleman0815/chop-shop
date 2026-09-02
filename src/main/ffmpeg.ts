@@ -4,6 +4,8 @@ import { join } from 'path'
 import { app } from 'electron'
 import { buildReframeFilter } from './reframe'
 import { buildAss, DEFAULT_CAPTION_STYLE } from './captions'
+import { buildGraphicsAss } from './graphics'
+import type { ClipGraphic } from '../shared/types'
 import { FONTS_DIR } from './resources'
 import {
   buildKeepSegments,
@@ -39,6 +41,11 @@ export interface SourceInfo {
  * half-size render needs half-size type. Without this a preview shows captions
  * at twice their real proportion, which defeats the point of previewing.
  */
+function scaleGraphics(graphics: ClipGraphic[], scale: number): ClipGraphic[] {
+  if (scale === 1) return graphics
+  return graphics.map((g) => ({ ...g, fontSizePx: Math.max(8, Math.round(g.fontSizePx * scale)) }))
+}
+
 function scaleStyle(style: CaptionStyle, scale: number): CaptionStyle {
   if (scale === 1) return style
   return {
@@ -246,6 +253,8 @@ export async function exportClip(opts: {
   zooms?: ZoomKeyframe[]
   /** Where the subject is over time, in normalised source coordinates. */
   track?: { atSec: number; cx: number; cy: number }[]
+  /** Titles and bars drawn over the picture, in clip time. */
+  graphics?: ClipGraphic[]
   /**
    * Word timings used for tightening. Kept separate from captions so pauses can
    * be cut without also burning subtitles in.
@@ -360,6 +369,22 @@ export async function exportClip(opts: {
     subtitles = `subtitles='${escaped}':fontsdir='${FONTS_DIR()}'`
   }
 
+  // Titles and bars ride a second subtitle track rather than sharing the
+  // caption one: they keep their own timing and styles, and a clip can carry
+  // graphics with captions switched off.
+  let graphicsFilter: string | null = null
+  const graphics = opts.graphics ?? []
+  if (graphics.length > 0) {
+    assDir = assDir ?? (await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-ass-')))
+    const gPath = join(assDir, 'graphics.ass')
+    await fs.writeFile(
+      gPath,
+      buildGraphicsAss(scaleGraphics(graphics, scale), out.w, out.h, outDuration)
+    )
+    const gEscaped = gPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
+    graphicsFilter = `subtitles='${gEscaped}':fontsdir='${FONTS_DIR()}'`
+  }
+
   const overlays = opts.overlays ?? []
   const music = opts.music ?? null
   const multitrack = overlays.length > 0 || music !== null
@@ -374,7 +399,7 @@ export async function exportClip(opts: {
           music,
           outWidth: out.w,
           outHeight: out.h,
-          subtitles
+          subtitles: [subtitles, graphicsFilter].filter(Boolean).join(',') || null
         })
       : null
 
@@ -389,7 +414,7 @@ export async function exportClip(opts: {
         ]
       : [
           '-vf',
-          [...filters, subtitles].filter(Boolean).join(','),
+          [...filters, subtitles, graphicsFilter].filter(Boolean).join(','),
           ...(audioFilter ? ['-af', audioFilter] : [])
         ]
 

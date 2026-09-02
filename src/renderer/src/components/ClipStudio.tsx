@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AspectPreset,
   ClipGenre,
+  ClipGraphic,
   Project,
   Settings,
   SuggestedClip,
@@ -110,7 +111,8 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   // A cut made by hand outlives the tighten toggle: turning automatic
   // tightening off must not silently discard words you struck yourself.
   const [handCut, setHandCut] = useState(false)
-  const [tool, setTool] = useState<'captions' | 'zooms' | 'subject' | 'broll' | 'music' | 'look'>('captions')
+  const [graphics, setGraphics] = useState<ClipGraphic[]>([])
+  const [tool, setTool] = useState<'captions' | 'graphics' | 'zooms' | 'subject' | 'broll' | 'music' | 'look'>('captions')
   const [detail, setDetail] = useState<number | null>(null)
   // One cropped still per clip, in the shape the clip will be exported in.
   const [shots, setShots] = useState<Record<string, string>>({})
@@ -370,6 +372,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       autoZoom,
       tighten,
       trackSubject,
+      graphics: graphics.length > 0 ? graphics : undefined,
       segments: handCut || tighten ? segments : undefined,
       zooms
     }),
@@ -386,6 +389,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       autoZoom,
       tighten,
       trackSubject,
+      graphics,
       segments,
       handCut,
       zooms
@@ -462,6 +466,48 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   useEffect(() => {
     setHandCut(false)
   }, [chosen, inSec, outSec])
+
+  const addGraphic = useCallback(
+    (kind: ClipGraphic['kind']) => {
+      const title = suggestions[chosen ?? -1]?.title ?? ''
+      setGraphics((prev) => [
+        ...prev,
+        kind === 'title'
+          ? {
+              id: `${Date.now()}`,
+              kind,
+              text: title || 'Your title here',
+              startSec: 0,
+              // Long enough to read, short enough not to sit on the whole clip.
+              endSec: 3,
+              position: 'top',
+              textColor: '#16151a',
+              boxColor: '#f2f1ee',
+              fontFamily: 'Sora',
+              fontSizePx: 54,
+              uppercase: false
+            }
+          : {
+              id: `${Date.now()}`,
+              kind,
+              text: '20 HOURS  56 MINUTES  16 SECONDS',
+              startSec: 0,
+              endSec: null,
+              position: 'top',
+              textColor: '#ffffff',
+              boxColor: null,
+              fontFamily: 'Sora',
+              fontSizePx: 40,
+              uppercase: true
+            }
+      ])
+    },
+    [suggestions, chosen]
+  )
+
+  const patchGraphic = useCallback((id: string, patch: Partial<ClipGraphic>) => {
+    setGraphics((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)))
+  }, [])
 
   const exportSuggestion = useCallback(
     async (clip: SuggestedClip) => {
@@ -774,6 +820,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
 
     const TOOLS: { id: typeof tool; name: string }[] = [
       { id: 'captions', name: 'Captions' },
+      { id: 'graphics', name: 'Graphics' },
       { id: 'zooms', name: 'Zooms' },
       { id: 'subject', name: 'Subject' },
       { id: 'broll', name: 'B-roll' },
@@ -868,6 +915,78 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                 />
               </>
             )}
+            {tool === 'graphics' && (
+              <>
+                <div className="row">
+                  <span className="label">On screen</span>
+                  <div className="spacer" />
+                  <button className="seg" onClick={() => addGraphic('title')}>
+                    Title
+                  </button>
+                  <button className="seg" onClick={() => addGraphic('bar')}>
+                    Bar
+                  </button>
+                </div>
+
+                {graphics.length === 0 && (
+                  <p className="muted" style={{ fontSize: 12 }}>
+                    A title card over the opening, or a bar held across the top. Both burn into the
+                    export.
+                  </p>
+                )}
+
+                {graphics.map((g) => (
+                  <div key={g.id} className="graphic-row">
+                    <div className="row" style={{ gap: 6 }}>
+                      <span className="label">{g.kind === 'title' ? 'Title' : 'Bar'}</span>
+                      <div className="spacer" />
+                      <button
+                        className="ghost"
+                        onClick={() => setGraphics((prev) => prev.filter((x) => x.id !== g.id))}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={g.text}
+                      onChange={(e) => patchGraphic(g.id, { text: e.target.value })}
+                    />
+                    <div className="segs">
+                      {(['top', 'middle', 'bottom'] as ClipGraphic['position'][]).map((pos) => (
+                        <button
+                          key={pos}
+                          className={`seg ${g.position === pos ? 'on' : ''}`}
+                          onClick={() => patchGraphic(g.id, { position: pos })}
+                        >
+                          {pos}
+                        </button>
+                      ))}
+                      <button
+                        className={`seg ${g.boxColor ? 'on' : ''}`}
+                        onClick={() =>
+                          patchGraphic(
+                            g.id,
+                            g.boxColor
+                              ? { boxColor: null, textColor: '#ffffff' }
+                              : { boxColor: '#f2f1ee', textColor: '#16151a' }
+                          )
+                        }
+                      >
+                        Plate
+                      </button>
+                      <button
+                        className={`seg ${g.endSec === null ? 'on' : ''}`}
+                        onClick={() => patchGraphic(g.id, { endSec: g.endSec === null ? 3 : null })}
+                      >
+                        {g.endSec === null ? 'Whole clip' : 'First 3s'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
             {tool === 'zooms' && (
               <>
                 <div className="row">
