@@ -121,6 +121,13 @@ export interface CaptionStyle {
   uppercase: boolean
   /** Scale applied to the word currently being spoken. 1 disables it. */
   activeScale: number
+  /** Faux-bold, for families that ship only one weight. */
+  bold?: boolean
+  /**
+   * Fills a solid plate behind the words instead of outlining them. The outline
+   * width becomes the plate's padding, which is how ASS BorderStyle 3 works.
+   */
+  boxColor?: string | null
 }
 
 export interface ZoomKeyframe {

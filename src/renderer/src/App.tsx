@@ -54,17 +54,11 @@ export default function App(): JSX.Element {
 
   if (!settings) return <div className="app" />
 
-  // Nothing is open, so the app is a launcher rather than a workspace. The
-  // update banner still belongs here: this is the screen the app opens on, and
-  // returning before it meant an update was invisible until you opened a
-  // project, which is not something you do to go looking for one.
+  // Nothing is open, so the app is a launcher rather than a workspace. Home
+  // draws the update banner itself, under its own header: the window has no
+  // titlebar, so anything above that header sits under the traffic lights.
   if (!project)
-    return (
-      <>
-        <UpdateBanner />
-        <Home version={version} onOpen={setProject} settings={settings} patch={patchSettings} />
-      </>
-    )
+    return <Home version={version} onOpen={setProject} settings={settings} patch={patchSettings} />
 
   const clipping = project.mode === 'clip'
 

@@ -914,16 +914,24 @@ kbd {
 
 /* The mode is stated on every row, so a glance down the list says which kind
    of work each project holds. */
+/* Stated explicitly rather than inherited: the base .mode-tag is an absolutely
+   positioned overlay badge, and letting a pill in a table row pick up half of
+   that geometry is what made the two modes render as different shapes. */
 .project-row .mode-tag {
   position: static;
   justify-self: start;
-  padding: 3px 10px;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  height: 22px;
+  padding: 0 11px;
   font-family: var(--ui);
   font-size: 11px;
   font-weight: 500;
-  line-height: 1.45;
+  line-height: 1;
   letter-spacing: 0;
   text-transform: none;
+  white-space: nowrap;
   border-radius: 999px;
   color: #a9c6e4;
   background: rgba(127, 168, 212, 0.14);

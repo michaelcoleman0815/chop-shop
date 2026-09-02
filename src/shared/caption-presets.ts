@@ -27,6 +27,65 @@ const BASE: CaptionStyle = {
  */
 export const CAPTION_PRESETS: CaptionPreset[] = [
   {
+    id: 'plate',
+    name: 'Plate',
+    style: {
+      ...BASE,
+      // One word on a solid block, centred. The plate does the legibility work,
+      // so there is no outline and no per-word colour change.
+      wordsPerGroup: 1,
+      fontSizePx: 86,
+      positionFrac: 0.5,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlinePx: 14,
+      shadowPx: 0,
+      uppercase: true,
+      activeScale: 1,
+      boxColor: '#08080b'
+    }
+  },
+  {
+    id: 'stack',
+    name: 'Stack',
+    style: {
+      ...BASE,
+      // Two lines of heavy uppercase with the spoken line picked out in yellow,
+      // over a hard black edge that survives any background.
+      wordsPerGroup: 5,
+      fontSizePx: 74,
+      positionFrac: 0.34,
+      textColor: '#ffffff',
+      activeColor: '#ffd400',
+      outlineColor: '#000000',
+      outlinePx: 9,
+      shadowPx: 0,
+      uppercase: true,
+      activeScale: 1.05
+    }
+  },
+  {
+    id: 'sentence',
+    name: 'Sentence',
+    style: {
+      ...BASE,
+      // Sentence case, no shouting, sitting low. For talking heads where the
+      // face is the subject and the words are support.
+      wordsPerGroup: 4,
+      fontFamily: 'Sora',
+      fontSizePx: 46,
+      positionFrac: 0.17,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 3,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1,
+      bold: true
+    }
+  },
+  {
     id: 'chop',
     name: 'Chop Shop',
     style: BASE

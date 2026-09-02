@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Project, ProjectMode, ProjectSummary, Settings } from '../../../shared/types'
 import Mark from './Mark'
 import SettingsPanel from './SettingsPanel'
+import UpdateBanner from './UpdateBanner'
 
 interface Props {
   onOpen: (project: Project) => void
@@ -117,6 +118,8 @@ export default function Home({ onOpen, version, settings, patch }: Props): JSX.E
         <div className="spacer" />
         <span className="mono muted">{version}</span>
       </div>
+
+      <UpdateBanner />
 
       <div className="home-body">
         <aside className="home-rail">
