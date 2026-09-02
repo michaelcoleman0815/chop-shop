@@ -14,7 +14,7 @@ import {
 import { autoZooms } from './autozoom'
 import { buildTimelineRender } from './timeline'
 import { readEpr } from './epr'
-import { readAnalysis, writeAnalysis } from './analysis-cache'
+import { readAnalysis, writeAnalysis, sameQuestion } from './analysis-cache'
 import { sweepTemp } from './temp-sweep'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { mediaPreview } from './media-preview'
@@ -46,7 +46,8 @@ import type {
   SuggestedClip,
   Timeline,
   TranscriptWord,
-  VideoMeta
+  VideoMeta,
+  AnalysisOptions
 } from '../shared/types'
 
 const SIX_HOURS = 6 * 60 * 60 * 1000
@@ -417,13 +418,15 @@ function registerIpc(): void {
   // the moments. Progress is reported across both halves as a single bar.
   ipcMain.handle('ai:cached', (_e, videoPath: string) => readAnalysis(videoPath))
 
-  ipcMain.handle('ai:analyze', async (e, videoPath: string, force?: boolean) => {
+  ipcMain.handle(
+    'ai:analyze',
+    async (e, videoPath: string, force?: boolean, options?: AnalysisOptions) => {
     const settings = getSettings()
     try {
-      // Never spend minutes and an API call twice on an unchanged file.
+      // Never spend minutes and an API call twice on the same question.
       if (!force) {
         const cached = await readAnalysis(videoPath)
-        if (cached) {
+        if (cached && sameQuestion(cached.options, options)) {
           console.log('[ai] cache hit,', cached.transcript.words.length, 'words')
           safeSend(e.sender, 'ai:progress', { stage: 'Done', percent: 100 })
           return { ok: true as const, result: cached }
@@ -431,6 +434,10 @@ function registerIpc(): void {
       }
 
       const meta = await probe(videoPath)
+      // A range the setup screen did not set is the whole recording.
+      const startSec = Math.max(0, options?.startSec ?? 0)
+      const endSec = Math.min(meta.durationSec, options?.endSec ?? meta.durationSec)
+      const windowSec = Math.max(1, endSec - startSec)
 
       // Progress is one bar over three stages, so each stage gets a slice of it
       // sized to how long it actually takes.
@@ -452,24 +459,27 @@ function registerIpc(): void {
       const transcript = await transcribe(
         videoPath,
         settings.whisperModel,
-        meta.durationSec,
+        windowSec,
         (percent, stage) =>
           safeSend(e.sender, 'ai:progress', {
             stage,
             percent: base + Math.round((percent * span) / 100)
-          })
+          }),
+        startSec
       )
       console.log('[ai] transcribed', transcript.words.length, 'words')
       safeSend(e.sender, 'ai:progress', { stage: 'Finding clips', percent: 88 })
       const clips = await suggestClips(
         transcript,
         meta.durationSec,
-        settings.maxSuggestedClips,
-        settings.clipModel
+        options?.maxClips ?? settings.maxSuggestedClips,
+        settings.clipModel,
+        options ? { minSec: options.minClipSec, maxSec: options.maxClipSec } : undefined,
+        options?.lookFor
       )
       console.log('[ai] Claude returned', clips.length, 'clips')
       const result = { transcript, clips }
-      await writeAnalysis(videoPath, result)
+      await writeAnalysis(videoPath, result, options)
       safeSend(e.sender, 'ai:progress', { stage: 'Done', percent: 100 })
       return { ok: true as const, result }
     } catch (err) {
@@ -478,7 +488,8 @@ function registerIpc(): void {
       safeSend(e.sender, 'ai:progress', { stage: 'Failed', percent: 0, message })
       return { ok: false as const, message }
     }
-  })
+    }
+  )
 
   ipcMain.handle(
     'preview:range',

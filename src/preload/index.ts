@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
+  AnalysisOptions,
+  CachedAnalysis,
   AnalysisResult,
   AspectPreset,
   CaptureSource,
@@ -66,10 +68,11 @@ const api = {
 
   analyze: (
     videoPath: string,
-    force?: boolean
+    force?: boolean,
+    options?: AnalysisOptions
   ): Promise<{ ok: true; result: AnalysisResult } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('ai:analyze', videoPath, force),
-  cachedAnalysis: (videoPath: string): Promise<AnalysisResult | null> =>
+    ipcRenderer.invoke('ai:analyze', videoPath, force, options),
+  cachedAnalysis: (videoPath: string): Promise<CachedAnalysis | null> =>
     ipcRenderer.invoke('ai:cached', videoPath),
 
   onAiProgress: (

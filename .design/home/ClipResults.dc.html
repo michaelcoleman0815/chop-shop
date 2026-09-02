@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Sora:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #ff6076; } a:hover { color: #ff7d8f; }
+    .sb-group { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; color: #57545c; padding: 0 10px; margin: 18px 0 6px; }
+    .sb-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 3px; color: #98959f; font-size: 13px; }
+    .sb-item.on { background: #21212a; color: #f2f1ee; font-weight: 500; }
+    .seg { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: #98959f; background: #08080b; border: 1px solid #2b2b35; }
+    .seg.on { color: #ff6076; background: rgba(255, 96, 118, 0.16); border-color: rgba(255, 96, 118, 0.5); }
+    .lbl { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; color: #98959f; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #101015; color: #f2f1ee; font-family: 'Sora', -apple-system, system-ui, sans-serif; font-size: 13px; line-height: 1.6; display: flex; overflow: hidden;">
+
+  <div style="width: 240px; flex: 0 0 240px; background: #08080b; border-right: 1px solid #2b2b35; padding: 16px 12px; display: flex; flex-direction: column;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 10px 4px;">
+      <svg width="22" height="19" viewBox="0 0 26 22" fill="none"><rect x="0.5" y="1" width="25" height="8" rx="2" fill="#f2f1ee"></rect><rect x="6.5" y="12" width="19" height="8" rx="2" fill="#ff6076"></rect></svg>
+      <span style="font-family: 'Archivo Black', system-ui, sans-serif; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase;">Chop Shop</span>
+    </div>
+
+    <div class="sb-group">Work</div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="sb-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 8 2l6 4.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6.5Z"></path><path d="M6.2 14V9.2h3.6V14"></path></svg><span>Home</span></div>
+      <div class="sb-item on"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 4.6a1 1 0 0 1 1-1h3.1l1.3 1.6h5a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1H2.8a1 1 0 0 1-1-1V4.6Z"></path></svg><span>Projects</span></div>
+      <div class="sb-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8v8.4"></path><path d="M5 7.2 8 10.2l3-3"></path><path d="M2.4 11.2v1.8a1 1 0 0 0 1 1h9.2a1 1 0 0 0 1-1v-1.8"></path></svg><span>Exports</span></div>
+    </div>
+
+    <div class="sb-group">Capture</div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div class="sb-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.6"></circle><path d="M3.2 3.2a6.8 6.8 0 0 0 0 9.6M12.8 3.2a6.8 6.8 0 0 1 0 9.6"></path></svg><span>Live Buffer</span></div>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px; border-top: 1px solid #2b2b35; padding-top: 10px;">
+      <div class="sb-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Settings</span></div>
+      <div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: #57545c; padding: 4px 10px 0;">0.2.7</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; min-width: 0; overflow: hidden; padding: 28px 32px; display: flex; flex-direction: column; gap: 18px;">
+
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <div style="display: flex; align-items: baseline; gap: 8px; min-width: 0;">
+        <span style="font-size: 13px; color: #98959f;">Projects</span>
+        <span style="color: #57545c;">/</span>
+        <span style="font-family: 'Archivo Black', system-ui, sans-serif; font-size: 22px; line-height: 1.15;">church</span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <input type="text" placeholder="Find a moment in the transcript" style="font-family: 'Sora', system-ui, sans-serif; font-size: 13px; color: #f2f1ee; background: #08080b; border: 1px solid #2b2b35; border-radius: 3px; padding: 6px 10px; width: 260px;">
+      <span style="padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: #98959f; background: #08080b; border: 1px solid #2b2b35;">Re-analyse</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; color: #98959f;">8 clips from 16,055 words</span>
+      <div style="flex-grow: 1;"></div>
+      <span style="font-size: 12px; color: #98959f;">Sorted by score</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 4px; background: linear-gradient(168deg, #5a4438, #1a1920); border: 1px solid #3d3d4a; overflow: hidden;">
+            <div style="position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #17090d; background: #ff6076;">86</div>
+            <div style="position: absolute; right: 8px; bottom: 8px; padding: 2px 7px; border-radius: 3px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: #f2f1ee; background: rgba(8, 8, 11, 0.72);">1:28</div>
+            <div style="position: absolute; left: 0; right: 0; bottom: 46px; text-align: center; font-family: 'Archivo Black', system-ui, sans-serif; font-size: 15px; letter-spacing: 0.01em; color: #f2f1ee; text-shadow: 0 2px 6px rgba(0,0,0,0.8);">THE SEIZURES</div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; line-height: 1.35;">He Touched Him And The Seizures Stopped</div>
+          <div style="display: flex; gap: 6px;">
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Preview</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Edit</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 600; color: #17090d; background: #ff6076; border: 1px solid #ff6076;">Export</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 4px; background: linear-gradient(168deg, #5a4438, #1a1920); border: 1px solid #2b2b35; overflow: hidden;">
+            <div style="position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #17090d; background: #ff6076;">81</div>
+            <div style="position: absolute; right: 8px; bottom: 8px; padding: 2px 7px; border-radius: 3px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: #f2f1ee; background: rgba(8, 8, 11, 0.72);">1:12</div>
+            <div style="position: absolute; left: 0; right: 0; bottom: 46px; text-align: center; font-family: 'Archivo Black', system-ui, sans-serif; font-size: 15px; letter-spacing: 0.01em; color: #f2f1ee; text-shadow: 0 2px 6px rgba(0,0,0,0.8);">TEN DAYS</div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; line-height: 1.35;">Ten Days Of Communion</div>
+          <div style="display: flex; gap: 6px;">
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Preview</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Edit</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 600; color: #17090d; background: #ff6076; border: 1px solid #ff6076;">Export</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 4px; background: linear-gradient(168deg, #5a4438, #1a1920); border: 1px solid #2b2b35; overflow: hidden;">
+            <div style="position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #17090d; background: #ff6076;">79</div>
+            <div style="position: absolute; right: 8px; bottom: 8px; padding: 2px 7px; border-radius: 3px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: #f2f1ee; background: rgba(8, 8, 11, 0.72);">0:54</div>
+            <div style="position: absolute; left: 0; right: 0; bottom: 46px; text-align: center; font-family: 'Archivo Black', system-ui, sans-serif; font-size: 15px; letter-spacing: 0.01em; color: #f2f1ee; text-shadow: 0 2px 6px rgba(0,0,0,0.8);">WHAT AM I</div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; line-height: 1.35;">I Asked God What Am I Gonna Do</div>
+          <div style="display: flex; gap: 6px;">
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Preview</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Edit</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 600; color: #17090d; background: #ff6076; border: 1px solid #ff6076;">Export</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 4px; background: linear-gradient(168deg, #5a4438, #1a1920); border: 1px solid #2b2b35; overflow: hidden;">
+            <div style="position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #17090d; background: #ff6076;">74</div>
+            <div style="position: absolute; right: 8px; bottom: 8px; padding: 2px 7px; border-radius: 3px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: #f2f1ee; background: rgba(8, 8, 11, 0.72);">1:06</div>
+            <div style="position: absolute; left: 0; right: 0; bottom: 46px; text-align: center; font-family: 'Archivo Black', system-ui, sans-serif; font-size: 15px; letter-spacing: 0.01em; color: #f2f1ee; text-shadow: 0 2px 6px rgba(0,0,0,0.8);">EVEN WALK</div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; line-height: 1.35;">He Could Even Walk Again</div>
+          <div style="display: flex; gap: 6px;">
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Preview</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Edit</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 600; color: #17090d; background: #ff6076; border: 1px solid #ff6076;">Export</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 4px; background: linear-gradient(168deg, #5a4438, #1a1920); border: 1px solid #2b2b35; overflow: hidden;">
+            <div style="position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #17090d; background: #ff6076;">71</div>
+            <div style="position: absolute; right: 8px; bottom: 8px; padding: 2px 7px; border-radius: 3px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: #f2f1ee; background: rgba(8, 8, 11, 0.72);">0:47</div>
+            <div style="position: absolute; left: 0; right: 0; bottom: 46px; text-align: center; font-family: 'Archivo Black', system-ui, sans-serif; font-size: 15px; letter-spacing: 0.01em; color: #f2f1ee; text-shadow: 0 2px 6px rgba(0,0,0,0.8);">AT FIFTY</div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; line-height: 1.35;">Lymphatic Cancer At Fifty</div>
+          <div style="display: flex; gap: 6px;">
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Preview</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Edit</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 600; color: #17090d; background: #ff6076; border: 1px solid #ff6076;">Export</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 4px; background: linear-gradient(168deg, #5a4438, #1a1920); border: 1px solid #2b2b35; overflow: hidden;">
+            <div style="position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #17090d; background: #ff6076;">68</div>
+            <div style="position: absolute; right: 8px; bottom: 8px; padding: 2px 7px; border-radius: 3px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: #f2f1ee; background: rgba(8, 8, 11, 0.72);">1:19</div>
+            <div style="position: absolute; left: 0; right: 0; bottom: 46px; text-align: center; font-family: 'Archivo Black', system-ui, sans-serif; font-size: 15px; letter-spacing: 0.01em; color: #f2f1ee; text-shadow: 0 2px 6px rgba(0,0,0,0.8);">OWN STUDY</div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; line-height: 1.35;">Now You Do Your Own Study</div>
+          <div style="display: flex; gap: 6px;">
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Preview</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 500; color: #f2f1ee; background: #21212a; border: 1px solid #3d3d4a;">Edit</span>
+            <span style="flex-grow: 1; text-align: center; padding: 5px 0; border-radius: 3px; font-size: 12px; font-weight: 600; color: #17090d; background: #ff6076; border: 1px solid #ff6076;">Export</span>
+          </div>
+        </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

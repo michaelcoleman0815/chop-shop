@@ -52,7 +52,9 @@ export async function suggestClips(
   transcript: Transcript,
   durationSec: number,
   maxClips: number,
-  model: string
+  model: string,
+  length?: { minSec: number; maxSec: number },
+  lookFor?: string
 ): Promise<SuggestedClip[]> {
   const apiKey = readApiKey()
   if (!apiKey) {
@@ -73,7 +75,15 @@ export async function suggestClips(
 
 ${transcriptLines(transcript.words)}
 
-Return at most ${maxClips} clips.`
+Return at most ${maxClips} clips.${
+          length ? `\nEach clip should run between ${length.minSec} and ${length.maxSec} seconds.` : ''
+        }${
+          // Tagged rather than run together with the transcript: a recording
+          // that happens to contain instructions must not read as one.
+          lookFor && lookFor.trim()
+            ? `\n\n<asked-for>\n${lookFor.trim()}\n</asked-for>`
+            : ''
+        }`
       }
     ],
     output_config: { format: zodOutputFormat(ClipsSchema) }

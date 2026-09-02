@@ -11,7 +11,7 @@ import Home from './components/Home'
 import EditWorkspace from './components/EditWorkspace'
 import type { Project } from '../../shared/types'
 
-type Tab = 'studio' | 'live' | 'settings'
+type Tab = 'studio' | 'live' | 'settings' | 'exports'
 
 export default function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>('studio')
@@ -68,81 +68,129 @@ export default function App(): JSX.Element {
 
   const clipping = project.mode === 'clip'
 
+  const nav = (
+    key: string,
+    label: string,
+    icon: JSX.Element,
+    onClick: () => void
+  ): JSX.Element => (
+    <button key={key} className={`rail-item ${tab === key ? 'on' : ''}`} onClick={onClick}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  )
+
+  const icons = {
+    home: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6.5 8 2l6 4.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6.5Z" /><path d="M6.2 14V9.2h3.6V14" /></svg>
+    ),
+    clips: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3.2" width="12" height="9.6" rx="1" /><path d="M5.6 3.2v9.6M10.4 3.2v9.6" /></svg>
+    ),
+    exports: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1.8v8.4" /><path d="M5 7.2 8 10.2l3-3" /><path d="M2.4 11.2v1.8a1 1 0 0 0 1 1h9.2a1 1 0 0 0 1-1v-1.8" /></svg>
+    ),
+    live: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="2.6" /><path d="M3.2 3.2a6.8 6.8 0 0 0 0 9.6M12.8 3.2a6.8 6.8 0 0 1 0 9.6" /></svg>
+    ),
+    settings: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="2.2" /><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5" /></svg>
+    )
+  }
+
+  const running = jobs.filter((j) => j.stage === 'running' || j.stage === 'queued').length
+
   return (
     <div className="app">
-      <div className="titlebar">
-        <button
-          className="ghost"
-          title="Back to projects"
-          onClick={() => {
-            void window.chop.saveProject(project)
-            setProject(null)
-          }}
-          style={{ padding: '4px 10px' }}
-        >
-          Projects
-        </button>
-        <div className="wordmark" style={{ gap: 10 }}>
-          <Mark height={18} />
-          <span style={{ fontSize: 18 }}>{project.name}</span>
-        </div>
-        <nav className="tabs">
-          {clipping && (
-            <button className={tab === 'studio' ? 'on' : ''} onClick={() => setTab('studio')}>
-              Clip Studio
-            </button>
-          )}
-          {clipping && (
-            <button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>
-              Live Buffer
-            </button>
-          )}
-          {!clipping && (
-            <button className={tab === 'studio' ? 'on' : ''} onClick={() => setTab('studio')}>
-              Edit
-            </button>
-          )}
-          <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>
-            Settings
+      <div className="shell">
+        <aside className="rail">
+          <button
+            className="rail-project"
+            title="Back to projects"
+            onClick={() => {
+              void window.chop.saveProject(project)
+              setProject(null)
+            }}
+          >
+            <Mark height={18} />
+            <span>{project.name}</span>
           </button>
-        </nav>
-        <div className="spacer" />
-        <div className="mono muted">{version}</div>
-      </div>
-      <UpdateBanner />
 
-      {tab === 'studio' ? (
-        <div className="body">
-          {clipping ? (
-            <ClipStudio
-              settings={settings}
-              patch={patchSettings}
-              addJob={addJob}
-              project={project}
-              onProject={setProject}
-            />
-          ) : (
-            <EditWorkspace project={project} onProject={setProject} addJob={addJob} />
+          <div className="sb-group">Work</div>
+          <div className="rail-nav">
+            <button
+              className="rail-item"
+              onClick={() => {
+                void window.chop.saveProject(project)
+                setProject(null)
+              }}
+            >
+              {icons.home}
+              <span>Projects</span>
+            </button>
+            {nav(
+              'studio',
+              clipping ? 'Clips' : 'Timeline',
+              icons.clips,
+              () => setTab('studio')
+            )}
+            <button
+              className={`rail-item ${tab === 'exports' ? 'on' : ''}`}
+              onClick={() => setTab('exports')}
+            >
+              {icons.exports}
+              <span>Exports</span>
+              {running > 0 && <span className="rail-count">{running}</span>}
+            </button>
+          </div>
+
+          {clipping && (
+            <>
+              <div className="sb-group">Capture</div>
+              <div className="rail-nav">{nav('live', 'Live Buffer', icons.live, () => setTab('live'))}</div>
+            </>
           )}
-          <aside className="sidebar">
-            <div className="label" style={{ marginBottom: 16 }}>Exports</div>
-            <JobList jobs={jobs} />
-          </aside>
-        </div>
-      ) : (
-      <div className="body">
-        <div className="pane">
-          {tab === 'live' && clipping && (
-            <LiveBuffer settings={settings} patch={patchSettings} addJob={addJob} />
-          )}
-          {tab === 'settings' && <SettingsPanel settings={settings} patch={patchSettings} />}
-        </div>
-        <aside className="sidebar">
-          <div className="label" style={{ marginBottom: 16 }}>Exports</div>
-          <JobList jobs={jobs} />
+
+          <div className="spacer" />
+
+          <div className="rail-nav rail-foot">
+            {nav('settings', 'Settings', icons.settings, () => setTab('settings'))}
+            <div className="mono muted rail-version">{version}</div>
+          </div>
         </aside>
+
+        <div className="shell-main">
+          <UpdateBanner />
+          <div className="body">
+            {tab === 'studio' &&
+              (clipping ? (
+                <ClipStudio
+                  settings={settings}
+                  patch={patchSettings}
+                  addJob={addJob}
+                  project={project}
+                  onProject={setProject}
+                />
+              ) : (
+                <EditWorkspace project={project} onProject={setProject} addJob={addJob} />
+              ))}
+            {tab !== 'studio' && (
+              <div className="pane">
+                {tab === 'live' && clipping && (
+                  <LiveBuffer settings={settings} patch={patchSettings} addJob={addJob} />
+                )}
+                {tab === 'settings' && <SettingsPanel settings={settings} patch={patchSettings} />}
+                {tab === 'exports' && (
+                  <div className="exports-page">
+                    <div className="home-title" style={{ marginBottom: 18 }}>Exports</div>
+                    <JobList jobs={jobs} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-      )}
     </div>
   )
 }

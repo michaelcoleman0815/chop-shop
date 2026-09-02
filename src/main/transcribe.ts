@@ -99,7 +99,8 @@ async function extractAudio(
   videoPath: string,
   wavPath: string,
   durationSec: number,
-  onProgress: (percent: number) => void
+  onProgress: (percent: number) => void,
+  startSec = 0
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(FFMPEG_PATH, [
@@ -110,6 +111,11 @@ async function extractAudio(
       'pipe:1',
       '-nostats',
       '-y',
+      // Both before -i, so the demuxer stops at the end of the window instead
+      // of reading the rest of a two hour file to throw it away.
+      ...(startSec > 0 ? ['-ss', startSec.toFixed(3)] : []),
+      '-t',
+      durationSec.toFixed(3),
       '-i',
       videoPath,
       '-ar',
@@ -142,7 +148,13 @@ export async function transcribe(
   videoPath: string,
   model: WhisperModel,
   durationSec: number,
-  onProgress: (percent: number, stage: string) => void
+  onProgress: (percent: number, stage: string) => void,
+  /**
+   * Where the window starts in the source. Whisper only ever sees the extracted
+   * window, so its timings start at zero and are shifted back onto the source
+   * here — everything downstream addresses the original recording.
+   */
+  startSec = 0
 ): Promise<Transcript> {
   const bin = WHISPER_PATH()
   if (!existsSync(bin)) {
@@ -156,8 +168,12 @@ export async function transcribe(
   const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-stt-'))
   try {
     const wav = join(dir, 'audio.wav')
-    await extractAudio(videoPath, wav, durationSec, (p) =>
-      onProgress(Math.round(p * 0.12), 'Extracting audio')
+    await extractAudio(
+      videoPath,
+      wav,
+      durationSec,
+      (p) => onProgress(Math.round(p * 0.12), 'Extracting audio'),
+      startSec
     )
 
     onProgress(12, 'Transcribing')
@@ -207,7 +223,15 @@ export async function transcribe(
     })
 
     const json = JSON.parse(await fs.readFile(`${prefix}.json`, 'utf8'))
-    const words = tokensToWords(json.transcription ?? [])
+    const windowWords = tokensToWords(json.transcription ?? [])
+    const words =
+      startSec > 0
+        ? windowWords.map((w) => ({
+            text: w.text,
+            startSec: w.startSec + startSec,
+            endSec: w.endSec + startSec
+          }))
+        : windowWords
     onProgress(100, 'Done')
 
     return {

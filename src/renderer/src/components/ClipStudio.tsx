@@ -22,6 +22,23 @@ interface Props {
   onProject: (p: Project) => void
 }
 
+const LENGTHS = {
+  auto: { min: 15, max: 90, label: 'Auto' },
+  short: { min: 15, max: 30, label: '15\u201330s' },
+  mid: { min: 30, max: 60, label: '30\u201360s' },
+  long: { min: 60, max: 90, label: '60\u201390s' }
+} as const
+
+function clock(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const r = s % 60
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
+    : `${m}:${String(r).padStart(2, '0')}`
+}
+
 /** The editor works in clip time; exports address the source. */
 function rebaseToSource(words: TranscriptWord[], offsetSec: number): TranscriptWord[] {
   return words.map((w) => ({
@@ -68,6 +85,17 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     frames: number
   } | null>(null)
 
+  // What the setup screen asks before a run.
+  const [rangeStart, setRangeStart] = useState(0)
+  const [rangeEnd, setRangeEnd] = useState(0)
+  const [maxClips, setMaxClips] = useState(settings.maxSuggestedClips)
+  const [clipLength, setClipLength] = useState<'auto' | 'short' | 'mid' | 'long'>('auto')
+  const [lookFor, setLookFor] = useState('')
+  // The clips are the screen once there are any; the editor is where you go to
+  // change one, not where you land.
+  const [view, setView] = useState<'grid' | 'studio'>('grid')
+  const [detail, setDetail] = useState<number | null>(null)
+
   const analysed = words.length > 0
 
   useEffect(() => {
@@ -100,12 +128,21 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       setStrip(null)
       void openWindow(v.path, 0)
       // If this file has been analysed before, its results come straight back.
+      setRangeStart(0)
+      setRangeEnd(v.durationSec)
       window.chop
         .cachedAnalysis(v.path)
         .then((cached) => {
           if (!cached) return
           setWords(cached.transcript.words)
           setSuggestions(cached.clips)
+          // Show the run that produced these clips, not the defaults.
+          if (cached.options) {
+            setRangeStart(cached.options.startSec)
+            setRangeEnd(cached.options.endSec)
+            setMaxClips(cached.options.maxClips)
+            setLookFor(cached.options.lookFor)
+          }
         })
         .catch(() => undefined)
       // The scrubber for a two hour recording is otherwise a blank bar. A
@@ -212,7 +249,14 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     if (!meta) return
     setError(null)
     setAnalysis({ stage: 'Starting', percent: 0 })
-    const res = await window.chop.analyze(meta.path, suggestions.length > 0)
+    const res = await window.chop.analyze(meta.path, suggestions.length > 0, {
+      startSec: rangeStart,
+      endSec: rangeEnd > rangeStart ? rangeEnd : meta.durationSec,
+      maxClips,
+      minClipSec: LENGTHS[clipLength].min,
+      maxClipSec: LENGTHS[clipLength].max,
+      lookFor
+    })
     setAnalysis(null)
     if (!res.ok) return setError(res.message)
     setWords(res.result.transcript.words)
@@ -226,7 +270,18 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     }
     onProject(saved)
     void window.chop.saveProject(saved)
-  }, [meta, project, onProject, suggestions.length])
+    setView('grid')
+  }, [
+    meta,
+    project,
+    onProject,
+    suggestions.length,
+    rangeStart,
+    rangeEnd,
+    maxClips,
+    clipLength,
+    lookFor
+  ])
 
   // Reopening a project brings back its analysis rather than asking for it
   // again: it costs minutes of transcription and a paid call to redo.
@@ -313,6 +368,38 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     await window.chop.exportClip(buildRequest(jobId, jobName))
   }, [meta, name, addJob, buildRequest])
 
+  const exportSuggestion = useCallback(
+    async (clip: SuggestedClip) => {
+      if (!meta) return
+      const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const jobName = `${slug(clip.title) || 'clip'}-${stamp()}`
+      addJob({ id: jobId, name: jobName, percent: 0, stage: 'running' })
+      await window.chop.exportClip({
+        ...buildRequest(jobId, jobName),
+        startSec: clip.startSec,
+        endSec: clip.endSec,
+        name: jobName
+      })
+    },
+    [meta, addJob, buildRequest]
+  )
+
+  const thumbOf = useCallback(
+    (atSec: number): { backgroundImage: string; backgroundSize: string; backgroundPositionX: string } | undefined => {
+      if (!strip || !meta || meta.durationSec <= 0) return undefined
+      const frame = Math.min(
+        strip.frames - 1,
+        Math.floor((atSec / meta.durationSec) * strip.frames)
+      )
+      return {
+        backgroundImage: `url("${strip.filmstripUrl}")`,
+        backgroundSize: `${strip.frames * 100}% 100%`,
+        backgroundPositionX: `${(frame / Math.max(1, strip.frames - 1)) * 100}%`
+      }
+    },
+    [strip, meta]
+  )
+
   if (!meta) {
     return (
       <div className="empty-stage">
@@ -352,6 +439,236 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
 
   const duration = Math.max(0, outSec - inSec)
   const pct = (t: number): number => (meta.durationSec ? (t / meta.durationSec) * 100 : 0)
+
+  const windowSec = Math.max(0, (rangeEnd || meta.durationSec) - rangeStart)
+  // Measured on this machine: small.en runs about seventeen times faster than
+  // real time, so a two hour service is roughly eight minutes.
+  const transcribeMins = Math.max(1, Math.round(windowSec / 60 / 17))
+
+  if (!analysed) {
+    return (
+      <div className="setup">
+        <div className="setup-inner">
+          <div className="setup-head">
+            <div className="setup-thumb" style={thumbOf(0)} />
+            <div className="setup-ident">
+              <div className="home-title" style={{ fontSize: 20 }}>{project.name}</div>
+              <div className="mono muted">
+                {meta.fileName} · {clock(meta.durationSec)} · {meta.width}×{meta.height} {Math.round(meta.fps)} fps
+              </div>
+            </div>
+            <div className="spacer" />
+            <button className="primary" style={{ padding: '11px 22px', fontSize: 14 }} disabled={!!analysis} onClick={analyze}>
+              {analysis ? 'Working…' : 'Find clips'}
+            </button>
+          </div>
+
+          {analysis && (
+            <div className="analysis-strip">
+              <span className="mono">{analysis.stage}</span>
+              <div className="bar"><i style={{ width: `${analysis.percent}%` }} /></div>
+              <span className="mono muted">{analysis.percent}%</span>
+            </div>
+          )}
+          {error && <p className="error-text">{error}</p>}
+
+          <div className="setup-rule" />
+
+          <div className="field">
+            <div className="row" style={{ gap: 10, alignItems: 'baseline' }}>
+              <span className="label">Analyse</span>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Only this stretch is transcribed, so a shorter range is a shorter wait.
+              </span>
+            </div>
+            <div className="range-card">
+              <div className="range">
+                <div className="range-track" />
+                <div
+                  className="range-fill"
+                  style={{
+                    left: `${(rangeStart / meta.durationSec) * 100}%`,
+                    right: `${100 - ((rangeEnd || meta.durationSec) / meta.durationSec) * 100}%`
+                  }}
+                />
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.floor(meta.durationSec)}
+                  value={Math.floor(rangeStart)}
+                  onChange={(e) => setRangeStart(Math.min(Number(e.target.value), (rangeEnd || meta.durationSec) - 30))}
+                />
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.floor(meta.durationSec)}
+                  value={Math.floor(rangeEnd || meta.durationSec)}
+                  onChange={(e) => setRangeEnd(Math.max(Number(e.target.value), rangeStart + 30))}
+                />
+              </div>
+              <div className="row" style={{ gap: 10 }}>
+                <span className="range-time mono">{clock(rangeStart)}</span>
+                <span className="muted">→</span>
+                <span className="range-time mono">{clock(rangeEnd || meta.durationSec)}</span>
+                <div className="spacer" />
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {clock(windowSec)} selected · about {transcribeMins} min to transcribe
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="setup-two">
+            <div className="field">
+              <span className="label">Clip length</span>
+              <div className="segs">
+                {(Object.keys(LENGTHS) as (keyof typeof LENGTHS)[]).map((k) => (
+                  <button
+                    key={k}
+                    className={`seg ${clipLength === k ? 'on' : ''}`}
+                    onClick={() => setClipLength(k)}
+                  >
+                    {LENGTHS[k].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="field">
+              <span className="label">How many</span>
+              <div className="segs">
+                {[4, 8, 12, 16].map((n) => (
+                  <button key={n} className={`seg ${maxClips === n ? 'on' : ''}`} onClick={() => setMaxClips(n)}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="field">
+            <div className="row" style={{ gap: 10, alignItems: 'baseline' }}>
+              <span className="label">Look for</span>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Optional. Goes to Claude alongside the transcript.
+              </span>
+            </div>
+            <textarea
+              rows={2}
+              placeholder="Stories with a clear beginning and end, not the announcements"
+              value={lookFor}
+              onChange={(e) => setLookFor(e.target.value)}
+            />
+          </div>
+
+          <div className="setup-two">
+            <div className="field">
+              <span className="label">Captions</span>
+              <div className="segs">
+                {CAPTION_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    className={`seg ${settings.captionPreset === preset.id ? 'on' : ''}`}
+                    onClick={() => void patch({ captionPreset: preset.id })}
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="field">
+              <span className="label">Aspect</span>
+              <div className="segs">
+                {(['vertical', 'square', 'wide'] as AspectPreset[]).map((a) => (
+                  <button key={a} className={`seg ${aspect === a ? 'on' : ''}`} onClick={() => setAspect(a)}>
+                    {a === 'vertical' ? '9:16' : a === 'square' ? '1:1' : '16:9'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (view === 'grid') {
+    const clip = detail !== null ? suggestions[detail] : null
+    return (
+      <div className="results">
+        <div className="results-head">
+          <div className="home-title" style={{ fontSize: 22 }}>Clips</div>
+          <div className="spacer" />
+          <span className="mono muted">
+            {suggestions.length} clips from {words.length.toLocaleString()} words
+          </span>
+          <button onClick={() => setView('studio')}>Open editor</button>
+          <button onClick={() => { setWords([]); setSuggestions([]) }}>Set up a run</button>
+        </div>
+
+        <div className="clip-grid">
+          {suggestions.map((c, i) => (
+            <div key={i} className="clip-card">
+              <button className="clip-shot" style={thumbOf(c.startSec)} onClick={() => setDetail(i)}>
+                <span className="clip-score">{c.score}</span>
+                <span className="clip-dur mono">{Math.round(c.endSec - c.startSec)}s</span>
+              </button>
+              <div className="clip-title">{c.title}</div>
+              <div className="clip-actions">
+                <button onClick={() => setDetail(i)}>Details</button>
+                <button onClick={() => { pick(c, i); setView('studio') }}>Edit</button>
+                <button className="primary" onClick={() => void exportSuggestion(c)}>Export</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {clip && (
+          <div className="scrim" onClick={() => setDetail(null)}>
+            <div className="dialog wide" onClick={(e) => e.stopPropagation()}>
+              <div className="dialog-head row">
+                <div>
+                  <div className="home-title" style={{ fontSize: 18 }}>{clip.title}</div>
+                  <div className="mono muted" style={{ marginTop: 4 }}>
+                    {timecode(clip.startSec)} → {timecode(clip.endSec)} · {Math.round(clip.endSec - clip.startSec)}s
+                  </div>
+                </div>
+                <div className="spacer" />
+                <span className="clip-score static">{clip.score}</span>
+              </div>
+              <div className="dialog-scroll">
+                <div className="detail-body">
+                  <div className="detail-shot" style={thumbOf(clip.startSec)} />
+                  <div className="detail-text">
+                    <span className="label">Why Claude picked it</span>
+                    <p className="detail-reason">{clip.reason}</p>
+                    <span className="label" style={{ marginTop: 14 }}>Transcript</span>
+                    <div className="detail-lines">
+                      {words
+                        .filter((w) => w.endSec > clip.startSec && w.startSec < clip.endSec)
+                        .slice(0, 60)
+                        .map((w, n) => (
+                          <span key={n}>{w.text} </span>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="dialog-foot">
+                <button onClick={() => { pick(clip, detail ?? 0); setDetail(null); setView('studio') }}>
+                  Open in editor
+                </button>
+                <div className="spacer" />
+                <button onClick={() => setDetail(null)}>Close</button>
+                <button className="primary" onClick={() => { void exportSuggestion(clip); setDetail(null) }}>
+                  Export
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="edit">

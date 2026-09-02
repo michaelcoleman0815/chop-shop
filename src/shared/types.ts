@@ -170,6 +170,23 @@ export interface MusicTrack {
 
 export type ProjectMode = 'clip' | 'edit'
 
+/** What the setup screen asks before a run, and what the cache is keyed on. */
+export interface AnalysisOptions {
+  /** Only this stretch is transcribed, so a shorter range is a shorter wait. */
+  startSec: number
+  endSec: number
+  maxClips: number
+  minClipSec: number
+  maxClipSec: number
+  /** Free text handed to Claude alongside the transcript. Empty means no steer. */
+  lookFor: string
+}
+
+/** An analysis plus the question it answered, so a reopen can show both. */
+export interface CachedAnalysis extends AnalysisResult {
+  options?: AnalysisOptions
+}
+
 export interface ProjectSummary {
   id: string
   name: string

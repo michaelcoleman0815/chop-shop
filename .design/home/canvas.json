@@ -1,17 +1,24 @@
 {
   "pages": [
-    { "id": "page-1", "name": "Chosen" },
-    { "id": "page-2", "name": "Other directions" }
+    { "id": "page-1", "name": "Clipping flow" },
+    { "id": "page-2", "name": "Built" },
+    { "id": "page-3", "name": "Other directions" }
   ],
   "artboards": [
-    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Home", "page": "page-1" },
-    { "file": "NewProject.dc.html", "x": 1560, "y": 0, "w": 560, "h": 468, "title": "New project dialog", "page": "page-1" },
-    { "file": "DenseList.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A — Dense list", "page": "page-2" },
-    { "file": "DropFirst.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "C — Drop first", "page": "page-2" }
+    { "file": "ClipSetup.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "1 — Set up the run", "page": "page-1" },
+    { "file": "ClipResults.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "2 — The clips", "page": "page-1" },
+    { "file": "ClipDetail.dc.html", "x": 3120, "y": 0, "w": 1080, "h": 720, "title": "3 — One clip", "page": "page-1" },
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Home", "page": "page-2" },
+    { "file": "NewProject.dc.html", "x": 1560, "y": 0, "w": 560, "h": 468, "title": "New project dialog", "page": "page-2" },
+    { "file": "DenseList.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A — Dense list", "page": "page-3" },
+    { "file": "DropFirst.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "C — Drop first", "page": "page-3" }
   ],
   "annotations": [
-    { "id": "note-built", "x": 0, "y": -150, "w": 470, "text": "Built. The rail is New and Open only — the Home and Settings items are gone, because from this screen neither had anywhere to go and a dead control is worse than none.\n\nSize is the recording's, not the project file's: a .chopshop is a few hundred bytes and tells you nothing about what you are opening.", "page": "page-1" },
-    { "id": "note-kept", "x": 0, "y": -150, "w": 470, "text": "Kept for reference, not built.", "page": "page-2" }
+    { "id": "note-setup", "x": 0, "y": -190, "w": 470, "text": "The range slider is the one that earns its place: transcribing 2h17m is eight minutes, and most of a service is not worth analysing. Everything else here already exists as a setting — this just asks before the run instead of after.\n\nNo credits, no plan banner, no genre picker. Chop Shop has none of those.", "page": "page-1" },
+    { "id": "note-results", "x": 1560, "y": -190, "w": 470, "text": "The clips become the screen. Today they are a narrow column beside a big source player, which is backwards — the source is context, the clips are the work.\n\nThe grid is vertical because the output is vertical.", "page": "page-1" },
+    { "id": "note-detail", "x": 3120, "y": -190, "w": 470, "text": "Opening one clip: player, Claude's reason, the transcript around it, and the four things you can actually do with it. Export to Premiere is real and already built.\n\nNo publish-to-social, no upscale — inventing those in a mockup only disappoints later.", "page": "page-1" },
+    { "id": "note-built", "x": 0, "y": -150, "w": 470, "text": "Shipped in 0.2.6 and 0.2.7.", "page": "page-2" },
+    { "id": "note-kept", "x": 0, "y": -150, "w": 470, "text": "Kept for reference, not built.", "page": "page-3" }
   ],
   "launch": { "view": "canvas", "page": "page-1" }
 }
