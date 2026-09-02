@@ -104,6 +104,9 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   // The clips are the screen once there are any; the editor is where you go to
   // change one, not where you land.
   const [view, setView] = useState<'grid' | 'studio' | 'editor'>('grid')
+  // A cut made by hand outlives the tighten toggle: turning automatic
+  // tightening off must not silently discard words you struck yourself.
+  const [handCut, setHandCut] = useState(false)
   const [tool, setTool] = useState<'captions' | 'zooms' | 'subject' | 'broll' | 'music' | 'look'>('captions')
   const [detail, setDetail] = useState<number | null>(null)
 
@@ -341,7 +344,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       autoZoom,
       tighten,
       trackSubject,
-      segments: tighten ? segments : undefined,
+      segments: handCut || tighten ? segments : undefined,
       zooms
     }),
     [
@@ -358,6 +361,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       tighten,
       trackSubject,
       segments,
+      handCut,
       zooms
     ]
   )
@@ -402,6 +406,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const toggleWord = useCallback(
     (w: TranscriptWord) => {
       const cut = { start: w.startSec, end: w.endSec }
+      setHandCut(true)
       if (isKept(w)) {
         // Remove the word's span, splitting whichever segment held it.
         const next: Segment[] = []
@@ -427,6 +432,10 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     },
     [ranges, isKept]
   )
+
+  useEffect(() => {
+    setHandCut(false)
+  }, [chosen, inSec, outSec])
 
   const exportSuggestion = useCallback(
     async (clip: SuggestedClip) => {
