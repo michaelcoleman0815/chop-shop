@@ -862,20 +862,39 @@ kbd {
   padding: var(--s4sp) var(--s5sp);
 }
 
-.rail-settings {
+.rail-rule {
+  height: 1px;
+  background: var(--line);
+  margin: var(--s4sp) 0 var(--s3sp);
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-item {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
   padding: 8px 10px;
+  text-align: left;
   background: transparent;
   border-color: transparent;
   box-shadow: none;
   color: var(--muted);
 }
-.rail-settings:hover:not(:disabled) {
+.rail-item:hover:not(:disabled) {
+  background: var(--s2);
+  border-color: transparent;
+  color: var(--text);
+}
+/* The current screen, not a pressed button: it says where you are. */
+.rail-item.on {
   background: var(--s3);
-  border-color: var(--line);
+  border-color: transparent;
   color: var(--text);
 }
 

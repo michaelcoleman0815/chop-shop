@@ -127,15 +127,26 @@ export default function Home({ onOpen, version, settings, patch }: Props): JSX.E
             Open project
           </button>
 
-          <div className="spacer" />
+          <div className="rail-rule" />
 
-          <button className="rail-settings" onClick={() => setSettingsOpen(true)}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="8" cy="8" r="2.2" />
-              <path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5" />
-            </svg>
-            <span>Settings</span>
-          </button>
+          <nav className="rail-nav">
+            <button className="rail-item on" onClick={() => setSettingsOpen(false)}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M2 6.5 8 2l6 4.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6.5Z" />
+                <path d="M6.2 14V9.2h3.6V14" />
+              </svg>
+              <span>Home</span>
+            </button>
+            <button className="rail-item" onClick={() => setSettingsOpen(true)}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="8" cy="8" r="2.2" />
+                <path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5" />
+              </svg>
+              <span>Settings</span>
+            </button>
+          </nav>
+
+          <div className="spacer" />
         </aside>
 
         <section className="home-recent">
