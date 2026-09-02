@@ -491,11 +491,28 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
             }
           }}
         >
-          <p className="title">Drop a video</p>
-          <p className="muted">MP4, MOV, MKV, WebM</p>
-          <button className="primary" style={{ marginTop: 16 }} onClick={open}>
-            Choose a file
-          </button>
+          <svg className="drop-mark" width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 15.5V3.5" />
+            <path d="M7.5 8 12 3.5 16.5 8" />
+            <path d="M3.5 15.5v3a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-3" />
+          </svg>
+          <p className="drop-title">Drop a recording</p>
+          <p className="drop-sub muted">
+            A service, a podcast, a talk. Chop Shop reads it, finds the moments worth cutting, and
+            captions them.
+          </p>
+          <div className="drop-actions">
+            <button className="primary" onClick={open}>
+              Choose a file
+            </button>
+          </div>
+          <div className="drop-facts">
+            <span>MP4, MOV, MKV, WebM</span>
+            <i />
+            <span>up to 90 minutes analysed at a time</span>
+            <i />
+            <span>audio never leaves this Mac</span>
+          </div>
           {error && (
             <p className="mono muted" style={{ marginTop: 16 }}>
               {error}
