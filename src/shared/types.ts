@@ -128,6 +128,28 @@ export interface CaptionStyle {
    * width becomes the plate's padding, which is how ASS BorderStyle 3 works.
    */
   boxColor?: string | null
+  /**
+   * A second line under the first, in its own face and size.
+   *
+   * With this set the spoken word is shown alone and large, and the rest of its
+   * group runs underneath it small: the editorial look where one word carries
+   * the frame and the sentence finishes quietly below it.
+   */
+  second?: CaptionTier | null
+}
+
+/** The smaller line of a two-tier caption. */
+export interface CaptionTier {
+  fontFamily: string
+  fontSizePx: number
+  textColor: string
+  outlineColor: string
+  outlinePx: number
+  shadowPx: number
+  uppercase: boolean
+  bold?: boolean
+  /** Distance from the big line's baseline down to this one. */
+  gapPx: number
 }
 
 export interface ZoomKeyframe {

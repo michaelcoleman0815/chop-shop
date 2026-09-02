@@ -27,6 +27,36 @@ const BASE: CaptionStyle = {
  */
 export const CAPTION_PRESETS: CaptionPreset[] = [
   {
+    id: 'feature',
+    name: 'Feature',
+    style: {
+      ...BASE,
+      // One word carries the frame; the sentence finishes quietly beneath it.
+      wordsPerGroup: 5,
+      fontFamily: 'Anton',
+      fontSizePx: 112,
+      positionFrac: 0.42,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 3,
+      shadowPx: 0,
+      uppercase: false,
+      activeScale: 1,
+      second: {
+        fontFamily: 'Sora',
+        fontSizePx: 42,
+        textColor: '#ffffff',
+        outlineColor: '#000000',
+        outlinePx: 2,
+        shadowPx: 3,
+        uppercase: false,
+        bold: true,
+        gapPx: 96
+      }
+    }
+  },
+  {
     id: 'marker',
     name: 'Marker',
     style: {

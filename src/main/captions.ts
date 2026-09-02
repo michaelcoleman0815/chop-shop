@@ -85,6 +85,35 @@ export function buildAss(
       marginV,
       '1'
     ].join(','),
+    ...(style.second
+      ? [
+          [
+            'Style: Chop2',
+            style.second.fontFamily,
+            style.second.fontSizePx,
+            assColor(style.second.textColor),
+            assColor(style.second.textColor),
+            assColor(style.second.outlineColor),
+            '&H64000000',
+            style.second.bold ? '-1' : '0',
+            '0',
+            '0',
+            '0',
+            '100',
+            '100',
+            '0',
+            '0',
+            '1',
+            style.second.outlinePx,
+            style.second.shadowPx,
+            '2',
+            Math.round(width * 0.08),
+            Math.round(width * 0.08),
+            Math.max(0, marginV - style.second.gapPx),
+            '1'
+          ].join(',')
+        ]
+      : []),
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
@@ -100,6 +129,19 @@ export function buildAss(
       // Hold the last word of a group until the next group starts so captions
       // do not flicker off between words.
       const end = i === group.length - 1 ? word.endSec : group[i + 1].startSec
+
+      if (style.second) {
+        const big = escape(style.uppercase ? word.text.toUpperCase() : word.text)
+        const restWords = group.filter((_, j) => j !== i).map((w) => w.text)
+        const rest = escape(
+          style.second.uppercase ? restWords.join(' ').toUpperCase() : restWords.join(' ')
+        )
+        const until = assTime(Math.max(end, word.startSec + 0.05))
+        const from = assTime(word.startSec)
+        events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${big}`)
+        if (rest) events.push(`Dialogue: 0,${from},${until},Chop2,,0,0,0,,${rest}`)
+        continue
+      }
 
       const line = group
         .map((w, j) => {
