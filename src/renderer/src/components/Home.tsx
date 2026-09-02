@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Project, ProjectMode, ProjectSummary } from '../../../shared/types'
+import type { Project, ProjectMode, ProjectSummary, Settings } from '../../../shared/types'
 import Mark from './Mark'
+import SettingsPanel from './SettingsPanel'
 
 interface Props {
   onOpen: (project: Project) => void
   version: string
+  settings: Settings
+  patch: (patch: Partial<Settings>) => Promise<void>
 }
 
 type SortKey = 'name' | 'openedAt' | 'mediaBytes'
@@ -34,7 +37,7 @@ function size(bytes: number | null): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
-export default function Home({ onOpen, version }: Props): JSX.Element {
+export default function Home({ onOpen, version, settings, patch }: Props): JSX.Element {
   const [recent, setRecent] = useState<ProjectSummary[]>([])
   // An empty placeholder box reads as a failed image. A project's own first
   // frame says what it is at a glance.
@@ -44,6 +47,7 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
   const [mode, setMode] = useState<ProjectMode>('clip')
   const [filter, setFilter] = useState('')
   const [sort, setSort] = useState<SortKey>('openedAt')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const refresh = useCallback(() => {
     window.chop.recentProjects().then(setRecent)
@@ -125,23 +129,13 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
 
           <div className="spacer" />
 
-          <div className="home-facts">
-            <div className="label" style={{ marginBottom: 7 }}>
-              On this Mac
-            </div>
-            <div className="fact">
-              <span>Transcribe</span>
-              <span className="muted">locally, audio never leaves</span>
-            </div>
-            <div className="fact">
-              <span>Find clips</span>
-              <span className="muted">Claude, transcript only</span>
-            </div>
-            <div className="fact">
-              <span>Render</span>
-              <span className="muted">ffmpeg on this machine</span>
-            </div>
-          </div>
+          <button className="rail-settings" onClick={() => setSettingsOpen(true)}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="8" cy="8" r="2.2" />
+              <path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5" />
+            </svg>
+            <span>Settings</span>
+          </button>
         </aside>
 
         <section className="home-recent">
@@ -206,6 +200,27 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
           )}
         </section>
       </div>
+
+      {settingsOpen && (
+        <div className="scrim" onClick={() => setSettingsOpen(false)}>
+          <div className="dialog wide" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-head row">
+              <div className="home-title" style={{ fontSize: 18 }}>
+                Settings
+              </div>
+              <div className="spacer" />
+              <span className="mono muted">{version}</span>
+            </div>
+            <div className="dialog-scroll">
+              <SettingsPanel settings={settings} patch={patch} />
+            </div>
+            <div className="dialog-foot">
+              <div className="spacer" />
+              <button onClick={() => setSettingsOpen(false)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {naming && (
         <div className="scrim" onClick={() => setNaming(false)}>

@@ -1,62 +1,17 @@
 {
+  "pages": [
+    { "id": "page-1", "name": "Chosen" },
+    { "id": "page-2", "name": "Other directions" }
+  ],
   "artboards": [
-    {
-      "file": "Main.dc.html",
-      "x": 0,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "title": "A — Dense list"
-    },
-    {
-      "file": "Preview.dc.html",
-      "x": 1560,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "title": "B — List with previews"
-    },
-    {
-      "file": "DropFirst.dc.html",
-      "x": 3120,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "title": "C — Drop first"
-    },
-    {
-      "file": "NewProject.dc.html",
-      "x": 4680,
-      "y": 0,
-      "w": 560,
-      "h": 468,
-      "title": "New project dialog"
-    }
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Home", "page": "page-1" },
+    { "file": "NewProject.dc.html", "x": 1560, "y": 0, "w": 560, "h": 468, "title": "New project dialog", "page": "page-1" },
+    { "file": "DenseList.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "A — Dense list", "page": "page-2" },
+    { "file": "DropFirst.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "C — Drop first", "page": "page-2" }
   ],
   "annotations": [
-    {
-      "id": "note-a",
-      "x": 0,
-      "y": -170,
-      "w": 470,
-      "text": "A. Project-first, like Premiere. The rail is always there, so New and Open stop moving with the mode choice, and recents become a sortable table that reads the same at 3 projects or 30.\n\nTradeoff: the main job is two clicks away."
-    },
-    {
-      "id": "note-b",
-      "x": 1560,
-      "y": -170,
-      "w": 470,
-      "text": "B. Same structure, 96x54 thumbnails and the source filename. Keeps the recognition your cards gave you at about a third of the height.\n\nTradeoff: fewer rows visible than A."
-    },
-    {
-      "id": "note-c",
-      "x": 3120,
-      "y": -170,
-      "w": 470,
-      "text": "C. Action-first, closer to OpusClip. Dropping a recording IS the home screen; recents sit underneath, and the right column counts clips rather than file bytes.\n\nTradeoff: projects feel secondary, which is wrong if you mostly return to work in progress."
-    }
+    { "id": "note-built", "x": 0, "y": -150, "w": 470, "text": "Built. The rail is New and Open only — the Home and Settings items are gone, because from this screen neither had anywhere to go and a dead control is worse than none.\n\nSize is the recording's, not the project file's: a .chopshop is a few hundred bytes and tells you nothing about what you are opening.", "page": "page-1" },
+    { "id": "note-kept", "x": 0, "y": -150, "w": 470, "text": "Kept for reference, not built.", "page": "page-2" }
   ],
-  "launch": {
-    "view": "canvas"
-  }
+  "launch": { "view": "canvas", "page": "page-1" }
 }

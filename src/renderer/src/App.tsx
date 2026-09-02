@@ -62,7 +62,7 @@ export default function App(): JSX.Element {
     return (
       <>
         <UpdateBanner />
-        <Home version={version} onOpen={setProject} />
+        <Home version={version} onOpen={setProject} settings={settings} patch={patchSettings} />
       </>
     )
 

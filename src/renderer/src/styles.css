@@ -760,6 +760,8 @@ kbd {
   color: var(--text);
 }
 .col-head.on {
+  background: transparent;
+  border: none;
   color: var(--text);
 }
 .col-head svg {
@@ -820,14 +822,21 @@ kbd {
    of work each project holds. */
 .project-row .mode-tag {
   position: static;
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--media-video);
+  justify-self: start;
+  padding: 3px 10px;
+  font-family: var(--ui);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: 999px;
+  color: #a9c6e4;
+  background: rgba(127, 168, 212, 0.14);
 }
 .project-row .mode-tag.clip {
   color: var(--accent);
+  background: var(--accent-dim);
 }
 
 /* Dialogs ---------------------------------------------------------------- */
@@ -840,6 +849,34 @@ kbd {
   align-items: center;
   justify-content: center;
   background: rgba(4, 4, 6, 0.62);
+}
+
+.dialog.wide {
+  width: 620px;
+  max-height: 78vh;
+}
+
+.dialog-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4sp) var(--s5sp);
+}
+
+.rail-settings {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--muted);
+}
+.rail-settings:hover:not(:disabled) {
+  background: var(--s3);
+  border-color: var(--line);
+  color: var(--text);
 }
 
 .dialog {
@@ -1702,20 +1739,6 @@ kbd {
   letter-spacing: 0.01em;
 }
 
-.home-facts {
-  border-top: 1px solid var(--line);
-  padding-top: var(--s3sp);
-}
-.fact {
-  display: flex;
-  gap: var(--s2sp);
-  font-size: 11px;
-  line-height: 1.6;
-}
-.fact span:first-child {
-  width: 78px;
-  flex: 0 0 78px;
-}
 
 /* The mode is stated on the card, so a glance down the list says which kind of
    work each project holds. */
