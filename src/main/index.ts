@@ -18,11 +18,12 @@ import { readAnalysis, writeAnalysis, sameQuestion } from './analysis-cache'
 import { sweepTemp } from './temp-sweep'
 import { fetchVideo } from './fetch-video'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
-import { clipPoster, mediaPreview } from './media-preview'
+import { captionSample, clipPoster, mediaPreview } from './media-preview'
 import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
 import { presetById } from '../shared/caption-presets'
+import { buildAss } from './captions'
 import {
   recentProjects,
   createProject,
@@ -747,6 +748,20 @@ function registerIpc(): void {
     async (_e, path: string, atSec: number, aspect: string): Promise<string> =>
       mediaUrlFor(await clipPoster(path, atSec, aspect))
   )
+
+  ipcMain.handle('captions:sample', async (_e, presetId: string): Promise<string> => {
+    const preset = presetById(presetId)
+    // Five words so a group-based preset has a group, with the third spoken so
+    // the active-word treatment is visible rather than implied.
+    const words = 'this is how it reads'.split(' ').map((text, i) => ({
+      text,
+      startSec: i * 0.4,
+      endSec: i * 0.4 + 0.38
+    }))
+    return mediaUrlFor(
+      await captionSample(presetId, (w, h) => buildAss(words, w, h, preset.style))
+    )
+  })
 
   ipcMain.handle('media:previews', async (_e, path: string): Promise<MediaPreviews> => {
     const preview = await mediaPreview(path)

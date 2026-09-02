@@ -11,6 +11,7 @@ import type {
 } from '../../../shared/types'
 import ClipEditor, { type Segment } from './ClipEditor'
 import { CAPTION_PRESETS } from '../../../shared/caption-presets'
+import CaptionPicker from './CaptionPicker'
 import type { Job } from './JobList'
 import { bytes, slug, stamp, timecode } from '../lib/format'
 import { groupWords } from '../../../shared/words'
@@ -743,17 +744,10 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
           <div className="setup-two">
             <div className="field">
               <span className="label">Captions</span>
-              <div className="segs">
-                {CAPTION_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    className={`seg ${settings.captionPreset === preset.id ? 'on' : ''}`}
-                    onClick={() => void patch({ captionPreset: preset.id })}
-                  >
-                    {preset.name}
-                  </button>
-                ))}
-              </div>
+              <CaptionPicker
+                value={settings.captionPreset}
+                onPick={(id) => void patch({ captionPreset: id })}
+              />
             </div>
             <div className="field">
               <span className="label">Aspect</span>
@@ -868,17 +862,10 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                     {captions ? 'On' : 'Off'}
                   </button>
                 </div>
-                <div className="segs">
-                  {CAPTION_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      className={`seg ${settings.captionPreset === preset.id ? 'on' : ''}`}
-                      onClick={() => void patch({ captionPreset: preset.id })}
-                    >
-                      {preset.name}
-                    </button>
-                  ))}
-                </div>
+                <CaptionPicker
+                  value={settings.captionPreset}
+                  onPick={(id) => void patch({ captionPreset: id })}
+                />
               </>
             )}
             {tool === 'zooms' && (
