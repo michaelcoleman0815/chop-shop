@@ -5,6 +5,10 @@
       "name": "Clipping flow"
     },
     {
+      "id": "page-editors",
+      "name": "Editors"
+    },
+    {
       "id": "page-2",
       "name": "Built"
     },
@@ -42,15 +46,6 @@
       "page": "page-1"
     },
     {
-      "file": "Editor.dc.html",
-      "x": 4680,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "title": "4 — Edit one clip",
-      "page": "page-1"
-    },
-    {
       "file": "Main.dc.html",
       "x": 0,
       "y": 0,
@@ -85,6 +80,24 @@
       "h": 900,
       "title": "C — Drop first",
       "page": "page-3"
+    },
+    {
+      "file": "Editor.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Clipping - edit one clip",
+      "page": "page-editors"
+    },
+    {
+      "file": "Timeline.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1760,
+      "h": 1040,
+      "title": "Editing - the timeline",
+      "page": "page-editors"
     }
   ],
   "annotations": [
@@ -129,16 +142,24 @@
       "page": "page-3"
     },
     {
-      "id": "note-editor",
-      "x": 4680,
-      "y": -190,
+      "id": "note-clip-editor",
+      "x": 0,
+      "y": -210,
       "w": 470,
-      "text": "The transcript is the edit surface: strike a word and it leaves the render. Everything in the tool rail already exists in the code — cuts, zooms, subject tracking, B-roll, music, LUTs — it has just never had anywhere to live.\n\nFour tracks, not fifty. This edits one clip; the multi-track timeline is a separate workspace and stays that way.",
-      "page": "page-1"
+      "text": "Edit on a clip card lands here, not in the old studio view. The transcript is the edit surface: strike a word and it leaves the render.\n\nEverything in the right rail already exists in the code (cuts, zooms, subject tracking, B-roll, music, looks) and has just never had anywhere to live. Four tracks, because this edits one clip.",
+      "page": "page-editors"
+    },
+    {
+      "id": "note-timeline",
+      "x": 1560,
+      "y": -210,
+      "w": 470,
+      "text": "Editing mode, built as a real NLE rather than a preview with tracks under it.\n\nProject bin with columns, source and program monitors side by side, effect controls with keyframes on a timeline, Lumetri values, audio meters. Below: the eleven-tool palette on its real keys, track targeting, per-track mute/solo/lock, clip labels coloured by source, a transition sitting on a cut, and a zoom bar.\n\nThis is the larger of the two builds by a wide margin. Direct manipulation is the whole thing here: drag-to-trim, ripple, snapping and slip have to feel right, or it is worse than not having them.",
+      "page": "page-editors"
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-1"
+    "page": "page-editors"
   }
 }
