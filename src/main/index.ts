@@ -18,7 +18,7 @@ import { readAnalysis, writeAnalysis, sameQuestion } from './analysis-cache'
 import { sweepTemp } from './temp-sweep'
 import { fetchVideo } from './fetch-video'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
-import { mediaPreview } from './media-preview'
+import { clipPoster, mediaPreview } from './media-preview'
 import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
@@ -741,6 +741,12 @@ function registerIpc(): void {
     const meta = await probe(path)
     return { path, ...meta }
   })
+
+  ipcMain.handle(
+    'media:clipPoster',
+    async (_e, path: string, atSec: number, aspect: string): Promise<string> =>
+      mediaUrlFor(await clipPoster(path, atSec, aspect))
+  )
 
   ipcMain.handle('media:previews', async (_e, path: string): Promise<MediaPreviews> => {
     const preview = await mediaPreview(path)

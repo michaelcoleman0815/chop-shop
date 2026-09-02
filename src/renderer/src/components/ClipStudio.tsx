@@ -111,6 +111,8 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [handCut, setHandCut] = useState(false)
   const [tool, setTool] = useState<'captions' | 'zooms' | 'subject' | 'broll' | 'music' | 'look'>('captions')
   const [detail, setDetail] = useState<number | null>(null)
+  // One cropped still per clip, in the shape the clip will be exported in.
+  const [shots, setShots] = useState<Record<string, string>>({})
 
   const analysed = words.length > 0
 
@@ -474,6 +476,23 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       })
     },
     [meta, addJob, buildRequest]
+  )
+
+  useEffect(() => {
+    if (!meta) return
+    for (const c of suggestions) {
+      const key = `${c.startSec.toFixed(2)}-${aspect}`
+      if (shots[key]) continue
+      window.chop
+        .clipPoster(meta.path, c.startSec + Math.min(1.5, (c.endSec - c.startSec) / 4), aspect)
+        .then((url) => setShots((prev) => (prev[key] ? prev : { ...prev, [key]: url })))
+        .catch(() => undefined)
+    }
+  }, [meta, suggestions, aspect, shots])
+
+  const shotOf = useCallback(
+    (c: SuggestedClip): string | undefined => shots[`${c.startSec.toFixed(2)}-${aspect}`],
+    [shots, aspect]
   )
 
   const thumbOf = useCallback(
@@ -990,11 +1009,27 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
         <div className="clip-grid">
           {suggestions.map((c, i) => (
             <div key={i} className="clip-card">
-              <button className="clip-shot" style={thumbOf(c.startSec)} onClick={() => setDetail(i)}>
-                <span className="clip-score">{c.score}</span>
+              <button
+                className={`clip-shot ${aspect}`}
+                style={
+                  shotOf(c)
+                    ? { backgroundImage: `url("${shotOf(c)}")` }
+                    : thumbOf(c.startSec)
+                }
+                onClick={() => setDetail(i)}
+              >
+                <span className="clip-hook">{c.title}</span>
+                <span className="clip-play">
+                  <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                    <path d="M3 1.6 10 6l-7 4.4Z" />
+                  </svg>
+                </span>
                 <span className="clip-dur mono">{Math.round(c.endSec - c.startSec)}s</span>
               </button>
-              <div className="clip-title">{c.title}</div>
+              <div className="clip-meta">
+                <span className="clip-score-big">{c.score}</span>
+                <div className="clip-title">{c.title}</div>
+              </div>
               <div className="clip-actions">
                 <button onClick={() => setDetail(i)}>Details</button>
                 <button onClick={() => { pick(c, i); setView('editor') }}>Edit</button>
