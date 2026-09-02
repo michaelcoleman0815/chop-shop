@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Project, ProjectMode, ProjectSummary } from '../../../shared/types'
 import Mark from './Mark'
 
@@ -6,6 +6,8 @@ interface Props {
   onOpen: (project: Project) => void
   version: string
 }
+
+type SortKey = 'name' | 'openedAt' | 'mediaBytes'
 
 function when(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -18,6 +20,20 @@ function when(iso: string): string {
   return days === 1 ? 'yesterday' : `${days} days ago`
 }
 
+/** Decimal units, because that is what the Finder shows for the same file. */
+function size(bytes: number | null): string {
+  if (bytes === null) return '—'
+  if (bytes < 1000) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1000
+  let unit = 0
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000
+    unit += 1
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
+
 export default function Home({ onOpen, version }: Props): JSX.Element {
   const [recent, setRecent] = useState<ProjectSummary[]>([])
   // An empty placeholder box reads as a failed image. A project's own first
@@ -26,6 +42,8 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState('')
   const [mode, setMode] = useState<ProjectMode>('clip')
+  const [filter, setFilter] = useState('')
+  const [sort, setSort] = useState<SortKey>('openedAt')
 
   const refresh = useCallback(() => {
     window.chop.recentProjects().then(setRecent)
@@ -48,6 +66,43 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
     onOpen(project)
   }, [name, mode, onOpen])
 
+  const open = useCallback(
+    async (path?: string) => {
+      const project = await window.chop.openProject(path)
+      if (project) onOpen(project)
+    },
+    [onOpen]
+  )
+
+  const rows = useMemo(() => {
+    const needle = filter.trim().toLowerCase()
+    const matched = needle
+      ? recent.filter((p) => p.name.toLowerCase().includes(needle))
+      : recent.slice()
+    return matched.sort((a, b) => {
+      if (sort === 'name') return a.name.localeCompare(b.name)
+      // Missing sizes sort last rather than counting as zero, which would put
+      // every project without media above the smallest real recording.
+      if (sort === 'mediaBytes') return (b.mediaBytes ?? -1) - (a.mediaBytes ?? -1)
+      return b.openedAt.localeCompare(a.openedAt)
+    })
+  }, [recent, filter, sort])
+
+  const heading = (key: SortKey, label: string, align?: 'right'): JSX.Element => (
+    <button
+      className={`col-head ${sort === key ? 'on' : ''}`}
+      style={align === 'right' ? { justifyContent: 'flex-end' } : undefined}
+      onClick={() => setSort(key)}
+    >
+      <span>{label}</span>
+      {sort === key && (
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M5 8.2V1.8M2.4 5.6 5 8.2l2.6-2.6" />
+        </svg>
+      )}
+    </button>
+  )
+
   return (
     <div className="home">
       <div className="home-head">
@@ -60,74 +115,13 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
       </div>
 
       <div className="home-body">
-        <aside className="home-actions">
-          <div>
-            <div className="home-title">
-              Start
-              <br />
-              something
-            </div>
-            <p className="muted" style={{ marginTop: 10 }}>
-              A project keeps its media, its clips and its edits together, so you can come back
-              to it.
-            </p>
-          </div>
-
-          <div className="mode-choice">
-            <button
-              className={`mode ${mode === 'clip' ? 'on' : ''}`}
-              onClick={() => setMode('clip')}
-            >
-              <strong>Clipping</strong>
-              <span className="muted">
-                Find the moments in a long recording, caption them, cut the dead air.
-              </span>
-            </button>
-            <button
-              className={`mode ${mode === 'edit' ? 'on' : ''}`}
-              onClick={() => setMode('edit')}
-            >
-              <strong>Editing</strong>
-              <span className="muted">
-                Work on a timeline with your own media, tracks and layers.
-              </span>
-            </button>
-          </div>
-
-          {naming ? (
-            <div className="row" style={{ gap: 6 }}>
-              <input
-                type="text"
-                autoFocus
-                placeholder="Project name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void create()
-                  if (e.key === 'Escape') setNaming(false)
-                }}
-                style={{ flex: 1 }}
-              />
-              <button className="primary" onClick={create}>
-                Create
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <button className="primary home-primary" onClick={() => setNaming(true)}>
-                New {mode === 'clip' ? 'clipping' : 'editing'} project
-              </button>
-              <button
-                className="home-secondary"
-                onClick={async () => {
-                  const project = await window.chop.openProject()
-                  if (project) onOpen(project)
-                }}
-              >
-                Open project
-              </button>
-            </div>
-          )}
+        <aside className="home-rail">
+          <button className="primary home-primary" onClick={() => setNaming(true)}>
+            New project
+          </button>
+          <button className="home-secondary" onClick={() => void open()}>
+            Open project
+          </button>
 
           <div className="spacer" />
 
@@ -151,50 +145,130 @@ export default function Home({ onOpen, version }: Props): JSX.Element {
         </aside>
 
         <section className="home-recent">
-          <div className="row" style={{ marginBottom: 18 }}>
-            <span className="label">Recent</span>
+          <div className="row" style={{ gap: 16, marginBottom: 18 }}>
+            <div className="home-title">Recent</div>
             <div className="spacer" />
+            <input
+              type="text"
+              placeholder="Filter projects"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              style={{ width: 190 }}
+            />
             <span className="mono muted">
-              {recent.length} project{recent.length === 1 ? '' : 's'}
+              {rows.length} project{rows.length === 1 ? '' : 's'}
             </span>
           </div>
 
           {recent.length === 0 ? (
             <p className="muted">No projects yet.</p>
+          ) : rows.length === 0 ? (
+            <p className="muted">Nothing matches “{filter.trim()}”.</p>
           ) : (
-            <div className="project-grid">
-              {recent.map((p) => (
-                <button
-                  key={p.path}
-                  className="project-card"
-                  onClick={async () => {
-                    const project = await window.chop.openProject(p.path)
-                    if (project) onOpen(project)
-                  }}
-                >
-                  <div
-                    className="project-thumb"
-                    style={
-                      posters[p.path]
-                        ? { backgroundImage: `url("${posters[p.path]}")` }
-                        : undefined
-                    }
-                  >
-                    <span className={`mode-tag ${p.mode}`}>
-                      {p.mode === 'clip' ? 'Clipping' : 'Editing'}
+            <div className="project-table">
+              <div className="project-row head">
+                {heading('name', 'Name')}
+                <span className="label">Mode</span>
+                {heading('openedAt', 'Opened')}
+                {heading('mediaBytes', 'Size', 'right')}
+              </div>
+
+              {rows.map((p) => (
+                <button key={p.path} className="project-row" onClick={() => void open(p.path)}>
+                  <span className="project-ident">
+                    <span
+                      className="row-thumb"
+                      style={
+                        posters[p.path] ? { backgroundImage: `url("${posters[p.path]}")` } : undefined
+                      }
+                    >
+                      {!p.primaryMedia && <span className="thumb-empty">No media</span>}
                     </span>
-                    {!p.primaryMedia && <span className="thumb-empty">No media yet</span>}
-                  </div>
-                  <div className="project-meta">
-                    <span className="project-name">{p.name}</span>
-                    <span className="project-sub">{when(p.openedAt)}</span>
-                  </div>
+                    <span className="project-names">
+                      <span className="project-name">{p.name}</span>
+                      <span className="project-source muted">
+                        {p.primaryMedia
+                          ? p.primaryMedia.split('/').pop()
+                          : 'Nothing imported yet'}
+                      </span>
+                    </span>
+                  </span>
+                  <span className={`mode-tag ${p.mode}`}>
+                    {p.mode === 'clip' ? 'Clipping' : 'Editing'}
+                  </span>
+                  <span className="mono muted">{when(p.openedAt)}</span>
+                  <span className="mono muted" style={{ textAlign: 'right' }}>
+                    {size(p.mediaBytes)}
+                  </span>
                 </button>
               ))}
             </div>
           )}
         </section>
       </div>
+
+      {naming && (
+        <div className="scrim" onClick={() => setNaming(false)}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-head">
+              <div className="home-title" style={{ fontSize: 18 }}>
+                New project
+              </div>
+            </div>
+
+            <div className="dialog-body">
+              <div className="field">
+                <div className="label">Name</div>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Untitled"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void create()
+                    if (e.key === 'Escape') setNaming(false)
+                  }}
+                />
+              </div>
+
+              <div className="field">
+                <div className="label">What are you doing</div>
+                <div className="mode-choice">
+                  <button
+                    className={`mode ${mode === 'clip' ? 'on' : ''}`}
+                    onClick={() => setMode('clip')}
+                  >
+                    <strong>Clipping</strong>
+                    <span className="muted">
+                      Find the moments in a long recording, caption them, cut the dead air.
+                    </span>
+                  </button>
+                  <button
+                    className={`mode ${mode === 'edit' ? 'on' : ''}`}
+                    onClick={() => setMode('edit')}
+                  >
+                    <strong>Editing</strong>
+                    <span className="muted">
+                      Work on a timeline with your own media, tracks and layers.
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="dialog-foot">
+              <div className="spacer" />
+              <button className="ghost" onClick={() => setNaming(false)}>
+                Cancel
+              </button>
+              <button className="primary" onClick={create}>
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

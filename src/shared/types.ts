@@ -177,8 +177,14 @@ export interface ProjectSummary {
   path: string
   createdAt: string
   openedAt: string
-  /** First source added, used for the card thumbnail and subtitle. */
+  /** First source added, used for the row thumbnail and subtitle. */
   primaryMedia: string | null
+  /**
+   * Size of that recording, not of the project file. A .chopshop is a few
+   * hundred bytes of JSON, which tells you nothing; the recording behind it is
+   * what you are actually deciding about.
+   */
+  mediaBytes: number | null
 }
 
 export interface Project extends ProjectSummary {

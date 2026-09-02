@@ -649,17 +649,18 @@ kbd {
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: var(--s7sp);
-  padding: var(--s7sp);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
-.home-actions {
-  width: 330px;
-  flex: 0 0 330px;
+.home-rail {
+  width: 240px;
+  flex: 0 0 240px;
   display: flex;
   flex-direction: column;
-  gap: var(--s2sp);
+  gap: 7px;
+  padding: 20px var(--s4sp);
+  background: var(--s0);
+  border-right: 1px solid var(--line);
 }
 
 .home-primary,
@@ -671,8 +672,8 @@ kbd {
 }
 
 .mode-choice {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--s2sp);
 }
 .mode-choice .mode {
@@ -699,37 +700,90 @@ kbd {
 .home-recent {
   flex: 1;
   min-width: 0;
+  padding: 28px var(--s6sp);
+  overflow-y: auto;
 }
 
-.project-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
-  gap: var(--s3sp);
-}
-
-.project-card {
+/* The recent list is a table rather than cards: it reads the same at three
+   projects and at thirty, and the columns are what you actually compare. */
+.project-table {
   display: flex;
   flex-direction: column;
-  padding: 0;
-  overflow: hidden;
-  text-align: left;
-  background: var(--s2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-panel);
-}
-.project-card:hover {
-  border-color: var(--line-2);
-  transform: translateY(-1px);
 }
 
-.project-thumb {
+.project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 116px 150px 96px;
+  gap: var(--s4sp);
+  align-items: center;
+  width: 100%;
+  padding: 10px 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--edge);
+  border-radius: 0;
+  box-shadow: none;
+}
+.project-row:hover:not(.head) {
+  background: var(--s2);
+  border-color: var(--edge);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.project-row:hover:not(.head) .project-ident {
+  padding-left: 10px;
+}
+.project-row.head {
+  padding: 0 0 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.col-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+.col-head:hover:not(:disabled) {
+  background: transparent;
+  border: none;
+  color: var(--text);
+}
+.col-head.on {
+  color: var(--text);
+}
+.col-head svg {
+  color: var(--accent);
+}
+
+.project-ident {
+  display: flex;
+  align-items: center;
+  gap: var(--s3sp);
+  min-width: 0;
+  transition: padding-left 0.1s ease;
+}
+
+.row-thumb {
   position: relative;
-  aspect-ratio: 16 / 9;
+  width: 96px;
+  height: 54px;
+  flex: 0 0 96px;
   background-color: var(--s0);
   background-size: cover;
   background-position: center;
-  border-bottom: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
 }
 
 .thumb-empty {
@@ -738,15 +792,15 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   color: #4a4753;
 }
 
-.project-meta {
-  padding: var(--s3sp);
+.project-names {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  min-width: 0;
 }
 .project-name {
   font-size: 13px;
@@ -755,12 +809,73 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.project-sub {
+.project-source {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mode is stated on every row, so a glance down the list says which kind
+   of work each project holds. */
+.project-row .mode-tag {
+  position: static;
   font-family: var(--mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--muted);
+  letter-spacing: 0.12em;
+  color: var(--media-video);
+}
+.project-row .mode-tag.clip {
+  color: var(--accent);
+}
+
+/* Dialogs ---------------------------------------------------------------- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 4, 6, 0.62);
+}
+
+.dialog {
+  width: 560px;
+  max-width: calc(100vw - 64px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+}
+
+.dialog-head {
+  padding: 18px var(--s5sp) 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog-body {
+  padding: var(--s5sp);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s2sp);
+  padding: 14px var(--s5sp);
+  border-top: 1px solid var(--line);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
 /* Editing workspace ------------------------------------------------------ */

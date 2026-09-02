@@ -36,7 +36,8 @@ function summarise(project: Project): ProjectSummary {
     path: project.path,
     createdAt: project.createdAt,
     openedAt: project.openedAt,
-    primaryMedia: project.media[0] ?? null
+    primaryMedia: project.media[0] ?? null,
+    mediaBytes: null
   }
 }
 
@@ -53,9 +54,19 @@ export async function recentProjects(): Promise<ProjectSummary[]> {
   for (const entry of entries) {
     try {
       await fs.access(entry.path)
-      alive.push(entry)
+      // Measured on read rather than stored: a recording can be replaced or
+      // moved between one open and the next, and a stale number is worse than
+      // none. A missing file leaves the column empty instead of failing the row.
+      let mediaBytes: number | null = null
+      if (entry.primaryMedia) {
+        mediaBytes = await fs
+          .stat(entry.primaryMedia)
+          .then((s) => s.size)
+          .catch(() => null)
+      }
+      alive.push({ ...entry, mediaBytes })
     } catch {
-      // The file is gone; drop it rather than offering a dead card.
+      // The file is gone; drop it rather than offering a dead row.
     }
   }
   if (alive.length !== entries.length) await writeIndex(alive)
@@ -87,6 +98,7 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
     createdAt: now,
     openedAt: now,
     primaryMedia: null,
+    mediaBytes: null,
     media: [],
     clips: [],
     transcript: null,
