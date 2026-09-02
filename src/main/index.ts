@@ -9,7 +9,8 @@ import {
   buildFromSegments,
   runFfmpeg,
   FFMPEG_PATH,
-  FFPROBE_PATH
+  FFPROBE_PATH,
+  leadingQuiet
 } from './ffmpeg'
 import { autoZooms } from './autozoom'
 import { buildTimelineRender } from './timeline'
@@ -265,18 +266,46 @@ function registerIpc(): void {
     try {
       const meta = await probe(req.sourcePath)
       const words = (req.captionWords ?? [])
-        .filter((w) => w.endSec > req.startSec && w.startSec < req.endSec)
+        .filter((w) => w.endSec > startSec && w.startSec < req.endSec)
         .map((w) => ({
           text: w.text,
-          startSec: Math.max(0, w.startSec - req.startSec),
-          endSec: Math.max(0.05, w.endSec - req.startSec)
+          startSec: Math.max(0, w.startSec - startSec),
+          endSec: Math.max(0.05, w.endSec - startSec)
         }))
+
+      // Trim any quiet at the head before anything else is measured against
+      // the clip's bounds, so captions, tracking and cuts all address the same
+      // range the render will use.
+      let startSec = req.startSec
+      try {
+        // The transcript says where speech starts; the audio only refines
+        // inside that gap. Whisper's word starts run early by a few hundred
+        // milliseconds, so a little headroom past the first word is allowed,
+        // but never enough to swallow it.
+        const firstWord = (req.captionWords ?? [])
+          .filter((w) => w.startSec >= req.startSec - 0.2 && w.startSec < req.endSec)
+          .sort((a, b) => a.startSec - b.startSec)[0]
+        const room = firstWord ? Math.max(0, firstWord.startSec - req.startSec) : 0
+        const quiet = await leadingQuiet(req.sourcePath, req.startSec, Math.max(room + 0.15, 0.6))
+        if (quiet > 0) {
+          startSec = req.startSec + quiet
+          console.log('[lead] trimmed', quiet.toFixed(2), 's of quiet')
+          safeSend(e.sender, 'clip:progress', {
+            jobId: req.jobId,
+            percent: 1,
+            stage: 'running',
+            message: `Trimmed ${quiet.toFixed(1)}s of quiet from the start.`
+          })
+        }
+      } catch {
+        // Not worth failing an export over; the clip simply keeps its head.
+      }
 
       let track: { atSec: number; cx: number; cy: number }[] | undefined
       if (req.trackSubject) {
         try {
           safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 2, stage: 'running' })
-          const samples = await detectFaces(req.sourcePath, req.startSec, req.endSec - req.startSec)
+          const samples = await detectFaces(req.sourcePath, startSec, req.endSec - startSec)
           track = buildTrack(samples)
           const withFace = samples.filter((s) => s.faces.length > 0).length
           const span =
@@ -317,7 +346,7 @@ function registerIpc(): void {
 
       await exportClip({
         sourcePath: req.sourcePath,
-        startSec: req.startSec,
+        startSec,
         endSec: req.endSec,
         outputPath,
         aspect: req.aspect,
@@ -706,12 +735,14 @@ function registerIpc(): void {
     const settings = getSettings()
     try {
       const meta = await probe(req.sourcePath)
+      const startSec =
+        req.startSec + (await leadingQuiet(req.sourcePath, req.startSec).catch(() => 0))
       const words = (req.captionWords ?? [])
-        .filter((w) => w.endSec > req.startSec && w.startSec < req.endSec)
+        .filter((w) => w.endSec > startSec && w.startSec < req.endSec)
         .map((w) => ({
           text: w.text,
-          startSec: Math.max(0, w.startSec - req.startSec),
-          endSec: Math.max(0.05, w.endSec - req.startSec)
+          startSec: Math.max(0, w.startSec - startSec),
+          endSec: Math.max(0.05, w.endSec - startSec)
         }))
 
       const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-editpreview-'))
@@ -719,7 +750,7 @@ function registerIpc(): void {
 
       await exportClip({
         sourcePath: req.sourcePath,
-        startSec: req.startSec,
+        startSec,
         endSec: req.endSec,
         outputPath,
         aspect: req.aspect,

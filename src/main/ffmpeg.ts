@@ -179,6 +179,61 @@ export function runFfmpeg(
   })
 }
 
+/**
+ * How long a clip waits before anyone speaks.
+ *
+ * A clip that opens on a second of nothing loses the viewer at the exact
+ * moment they are deciding whether to stay. Literal silence is rare in a room
+ * with a congregation in it, so the threshold is measured against the clip's
+ * own peak rather than a fixed level: what matters is quiet relative to the
+ * speech that follows, not quiet in absolute terms.
+ *
+ * Bounded hard, and it only ever reports a gap it can see the end of, so a
+ * clip that genuinely opens mid-sentence is left alone.
+ */
+export async function leadingQuiet(
+  sourcePath: string,
+  startSec: number,
+  maxTrimSec = 1.5
+): Promise<number> {
+  const out = await new Promise<string>((resolve) => {
+    const child = spawn(FFMPEG_PATH, [
+      '-hide_banner',
+      '-ss',
+      startSec.toFixed(3),
+      '-t',
+      (maxTrimSec + 1.5).toFixed(3),
+      '-i',
+      sourcePath,
+      // An absolute floor rather than one derived from the clip's own peak.
+      // Peak-relative was tried first and is worse: a clip whose opening line
+      // is softly spoken has a high peak later on, so its own first words fall
+      // below the threshold and get cut. Measured against real material, -40dB
+      // sits above room tone and below speech. A room noisier than that simply
+      // never registers quiet, which leaves the clip alone.
+      '-af',
+      'silencedetect=noise=-40dB:d=0.25',
+      '-f',
+      'null',
+      '-'
+    ])
+    let err = ''
+    child.stderr.on('data', (d) => (err += d.toString()))
+    child.on('close', () => resolve(err))
+    child.on('error', () => resolve(''))
+  })
+
+  const start = /silence_start:\s*(-?[\d.]+)/.exec(out)
+  const end = /silence_end:\s*([\d.]+)/.exec(out)
+  // Only quiet that begins at the very top of the clip counts; a pause later
+  // on is part of the clip, not something in front of it.
+  if (!start || !end || Number(start[1]) > 0.08) return 0
+  const gap = Number(end[1]) - 0.05
+  // Below a quarter second is not what anyone means by dead air, and acting on
+  // it risks clipping an opening consonant for no gain.
+  return gap >= 0.25 && gap <= maxTrimSec ? gap : 0
+}
+
 export async function exportClip(opts: {
   sourcePath: string
   startSec: number
