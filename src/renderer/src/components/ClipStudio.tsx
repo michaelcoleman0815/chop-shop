@@ -382,11 +382,21 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
     await window.chop.exportClip(buildRequest(jobId, jobName))
   }, [meta, name, addJob, buildRequest])
 
-  /** Kept ranges are the source of truth; a struck word is a hole in them. */
+  /**
+   * Kept ranges are the source of truth; a struck word is a hole in them. No
+   * ranges means nothing has been cut yet, not that everything has: an empty
+   * list has to read as the whole clip, or the first click would keep one word
+   * and throw away the rest.
+   */
+  const ranges = useCallback(
+    (): Segment[] => (segments.length > 0 ? segments : [{ start: 0, end: Math.max(0.1, outSec - inSec) }]),
+    [segments, inSec, outSec]
+  )
+
   const isKept = useCallback(
     (w: TranscriptWord): boolean =>
-      segments.some((seg) => w.startSec >= seg.start - 0.01 && w.endSec <= seg.end + 0.01),
-    [segments]
+      ranges().some((seg) => w.startSec >= seg.start - 0.01 && w.endSec <= seg.end + 0.01),
+    [ranges]
   )
 
   const toggleWord = useCallback(
@@ -395,7 +405,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       if (isKept(w)) {
         // Remove the word's span, splitting whichever segment held it.
         const next: Segment[] = []
-        for (const seg of segments) {
+        for (const seg of ranges()) {
           if (cut.end <= seg.start || cut.start >= seg.end) {
             next.push(seg)
             continue
@@ -407,7 +417,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       } else {
         // Put it back, then merge anything it now touches.
         const merged: Segment[] = []
-        for (const seg of [...segments, cut].sort((a, b) => a.start - b.start)) {
+        for (const seg of [...ranges(), cut].sort((a, b) => a.start - b.start)) {
           const last = merged[merged.length - 1]
           if (last && seg.start <= last.end + 0.02) last.end = Math.max(last.end, seg.end)
           else merged.push({ ...seg })
@@ -415,7 +425,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
         setSegments(merged)
       }
     },
-    [segments, isKept]
+    [ranges, isKept]
   )
 
   const exportSuggestion = useCallback(
@@ -663,8 +673,8 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
 
   if (view === 'editor') {
     const clipLen = Math.max(0.1, outSec - inSec)
-    const kept = segments.reduce((n, sg) => n + (sg.end - sg.start), 0)
-    const cutCount = Math.max(0, segments.length - 1)
+    const kept = ranges().reduce((n, sg) => n + (sg.end - sg.start), 0)
+    const cutCount = Math.max(0, ranges().length - 1)
     const pctOf = (t: number): number => Math.min(100, Math.max(0, (t / clipLen) * 100))
     const localCurrent = Math.min(clipLen, Math.max(0, current - inSec))
 
@@ -841,7 +851,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                   }}
                 />
               )}
-              {segments.map((sg, i) => (
+              {ranges().map((sg, i) => (
                 <span
                   key={i}
                   className="tl-keep"
