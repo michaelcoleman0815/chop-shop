@@ -44,6 +44,7 @@ import { getSettings, saveSettings } from './store'
 import { initUpdater, checkForUpdates, downloadUpdate, installUpdate, openReleasesPage, getUpdateState } from './updater'
 import type {
   AspectPreset,
+  Transcript,
   CaptureSource,
   ClipRequest,
   MediaPreviews,
@@ -554,18 +555,36 @@ function registerIpc(): void {
         )
       }
 
-      const transcript = await transcribe(
-        videoPath,
-        settings.whisperModel,
-        windowSec,
-        (percent, stage) =>
-          safeSend(e.sender, 'ai:progress', {
-            stage,
-            percent: base + Math.round((percent * span) / 100)
-          }),
-        startSec
-      )
-      console.log('[ai] transcribed', transcript.words.length, 'words')
+      // Changing the genre, the steer or the number of clips does not change a
+      // word of the transcript, and re-transcribing to answer a different
+      // question costs minutes for nothing. Reuse it whenever the file and the
+      // range are the same, which is what it actually depends on.
+      const priorRun = await readAnalysis(videoPath)
+      const sameAudio =
+        priorRun &&
+        priorRun.transcript.words.length > 0 &&
+        Math.abs((priorRun.options?.startSec ?? 0) - startSec) < 0.5 &&
+        Math.abs((priorRun.options?.endSec ?? meta.durationSec) - endSec) < 0.5
+
+      let transcript: Transcript
+      if (sameAudio) {
+        console.log('[ai] reusing transcript,', priorRun.transcript.words.length, 'words')
+        safeSend(e.sender, 'ai:progress', { stage: 'Reusing transcript', percent: 86 })
+        transcript = priorRun.transcript
+      } else {
+        transcript = await transcribe(
+          videoPath,
+          settings.whisperModel,
+          windowSec,
+          (percent, stage) =>
+            safeSend(e.sender, 'ai:progress', {
+              stage,
+              percent: base + Math.round((percent * span) / 100)
+            }),
+          startSec
+        )
+        console.log('[ai] transcribed', transcript.words.length, 'words')
+      }
 
       // Sung music is not a weak clip, it is a blocked one: YouTube blocks a
       // claimed Short under three minutes outright rather than demonetising

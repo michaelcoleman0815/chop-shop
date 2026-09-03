@@ -117,8 +117,33 @@ export async function listModels(): Promise<{ id: string; name: string }[]> {
 }
 
 const GENRE_NOTE: Record<string, string> = {
-  sermon:
-    'This is a sermon or church service. Apply the sermon guidance. Expect long stretches of announcements, giving appeals and worship that are not clips, and expect the strongest moments to be testimony or a story told whole.',
+  sermon: `This is a sermon or church service.
+
+The shape of a preached moment. A story starts at its first concrete detail
+and ends at the meaning the speaker states out loud; both have to be inside
+the clip, and cutting into the middle of an illustration is the most common
+way a sermon clip fails. A point being made and then applied is one moment,
+not two. Scripture read aloud and then explained is one moment; scripture read
+without the explanation is not.
+
+What travels, strongest first: testimony, especially disclosed struggle or
+something the speaker admits cost them. A story with real stakes told whole.
+A hard truth stated plainly. A familiar passage reframed so it lands
+differently, with one line of application rather than an exposition. A direct
+challenge that a stranger could act on.
+
+What does not travel, and is common in this material: announcements, giving
+appeals, series recaps, welcomes, prayer requests, the offering, the closing
+prayer, and anything addressed to the room rather than to a viewer, such as
+"those of you visiting", "stand with me", "turn to your neighbour", "come down
+to the front". Also anything that only works if you were there last week.
+
+Two things specific to this material. Congregational response is not content:
+applause, an amen, or laughter is a reaction to a moment, not the moment, so
+do not end on one and do not start after one. And prefer a moment that states
+the human problem in ordinary words over one that assumes the vocabulary, so
+a passage about anxiety at three in the morning outranks the same idea framed
+as a doctrine, even when the doctrinal version is better preaching.`,
   podcast:
     'This is a podcast or interview with more than one speaker. Apply the interview guidance, and watch for answers that cannot stand without the question that prompted them.',
   talk:
