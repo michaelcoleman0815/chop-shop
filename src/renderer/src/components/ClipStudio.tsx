@@ -116,6 +116,10 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [detail, setDetail] = useState<number | null>(null)
   // One cropped still per clip, in the shape the clip will be exported in.
   const [shots, setShots] = useState<Record<string, string>>({})
+  // Watching a clip means rendering it once, so the card tracks which one is
+  // being made and which one is playing.
+  const [playing, setPlaying] = useState<{ index: number; url: string } | null>(null)
+  const [making, setMaking] = useState<{ index: number; percent: number } | null>(null)
 
   const analysed = words.length > 0
 
@@ -508,6 +512,31 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const patchGraphic = useCallback((id: string, patch: Partial<ClipGraphic>) => {
     setGraphics((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)))
   }, [])
+
+  const playClip = useCallback(
+    async (clip: SuggestedClip, index: number) => {
+      if (playing?.index === index) return setPlaying(null)
+      setPlaying(null)
+      const jobId = `preview-${Date.now()}`
+      setMaking({ index, percent: 0 })
+      const stop = window.chop.onExportProgress((p) => {
+        if (p.jobId === jobId) setMaking({ index, percent: p.percent })
+      })
+      try {
+        const res = await window.chop.renderClipPreview({
+          ...buildRequest(jobId, 'preview'),
+          startSec: clip.startSec,
+          endSec: clip.endSec
+        })
+        if (res.ok) setPlaying({ index, url: res.mediaUrl })
+        else setError(res.message)
+      } finally {
+        stop()
+        setMaking(null)
+      }
+    },
+    [buildRequest, playing]
+  )
 
   const exportSuggestion = useCallback(
     async (clip: SuggestedClip) => {
@@ -1115,23 +1144,39 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
         <div className="clip-grid">
           {suggestions.map((c, i) => (
             <div key={i} className="clip-card">
-              <button
+              <div
                 className={`clip-shot ${aspect}`}
                 style={
-                  shotOf(c)
-                    ? { backgroundImage: `url("${shotOf(c)}")` }
-                    : thumbOf(c.startSec)
+                  playing?.index === i
+                    ? undefined
+                    : shotOf(c)
+                      ? { backgroundImage: `url("${shotOf(c)}")` }
+                      : thumbOf(c.startSec)
                 }
-                onClick={() => setDetail(i)}
               >
-                <span className="clip-hook">{c.title}</span>
-                <span className="clip-play">
-                  <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-                    <path d="M3 1.6 10 6l-7 4.4Z" />
-                  </svg>
-                </span>
-                <span className="clip-dur mono">{Math.round(c.endSec - c.startSec)}s</span>
-              </button>
+                {playing?.index === i ? (
+                  <video src={playing.url} autoPlay controls loop className="clip-video" />
+                ) : (
+                  <>
+                    <span className="clip-hook">{c.title}</span>
+                    <button
+                      className="clip-play"
+                      title="Watch this clip"
+                      onClick={() => void playClip(c, i)}
+                    >
+                      {making?.index === i ? (
+                        <span className="clip-pct mono">{making.percent}%</span>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                          <path d="M3 1.6 10 6l-7 4.4Z" />
+                        </svg>
+                      )}
+                    </button>
+                    <button className="clip-open" onClick={() => setDetail(i)} />
+                    <span className="clip-dur mono">{Math.round(c.endSec - c.startSec)}s</span>
+                  </>
+                )}
+              </div>
               <div className="clip-meta">
                 <span className="clip-score-big">{c.score}</span>
                 <div className="clip-title">{c.title}</div>

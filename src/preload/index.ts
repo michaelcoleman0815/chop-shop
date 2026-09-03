@@ -72,6 +72,10 @@ const api = {
     options?: AnalysisOptions
   ): Promise<{ ok: true; result: AnalysisResult } | { ok: false; message: string }> =>
     ipcRenderer.invoke('ai:analyze', videoPath, force, options),
+  renderClipPreview: (
+    req: ClipRequest & { jobId: string }
+  ): Promise<{ ok: true; mediaUrl: string } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('clip:renderPreview', req),
   captionSample: (presetId: string): Promise<string> =>
     ipcRenderer.invoke('captions:sample', presetId),
   clipPoster: (path: string, atSec: number, aspect: string): Promise<string> =>

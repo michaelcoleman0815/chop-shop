@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, protocol, globalShortcut, desktopCapturer, systemPreferences } from 'electron'
 import { join, basename, extname } from 'path'
+import { createHash } from 'crypto'
 import { createReadStream, existsSync, statSync, promises as fs } from 'fs'
 import { Readable } from 'stream'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -19,7 +20,7 @@ import { readAnalysis, writeAnalysis, sameQuestion } from './analysis-cache'
 import { sweepTemp } from './temp-sweep'
 import { fetchVideo } from './fetch-video'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
-import { captionSample, clipPoster, mediaPreview } from './media-preview'
+import { captionSample, clipPoster, mediaPreview, previewsDir } from './media-preview'
 import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
@@ -801,6 +802,86 @@ function registerIpc(): void {
     async (_e, path: string, atSec: number, aspect: string): Promise<string> =>
       mediaUrlFor(await clipPoster(path, atSec, aspect))
   )
+
+  /**
+   * Renders one clip small and keeps it, so a grid of eight can be watched.
+   *
+   * Cached on everything that changes the picture, so a second play is instant
+   * and a changed caption style or a new cut is a different file rather than a
+   * stale one. Subject tracking is left out: it is the slow step and it does
+   * not change the edit, only where the crop sits.
+   */
+  ipcMain.handle('clip:renderPreview', async (e, req: ClipRequest & { jobId: string }) => {
+    try {
+      const stat = await fs.stat(req.sourcePath)
+      const shape = JSON.stringify({
+        p: req.sourcePath,
+        m: stat.mtimeMs,
+        s: req.startSec,
+        e: req.endSec,
+        a: req.aspect,
+        c: req.captions,
+        preset: getSettings().captionPreset,
+        lut: getSettings().lutPath,
+        z: req.zooms,
+        seg: req.segments,
+        g: req.graphics
+      })
+      const key = createHash('sha1').update(shape).digest('hex').slice(0, 16)
+      const dir = previewsDir()
+      await fs.mkdir(dir, { recursive: true })
+      const outputPath = join(dir, `clip-${key}.mp4`)
+
+      const done = await fs
+        .stat(outputPath)
+        .then((f) => f.size > 0)
+        .catch(() => false)
+      if (done) return { ok: true as const, mediaUrl: mediaUrlFor(outputPath) }
+
+      const meta = await probe(req.sourcePath)
+      const startSec =
+        req.startSec + (await leadingQuiet(req.sourcePath, req.startSec).catch(() => 0))
+      const words = (req.captionWords ?? [])
+        .filter((w) => w.endSec > startSec && w.startSec < req.endSec)
+        .map((w) => ({
+          text: w.text,
+          startSec: Math.max(0, w.startSec - startSec),
+          endSec: Math.max(0.05, w.endSec - startSec)
+        }))
+
+      // Written aside then renamed: a killed render must not leave a truncated
+      // file that every later call serves as a cache hit.
+      const tmp = `${outputPath}.part.mp4`
+      await exportClip({
+        sourcePath: req.sourcePath,
+        startSec,
+        endSec: req.endSec,
+        outputPath: tmp,
+        aspect: req.aspect,
+        source: { width: meta.width, height: meta.height, fps: meta.fps },
+        captions: req.captions && words.length > 0 ? { words } : undefined,
+        captionStyle: presetById(getSettings().captionPreset).style,
+        lutPath: getSettings().lutPath,
+        words,
+        tighten: req.tighten === false ? false : undefined,
+        segments: req.segments,
+        zooms: req.zooms,
+        graphics: req.graphics,
+        outputScale: 0.5,
+        previewQuality: true,
+        onProgress: (percent) =>
+          safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent, stage: 'running' })
+      })
+      await fs.rename(tmp, outputPath)
+      safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 100, stage: 'done' })
+      return { ok: true as const, mediaUrl: mediaUrlFor(outputPath) }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[clip preview] failed:', message)
+      safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 0, stage: 'error', message })
+      return { ok: false as const, message }
+    }
+  })
 
   ipcMain.handle('captions:sample', async (_e, presetId: string): Promise<string> => {
     const preset = presetById(presetId)
