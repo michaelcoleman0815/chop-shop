@@ -286,6 +286,42 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
         </Row>
       </Section>
 
+      <Section title="Where your video is processed">
+        <div className="where-runs">
+          <div className="where-row">
+            <span className="where-what">Transcription</span>
+            <span className="where-badge on">This Mac</span>
+            <span className="muted">whisper.cpp, bundled. The audio never leaves.</span>
+          </div>
+          <div className="where-row">
+            <span className="where-what">Face tracking</span>
+            <span className="where-badge on">This Mac</span>
+            <span className="muted">Apple's Vision framework.</span>
+          </div>
+          <div className="where-row">
+            <span className="where-what">Rendering</span>
+            <span className="where-badge on">This Mac</span>
+            <span className="muted">ffmpeg. No upload, no queue, no watermark.</span>
+          </div>
+          <div className="where-row">
+            <span className="where-what">Choosing clips</span>
+            <span className="where-badge off">Anthropic</span>
+            <span className="muted">
+              The transcript text is sent to Claude. The video and audio are not.
+            </span>
+          </div>
+          <div className="where-row">
+            <span className="where-what">Fetching a link</span>
+            <span className="where-badge off">The host</span>
+            <span className="muted">Only when you paste one.</span>
+          </div>
+        </div>
+        <p className="muted where-note">
+          Nothing is uploaded for storage, and there is no account. Chop Shop keeps no copy of your
+          recordings, your transcripts or your clips.
+        </p>
+      </Section>
+
       <Section title="Music">
         <Row
           name="Folder"

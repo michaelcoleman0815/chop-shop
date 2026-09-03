@@ -2691,3 +2691,42 @@ kbd {
 .lanes.razor .tl-clip {
   cursor: crosshair;
 }
+
+/* Said plainly and per-step, because "processed locally" is a claim every tool
+   makes and none of them break down. */
+.where-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.where-row {
+  display: grid;
+  grid-template-columns: 118px 78px minmax(0, 1fr);
+  gap: var(--s3sp);
+  align-items: center;
+  font-size: 12px;
+}
+.where-what {
+  font-weight: 500;
+}
+.where-badge {
+  justify-self: start;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.where-badge.on {
+  color: #8fc7a8;
+  background: rgba(143, 199, 168, 0.14);
+}
+.where-badge.off {
+  color: #d4b37f;
+  background: rgba(212, 179, 127, 0.14);
+}
+.where-note {
+  margin: var(--s3sp) 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
