@@ -811,6 +811,28 @@ function registerIpc(): void {
    * stale one. Subject tracking is left out: it is the slow step and it does
    * not change the edit, only where the crop sits.
    */
+  ipcMain.handle('music:list', async (): Promise<{ name: string; path: string }[]> => {
+    const dir = getSettings().musicDir
+    if (!dir) return []
+    try {
+      const names = await fs.readdir(dir)
+      return names
+        .filter((n) => /\.(mp3|m4a|aac|wav|aiff|flac)$/i.test(n) && !n.startsWith('.'))
+        .sort((a, b) => a.localeCompare(b))
+        .map((n) => ({ name: n.replace(/\.[^.]+$/, ''), path: join(dir, n) }))
+    } catch {
+      // A folder that has moved is not an error worth stopping for; the picker
+      // simply shows nothing and the setting can be pointed somewhere else.
+      return []
+    }
+  })
+
+  ipcMain.handle('music:choose', async (): Promise<string | null> => {
+    const res = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    if (res.canceled || res.filePaths.length === 0) return null
+    return res.filePaths[0]
+  })
+
   ipcMain.handle('clip:renderPreview', async (e, req: ClipRequest & { jobId: string }) => {
     try {
       const stat = await fs.stat(req.sourcePath)

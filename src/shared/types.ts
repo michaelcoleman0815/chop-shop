@@ -77,6 +77,8 @@ export interface Settings {
   clipModel: string
   captionPreset: string
   lutPath: string | null
+  /** Folder of licensed music to choose beds from. */
+  musicDir: string | null
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string

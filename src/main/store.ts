@@ -21,6 +21,7 @@ const defaults = (): Settings => ({
   clipModel: 'claude-opus-5',
   captionPreset: 'chop',
   lutPath: null,
+  musicDir: null,
   exportPreset: null
 })
 

@@ -2641,3 +2641,27 @@ kbd {
   background: transparent;
   border: none;
 }
+
+.bed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.bed {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 400;
+  padding: 6px 9px;
+  background: var(--s0);
+  border-color: var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bed.on {
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-color: rgba(255, 96, 118, 0.5);
+}

@@ -72,6 +72,8 @@ const api = {
     options?: AnalysisOptions
   ): Promise<{ ok: true; result: AnalysisResult } | { ok: false; message: string }> =>
     ipcRenderer.invoke('ai:analyze', videoPath, force, options),
+  listMusic: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke('music:list'),
+  chooseMusicDir: (): Promise<string | null> => ipcRenderer.invoke('music:choose'),
   renderClipPreview: (
     req: ClipRequest & { jobId: string }
   ): Promise<{ ok: true; mediaUrl: string } | { ok: false; message: string }> =>

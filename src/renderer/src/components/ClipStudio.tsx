@@ -3,6 +3,7 @@ import type {
   AspectPreset,
   ClipGenre,
   ClipGraphic,
+  MusicTrack,
   Project,
   Settings,
   SuggestedClip,
@@ -92,6 +93,8 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [rendering, setRendering] = useState(false)
   const [scrubbing, setScrubbing] = useState(false)
   const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
+  const [beds, setBeds] = useState<{ name: string; path: string }[]>([])
+  const [music, setMusic] = useState<MusicTrack | null>(null)
   const [strip, setStrip] = useState<{
     filmstripUrl: string
     waveformUrl: string | null
@@ -134,6 +137,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
 
   useEffect(() => {
     window.chop.listLuts().then(setLuts)
+    window.chop.listMusic().then(setBeds)
     return window.chop.onAiProgress((p) => {
       if (p.stage.startsWith('Downloading model')) return
       setAnalysis(p.percent >= 100 || p.stage === 'Failed' ? null : p)
@@ -377,6 +381,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       tighten,
       trackSubject,
       graphics: graphics.length > 0 ? graphics : undefined,
+      music,
       segments: handCut || tighten ? segments : undefined,
       zooms
     }),
@@ -394,6 +399,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
       tighten,
       trackSubject,
       graphics,
+      music,
       segments,
       handCut,
       zooms
@@ -1064,9 +1070,88 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                 </select>
               </>
             )}
-            {(tool === 'broll' || tool === 'music') && (
+            {tool === 'music' && (
+              <>
+                <div className="row">
+                  <span className="label">Bed</span>
+                  <div className="spacer" />
+                  {music && (
+                    <button className="ghost" onClick={() => setMusic(null)}>
+                      None
+                    </button>
+                  )}
+                </div>
+
+                {beds.length === 0 ? (
+                  <>
+                    <p className="muted" style={{ fontSize: 12 }}>
+                      Point Chop Shop at a folder of licensed music and the tracks in it show up
+                      here. An Artlist or Epidemic download folder works as it is.
+                    </p>
+                    <button
+                      onClick={async () => {
+                        const dir = await window.chop.chooseMusicDir()
+                        if (!dir) return
+                        await patch({ musicDir: dir })
+                        setBeds(await window.chop.listMusic())
+                      }}
+                    >
+                      Choose a music folder
+                    </button>
+                  </>
+                ) : (
+                  <div className="bed-list">
+                    {beds.map((b) => (
+                      <button
+                        key={b.path}
+                        className={`bed ${music?.path === b.path ? 'on' : ''}`}
+                        onClick={() =>
+                          setMusic(
+                            music?.path === b.path
+                              ? null
+                              : { path: b.path, gainDb: music?.gainDb ?? -18, duck: music?.duck ?? true }
+                          )
+                        }
+                      >
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {music && (
+                  <>
+                    <div className="row" style={{ gap: 10 }}>
+                      <span className="muted" style={{ fontSize: 12, width: 42 }}>
+                        Level
+                      </span>
+                      <input
+                        type="range"
+                        min={-40}
+                        max={0}
+                        step={1}
+                        value={music.gainDb}
+                        onChange={(e) => setMusic({ ...music, gainDb: Number(e.target.value) })}
+                        style={{ flex: 1 }}
+                      />
+                      <span className="mono muted" style={{ minWidth: 46, textAlign: 'right' }}>
+                        {music.gainDb} dB
+                      </span>
+                    </div>
+                    <button
+                      className={`seg ${music.duck ? 'on' : ''}`}
+                      onClick={() => setMusic({ ...music, duck: !music.duck })}
+                    >
+                      Duck under speech
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+
+            {tool === 'broll' && (
               <p className="muted" style={{ fontSize: 12 }}>
-                {tool === 'broll' ? 'B-roll' : 'Music'} lives in the timeline editor for now.
+                B-roll lives in the timeline editor for now.
               </p>
             )}
           </div>
