@@ -499,10 +499,14 @@ function registerIpc(): void {
 
   // One call does the whole analysis: audio out, words back, then Claude picks
   // the moments. Progress is reported across both halves as a single bar.
-  ipcMain.handle('video:fromUrl', async (e, url: string) => {
+  ipcMain.handle(
+    'video:fromUrl',
+    async (e, url: string, range?: { startSec: number; endSec: number }) => {
     try {
-      const fetched = await fetchVideo(url, (percent, stage) =>
-        safeSend(e.sender, 'video:fetchProgress', { percent, stage })
+      const fetched = await fetchVideo(
+        url,
+        (percent, stage) => safeSend(e.sender, 'video:fetchProgress', { percent, stage }),
+        range
       )
       const meta = await describeVideo(fetched.path)
       safeSend(e.sender, 'video:fetchProgress', { percent: 100, stage: 'Done' })

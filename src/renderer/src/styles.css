@@ -2730,3 +2730,22 @@ kbd {
   font-size: 12px;
   line-height: 1.6;
 }
+
+.drop-range {
+  display: flex;
+  align-items: center;
+  gap: var(--s2sp);
+  width: min(520px, 100%);
+  font-size: 12px;
+}
+.drop-range input {
+  width: 78px;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 8px;
+}
+.drop-range-note {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}

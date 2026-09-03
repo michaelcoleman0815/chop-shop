@@ -96,9 +96,10 @@ const api = {
   clipPoster: (path: string, atSec: number, aspect: string): Promise<string> =>
     ipcRenderer.invoke('media:clipPoster', path, atSec, aspect),
   fetchVideo: (
-    url: string
+    url: string,
+    range?: { startSec: number; endSec: number }
   ): Promise<{ ok: true; meta: VideoMeta } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('video:fromUrl', url),
+    ipcRenderer.invoke('video:fromUrl', url, range),
   onFetchProgress: (
     cb: (p: { percent: number; stage: string; message?: string }) => void
   ): (() => void) => {

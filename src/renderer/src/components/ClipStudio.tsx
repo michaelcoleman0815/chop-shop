@@ -73,6 +73,8 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [hot, setHot] = useState(false)
   const [url, setUrl] = useState('')
   const [fetching, setFetching] = useState<{ percent: number; stage: string } | null>(null)
+  const [fetchFrom, setFetchFrom] = useState('')
+  const [fetchTo, setFetchTo] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [win, setWin] = useState<{ url: string; start: number; length: number } | null>(null)
 
@@ -211,14 +213,30 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const fetchUrl = useCallback(async () => {
     const target = url.trim()
     if (!target) return
+    const seconds = (text: string): number | null => {
+      const parts = text.trim().split(':').map(Number)
+      if (parts.length === 0 || parts.some((n) => !Number.isFinite(n))) return null
+      return parts.reduce((total, n) => total * 60 + n, 0)
+    }
+    const from = fetchFrom.trim() ? seconds(fetchFrom) : null
+    const to = fetchTo.trim() ? seconds(fetchTo) : null
+    if ((fetchFrom.trim() && from === null) || (fetchTo.trim() && to === null)) {
+      return setError('Times go in as 12:30 or 1:12:30.')
+    }
+    if (from !== null && to !== null && to <= from) {
+      return setError('The end of the range has to come after the start.')
+    }
     setError(null)
     setFetching({ percent: 0, stage: 'Starting' })
-    const res = await window.chop.fetchVideo(target)
+    const res = await window.chop.fetchVideo(
+      target,
+      from !== null && to !== null ? { startSec: from, endSec: to } : undefined
+    )
     setFetching(null)
     if (!res.ok) return setError(res.message)
     setUrl('')
     load(res.meta)
-  }, [url, load])
+  }, [url, fetchFrom, fetchTo, load])
 
   const open = useCallback(async () => {
     try {
@@ -659,6 +677,28 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
             <button onClick={() => void fetchUrl()} disabled={!url.trim() || !!fetching}>
               {fetching ? `${fetching.percent}%` : 'Fetch'}
             </button>
+          </div>
+
+          <div className="drop-range">
+            <span className="muted">Just this part</span>
+            <input
+              type="text"
+              placeholder="12:30"
+              value={fetchFrom}
+              disabled={!!fetching}
+              onChange={(e) => setFetchFrom(e.target.value)}
+            />
+            <span className="muted">to</span>
+            <input
+              type="text"
+              placeholder="52:00"
+              value={fetchTo}
+              disabled={!!fetching}
+              onChange={(e) => setFetchTo(e.target.value)}
+            />
+            <span className="muted drop-range-note">
+              Optional, and much faster: a service is mostly not the sermon.
+            </span>
           </div>
 
           {fetching && (

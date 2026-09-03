@@ -21,7 +21,14 @@ export interface FetchedVideo {
 
 export async function fetchVideo(
   url: string,
-  onProgress: (percent: number, stage: string) => void
+  onProgress: (percent: number, stage: string) => void,
+  /**
+   * Fetch only this stretch. A church service is mostly not the sermon, and
+   * pulling ninety minutes to clip thirty is the slowest step in the whole
+   * workflow: on the upstream a church typically has, the download is measured
+   * in hours. yt-dlp can ask the host for a range instead.
+   */
+  range?: { startSec: number; endSec: number }
 ): Promise<FetchedVideo> {
   const bin = YTDLP_PATH()
   if (!existsSync(bin)) {
@@ -39,6 +46,15 @@ export async function fetchVideo(
     const child = spawn(bin, [
       '--no-playlist',
       '--newline',
+      ...(range
+        ? [
+            '--download-sections',
+            `*${range.startSec.toFixed(2)}-${range.endSec.toFixed(2)}`,
+            // Without this the cut lands on the nearest keyframe, which can be
+            // seconds early and puts the opening words outside the file.
+            '--force-keyframes-at-cuts'
+          ]
+        : []),
       // Progress is easier to read back than to parse out of the pretty bar.
       '--progress-template',
       'PCT %(progress._percent_str)s',
