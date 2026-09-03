@@ -22,6 +22,8 @@ const defaults = (): Settings => ({
   captionPreset: 'chop',
   lutPath: null,
   musicDir: null,
+  ccliLicense: null,
+  ccliStreaming: null,
   exportPreset: null
 })
 

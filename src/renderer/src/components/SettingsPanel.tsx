@@ -393,6 +393,54 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
         </Row>
       </Section>
 
+      <Section title="Worship and copyright">
+        <Row
+          name="CCLI Copyright"
+          hint="Only used to build the acknowledgement text below. Never sent anywhere."
+        >
+          <input
+            type="text"
+            className="mono"
+            placeholder="1234567"
+            value={settings.ccliLicense ?? ''}
+            onChange={(e) => patch({ ccliLicense: e.target.value.trim() || null })}
+            style={{ width: 130 }}
+          />
+        </Row>
+        <Row name="CCLI Streaming">
+          <input
+            type="text"
+            className="mono"
+            placeholder="7654321"
+            value={settings.ccliStreaming ?? ''}
+            onChange={(e) => patch({ ccliStreaming: e.target.value.trim() || null })}
+            style={{ width: 130 }}
+          />
+        </Row>
+        {(settings.ccliLicense || settings.ccliStreaming) && (
+          <Row name="Acknowledgement" hint="Paste into the description of a clip containing worship.">
+            <button
+              onClick={() =>
+                void navigator.clipboard.writeText(
+                  `Used with Permission through our CCLI Copyright License Number ${
+                    settings.ccliLicense ?? '____'
+                  } and Streaming License Number ${settings.ccliStreaming ?? '____'}.`
+                )
+              }
+            >
+              Copy
+            </button>
+          </Row>
+        )}
+        <p className="muted where-note">
+          Chop Shop finds sung music by how much a passage repeats itself and keeps clips away from
+          it. Worth knowing why: a CCLI licence covers performing a song in a service, but it does
+          not stop a Content ID match, and YouTube blocks a claimed Short under three minutes
+          outright rather than demonetising it. CCLI also forbids monetising anything used under the
+          streaming licence.
+        </p>
+      </Section>
+
       <Section title="Updates">
         <Row name="Check automatically">
           <input

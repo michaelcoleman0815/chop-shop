@@ -20,6 +20,7 @@ import { readAnalysis, writeAnalysis, sameQuestion } from './analysis-cache'
 import { sweepTemp } from './temp-sweep'
 import { fetchVideo } from './fetch-video'
 import { detectMusic, overlapsMusic } from './worship'
+import { detectShots, snapTrackAtCuts } from './shots'
 import { hasArtlist, setArtlist, searchArtlist, fetchArtlistSong, type ArtlistSong } from './artlist'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { captionSample, clipPoster, mediaPreview, previewsDir } from './media-preview'
@@ -304,12 +305,38 @@ function registerIpc(): void {
         // Not worth failing an export over; the clip simply keeps its head.
       }
 
+      // A clip carrying worship is not a weak clip, it is one that gets blocked.
+      // Analysis drops these already; a range set by hand can still land on one.
+      if (req.captionWords && req.captionWords.length > 0) {
+        const music = detectMusic(req.captionWords)
+        if (overlapsMusic(startSec, req.endSec, music)) {
+          const ccli = getSettings().ccliLicense
+          safeSend(e.sender, 'clip:progress', {
+            jobId: req.jobId,
+            percent: 1,
+            stage: 'running',
+            message: ccli
+              ? 'This clip carries sung music. YouTube blocks a claimed Short under three minutes outright, and a CCLI licence does not prevent the claim. Your CCLI acknowledgement is in Settings to paste into the description.'
+              : 'This clip carries sung music. YouTube blocks a claimed Short under three minutes outright rather than demonetising it, and a CCLI licence does not prevent the claim.'
+          })
+        }
+      }
+
       let track: { atSec: number; cx: number; cy: number }[] | undefined
       if (req.trackSubject) {
         try {
           safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 2, stage: 'running' })
           const samples = await detectFaces(req.sourcePath, startSec, req.endSec - startSec)
           track = buildTrack(samples)
+          // A tracked crop must not glide between two different camera angles.
+          const cuts = await detectShots(req.sourcePath, startSec, req.endSec - startSec).catch(
+            () => [] as number[]
+          )
+          if (cuts.length > 0 && track.length > 1) {
+            track = snapTrackAtCuts(track, cuts)
+            console.log('[track] snapped across', cuts.length, 'cuts')
+          }
+
           const withFace = samples.filter((s) => s.faces.length > 0).length
           const span =
             track.length > 1
@@ -328,7 +355,7 @@ function registerIpc(): void {
                 ? 'No face found in this clip, so the crop is centred.'
                 : `Tracking ${withFace} of ${samples.length} samples, moving ${Math.round(
                     span * 100
-                  )}% of frame width.`
+                  )}% of frame width${cuts.length > 0 ? `, across ${cuts.length} camera cut${cuts.length === 1 ? '' : 's'}` : ''}.`
           })
           if (withFace === 0) track = undefined
         } catch (err) {

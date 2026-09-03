@@ -79,6 +79,10 @@ export interface Settings {
   lutPath: string | null
   /** Folder of licensed music to choose beds from. */
   musicDir: string | null
+  /** CCLI Copyright Licence number, for the acknowledgement on a clip. */
+  ccliLicense: string | null
+  /** CCLI Streaming Licence number. Streaming needs both. */
+  ccliStreaming: string | null
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string
