@@ -38,7 +38,8 @@ import {
   projectsDir
 } from './projects'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
-import { suggestClips, listModels } from './clips'
+import { suggestClips, listModels, OLLAMA_HOST } from './clips'
+import { localModels, isLocalUp } from './local-llm'
 import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
 import { getSettings, saveSettings } from './store'
 import { initUpdater, checkForUpdates, downloadUpdate, installUpdate, openReleasesPage, getUpdateState } from './updater'
@@ -481,9 +482,26 @@ function registerIpc(): void {
   ipcMain.handle('ai:clearKey', () => clearApiKey())
   ipcMain.handle('ai:provider', () => currentProvider())
   ipcMain.handle('ai:models', async () => {
+    // Anything already pulled on this machine sits in the same list, prefixed
+    // so the choice of where a transcript goes is visible at the point of
+    // choosing rather than buried in a setting somewhere else.
+    let local: { id: string; name: string }[] = []
+    if (await isLocalUp(OLLAMA_HOST)) {
+      local = await localModels(OLLAMA_HOST)
+        .then((models) =>
+          models.map((m) => ({
+            id: `ollama:${m.name}`,
+            name: `${m.name} — on this Mac (${Math.round(m.sizeBytes / 1e9)} GB)`
+          }))
+        )
+        .catch(() => [])
+    }
+
     try {
-      return { ok: true as const, models: await listModels() }
+      return { ok: true as const, models: [...(await listModels()), ...local] }
     } catch (err) {
+      // A missing key must not hide the local models, which need no key.
+      if (local.length > 0) return { ok: true as const, models: local }
       return { ok: false as const, message: err instanceof Error ? err.message : String(err) }
     }
   })

@@ -4,6 +4,10 @@ import { z } from 'zod'
 import { readApiKey } from './apikey'
 import type { SuggestedClip, Transcript } from '../shared/types'
 import { normaliseClips, transcriptLines } from './clip-shape'
+import { selectLocally } from './local-llm'
+
+/** Ollama's default. Nothing else listens here. */
+export const OLLAMA_HOST = 'http://127.0.0.1:11434'
 
 
 const ClipsSchema = z.object({
@@ -152,32 +156,17 @@ as a doctrine, even when the doctrinal version is better preaching.`,
     'This is comedy or a performance. A bit starts at its first setup word and ends a beat after its punchline; never cut between a setup and its payoff, and never include a punchline whose setup is off-screen.'
 }
 
-export async function suggestClips(
+/** The same words go to whichever model is chosen, or the comparison is meaningless. */
+function buildPrompt(
   transcript: Transcript,
   durationSec: number,
   maxClips: number,
-  model: string,
   length?: { minSec: number; maxSec: number },
   lookFor?: string,
   genre?: string,
   music?: { startSec: number; endSec: number }[]
-): Promise<SuggestedClip[]> {
-  const apiKey = readApiKey()
-  if (!apiKey) {
-    throw new Error('Add an Anthropic API key in Settings to find clips.')
-  }
-
-  const client = new Anthropic({ apiKey })
-
-  const response = await client.messages.parse({
-    model,
-    max_tokens: 16000,
-    system: SYSTEM,
-    thinking: { type: 'adaptive' },
-    messages: [
-      {
-        role: 'user',
-        content: `Transcript of a ${Math.round(durationSec)} second video. Each line is prefixed with its start time in seconds.
+): string {
+  return `Transcript of a ${Math.round(durationSec)} second video. Each line is prefixed with its start time in seconds.
 
 ${transcriptLines(transcript.words)}
 
@@ -199,8 +188,41 @@ ${genre && GENRE_NOTE[genre] ? `${GENRE_NOTE[genre]}\n\n` : ''}${
             ? `\n\n<asked-for>\n${lookFor.trim()}\n</asked-for>`
             : ''
         }`
-      }
-    ],
+}
+
+export async function suggestClips(
+  transcript: Transcript,
+  durationSec: number,
+  maxClips: number,
+  model: string,
+  length?: { minSec: number; maxSec: number },
+  lookFor?: string,
+  genre?: string,
+  music?: { startSec: number; endSec: number }[]
+): Promise<SuggestedClip[]> {
+  const local = model.startsWith('ollama:')
+  const apiKey = local ? null : readApiKey()
+  if (!local && !apiKey) {
+    throw new Error('Add an Anthropic API key in Settings, or choose a local model, to find clips.')
+  }
+
+  const prompt = buildPrompt(transcript, durationSec, maxClips, length, lookFor, genre, music)
+
+  if (local) {
+    // "ollama:llama3.2:3b" names the runtime and the model it should load.
+    const name = model.slice('ollama:'.length)
+    const raw = await selectLocally(OLLAMA_HOST, name, SYSTEM, prompt)
+    return normaliseClips(raw, transcript.words, durationSec)
+  }
+
+  const client = new Anthropic({ apiKey: apiKey as string })
+
+  const response = await client.messages.parse({
+    model,
+    max_tokens: 16000,
+    system: SYSTEM,
+    thinking: { type: 'adaptive' },
+    messages: [{ role: 'user', content: prompt }],
     output_config: { format: zodOutputFormat(ClipsSchema) }
   })
 
