@@ -51,6 +51,8 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
   const [playhead, setPlayhead] = useState(0)
   const [drag, setDrag] = useState<Drag>(null)
   const [zoom, setZoom] = useState(1)
+  const [tool, setTool] = useState<'select' | 'razor'>('select')
+  const [snap, setSnap] = useState(true)
   const [trackState, setTrackState] = useState<Record<number, TrackState>>({
     0: { muted: false, locked: false, hidden: false },
     1: { muted: false, locked: false, hidden: false }
@@ -143,14 +145,104 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
     [pxPerSec]
   )
 
+  /**
+   * Pulls a dragged edge onto anything worth landing on: another clip's edges
+   * and the playhead. The threshold is in pixels, not seconds, so it feels the
+   * same at every zoom level rather than getting stickier as you zoom out.
+   */
+  const snapTo = useCallback(
+    (t: number, movingId: string): number => {
+      if (!snap) return t
+      const targets = [playhead, 0]
+      for (const c of timeline.clips) {
+        if (c.id === movingId) continue
+        targets.push(c.timelineStartSec)
+        targets.push(c.timelineStartSec + (c.sourceOutSec - c.sourceInSec))
+      }
+      const threshold = 8 / pxPerSec
+      let best: number | null = null
+      for (const target of targets) {
+        const gap = Math.abs(target - t)
+        if (gap <= threshold && (best === null || gap < Math.abs(best - t))) best = target
+      }
+      return best ?? t
+    },
+    [snap, timeline.clips, playhead, pxPerSec]
+  )
+
+  /** Splits a clip at a point in timeline time, keeping both halves. */
+  const razorAt = useCallback(
+    (clip: TimelineClip, atSec: number) => {
+      if (trackState[clip.track]?.locked) return
+      const offset = atSec - clip.timelineStartSec
+      const length = clip.sourceOutSec - clip.sourceInSec
+      // A cut at the very edge produces a zero-length clip nobody wants.
+      if (offset < 0.1 || offset > length - 0.1) return
+      const left = { ...clip, sourceOutSec: clip.sourceInSec + offset }
+      const right = {
+        ...clip,
+        id: `${clip.id}-${Math.round(atSec * 1000)}`,
+        sourceInSec: clip.sourceInSec + offset,
+        timelineStartSec: atSec
+      }
+      setTimeline({
+        ...timeline,
+        clips: timeline.clips.flatMap((c) => (c.id === clip.id ? [left, right] : [c]))
+      })
+      setSelected(right.id)
+    },
+    [timeline, setTimeline, trackState]
+  )
+
+  const removeSelected = useCallback(
+    (ripple: boolean) => {
+      const clip = timeline.clips.find((c) => c.id === selected)
+      if (!clip || trackState[clip.track]?.locked) return
+      const length = clip.sourceOutSec - clip.sourceInSec
+      const clips = timeline.clips
+        .filter((c) => c.id !== clip.id)
+        .map((c) =>
+          // Ripple closes the hole: everything later on the same track slides
+          // back by exactly what was removed.
+          ripple && c.track === clip.track && c.timelineStartSec > clip.timelineStartSec
+            ? { ...c, timelineStartSec: Math.max(0, c.timelineStartSec - length) }
+            : c
+        )
+      setTimeline({ ...timeline, clips })
+      setSelected(null)
+    },
+    [timeline, setTimeline, selected, trackState]
+  )
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      if (e.key === 'v' || e.key === 'V') setTool('select')
+      else if (e.key === 'c' || e.key === 'C') setTool('razor')
+      else if (e.key === 's' || e.key === 'S') setSnap((on) => !on)
+      else if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault()
+        removeSelected(e.shiftKey)
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // A frame at a time, or a second with shift held.
+        const step = e.shiftKey ? 1 : 1 / (timeline.fps || 30)
+        setPlayhead((p) => Math.max(0, p + (e.key === 'ArrowRight' ? step : -step)))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [removeSelected, timeline.fps])
+
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!drag) return
-      const t = timeAt(e.clientX)
+      const raw = timeAt(e.clientX)
+      const t = drag.kind === 'playhead' ? raw : snapTo(raw, drag.id)
 
       // Scrubbing is a drag, not a series of clicks.
       if (drag.kind === 'playhead') {
-        setPlayhead(Math.max(0, Math.min(duration, t)))
+        setPlayhead(Math.max(0, Math.min(duration, raw)))
         setPlaying(false)
         return
       }
@@ -176,7 +268,7 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
       })
       setTimeline({ ...timeline, clips })
     },
-    [drag, timeline, timeAt, setTimeline, trackState, duration]
+    [drag, timeline, timeAt, setTimeline, trackState, duration, snapTo]
   )
 
   // The monitor plays whichever clip covers the playhead, seeking into it.
@@ -384,7 +476,33 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
       <section className="panel timeline-panel">
         <div className="panel-head">
           <span className="label">Timeline</span>
+          <div className="tool-palette">
+            <button
+              className={`seg ${tool === 'select' ? 'on' : ''}`}
+              title="Select  ·  V"
+              onClick={() => setTool('select')}
+            >
+              V
+            </button>
+            <button
+              className={`seg ${tool === 'razor' ? 'on' : ''}`}
+              title="Razor  ·  C"
+              onClick={() => setTool('razor')}
+            >
+              C
+            </button>
+          </div>
+          <button
+            className={`seg ${snap ? 'on' : ''}`}
+            title="Snap to edges and the playhead  ·  S"
+            onClick={() => setSnap(!snap)}
+          >
+            Snap
+          </button>
           <div className="spacer" />
+          <span className="mono muted" style={{ fontSize: 11 }}>
+            {selected ? 'Delete removes  ·  shift closes the gap' : `${timeline.clips.length} clips`}
+          </span>
           <button className="ghost" onClick={() => setZoom((z) => Math.max(0.25, z / 1.5))}>
             −
           </button>
@@ -540,6 +658,11 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
                         }}
                         onPointerDown={(e) => {
                           setSelected(c.id)
+                          // The razor cuts where you click; it does not drag.
+                          if (tool === 'razor') {
+                            razorAt(c, timeAt(e.clientX))
+                            return
+                          }
                           setDrag({
                             kind: 'move',
                             id: c.id,

@@ -2675,3 +2675,19 @@ kbd {
   background: var(--accent-dim);
   border-color: rgba(255, 96, 118, 0.5);
 }
+
+.tool-palette {
+  display: flex;
+  gap: 3px;
+  margin-left: var(--s3sp);
+}
+.tool-palette .seg {
+  width: 28px;
+  padding: 5px 0;
+  font-family: var(--mono);
+  text-align: center;
+}
+/* The razor says what it will do before it does it. */
+.lanes.razor .tl-clip {
+  cursor: crosshair;
+}
