@@ -19,6 +19,7 @@ import { readEpr } from './epr'
 import { readAnalysis, writeAnalysis, sameQuestion } from './analysis-cache'
 import { sweepTemp } from './temp-sweep'
 import { fetchVideo } from './fetch-video'
+import { detectMusic, overlapsMusic } from './worship'
 import { hasArtlist, setArtlist, searchArtlist, fetchArtlistSong, type ArtlistSong } from './artlist'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { captionSample, clipPoster, mediaPreview, previewsDir } from './media-preview'
@@ -538,6 +539,19 @@ function registerIpc(): void {
         startSec
       )
       console.log('[ai] transcribed', transcript.words.length, 'words')
+
+      // Sung music is not a weak clip, it is a blocked one: YouTube blocks a
+      // claimed Short under three minutes outright rather than demonetising
+      // it, and a CCLI licence does not stop a Content ID match.
+      const music = detectMusic(transcript.words)
+      if (music.length > 0) {
+        const total = Math.round(music.reduce((n, r) => n + (r.endSec - r.startSec), 0))
+        console.log('[ai]', music.length, 'music regions,', total, 's')
+        safeSend(e.sender, 'ai:progress', {
+          stage: `Found ${Math.round(total / 60)} min of music to skip`,
+          percent: 87
+        })
+      }
       safeSend(e.sender, 'ai:progress', { stage: 'Finding clips', percent: 88 })
       const clips = await suggestClips(
         transcript,
@@ -546,10 +560,17 @@ function registerIpc(): void {
         settings.clipModel,
         options ? { minSec: options.minClipSec, maxSec: options.maxClipSec } : undefined,
         options?.lookFor,
-        options?.genre
+        options?.genre,
+        music
       )
       console.log('[ai] Claude returned', clips.length, 'clips')
-      const result = { transcript, clips }
+      // A clip that still lands on a song after all that is dropped rather
+      // than offered: it would be blocked wherever it was posted.
+      const safe = clips.filter((c) => !overlapsMusic(c.startSec, c.endSec, music))
+      if (safe.length < clips.length) {
+        console.log('[ai] dropped', clips.length - safe.length, 'clips overlapping music')
+      }
+      const result = { transcript, clips: safe }
       await writeAnalysis(videoPath, result, options)
       safeSend(e.sender, 'ai:progress', { stage: 'Done', percent: 100 })
       return { ok: true as const, result }

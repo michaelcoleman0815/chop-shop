@@ -134,7 +134,8 @@ export async function suggestClips(
   model: string,
   length?: { minSec: number; maxSec: number },
   lookFor?: string,
-  genre?: string
+  genre?: string,
+  music?: { startSec: number; endSec: number }[]
 ): Promise<SuggestedClip[]> {
   const apiKey = readApiKey()
   if (!apiKey) {
@@ -155,7 +156,16 @@ export async function suggestClips(
 
 ${transcriptLines(transcript.words)}
 
-${genre && GENRE_NOTE[genre] ? `${GENRE_NOTE[genre]}\n\n` : ''}Return at most ${maxClips} clips.${
+${genre && GENRE_NOTE[genre] ? `${GENRE_NOTE[genre]}\n\n` : ''}${
+          music && music.length > 0
+            ? `These stretches are sung music, not speech, and are off limits: a clip touching one is blocked wherever it is posted, not merely weak. Do not select from them.\n${music
+                .map(
+                  (m) =>
+                    `- ${Math.floor(m.startSec / 60)}:${String(Math.round(m.startSec % 60)).padStart(2, '0')} to ${Math.floor(m.endSec / 60)}:${String(Math.round(m.endSec % 60)).padStart(2, '0')}`
+                )
+                .join('\n')}\n\n`
+            : ''
+        }Return at most ${maxClips} clips.${
           length ? `\nEach clip should run between ${length.minSec} and ${length.maxSec} seconds.` : ''
         }${
           // Tagged rather than run together with the transcript: a recording
