@@ -39,6 +39,9 @@ function Section({ title, children }: { title: string; children: ReactNode }): J
 export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
   const [shortcut, setShortcut] = useState(settings.grabShortcut)
   const [keyInput, setKeyInput] = useState('')
+  const [artlistSaved, setArtlistSaved] = useState(false)
+  const [alId, setAlId] = useState('')
+  const [alSecret, setAlSecret] = useState('')
   const [keySaved, setKeySaved] = useState(false)
   const [provider, setProvider] = useState('unknown')
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
@@ -50,6 +53,7 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
 
   useEffect(() => {
     window.chop.hasApiKey().then(setKeySaved)
+    window.chop.hasArtlist().then(setArtlistSaved)
   }, [])
 
   useEffect(() => {
@@ -279,6 +283,77 @@ export default function SettingsPanel({ settings, patch }: Props): JSX.Element {
             <option value="contain">Fit</option>
             <option value="cover">Fill</option>
           </select>
+        </Row>
+      </Section>
+
+      <Section title="Music">
+        <Row
+          name="Folder"
+          hint="Any folder of licensed music. An Artlist or Epidemic download folder works as it is."
+        >
+          <div className="row" style={{ gap: 6 }}>
+            <span className="mono muted" style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {settings.musicDir ?? 'None'}
+            </span>
+            <button
+              onClick={async () => {
+                const dir = await window.chop.chooseMusicDir()
+                if (dir) await patch({ musicDir: dir })
+              }}
+            >
+              Choose
+            </button>
+          </div>
+        </Row>
+        <Row
+          name="Artlist Enterprise"
+          hint={
+            artlistSaved
+              ? 'Credentials stored in the system keychain.'
+              : 'Client ID and secret from your Artlist account manager. Not self-serve.'
+          }
+        >
+          {artlistSaved ? (
+            <button
+              onClick={async () => {
+                await window.chop.setArtlist('', '')
+                setArtlistSaved(await window.chop.hasArtlist())
+              }}
+            >
+              Remove
+            </button>
+          ) : (
+            <div className="row" style={{ gap: 6 }}>
+              <input
+                type="text"
+                className="mono"
+                placeholder="Client ID"
+                value={alId}
+                onChange={(e) => setAlId(e.target.value)}
+                style={{ width: 130 }}
+              />
+              <input
+                type="password"
+                className="mono"
+                placeholder="Secret"
+                value={alSecret}
+                onChange={(e) => setAlSecret(e.target.value)}
+                style={{ width: 130 }}
+              />
+              <button
+                className="primary"
+                disabled={!alId.trim() || !alSecret.trim()}
+                onClick={async () => {
+                  await window.chop.setArtlist(alId, alSecret)
+                  setAlId('')
+                  setAlSecret('')
+                  setArtlistSaved(await window.chop.hasArtlist())
+                }}
+              >
+                Save
+              </button>
+            </div>
+          )}
         </Row>
       </Section>
 

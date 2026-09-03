@@ -19,6 +19,7 @@ import { readEpr } from './epr'
 import { readAnalysis, writeAnalysis, sameQuestion } from './analysis-cache'
 import { sweepTemp } from './temp-sweep'
 import { fetchVideo } from './fetch-video'
+import { hasArtlist, setArtlist, searchArtlist, fetchArtlistSong, type ArtlistSong } from './artlist'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
 import { captionSample, clipPoster, mediaPreview, previewsDir } from './media-preview'
 import { detectFaces, buildTrack } from './track'
@@ -811,6 +812,29 @@ function registerIpc(): void {
    * stale one. Subject tracking is left out: it is the slow step and it does
    * not change the edit, only where the crop sits.
    */
+  ipcMain.handle('artlist:has', () => hasArtlist())
+
+  ipcMain.handle('artlist:set', (_e, clientId: string, clientSecret: string) => {
+    setArtlist(clientId, clientSecret)
+    return hasArtlist()
+  })
+
+  ipcMain.handle('artlist:search', async (_e, query: string) => {
+    try {
+      return { ok: true as const, songs: await searchArtlist(query) }
+    } catch (err) {
+      return { ok: false as const, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('artlist:fetch', async (_e, song: ArtlistSong) => {
+    try {
+      return { ok: true as const, path: await fetchArtlistSong(song) }
+    } catch (err) {
+      return { ok: false as const, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('music:list', async (): Promise<{ name: string; path: string }[]> => {
     const dir = getSettings().musicDir
     if (!dir) return []
@@ -905,21 +929,29 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('captions:sample', async (_e, presetId: string): Promise<string> => {
+  ipcMain.handle(
+    'captions:sample',
+    async (_e, presetId: string, motion = false): Promise<string> => {
     const preset = presetById(presetId)
     // Five words so a group-based preset has a group, with the third spoken so
     // the active-word treatment is visible rather than implied.
-    const words = 'this is how it reads'.split(' ').map((text, i) => ({
+    // The same three words for every preset, so the tiles compare like for
+    // like, paced to land inside the two seconds a hover preview runs.
+    const words = 'to get started'.split(' ').map((text, i) => ({
       text,
-      startSec: i * 0.4,
-      endSec: i * 0.4 + 0.38
+      startSec: 0.35 + i * 0.5,
+      endSec: 0.35 + i * 0.5 + 0.46
     }))
     return mediaUrlFor(
-      await captionSample(presetId, preset.style.positionFrac, (w, h) =>
-        buildAss(words, w, h, preset.style)
+      await captionSample(
+        presetId,
+        preset.style.positionFrac,
+        (w, h) => buildAss(words, w, h, preset.style),
+        motion
       )
     )
-  })
+    }
+  )
 
   ipcMain.handle('media:previews', async (_e, path: string): Promise<MediaPreviews> => {
     const preview = await mediaPreview(path)

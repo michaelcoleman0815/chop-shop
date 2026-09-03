@@ -95,6 +95,13 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   const [luts, setLuts] = useState<{ name: string; path: string }[]>([])
   const [beds, setBeds] = useState<{ name: string; path: string }[]>([])
   const [music, setMusic] = useState<MusicTrack | null>(null)
+  const [source, setSource] = useState<'folder' | 'artlist'>('folder')
+  const [artlistOn, setArtlistOn] = useState(false)
+  const [alQuery, setAlQuery] = useState('')
+  const [alSongs, setAlSongs] = useState<
+    { id: string; name: string; artist: string; durationSec: number; bpm: number | null; url: string }[]
+  >([])
+  const [alBusy, setAlBusy] = useState(false)
   const [strip, setStrip] = useState<{
     filmstripUrl: string
     waveformUrl: string | null
@@ -138,6 +145,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
   useEffect(() => {
     window.chop.listLuts().then(setLuts)
     window.chop.listMusic().then(setBeds)
+    window.chop.hasArtlist().then(setArtlistOn)
     return window.chop.onAiProgress((p) => {
       if (p.stage.startsWith('Downloading model')) return
       setAnalysis(p.percent >= 100 || p.stage === 'Failed' ? null : p)
@@ -1082,7 +1090,70 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                   )}
                 </div>
 
-                {beds.length === 0 ? (
+                <div className="segs">
+                  <button
+                    className={`seg ${source === 'folder' ? 'on' : ''}`}
+                    onClick={() => setSource('folder')}
+                  >
+                    Folder
+                  </button>
+                  <button
+                    className={`seg ${source === 'artlist' ? 'on' : ''}`}
+                    onClick={() => setSource('artlist')}
+                  >
+                    Artlist
+                  </button>
+                </div>
+
+                {source === 'artlist' && (
+                  <>
+                    {!artlistOn ? (
+                      <p className="muted" style={{ fontSize: 12 }}>
+                        Artlist Enterprise credentials go in Settings. They are issued by an Artlist
+                        account manager, not self-serve.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="row" style={{ gap: 6 }}>
+                          <input
+                            type="text"
+                            placeholder="Search the catalogue"
+                            value={alQuery}
+                            onChange={(e) => setAlQuery(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key !== 'Enter') return
+                              setAlBusy(true)
+                              const res = await window.chop.searchArtlist(alQuery)
+                              setAlBusy(false)
+                              if (res.ok) setAlSongs(res.songs)
+                              else setError(res.message)
+                            }}
+                            style={{ flex: 1 }}
+                          />
+                        </div>
+                        <div className="bed-list">
+                          {alBusy && <span className="muted" style={{ fontSize: 12 }}>Searching…</span>}
+                          {alSongs.map((song) => (
+                            <button
+                              key={song.id}
+                              className="bed"
+                              onClick={async () => {
+                                const res = await window.chop.fetchArtlistSong(song)
+                                if (!res.ok) return setError(res.message)
+                                setMusic({ path: res.path, gainDb: music?.gainDb ?? -18, duck: true })
+                              }}
+                            >
+                              {song.name}
+                              <span className="muted"> · {song.artist}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {source === 'folder' && beds.length === 0 ? (
                   <>
                     <p className="muted" style={{ fontSize: 12 }}>
                       Point Chop Shop at a folder of licensed music and the tracks in it show up
@@ -1099,7 +1170,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                       Choose a music folder
                     </button>
                   </>
-                ) : (
+                ) : source === 'folder' ? (
                   <div className="bed-list">
                     {beds.map((b) => (
                       <button
@@ -1117,7 +1188,7 @@ export default function ClipStudio({ settings, patch, addJob, project, onProject
                       </button>
                     ))}
                   </div>
-                )}
+                ) : null}
 
                 {music && (
                   <>

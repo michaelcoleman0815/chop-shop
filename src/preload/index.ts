@@ -72,14 +72,27 @@ const api = {
     options?: AnalysisOptions
   ): Promise<{ ok: true; result: AnalysisResult } | { ok: false; message: string }> =>
     ipcRenderer.invoke('ai:analyze', videoPath, force, options),
+  hasArtlist: (): Promise<boolean> => ipcRenderer.invoke('artlist:has'),
+  setArtlist: (clientId: string, clientSecret: string): Promise<boolean> =>
+    ipcRenderer.invoke('artlist:set', clientId, clientSecret),
+  searchArtlist: (
+    query: string
+  ): Promise<
+    | { ok: true; songs: { id: string; name: string; artist: string; durationSec: number; bpm: number | null; url: string }[] }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('artlist:search', query),
+  fetchArtlistSong: (
+    song: { id: string; name: string; artist: string; durationSec: number; bpm: number | null; url: string }
+  ): Promise<{ ok: true; path: string } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('artlist:fetch', song),
   listMusic: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke('music:list'),
   chooseMusicDir: (): Promise<string | null> => ipcRenderer.invoke('music:choose'),
   renderClipPreview: (
     req: ClipRequest & { jobId: string }
   ): Promise<{ ok: true; mediaUrl: string } | { ok: false; message: string }> =>
     ipcRenderer.invoke('clip:renderPreview', req),
-  captionSample: (presetId: string): Promise<string> =>
-    ipcRenderer.invoke('captions:sample', presetId),
+  captionSample: (presetId: string, motion = false): Promise<string> =>
+    ipcRenderer.invoke('captions:sample', presetId, motion),
   clipPoster: (path: string, atSec: number, aspect: string): Promise<string> =>
     ipcRenderer.invoke('media:clipPoster', path, atSec, aspect),
   fetchVideo: (

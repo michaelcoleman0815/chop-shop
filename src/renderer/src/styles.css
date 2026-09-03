@@ -2548,7 +2548,7 @@ kbd {
 /* Caption styles shown as themselves, not as a list of names. */
 .caption-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: var(--s2sp);
 }
 .caption-tile {
@@ -2561,12 +2561,22 @@ kbd {
   box-shadow: none;
 }
 .caption-shot {
-  aspect-ratio: 1 / 1;
-  background-color: var(--s0);
+  position: relative;
+  aspect-ratio: 420 / 257;
+  background-color: #3a3a42;
   background-size: cover;
   background-position: center;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
+  overflow: hidden;
+}
+.caption-shot video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .caption-tile:hover .caption-shot {
   border-color: var(--line-2);
