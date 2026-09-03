@@ -18,7 +18,8 @@
     "release": "npm run build && electron-builder --mac --publish always",
     "postinstall": "electron-builder install-app-deps && node scripts/prepare-electron.mjs",
     "check:ipc": "node scripts/check-ipc.mjs",
-    "regress": "node scripts/regress.mjs"
+    "regress": "node scripts/regress.mjs",
+    "eval:clips": "node scripts/eval-clips.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
