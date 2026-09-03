@@ -589,7 +589,7 @@ export default function EditWorkspace({ project, onProject, addJob }: Props): JS
           </div>
 
         <div
-          className="lanes"
+          className={`lanes ${tool === 'razor' ? 'razor' : ''}`}
           ref={laneRef}
           onPointerMove={onPointerMove}
           onPointerUp={() => setDrag(null)}
