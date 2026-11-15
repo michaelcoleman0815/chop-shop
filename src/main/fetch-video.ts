@@ -17,6 +17,8 @@ export const YTDLP_PATH = (): string => resourcePath('bin', 'yt-dlp')
 export interface FetchedVideo {
   path: string
   title: string
+  /** The channel's handle (@name) when the host has one. */
+  channel: string | null
 }
 
 export async function fetchVideo(
@@ -41,6 +43,7 @@ export async function fetchVideo(
   return new Promise<FetchedVideo>((resolve, reject) => {
     let resolved: string | null = null
     let title = ''
+    let channel: string | null = null
     let stderr = ''
 
     const child = spawn(bin, [
@@ -70,6 +73,8 @@ export async function fetchVideo(
       'after_move:%(filepath)s',
       '--print',
       'before_dl:TITLE %(title)s',
+      '--print',
+      'before_dl:CHANNEL %(uploader_id)s',
       '-o',
       join(dir, '%(title).120B [%(id)s].%(ext)s'),
       url
@@ -80,6 +85,11 @@ export async function fetchVideo(
         const text = line.trim()
         if (!text) continue
         if (text.startsWith('TITLE ')) title = text.slice(6)
+        else if (text.startsWith('CHANNEL ')) {
+          // yt-dlp prints NA for a field the host does not have.
+          const handle = text.slice(8).trim()
+          channel = handle && handle !== 'NA' ? handle : null
+        }
         else if (text.startsWith('/')) resolved = text
       }
     })
@@ -99,7 +109,7 @@ export async function fetchVideo(
         return reject(new Error(last.replace(/^ERROR:\s*/, '')))
       }
       if (!resolved) return reject(new Error('The download finished but produced no file.'))
-      resolve({ path: resolved, title: title || 'Downloaded video' })
+      resolve({ path: resolved, title: title || 'Downloaded video', channel })
     })
   })
 }

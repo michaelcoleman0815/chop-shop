@@ -43,6 +43,7 @@ import { localModels, isLocalUp } from './local-llm'
 import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
 import { getSettings, saveSettings } from './store'
 import { initUpdater, checkForUpdates, downloadUpdate, installUpdate, openReleasesPage, getUpdateState } from './updater'
+import { registerCutalongIpc } from './cutalong'
 import type {
   AspectPreset,
   Transcript,
@@ -220,6 +221,7 @@ function safeSend(sender: Electron.WebContents, channel: string, payload: unknow
 }
 
 function registerIpc(): void {
+  registerCutalongIpc({ send: safeSend, mediaUrlFor })
   ipcMain.handle('app:version', () => app.getVersion())
 
   ipcMain.handle('settings:get', (): Settings => getSettings())

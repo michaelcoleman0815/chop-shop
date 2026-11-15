@@ -1,3 +1,5 @@
+import type { EditDoc } from './edit/schema'
+
 export type AspectPreset = 'original' | 'vertical' | 'square' | 'wide' | 'preset'
 
 export interface VideoMeta {
@@ -225,7 +227,8 @@ export interface MusicTrack {
   duck: boolean
 }
 
-export type ProjectMode = 'clip' | 'edit'
+/** clip and edit are the classic tools; cut is a Cutalong edit document. */
+export type ProjectMode = 'clip' | 'edit' | 'cut'
 
 /** Which guidance applies. The failure modes differ by kind of recording. */
 export type ClipGenre = 'auto' | 'sermon' | 'podcast' | 'talk' | 'comedy'
@@ -272,6 +275,8 @@ export interface Project extends ProjectSummary {
   transcript: Transcript | null
   /** Editing-mode timeline. Null for clipping projects. */
   timeline: Timeline | null
+  /** The edit document of a Cutalong project. Absent from classic projects. */
+  edit?: EditDoc | null
 }
 
 export interface TimelineClip {

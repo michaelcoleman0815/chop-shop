@@ -19,9 +19,46 @@ import type {
   VideoMeta,
   ZoomKeyframe
 } from '../shared/types'
+import type { EditDoc } from '../shared/edit'
+import type { InspirationStudy } from '../shared/inspiration'
+import type { Preset } from '../shared/presets'
+
+type Progress = { stage: string; percent: number }
+
+function listen<T>(channel: string, cb: (payload: T) => void): () => void {
+  const handler = (_e: unknown, payload: T): void => cb(payload)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.removeListener(channel, handler)
+}
 
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+
+  // Cutalong: footage into an edit document, documents into video, videos
+  // someone likes into a style, and the saved slash commands.
+  prepareCut: (
+    path: string
+  ): Promise<
+    { ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:prepare', path),
+  renderCut: (req: {
+    doc: EditDoc
+    quality: 'preview' | 'final'
+  }): Promise<{ ok: true; outputPath: string; mediaUrl: string } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('cut:render', req),
+  onCutProgress: (cb: (p: Progress) => void): (() => void) => listen('cut:progress', cb),
+  studyInspiration: (input: {
+    url?: string
+    path?: string
+  }): Promise<{ ok: true; study: InspirationStudy } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('inspiration:study', input),
+  onInspirationProgress: (cb: (p: Progress) => void): (() => void) => listen('inspiration:progress', cb),
+  listPresets: (): Promise<Preset[]> => ipcRenderer.invoke('presets:list'),
+  savePreset: (
+    preset: Preset
+  ): Promise<{ ok: true; presets: Preset[] } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('presets:save', preset),
+  removePreset: (command: string): Promise<Preset[]> => ipcRenderer.invoke('presets:remove', command),
 
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<Settings>): Promise<Settings> =>

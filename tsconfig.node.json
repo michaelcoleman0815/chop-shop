@@ -11,5 +11,5 @@
     "noEmit": true,
     "types": ["node", "electron-vite/node"]
   },
-  "include": ["src/main/**/*", "src/preload/**/*", "electron.vite.config.ts", "src/shared/**/*"]
+  "include": ["src/main/**/*", "src/preload/**/*", "electron.vite.config.ts", "vitest.config.mts", "src/shared/**/*"]
 }

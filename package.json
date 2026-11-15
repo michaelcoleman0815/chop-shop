@@ -18,6 +18,8 @@
     "release": "npm run build && electron-builder --mac --publish always",
     "postinstall": "electron-builder install-app-deps && node scripts/prepare-electron.mjs",
     "check:ipc": "node scripts/check-ipc.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "regress": "node scripts/regress.mjs",
     "eval:clips": "node scripts/eval-clips.mjs"
   },
@@ -44,6 +46,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.5.3",
-    "vite": "^5.3.4"
+    "vite": "^5.3.4",
+    "vitest": "^2.1.9"
   }
 }
