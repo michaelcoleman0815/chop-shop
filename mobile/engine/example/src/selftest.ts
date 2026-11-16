@@ -225,7 +225,9 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     if (info.platform !== platform) problems.push(`platform ${info.platform}, running on ${platform}`)
     if (info.ffmpegVersion !== '6.0') problems.push(`ffmpeg ${info.ffmpegVersion}, not 6.0`)
     if (!/^1\.8\./.test(info.whisperVersion)) problems.push(`whisper ${info.whisperVersion}, not 1.8.x`)
-    const needed = platform === 'ios' ? ['h264_videotoolbox', 'hevc_videotoolbox'] : ['h264_mediacodec']
+    // The app falls back to x264 without these, and the phone build has none.
+    // HEVC is not asked for: phones before the iPhone 7 cannot encode it.
+    const needed = platform === 'ios' ? ['h264_videotoolbox'] : ['h264_mediacodec']
     for (const e of [...needed, 'libwebp', 'png', 'mjpeg']) if (!info.encoders.includes(e)) problems.push(`no ${e}`)
     if (!info.documents.startsWith('/') || !info.cache.startsWith('/')) problems.push('folders are not absolute paths')
     const hardware = info.encoders.filter((e) => /videotoolbox|mediacodec/.test(e))
