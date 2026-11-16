@@ -10,9 +10,9 @@ import { normWord } from './text'
  * picks one; an edit can say otherwise in a sentence ("this one is a
  * podcast"); with neither, the words suggest one.
  *
- * Built where the study is solid. Cooking, DIY, vlogs, fitness, beauty,
- * music, comedy, sports, events, kids and pets, and reaction videos are not
- * built yet, and cut as a talking head.
+ * Built where the study is solid. Cooking, DIY, fitness, beauty, music,
+ * comedy, sports, events, kids and pets, and reaction videos are not built
+ * yet, and cut as a talking head. Vlogs have their own story (shared/vlog).
  */
 
 export interface CuttingProfile {
@@ -93,6 +93,17 @@ export const PROFILES: CuttingProfile[] = [
     says: 'I cut it as a service: prayer pauses stay, and only long silences go.'
   },
   {
+    // A day of clips told as a story (shared/vlog): only the talking is cut on
+    // words, as a talking head's is; every other clip keeps its own sound.
+    id: 'vlog',
+    name: 'Vlog',
+    tighten: { maxGapSec: 0.35, padSec: 0.06 },
+    snappy: { maxGapSec: 0.2, padSec: 0.04 },
+    fillers: true,
+    takes: { applyAt: 0.75, offerAt: 0.45 },
+    says: 'I cut it as a vlog: the day in order, the talking cut on words, and every clip keeps its own sound.'
+  },
+  {
     id: 'asmr',
     name: 'ASMR',
     tighten: null,
@@ -117,12 +128,13 @@ const NAMES: Record<string, RegExp> = {
   livestream: /\b(stream|livestream|live stream|vod|just chatting)\b/,
   church: /\b(church|sermon|service|worship|homily)\b/,
   asmr: /\b(asmr)\b/,
+  vlog: /\b(vlog|travel vlog|day in the life)\b/,
   'talking-head': /\b(talking head|commentary|explainer|education|essay)\b/
 }
 
 /** Kinds the study names but Cutalong has not built yet, for an honest reply. */
 const NOT_BUILT =
-  /\b(cooking|recipe|diy|vlog|travel|fitness|workout|beauty|makeup|music video|cover|comedy|sketch|sports|wedding|event|kids|pets|reaction)\b/
+  /\b(cooking|recipe|diy|travel|fitness|workout|beauty|makeup|music video|cover|comedy|sketch|sports|wedding|event|kids|pets|reaction)\b/
 
 /**
  * "This one is a cooking video", "it's a podcast", "treat this as gaming":

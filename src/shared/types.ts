@@ -103,6 +103,12 @@ export interface Settings {
   transcriber?: 'local' | 'deepgram' | 'assemblyai'
   /** The Ollama model that plans edits on this computer. Absent or null means Claude, the default. */
   localPlanner?: string | null
+  /**
+   * Whether Claude may see small stills from the person's footage, to say
+   * what is in each moment of a vlog. On unless turned off, as other AI
+   * services are; nothing is sent without an Anthropic key either way.
+   */
+  claudeSeesFrames?: boolean
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string

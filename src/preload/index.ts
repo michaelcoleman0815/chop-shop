@@ -27,6 +27,8 @@ import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { PremiereFacts, Preset } from '../shared/presets'
 import type { KeyCheck, ServiceId } from '../shared/services'
 import type { ClipsFound, ClipsReply } from '../shared/clipping'
+import type { Vlog } from '../shared/vlog/schema'
+import type { VlogReply } from '../shared/vlog/reply'
 
 type Progress = { stage: string; percent: number | null }
 
@@ -222,6 +224,25 @@ const api = {
   }): Promise<({ ok: true; reply: ClipsReply } & ClipsFound) | { ok: false; message: string }> =>
     ipcRenderer.invoke('clips:find', req),
   onClipsProgress: (cb: (p: Progress) => void): (() => void) => listen('clips:progress', cb),
+  /**
+   * A vlog from a shoot: every clip watched, the talking heard, the moments
+   * described, the day told as a story. With `doc`, the clips join that edit's
+   * story as a new version. Progress comes on cut:progress.
+   */
+  makeVlog: (req: {
+    paths: string[]
+    request: string
+    doc?: EditDoc | null
+  }): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; reply: VlogReply } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('vlog:make', req),
+  /** A vlog's story told again for what was asked, as ops for a new version and the shoot with its new story. */
+  planVlog: (req: {
+    doc: EditDoc
+    request: string
+  }): Promise<
+    | { ok: true; ops: Op[]; vlog: Vlog; reply: VlogReply; by: 'claude' | 'local' | 'rules' }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('vlog:plan', req),
   planEdit: (req: {
     doc: EditDoc
     request: string

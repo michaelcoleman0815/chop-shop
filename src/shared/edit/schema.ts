@@ -19,6 +19,7 @@ import {
 import { AudioMapSchema } from '../audio/map'
 import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 import { MouthModeSchema } from '../vision/mode'
+import { VlogSchema } from '../vlog/schema'
 
 /**
  * The edit as data.
@@ -411,7 +412,13 @@ export const EditDocSchema = z.object({
   /** What each recording sounds like, by source id (shared/audio/map). Absent until listened to. */
   audio: z.record(z.string(), AudioMapSchema).optional(),
   /** The cutting profile this edit asked for ("this one is a podcast"), over the brand's niche. */
-  profile: z.string().optional()
+  profile: z.string().optional(),
+  /**
+   * The vlog shoot this edit tells the story of (shared/vlog): its clips,
+   * moments, scenes and story. One that cannot be read is dropped rather
+   * than keeping the edit from opening.
+   */
+  vlog: VlogSchema.optional().catch(undefined)
 })
 export type EditDoc = z.infer<typeof EditDocSchema>
 

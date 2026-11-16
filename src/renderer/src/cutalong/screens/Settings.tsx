@@ -3,6 +3,7 @@ import { detectProvider, wrongKeyMessage } from '../../../../shared/keys'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api } from '../api'
 import { Button } from '../components/ui'
+import { ClaudeFrames } from './ClaudeFrames'
 import { grow } from '../motion'
 import { Header } from './Header'
 import { OtherServices } from './OtherServices'
@@ -196,6 +197,7 @@ export function SettingsPage(): JSX.Element {
               The key is locked in this computer&apos;s keychain and only ever sent to Anthropic. You can make one at
               console.anthropic.com.
             </p>
+            <ClaudeFrames settings={settings} hasKey={saved} onSettings={setSettings} />
           </section>
 
           <Planning settings={settings} onSettings={setSettings} />

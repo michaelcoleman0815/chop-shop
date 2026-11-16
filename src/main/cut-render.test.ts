@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'child_process'
-import { existsSync, mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -293,6 +293,60 @@ describe.skipIf(!FFMPEG)('rendering a cut', () => {
       maxInputs: 1
     })
     await check(out)
+  })
+
+  it('renders shots of many different files, as a vlog has, in passes of a few', async () => {
+    // Nine clips of a day, a second of each: more files than one pass holds.
+    const clips = Array.from({ length: 9 }, (_, k) => {
+      const path = join(dir, `clip-${k}.mp4`)
+      execFileSync(ffmpeg, [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-y',
+        '-i',
+        sources[0].path,
+        '-t',
+        '1.2',
+        '-vf',
+        `hue=h=${k * 40}`,
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-c:a',
+        'aac',
+        path
+      ])
+      return { id: `s${k + 1}`, path, durationSec: 1.2, width: 640, height: 360, fps: 30 }
+    })
+    const day = commit(
+      createDoc({ id: 'v', title: 'Day', sources: clips, words: [] }),
+      [
+        {
+          op: 'remove',
+          beats: currentCut(createDoc({ id: 'v', title: 'Day', sources: clips, words: [] })).beats.map((b) => b.id)
+        },
+        ...clips.map((c, k) => ({ op: 'insert' as const, to: k, beat: { source: c.id, inSec: 0, outSec: 1 } }))
+      ],
+      'The day.'
+    ).doc
+    const cut = currentCut(day)
+    const workDir = join(dir, 'work-day')
+    const out = await renderCut(
+      cut,
+      resolveCut(cut, day.words, day.sources),
+      clips.map((c) => ({ ...c, hasAudio: true })),
+      {
+        ffmpeg,
+        outputPath: join(dir, 'day.mp4'),
+        workDir,
+        quality: 'preview'
+      }
+    )
+    const info = await probeMedia(ffmpeg, out)
+    expect(Math.abs(info.durationSec - 9)).toBeLessThan(0.15)
+    expect(readdirSync(workDir).filter((f) => f.startsWith('chunk-'))).toHaveLength(2)
   })
 
   it('renders an image as a card and as a full-frame cutaway', async () => {

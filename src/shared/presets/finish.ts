@@ -73,6 +73,8 @@ export const FINISHES: Record<string, Finish> = {
     music: false,
     leavesOff: 'A sermon keeps the room’s sound, so there is no music bed or whoosh.'
   },
+  // A vlog's shots cut hard, on the music's beat, and keep their own sound under it.
+  vlog: { polish: 0.5, look: 'warm', transition: null, whoosh: false, music: true },
   asmr: {
     polish: null,
     look: 'warm',
@@ -142,9 +144,7 @@ export function finishOps(doc: EditDoc, profileId: string | null | undefined, mu
   // must leave footage either side of the cut, or it would stay a hard cut.
   if (finish.transition) {
     const t = finish.transition
-    const targets = ideaStarts(withCut(doc, cut), cut).filter(
-      (id) => !cut.beats.find((b) => b.id === id)?.transition
-    )
+    const targets = ideaStarts(withCut(doc, cut), cut).filter((id) => !cut.beats.find((b) => b.id === id)?.transition)
     if (targets.length > 0) {
       const asked: Op = { op: 'transition', beats: targets, kind: t.kind, ...(t.sec ? { sec: t.sec } : {}) }
       const trial = applyOps(cut, [asked], context)
