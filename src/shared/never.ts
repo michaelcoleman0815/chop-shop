@@ -1,6 +1,7 @@
 import { currentCut } from './edit/doc'
 import { applyOps, type OpContext } from './edit/ops'
-import type { Asset, Beat, Cut, EditDoc, Op, Treatment, Word } from './edit/schema'
+import { cutawayFit, frameShape, pictureFit } from './edit/fill'
+import type { Asset, Beat, Cut, EditDoc, Op, Source, Treatment, Word } from './edit/schema'
 import { SFX_KINDS, type Sfx } from './edit/sfx'
 import { parseTransition, type TransitionKind } from './edit/transitions'
 import { MOTION_KINDS, type MotionKind } from './motion/schema'
@@ -9,9 +10,10 @@ import { MOTION_KINDS, type MotionKind } from './motion/schema'
  * What a channel never wants, by brand: "never use whooshes", "no
  * transitions on this channel". The list is short and names things
  * Cutalong actually does: sound effects, transitions, music beds, looks,
- * punch-ins, camera moves, motion graphics, B-roll from outside, captions
- * and black and white, each whole or, for the first two and graphics, by
- * kind ("zoom transitions", "lower thirds").
+ * punch-ins, camera moves, motion graphics, B-roll from outside, captions,
+ * black and white and the blurred fill (a picture of another shape shown
+ * whole on a blurred copy of itself), each whole or, for the first two and
+ * graphics, by kind ("zoom transitions", "lower thirds").
  *
  * The list is kept with what Cutalong learns from chats (shared/memory, in
  * never.json of its own), so a rule said in a chat and one added on the
@@ -44,7 +46,8 @@ const THINGS: Record<string, Thing> = {
   motion: { name: 'Motion graphics', said: 'motion graphics', plural: true },
   broll: { name: 'B-roll from outside', said: 'B-roll from outside', plural: false },
   captions: { name: 'Captions', said: 'captions', plural: true },
-  bw: { name: 'Black and white', said: 'black and white', plural: false }
+  bw: { name: 'Black and white', said: 'black and white', plural: false },
+  fill: { name: 'Blurred fill', said: 'blurred fill', plural: false }
 }
 
 /** The things, in the order the Brand page offers them. */
@@ -204,7 +207,11 @@ const PHRASES: [RegExp, NeverItem][] = [
     'broll'
   ],
   [/\bcaptions?\b|\bsubtitles?\b|\bsubs\b/, 'captions'],
-  [/\bblack[- ]and[- ]white\b|\bb ?& ?w\b|\bmonochrome\b|\bgr[ae]yscale\b/, 'bw']
+  [/\bblack[- ]and[- ]white\b|\bb ?& ?w\b|\bmonochrome\b|\bgr[ae]yscale\b/, 'bw'],
+  [
+    /\bblur(?:red|ry)?[- ](?:fill|sides|bars|edges|backdrops?|background fills?|cop(?:y|ies))\b|\bblurred backgrounds?\b/,
+    'fill'
+  ]
 ]
 
 /** The things named in a stretch of words, each once, in the order said: what a note or a request asks for. */
@@ -460,8 +467,13 @@ export function withoutNever(text: string): string {
 // ---------- What a cut has ----------
 
 export interface NeverContext {
-  /** The edit's material, to tell B-roll from outside from the person's own. */
-  assets: Pick<Asset, 'path' | 'origin'>[]
+  /**
+   * The edit's material, to tell B-roll from outside from the person's own,
+   * and with its sizes, which of its pictures sit on a blurred copy.
+   */
+  assets: (Pick<Asset, 'path' | 'origin'> & Partial<Pick<Asset, 'width' | 'height'>>)[]
+  /** The edit's recordings, for which of them sit on a blurred copy. Without them, the blurred fill is read from the cut's own fill. */
+  sources?: Source[]
   /**
    * The edit's words in order, to read what a beat has by the words it
    * covers: a split or a join moves things to another beat without adding
@@ -486,6 +498,29 @@ function spanOf(b: Beat, ctx: NeverContext): string[] {
   const to = at.get(b.to)
   if (from === undefined || to === undefined || to < from) return [`@${b.id}`]
   return words.slice(from, to + 1).map((w) => w.id)
+}
+
+/**
+ * What a beat shows whole on a blurred copy of itself (edit/fill): its
+ * recording, its cutaway, or both. Without the recordings to measure, every
+ * beat of a cut that puts every picture of another shape on one.
+ */
+function blurred(cut: Cut, b: Beat, ctx: NeverContext): string[] {
+  const sources = ctx.sources
+  if (!sources) return cut.fill === 'blur' ? ['cut'] : []
+  const first = sources.find((s) => s.id === cut.beats[0]?.source) ?? sources[0]
+  const frame = frameShape(cut.aspect, first)
+  const out: string[] = []
+  const t = b.treatment
+  const shown = t.angle?.layout === 'full' ? (sources.find((s) => s.id === t.angle?.source) ?? null) : null
+  const own = shown ?? sources.find((s) => s.id === b.source)
+  if (own && pictureFit(cut, b, own, frame) === 'blur') out.push(own.id)
+  if (t.broll) {
+    const a = ctx.assets.find((x) => x.path === t.broll?.path)
+    const size = a?.width && a?.height ? { width: a.width, height: a.height } : null
+    if (size && cutawayFit(cut, b, size, frame) === 'blur') out.push(t.broll.path)
+  }
+  return out
 }
 
 /** Material from outside the person's own files that a cutaway can show: a fetched clip or a picture from a link. */
@@ -535,6 +570,7 @@ function present(cut: Cut, entry: NeverItem, ctx: NeverContext): Set<string> {
     if (thing === 'motion' && entry === 'motion' && t.bigWord) keys.add(`${t.bigWord}|big`)
     if (thing === 'broll' && t.broll && t.frame !== 'speaker' && outside(t.broll.path, ctx)) over(`broll|${t.broll.path}`)
     if (thing === 'bw' && t.bw) over('bw')
+    if (thing === 'fill') for (const picture of blurred(cut, b, ctx)) over(`fill|${picture}`)
   }
   if (thing === 'motion')
     for (const m of cut.motion ?? []) if (covers(`motion:${motionFamily(m.kind)}`)) keys.add(m.id)
@@ -619,6 +655,9 @@ export function neverFilter(ops: Op[], never: NeverItem[], ctx: NeverContext): {
       case 'motion-add':
         if (rule(`motion:${motionFamily(op.kind)}`)) continue
         break
+      case 'fill':
+        if ((op.mode === 'blur' || op.mode === 'auto') && rule('fill')) continue
+        break
       case 'captions':
         if (op.set.on === true && rule('captions')) {
           const { on: _on, ...set } = op.set
@@ -681,6 +720,14 @@ export function neverGuard(
     for (const item of kept.left) left.add(item)
     out.push(...kept.ops)
     at = applyOps(at, kept.ops, context).cut
+    // A still or a phone clip that would sit on a blurred copy is cropped to fill the frame instead.
+    const fill = covering(grew, 'fill')
+    if (fill && addedFromList(cut, at, [fill], context).length > 0) {
+      const crop: Op = { op: 'fill', mode: 'crop' }
+      out.push(crop)
+      at = applyOps(at, [crop], context).cut
+      left.add(fill)
+    }
   }
   for (const op of ops) check(op)
   return { ops: out, left: [...left] }
@@ -741,12 +788,13 @@ export function neverStrip(cut: Cut, never: NeverItem[], ctx: NeverContext): { o
   if (cut.music && rule('music')) ops.push({ op: 'music', set: null })
   if (cut.look && rule('look')) ops.push({ op: 'look', set: null })
   if (cut.captions.on && rule('captions')) ops.push({ op: 'captions', set: { on: false } })
+  if (present(cut, 'fill', ctx).size > 0 && rule('fill')) ops.push({ op: 'fill', mode: 'crop' })
   return { ops, items: [...items] }
 }
 
 /** neverStrip on an edit's current version. */
 export function stripDoc(doc: EditDoc, never: NeverItem[]): { ops: Op[]; items: NeverItem[] } {
-  return neverStrip(currentCut(doc), never, { assets: doc.assets, words: doc.words })
+  return neverStrip(currentCut(doc), never, { assets: doc.assets, words: doc.words, sources: doc.sources })
 }
 
 // ---------- Commands ----------
@@ -808,6 +856,8 @@ export function commandThing(
       return 'broll'
     case 'captions':
       return 'captions'
+    case 'fill':
+      return /^(blur|blurred|on|all)$/.test(words) ? 'fill' : null
   }
   if (LOOK_WORDS.has(command) || extra.looks?.has(command)) return 'look'
   if (extra.graphic && (MOTION_KINDS as readonly string[]).includes(extra.graphic))

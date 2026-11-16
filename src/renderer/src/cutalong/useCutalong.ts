@@ -2319,12 +2319,13 @@ export function useCutalong() {
       }
       const done = applyAsVersion([{ op: 'fill', mode }], 'Pictures of another shape fill the frame another way.')
       if (!done) {
-        say('That is already how pictures of another shape fill the frame.')
+        // Left out for the brand's never list, which says so; else it already was.
+        say(leftSentence() || 'That is already how pictures of another shape fill the frame.')
         return
       }
       say(`v${done.n} is ready. ${done.summary}`, true)
     },
-    [applyAsVersion, push]
+    [applyAsVersion, leftSentence, push]
   )
 
   /** /premiere: this version as a Premiere project on the person's own files, opened there when it can be. */
@@ -2433,7 +2434,7 @@ export function useCutalong() {
         open = plan.open
         takes = plan.takes
       }
-      const strip = neverStrip(cut, neverOf(target.id), { assets: d.assets })
+      const strip = neverStrip(cut, neverOf(target.id), { assets: d.assets, words: d.words, sources: d.sources })
       ops.push(...strip.ops)
       return { ops, open, takes, stripped: strip.items, preset }
     },
@@ -3176,7 +3177,12 @@ export function useCutalong() {
       const fill = fillAsked(text, fillMode(currentCut(d)))
       if (fill) {
         const done = applyAsVersion([{ op: 'fill', mode: fill }], 'Pictures of another shape fill the frame another way.')
-        say(done ? `v${done.n} is ready. ${done.summary}` : 'That is already how pictures of another shape fill the frame.', !!done)
+        say(
+          done
+            ? `v${done.n} is ready. ${done.summary}`
+            : leftSentence() || 'That is already how pictures of another shape fill the frame.',
+          !!done
+        )
         return true
       }
       // "Bring back the intro", "bring back the part about the conference": what was cut on request, by its name.
@@ -3206,7 +3212,7 @@ export function useCutalong() {
       )
       return true
     },
-    [acceptOffers, applyAsVersion, setDoc, switchTake]
+    [acceptOffers, applyAsVersion, leftSentence, setDoc, switchTake]
   )
 
   /** A request in words: the planner turns it into ops. */
