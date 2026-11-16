@@ -18,7 +18,9 @@ concurrency:
 
 jobs:
   mac:
-    runs-on: macos-14
+    # macos-14 jobs were cancelled before a runner was assigned (twice, with
+    # no log), so this uses GitHub's current Apple Silicon image.
+    runs-on: macos-latest
     timeout-minutes: 75
     permissions:
       contents: read
