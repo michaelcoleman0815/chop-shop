@@ -111,6 +111,25 @@ describe.skipIf(!FFMPEG)('rendering transitions', () => {
     expect(left[0] > left[2]).not.toBe(right[0] > right[2])
   })
 
+  it('slides the new picture in over the old one, which holds still, on every ffmpeg', async () => {
+    // ffmpeg 6.0, which the Mac app ships, has no cover transitions; the slide is made with overlay.
+    for (const [kind, near, far] of [
+      ['slide-right', { x: 0, y: 0, w: 0.25, h: 1 }, { x: 0.75, y: 0, w: 0.25, h: 1 }],
+      ['slide-up', { x: 0, y: 0.75, w: 1, h: 0.25 }, { x: 0, y: 0, w: 1, h: 0.25 }]
+    ] as const) {
+      const cut = withOps([{ op: 'transition', beats: ['b2'], kind, sec: 0.9 }])
+      const { out, total } = await render(cut, kind)
+      expect(countFrames(ffmpeg, out), kind).toBe(Math.round(total * 30))
+      const tr = resolveCut(cut, doc.words, doc.sources).transitions![0]
+      // A third of the way in, the new (blue) picture covers the side it comes from; the old (red) the rest.
+      const third = tr.outStart + (tr.outEnd - tr.outStart) / 3
+      expect(frameColour(ffmpeg, out, third, near)[2], `${kind} new side`).toBeGreaterThan(150)
+      expect(frameColour(ffmpeg, out, third, far)[0], `${kind} old side`).toBeGreaterThan(150)
+      // Once it is in, only the new picture shows.
+      expect(frameColour(ffmpeg, out, tr.outEnd + 0.1)[2], `${kind} after`).toBeGreaterThan(150)
+    }
+  })
+
   it('renders every kind of transition to the length the resolver gave it', async () => {
     const kinds = ['flash', 'whip-left', 'push-up', 'slide-right', 'smooth-down', 'zoom', 'circle-open', 'pixelate']
     const cut = withOps([

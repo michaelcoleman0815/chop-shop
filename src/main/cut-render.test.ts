@@ -104,11 +104,23 @@ describe('render arguments', () => {
       { ...opts, fade: { inSec: 0.5, outSec: 1, color: 'white' } }
     )
     const graph = args[args.indexOf('-filter_complex') + 1]
-    // The first run is one piece; the second is the wipe's piece and the hard cut after it.
-    // Each is told its frame rate again on the way in: ffmpeg 7's xfade refuses a picture without one.
-    expect(graph).toContain('[v0]settb=1/30,fps=30[vr0]')
-    expect(graph).toContain('[v1][v2]concat=n=2:v=1:a=0,settb=1/30,fps=30[vr1]')
-    expect(graph).toContain('[vr0][vr1]xfade=transition=wipeleft:duration=0.400000:offset=1.600000[vcat]')
+    // The first run is one piece (60 frames); the second is the wipe's piece and the hard cut after it (45 + 30).
+    // Each is told its frame rate again, which ffmpeg 7's xfade needs, and cut back to its frames, as 6.0 adds one.
+    expect(graph).toContain('[v0]settb=1/30,fps=30,trim=end_frame=60[vr0]')
+    expect(graph).toContain('[v1][v2]concat=n=2:v=1:a=0,settb=1/30,fps=30,trim=end_frame=75[vr1]')
+    // The wipe meets the pictures for its 12 frames from 48, between the old picture before and the new one after.
+    expect(graph).toContain('[vc1a0]trim=end_frame=48,setpts=PTS-STARTPTS[vc1before]')
+    expect(graph).toContain(
+      '[vc1a1]trim=start_frame=48:end_frame=60,setpts=PTS-STARTPTS,settb=1/30,fps=30,trim=end_frame=12[vc1under]'
+    )
+    expect(graph).toContain('[vc1b0]trim=end_frame=12,setpts=PTS-STARTPTS,settb=1/30,fps=30,trim=end_frame=12[vc1over]')
+    expect(graph).toContain('[vc1b1]trim=start_frame=12,setpts=PTS-STARTPTS[vc1after]')
+    expect(graph).toContain('[vc1under][vc1over]xfade=transition=wipeleft:duration=0.400000:offset=0,format=yuv420p[vc1meet]')
+    // Stamped again by frame count, which the join reads exactly on every version.
+    expect(graph).toContain('[vc1meet]setpts=N/(30*TB)[vc1meets]')
+    expect(graph).toContain(
+      '[vc1before][vc1meets][vc1after]concat=n=3:v=1:a=0,settb=1/30,fps=30,trim=end_frame=123[vcat]'
+    )
     expect(graph).toContain('[ar0][ar1]acrossfade=d=0.400000:c1=qsin:c2=qsin[acat]')
     expect(graph).toContain('fade=t=in:st=0:d=0.500000:color=white,fade=t=out:st=3.100000:d=1.000000:color=white')
     expect(graph).toContain('afade=t=in:st=0:d=0.500000,afade=t=out:st=3.100000:d=1.000000')
@@ -123,8 +135,10 @@ describe('render arguments', () => {
       opts
     )
     const graph = args[args.indexOf('-filter_complex') + 1]
-    expect(graph).toContain('xfade=transition=slideleft:duration=0.300000:offset=1.700000[vw1]')
-    expect(graph).toMatch(/\[vw1\]gblur=sigma=14:sigmaV=0:enable='between\(t,1\.745000,1\.955000\)'\[vcat\]/)
+    // The blur's times are the transition's own: it is made from pictures exactly its length.
+    expect(graph).toContain(
+      "[vc1under][vc1over]xfade=transition=slideleft:duration=0.300000:offset=0,gblur=sigma=14:sigmaV=0:enable='between(t,0.045000,0.255000)',format=yuv420p[vc1meet]"
+    )
   })
 
   it('only breaks a long cut into passes at a hard cut', () => {

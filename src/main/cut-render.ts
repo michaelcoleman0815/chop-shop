@@ -452,6 +452,19 @@ const fixed = (n: number): string => n.toFixed(3)
 /** Times that must land on a frame or a sample: microseconds, which ffmpeg reads exactly. */
 const exact = (n: number): string => n.toFixed(6)
 
+/**
+ * Where a slide's new picture sits, `q` (an expression from 0 to 1) of the way
+ * through, as overlay positions: it comes in from `from` over the old picture
+ * and ends covering it, as xfade's coverleft, coverright, coverup and
+ * coverdown move it (measured: coverleft comes in from the right).
+ */
+export function coverAt(from: 'left' | 'right' | 'top' | 'bottom' | undefined, q: string): { x: string; y: string } {
+  if (from === 'right') return { x: `W*(1-${q})`, y: '0' }
+  if (from === 'left') return { x: `-W*(1-${q})`, y: '0' }
+  if (from === 'bottom') return { x: '0', y: `H*(1-${q})` }
+  return { x: '0', y: `-H*(1-${q})` }
+}
+
 /** Where each segment's sound sits on the output clock. */
 export function segmentSpans(segments: Segment[]): { outStart: number; outEnd: number }[] {
   const spans: { outStart: number; outEnd: number }[] = []
@@ -752,16 +765,21 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   // pictures on different timebases, so every run is put back on frames.
   // xfade also wants to be told the pictures are at a steady rate: ffmpeg 7
   // forgets the rate after setpts and concat, and refuses the transition
-  // outright. fps on pictures already on the frame grid changes no frame;
-  // it only says the rate again.
-  const steady = `settb=1/${fps},fps=${fps}`
+  // outright. fps on pictures already on the frame grid changes no frame and
+  // says the rate again; on ffmpeg 6.0 it also adds a frame or two at the
+  // end, so the picture is then cut back to exactly its frames.
+  const steady = (frames: number): string => `settb=1/${fps},fps=${fps},trim=end_frame=${frames}`
+  const runFrames = (run: number[]): number => run.reduce((sum, k) => sum + framesOf(k), 0)
   const joinRun = (run: number[], name: { v: string; a: string }, toTransition: boolean): void => {
     if (run.length === 1) {
-      chains.push(`[v${run[0]}]${toTransition ? steady : 'null'}[${name.v}]`, `[a${run[0]}]anull[${name.a}]`)
+      chains.push(
+        `[v${run[0]}]${toTransition ? steady(framesOf(run[0])) : 'null'}[${name.v}]`,
+        `[a${run[0]}]anull[${name.a}]`
+      )
       return
     }
     chains.push(
-      `${run.map((k) => `[v${k}]`).join('')}concat=n=${run.length}:v=1:a=0,${toTransition ? steady : `settb=1/${fps}`}[${name.v}]`
+      `${run.map((k) => `[v${k}]`).join('')}concat=n=${run.length}:v=1:a=0,${toTransition ? steady(runFrames(run)) : `settb=1/${fps}`}[${name.v}]`
     )
     chains.push(`${run.map((k) => `[a${k}]`).join('')}concat=n=${run.length}:v=0:a=1[${name.a}]`)
   }
@@ -771,47 +789,76 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   } else {
     let vAcc = ''
     let aAcc = ''
+    /** How many frames the picture so far runs. */
+    let accFrames = 0
     runs.forEach((run, r) => {
       const last = r === runs.length - 1
       joinRun(run, { v: `vr${r}`, a: `ar${r}` }, true)
       if (r === 0) {
         vAcc = `vr${r}`
         aAcc = `ar${r}`
+        accFrames = runFrames(run)
         return
       }
       const k = run[0]
       const kind = (segments[k].transition as { kind: TransitionKind }).kind
       const info = transitionInfo(kind)
-      const offset = frameAt(spans[k].outStart) / fps
       const duration = overlapFrames(k) / fps
       const vOut = last ? 'vcat' : `vx${r}`
-      if (overlapFrames(k) < 1) {
+      // The old picture plays up to the transition (o frames), the two meet
+      // for d frames, and the new one plays on to its end.
+      const o = frameAt(spans[k].outStart)
+      const d = overlapFrames(k)
+      const total = o + runFrames(run)
+      if (d < 1) {
         // Shorter than a frame once both ends land on frames: the pictures
         // simply cut, while the sound still crossfades below.
-        chains.push(`[${vAcc}][vr${r}]concat=n=2:v=1:a=0,${steady}[${vOut}]`)
-      } else if (info.preview === 'dip') {
-        // A dip: the old picture is all the way to the colour by the middle,
-        // the new one comes up from it after, and a dissolve joins the two.
-        const half = exact(duration / 2)
-        const color = info.color ?? 'black'
-        chains.push(`[${vAcc}]fade=t=out:st=${exact(offset)}:d=${half}:color=${color}[vd${r}a]`)
-        chains.push(`[vr${r}]fade=t=in:st=${half}:d=${half}:color=${color}[vd${r}b]`)
-        chains.push(
-          `[vd${r}a][vd${r}b]xfade=transition=fade:duration=${exact(duration)}:offset=${exact(offset)}[${vOut}]`
-        )
-      } else if (info.preview === 'whip') {
-        // A whip pan is a fast push with motion blur across its middle.
-        chains.push(
-          `[${vAcc}][vr${r}]xfade=transition=${info.xfade}:duration=${exact(duration)}:offset=${exact(offset)}[vw${r}]`
-        )
-        const sigma = Math.max(4, Math.round(W / 40))
-        chains.push(
-          `[vw${r}]gblur=sigma=${sigma}:sigmaV=0:enable='between(t,${exact(offset + duration * 0.15)},${exact(offset + duration * 0.85)})'[${vOut}]`
-        )
+        chains.push(`[${vAcc}][vr${r}]concat=n=2:v=1:a=0,${steady(accFrames + runFrames(run))}[${vOut}]`)
+        accFrames += runFrames(run)
       } else {
-        chains.push(
-          `[${vAcc}][vr${r}]xfade=transition=${info.xfade}:duration=${exact(duration)}:offset=${exact(offset)}[${vOut}]`
-        )
+        // Made in three pieces cut by frame and joined: the old picture up to
+        // the transition, the transition itself from two pictures exactly as
+        // long as it, and the new picture after it. xfade over the whole of
+        // both pictures repeats a frame on ffmpeg 6.0, the one the Mac app
+        // ships, and leaves the rest of the new picture a frame late; over
+        // pictures exactly its length it is exact on every version.
+        const c = `vc${r}`
+        const half = exact(duration / 2)
+        chains.push(`[${vAcc}]split=2[${c}a0][${c}a1]`, `[vr${r}]split=2[${c}b0][${c}b1]`)
+        chains.push(`[${c}a0]trim=end_frame=${o},setpts=PTS-STARTPTS[${c}before]`)
+        chains.push(`[${c}a1]trim=start_frame=${o}:end_frame=${o + d},setpts=PTS-STARTPTS,${steady(d)}[${c}under]`)
+        chains.push(`[${c}b0]trim=end_frame=${d},setpts=PTS-STARTPTS,${steady(d)}[${c}over]`)
+        chains.push(`[${c}b1]trim=start_frame=${d},setpts=PTS-STARTPTS[${c}after]`)
+        const xfade = (transition: string): string =>
+          `xfade=transition=${transition}:duration=${exact(duration)}:offset=0`
+        if (info.preview === 'cover') {
+          // A slide: the new picture moves in over the old one, which holds
+          // still. xfade's cover transitions arrived in ffmpeg 6.1, so the new
+          // picture is laid over the old with overlay, which every version
+          // has, and moved as xfade's cover moves it.
+          const at = coverAt(info.from, `clip(t/${exact(duration)},0,1)`)
+          chains.push(`[${c}under][${c}over]overlay=x='${at.x}':y='${at.y}',format=yuv420p[${c}meet]`)
+        } else if (info.preview === 'dip') {
+          // A dip: the old picture is all the way to the colour by the middle,
+          // the new one comes up from it after, and a dissolve joins the two.
+          const color = info.color ?? 'black'
+          chains.push(`[${c}under]fade=t=out:st=0:d=${half}:color=${color}[${c}ua]`)
+          chains.push(`[${c}over]fade=t=in:st=${half}:d=${half}:color=${color}[${c}ob]`)
+          chains.push(`[${c}ua][${c}ob]${xfade('fade')},format=yuv420p[${c}meet]`)
+        } else if (info.preview === 'whip') {
+          // A whip pan is a fast push with motion blur across its middle.
+          const sigma = Math.max(4, Math.round(W / 40))
+          chains.push(
+            `[${c}under][${c}over]${xfade(info.xfade)},gblur=sigma=${sigma}:sigmaV=0:enable='between(t,${exact(duration * 0.15)},${exact(duration * 0.85)})',format=yuv420p[${c}meet]`
+          )
+        } else {
+          chains.push(`[${c}under][${c}over]${xfade(info.xfade)},format=yuv420p[${c}meet]`)
+        }
+        // The transition's frames are stamped again by their count: ffmpeg 6.0's
+        // xfade leaves timestamps that the join reads a frame long.
+        chains.push(`[${c}meet]setpts=N/(${fps}*TB)[${c}meets]`)
+        chains.push(`[${c}before][${c}meets][${c}after]concat=n=3:v=1:a=0,${steady(total)}[${vOut}]`)
+        accFrames = total
       }
       // The sound crossfades over the same overlap, equal power so the room
       // tone neither dips nor swells.
