@@ -126,6 +126,11 @@ describe('scenes and repeats', () => {
     expect(scenes.map((s) => s.join(''))).toEqual(['abc'])
   })
 
+  it('with no times at all, keeps the file order and starts a scene where the look changes', () => {
+    const scenes = groupScenes([c('IMG_10', null, 5), c('IMG_2', null, 1), c('IMG_3', null, 1), c('IMG_11', null, 5)])
+    expect(scenes.map((s) => s.join(' '))).toEqual(['IMG_2 IMG_3', 'IMG_10 IMG_11'])
+  })
+
   it('collapses a near-identical take, keeping the first of two as good', () => {
     const base = { scene: 's', durationSec: 10, quality: 0.8, camera: 'iPhone', shape: 16 / 9 }
     const repeats = findRepeats([

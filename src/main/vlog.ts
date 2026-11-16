@@ -334,10 +334,16 @@ export async function makeVlog(
       at('', 0)
       try {
         const got = await deps.readTalking(clip.path, Number(clip.id.slice(1)), at)
-        heard.set(clip.id, { source: { ...got.source, id: clip.id }, words: got.words, map: got.map })
-        notes.push(...got.notes)
+        // No words: the reader's own note is about a talking-head beat; here the clip plays as a shot,
+        // and is listened to again when more clips come.
+        if (got.words.length === 0) notes.push(`I couldn't hear the words in ${clip.name}, so it plays as a shot.`)
+        else {
+          heard.set(clip.id, { source: { ...got.source, id: clip.id }, words: got.words, map: got.map })
+          notes.push(...got.notes)
+        }
       } catch (err) {
-        notes.push(`I couldn't hear the words in ${clip.name}, so it plays as a shot. ${message(err)}`)
+        console.warn('[vlog] could not hear', clip.path, message(err))
+        notes.push(`I couldn't hear the words in ${clip.name}, so it plays as a shot.`)
       }
     }
     const byPath = new Map(watched.map((w) => [w.path, w]))

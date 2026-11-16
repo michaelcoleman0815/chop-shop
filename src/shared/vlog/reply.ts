@@ -108,8 +108,10 @@ function what(vlog: Vlog, beat: StoryBeat | undefined, words: Map<string, string
   const when = timeOfDay(vlog.clips.find((c) => c.id === beat.clip)?.at ?? null)
   if (m.sounds.includes('cheering')) return `the crowd cheering${when ? ` at ${when}` : ''}`
   if (m.sounds.includes('laughter')) return `the laughter${when ? ` at ${when}` : ''}`
-  if (beat.role === 'hook' || beat.role === 'payoff')
+  // The payoff is the day's strongest moment, and so is the tease of it; an opening asked for is of its scene.
+  if (beat.role === 'payoff' || (beat.role === 'hook' && vlog.story.hook === 'auto'))
     return `the busiest, loudest moment of the day${when ? `, at ${when}` : ''}`
+  if (beat.role === 'hook' && scene) return `a moment from ${sceneInSentence(scene.name)}`
   return scene ? `a quiet shot from ${sceneInSentence(scene.name)}` : 'a quiet shot'
 }
 

@@ -140,6 +140,30 @@ describe('the story by rules', () => {
     expect(planStory(shoot(), { targetSec: 600, hook: 'auto', weights: {} }).short).toBe(true)
   })
 
+  it('teases nothing in a shoot of a clip or two, unless an opening is asked for', () => {
+    const s = shoot()
+    const two = new Set(
+      s.clips
+        .filter((c) => !c.left && !c.talking)
+        .slice(0, 2)
+        .map((c) => c.id)
+    )
+    const small = {
+      ...s,
+      clips: s.clips.filter((c) => two.has(c.id)),
+      moments: s.moments.filter((m) => two.has(m.clip)),
+      units: []
+    }
+    expect(planStory(small, { targetSec: 30, hook: 'auto', weights: {} }).beats.some((b) => b.role === 'hook')).toBe(
+      false
+    )
+    const asked = small.moments[0].id
+    expect(planStory(small, { targetSec: 30, hook: asked, weights: {} }).beats[0]).toMatchObject({
+      role: 'hook',
+      moment: asked
+    })
+  })
+
   it('lands each shot on the nearest beat to where it was planned to end, so rounding never piles up', () => {
     const items = [
       { len: 1.2, minLen: 0.8, maxLen: 1.6 },

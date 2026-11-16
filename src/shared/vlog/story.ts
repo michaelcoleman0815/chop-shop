@@ -52,6 +52,9 @@ export const PACE = {
   openSec: 30
 }
 
+/** Fewer clips to show than this, and the story starts with the day, with no tease. */
+const MIN_CLIPS_TO_TEASE = 3
+
 /** One thing the story could show, before it is placed. */
 interface Item {
   key: string
@@ -160,8 +163,10 @@ export function planStory(
   })
 
   // The tease: the strongest moment and the best others of its scene, a second or so each.
+  // A shoot of a clip or two has nothing to tease: it starts with the day, unless an opening is asked for.
   const hookItems: Item[] = []
-  if (opts.hook !== 'none') {
+  const teasable = new Set(visual.map((m) => m.clip)).size >= MIN_CLIPS_TO_TEASE
+  if (opts.hook !== 'none' && (opts.hook !== 'auto' || teasable)) {
     const asked = input.moments.find((m) => m.id === opts.hook && usableClip(m.clip))
     const askedScene = input.scenes.find((s) => s.id === opts.hook)
     const sceneMoments = (scene: string): Moment[] =>

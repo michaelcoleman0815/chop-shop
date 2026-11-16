@@ -35,7 +35,8 @@ const centre = (looks: number[][]): number[] =>
 /** Clip ids grouped into scenes, in the order of the day. */
 export function groupScenes(clips: SceneInput[]): string[][] {
   const order = [...clips].sort((a, b) => {
-    if (a.at === null && b.at === null) return 0
+    // Clips nothing places keep the camera's own numbering.
+    if (a.at === null && b.at === null) return a.id.localeCompare(b.id, undefined, { numeric: true })
     if (a.at === null) return 1
     if (b.at === null) return -1
     return a.at - b.at
@@ -55,10 +56,12 @@ export function groupScenes(clips: SceneInput[]): string[][] {
     const looks = scene.slice(-4).map((s) => s.look)
     const d = placeDistance(c.look, centre(looks))
     const moved = c.gps && place ? metres(c.gps, place) > MOVED_M : false
+    // With no time on one of them, only where it looks to be, or is on the map, says it is somewhere else.
+    const untimed = c.at === null || prev.at === null
     const fresh =
       gap > SCENE_GAP_SEC ||
-      (moved && gap > 60) ||
-      (d > NEW_LOOK && gap > SOME_TIME_SEC) ||
+      (moved && (gap > 60 || untimed)) ||
+      (d > NEW_LOOK && (gap > SOME_TIME_SEC || untimed)) ||
       (d > OTHER_PLACE && gap > 30)
     if (fresh) {
       scenes.push([c])

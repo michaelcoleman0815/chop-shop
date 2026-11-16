@@ -169,7 +169,11 @@ export function lineUpClocks(clips: ClockInput[]): ClockResult {
     placed.push(c.id)
   }
   const untimed = unplaced.filter((c) => own.get(c.id) === null)
-  if (untimed.length === 1)
+  if (untimed.length > 1 && untimed.length === clips.length)
+    notes.push(
+      `None of the ${untimed.length} clips has a recording time, so they go in the order of their names, in scenes by how they look.`
+    )
+  else if (untimed.length === 1)
     notes.push(`${untimed[0].name} has no recording time, so it goes with the clips that look like it.`)
   else if (untimed.length > 1)
     notes.push(`${untimed.length} clips have no recording time, so they go with the clips they look like.`)
