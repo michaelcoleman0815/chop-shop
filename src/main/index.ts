@@ -1119,8 +1119,11 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     void sweepTemp()
     electronApp.setAppUserModelId('social.brewed.chopshop')
-    // Before the window: the page asks for the media address as it loads.
-    await startMediaServer()
+    // Before the window: the page asks for the media address as it loads. A
+    // server that cannot start must not keep the app from opening.
+    await startMediaServer().catch((err) =>
+      console.error('[media] could not start the media server; files play by path:', err)
+    )
     ipcMain.on('media:base', (e) => {
       e.returnValue = mediaBase()
     })
