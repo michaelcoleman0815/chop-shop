@@ -1,0 +1,190 @@
+name: Mobile engine
+
+# Builds the phone engines (ffmpeg 6.0, ffprobe and whisper.cpp in-process,
+# mobile/engine) for Android and iOS, and runs their self-test on an Android
+# emulator and an iPhone simulator. Nothing here is signed or published.
+on:
+  push:
+    branches:
+      - claude/mobile
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  MESON_VERSION: 1.12.1
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      NDK_VERSION: 27.2.12479018
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nasm ninja-build autoconf automake libtool pkg-config >/dev/null
+          pipx install "meson==$MESON_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Android NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" >/dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      # Built libraries are cached apart from the engine library, which is
+      # rebuilt every time, and saved as soon as they are built: a failing
+      # test later must not throw an hour of building away.
+      - name: Restore ffmpeg and its libraries
+        id: ffmpeg-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            mobile/engine/.build/android-arm64-v8a/prefix
+            mobile/engine/.build/android-x86_64/prefix
+          key: android-ffmpeg-${{ env.NDK_VERSION }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/ffmpeg.sh', 'mobile/engine/patches/**') }}
+
+      - name: Restore whisper.cpp
+        id: whisper-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            mobile/engine/.build/android-arm64-v8a/whisper
+            mobile/engine/.build/android-x86_64/whisper
+          key: android-whisper-${{ env.NDK_VERSION }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/whisper.sh') }}
+
+      - name: Build the engines
+        run: mobile/engine/scripts/build.sh android
+
+      - name: Save ffmpeg and its libraries
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            mobile/engine/.build/android-arm64-v8a/prefix
+            mobile/engine/.build/android-x86_64/prefix
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}
+
+      - name: Save whisper.cpp
+        if: steps.whisper-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            mobile/engine/.build/android-arm64-v8a/whisper
+            mobile/engine/.build/android-x86_64/whisper
+          key: ${{ steps.whisper-cache.outputs.cache-primary-key }}
+
+      - name: What was built
+        run: |
+          for abi in arm64-v8a x86_64; do
+            dir=mobile/engine/android/src/main/jniLibs/$abi
+            echo "== $abi"
+            ls -l "$dir"
+            grep -E "^License:" mobile/engine/.build/android-$abi/prefix/ffmpeg-private/configure.log
+            grep -A4 "^External libraries:" mobile/engine/.build/android-$abi/prefix/ffmpeg-private/configure.log
+            echo "engine library needs:"
+            readelf -d "$dir/libcutalong_engine.so" | grep NEEDED
+            # Every library must load on 16 KB page devices.
+            for so in "$dir"/*.so; do
+              align=$(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF; exit }')
+              echo "$(basename "$so"): LOAD alignment $align"
+              [ "$align" = "0x4000" ] || [ "$align" = "0x10000" ] || { echo "::error::$so is not 16 KB aligned"; exit 1; }
+            done
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-engine-${{ github.run_number }}
+          path: mobile/engine/android/src/main/jniLibs
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS
+    runs-on: macos-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build tools
+        run: |
+          brew install nasm ninja autoconf automake libtool pkg-config >/dev/null || true
+          pipx install "meson==$MESON_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # Homebrew's libtoolize is glibtoolize; zimg's autogen.sh asks for it.
+          echo "LIBTOOLIZE=glibtoolize" >> "$GITHUB_ENV"
+          echo "XCODE_ID=$(xcodebuild -version | tr -s ' \n' '-')" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Restore ffmpeg and its libraries
+        id: ffmpeg-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            mobile/engine/.build/ios-arm64/prefix
+            mobile/engine/.build/ios-sim-arm64/prefix
+          key: ios-ffmpeg-${{ env.XCODE_ID }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/ffmpeg.sh', 'mobile/engine/patches/**') }}
+
+      - name: Restore whisper.cpp
+        id: whisper-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            mobile/engine/.build/ios-arm64/whisper
+            mobile/engine/.build/ios-sim-arm64/whisper
+          key: ios-whisper-${{ env.XCODE_ID }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/whisper.sh') }}
+
+      - name: Build the engines
+        run: mobile/engine/scripts/build.sh ios
+
+      - name: Save ffmpeg and its libraries
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            mobile/engine/.build/ios-arm64/prefix
+            mobile/engine/.build/ios-sim-arm64/prefix
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}
+
+      - name: Save whisper.cpp
+        if: steps.whisper-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            mobile/engine/.build/ios-arm64/whisper
+            mobile/engine/.build/ios-sim-arm64/whisper
+          key: ${{ steps.whisper-cache.outputs.cache-primary-key }}
+
+      - name: What was built
+        run: |
+          ls mobile/engine/ios/Frameworks
+          grep -E "^License:" mobile/engine/.build/ios-arm64/prefix/ffmpeg-private/configure.log
+          grep -A4 "^External libraries:" mobile/engine/.build/ios-arm64/prefix/ffmpeg-private/configure.log
+          for fw in mobile/engine/ios/Frameworks/*.xcframework; do
+            name=$(basename "$fw" .xcframework)
+            for slice in "$fw"/*/; do
+              bin="$slice$name.framework/$name"
+              echo "$(basename "$slice") $name: $(lipo -archs "$bin"), $(du -h "$bin" | cut -f1)"
+            done
+          done
+          echo "engine library needs:"
+          otool -L mobile/engine/ios/Frameworks/CutalongEngineCore.xcframework/ios-arm64/CutalongEngineCore.framework/CutalongEngineCore
+
+      - name: Pack the frameworks
+        run: tar -C mobile/engine/ios -czf ios-frameworks.tar.gz Frameworks
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-engine-${{ github.run_number }}
+          path: ios-frameworks.tar.gz
+          if-no-files-found: error
+          retention-days: 14
