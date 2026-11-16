@@ -1,4 +1,4 @@
-import { titlesText, uploadMessage, type UploadKit } from '../../../shared/upload'
+import { titlesText, uploadMessage, uploadSetMessage, type UploadKit } from '../../../shared/upload'
 import type { Msg } from './components/Message'
 
 /**
@@ -20,5 +20,22 @@ export function uploadReply(kit: UploadKit): Omit<Msg, 'id'> {
       { kind: 'copy', label: 'Copy the titles', payload: titlesText(kit) },
       { kind: 'reveal', label: 'Show the files', payload: kit.files.description }
     ]
+  }
+}
+
+/**
+ * One reply for many exports at once (/clipping's Export all), however many
+ * there are: a sentence, each one's titles behind Details, and the files.
+ * One export keeps its own reply.
+ */
+export function uploadSetReply(kits: { name: string; kit: UploadKit }[]): Omit<Msg, 'id'> {
+  if (kits.length === 1) return uploadReply(kits[0].kit)
+  const m = uploadSetMessage(kits)
+  return {
+    role: 'assistant',
+    text: m.text,
+    details: m.details,
+    aside: m.aside,
+    actions: [{ kind: 'reveal', label: 'Show the files', payload: kits[0].kit.files.description }]
   }
 }

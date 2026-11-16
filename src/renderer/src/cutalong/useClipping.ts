@@ -13,12 +13,13 @@ import {
 import { sentence } from '../../../shared/edit'
 import { failureOf } from '../../../shared/failure'
 import type { Project, TranscriptWord } from '../../../shared/types'
+import type { UploadKit } from '../../../shared/upload'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Msg } from './components/Message'
 import type { Progress } from './components/Working'
 import { clock, fileName, isAudioFile, isVideoFile } from './format'
-import { uploadReply } from './upload-reply'
+import { uploadSetReply } from './upload-reply'
 
 /**
  * /clipping in the session: finding clips in long recordings, the set they
@@ -272,6 +273,8 @@ export function useClipping(deps: ClippingDeps) {
     const since = Date.now()
     const made: string[] = []
     const failed: string[] = []
+    // What each clip's upload needs, said once for them all after the last one.
+    const kits: { name: string; kit: UploadKit }[] = []
     setJobs(Object.fromEntries(clips.map((c) => [c.id, { percent: null }])))
     try {
       for (const [i, clip] of clips.entries()) {
@@ -326,7 +329,7 @@ export function useClipping(deps: ClippingDeps) {
           actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
         })
         // What its upload needs, beside it: captions, a description, titles and tags.
-        if (r.upload) push(uploadReply(r.upload))
+        if (r.upload) kits.push({ name: clip.title, kit: r.upload })
       }
     } finally {
       exportingRef.current = false
@@ -346,6 +349,8 @@ export function useClipping(deps: ClippingDeps) {
       error: !all,
       actions: made.length ? [{ kind: 'reveal', label: 'Show in Finder', payload: made[0] }] : undefined
     })
+    // One reply for what every clip's upload needs, not one a clip.
+    if (kits.length > 0) push(uploadSetReply(kits))
     setToast(
       all
         ? { text: `Exported ${clips.length === 1 ? 'the clip' : `${clips.length} clips`}`, path: made[0], chat: true }

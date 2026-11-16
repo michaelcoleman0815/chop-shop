@@ -10,6 +10,7 @@ import {
   TAGS_MIN,
   titlesFile,
   uploadMessage,
+  uploadSetMessage,
   vttText,
   withoutRepeats,
   writeLocally,
@@ -201,6 +202,37 @@ describe('in the chat', () => {
       "Claude couldn't write them this time, so I made them from your words on this Mac. It's a Short, so the description has no chapters."
     )
     for (const m of [uploadMessage(kit), short]) expect(`${m.text} ${m.aside}`).not.toMatch(/!/)
+  })
+
+  it('says what every clip of an Export all needs in one reply, each clip’s titles behind Details', () => {
+    const clip = (name: string, over: Partial<UploadKit> = {}): { name: string; kit: UploadKit } => ({
+      name,
+      kit: { ...kit, short: true, chapters: 0, titles: [`${name}, one`, `${name}, two`, `${name}, three`], ...over }
+    })
+    const six = ['Why we stay', 'The first Sunday', 'A hard year', 'What the choir sang', 'Coffee after', 'Next week'].map(
+      (name) => clip(name)
+    )
+    const m = uploadSetMessage(six)
+    expect(m.text).toBe('The 6 clips are ready to upload: captions, a description, titles and tags beside each.')
+    expect(m.details).toHaveLength(6)
+    expect(m.details[0]).toEqual({ label: 'Why we stay', value: 'Why we stay, one\nWhy we stay, two\nWhy we stay, three' })
+    expect(m.aside).toBe('Claude wrote the titles, the openings and the tags from what you say.')
+    // A clip with nothing said has no captions; one Claude could not write was made here.
+    const quiet = { ...kit.files, srt: null, vtt: null }
+    const mixed = uploadSetMessage([
+      clip('A', { files: quiet }),
+      clip('B', { by: 'local', why: 'failed' }),
+      clip('C')
+    ])
+    expect(mixed.text).toBe(
+      'The 3 clips are ready to upload: a description, titles and tags beside each, and captions beside the 2 with words.'
+    )
+    expect(mixed.aside).toBe("Claude couldn't write one of them, so I made that one from your words on this Mac.")
+    const local = uploadSetMessage([clip('A', { by: 'local', why: 'no-key' }), clip('B', { by: 'local', why: 'no-key' })])
+    expect(local.aside).toBe(
+      'I made these on this Mac without Claude. With your Anthropic key in Settings, Claude writes them.'
+    )
+    for (const r of [m, mixed, local]) expect(`${r.text} ${r.aside}`).not.toMatch(/!/)
   })
 
   it('writes the titles and tags file', () => {

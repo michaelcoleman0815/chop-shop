@@ -539,6 +539,44 @@ export function uploadMessage(kit: UploadKit): {
   return { text, chips, details, aside: asides.join(' ') || null }
 }
 
+/**
+ * One reply for many exports at once, as /clipping's Export all makes them:
+ * a sentence, each one's titles behind Details, and who wrote them. "The 6
+ * clips are ready to upload: captions, a description, titles and tags beside
+ * each."
+ */
+export function uploadSetMessage(kits: { name: string; kit: UploadKit }[]): {
+  text: string
+  details: { label: string; value: string }[]
+  aside: string | null
+} {
+  const n = kits.length
+  const captioned = kits.filter((k) => k.kit.files.srt).length
+  const what =
+    captioned === n
+      ? 'captions, a description, titles and tags beside each'
+      : captioned === 0
+        ? 'a description, titles and tags beside each'
+        : `a description, titles and tags beside each, and captions beside the ${captioned} with words`
+  const text = `The ${n} clips are ready to upload: ${what}.`
+  const details = kits.map(({ name, kit }) => ({ label: name, value: kit.titles.join('\n') }))
+  const local = kits.filter((k) => k.kit.by === 'local')
+  const why = local[0]?.kit.why
+  const aside =
+    local.length === 0
+      ? 'Claude wrote the titles, the openings and the tags from what you say.'
+      : local.length < n
+        ? local.length === 1
+          ? "Claude couldn't write one of them, so I made that one from your words on this Mac."
+          : `Claude couldn't write ${local.length} of them, so I made those from your words on this Mac.`
+        : why === 'off'
+          ? 'I made these on this Mac without Claude, as Settings asks.'
+          : why === 'failed'
+            ? "Claude couldn't write them this time, so I made them from your words on this Mac."
+            : 'I made these on this Mac without Claude. With your Anthropic key in Settings, Claude writes them.'
+  return { text, details, aside }
+}
+
 /** The titles, for copying: one a line. */
 export function titlesText(kit: Pick<UploadKit, 'titles'>): string {
   return kit.titles.join('\n')
