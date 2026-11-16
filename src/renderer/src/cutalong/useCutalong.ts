@@ -37,6 +37,12 @@ import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspi
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import {
   acceptsOffer,
+  DEFAULT_PROFILE,
+  profileAskedFor,
+  profileById,
+  styleForProfile,
+  suggestProfile,
+  type CuttingProfile,
   parseTakeRequest,
   resolveTakeRequest,
   switchedSentence,
@@ -367,6 +373,7 @@ export function useCutalong() {
       const resolved = resolveCut(currentCut(r.doc), r.doc.words, r.doc.sources)
       const beats = currentCut(r.doc).beats.length
       const found = takesFound(r.doc)
+      const suggested = brandRef.current.niche ? null : suggestProfile(r.doc.words)
       const text =
         r.doc.words.length > 0
           ? `Got it. ${file.name} runs ${clock(resolved.durationSec)}: ${r.doc.words.length} words in ${beats} beats.${found ? ` ${found}` : ''}`
@@ -384,7 +391,14 @@ export function useCutalong() {
       }
       if (studyRef.current)
         actions.unshift({ kind: 'use-style', label: 'Cut it like the video you sent', primary: true })
-      const noticed = r.intake?.sentence ?? ''
+      const noticed = [
+        r.intake?.sentence ?? '',
+        suggested && suggested.profile.id !== DEFAULT_PROFILE.id
+          ? `It sounds like a ${suggested.profile.name.toLowerCase()} video, so I'll cut it as one.`
+          : ''
+      ]
+        .filter(Boolean)
+        .join(' ')
       patch(id, {
         progress: null,
         text,
@@ -595,7 +609,11 @@ export function useCutalong() {
         say(`Drop some footage and I'll run /${command} on it.`)
         return
       }
-      const plan = planStyle(d, preset.style)
+      // The edit's own profile, then the brand's niche, then what the words suggest.
+      const profile = profileFor(d, brandRef.current.niche)
+      const plan = planStyle(d, styleForProfile(command, preset.style, profile), currentCut(d), {
+        thresholds: profile.takes ?? undefined
+      })
       const lead = plan.takes ? { text: plan.takes.summary, ops: plan.takes.opCount } : undefined
       const done = applyAsVersion(plan.ops, `${preset.title} is on.`, command, lead)
       if (plan.takes) setOffers(plan.takes.offers)
@@ -703,6 +721,17 @@ export function useCutalong() {
         )
         return true
       }
+      const asked = profileAskedFor(text)
+      if (asked) {
+        if ('profile' in asked) {
+          setDoc({ ...d, profile: asked.profile.id })
+          say(`${asked.profile.says.replace(/^I cut it/, "I'll cut it")} Type /tighten to cut it that way.`, false)
+        } else {
+          setDoc({ ...d, profile: DEFAULT_PROFILE.id })
+          say(`I haven't built a ${asked.notBuilt} profile yet, so I'll cut it as a talking head.`, false)
+        }
+        return true
+      }
       const req = parseTakeRequest(text)
       if (!req) return false
       const answer = resolveTakeRequest(req, takesOf(d), currentCut(d))
@@ -719,7 +748,7 @@ export function useCutalong() {
       )
       return true
     },
-    [acceptOffers, switchTake]
+    [acceptOffers, setDoc, switchTake]
   )
 
   /** A request in words: the planner turns it into ops. */
@@ -1019,6 +1048,11 @@ export function useCutalong() {
     undo,
     exportFinal
   }
+}
+
+/** The profile an edit is cut with: its own, the brand's niche, what its words suggest, or a talking head. */
+function profileFor(doc: EditDoc, niche: string): CuttingProfile {
+  return profileById(doc.profile) ?? profileById(niche) ?? suggestProfile(doc.words)?.profile ?? DEFAULT_PROFILE
 }
 
 /**

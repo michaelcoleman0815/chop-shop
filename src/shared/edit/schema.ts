@@ -222,7 +222,9 @@ export const EditDocSchema = z.object({
   /** The preset command last applied, without its slash. */
   preset: z.string().nullable(),
   /** What each recording sounds like, by source id (shared/audio/map). Absent until listened to. */
-  audio: z.record(z.string(), AudioMapSchema).optional()
+  audio: z.record(z.string(), AudioMapSchema).optional(),
+  /** The cutting profile this edit asked for ("this one is a podcast"), over the brand's niche. */
+  profile: z.string().optional()
 })
 export type EditDoc = z.infer<typeof EditDocSchema>
 

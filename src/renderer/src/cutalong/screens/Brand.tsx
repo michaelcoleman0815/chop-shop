@@ -1,6 +1,7 @@
 import { useState, type DragEvent } from 'react'
 import { CORNERS, describeLearned, type Brand } from '../../../../shared/brand'
 import { describeStyle } from '../../../../shared/presets'
+import { PROFILES, profileById } from '../../../../shared/raw/profiles'
 import { api, mediaUrlFor } from '../api'
 import { Button, Icon } from '../components/ui'
 import { clock, isVideoFile } from '../format'
@@ -29,6 +30,8 @@ const POSITIONS = [
 export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
   const brand = app.brand
   const [dropping, setDropping] = useState(false)
+  // Typed as one line and saved as a list when the field is left.
+  const [products, setProducts] = useState(app.brand.products.join(', '))
   const set = (patch: Partial<Brand>): void => app.saveBrand({ ...brand, ...patch })
   const facts = describeStyle(brand.style).slice(0, 4)
 
@@ -235,6 +238,48 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                 value={brand.voice}
                 placeholder="How should your edits feel? For example: warm and quick, no swearing, always end on a question."
                 onChange={(e) => set({ voice: e.target.value })}
+              />
+            </label>
+          </section>
+
+          <section className="cl-section" aria-labelledby="brand-niche">
+            <h2 id="brand-niche">Raw footage</h2>
+            <div className="cl-field">
+              <span>What you make</span>
+              <div className="cl-segments" role="radiogroup" aria-label="What you make">
+                {[{ id: '', name: 'From the words' }, ...PROFILES].map((p) => (
+                  <button
+                    key={p.id || 'auto'}
+                    type="button"
+                    role="radio"
+                    aria-checked={brand.niche === p.id}
+                    className={brand.niche === p.id ? 'on' : ''}
+                    onClick={() => set({ niche: p.id })}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+              <p className="cl-aside">
+                {profileById(brand.niche)?.says.replace(/^I cut it/, 'I cut your footage') ??
+                  'I tell from the words what kind of video it is, and cut it that way.'}
+              </p>
+            </div>
+            <label className="cl-field">
+              <span>Names to listen for</span>
+              <input
+                value={products}
+                placeholder="Pixel 9 Pro, M4 MacBook Air, ZV-E10"
+                onChange={(e) => setProducts(e.target.value)}
+                onBlur={() =>
+                  set({
+                    products: products
+                      .split(',')
+                      .map((x) => x.trim())
+                      .filter(Boolean)
+                      .slice(0, 30)
+                  })
+                }
               />
             </label>
           </section>
