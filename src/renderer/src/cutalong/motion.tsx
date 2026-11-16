@@ -217,6 +217,8 @@ function sharedFootage(from: string, to: string, app: Cutalong): { before: () =>
   let travelling = false
   return {
     before: () => {
+      // Under reduced motion nothing travels between screens.
+      if (prefersReducedMotion()) return
       if (toScreen === 'editor') {
         const recent = activated && performance.now() - activated.at < 4000 ? activated.el : null
         const card = recent?.closest('.cl-project')?.querySelector<HTMLElement>('.cl-project-thumb')
@@ -402,16 +404,18 @@ export function collapse(from: EventTarget | null, remove: () => unknown): void 
   for (const finish of [...collapsing]) finish()
   const item = from instanceof Element ? from.closest<HTMLElement>('li') : null
   const scroller = item ? scrollerOf(item) : null
-  if (!item || !scroller || prefersReducedMotion() || typeof item.animate !== 'function') {
+  if (!item || !scroller || typeof item.animate !== 'function') {
     remove()
     return
   }
+  // Under reduced motion the item only fades; the gap then closes at once.
+  const still = prefersReducedMotion()
 
   // Everything after the item, at each level up to the scroller, moves; the
   // containers with a visible surface shrink from the bottom.
   const movers: HTMLElement[] = []
   const frames: HTMLElement[] = []
-  for (let node: HTMLElement = item; node !== scroller && node.parentElement; node = node.parentElement) {
+  for (let node: HTMLElement = item; !still && node !== scroller && node.parentElement; node = node.parentElement) {
     for (let s = node.nextElementSibling; s; s = s.nextElementSibling) if (s instanceof HTMLElement) movers.push(s)
     if (node !== item && hasSurface(node)) frames.push(node)
   }
@@ -434,7 +438,7 @@ export function collapse(from: EventTarget | null, remove: () => unknown): void 
     fill: 'forwards' as const
   }
   const animations = [
-    item.animate([{ opacity: 1 }, { opacity: 0, translate: `${token('space-4') || '16px'} 0` }], {
+    item.animate([{ opacity: 1 }, { opacity: 0, translate: still ? '0 0' : `${token('space-4') || '16px'} 0` }], {
       duration: fast,
       easing: token('ease-standard'),
       fill: 'forwards'

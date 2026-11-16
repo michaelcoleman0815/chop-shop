@@ -523,8 +523,11 @@ html[data-cl-arriving] .cl-main {
   animation: var(--duration-gentle) var(--ease-enter) calc(var(--duration-calm) - var(--duration-gentle)) both cl-rise;
 }
 
-html[data-cl-move='screen'] .cl-composer {
-  view-transition-name: cl-composer;
+/* Under reduced motion nothing travels between screens: each composer leaves and arrives with its own screen. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-cl-move='screen'] .cl-composer {
+    view-transition-name: cl-composer;
+  }
 }
 
 ::view-transition-old(cl-screen),
