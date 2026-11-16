@@ -34,6 +34,7 @@ import {
   type Preset
 } from '../../../shared/presets'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
+import { modeReply, readMouthMode, setMouthMode } from '../../../shared/vision'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
@@ -348,7 +349,9 @@ export function useCutalong() {
       const actions: Action[] = [{ kind: 'open-editor', label: 'Open the editor', primary: !studyRef.current }]
       if (studyRef.current)
         actions.unshift({ kind: 'use-style', label: 'Cut it like the video you sent', primary: true })
-      patch(id, { progress: null, text, aside: r.warning, actions })
+      // What watching the speaker found, such as the sound lined up with the mouth.
+      const aside = [r.warning, r.notice].filter(Boolean).join(' ') || null
+      patch(id, { progress: null, text, aside, actions })
       return true
     },
     [patch, push, setDoc]
@@ -618,6 +621,19 @@ export function useCutalong() {
         push({ role: 'assistant', text: "Drop some footage or paste a video you like, and I'll start from there." })
         return
       }
+      // "Time my cuts to the sound only": watching the mouth is set here, not planned.
+      const source = d.sources[0]
+      const mode = readMouthMode(text, source.mouth?.mode ?? 'cuts+sync')
+      if (mode) {
+        if (!source.mouth) {
+          push({ role: 'assistant', text: modeReply(mode, false, 0) })
+          return
+        }
+        const set = setMouthMode(d, source.id, mode)
+        setDoc(set.doc)
+        push({ role: 'assistant', text: set.reply })
+        return
+      }
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Working it out', percent: 35 } })
       const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandRef.current.voice })
       if (!r.ok) {
@@ -638,7 +654,7 @@ export function useCutalong() {
         actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
       })
     },
-    [applyAsVersion, patch, push]
+    [applyAsVersion, patch, push, setDoc]
   )
 
   const submit = useCallback(

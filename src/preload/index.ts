@@ -39,8 +39,10 @@ const api = {
   // someone likes into a style, and the saved slash commands.
   prepareCut: (
     path: string
-  ): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('cut:prepare', path),
+  ): Promise<
+    | { ok: true; doc: EditDoc; mediaUrl: string; warning: string | null; notice?: string | null }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:prepare', path),
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'

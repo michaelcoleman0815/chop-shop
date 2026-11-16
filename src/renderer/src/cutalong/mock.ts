@@ -11,6 +11,7 @@ import {
 import type { Project, ProjectSummary, Settings } from '../../../shared/types'
 import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
 import { detectProvider } from '../../../shared/keys'
+import { syncNotice } from '../../../shared/vision/offset'
 import type { CutalongApi } from './api'
 
 /**
@@ -143,8 +144,22 @@ export function createMockApi(): CutalongApi {
     hasApiKey: async () => key !== null,
 
     prepareCut: async (path: string) => {
-      await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Transcribing', 'Splitting into beats'])
-      return { ok: true as const, doc: fakeDoc(path), mediaUrl: '/sample.mp4', warning: null }
+      await progress(listeners.cut, [
+        'Reading the footage',
+        'Transcribing',
+        'Transcribing',
+        'Splitting into beats',
+        'Watching the speaker'
+      ])
+      // As if the take came through a wireless microphone 0.12 s late, and was lined up.
+      const doc = fakeDoc(path)
+      const offset = 0.12
+      doc.sources[0] = {
+        ...doc.sources[0],
+        audioOffsetSec: offset,
+        mouth: { mode: 'cuts+sync', measuredOffsetSec: offset, confidence: 0.92, seenShare: 0.96 }
+      }
+      return { ok: true as const, doc, mediaUrl: '/sample.mp4', warning: null, notice: syncNotice(offset) }
     },
     renderCut: async ({ doc, quality }) => {
       await progress(listeners.cut, [quality === 'final' ? 'Exporting' : 'Rendering a preview'])

@@ -14,7 +14,10 @@ import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { loudnessEnvelope } from './audio-envelope'
-import { snapWords } from '../shared/audio/snap'
+import { snapWords, type Envelope } from '../shared/audio/snap'
+import { watchMouth } from './mouth'
+import { detectFaces } from './track'
+import { nicheFrom } from '../shared/vision/mode'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { readBrand, saveBrand } from './brand-store'
@@ -26,6 +29,7 @@ import {
   resolveCut,
   wordsFromTranscript,
   type Note,
+  type Source,
   type Word
 } from '../shared/edit'
 import { BUILT_IN_PRESETS, describeStyle, suggestCommandName } from '../shared/presets'
@@ -60,7 +64,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     try {
       progress('Reading the footage', 1)
       const meta = await probe(path)
-      const source = {
+      let source: Source = {
         id: 's1',
         path,
         durationSec: meta.durationSec,
@@ -70,17 +74,32 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
       let words: Word[] = []
       let warning: string | null = null
+      let notice: string | null = null
       try {
         const transcript = await transcriptFor(path, meta.durationSec, progress)
         words = wordsFromTranscript(transcript.words, source.id)
         // Listen to the recording so every word's edges sit on its sound,
         // which is what lets cuts land tight without clipping a consonant.
+        let envelope: Envelope | null = null
         if (words.length > 0) {
           progress('Listening for the cuts', 97)
           try {
-            words = snapWords(words, await loudnessEnvelope(FFMPEG_PATH, path))
+            envelope = await loudnessEnvelope(FFMPEG_PATH, path)
+            words = snapWords(words, envelope)
           } catch (err) {
             console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
+          }
+        }
+        // Watch the speaker's mouth: line the sound up with it, time cuts to
+        // it, mark voices from off camera. Without a face, sound timing stays.
+        if (words.length > 0) {
+          progress('Watching the speaker', 98)
+          try {
+            const niche = nicheFrom(await readBrand())
+            const seen = await watchMouth({ ffmpeg: FFMPEG_PATH, source, words, envelope, detect: detectFaces, niche })
+            if (seen) ({ words, source, notice } = seen)
+          } catch (err) {
+            console.warn('[cut] could not watch the speaker, keeping sound timing:', message(err))
           }
         }
       } catch (err) {
@@ -88,7 +107,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
       const doc = createDoc({ id: randomUUID(), title: basename(path, extname(path)), source, words })
       progress('Ready', 100)
-      return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning }
+      return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning, notice }
     } catch (err) {
       progress('Failed', 0)
       return { ok: false as const, message: message(err) }
