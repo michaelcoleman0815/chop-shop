@@ -582,32 +582,20 @@ html[data-cl-arriving] .cl-main {
 }
 
 /*
- * The rail: it grows or shrinks with its edge, while each thing in the main
- * column glides to its new place. Centred columns keep their size and slide;
- * the well, the strip and the beats stretch. Before and after are the same
- * picture for all of these, so only the live one is shown.
+ * The rail: it grows or shrinks with its edge. The header and the centred
+ * columns glide as live elements (motion.tsx). In the editor the preview's
+ * well, the strip and the beats stretch, while the footage, the strip's
+ * controls and the playhead slide. Before and after are the same picture for
+ * these, so only the live one is shown.
  */
 html[data-cl-move='rail'] .cl-rail {
   view-transition-name: cl-rail;
   border-right-color: transparent;
 }
 
-html[data-cl-move='rail']
-  :is(
-    .cl-header > :not(.spacer),
-    .cl-thread-foot .cl-composer,
-    .cl-editor-body > .cl-notes,
-    .cl-frame,
-    .cl-strip > :not(.cl-beats),
-    .cl-playhead
-  ) {
+html[data-cl-move='rail'] :is(.cl-frame, .cl-strip > :not(.cl-beats), .cl-playhead) {
   view-transition-name: match-element;
   view-transition-class: cl-slide;
-}
-
-html[data-cl-move='rail'] :is(.cl-start, .cl-thread-scroll, .cl-page) {
-  view-transition-name: match-element;
-  view-transition-class: cl-centred;
 }
 
 html[data-cl-move='rail'] :is(.cl-well, .cl-strip, .cl-beats) {
@@ -616,13 +604,11 @@ html[data-cl-move='rail'] :is(.cl-well, .cl-strip, .cl-beats) {
 }
 
 ::view-transition-old(*.cl-slide),
-::view-transition-old(*.cl-centred),
 ::view-transition-old(*.cl-stretch) {
   display: none;
 }
 
 ::view-transition-new(*.cl-slide),
-::view-transition-new(*.cl-centred),
 ::view-transition-new(*.cl-stretch) {
   animation: none;
   mix-blend-mode: normal;
@@ -633,9 +619,8 @@ html[data-cl-move='rail']::view-transition-group(cl-rail) {
   border-right: 1px solid var(--line);
 }
 
-/* Pictures keep their natural size and are cropped by the moving box, never squeezed. */
-::view-transition-image-pair(cl-rail),
-::view-transition-image-pair(*.cl-centred) {
+/* The rail's pictures keep their natural size and are cropped by its moving edge, never squeezed. */
+::view-transition-image-pair(cl-rail) {
   overflow: hidden;
 }
 
@@ -645,13 +630,6 @@ html[data-cl-move='rail']::view-transition-group(cl-rail) {
   height: 100%;
   object-fit: none;
   object-position: 0 0;
-}
-
-::view-transition-new(*.cl-centred) {
-  width: 100%;
-  height: 100%;
-  object-fit: none;
-  object-position: 50% 0;
 }
 
 ::view-transition-new(*.cl-stretch) {
