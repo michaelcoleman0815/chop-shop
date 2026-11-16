@@ -30,23 +30,24 @@ export function slashQuery(text: string): string | null {
 }
 
 /**
- * Presets matching a slash query, best first: a command starting with the
- * query, then a title word starting with it, then the query anywhere in the
- * command. Built-ins win ties, and the list stays in its own order otherwise.
+ * Presets matching a slash query, best first: the command itself, then a
+ * command starting with the query, then a title word starting with it, then
+ * the query anywhere in the command. Built-ins win ties, and the list stays in
+ * its own order otherwise. So "/warm" offers /warm before /warmth.
  */
 export function suggestCommands(query: string, presets: Preset[], limit = 6): Preset[] {
   const q = query.toLowerCase().replace(/^\//, '')
   const rank = (p: Preset): number => {
-    if (q === '') return 0
-    if (p.command.startsWith(q)) return 0
+    if (q === '' || p.command === q) return 0
+    if (p.command.startsWith(q)) return 1
     if (
       p.title
         .toLowerCase()
         .split(/\s+/)
         .some((w) => w.startsWith(q))
     )
-      return 1
-    if (p.command.includes(q)) return 2
+      return 2
+    if (p.command.includes(q)) return 3
     return -1
   }
   return presets

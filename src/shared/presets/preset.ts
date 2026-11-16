@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AspectSchema, CAPTION_POSITIONS, CaptionSpecSchema, TightenSpecSchema } from '../edit/schema'
 import { CAMERA_INFO, type Camera } from '../edit/camera'
 import { FadeSchema } from '../edit/transitions'
+import { LookSchema, NAMED_LOOKS } from '../edit/look'
 
 /**
  * Presets are slash commands. A built-in like /tighten and a style saved from
@@ -42,7 +43,9 @@ export const StyleSpecSchema = z.object({
   aspect: AspectSchema.optional(),
   maxLengthSec: z.number().positive().optional(),
   /** The whole video fading in at the start and out at the end. */
-  fade: FadeSchema.optional()
+  fade: FadeSchema.optional(),
+  /** A look over the whole picture; null takes any look off. A LUT stays when a look is set. */
+  look: LookSchema.nullable().optional()
 })
 export type StyleSpec = z.infer<typeof StyleSpecSchema>
 
@@ -200,6 +203,11 @@ export function describeStyle(style: StyleSpec): string[] {
   if (style.maxLengthSec) facts.push(`Under ${seconds(style.maxLengthSec)}`)
   if (style.loudness) facts.push(`${style.loudness.lufs} LUFS`)
   if (style.fade && (style.fade.inSec > 0 || style.fade.outSec > 0)) facts.push(`Fades through ${style.fade.color}`)
+  if (style.look)
+    facts.push(
+      style.look.name && NAMED_LOOKS[style.look.name] ? `${NAMED_LOOKS[style.look.name].title} look` : 'A colour look'
+    )
+  else if (style.look === null) facts.push('Colour as recorded')
   if (style.captions?.position && style.captions.on !== false)
     facts.push(`Captions ${POSITION_WORDS[style.captions.position]}`)
   return facts

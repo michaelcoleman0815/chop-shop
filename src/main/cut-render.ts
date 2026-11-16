@@ -4,16 +4,20 @@ import { basename, join } from 'path'
 import {
   cameraClock,
   cameraPlan,
+  changesColour,
   maxZoom,
   cutawayAt,
   cutawayClock,
   cutawaySteps,
   duckingKeys,
+  grainStrength,
+  lookMatrix,
   outToSrc,
   pictureSpan,
   sliceSteps,
   srcLength,
   transitionInfo,
+  vignetteAngle,
   type SpeedStep,
   type Aspect,
   type Camera,
@@ -21,6 +25,7 @@ import {
   type LevelKey,
   type Cut,
   type Fade,
+  type Look,
   type Music,
   type Resolved,
   type Source,
@@ -162,6 +167,10 @@ export interface GraphOptions {
   voice?: number
   /** A music bed under everything. */
   music?: BedOptions | null
+  /** A look over the whole picture, before captions and the logo. */
+  look?: Look | null
+  /** Whether the look's LUT is a 3D one (most are) or a 1D curve per channel. */
+  lutKind?: LutKind
   quality: Quality
   outputPath: string
 }
@@ -693,9 +702,31 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const totalSec = spans[spans.length - 1].outEnd - spans[0].outStart
 
   let vOut = 'vcat'
+  // The look goes over the whole picture, cutaways and cards included, and
+  // under the captions and the logo, which keep their own colours.
+  const grade = opts.look
+  if (grade?.lut && grade.lut.strength > 0.005) {
+    // A LUT at less than full strength is mixed back with the picture it came from.
+    const lut =
+      opts.lutKind === '1d'
+        ? `lut1d=file='${filterPath(grade.lut.path)}':interp=linear`
+        : `lut3d=file='${filterPath(grade.lut.path)}':interp=tetrahedral`
+    const k = grade.lut.strength.toFixed(3)
+    if (grade.lut.strength >= 0.999) chains.push(`[vcat]${lut}[vlut]`)
+    else {
+      chains.push(`[vcat]split=2[vla][vlb]`, `[vlb]${lut}[vlc]`)
+      chains.push(`[vla][vlc]blend=all_expr='A*(1-${k})+B*${k}'[vlut]`)
+    }
+    vOut = 'vlut'
+  }
+  const graded = grade ? lookFilters(grade) : []
+  if (graded.length > 0) {
+    chains.push(`[${vOut}]${graded.join(',')}[vlook]`)
+    vOut = 'vlook'
+  }
   if (opts.assPath) {
     const fonts = opts.fontsDir ? `:fontsdir='${filterPath(opts.fontsDir)}'` : ''
-    chains.push(`[vcat]subtitles='${filterPath(opts.assPath)}'${fonts}[vsub]`)
+    chains.push(`[${vOut}]subtitles='${filterPath(opts.assPath)}'${fonts}[vsub]`)
     vOut = 'vsub'
   }
   if (opts.logo) {
@@ -926,6 +957,30 @@ export function chunkSegments(segments: Segment[], maxInputs: number): Segment[]
   return chunks
 }
 
+/**
+ * A look's filters, after any LUT: the colour matrix, on RGB with an alpha
+ * channel whose column carries the offsets; the vignette, darkening red, green
+ * and blue alike as the preview's overlay does; then back to YUV for
+ * sharpening the luma, and grain in the luma only, so it does not speckle the
+ * colour.
+ */
+export function lookFilters(look: Look): string[] {
+  const parts: string[] = []
+  if (changesColour(look)) {
+    const m = lookMatrix(look)
+    const names = ['rr', 'rg', 'rb', 'ra', 'gr', 'gg', 'gb', 'ga', 'br', 'bg', 'bb', 'ba']
+    parts.push('format=rgba', `colorchannelmixer=${names.map((k, i) => `${k}=${m[i].toFixed(5)}`).join(':')}`)
+  }
+  const sharpen = look.sharpen ?? 0
+  const vignette = look.vignette ?? 0
+  const grain = look.grain ?? 0
+  if (vignette > 0) parts.push('format=rgb24', `vignette=angle=${vignetteAngle(vignette).toFixed(4)}`)
+  if (parts.length > 0 || sharpen > 0 || grain > 0) parts.push('format=yuv420p')
+  if (sharpen > 0) parts.push(`unsharp=5:5:${(1.2 * sharpen).toFixed(2)}:5:5:0`)
+  if (grain > 0) parts.push(`noise=c0s=${grainStrength(grain)}:c0f=t+u`)
+  return parts
+}
+
 /** A track mastered at an unknown loudness is taken to be as loud as most are. */
 const TYPICAL_TRACK_LUFS = -14
 
@@ -946,8 +1001,24 @@ export function bedFor(music: Music, resolved: Resolved, loudness: number | null
   }
 }
 
+export type LutKind = '1d' | '3d'
+
+/**
+ * Whether a .cube file is a 3D LUT or a 1D one, from its size line, so the
+ * render picks lut3d or lut1d. Anything else is named in a sentence rather
+ * than left for ffmpeg to fail on.
+ */
+export async function lutKindOf(path: string): Promise<LutKind> {
+  const head = (await fs.readFile(path, 'utf8').catch(() => '')).slice(0, 4096)
+  if (/^\s*LUT_3D_SIZE\s+\d+/m.test(head)) return '3d'
+  if (/^\s*LUT_1D_SIZE\s+\d+/m.test(head)) return '1d'
+  throw new Error(
+    `I can't read ${basename(path)} as a LUT. A .cube file starts with a LUT_3D_SIZE or LUT_1D_SIZE line.`
+  )
+}
+
 /** Every file a render reads must be there; a missing one is named in a sentence before ffmpeg starts. */
-async function checkInputs(segments: Segment[], logo: LogoMark | null, music: string | null): Promise<void> {
+async function checkInputs(segments: Segment[], logo: LogoMark | null, more: (string | undefined)[]): Promise<void> {
   const paths = new Set<string>()
   for (const s of segments) {
     paths.add(s.path)
@@ -955,7 +1026,7 @@ async function checkInputs(segments: Segment[], logo: LogoMark | null, music: st
     if (s.audio) paths.add(s.audio.path)
   }
   if (logo) paths.add(logo.path)
-  if (music) paths.add(music)
+  for (const path of more) if (path) paths.add(path)
   for (const path of paths) {
     try {
       await fs.access(path)
@@ -990,7 +1061,7 @@ export async function renderCut(
     }
   }
   const segments = segmentsFor(cut, resolved, sources, sizes, await hasZscale(opts.ffmpeg))
-  await checkInputs(segments, opts.brand?.logo ?? null, cut.music?.path ?? null)
+  await checkInputs(segments, opts.brand?.logo ?? null, [cut.music?.path, cut.look?.lut?.path])
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)
   await fs.mkdir(opts.workDir, { recursive: true })
@@ -1016,6 +1087,8 @@ export async function renderCut(
     fade: cut.fade ?? null,
     voice: cut.voice?.polish ?? 0,
     music: cut.music ? bedFor(cut.music, resolved, cut.loudness) : null,
+    look: cut.look ?? null,
+    lutKind: cut.look?.lut ? await lutKindOf(cut.look.lut.path) : undefined,
     quality,
     outputPath: opts.outputPath,
     logo: opts.brand?.logo ?? null

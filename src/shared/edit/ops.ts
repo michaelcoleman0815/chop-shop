@@ -1,4 +1,5 @@
 import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
+import { mergeLook } from './look'
 import { indexWords, type WordIndex } from './resolve'
 import { MIN_TRANSITION_SEC, TRANSITION_INFO } from './transitions'
 import {
@@ -369,6 +370,12 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
             : { ...beat, ...(beats[i].transition ? { transition: beats[i].transition } : {}) }
       }
       return { ...cut, beats }
+    }
+
+    case 'look': {
+      const { look: _was, ...rest } = cut
+      const look = mergeLook(cut.look, op.set, op.replace)
+      return look ? { ...rest, look } : rest
     }
 
     case 'voice': {

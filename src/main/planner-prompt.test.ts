@@ -6,6 +6,7 @@ import {
   commit,
   createDoc,
   currentCut,
+  NAMED_LOOKS,
   resolveCut,
   wordsFromTranscript,
   OpSchema
@@ -230,6 +231,30 @@ describe('the planner request', () => {
     const text = renderRequest(after, '', [])
     expect(text).toContain('voice polish 0.6')
     expect(text).toContain('music bright.mp3, 120 BPM at -15 dB under the voice, dipping 9 dB')
+  })
+
+  it('teaches looks, and every one of them applies', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(PLANNER_SYSTEM).toContain('{"op":"look"')
+    // The named looks' own settings are in the instructions, so a plan can name one exactly.
+    for (const name of Object.keys(NAMED_LOOKS)) expect(PLANNER_SYSTEM).toContain(`${name} {`)
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'look', set: NAMED_LOOKS.cinematic.look, replace: true },
+        { op: 'look', set: { grain: 0, exposure: 0.25 } }
+      ],
+      summary: 'It looks cinematic, a little brighter and without grain.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    expect(dry.cut.look).toEqual({ ...NAMED_LOOKS.cinematic.look, grain: undefined, exposure: 0.25 })
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    expect(renderRequest(after, '', [])).toContain('look cinematic, with exposure +0.25')
+    const off = applyOps(dry.cut, [{ op: 'look', set: null }], { words: doc.words, sources: doc.sources })
+    expect(off.cut.look).toBeUndefined()
   })
 
   it('lists the takes, and a swap of takes is a plan the document accepts', () => {

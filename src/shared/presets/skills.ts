@@ -1,3 +1,4 @@
+import { NAMED_LOOKS } from '../edit/look'
 import type { Preset } from './preset'
 
 /**
@@ -17,5 +18,14 @@ export const SKILL_PRESETS: Preset[] = [
     builtIn: true,
     style: { fade: { inSec: 0.5, outSec: 1, color: 'black' } },
     inspiration: null
-  }
+  },
+  // The named looks: /clean, /warm, /cool, /cinematic, /vintage.
+  ...Object.entries(NAMED_LOOKS).map(([command, l]) => ({
+    command,
+    title: `${l.title} look`,
+    summary: l.summary,
+    builtIn: true,
+    style: { look: l.look },
+    inspiration: null
+  }))
 ]

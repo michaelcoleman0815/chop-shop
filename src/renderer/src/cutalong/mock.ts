@@ -420,6 +420,12 @@ export function createMockApi(): CutalongApi {
         .map((name) => ({ path: `/Users/you/Music/${name}.mp3`, name }))
     },
     chooseAudio: async () => '/Users/you/Music/Bright pulse.mp3',
+    listLuts: async () =>
+      ['Kodak 2383', 'Fuji 3513', 'Teal and orange', 'Rec709 from log'].map((name) => ({
+        name,
+        path: `/Users/you/LUTs/${name}.cube`
+      })),
+    chooseLut: async () => '/Users/you/LUTs/Kodak 2383.cube',
     // As if the top left of the screen were busy a moment in, then the bottom right.
     findFocus: async ({ ranges }) => {
       await sleep(500)

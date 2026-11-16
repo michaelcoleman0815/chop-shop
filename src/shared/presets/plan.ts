@@ -6,6 +6,7 @@ import type { Cut, EditDoc, Op } from '../edit/schema'
 import { beatsOnClock } from '../edit/audio'
 import { CAMERA_INFO } from '../edit/camera'
 import { transitionInfo } from '../edit/transitions'
+import { describeLook, mergeLook, NAMED_LOOKS } from '../edit/look'
 import { clock, seconds, type StyleSpec } from './preset'
 import { planTakes, type TakesPlan, type TakesPlanOptions } from '../raw/plan'
 
@@ -85,6 +86,11 @@ export function planStyle(
     const same =
       was && was.inSec === style.fade.inSec && was.outSec === style.fade.outSec && was.color === style.fade.color
     if (!same) push({ op: 'fade', ...style.fade })
+  }
+  if (style.look !== undefined) {
+    // A look replaces the one there, keeping any LUT; nothing to do when it is already there.
+    const next = mergeLook(cut.look, style.look, true)
+    if (JSON.stringify(next) !== JSON.stringify(cut.look ?? null)) push({ op: 'look', set: style.look, replace: true })
   }
   if (style.pad) {
     const { inSec, outSec } = style.pad
@@ -439,6 +445,27 @@ function describeSound(o: Extract<Op, { op: 'voice' | 'music' }>, cut: Cut | nul
   return said
 }
 
+/** What a look op did, from the look it left: "the picture has the warm look", "the LUT is off". */
+function describeLookOp(o: Extract<Op, { op: 'look' }>, cut: Cut | null): string {
+  const look = cut ? (cut.look ?? null) : mergeLook(null, o.set, o.replace)
+  if (!look) return 'the picture is back to its recorded colour'
+  const keys = o.set ? Object.keys(o.set) : []
+  if (keys.length === 1 && keys[0] === 'lut') {
+    const lut = o.set?.lut
+    if (!lut) return 'the LUT is off'
+    const name =
+      lut.path
+        .split(/[\\/]/)
+        .pop()
+        ?.replace(/\.cube$/i, '') ?? 'the LUT'
+    return `the LUT ${name} is on at ${Math.round(lut.strength * 100)}%`
+  }
+  if (o.replace && look.name && NAMED_LOOKS[look.name]) {
+    return `the picture has the ${look.name} look${look.lut ? ', over the LUT' : ''}`
+  }
+  return `the look is ${describeLook(look)}`
+}
+
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 const count = (n: number, one: string, many = `${one}s`): string => `${NUMBER_WORDS[n] ?? n} ${n === 1 ? one : many}`
 
@@ -502,6 +529,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(describeCameraOp(o, after, cut))
     } else if (o.op === 'voice' || o.op === 'music') {
       said.push(...describeSound(o, cut))
+    } else if (o.op === 'look') {
+      said.push(describeLookOp(o, cut))
     } else if (o.op === 'fade') {
       const ins = (o.inSec ?? 0) > 0
       const outs = (o.outSec ?? 0) > 0

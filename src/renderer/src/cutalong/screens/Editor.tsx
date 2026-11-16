@@ -8,19 +8,25 @@ import {
   cameraPlan,
   cameraTransform,
   captionPages,
+  changesColour,
   currentCut,
   currentVersion,
   cutawayAt,
   cutawayClock,
   duckingKeys,
+  grainSpread,
   indexWords,
   levelAt,
+  lookMatrix,
   openNotes,
   resolveCut,
+  svgColourMatrix,
   transitionInfo,
   viewAt,
+  vignetteStops,
   type Camera,
   type EditDoc,
+  type Look,
   type Music,
   type Op,
   type Resolved,
@@ -41,6 +47,7 @@ import { BeatStrip, type StripBeat } from '../components/BeatStrip'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
+import { grainTile } from '../grain'
 import { clock } from '../format'
 import { collapse } from '../motion'
 import { usePlayer, type DeckView } from '../usePlayer'
@@ -232,13 +239,23 @@ function Preview({
     : undefined
   const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined
   const showBig = big && time >= big.outStart - 0.1 && time <= big.outEnd + 0.7
+  // The look's colour, through the same matrix the export uses; a LUT shows in the export only.
+  const look = cut.look ?? null
+  const grade = useMemo(() => (look && changesColour(look) ? svgColourMatrix(lookMatrix(look)) : null), [look])
 
   return (
     <div className="cl-well" ref={well}>
       {cut.music && <Bed music={cut.music} resolved={resolved} time={time} playing={playing} />}
       <div className="cl-frame" style={{ width: box.w, height: box.h }}>
+        {grade && (
+          <svg className="cl-look-defs" aria-hidden="true" focusable="false">
+            <filter id="cl-look" colorInterpolationFilters="sRGB">
+              <feColorMatrix type="matrix" values={grade} />
+            </filter>
+          </svg>
+        )}
         {mediaUrl ? (
-          <div className="cl-decks">
+          <div className="cl-decks" style={grade ? { filter: 'url(#cl-look)' } : undefined}>
             {views.map((view, d) => (
               <Deck
                 key={d}
@@ -256,6 +273,7 @@ function Preview({
         ) : (
           <span className="cl-frame-empty" />
         )}
+        {look && <LookOver look={look} playing={playing} />}
         {showBig && big && (
           <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
             {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}
@@ -296,6 +314,39 @@ function playsAs(t: Treatment): string | null {
     t.broll?.camera ? `cutaway with ${CAMERA_INFO[t.broll.camera.kind].label}` : null
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : null
+}
+
+/**
+ * The vignette and grain of a look, over the picture and under the captions:
+ * the vignette on the curve ffmpeg draws, the grain a texture as strong as
+ * the export's, moving while the video plays.
+ */
+function LookOver({ look, playing }: { look: Look; playing: boolean }): JSX.Element | null {
+  const vignette = look.vignette ?? 0
+  const grain = look.grain ?? 0
+  const tile = useMemo(() => (grain > 0 ? grainTile(grainSpread(grain)) : null), [grain])
+  if (vignette <= 0 && !tile) return null
+  return (
+    <>
+      {vignette > 0 && (
+        <div
+          className="cl-look-vignette"
+          style={{
+            background: `radial-gradient(circle farthest-corner at 50% 50%, ${vignetteStops(vignette)
+              .map((s) => `rgb(0 0 0 / ${s.alpha.toFixed(3)}) ${(s.at * 100).toFixed(1)}%`)
+              .join(', ')})`
+          }}
+        />
+      )}
+      {tile && (
+        <div
+          className="cl-look-grain"
+          data-playing={playing ? '' : undefined}
+          style={{ backgroundImage: `url(${tile})` }}
+        />
+      )}
+    </>
+  )
 }
 
 /** The level a voice is usually recorded at, which the preview, playing the recording as it is, has to assume. */

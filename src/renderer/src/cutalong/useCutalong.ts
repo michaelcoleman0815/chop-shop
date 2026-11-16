@@ -35,6 +35,8 @@ import {
   describePlan,
   findPreset,
   ideaStarts,
+  LOOK_COMMANDS,
+  lookCommand,
   onBeatOps,
   parseCommand,
   planStyle,
@@ -199,10 +201,23 @@ const ACTION_COMMANDS: Preset[] = [
       ['still', 'Still', 'Hold the frame still again: /still'],
       ['music', 'Music', 'Put a music bed under it that dips when anyone speaks: /music, /music lofi, /music off'],
       ['polish', 'Voice polish', 'Clean up the voice: /polish, /polish light, /polish off'],
-      ['onbeat', 'Cut on the beat', 'Land B-roll and held shots on the music’s beats: /onbeat']
+      ['onbeat', 'Cut on the beat', 'Land B-roll and held shots on the music’s beats: /onbeat'],
+      ['look', 'Look', 'Grade the picture: /look warm, /look contrast 0.2, /look off'],
+      ['lut', 'LUT', 'Put a .cube LUT on the picture: /lut, /lut Kodak 2383, /lut 70%'],
+      ['exposure', 'Exposure', 'Brighten or darken the picture, in stops: /exposure +0.3'],
+      ['contrast', 'Contrast', 'More or less contrast: /contrast 0.2, /contrast -0.1'],
+      ['saturation', 'Saturation', 'More or less colour: /saturation 0.2, /saturation -0.3'],
+      ['warmth', 'Warmth', 'Warmer or cooler: /warmth 0.3, /warmth -0.2'],
+      ['tint', 'Tint', 'Toward magenta or green: /tint 0.1, /tint -0.1'],
+      ['grain', 'Grain', 'Film grain over the picture: /grain, /grain 0.5, /grain off'],
+      ['vignette', 'Vignette', 'Darken the corners: /vignette, /vignette 0.6, /vignette off'],
+      ['sharpen', 'Sharpen', 'Crisper detail: /sharpen, /sharpen 0.6, /sharpen off']
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
+
+/** The colour commands, by name; the named looks are presets. */
+const COLOUR_COMMANDS = new Set(['look', 'lut', ...Object.keys(LOOK_COMMANDS)])
 
 /** The camera commands, by name. */
 const CAMERA_COMMANDS = new Set(['kenburns', 'pushin', 'pullout', 'pan', 'punchin', 'shake', 'focus', 'still'])
@@ -1354,6 +1369,63 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /**
+   * /look and the settings it turns (/exposure, /contrast, /saturation,
+   * /warmth, /tint, /grain, /vignette, /sharpen), and /lut, which finds a
+   * .cube file by name in the LUT folders, or asks for one.
+   */
+  const colourCommand = useCallback(
+    async (command: string, rest: string, where: 'thread' | 'panel'): Promise<void> => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can grade it.')
+        return
+      }
+      const cut = currentCut(d)
+      const read = lookCommand(command, rest, cut.look)
+      if ('say' in read) {
+        say(read.say)
+        return
+      }
+      let ops: Op[]
+      if ('lut' in read) {
+        let path: string | null
+        if (read.lut.name) {
+          const want = read.lut.name.toLowerCase()
+          const all = await api.listLuts()
+          const hit =
+            all.find((l) => l.name.toLowerCase() === want) ?? all.find((l) => l.name.toLowerCase().includes(want))
+          if (!hit) {
+            say(`I found no LUT called “${read.lut.name}”. /lut on its own lets you choose a .cube file.`)
+            return
+          }
+          path = hit.path
+        } else path = await api.chooseLut()
+        if (!path) return
+        ops = [{ op: 'look', set: { lut: { path, strength: read.lut.strength ?? cut.look?.lut?.strength ?? 1 } } }]
+      } else ops = read.ops
+      const done = applyAsVersion(ops, 'The look has changed.')
+      if (!done) {
+        const trial = applyOps(cut, ops, { words: d.words, sources: d.sources })
+        say(trial.rejected[0]?.reason ?? 'That is already how it looks.')
+        return
+      }
+      // A LUT is the one part of a look the preview cannot draw.
+      const lut = 'lut' in read ? ' The preview shows the look without the LUT; the export applies it.' : ''
+      say(`v${done.n} is ready. ${done.summary}${lut}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   const runCommand = useCallback(
     async (
       command: string,
@@ -1376,6 +1448,10 @@ export function useCutalong() {
       }
       if (command === 'music' || command === 'polish' || command === 'onbeat') {
         await soundCommand(command, rest, where)
+        return
+      }
+      if (COLOUR_COMMANDS.has(command)) {
+        await colourCommand(command, rest, where)
         return
       }
       if (command === 'jcut' || command === 'lcut') {
@@ -1434,6 +1510,7 @@ export function useCutalong() {
     [
       applyAsVersion,
       cameraCommand,
+      colourCommand,
       findBroll,
       findIcon,
       push,

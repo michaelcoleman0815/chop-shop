@@ -19,6 +19,8 @@ export type CutalongApi = Pick<
   | 'analyzeMusic'
   | 'findMusic'
   | 'chooseAudio'
+  | 'listLuts'
+  | 'chooseLut'
   | 'onCutProgress'
   | 'planEdit'
   | 'studyInspiration'

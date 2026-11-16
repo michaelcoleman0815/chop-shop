@@ -3,7 +3,9 @@ import {
   CAMERA_KINDS,
   currentCut,
   currentVersion,
+  describeLook,
   indexWords,
+  NAMED_LOOKS,
   resolveCut,
   TRANSITION_KINDS,
   type EditDoc,
@@ -23,6 +25,11 @@ import { offCameraLine } from '../shared/vision/speakers'
  * the source transcript changes only when the footage does, and only the cut,
  * the notes and the ask change from one request to the next. They go last.
  */
+
+/** The named looks' settings, as the planner reads them. */
+const NAMED_LIST = Object.values(NAMED_LOOKS)
+  .map(({ look: { name, ...settings } }) => `${name} ${JSON.stringify(settings)}`)
+  .join('; ')
 
 export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video editor people talk to. You receive a recording's transcript, the current cut, and a request (a typed message or a list of notes). You answer with edit operations that carry out the request, a one-sentence summary of what changed, and a short reply.
 
@@ -69,6 +76,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"camera","beats":["b4"],"move":null}: hold the frame still again.
 - {"op":"voice","polish":0.6}: clean up the voice: rumble, hiss and harsh esses out, levels evened, presence lifted. 0 leaves it as recorded, 1 is the most.
 - {"op":"music","set":{"levelDb":-15,"duckDb":12}}: change the music bed: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. Set "path" only to a file the request names. {"op":"music","set":null} takes it out.
+- {"op":"look","set":{"name":"warm","temperature":0.4,"saturation":0.08,"contrast":0.05},"replace":true}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage; their settings: ${NAMED_LIST}. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1. Without "replace" the settings change the look already there; 0 takes one away. {"op":"look","set":null} takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ## How to edit
@@ -80,6 +88,7 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 - If nothing can be done, return no ops and say why in reply.
 - Hard cuts are the default. Add a transition only where it is asked for, or at a change of section when asked to "add transitions"; between a talking head and B-roll a dissolve or a short push reads cleanest. Never put one on every beat unless asked.
 - Camera moves keep stills and long held shots alive: a ken-burns or drift on a product still, a drift on a long talking beat. Put a move on fewer than half the beats unless asked, and never two kinds in a row on the same picture.
+- Leave the colour alone unless asked. For tech and product videos, "clean" keeps colour true; save warm, cool, cinematic and vintage for when someone asks for a mood.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
 
 ## Takes
@@ -165,6 +174,24 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     of: z.enum(['beat', 'cutaway']).optional()
   }),
   z.object({ op: z.literal('voice'), polish: z.number() }),
+  z.object({
+    op: z.literal('look'),
+    set: z
+      .object({
+        name: z.string().optional(),
+        exposure: z.number().optional(),
+        contrast: z.number().optional(),
+        saturation: z.number().optional(),
+        temperature: z.number().optional(),
+        tint: z.number().optional(),
+        lift: z.number().optional(),
+        sharpen: z.number().optional(),
+        vignette: z.number().optional(),
+        grain: z.number().optional()
+      })
+      .nullable(),
+    replace: z.boolean().optional()
+  }),
   z.object({
     op: z.literal('music'),
     set: z
@@ -318,6 +345,7 @@ export function renderRequest(
     cut.loudness === null ? 'loudness as recorded' : `loudness ${cut.loudness} LUFS`
   ]
   if (cut.voice && cut.voice.polish > 0) settings.push(`voice polish ${cut.voice.polish}`)
+  if (cut.look) settings.push(`look ${describeLook(cut.look)}`)
   if (cut.music) {
     const name = cut.music.path.split(/[\\/]/).pop()
     const bpm = cut.music.bpm ? `, ${Math.round(cut.music.bpm)} BPM` : ''
