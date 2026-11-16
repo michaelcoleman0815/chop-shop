@@ -1,4 +1,6 @@
 import { clock, seconds } from '../presets/preset'
+import { currentCut } from '../edit/doc'
+import { resolveCut } from '../edit/resolve'
 import type { EditDoc } from '../edit/schema'
 import { CLIP_PROFILES, type ClipProfileId } from './profile'
 import type { Picker, Region } from './schema'
@@ -123,9 +125,20 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
 
   const chips: string[] = []
   if (n > 0) {
-    const profile = CLIP_PROFILES[found.recordings.find((r) => !r.none)?.profile ?? 'talk']
-    const lengths = found.clips.map((c) => c.endSec - c.startSec)
-    chips.push(`${profile.label}, ${clock(Math.min(...lengths))} to ${clock(Math.max(...lengths))}`)
+    // What the clips are cut as, and how long they run now, as their cards say.
+    const kinds = [
+      ...new Set(
+        found.recordings
+          .filter((r) => found.clips.some((c) => c.source === r.path))
+          .map((r) => CLIP_PROFILES[r.profile].label)
+      )
+    ].map((label, i) => (i === 0 ? label : label.toLowerCase()))
+    const lengths = found.clips.map((c) =>
+      c.doc ? resolveCut(currentCut(c.doc), c.doc.words, c.doc.sources).durationSec : c.endSec - c.startSec
+    )
+    const shortest = clock(Math.min(...lengths))
+    const longest = clock(Math.max(...lengths))
+    chips.push(`${listOf(kinds)}, ${shortest === longest ? shortest : `${shortest} to ${longest}`}`)
     chips.push('Vertical 9:16')
     chips.push(brandCaptions ? 'Captions in your brand' : 'Captions on')
   }

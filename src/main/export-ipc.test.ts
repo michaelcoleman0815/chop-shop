@@ -28,11 +28,7 @@ vi.mock('electron', async () => {
     },
     ipcMain: { handle: (channel: string, fn: Handler) => fake.handlers.set(channel, fn) },
     dialog: {},
-    net: {
-      fetch: async () => {
-        throw new Error('No network in this test.')
-      }
-    },
+    net: { fetch: async () => { throw new Error('No network in this test.') } },
     safeStorage: { isEncryptionAvailable: () => false }
   }
 })
@@ -44,11 +40,7 @@ vi.mock('./ffmpeg', async () => {
     probe: async () => ({ durationSec: 6, width: 320, height: 180, fps: 30 })
   }
 })
-vi.mock('./transcribe', () => ({
-  hasModel: () => true,
-  downloadModel: async () => '/m',
-  transcribe: async () => ({ words: [] })
-}))
+vi.mock('./transcribe', () => ({ hasModel: () => true, downloadModel: async () => '/m', transcribe: async () => ({ words: [] }) }))
 vi.mock('./analysis-cache', () => ({ readAnalysis: async () => null }))
 
 import { registerCutalongIpc } from './cutalong'
@@ -75,9 +67,7 @@ function decodes(ffmpeg: string, path: string): boolean {
 
 /** How long the file says it runs. */
 function seconds(ffmpeg: string, path: string): number {
-  const d = /Duration: (\d+):(\d+):([\d.]+)/.exec(
-    spawnSync(ffmpeg, ['-hide_banner', '-i', path], { encoding: 'utf8' }).stderr
-  )
+  const d = /Duration: (\d+):(\d+):([\d.]+)/.exec(spawnSync(ffmpeg, ['-hide_banner', '-i', path], { encoding: 'utf8' }).stderr)
   return d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : 0
 }
 
@@ -229,3 +219,4 @@ describe.skipIf(!FFMPEG)('exporting through the app', () => {
     expect(seconds(ffmpeg, r.outputPath)).toBeCloseTo(4, 1)
   }, 120000)
 })
+

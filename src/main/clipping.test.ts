@@ -207,9 +207,17 @@ describe('clipping a long recording, start to finish', () => {
   })
 
   it('says so when a recording is too short to clip, or has nobody talking in it', async () => {
-    const short = await findClips({ paths: ['/rec/short.mp4'], ask: '' }, tools(), quiet)
+    const counted: Counted = { transcribe: 0, listen: 0, frozen: 0 }
+    const stages: string[] = []
+    const short = await findClips({ paths: ['/rec/short.mp4'], ask: '' }, tools({}, counted), (p) =>
+      stages.push(p.stage)
+    )
     expect(short.ok && short.clips).toEqual([])
     expect(short.ok && short.reply.text).toMatch(/^short\.mp4 runs 0:48, too short to cut clips from/)
+    // A short already is not heard at all, and nothing shows as under way, so
+    // the chat can hand "turn this into shorts" on a short to the edit instead.
+    expect(counted).toEqual({ transcribe: 0, listen: 0, frozen: 0 })
+    expect(stages).toEqual([])
     const silent = await findClips({ paths: ['/rec/silent.mp4'], ask: '' }, tools(), quiet)
     expect(silent.ok && silent.reply.text).toBe(
       'I heard nobody talking in silent.mp4, so there is nothing to clip: clips are cut on what is said.'

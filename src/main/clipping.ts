@@ -24,6 +24,7 @@ import {
   clipDoc,
   clipsReply,
   measureRecording,
+  MIN_RECORDING_SEC,
   planRecording,
   readClipAsk,
   shapePicks,
@@ -435,6 +436,14 @@ export async function findClips(
     const kept = await readKept(tools.cacheDir, path)
     let cached = false
 
+    // A recording that is a short already: nothing to hear, and the reply says why.
+    if (meta.durationSec < MIN_RECORDING_SEC) {
+      const facts: RecordingFacts = { path, durationSec: meta.durationSec, words: [] }
+      read.push({ facts, plan: planRecording(facts, ask, niche), meta, cached })
+      before += share
+      continue
+    }
+
     // Every word: from the edit it is already in, kept from before, or heard now.
     let words = req.known?.[path] ?? kept?.words ?? null
     if (words) cached = true
@@ -503,18 +512,21 @@ export async function findClips(
     before += share
   }
 
-  // The moments, by whoever picks them.
-  let engine = await tools.engine()
+  // The moments, by whoever picks them. With nothing long enough to clip,
+  // nobody is asked, and nothing shows as under way.
+  const live = read.some((r) => !r.plan.none)
+  let engine: { by: Picker; model: string | null } = live ? await tools.engine() : { by: 'measured', model: null }
   let fellBack = false
-  progress({
-    stage:
-      engine.by === 'claude'
-        ? 'Claude is reading the transcript'
-        : engine.by === 'local'
-          ? `${engine.model} is reading the transcript`
-          : 'Finding the moments',
-    percent: engine.by === 'measured' ? 95 : null
-  })
+  if (live)
+    progress({
+      stage:
+        engine.by === 'claude'
+          ? 'Claude is reading the transcript'
+          : engine.by === 'local'
+            ? `${engine.model} is reading the transcript`
+            : 'Finding the moments',
+      percent: engine.by === 'measured' ? 95 : null
+    })
   type Pick = {
     path: string
     startSec: number
@@ -628,7 +640,7 @@ export async function findClips(
     ...(fellBack ? { fellBack } : {})
   }
   for (const t of found.timings) console.log(`[clipping] ${t.step}: ${(t.ms / 1000).toFixed(2)} s`)
-  progress({ stage: 'Done', percent: 100 })
+  if (live) progress({ stage: 'Done', percent: 100 })
   return { ok: true, ...found, reply: clipsReply(found, brandCaptions) }
 }
 
