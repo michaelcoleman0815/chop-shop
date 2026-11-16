@@ -1,5 +1,6 @@
 import { normWord } from '../raw/text'
 import type { Clip, Moment, Scene } from './schema'
+import { inNightBefore, NIGHT_ENDS_HOUR, wallClock, zoneAt, type Footage } from './describe'
 
 /**
  * What a person asks of a vlog, in their words: a length ("make it 10
@@ -152,10 +153,15 @@ const STOP = new Set(
   )
 )
 
-/** A scene's time of day in words, for "the morning", "the evening". */
-function partOfDay(at: number | null): string[] {
+/**
+ * A scene's time of day in words, for "the morning", "the evening", on the
+ * clock where it was shot: the small hours are the night only when that
+ * night was being filmed, as the scene's name says.
+ */
+function partOfDay(at: number | null, zoneMin: number | null, footage: Footage): string[] {
   if (at === null) return []
-  const h = new Date(at * 1000).getHours()
+  const h = wallClock(at, zoneMin).getUTCHours()
+  if (h < NIGHT_ENDS_HOUR) return inNightBefore(at, zoneMin, footage) ? ['night'] : ['morning']
   if (h < 12) return ['morning']
   if (h < 17) return ['afternoon', 'day']
   if (h < 21) return ['evening']
@@ -179,20 +185,27 @@ export function sceneNamed(
   if (numbered) return scenes[Number(numbered[1]) - 1] ?? null
   const time = /\b(\d{1,2})[:.](\d{2})\s*(am|pm)?\b/.exec(t)
   if (time) {
-    let h = Number(time[1]) % 12
-    if (time[3] === 'pm' || (!time[3] && Number(time[1]) >= 12)) h += 12
-    if (!time[3] && Number(time[1]) < 12 && Number(time[1]) >= 1 && Number(time[1]) <= 6) h += 12
-    const minute = h * 60 + Number(time[2])
+    const hour = Number(time[1])
+    const min = Number(time[2])
+    // A bare 1:00 to 6:59 is mostly the afternoon, but a day can start at
+    // 4:30 or a night run on to it: the other reading when a scene is nearer it.
+    const readings = time[3]
+      ? [((hour % 12) + (time[3] === 'pm' ? 12 : 0)) * 60 + min]
+      : hour >= 1 && hour <= 6
+        ? [(hour + 12) * 60 + min, hour * 60 + min]
+        : [(hour % 12) * 60 + (hour >= 12 ? 720 : 0) + min]
     let best: { scene: Scene; d: number } | null = null
-    for (const s of scenes) {
-      if (s.startAt === null) continue
-      const d0 = new Date(s.startAt * 1000)
-      const d1 = new Date((s.endAt ?? s.startAt) * 1000)
-      const a = d0.getHours() * 60 + d0.getMinutes()
-      const b = d1.getHours() * 60 + d1.getMinutes()
-      const d = minute < a ? a - minute : minute > b ? minute - b : 0
-      if (!best || d < best.d) best = { scene: s, d }
-    }
+    for (const minute of readings)
+      for (const s of scenes) {
+        if (s.startAt === null) continue
+        // The times the reply and Details showed: the clock where it was shot.
+        const d0 = wallClock(s.startAt, zoneAt(clips, s.startAt))
+        const d1 = wallClock(s.endAt ?? s.startAt, zoneAt(clips, s.endAt ?? s.startAt))
+        const a = d0.getUTCHours() * 60 + d0.getUTCMinutes()
+        const b = d1.getUTCHours() * 60 + d1.getUTCMinutes()
+        const d = minute < a ? a - minute : minute > b ? minute - b : 0
+        if (!best || d < best.d) best = { scene: s, d }
+      }
     if (best && best.d <= 45) return best.scene
   }
   const wanted = keywords(t)
@@ -204,7 +217,7 @@ export function sceneNamed(
       s.name,
       ...moments.filter((m) => own.has(m.clip)).map((m) => m.description),
       ...clips.filter((c) => own.has(c.id)).map((c) => `${c.name} ${said.get(c.id) ?? ''}`),
-      ...partOfDay(s.startAt)
+      ...partOfDay(s.startAt, zoneAt(clips, s.startAt), scenes)
     ].join(' ')
     const have = new Set(keywords(text))
     const score = wanted.filter((w) => have.has(w) || [...have].some((h) => h.startsWith(w) || w.startsWith(h))).length

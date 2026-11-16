@@ -1,5 +1,6 @@
 import { picturesIn } from '../motion/apply'
 import { applyOps, type OpsResult } from './ops'
+import { pickedBeats } from './range'
 import { sameValue } from './same'
 import {
   DEFAULT_CAPTIONS,
@@ -140,7 +141,9 @@ export function createDoc(input: {
     captions: { ...DEFAULT_CAPTIONS },
     aspect: first.height > first.width ? 'vertical' : 'original',
     loudness: DEFAULT_LOUDNESS,
-    motion: []
+    motion: [],
+    // Said outright: an edit that says nothing was made before the fill, and keeps its crop.
+    fill: 'auto'
   }
   return {
     v: 1,
@@ -240,18 +243,23 @@ export interface CommitResult {
 }
 
 /**
- * The ops a version keeps. The brand an edit is made in is on the version's
- * cut (Cut.brand), and a build from before brands cannot read the op that
- * set it, so it is never saved: nothing replays saved ops, since every
- * version holds its whole cut.
+ * Ops a version never keeps, because the version's cut says what they set
+ * and Cutalong 0.2.13 cannot open a project with an op it does not know: the
+ * brand an edit is made in (Cut.brand) and how pictures fill the frame
+ * (Cut.fill). Nothing that reads a version's ops (what is learned from them,
+ * a vlog joining the next day's clips, why a length cut a line) needs them,
+ * and nothing replays saved ops, since every version holds its whole cut.
  */
+const UNSAVED: ReadonlySet<Op['op']> = new Set(['brand', 'fill'])
+
+/** The ops a version keeps. */
 export function savedOps(ops: Op[]): Op[] {
-  return ops.some((o) => o.op === 'brand') ? ops.filter((o) => o.op !== 'brand') : ops
+  return ops.some((o) => UNSAVED.has(o.op)) ? ops.filter((o) => !UNSAVED.has(o.op)) : ops
 }
 
-/** An edit as it is saved: no version keeps a brand op, even one saved before that was so. */
-export function withoutBrandOps(doc: EditDoc): EditDoc {
-  if (!doc.versions.some((v) => v.ops.some((o) => o.op === 'brand'))) return doc
+/** An edit as it is saved: no version keeps an op it never keeps, even one saved before that was so. */
+export function withSavedOps(doc: EditDoc): EditDoc {
+  if (!doc.versions.some((v) => v.ops.some((o) => UNSAVED.has(o.op)))) return doc
   return { ...doc, versions: doc.versions.map((v) => ({ ...v, ops: savedOps(v.ops) })) }
 }
 
@@ -271,7 +279,7 @@ export function commit(
     assets: doc.assets
   })
   const kept = savedOps(applied)
-  // Only a brand op, naming the brand the edit is already in, changes nothing.
+  // Only a brand or fill op, naming what the edit already has, changes nothing.
   if (applied.length === 0 || (kept.length === 0 && sameValue(cut, currentCut(doc)))) return { doc, applied, rejected }
   const version: Version = {
     n: currentVersion(doc).n + 1,
@@ -375,15 +383,35 @@ export function undoTarget(doc: EditDoc): number | null {
   return origin(doc, doc.versions[i - 1]).n
 }
 
-export function addNote(doc: EditDoc, text: string, beat: string | null = null): EditDoc {
+/**
+ * A note left on the edit, on the beat under the playhead or on a stretch
+ * picked on the strip. A note on a stretch keeps the beats it held, and is
+ * left on one of them: the playhead's, when it is among them, or the first.
+ */
+export function addNote(
+  doc: EditDoc,
+  text: string,
+  beat: string | null = null,
+  stretch: { from: string; to: string } | null = null
+): EditDoc {
   const trimmed = text.trim()
   if (!trimmed) return doc
+  const held = stretch ? pickedBeats(currentCut(doc), { anchor: stretch.from, focus: stretch.to }) : []
+  const range = stretch && held.length ? { from: stretch.from, to: stretch.to, beats: held } : null
+  if (range && !(beat && held.includes(beat))) beat = held[0]
   let max = 0
   for (const note of doc.notes) {
     const m = /^n(\d+)$/.exec(note.id)
     if (m) max = Math.max(max, Number(m[1]))
   }
-  const note: Note = { id: `n${max + 1}`, text: trimmed, beat, status: 'open', version: currentVersion(doc).n }
+  const note: Note = {
+    id: `n${max + 1}`,
+    text: trimmed,
+    beat,
+    ...(range ? { range } : {}),
+    status: 'open',
+    version: currentVersion(doc).n
+  }
   return { ...doc, notes: [...doc.notes, note] }
 }
 

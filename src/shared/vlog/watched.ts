@@ -44,6 +44,12 @@ export interface WatchedClip {
   hasVideo: boolean
   hasAudio: boolean
   recordedAt: string | null
+  /**
+   * The camera's time zone, in minutes east of UTC, when it gave one with
+   * its time; null when it gave none; absent in a clip watched before it was
+   * read (main/vlog-watch reads it then).
+   */
+  zoneMin?: number | null
   camera: string
   gps: Gps | null
   /** Null for a file with no picture. */

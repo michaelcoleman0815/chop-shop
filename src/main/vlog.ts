@@ -27,6 +27,7 @@ import type { AudioMap } from '../shared/audio/map'
 import { aspectFor, extendShoot, shootDoc, talkStrikes, vlogMusic, withStory } from '../shared/vlog/build'
 import { emptyStory, finishShoot, mergeTalk, type HeardClip } from '../shared/vlog/compose'
 import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, vlogShown, withOps } from '../shared/vlog/plan'
+import { wallClock } from '../shared/vlog/describe'
 import { leftOutSentence, scenesChanged, shapeSentence, storyReply, type VlogReply } from '../shared/vlog/reply'
 import { parseVlogAsk, type VlogAsk } from '../shared/vlog/request'
 import type { Moment, Story, Vlog } from '../shared/vlog/schema'
@@ -472,15 +473,14 @@ export async function makeVlog(
   }
 }
 
-/** A vlog's title: what its files have in common, else the day it was shot. */
+/** A vlog's title: what its files have in common, else the day it was shot, where it was shot. */
 function titleFor(paths: string[], watched: WatchedClip[]): string {
   const first = watched
-    .map((w) => w.recordedAt)
-    .filter((t): t is string => !!t)
-    .sort((a, b) => Date.parse(a) - Date.parse(b))[0]
+    .filter((w) => !!w.recordedAt)
+    .sort((a, b) => Date.parse(a.recordedAt as string) - Date.parse(b.recordedAt as string))[0]
   if (first) {
-    const d = new Date(first)
-    return `Vlog ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
+    const d = wallClock(Date.parse(first.recordedAt as string) / 1000, first.zoneMin ?? null)
+    return `Vlog ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}`
   }
   return paths.length === 1 ? basename(paths[0], extname(paths[0])) : 'Vlog'
 }

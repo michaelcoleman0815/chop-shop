@@ -70,6 +70,8 @@ const api = {
         intake?: { sentence: string; facts: string[] }
         /** What watching the speaker's mouth changed or marked, in a sentence or two. */
         notice?: string | null
+        /** What whisper printed when it could not transcribe a clip, for Details. */
+        details?: { label: string; value: string }[]
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:prepare', input),
@@ -85,6 +87,7 @@ const api = {
         warning: string | null
         lined: { name: string; sound: string; offsetSec: number }[]
         notice?: string | null
+        details?: { label: string; value: string }[]
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:extend', req),
@@ -224,8 +227,12 @@ const api = {
     ipcRenderer.invoke('brands:save', brands),
   learnBrand: (
     paths: string[]
-  ): Promise<{ learned: { path: string; title: string; facts: InspirationFacts }[]; failed: string[] }> =>
-    ipcRenderer.invoke('brand:learn', paths),
+  ): Promise<{
+    learned: { path: string; title: string; facts: InspirationFacts }[]
+    failed: string[]
+    /** What whisper printed when it could not hear a video, for Details. */
+    details?: { label: string; value: string }[]
+  }> => ipcRenderer.invoke('brand:learn', paths),
   onBrandProgress: (cb: (p: Progress) => void): (() => void) => listen('brand:progress', cb),
   // Learning from your edits: recordings and the video made from them, lined up on this computer.
   learnChoose: (kind: 'recordings' | 'finished'): Promise<string[]> => ipcRenderer.invoke('learn:choose', kind),
@@ -250,8 +257,10 @@ const api = {
     avoid?: { path: string; startSec: number; endSec: number }[]
     /** The chat's brand, by id. */
     brand?: string | null
-  }): Promise<({ ok: true; reply: ClipsReply } & ClipsFound) | { ok: false; message: string }> =>
-    ipcRenderer.invoke('clips:find', req),
+  }): Promise<
+    | ({ ok: true; reply: ClipsReply } & ClipsFound)
+    | { ok: false; message: string; details?: { label: string; value: string }[] }
+  > => ipcRenderer.invoke('clips:find', req),
   onClipsProgress: (cb: (p: Progress) => void): (() => void) => listen('clips:progress', cb),
   /**
    * A vlog from a shoot: every clip watched, the talking heard, the moments

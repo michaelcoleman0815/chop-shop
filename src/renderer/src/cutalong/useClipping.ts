@@ -5,6 +5,7 @@ import {
   avoidRanges,
   clipOfDoc,
   keptClips,
+  markDocExported,
   markExported,
   setKept,
   toExport,
@@ -18,6 +19,7 @@ import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Msg } from './components/Message'
 import type { Progress } from './components/Working'
+import { exportWait, type ExportJob } from './exporting'
 import { clock, fileName, isAudioFile, isVideoFile } from './format'
 import { uploadSetReply } from './upload-reply'
 
@@ -52,6 +54,8 @@ export interface ClippingDeps {
   ensureProject: (name: string) => Promise<Project>
   setToast: (t: { text: string; path?: string; error?: boolean; chat?: boolean } | null) => void
   during: <T>(work: () => Promise<T>) => Promise<T>
+  /** The export running now, this one or the editor's: one at a time (exporting.ts). */
+  exportingNow: MutableRefObject<ExportJob | null>
   /** Clears what belongs to the edit on screen: offers, a waiting command, a picked graphic, the panel. */
   clearEditor: () => void
   /** The chat's brand, by id, for its kind of video and caption look. */
@@ -75,7 +79,6 @@ export function useClipping(deps: ClippingDeps) {
   const [set, setSet] = useState<ClipSet | null>(null)
   const [jobs, setJobs] = useState<Record<string, ClipJob>>({})
   const [exporting, setExporting] = useState<{ since: number; progress: Progress } | null>(null)
-  const exportingRef = useRef(false)
   /** "/clipping" typed before any footage: the next drop is clipped. */
   const pending = useRef<string | null>(null)
   const d = useRef(deps)
@@ -145,6 +148,15 @@ export function useClipping(deps: ClippingDeps) {
     [update]
   )
 
+  /** A clip exported from the editor: kept on its card, so Export all makes no copy of it. */
+  const exported = useCallback(
+    (docId: string, out: { path: string; version: number; at: string }): void => {
+      const s = current()
+      if (s && clipOfDoc(s, docId)) update(markDocExported(s, docId, out))
+    },
+    [update]
+  )
+
   /**
    * Finds clips in long recordings: the ones dropped with the command, or
    * the chat's own footage, or the recordings this set came from.
@@ -198,7 +210,12 @@ export function useClipping(deps: ClippingDeps) {
       if (!d.current.projectRef.current) await d.current.ensureProject(fileName(paths[0]).replace(/\.[^.]+$/, ''))
       const reply = id ?? push({ role: 'assistant', text: '' })
       if (!r.ok) {
-        patch(reply, { progress: null, text: `I couldn't find clips. ${sentence(r.message)}`, error: true })
+        patch(reply, {
+          progress: null,
+          text: `I couldn't find clips. ${sentence(r.message)}`,
+          details: r.details,
+          error: true
+        })
         return true
       }
       const at = new Date().toISOString()
@@ -259,9 +276,11 @@ export function useClipping(deps: ClippingDeps) {
    * finished clip plays in the chat the way an export does.
    */
   const exportAll = useCallback(async (): Promise<void> => {
-    const { push, setToast, during } = d.current
-    if (exportingRef.current) {
-      setToast({ text: "I'm still exporting the clips." })
+    const { push, setToast, during, exportingNow } = d.current
+    const wait = exportWait(exportingNow.current, { kind: 'clips' })
+    if (wait) {
+      // In the chat, where it stays: the toast is the running export's, and its next count would replace it.
+      push({ role: 'assistant', text: wait })
       return
     }
     const clips = toExport(current())
@@ -269,7 +288,7 @@ export function useClipping(deps: ClippingDeps) {
       push({ role: 'assistant', text: 'Every clip is dropped, so there is nothing to export. Keep one and try again.' })
       return
     }
-    exportingRef.current = true
+    exportingNow.current = { kind: 'clips' }
     const since = Date.now()
     const made: string[] = []
     const failed: string[] = []
@@ -332,7 +351,7 @@ export function useClipping(deps: ClippingDeps) {
         if (r.upload) kits.push({ name: clip.title, kit: r.upload })
       }
     } finally {
-      exportingRef.current = false
+      exportingNow.current = null
       setExporting(null)
     }
     const all = made.length === clips.length
@@ -358,7 +377,7 @@ export function useClipping(deps: ClippingDeps) {
     )
   }, [update])
 
-  return { set, jobs, exporting, load, open, leave, keep, run, takePending, exportAll, isClip }
+  return { set, jobs, exporting, load, open, leave, keep, run, takePending, exportAll, exported, isClip }
 }
 
 export type Clipping = ReturnType<typeof useClipping>

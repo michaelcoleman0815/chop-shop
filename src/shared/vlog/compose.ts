@@ -2,7 +2,7 @@ import { wordsFromTranscript } from '../edit/doc'
 import type { AudioMap } from '../audio/map'
 import type { EditDoc, Op, Source, Word } from '../edit/schema'
 import { aspectFor, shootDoc, sourceFor, talkStrikes, withStory } from './build'
-import { describeFromMeasures, nameScene } from './describe'
+import { describeFromMeasures, nameScene, zoneAt } from './describe'
 import { planLocally, type Planned } from './plan'
 import { storyReply, type VlogReply } from './reply'
 import type { VlogAsk } from './request'
@@ -96,7 +96,12 @@ export function finishShoot(
           }
     })
   const times = shoot.scenes.map((s) => s.startAt).filter((t): t is number => t !== null)
-  const span = { firstAt: times.length ? Math.min(...times) : null, lastAt: times.length ? Math.max(...times) : null }
+  const span = {
+    firstAt: times.length ? Math.min(...times) : null,
+    lastAt: times.length ? Math.max(...times) : null,
+    zone: (t: number) => zoneAt(clips, t),
+    footage: shoot.scenes
+  }
   const scenes = shoot.scenes.map((s, k) => ({ ...s, name: nameScene(s, moments, k, span) }))
   return {
     v: 1,

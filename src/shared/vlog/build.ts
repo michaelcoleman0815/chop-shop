@@ -1,11 +1,12 @@
 import { commit, createDoc, currentCut, currentVersion } from '../edit/doc'
-import { applyOps } from '../edit/ops'
+import { applyOps, type OpContext } from '../edit/ops'
 import type { AudioMap } from '../audio/map'
 import type { Cut, EditDoc, Op, Source, Word } from '../edit/schema'
 import type { Music } from '../edit/audio'
 import { planTakes, strikeOps } from '../raw/plan'
 import { profileById } from '../raw/profiles'
 import { baseCut } from './talk'
+import { carryOps } from './carry'
 import type { Clip, StoryBeat, Vlog } from './schema'
 import type { WatchedClip } from './watched'
 
@@ -26,6 +27,17 @@ export function storyOps(beats: StoryBeat[], cut: Cut | null): Op[] {
       ops.push({ op: 'insert', to: i, beat: { source: b.clip, inSec: b.inSec, outSec: b.outSec } })
   })
   return ops
+}
+
+/**
+ * A story told in place of what the cut plays now, with what was done to
+ * the cut's beats carried to the beats that play the same moments (vlog/carry):
+ * the ops that apply, in order.
+ */
+export function retellOps(cut: Cut, beats: StoryBeat[], context: OpContext): Op[] {
+  const told = applyOps(cut, storyOps(beats, cut), context)
+  const carried = applyOps(told.cut, carryOps(cut, told.cut, context.words), context)
+  return [...told.applied, ...carried.applied]
 }
 
 /** Wide unless most of the footage was shot upright. */
@@ -168,7 +180,7 @@ export function extendShoot(
   const context = { words: grown.words, sources: grown.sources }
   const before = [...(more.music ? [more.music] : []), ...strikes]
   const cut = applyOps(currentCut(grown), before, context).cut
-  const ops = [...before, ...storyOps(vlog.story.beats, cut)]
+  const ops = [...before, ...retellOps(cut, vlog.story.beats, context)]
   const next = commit(grown, ops, summary, { preset: 'vlog' }).doc
   return { ...next, vlog: toldIn(vlog, currentVersion(next).n) }
 }
@@ -194,10 +206,13 @@ export function ontoLatest(latest: EditDoc, sent: EditDoc, made: EditDoc): EditD
     vlog: made.vlog
   }
   const last = currentVersion(made)
-  // The music and the strikes it made, then the story in place of whatever the cut plays now.
-  const before = last.ops.filter((o) => o.op !== 'remove' && o.op !== 'insert')
-  const cut = applyOps(currentCut(grown), before, { words: grown.words, sources: grown.sources }).cut
-  const ops = [...before, ...storyOps(made.vlog.story.beats, cut)]
+  // The music and the strikes it made, then the story in place of whatever the cut plays now,
+  // with what was done to the cut meanwhile carried onto it. What the made version carried
+  // from the edit as it was sent is not replayed: its beats are not these.
+  const before = last.ops.filter((o) => o.op === 'music' || o.op === 'strike')
+  const context = { words: grown.words, sources: grown.sources }
+  const cut = applyOps(currentCut(grown), before, context).cut
+  const ops = [...before, ...retellOps(cut, made.vlog.story.beats, context)]
   const next = commit(grown, ops, last.summary, { preset: 'vlog' }).doc
   return { ...next, vlog: toldIn(made.vlog, currentVersion(next).n) }
 }

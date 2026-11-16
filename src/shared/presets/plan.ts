@@ -13,6 +13,7 @@ import { describeLook, mergeLook, NAMED_LOOKS } from '../edit/look'
 import { placeChapters } from '../edit/chapters'
 import { LAYOUT_INFO } from '../edit/angles'
 import { describeFraming } from '../edit/reframe'
+import { describeFill } from '../edit/fill'
 import { describeSfx } from './sfx'
 import { syncSeconds } from './angles'
 import { clock, seconds, type StyleSpec } from './preset'
@@ -561,6 +562,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(describeLookOp(o, cut))
     } else if (o.op === 'reframe') {
       said.push(o.on ? 'the picture follows you' : 'the picture keeps the middle')
+    } else if (o.op === 'fill') {
+      said.push(describeFill(o.mode))
     } else if (o.op === 'framing') {
       const { who, one } = whoOf(o.beats, after)
       said.push(
@@ -607,8 +610,28 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
   if (treat.some((o) => (o.set.zoom ?? 1) > 1)) said.push('alternate shots punch in')
   const bigWords = treat.filter((o) => o.set.bigWord).length
   if (bigWords > 0) said.push(bigWords === 1 ? 'one big word lands' : `a big word lands in ${count(bigWords, 'beat')}`)
-  const bw = treat.filter((o) => o.set.bw === true).reduce((n, o) => n + o.beats.length, 0)
-  if (bw > 0) said.push(`${count(bw, 'cutaway')} ${bw === 1 ? 'goes' : 'go'} black and white`)
+  const bw = treat.filter((o) => o.set.bw === true).flatMap((o) => o.beats)
+  // Cutaways, as a style makes them; beats of someone talking, as a note on a stretch can.
+  const bwCutaways =
+    !cut ||
+    bw.every((id) => {
+      const t = cut.beats.find((b) => b.id === id)?.treatment
+      return !!t?.broll && t.frame !== 'speaker'
+    })
+  if (bw.length > 0 && bwCutaways)
+    said.push(`${count(bw.length, 'cutaway')} ${bw.length === 1 ? 'goes' : 'go'} black and white`)
+  else if (bw.length > 0) {
+    const { who, one } = whoOf(bw, after)
+    said.push(`${who} ${one ? 'goes' : 'go'} black and white`)
+  }
+  for (const on of [false, true]) {
+    const beats = treat.filter((o) => o.set.captions === on).flatMap((o) => o.beats)
+    if (beats.length === 0) continue
+    const { who, one } = whoOf(beats, after)
+    said.push(
+      on ? `${who} ${one ? 'shows' : 'show'} captions again` : `${who} ${one ? 'shows' : 'show'} no captions`
+    )
+  }
   if (removed > 0) said.push(`${count(removed, 'beat')} ${removed === 1 ? 'is' : 'are'} gone`)
   if (struck > 0) said.push(`${count(struck, 'stretch', 'stretches')} of words ${struck === 1 ? 'is' : 'are'} cut`)
   said.push(...motionPhrases(ops))

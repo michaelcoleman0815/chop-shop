@@ -82,6 +82,7 @@ import {
 } from '../shared/inspiration'
 import type { Transcript } from '../shared/types'
 import type { Brand } from '../shared/brand'
+import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 
 /**
  * The main-process side of Cutalong: turning footage into an edit document,
@@ -144,7 +145,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
           warning: read.notes.length ? read.notes.join(' ') : null,
           lined: read.lined,
           intake: read.intake,
-          notice: read.notice
+          notice: read.notice,
+          ...(read.details.length ? { details: read.details } : {})
         }
       } catch (err) {
         progress('Failed', 0)
@@ -216,6 +218,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       let doc = parsed.data
       const soundPaths = req.soundPaths ?? []
       const notes: string[] = []
+      const details: Detail[] = []
       const lined: Lined[] = []
       let notice: string | null = null
       if (soundPaths.length > 0) {
@@ -237,6 +240,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
           brand
         })
         notes.push(...read.notes)
+        details.push(...read.details)
         lined.push(...read.lined)
         notice = read.notice
         const names = fresh.map((p) => basename(p))
@@ -249,7 +253,14 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         )
       }
       progress('Ready', 100)
-      return { ok: true as const, doc, warning: notes.length ? notes.join(' ') : null, lined, notice }
+      return {
+        ok: true as const,
+        doc,
+        warning: notes.length ? notes.join(' ') : null,
+        lined,
+        notice,
+        ...(details.length ? { details } : {})
+      }
     } catch (err) {
       progress('Failed', 0)
       return { ok: false as const, message: message(err) }
@@ -540,6 +551,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       // for this: the picture alone answers most of the question.
       let speech: SpeechMeasures | null = null
       let note: string | null = null
+      let said: Detail[] = []
       const settings = getSettings()
       if (measures.hasAudio && hasModel(settings.whisperModel)) {
         try {
@@ -551,6 +563,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
           speech = measureSpeech(transcript.words)
         } catch (err) {
           note = `I measured the picture but couldn't listen to the speech. ${message(err)}`
+          said = saidDetails(toolSaid(err))
         }
       } else if (measures.hasAudio) {
         note = 'Speech pacing needs the transcription model, which is not downloaded yet.'
@@ -565,7 +578,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         style,
         reply: factsReply(facts),
         chips: describeStyle(style).slice(0, 3),
-        details: factDetails(facts),
+        details: [...factDetails(facts), ...said],
         command: suggestCommandName(channel ?? title, taken),
         note
       }
@@ -613,6 +626,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   ipcMain.handle('brand:learn', async (e, paths: string[]) => {
     const learned: { path: string; title: string; facts: ReturnType<typeof summarize> }[] = []
     const failed: string[] = []
+    const details: Detail[] = []
     const settings = getSettings()
     for (const [i, path] of paths.entries()) {
       const at = (f: number): number => Math.round(((i + f) / paths.length) * 100)
@@ -628,10 +642,11 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         learned.push({ path, title: basename(path, extname(path)), facts: summarize(measures, speech) })
       } catch (err) {
         failed.push(`${basename(path)}: ${message(err)}`)
+        details.push(...saidDetails(toolSaid(err), paths.length > 1 ? basename(path) : undefined))
       }
     }
     deps.send(e.sender, 'brand:progress', { stage: 'Done', percent: 100 })
-    return { learned, failed }
+    return { learned, failed, ...(details.length ? { details } : {}) }
   })
 
   // Material for an edit: files, image links, excerpts of videos at links,
@@ -818,10 +833,13 @@ async function readFootage(
   intake: { sentence: string; facts: string[] } | undefined
   /** What watching the speaker's mouth changed or marked, in a sentence or two. */
   notice: string | null
+  /** What whisper printed when it could not transcribe a clip, for Details under the notes. */
+  details: Detail[]
 }> {
   const sources: Source[] = []
   const words: Word[] = []
   const notes: string[] = []
+  const details: Detail[] = []
   const lined: Lined[] = []
   const maps: Record<string, AudioMap> = {}
   const sentences: string[] = []
@@ -945,12 +963,13 @@ async function readFootage(
       words.push(...clip)
     } catch (err) {
       notes.push(`I couldn't transcribe ${name}, so it is one long beat for now. ${message(err)}`)
+      details.push(...saidDetails(toolSaid(err), paths.length > 1 ? name : undefined))
     }
     sources.push(source)
   }
   const intake =
     sentences.length || facts.length ? { sentence: sentences.join(' '), facts: facts.slice(0, 3) } : undefined
-  return { sources, words, notes, lined, maps, intake, notice: mouthNotice(watched, paths.length) }
+  return { sources, words, notes, lined, maps, intake, notice: mouthNotice(watched, paths.length), details }
 }
 
 /**

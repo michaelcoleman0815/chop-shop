@@ -167,9 +167,33 @@ async function editLeftBeside(path: string): Promise<EditDoc | null> {
   }
 }
 
-export async function saveProject(project: Project): Promise<void> {
+/** Each project's saves, one after another in the order they were asked for. */
+const saving = new Map<string, Promise<void>>()
+
+/**
+ * Saves a project. The app often saves twice at once (a version, then what
+ * goes with it), and a big project is written in pieces: two writes at once
+ * interleaved in the file and left it unreadable. So saves of one project
+ * wait their turn, and each is written whole beside the file, then renamed
+ * over it, so nothing ever reads half a project.
+ */
+export function saveProject(project: Project): Promise<void> {
+  const turn = (saving.get(project.path) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() => writeProject(project))
+  saving.set(project.path, turn)
+  const forget = (): void => {
+    if (saving.get(project.path) === turn) saving.delete(project.path)
+  }
+  turn.then(forget, forget)
+  return turn
+}
+
+async function writeProject(project: Project): Promise<void> {
   const next: Project = { ...project, primaryMedia: project.media[0] ?? null }
-  await fs.writeFile(project.path, JSON.stringify(next, null, 2))
+  const partial = `${project.path}.saving`
+  await fs.writeFile(partial, JSON.stringify(next, null, 2))
+  await fs.rename(partial, project.path)
   await touch(next)
 }
 

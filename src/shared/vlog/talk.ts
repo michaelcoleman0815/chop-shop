@@ -37,7 +37,8 @@ export function baseCut(removed: string[], aspect: Cut['aspect'] = 'wide'): Cut 
     captions: { ...DEFAULT_CAPTIONS },
     aspect,
     loudness: -14,
-    motion: []
+    motion: [],
+    fill: 'auto'
   }
 }
 

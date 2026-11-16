@@ -6,6 +6,7 @@ import { SfxSchema } from './sfx'
 import { AngleSchema, ANGLE_LAYOUTS, BeatAngleSchema } from './angles'
 import { SubjectSchema } from './reframe'
 import { CameraSchema } from './camera'
+import { FillSchema } from './fill'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
   FadeSchema,
@@ -147,7 +148,9 @@ export const TreatmentSchema = z.object({
   /** Another camera of the same take shown for this beat: instead, in a box over it, or beside it (edit/angles). */
   angle: BeatAngleSchema.nullable().optional(),
   /** Where the picture is centred when it is cropped to a narrower frame, by hand: 0 the left edge, 1 the right. */
-  framing: z.number().min(0).max(1).nullable().optional()
+  framing: z.number().min(0).max(1).nullable().optional(),
+  /** False hides the captions while this beat plays (over a title, a screen recording); absent follows the video's. */
+  captions: z.boolean().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -234,10 +237,22 @@ export const CutSchema = z.object({
   reframe: z.boolean().optional(),
   /**
    * Which of the person's brands this version is made in, by id (shared/brands):
-   * its captions, logo, graphics, never list and B-roll sources. Absent, the
-   * default brand, as every edit was before there could be more than one.
+   * its captions, logo, graphics, never list and B-roll sources. Absent, as in
+   * an edit made before there could be more than one, the brand from then
+   * (shared/brands legacyBrandId). Only the cut says it: a version's ops
+   * never carry the brand op that sets it (edit/doc).
    */
-  brand: z.string().min(1).max(80).optional()
+  brand: z.string().min(1).max(80).optional(),
+  /**
+   * How a picture of another shape fills the frame (edit/fill). A new edit
+   * says auto: a picture taller than the frame, a still or a screen recording
+   * sits whole on a blurred copy of itself, and other footage is cropped to
+   * fill. "blur" puts every one on a blurred copy, "black" between black bars,
+   * and "crop" crops them all. Absent, as in an edit made before the fill, is
+   * the crop it always had. Only the cut says it: a version's ops never carry
+   * a fill (edit/doc).
+   */
+  fill: FillSchema.optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -262,7 +277,17 @@ const pad = z.number().min(0).max(1)
  * lets a model's proposal be checked before anything moves.
  */
 export const OpSchema = z.discriminatedUnion('op', [
-  z.object({ op: z.literal('remove'), beats: z.array(beatId).min(1) }),
+  z.object({
+    op: z.literal('remove'),
+    beats: z.array(beatId).min(1),
+    /**
+     * Why, where it matters later (shared/raw/length): "length" for lines cut
+     * to reach a length asked for, which a longer ask brings back; or what the
+     * person asked to have cut ("the intro", "the part about the conference"),
+     * which stays out until they ask for it back.
+     */
+    why: z.string().min(1).optional()
+  }),
   z.object({ op: z.literal('strike'), from: wordId, to: wordId }),
   z.object({ op: z.literal('unstrike'), from: wordId, to: wordId }),
   z.object({ op: z.literal('move'), beat: beatId, to: z.number().int().min(0) }),
@@ -329,6 +354,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('reframe'), on: z.boolean() }),
   // The brand the edit is made in, by id (shared/brands); what that brand changes comes as other ops beside it.
   z.object({ op: z.literal('brand'), id: z.string().min(1).max(80) }),
+  // How pictures of another shape fill the frame: as an edit does unless asked, on a blurred copy, between black bars, or cropped.
+  z.object({ op: z.literal('fill'), mode: FillSchema }),
   // Where beats are centred when cropped, by hand; null follows the speaker or the middle again.
   z.object({ op: z.literal('framing'), beats: z.array(beatId).min(1), x: z.number().min(0).max(1).nullable() }),
   // Which camera beats show, and how; null shows their own recording again.
@@ -370,6 +397,12 @@ export const NoteSchema = z.object({
   text: z.string().min(1),
   /** The beat the note was left on, if any. */
   beat: z.string().nullable(),
+  /**
+   * The stretch picked on the beat strip when the note was left, by its first
+   * and last beat, and every beat it held then: the note is about those only,
+   * or what is left of them once an end is cut.
+   */
+  range: z.object({ from: z.string(), to: z.string(), beats: z.array(z.string()).optional() }).optional(),
   status: z.enum(['open', 'applied', 'dismissed']),
   /** The version the note was written against. */
   version: z.number().int().positive()

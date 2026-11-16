@@ -12,7 +12,14 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
   is lined up under them by ear, to the hundredth of a second, for the words, the preview and the export.
 - **Edits from what you say.** Requests in the chat and notes left while watching go to Claude, which proposes changes
   to the edit. Every change is checked before it is offered and lands as a named version. The B-roll you bring in is
-  placed on the lines it shows, and when an edit wants more, Cutalong looks for clips for those moments.
+  placed on the lines it shows, and when an edit wants more, Cutalong looks for clips for those moments. Pick a
+  stretch on the beat strip (drag across it, Shift-click, or Shift and the arrows) and a note or a command acts on it
+  alone: "between 0:12 and 0:31, four beats come in with a dissolve".
+- **Cuts to a length.** "Make it 10 minutes", "cut it to 60 seconds", "remove my intro", "keep the full argument" or
+  `/length 8-10 min` cut a talking head, a podcast or any edit on your Mac, keeping the hook, each section's point and
+  the ending, and say what went. A topic to cut or focus on goes to the planner, and so does the rest of a sentence
+  ("make it 60 seconds and add captions"). A length said of anything but the whole video ("fade in for about 2
+  seconds") is the planner's too.
 - **Finds your retakes.** Lines said again, restarted mid-sentence or broken off are found from the words and their
   timing, and the best take is kept with one click, a sentence ("use the second take") or the Takes panel.
 - **Cuts on the words.** The recording is transcribed on your computer, split into beats, and every word's edges are
@@ -51,6 +58,11 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
   finishing touch a video of its kind gets in one version: voice polish, a music bed, transitions where the sections
   change, a look, whooshes and chapters. Each one plays in the preview the moment it exists, exactly as it exports. Where something does not fit, such as a dissolve between
   words with no pause between them, it says so instead of pretending.
+- **Any shape of picture.** A phone clip held upright in a wide video, a still, or a screen recording that a crop would
+  cut to a sliver is shown whole on a blurred, darker copy of itself, in the preview and the export alike. Wide footage
+  in a vertical video still fills the frame, as Shorts and Reels expect. `/fill blur` puts every picture of another
+  shape on a blurred copy, "use black bars" (`/fill black`) gives plain bars, and `/fill crop` crops them all. An edit
+  saved before this keeps the crop it had until `/fill auto` asks for the rest.
 - **Motion graphics the way After Effects does.** Lower thirds, callouts, keyword pops, kinetic titles, hook banners,
   end cards, logos, market charts, screenshots of a page and a phone with logos going round it, each a slash command
   (`/lowerthird`, `/callout`, `/pop`, `/title`, …) that lands on the word you are watching.

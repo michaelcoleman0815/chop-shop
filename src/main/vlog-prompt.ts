@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { clock } from '../shared/presets'
-import { timeOfDay } from '../shared/vlog/describe'
+import { timeOfDay, zoneAt } from '../shared/vlog/describe'
 import type { EditDoc } from '../shared/edit'
 import type { Moment, Story, Vlog } from '../shared/vlog/schema'
 import { PACE } from '../shared/vlog/story'
@@ -42,7 +42,7 @@ export type DescribeAnswer = z.infer<typeof DescribeAnswerSchema>
 /** The label sent beside a moment's stills. */
 export function momentLabel(m: Moment, vlog: Pick<Vlog, 'clips'>): string {
   const clip = vlog.clips.find((c) => c.id === m.clip)
-  const when = timeOfDay(clip?.at ?? null)
+  const when = timeOfDay(clip?.at ?? null, zoneAt(vlog.clips, clip?.at ?? null))
   return `${m.id}: ${clip?.name ?? m.clip}, ${m.inSec.toFixed(1)}-${m.outSec.toFixed(1)} s${when ? `, recorded ${when}` : ''}`
 }
 
@@ -99,8 +99,8 @@ export function renderShotList(doc: EditDoc, vlog: Vlog, units: TalkUnit[]): str
   const wordsOf = new Map<string, string[]>()
   for (const w of doc.words) wordsOf.set(w.source, [...(wordsOf.get(w.source) ?? []), `${w.id} ${w.text}`])
   vlog.scenes.forEach((scene, k) => {
-    const from = timeOfDay(scene.startAt)
-    const to = timeOfDay(scene.endAt)
+    const from = timeOfDay(scene.startAt, zoneAt(vlog.clips, scene.startAt))
+    const to = timeOfDay(scene.endAt, zoneAt(vlog.clips, scene.endAt))
     lines.push(
       `<scene id="${scene.id}" n="${k + 1}" name="${scene.name.replace(/"/g, '')}"${from ? ` from="${from}"` : ''}${to ? ` to="${to}"` : ''}>`
     )
@@ -113,7 +113,7 @@ export function renderShotList(doc: EditDoc, vlog: Vlog, units: TalkUnit[]): str
         )
         continue
       }
-      const when = timeOfDay(clip.at)
+      const when = timeOfDay(clip.at, zoneAt(vlog.clips, clip.at))
       const shape = clip.height > clip.width ? ', upright' : ''
       lines.push(
         `${clip.id} ${clip.name}: ${clock(clip.durationSec)}${when ? `, recorded ${when}` : ''}${shape}, usable ${clip.usable.map(([a, b]) => `${r1(a)}-${r1(b)}`).join(' ')}`

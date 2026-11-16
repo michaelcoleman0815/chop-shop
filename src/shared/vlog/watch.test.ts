@@ -4,7 +4,7 @@ import { meterSize, PictureMeter } from './frames'
 import { exposure, frameDistance, placeDistance } from './moments'
 import { findRepeats, groupScenes } from './scenes'
 import { classify, isTalking } from './sound'
-import { fileFamily, parseIso6709, parseTime, readShootTags } from './tags'
+import { fileFamily, parseIso6709, parseTime, readShootTags, zoneOf } from './tags'
 
 /** A look with a palette and a framing: `hue` picks the palette's main bin, `frame` shifts the framing. */
 function look(hue: number, frame = 0): number[] {
@@ -30,8 +30,15 @@ describe('reading a clip’s tags', () => {
       'IMG_0042.MOV'
     )
     expect(tags.recordedAt).toBe('2026-05-02T16:12:05.000Z')
+    // The zone it was shot in, so the day reads on that clock wherever it is edited.
+    expect(tags.zoneMin).toBe(-420)
     expect(tags.gps).toEqual({ lat: 37.7749, lon: -122.4194 })
     expect(tags.camera).toBe('Apple iPhone 15 Pro')
+    // A plain creation time is UTC, and says nothing of where it was shot.
+    const plain = readShootTags({ format: { tags: { creation_time: '2026-05-02T16:12:05.000000Z' } } }, 'C0001.MP4')
+    expect(plain.zoneMin).toBeNull()
+    expect(zoneOf('2026-05-02T09:12:05+0530')).toBe(330)
+    expect(zoneOf('2026-05-02T16:12:05Z')).toBeNull()
   })
 
   it('knows a GoPro by its streams and a drone by its name, and ignores a clock that was never set', () => {
