@@ -1,0 +1,106 @@
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { findFfmpeg } from './test-media'
+import { findFfprobe, GOPRO_OFF_SEC, makeShoot, realTime, smallShoot, type ShootTruth } from './vlog-fixtures'
+import { watchClip } from './vlog-watch'
+import { assembleShoot, type ShootPart } from '../shared/vlog/shoot'
+import { strongest } from '../shared/vlog/story'
+import type { WatchedClip } from '../shared/vlog/watched'
+
+/**
+ * Watching a synthetic shoot with its answers planted (vlog-fixtures): the
+ * scenes come out as the places they were shot in, in the order of the day,
+ * with the action camera's clock put right, the bad clips and stretches left
+ * out, the repeat collapsed, the talking found, and the highlight the
+ * strongest moment.
+ */
+
+const ffmpeg = findFfmpeg()
+const ffprobe = findFfprobe()
+const dir = mkdtempSync(join(tmpdir(), 'vlog-shoot-'))
+let truth: ShootTruth
+let watched: WatchedClip[]
+let shoot: ShootPart
+
+beforeAll(async () => {
+  if (!ffmpeg || !ffprobe) return
+  truth = await makeShoot(ffmpeg, dir, smallShoot())
+  watched = []
+  for (const c of truth.clips) watched.push(await watchClip(c.path, { ffmpeg, ffprobe, cacheDir: join(dir, 'cache') }))
+  shoot = assembleShoot(watched)
+}, 120_000)
+
+afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+const clipOf = (name: string) => shoot.clips.find((c) => c.name === name)!
+
+describe.skipIf(!ffmpeg || !ffprobe)('watching a shoot', () => {
+  it('reads when, where and on what each clip was recorded', () => {
+    const first = watched.find((w) => w.name === 'IMG_0101.MOV')!
+    expect(first.camera).toBe('Apple iPhone 15 Pro')
+    expect(first.gps?.lat).toBeCloseTo(51.5072, 3)
+    expect(first.recordedAt).toBe(new Date(realTime(truth.clips[0]) * 1000).toISOString())
+    expect(watched.find((w) => w.name === 'GX010001.MP4')!.camera).toBe('GoPro')
+    expect(watched.find((w) => w.name === 'IMG_0121.MOV')!.recordedAt).toBeNull()
+  })
+
+  it('puts the action camera’s clock right, by the places it shares with the phone', () => {
+    for (const name of ['GX010001.MP4', 'GX010002.MP4']) {
+      const c = clipOf(name)
+      expect(c.clockFixSec).toBeCloseTo(-GOPRO_OFF_SEC, -2)
+      expect(Math.abs((c.at as number) - realTime(truth.clips.find((p) => p.name === name)!))).toBeLessThan(5 * 60)
+    }
+    expect(shoot.clockNotes.join(' ')).toMatch(/GoPro's clock was 7 hours behind/)
+  })
+
+  it('finds the places as scenes, in the order of the day', () => {
+    expect(shoot.scenes.length).toBe(truth.places.length)
+    shoot.scenes.forEach((scene, k) => {
+      const places = new Set(
+        scene.clips.map((id) => truth.clips.find((p) => p.name === shoot.clips.find((c) => c.id === id)!.name)!.place)
+      )
+      expect([...places]).toEqual([truth.places[k]])
+    })
+    // The clip with no time goes with the clips that look like it.
+    expect(shoot.scenes.find((s) => s.id === clipOf('IMG_0121.MOV').scene)!.clips.length).toBeGreaterThan(1)
+  })
+
+  it('leaves out the repeat, the soft clip and the pocket recording, and says why', () => {
+    for (const planned of truth.clips) {
+      const c = clipOf(planned.name)
+      if (planned.expect === 'used') expect(c.left, planned.name).toBeNull()
+      else expect(c.left, planned.name).toBe(planned.expect)
+    }
+    expect(clipOf('IMG_0102.MOV').duplicateOf).toBe(clipOf('IMG_0101.MOV').id)
+  })
+
+  it('trims a shaky start and a phone lowered at the end', () => {
+    const start = clipOf('IMG_0103.MOV').usable
+    expect(start[0][0]).toBeGreaterThanOrEqual(1.25)
+    const end = clipOf('IMG_0112.MOV').usable
+    expect(end[end.length - 1][1]).toBeLessThanOrEqual(6 - 1.0)
+  })
+
+  it('hears who is talking, the crowd, the laughter and the wind', () => {
+    const talking = shoot.clips.filter((c) => c.talking).map((c) => c.name)
+    expect(talking.sort()).toEqual(['IMG_0111.MOV', 'IMG_0152.MOV'])
+    const heard = (name: string) => shoot.moments.filter((m) => m.clip === clipOf(name).id).flatMap((m) => m.sounds)
+    expect(heard('IMG_0151.MOV')).toContain('cheering')
+    expect(heard('IMG_0140.MOV')).toContain('laughter')
+    expect(heard('GX010001.MP4')).toContain('wind')
+  })
+
+  it('finds the highlight in the crowd going wild', () => {
+    const best = strongest(shoot.moments.filter((m) => m.kind !== 'talk'))!
+    expect(shoot.clips.find((c) => c.id === best.clip)!.name).toBe('IMG_0151.MOV')
+  })
+
+  it('numbers the clips it uses in the order of the day', () => {
+    const used = shoot.clips.filter((c) => !c.left)
+    expect(used.map((c) => c.id)).toEqual(used.map((_, i) => `s${i + 1}`))
+    const times = used.map((c) => c.at ?? Infinity)
+    expect([...times].sort((a, b) => a - b)).toEqual(times)
+  })
+})
