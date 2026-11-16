@@ -86,6 +86,11 @@ import { findMotionCommand, motionCommandEntries, planMotionCommand, type Motion
 import {
   acceptsOffer,
   DEFAULT_PROFILE,
+  mergeLengthAsks,
+  needsTopics,
+  parseLengthAsk,
+  planLength,
+  type LengthAsk,
   profileAskedFor,
   profileById,
   styleForProfile,
@@ -288,7 +293,8 @@ const ACTION_COMMANDS: Preset[] = [
         'fill',
         'Fill',
         'A picture of another shape, whole on a blurred copy, between black bars, or cropped: /fill blur, /fill black, /fill crop'
-      ]
+      ],
+      ['length', 'Length', 'Cut it to a length: /length 10m, /length 8-10 min, /length 60s, /length no intro']
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
@@ -2118,6 +2124,100 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /**
+   * A length asked of an edit that is not a vlog (shared/raw/length): "make it
+   * 10 minutes", "remove my intro", "keep the full argument". It is cut on
+   * this computer. A topic to cut or focus on needs what is said understood,
+   * so it goes to the planner first when there is a key, and only its cuts
+   * are kept, checked as any plan is. Everything lands as one version.
+   */
+  const lengthAsked = useCallback(
+    async (asked: LengthAsk, text: string, where: 'thread' | 'panel'): Promise<{ n: number | null; said: string }> => {
+      const d = docRef.current
+      if (!d) return { n: null, said: '' }
+      const stage = { stage: needsTopics(asked) ? 'Thinking' : 'Cutting it to length', percent: null }
+      const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: stage }) : null
+      if (where === 'panel') setPanel({ text: '', progress: stage, since: Date.now() })
+      const say = (said: string, aside: string | null, open: boolean): string => {
+        if (id)
+          patch(id, {
+            progress: null,
+            text: said,
+            aside,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+        else setPanel({ text: [said, aside].filter(Boolean).join(' ') })
+        return [said, aside].filter(Boolean).join(' ')
+      }
+      let first: Op[] = []
+      let firstSaid: string | null = null
+      const asides: string[] = []
+      if (needsTopics(asked)) {
+        const topics = [asked.focus ? `keep the focus on ${asked.focus}` : '', ...asked.cut.map((c) => `cut what is about ${c}`)]
+          .filter(Boolean)
+          .join(' and ')
+        const request = `${text}\nFor this one, only ${topics}, with remove and strike ops, and change nothing else: I cut it to any length asked for afterwards.`
+        const r = await during(() => api.planEdit({ doc: d, request, notes: [], voice: brandRef.current.voice }))
+        if (docRef.current?.id !== d.id) return { n: null, said: '' }
+        if (r.ok) {
+          // A topic is taken out, never added to: only the planner's cuts are kept.
+          const cuts = new Set(['remove', 'strike', 'split', 'join', 'move'])
+          first = r.ops.filter((o) => cuts.has(o.op))
+          const other = r.ops.length - first.length
+          if (other > 0) asides.push(other === 1 ? 'I left out one change that was not a cut.' : `I left out ${other} changes that were not cuts.`)
+          if (first.length > 0) firstSaid = r.summary
+          else asides.push(r.reply)
+          asides.push(...r.needs, ...r.rejected)
+        } else if (r.needsKey) {
+          asides.push(
+            'Cutting by topic needs Claude to follow what you talk about, and there is no Anthropic key in Settings, so the topics stay as they are.'
+          )
+        } else asides.push(r.message)
+      }
+      const latest = docRef.current ?? d
+      const plan = planLength(latest, asked, { profile: profileFor(latest, brandRef.current.niche), first, firstSaid })
+      if (plan.ops.length === 0) {
+        const said = say(plan.note ?? 'That is already how long it runs.', asides.map((t) => sentence(t)).join(' ') || null, false)
+        return { n: null, said }
+      }
+      const done = applyAsVersion(plan.ops, plan.summary, 'length', { text: plan.summary, ops: plan.ops.length })
+      if (!done) return { n: null, said: say('That is already how long it runs.', null, false) }
+      rememberVersion(docRef.current, { request: text }, done.n)
+      const aside = [plan.note ?? '', ...asides].map((t) => sentence(t)).filter(Boolean).join(' ') || null
+      return { n: done.n, said: say(`v${done.n} is ready. ${done.summary}`, aside, true) }
+    },
+    [applyAsVersion, during, patch, push]
+  )
+
+  /** /length: a length, a range, the intro out, or every line kept; a vlog's story told to it. */
+  const lengthCommand = useCallback(
+    async (rest: string, where: 'thread' | 'panel'): Promise<void> => {
+      const say = (text: string): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can cut it to a length.')
+        return
+      }
+      if (d.vlog) {
+        await vlog.retell(rest, where, true)
+        return
+      }
+      const asked = rest.trim() ? parseLengthAsk(rest) : null
+      if (!asked) {
+        const now = resolveCut(currentCut(d), d.words, d.sources).durationSec
+        say(
+          `It runs ${clock(now)}. Say how long: /length 10m, /length 8-10 min or /length 60s. /length no intro starts it on the main point, and /length keep all only tightens.`
+        )
+        return
+      }
+      await lengthAsked(asked, rest, where)
+    },
+    [lengthAsked, push, vlog]
+  )
+
   const commandNow = useCallback(
     async (
       command: string,
@@ -2191,6 +2291,10 @@ export function useCutalong() {
       }
       if (command === 'fill') {
         fillCommand(rest, where)
+        return
+      }
+      if (command === 'length') {
+        await lengthCommand(rest, where)
         return
       }
       if (command === 'sfx') {
@@ -2285,6 +2389,7 @@ export function useCutalong() {
       sfxCommandRun,
       finishCommand,
       fillCommand,
+      lengthCommand,
       vlog
     ]
   )
@@ -2441,6 +2546,12 @@ export function useCutalong() {
       }
       // A length, an opening or a part of the day asked of a vlog tells its story again (useVlog).
       if ((await vlog.retell(text, 'thread')).handled) return
+      // A length, the intro or every line kept, asked of any other edit, is cut here (shared/raw/length).
+      const length = d.vlog ? null : parseLengthAsk(text)
+      if (length) {
+        await lengthAsked(length, text, 'thread')
+        return
+      }
       // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Thinking', percent: null } })
       const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandRef.current.voice })
@@ -2470,7 +2581,7 @@ export function useCutalong() {
       const wanted = r.brollWanted ?? []
       if (wanted.length > 0) await Promise.all(wanted.map((w) => findBroll(w.search, w.beat)))
     },
-    [applyAsVersion, findBroll, patch, push, vlog]
+    [applyAsVersion, findBroll, lengthAsked, patch, push, vlog]
   )
 
   /** Sorts what was dropped in: which files are the talking, which has the better sound, which are B-roll. */
@@ -2825,7 +2936,7 @@ export function useCutalong() {
   const applyNotes = useCallback(async (): Promise<void> => {
     const d = docRef.current
     if (!d) return
-    const notes = openNotes(d)
+    let notes = openNotes(d)
     if (notes.length === 0) return
     // Notes that all ask of a vlog's story tell it again (useVlog); the planner takes the rest.
     const told = await vlog.fromNotes(notes)
@@ -2834,16 +2945,36 @@ export function useCutalong() {
       if (latest && told.length) setDoc(setNoteStatus(latest, told, 'applied'))
       return
     }
+    // A length, the intro or every line kept is cut here as a version of its own (shared/raw/length).
+    let lead = ''
+    if (!d.vlog) {
+      const lengths = notes.flatMap((n) => {
+        const asked = parseLengthAsk(n.text)
+        return asked ? [{ note: n, asked }] : []
+      })
+      if (lengths.length > 0) {
+        const text = lengths.map((l) => l.note.text.trim().replace(/[.!?]+$/, '')).join('. ')
+        const r = await lengthAsked(mergeLengthAsks(lengths.map((l) => l.asked)), text, 'panel')
+        const ids = lengths.map((l) => l.note.id)
+        const latest = docRef.current
+        if (latest && r.n !== null) setDoc(setNoteStatus(latest, ids, 'applied'))
+        rememberNotes(docRef.current, r.n !== null ? ids : [], 'applied', r.n)
+        notes = notes.filter((n) => !ids.includes(n.id))
+        if (notes.length === 0 || docRef.current?.id !== d.id) return
+        lead = `${r.said} `
+      }
+    }
+    const now = docRef.current ?? d
     setPanel({
       text: '',
       progress: { stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: null },
       since: Date.now()
     })
-    const r = await during(() => api.planEdit({ doc: d, request: '', notes, voice: brandRef.current.voice }))
+    const r = await during(() => api.planEdit({ doc: now, request: '', notes, voice: brandRef.current.voice }))
     // The answer is about this edit; should another be open by now, it is not applied to that one.
     if (docRef.current?.id !== d.id) return
     if (!r.ok) {
-      setPanel({ text: r.message, error: true })
+      setPanel({ text: `${lead}${r.message}`, error: true })
       return
     }
     const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
@@ -2856,10 +2987,10 @@ export function useCutalong() {
       .join(' ')
     setPanel({
       text: done
-        ? `v${done.n} is ready. ${r.summary}${extra ? ` ${extra}` : ''}`
-        : `${r.reply}${extra ? ` ${extra}` : ''}`
+        ? `${lead}v${done.n} is ready. ${r.summary}${extra ? ` ${extra}` : ''}`
+        : `${lead}${r.reply}${extra ? ` ${extra}` : ''}`
     })
-  }, [applyAsVersion, during, setDoc, vlog])
+  }, [applyAsVersion, during, lengthAsked, setDoc, vlog])
 
   const applyOpsDirect = useCallback(
     (ops: Op[], fallback: string): void => {
