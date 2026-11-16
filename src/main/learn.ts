@@ -17,7 +17,7 @@ import { FFMPEG_PATH } from './ffmpeg'
 import { learnFromFiles } from './learn-pipeline'
 import { readPairs, removePair, savePair } from './learn-store'
 import { readBrands } from './brand-store'
-import { brandById, FIRST_BRAND_ID } from '../shared/brands'
+import { brandById, legacyBrandId } from '../shared/brands'
 
 /**
  * Learning from the creator's own edits, on this computer: a raw recording
@@ -106,9 +106,7 @@ export function registerLearnIpc(deps: { send: Send; transcribe: Transcribe }): 
 /** The brand learning is for: the one named, else the default; and which brand owns videos learned before brands had ids. */
 async function ownerOf(id: string | null | undefined): Promise<{ id: string; legacy: string }> {
   const list = await readBrands()
-  const brand = brandById(list, id)
-  const legacy = list.brands.some((b) => b.id === FIRST_BRAND_ID) ? FIRST_BRAND_ID : list.default
-  return { id: brand.id, legacy }
+  return { id: brandById(list, id).id, legacy: legacyBrandId(list) }
 }
 
 async function currentState(listening: boolean, brand?: string | null): Promise<LearnState> {

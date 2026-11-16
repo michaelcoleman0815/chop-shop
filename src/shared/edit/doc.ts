@@ -240,6 +240,22 @@ export interface CommitResult {
 }
 
 /**
+ * The ops a version keeps. The brand an edit is made in is on the version's
+ * cut (Cut.brand), and a build from before brands cannot read the op that
+ * set it, so it is never saved: nothing replays saved ops, since every
+ * version holds its whole cut.
+ */
+export function savedOps(ops: Op[]): Op[] {
+  return ops.some((o) => o.op === 'brand') ? ops.filter((o) => o.op !== 'brand') : ops
+}
+
+/** An edit as it is saved: no version keeps a brand op, even one saved before that was so. */
+export function withoutBrandOps(doc: EditDoc): EditDoc {
+  if (!doc.versions.some((v) => v.ops.some((o) => o.op === 'brand'))) return doc
+  return { ...doc, versions: doc.versions.map((v) => ({ ...v, ops: savedOps(v.ops) })) }
+}
+
+/**
  * Applies ops as a new version. When nothing applies, the doc comes back
  * unchanged: an empty version would only be noise in the notes panel.
  */
@@ -254,12 +270,14 @@ export function commit(
     sources: doc.sources,
     assets: doc.assets
   })
-  if (applied.length === 0) return { doc, applied, rejected }
+  const kept = savedOps(applied)
+  // Only a brand op, naming the brand the edit is already in, changes nothing.
+  if (applied.length === 0 || (kept.length === 0 && sameValue(cut, currentCut(doc)))) return { doc, applied, rejected }
   const version: Version = {
     n: currentVersion(doc).n + 1,
     at: opts.at ?? new Date().toISOString(),
     summary,
-    ops: applied,
+    ops: kept,
     cut
   }
   return {

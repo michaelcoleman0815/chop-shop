@@ -12,8 +12,10 @@ import type { Cut } from './edit/schema'
  *
  * Kept in brands.json beside the single brand.json that came before. The
  * brand saved there becomes the first of the list, as it was, with the id
- * FIRST_BRAND_ID; an edit saved before has no brand on its versions and is
- * made in the default, which until it is changed is that same brand.
+ * FIRST_BRAND_ID. An edit saved before has no brand on its versions: it was
+ * made in that brand, and stays in it whatever becomes the default, for as
+ * long as the brand is on the list (brandOfCut). The renderer and the main
+ * process both read an edit's brand this one way.
  */
 
 /** The id the brand from before there could be more than one gets. */
@@ -72,14 +74,30 @@ export function brandById(list: Brands, id: string | null | undefined): Brand {
   return (id ? list.brands.find((b) => b.id === id) : undefined) ?? defaultBrand(list)
 }
 
-/** The brand a version is made in: the one it names, or the default. */
-export function brandOfCut(list: Brands, cut: Pick<Cut, 'brand'>): Brand {
-  return brandById(list, cut.brand)
+/**
+ * The brand an edit from before there could be more than one is made in:
+ * the first brand, while it is on the list, else the default.
+ */
+export function legacyBrandId(list: Brands): string {
+  return list.brands.some((b) => b.id === FIRST_BRAND_ID) ? FIRST_BRAND_ID : defaultBrand(list).id
 }
 
-/** The brand a chat is in: its edit's, else the one chosen for the chat, else the default. */
+/**
+ * The brand a version is made in: the one it names; for a version that names
+ * none (saved before there could be more than one brand), the brand from
+ * then (legacyBrandId); and the default for a brand that has gone.
+ */
+export function brandOfCut(list: Brands, cut: Pick<Cut, 'brand'>): Brand {
+  return brandById(list, cut.brand ?? legacyBrandId(list))
+}
+
+/**
+ * The brand a chat is in: its edit's, as brandOfCut reads it, the same as an
+ * export or a plan of that edit; with no edit yet, the one chosen for the
+ * chat, else the default.
+ */
 export function chatBrand(list: Brands, cut: Pick<Cut, 'brand'> | null, chosen: string | null | undefined): Brand {
-  return brandById(list, cut?.brand ?? chosen ?? null)
+  return cut ? brandOfCut(list, cut) : brandById(list, chosen ?? null)
 }
 
 /** What a brand is called on screen. */

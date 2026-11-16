@@ -26,6 +26,7 @@ import {
 import type { Project, ProjectSummary, Settings } from '../../../shared/types'
 import {
   brandById,
+  brandOfCut,
   defaultBrand,
   EMPTY_BRANDS,
   FIRST_BRAND_ID,
@@ -340,7 +341,7 @@ function mockUploadKit(
 ): UploadKit {
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
-  const brand = brandById(brands, cut.brand)
+  const brand = brandOfCut(brands, cut)
   const short = isShort(1080, 1920, resolved.durationSec)
   const placed = chaptersReply(cut, resolved).shows && !short ? chaptersOf(cut, resolved).chapters : []
   const lines = placed.length ? chaptersReply(cut, resolved).lines.split('\n') : []

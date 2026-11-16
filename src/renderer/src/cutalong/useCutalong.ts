@@ -509,7 +509,7 @@ export function useCutalong() {
   // Each brand learns from its own videos: the Brand page's.
   const learn = useLearn(brand.id)
 
-  /** The brand this chat's edit is made in: its version's, else the chat's choice, else the default. */
+  /** The brand this chat is in: its edit's (shared/brands brandOfCut, as main reads it), else the chat's choice, else the default. */
   const inChat = useMemo(
     () => chatBrandOf(brands, doc ? currentCut(doc) : null, chatChoice),
     [brands, doc, chatChoice]
@@ -2296,7 +2296,7 @@ export function useCutalong() {
       }
       const target = brandById(brandsRef.current, id)
       const d = docRef.current
-      const was = d ? (currentCut(d).brand ?? chatChoiceRef.current ?? brandsRef.current.default) : null
+      const was = d ? brandNow().id : null
       setChatChoice(target.id)
       if (projectRef.current) projectRef.current = { ...projectRef.current, brand: target.id }
       const name = brandName(target)

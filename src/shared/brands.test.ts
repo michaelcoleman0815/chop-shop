@@ -16,7 +16,7 @@ import {
   stampBrand,
   stampMade
 } from './brands'
-import { commit, createDoc, currentCut, wordsFromTranscript } from './edit'
+import { commit, createDoc, currentCut, restore, undoTarget, wordsFromTranscript } from './edit'
 
 const legacy = BrandSchema.parse({ ...EMPTY_BRAND, id: undefined, name: 'Field Notes', voice: 'Warm.' })
 
@@ -61,8 +61,12 @@ describe('a brand per channel', () => {
     expect(chatBrand(list, { brand: FIRST_BRAND_ID }, 'brand-tc').id).toBe(FIRST_BRAND_ID)
     expect(chatBrand(list, {}, 'gone').id).toBe(FIRST_BRAND_ID)
     list = setDefaultBrand(list, 'brand-tc')
-    // An edit from before names no brand: it is in the default, whichever that is now.
-    expect(chatBrand(list, {}, null).id).toBe('brand-tc')
+    // An edit from before names no brand: it stays in the brand from then, whichever is the default now.
+    expect(chatBrand(list, {}, null).id).toBe(FIRST_BRAND_ID)
+    // With an edit, the chat is in the edit's brand, as an export of it is, whatever was chosen.
+    expect(chatBrand(list, {}, 'brand-tc').id).toBe(FIRST_BRAND_ID)
+    // A new chat is in the default.
+    expect(chatBrand(list, null, null).id).toBe('brand-tc')
     expect(brandName({ name: '  ' })).toBe('Untitled brand')
   })
 
@@ -109,7 +113,9 @@ describe('a brand per channel', () => {
     )
     const switched = commit(doc, [{ op: 'brand', id: 'brand-tc' }], 'Tech Corner is on this edit now.').doc
     expect(currentCut(switched).brand).toBe('brand-tc')
-    expect(switched.versions[1].ops).toEqual([{ op: 'brand', id: 'brand-tc' }])
+    // The brand is on the cut; the op that set it is not kept, so an older build reads the edit.
+    expect(switched.versions[1].ops).toEqual([])
     expect(switched.versions[0].cut.brand).toBe(FIRST_BRAND_ID)
+    expect(currentCut(restore(switched, undoTarget(switched)!)).brand).toBe(FIRST_BRAND_ID)
   })
 })
