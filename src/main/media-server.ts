@@ -2,6 +2,7 @@ import { createReadStream, promises as fs } from 'fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { randomBytes } from 'crypto'
 import { extname } from 'path'
+import { pathToFileURL } from 'url'
 
 /**
  * Serves the person's own files to the window, so a recording plays, seeks
@@ -52,15 +53,17 @@ export interface MediaServer {
 
 let running: MediaServer | null = null
 
-/** The address files are served from. Throws until the server has started. */
+/** The address files are served from, or '' when the server could not start. */
 export function mediaBase(): string {
-  if (!running) throw new Error('The media server has not started.')
-  return running.base
+  return running?.base ?? ''
 }
 
-/** A local file as the window can load it. */
+/**
+ * A local file as the window can load it. Should the server ever fail to
+ * start, a file URL still plays in the packaged app, whose page is a file too.
+ */
 export function mediaUrl(path: string): string {
-  return `${mediaBase()}/${encodeURIComponent(path)}`
+  return running ? `${running.base}/${encodeURIComponent(path)}` : pathToFileURL(path).toString()
 }
 
 export async function startMediaServer(): Promise<MediaServer> {

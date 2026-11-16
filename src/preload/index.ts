@@ -62,6 +62,8 @@ const api = {
         lined?: { name: string; sound: string; offsetSec: number }[]
         /** What intake noticed and fixed: one sentence, at most three facts. */
         intake?: { sentence: string; facts: string[] }
+        /** What watching the speaker's mouth changed or marked, in a sentence or two. */
+        notice?: string | null
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:prepare', input),
@@ -76,6 +78,7 @@ const api = {
         doc: EditDoc
         warning: string | null
         lined: { name: string; sound: string; offsetSec: number }[]
+        notice?: string | null
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:extend', req),

@@ -38,6 +38,7 @@ import {
   type Preset
 } from '../../../shared/presets'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
+import { mouthForNiche, readMouthMode, setMouthModeAll } from '../../../shared/vision'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import { findMotionCommand, motionCommandEntries, planMotionCommand, type MotionChange } from '../../../shared/motion'
 import {
@@ -544,6 +545,7 @@ export function useCutalong() {
         actions.unshift({ kind: 'use-style', label: 'Cut it like the video you sent', primary: true })
       const noticed = [
         describeLined(r.lined ?? []) ?? '',
+        r.notice ?? '',
         r.intake?.sentence ?? '',
         suggested && suggested.profile.id !== DEFAULT_PROFILE.id
           ? `It sounds like a ${suggested.profile.name.toLowerCase()} video, so I'll cut it as one.`
@@ -585,7 +587,7 @@ export function useCutalong() {
           : r.lined.length > 0
             ? 'The better sound is under the footage now.'
             : 'Nothing changed.'
-      const aside = [describeLined(r.lined), r.warning].filter(Boolean).join(' ') || null
+      const aside = [describeLined(r.lined), r.notice, r.warning].filter(Boolean).join(' ') || null
       patch(id, {
         progress: null,
         text,
@@ -1063,8 +1065,10 @@ export function useCutalong() {
 
   /**
    * Takes asked for in words, answered here so they work with no API key:
-   * "use the second take of the intro", and "cut it" after an offer. True
-   * when the sentence was one of these.
+   * "use the second take of the intro", and "cut it" after an offer; so are
+   * the kind of video ("this one is a podcast") and how the speaker's mouth
+   * is used ("time my cuts to the sound only"). True when the sentence was
+   * one of these.
    */
   const answerTakes = useCallback(
     (text: string, say: (reply: string, done: boolean) => void): boolean => {
@@ -1082,13 +1086,26 @@ export function useCutalong() {
       }
       const asked = profileAskedFor(text)
       if (asked) {
+        // How the speaker's mouth is used goes with the kind of video too, and knows kinds not built yet.
+        const mouth = mouthForNiche(d, 'profile' in asked ? asked.profile.id : asked.notBuilt)
+        const also = mouth.reply ? ` ${mouth.reply}` : ''
         if ('profile' in asked) {
-          setDoc({ ...d, profile: asked.profile.id })
-          say(`${asked.profile.says.replace(/^I cut it/, "I'll cut it")} Type /tighten to cut it that way.`, false)
+          setDoc({ ...mouth.doc, profile: asked.profile.id })
+          say(
+            `${asked.profile.says.replace(/^I cut it/, "I'll cut it")} Type /tighten to cut it that way.${also}`,
+            false
+          )
         } else {
-          setDoc({ ...d, profile: DEFAULT_PROFILE.id })
-          say(`I haven't built a ${asked.notBuilt} profile yet, so I'll cut it as a talking head.`, false)
+          setDoc({ ...mouth.doc, profile: DEFAULT_PROFILE.id })
+          say(`I haven't built a ${asked.notBuilt} profile yet, so I'll cut it as a talking head.${also}`, false)
         }
+        return true
+      }
+      const mode = readMouthMode(text, d.sources.find((s) => s.mouth)?.mouth?.mode ?? 'cuts+sync')
+      if (mode) {
+        const set = setMouthModeAll(d, mode)
+        if (set.doc !== d) setDoc(set.doc)
+        say(set.reply, false)
         return true
       }
       const req = parseTakeRequest(text)

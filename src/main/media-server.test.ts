@@ -4,6 +4,13 @@ import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mediaBase, mediaUrl, parseRange, startMediaServer, type MediaServer } from './media-server'
 
+describe('before the media server starts', () => {
+  it('still gives a file a playable address, by path', () => {
+    expect(mediaBase()).toBe('')
+    expect(mediaUrl('/Users/me/Movies/MVI 9293.MP4')).toBe('file:///Users/me/Movies/MVI%209293.MP4')
+  })
+})
+
 describe('the media server', () => {
   let server: MediaServer
   let dir = ''

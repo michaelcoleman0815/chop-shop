@@ -1,4 +1,5 @@
 import { isFiller } from '../fillers'
+import { cutInAt, cutOutAt } from '../vision/cuts'
 import type { Beat, Cut, Source, Word } from './schema'
 
 /**
@@ -163,8 +164,13 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
           const inner = tighten?.padSec ?? Math.min(beat.padIn, beat.padOut)
           const lead = r === 0 ? beat.padIn : inner
           const tail = r === runs.length - 1 ? beat.padOut : inner
-          const srcStart = Math.max(floorBefore(index, run[0]), first.startSec - lead, 0)
-          const srcEnd = Math.min(ceilingAfter(index, run[run.length - 1], duration), last.endSec + tail)
+          // Padded by the beat or the tightening, then moved onto a still mouth when one was seen.
+          const source = bySource.get(beat.source)
+          const srcStart = Math.max(floorBefore(index, run[0]), cutInAt(first, first.startSec - lead, source), 0)
+          const srcEnd = Math.min(
+            ceilingAfter(index, run[run.length - 1], duration),
+            cutOutAt(last, last.endSec + tail, source)
+          )
           drafts.push({ beat, beatIndex, srcStart, srcEnd, words: run })
         })
       }

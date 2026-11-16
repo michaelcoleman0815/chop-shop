@@ -5,6 +5,7 @@ import type { Aspect, CaptionSpec, Cut, Resolved, Source, Treatment } from '../s
 import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
+import { heardFrom } from '../shared/vision/offset'
 import { colorConversion, hasZscale } from './intake'
 
 /**
@@ -38,11 +39,18 @@ export interface Segment {
   treatment: Treatment | null
   /** Cutaway footage for this stretch, when the beat shows one. */
   broll: { path: string; startSec: number } | null
-  /** Sound from another recording of the same take, lined up: startSec here is startSec + offsetSec there. */
+  /**
+   * Sound read apart from the picture: another recording of the same take, or
+   * this one's own sound lined up with the mouth (vision/offset heardFrom).
+   * startSec here is startSec + offsetSec there.
+   */
   audio?: { path: string; offsetSec: number } | null
   /** A conversion that goes first on the recording's picture: HDR to ordinary video (main/intake). */
   convert?: string | null
 }
+
+/** Inputs a segment opens: its own, a cutaway's, and its sound's when that is read apart from the picture. */
+const inputsFor = (s: Segment): number => 1 + (s.broll ? 1 : 0) + (s.audio ? 1 : 0)
 
 export type Quality = 'preview' | 'final' | 'intermediate'
 
@@ -161,7 +169,7 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
       startSec: p.srcStart,
       durationSec: p.srcEnd - p.srcStart,
       hasAudio: source.hasAudio,
-      audio: source.audio ?? null,
+      audio: source.audio || source.hasAudio ? heardFrom(source) : null,
       treatment: t,
       broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null,
       convert: colorConversion(source.color, zscale)
@@ -434,7 +442,7 @@ export async function renderCut(
 
   const base = { width, height, fps, fontsDir: opts.fontsDir ?? null }
   const maxInputs = opts.maxInputs ?? 24
-  const inputsNeeded = segments.reduce((n, s) => n + (s.broll ? 2 : 1), 0)
+  const inputsNeeded = segments.reduce((n, s) => n + inputsFor(s), 0)
 
   if (inputsNeeded <= maxInputs) {
     const args = buildRenderArgs(segments, {
@@ -457,7 +465,7 @@ export async function renderCut(
   let current: Segment[] = []
   let used = 0
   for (const s of segments) {
-    const cost = s.broll ? 2 : 1
+    const cost = inputsFor(s)
     if (used + cost > maxInputs && current.length > 0) {
       chunks.push(current)
       current = []
