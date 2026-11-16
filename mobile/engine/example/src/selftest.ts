@@ -261,14 +261,15 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     const has = (f: string): boolean => new RegExp(` ${f} `).test(filters.stdout)
     // The desktop renderer's, what src/main/intake.ts hasZscale reads, and
     // every filter the app's phone path records (phase 1), the blurred
-    // background fill's gblur among them.
+    // background fill's gblur among them, and avgblur, the box blur that is
+    // not GPL.
     const wanted = [
       'zscale', 'subtitles', 'ass', 'lut3d', 'lut1d', 'xfade', 'overlay', 'amix', 'sidechaincompress', 'loudnorm',
       'atempo', 'acrossfade', 'tonemap', 'colorchannelmixer', 'alimiter', 'afftdn', 'freezedetect', 'ebur128', 'zoompan',
       'acompressor', 'adelay', 'afade', 'aformat', 'anoisesrc', 'anull', 'apad', 'aresample', 'asendcmd', 'asetnsamples',
       'asetpts', 'astats', 'atrim', 'concat', 'crop', 'deesser', 'equalizer', 'fade', 'format', 'fps', 'highpass',
       'lowpass', 'noise', 'null', 'pan', 'scale', 'setpts', 'setsar', 'settb', 'split', 'tpad', 'trim', 'unsharp',
-      'vignette', 'volume', 'volumedetect', 'gblur', 'pad', 'asplit'
+      'vignette', 'volume', 'volumedetect', 'gblur', 'avgblur', 'pad', 'asplit'
     ]
     const missing = wanted.filter((f) => !has(f))
     if (missing.length) problems.push(`no ${missing.join(', ')} filter`)

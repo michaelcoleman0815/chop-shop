@@ -134,7 +134,9 @@ What else differs from the Mac's ffmpeg 6.0:
   (so are `hqdn3d` and `cropdetect`). The desktop's camera moves use
   `perspective` (`src/main/render/camera.ts`); on the phone a camera move is
   `scale` and `crop` (or `zoompan`). A blurred background fill is `gblur`
-  with `colorchannelmixer` to darken it, never `boxblur` or `eq`.
+  with `colorchannelmixer` to darken it, never `boxblur` or `eq`; for a box
+  blur's look, `avgblur` is here (it and `gblur` are under permissive
+  licences, `boxblur` under the GPL).
 - **`sendcmd` and `asendcmd` targets**: in 6.0 a filter written
   `volume@duck` is named `duck`, not `volume@duck` as in 6.1 and later, so a
   command sent to `volume@duck` reaches nothing. Send it to the filter's
