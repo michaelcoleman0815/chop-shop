@@ -150,6 +150,11 @@ export const VlogSchema = z.object({
   moments: z.array(MomentSchema),
   scenes: z.array(SceneSchema),
   story: StorySchema,
+  /**
+   * The story each version that told one plays, by version number: undoing
+   * back to a version brings its story back as where the next ask starts.
+   */
+  told: z.array(z.object({ n: z.number().int().min(1), story: StorySchema })).optional(),
   /** Who described the moments, and how many stills a service saw. */
   described: z.object({ by: z.enum(DESCRIBERS), model: z.string().nullable(), stills: z.number().int().min(0) }),
   /** Camera clocks lined up, said once. */

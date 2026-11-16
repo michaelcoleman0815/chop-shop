@@ -40,6 +40,7 @@ import { readBrand, saveBrand } from './brand-store'
 import { hearInCloud, registerServicesIpc } from './providers'
 import { registerLearnIpc } from './learn'
 import { preferencesForPlanner, registerMemoryIpc } from './memory'
+import { registerVlogIpc } from './vlog'
 import {
   addSources,
   createDoc,
@@ -661,6 +662,17 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   })
   // And from how they edit here: small signals in, plain statements out, on this computer.
   registerMemoryIpc()
+
+  // Vlogs: a shoot watched and told as a story (main/vlog), its talking heard as footage is here.
+  registerVlogIpc({
+    send: deps.send,
+    mediaUrlFor: deps.mediaUrlFor,
+    readTalking: async (path, n, progress) => {
+      const read = await readFootage([path], [], progress, n, { niche: 'vlog' })
+      const source = read.sources[0]
+      return { source, words: read.words, map: read.maps[source.id], notes: read.notes }
+    }
+  })
 }
 
 interface Lined {

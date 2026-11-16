@@ -97,6 +97,7 @@ import {
 } from '../../../shared/raw'
 import { withHabits } from '../../../shared/learn/habits'
 import { useLearn } from './useLearn'
+import { useVlog } from './useVlog'
 import {
   remember,
   rememberAdded,
@@ -140,6 +141,14 @@ export interface PanelStatus {
 
 /** Commands that do something rather than set a style. They sit in the slash menu with the presets. */
 const ACTION_COMMANDS: Preset[] = [
+  {
+    command: 'vlog',
+    title: 'Vlog',
+    summary: 'Cut a day of clips into a story: /vlog, /vlog 8 min',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
   {
     command: 'all',
     title: 'Everything',
@@ -719,6 +728,21 @@ export function useCutalong() {
     },
     [setDoc]
   )
+
+  // Vlogs: a day of clips told as a story (useVlog), called in from submit, ask, commandNow and applyNotes.
+  const vlog = useVlog({
+    docRef,
+    pendingCommand,
+    setDoc,
+    setMediaUrl,
+    push,
+    patch,
+    setPanel,
+    toThread: () => setScreen('thread'),
+    applyAsVersion,
+    during,
+    niche: () => brandRef.current.niche
+  })
 
   /** Talking clips into a new edit, with the better sound, if any, lined up under them. */
   const prepare = useCallback(
@@ -2007,6 +2031,10 @@ export function useCutalong() {
         await finishCommand(where)
         return
       }
+      if (command === 'vlog') {
+        await vlog.command(rest, where)
+        return
+      }
       if (command === 'transition') {
         transitionCommand(rest, where, beat)
         return
@@ -2020,7 +2048,13 @@ export function useCutalong() {
         return
       }
       if (command === 'music' || command === 'polish' || command === 'onbeat') {
+        // A vlog's shots land on the music's beats as its story is told (useVlog).
+        if (command === 'onbeat' && docRef.current?.vlog) {
+          vlog.onBeats(where, true)
+          return
+        }
         await soundCommand(command, rest, where)
+        if (command === 'music') vlog.onBeats(where)
         return
       }
       if (COLOUR_COMMANDS.has(command)) {
@@ -2137,7 +2171,8 @@ export function useCutalong() {
       chaptersCommandRun,
       premiereCommand,
       sfxCommandRun,
-      finishCommand
+      finishCommand,
+      vlog
     ]
   )
 
@@ -2284,6 +2319,8 @@ export function useCutalong() {
         push({ role: 'assistant', text: "Drop some footage or paste a video you like, and I'll start from there." })
         return
       }
+      // A length, an opening or a part of the day asked of a vlog tells its story again (useVlog).
+      if ((await vlog.retell(text, 'thread')).handled) return
       // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Thinking', percent: null } })
       const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandRef.current.voice })
@@ -2313,7 +2350,7 @@ export function useCutalong() {
       const wanted = r.brollWanted ?? []
       if (wanted.length > 0) await Promise.all(wanted.map((w) => findBroll(w.search, w.beat)))
     },
-    [applyAsVersion, findBroll, patch, push]
+    [applyAsVersion, findBroll, patch, push, vlog]
   )
 
   /** Sorts what was dropped in: which files are the talking, which has the better sound, which are B-roll. */
@@ -2459,7 +2496,10 @@ export function useCutalong() {
         const recordings = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
         const stills = attachments.filter((a) => isImagePath(a.name))
         const materialBefore = docRef.current?.assets.length ?? 0
-        if (recordings.length > 0) await takeIn(recordings, said)
+        // A day of clips to tell as a story (useVlog): every clip is material with its own sound.
+        const vlogged = vlog.wanted(said, command?.command ?? null, recordings)
+        if (vlogged) await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words)
+        else if (recordings.length > 0) await takeIn(recordings, said)
         if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
         if (stills.length > 0) {
           if (docRef.current) await addMaterial(stills)
@@ -2493,10 +2533,14 @@ export function useCutalong() {
           const shown = new Set(assetsInCut(d).map((a) => a.id))
           return d.assets.slice(materialBefore).some((a) => !shown.has(a.id))
         }
-        if (command) {
+        if (command && !(vlogged && command.command === 'vlog')) {
           await runCommand(command.command, 'thread', command.rest)
           if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
           else if (unplaced()) await ask(PLACE_MATERIAL)
+        } else if (vlogged) {
+          // What was said with the shoot was for its story.
+        } else if (text && !link && attachments.length === 0 && (await vlog.asked(text))) {
+          // An edit made into a vlog, a vlog told again, or its clips waited for (useVlog).
         } else if (text && !link && (docRef.current || attachments.length === 0)) {
           // Whatever was said with the files is the ask: the planner sees
           // the footage as sorted and places the material with it. A word
@@ -2518,7 +2562,20 @@ export function useCutalong() {
         setBusy(false)
       }
     },
-    [addMaterial, answerTakes, ask, bringIn, capturePage, ensureProject, persist, push, runCommand, studyLink, takeIn]
+    [
+      addMaterial,
+      answerTakes,
+      ask,
+      bringIn,
+      capturePage,
+      ensureProject,
+      persist,
+      push,
+      runCommand,
+      studyLink,
+      takeIn,
+      vlog
+    ]
   )
 
   /** A study is kept only while its chat stays open; after that, the link is needed again. */
@@ -2636,6 +2693,13 @@ export function useCutalong() {
     if (!d) return
     const notes = openNotes(d)
     if (notes.length === 0) return
+    // Notes that all ask of a vlog's story tell it again (useVlog); the planner takes the rest.
+    const told = await vlog.fromNotes(notes)
+    if (told) {
+      const latest = docRef.current
+      if (latest && told.length) setDoc(setNoteStatus(latest, told, 'applied'))
+      return
+    }
     setPanel({
       text: '',
       progress: { stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: null },
@@ -2661,7 +2725,7 @@ export function useCutalong() {
         ? `v${done.n} is ready. ${r.summary}${extra ? ` ${extra}` : ''}`
         : `${r.reply}${extra ? ` ${extra}` : ''}`
     })
-  }, [applyAsVersion, during, setDoc])
+  }, [applyAsVersion, during, setDoc, vlog])
 
   const applyOpsDirect = useCallback(
     (ops: Op[], fallback: string): void => {

@@ -1,4 +1,4 @@
-import { commit, createDoc, currentCut } from '../edit/doc'
+import { commit, createDoc, currentCut, currentVersion } from '../edit/doc'
 import { applyOps } from '../edit/ops'
 import type { AudioMap } from '../audio/map'
 import type { Cut, EditDoc, Op, Source, Word } from '../edit/schema'
@@ -114,6 +114,11 @@ export function shootDoc(input: ShootDocInput): EditDoc {
   }
 }
 
+/** The vlog with its story kept as the one version `n` tells. */
+export function toldIn(vlog: Vlog, n: number): Vlog {
+  return { ...vlog, told: [...(vlog.told ?? []).filter((t) => t.n !== n), { n, story: vlog.story }] }
+}
+
 /** The doc with its first version playing the story, and the story kept with it. */
 export function withStory(doc: EditDoc, vlog: Vlog, summary?: string): EditDoc {
   const first = doc.versions[0]
@@ -121,17 +126,21 @@ export function withStory(doc: EditDoc, vlog: Vlog, summary?: string): EditDoc {
     words: doc.words,
     sources: doc.sources
   }).cut
-  return { ...doc, vlog, versions: [{ ...first, ...(summary ? { summary } : {}), cut }, ...doc.versions.slice(1)] }
+  return {
+    ...doc,
+    vlog: toldIn(vlog, first.n),
+    versions: [{ ...first, ...(summary ? { summary } : {}), cut }, ...doc.versions.slice(1)]
+  }
 }
 
 /**
  * More footage for a vlog under way: its clips join as recordings, its words
- * and sounds with them, its retakes struck, and the story told again over the
- * whole shoot as one new version.
+ * and sounds with them, its retakes struck, a music bed dropped with them put
+ * under it, and the story told again over the whole shoot as one new version.
  */
 export function extendShoot(
   doc: EditDoc,
-  more: { sources: Source[]; words: Word[]; audio?: Record<string, AudioMap>; removed: string[] },
+  more: { sources: Source[]; words: Word[]; audio?: Record<string, AudioMap>; removed: string[]; music?: Op | null },
   vlog: Vlog,
   summary: string
 ): EditDoc {
@@ -156,7 +165,39 @@ export function extendShoot(
     added.filter((w) => struck.has(w.id)).map((w) => ({ from: w.id, to: w.id })),
     currentCut(grown)
   )
-  const cut = applyOps(currentCut(grown), strikes, { words: grown.words, sources: grown.sources }).cut
-  const ops = [...strikes, ...storyOps(vlog.story.beats, cut)]
-  return commit(grown, ops, summary, { preset: 'vlog' }).doc
+  const context = { words: grown.words, sources: grown.sources }
+  const before = [...(more.music ? [more.music] : []), ...strikes]
+  const cut = applyOps(currentCut(grown), before, context).cut
+  const ops = [...before, ...storyOps(vlog.story.beats, cut)]
+  const next = commit(grown, ops, summary, { preset: 'vlog' }).doc
+  return { ...next, vlog: toldIn(vlog, currentVersion(next).n) }
+}
+
+/**
+ * A vlog made from the edit as it was sent (`sent`) put onto the edit as it
+ * is now (`latest`): versions made while the clips were watched stay, and
+ * the new clips, their words and the story go on as the newest version.
+ */
+export function ontoLatest(latest: EditDoc, sent: EditDoc, made: EditDoc): EditDoc {
+  if (latest === sent || !made.vlog) return made
+  const known = new Set(latest.sources.map((s) => s.id))
+  const fresh = (id: string): boolean => !known.has(id)
+  const grown: EditDoc = {
+    ...latest,
+    sources: [...latest.sources, ...made.sources.filter((s) => fresh(s.id))],
+    words: [...latest.words, ...made.words.filter((w) => fresh(w.source))],
+    audio: {
+      ...(latest.audio ?? {}),
+      ...Object.fromEntries(Object.entries(made.audio ?? {}).filter(([id]) => fresh(id)))
+    },
+    profile: made.profile,
+    vlog: made.vlog
+  }
+  const last = currentVersion(made)
+  // The music and the strikes it made, then the story in place of whatever the cut plays now.
+  const before = last.ops.filter((o) => o.op !== 'remove' && o.op !== 'insert')
+  const cut = applyOps(currentCut(grown), before, { words: grown.words, sources: grown.sources }).cut
+  const ops = [...before, ...storyOps(made.vlog.story.beats, cut)]
+  const next = commit(grown, ops, last.summary, { preset: 'vlog' }).doc
+  return { ...next, vlog: toldIn(made.vlog, currentVersion(next).n) }
 }

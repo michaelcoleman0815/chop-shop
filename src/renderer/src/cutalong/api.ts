@@ -14,6 +14,8 @@ export type CutalongApi = Pick<
   | 'openVideo'
   | 'prepareCut'
   | 'planSession'
+  | 'makeVlog'
+  | 'planVlog'
   | 'renderCut'
   | 'openPremiere'
   | 'lineUpCamera'

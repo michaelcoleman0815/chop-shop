@@ -44,8 +44,10 @@ export function mergeTalk(
   watched: Map<string, WatchedClip>
 ): TalkMerged {
   const words = [...heard.values()].flatMap((h) => h.words)
-  const retakes = talkRetakes(shoot.clips, words)
-  const clips = shoot.clips.map((c) =>
+  // A clip whose words were heard is a talking one, whatever its sound sounded like.
+  const talked = shoot.clips.map((c) => (heard.get(c.id)?.words.length && !c.talking ? { ...c, talking: true } : c))
+  const retakes = talkRetakes(talked, words)
+  const clips = talked.map((c) =>
     retakes.has(c.id) ? { ...c, left: 'duplicate' as const, duplicateOf: retakes.get(c.id) } : c
   )
   const sources: Source[] = []

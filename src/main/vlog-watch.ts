@@ -1,7 +1,7 @@
 import { spawn } from 'child_process'
 import { createHash } from 'crypto'
 import { promises as fs } from 'fs'
-import { basename, join } from 'path'
+import { basename, dirname, join } from 'path'
 import { listenFrames } from './audio-map'
 import { colorConversion, hasZscale, PROBE_ARGS, readDuration, readProbe } from './intake'
 import { meterSize, PictureMeter } from '../shared/vlog/frames'
@@ -234,45 +234,36 @@ async function measureClip(path: string, tools: WatchTools): Promise<WatchedClip
 }
 
 /**
- * Small stills of a clip at the given seconds, the long side `long` pixels,
- * HDR turned to ordinary colour: one process, each still read from its own
- * seek. Returns the files written, in the order asked; stills already made
- * are kept.
+ * A moment as one small picture: its stills side by side, left to right in
+ * time, each `high` pixels tall, HDR turned to ordinary colour. One file a
+ * moment is what a vision model reads most cheaply. Made once and kept.
  */
-export async function stillsOf(
+export async function stripOf(
   ffmpeg: string,
   path: string,
   times: number[],
-  outDir: string,
-  opts: { color?: 'sdr' | 'hlg' | 'pq'; long?: number; signal?: AbortSignal } = {}
-): Promise<string[]> {
-  await fs.mkdir(outDir, { recursive: true })
-  const long = opts.long ?? 384
+  out: string,
+  opts: { color?: 'sdr' | 'hlg' | 'pq'; high?: number; signal?: AbortSignal } = {}
+): Promise<string> {
+  const exists = await fs
+    .stat(out)
+    .then((s) => s.size > 0)
+    .catch(() => false)
+  if (exists) return out
+  await fs.mkdir(dirname(out), { recursive: true })
+  const high = opts.high ?? 144
   const convert = colorConversion(opts.color, await hasZscale(ffmpeg))
-  const files = times.map((t) => join(outDir, `still-${Math.round(t * 100)}-${long}.jpg`))
-  const wanted: number[] = []
-  for (let i = 0; i < times.length; i++) {
-    const exists = await fs
-      .stat(files[i])
-      .then((s) => s.size > 0)
-      .catch(() => false)
-    if (!exists) wanted.push(i)
-  }
-  if (wanted.length === 0) return files
   const args = ['-hide_banner', '-nostats', '-loglevel', 'error', '-y']
-  for (const i of wanted) args.push('-ss', Math.max(0, times[i]).toFixed(3), '-i', path)
-  const scale = `scale='if(gt(iw,ih),${long},-2)':'if(gt(iw,ih),-2,${long})'`
-  wanted.forEach((i, k) => {
-    args.push(
-      '-map',
-      `${k}:v:0`,
-      '-frames:v',
-      '1',
-      '-vf',
-      [scale, ...(convert ? [convert] : []), 'format=yuvj420p'].join(',')
-    )
-    args.push('-q:v', '5', files[i])
-  })
+  for (const t of times) args.push('-ss', Math.max(0, t).toFixed(3), '-i', path)
+  const each = times.map(
+    (_, k) =>
+      `[${k}:v:0]${convert ? `${convert},` : ''}scale=-2:${high},setsar=1,trim=end_frame=1,setpts=PTS-STARTPTS[f${k}]`
+  )
+  const graph =
+    times.length > 1
+      ? `${each.join(';')};${times.map((_, k) => `[f${k}]`).join('')}hstack=inputs=${times.length},format=yuvj420p[s]`
+      : `${each[0]};[f0]format=yuvj420p[s]`
+  args.push('-filter_complex', graph, '-map', '[s]', '-frames:v', '1', '-q:v', '5', out)
   await run(ffmpeg, args, opts.signal)
-  return files
+  return out
 }

@@ -28,6 +28,7 @@ import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
 import { detectProvider } from '../../../shared/keys'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
+import { mockVlogApi } from './vlog-mock'
 import type { Word } from '../../../shared/edit'
 import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
 import { synthFinished, synthRecording } from '../../../shared/learn/synth'
@@ -387,6 +388,11 @@ export function createMockApi(): CutalongApi {
   let memory = seededMemory()
 
   return {
+    // A shoot made into a vlog by the shared story logic, from clips it pretends to have watched.
+    ...mockVlogApi(async (stage) => {
+      for (const cb of listeners.cut) cb({ stage, percent: 50 })
+      await sleep(150)
+    }),
     getVersion: async () => '0.2.13',
     pathForFile: (file: File) => `/Users/you/Movies/${file.name}`,
     openVideo: async () => null,

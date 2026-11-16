@@ -134,6 +134,8 @@ describe('mouth watching by niche', () => {
       gaming: 'gaming-facecam',
       livestream: 'gaming-facecam',
       church: 'sermon',
+      // A vlog's talking is watched as a vlog's always was: by how big the face is.
+      vlog: 'vlog',
       asmr: 'asmr'
     })
     // What "this one is a ... video" names when there is no profile for it yet.

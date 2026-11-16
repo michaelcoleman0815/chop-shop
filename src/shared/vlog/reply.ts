@@ -13,6 +13,10 @@ import type { Clip, LeftOut, Role, StoryBeat, Vlog } from './schema'
 
 export interface VlogReply {
   text: string
+  /** The first sentence: which version, how long. */
+  lead: string
+  /** The sentence on the story: what it opens on, where it goes, how it ends. */
+  story: string
   /** One sentence for the version. */
   summary: string
   aside: string | null
@@ -125,13 +129,23 @@ export function openingWords(doc: EditDoc, beats: StoryBeat[]): Map<string, stri
 /**
  * The reply for a story: what it is in a sentence or two, three facts, and
  * the scenes with their times behind Details. `previousSec` makes it a reply
- * to a change ("It runs 1:52 now, down from 2:30").
+ * to a change ("It runs 1:52 now, down from 2:30"); `first` the first telling
+ * of a shoot, which is a later version when an edit becomes a vlog; `added`
+ * the clips that just joined it.
  */
 export function storyReply(
   doc: EditDoc,
   vlog: Vlog,
-  opts: { version: number; previousSec?: number | null; asked?: string | null; notes?: string[] } = { version: 1 }
+  opts: {
+    version: number
+    previousSec?: number | null
+    asked?: string | null
+    notes?: string[]
+    first?: boolean
+    added?: number
+  } = { version: 1 }
 ): VlogReply {
+  const first = opts.first ?? opts.version === 1
   const placed = placedBeats(doc, vlog.story.beats)
   const total = resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
   const words = openingWords(doc, vlog.story.beats)
@@ -150,19 +164,21 @@ export function storyReply(
     parts.push(`runs from ${sceneInSentence(firstScene.name)} to ${sceneInSentence(lastScene.name)}`)
   else if (firstScene) parts.push(`stays with ${sceneInSentence(firstScene.name)}`)
   if (ending) parts.push(`closes on ${ending}`)
-  const story = parts.length ? ` It ${listOf(parts)}.` : ''
+  const story = parts.length ? `It ${listOf(parts)}.` : ''
   const runs =
     opts.previousSec !== undefined && opts.previousSec !== null && Math.abs(opts.previousSec - total) >= 0.5
       ? `It runs ${clock(total)} now, ${total < opts.previousSec ? 'down' : 'up'} from ${clock(opts.previousSec)}.`
       : ''
   const scenesSaid = `${plural(scenesUsed.length, 'scene')}`
-  const text =
-    opts.version === 1
-      ? `v1 is a ${clock(total)} vlog of your day in ${scenesSaid}.${story}`
-      : `v${opts.version} is ready.${runs ? ` ${runs}` : ''}${story}`
-  const summary =
-    opts.version === 1
-      ? `The day as a story in ${scenesSaid}, ${clock(total)} long.`
+  const joined = opts.added ? `, with ${plural(opts.added, 'more clip')} in the story` : ''
+  const lead = first
+    ? `v${opts.version} is a ${clock(total)} vlog of your day in ${scenesSaid}.`
+    : `v${opts.version} is ready${joined}.${runs ? ` ${runs}` : ''}`
+  const text = story ? `${lead} ${story}` : lead
+  const summary = first
+    ? `The day as a story in ${scenesSaid}, ${clock(total)} long.`
+    : opts.added
+      ? `${plural(opts.added, 'more clip')} in the story, ${clock(total)} long.`
       : `${runs || `The story is cut again, ${clock(total)} long.`}`
 
   const details: { label: string; value: string }[] = []
@@ -194,11 +210,11 @@ export function storyReply(
   details.push({
     label: 'Described by',
     value:
-      vlog.described.by === 'claude'
-        ? `Claude, from ${plural(vlog.described.stills, 'still')}`
-        : vlog.described.by === 'local'
-          ? `${vlog.described.model ?? 'a model'} on this Mac, from ${plural(vlog.described.stills, 'still')}`
-          : 'the measurements of the picture and sound'
+      vlog.described.by === 'measurements'
+        ? 'the measurements of the picture and sound'
+        : `${vlog.described.by === 'claude' ? 'Claude' : `${vlog.described.model ?? 'a model'} on this Mac`}, from ${
+            vlog.described.stills > 0 ? plural(vlog.described.stills, 'still') : 'stills it saw before'
+          }`
   })
   details.push({
     label: 'Length',
@@ -209,15 +225,15 @@ export function storyReply(
 
   const aside = [
     ...(opts.notes ?? []),
-    opts.version === 1 ? left : '',
-    vlog.described.by === 'claude' && opts.version === 1
+    first ? left : '',
+    vlog.described.by === 'claude' && vlog.described.stills > 0 && (first || opts.added)
       ? `Claude looked at ${plural(vlog.described.stills, 'still')} from your footage to say what is in each moment.`
       : ''
   ]
     .filter(Boolean)
     .join(' ')
   const chips = [clock(total), plural(scenesUsed.length, 'scene'), `${used.size} of ${usable.length} clips`]
-  return { text, summary, aside: aside || null, chips, details }
+  return { text, lead, story, summary, aside: aside || null, chips, details }
 }
 
 /** The roles in order, for tests and the planner's view of a story. */
