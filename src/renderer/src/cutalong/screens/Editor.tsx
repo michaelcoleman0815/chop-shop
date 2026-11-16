@@ -18,6 +18,7 @@ import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { clock } from '../format'
+import { collapse, grow } from '../motion'
 import { usePlayer } from '../usePlayer'
 import type { Cutalong, PanelStatus } from '../useCutalong'
 import { Header } from './Header'
@@ -300,7 +301,7 @@ function NotesPanel({
               <div className="cl-progress">
                 <span>{status.progress.stage}</span>
                 <span className="cl-progress-bar" aria-hidden="true">
-                  <span style={{ width: `${status.progress.percent}%` }} />
+                  <span style={grow(status.progress.percent)} />
                 </span>
               </div>
             ) : (
@@ -317,7 +318,11 @@ function NotesPanel({
                   {n.text}
                   {n.beat && <span className="cl-project-meta">{position(n.beat)}</span>}
                 </span>
-                <button type="button" aria-label={`Remove note ${i + 1}`} onClick={() => app.dropNote(n.id)}>
+                <button
+                  type="button"
+                  aria-label={`Remove note ${i + 1}`}
+                  onClick={(e) => collapse(e.currentTarget, () => app.dropNote(n.id))}
+                >
                   <Icon.close />
                 </button>
               </li>

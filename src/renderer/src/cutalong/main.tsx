@@ -9,6 +9,7 @@ import '@fontsource/jetbrains-mono/latin-500.css'
 
 import './tokens.css'
 import './cutalong.css'
+import './motion.css'
 import App from './App'
 
 export function mountCutalong(root: Root): void {

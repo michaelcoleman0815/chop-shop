@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { grow } from '../motion'
 import { AssistantAvatar, Button } from './ui'
 import type { ChatMessage } from '../../../../shared/types'
 
@@ -69,7 +70,7 @@ export function AssistantMessage({ msg, onAction }: { msg: Msg; onAction: (a: Ac
           <div className="cl-progress">
             <span>{msg.progress.stage}</span>
             <span className="cl-progress-bar" aria-hidden="true">
-              <span style={{ width: `${Math.max(4, Math.min(100, msg.progress.percent))}%` }} />
+              <span style={grow(Math.max(4, Math.min(100, msg.progress.percent)))} />
             </span>
           </div>
         ) : (

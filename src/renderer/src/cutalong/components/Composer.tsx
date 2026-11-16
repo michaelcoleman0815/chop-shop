@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
 import { api } from '../api'
-import { Icon, IconButton } from './ui'
+import { Icon, IconButton, Mark } from './ui'
 
 /**
  * The one input. Footage and images are dropped or added with +, a video
@@ -119,7 +119,7 @@ export function Composer({
 
   return (
     <div
-      className={`cl-composer${dropping ? ' dropping' : ''}`}
+      className={`cl-composer${dropping ? ' dropping' : ''}${busy ? ' busy' : ''}`}
       onDragOver={(e) => {
         e.preventDefault()
         setDropping(true)
@@ -180,6 +180,9 @@ export function Composer({
         <span className="spacer" />
         <IconButton label="Send" filled disabled={!canSend} onClick={send}>
           <Icon.send />
+          <span className="cl-send-mark" aria-hidden="true">
+            <Mark size={22} white />
+          </span>
         </IconButton>
       </div>
     </div>

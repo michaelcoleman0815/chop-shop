@@ -3,6 +3,7 @@ import { detectProvider, wrongKeyMessage } from '../../../../shared/keys'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api } from '../api'
 import { Button } from '../components/ui'
+import { grow } from '../motion'
 import { Header } from './Header'
 
 /**
@@ -216,7 +217,7 @@ export function SettingsPage(): JSX.Element {
               <div className="cl-progress">
                 <span>Downloading {modelName}</span>
                 <span className="cl-progress-bar" aria-hidden="true">
-                  <span style={{ width: `${Math.max(4, Math.min(100, download))}%` }} />
+                  <span style={grow(Math.max(4, Math.min(100, download)))} />
                 </span>
               </div>
             ) : ready[model] === undefined ? null : ready[model] ? (
