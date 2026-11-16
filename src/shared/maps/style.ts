@@ -28,7 +28,17 @@ export interface MapLook {
   lakes: string | null
   rivers: { color: string; width: number } | null
   /** The subject: its fill, its outline, and the glow round the outline. */
-  highlight: { fill: string; fillAlpha: number; stroke: string; width: number; glow: string | null }
+  highlight: {
+    fill: string
+    fillAlpha: number
+    /** How the fill goes on: screened on a photograph, so it lifts the land; laid over on paper. */
+    blend: 'screen' | 'source-over'
+    stroke: string
+    width: number
+    glow: string | null
+  }
+  /** How far everything but the subject dims as the subject fills, 0 to 1. */
+  spotlight: number
   quiet: { fill: string; stroke: string }
   ridge: { color: string; core: string; width: number; glow: string | null }
   route: { color: string; width: number; dash: number[] }
@@ -41,6 +51,35 @@ export interface MapLook {
 
 const SORA = 'Sora'
 const FELL = 'IM Fell English'
+
+const withFont = new Map<string, MapLook>()
+
+/**
+ * A style's look for a map: its names set in the brand's face where the
+ * map asks for one, so a branded video's maps speak in its type. The vintage
+ * chart keeps its engraver's face: it is the style.
+ */
+export function lookFor(paint: { style: MapStyle; font?: string }): MapLook {
+  const look = LOOKS[paint.style] ?? LOOKS['satellite-dark']
+  const font = paint.font
+  if (!font || paint.style === 'vintage' || font === look.fonts.pin.family) return look
+  const key = `${paint.style}|${font}`
+  let made = withFont.get(key)
+  if (!made) {
+    const f = look.fonts
+    made = {
+      ...look,
+      fonts: {
+        pin: { ...f.pin, family: font },
+        plate: { ...f.plate, family: font },
+        neighbour: { ...f.neighbour, family: font },
+        line: { ...f.line, family: font }
+      }
+    }
+    withFont.set(key, made)
+  }
+  return made
+}
 
 export const LOOKS: Record<MapStyle, MapLook> = {
   'satellite-dark': {
@@ -56,7 +95,8 @@ export const LOOKS: Record<MapStyle, MapLook> = {
     graticule: null,
     lakes: null,
     rivers: null,
-    highlight: { fill: '#FFD84D', fillAlpha: 0.16, stroke: '#FFFFFF', width: 3.2, glow: '#FFD84D' },
+    highlight: { fill: '#FFF6D8', fillAlpha: 0.18, blend: 'screen', stroke: '#FFFFFF', width: 3.2, glow: '#FFD84D' },
+    spotlight: 0.38,
     quiet: { fill: 'rgba(255, 255, 255, 0.05)', stroke: 'rgba(255, 255, 255, 0.4)' },
     ridge: { color: '#FF6B3D', core: '#FFE2C9', width: 3.4, glow: '#FF4A1C' },
     route: { color: '#FFFFFF', width: 4, dash: [16, 11] },
@@ -94,7 +134,8 @@ export const LOOKS: Record<MapStyle, MapLook> = {
     graticule: { color: 'rgba(84, 58, 34, 0.22)', width: 1, step: 10 },
     lakes: '#E6D6B4',
     rivers: { color: 'rgba(70, 92, 120, 0.45)', width: 1.1 },
-    highlight: { fill: '#9E3B22', fillAlpha: 0.22, stroke: '#5E2412', width: 3, glow: null },
+    highlight: { fill: '#9E3B22', fillAlpha: 0.22, blend: 'source-over', stroke: '#5E2412', width: 3, glow: null },
+    spotlight: 0,
     quiet: { fill: 'rgba(94, 36, 18, 0.06)', stroke: 'rgba(74, 52, 32, 0.55)' },
     ridge: { color: '#8E2E16', core: '#C8603A', width: 3.2, glow: null },
     route: { color: '#5E2412', width: 3.4, dash: [12, 9] },

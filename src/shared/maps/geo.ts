@@ -257,8 +257,21 @@ export function decodePlates(file: PlatesFile): Plates {
 
 // ---------- Reading ----------
 
+/** Rings put together, by topology and ring: a map draws the same rings frame after frame. */
+const ringsMade = new WeakMap<Topo, WeakMap<number[], Float64Array>>()
+
 /** The points of a ring in order, arcs joined end to end. */
 export function ringPoints(topo: Topo, ring: number[]): Float64Array {
+  let made = ringsMade.get(topo)
+  if (!made) ringsMade.set(topo, (made = new WeakMap()))
+  const known = made.get(ring)
+  if (known) return known
+  const out = joinRing(topo, ring)
+  made.set(ring, out)
+  return out
+}
+
+function joinRing(topo: Topo, ring: number[]): Float64Array {
   let n = 0
   for (const i of ring) n += topo.arcs[arcIndex(i)].length
   const out = new Float64Array(n)

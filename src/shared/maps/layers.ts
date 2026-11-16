@@ -1,4 +1,5 @@
 import { keys, tail } from '../motion/anim'
+import { TIMING } from '../motion/templates/kit'
 import type { Frame, MotionTheme } from '../motion/theme'
 import type { Key, Layer, TextLayer } from '../motion/types'
 import { measureLabel, textWidth, type LabelFont } from './labels'
@@ -39,6 +40,15 @@ interface TitleLayout {
   block: Rect
 }
 
+/** How tall a title's name is: its lines, and in the vintage style the pill round them. */
+function nameBlockHeight(size: number, lines: number, vintage: boolean): number {
+  // The pill starts a little above the lines and ends its padding below the last.
+  return vintage ? size * (1.06 + 1.04 * lines) : size * 1.04 * lines
+}
+
+/** Room kept round a title's block, so the map's own names keep their distance from it. */
+const CLEAR = 30
+
 /** Where a title goes and how big it is, so its block can be kept clear before it is drawn. */
 function layoutTitle(title: MapTitle, frame: Frame, theme: MotionTheme, spec: MapSpec, inset: Rect | null): TitleLayout {
   const u = frame.u
@@ -57,11 +67,11 @@ function layoutTitle(title: MapTitle, frame: Frame, theme: MotionTheme, spec: Ma
     name.size = vintage ? size * 0.62 : size
     lines = measureLabel(title.name, name, maxWidth).lines
   }
+  // The engraver's face has a small eye, so its facts go a size up to read as well as the modern ones.
   const facts: LabelFont = vintage
-    ? { family: FELL, weight: 400, size: (card ? 26 : 40) * u, tracking: 0.5 * u, uppercase: false }
+    ? { family: FELL, weight: 400, size: (card ? 30 : 46) * u, tracking: 0.5 * u, uppercase: false }
     : { family: theme.body, weight: 600, size: (card ? 24 : 38) * u, tracking: 0.4 * u, uppercase: false }
-  const lineGap = name.size * 1.04
-  const nameHeight = vintage ? name.size * 2.1 : lineGap * lines.length
+  const nameHeight = nameBlockHeight(name.size, lines.length, vintage)
   const below = [title.sub, ...title.facts.map((f) => f.text)].filter(Boolean).length
   const height = nameHeight + (below ? 26 * u + below * facts.size * 1.35 : 0)
   const width = Math.max(
@@ -80,14 +90,19 @@ function layoutTitle(title: MapTitle, frame: Frame, theme: MotionTheme, spec: Ma
     x = frame.safe.left
     y = frame.safe.top + 30 * u
   }
-  return { x, y, maxWidth, name, facts, lines, block: { x: x - 16 * u, y: y - 16 * u, w: width + 32 * u, h: height + 32 * u } }
+  const m = CLEAR * u
+  return { x, y, maxWidth, name, facts, lines, block: { x: x - m, y: y - m, w: width + 2 * m, h: height + 2 * m } }
 }
 
-/** A stop's title comes in on its own timing and leaves before the camera moves on. */
+/**
+ * A stop's title comes in on its own timing and leaves as every graphic
+ * does; one that goes before the camera moves on takes a little longer, so it
+ * is not snatched away from a reader mid-line.
+ */
 function opacityFor(show: { from: number; to: number }, start: number, end: number): { keys: Key<number>[] } {
   const k: Key<number>[] = [{ t: 0, v: 1 }]
   if (show.to + start < end - 0.02) k.push(...tail([0.25, 1, 'ease-in'], [0, 0]))
-  else k.push(...tail([0.16, 1, 'ease-in'], [0, 0]))
+  else k.push(...tail([TIMING.exit, 1, 'ease-in'], [0, 0]))
   return { keys: k }
 }
 
@@ -111,7 +126,7 @@ function titleLayers(title: MapTitle, lay: TitleLayout, spec: MapSpec, theme: Mo
       uppercase: lay.name.uppercase,
       lineHeight: 1.04
     },
-    fill: vintage ? PARCHMENT : '#FFFFFF',
+    fill: vintage ? PARCHMENT : theme.text,
     align: 'left',
     valign: 'top',
     maxWidth: lay.maxWidth,
@@ -130,7 +145,7 @@ function titleLayers(title: MapTitle, lay: TitleLayout, spec: MapSpec, theme: Mo
             radius: lay.name.size * 1.1,
             padX: lay.name.size * 0.8,
             padY: lay.name.size * 0.42,
-            scaleX: keys([0, 0.6, 'snap'], [0.45, 1]),
+            scaleX: keys([0, 0.92, 'snap'], [0.45, 1]),
             opacity: keys([0, 0], [0.2, 1]),
             stroke: { color: 'rgba(242, 230, 204, 0.55)', width: 2 * u }
           }
@@ -138,7 +153,7 @@ function titleLayers(title: MapTitle, lay: TitleLayout, spec: MapSpec, theme: Mo
       : {})
   }
   out.push(name)
-  const nameBottom = lay.y + (vintage ? lay.name.size * 2.1 : lay.lines.length * lay.name.size * 1.04)
+  const nameBottom = lay.y + nameBlockHeight(lay.name.size, lay.lines.length, vintage)
   const below = [title.sub, ...title.facts.map((f) => f.text)].filter((t): t is string => !!t)
   if (below.length && !vintage) {
     // A short rule in the accent, drawn on before the facts.
@@ -166,7 +181,7 @@ function titleLayers(title: MapTitle, lay: TitleLayout, spec: MapSpec, theme: Mo
         weight: lay.facts.weight,
         tracking: lay.facts.tracking
       },
-      fill: vintage ? INK : 'rgba(255, 255, 255, 0.9)',
+      fill: vintage ? INK : theme.text,
       align: 'left',
       valign: 'top',
       maxWidth: lay.maxWidth * 1.4,
@@ -175,29 +190,27 @@ function titleLayers(title: MapTitle, lay: TitleLayout, spec: MapSpec, theme: Mo
         y: nameBottom + (vintage ? 14 * u : 26 * u) + i * lay.facts.size * 1.35,
         opacity: opacityFor({ from: title.show.from, to: title.show.to }, start, end)
       },
-      animators: [{ by: 'word', stagger: 0.04, duration: 0.4, ease: 'ease-out', from: { y: 14 * u, opacity: 0 } }],
+      animators: [{ by: 'word', stagger: 0.04, duration: 0.45, ease: 'snap', from: { y: 14 * u, opacity: 0 } }],
       effects: vintage ? undefined : { shadow: { color: 'rgba(0, 0, 0, 0.6)', blur: 16 * u, y: 2 * u } }
     })
   })
   return out
 }
 
-/** A compass rose for the vintage chart: two crossed stars, a ring and the north mark. */
-function compass(frame: Frame, start: number, end: number, at: { x: number; y: number }): Layer {
+/**
+ * A compass rose for the vintage chart: two crossed stars, a ring and the
+ * north mark. It is printed on the chart, so it has no entrance of its own:
+ * it comes and goes with the paper while the camera does the moving.
+ */
+function compass(frame: Frame, start: number, end: number, at: { x: number; y: number }, opacity: { keys: Key<number>[] }): Layer {
   const u = frame.u
   const r = 56 * u
-  const s = start + 0.6
+  const s = start
   return {
     kind: 'group',
     start: s,
     end,
-    transform: {
-      x: at.x,
-      y: at.y,
-      rotation: keys([0, -24, 'snap'], [1.1, 0]),
-      scale: keys([0, 0.8, 'snap'], [0.9, 1]),
-      opacity: { keys: [{ t: 0, v: 0 }, { t: 0.5, v: 1 }, ...tail([0.16, 1, 'ease-in'], [0, 0])] }
-    },
+    transform: { x: at.x, y: at.y, opacity },
     children: [
       { kind: 'shape', start: s, end, shape: { type: 'ellipse', w: r * 2.3, h: r * 2.3 }, stroke: { color: 'rgba(46, 30, 16, 0.55)', width: 2 * u } },
       { kind: 'shape', start: s, end, shape: { type: 'ellipse', w: r * 1.9, h: r * 1.9 }, stroke: { color: 'rgba(46, 30, 16, 0.4)', width: 1.2 * u } },
@@ -268,9 +281,11 @@ export function mapLayers(input: MapLayersInput): Layer[] {
           bottom: frame.safe.bottom + 20 * u,
           left: frame.safe.left
         }
+  const satellite = spec.style === 'satellite-dark'
   const paint: MapPaint = {
     style: spec.style,
-    accent: spec.accent,
+    accent: spec.accent || (satellite ? theme.accent : ''),
+    ...(satellite ? { font: theme.body } : {}),
     open: spec.open,
     stops: spec.stops,
     features: spec.features,
@@ -278,14 +293,9 @@ export function mapLayers(input: MapLayersInput): Layer[] {
     pad,
     reserve
   }
-  const fadeIn = inset ? 0.22 : 0.12
-  const map: Layer = {
-    kind: 'map',
-    start,
-    end,
-    map: paint,
-    transform: { opacity: { keys: [{ t: 0, v: 0 }, { t: fadeIn, v: 1 }, ...tail([0.14, 1, 'ease-in'], [0, 0])] } }
-  }
+  // A cut to the map: in on the quick fade every graphic uses, out on the shared exit.
+  const fade = { keys: [{ t: 0, v: 0 }, { t: TIMING.fade, v: 1 }, ...tail([TIMING.exit, 1, 'ease-in'], [0, 0])] }
+  const map: Layer = { kind: 'map', start, end, map: paint, transform: { opacity: fade } }
   const out: Layer[] = []
   if (inset) {
     // The card: a soft shadow under it, the map cut to its corners, a hairline over its edge.
@@ -322,7 +332,7 @@ export function mapLayers(input: MapLayersInput): Layer[] {
       frame.shape === 'vertical'
         ? { x: frame.width - frame.safe.right - 40 * u, y: frame.height - frame.safe.bottom - 120 * u }
         : { x: frame.width - frame.safe.right - 90 * u, y: frame.height - frame.safe.bottom - 90 * u }
-    out.push(compass(frame, start, end, at))
+    out.push(compass(frame, start, end, at, fade))
     reserve.push({ x: at.x - 100 * u, y: at.y - 140 * u, w: 200 * u, h: 240 * u })
   }
   return out

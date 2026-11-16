@@ -12,8 +12,12 @@ import type { MapPaint, MapStop } from './types'
  * and an inset card each in its own way.
  */
 
-/** Leaves at once, comes down onto the place slowly: how a documentary flies in. */
-export const FLY: Ease = { bezier: [0.42, 0, 0.16, 1] }
+/**
+ * Moving from the first frame, so the cut lands on motion rather than on a
+ * still world, then a long settle onto the place: 95% of the way at seven
+ * tenths of the time, and the rest spent coming down gently.
+ */
+export const FLY: Ease = { bezier: [0.3, 0.08, 0.12, 1] }
 
 /** The camera never comes closer than this: a city, not a street. */
 const CLOSEST = 8.6

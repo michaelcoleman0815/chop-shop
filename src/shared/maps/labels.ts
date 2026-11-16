@@ -27,7 +27,8 @@ function row(family: string, weight: number): number[] {
 /** One character's advance in design pixels; a character the table lacks takes its plain letter's, or an average one's. */
 export function advance(ch: string, family: string, weight: number, size: number): number {
   const widths = row(family, weight)
-  let i = CHAR_INDEX.get(ch)
+  // A space that does not break is as wide as one that does.
+  let i = CHAR_INDEX.get(ch === '\u00A0' ? ' ' : ch)
   if (i === undefined) {
     const plain = ch.normalize('NFD').replace(/[̀-ͯ]/g, '')
     i = CHAR_INDEX.get(plain[0] ?? '')
@@ -61,15 +62,17 @@ export function textWidth(text: string, font: LabelFont): number {
  */
 export function labelLines(text: string, font: LabelFont, maxWidth: number): string[] {
   if (textWidth(text, font) <= maxWidth) return [text]
-  const words = text.split(/\s+/)
+  // Breaks only at plain spaces, as the text layer does: a name kept together stays together.
+  const words = text.split(/[ \t]+/)
   if (words.length < 2) return [text]
   let best: string[] = [text]
   let bestWidth = Infinity
   for (let i = 1; i < words.length; i++) {
     const lines = [words.slice(0, i).join(' '), words.slice(i).join(' ')]
     const w = Math.max(...lines.map((l) => textWidth(l, font)))
-    if (w < bestWidth) {
-      bestWidth = w
+    // Nearly as even with more on the first line reads better: "North American / Plate".
+    if (w < bestWidth * 1.08) {
+      bestWidth = Math.min(bestWidth, w)
       best = lines
     }
   }

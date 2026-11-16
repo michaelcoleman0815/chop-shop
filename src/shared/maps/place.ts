@@ -139,7 +139,8 @@ function place(paint: MapPaint, look: MapLook, geo: MapGeo | null, stopIndex: nu
         id: '',
         font,
         color: look.text.line,
-        show: { from: f.show.from + 0.5, to: f.show.to },
+        // As the dots reach the edge where it sits, not before.
+        show: { from: f.show.from + 0.75, to: f.show.to },
         anchor: null,
         x: 0,
         y: 0,

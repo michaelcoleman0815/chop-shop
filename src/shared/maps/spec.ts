@@ -105,6 +105,12 @@ function parallelThrough(box: GeoBox): { name: string; lat: number } | null {
 
 const plateName = (code: string): string => PLATES.find((p) => p.code === code)?.name ?? code
 
+/** When each of up to eight names round a place comes in, after the first: gaps that close up, a wave rather than a tick. */
+const WAVE = [0, 0.07, 0.13, 0.18, 0.22, 0.25, 0.27, 0.28]
+
+/** A place's name with its spaces made unbreakable, so a title wraps between names, never inside one. */
+const keepTogether = (name: string): string => name.replace(/ /g, '\u00A0')
+
 /** "Between the North American and Eurasian plates". */
 function betweenPlates(codes: string[]): string | null {
   if (codes.length !== 2) return null
@@ -130,6 +136,11 @@ export function specFromQuery(q: MapQuery, opts: ShotOptions): SpecResult {
 
   q.stops.forEach((places, i) => {
     const { arrive: a, leave } = times[i]
+    // The camera is all but there well before it stops: 95% of the way at seven tenths
+    // of its flight. What the stop is about starts as it settles, so nothing waits on the last slow
+    // yards of the landing, and everything below is timed from that moment.
+    const flyFrom = i === 0 ? 0 : times[i - 1].leave
+    const land = a - 0.3 * (a - flyFrom)
     const last = i === q.stops.length - 1
     // What a stop shows goes before the camera leaves for the next one.
     const until = last ? D : leave - 0.15
@@ -143,29 +154,30 @@ export function specFromQuery(q: MapQuery, opts: ShotOptions): SpecResult {
 
     if (q.route && i === 0) {
       const { from, to } = q.route
-      features.push({ type: 'pin', at: from.ll, label: from.name, show: show(a + 0.05), major: true })
-      features.push({ type: 'line', ref: { route: [from.ll, to.ll] }, show: show(a + 0.35), look: 'route' })
-      features.push({ type: 'pin', at: to.ll, label: to.name, show: show(a + 1.45), major: true })
+      features.push({ type: 'pin', at: from.ll, label: from.name, show: show(land - 0.1), major: true })
+      features.push({ type: 'line', ref: { route: [from.ll, to.ll] }, show: show(land + 0.2), look: 'route' })
+      // The far pin lands with the arrow, as the line (1.1 s) reaches it.
+      features.push({ type: 'pin', at: to.ll, label: to.name, show: show(land + 1.3), major: true })
       add(grow(join(from.box, to.box), 1.1))
-      titles.push({ name: `${from.name} to ${to.name}`, sub: null, facts: [], show: show(a + 0.25) })
+      titles.push({ name: `${keepTogether(from.name)} to ${keepTogether(to.name)}`, sub: null, facts: [], show: show(land + 0.3) })
     } else {
       for (const p of places) {
         if (p.kind === 'country') {
-          features.push({ type: 'area', ref: { country: p.id }, show: show(a - 0.3), tone: 'accent' })
+          features.push({ type: 'area', ref: { country: p.id }, show: show(land - 0.15), tone: 'accent' })
           add(p.box)
         } else if (p.kind === 'state') {
           sources.add('census')
-          features.push({ type: 'area', ref: { state: p.id }, show: show(a - 0.3), tone: 'accent' })
+          features.push({ type: 'area', ref: { state: p.id }, show: show(land - 0.15), tone: 'accent' })
           add(p.box)
         } else if (p.kind === 'region') {
-          if (p.members?.length) features.push({ type: 'area', ref: { countries: p.members }, show: show(a - 0.3), tone: 'accent' })
+          if (p.members?.length) features.push({ type: 'area', ref: { countries: p.members }, show: show(land - 0.15), tone: 'accent' })
           add(p.box)
         } else if (p.kind === 'city') {
-          features.push({ type: 'pin', at: p.ll, label: p.name, show: show(a + 0.1), major: true })
+          features.push({ type: 'pin', at: p.ll, label: p.name, show: show(land), major: true })
           add(p.box)
         } else if (p.kind === 'plate') {
           sources.add('pb2002')
-          features.push({ type: 'area', ref: { plate: p.id.slice(6) }, show: show(a - 0.3), tone: 'accent' })
+          features.push({ type: 'area', ref: { plate: p.id.slice(6) }, show: show(land - 0.15), tone: 'accent' })
           add(p.box)
         } else if (p.kind === 'line') {
           sources.add('pb2002')
@@ -176,28 +188,29 @@ export function specFromQuery(q: MapQuery, opts: ShotOptions): SpecResult {
             ([x, y]) => plates.length < 2 || (plates.includes(x) && plates.includes(y))
           )
           const ref: LineRef = { boundary: { pairs: pairs.length ? pairs : (line?.pairs ?? []), window: p.box } }
-          features.push({ type: 'line', ref, show: show(a - 0.1), look: 'ridge', label: p.name })
+          features.push({ type: 'line', ref, show: show(land - 0.2), look: 'ridge', label: p.name })
           // The plates either side, named once the line has drawn.
           const named = plates.length ? plates : [...new Set((pairs.length ? pairs : line?.pairs ?? []).flat())]
-          for (const code of named) {
-            features.push({ type: 'label', text: plateName(code), at: { plate: code }, show: show(a + 1.1), look: 'plate' })
-          }
+          // Just before the line finishes drawing, one a beat after the other.
+          named.forEach((code, k) => {
+            features.push({ type: 'label', text: plateName(code), at: { plate: code }, show: show(land + 1.0 + k * 0.08), look: 'plate' })
+          })
           add(p.box)
         } else if (p.kind === 'latitude') {
-          features.push({ type: 'line', ref: { lat: p.ll[1] }, show: show(a + 0.3), look: 'parallel', label: p.name })
+          features.push({ type: 'line', ref: { lat: p.ll[1] }, show: show(land + 0.15), look: 'parallel', label: p.name })
           add(p.box)
         }
       }
       // Plates named on their own, with no line: lit and labelled.
       if (q.lines.length === 0 && q.plates.length && places.every((p) => p.kind === 'plate')) {
-        for (const code of q.plates) {
-          features.push({ type: 'label', text: plateName(code), at: { plate: code }, show: show(a + 0.6), look: 'plate' })
-        }
+        q.plates.forEach((code, k) => {
+          features.push({ type: 'label', text: plateName(code), at: { plate: code }, show: show(land + 0.5 + k * 0.08), look: 'plate' })
+        })
       }
       // Parallels asked for alongside a place.
       if (places.some((p) => p.kind !== 'latitude')) {
         for (const lat of q.latitudes) {
-          features.push({ type: 'line', ref: { lat: lat.ll[1] }, show: show(a + 0.7), look: 'parallel', label: lat.name })
+          features.push({ type: 'line', ref: { lat: lat.ll[1] }, show: show(land + 0.7), look: 'parallel', label: lat.name })
         }
       }
       // A single country: its name, its facts, and a named parallel through it.
@@ -205,30 +218,30 @@ export function specFromQuery(q: MapQuery, opts: ShotOptions): SpecResult {
         const kinds = opts.facts ?? (q.facts.length ? q.facts : (['area'] as FactKind[]))
         const facts = factsFor(single.id, kinds)
         if (facts.length) sources.add('factbook')
-        titles.push({ name: single.name, sub: null, facts, show: show(a + 0.2) })
+        titles.push({ name: single.name, sub: null, facts, show: show(land + 0.25) })
         if (kinds.includes('capital')) {
           const cap = capitalOf(single.id)
           if (cap) {
             sources.add('factbook')
-            features.push({ type: 'pin', at: cap.at, label: cap.name, show: show(a + 0.9), major: false })
+            features.push({ type: 'pin', at: cap.at, label: cap.name, show: show(land + 0.85), major: false })
           }
         }
         const through = q.latitudes.length === 0 && framed.box ? parallelThrough(framed.box) : null
         if (through) {
-          features.push({ type: 'line', ref: { lat: through.lat }, show: show(a + 0.8), look: 'parallel', label: through.name })
+          features.push({ type: 'line', ref: { lat: through.lat }, show: show(land + 0.75), look: 'parallel', label: through.name })
         }
       } else if (single?.kind === 'state') {
-        titles.push({ name: single.name, sub: all.get(single.country ?? '')?.name ?? null, facts: [], show: show(a + 0.2) })
+        titles.push({ name: single.name, sub: all.get(single.country ?? '')?.name ?? null, facts: [], show: show(land + 0.25) })
       } else if (single?.kind === 'city') {
         const country = all.get(single.country ?? '')?.name ?? null
         const role = single.role === 'capital' && country ? `Capital of ${country}` : country
-        titles.push({ name: single.name, sub: role, facts: [], show: show(a + 0.25) })
+        titles.push({ name: single.name, sub: role, facts: [], show: show(land + 0.25) })
       } else if (single?.kind === 'line') {
-        titles.push({ name: single.name, sub: betweenPlates(q.plates), facts: [], show: show(a + 0.45) })
+        titles.push({ name: single.name, sub: betweenPlates(q.plates), facts: [], show: show(land + 0.45) })
       } else if (single) {
-        titles.push({ name: single.name, sub: null, facts: [], show: show(a + 0.25) })
+        titles.push({ name: single.name, sub: null, facts: [], show: show(land + 0.25) })
       } else if (places.length > 1) {
-        titles.push({ name: places.map((p) => p.name).join(' and '), sub: null, facts: [], show: show(a + 0.25) })
+        titles.push({ name: places.map((p) => keepTogether(p.name)).join(' and '), sub: null, facts: [], show: show(land + 0.25) })
       }
     }
     const frame: GeoBox = atLeast(framed.box ?? [-180, -60, 180, 78], 5)
@@ -248,7 +261,10 @@ export function specFromQuery(q: MapQuery, opts: ShotOptions): SpecResult {
         .filter((c) => !subject.has(c.id) && inBox(c.ll, around))
         .sort((x, y) => x.rank - y.rank)
         .slice(0, 8)
-      for (const c of near) features.push({ type: 'label', text: c.name, at: c.ll, show: show(a + 0.5), look: 'neighbour' })
+      // Most known first, in a wave whose gaps close up, once the title is up.
+      near.forEach((c, k) => {
+        features.push({ type: 'label', text: c.name, at: c.ll, show: show(land + 0.6 + WAVE[k]), look: 'neighbour' })
+      })
     }
   })
 

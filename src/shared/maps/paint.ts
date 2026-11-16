@@ -1,11 +1,12 @@
 import { ease } from '../motion/ease'
+import type { Ease } from '../motion/types'
 import { fontString } from '../motion/fonts'
 import { cameraFor, stopAt, viewAt } from './camera'
 import { detailFor, overlaps, ringPoints, type MapGeo, type Shape, type ShapeSet, type Topo, type WorldBox } from './geo'
 import { advance, caseOf, LABEL_LEADING, type LabelFont } from './labels'
 import { project, viewBounds, worldPixels, wrapNear, type LonLat, type View } from './mercator'
 import { labelsFor, ridgePolylines, routePath, type MapLabel } from './place'
-import { LOOKS, type MapLook } from './style'
+import { lookFor, type MapLook } from './style'
 import { tileLevel } from './tiles'
 import type { AreaRef, MapFeature, MapPaint } from './types'
 
@@ -38,30 +39,45 @@ export interface MapLayerLike {
 
 const clamp01 = (v: number): number => (v <= 0 ? 0 : v >= 1 ? 1 : v)
 
+/**
+ * How a line draws on: it gathers speed as the camera settles and slows as it
+ * closes, rather than racing to a dead stop. One curve for outlines, ridges,
+ * routes and parallels, so everything the map draws reads as one hand.
+ */
+const DRAW: Ease = { bezier: [0.6, 0, 0.2, 1] }
+
+/** A label settles this far, in design pixels, as it comes in: placed, not switched on. */
+const SETTLE = 8
+
 /** Device pixels per design pixel under the current transform. */
 function pixelScale(ctx: Ctx): number {
   const m = ctx.getTransform()
   return Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) || 1
 }
 
-/** A feature's strength at t: up as it comes in, down over the moment before it goes. */
+/**
+ * A feature's strength at t: up as it comes in, there at once and settling,
+ * and down over the moment before it goes, held and then quick, as every
+ * graphic leaves.
+ */
 function presence(show: { from: number; to: number }, t: number, length: number, rise = 0.35): number {
   if (t < show.from) return 0
-  const up = clamp01((t - show.from) / rise)
+  const up = ease('ease-out', (t - show.from) / rise)
   // What stays to the end of the layer leaves with the layer.
   if (show.to >= length - 0.02) return up
-  const down = clamp01((show.to - t) / 0.3)
+  const down = 1 - ease('ease-in', (t - (show.to - 0.3)) / 0.3)
   return Math.min(up, down)
 }
 
 export function drawMap(ctx: Ctx, layer: MapLayerLike, local: number, length: number, opacity: number, res: MapResources | undefined): void {
   const paint = layer.map
-  const look = LOOKS[paint.style] ?? LOOKS['satellite-dark']
+  const look = lookFor(paint)
   const geo = res?.geo ?? null
   const vp = paint.viewport
   const size = { width: vp.w, height: vp.h }
   const view = viewAt(paint, geo, local)
   const k = pixelScale(ctx)
+  tolerance = Math.min(2, Math.max(0.35, 0.8 / k))
 
   ctx.save()
   ctx.globalAlpha = opacity
@@ -77,7 +93,7 @@ export function drawMap(ctx: Ctx, layer: MapLayerLike, local: number, length: nu
     if (res) drawTiles(ctx, view, size, res, k)
     if (geo) coarseLand(ctx, look, view, size, geo, k, res?.maxLevel ?? 0)
     shade(ctx, look, size)
-  } else paper(ctx, look, size)
+  }
 
   if (geo) {
     if (paint.style === 'vintage') drawVintageLand(ctx, look, view, size, geo)
@@ -94,37 +110,113 @@ export function drawMap(ctx: Ctx, layer: MapLayerLike, local: number, length: nu
     else if (f.type === 'pin') drawPin(ctx, look, view, size, f.at, since, p)
   }
   drawLabels(ctx, paint, look, view, geo, local, length)
-  if (paint.style === 'vintage') vignette(ctx, look, size)
+  if (paint.style === 'vintage') {
+    // The paper's age shows over the ink, as on a real chart, and so the ripples' sea does not wipe it off round the coasts.
+    aged(ctx, size)
+    vignette(ctx, look, size)
+  }
   ctx.restore()
 }
 
 // ---------- Paths ----------
 
 /**
- * Traces a run of world points into the current path, a whole turn east or
- * west by `turn`, skipping points under half a pixel apart. Where the run
- * jumps from one edge of the world to the other (a coast cut at the date
- * line) the path breaks rather than drawing a line across the whole map.
+ * How far outside the frame, in design pixels, points still go in as they
+ * are: further than half the widest stroke a map makes, so whatever is cut
+ * is out of sight whichever way it is drawn.
  */
-function trace(ctx: Ctx, pts: Float64Array, view: View, size: { width: number; height: number }, turn: number, close: boolean): void {
-  const kw = worldPixels(view.zoom)
-  const ox = size.width / 2 - (view.x - turn) * kw
-  const oy = size.height / 2 - view.y * kw
-  let lx = Infinity
-  let ly = Infinity
+const MARGIN = 80
+
+/**
+ * Points closer than this to the last one drawn are left out, in design
+ * pixels: half a pixel of the canvas the frame is drawn on. Set as each map
+ * starts drawing; drawing is never interleaved, so one value serves.
+ */
+let tolerance = 0.5
+
+/**
+ * Adds a run of points to the path: the first `count` coordinates of `pts`,
+ * put on screen as x·k + ox, y·k + oy (k = 1 and no offset for points
+ * already on screen). Points under the tolerance from the last are skipped.
+ * With `cull`, a stretch of points all beyond one edge of the frame goes in
+ * as its first and last point only: the straight line between them is
+ * beyond that edge as well, so nothing in the frame changes, filled or
+ * stroked, and a coast thousands of points long off to one side costs two.
+ * (Dashed lines are not culled, so their dashes do not shift as the camera
+ * moves.) With `jumps`, the run breaks where it jumps from one edge of the
+ * world to the other, a coast cut at the date line, rather than drawing a
+ * line across the whole map. Returns whether it broke.
+ */
+export function addRun(
+  ctx: Ctx,
+  pts: Float64Array,
+  count: number,
+  k: number,
+  ox: number,
+  oy: number,
+  size: { width: number; height: number },
+  cull: boolean,
+  jumps: boolean
+): boolean {
+  const x0 = -MARGIN
+  const y0 = -MARGIN
+  const x1 = size.width + MARGIN
+  const y1 = size.height + MARGIN
+  const tol = tolerance
+  let lx = 0
+  let ly = 0
   let broken = false
-  for (let i = 0; i < pts.length; i += 2) {
-    const x = pts[i] * kw + ox
-    const y = pts[i + 1] * kw + oy
-    const jump = i > 0 && Math.abs(pts[i] - pts[i - 2]) > 0.5
+  // The edges every point of the stretch so far is beyond, as bits; 0 when it is not beyond any.
+  let beyond = 0
+  let hx = 0
+  let hy = 0
+  let held = false
+  for (let i = 0; i < count; i += 2) {
+    const x = pts[i] * k + ox
+    const y = pts[i + 1] * k + oy
+    const jump = jumps && i > 0 && Math.abs(pts[i] - pts[i - 2]) > 0.5
+    if (cull) {
+      const code = (x < x0 ? 1 : x > x1 ? 2 : 0) | (y < y0 ? 4 : y > y1 ? 8 : 0)
+      if (i > 0 && !jump && (beyond & code) !== 0) {
+        // Still beyond the same edge: kept back in case it is the last of the stretch.
+        beyond &= code
+        hx = x
+        hy = y
+        held = true
+        continue
+      }
+      beyond = code
+    }
+    if (held) {
+      ctx.lineTo(hx, hy)
+      lx = hx
+      ly = hy
+      held = false
+    }
     if (i === 0 || jump) {
       ctx.moveTo(x, y)
       broken ||= jump
-    } else if (Math.abs(x - lx) + Math.abs(y - ly) >= 0.5 || i === pts.length - 2) ctx.lineTo(x, y)
+    } else if (Math.abs(x - lx) + Math.abs(y - ly) >= tol || i === count - 2) ctx.lineTo(x, y)
     else continue
     lx = x
     ly = y
   }
+  if (held) ctx.lineTo(hx, hy)
+  return broken
+}
+
+/** Traces a run of world points into the current path, a whole turn east or west by `turn`. */
+function trace(
+  ctx: Ctx,
+  pts: Float64Array,
+  view: View,
+  size: { width: number; height: number },
+  turn: number,
+  close: boolean,
+  cull = true
+): void {
+  const kw = worldPixels(view.zoom)
+  const broken = addRun(ctx, pts, pts.length, kw, size.width / 2 - (view.x - turn) * kw, size.height / 2 - view.y * kw, size, cull, true)
   if (close && !broken) ctx.closePath()
 }
 
@@ -162,32 +254,55 @@ function turnsFor(box: WorldBox, bounds: WorldBox): number[] {
   return out
 }
 
+/** Lengths of screen polylines, kept while the polyline is: a frame's rings are measured once however often they are drawn. */
+const lengths = new WeakMap<Float64Array, number>()
+
 function length(pts: Float64Array): number {
+  const known = lengths.get(pts)
+  if (known !== undefined) return known
   let n = 0
-  for (let i = 2; i < pts.length; i += 2) n += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1])
+  for (let i = 2; i < pts.length; i += 2) {
+    const dx = pts[i] - pts[i - 2]
+    const dy = pts[i + 1] - pts[i - 1]
+    n += Math.sqrt(dx * dx + dy * dy)
+  }
+  lengths.set(pts, n)
   return n
 }
 
-/** Strokes screen polylines with only the first `p` of their combined length showing. */
-function strokeDrawn(ctx: Ctx, lines: Float64Array[], p: number, close: boolean): void {
-  const lengths = lines.map(length)
-  const total = lengths.reduce((a, b) => a + b, 0)
+/**
+ * Strokes screen polylines with only the first `p` of their combined length
+ * showing, in one path: whole lines, then the one being drawn up to the
+ * point reached.
+ */
+function strokeDrawn(ctx: Ctx, lines: Float64Array[], p: number, close: boolean, size: { width: number; height: number }): void {
+  const total = lines.reduce((a, l) => a + length(l), 0)
   let budget = clamp01(p) * total
+  ctx.beginPath()
   for (let i = 0; i < lines.length && budget > 0.5; i++) {
     const pts = lines[i]
-    const len = lengths[i]
-    ctx.beginPath()
-    ctx.moveTo(pts[0], pts[1])
-    for (let j = 2; j < pts.length; j += 2) ctx.lineTo(pts[j], pts[j + 1])
-    if (close && budget >= len) ctx.closePath()
-    if (budget < len) {
-      ctx.setLineDash([budget, len + 1])
-      ctx.lineDashOffset = 0
+    const len = length(pts)
+    if (budget >= len) {
+      addRun(ctx, pts, pts.length, 1, 0, 0, size, true, false)
+      if (close) ctx.closePath()
+    } else {
+      let left = budget
+      let j = 2
+      for (; j < pts.length; j += 2) {
+        const d = Math.sqrt((pts[j] - pts[j - 2]) ** 2 + (pts[j + 1] - pts[j - 1]) ** 2)
+        if (d >= left) {
+          addRun(ctx, pts, j, 1, 0, 0, size, true, false)
+          const f = d > 0 ? left / d : 0
+          ctx.lineTo(pts[j - 2] + (pts[j] - pts[j - 2]) * f, pts[j - 1] + (pts[j + 1] - pts[j - 1]) * f)
+          break
+        }
+        left -= d
+      }
+      if (j >= pts.length) addRun(ctx, pts, pts.length, 1, 0, 0, size, true, false)
     }
-    ctx.stroke()
-    ctx.setLineDash([])
     budget -= len
   }
+  ctx.stroke()
 }
 
 // ---------- The ground ----------
@@ -270,24 +385,42 @@ function shade(ctx: Ctx, look: MapLook, size: { width: number; height: number })
   vignette(ctx, look, size)
 }
 
+/** The parts of a colour written rgba(r, g, b, a) or #rrggbb. */
+function rgba(color: string): [number, number, number, number] {
+  const hex = /^#([0-9a-f]{6})$/i.exec(color)
+  if (hex) {
+    const n = parseInt(hex[1], 16)
+    return [n >> 16, (n >> 8) & 255, n & 255, 1]
+  }
+  const m = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(color)
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? 1 : Number(m[4])] : [0, 0, 0, 1]
+}
+
+/** Darker towards the edges: an oval to the frame's own shape, falling off late, so it reads as the edge of the picture rather than a spotlight. */
 function vignette(ctx: Ctx, look: MapLook, size: { width: number; height: number }): void {
   const cx = size.width / 2
   const cy = size.height / 2
-  const r = Math.hypot(cx, cy)
-  const g = ctx.createRadialGradient(cx, cy, r * 0.45, cx, cy, r)
-  g.addColorStop(0, 'rgba(0, 0, 0, 0)')
-  g.addColorStop(1, look.vignette)
+  // Drawn in a space squashed to the frame's shape, where the frame's corners are a circle's edge.
+  const r = Math.SQRT2 * cx
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.scale(1, size.height / size.width)
+  const g = ctx.createRadialGradient(0, 0, r * 0.5, 0, 0, r)
+  // Darkening as the square of the way out, so there is no ring where it starts.
+  const [cr, cg, cb, ca] = rgba(look.vignette)
+  for (const s of [0, 0.25, 0.5, 0.75, 1]) g.addColorStop(s, `rgba(${cr}, ${cg}, ${cb}, ${(ca * s * s).toFixed(4)})`)
   ctx.fillStyle = g
-  ctx.fillRect(0, 0, size.width, size.height)
+  ctx.fillRect(-cx, -cx, size.width, size.width)
+  ctx.restore()
 }
 
-/** Aged paper: a few soft stains on the parchment, always in the same places. */
-function paper(ctx: Ctx, look: MapLook, size: { width: number; height: number }): void {
+/** Aged paper: a few soft stains on the parchment, always in the same places, and the folds. */
+function aged(ctx: Ctx, size: { width: number; height: number }): void {
   const { width: w, height: h } = size
   const stains: [number, number, number, string][] = [
     [0.18, 0.22, 0.42, 'rgba(160, 120, 70, 0.10)'],
     [0.82, 0.7, 0.5, 'rgba(150, 105, 60, 0.12)'],
-    [0.55, 0.12, 0.3, 'rgba(255, 245, 220, 0.25)'],
+    [0.6, 0.1, 0.24, 'rgba(255, 245, 220, 0.12)'],
     [0.3, 0.85, 0.35, 'rgba(140, 100, 55, 0.08)']
   ]
   for (const [fx, fy, fr, color] of stains) {
@@ -310,13 +443,18 @@ function paper(ctx: Ctx, look: MapLook, size: { width: number; height: number })
   }
 }
 
-/** Strokes the arcs of a topology that show in the view. */
-function strokeArcs(ctx: Ctx, topo: Topo, arcs: number[], view: View, size: { width: number; height: number }): void {
+/** Adds the arcs of a topology that show in the view to the current path. */
+function addArcs(ctx: Ctx, topo: Topo, arcs: number[], view: View, size: { width: number; height: number }, cull = true): void {
   const bounds = viewBounds(view, size)
-  ctx.beginPath()
   for (const i of arcs) {
-    for (const turn of turnsFor(topo.boxes[i], bounds)) trace(ctx, topo.arcs[i], view, size, turn, false)
+    for (const turn of turnsFor(topo.boxes[i], bounds)) trace(ctx, topo.arcs[i], view, size, turn, false, cull)
   }
+}
+
+/** Strokes the arcs of a topology that show in the view. */
+function strokeArcs(ctx: Ctx, topo: Topo, arcs: number[], view: View, size: { width: number; height: number }, cull = true): void {
+  ctx.beginPath()
+  addArcs(ctx, topo, arcs, view, size, cull)
   ctx.stroke()
 }
 
@@ -360,7 +498,7 @@ function drawDarkContext(
     ctx.strokeStyle = look.border.color
     ctx.lineWidth = look.border.width
     ctx.setLineDash(look.border.dash)
-    strokeArcs(ctx, set.topo, set.borders, view, size)
+    strokeArcs(ctx, set.topo, set.borders, view, size, look.border.dash.length === 0)
     ctx.setLineDash([])
     ctx.restore()
   }
@@ -375,13 +513,18 @@ function drawVintageLand(ctx: Ctx, look: MapLook, view: View, size: { width: num
   graticule(ctx, look, view, size)
   // Engraved ripples off the coast: each a wide ink stroke with a slightly narrower stroke of sea over it,
   // so a thin line stands off the shore; the land laid over them hides their inner half.
+  // One path of the coast serves every ripple: stroking leaves the path as it was. The ripples
+  // stand off in proportion to the view, so a continent's islets do not each become a target.
+  const spread = Math.min(1, Math.max(0.4, (view.zoom - 1.2) / 3.8))
+  ctx.beginPath()
+  addArcs(ctx, set.topo, set.coasts, view, size)
   for (const w of look.waterlines) {
     ctx.strokeStyle = w.color
-    ctx.lineWidth = w.width
-    strokeArcs(ctx, set.topo, set.coasts, view, size)
+    ctx.lineWidth = w.width * spread
+    ctx.stroke()
     ctx.strokeStyle = look.sea
-    ctx.lineWidth = Math.max(0, w.width - 2.4)
-    strokeArcs(ctx, set.topo, set.coasts, view, size)
+    ctx.lineWidth = Math.max(0, w.width * spread - 2.4)
+    ctx.stroke()
   }
   ctx.fillStyle = look.land ?? look.sea
   ctx.beginPath()
@@ -407,11 +550,18 @@ function drawVintageLand(ctx: Ctx, look: MapLook, view: View, size: { width: num
   ctx.strokeStyle = look.coast.color
   ctx.lineWidth = look.coast.width
   strokeArcs(ctx, set.topo, set.coasts, view, size)
-  ctx.strokeStyle = look.border.color
-  ctx.lineWidth = look.border.width
-  ctx.setLineDash(look.border.dash)
-  strokeArcs(ctx, set.topo, set.borders, view, size)
-  ctx.setLineDash([])
+  // Borders come in as the camera closes in: across the whole world they are lace, not information.
+  const borders = clamp01((view.zoom - 3.2) / 1.2)
+  if (borders > 0) {
+    ctx.save()
+    ctx.globalAlpha *= borders
+    ctx.strokeStyle = look.border.color
+    ctx.lineWidth = look.border.width
+    ctx.setLineDash(look.border.dash)
+    strokeArcs(ctx, set.topo, set.borders, view, size, look.border.dash.length === 0)
+    ctx.setLineDash([])
+    ctx.restore()
+  }
 }
 
 /** Parallels and meridians every ten degrees, every five once the camera is close. */
@@ -481,22 +631,28 @@ function areaRings(ref: AreaRef, geo: MapGeo, view: View, size: { width: number;
       }
     }
   }
-  const lengths = new Map(rings.map((r) => [r, length(r)]))
-  return rings.filter((r) => (lengths.get(r) ?? 0) > 1).sort((a, b) => (lengths.get(b) ?? 0) - (lengths.get(a) ?? 0))
+  return rings.filter((r) => length(r) > 1).sort((a, b) => length(b) - length(a))
 }
 
-function fillRings(ctx: Ctx, rings: Float64Array[]): void {
+function fillRings(ctx: Ctx, rings: Float64Array[], size: { width: number; height: number }): void {
   ctx.beginPath()
   for (const r of rings) {
-    ctx.moveTo(r[0], r[1])
-    for (let j = 2; j < r.length; j += 2) ctx.lineTo(r[j], r[j + 1])
+    addRun(ctx, r, r.length, 1, 0, 0, size, true, false)
     ctx.closePath()
   }
   ctx.fill('evenodd')
 }
 
 /** A soft glow round a line: the same strokes wider and fainter underneath, the same in every engine. */
-function glowStroke(ctx: Ctx, lines: Float64Array[], p: number, color: string, width: number, close: boolean): void {
+function glowStroke(
+  ctx: Ctx,
+  lines: Float64Array[],
+  p: number,
+  color: string,
+  width: number,
+  close: boolean,
+  size: { width: number; height: number }
+): void {
   const passes: [number, number][] = [
     [width * 7, 0.07],
     [width * 4, 0.12],
@@ -508,7 +664,7 @@ function glowStroke(ctx: Ctx, lines: Float64Array[], p: number, color: string, w
     const before = ctx.globalAlpha
     ctx.globalAlpha = before * a
     ctx.lineWidth = w
-    strokeDrawn(ctx, lines, p, close)
+    strokeDrawn(ctx, lines, p, close, size)
     ctx.globalAlpha = before
   }
   ctx.restore()
@@ -528,8 +684,8 @@ function drawArea(
 ): void {
   const rings = areaRings(ref, geo, view, size)
   if (rings.length === 0) return
-  const drawn = ease('easy-ease-out', since / 1.25)
-  const filled = clamp01((since - 0.4) / 0.7)
+  const drawn = ease(DRAW, since / 1.25)
+  const filled = ease('ease-out', (since - 0.4) / 0.7)
   ctx.save()
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
@@ -537,26 +693,50 @@ function drawArea(
   if (tone === 'quiet') {
     ctx.globalAlpha = base * filled
     ctx.fillStyle = look.quiet.fill
-    fillRings(ctx, rings)
+    fillRings(ctx, rings, size)
     ctx.globalAlpha = base
     ctx.strokeStyle = look.quiet.stroke
     ctx.lineWidth = 1.6
-    strokeDrawn(ctx, rings, drawn, true)
+    strokeDrawn(ctx, rings, drawn, true, size)
     ctx.restore()
     return
   }
   const h = look.highlight
+  if (filled > 0 && look.spotlight > 0) {
+    // Everything but the place goes down a stop as it fills, so the eye has one place to go.
+    ctx.globalAlpha = base * filled * look.spotlight
+    ctx.fillStyle = '#000000'
+    ctx.beginPath()
+    ctx.rect(-MARGIN, -MARGIN, size.width + 2 * MARGIN, size.height + 2 * MARGIN)
+    for (const r of rings) {
+      addRun(ctx, r, r.length, 1, 0, 0, size, true, false)
+      ctx.closePath()
+    }
+    ctx.fill('evenodd')
+  }
   if (filled > 0) {
     ctx.globalAlpha = base * filled * h.fillAlpha
-    ctx.fillStyle = paintAccent(h.fill, accent, look)
-    fillRings(ctx, rings)
+    // Screened on, the tint is the accent most of the way to white: the land lifts, warm with a warm accent, cool with a cool one.
+    ctx.fillStyle = h.blend === 'screen' ? towardWhite(accent, 0.78, h.fill) : paintAccent(h.fill, accent, look)
+    // On the satellite the tint is screened on, so the land brightens towards the accent rather than muddying.
+    ctx.globalCompositeOperation = h.blend
+    fillRings(ctx, rings, size)
+    ctx.globalCompositeOperation = 'source-over'
   }
   ctx.globalAlpha = base
-  if (h.glow) glowStroke(ctx, rings, drawn, paintAccent(h.glow, accent, look), h.width, true)
+  if (h.glow) glowStroke(ctx, rings, drawn, paintAccent(h.glow, accent, look), h.width, true, size)
   ctx.strokeStyle = h.stroke
   ctx.lineWidth = h.width
-  strokeDrawn(ctx, rings, drawn, true)
+  strokeDrawn(ctx, rings, drawn, true, size)
   ctx.restore()
+}
+
+/** A #rrggbb colour taken a fraction k of the way to white; anything else is the fallback. */
+function towardWhite(color: string, k: number, fallback: string): string {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return fallback
+  const [r, g, b] = rgba(color)
+  const up = (v: number): number => Math.round(v + (255 - v) * k)
+  return `rgb(${up(r)}, ${up(g)}, ${up(b)})`
 }
 
 /** The style's accent, or the call's own colour where the style uses its accent. */
@@ -581,7 +761,7 @@ function drawLine(
   const ref = f.ref
   if ('lat' in ref) {
     const y = (project(0, ref.lat)[1] - view.y) * worldPixels(view.zoom) + size.height / 2
-    const drawn = ease('easy-ease-out', since / 1.1)
+    const drawn = ease(DRAW, since / 1.1)
     ctx.strokeStyle = look.parallel.color
     ctx.lineWidth = look.parallel.width
     ctx.setLineDash([0.5, look.parallel.gap])
@@ -594,7 +774,7 @@ function drawLine(
     const full = routePath(ref.route, view, size)
     // The path stops short of the pin it goes to, so the arrow points at the place rather than hiding under it.
     const pts = trimEnd(full, look.pin.radius + 10)
-    const drawn = ease('ease-in-out', since / 1.1)
+    const drawn = ease(DRAW, since / 1.1)
     const shown = partial(pts, drawn)
     ctx.strokeStyle = look.route.color
     ctx.lineWidth = look.route.width
@@ -611,20 +791,20 @@ function drawLine(
       return
     }
     const lines = ridgePolylines(geo.plates, ref.boundary, view, size)
-    const drawn = ease('easy-ease-out', since / 1.6)
-    if (look.ridge.glow) glowStroke(ctx, lines, drawn, look.ridge.glow, look.ridge.width, false)
+    const drawn = ease(DRAW, since / 1.6)
+    if (look.ridge.glow) glowStroke(ctx, lines, drawn, look.ridge.glow, look.ridge.width, false, size)
     ctx.strokeStyle = look.ridge.color
     ctx.lineWidth = look.ridge.width
-    strokeDrawn(ctx, lines, drawn, false)
+    strokeDrawn(ctx, lines, drawn, false, size)
     ctx.strokeStyle = look.ridge.core
     ctx.lineWidth = look.ridge.width * 0.35
-    strokeDrawn(ctx, lines, drawn, false)
+    strokeDrawn(ctx, lines, drawn, false, size)
   } else if ('points' in ref) {
     const world = new Float64Array(ref.points.flatMap(([lon, lat]) => project(lon, lat)))
     const pts = screenPoints(world, view, size, 0)
     ctx.strokeStyle = look.route.color
     ctx.lineWidth = look.route.width
-    strokeDrawn(ctx, [pts], ease('ease-in-out', since / 1.1), false)
+    strokeDrawn(ctx, [pts], ease(DRAW, since / 1.1), false, size)
   }
   ctx.restore()
 }
@@ -680,19 +860,18 @@ export function onScreen(at: LonLat, view: View, size: { width: number; height: 
 
 function drawPin(ctx: Ctx, look: MapLook, view: View, size: { width: number; height: number }, at: LonLat, since: number, p: number): void {
   const [x, y] = onScreen(at, view, size)
-  const pop = ease('overshoot', since / 0.4)
-  const r = look.pin.radius * pop
-  if (r <= 0.2) return
+  // From four tenths of its size, not from nothing, with a small overshoot as it lands.
+  const r = look.pin.radius * (0.4 + 0.6 * ease('overshoot', since / 0.4))
   ctx.save()
-  ctx.globalAlpha *= p
-  // One ring goes out from it as it lands.
+  ctx.globalAlpha *= p * ease('ease-out', since / 0.15)
+  // One ring goes out from it as it lands, slowing as it spreads.
   const q = clamp01(since / 0.9)
   if (q < 1) {
     ctx.strokeStyle = look.pin.pulse
     ctx.globalAlpha *= 1 - q
     ctx.lineWidth = 2.5
     ctx.beginPath()
-    ctx.arc(x, y, look.pin.radius * (1 + 2.6 * q), 0, Math.PI * 2)
+    ctx.arc(x, y, look.pin.radius * (1 + 2.6 * ease('ease-out', q)), 0, Math.PI * 2)
     ctx.stroke()
     ctx.globalAlpha /= 1 - q || 1
   }
@@ -731,17 +910,19 @@ function drawLabels(ctx: Ctx, paint: MapPaint, look: MapLook, view: View, geo: M
   for (const label of placed) {
     const p = presence(label.show, t, length, 0.4)
     if (p <= 0.001) continue
+    // Names of what the shot is about settle a few pixels as they come in; the quiet ones round it only fade.
+    const settle = label.id.startsWith('neighbour') ? 0 : SETTLE * (1 - ease('snap', (t - label.show.from) / 0.5))
     ctx.save()
     ctx.globalAlpha *= p
     ctx.textBaseline = 'alphabetic'
     ctx.textAlign = 'left'
-    if (label.path) drawPathLabel(ctx, label, look, view, size, scale)
-    else drawBoxLabel(ctx, label, look, view, size)
+    if (label.path) drawPathLabel(ctx, label, look, view, size, scale, settle)
+    else drawBoxLabel(ctx, label, look, view, size, settle)
     ctx.restore()
   }
 }
 
-function drawBoxLabel(ctx: Ctx, label: MapLabel, look: MapLook, view: View, size: { width: number; height: number }): void {
+function drawBoxLabel(ctx: Ctx, label: MapLabel, look: MapLook, view: View, size: { width: number; height: number }, settle: number): void {
   // A parallel's name keeps to its line; anything else hangs from its place, or stays where it was put.
   const lineY = label.lat !== undefined ? (project(0, label.lat)[1] - view.y) * worldPixels(view.zoom) + size.height / 2 : null
   const [ax, ay] = label.anchor ? onScreen(label.anchor, view, size) : [label.x, lineY ?? label.y]
@@ -756,7 +937,7 @@ function drawBoxLabel(ctx: Ctx, label: MapLabel, look: MapLook, view: View, size
       const w = lineWidth(line, font)
       // Lines of a block sit centred in it, or on its side next to a pin.
       const left = label.align === 'left' ? 0 : label.align === 'right' ? label.w - w : (label.w - w) / 2
-      const baseline = ay + label.dy + font.size * 0.86 + i * font.size * LABEL_LEADING
+      const baseline = ay + label.dy + settle + font.size * 0.86 + i * font.size * LABEL_LEADING
       setText(ctx, line, font, ax + label.dx + left, baseline, mode)
     })
   }
@@ -768,7 +949,15 @@ function lineWidth(text: string, font: LabelFont): number {
   return w - font.tracking
 }
 
-function drawPathLabel(ctx: Ctx, label: MapLabel, look: MapLook, view: View, size: { width: number; height: number }, scale: number): void {
+function drawPathLabel(
+  ctx: Ctx,
+  label: MapLabel,
+  look: MapLook,
+  view: View,
+  size: { width: number; height: number },
+  scale: number,
+  settle: number
+): void {
   const path = label.path
   if (!path) return
   const pts = path.points(view, size)
@@ -780,7 +969,8 @@ function drawPathLabel(ctx: Ctx, label: MapLabel, look: MapLook, view: View, siz
   const text = caseOf(label.lines[0], label.font)
   const widths = [...text].map((ch) => advance(ch, label.font.family, label.font.weight, label.font.size) + label.font.tracking)
   const textLength = widths.reduce((a, b) => a + b, 0) - label.font.tracking
-  let at = path.middle * scale - textLength / 2
+  // Along a line, a name settles by gliding the last few pixels into its place on it.
+  let at = path.middle * scale - textLength / 2 - settle * 2
   if (at < 0 || at + textLength > total) at = Math.max(0, Math.min(total - textLength, at))
   const pointAt = (s: number): [number, number, number] => {
     let i = 1
