@@ -156,7 +156,7 @@ describe('cutting toward a length', () => {
     expect(left).not.toContain('umbrellas')
     expect(left).not.toContain('Like I said')
     expect(plan.summary).toMatch(/^It runs (0:59|1:00|1:01) now, down from 1:\d\d\. I cut pauses over 0\.35 s, .*the tangent about the conference/)
-    expect(plan.summary).toContain('a retold story')
+    expect(plan.summary).toContain('a point made twice')
   })
 
   it('cuts nothing but pauses and retakes when every line is to stay, and says what the length would cost', () => {

@@ -768,7 +768,8 @@ export function useCutalong() {
       ops: Op[],
       fallback: string,
       preset?: string,
-      lead?: { text: string; ops: number }
+      /** A sentence for the first ops, said instead of describing them; timed when it already says how long the cut runs. */
+      lead?: { text: string; ops: number; timed?: boolean }
     ): { summary: string; n: number; notice: string | null } | null => {
       const d = docRef.current
       if (!d) return null
@@ -780,7 +781,7 @@ export function useCutalong() {
       if (sameValue(trial.cut, currentCut(d))) return null
       const after = resolveCut(trial.cut, d.words, d.sources)
       const led = lead && lead.text ? lead : null
-      const rest = describePlan(led ? trial.applied.slice(led.ops) : trial.applied, before, after, trial.cut)
+      const rest = describePlan(led ? trial.applied.slice(led.ops) : trial.applied, led?.timed ? after : before, after, trial.cut)
       const notice = fillNotice(filledIn(d), filledIn(d, trial.cut), fillMode(trial.cut))
       const said = [led?.text, rest].filter(Boolean).join(' ') || fallback
       // Made on a stretch picked on the strip, the version is named by it.
@@ -1463,9 +1464,11 @@ export function useCutalong() {
       }
 
       let ops: Op[]
+      let lead: { text: string; ops: number } | undefined
       if (command === 'punchin' && picked) {
         // A picked stretch stays closer all through: one punch-in held from its first beat to its last.
         ops = [{ op: 'treat', beats: picked, set: { zoom: Math.min(2, (zoom as { zoom?: number }).zoom ?? 1.12) } }]
+        lead = { text: 'The picture punches in and stays closer.', ops: 1 }
       } else if (command === 'punchin' && !inPanel) {
         // Every other section of the talk, closer: the cut at each new idea hides the jump.
         const starts = new Set(ideaStarts(d, cut))
@@ -1560,7 +1563,7 @@ export function useCutalong() {
         }
         ops = [{ op: 'camera', beats: targets, move }]
       }
-      const done = applyAsVersion(ops, 'The frame moves.')
+      const done = applyAsVersion(ops, 'The frame moves.', undefined, lead)
       if (!done) {
         const trial = applyOps(cut, ops, { words: d.words, sources: d.sources })
         say(trial.rejected[0]?.reason ?? 'That is already how the frame moves.')
@@ -2257,13 +2260,19 @@ export function useCutalong() {
           )
         } else asides.push(r.message)
       }
+      // Only a topic was asked, and nothing came of it: the reason is the whole answer.
+      const topicsOnly = asked.targetSec === undefined && !asked.range && !asked.intro && !asked.keepAll
+      if (topicsOnly && first.length === 0) {
+        return { n: null, said: say(asides.map((t) => sentence(t)).join(' ') || 'I left it as it was.', null, false) }
+      }
       const latest = docRef.current ?? d
       const plan = planLength(latest, asked, { profile: profileFor(latest, brandRef.current.niche), first, firstSaid })
       if (plan.ops.length === 0) {
         const said = say(plan.note ?? 'That is already how long it runs.', asides.map((t) => sentence(t)).join(' ') || null, false)
         return { n: null, said }
       }
-      const done = applyAsVersion(plan.ops, plan.summary, 'length', { text: plan.summary, ops: plan.ops.length })
+      // The summary already says how long it runs.
+      const done = applyAsVersion(plan.ops, plan.summary, 'length', { text: plan.summary, ops: plan.ops.length, timed: true })
       if (!done) return { n: null, said: say('That is already how long it runs.', null, false) }
       rememberVersion(docRef.current, { request: text }, done.n)
       const aside = [plan.note ?? '', ...asides].map((t) => sentence(t)).filter(Boolean).join(' ') || null
@@ -3202,11 +3211,14 @@ export function useCutalong() {
     scope.current = held && name ? { beats: held, name, always: true } : null
     const done = ops.length > 0 ? applyAsVersion(ops, r.summary) : null
     scope.current = null
+    // Every change reached outside the stretch: nothing is done, so the notes stay open and the reply says why.
+    const allOutside = !!name && outside > 0 && ops.length === 0
+    const handled = allOutside ? [] : r.notesHandled
     const latest = docRef.current
-    if (latest && r.notesHandled.length) setDoc(setNoteStatus(latest, r.notesHandled, 'applied'))
-    rememberNotes(docRef.current, r.notesHandled, 'applied', done?.n ?? null)
+    if (latest && handled.length) setDoc(setNoteStatus(latest, handled, 'applied'))
+    rememberNotes(docRef.current, handled, 'applied', done?.n ?? null)
     const leftOut =
-      outside > 0 && name
+      outside > 0 && name && !allOutside
         ? outside === 1
           ? `I left out one change that reached outside ${name}.`
           : `I left out ${outside} changes that reached outside ${name}.`
@@ -3216,10 +3228,11 @@ export function useCutalong() {
       .filter(Boolean)
       .join(' ')
     const summary = name ? leadWith(name, r.summary) : r.summary
+    const reply = allOutside ? `I left the edit as it was: what the plan changed reached outside ${name}.` : r.reply
     setPanel({
       text: done
         ? `${lead}v${done.n} is ready. ${summary}${extra ? ` ${extra}` : ''}`
-        : `${lead}${r.reply}${extra ? ` ${extra}` : ''}`
+        : `${lead}${reply}${extra ? ` ${extra}` : ''}`
     })
   }, [applyAsVersion, during, lengthAsked, setDoc, vlog])
 

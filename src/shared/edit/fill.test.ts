@@ -153,7 +153,7 @@ describe('the fill as an op, a reply and a sentence', () => {
     const both = filledPictures(vertical, doc.sources, doc.assets, frameShape('vertical', wide))
     expect(both.map((f) => f.beat)).toEqual(['b1'])
     expect(fillNotice([], both, 'blur')).toBe(
-      'wide.mov is wider than the frame, so I filled above and below it with a blurred copy of it instead of black bars. Say “use black bars” to have plain bars.'
+      'The clip wide.mov is wider than the frame, so I filled above and below it with a blurred copy of it instead of black bars. Say “use black bars” to have plain bars.'
     )
   })
 

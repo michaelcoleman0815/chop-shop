@@ -416,7 +416,7 @@ function takesUntouched(doc: EditDoc, cut: Cut): boolean {
   return true
 }
 
-/** Names a stretch that was cut, from its words: "the tangent about the conference", "a retold story". */
+/** Names a stretch that was cut, from its words: "the tangent about the conference", "a point made twice". */
 function nameRun(
   run: Unit[],
   all: Unit[],
@@ -426,7 +426,7 @@ function nameRun(
   const median = [...all].map((u) => u.topical).sort((a, b) => a - b)[Math.floor(all.length / 2)] ?? 0.3
   const topical = run.reduce((s, u) => s + u.topical, 0) / run.length
   const repeat = run.reduce((s, u) => s + u.repeat, 0) / run.length
-  if (repeat >= 0.45) return { kind: 'retold', name: 'a retold story', lines: run.length }
+  if (repeat >= 0.45) return { kind: 'retold', name: 'a point made twice', lines: run.length }
   if (run.length >= 2 && topical < median * 0.75) {
     // Its most said word that the rest of the video does not use.
     const outside = new Set(all.filter((u) => !run.includes(u)).flatMap((u) => u.content))
@@ -438,7 +438,7 @@ function nameRun(
   return { kind: 'lines', name: '', lines: run.length }
 }
 
-/** What was cut, a phrase each: "part of the intro", "the tangent about the conference", "two retold stories", "6 other lines". */
+/** What was cut, a phrase each: "part of the intro", "the tangent about the conference", "two points made twice", "6 other lines". */
 function describeCut(dropped: Unit[], all: Unit[], intro: Set<string>): string[] {
   const ordered = [...dropped].sort((a, b) => a.index - b.index)
   const runs: Unit[][] = []
@@ -456,7 +456,7 @@ function describeCut(dropped: Unit[], all: Unit[], intro: Set<string>): string[]
   return [
     named.some((n) => n.kind === 'intro') ? 'part of the intro' : '',
     ...tangents.map((t) => t.name),
-    retold === 1 ? 'a retold story' : retold > 1 ? `${count(retold, 'retold story', 'retold stories')}` : '',
+    retold === 1 ? 'a point made twice' : retold > 1 ? `${count(retold, 'point', 'points')} made twice` : '',
     rest > 0 ? (rest === 1 ? 'one other line' : `${count(rest, 'other line')}`) : ''
   ].filter(Boolean)
 }

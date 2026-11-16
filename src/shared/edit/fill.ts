@@ -249,7 +249,13 @@ export function fillNotice(before: FilledPicture[], after: FilledPicture[], mode
   const clips = pictures.every((p) => !p.still)
   const kind = stills ? ['still', 'stills'] : clips ? ['clip', 'clips'] : ['picture', 'pictures']
   const capital = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1)
-  const subject = one ? pictures[0].name : capital(counted(n, kind[0], kind[1]))
+  // A name is never capitalised: one that starts in lower case is introduced instead ("The clip broll-wide").
+  const named = one ? pictures[0].name : ''
+  const subject = !one
+    ? capital(counted(n, kind[0], kind[1]))
+    : /^\p{Ll}/u.test(named)
+      ? `The ${kind[0]} ${named}`
+      : named
   const be = one ? 'is' : 'are'
   const its = one ? 'its' : 'their'
   const each = one ? 'it' : 'each'
