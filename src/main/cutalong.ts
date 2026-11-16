@@ -58,7 +58,7 @@ import {
   BUILT_IN_PRESETS,
   chaptersReply,
   describeStyle,
-  LOOK_PRESETS,
+  CAPTION_STYLE_PRESETS,
   SKILL_PRESETS,
   suggestCommandName
 } from '../shared/presets'
@@ -476,7 +476,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
       const facts = summarize(measures, speech)
       const style = styleFromFacts(facts)
-      const taken = [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...SKILL_PRESETS, ...(await savedPresets())]
+      const taken = [...BUILT_IN_PRESETS, ...CAPTION_STYLE_PRESETS, ...SKILL_PRESETS, ...(await savedPresets())]
       const study: InspirationStudy = {
         source: { url: input.url ?? null, path, title, durationSec: measures.durationSec },
         facts,

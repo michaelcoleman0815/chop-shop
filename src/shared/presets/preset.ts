@@ -136,10 +136,10 @@ export const BUILT_IN_PRESETS: Preset[] = [
 ]
 
 /**
- * Built-in looks for captions the graphics draw. They are listed after your
+ * Built-in caption styles the graphics draw. They are listed after your
  * own /brand in the slash menu, and their names are taken like the built-ins.
  */
-export const LOOK_PRESETS: Preset[] = [
+export const CAPTION_STYLE_PRESETS: Preset[] = [
   {
     command: 'hierarchy',
     title: 'Hierarchy captions',

@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import { BUILT_IN_PRESETS, LOOK_PRESETS, PresetSchema, SKILL_PRESETS, type Preset } from '../shared/presets'
+import { BUILT_IN_PRESETS, CAPTION_STYLE_PRESETS, PresetSchema, SKILL_PRESETS, type Preset } from '../shared/presets'
 
 /**
  * Saved slash commands: the styles people keep from videos they liked. A small
@@ -38,7 +38,7 @@ export async function savePreset(
   const parsed = PresetSchema.safeParse(preset)
   if (!parsed.success) return { ok: false, message: 'That style is not in a shape I can save.' }
   const next: Preset = { ...parsed.data, builtIn: false }
-  if ([...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...SKILL_PRESETS].some((b) => b.command === next.command)) {
+  if ([...BUILT_IN_PRESETS, ...CAPTION_STYLE_PRESETS, ...SKILL_PRESETS].some((b) => b.command === next.command)) {
     return { ok: false, message: `/${next.command} is built in. Pick another name.` }
   }
   const presets = [...(await savedPresets()).filter((p) => p.command !== next.command), next]

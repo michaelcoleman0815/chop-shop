@@ -2,7 +2,7 @@ import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import { fileURLToPath } from 'url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../edit'
-import { describePlan, LOOK_PRESETS, planStyle } from '../presets'
+import { describePlan, CAPTION_STYLE_PRESETS, planStyle } from '../presets'
 import {
   buildScene,
   captionLayers,
@@ -256,7 +256,7 @@ describe('hierarchy captions', () => {
       source: { id: 's1', path: '/x.mov', durationSec: 5, width: 1080, height: 1920, fps: 30 },
       words: wordsFromTranscript([{ text: 'Hello', startSec: 0.5, endSec: 0.9 }], 's1')
     })
-    const preset = LOOK_PRESETS.find((p) => p.command === 'hierarchy')!
+    const preset = CAPTION_STYLE_PRESETS.find((p) => p.command === 'hierarchy')!
     const plan = planStyle(doc, preset.style)
     expect(plan.ops).toEqual([{ op: 'captions', set: { on: true, preset: 'hierarchy', position: 'chest' } }])
     const after = commit(doc, plan.ops, 'x').doc

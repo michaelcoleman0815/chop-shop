@@ -35,7 +35,7 @@ import {
   BUILT_IN_PRESETS,
   cutawayBeats,
   cutawayEdges,
-  LOOK_PRESETS,
+  CAPTION_STYLE_PRESETS,
   describePlan,
   findPreset,
   chaptersCommand,
@@ -408,7 +408,7 @@ export function useCutalong() {
     return [
       ...withHabits(BUILT_IN_PRESETS, brand.habits),
       ...(mine ? [mine] : []),
-      ...LOOK_PRESETS,
+      ...CAPTION_STYLE_PRESETS,
       ...ACTION_COMMANDS,
       ...SKILL_PRESETS,
       ...MOTION_ENTRIES,

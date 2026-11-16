@@ -8,7 +8,7 @@ import {
   describeStyle,
   findPreset,
   ideaStarts,
-  LOOK_PRESETS,
+  CAPTION_STYLE_PRESETS,
   planStyle,
   PresetSchema,
   SKILL_PRESETS,
@@ -201,14 +201,14 @@ describe('saying how beats play', () => {
 
 describe('the skill commands', () => {
   it('are valid presets with names nothing else uses', () => {
-    const names = new Set([...BUILT_IN_PRESETS, ...LOOK_PRESETS].map((p) => p.command))
+    const names = new Set([...BUILT_IN_PRESETS, ...CAPTION_STYLE_PRESETS].map((p) => p.command))
     for (const p of SKILL_PRESETS) {
       expect(() => PresetSchema.parse(p)).not.toThrow()
       expect(names.has(p.command), p.command).toBe(false)
       names.add(p.command)
     }
     // A style saved from a channel never takes one of their names.
-    const taken = [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...SKILL_PRESETS]
+    const taken = [...BUILT_IN_PRESETS, ...CAPTION_STYLE_PRESETS, ...SKILL_PRESETS]
     expect(suggestCommandName('Warm', taken)).toBe('warm-2')
     expect(commandProblem('/cinematic', taken)).toBe('/cinematic is built in. Pick another name.')
   })
