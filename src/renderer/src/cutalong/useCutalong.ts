@@ -37,6 +37,15 @@ import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspi
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import { withHabits } from '../../../shared/learn/habits'
 import { useLearn } from './useLearn'
+import {
+  remember,
+  rememberAdded,
+  rememberKeep,
+  rememberNotes,
+  rememberVersion,
+  rememberVoice,
+  useMemory
+} from './memory'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
@@ -221,6 +230,7 @@ export function useCutalong() {
     void api
       .getBrand()
       .then((b) => {
+        rememberVoice(b.voice)
         brandRef.current = b
         setBrand(b)
       })
@@ -234,11 +244,14 @@ export function useCutalong() {
     setBrand(next)
     if (brandSave.current) clearTimeout(brandSave.current)
     brandSave.current = setTimeout(() => {
+      rememberVoice(next.voice)
       void api.saveBrand(next).then((r) => {
         if (!r.ok) setToast({ text: r.message, error: true })
       })
     }, 300)
   }, [])
+  // What I learn from how you edit: noted as you go, listed on the brand page.
+  const memory = useMemory(brand, saveBrand, setToast)
 
   const learnFrom = useCallback(
     async (paths: string[]): Promise<void> => {
@@ -287,6 +300,7 @@ export function useCutalong() {
 
   /** Opens a saved chat: its thread when it has one, else straight into the editor. */
   const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
+    rememberKeep(docRef.current)
     const project = await api.openProject(path)
     if (!project) return
     projectRef.current = project
@@ -559,6 +573,7 @@ export function useCutalong() {
       }
       const plan = planStyle(d, preset.style)
       const done = applyAsVersion(plan.ops, `${preset.title} is on.`, command)
+      rememberVersion(docRef.current, { command }, done?.n ?? null)
       const open = plan.open.join(' ')
       if (!done) {
         say(`/${command} is already how this cut looks.${open ? ` ${open}` : ''}`)
@@ -635,6 +650,7 @@ export function useCutalong() {
         return
       }
       const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
+      rememberVersion(docRef.current, { request: text }, done?.n ?? null)
       const aside = [...r.needs, ...r.rejected].join(' ') || null
       patch(id, {
         progress: null,
@@ -776,6 +792,7 @@ export function useCutalong() {
       const d = docRef.current
       if (!d) return
       setDoc(addNoteTo(d, text, beat))
+      rememberAdded(d, docRef.current)
     },
     [setDoc]
   )
@@ -784,6 +801,7 @@ export function useCutalong() {
     (id: string): void => {
       const d = docRef.current
       if (d) setDoc(setNoteStatus(d, [id], 'dismissed'))
+      rememberNotes(d, [id], 'dismissed')
     },
     [setDoc]
   )
@@ -805,6 +823,7 @@ export function useCutalong() {
     const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
     const latest = docRef.current
     if (latest && r.notesHandled.length) setDoc(setNoteStatus(latest, r.notesHandled, 'applied'))
+    rememberNotes(docRef.current, r.notesHandled, 'applied', done?.n ?? null)
     const extra = [...r.needs, ...r.rejected].join(' ')
     setPanel({
       text: done
@@ -827,6 +846,7 @@ export function useCutalong() {
     const n = currentVersion(d).n
     const back = d.versions[d.versions.length - 2]
     setDoc(restore(d, back.n))
+    remember({ kind: 'undo', doc: d.id, from: n, to: back.n })
     setPanel({ text: `v${n + 1} is v${back.n} again.` })
   }, [setDoc])
 
@@ -837,6 +857,7 @@ export function useCutalong() {
     const off = api.onCutProgress((p) => setToast({ text: `Exporting… ${p.percent}%` }))
     const r = await api.renderCut({ doc: d, quality: 'final' })
     off()
+    if (r.ok) rememberKeep(d)
     setToast(
       r.ok
         ? {
@@ -849,6 +870,7 @@ export function useCutalong() {
 
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
+    rememberKeep(docRef.current)
     projectRef.current = null
     docRef.current = null
     messagesRef.current = []
@@ -869,6 +891,7 @@ export function useCutalong() {
     learnFrom,
     forgetBrandVideo,
     learn,
+    memory,
     setSaved,
     screen,
     setScreen,

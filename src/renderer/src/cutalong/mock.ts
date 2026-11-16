@@ -14,6 +14,14 @@ import { detectProvider } from '../../../shared/keys'
 import type { Word } from '../../../shared/edit'
 import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
 import { synthFinished, synthRecording } from '../../../shared/learn/synth'
+import {
+  changeMemory,
+  EMPTY_MEMORY,
+  memoryView,
+  recordSignal,
+  type Memory,
+  type SignalInput
+} from '../../../shared/memory'
 import type { CutalongApi } from './api'
 
 /**
@@ -164,6 +172,62 @@ function mockLearn(
   return { ok: true, pair }
 }
 
+/**
+ * Four edits' worth of what someone asked for, undid and kept, so the brand
+ * page shows what learning looks like. ?memory=empty starts from nothing;
+ * ?memory=captions adds captions asked for at chest height on three edits,
+ * which become a brand default.
+ */
+function seededMemory(): Memory {
+  const which = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('memory')
+  if (which === 'empty') return { ...EMPTY_MEMORY }
+  const ask = (doc: string, text: string, version: number, tags: string[] = []): SignalInput => ({
+    kind: 'request',
+    doc,
+    text,
+    version,
+    tags
+  })
+  const run = (doc: string, command: string, version: number, tags: string[]): SignalInput => ({
+    kind: 'command',
+    doc,
+    command,
+    version,
+    tags
+  })
+  const undo = (doc: string, from: number, to: number): SignalInput => ({ kind: 'undo', doc, from, to })
+  const events: SignalInput[] = [
+    run('e1', 'snappy', 2, ['tight-cuts', 'fillers-cut']),
+    ask('e1', 'no, keep the pause before the joke', 3, ['restore-words']),
+    run('e1', 'shorts', 4, ['punch-in', 'aspect:vertical', 'captions-words:2']),
+    undo('e1', 4, 3),
+    ask('e1', 'keep the laugh at the end', 6, ['restore-words']),
+    run('e2', 'snappy', 2, ['tight-cuts']),
+    ask('e2', 'punch in on the reveal', 3, ['punch-in']),
+    undo('e2', 3, 2),
+    ask('e2', 'leave the laughs in', 5),
+    ask('e2', 'use the second take of the intro', 6, ['cut-words']),
+    run('e3', 'snappy', 2, ['tight-cuts']),
+    run('e3', 'hook', 3, ['punch-in']),
+    undo('e3', 3, 2),
+    ask('e3', 'keep the pauses, it feels rushed', 5),
+    ask('e3', "don't cut the laugh", 6),
+    ask('e3', 'go with the last take', 7, ['cut-words']),
+    run('e4', 'shorts', 2, ['punch-in', 'captions-words:2']),
+    ask('e4', 'keep the laughing bit', 3),
+    ask('e4', 'use the later take', 4, ['cut-words']),
+    run('e4', 'snappy', 5, ['tight-cuts']),
+    ...(which === 'captions'
+      ? ['e1', 'e2', 'e3'].map((doc) => ask(doc, 'put the captions at chest height', 9, ['captions-position:chest']))
+      : [])
+  ]
+  const start = Date.now() - 21 * 86_400_000
+  return events.reduce(
+    (m, e, i) => recordSignal(m, { ...e, at: new Date(start + i * 3_600_000).toISOString() }),
+    EMPTY_MEMORY
+  )
+}
+
 export function createMockApi(): CutalongApi {
   const listeners = {
     cut: new Set<(p: { stage: string; percent: number }) => void>(),
@@ -242,6 +306,7 @@ export function createMockApi(): CutalongApi {
   const learnListeners = new Set<(p: { stage: string; percent: number }) => void>()
   let learned: LabelledPair[] = []
   let runs = 0
+  let memory = seededMemory()
 
   return {
     getVersion: async () => '0.2.13',
@@ -500,6 +565,14 @@ export function createMockApi(): CutalongApi {
     onLearnProgress: (cb) => {
       learnListeners.add(cb)
       return () => learnListeners.delete(cb)
+    },
+    memoryView: async () => memoryView(memory),
+    rememberSignal: async (signal) => {
+      memory = recordSignal(memory, signal)
+    },
+    updateMemory: async (change) => {
+      memory = changeMemory(memory, change)
+      return memoryView(memory)
     },
     chooseMedia: async () => null,
     checkKey: async () =>

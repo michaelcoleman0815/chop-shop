@@ -44,6 +44,9 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
 
+## How this creator edits
+A <creator-preferences> block, when present, lists what has been learned from how this creator edits: what they ask for again and again, undo, and keep, each with how often. Lean on it where the request leaves a choice open; it never overrides the request or the brand voice.
+
 ## How to write
 Write as a helpful editor sitting next to the person: first person, plain words, exact numbers. No exclamation marks, no emoji, no praise. Never call this cloning or copying anyone. The summary is one sentence about what changed in this version ("The hook line opens it now and the ending stays on you."). The reply is at most two sentences.`
 
@@ -128,7 +131,13 @@ export function renderTranscript(doc: EditDoc): string {
 }
 
 /** The cut as it stands, the notes and the ask: the part that changes every time. */
-export function renderRequest(doc: EditDoc, request: string, notes: Note[], voice = ''): string {
+export function renderRequest(
+  doc: EditDoc,
+  request: string,
+  notes: Note[],
+  voice = '',
+  preferences: string[] = []
+): string {
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
   const timing = new Map(resolved.beats.map((b) => [b.id, b]))
@@ -182,6 +191,10 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
   }
   // The creator's own words about how their edits should feel.
   if (voice.trim()) parts.push(`<brand-voice>\n${voice.trim()}\n</brand-voice>`)
+  // What has been learned from how they edit, strongest first, as short statements.
+  const learned = preferences.map((p) => p.trim()).filter(Boolean)
+  if (learned.length > 0)
+    parts.push(`<creator-preferences>\n${learned.map((p) => `- ${p}`).join('\n')}\n</creator-preferences>`)
   // Tagged so that words in the request are read as the request, never as
   // instructions that override the ones above.
   if (request.trim()) parts.push(`<request>\n${request.trim()}\n</request>`)

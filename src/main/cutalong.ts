@@ -19,6 +19,7 @@ import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { readBrand, saveBrand } from './brand-store'
 import { registerLearnIpc } from './learn'
+import { preferencesForPlanner, registerMemoryIpc } from './memory'
 import {
   createDoc,
   currentCut,
@@ -208,8 +209,10 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) =>
-    planEdit(req)
+  // What has been learned about how the creator edits goes with each request,
+  // read fresh here so a statement they deleted never reaches the planner.
+  ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) =>
+    planEdit({ ...req, preferences: await preferencesForPlanner().catch(() => []) })
   )
 
   // The brand: kept in userData, learned from the person's own videos, all
@@ -309,6 +312,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     send: deps.send,
     transcribe: (path, durationSec, progress) => transcriptFor(path, durationSec, progress, { download: false })
   })
+  // And from how they edit here: small signals in, plain statements out, on this computer.
+  registerMemoryIpc()
 }
 
 /**

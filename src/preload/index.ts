@@ -23,6 +23,7 @@ import type { Asset, EditDoc, Note, Op } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
+import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { Preset } from '../shared/presets'
 
 type Progress = { stage: string; percent: number }
@@ -87,6 +88,10 @@ const api = {
   learnEvaluate: (): Promise<LearnState> => ipcRenderer.invoke('learn:evaluate'),
   learnForget: (id: string): Promise<LearnState> => ipcRenderer.invoke('learn:forget', id),
   onLearnProgress: (cb: (p: Progress) => void): (() => void) => listen('learn:progress', cb),
+  // What has been learned about how you edit, kept on this computer.
+  memoryView: (): Promise<MemoryView> => ipcRenderer.invoke('memory:get'),
+  rememberSignal: (signal: Signal): Promise<void> => ipcRenderer.invoke('memory:record', signal),
+  updateMemory: (change: MemoryChange): Promise<MemoryView> => ipcRenderer.invoke('memory:update', change),
   onCutProgress: (cb: (p: Progress) => void): (() => void) => listen('cut:progress', cb),
   planEdit: (req: {
     doc: EditDoc

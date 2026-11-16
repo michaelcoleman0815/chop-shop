@@ -1444,6 +1444,16 @@ button:disabled {
   accent-color: var(--ink);
 }
 
+/* What I've learned: statements read as sentences, and one at a time is reworded in place. */
+.cl-memory .cl-list-main {
+  font-weight: 400;
+}
+
+.cl-memory-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Settings */
 .cl-field .cl-row input:not([type='color']) {
   flex: 1 1 260px;
