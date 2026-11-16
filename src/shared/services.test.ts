@@ -10,6 +10,19 @@ describe('the other AI services switch', () => {
     expect(servicesOn(null)).toBe(true)
   })
 
+  it('says under the Deepgram key that the audio is not used to improve its models', () => {
+    expect(SERVICES.find((s) => s.id === 'deepgram')?.note).toBe(
+      'I ask Deepgram not to use your audio to improve its models, so it keeps neither the audio nor the words once it has answered.'
+    )
+  })
+
+  it('says under the Gemini key what Google may do with excerpts on a free key, as its terms put it', () => {
+    expect(SERVICES.find((s) => s.id === 'gemini')?.note).toBe(
+      'On a free Gemini key, one without billing on its Google Cloud project, Google may use the excerpts I send and its answers to improve its products, and people at Google may review them, unless you are in the EEA, Switzerland or the UK.'
+    )
+    expect(SERVICES.find((s) => s.id === 'assemblyai')?.note).toBeUndefined()
+  })
+
   it('names each service plainly', () => {
     expect(SERVICES.map((s) => s.name)).toEqual(['Deepgram', 'AssemblyAI', 'Google Gemini'])
     expect(serviceName('gemini')).toBe('Google Gemini')

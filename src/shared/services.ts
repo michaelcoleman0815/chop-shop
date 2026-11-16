@@ -23,12 +23,33 @@ export interface Service {
   job: ServiceJob
   /** Where a key comes from, said plainly. */
   keyFrom: string
+  /** One sentence shown under the key: what happens to what is sent there. */
+  note?: string
 }
 
 export const SERVICES: readonly Service[] = [
-  { id: 'deepgram', name: 'Deepgram', job: 'transcribe', keyFrom: 'console.deepgram.com' },
+  {
+    id: 'deepgram',
+    name: 'Deepgram',
+    job: 'transcribe',
+    keyFrom: 'console.deepgram.com',
+    // Every transcription request carries mip_opt_out=true (providers/deepgram.ts).
+    note: 'I ask Deepgram not to use your audio to improve its models, so it keeps neither the audio nor the words once it has answered.'
+  },
   { id: 'assemblyai', name: 'AssemblyAI', job: 'transcribe', keyFrom: 'assemblyai.com/dashboard' },
-  { id: 'gemini', name: 'Google Gemini', job: 'judge', keyFrom: 'aistudio.google.com' }
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    job: 'judge',
+    keyFrom: 'aistudio.google.com',
+    // From the Gemini API Additional Terms of Service, effective March 23, 2026
+    // (aistudio.google.com/docs/terms): the API is unpaid unless reached through
+    // a Cloud project with an active billing account; on unpaid use Google uses
+    // what is submitted and its responses to improve its products and human
+    // reviewers may read them; in the EEA, Switzerland and the UK the paid
+    // terms apply to free use as well.
+    note: 'On a free Gemini key, one without billing on its Google Cloud project, Google may use the excerpts I send and its answers to improve its products, and people at Google may review them, unless you are in the EEA, Switzerland or the UK.'
+  }
 ]
 
 /** The services that hear the words. */

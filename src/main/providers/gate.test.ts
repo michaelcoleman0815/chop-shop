@@ -175,6 +175,70 @@ describe('the gate to other AI services', () => {
     expect((err as ServiceError).message).toBe('Google Gemini sent back something I could not read.')
   })
 
+  it('deletes what this app left with a service even after the switch is turned off, and nothing else', async () => {
+    const created = 'https://api.assemblyai.com/v2/transcript/job-1'
+    const fetch: FetchFn = async (_url, init) =>
+      init.method === 'POST' ? new Response('{"id":"job-1","status":"queued"}') : new Response('{"id":"job-1"}')
+    const { gate, fetch: spy, setOn } = setup({ keys: ALL_KEYS, fetch })
+    await gate.send('assemblyai', 'https://api.assemblyai.com/v2/transcript', {
+      method: 'POST',
+      body: '{"audio_url":"https://cdn.assemblyai.com/upload/u","disfluencies":true}',
+      timeoutMs: 1000
+    })
+    setOn(false)
+    // Off: an ordinary request is refused before anything leaves.
+    expect((await failureOf(gate.send('assemblyai', created, { timeoutMs: 1000 }))).kind).toBe('off')
+    // Only what the gate saw created, only on the service that created it.
+    expect(await gate.cleanUp('assemblyai', 'https://api.assemblyai.com/v2/transcript/someone-else')).toBe(false)
+    expect(await gate.cleanUp('deepgram', created)).toBe(false)
+    expect(spy).toHaveBeenCalledTimes(1)
+    // The clean-up itself goes: one DELETE, with the key, and no body.
+    expect(await gate.cleanUp('assemblyai', created)).toBe(true)
+    expect(spy).toHaveBeenCalledTimes(2)
+    const [url, init] = spy.mock.calls[1]
+    expect([url, init.method, init.body, new Headers(init.headers).get('authorization'), init.redirect]).toEqual([
+      created,
+      'DELETE',
+      undefined,
+      'aai-secret-0002',
+      'error'
+    ])
+    // Once only.
+    expect(await gate.cleanUp('assemblyai', created)).toBe(false)
+    expect(spy).toHaveBeenCalledTimes(2)
+  })
+
+  it('notes nothing to clean up from a request that did not create anything', async () => {
+    const { gate, fetch } = setup({
+      keys: ALL_KEYS,
+      fetch: async () => new Response('{"id":"x","status":"completed"}')
+    })
+    // A poll and a key check reply with ids too; neither leaves anything behind.
+    await gate.send('assemblyai', 'https://api.assemblyai.com/v2/transcript/x', { timeoutMs: 1000 })
+    await gate.send('assemblyai', URLS.assemblyai, { timeoutMs: 1000 })
+    expect(await gate.cleanUp('assemblyai', 'https://api.assemblyai.com/v2/transcript/x')).toBe(false)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps a clean-up going when the switch is turned off while it is on its way', async () => {
+    let release: (r: Response) => void = () => undefined
+    let aborted = false
+    const fetch: FetchFn = async (_url, init) => {
+      if (init.method === 'POST') return new Response('{"id":"job-2"}')
+      init.signal?.addEventListener('abort', () => (aborted = true))
+      return new Promise<Response>((resolve) => (release = resolve))
+    }
+    const { gate, setOn } = setup({ keys: ALL_KEYS, fetch })
+    await gate.send('assemblyai', 'https://api.assemblyai.com/v2/transcript', { method: 'POST', timeoutMs: 1000 })
+    const pending = gate.cleanUp('assemblyai', 'https://api.assemblyai.com/v2/transcript/job-2')
+    await new Promise((r) => setTimeout(r, 10))
+    setOn(false)
+    gate.closeAll()
+    release(new Response('{"id":"job-2"}'))
+    expect(await pending).toBe(true)
+    expect(aborted).toBe(false)
+  })
+
   it('never hands a key back, even when a service echoes it', async () => {
     const echo: FetchFn = async (_url, init) => {
       const key = new Headers(init.headers).get('authorization') ?? ''

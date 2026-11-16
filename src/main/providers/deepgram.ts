@@ -8,10 +8,14 @@ import type { SpeechAudio } from './media'
  * Transcription with Deepgram's pre-recorded API, keeping the fillers.
  *
  * One request: the audio goes up as the body and the words come back with
- * their times. Deepgram keeps nothing afterwards.
+ * their times. It is opted out of Deepgram's Model Improvement Program, so
+ * Deepgram neither uses the audio to improve its models nor keeps the audio
+ * or the transcript once it has answered.
  *
  * https://developers.deepgram.com/reference/speech-to-text/listen-pre-recorded
  * https://developers.deepgram.com/docs/filler-words
+ * https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program
+ * https://developers.deepgram.com/trust-security/your-data
  */
 
 const LISTEN = 'https://api.deepgram.com/v1/listen'
@@ -22,8 +26,10 @@ const LISTEN = 'https://api.deepgram.com/v1/listen'
  * default ("uh" and "um" are stripped), so they are turned on. Punctuation
  * is on so sentences end where they were spoken; smart formatting stays off,
  * because it joins spoken numbers into one token and loses their timing.
+ * Requests join the Model Improvement Program unless each one opts out with
+ * mip_opt_out=true, which the owner chose; it no longer changes the price.
  */
-export const LISTEN_PARAMS = { model: 'nova-3', filler_words: 'true', punctuate: 'true' } as const
+export const LISTEN_PARAMS = { model: 'nova-3', filler_words: 'true', punctuate: 'true', mip_opt_out: 'true' } as const
 
 /** "File size: Maximum 2 GB." */
 export const DEEPGRAM_MAX_BYTES = 2_000_000_000

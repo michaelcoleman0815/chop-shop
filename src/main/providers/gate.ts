@@ -12,22 +12,46 @@ import { serviceName, type ServiceId } from '../../shared/services'
  * here logs.
  *
  * Turning the switch off also stops requests already in flight (closeAll).
+ * One thing still goes out after that: cleanUp, which deletes what this app
+ * left with a service in a job, such as the audio AssemblyAI holds for a
+ * transcript. Deleting the person's own data is never a send.
  */
 
 interface Route {
   hosts: readonly string[]
   /** The header that carries the key, as each service's API reference gives it. */
   auth: (key: string) => Record<string, string>
+  /**
+   * A request that leaves something of the person's with the service until
+   * it is deleted, and where it is deleted: the gate notes each one it sees
+   * succeed, so cleanUp can delete exactly those and nothing else.
+   */
+  leaves?: { method: 'POST'; path: string; deleteUrl: (reply: unknown) => string | null }
 }
 
 export const ROUTES: Record<ServiceId, Route> = {
   // https://developers.deepgram.com/reference/speech-to-text/listen-pre-recorded
   deepgram: { hosts: ['api.deepgram.com'], auth: (key) => ({ Authorization: `Token ${key}` }) },
   // https://www.assemblyai.com/docs/pre-recorded-audio/api-reference/files/upload
-  assemblyai: { hosts: ['api.assemblyai.com'], auth: (key) => ({ Authorization: key }) },
+  assemblyai: {
+    hosts: ['api.assemblyai.com'],
+    auth: (key) => ({ Authorization: key }),
+    // A transcript holds the uploaded audio until the transcript is deleted.
+    // https://www.assemblyai.com/docs/pre-recorded-audio/api-reference/transcripts/delete
+    leaves: {
+      method: 'POST',
+      path: '/v2/transcript',
+      deleteUrl: (reply) => {
+        const id = (reply as { id?: unknown } | null)?.id
+        return typeof id === 'string' && /^[\w-]+$/.test(id) ? `https://api.assemblyai.com/v2/transcript/${id}` : null
+      }
+    }
+  },
   // https://ai.google.dev/api/generate-content
   gemini: { hosts: ['generativelanguage.googleapis.com'], auth: (key) => ({ 'x-goog-api-key': key }) }
 }
+
+const CLEANUP_TIMEOUT_MS = 15_000
 
 export type FailureKind =
   | 'off'
@@ -103,10 +127,20 @@ export interface Gate {
   send(service: ServiceId, url: string, init: SendInit): Promise<Reply>
   /** Stops every request in flight. Used when the switch is turned off. */
   closeAll(): void
+  /**
+   * Deletes something of the person's this app left with a service in a job,
+   * such as an AssemblyAI transcript and the audio uploaded for it: only a
+   * DELETE, only to a URL the gate saw that service create, only once. It
+   * goes even when the switch has been turned off since, and closeAll does
+   * not stop it. Resolves to whether the service confirmed the deletion.
+   */
+  cleanUp(service: ServiceId, url: string): Promise<boolean>
 }
 
 export function createGate(deps: GateDeps): Gate {
   const inflight = new Set<AbortController>()
+  /** What this app left with each service and has not deleted yet, as "service url". */
+  const left = new Set<string>()
 
   const refusal = (service: ServiceId): ServiceError | null => {
     if (!deps.on()) return new ServiceError(service, 'off', 'Other AI services are off in Settings.')
@@ -168,6 +202,11 @@ export function createGate(deps: GateDeps): Gate {
         })
       }
       if (status < 200 || status >= 300) throw failure(service, status, text, replyHeaders)
+      const leaves = ROUTES[service].leaves
+      if (leaves && (init.method ?? 'GET') === leaves.method && target.pathname === leaves.path) {
+        const url = leaves.deleteUrl(parsed(text))
+        if (url) left.add(`${service} ${url}`)
+      }
       return {
         status,
         headers: replyHeaders,
@@ -193,7 +232,36 @@ export function createGate(deps: GateDeps): Gate {
     inflight.clear()
   }
 
-  return { open, refusal, send, closeAll }
+  const cleanUp = async (service: ServiceId, url: string): Promise<boolean> => {
+    const entry = `${service} ${url}`
+    if (!left.has(entry)) return false
+    left.delete(entry)
+    const key = deps.key(service)
+    if (!key) return false
+    try {
+      const res = await deps.fetch(url, {
+        method: 'DELETE',
+        headers: new Headers(ROUTES[service].auth(key)),
+        redirect: 'error',
+        // Its own timeout and not in flight for closeAll: turning the switch off must not stop it.
+        signal: AbortSignal.timeout(CLEANUP_TIMEOUT_MS)
+      })
+      await res.text().catch(() => '')
+      return res.ok
+    } catch {
+      return false
+    }
+  }
+
+  return { open, refusal, send, closeAll, cleanUp }
+}
+
+function parsed(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return null
+  }
 }
 
 /** A key never travels back out of the gate, even if a service echoes it. */

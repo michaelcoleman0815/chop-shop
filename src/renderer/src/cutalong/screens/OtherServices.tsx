@@ -172,6 +172,7 @@ export function OtherServices({
             <p className="cl-aside" role="status">
               {line(s)}
             </p>
+            {s.note && <p className="cl-aside">{s.note}</p>}
           </div>
         ))}
 

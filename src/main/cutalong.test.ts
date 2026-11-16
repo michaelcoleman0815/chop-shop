@@ -18,7 +18,7 @@ const fake = vi.hoisted(() => ({
   userData: '',
   handlers: new Map<string, Handler>(),
   sent: [] as Sent[],
-  answer: null as null | ((url: string) => Response),
+  answer: null as null | ((url: string, init: RequestInit) => Response | Promise<Response>),
   localCalls: 0
 }))
 
@@ -36,7 +36,7 @@ vi.mock('electron', async () => {
         const body = init.body instanceof Uint8Array ? init.body : null
         fake.sent.push({ method: init.method ?? 'GET', url, headers: new Headers(init.headers), body })
         if (!fake.answer) throw new Error('No network in this test.')
-        return fake.answer(url)
+        return fake.answer(url, init)
       }
     },
     safeStorage: {
@@ -167,7 +167,9 @@ describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' 
     expect(fake.localCalls).toBe(0)
     expect(fake.sent).toHaveLength(1)
     const [req] = fake.sent
-    expect(req.url).toBe('https://api.deepgram.com/v1/listen?model=nova-3&filler_words=true&punctuate=true')
+    expect(req.url).toBe(
+      'https://api.deepgram.com/v1/listen?model=nova-3&filler_words=true&punctuate=true&mip_opt_out=true'
+    )
     expect(req.headers.get('authorization')).toBe('Token dg-0123456789abcdef')
     // The body is the sound taken out of the recording, never the video file:
     // Ogg Opus, or FLAC from an ffmpeg built without Opus.
@@ -228,6 +230,40 @@ describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' 
     expect(existsSync(join(fake.userData, 'anthropic.key'))).toBe(false)
     await invoke('services:clearKey', 'deepgram')
     expect(await invoke('services:keys')).toEqual({ deepgram: false, assemblyai: false, gemini: true })
+  })
+
+  it('switch turned off mid-job: only the DELETE that removes AssemblyAI’s copy goes out after it', async () => {
+    await invoke('services:clearKey', 'deepgram')
+    expect(await invoke('services:setKey', 'assemblyai', 'aai-0123456789abcdef')).toEqual({ ok: true })
+    expect(await invoke('services:setOn', true)).toBe(true)
+    const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200 })
+    let offAt = -1
+    fake.answer = (url, init) => {
+      if (url.endsWith('/v2/upload')) return json({ upload_url: 'https://cdn.assemblyai.com/upload/u77' })
+      if (init.method === 'POST') return json({ id: 'job-77', status: 'queued' })
+      if (init.method === 'DELETE') return json({ id: 'job-77', status: 'completed' })
+      // AssemblyAI is still listening when the person turns the switch off in Settings.
+      offAt = fake.sent.length
+      setTimeout(() => void invoke('services:setOn', false), 5)
+      return new Promise<Response>((_resolve, reject) =>
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      )
+    }
+    const r = await invoke<Prepared>('cut:prepare', clip)
+    expect(r.ok && r.warning).toBe(
+      'Other AI services were turned off while I waited for AssemblyAI, so I heard the words on this computer instead.'
+    )
+    expect(r.ok && r.doc.words.map((w) => w.text)).toEqual(['Heard', 'locally.'])
+    const said = fake.sent.map((s) => `${s.method} ${s.url}`)
+    expect(said.slice(0, offAt)).toEqual([
+      'POST https://api.assemblyai.com/v2/upload',
+      'POST https://api.assemblyai.com/v2/transcript',
+      'GET https://api.assemblyai.com/v2/transcript/job-77'
+    ])
+    expect(said.slice(offAt)).toEqual(['DELETE https://api.assemblyai.com/v2/transcript/job-77'])
+    expect(fake.sent[offAt].headers.get('authorization')).toBe('aai-0123456789abcdef')
+    await invoke('services:clearKey', 'assemblyai')
+    expect(await invoke('services:setOn', true)).toBe(true)
   })
 
   it('turns away a key for a service it does not know', async () => {

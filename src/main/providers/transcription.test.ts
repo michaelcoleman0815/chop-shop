@@ -12,7 +12,7 @@ import {
   ASSEMBLYAI_MAX_BYTES
 } from './assemblyai'
 import { checkDeepgram, fromDeepgram, listenUrl, transcribeDeepgram, DEEPGRAM_MAX_BYTES } from './deepgram'
-import { ServiceError } from './gate'
+import { createGate, ServiceError, type Gate } from './gate'
 import type { SpeechAudio } from './media'
 import { gateFor, json, scriptedFetch } from './testing'
 
@@ -89,8 +89,12 @@ describe('Deepgram', () => {
     expect(sent).toHaveLength(1)
     const [req] = sent
     expect(req.method).toBe('POST')
-    expect(req.url).toBe('https://api.deepgram.com/v1/listen?model=nova-3&filler_words=true&punctuate=true')
+    expect(req.url).toBe(
+      'https://api.deepgram.com/v1/listen?model=nova-3&filler_words=true&punctuate=true&mip_opt_out=true'
+    )
     expect(listenUrl()).toBe(req.url)
+    // Opted out of Deepgram's Model Improvement Program, as a query parameter, on every transcription request.
+    expect(new URL(req.url).searchParams.get('mip_opt_out')).toBe('true')
     expect(req.headers.get('authorization')).toBe('Token dg-key-0123456789')
     expect(req.headers.get('content-type')).toBe('audio/ogg')
     expect(Buffer.from(req.bytes as Uint8Array).equals(AUDIO_BYTES)).toBe(true)
@@ -284,6 +288,41 @@ describe('AssemblyAI', () => {
     )
     expect([err.kind, err.message]).toEqual(['timeout', 'AssemblyAI took too long to answer.'])
     expect(sent[sent.length - 1].method).toBe('DELETE')
+  })
+
+  it('switch off mid-job: only the DELETE that removes the job and its audio goes out after it', async () => {
+    const id = 'job-off'
+    let on = true
+    let offAt = -1
+    const sent: string[] = []
+    let gate: Gate | null = null
+    gate = createGate({
+      on: () => on,
+      key: (s) => (s === 'assemblyai' ? KEYS.assemblyai : null),
+      fetch: async (url, init) => {
+        sent.push(`${init.method} ${url}`)
+        if (url.endsWith('/v2/upload')) return json({ upload_url: 'https://cdn.assemblyai.com/upload/u' })
+        if (init.method === 'POST') return json({ id, status: 'queued' })
+        if (init.method === 'DELETE') return json({ id, status: 'completed' })
+        // The first poll is on its way when the person turns the switch off.
+        offAt = sent.length
+        setTimeout(() => {
+          on = false
+          gate?.closeAll()
+        }, 5)
+        return new Promise<Response>((_resolve, reject) =>
+          init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+        )
+      }
+    })
+    const err = await failure(transcribeAssemblyAI(gate, audio, instant))
+    expect([err.kind, err.message]).toEqual(['off', 'Other AI services were turned off while I waited for AssemblyAI.'])
+    expect(sent.slice(0, offAt)).toEqual([
+      'POST https://api.assemblyai.com/v2/upload',
+      'POST https://api.assemblyai.com/v2/transcript',
+      `GET https://api.assemblyai.com/v2/transcript/${id}`
+    ])
+    expect(sent.slice(offAt)).toEqual([`DELETE https://api.assemblyai.com/v2/transcript/${id}`])
   })
 
   it('says so when a poll is not the documented shape', async () => {
