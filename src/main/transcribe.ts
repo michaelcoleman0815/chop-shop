@@ -92,6 +92,9 @@ export async function downloadModel(model: WhisperModel, onProgress: (percent: n
   return dest
 }
 
+/** What ffmpeg says when a file has no sound to take, on 6.0, 6.1 and 7.0. */
+const NO_SOUND = /does not contain any stream|matches no streams/i
+
 /** Whisper wants 16 kHz mono PCM; anything else is resampled internally anyway. */
 async function extractAudio(
   videoPath: string,
@@ -191,13 +194,19 @@ export async function transcribe(
   const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-stt-'))
   try {
     const wav = join(dir, 'audio.wav')
-    await extractAudio(
-      videoPath,
-      wav,
-      durationSec,
-      (p) => onProgress(Math.round(p * 0.12), 'Extracting audio'),
-      startSec
-    )
+    try {
+      await extractAudio(
+        videoPath,
+        wav,
+        durationSec,
+        (p) => onProgress(Math.round(p * 0.12), 'Extracting audio'),
+        startSec
+      )
+    } catch (err) {
+      // A recording with no sound track has no words: none heard, rather than ffmpeg's own lines as the reply.
+      if (err instanceof Error && NO_SOUND.test(err.message)) return { words: [], text: '', language: 'en' }
+      throw err
+    }
 
     onProgress(12, 'Transcribing')
     const prefix = join(dir, 'out')
