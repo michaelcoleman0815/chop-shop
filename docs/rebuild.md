@@ -1,0 +1,57 @@
+# Cutalong: the rebuild
+
+Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is the map: what was built, how it fits together, what runs where, and what comes next. The design system is published at https://claude.ai/artifact/AsZpkLeXa7pLaqMZkipqLh; the UI rules live in `.claude/skills/cutalong-ui/SKILL.md`.
+
+## Principles
+
+- **The edit is data.** Every change to a video is an op on one document. The chat, presets, notes, the script view and the beat strip all speak the same ops, so every version can be replayed, compared or undone, and a model's proposal can be checked before anything moves.
+- **Timing is anchored to words**, not seconds, and the words are tightened to their sound. Strikes, tightening and re-transcription move the cut with the speech, and cuts land a hair before an onset.
+- **Local first.** Processing and storage happen on the owner's computer: transcription (whisper.cpp), listening, measuring and rendering (ffmpeg), projects, assets, presets and the brand. Only two things use the network: Claude, for turning words into edits, and fetching a video from a link.
+- **Talk, don't configure.** Settings are sentences and slash commands. Numbers live behind Details.
+- **Pattern, not footage.** A video someone likes is measured for its pattern only. Material pulled into an edit (B-roll, excerpts, icons) is short, cut to for what it shows, and credited in every export.
+
+## Map
+
+| Where                                        | What                                                                                                                                                                                   |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/shared/edit/`                           | The edit document: zod schemas, ops (`applyOps`), resolution (`resolveCut`: pieces, output times, caption pages), versions and notes.                                                  |
+| `src/shared/presets/`                        | Slash commands: built-ins (`/tighten`, `/snappy`, `/shorts`, `/captions`, `/hook`), saved styles, `planStyle` (style to ops), `describePlan` (ops to a sentence).                      |
+| `src/shared/inspiration/`                    | Facts, style and the reply for a video someone likes; `cutShape` and `likeness` for "comes out 92% alike".                                                                             |
+| `src/shared/assets.ts`                       | Excerpt ranges and limits, icon search and drawing, which beat an asset lands on, credits.                                                                                             |
+| `src/shared/audio/snap.ts`                   | Moving each word's edges onto its sound.                                                                                                                                               |
+| `src/shared/brand.ts`                        | The brand, learning a look from the owner's own videos, `/brand`.                                                                                                                      |
+| `src/main/cutalong.ts`                       | IPC for everything above.                                                                                                                                                              |
+| `src/main/cut-render.ts`                     | The renderer of record: each piece its own seeked input, looks as filters, chunking for long cuts, captions in brand colours, logo, loudness.                                          |
+| `src/main/inspiration/measure.ts`            | Cuts, black and white, loudness and contact sheets, measured with ffmpeg alone.                                                                                                        |
+| `src/main/audio-envelope.ts`                 | Loudness every 10 ms, streamed from ffmpeg.                                                                                                                                            |
+| `src/main/assets.ts`                         | Files, image links, video excerpts and search via yt-dlp, saved icons.                                                                                                                 |
+| `src/main/planner.ts`, `planner-prompt.ts`   | Requests and notes to ops with Claude (claude-opus-5-5, adaptive thinking, structured output, prompt caching, server-side refusal fallback). Every op is dry-run before it is offered. |
+| `src/main/preset-store.ts`, `brand-store.ts` | Saved commands and the brand, as JSON in userData.                                                                                                                                     |
+| `src/renderer/src/cutalong/`                 | The app: rail, Start, thread, editor, projects, brand, presets. `useCutalong` is the session; `usePlayer` plays a cut straight off the source.                                         |
+| `src/renderer/src/legacy/`                   | The classic tools (clip finder, timeline editor, Live Buffer, Settings), loaded only in their own document at `#classic`.                                                              |
+
+## How an edit moves
+
+1. **Footage in.** `cut:prepare` probes the file, transcribes it (or reuses the clip finder's transcript), listens to the audio to tighten every word, splits speech into beats, and makes v1. The brand goes on as v2 when it is set to.
+2. **Changes.** A preset runs `planStyle`; a sentence or a set of notes goes to the planner; the script view strikes words; assets land on beats. All of them commit ops as a new version with a one-sentence summary.
+3. **Preview.** The editor plays the resolved cut straight off the recording, seeking between pieces, with captions, punch-ins, black and white, big words and cutaways drawn live.
+4. **Export.** `cut:render` renders the document with ffmpeg and writes a credits file beside the video when outside material is used.
+
+## Working on it
+
+- `npm test` runs the unit tests and real ffmpeg renders and measurements on clips the tests make themselves (with `FFMPEG_PATH`, `ffmpeg-static`, or the `ffmpeg` on the PATH).
+- `npm run typecheck` checks both processes and that every IPC channel the preload uses has a handler.
+- The renderer runs in a plain browser with a mock of the main process (`cutalong/mock.ts`) that answers with the real shared logic. Build with `npx electron-vite build`, serve `out/renderer`, and drive it with Playwright to see screens without Electron.
+
+## Status
+
+Built and tested: the edit document, presets and slash commands, inspiration measuring, the renderer of record, the planner, assets (files, image links, video excerpts, B-roll search, icons, credits), listening for snappy cuts, the brand with learning, chats saved with their projects, and the Cutalong shell with the classic tools one click away.
+
+Not yet: a Settings page inside Cutalong (the classic one still holds the API key and model), more than one recording per edit, B-roll audio, a local model for the planner (the clip finder already supports Ollama), and a renamed app id. The window says Cutalong, but `appId`, `productName` and the update feed still say Chop Shop on purpose: renaming them breaks auto-update for existing installs, and the name needs a trademark and domain check first.
+
+## Next
+
+1. **Skills from research.** A research agent is watching a broad sample of YouTube across niches and writing `docs/research/` (observations, a ranked skills catalogue, and a three-wave build order). Wave 1 fits the current ffmpeg renderer; wave 2 needs the compositor; a builder agent works through them in its own worktree.
+2. **The compositor.** WebGL with WebCodecs, so preview equals export and keyframed motion work (kinetic type, transitions, tracking, masks) becomes possible.
+3. **Automations.** A rail item for recurring jobs that run on the owner's computer: "when a video lands in this folder or a livestream ends, find the best moments, cut them as Shorts in my brand, caption them, and queue them for me." Runs land in a review queue by default; posting is a separate opt-in; each run has a spending cap on Claude calls; outside material is always credited.
+4. **Strategy chats.** Talk through what to make next, grounded in the channel's own numbers (read-only, with the owner's sign-in), the brand, and what has performed. The result is a plan that can start edits or automations.
