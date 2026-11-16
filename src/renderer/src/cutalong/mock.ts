@@ -1,5 +1,12 @@
 import { addSources, createDoc, nextSourceId, wordsFromTranscript, type EditDoc } from '../../../shared/edit'
-import { BUILT_IN_PRESETS, describeStyle, LOOK_PRESETS, suggestCommandName, type Preset } from '../../../shared/presets'
+import {
+  BUILT_IN_PRESETS,
+  describeStyle,
+  LOOK_PRESETS,
+  SKILL_PRESETS,
+  suggestCommandName,
+  type Preset
+} from '../../../shared/presets'
 import {
   factDetails,
   factsReply,
@@ -547,7 +554,7 @@ export function createMockApi(): CutalongApi {
         reply: factsReply(facts),
         chips: describeStyle(style).slice(0, 3),
         details: factDetails(facts),
-        command: suggestCommandName('@fieldnotes', [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...saved]),
+        command: suggestCommandName('@fieldnotes', [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...SKILL_PRESETS, ...saved]),
         note: null
       }
       return { ok: true as const, study }

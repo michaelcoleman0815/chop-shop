@@ -51,7 +51,14 @@ import {
   type Source,
   type Word
 } from '../shared/edit'
-import { BUILT_IN_PRESETS, chaptersReply, describeStyle, LOOK_PRESETS, suggestCommandName } from '../shared/presets'
+import {
+  BUILT_IN_PRESETS,
+  chaptersReply,
+  describeStyle,
+  LOOK_PRESETS,
+  SKILL_PRESETS,
+  suggestCommandName
+} from '../shared/presets'
 import {
   factDetails,
   factsReply,
@@ -378,7 +385,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
       const facts = summarize(measures, speech)
       const style = styleFromFacts(facts)
-      const taken = [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...(await savedPresets())]
+      const taken = [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...SKILL_PRESETS, ...(await savedPresets())]
       const study: InspirationStudy = {
         source: { url: input.url ?? null, path, title, durationSec: measures.durationSec },
         facts,

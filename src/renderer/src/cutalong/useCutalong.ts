@@ -2189,6 +2189,11 @@ export function useCutalong() {
     async (command: string): Promise<void> => {
       const s = studyRef.current
       if (!s) return
+      // Every command the app answers to is taken, the editing ones and the graphics included.
+      if (presetsRef.current.some((p) => p.builtIn && p.command === command)) {
+        push({ role: 'assistant', text: `/${command} is built in. Pick another name.`, error: true })
+        return
+      }
       const preset: Preset = {
         command,
         title: s.source.title ?? command,
