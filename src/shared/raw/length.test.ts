@@ -119,6 +119,55 @@ describe('reading a length asked for', () => {
     expect(parseLengthAsk('make the hook punchier')).toBeNull()
     expect(parseLengthAsk('add a dissolve here')).toBeNull()
   })
+
+  it('hears a length only when it is said of the whole video', () => {
+    // A fade, a title, a freeze, a part, the music: the planner's, never the video's length.
+    for (const text of [
+      'fade in for about 2 seconds',
+      'make the title 3 seconds long',
+      'hold the freeze frame for about 2 seconds',
+      'make this part about 10 seconds',
+      'speed up the part from 1:20 to 1:40',
+      'add a title from 0:05 to 0:10',
+      'cut 2 to 3 seconds of silence from the start',
+      'the music should come in 5-10 seconds in',
+      'add a fade at the start and make it 2 seconds',
+      'make it 10 seconds shorter'
+    ])
+      expect(parseLengthAsk(text), text).toBeNull()
+    // Said of the video, by name or as "it" before anything else is asked.
+    expect(parseLengthAsk('the video should be under a minute')).toEqual({ range: [54, 60], under: true, cut: [] })
+    expect(parseLengthAsk('Can you make the whole video 3 minutes long?')?.targetSec).toBe(180)
+    expect(parseLengthAsk('I want it to be 90 seconds')?.targetSec).toBe(90)
+  })
+
+  it('hears every line kept, the intro and a focus only when they are about the lines', () => {
+    for (const text of [
+      'keep all the music but make it quieter',
+      "don't cut anything, just add captions",
+      'focus on my face when I say the price',
+      'remove the intro music',
+      'cut the opening title card',
+      'trim the intro a bit',
+      'cut the intro to 5 seconds'
+    ])
+      expect(parseLengthAsk(text), text).toBeNull()
+    expect(parseLengthAsk('keep every line')).toEqual({ keepAll: true, cut: [] })
+    expect(parseLengthAsk('make it all about the battery')).toEqual({ focus: 'battery', cut: [] })
+    // In /length the words are all about the length.
+    expect(parseLengthAsk('keep all', { command: true })).toEqual({ keepAll: true, cut: [] })
+    expect(parseLengthAsk('keep all')).toBeNull()
+  })
+
+  it('keeps what else a sentence asks for the planner', () => {
+    expect(parseLengthAsk('make it 60 seconds and add captions')).toEqual({ targetSec: 60, cut: [], rest: 'add captions' })
+    expect(parseLengthAsk('Remove my intro, then add a title saying Berlin')).toEqual({
+      intro: true,
+      cut: [],
+      rest: 'add a title saying Berlin'
+    })
+    expect(parseLengthAsk('ok, make it 10 minutes')).toEqual({ targetSec: 600, cut: [] })
+  })
 })
 
 describe('the intro', () => {
@@ -144,6 +193,17 @@ describe('the intro', () => {
     expect(plan.summary).toMatch(
       /^I took out the first 0:\d\d, from “Hey everyone” to “let's get into it”\. It starts on “The first light is the key light, and…” now\. It runs 1:\d\d now, down from 1:\d\d\.$/
     )
+  })
+
+  it('takes a short line left hanging at its end with it, so the video never starts on “So.”', () => {
+    const script = [['Hey everyone, welcome back to the channel.', 'Today I want to show you how I light my videos.', 'So.'], ...LIGHTING.slice(1)]
+    const words = scriptWords(script)
+    const source: Source = { id: 's1', path: '/talk.mov', durationSec: words[words.length - 1].endSec + 0.6, width: 1920, height: 1080, fps: 30 }
+    const doc = createDoc({ id: 'd', title: 'Lighting', source, words: wordsFromTranscript(words, 's1') })
+    expect(findIntro(doc)?.beats).toEqual(['b1', 'b2', 'b3'])
+    const plan = planLength(doc, { intro: true, cut: [] })
+    expect(said(commit(doc, plan.ops, plan.summary).doc)).toMatch(/^The first light is the key light/)
+    expect(plan.summary).toMatch(/to “So”\. It starts on “The first light is the key light, and…” now\./)
   })
 })
 
@@ -284,6 +344,98 @@ describe('cutting toward a length', () => {
     expect(longer.note).toMatch(
       /^It runs \d:\d\d, as long as it gets without the intro and the part about the conference you asked me to cut and lines you cut yourself; say “bring back the intro” or “bring back the part about the conference” to have them again, or use Undo\.$/
     )
+  })
+})
+
+describe('what a length keeps, says and brings back', () => {
+  it('names a section’s point when it cuts one, and offers only what it has not cut into yet', () => {
+    const doc = lightingDoc()
+    const plan = planLength(doc, { targetSec: 20, cut: [] })
+    const left = said(commit(doc, plan.ops, plan.summary).doc)
+    expect(left).not.toContain('The last light is the back light')
+    expect(plan.summary).toMatch(/section’s point|the points of \w+ sections/)
+    const two = planLength(doc, { targetSec: 2, cut: [] })
+    expect(said(commit(doc, two.ops, two.summary).doc)).not.toContain('The first light is the key light')
+    expect(two.note).toBe('To get closer to 0:02 I would have to cut the opening or the ending.')
+    // Nothing cut into yet, every level is still there to offer.
+    expect(planLength(doc, { targetSec: 85, cut: [] }).note ?? '').not.toMatch(/the opening or the ending/)
+  })
+
+  it('leaves an edit already under a limit as it is, and the note that asked for it is done', () => {
+    let doc = lightingDoc()
+    const short = planLength(doc, { targetSec: 40, cut: [] })
+    doc = commit(doc, short.ops, short.summary).doc
+    const was = runs(doc)
+    const ask = parseLengthAsk('get it under a minute') as LengthAsk
+    expect(ask).toEqual({ range: [54, 60], under: true, cut: [] })
+    const plan = planLength(doc, ask)
+    expect(plan.ops).toEqual([])
+    expect(plan.met).toBe(true)
+    expect(plan.note).toBe(`It already runs 0:${String(Math.round(was)).padStart(2, '0')}, under 1:00.`)
+    // Over the limit, it is cut to just under it.
+    const long = lightingDoc()
+    const cut = planLength(long, ask)
+    const after = runs(commit(long, cut.ops, cut.summary).doc)
+    expect(after).toBeLessThanOrEqual(60.5)
+    expect(after).toBeGreaterThan(50)
+  })
+
+  it('keeps a hook moved to the front first when lines come back', () => {
+    let doc = lightingDoc()
+    const cut = currentCut(doc)
+    const hook = cut.beats.find((b) => {
+      const one = { ...doc, versions: [{ ...doc.versions[0], cut: { ...cut, beats: [b] } }] }
+      return /^The last light is the back light/.test(said(one))
+    })!
+    doc = commit(doc, [{ op: 'move', beat: hook.id, to: 0 }], 'hook first').doc
+    const short = planLength(doc, { targetSec: 45, cut: [] })
+    doc = commit(doc, short.ops, short.summary).doc
+    expect(said(doc)).toMatch(/^The last light is the back light/)
+    const longer = planLength(doc, { targetSec: 65, cut: [] })
+    const grown = commit(doc, longer.ops, longer.summary).doc
+    expect(runs(grown)).toBeGreaterThan(runs(doc) + 10)
+    expect(said(grown)).toMatch(/^The last light is the back light/)
+    // Each line back plays where it was said: after the hook, in the order of the recording.
+    const index = new Map(grown.words.map((w, i) => [w.id, i]))
+    const order = currentCut(grown)
+      .beats.slice(1)
+      .map((b) => index.get(b.from as string) ?? -1)
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+  })
+
+  it('never tightens an edit kept whole that is asked to run longer, and brings back what a length took', () => {
+    let doc = lightingDoc()
+    const short = planLength(doc, { targetSec: 60, cut: [] })
+    doc = commit(doc, short.ops, short.summary).doc
+    doc = commit(doc, [{ op: 'tighten', set: null }], 'pauses back').doc
+    const was = runs(doc)
+    const ask = parseLengthAsk('make it 80 seconds but keep the full argument') as LengthAsk
+    expect(ask).toEqual({ targetSec: 80, keepAll: true, cut: [] })
+    const plan = planLength(doc, ask)
+    expect(plan.ops.some((o) => o.op === 'tighten' || o.op === 'remove' || o.op === 'strike')).toBe(false)
+    const after = runs(commit(doc, plan.ops, plan.summary).doc)
+    expect(after).toBeGreaterThan(was)
+    expect(Math.abs(after - 80)).toBeLessThanOrEqual(toleranceFor(80) + 1)
+    // With nothing a length took left to bring back, it says why it cannot grow, and changes nothing.
+    const whole = lightingDoc()
+    const more = planLength(whole, { targetSec: runs(whole) + 3, keepAll: true, cut: [] })
+    expect(more.ops).toEqual([])
+    expect(more.met).toBe(false)
+    expect(more.note).toMatch(/^It runs 1:\d\d, and nothing a length cut is left to bring back, so it can’t run 1:\d\d\.$/)
+  })
+
+  it('holds the first line said as the opening, when a picture with no words plays before it', () => {
+    let doc = lightingDoc()
+    const broll = { path: '/broll.mov', inSec: 0, muted: true }
+    doc = commit(
+      doc,
+      [{ op: 'insert', to: 0, beat: { source: 's1', inSec: 0, outSec: 0.5, treatment: { frame: 'broll', broll } } }],
+      'a shot first'
+    ).doc
+    const plan = planLength(doc, { targetSec: 40, cut: [] })
+    const after = commit(doc, plan.ops, plan.summary).doc
+    expect(said(after)).toMatch(/^Hey everyone, welcome back/)
+    expect(currentCut(after).beats[0].treatment.frame).toBe('broll')
   })
 })
 

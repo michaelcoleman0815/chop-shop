@@ -2222,11 +2222,16 @@ export function useCutalong() {
    * this computer. A topic to cut or focus on needs what is said understood,
    * so it goes to the planner first when there is a key, and only its cuts
    * are kept, checked as any plan is. Everything lands as one version.
+   * `met` is whether what was asked is so now, by the version or already.
    */
   const lengthAsked = useCallback(
-    async (asked: LengthAsk, text: string, where: 'thread' | 'panel'): Promise<{ n: number | null; said: string }> => {
+    async (
+      asked: LengthAsk,
+      text: string,
+      where: 'thread' | 'panel'
+    ): Promise<{ n: number | null; said: string; met: boolean }> => {
       const d = docRef.current
-      if (!d) return { n: null, said: '' }
+      if (!d) return { n: null, said: '', met: false }
       const stage = { stage: needsTopics(asked) ? 'Thinking' : 'Cutting it to length', percent: null }
       const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: stage }) : null
       if (where === 'panel') setPanel({ text: '', progress: stage, since: Date.now() })
@@ -2250,7 +2255,7 @@ export function useCutalong() {
           .join(' and ')
         const request = `${text}\nFor this one, only ${topics}, with remove and strike ops, and change nothing else: I cut it to any length asked for afterwards.`
         const r = await during(() => api.planEdit({ doc: d, request, notes: [], voice: brandRef.current.voice }))
-        if (docRef.current?.id !== d.id) return { n: null, said: '' }
+        if (docRef.current?.id !== d.id) return { n: null, said: '', met: false }
         if (r.ok) {
           // A topic is taken out, never added to: only the planner's cuts are kept.
           const cuts = new Set(['remove', 'strike', 'split', 'join', 'move'])
@@ -2261,8 +2266,9 @@ export function useCutalong() {
             .map((o): Op => (o.op === 'remove' && why ? { ...o, why } : o))
           const other = r.ops.length - first.length
           if (other > 0) asides.push(other === 1 ? 'I left out one change that was not a cut.' : `I left out ${other} changes that were not cuts.`)
-          if (first.length > 0) firstSaid = r.summary
-          else asides.push(r.reply)
+          // Said from what is kept, not from the planner's summary of everything it planned.
+          if (first.some((o) => o.op === 'remove' || o.op === 'strike')) firstSaid = why ? `I cut ${why}.` : null
+          else if (first.length === 0) asides.push(r.reply)
           asides.push(...r.needs, ...r.rejected)
         } else if (r.needsKey) {
           asides.push(
@@ -2273,20 +2279,24 @@ export function useCutalong() {
       // Only a topic was asked, and nothing came of it: the reason is the whole answer.
       const topicsOnly = asked.targetSec === undefined && !asked.range && !asked.intro && !asked.keepAll
       if (topicsOnly && first.length === 0) {
-        return { n: null, said: say(asides.map((t) => sentence(t)).join(' ') || 'I left it as it was.', null, false) }
+        return {
+          n: null,
+          said: say(asides.map((t) => sentence(t)).join(' ') || 'I left it as it was.', null, false),
+          met: false
+        }
       }
       const latest = docRef.current ?? d
       const plan = planLength(latest, asked, { profile: profileFor(latest, brandRef.current.niche), first, firstSaid })
       if (plan.ops.length === 0) {
         const said = say(plan.note ?? 'That is already how long it runs.', asides.map((t) => sentence(t)).join(' ') || null, false)
-        return { n: null, said }
+        return { n: null, said, met: plan.met }
       }
       // The summary already says how long it runs.
       const done = applyAsVersion(plan.ops, plan.summary, 'length', { text: plan.summary, ops: plan.ops.length, timed: true })
-      if (!done) return { n: null, said: say('That is already how long it runs.', null, false) }
+      if (!done) return { n: null, said: say('That is already how long it runs.', null, false), met: true }
       rememberVersion(docRef.current, { request: text }, done.n)
       const aside = [plan.note ?? '', ...asides].map((t) => sentence(t)).filter(Boolean).join(' ') || null
-      return { n: done.n, said: say(`v${done.n} is ready. ${done.summary}`, aside, true) }
+      return { n: done.n, said: say(`v${done.n} is ready. ${done.summary}`, aside, true), met: true }
     },
     [applyAsVersion, during, patch, push]
   )
@@ -2307,7 +2317,7 @@ export function useCutalong() {
         await vlog.retell(rest, where, true)
         return
       }
-      const asked = rest.trim() ? parseLengthAsk(rest) : null
+      const asked = rest.trim() ? parseLengthAsk(rest, { command: true }) : null
       if (!asked) {
         const now = resolveCut(currentCut(d), d.words, d.sources).durationSec
         say(
@@ -2781,13 +2791,17 @@ export function useCutalong() {
       if ((await vlog.retell(text, 'thread')).handled) return
       // A length, the intro or every line kept, asked of any other edit, is cut here (shared/raw/length).
       const length = d.vlog ? null : parseLengthAsk(text)
+      let request = text
       if (length) {
         await lengthAsked(length, text, 'thread')
-        return
+        // What else the sentence asked ("and add captions") goes to the planner, on the version the length made.
+        if (!length.rest || docRef.current?.id !== d.id) return
+        request = length.rest
       }
+      const now = docRef.current ?? d
       // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Thinking', percent: null } })
-      const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandRef.current.voice })
+      const r = await api.planEdit({ doc: now, request, notes: [], voice: brandRef.current.voice })
       if (!r.ok) {
         patch(id, {
           progress: null,
@@ -2798,7 +2812,7 @@ export function useCutalong() {
         return
       }
       const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
-      rememberVersion(docRef.current, { request: text }, done?.n ?? null)
+      rememberVersion(docRef.current, { request }, done?.n ?? null)
       const aside =
         [...r.needs, ...r.rejected, done?.notice ?? '']
           .map((t) => sentence(t))
@@ -3179,20 +3193,29 @@ export function useCutalong() {
       return
     }
     // A length, the intro or every line kept is cut here as a version of its own (shared/raw/length).
+    // A note left on a picked stretch is not the whole video's: the planner takes it, held to the stretch.
     let lead = ''
     if (!d.vlog) {
       const lengths = notes.flatMap((n) => {
-        const asked = parseLengthAsk(n.text)
+        const asked = n.range ? null : parseLengthAsk(n.text)
         return asked ? [{ note: n, asked }] : []
       })
       if (lengths.length > 0) {
         const text = lengths.map((l) => l.note.text.trim().replace(/[.!?]+$/, '')).join('. ')
         const r = await lengthAsked(mergeLengthAsks(lengths.map((l) => l.asked)), text, 'panel')
-        const ids = lengths.map((l) => l.note.id)
+        // Done when the length is so, by this version or already, for a note that asked nothing else.
+        const done = r.n !== null || r.met
+        const ids = lengths.filter((l) => !l.asked.rest).map((l) => l.note.id)
         const latest = docRef.current
-        if (latest && r.n !== null) setDoc(setNoteStatus(latest, ids, 'applied'))
-        rememberNotes(docRef.current, r.n !== null ? ids : [], 'applied', r.n)
-        notes = notes.filter((n) => !ids.includes(n.id))
+        if (latest && done && ids.length) setDoc(setNoteStatus(latest, ids, 'applied'))
+        rememberNotes(docRef.current, done ? ids : [], 'applied', r.n)
+        // What else a note asked ("and add captions") goes on to the planner as that note.
+        const rest = new Map(lengths.flatMap((l) => (l.asked.rest ? [[l.note.id, l.asked.rest] as const] : [])))
+        const cut = new Set(lengths.map((l) => l.note.id))
+        notes = notes.flatMap((n) => {
+          const more = rest.get(n.id)
+          return more ? [{ ...n, text: more }] : cut.has(n.id) ? [] : [n]
+        })
         if (notes.length === 0 || docRef.current?.id !== d.id) return
         lead = `${r.said} `
       }

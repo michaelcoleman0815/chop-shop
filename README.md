@@ -17,7 +17,9 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
   alone: "between 0:12 and 0:31, four beats come in with a dissolve".
 - **Cuts to a length.** "Make it 10 minutes", "cut it to 60 seconds", "remove my intro", "keep the full argument" or
   `/length 8-10 min` cut a talking head, a podcast or any edit on your Mac, keeping the hook, each section's point and
-  the ending, and say what went. A topic to cut or focus on goes to the planner.
+  the ending, and say what went. A topic to cut or focus on goes to the planner, and so does the rest of a sentence
+  ("make it 60 seconds and add captions"). A length said of anything but the whole video ("fade in for about 2
+  seconds") is the planner's too.
 - **Finds your retakes.** Lines said again, restarted mid-sentence or broken off are found from the words and their
   timing, and the best take is kept with one click, a sentence ("use the second take") or the Takes panel.
 - **Cuts on the words.** The recording is transcribed on your computer, split into beats, and every word's edges are

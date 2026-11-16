@@ -35,6 +35,8 @@ export interface LengthAsk {
   targetSec?: number
   /** Anything from the first to the second will do, in seconds. */
   range?: [number, number]
+  /** The range's top is a limit: an edit that already runs no longer than it is left as it is. */
+  under?: boolean
   /** Start on the main point: the intro goes. */
   intro?: boolean
   /** Keep every line: only the pauses, retakes and false starts go. */
@@ -43,22 +45,63 @@ export interface LengthAsk {
   focus?: string
   /** Topics to cut, in the person's words. */
   cut: string[]
+  /** What else the sentence asks, in its own words, for the planner once the length is cut: "add captions". */
+  rest?: string
 }
 
 const UNIT = String.raw`(minutes?|mins?|m|seconds?|secs?|s)`
 
-/** Words before a length that say it is the length wanted: "make it", "to", "under", "about". */
-const CUE_BEFORE =
-  /(?:\b(?:make|cut|trim|bring|get|edit|keep|turn|shorten)\s+(?:it|this|the video|this video|the whole thing|everything|the edit)?\s*(?:down\s+)?(?:to\s+)?|\b(?:to|under|about|around|roughly|exactly|at most|max(?:imum)?|be|into|less than|shorter than|no more than|tops))\s*(?:a|an)?\s*$/
-/** Words after a length that say the same: "60 seconds long", "a 10 minute video". */
-const CUE_AFTER = /^\s*(?:long|video|version|cut|edit|max|or less|or under|tops|total|in total)\b/
+/**
+ * What a length can be said of: the whole video, by name or as "it". A part,
+ * a title, a fade or the music is not the video, so its length is the
+ * planner's to read.
+ */
+const WHOLE = String.raw`(?:(?:the|this|my|your) (?:whole |entire |final |full )?(?:video|edit|cut|thing|episode|podcast|talk|vlog|short|reel|piece|film|recording)|the whole thing|everything)`
+const PRONOUN = String.raw`(?:it|this)`
+/** Words between "make it" and the length: "make it all the way down to about", "get it under". */
+const BETWEEN = String.raw`(?:\s+(?:all|the way|back|down|up|to|into|at|under|below|about|around|roughly|approximately|exactly|just|only|no more than|no longer than|less than|shorter than|at most|max(?:imum)?|within|be|run|last|come in at|come to))*\s+(?:a\s+|an\s+)?$`
+const VERB = String.raw`\b(?:make|cut|trim|get|bring|keep|turn|shorten|edit|tighten|condense|reduce|chop|squeeze|pare|boil|whittle|want|need|like|have)`
+const MODAL = String.raw`\s+(?:should|must|needs? to|has to|ought to|could|can|would|will|is going to)\s+(?:be|run|last|come in at|come in under|come to|get down to|end up)`
+/** "Make the video 10 minutes", "the edit should be under a minute": a length said of the whole video by name. */
+const SAID_OF_WHOLE = new RegExp(String.raw`(?:${VERB}\s+${WHOLE}|\b${WHOLE}${MODAL})${BETWEEN}`)
+/** "Make it 10 minutes": the same of "it", which is the video only when nothing else was asked before it. */
+const SAID_OF_IT = new RegExp(String.raw`(?:${VERB}\s+${PRONOUN}|\b${PRONOUN}${MODAL})${BETWEEN}`)
+/** "A 3 minute version": the length of a cut of the whole video. */
+const VERSION_BEFORE = /\b(?:a|an)\s*$/
+const VERSION_AFTER = /^(?:[-\s]?long)?\s+(?:version|cut|edit|video|episode|short|reel)\b/
+/** A length and nothing else: "10m", "60 seconds", "about 8 to 10 minutes", "under a minute". */
+const BARE = new RegExp(
+  String.raw`^(?:about|around|roughly|approximately|exactly|just|only|under|below|less than|at most|max(?:imum)?|no more than|just under|within)?\s*(?:\d{1,2}:[0-5]\d|half a minute|(?:\d+(?:\.\d+)?|[a-z]+)(?: and a half)?\s*(?:-\s*)?${UNIT}|\d+(?:\.\d+)?\s*(?:${UNIT}\s*)?(?:to|-|–|or)\s*\d+(?:\.\d+)?\s*${UNIT})(?:\s+(?:long|max|tops|or less|or under|total|in total))?$`
+)
+/** A length that changes the length by so much rather than says it: "10 seconds shorter". */
+const RELATIVE = /^\s*(?:shorter|longer|less|more|faster|slower|off|out|quicker)\b/
+const RANGE = new RegExp(String.raw`\b(\d+(?:\.\d+)?)\s*(?:${UNIT}\s*)?(?:to|-|–|or)\s*(\d+(?:\.\d+)?)\s*${UNIT}\b`)
+const UNDER = /\b(under|below|less than|shorter than|no more than|no longer than|at most|max(?:imum)?|tops|or less|or under|within)\b/
 
-const INTRO =
-  /\b(remove|cut|drop|lose|skip|trim|get rid of|take out|ditch|kill)\s+(out\s+)?(my |the |that )?(intro|introduction|opening|preamble|warm-?up|small talk|greeting)\b|\bno (intro|introduction|preamble)\b|\b(start|open|begin)\s+(it\s+)?(right\s+)?(on|at|with|from)\s+the\s+(main |actual |first |real )?(point|content|topic|meat)\b|\bget (straight |right )?to the point\b/
+/** What an intro is called, and what it is not when another word follows: the intro music, the intro card. */
+const INTRO_IS = String.raw`(?:intro|introduction|preamble|warm-?up|small talk|greeting)`
+const NOT_SPOKEN = String.raw`(?!\s+(?:music|song|track|tune|jingle|sting|theme|title|titles|card|text|graphic|graphics|animation|logo|sequence|bumper|slate|clip|video|footage|shot|b-?roll|sound|sfx|effect|transition|screen|slide|image|picture|photo|short|shorter|down|in half|by|to|a bit|a little)\b)`
+const INTRO = new RegExp(
+  String.raw`\b(?:remove|cut|drop|lose|skip|get rid of|take out|ditch|kill)\s+(?:out\s+)?(?:my |the |that )?${INTRO_IS}\b${NOT_SPOKEN}|\bno ${INTRO_IS}\b${NOT_SPOKEN}|\b(?:start|open|begin)\s+(?:it\s+|the video\s+)?(?:right\s+)?(?:on|at|with|from)\s+the\s+(?:main |actual |first |real )?(?:point|content|topic|meat)\b|\bget (?:straight |right )?to the point\b`
+)
+/** Every line kept, as said of the lines: never "keep all the music" or "don't cut anything, just add captions". */
 const KEEP_ALL =
-  /\bkeep (the |my )?(full|whole|entire|complete) (argument|talk|thing|video|point|story|explanation)\b|\bkeep (everything|it all|all|all of it|every (line|word|point))\b|\b(only|just) tighten\b|\bdon'?t (cut|drop|lose|remove) (anything|any lines|a line|what i say|my points?)\b/
+  /\bkeep (?:the |my )?(?:full|whole|entire|complete) (?:argument|talk|explanation|story|message|point|points|lines|content)\b|\bkeep (?:every|each) (?:line|word|point|sentence)\b|\bkeep all (?:the |my |of the )?(?:lines|words|points|sentences)\b|^(?:only|just) tighten(?: it| this| the video| the pauses)?(?: up)?$|\bdon'?t (?:cut|drop|lose|remove) (?:any )?(?:lines|a line|a word|any words|my points?|any points|what i say)\b|\bwithout (?:cutting|losing|dropping) (?:any )?(?:lines|a line|words|points)\b/
+/** In /length, "keep all" says it alone. */
+const KEEP_ALL_COMMAND = /^(?:keep )?(?:all|everything|it all|every line|all lines|all of it)$/
 const TOPIC_CUT =
   /\b(?:cut|remove|drop|lose|skip|get rid of|take out)\s+(?:out\s+)?(?:the |my |that |all the )?(?:tangent|digression|aside|bit|part|section|story|rant|ramble|stuff|talk)s?\s+(?:about|on|regarding|where i (?:talk|ramble|go on) about)\s+(.+?)(?=,|;|\.|\bbut\b|\band\b|$)/g
+/** A focus said of the whole video: "make it all about the battery", "focus the video on the battery". */
+const FOCUS_WHOLE =
+  /^(?:(?:make|keep) (?:it|the video|this video|the edit|the whole (?:video|thing)) (?:all |only |just )?(?:about|focused on)|focus (?:it|the video|this video|the edit|the whole (?:video|thing)) (?:only |just )?on|(?:only|just) keep (?:the )?(?:parts?|bits?|lines?) (?:about|on)) (.+)$/
+/** "Focus on the battery": the video's focus only beside a length or a topic, as it could be the camera's. */
+const FOCUS = /\bfocus (?:more |just |only )?on (.+?)(?=,|;|\.|\bbut\b|\band (?:cut|drop|remove|lose)\b|$)/
+/** Verbs a new ask opens with, where "and" or a comma starts another clause. */
+const OPENS = new RegExp(
+  String.raw`^(?:(?:please|just|also|then|now|maybe|can you|could you)\s+)*(?:add|put|make|cut|trim|get|bring|keep|shorten|remove|drop|lose|skip|take|start|open|begin|focus|fade|speed|slow|change|turn|give|show|hold|move|zoom|crop|blur|set|use|swap|replace|mute|lower|raise|boost|include|end|finish|close|tighten|insert|split|join|play|apply|colou?r|caption|title|stabili[sz]e|reframe|cent(?:er|re)|try|do|don't|dont|go|let|leave|delete|ditch|kill|pick|choose|switch|flip|reverse|loop|freeze|punch|darken|brighten|warm|cool|sharpen|clean|fix|tidy|polish|duck|lift|pull|push|run|send|write|label|name|mark|highlight|emphasi[sz]e|animate|bump|drop)\b`
+)
+/** Words that ask nothing on their own: "ok, make it 10 minutes", "thanks". */
+const NOTHING = /^(?:hey|hi|hello|ok|okay|alright|all right|so|yeah|yes|please|thanks|thank you|cool|great|nice|now|right|well|um|uh|actually|and)(?:[\s,]+(?:hey|hi|hello|ok|okay|alright|all right|so|yeah|yes|please|thanks|thank you|cool|great|nice|now|right|well|um|uh|actually|and))*$/
 
 const clean = (s: string): string =>
   s
@@ -80,43 +123,113 @@ function lengthsIn(t: string): { sec: number; at: number; end: number }[] {
   return out
 }
 
+/** Where a sentence's clauses are: split at a comma, "and", "but" or "then" only where a new ask opens. */
+function clausesOf(t: string): { at: number; end: number }[] {
+  const out: { at: number; end: number }[] = []
+  let start = 0
+  for (const m of t.matchAll(/\s*(?:[,;]|\.(?=\s))\s*(?:(?:and|but|then|also|plus)\s+)*|\s+(?:and|but|then|also|plus)\s+(?:(?:then|also)\s+)*/g)) {
+    const at = m.index ?? 0
+    if (!OPENS.test(t.slice(at + m[0].length))) continue
+    out.push({ at: start, end: at })
+    start = at + m[0].length
+  }
+  out.push({ at: start, end: t.length })
+  return out.filter((c) => t.slice(c.at, c.end).trim())
+}
+
 /**
- * Reads what a sentence asks of an edit's length, its intro and its topics.
- * Null when it asks none of these. "The 10 minutes I spent" is not a
- * length asked for; "make it 10 minutes", "under a minute" and "10m" alone are.
+ * The length a clause asks the whole video to be: said of the video ("make
+ * the video 10 minutes", "the edit should be under a minute"), of "it" when
+ * `itIsTheVideo`, as "a 3 minute version", or a length and nothing else.
  */
-export function parseLengthAsk(text: string): LengthAsk | null {
-  const t = text.toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, ' ').trim()
-  if (!t) return null
-  const ask: LengthAsk = { cut: [] }
-  const range = new RegExp(
-    String.raw`\b(\d+(?:\.\d+)?)\s*(?:${UNIT}\s*)?(?:to|-|–|or)\s*(\d+(?:\.\d+)?)\s*${UNIT}\b`
-  ).exec(t)
-  if (range) {
+function lengthOf(clause: string, itIsTheVideo: boolean, command: boolean): Pick<LengthAsk, 'targetSec' | 'range' | 'under'> | null {
+  const bare = command || BARE.test(clause)
+  const said = (at: number, end: number): boolean => {
+    const before = clause.slice(0, at)
+    const after = clause.slice(end)
+    if (RELATIVE.test(after)) return false
+    if (bare) return true
+    if (SAID_OF_WHOLE.test(before) || (VERSION_BEFORE.test(before) && VERSION_AFTER.test(after))) return true
+    return itIsTheVideo && SAID_OF_IT.test(before)
+  }
+  const range = RANGE.exec(clause)
+  if (range && said(range.index, range.index + range[0].length)) {
     const k = /^m/.test(range[4]) ? 60 : 1
     const first = range[2] ? (/^m/.test(range[2]) ? 60 : 1) : k
     const a = Number(range[1]) * first
     const b = Number(range[3]) * k
-    if (a > 0 && b > 0) ask.range = a <= b ? [a, b] : [b, a]
+    if (a > 0 && b > 0) return { range: a <= b ? [a, b] : [b, a] }
   }
-  if (!ask.range) {
-    const whole = /^\s*(?:\d{1,2}:[0-5]\d|\d+(?:\.\d+)?\s*(?:minutes?|mins?|m|seconds?|secs?|s))\s*$/.test(t)
-    const asked = lengthsIn(t).find(
-      (l) => whole || CUE_BEFORE.test(t.slice(Math.max(0, l.at - 40), l.at)) || CUE_AFTER.test(t.slice(l.end))
-    )
-    if (asked) {
-      const under = /\b(under|less than|shorter than|no more than|at most|max(?:imum)?|tops|or less|or under)\b/.test(t)
-      if (under) ask.range = [Math.max(1, asked.sec * 0.9), asked.sec]
-      else ask.targetSec = asked.sec
+  const asked = lengthsIn(clause).find((l) => said(l.at, l.end))
+  if (!asked) return null
+  // "Under a minute": anything up to it will do, and a cut that runs longer is taken to just under it.
+  if (UNDER.test(clause)) return { range: [Math.max(1, asked.sec * 0.9), asked.sec], under: true }
+  return { targetSec: asked.sec }
+}
+
+/**
+ * Reads what a sentence asks of an edit's length, its intro and its topics.
+ * Null when it asks none of these. A length counts only when it is said of
+ * the whole video ("make it 10 minutes", "the video should be under a
+ * minute", "a 3 minute version", "10m" alone): "fade in for about 2 seconds",
+ * "make the title 3 seconds long" and "make this part 10 seconds" are the
+ * planner's. What else the sentence asks ("make it 60 seconds and add
+ * captions") is kept as `rest`, for the planner. In /length (`command`) the
+ * words are all about the length, so a length or "keep all" alone will do.
+ */
+export function parseLengthAsk(text: string, opts: { command?: boolean } = {}): LengthAsk | null {
+  const said = text
+    .replace(/[’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[.!?]+$/, '')
+  const t = said.toLowerCase()
+  if (!t) return null
+  // The person's own words for the rest, where lower case keeps every letter where it was.
+  const own = said.length === t.length ? said : t
+  const command = !!opts.command
+  const ask: LengthAsk = { cut: [] }
+  const rest: string[] = []
+  let focusBeside: string | null = null
+  let restAt = -1
+  /** Something other than the length was asked before: "it" may be that, not the video. */
+  let otherBefore = false
+  for (const c of clausesOf(t)) {
+    const clause = t.slice(c.at, c.end).trim()
+    let mine = false
+    if (ask.targetSec === undefined && !ask.range) {
+      // "It" is the video unless something else was asked before it: "add a fade and make it 2 seconds".
+      const length = lengthOf(clause, !otherBefore, command)
+      if (length) {
+        Object.assign(ask, length)
+        mine = true
+      }
     }
-  }
-  if (INTRO.test(t)) ask.intro = true
-  if (KEEP_ALL.test(t)) ask.keepAll = true
-  const focus = /\bfocus (?:it |more |just |only )?on (.+?)(?=,|;|\.|\bbut\b|\band (?:cut|drop|remove|lose)\b|$)/.exec(t)
-  if (focus) ask.focus = clean(focus[1])
-  for (const m of t.matchAll(TOPIC_CUT)) {
-    const topic = clean(m[1])
-    if (topic) ask.cut.push(topic)
+    if (INTRO.test(clause)) mine = ask.intro = true
+    if (KEEP_ALL.test(clause) || (command && KEEP_ALL_COMMAND.test(clause))) mine = ask.keepAll = true
+    for (const m of clause.matchAll(TOPIC_CUT)) {
+      const topic = clean(m[1])
+      if (!topic) continue
+      ask.cut.push(topic)
+      mine = true
+    }
+    const whole = FOCUS_WHOLE.exec(clause)
+    if (whole && lengthsIn(whole[1]).length === 0) {
+      ask.focus = clean(whole[1])
+      mine = true
+    } else if (!mine) {
+      const focus = FOCUS.exec(clause)
+      if (focus) {
+        focusBeside = clean(focus[1])
+        restAt = rest.length
+        rest.push(own.slice(c.at, c.end).trim())
+        continue
+      }
+    }
+    if (!mine && !NOTHING.test(clause)) {
+      rest.push(own.slice(c.at, c.end).trim())
+      otherBefore = true
+    }
   }
   const any =
     ask.targetSec !== undefined ||
@@ -125,7 +238,14 @@ export function parseLengthAsk(text: string): LengthAsk | null {
     !!ask.keepAll ||
     !!ask.focus ||
     ask.cut.length > 0
-  return any ? ask : null
+  if (!any) return null
+  // A focus beside a length or a topic is the video's.
+  if (focusBeside && !ask.focus) {
+    ask.focus = focusBeside
+    rest.splice(restAt, 1)
+  }
+  if (rest.length) ask.rest = rest.join(', ')
+  return ask
 }
 
 /** Several notes' asks as one: the last length said, any intro or keeping every line, every topic. */
@@ -135,6 +255,7 @@ export function mergeLengthAsks(asks: LengthAsk[]): LengthAsk {
   return {
     ...(sized?.targetSec !== undefined ? { targetSec: sized.targetSec } : {}),
     ...(sized?.range ? { range: sized.range } : {}),
+    ...(sized?.under ? { under: true } : {}),
     ...(asks.some((a) => a.intro) ? { intro: true } : {}),
     ...(asks.some((a) => a.keepAll) ? { keepAll: true } : {}),
     ...(focus ? { focus } : {}),
@@ -152,8 +273,9 @@ export function withoutTopics(ask: LengthAsk): LengthAsk {
   return { ...ask, focus: undefined, cut: [] }
 }
 
-/** What an ask wants, said back: "10:00", "8:00 to 10:00". */
+/** What an ask wants, said back: "10:00", "8:00 to 10:00", "under 1:00". */
 export function askedFor(ask: LengthAsk): string | null {
+  if (ask.range && ask.under) return `under ${clock(ask.range[1])}`
   if (ask.range) return `${clock(ask.range[0])} to ${clock(ask.range[1])}`
   if (ask.targetSec !== undefined) return clock(ask.targetSec)
   return null
@@ -168,7 +290,8 @@ export function toleranceFor(sec: number): number {
 function goalFor(ask: LengthAsk, now: number): { target: number; tol: number; within: boolean } | null {
   if (ask.range) {
     const [a, b] = ask.range
-    if (now >= a - 0.5 && now <= b + 0.5) return { target: now, tol: Math.max(0.5, (b - a) / 2), within: true }
+    // A limit is met by anything up to it: "under a minute" leaves a 0:39 edit as it is.
+    if ((ask.under || now >= a - 0.5) && now <= b + 0.5) return { target: now, tol: Math.max(0.5, (b - a) / 2), within: true }
     // Cut as little as gets it there, or bring back as little.
     const target = now > b ? b - toleranceFor(b) : a + toleranceFor(a)
     return { target, tol: toleranceFor(target), within: false }
@@ -223,6 +346,14 @@ const named = (texts: string[], last = false): string => {
   return (last ? [...pick].reverse() : pick).join(' ').replace(/[.,!?;:]+$/, '')
 }
 
+/** A line that only leads into what follows: "So.", "Okay, so.", "Right.", "Here we go." */
+const LEADS_IN =
+  /^(?:(?:so|okay|ok|alright|all right|right|well|now|anyway|anyways|and|um|uh|erm|yeah|yes|cool|good|great|first|first up|first of all|to start|here we go|let'?s go|let'?s do (?:it|this)|let'?s start|let'?s begin)[\s,.!?]*)+$/
+const leadsIn = (said: string[]): boolean => {
+  const line = said.join(' ').toLowerCase().replace(/[’]/g, "'").trim()
+  return line.length > 0 && LEADS_IN.test(line)
+}
+
 /**
  * The opening before the main point, from the words: the lines at the start
  * that greet, name the channel or say what the video will do, and the short
@@ -247,7 +378,8 @@ export function findIntro(doc: EditDoc, cut: Cut = currentCut(doc)): IntroFound 
     else if (!(short && last === i - 1)) break
   }
   if (last < 0) return null
-  // A short line left hanging at its end ("So.") is the intro's too, never the line it starts on.
+  // A short line left hanging at its end ("So.", "Okay, so.") is the intro's too, never the line it starts on.
+  while (last + 2 < resolved.beats.length && leadsIn(resolved.beats[last + 1].words.map((id) => text.get(id) ?? ''))) last++
   const taken = resolved.beats.slice(0, last + 1)
   const next = resolved.beats[last + 1]
   if (!next) return null
@@ -325,6 +457,8 @@ function weigh(doc: EditDoc, cut: Cut, resolved: Resolved): Unit[] {
   let section = 0
   const sectionOf = new Map(beats.map((rb, k) => [rb.id, k > 0 && starts.has(rb.id) ? ++section : section]))
   const total = resolved.durationSec
+  // The opening is the first line said, whatever picture plays before it.
+  const opening = beats.findIndex((rb) => rb.words.length > 0)
   const earlier: Set<string>[] = []
   const units: Unit[] = beats.map((rb, k) => {
     const beat = byId.get(rb.id) as Beat
@@ -361,7 +495,7 @@ function weigh(doc: EditDoc, cut: Cut, resolved: Resolved): Unit[] {
     const line = said.join(' ').toLowerCase().replace(/[’]/g, "'")
     const ending = k === beats.length - 1 || (rb.outStart >= total - Math.max(20, total * 0.12) && CTA.test(line))
     // A section's first line is its point, unless it only says again what was said before.
-    const protect: Unit['protect'] = k === 0 || ending ? 2 : starts.has(rb.id) && repeat < 0.45 ? 1 : 0
+    const protect: Unit['protect'] = k === 0 || k === opening || ending ? 2 : starts.has(rb.id) && repeat < 0.45 ? 1 : 0
     return { id: rb.id, index: rb.index, sec: rb.outEnd - rb.outStart, value, protect, topical, repeat, content: words }
   })
   // A section that is a tangent, its words off the subject all through, has no point to keep.
@@ -390,6 +524,8 @@ export interface LengthPlan {
   afterSec: number
   /** Why it is not what was asked, or why nothing changed. */
   note: string | null
+  /** What was asked is so, by these ops or already: a note that asked it is done. */
+  met: boolean
 }
 
 export interface LengthOptions {
@@ -439,9 +575,11 @@ function nameRun(
   return { kind: 'lines', name: '', lines: run.length }
 }
 
-/** What was cut, a phrase each: "part of the intro", "the tangent about the conference", "two points made twice", "6 other lines". */
+/** What was cut, a phrase each: "part of the intro", "the tangent about the conference", "two points made twice", "a section’s point", "6 other lines". */
 function describeCut(dropped: Unit[], all: Unit[], intro: Set<string>): string[] {
-  const ordered = [...dropped].sort((a, b) => a.index - b.index)
+  // A section's point is said as one, never counted among the other lines.
+  const points = dropped.filter((u) => u.protect === 1).length
+  const ordered = dropped.filter((u) => u.protect !== 1).sort((a, b) => a.index - b.index)
   const runs: Unit[][] = []
   for (const u of ordered) {
     const run = runs[runs.length - 1]
@@ -458,6 +596,7 @@ function describeCut(dropped: Unit[], all: Unit[], intro: Set<string>): string[]
     named.some((n) => n.kind === 'intro') ? 'part of the intro' : '',
     ...tangents.map((t) => t.name),
     retold === 1 ? 'a point made twice' : retold > 1 ? `${count(retold, 'point', 'points')} made twice` : '',
+    points === 1 ? 'a section’s point' : points > 1 ? `the points of ${count(points, 'section')}` : '',
     rest > 0 ? (rest === 1 ? 'one other line' : `${count(rest, 'other line')}`) : ''
   ].filter(Boolean)
 }
@@ -509,12 +648,14 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
       summary: '',
       beforeSec,
       afterSec: beforeSec,
-      note: `The recording runs ${clock(recording)} in all, so it can’t run ${askedFor(ask)}. I can cut it shorter, or keep every line and only tighten it.`
+      note: `The recording runs ${clock(recording)} in all, so it can’t run ${askedFor(ask)}. I can cut it shorter, or keep every line and only tighten it.`,
+      met: false
     }
   }
 
-  // Least loss first: the retakes and false starts, then the pauses, when it is to get shorter.
-  const shorter = (goal && !goal.within && goal.target < now() - goal.tol) || !!ask.keepAll
+  // Least loss first: the retakes and false starts, then the pauses, when it is to get shorter, or only tightened.
+  // Every line kept and a longer length asked, there is nothing to take out.
+  const shorter = goal ? !goal.within && goal.target < now() - goal.tol : !!ask.keepAll
   if (shorter && profile.takes && takesUntouched(doc, cut)) {
     const takes = planTakes(doc, { thresholds: profile.takes }, cut)
     const was = now()
@@ -547,12 +688,14 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
   let restored = 0
   let restoredNamed: string[] = []
   let held: HeldBack = { names: [], unnamed: false }
-  if (goal && !goal.within && !ask.keepAll) {
+  let grew = false
+  if (goal && !goal.within) {
     const resolved = resolveCut(cut, doc.words, doc.sources)
     const units = weigh(doc, cut, resolved)
     weighed = units
     const L = resolved.durationSec
-    if (L > goal.target + goal.tol) {
+    // Every line kept, none goes; one a length took may still come back.
+    if (L > goal.target + goal.tol && !ask.keepAll) {
       dropped = chooseDrops(units, L - goal.target, goal.tol)
       // Exactly, now the cut is known: one more line, or one fewer, if that lands closer.
       for (let pass = 0; pass < 4; pass++) {
@@ -566,6 +709,7 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
       // Cut for the length: a longer ask brings these back.
       if (dropped.length) push({ op: 'remove', beats: dropped.map((u) => u.id), why: 'length' })
     } else if (L < goal.target - goal.tol) {
+      grew = true
       const back = restoreOps(doc, cut, ops, goal.target - L, goal.tol)
       restored = back.lines
       restoredNamed = back.named
@@ -585,11 +729,14 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
       (heldBack
         ? heldBackSentence(afterSec, heldBack, true)
         : goal?.within && asked
-          ? `It already runs ${clock(afterSec)}${ask.range ? `, inside ${asked}` : ''}.`
-          : ask.keepAll
-            ? 'Every line already stays, and there are no pauses or retakes left to cut.'
-            : 'Nothing in the cut could go without losing its opening, a section’s point or its ending.')
-    return { ops: [], summary: '', beforeSec, afterSec, note }
+          ? `It already runs ${clock(afterSec)}${ask.under ? `, ${asked}` : ask.range ? `, inside ${asked}` : ''}.`
+          : grew && asked
+            ? `It runs ${clock(afterSec)}, and nothing a length cut is left to bring back, so it can’t run ${asked}.`
+            : ask.keepAll
+              ? 'Every line already stays, and there are no pauses or retakes left to cut.'
+              : 'Nothing in the cut could go without losing its opening, a section’s point or its ending.')
+    // Nothing needed doing: what was asked is already so.
+    return { ops: [], summary: '', beforeSec, afterSec, note, met: !goal || goal.within }
   }
 
   const delta = afterSec - beforeSec
@@ -612,21 +759,25 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
     sentences.push(`I brought back ${listOf(restoredNamed)}.`)
   else if (restored > 0)
     sentences.push(`I brought back ${restored === 1 ? 'one line' : `${count(restored, 'line')}`} that ${restored === 1 ? 'was' : 'were'} cut before.`)
-  if (ask.keepAll) {
-    sentences.push('Every line stays.')
-    const asked = askedFor(ask)
-    if (goal && !goal.within && afterSec > goal.target + goal.tol && asked)
-      notes.push(`Getting it to ${asked} would mean cutting lines.`)
-  } else if (heldBack) {
+  const asked = askedFor(ask)
+  if (ask.keepAll) sentences.push('Every line stays.')
+  if (heldBack) {
     notes.push(heldBackSentence(afterSec, heldBack, false))
-  } else if (goal && !goal.within && Math.abs(afterSec - goal.target) > goal.tol && askedFor(ask)) {
+  } else if (goal && !goal.within && Math.abs(afterSec - goal.target) > goal.tol && asked) {
+    // What is left to cut is only what has not been cut into: a section's point, once one went, is not offered again.
+    const pointsLeft = !dropped.some((u) => u.protect === 1) && weighed.some((u) => u.protect === 1)
+    const would = pointsLeft ? 'the opening, a section’s point or the ending' : 'the opening or the ending'
     notes.push(
       afterSec > goal.target
-        ? `To get closer to ${askedFor(ask)} I would have to cut the opening, a section’s point or the ending.`
-        : `Without its retakes and pauses it runs ${clock(afterSec)}: there isn’t ${askedFor(ask)} of different lines.`
+        ? ask.keepAll
+          ? `Getting it ${ask.under ? '' : 'to '}${asked} would mean cutting lines.`
+          : `To get ${ask.under ? `it ${asked}` : `closer to ${asked}`} I would have to cut ${would}.`
+        : grew
+          ? `It runs ${clock(afterSec)} with every line a length cut back in, so it can’t run ${asked}.`
+          : `Without its retakes and pauses it runs ${clock(afterSec)}: there isn’t ${asked} of different lines.`
     )
   }
-  return { ops, summary: sentences.join(' '), beforeSec, afterSec, note: notes.length ? notes.join(' ') : null }
+  return { ops, summary: sentences.join(' '), beforeSec, afterSec, note: notes.length ? notes.join(' ') : null, met: true }
 }
 
 /** The weakest lines to drop for `excess` seconds: protected ones last, a section's point only if it must. */
@@ -741,7 +892,7 @@ interface HeldBack {
   unnamed: boolean
 }
 
-/** Lines of these words, put back each before the first beat of its recording said after it, in the order they were said. */
+/** Lines of these words, put back each where it was said (insertOp), in the order they were said. */
 function insertLines(doc: EditDoc, cut: Cut, lines: Beat[]): { ops: Op[]; cut: Cut } {
   const index = indexWords(doc.words)
   const context = { words: doc.words, sources: doc.sources }
@@ -759,18 +910,39 @@ function insertLines(doc: EditDoc, cut: Cut, lines: Beat[]): { ops: Op[]; cut: C
   return { ops, cut: running }
 }
 
+/**
+ * Where a line comes back: just after the line of its recording said last
+ * before it, so it plays where it was said. One said before everything of its
+ * recording that plays goes before the first of those, but never ahead of a
+ * hook: a line said later than the next one, moved to open the cut.
+ */
 function insertOp(running: Cut, b: Beat, index: ReturnType<typeof indexWords>): Op {
   const at = index.pos.get(b.from as string) ?? 0
-  let to = running.beats.findIndex((x) => x.source === b.source && x.from !== null && (index.pos.get(x.from) ?? -1) > at)
-  if (to < 0) to = running.beats.length
+  const said = (x: Beat): number | undefined => (x.source === b.source && x.from !== null ? index.pos.get(x.from) : undefined)
+  const first = running.beats.length ? said(running.beats[0]) : undefined
+  const next = running.beats.slice(1).map(said).find((p) => p !== undefined)
+  const hook = first !== undefined && next !== undefined && first > next ? 1 : 0
+  let to = -1
+  let latest = -1
+  running.beats.forEach((x, i) => {
+    const p = said(x)
+    if (i >= hook && p !== undefined && p < at && p > latest) {
+      latest = p
+      to = i + 1
+    }
+  })
+  if (to < 0) {
+    const after = running.beats.findIndex((x, i) => i >= hook && (said(x) ?? -1) > at)
+    to = after < 0 ? running.beats.length : after
+  }
   return { op: 'insert', to, beat: { source: b.source, from: b.from, to: b.to } }
 }
 
 /**
  * Lines a length asked for took, brought back to add about `sec` seconds:
  * what the latest such cut took first, a version at a time, and the
- * strongest of those first; each put before the first beat of its recording
- * said after it. Lines cut on request (the intro, a topic, a tangent, a cut
+ * strongest of those first; each put back where it was said (insertOp).
+ * Lines cut on request (the intro, a topic, a tangent, a cut
  * by hand) never come back this way: `held` names them, so the reply can say
  * what it would take. Struck words stay struck.
  */
@@ -848,8 +1020,9 @@ function restoreOps(
     const u = unitOf.get(b.from)
     return u ? [u] : []
   })
-  // Named as a cut names what it takes ("a point made twice and two other lines").
-  return { ops: done.ops, lines: done.ops.length, named: describeCut(backUnits, units, new Set()), held }
+  // Named as a cut names what it takes ("part of the intro, a point made twice and two other lines").
+  const intro = new Set(findIntro(doc, whole)?.beats ?? [])
+  return { ops: done.ops, lines: done.ops.length, named: describeCut(backUnits, units, intro), held }
 }
 
 /**
@@ -930,12 +1103,20 @@ export function bringBack(doc: EditDoc, what: string): LengthPlan | null {
   const done = insertLines(doc, cut, lines)
   const afterSec = lengthOf(done.cut)
   if (done.ops.length === 0)
-    return { ops: [], summary: '', beforeSec, afterSec: beforeSec, note: `${listOf(names)} ${names.length === 1 ? 'is' : 'are'} already back in.` }
+    return {
+      ops: [],
+      summary: '',
+      beforeSec,
+      afterSec: beforeSec,
+      note: `${listOf(names)} ${names.length === 1 ? 'is' : 'are'} already back in.`,
+      met: true
+    }
   return {
     ops: done.ops,
     summary: `It runs ${clock(afterSec)} now, up from ${clock(beforeSec)}. I brought back ${listOf(names)}.`,
     beforeSec,
     afterSec,
-    note: null
+    note: null,
+    met: true
   }
 }
