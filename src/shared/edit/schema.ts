@@ -4,6 +4,7 @@ import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
 import { SfxSchema } from './sfx'
 import { AngleSchema, ANGLE_LAYOUTS, BeatAngleSchema } from './angles'
+import { GridSchema } from './grid'
 import { SubjectSchema } from './reframe'
 import { CameraSchema } from './camera'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
@@ -147,7 +148,9 @@ export const TreatmentSchema = z.object({
   /** Another camera of the same take shown for this beat: instead, in a box over it, or beside it (edit/angles). */
   angle: BeatAngleSchema.nullable().optional(),
   /** Where the picture is centred when it is cropped to a narrower frame, by hand: 0 the left edge, 1 the right. */
-  framing: z.number().min(0).max(1).nullable().optional()
+  framing: z.number().min(0).max(1).nullable().optional(),
+  /** Two to four pictures at once in a grid, each with a label, instead of the frame above (edit/grid). */
+  grid: GridSchema.nullable().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 

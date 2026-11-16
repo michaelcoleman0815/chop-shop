@@ -46,13 +46,18 @@ interface Ctx {
   sources: Map<string, Source>
   /** Picture asset ids, or null when the caller did not say. */
   pictures: Set<string> | null
+  /** Material a grid panel can show (footage and pictures), or null when the caller did not say. */
+  material: Set<string> | null
 }
 
 function makeCtx(ctx: OpContext): Ctx {
   return {
     index: indexWords(ctx.words),
     sources: new Map(ctx.sources.map((s) => [s.id, s])),
-    pictures: ctx.assets ? new Set(ctx.assets.filter((a) => a.kind === 'image').map((a) => a.id)) : null
+    pictures: ctx.assets ? new Set(ctx.assets.filter((a) => a.kind === 'image').map((a) => a.id)) : null,
+    material: ctx.assets
+      ? new Set(ctx.assets.filter((a) => a.kind === 'image' || a.kind === 'video').map((a) => a.id))
+      : null
   }
 }
 
@@ -212,6 +217,12 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
 
     case 'treat': {
       const targets = op.beats.map((id) => findBeat(cut, id))
+      // A grid shows what the edit has: its recordings, and its material when the caller said what that is.
+      for (const panel of op.set.grid?.panels ?? []) {
+        const id = panel.show.trim()
+        if (id && !ctx.sources.has(id) && ctx.material && !ctx.material.has(id))
+          throw new OpError(`There is no recording or material ${id} in this edit to put in the grid.`)
+      }
       if (op.set.bigWord !== undefined && op.set.bigWord !== null) {
         if (targets.length !== 1) throw new OpError('A big word belongs to one beat; name only that beat.')
         const beat = cut.beats[targets[0]]

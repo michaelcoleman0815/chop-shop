@@ -426,6 +426,11 @@ export function assetsInCut(doc: EditDoc): Asset[] {
   for (const beat of cut.beats) {
     const asset = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
     if (asset && !used.includes(asset)) used.push(asset)
+    // Material a grid shows in its panels, by id.
+    for (const panel of beat.treatment.grid?.panels ?? []) {
+      const shown = doc.assets.find((a) => a.id === panel.show.trim())
+      if (shown && !used.includes(shown)) used.push(shown)
+    }
   }
   for (const id of picturesIn(cut)) {
     const asset = doc.assets.find((a) => a.id === id)
