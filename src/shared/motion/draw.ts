@@ -1080,11 +1080,13 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
     return
   }
 
-  // Letters go one at a time when they move on their own, or when the font's tracking spaces them.
+  // Letters go one at a time when they move on their own, when the font's tracking spaces them,
+  // or when digits must sit in the tabular columns layout gave them, so a count never wobbles.
   const charLevel =
     (layer.animators ?? []).some((a) => a.by === 'char' || a.from.tracking !== undefined) ||
     !!layer.cursor ||
-    (layer.font.tracking ?? 0) !== 0
+    (layer.font.tracking ?? 0) !== 0 ||
+    !!layer.font.tabular
   const strokeW = layer.stroke ? num(layer.stroke.width, local, length, 0) : 0
   const mids = block.lines.map((line) => {
     const first = block.words[line.words[0]]
@@ -1107,6 +1109,8 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
         const isActive = wi === frame.active
         const activeScale = isActive && layer.active?.scale ? layer.active.scale : 1
         ctx.save()
+        // The spoken word's box is its ground: it casts no shadow onto it.
+        if (pass === 'shadow' && isActive && layer.active?.box) clearShadow(ctx)
         unitTransform(ctx, { ...wu, scale: wu.scale * activeScale }, word.x + word.w / 2, word.baseline - word.cap / 2)
         if (wu.clip || wu.wipe < 0.999) clipBox(ctx, word.x, line.top, word.w, line.height, wu, word.size)
         const blurred = wu.blur + lu.blur
@@ -1143,8 +1147,10 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
             const cu = frame.chars[gi]
             const a = alpha * cu.opacity
             if (a <= 0.002 || cu.scale === 0) return
-            // Tracking spreads characters out from the middle of their line.
-            const cx = word.x + c.x + (tracking + cu.tracking) * (gi - mid)
+            // Tracking spreads characters out from the middle of their line. A tabular
+            // digit is centred in its column, as faces with tabular figures draw them.
+            const column = layer.font.tabular && /\d/.test(c.ch) ? (c.w - st.measure(word.font, c.ch)) / 2 : 0
+            const cx = word.x + c.x + column + (tracking + cu.tracking) * (gi - mid)
             ctx.save()
             unitTransform(ctx, cu, cx + c.w / 2, word.baseline - word.cap / 2)
             if (cu.clip || cu.wipe < 0.999) clipBox(ctx, cx, line.top, c.w, line.height, cu, word.size)

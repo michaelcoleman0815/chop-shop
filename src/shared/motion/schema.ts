@@ -43,6 +43,8 @@ export const MOTION_KINDS = [
   'market',
   'screenshot',
   'device',
+  'chips',
+  'video-cards',
   'layers'
 ] as const
 export const MotionKindSchema = z.enum(MOTION_KINDS)

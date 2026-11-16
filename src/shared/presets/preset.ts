@@ -147,6 +147,14 @@ export const CAPTION_STYLE_PRESETS: Preset[] = [
     builtIn: true,
     style: { captions: { on: true, preset: 'hierarchy', position: 'chest' } },
     inspiration: null
+  },
+  {
+    command: 'boxed',
+    title: 'Boxed captions',
+    summary: 'Captions a few words at a time on your chest, the word you are saying in a box of your accent colour.',
+    builtIn: true,
+    style: { captions: { on: true, preset: 'boxed', position: 'chest', wordsPerScreen: 3 } },
+    inspiration: null
   }
 ]
 
