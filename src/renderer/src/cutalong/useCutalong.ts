@@ -1024,10 +1024,26 @@ export function useCutalong() {
         return
       }
       const sec = secMatch ? Math.min(3, Math.max(0.04, Number(secMatch[1]))) : undefined
-      const done = applyAsVersion(
-        [{ op: 'transition', beats: targets, kind, ...(sec !== undefined && kind !== 'cut' ? { sec } : {}) }],
-        kind === 'cut' ? 'Hard cuts again.' : `${transitionInfo(kind).label} brings beats in.`
-      )
+      const ops: Op[] = [
+        { op: 'transition', beats: targets, kind, ...(sec !== undefined && kind !== 'cut' ? { sec } : {}) }
+      ]
+      if (kind !== 'cut') {
+        // A transition plays from the footage either side of the cut. Where the
+        // words run right up to it on both sides there is none, and the cut
+        // would stay hard: say so rather than make a version that changes nothing.
+        const trial = applyOps(cut, ops, { words: d.words, sources: d.sources, assets: d.assets })
+        const after = resolveCut(trial.cut, d.words, d.sources)
+        const made = new Set((after.transitions ?? []).map((t) => t.beat))
+        if (trial.applied.length > 0 && !targets.some((id) => made.has(id))) {
+          const at = after.beats.find((b) => b.id === targets[0])?.index
+          const where = targets.length === 1 && at !== undefined ? `beat ${at + 1}` : 'those beats'
+          say(
+            `There's no room for ${transitionInfo(kind).label} into ${where}. The words run right up to the cut on both sides, so it would lay one line over the other. It stays a hard cut. Try it where a section changes, or on a cut into B-roll.`
+          )
+          return
+        }
+      }
+      const done = applyAsVersion(ops, kind === 'cut' ? 'Hard cuts again.' : `${transitionInfo(kind).label} brings beats in.`)
       if (!done) {
         say(kind === 'cut' ? 'Those beats already cut in hard.' : 'That is already how those beats come in.')
         return

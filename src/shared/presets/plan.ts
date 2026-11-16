@@ -325,7 +325,7 @@ function bigWordFor(ids: string[], text: Map<string, string>): string | null {
 /**
  * "beat 3 comes in with a dissolve", "four beats cut in hard again". Says so
  * when a transition came out shorter than asked because a longer one would
- * lay words over each other.
+ * lay words over each other, and when there was no room for one at all.
  */
 function describeTransition(o: Extract<Op, { op: 'transition' }>, after: Resolved): string {
   const positions = o.beats
@@ -334,7 +334,18 @@ function describeTransition(o: Extract<Op, { op: 'transition' }>, after: Resolve
   const n = positions.length || o.beats.length
   const who = n === 1 && positions.length === 1 ? `beat ${positions[0] + 1}` : count(n, 'beat')
   if (o.kind === 'cut') return `${who} ${n === 1 ? 'cuts' : 'cut'} in hard again`
-  const said = `${who} ${n === 1 ? 'comes' : 'come'} in with ${transitionInfo(o.kind).label}`
+  // Where the words run right up to the cut on both sides there is no footage
+  // to blend, and the cut stays hard.
+  const made = new Set((after.transitions ?? []).map((t) => t.beat))
+  const none = o.beats.filter((id) => !made.has(id) && (after.beats.find((b) => b.id === id)?.index ?? 0) > 0)
+  if (none.length > 0 && none.length === positions.length) {
+    return `${who} ${n === 1 ? 'stays a hard cut' : 'stay hard cuts'}: the words run right up to ${n === 1 ? 'it' : 'them'}, with no room for ${transitionInfo(o.kind).label}`
+  }
+  const got = positions.length - none.length
+  const said =
+    none.length > 0
+      ? `${count(got, 'beat')} ${got === 1 ? 'comes' : 'come'} in with ${transitionInfo(o.kind).label}, and ${count(none.length, 'beat')} ${none.length === 1 ? 'stays a hard cut' : 'stay hard cuts'} where the words run right up to the cut`
+      : `${who} ${n === 1 ? 'comes' : 'come'} in with ${transitionInfo(o.kind).label}`
   const short = (after.transitions ?? []).filter((t) => o.beats.includes(t.beat) && t.sec < t.asked - 0.01)
   if (short.length === 0) return said
   const sec = Math.min(...short.map((t) => t.sec))

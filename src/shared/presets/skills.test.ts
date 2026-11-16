@@ -95,6 +95,33 @@ describe('saying what a transition did', () => {
     )
   })
 
+  it('says when there was no room for a transition at all', () => {
+    // Words that run straight into each other: split mid-sentence, the cut has
+    // no footage either side of it that is not a word.
+    const words = Array.from({ length: 8 }, (_, i) => ({
+      text: i === 7 ? 'end.' : `word${i}`,
+      startSec: 0.5 + i * 0.3,
+      endSec: 0.8 + i * 0.3
+    }))
+    const tight = createDoc({ id: 't', title: 't', source: SOURCE, words: wordsFromTranscript(words, 's1') })
+    const split = applyOps(currentCut(tight), [{ op: 'split', beat: 'b1', at: 'w5' }], {
+      words: tight.words,
+      sources: tight.sources
+    })
+    expect(split.rejected).toEqual([])
+    const second = split.cut.beats[1].id
+    const r = applyOps(split.cut, [{ op: 'transition', beats: [second], kind: 'dissolve' }], {
+      words: tight.words,
+      sources: tight.sources
+    })
+    const after = resolveCut(r.cut, tight.words, tight.sources)
+    // The resolver leaves it a hard cut, and the summary says so instead of claiming a dissolve.
+    expect(after.transitions ?? []).toEqual([])
+    expect(describePlan(r.applied, resolveCut(split.cut, tight.words, tight.sources), after)).toBe(
+      'Beat 2 stays a hard cut: the words run right up to it, with no room for a dissolve.'
+    )
+  })
+
   it('reads J and L cuts', () => {
     expect(say([{ op: 'jcut', beats: ['b3'], sec: 0.3 }])).toBe("Beat 3's sound comes in 0.3 s before its picture.")
     expect(say([{ op: 'lcut', beats: ['b2'], sec: 0.5 }])).toBe(
