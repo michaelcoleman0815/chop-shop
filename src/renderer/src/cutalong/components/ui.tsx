@@ -10,6 +10,7 @@ export function Mark({ size = 30, white = false }: { size?: number; white?: bool
     <svg width={size} height={(size * 52) / 64} viewBox="0 0 64 52" aria-hidden="true">
       <rect x="2" y="4" width="44" height="18" rx="9" fill={white ? '#FFFFFF' : 'var(--ink)'} />
       <rect
+        className="cl-cut"
         x="18"
         y="30"
         width="42"

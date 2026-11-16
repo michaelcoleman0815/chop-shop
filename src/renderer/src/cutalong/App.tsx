@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
 import { Sidebar, type Place } from './components/Sidebar'
-import { Button } from './components/ui'
+import { Button, Mark } from './components/ui'
+import { moveRail, useLingering, useMotion } from './motion'
 import { BrandPage } from './screens/Brand'
 import { Editor } from './screens/Editor'
 import { BackToWork } from './screens/Header'
@@ -23,7 +24,8 @@ function remembered(): boolean {
 
 /** The rail and one screen: Start, the thread, the editor, projects, your brand, presets or settings. */
 export default function App(): JSX.Element {
-  const app = useCutalong()
+  const app = useMotion(useCutalong())
+  const toast = useLingering(app.toast)
   const [open, setOpen] = useState(remembered)
   const mac = navigator.userAgent.includes('Mac')
 
@@ -68,7 +70,7 @@ export default function App(): JSX.Element {
     <div className={`cl-app${mac ? ' mac' : ''}`}>
       <Sidebar
         open={open}
-        onToggle={() => setOpen((o) => !o)}
+        onToggle={() => moveRail(() => setOpen((o) => !o))}
         current={place}
         onGo={(p) => (p === 'start' ? app.goStart() : app.setScreen(p))}
         recent={app.recent}
@@ -85,11 +87,16 @@ export default function App(): JSX.Element {
           {app.screen === 'settings' && <SettingsPage />}
         </BackToWork.Provider>
       </div>
-      {app.toast && (
-        <div className="cl-toast" role="status">
-          <span>{app.toast.text}</span>
-          {app.toast.path && (
-            <Button variant="text" onClick={() => void api.reveal(app.toast!.path!)}>
+      {toast.value && (
+        <div className={`cl-toast${toast.leaving ? ' leaving' : ''}`} role="status">
+          {toast.value.text.endsWith('%') && (
+            <span className="cl-toast-mark" aria-hidden="true">
+              <Mark size={22} white />
+            </span>
+          )}
+          <span>{toast.value.text}</span>
+          {toast.value.path && (
+            <Button variant="text" onClick={() => void api.reveal(toast.value!.path!)}>
               Show in Finder
             </Button>
           )}

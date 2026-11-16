@@ -4,6 +4,7 @@ import { describeStyle } from '../../../../shared/presets'
 import { api, mediaUrlFor } from '../api'
 import { Button, Icon } from '../components/ui'
 import { clock, isVideoFile } from '../format'
+import { collapse, grow } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 
@@ -90,7 +91,7 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                 <div className="cl-progress">
                   <span>{app.brandProgress.stage}</span>
                   <span className="cl-progress-bar" aria-hidden="true">
-                    <span style={{ width: `${Math.max(4, app.brandProgress.percent)}%` }} />
+                    <span style={grow(Math.max(4, app.brandProgress.percent))} />
                   </span>
                 </div>
               ) : (
@@ -112,7 +113,11 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                         {clock(v.facts.durationSec)} · {v.facts.secondsPerShot.toFixed(1)} s per shot
                       </span>
                     </span>
-                    <button type="button" aria-label={`Forget ${v.title}`} onClick={() => app.forgetBrandVideo(v.path)}>
+                    <button
+                      type="button"
+                      aria-label={`Forget ${v.title}`}
+                      onClick={(e) => collapse(e.currentTarget, () => app.forgetBrandVideo(v.path))}
+                    >
                       <Icon.close />
                     </button>
                   </li>
