@@ -11,6 +11,19 @@ const n = (v: number, digits = 6): string => (Math.abs(v) < 1e-12 ? '0' : v.toFi
 const AFFTDN_DELAY_SEC = 0.025
 
 /**
+ * A peak limiter that leaves the sound where it was, for 48 kHz sound.
+ * alimiter looks ahead by its attack, 5 ms, and so returns the sound 240
+ * samples late. Its own compensation (latency=1) depends on the size of the
+ * frames it is handed: after a crossfade it left a sound effect 16 ms early
+ * (measured on ffmpeg 6.1). The look-ahead is always exactly the attack, so
+ * those 240 samples come off the front instead, and whoever follows pads the
+ * end back to length.
+ */
+export function limiter(limit: number): string {
+  return `alimiter=limit=${limit}:level=false:attack=5,atrim=start_sample=240,asetpts=PTS-STARTPTS`
+}
+
+/**
  * A voice cleaned up, from 0 (barely) to 1 (the most): rumble below 80 Hz
  * out, steady hiss and hum taken down by up to 18 dB, harsh esses softened,
  * the level evened by a gentle compressor, a little boxiness cut around
@@ -30,8 +43,7 @@ export function voicePolish(strength: number): string {
     `acompressor=threshold=0.063:ratio=${n(2 + 2 * k, 2)}:attack=15:release=200:makeup=${n(1 + k, 2)}`,
     `equalizer=f=250:t=q:w=1:g=${n(-1.5 * k, 2)}`,
     `equalizer=f=4000:t=q:w=0.9:g=${n(1 + 2 * k, 2)}`,
-    // latency=1 takes back the limiter's look-ahead, which would otherwise delay it 5 ms.
-    'alimiter=limit=0.95:level=false:latency=1'
+    limiter(0.95)
   ].join(',')
 }
 

@@ -53,7 +53,7 @@ describe.skipIf(!FFMPEG)('rendering voice polish and a music bed', () => {
     const voice =
       `aevalsrc=exprs='(0.25*sin(2*PI*220*t)+0.12*sin(2*PI*440*t)+0.06*sin(2*PI*660*t))*(${gate})` +
       `+0.12*sin(2*PI*7000*t)*(${esses})+0.05*sin(2*PI*40*t)':s=48000:d=${duration}[v];` +
-      `anoisesrc=a=0.006:c=white:r=48000:d=${duration}[n];[v][n]amix=inputs=2:normalize=0[a]`
+      `anoisesrc=a=0.006:c=white:r=48000:d=${duration}:seed=7[n];[v][n]amix=inputs=2:normalize=0[a]`
     const path = join(dir, 'take.mov')
     ffmpegRun(ffmpeg, [
       '-f',
@@ -152,6 +152,26 @@ describe.skipIf(!FFMPEG)('rendering voice polish and a music bed', () => {
       expect(Math.abs(l.lufs + 14)).toBeLessThan(1)
       expect(l.truePeak).toBeLessThan(-0.5)
     }
+  })
+
+  it('keeps every word where it was through a crossfade, polished and under a bed', async () => {
+    // A dissolve hands the limiters frames of odd sizes; their delay must still come off exactly.
+    const dissolve = { op: 'transition', beats: ['b3'], kind: 'dissolve', sec: 0.5 }
+    const plain = await render(withOps([dissolve]), 'crossfade-plain')
+    const finished = await render(
+      withOps([
+        dissolve,
+        { op: 'voice', polish: 0.6 },
+        { op: 'music', set: { path: music, lufs: loudnessOf(ffmpeg, music).lufs } }
+      ]),
+      'crossfade-finished'
+    )
+    const voiceBand = 'bandpass=f=220:width_type=q:w=4,bandpass=f=220:width_type=q:w=4'
+    const was = onsets(ffmpeg, plain.out, -35, 0.1, voiceBand)
+    const now = onsets(ffmpeg, finished.out, -35, 0.1, voiceBand)
+    expect(now.length).toBe(was.length)
+    // Within 5 ms (3.2 ms measured): the filters and the compressor reshape each word's start a little.
+    now.forEach((t, i) => expect(Math.abs(t - was[i]) * 1000, `word onset ${i}`).toBeLessThan(5))
   })
 
   it('lays a bed under the voice that dips while anyone speaks', async () => {

@@ -40,7 +40,7 @@ import { buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
 import { heardFrom } from '../shared/vision/offset'
 import { colorConversion, hasZscale } from './intake'
-import { bedVolume, voicePolish } from './render/audio'
+import { bedVolume, limiter, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
 
@@ -799,7 +799,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         `asetnsamples=n=480,${bedVolume(bed.gainDb, bed.keys)}${fades.length ? `,${fades.join(',')}` : ''}[abed]`
     )
     chains.push(
-      `[${aOut}][abed]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.84:level=false:latency=1[amixed]`
+      `[${aOut}][abed]amix=inputs=2:duration=first:normalize=0,${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[amixed]`
     )
     aOut = 'amixed'
   }
