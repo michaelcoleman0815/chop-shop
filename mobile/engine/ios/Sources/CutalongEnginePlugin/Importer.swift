@@ -59,7 +59,8 @@ public enum Importer {
 }
 
 /// Shows the photo picker (videos and pictures) or the document picker
-/// (sound, and anything else asked for with it), and copies what comes back.
+/// (sound), and copies what comes back. Asked for sound with videos or
+/// pictures, it first asks the person which: Photos or Files.
 final class Picker: NSObject, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
     private let finished: (Result<[PickedFile], Error>) -> Void
 
@@ -68,16 +69,47 @@ final class Picker: NSObject, PHPickerViewControllerDelegate, UIDocumentPickerDe
     }
 
     func present(on host: UIViewController, multiple: Bool, kinds: Set<String>) {
-        if kinds.contains("audio") {
-            var types: [UTType] = [.audio]
-            if kinds.contains("video") { types.append(.movie) }
-            if kinds.contains("image") { types.append(.image) }
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
-            picker.allowsMultipleSelection = multiple
-            picker.delegate = self
-            host.present(picker, animated: true)
+        // Sound is only in Files, and videos and pictures are mostly in Photos:
+        // asked for both, the person says where to look.
+        if kinds.contains("audio") && (kinds.contains("video") || kinds.contains("image")) {
+            let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+            sheet.addAction(UIAlertAction(title: "Photos", style: .default) { _ in
+                self.present(on: host, multiple: multiple, kinds: kinds.subtracting(["audio"]))
+            })
+            sheet.addAction(UIAlertAction(title: "Files", style: .default) { _ in
+                self.presentFiles(on: host, multiple: multiple, kinds: kinds)
+            })
+            sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+                self.finished(.success([]))
+            })
+            // An iPad shows the sheet as a popover, which needs somewhere to point.
+            if let popover = sheet.popoverPresentationController {
+                popover.sourceView = host.view
+                popover.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            host.present(sheet, animated: true)
             return
         }
+        if kinds.contains("audio") {
+            presentFiles(on: host, multiple: multiple, kinds: kinds)
+            return
+        }
+        presentPhotos(on: host, multiple: multiple, kinds: kinds)
+    }
+
+    private func presentFiles(on host: UIViewController, multiple: Bool, kinds: Set<String>) {
+        var types: [UTType] = []
+        if kinds.contains("audio") { types.append(.audio) }
+        if kinds.contains("video") { types.append(.movie) }
+        if kinds.contains("image") { types.append(.image) }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types.isEmpty ? [.audio] : types, asCopy: true)
+        picker.allowsMultipleSelection = multiple
+        picker.delegate = self
+        host.present(picker, animated: true)
+    }
+
+    private func presentPhotos(on host: UIViewController, multiple: Bool, kinds: Set<String>) {
         var config = PHPickerConfiguration()
         config.selectionLimit = multiple ? 0 : 1
         // The file as it was recorded: no conversion to a more compatible format.
