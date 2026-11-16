@@ -197,6 +197,20 @@ describe.skipIf(!ffmpeg || !ffprobe)('a vlog made the way the app makes it', () 
     })
   })
 
+  it('says what a part of the day runs now, when asked for more or less of it', async () => {
+    const scenes = v1.vlog?.scenes ?? []
+    let said = ''
+    // Whichever scene has footage to spare: the reply says how long it runs now.
+    for (let k = 1; k <= scenes.length && !said; k++) {
+      const r = await planVlog({ doc: v1, request: `more of scene ${k}` })
+      if (r.ok && / runs \d+:\d\d now, up from \d+:\d\d\./.test(r.reply.lead)) said = r.reply.lead
+    }
+    expect(said).toMatch(/^v2 is ready\.( It runs \d+:\d\d now, (up|down) from \d+:\d\d\.)? [A-Z].* runs \d+:\d\d now, up from \d+:\d\d\./)
+    // A length alone says nothing about the parts.
+    const r = await planVlog({ doc: v1, request: 'make it 20 seconds' })
+    expect(r.ok && r.reply.lead).toMatch(/^v2 is ready\. It runs 0:20 now, down from \d+:\d\d\.$/)
+  })
+
   it('says so when there is nothing to watch', async () => {
     const r = await makeVlog({ paths: [join(dir, 'memo.m4a')], request: '' }, deps, () => undefined)
     expect(r).toEqual({ ok: false, message: 'None of those has a picture I could read.' })

@@ -27,7 +27,7 @@ import type { AudioMap } from '../shared/audio/map'
 import { aspectFor, extendShoot, shootDoc, talkStrikes, vlogMusic, withStory } from '../shared/vlog/build'
 import { emptyStory, finishShoot, mergeTalk, type HeardClip } from '../shared/vlog/compose'
 import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, vlogShown, withOps } from '../shared/vlog/plan'
-import { leftOutSentence, shapeSentence, storyReply, type VlogReply } from '../shared/vlog/reply'
+import { leftOutSentence, scenesChanged, shapeSentence, storyReply, type VlogReply } from '../shared/vlog/reply'
 import { parseVlogAsk, type VlogAsk } from '../shared/vlog/request'
 import type { Moment, Story, Vlog } from '../shared/vlog/schema'
 import { assembleShoot, type ShootPart } from '../shared/vlog/shoot'
@@ -500,8 +500,15 @@ export async function planVlog(req: { doc: unknown; request: string }): Promise<
       Boolean
     )
     const reply = storyReply(preview, vlog, { version: currentVersion(doc).n + 1, previousSec: now, notes })
+    // Asked for more or less of a part of the day, the reply says what that part runs now.
+    const changed =
+      ask && ask.more.length + ask.less.length + ask.drop.length > 0
+        ? scenesChanged(doc, shown.story.beats, preview, vlog)
+        : ''
     // A new shape is said first: "v4 is ready. It is vertical now, 9:16. It opens on ..."
-    const lead = reshape ? `${reply.lead} ${shapeSentence(reshape.aspect)}` : reply.lead
+    const lead = [reshape ? `${reply.lead} ${shapeSentence(reshape.aspect)}` : reply.lead, changed]
+      .filter(Boolean)
+      .join(' ')
     const told = made?.reply || reply.story
     const summary = [reshape ? shapeSentence(reshape.aspect) : '', made?.summary || reply.summary]
       .filter(Boolean)

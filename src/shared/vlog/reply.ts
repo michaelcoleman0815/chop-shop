@@ -95,6 +95,36 @@ export function placedBeats(doc: EditDoc, beats: StoryBeat[]): Placed[] {
   return out
 }
 
+/**
+ * What an ask about parts of the day changed, a sentence for each of the
+ * biggest two: "The evening at 19:00 runs 0:16 now, up from 0:10." The
+ * tease is the payoff's, so it counts for no scene.
+ */
+export function scenesChanged(before: EditDoc, beforeBeats: StoryBeat[], after: EditDoc, vlog: Vlog, max = 2): string {
+  const span = (placed: Placed[]): Map<string, number> => {
+    const m = new Map<string, number>()
+    for (const p of placed) {
+      if (p.beat.role === 'hook' || !p.beat.scene) continue
+      m.set(p.beat.scene, (m.get(p.beat.scene) ?? 0) + p.outEnd - p.outStart)
+    }
+    return m
+  }
+  const was = span(placedBeats(before, beforeBeats))
+  const now = span(placedBeats(after, vlog.story.beats))
+  return vlog.scenes
+    .map((scene) => ({ scene, a: was.get(scene.id) ?? 0, b: now.get(scene.id) ?? 0 }))
+    .filter((c) => Math.abs(c.b - c.a) >= 0.5)
+    .sort((x, y) => Math.abs(y.b - y.a) - Math.abs(x.b - x.a))
+    .slice(0, max)
+    .map(({ scene, a, b }) => {
+      const name = capital(sceneInSentence(scene.name))
+      if (b < 0.5) return `${name} is out.`
+      if (a < 0.5) return `${name} is in it now, ${clock(b)} long.`
+      return `${name} runs ${clock(b)} now, ${b < a ? 'down' : 'up'} from ${clock(a)}.`
+    })
+    .join(' ')
+}
+
 /** What a beat shows, for the opening and closing words of a reply. */
 function what(vlog: Vlog, beat: StoryBeat | undefined, words: Map<string, string>): string | null {
   if (!beat) return null
