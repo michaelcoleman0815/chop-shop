@@ -539,6 +539,23 @@ describe('what /clipping says', () => {
     expect(reply.text + reply.aside).not.toMatch(/!/)
   })
 
+  it('says measuring picked them when a model could not, and never that the model did', () => {
+    const facts = factsOf(SERVICE)
+    const plan = planRecording(facts, ask, null)
+    const picks = measureRecording(facts, plan, ask)
+    const fell: ClipsFound = {
+      ...base,
+      fellBack: true,
+      notes: ["llama3.1:8b couldn't pick them (it returned no clips), so I sorted them by measuring."],
+      recordings: [rec('/s/service.mp4', { left: plan.regions })],
+      clips: picks.map((p) => ({ ...p, source: '/s/service.mp4', doc: null as never }))
+    }
+    const aside = clipsReply(fell, false).aside ?? ''
+    expect(aside).toMatch(/so I sorted them by measuring\.$/)
+    expect(aside).not.toMatch(/picked them/)
+    expect(clipsReply(fell, false).details).toContainEqual({ label: 'Picked by', value: 'Measuring' })
+  })
+
   it('says when a recording is too short to clip, or has nobody talking in it', () => {
     expect(clipsReply({ ...base, recordings: [rec('/s/a.mp4', { durationSec: 48, none: 'short' })] }, false).text).toBe(
       "a.mp4 runs 0:48, too short to cut clips from: a clip runs 0:30 to 1:00, so it would be nearly the whole thing. Drop it without /clipping and I'll edit it as it is."

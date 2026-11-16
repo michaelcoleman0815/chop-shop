@@ -167,11 +167,13 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
   const aside: string[] = []
   if (n > 0 && left.length) aside.push(`I left out ${listOf(left)}.`)
   if (n > 0) {
-    if (found.by === 'measured' && !found.fellBack)
-      aside.push(
-        'I sorted them by measuring: strong openings, finished thoughts, laughter and energy. With an Anthropic key in Settings, Claude picks them.'
-      )
-    else if (found.by === 'local') aside.push(`${found.model ?? 'A model on this Mac'} picked them, on this Mac.`)
+    if (found.by === 'measured') {
+      // Measuring took over from a model that could not pick them: its note says so, and nothing says the model did.
+      if (!found.fellBack)
+        aside.push(
+          'I sorted them by measuring: strong openings, finished thoughts, laughter and energy. With an Anthropic key in Settings, Claude picks them.'
+        )
+    } else if (found.by === 'local') aside.push(`${found.model ?? 'A model on this Mac'} picked them, on this Mac.`)
     else aside.push('Claude picked them from the transcript.')
   }
   aside.push(...found.notes)

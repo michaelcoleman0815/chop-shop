@@ -343,6 +343,8 @@ describe('the clips Claude picks', () => {
     // Said once, and without asking for a key the person already gave.
     expect(r.reply.aside?.match(/by measuring/g)).toHaveLength(1)
     expect(r.reply.aside).not.toMatch(/Anthropic key/)
+    // Nor that Claude picked them, beside the note that it could not.
+    expect(r.reply.aside).not.toMatch(/Claude picked them/)
   })
 })
 
