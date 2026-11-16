@@ -5,12 +5,15 @@ import { boxAt, type CropPlan, type FaceBox, type FaceTrack } from './faces'
  * crop pass produces (see faces.ts planCrops and main/mouth.ts).
  *
  * For every frame and every watched face it keeps a handful of numbers:
- * how much the mouth changed since the frame before, how much the upper face
- * changed (a nod moves both; talking moves the mouth), how far the head
- * moved, the light on the face, and two tiny thumbnails used later to tell a
- * covered mouth or a turned head from an ordinary one. Changes are measured
- * after shifting the previous frame by up to two pixels to where the head
- * went, and with each region's mean taken out, so a moving head or a
+ * how much the mouth changed since the frame before, how much the nose and
+ * the upper face changed (a nod moves the nose as well as the mouth; talking
+ * moves only the mouth, and a blink only the eyes), how far the head moved,
+ * the light on the face, and two tiny thumbnails: one of the mouth, whose
+ * main way of varying is opening and closing, and one of the face, to tell a
+ * turned head from an ordinary one. Changes are measured after shifting the
+ * previous frame to where the head went (up to two and a half pixels, to a
+ * quarter pixel, found on the upper face while ignoring its worst-matching
+ * fifth), and with each region's mean taken out, so a moving head or a
  * flickering exposure does not read as a moving mouth.
  */
 

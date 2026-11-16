@@ -11,7 +11,8 @@ import { voiceFromEnvelope, voicedShare, type MouthSeries } from './series'
  * after the lips that made it. The mouth's movement and the voice's changes
  * go together, so sliding one against the other until they line up best
  * gives the offset: across ±400 ms one frame at a time, then between frames
- * by fitting a parabola to the peak.
+ * by a parabola through the peak and a short search on the voice read
+ * between its 10 ms steps.
  *
  * The mouth side is how open the mouth is (series.ts openness), the voice
  * side its loudness as amplitude. Openness goes up and down with the voice

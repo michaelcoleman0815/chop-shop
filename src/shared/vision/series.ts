@@ -3,14 +3,15 @@ import { FACE_DESC, MOUTH_DESC, type RawMouth, type RawSlot } from './meter'
 
 /**
  * From raw per-frame measurements to one mouth series: how much the watched
- * mouth is moving at each frame, in units of that face's own talking, with
- * the frames where it cannot be read marked as such.
+ * mouth is moving at each frame, in units of that face's own talking, how
+ * open it is, and the frames where it cannot be read marked as such.
  *
  * Every face is normalised against itself. The head's own movement is taken
- * out using the upper face: a nod moves both, talking moves the mouth. A
- * face counts only if its mouth is seen to move with the voice; a covered
- * mouth, a turned head, a dark or tiny face, and frames across a camera cut
- * are all left unread rather than guessed at.
+ * out using the nose: a nod moves the nose and the mouth, talking moves the
+ * mouth, and how much of a nod reaches this face's mouth is learned from
+ * its silent stretches. A face counts only if its mouth is seen to move with
+ * the voice; a covered mouth, a turned head, a dark or tiny face, and frames
+ * across a camera cut are all left unread rather than guessed at.
  */
 
 /** Voice activity on the audio's clock, 100 times a second. */
