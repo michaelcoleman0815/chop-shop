@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_SOURCE_LENGTH, MAX_SOURCES } from './broll-sources'
 import { CaptionSpecSchema } from './edit/schema'
 import { styleFromFacts, type InspirationFacts } from './inspiration/facts'
 import { habitsStyle } from './learn/habits'
@@ -46,8 +47,27 @@ export const BrandVideoSchema = z.object({
 })
 export type BrandVideo = z.infer<typeof BrandVideoSchema>
 
+/**
+ * What goes in every export's description, around the parts made for each
+ * video: {opening} is a sentence or two on it, {chapters} the YouTube
+ * chapters when they show, {credits} the outside material it uses. Anything
+ * else is the brand's own lines: links, socials, a standing sponsor line.
+ */
+export const DEFAULT_DESCRIPTION = '{opening}\n\n{chapters}\n\n{credits}'
+
+/** Product logos a brand keeps, and how long a logo's name may be. */
+export const MAX_LOGOS = 24
+export const LOGO_NAME_MAX = 60
+/** How long the description template may be: YouTube's own limit. */
+export const DESCRIPTION_TEMPLATE_MAX = 5000
+
 export const BrandSchema = z.object({
   v: z.literal(1),
+  /**
+   * Which of the person's brands this is (shared/brands). A brand saved before
+   * there could be more than one has none until it joins the list.
+   */
+  id: z.string().max(80).default(''),
   name: z.string(),
   /** Caption text, and the word being spoken. */
   colors: z.object({ text: hex, accent: hex }),
@@ -61,8 +81,8 @@ export const BrandSchema = z.object({
   captions: CaptionSpecSchema.partial(),
   /** Logos of the creator's own products and channel, by name, for logo pops. Brands saved before had none. */
   logos: z
-    .array(z.object({ name: z.string().trim().min(1).max(60), path: z.string().min(1) }))
-    .max(24)
+    .array(z.object({ name: z.string().trim().min(1).max(LOGO_NAME_MAX), path: z.string().min(1) }))
+    .max(MAX_LOGOS)
     .default([]),
   /** How edits should sound, in the person's words. The planner reads it. */
   voice: z.string(),
@@ -84,12 +104,29 @@ export const BrandSchema = z.object({
    * chose to. While it is set, /tighten and /brand cut this way. Brands
    * saved before there were habits have none.
    */
-  habits: HabitsSchema.nullable().default(null)
+  habits: HabitsSchema.nullable().default(null),
+  /** Faces for motion graphics, from the bundled ones (shared/motion/fonts). Absent keeps the defaults. */
+  fonts: z
+    .object({ display: z.string().max(60).optional(), body: z.string().max(60).optional() })
+    .default({}),
+  /**
+   * Where B-roll is looked for: YouTube channels and websites searched first,
+   * and ones that never come back, as the person pasted them (shared/broll-sources).
+   */
+  broll: z
+    .object({
+      prefer: z.array(z.string().max(MAX_SOURCE_LENGTH)).max(MAX_SOURCES).default([]),
+      block: z.array(z.string().max(MAX_SOURCE_LENGTH)).max(MAX_SOURCES).default([])
+    })
+    .default({ prefer: [], block: [] }),
+  /** Every export's description, with the brand's own lines around the parts made for each video. */
+  description: z.string().max(DESCRIPTION_TEMPLATE_MAX).default(DEFAULT_DESCRIPTION)
 })
 export type Brand = z.infer<typeof BrandSchema>
 
 export const EMPTY_BRAND: Brand = {
   v: 1,
+  id: '',
   name: '',
   colors: { text: '#FFFFFF', accent: '#FFD84D' },
   logo: null,
@@ -102,7 +139,10 @@ export const EMPTY_BRAND: Brand = {
   style: {},
   autoApply: true,
   updatedAt: '',
-  habits: null
+  habits: null,
+  fonts: {},
+  broll: { prefer: [], block: [] },
+  description: DEFAULT_DESCRIPTION
 }
 
 function median(values: number[]): number | null {

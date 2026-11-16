@@ -1,10 +1,11 @@
 import { app } from 'electron'
 import { promises as fs } from 'fs'
-import { join, basename } from 'path'
+import { join, basename, dirname } from 'path'
 import { randomUUID } from 'crypto'
 import { projectName } from '../shared/project-name'
 import { upgradeProject } from '../shared/project-upgrade'
-import type { Project, ProjectMode, ProjectSummary } from '../shared/types'
+import type { EditDoc } from '../shared/edit'
+import type { ChatMessage, Project, ProjectMode, ProjectSummary } from '../shared/types'
 
 /**
  * Projects are plain JSON files the user owns, with a small index in userData
@@ -119,10 +120,15 @@ export async function openProject(path: string): Promise<Project> {
     console.error('[projects] could not read the edit in', path, unreadable)
     await fs.copyFile(path, `${path}.unread-${Date.now()}.json`).catch(() => undefined)
   }
+  // An edit an older Cutalong could not read, and so left out, comes back from
+  // the copy it kept beside the project, when this one can read it. Only into
+  // a project with no edit: one made since is never written over.
+  const back = read.edit ? null : await editLeftBeside(path)
   // Trust the file's contents but not its idea of where it lives: it may have
   // been moved or renamed since it was written.
   const project: Project = {
     ...read,
+    ...(back ? { edit: back, chat: [...(read.chat ?? []), broughtBack()] } : {}),
     path,
     // Projects made before Cutalong end in .chopshop; they open the same way.
     name: basename(path).replace(/\.(cutalong|chopshop)$/i, ''),
@@ -130,6 +136,35 @@ export async function openProject(path: string): Promise<Project> {
   }
   await saveProject(project)
   return project
+}
+
+/** What the chat says, once, when an edit comes back. */
+export const BROUGHT_BACK = "An older Cutalong couldn't read this edit, so I brought it back."
+
+function broughtBack(): ChatMessage {
+  return { id: `brought-back-${Date.now()}`, role: 'assistant', text: BROUGHT_BACK }
+}
+
+/**
+ * The edit in the newest copy kept beside a project whose edit could not be
+ * read (`<file>.unread-<time>.json`), when this build reads it. Only the
+ * newest: when that one is beyond this build too, an older copy would only
+ * bring back an older edit.
+ */
+async function editLeftBeside(path: string): Promise<EditDoc | null> {
+  const prefix = `${basename(path)}.unread-`
+  const names = await fs.readdir(dirname(path)).catch(() => [] as string[])
+  const newest = names
+    .map((name) => ({ name, at: name.startsWith(prefix) ? Number(name.slice(prefix.length).replace(/\.json$/, '')) : NaN }))
+    .filter((c) => c.name.endsWith('.json') && Number.isFinite(c.at))
+    .sort((a, b) => b.at - a.at)[0]
+  if (!newest) return null
+  try {
+    const kept = JSON.parse(await fs.readFile(join(dirname(path), newest.name), 'utf8')) as Project
+    return upgradeProject(kept).project.edit ?? null
+  } catch {
+    return null
+  }
 }
 
 /** Each project's saves, one after another in the order they were asked for. */

@@ -115,7 +115,13 @@ export const LabelledPairSchema = z.object({
   breaths: z.array(BreathSchema),
   issues: z.array(IssueSchema),
   /** Finished-video words heard in the recordings, of all of them. */
-  matched: z.object({ words: z.number().int().nonnegative(), of: z.number().int().nonnegative() })
+  matched: z.object({ words: z.number().int().nonnegative(), of: z.number().int().nonnegative() }),
+  /**
+   * The brand whose videos these are (shared/brands): what is learned from a
+   * brand's own videos stays with it. Learned before there could be more
+   * than one brand, none: they are the first brand's.
+   */
+  brand: z.string().max(80).optional()
 })
 export type LabelledPair = z.infer<typeof LabelledPairSchema>
 
