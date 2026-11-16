@@ -1,0 +1,15 @@
+{
+  "name": "cutalong-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ffmpeg, ffprobe and whisper.cpp in-process on iPhone and Android, for Cutalong.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "capacitor": {
+    "ios": { "src": "ios" },
+    "android": { "src": "android" }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=7.0.0"
+  }
+}
