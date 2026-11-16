@@ -54,6 +54,8 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - {"op":"camera","beats":["b4"],"move":{"kind":"punch-in","word":"w31","zoom":1.2}}: a quick eased punch-in landing on a word in the beat; a shake can land on a word the same way.
 - {"op":"camera","beats":["b4"],"move":{"kind":"focus","regions":[{"at":0,"x":0.1,"y":0.2,"w":0.3,"h":0.25}]}}: glide in on a region of a screen recording at "at" seconds into the beat; x, y, w and h are fractions of the recording.
 - {"op":"camera","beats":["b4"],"move":null}: hold the frame still again.
+- {"op":"voice","polish":0.6}: clean up the voice: rumble, hiss and harsh esses out, levels evened, presence lifted. 0 leaves it as recorded, 1 is the most.
+- {"op":"music","set":{"levelDb":-15,"duckDb":12}}: change the music bed: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. Set "path" only to a file the request names. {"op":"music","set":null} takes it out.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ## How to edit
@@ -136,6 +138,20 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     beats: z.array(z.string()),
     on: z.boolean(),
     of: z.enum(['beat', 'cutaway']).optional()
+  }),
+  z.object({ op: z.literal('voice'), polish: z.number() }),
+  z.object({
+    op: z.literal('music'),
+    set: z
+      .object({
+        path: z.string().optional(),
+        levelDb: z.number().optional(),
+        duckDb: z.number().optional(),
+        inSec: z.number().optional(),
+        fadeInSec: z.number().optional(),
+        fadeOutSec: z.number().optional()
+      })
+      .nullable()
   }),
   z.object({
     op: z.literal('camera'),
@@ -220,6 +236,12 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
       : 'pauses as recorded',
     cut.loudness === null ? 'loudness as recorded' : `loudness ${cut.loudness} LUFS`
   ]
+  if (cut.voice && cut.voice.polish > 0) settings.push(`voice polish ${cut.voice.polish}`)
+  if (cut.music) {
+    const name = cut.music.path.split(/[\\/]/).pop()
+    const bpm = cut.music.bpm ? `, ${Math.round(cut.music.bpm)} BPM` : ''
+    settings.push(`music ${name}${bpm} at ${cut.music.levelDb} dB under the voice, dipping ${cut.music.duckDb} dB`)
+  }
   if (cut.fade && (cut.fade.inSec > 0 || cut.fade.outSec > 0)) {
     const ends = [
       cut.fade.inSec > 0 ? `in over ${seconds(cut.fade.inSec)}` : null,

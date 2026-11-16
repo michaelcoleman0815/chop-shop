@@ -146,6 +146,27 @@ export function createMockApi(): CutalongApi {
       await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Transcribing', 'Splitting into beats'])
       return { ok: true as const, doc: fakeDoc(path), mediaUrl: '/sample.mp4', warning: null }
     },
+    // A track at 120 BPM, two minutes long, mastered at -10 LUFS.
+    analyzeMusic: async () => {
+      await sleep(400)
+      return {
+        ok: true as const,
+        facts: {
+          durationSec: 120,
+          lufs: -10,
+          bpm: 120,
+          beats: Array.from({ length: 239 }, (_, i) => Number((0.25 + i * 0.5).toFixed(4)))
+        }
+      }
+    },
+    findMusic: async (query) => {
+      const tracks = ['Lo-fi morning', 'Bright pulse', 'Lofi study loop', 'Slow build']
+      const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+      return tracks
+        .filter((t) => words.every((w) => t.toLowerCase().includes(w)))
+        .map((name) => ({ path: `/Users/you/Music/${name}.mp3`, name }))
+    },
+    chooseAudio: async () => '/Users/you/Music/Bright pulse.mp3',
     // As if the top left of the screen were busy a moment in, then the bottom right.
     findFocus: async ({ ranges }) => {
       await sleep(500)

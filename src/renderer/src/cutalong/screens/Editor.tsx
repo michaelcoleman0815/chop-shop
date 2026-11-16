@@ -12,13 +12,16 @@ import {
   currentVersion,
   cutawayAt,
   cutawayClock,
+  duckingKeys,
   indexWords,
+  levelAt,
   openNotes,
   resolveCut,
   transitionInfo,
   viewAt,
   type Camera,
   type EditDoc,
+  type Music,
   type Op,
   type Resolved,
   type Treatment
@@ -221,6 +224,7 @@ function Preview({
 
   return (
     <div className="cl-well" ref={well}>
+      {cut.music && <Bed music={cut.music} resolved={resolved} time={time} playing={playing} />}
       <div className="cl-frame" style={{ width: box.w, height: box.h }}>
         {mediaUrl ? (
           <div className="cl-decks">
@@ -280,6 +284,44 @@ function playsAs(t: Treatment): string | null {
     t.broll?.camera ? `cutaway with ${CAMERA_INFO[t.broll.camera.kind].label}` : null
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : null
+}
+
+/** The level a voice is usually recorded at, which the preview, playing the recording as it is, has to assume. */
+const RECORDED_VOICE_LUFS = -20
+
+/**
+ * The music bed, played under the preview: looping, at its level against the
+ * voice, dipping under the words and fading as the export does. The preview
+ * plays the voice as recorded rather than at the loudness target, so the bed
+ * is set against a typical recording level; the export sets both exactly.
+ */
+function Bed({
+  music,
+  resolved,
+  time,
+  playing
+}: {
+  music: Music
+  resolved: Resolved
+  time: number
+  playing: boolean
+}): JSX.Element {
+  const ref = useRef<HTMLAudioElement>(null)
+  const keys = useMemo(() => duckingKeys(resolved.words, music.duckDb, resolved.durationSec), [resolved, music.duckDb])
+  useEffect(() => {
+    const a = ref.current
+    if (!a) return
+    const length = music.durationSec ?? (Number.isFinite(a.duration) ? a.duration : Infinity)
+    const at = (music.inSec + time) % length
+    if (Math.abs(a.currentTime - at) > (playing ? 0.3 : 0.05)) a.currentTime = at
+    const db = RECORDED_VOICE_LUFS + music.levelDb + levelAt(keys, time) - (music.lufs ?? -14)
+    const fadeIn = music.fadeInSec > 0 ? Math.min(1, time / music.fadeInSec) : 1
+    const fadeOut = music.fadeOutSec > 0 ? Math.min(1, Math.max(0, resolved.durationSec - time) / music.fadeOutSec) : 1
+    a.volume = Math.min(1, Math.max(0, 10 ** (db / 20) * fadeIn * fadeOut))
+    if (playing && a.paused) void a.play().catch(() => undefined)
+    if (!playing && !a.paused) a.pause()
+  }, [music, keys, time, playing, resolved.durationSec])
+  return <audio ref={ref} src={mediaUrlFor(music.path)} preload="auto" />
 }
 
 /**

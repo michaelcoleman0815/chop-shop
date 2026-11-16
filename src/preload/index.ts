@@ -41,6 +41,13 @@ const api = {
     path: string
   ): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }> =>
     ipcRenderer.invoke('cut:prepare', path),
+  analyzeMusic: (
+    path: string
+  ): Promise<
+    | { ok: true; facts: { durationSec: number; lufs: number | null; bpm: number | null; beats: number[] } }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('music:analyze', path),
+  findMusic: (query: string): Promise<{ path: string; name: string }[]> => ipcRenderer.invoke('music:find', query),
   findFocus: (req: {
     path: string
     ranges: { startSec: number; durationSec: number }[]

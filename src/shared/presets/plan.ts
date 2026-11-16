@@ -1,8 +1,9 @@
 import { isFiller } from '../fillers'
 import { applyOps } from '../edit/ops'
-import { resolveCut, type Resolved, type ResolvedBeat } from '../edit/resolve'
+import { pictureSpan, resolveCut, type Resolved, type ResolvedBeat } from '../edit/resolve'
 import { currentCut } from '../edit/doc'
 import type { Cut, EditDoc, Op } from '../edit/schema'
+import { beatsOnClock } from '../edit/audio'
 import { CAMERA_INFO } from '../edit/camera'
 import { transitionInfo } from '../edit/transitions'
 import { clock, seconds, type StyleSpec } from './preset'
@@ -172,6 +173,50 @@ export function cutawayEdges(cut: Cut, way: 'into' | 'out' | 'both' = 'both'): s
       return way === 'both' || (way === 'into') === shows(i)
     })
     .map((b) => b.id)
+}
+
+/** The furthest a picture cut moves to land on the music's beat, in seconds. */
+const ON_BEAT_REACH_SEC = 0.5
+
+/**
+ * Picture cuts moved onto the music's beats, for runs of B-roll and of held
+ * shots: wherever the picture changes to or from a cutaway or a shot with no
+ * words, the cut moves to the nearest beat of the music within half a second
+ * (or half a beat, if that is less), as a J or L cut, so the words stay where
+ * they are and only the picture lands on the beat. Cuts already within a
+ * frame of a beat, and cuts with a transition, are left alone. Empty when the
+ * cut has no music with beats.
+ */
+export function onBeatOps(doc: EditDoc, cut: Cut = currentCut(doc)): Op[] {
+  const music = cut.music
+  if (!music?.beats?.length) return []
+  const resolved = resolveCut(cut, doc.words, doc.sources)
+  const beats = beatsOnClock(music, resolved.durationSec)
+  if (beats.length < 2) return []
+  const montage = (i: number): boolean => {
+    const b = cut.beats[i]
+    return (b.treatment.frame !== 'speaker' && b.treatment.broll !== null) || b.from === null
+  }
+  const ops: Op[] = []
+  for (let i = 1; i < cut.beats.length; i++) {
+    const beat = cut.beats[i]
+    const at = resolved.beats.find((b) => b.id === beat.id)?.outStart
+    if (at === undefined || beat.transition || !(montage(i) || montage(i - 1))) continue
+    // Where the picture changes now, which an earlier J or L cut may have moved.
+    const first = resolved.pieces.find((p) => p.beat === beat.id)
+    const cutsAt = first ? pictureSpan(first).outStart : at
+    if (beats.some((b) => Math.abs(b - cutsAt) < 1 / 30)) continue
+    let k = 0
+    while (k < beats.length - 1 && beats[k + 1] <= at) k++
+    const nearest = Math.abs(beats[k + 1] - at) < Math.abs(beats[k] - at) ? beats[k + 1] : beats[k]
+    const reach = Math.min(ON_BEAT_REACH_SEC, (beats[k + 1] - beats[k]) / 2 || ON_BEAT_REACH_SEC)
+    const shift = nearest - at
+    if (Math.abs(shift) < 1 / 30 || Math.abs(shift) > reach) continue
+    // From the words' cut, so asking twice gives the same J or L cut, not a second one on top.
+    // Later: the picture before runs on into the beat (J). Earlier: the next picture comes in under it (L).
+    ops.push({ op: shift > 0 ? 'jcut' : 'lcut', beats: [beat.id], sec: Number(Math.abs(shift).toFixed(3)) })
+  }
+  return ops
 }
 
 /** Beats that show a cutaway: the product shots and screen recordings, where speed belongs. */
@@ -353,6 +398,28 @@ function describeCameraOp(o: Extract<Op, { op: 'camera' }>, after: Resolved, cut
   return `${subject} ${one ? 'gets' : 'get'} ${CAMERA_INFO[o.move.kind].label}${word ? ` on “${word}”` : ''}`
 }
 
+/** "the voice is cleaned up", "the bed is Bright pulse, 120 BPM", "the music dips 9 dB under speech". */
+function describeSound(o: Extract<Op, { op: 'voice' | 'music' }>, cut: Cut | null): string[] {
+  if (o.op === 'voice') return [o.polish > 0 ? 'the voice is cleaned up' : 'the voice is back as recorded']
+  if (o.set === null) return ['the music is out']
+  const said: string[] = []
+  const m = cut?.music
+  if (o.set.path) {
+    const name =
+      o.set.path
+        .split(/[\\/]/)
+        .pop()
+        ?.replace(/\.[^.]+$/, '') ?? 'the track'
+    said.push(`the bed is ${name}${m?.bpm ? `, ${Math.round(m.bpm)} BPM` : ''}`)
+  }
+  if (o.set.levelDb !== undefined) said.push(`the music sits ${Math.abs(Math.round(o.set.levelDb))} dB under the voice`)
+  if (o.set.duckDb !== undefined)
+    said.push(
+      o.set.duckDb > 0 ? `it dips ${Math.round(o.set.duckDb)} dB under speech` : 'it no longer dips under speech'
+    )
+  return said
+}
+
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 const count = (n: number, one: string, many = `${one}s`): string => `${NUMBER_WORDS[n] ?? n} ${n === 1 ? one : many}`
 
@@ -414,6 +481,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(describeReverse(o, after, cut))
     } else if (o.op === 'camera') {
       said.push(describeCameraOp(o, after, cut))
+    } else if (o.op === 'voice' || o.op === 'music') {
+      said.push(...describeSound(o, cut))
     } else if (o.op === 'fade') {
       const ins = (o.inSec ?? 0) > 0
       const outs = (o.outSec ?? 0) > 0

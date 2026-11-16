@@ -8,6 +8,7 @@ import {
   cutawayAt,
   cutawayClock,
   cutawaySteps,
+  duckingKeys,
   outToSrc,
   pictureSpan,
   sliceSteps,
@@ -17,8 +18,10 @@ import {
   type Aspect,
   type Camera,
   type CaptionSpec,
+  type LevelKey,
   type Cut,
   type Fade,
+  type Music,
   type Resolved,
   type Source,
   type Treatment,
@@ -28,6 +31,7 @@ import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
+import { bedVolume, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
 
@@ -144,8 +148,26 @@ export interface GraphOptions {
   loudness: number | null
   /** The whole video fading in and out, picture and sound. */
   fade?: Fade | null
+  /** Voice clean-up, from 0 to 1, over the whole sound before any music goes under it. */
+  voice?: number
+  /** A music bed under everything. */
+  music?: BedOptions | null
   quality: Quality
   outputPath: string
+}
+
+/**
+ * A music bed as one pass plays it: the track and where in it to start, the
+ * gain that sets it where it should sit, how its level moves under speech,
+ * and its fades.
+ */
+export interface BedOptions {
+  path: string
+  inSec: number
+  gainDb: number
+  keys: LevelKey[]
+  fadeInSec: number
+  fadeOutSec: number
 }
 
 const even = (n: number): number => Math.max(2, Math.round(n / 2) * 2)
@@ -648,6 +670,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   }
 
   let aOut = 'acat'
+  if (opts.voice && opts.voice > 0) {
+    // Polishing takes the delay it adds back off the front; padding keeps the length exact.
+    chains.push(`[acat]${voicePolish(opts.voice)},apad,atrim=duration=${exact(totalSec)}[avoice]`)
+    aOut = 'avoice'
+  }
   if (opts.loudness !== null) {
     // loudnorm works in 100 ms frames and looks 3 s ahead; at the end of sound
     // that is not a whole number of frames it puts those last seconds late by
@@ -655,9 +682,31 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // that end, and the silence is cut off after. Silence does not change the
     // loudness it measures.
     chains.push(
-      `[acat]apad=pad_dur=3.2,loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000,atrim=duration=${exact(totalSec)}[aloud]`
+      `[${aOut}]apad=pad_dur=3.2,loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000,atrim=duration=${exact(totalSec)}[aloud]`
     )
     aOut = 'aloud'
+  }
+  const bed = opts.music
+  if (bed) {
+    // The track loops for as long as the video runs, sits at its gain, dips
+    // along its keys, and fades; then the two are mixed without either being
+    // turned down, and peaks the bed adds are caught.
+    inputs.push('-stream_loop', '-1', '-ss', fixed(bed.inSec), '-t', fixed(totalSec + 1), '-i', bed.path)
+    const m = next++
+    const fades = [
+      bed.fadeInSec > 0 ? `afade=t=in:st=0:d=${exact(Math.min(bed.fadeInSec, totalSec))}` : null,
+      bed.fadeOutSec > 0
+        ? `afade=t=out:st=${exact(Math.max(0, totalSec - bed.fadeOutSec))}:d=${exact(Math.min(bed.fadeOutSec, totalSec))}`
+        : null
+    ].filter(Boolean)
+    chains.push(
+      `[${m}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=duration=${exact(totalSec)},asetpts=PTS-STARTPTS,` +
+        `asetnsamples=n=480,${bedVolume(bed.gainDb, bed.keys)}${fades.length ? `,${fades.join(',')}` : ''}[abed]`
+    )
+    chains.push(
+      `[${aOut}][abed]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.84:level=false:latency=1[amixed]`
+    )
+    aOut = 'amixed'
   }
   if (fade && (fade.inSec > 0 || fade.outSec > 0)) {
     const parts: string[] = []
@@ -804,14 +853,35 @@ export function chunkSegments(segments: Segment[], maxInputs: number): Segment[]
   return chunks
 }
 
+/** A track mastered at an unknown loudness is taken to be as loud as most are. */
+const TYPICAL_TRACK_LUFS = -14
+
+/**
+ * How a bed plays in this cut: at its level against the voice's loudness
+ * target, whatever loudness the track was mastered at, dipping under the
+ * words where they fall.
+ */
+export function bedFor(music: Music, resolved: Resolved, loudness: number | null): BedOptions {
+  const voice = loudness ?? -14
+  return {
+    path: music.path,
+    inSec: music.inSec,
+    gainDb: voice + music.levelDb - (music.lufs ?? TYPICAL_TRACK_LUFS),
+    keys: duckingKeys(resolved.words, music.duckDb, resolved.durationSec),
+    fadeInSec: music.fadeInSec,
+    fadeOutSec: music.fadeOutSec
+  }
+}
+
 /** Every file a render reads must be there; a missing one is named in a sentence before ffmpeg starts. */
-async function checkInputs(segments: Segment[], logo: LogoMark | null): Promise<void> {
+async function checkInputs(segments: Segment[], logo: LogoMark | null, music: string | null): Promise<void> {
   const paths = new Set<string>()
   for (const s of segments) {
     paths.add(s.path)
     if (s.broll) paths.add(s.broll.path)
   }
   if (logo) paths.add(logo.path)
+  if (music) paths.add(music)
   for (const path of paths) {
     try {
       await fs.access(path)
@@ -846,7 +916,7 @@ export async function renderCut(
     }
   }
   const segments = segmentsFor(cut, resolved, sources, sizes)
-  await checkInputs(segments, opts.brand?.logo ?? null)
+  await checkInputs(segments, opts.brand?.logo ?? null, cut.music?.path ?? null)
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)
   await fs.mkdir(opts.workDir, { recursive: true })
@@ -870,6 +940,8 @@ export async function renderCut(
     assPath,
     loudness: cut.loudness,
     fade: cut.fade ?? null,
+    voice: cut.voice?.polish ?? 0,
+    music: cut.music ? bedFor(cut.music, resolved, cut.loudness) : null,
     quality,
     outputPath: opts.outputPath,
     logo: opts.brand?.logo ?? null

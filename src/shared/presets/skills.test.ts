@@ -145,6 +145,17 @@ describe('saying how beats play', () => {
     expect(say([{ op: 'reverse', beats: ['b2'], on: true }])).toBe('Beat 2 plays backwards.')
   })
 
+  it('reads the voice and the music', () => {
+    expect(say([{ op: 'voice', polish: 0.6 }])).toBe('The voice is cleaned up.')
+    const bed = { op: 'music', set: { path: '/Users/you/Music/Bright pulse.mp3', bpm: 120 } }
+    expect(say([bed])).toBe('The bed is Bright pulse, 120 BPM.')
+    const withBed = apply(doc, [bed])
+    expect(say([{ op: 'music', set: { levelDb: -15, duckDb: 0 } }], withBed)).toBe(
+      'The music sits 15 dB under the voice and it no longer dips under speech.'
+    )
+    expect(say([{ op: 'music', set: null }], withBed)).toBe('The music is out.')
+  })
+
   it('reads camera moves', () => {
     expect(say([{ op: 'camera', beats: ['b3'], move: { kind: 'ken-burns' } }], withCutaway)).toBe(
       "Beat 3's cutaway gets a Ken Burns move."

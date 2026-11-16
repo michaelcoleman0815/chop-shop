@@ -14,6 +14,7 @@ import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { findFocus } from './focus'
+import { analyzeTrack, findTracks } from './music'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
@@ -112,6 +113,19 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
     }
   )
+
+  // A track made ready to be a bed: its length, loudness, tempo and beats.
+  ipcMain.handle('music:analyze', async (_e, path: string) => {
+    try {
+      return { ok: true as const, facts: await analyzeTrack(FFMPEG_PATH, path) }
+    } catch (err) {
+      console.error('[music] analysis failed:', message(err))
+      return { ok: false as const, message: `I couldn't read ${basename(path)} as music.` }
+    }
+  })
+
+  // The person's own music, by name, from their Music folder.
+  ipcMain.handle('music:find', async (_e, query: string) => findTracks(query, [app.getPath('music')]))
 
   ipcMain.handle('cut:render', async (e, req: { doc: unknown; quality: 'preview' | 'final' }) => {
     const parsed = EditDocSchema.safeParse(req.doc)

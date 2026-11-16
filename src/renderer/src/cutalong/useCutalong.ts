@@ -32,6 +32,7 @@ import {
   describePlan,
   findPreset,
   ideaStarts,
+  onBeatOps,
   parseCommand,
   planStyle,
   SKILL_PRESETS,
@@ -161,7 +162,10 @@ const ACTION_COMMANDS: Preset[] = [
       ['punchin', 'Punch-in', 'Punch in on the word under the playhead: /punchin, /punchin 1.2'],
       ['shake', 'Shake', 'Jolt the frame on the word under the playhead: /shake'],
       ['focus', 'Focus', 'Follow what changes on a screen recording: /focus, or /focus top left'],
-      ['still', 'Still', 'Hold the frame still again: /still']
+      ['still', 'Still', 'Hold the frame still again: /still'],
+      ['music', 'Music', 'Put a music bed under it that dips when anyone speaks: /music, /music lofi, /music off'],
+      ['polish', 'Voice polish', 'Clean up the voice: /polish, /polish light, /polish off'],
+      ['onbeat', 'Cut on the beat', 'Land B-roll and held shots on the music’s beats: /onbeat']
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
@@ -971,6 +975,105 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /**
+   * /music [a name | off | quieter | louder], /polish [light | strong | off]
+   * and /onbeat. /music on its own asks for a file; with words it looks in
+   * the person's Music folder. A new track is read for its length, loudness
+   * and beats first, so it sits at the same level as any other and cuts can
+   * land on it.
+   */
+  const soundCommand = useCallback(
+    async (command: 'music' | 'polish' | 'onbeat', rest: string, where: 'thread' | 'panel'): Promise<void> => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can work on its sound.')
+        return
+      }
+      const cut = currentCut(d)
+      const words = rest.trim()
+      let ops: Op[]
+      if (command === 'polish') {
+        const polish = /^(off|none|no)$/i.test(words)
+          ? 0
+          : /light|gentle/i.test(words)
+            ? 0.35
+            : /strong|heavy|more/i.test(words)
+              ? 1
+              : 0.6
+        ops = [{ op: 'voice', polish }]
+      } else if (command === 'onbeat') {
+        if (!cut.music?.beats?.length) {
+          say('Put a music bed in first, so there are beats to cut on: /music.')
+          return
+        }
+        ops = onBeatOps(d, cut)
+        if (ops.length === 0) {
+          say(
+            'Every cut into and out of B-roll and held shots already lands on a beat, or is too far from one to move.'
+          )
+          return
+        }
+      } else if (/^(off|none|no)$/i.test(words)) {
+        ops = [{ op: 'music', set: null }]
+      } else if (/^(quieter|softer|down|louder|up)$/i.test(words)) {
+        if (!cut.music) {
+          say('There is no music yet. /music puts a bed in.')
+          return
+        }
+        const step = /quieter|softer|down/i.test(words) ? -3 : 3
+        ops = [{ op: 'music', set: { levelDb: Math.min(0, Math.max(-40, cut.music.levelDb + step)) } }]
+      } else {
+        // A track: chosen by hand, or found by name in the Music folder.
+        let path: string | null
+        if (words) {
+          const found = await api.findMusic(words)
+          if (found.length === 0) {
+            say(`I found no track called “${words}” in your Music folder. /music on its own lets you choose a file.`)
+            return
+          }
+          path = found[0].path
+        } else path = await api.chooseAudio()
+        if (!path) return
+        if (where === 'panel') setPanel({ text: '', progress: { stage: 'Finding the beat', percent: 40 } })
+        const read = await api.analyzeMusic(path)
+        if (!read.ok) {
+          say(read.message)
+          return
+        }
+        const f = read.facts
+        ops = [
+          {
+            op: 'music',
+            set: {
+              path,
+              durationSec: f.durationSec,
+              ...(f.lufs !== null ? { lufs: f.lufs } : {}),
+              ...(f.bpm !== null ? { bpm: f.bpm } : {}),
+              beats: f.beats
+            }
+          }
+        ]
+      }
+      const done = applyAsVersion(ops, 'The sound has changed.')
+      if (!done) {
+        const trial = applyOps(cut, ops, { words: d.words, sources: d.sources })
+        say(trial.rejected[0]?.reason ?? 'That is already how it sounds.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   const runCommand = useCallback(
     async (
       command: string,
@@ -989,6 +1092,10 @@ export function useCutalong() {
       }
       if (CAMERA_COMMANDS.has(command)) {
         await cameraCommand(command as CameraCommand, rest, where, beat, at)
+        return
+      }
+      if (command === 'music' || command === 'polish' || command === 'onbeat') {
+        await soundCommand(command, rest, where)
         return
       }
       if (command === 'jcut' || command === 'lcut') {
@@ -1033,7 +1140,17 @@ export function useCutalong() {
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
-    [applyAsVersion, cameraCommand, findBroll, findIcon, push, splitEditCommand, timingCommand, transitionCommand]
+    [
+      applyAsVersion,
+      cameraCommand,
+      findBroll,
+      findIcon,
+      push,
+      soundCommand,
+      splitEditCommand,
+      timingCommand,
+      transitionCommand
+    ]
   )
 
   const studyLink = useCallback(

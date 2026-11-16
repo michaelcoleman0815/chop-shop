@@ -195,10 +195,19 @@ export function makeBurstClip(
   )
 }
 
-/** Where each sound starts after a silence, in seconds. */
-export function onsets(ffmpeg: string, path: string, noiseDb = -30, minSilenceSec = 0.08): number[] {
-  const log = decodeLog(ffmpeg, ['-i', path, '-map', '0:a:0', '-af', `silencedetect=n=${noiseDb}dB:d=${minSilenceSec}`])
+/** Where each sound starts after a silence, in seconds; `filter` picks out one part of the sound first. */
+export function onsets(ffmpeg: string, path: string, noiseDb = -30, minSilenceSec = 0.08, filter = ''): number[] {
+  const af = `${filter ? `${filter},` : ''}silencedetect=n=${noiseDb}dB:d=${minSilenceSec}`
+  const log = decodeLog(ffmpeg, ['-i', path, '-map', '0:a:0', '-af', af])
   return [...log.matchAll(/silence_end: (\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]))
+}
+
+/** Integrated loudness and true peak of the first audio stream, from ebur128. */
+export function loudnessOf(ffmpeg: string, path: string): { lufs: number; truePeak: number } {
+  const log = decodeLog(ffmpeg, ['-i', path, '-map', '0:a:0', '-af', 'ebur128=peak=true'])
+  const summary = log.slice(log.lastIndexOf('Summary:'))
+  const num = (re: RegExp): number => Number(re.exec(summary)?.[1] ?? NaN)
+  return { lufs: num(/I:\s+(-?\d+(?:\.\d+)?) LUFS/), truePeak: num(/Peak:\s+(-?\d+(?:\.\d+)?) dBFS/) }
 }
 
 /** A gradient picture: red rising from left to right, green from top to bottom. */

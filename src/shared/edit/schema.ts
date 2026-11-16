@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MusicSchema, VoiceSchema } from './audio'
 import { CameraSchema } from './camera'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
@@ -154,7 +155,11 @@ export const CutSchema = z.object({
   // optional: absent means the edit as it always was.
 
   /** The whole video fading in at the start and out at the end. */
-  fade: FadeSchema.nullable().optional()
+  fade: FadeSchema.nullable().optional(),
+  /** The voice cleaned up: rumble, hiss and harsh esses out, levels evened, presence lifted. */
+  voice: VoiceSchema.optional(),
+  /** A music bed under the whole video, dipping whenever anyone speaks. */
+  music: MusicSchema.nullable().optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -225,6 +230,10 @@ export const OpSchema = z.discriminatedUnion('op', [
     on: z.boolean(),
     of: z.enum(['beat', 'cutaway']).optional()
   }),
+  // The voice cleaned up; 0 leaves it as recorded.
+  z.object({ op: z.literal('voice'), polish: z.number().min(0).max(1) }),
+  // A music bed, or changes to it; null takes it out.
+  z.object({ op: z.literal('music'), set: MusicSchema.partial().nullable() }),
   // A camera move over a beat, or over the cutaway it shows; null holds the frame still.
   z.object({
     op: z.literal('camera'),

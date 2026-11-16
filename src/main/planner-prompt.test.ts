@@ -178,6 +178,31 @@ describe('the planner request', () => {
     expect(renderRequest(after, '', [])).toContain('camera focus on 1 region')
   })
 
+  it('teaches voice polish and the music bed, and every one of them applies', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    for (const op of ['voice', 'music']) expect(PLANNER_SYSTEM).toContain(`{"op":"${op}"`)
+    const withMusic = applyOps(currentCut(doc), [{ op: 'music', set: { path: '/music/bright.mp3', bpm: 120 } }], {
+      words: doc.words,
+      sources: doc.sources
+    }).cut
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'voice', polish: 0.6 },
+        { op: 'music', set: { levelDb: -15, duckDb: 9, fadeOutSec: 3 } }
+      ],
+      summary: 'The voice is cleaner and the music sits lower.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(withMusic, plan.ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    const text = renderRequest(after, '', [])
+    expect(text).toContain('voice polish 0.6')
+    expect(text).toContain('music bright.mp3, 120 BPM at -15 dB under the voice, dipping 9 dB')
+  })
+
   it('accepts a plan shaped like the instructions say', () => {
     const plan = {
       ops: [

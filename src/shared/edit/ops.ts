@@ -1,3 +1,4 @@
+import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
 import { indexWords, type WordIndex } from './resolve'
 import { MIN_TRANSITION_SEC, TRANSITION_INFO } from './transitions'
 import {
@@ -370,12 +371,33 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       return { ...cut, beats }
     }
 
+    case 'voice': {
+      const { voice: _v, ...rest } = cut
+      return op.polish > 0 ? { ...rest, voice: { polish: op.polish } } : rest
+    }
+
+    case 'music': {
+      if (op.set === null) return { ...cut, music: null }
+      const was = cut.music ?? null
+      if (!was && !op.set.path) throw new OpError('There is no music yet. Choose a track for the bed first.')
+      // A new track brings its own beats, length and loudness, or none.
+      const fresh = !!op.set.path && op.set.path !== was?.path
+      const base =
+        was && !fresh ? was : { ...DEFAULT_MUSIC, ...(was ? pickLevels(was) : {}), path: op.set.path as string }
+      return { ...cut, music: MusicSchema.parse({ ...base, ...op.set }) }
+    }
+
     case 'fade': {
       const was = cut.fade ?? { inSec: 0, outSec: 0, color: 'black' as const }
       const fade = { inSec: op.inSec ?? was.inSec, outSec: op.outSec ?? was.outSec, color: op.color ?? was.color }
       return { ...cut, fade: fade.inSec > 0 || fade.outSec > 0 ? fade : null }
     }
   }
+}
+
+/** How a bed was set to sit, kept when its track is swapped for another. */
+function pickLevels(m: Music): Pick<Music, 'levelDb' | 'duckDb' | 'fadeInSec' | 'fadeOutSec'> {
+  return { levelDb: m.levelDb, duckDb: m.duckDb, fadeInSec: m.fadeInSec, fadeOutSec: m.fadeOutSec }
 }
 
 function findBeat(cut: Cut, id: string): number {
