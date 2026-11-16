@@ -31,6 +31,7 @@ import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
+import { heardFrom } from '../shared/vision/offset'
 import { colorConversion, hasZscale } from './intake'
 import { bedVolume, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
@@ -90,7 +91,11 @@ export interface Segment {
     hold?: boolean
     camera?: SegmentCamera
   } | null
-  /** Sound from another recording of the same take, lined up: startSec here is startSec + offsetSec there. */
+  /**
+   * Sound read apart from the picture: another recording of the same take, or
+   * this one's own sound lined up with the mouth (vision/offset heardFrom).
+   * startSec here is startSec + offsetSec there.
+   */
   audio?: { path: string; offsetSec: number } | null
   /** A conversion that goes first on the recording's picture: HDR to ordinary video (main/intake). */
   convert?: string | null
@@ -278,7 +283,7 @@ export function segmentsFor(
       startSec: p.srcStart,
       durationSec: p.outEnd - p.outStart,
       hasAudio: source.hasAudio,
-      audio: source.audio ?? null,
+      audio: source.audio || source.hasAudio ? heardFrom(source) : null,
       treatment: t,
       broll: null,
       convert: colorConversion(source.color, zscale),
@@ -878,10 +883,14 @@ export interface RenderCutOptions {
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
 }
 
-/** How many inputs a segment opens: one per slice of anything played backwards, one for a cutaway. */
+/**
+ * How many inputs a segment opens: one per slice of anything played
+ * backwards, one for a cutaway, and its sound's own when that is read apart
+ * from the picture (another recording, or its own lined up with the mouth).
+ */
 export function inputsFor(s: Segment): number {
   const speaker = s.reverse ? reverseSlices(s.startSec, s.srcSec ?? s.durationSec).length : 1
-  // The better sound reads its own file, in as many slices as the picture at most.
+  // Sound read apart opens its file again, in as many slices as the picture at most.
   const sound = s.audio && !s.hold ? speaker : 0
   if (!s.broll) return speaker + sound
   const reads = s.broll.steps ? srcLength(s.broll.steps) : (s.picture?.durationSec ?? s.durationSec)

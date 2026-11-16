@@ -12,6 +12,7 @@ import {
   TransitionSchema
 } from './transitions'
 import { AudioMapSchema } from '../audio/map'
+import { MouthModeSchema } from '../vision/mode'
 
 /**
  * The edit as data.
@@ -32,7 +33,17 @@ export const WordSchema = z.object({
   source: z.string().min(1),
   text: z.string(),
   startSec: z.number().nonnegative(),
-  endSec: z.number().nonnegative()
+  endSec: z.number().nonnegative(),
+  /**
+   * From watching the mouth (shared/vision): the stillness just before this
+   * word's mouth starts to move, and just after it settles, as [from, to] in
+   * source seconds. A cut into the word lands inside the first, a cut out of
+   * it inside the second. Absent where no mouth could be read.
+   */
+  stillBefore: z.tuple([z.number(), z.number()]).optional(),
+  stillAfter: z.tuple([z.number(), z.number()]).optional(),
+  /** Said while the mouth on screen was still: someone off camera. */
+  offCamera: z.boolean().optional()
 })
 export type Word = z.infer<typeof WordSchema>
 
@@ -54,7 +65,31 @@ export const SourceSchema = z.object({
     .nullable()
     .optional(),
   /** How its picture is encoded: HDR is converted first when it renders. Absent is ordinary video. */
-  color: z.enum(['sdr', 'hlg', 'pq']).optional()
+  color: z.enum(['sdr', 'hlg', 'pq']).optional(),
+  /**
+   * How far the sound heard runs behind the picture, found by watching the
+   * mouth, in seconds (negative: ahead). Render and preview read the sound
+   * from t + offset while showing picture t, on top of `audio`'s own offset
+   * when the sound is from another recording (vision/offset heardFrom), and
+   * this source's words are on the picture's clock.
+   */
+  audioOffsetSec: z.number().min(-1).max(1).optional(),
+  /** What watching the speaker's mouth found, and what this edit uses it for. */
+  mouth: z
+    .object({
+      mode: MouthModeSchema,
+      /** The offset measured, applied or not. */
+      measuredOffsetSec: z.number().nullable(),
+      confidence: z.number().min(0).max(1),
+      /** Share of the speech during which a mouth could be read. */
+      seenShare: z.number().min(0).max(1),
+      /** The watched face's width, in source pixels and as a share of the frame's, for the niches that ask. */
+      facePx: z.number().nonnegative().optional(),
+      faceShare: z.number().min(0).max(1).optional(),
+      /** Set in a sentence ("time my cuts to the sound only"), so the kind of video no longer decides it. */
+      chosen: z.boolean().optional()
+    })
+    .optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 

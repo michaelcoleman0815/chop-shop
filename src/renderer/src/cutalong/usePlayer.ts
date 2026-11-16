@@ -10,6 +10,7 @@ import {
   type Resolved,
   type Source
 } from '../../../shared/edit'
+import { heardFrom } from '../../../shared/vision/offset'
 import { steady } from './motion'
 
 /**
@@ -32,7 +33,9 @@ import { steady } from './motion'
  * A recording whose sound comes from another file (a screen or recorder
  * recording with the better microphone) plays muted, with that file in the
  * element's own audio element kept on the same moment: corrected only when it
- * drifts, so the sound stays smooth.
+ * drifts, so the sound stays smooth. So does one whose own sound was lined up
+ * with the mouth: its own file, a moment later (vision/offset heardFrom), as
+ * the export plays it.
  *
  * The clock follows the element that is loudest, so picture and sound never
  * part; while that element is seeking, or with no media at all (the browser
@@ -154,7 +157,8 @@ export function usePlayer(
       const v = element(d)
       if (!v) return
       const a = mediaRef.current?.sounds?.[d]?.current ?? null
-      const lined = sourceOf(source)?.audio
+      const heard = sourceOf(source)
+      const lined = heard ? heardFrom(heard) : null
       if (!lined || !a || !mediaRef.current) {
         v.muted = false
         if (a && !a.paused) a.pause()

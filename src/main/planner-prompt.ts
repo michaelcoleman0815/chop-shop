@@ -13,6 +13,7 @@ import { clock, describeCamera, describeSpeed, seconds } from '../shared/presets
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { ordinal } from '../shared/raw/takes'
 import { renderSound } from '../shared/audio/map'
+import { offCameraLine } from '../shared/vision/speakers'
 
 /**
  * Everything the planner sends and expects back, kept apart from the API call
@@ -246,6 +247,9 @@ export function renderTranscript(doc: EditDoc): string {
     if (line.length) lines.push(`[${time(start)}] ${line.join(' | ')}`)
     lines.push('</source>')
   }
+  // Who spoke off camera is a fact about the footage, so it is cached with it.
+  const offCamera = offCameraLine(doc)
+  if (offCamera) lines.push(offCamera)
   return lines.join('\n')
 }
 
