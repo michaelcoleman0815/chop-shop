@@ -29,7 +29,9 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
 - **Your brand, one per channel.** Drop in videos you have already made and Cutalong learns your look from them. Set a
   logo, caption colours, how captions sit, the faces your graphics use, and a few sentences on how you talk. New edits
   pick up your default brand by themselves; the brand name in a chat's header switches it to another, as a version
-  undo takes back. What is learned from a brand's videos stays with that brand.
+  undo takes back. What is learned from a brand's videos and chats stays with that brand. Edits from before brands
+  stay in your first brand, and going back to an older Cutalong for a while loses nothing: the older one still opens
+  what this one saved, and its brand changes come back with you.
 - **A never list per brand.** Say "never use whooshes" or "no transitions on this channel" and that brand never gets
   them again: `/all` leaves them out and says so, a command for one says the channel never uses it, and Claude is told
   and checked. The list, with what you said, is on the Brand page, beside the B-roll sources: channels to look in
