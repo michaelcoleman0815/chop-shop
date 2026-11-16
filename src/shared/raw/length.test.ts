@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { commit, createDoc, currentCut, wordsFromTranscript } from '../edit/doc'
+import { commit, createDoc, currentCut, restore, wordsFromTranscript } from '../edit/doc'
 import { resolveCut } from '../edit/resolve'
 import type { EditDoc, Source } from '../edit/schema'
-import { findIntro, mergeLengthAsks, parseLengthAsk, planLength, toleranceFor } from './length'
+import {
+  bringBack,
+  bringBackAsked,
+  findIntro,
+  mergeLengthAsks,
+  parseLengthAsk,
+  planLength,
+  toleranceFor,
+  topicName,
+  type LengthAsk
+} from './length'
 
 /**
  * A talking head as it is said: a greeting, three sections on lighting, a
@@ -130,7 +140,7 @@ describe('the intro', () => {
   it('goes, and the reply says what went and where it starts now', () => {
     const doc = lightingDoc()
     const plan = planLength(doc, { intro: true, cut: [] })
-    expect(plan.ops).toEqual([{ op: 'remove', beats: ['b1', 'b2', 'b3'] }])
+    expect(plan.ops).toEqual([{ op: 'remove', beats: ['b1', 'b2', 'b3'], why: 'the intro' }])
     expect(plan.summary).toMatch(
       /^I took out the first 0:\d\d, from “Hey everyone” to “let's get into it”\. It starts on “The first light is the key light, and…” now\. It runs 1:\d\d now, down from 1:\d\d\.$/
     )
@@ -203,16 +213,24 @@ describe('cutting toward a length', () => {
     expect(times).toEqual([...times].sort((a, b) => a - b))
   })
 
-  it('keeps an intro taken out out, and brings a tangent taken out back last', () => {
+  /** The intro out, the tangent about the conference cut by topic as a planner would, then cut to 40 seconds. */
+  const askedAndShort = (): EditDoc => {
     let doc = lightingDoc()
     const intro = planLength(doc, { intro: true, cut: [] })
     doc = commit(doc, intro.ops, intro.summary).doc
-    // The tangent about the conference, taken out as a planner would.
-    const tangent = currentCut(doc).beats.filter((b) => /conference|buffet|umbrellas/.test(said({ ...doc, versions: [{ ...doc.versions[0], cut: { ...currentCut(doc), beats: [b] } }] })))
+    const why = topicName(parseLengthAsk('cut the tangent about the conference') as LengthAsk) as string
+    expect(why).toBe('the part about the conference')
+    const tangent = currentCut(doc).beats.filter((b) =>
+      /conference|buffet|umbrellas/.test(said({ ...doc, versions: [{ ...doc.versions[0], cut: { ...currentCut(doc), beats: [b] } }] }))
+    )
     expect(tangent).toHaveLength(4)
-    doc = commit(doc, [{ op: 'remove', beats: tangent.map((b) => b.id) }], 'x').doc
+    doc = commit(doc, [{ op: 'remove', beats: tangent.map((b) => b.id), why }], 'x').doc
     const short = planLength(doc, { targetSec: 40, cut: [] })
-    doc = commit(doc, short.ops, short.summary).doc
+    return commit(doc, short.ops, short.summary).doc
+  }
+
+  it('brings back only lines a length took, and stops short of what was cut on request', () => {
+    const doc = askedAndShort()
     // A little longer: lines the short cut took come back, not the intro or the tangent.
     const longer = planLength(doc, { targetSec: Math.round(runs(doc) + 8), cut: [] })
     const grown = commit(doc, longer.ops, longer.summary).doc
@@ -220,10 +238,52 @@ describe('cutting toward a length', () => {
     expect(said(grown)).not.toMatch(/Hey everyone|welcome back|get into it/)
     expect(said(grown)).not.toMatch(/conference|buffet|umbrellas/)
     expect(said(grown)).toMatch(/^The first light is the key light/)
-    // More than the rest holds: everything but the intro comes back, and the tangent is named.
+    // Longer than those lines make: they all come back, and it stops short in one sentence.
     const all = planLength(doc, { targetSec: Math.round(runs(lightingDoc()) - 3), cut: [] })
-    expect(all.summary).toMatch(/I brought back .*the tangent about the conference/)
-    expect(said(commit(doc, all.ops, all.summary).doc)).not.toMatch(/Hey everyone|welcome back|get into it/)
+    const most = commit(doc, all.ops, all.summary).doc
+    expect(said(most)).not.toMatch(/Hey everyone|welcome back|get into it|conference|buffet|umbrellas/)
+    expect(all.note).toBe(
+      'That is as long as it gets without the intro and the part about the conference you asked me to cut; say “bring back the intro” or “bring back the part about the conference” to have them again.'
+    )
+    // Asked again with nothing more a length took, it says where it got to, and nothing changes.
+    const again = planLength(most, { targetSec: Math.round(runs(lightingDoc()) - 3), cut: [] })
+    expect(again.ops).toEqual([])
+    expect(again.note).toMatch(/^It runs \d:\d\d, as long as it gets without the intro and the part about the conference/)
+  })
+
+  it('brings back what was cut on request when asked for it by name, and leaves other asks alone', () => {
+    const doc = askedAndShort()
+    expect(bringBackAsked('bring back the tangent about the conference')).toBe('the tangent about the conference')
+    expect(bringBackAsked('Put the intro back, please.')).toBe('the intro')
+    expect(bringBackAsked('make it 10 minutes')).toBeNull()
+    const tangent = bringBack(doc, 'the tangent about the conference')
+    expect(tangent?.summary).toMatch(/^It runs \d:\d\d now, up from \d:\d\d\. I brought back the part about the conference\.$/)
+    const back = commit(doc, tangent?.ops ?? [], tangent?.summary ?? '').doc
+    expect(said(back)).toMatch(/conference/)
+    expect(said(back)).not.toMatch(/Hey everyone/)
+    // In the order it was said: after the key light, before the fill light.
+    const s = said(back)
+    expect(s.indexOf('Funny story')).toBeGreaterThan(s.indexOf('The first light'))
+    expect(s.indexOf('Funny story')).toBeLessThan(s.indexOf('The second light'))
+    const intro = bringBack(back, 'intro')
+    expect(said(commit(back, intro?.ops ?? [], '').doc)).toMatch(/^Hey everyone, welcome back/)
+    // Nothing cut by that name: the ask is not this one's to answer.
+    expect(bringBack(doc, 'the music')).toBeNull()
+    expect(bringBack(lightingDoc(), 'the intro')).toBeNull()
+  })
+
+  it('keeps the reasons an undo brings back', () => {
+    const doc = askedAndShort()
+    const n = doc.versions.length
+    // Undo the short cut, then cut short again by hand: those lines are cut on request now.
+    const undone = restore(doc, n - 1)
+    const byHand = currentCut(undone).beats.slice(-3, -2).map((b) => b.id)
+    const cut = commit(undone, [{ op: 'remove', beats: byHand }], 'x').doc
+    const longer = planLength(cut, { targetSec: Math.round(runs(cut) + 10), cut: [] })
+    expect(longer.ops).toEqual([])
+    expect(longer.note).toMatch(
+      /^It runs \d:\d\d, as long as it gets without the intro and the part about the conference you asked me to cut and lines you cut yourself; say “bring back the intro” or “bring back the part about the conference” to have them again, or use Undo\.$/
+    )
   })
 })
 

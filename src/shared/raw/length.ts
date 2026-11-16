@@ -494,7 +494,8 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
   let intro: IntroFound | null = null
   if (ask.intro) {
     intro = findIntro(doc, cut)
-    if (intro) push({ op: 'remove', beats: intro.beats })
+    // Cut on request: it stays out when the edit grows again, until it is asked back.
+    if (intro) push({ op: 'remove', beats: intro.beats, why: 'the intro' })
     else notes.push('I didn’t find an intro: it already opens on what the video is about.')
   }
 
@@ -545,6 +546,7 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
   let weighed: Unit[] = []
   let restored = 0
   let restoredNamed: string[] = []
+  let held: HeldBack = { names: [], unnamed: false }
   if (goal && !goal.within && !ask.keepAll) {
     const resolved = resolveCut(cut, doc.words, doc.sources)
     const units = weigh(doc, cut, resolved)
@@ -561,25 +563,32 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
         if (!better) break
         dropped = better
       }
-      if (dropped.length) push({ op: 'remove', beats: dropped.map((u) => u.id) })
+      // Cut for the length: a longer ask brings these back.
+      if (dropped.length) push({ op: 'remove', beats: dropped.map((u) => u.id), why: 'length' })
     } else if (L < goal.target - goal.tol) {
-      const back = restoreOps(doc, cut, goal.target - L, goal.tol)
+      const back = restoreOps(doc, cut, ops, goal.target - L, goal.tol)
       restored = back.lines
       restoredNamed = back.named
+      held = back.held
       push(...back.ops)
     }
   }
 
   const afterSec = now()
+  // Longer was asked and what a length cut took cannot make it up: it stops short of what was cut on request.
+  const heldBack =
+    goal && !goal.within && afterSec < goal.target - goal.tol && (held.names.length > 0 || held.unnamed) ? held : null
   if (ops.length === 0) {
     const asked = askedFor(ask)
     const note =
       notes[0] ??
-      (goal?.within && asked
-        ? `It already runs ${clock(afterSec)}${ask.range ? `, inside ${asked}` : ''}.`
-        : ask.keepAll
-          ? 'Every line already stays, and there are no pauses or retakes left to cut.'
-          : 'Nothing in the cut could go without losing its opening, a section’s point or its ending.')
+      (heldBack
+        ? heldBackSentence(afterSec, heldBack, true)
+        : goal?.within && asked
+          ? `It already runs ${clock(afterSec)}${ask.range ? `, inside ${asked}` : ''}.`
+          : ask.keepAll
+            ? 'Every line already stays, and there are no pauses or retakes left to cut.'
+            : 'Nothing in the cut could go without losing its opening, a section’s point or its ending.')
     return { ops: [], summary: '', beforeSec, afterSec, note }
   }
 
@@ -608,6 +617,8 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
     const asked = askedFor(ask)
     if (goal && !goal.within && afterSec > goal.target + goal.tol && asked)
       notes.push(`Getting it to ${asked} would mean cutting lines.`)
+  } else if (heldBack) {
+    notes.push(heldBackSentence(afterSec, heldBack, false))
   } else if (goal && !goal.within && Math.abs(afterSec - goal.target) > goal.tol && askedFor(ask)) {
     notes.push(
       afterSec > goal.target
@@ -661,66 +672,139 @@ function removeDrop(dropped: Unit[], under: number): Unit[] | null {
   return dropped.filter((u) => u !== pick)
 }
 
+
+// ---------- Growing back ----------
+
+/** Why a word the cut no longer plays left it: when, and what for ("length", a name asked for, or null). */
+interface Gone {
+  at: number
+  why: string | null
+}
+
+/** The words a cut plays, by id. */
+function coveredBy(cut: Cut, index: ReturnType<typeof indexWords>): Set<string> {
+  const set = new Set<string>()
+  for (const b of cut.beats) {
+    const a = b.from === null ? undefined : index.pos.get(b.from)
+    const z = b.to === null ? undefined : index.pos.get(b.to)
+    if (a === undefined || z === undefined) continue
+    for (let i = a; i <= z; i++) set.add(index.words[i].id)
+  }
+  return set
+}
+
 /**
- * Lines the cut no longer has, brought back to add about `sec` seconds: the
- * beats of words that are in no beat now, the strongest first, each put
- * before the first beat of its recording said after it. The cut keeps the
- * opening it has: nothing said before its first kept word comes back, so an
- * intro taken out stays out, and a tangent weighs least, so it comes back
- * last. Struck words stay struck: those were cut word by word, on purpose.
+ * Why each word the last of these versions does not play left the cut, read
+ * from the versions as they were made: a remove op says why it cut ("length"
+ * for a length asked for, or what the person asked to have cut), and
+ * anything else that left (a strike, a take, a cut by hand) left on request,
+ * unnamed. An undo brings back the reasons of the version it restores.
+ */
+function goneFrom(
+  versions: { n: number; ops: Op[]; cut: Cut; restores?: number }[],
+  index: ReturnType<typeof indexWords>
+): Map<string, Gone> {
+  const states = new Map<number, Map<string, Gone>>()
+  let prev: { cut: Cut; covered: Set<string>; gone: Map<string, Gone> } | null = null
+  for (const v of versions) {
+    const covered = coveredBy(v.cut, index)
+    let gone = new Map<string, Gone>()
+    if (v.restores !== undefined && states.has(v.restores)) gone = new Map(states.get(v.restores))
+    else if (prev) {
+      // What was out stays out, for the reason it went; what came back is in.
+      for (const [id, g] of prev.gone) if (!covered.has(id)) gone.set(id, g)
+      const beats = new Map(prev.cut.beats.map((b) => [b.id, b]))
+      for (const op of v.ops) {
+        if (op.op !== 'remove') continue
+        for (const id of op.beats) {
+          const b = beats.get(id)
+          const a = b?.from ? index.pos.get(b.from) : undefined
+          const z = b?.to ? index.pos.get(b.to) : undefined
+          if (a === undefined || z === undefined) continue
+          for (let i = a; i <= z; i++) {
+            const w = index.words[i].id
+            if (prev.covered.has(w) && !covered.has(w)) gone.set(w, { at: v.n, why: op.why ?? null })
+          }
+        }
+      }
+      for (const w of prev.covered) if (!covered.has(w) && !gone.has(w)) gone.set(w, { at: v.n, why: null })
+    }
+    states.set(v.n, gone)
+    prev = { cut: v.cut, covered, gone }
+  }
+  return prev?.gone ?? new Map()
+}
+
+/** What was cut on request and is still out: the names it was cut by, and whether any was cut unnamed. */
+interface HeldBack {
+  names: string[]
+  unnamed: boolean
+}
+
+/** Lines of these words, put back each before the first beat of its recording said after it, in the order they were said. */
+function insertLines(doc: EditDoc, cut: Cut, lines: Beat[]): { ops: Op[]; cut: Cut } {
+  const index = indexWords(doc.words)
+  const context = { words: doc.words, sources: doc.sources }
+  const ordered = [...lines].sort((a, b) => (index.pos.get(a.from as string) ?? 0) - (index.pos.get(b.from as string) ?? 0))
+  let running = cut
+  const ops: Op[] = []
+  for (const b of ordered) {
+    const op = insertOp(running, b, index)
+    const r = applyOps(running, [op], context)
+    if (r.applied.length) {
+      running = r.cut
+      ops.push(op)
+    }
+  }
+  return { ops, cut: running }
+}
+
+function insertOp(running: Cut, b: Beat, index: ReturnType<typeof indexWords>): Op {
+  const at = index.pos.get(b.from as string) ?? 0
+  let to = running.beats.findIndex((x) => x.source === b.source && x.from !== null && (index.pos.get(x.from) ?? -1) > at)
+  if (to < 0) to = running.beats.length
+  return { op: 'insert', to, beat: { source: b.source, from: b.from, to: b.to } }
+}
+
+/**
+ * Lines a length asked for took, brought back to add about `sec` seconds:
+ * what the latest such cut took first, a version at a time, and the
+ * strongest of those first; each put before the first beat of its recording
+ * said after it. Lines cut on request (the intro, a topic, a tangent, a cut
+ * by hand) never come back this way: `held` names them, so the reply can say
+ * what it would take. Struck words stay struck.
  */
 function restoreOps(
   doc: EditDoc,
   cut: Cut,
+  planned: Op[],
   sec: number,
   tol: number
-): { ops: Op[]; lines: number; named: string[] } {
+): { ops: Op[]; lines: number; named: string[]; held: HeldBack } {
   const index = indexWords(doc.words)
-  const coveredBy = (c: Cut): Set<string> => {
-    const set = new Set<string>()
-    for (const b of c.beats) {
-      const a = b.from === null ? undefined : index.pos.get(b.from)
-      const z = b.to === null ? undefined : index.pos.get(b.to)
-      if (a === undefined || z === undefined) continue
-      for (let i = a; i <= z; i++) set.add(index.words[i].id)
-    }
-    return set
-  }
-  const covered = coveredBy(cut)
-  /** Each recording's first kept word, by its place in the words. */
-  const opens = new Map<string, number>()
-  for (const id of covered) {
-    const w = index.words[index.pos.get(id) as number]
-    opens.set(w.source, Math.min(opens.get(w.source) ?? Infinity, index.pos.get(id) as number))
-  }
-  // When each word last left the cut, by version: the most recent cut is undone first.
-  const leftAt = new Map<string, number>()
-  let was: Set<string> | null = null
-  for (const v of doc.versions) {
-    const now = coveredBy(v.cut)
-    if (was) for (const id of was) if (!now.has(id)) leftAt.set(id, v.n)
-    was = now
-  }
+  // The ask being planned counts as a version of its own: what it cut is out on request.
+  const last = doc.versions[doc.versions.length - 1]
+  const gone = goneFrom([...doc.versions, { n: last.n + 1, ops: planned, cut }], index)
+  const covered = coveredBy(cut, index)
   const struck = new Set(cut.removed)
-  const out = doc.words.filter(
-    (w) => !covered.has(w.id) && !struck.has(w.id) && (index.pos.get(w.id) ?? 0) > (opens.get(w.source) ?? -1)
-  )
-  if (out.length === 0) return { ops: [], lines: 0, named: [] }
-  const candidates = doc.sources.flatMap((s) => beatsFromWords(out.filter((w) => w.source === s.id), s.id))
+  const out = doc.words.filter((w) => !covered.has(w.id) && !struck.has(w.id))
+  const held: HeldBack = {
+    names: [...new Set(out.flatMap((w) => {
+      const why = gone.get(w.id)?.why
+      return why && why !== 'length' ? [why] : []
+    }))],
+    unnamed: out.some((w) => !gone.get(w.id) || gone.get(w.id)?.why === null)
+  }
+  const back = out.filter((w) => gone.get(w.id)?.why === 'length')
+  if (back.length === 0) return { ops: [], lines: 0, named: [], held }
+  const candidates = doc.sources.flatMap((s) => beatsFromWords(back.filter((w) => w.source === s.id), s.id))
   const context = { words: doc.words, sources: doc.sources }
   const lengthOf = (c: Cut): number => resolveCut(c, doc.words, doc.sources).durationSec
-  // Each goes before the first beat of its recording that is said after it, in the cut as it grows.
-  const insertOp = (running: Cut, b: Beat): Op => {
-    const at = index.pos.get(b.from as string) ?? 0
-    let to = running.beats.findIndex((x) => x.source === b.source && x.from !== null && (index.pos.get(x.from) ?? -1) > at)
-    if (to < 0) to = running.beats.length
-    return { op: 'insert', to, beat: { source: b.source, from: b.from, to: b.to } }
-  }
   // What each line adds, measured: its words, its room either side, a tightening inside it.
   const base = lengthOf(cut)
-  const adds = new Map(candidates.map((b) => [b, lengthOf(applyOps(cut, [insertOp(cut, b)], context).cut) - base]))
+  const adds = new Map(candidates.map((b) => [b, lengthOf(applyOps(cut, [insertOp(cut, b, index)], context).cut) - base]))
   // Each weighed as it plays with every one of them back, as a cut weighs its lines.
-  const whole = candidates.reduce((running, b) => applyOps(running, [insertOp(running, b)], context).cut, cut)
+  const whole = insertLines(doc, cut, candidates).cut
   const fromOf = new Map(whole.beats.map((b) => [b.id, b.from]))
   const units = weigh(doc, whole, resolveCut(whole, doc.words, doc.sources))
   const unitOf = new Map(units.map((u) => [fromOf.get(u.id), u]))
@@ -728,11 +812,10 @@ function restoreOps(
     const a = index.pos.get(b.from as string) ?? 0
     const z = index.pos.get(b.to as string) ?? a
     let n = 0
-    for (let i = a; i <= z; i++) n = Math.max(n, leftAt.get(index.words[i].id) ?? 0)
+    for (let i = a; i <= z; i++) n = Math.max(n, gone.get(index.words[i].id)?.at ?? 0)
     return n
   }
-  // What the latest versions took comes back first; among those, the strongest lines.
-  // What the latest versions took comes back first, a version at a time; among those, the strongest lines.
+  // What the latest cut took comes back first, a version at a time; among those, the strongest lines.
   const tiers = [...new Set(candidates.map(when))]
     .sort((a, b) => b - a)
     .map((n) =>
@@ -760,21 +843,99 @@ function restoreOps(
       break
     }
   }
-  // In the order they were said, so each lands before what follows it.
-  picked.sort((a, b) => (index.pos.get(a.from as string) ?? 0) - (index.pos.get(b.from as string) ?? 0))
-  let running = cut
-  const ops: Op[] = []
-  const back: Unit[] = []
-  for (const b of picked) {
-    const op = insertOp(running, b)
-    const r = applyOps(running, [op], context)
-    if (r.applied.length) {
-      running = r.cut
-      ops.push(op)
-      const u = unitOf.get(b.from)
-      if (u) back.push(u)
-    }
+  const done = insertLines(doc, cut, picked)
+  const backUnits = picked.flatMap((b) => {
+    const u = unitOf.get(b.from)
+    return u ? [u] : []
+  })
+  // Named as a cut names what it takes ("a point made twice and two other lines").
+  return { ops: done.ops, lines: done.ops.length, named: describeCut(backUnits, units, new Set()), held }
+}
+
+/**
+ * The one sentence for a length that stops short of what was cut on
+ * request: where it got to, what reaching further would bring back, and how
+ * to have it.
+ */
+function heldBackSentence(afterSec: number, held: HeldBack, withLength: boolean): string {
+  const runs = withLength ? `It runs ${clock(afterSec)}, as long as it gets` : 'That is as long as it gets'
+  const what = [
+    ...(held.names.length ? [`${listOf(held.names)} you asked me to cut`] : []),
+    ...(held.unnamed ? ['lines you cut yourself'] : [])
+  ]
+  const them = held.names.length === 1 && !held.unnamed ? 'it' : 'them'
+  const say = held.names.map((n) => `“bring back ${n}”`)
+  const how = say.length
+    ? `say ${say.join(' or ')} to have ${them} again${held.unnamed ? ', or use Undo' : ''}`
+    : 'Undo brings them back'
+  return `${runs} without ${what.join(' and ')}; ${how}.`
+}
+
+/** What a topic cut on request is called, from the ask: "the part about the conference", "what was not about the battery". */
+export function topicName(ask: Pick<LengthAsk, 'cut' | 'focus'>): string | null {
+  if (ask.cut.length) return `the ${ask.cut.length === 1 ? 'part' : 'parts'} about ${listOf(ask.cut.map((c) => c.replace(/^(the|my|a|an)\s+/i, '')).map((c) => `the ${c}`))}`
+  if (ask.focus) return `what was not about ${/^(the|a|an)\s/i.test(ask.focus) ? ask.focus : `the ${ask.focus.replace(/^my\s+/i, '')}`}`
+  return null
+}
+
+/** "Bring back the tangent about the conference", "put the intro back": what to bring back, in the person's words. */
+export function bringBackAsked(text: string): string | null {
+  const t = text
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/[.!?]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^please,? /, '')
+    .replace(/,? please$/, '')
+  const m = /^(?:bring|put|add) (?:back (.+?)|(.+?) back)(?: in)?$/.exec(t)
+  const what = (m?.[1] ?? m?.[2])?.trim()
+  return what || null
+}
+
+/** Words that say which part, not what it was about. */
+const GENERIC = new Set(['part', 'parts', 'bit', 'bits', 'tangent', 'section', 'line', 'lines', 'story', 'stuff', 'thing', 'things', 'about'])
+const keyWords = (text: string): string[] =>
+  text
+    .split(/\s+/)
+    .map(content)
+    .filter((w): w is string => !!w && !GENERIC.has(w))
+
+/**
+ * Brings back what was cut on request and named so, when the person asks
+ * for it by name: "bring back the intro", "bring back the tangent about the
+ * conference". Null when nothing cut on request goes by that name, so the
+ * ask is someone else's to answer.
+ */
+export function bringBack(doc: EditDoc, what: string): LengthPlan | null {
+  const index = indexWords(doc.words)
+  const cut = currentCut(doc)
+  const gone = goneFrom(doc.versions, index)
+  const struck = new Set(cut.removed)
+  const byName = new Map<string, Set<string>>()
+  for (const [id, g] of gone) {
+    if (!g.why || g.why === 'length' || struck.has(id)) continue
+    byName.set(g.why, (byName.get(g.why) ?? new Set()).add(id))
   }
-  // Named as a cut names what it takes, so a tangent that comes back says so.
-  return { ops, lines: ops.length, named: describeCut(back, units, new Set()) }
+  const asked = keyWords(what)
+  const names = [...byName.keys()].filter((name) => {
+    const own = keyWords(name)
+    return asked.length ? asked.some((w) => own.includes(w)) : byName.size === 1
+  })
+  if (names.length === 0) return null
+  const words = new Set(names.flatMap((n) => [...(byName.get(n) as Set<string>)]))
+  const lines = doc.sources.flatMap((s) => beatsFromWords(doc.words.filter((w) => w.source === s.id && words.has(w.id)), s.id))
+  const lengthOf = (c: Cut): number => resolveCut(c, doc.words, doc.sources).durationSec
+  const beforeSec = lengthOf(cut)
+  const done = insertLines(doc, cut, lines)
+  const afterSec = lengthOf(done.cut)
+  if (done.ops.length === 0)
+    return { ops: [], summary: '', beforeSec, afterSec: beforeSec, note: `${listOf(names)} ${names.length === 1 ? 'is' : 'are'} already back in.` }
+  return {
+    ops: done.ops,
+    summary: `It runs ${clock(afterSec)} now, up from ${clock(beforeSec)}. I brought back ${listOf(names)}.`,
+    beforeSec,
+    afterSec,
+    note: null
+  }
 }

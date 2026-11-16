@@ -90,11 +90,14 @@ import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } fro
 import { findMotionCommand, motionCommandEntries, planMotionCommand, type MotionChange } from '../../../shared/motion'
 import {
   acceptsOffer,
+  bringBack,
+  bringBackAsked,
   DEFAULT_PROFILE,
   mergeLengthAsks,
   needsTopics,
   parseLengthAsk,
   planLength,
+  topicName,
   type LengthAsk,
   profileAskedFor,
   profileById,
@@ -2251,7 +2254,11 @@ export function useCutalong() {
         if (r.ok) {
           // A topic is taken out, never added to: only the planner's cuts are kept.
           const cuts = new Set(['remove', 'strike', 'split', 'join', 'move'])
-          first = r.ops.filter((o) => cuts.has(o.op))
+          // Cut on request, by the name asked: it stays out when the edit grows, until it is asked back.
+          const why = topicName(asked) ?? undefined
+          first = r.ops
+            .filter((o) => cuts.has(o.op))
+            .map((o): Op => (o.op === 'remove' && why ? { ...o, why } : o))
           const other = r.ops.length - first.length
           if (other > 0) asides.push(other === 1 ? 'I left out one change that was not a cut.' : `I left out ${other} changes that were not cuts.`)
           if (first.length > 0) firstSaid = r.summary
@@ -2730,6 +2737,17 @@ export function useCutalong() {
       if (fill) {
         const done = applyAsVersion([{ op: 'fill', mode: fill }], 'Pictures of another shape fill the frame another way.')
         say(done ? `v${done.n} is ready. ${done.summary}` : 'That is already how pictures of another shape fill the frame.', !!done)
+        return true
+      }
+      // "Bring back the intro", "bring back the part about the conference": what was cut on request, by its name.
+      const wanted = d.vlog ? null : bringBackAsked(text)
+      const back = wanted ? bringBack(d, wanted) : null
+      if (back) {
+        const done =
+          back.ops.length > 0
+            ? applyAsVersion(back.ops, back.summary, 'length', { text: back.summary, ops: back.ops.length, timed: true })
+            : null
+        say(done ? `v${done.n} is ready. ${done.summary}` : sentence(back.note ?? 'That is already back in.'), !!done)
         return true
       }
       const req = parseTakeRequest(text)

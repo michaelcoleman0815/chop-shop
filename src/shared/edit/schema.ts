@@ -267,7 +267,17 @@ const pad = z.number().min(0).max(1)
  * lets a model's proposal be checked before anything moves.
  */
 export const OpSchema = z.discriminatedUnion('op', [
-  z.object({ op: z.literal('remove'), beats: z.array(beatId).min(1) }),
+  z.object({
+    op: z.literal('remove'),
+    beats: z.array(beatId).min(1),
+    /**
+     * Why, where it matters later (shared/raw/length): "length" for lines cut
+     * to reach a length asked for, which a longer ask brings back; or what the
+     * person asked to have cut ("the intro", "the part about the conference"),
+     * which stays out until they ask for it back.
+     */
+    why: z.string().min(1).optional()
+  }),
   z.object({ op: z.literal('strike'), from: wordId, to: wordId }),
   z.object({ op: z.literal('unstrike'), from: wordId, to: wordId }),
   z.object({ op: z.literal('move'), beat: beatId, to: z.number().int().min(0) }),
