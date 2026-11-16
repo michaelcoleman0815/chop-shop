@@ -44,7 +44,7 @@ export const KEY_GUIDES: Record<KeyServiceId, KeyGuide> = {
   anthropic: {
     id: 'anthropic',
     name: 'Anthropic',
-    why: 'Claude reads everything you ask and plans each edit, so Cutalong needs an Anthropic API key before it can start.',
+    why: 'Claude reads everything you ask and plans each edit, so nothing in Cutalong runs until an Anthropic key works.',
     steps: [
       {
         text: 'Open the Anthropic Console and sign in, or sign up.',

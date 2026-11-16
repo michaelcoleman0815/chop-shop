@@ -543,6 +543,15 @@ export function useCutalong() {
   const [key, setKey] = useState<ClaudeKeyStatus>(keyStatus('checking'))
   const keyRef = useRef<ClaudeKeyStatus>(key)
   keyRef.current = key
+  // Whether the launch check has answered, so Start shows neither screen before it does.
+  const [keySettled, setKeySettled] = useState(false)
+  // The check under way, which anything asked meanwhile waits for.
+  const keyCheck = useRef<Promise<ClaudeKeyStatus> | null>(null)
+  /** Whether the gate is open, once a check under way has answered. */
+  const keyOpen = useCallback(async (): Promise<boolean> => {
+    if (keyCheck.current) await keyCheck.current
+    return gateOpen(keyRef.current)
+  }, [])
   /** The graphic selected in the editor, by id. */
   const [graphic, setGraphic] = useState<string | null>(null)
   // A brand per channel (shared/brands): the list, the one this chat is in, and the one the Brand page shows.
@@ -3128,20 +3137,20 @@ export function useCutalong() {
 
   /** A command, counted as work while it runs: from the editor, nothing else counts it. */
   const runCommand = useCallback(
-    (
+    async (
       command: string,
       where: 'thread' | 'panel' = 'thread',
       rest = '',
       at: number | null = null,
       range: string[] | null = null
     ): Promise<void> => {
-      if (!gateOpen(keyRef.current)) {
+      if (!(await keyOpen())) {
         stopped('command', where)
-        return Promise.resolve()
+        return
       }
       return during(() => commandNow(command, where, rest, at, range))
     },
-    [during, commandNow, stopped]
+    [during, commandNow, keyOpen, stopped]
   )
 
   const studyLink = useCallback(
@@ -3602,7 +3611,7 @@ export function useCutalong() {
       const recordingsIn = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
       const userText = link ? typed || 'Make it feel like this' : text
       // Nothing runs until the Anthropic key works: the steps are on Start.
-      if (!gateOpen(keyRef.current)) {
+      if (!(await keyOpen())) {
         push({ role: 'user', text: userText, attachments })
         stopped(attachments.length > 0 ? 'footage' : command ? 'command' : link ? 'link' : 'words')
         return
@@ -3729,6 +3738,7 @@ export function useCutalong() {
       bringIn,
       capturePage,
       ensureProject,
+      keyOpen,
       neverOf,
       persist,
       planWords,
@@ -3866,7 +3876,7 @@ export function useCutalong() {
   const applyNotes = useCallback(async (): Promise<void> => {
     const d = docRef.current
     if (!d) return
-    if (!gateOpen(keyRef.current)) {
+    if (!(await keyOpen())) {
       stopped('notes', 'panel')
       return
     }
@@ -3935,7 +3945,7 @@ export function useCutalong() {
       text: `${lead}${reply}${extra ? ` ${extra}` : ''}`,
       actions: done.reply.actions.filter((a) => a.kind === 'say' || a.kind === 'setup-key')
     })
-  }, [applyAsVersion, brandNow, carryPlan, during, noteKey, planContext, setDoc, stopped])
+  }, [applyAsVersion, brandNow, carryPlan, during, keyOpen, noteKey, planContext, setDoc, stopped])
 
   const applyOpsDirect = useCallback(
     (ops: Op[], fallback: string): void => {
@@ -3967,7 +3977,7 @@ export function useCutalong() {
   const exportFinal = useCallback(async (): Promise<void> => {
     const d = docRef.current
     if (!d) return
-    if (!gateOpen(keyRef.current)) {
+    if (!(await keyOpen())) {
       stopped('export', 'panel')
       return
     }
@@ -4015,20 +4025,32 @@ export function useCutalong() {
       off()
       exportingNow.current = null
     }
-  }, [during, patch, push])
+  }, [during, keyOpen, patch, push, stopped])
 
-  /** Checks the Anthropic key with Anthropic, for the gate and the setup screen. */
-  const checkClaudeKey = useCallback(async (): Promise<ClaudeKeyStatus> => {
+  /**
+   * Checks the Anthropic key with Anthropic, for the gate and the setup
+   * screen. `quick`, at launch, takes a key that worked before as working
+   * without asking: the first request says if that has changed.
+   */
+  const checkClaudeKey = useCallback(async (quick = false): Promise<ClaudeKeyStatus> => {
     const was = keyRef.current
-    setKey({ ...keyStatus('checking'), confirmed: was.confirmed })
-    const r = await api.checkKey()
-    const next: ClaudeKeyStatus = r.ok ? keyStatus('ok', true) : { state: r.state, message: r.message, confirmed: r.confirmed }
+    const checking = { ...keyStatus('checking'), confirmed: was.confirmed }
+    keyRef.current = checking
+    setKey(checking)
+    const pending = api
+      .checkKey(quick ? { quick: true } : undefined)
+      .then((r): ClaudeKeyStatus => (r.ok ? keyStatus('ok', true) : { state: r.state, message: r.message, confirmed: r.confirmed }))
+      .catch((err): ClaudeKeyStatus => ({ ...keyStatus('down'), message: err instanceof Error ? err.message : String(err) }))
+    keyCheck.current = pending
+    const next = await pending
+    if (keyCheck.current === pending) keyCheck.current = null
     keyRef.current = next
     setKey(next)
+    setKeySettled(true)
     return next
   }, [])
   useEffect(() => {
-    void checkClaudeKey()
+    void checkClaudeKey(true)
   }, [checkClaudeKey])
 
   /** Saves a pasted key and checks it; a key plainly from another company is turned away first. */
@@ -4147,6 +4169,7 @@ export function useCutalong() {
     /** The Anthropic key, as the gate and the setup screen read it. */
     claudeKey: key,
     gateOpen: gateOpen(key),
+    keySettled,
     checkClaudeKey,
     saveClaudeKey,
     removeClaudeKey,

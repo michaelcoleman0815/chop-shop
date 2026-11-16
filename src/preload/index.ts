@@ -339,10 +339,13 @@ const api = {
       }
     | { ok: false; message: string; keyState?: ClaudeKeyState }
   > => ipcRenderer.invoke('cut:triage', req),
-  checkKey: (): Promise<
+  /** `quick` takes a key Anthropic accepted before as working, without asking again: for launch. */
+  checkKey: (opts?: {
+    quick?: boolean
+  }): Promise<
     | { ok: true; state: 'ok'; confirmed: true }
     | { ok: false; state: ClaudeKeyState; message: string; confirmed: boolean; needsKey: boolean }
-  > => ipcRenderer.invoke('claude:check'),
+  > => ipcRenderer.invoke('claude:check', opts),
   // Other AI services: whether each key exists (never what it is), saving and
   // checking a key, and the one switch that lets anything go to them.
   serviceKeys: (): Promise<Record<ServiceId, boolean>> => ipcRenderer.invoke('services:keys'),

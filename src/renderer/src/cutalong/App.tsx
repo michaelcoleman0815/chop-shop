@@ -96,7 +96,7 @@ export default function App(): JSX.Element {
             {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
             {app.screen === 'brand' && <BrandPage app={app} />}
             {app.screen === 'presets' && <PresetsPage app={app} />}
-            {app.screen === 'settings' && <SettingsPage />}
+            {app.screen === 'settings' && <SettingsPage app={app} />}
           </BackToWork.Provider>
         </ScreenGuard>
       </div>

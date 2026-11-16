@@ -550,6 +550,204 @@ button:disabled {
   color: var(--muted);
 }
 
+/* ---------- Setup: Start, until an Anthropic key works ---------- */
+
+.cl-setup {
+  padding-top: 9vh;
+}
+
+.cl-setup-inner {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  container-type: inline-size;
+}
+
+.cl-setup .cl-title {
+  margin: 0;
+  text-wrap: balance;
+}
+
+/* Tight under the title it explains. */
+.cl-setup-why {
+  margin: calc(-1 * var(--space-3)) auto var(--space-2);
+  max-width: 46ch;
+  text-align: center;
+  text-wrap: balance;
+  font-size: 17px;
+  line-height: 26px;
+  color: var(--ink-soft);
+}
+
+/* The steps to get a key, each with the page it happens on (components/KeySteps.tsx). */
+.cl-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-steps > li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--line);
+}
+
+.cl-steps > li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.cl-step-n {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+/* The step that fixes what went wrong. */
+.cl-steps > li.now .cl-step-n {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--card);
+}
+
+.cl-step-text {
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.cl-steps > li.now .cl-step-text {
+  font-weight: 600;
+}
+
+/* A page opened in the browser: a secondary pill, the arrow saying it leaves Cutalong. */
+.cl-step-link {
+  text-decoration: none;
+}
+
+.cl-step-link > svg {
+  color: var(--muted);
+}
+
+.cl-step-field {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-key-paste {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.cl-key-paste input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 46px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  outline: none;
+}
+
+.cl-key-paste input::placeholder {
+  color: var(--muted);
+}
+
+.cl-key-paste input:focus-visible {
+  border-color: var(--ink);
+}
+
+/* In a Settings section, on a card, the field sits on the ground like the other fields there. */
+.cl-section .cl-key-paste input {
+  background: var(--ground);
+}
+
+/* What the check found, in ink beside the field; while it runs, the mark marches beside it. */
+.cl-keycheck {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink);
+}
+
+.cl-keycheck.checking {
+  color: var(--muted);
+}
+
+.cl-keycheck-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  padding-top: 2px;
+}
+
+.cl-keycheck-again {
+  align-self: flex-start;
+  margin-left: calc(-1 * var(--space-2));
+}
+
+.cl-key-kept {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cl-setup-cost {
+  margin: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted);
+}
+
+.cl-setup-cost .cl-link {
+  height: auto;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Narrow: each page's button goes under its step. */
+@container (max-width: 520px) {
+  .cl-steps > li {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .cl-step-link {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .cl-key-paste {
+    flex-wrap: wrap;
+  }
+
+  .cl-key-paste .cl-btn {
+    flex: 1 1 auto;
+  }
+}
+
 /* ---------- Thread ---------- */
 
 .cl-thread {

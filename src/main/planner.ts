@@ -402,12 +402,14 @@ function plannedThing(c: PlannedCommand): string | null {
 /**
  * Whether the saved key works with the model the planner uses, as the gate
  * and the setup screen read it (shared/setup/gate.ts): one free request, so
- * a bad key shows up before anything is asked of it.
+ * a bad key shows up before anything is asked of it. `quick` is for launch:
+ * a key that worked before is taken as working, without a request.
  */
 export async function checkKey(
-  deps: KeyDeps = keyDeps()
+  deps: KeyDeps = keyDeps(),
+  opts: { quick?: boolean } = {}
 ): Promise<{ ok: true; state: 'ok'; confirmed: true } | ({ ok: false; needsKey: boolean } & ClaudeKeyStatus)> {
-  const status = await claudeKeyStatus(deps)
+  const status = await claudeKeyStatus(deps, opts)
   if (status.state === 'ok') return { ok: true, state: 'ok', confirmed: true }
   return { ok: false, needsKey: status.state === 'none' || status.state === 'refused', ...status }
 }

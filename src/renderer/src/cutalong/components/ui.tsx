@@ -122,6 +122,12 @@ export const Icon = {
       <path d="M6 9l6 6 6-6" />
     </svg>
   ),
+  /** A page that opens in the browser, outside Cutalong. */
+  external: (): JSX.Element => (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} strokeWidth="2" aria-hidden="true">
+      <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </svg>
+  ),
   /** A recording that is sound only. */
   wave: (): JSX.Element => (
     <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth="1.9" aria-hidden="true">

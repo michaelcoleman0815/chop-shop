@@ -72,10 +72,32 @@ describe('checking the Anthropic key', () => {
     const status = await claudeKeyStatus(s.deps)
     expect(status.state).toBe('none')
     expect(status.message).toBe(
-      'Claude reads everything you ask and plans each edit, so Cutalong needs an Anthropic API key before it can start.'
+      'Claude reads everything you ask and plans each edit, so nothing in Cutalong runs until an Anthropic key works.'
     )
     expect(gateOpen(status)).toBe(false)
     expect(s.spy).not.toHaveBeenCalled()
+  })
+
+  it('at launch, takes a key Anthropic accepted before as working without asking, and asks about any other', async () => {
+    const known = setup({ answer: model, remembered: fingerprint('sk-ant-api03-test') })
+    expect(await claudeKeyStatus(known.deps, { quick: true })).toEqual({
+      state: 'ok',
+      message: keyMessage('ok'),
+      confirmed: true
+    })
+    expect(known.spy).not.toHaveBeenCalled()
+    // A key never accepted, or another one since, is checked even at launch.
+    const fresh = setup({ answer: () => error(401, 'authentication_error', 'invalid x-api-key') })
+    const status = await claudeKeyStatus(fresh.deps, { quick: true })
+    expect(status.state).toBe('refused')
+    expect(fresh.spy).toHaveBeenCalledTimes(1)
+    const other = setup({ answer: model, remembered: fingerprint('sk-ant-api03-another') })
+    await claudeKeyStatus(other.deps, { quick: true })
+    expect(other.spy).toHaveBeenCalledTimes(1)
+    // Without quick, a remembered key is asked about too.
+    const again = setup({ answer: model, remembered: fingerprint('sk-ant-api03-test') })
+    await claudeKeyStatus(again.deps)
+    expect(again.spy).toHaveBeenCalledTimes(1)
   })
 
   it('says when the keychain cannot open a key that is saved', async () => {

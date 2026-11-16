@@ -11,6 +11,7 @@ import {
 } from '../../../../shared/services'
 import type { Settings } from '../../../../shared/types'
 import { api } from '../api'
+import { aKey, KeySteps } from '../components/KeySteps'
 import { Button } from '../components/ui'
 
 /**
@@ -26,11 +27,11 @@ export const SWITCH_ON =
   'I may send audio, and short video excerpts, to the services below that have a key, and nothing goes to one until you add its key.'
 export const SWITCH_OFF = 'Nothing but the transcript leaves this Mac, and it goes only to Claude.'
 
-/** What a service is for, said while it has no key yet. */
+/** What a service is for, said while it has no key yet; how to get one is in its steps (shared/setup). */
 function purpose(s: Service): string {
   return s.job === 'transcribe'
-    ? `With it I hear every um, stutter and false start, with the time of each word. You can make a key at ${s.keyFrom}.`
-    : `With it I can ask which take is delivered best, or whether focus is hunting. You can make a key at ${s.keyFrom}.`
+    ? 'With it I hear every um, stutter and false start, with the time of each word.'
+    : 'With it I can ask which take is delivered best, or whether focus is hunting.'
 }
 
 function accepted(s: Service): string {
@@ -54,6 +55,8 @@ export function OtherServices({
   const [states, setStates] = useState<Partial<Record<ServiceId, KeyState>>>({})
   const [drafts, setDrafts] = useState<Partial<Record<ServiceId, string>>>({})
   const [saving, setSaving] = useState<ServiceId | null>(null)
+  // The services whose steps to a key are open.
+  const [guiding, setGuiding] = useState<ReadonlySet<ServiceId>>(new Set())
 
   const setState = (id: ServiceId, state: KeyState): void => setStates((s) => ({ ...s, [id]: state }))
   const setDraft = (id: ServiceId, text: string): void => setDrafts((d) => ({ ...d, [id]: text }))
@@ -144,11 +147,13 @@ export function OtherServices({
       </p>
 
       {on &&
-        SERVICES.map((s) => (
-          <div className="cl-field" key={s.id}>
-            <span>{s.name}</span>
+        SERVICES.map((s) => {
+          const state = states[s.id] ?? { status: 'none' }
+          const fieldId = `set-key-${s.id}`
+          const field = (
             <div className="cl-row">
               <input
+                id={fieldId}
                 type="password"
                 value={drafts[s.id] ?? ''}
                 placeholder={keys[s.id] ? 'Paste a new key to replace it' : `${s.name} API key`}
@@ -169,12 +174,35 @@ export function OtherServices({
                 </Button>
               )}
             </div>
-            <p className="cl-aside" role="status">
-              {line(s)}
-            </p>
-            {s.note && <p className="cl-aside">{s.note}</p>}
-          </div>
-        ))}
+          )
+          // A key that works needs only its field; without one, or with one turned down, the steps lead to it.
+          const working = keys[s.id] && state.status !== 'bad'
+          const guided = !working && (keys[s.id] || guiding.has(s.id))
+          return (
+            <div className="cl-field" key={s.id}>
+              <span>{s.name}</span>
+              <p className="cl-aside" role="status">
+                {line(s)}
+              </p>
+              {working ? (
+                field
+              ) : guided ? (
+                <KeySteps service={s.id} paste={{ id: fieldId, field }} />
+              ) : (
+                <Button
+                  variant="text"
+                  small
+                  className="cl-key-how"
+                  aria-expanded={false}
+                  onClick={() => setGuiding((g) => new Set(g).add(s.id))}
+                >
+                  Add {aKey(s.name)}
+                </Button>
+              )}
+              {s.note && <p className="cl-aside">{s.note}</p>}
+            </div>
+          )
+        })}
 
       {on && hearers.length > 0 && (
         <div className="cl-field">

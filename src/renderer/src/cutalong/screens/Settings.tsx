@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
-import { detectProvider, wrongKeyMessage } from '../../../../shared/keys'
+import { costLine, fixingStep, keyGuide } from '../../../../shared/setup'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api } from '../api'
+import { ClaudeKeyField } from '../components/ClaudeKeyField'
+import { KeySteps } from '../components/KeySteps'
 import { Button } from '../components/ui'
 import { ClaudeFrames, ClaudeWrites } from './ClaudeFrames'
 import { grow } from '../motion'
+import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { OtherServices } from './OtherServices'
 import { Planning } from './Planning'
@@ -32,8 +35,6 @@ const BROWSERS: { id: string | null; label: string }[] = [
   { id: 'brave', label: 'Brave' }
 ]
 
-type KeyState = { status: 'checking' } | { status: 'none' } | { status: 'ok' } | { status: 'bad'; message: string }
-
 function megabytes(mb: number): string {
   return mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb} MB`
 }
@@ -57,12 +58,8 @@ function updateLine(s: UpdateState, version: string): string {
   }
 }
 
-export function SettingsPage(): JSX.Element {
+export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [key, setKey] = useState<KeyState>({ status: 'checking' })
-  const [saved, setSaved] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
   const [ready, setReady] = useState<Partial<Record<Model, boolean>>>({})
   const [sizes, setSizes] = useState<Partial<Record<Model, number>>>({})
   const [download, setDownload] = useState<number | null>(null)
@@ -70,25 +67,10 @@ export function SettingsPage(): JSX.Element {
   const [update, setUpdate] = useState<UpdateState>({ status: 'idle' })
   const [hearer, setHearer] = useState<string | null>(null)
 
-  const check = async (): Promise<void> => {
-    setKey({ status: 'checking' })
-    const [r, has] = await Promise.all([api.checkKey(), api.hasApiKey()])
-    setSaved(has)
-    if (r.ok) return setKey({ status: 'ok' })
-    if (!r.needsKey) return setKey({ status: 'bad', message: r.message })
-    if (!has) return setKey({ status: 'none' })
-    setKey({
-      status: 'bad',
-      message:
-        wrongKeyMessage(await api.provider()) ?? 'Anthropic did not accept that key. Paste it again, or make a new one.'
-    })
-  }
-
   useEffect(() => {
     void api.getSettings().then(setSettings)
     void api.getVersion().then(setVersion)
     void api.updateState().then(setUpdate)
-    void check()
     for (const m of MODELS) {
       void api.hasModel(m.id).then((has) => setReady((r) => ({ ...r, [m.id]: has })))
       void api.modelSizeMb(m.id).then((mb) => setSizes((s) => ({ ...s, [m.id]: mb })))
@@ -103,33 +85,6 @@ export function SettingsPage(): JSX.Element {
     }
   }, [])
 
-  const saveKey = async (): Promise<void> => {
-    // A key that is plainly from another service is turned away before it
-    // can replace one that works.
-    const wrong = wrongKeyMessage(detectProvider(draft))
-    if (wrong) {
-      setDraft('')
-      setKey({ status: 'bad', message: wrong })
-      return
-    }
-    setSaving(true)
-    try {
-      await api.setApiKey(draft.trim())
-      setDraft('')
-      await check()
-    } catch (err) {
-      setKey({ status: 'bad', message: err instanceof Error ? err.message : String(err) })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const removeKey = async (): Promise<void> => {
-    await api.clearApiKey()
-    setSaved(false)
-    setKey({ status: 'none' })
-  }
-
   const change = async (patch: Partial<Settings>): Promise<void> => setSettings(await api.setSettings(patch))
 
   const fetchModel = async (model: Model): Promise<void> => {
@@ -142,14 +97,13 @@ export function SettingsPage(): JSX.Element {
     }
   }
 
-  const keyLine =
-    key.status === 'checking'
-      ? 'Checking your key…'
-      : key.status === 'ok'
-        ? 'Connected. I can turn what you say into edits.'
-        : key.status === 'none'
-          ? 'Add an Anthropic API key and I can turn what you say into edits.'
-          : key.message
+  // The Anthropic key is the app's (useCutalong), so saving it here opens the gate everywhere.
+  const key = app.claudeKey
+  const saved = key.state !== 'none'
+  // A key that worked stays in the short form while it is checked again; one that did not shows the steps.
+  const working = key.state === 'ok' || (key.state === 'checking' && key.confirmed)
+  const failing = key.state !== 'none' && key.state !== 'ok' && key.state !== 'checking'
+  const anthropic = keyGuide('anthropic')
   const model = settings?.whisperModel ?? 'small.en'
   const modelName = MODELS.find((m) => m.id === model)?.label ?? model
   const size = sizes[model]
@@ -166,36 +120,34 @@ export function SettingsPage(): JSX.Element {
 
           <section className="cl-section" aria-labelledby="set-claude">
             <h2 id="set-claude">Claude</h2>
-            <p className="cl-reply" role="status">
-              {keyLine}
-            </p>
-            <div className="cl-field">
-              <div className="cl-row">
-                <input
-                  type="password"
-                  value={draft}
-                  placeholder={saved ? 'Paste a new key to replace it' : 'sk-ant-…'}
-                  aria-label="Anthropic API key"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && draft.trim()) void saveKey()
+            {working ? (
+              <div className="cl-field">
+                <label className="sr-only" htmlFor="set-claude-key">
+                  Anthropic API key
+                </label>
+                <ClaudeKeyField app={app} id="set-claude-key" showOk removable small />
+              </div>
+            ) : (
+              <>
+                <p className="cl-aside">{anthropic.why}</p>
+                <KeySteps
+                  service="anthropic"
+                  current={failing ? fixingStep(key.state) : null}
+                  paste={{
+                    id: 'set-claude-key',
+                    field: <ClaudeKeyField app={app} id="set-claude-key" removable small />
                   }}
                 />
-                <Button variant="primary" small disabled={!draft.trim() || saving} onClick={() => void saveKey()}>
-                  Save key
-                </Button>
-                {saved && (
-                  <Button variant="text" onClick={() => void removeKey()}>
-                    Remove
-                  </Button>
-                )}
-              </div>
-            </div>
+              </>
+            )}
             <p className="cl-aside">
-              The key is locked in this computer&apos;s keychain and only ever sent to Anthropic. You can make one at
-              console.anthropic.com.
+              {costLine()}{' '}
+              {anthropic.spend && (
+                <a className="cl-link" href={anthropic.spend.url} target="_blank" rel="noreferrer">
+                  {anthropic.spend.label}
+                  <span className="sr-only">, opens in your browser</span>
+                </a>
+              )}
             </p>
             <ClaudeFrames settings={settings} hasKey={saved} onSettings={setSettings} />
             <ClaudeWrites settings={settings} hasKey={saved} onSettings={setSettings} />

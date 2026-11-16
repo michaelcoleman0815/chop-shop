@@ -42,8 +42,12 @@ export function stateOfError(err: unknown): ClaudeKeyState | null {
 /** States that say the key itself does not work, which forget that it once did. */
 const BROKEN: ReadonlySet<ClaudeKeyState> = new Set(['refused', 'no-credit', 'no-access', 'wrong'])
 
-/** Checks the saved key with Anthropic and says what it found. */
-export async function claudeKeyStatus(deps: KeyDeps): Promise<ClaudeKeyStatus> {
+/**
+ * Checks the saved key with Anthropic and says what it found. `quick`, for
+ * launch, trusts a key Anthropic accepted before without asking again: the
+ * first request made with it says so if that has changed since.
+ */
+export async function claudeKeyStatus(deps: KeyDeps, opts: { quick?: boolean } = {}): Promise<ClaudeKeyStatus> {
   const key = deps.read()
   if (!key) {
     if (deps.saved()) return keyStatus('unreadable')
@@ -57,6 +61,7 @@ export async function claudeKeyStatus(deps: KeyDeps): Promise<ClaudeKeyStatus> {
   }
   const print = fingerprint(key)
   const confirmed = deps.remembered() === print
+  if (opts.quick && confirmed) return keyStatus('ok', true)
   try {
     await deps.ask(key)
     deps.remember(print)

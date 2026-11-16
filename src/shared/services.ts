@@ -21,8 +21,6 @@ export interface Service {
   id: ServiceId
   name: string
   job: ServiceJob
-  /** Where a key comes from, said plainly. */
-  keyFrom: string
   /** One sentence shown under the key: what happens to what is sent there. */
   note?: string
 }
@@ -32,16 +30,14 @@ export const SERVICES: readonly Service[] = [
     id: 'deepgram',
     name: 'Deepgram',
     job: 'transcribe',
-    keyFrom: 'console.deepgram.com',
     // Every transcription request carries mip_opt_out=true (providers/deepgram.ts).
     note: 'I ask Deepgram not to use your audio to improve its models, so it keeps neither the audio nor the words once it has answered.'
   },
-  { id: 'assemblyai', name: 'AssemblyAI', job: 'transcribe', keyFrom: 'assemblyai.com/dashboard' },
+  { id: 'assemblyai', name: 'AssemblyAI', job: 'transcribe' },
   {
     id: 'gemini',
     name: 'Google Gemini',
     job: 'judge',
-    keyFrom: 'aistudio.google.com',
     // From the Gemini API Additional Terms of Service, effective March 23, 2026
     // (aistudio.google.com/docs/terms): the API is unpaid unless reached through
     // a Cloud project with an active billing account; on unpaid use Google uses

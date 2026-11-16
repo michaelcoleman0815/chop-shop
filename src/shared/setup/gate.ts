@@ -138,13 +138,20 @@ const DOING: Record<Blocked, string> = {
   link: 'open a link'
 }
 
-/** One plain sentence for an action the gate stopped, pointing to the setup steps on Start. */
-export function blockedSentence(what: Blocked, status?: ClaudeKeyStatus | null): string {
+/**
+ * One plain sentence for an action the gate stopped, pointing to the setup
+ * steps: on Start, or below it when it is said on the setup screen itself.
+ */
+export function blockedSentence(
+  what: Blocked,
+  status?: ClaudeKeyStatus | null,
+  where: 'start' | 'here' = 'start'
+): string {
   const why =
     !status || status.state === 'none' || status.state === 'checking'
       ? 'an Anthropic key'
       : status.state === 'no-credit'
         ? 'credit on your Anthropic account'
         : 'an Anthropic key that works'
-  return `I need ${why} before I can ${DOING[what]}. Start shows the steps.`
+  return `I need ${why} before I can ${DOING[what]}. ${where === 'here' ? 'The steps are below.' : 'Start shows the steps.'}`
 }

@@ -36,7 +36,7 @@ import { watchClip } from './mouth'
 import { detectFaces, VISION_PATH } from './track'
 import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
 import { removePreset, savedPresets, savePreset } from './preset-store'
-import { checkKey, keepOffList, planEdit } from './planner'
+import { checkKey, keepOffList, keyDeps, planEdit } from './planner'
 import type { CommandLine, RequestExtra } from './planner-prompt'
 import { triage } from './triage'
 import { planEditLocally } from './planner-local'
@@ -765,7 +765,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     return saveSettings({ videoSignIn: browser && allowed.includes(browser) ? browser : null }).videoSignIn ?? null
   })
 
-  ipcMain.handle('claude:check', () => checkKey())
+  ipcMain.handle('claude:check', (_e, opts?: { quick?: boolean }) => checkKey(keyDeps(), opts ?? {}))
 
   // Other AI services: keys, the switch, and key checks (providers/index.ts).
   registerServicesIpc()
