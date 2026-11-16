@@ -138,7 +138,8 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
     )
     const shortest = clock(Math.min(...lengths))
     const longest = clock(Math.max(...lengths))
-    chips.push(`${listOf(kinds)}, ${shortest === longest ? shortest : `${shortest} to ${longest}`}`)
+    // "each", so the lengths never read as a place in the recording.
+    chips.push(`${listOf(kinds)}, ${shortest === longest ? shortest : `${shortest} to ${longest}`} each`)
     chips.push('Vertical 9:16')
     chips.push(brandCaptions ? 'Captions in your brand' : 'Captions on')
   }

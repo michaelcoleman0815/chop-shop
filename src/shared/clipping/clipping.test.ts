@@ -534,7 +534,7 @@ describe('what /clipping says', () => {
     expect(reply.aside).toMatch(/^I left out the worship set, the announcements, the giving appeal and the goodbye\./)
     expect(reply.aside).toMatch(/sorted them by measuring/)
     expect(reply.chips).toHaveLength(3)
-    expect(reply.chips[0]).toMatch(/^Sermon, 0:\d\d to 0:\d\d$/)
+    expect(reply.chips[0]).toMatch(/^Sermon, 0:\d\d to 0:\d\d each$/)
     expect(reply.details.map((d) => d.label)).toEqual(['Transcript', 'Left out', 'Picked by'])
     expect(reply.text + reply.aside).not.toMatch(/!/)
   })
@@ -565,9 +565,9 @@ describe('what /clipping says', () => {
       clips: [clip('/s/part one.mp4'), clip('/s/part one.mp4'), clip('/s/part two.mp4')]
     }
     expect(clipsReply(found, true).text).toBe('I found three clips: 2 in part one.mp4 and 1 in part two.mp4.')
-    expect(clipsReply(found, true).chips).toEqual(['Sermon, 0:40', 'Vertical 9:16', 'Captions in your brand'])
+    expect(clipsReply(found, true).chips).toEqual(['Sermon, 0:40 each', 'Vertical 9:16', 'Captions in your brand'])
     const mixed = { ...found, recordings: [rec('/s/part one.mp4'), rec('/s/part two.mp4', { profile: 'podcast' })] }
-    expect(clipsReply(mixed, false).chips[0]).toBe('Sermon and podcast, 0:40')
+    expect(clipsReply(mixed, false).chips[0]).toBe('Sermon and podcast, 0:40 each')
     expect(clipsReply({ ...found, had: 4 }, true).text).toMatch(/^I found three more clips/)
   })
 })
