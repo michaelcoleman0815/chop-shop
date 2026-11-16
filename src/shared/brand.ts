@@ -58,6 +58,13 @@ export const BrandSchema = z.object({
   captions: CaptionSpecSchema.partial(),
   /** How edits should sound, in the person's words. The planner reads it. */
   voice: z.string(),
+  /**
+   * What kind of videos these are, as a cutting profile id ("tech",
+   * "talking-head"): how raw footage is cut. Empty until chosen or suggested.
+   */
+  niche: z.string().default(''),
+  /** Names Whisper should listen for in raw footage: products, people, places. */
+  products: z.array(z.string()).default([]),
   videos: z.array(BrandVideoSchema),
   /** The look learned from the videos. */
   style: StyleSpecSchema,
@@ -74,6 +81,8 @@ export const EMPTY_BRAND: Brand = {
   logo: null,
   captions: {},
   voice: '',
+  niche: '',
+  products: [],
   videos: [],
   style: {},
   autoApply: true,

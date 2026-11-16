@@ -6,7 +6,6 @@ import { FFMPEG_PATH, probe } from './ffmpeg'
 import { FONTS_DIR } from './resources'
 import { getSettings, saveSettings } from './store'
 import { downloadModel, hasModel, transcribe } from './transcribe'
-import { readAnalysis } from './analysis-cache'
 import { fetchVideo, YTDLP_PATH } from './fetch-video'
 import { fetchExcerpt, fetchImage, importFile, saveImage, searchVideos, type AssetTools, type NewAsset } from './assets'
 import { creditsText, isImageUrl, type Range } from '../shared/assets'
@@ -15,6 +14,7 @@ import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
+import { vocabulary } from '../shared/raw/prompt'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { readBrand, saveBrand } from './brand-store'
@@ -304,28 +304,28 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 }
 
 /**
- * The transcript for a whole file: the clip finder's cached one when it
- * covers the same recording, otherwise a fresh run, fetching the model first
+ * The transcript for a whole file, written verbatim: every filler, false
+ * start and retake, the names from the brand and the title listened for,
+ * and a second listen where words went missing. The model is fetched first
  * if it is missing rather than sending anyone to Settings.
+ *
+ * The clip finder's cached transcript is not reused: it is written the tidy
+ * way, which smooths retakes away, and finding retakes is the point here.
  */
 async function transcriptFor(
   path: string,
   durationSec: number,
   progress: (stage: string, percent: number) => void
 ): Promise<Transcript> {
-  const cached = await readAnalysis(path).catch(() => null)
-  const whole =
-    cached &&
-    cached.transcript.words.length > 0 &&
-    (cached.options?.startSec ?? 0) < 0.5 &&
-    Math.abs((cached.options?.endSec ?? durationSec) - durationSec) < 0.5
-  if (whole) return cached.transcript
-
   const { whisperModel } = getSettings()
   if (!hasModel(whisperModel)) {
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))
   }
-  return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)))
+  const brand = await readBrand()
+  const names = vocabulary({ title: basename(path, extname(path)), voice: brand.voice, products: brand.products })
+  return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)), 0, {
+    names
+  })
 }
 
 function safeName(title: string): string {
