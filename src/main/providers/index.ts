@@ -11,6 +11,8 @@ import { serviceKeys } from './keys'
 import { extractSpeech } from './media'
 import { cloudTranscript, type CloudResult } from './transcribe-cloud'
 
+export type { ClipJudgement, ExcerptClip, JudgeInput, JudgeResult } from './judge'
+
 /**
  * Other AI services, wired to the app: keys from the keychain, the switch
  * from Settings, and Electron's network stack (which follows the system's
