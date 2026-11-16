@@ -11,6 +11,7 @@ import {
   changesColour,
   currentCut,
   currentVersion,
+  undoTarget,
   cutawayAt,
   cutawayClock,
   duckingKeys,
@@ -50,6 +51,7 @@ import {
   describeSpeed,
   parseCommand,
   seconds,
+  namesCommand,
   slashQuery,
   suggestCommands,
   type Preset
@@ -177,7 +179,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         <span className="cl-heading">{doc.title}</span>
         <span className="cl-version">v{version.n}</span>
         <span className="spacer" />
-        {doc.versions.length > 1 && (
+        {undoTarget(doc) !== null && (
           <Button variant="text" onClick={app.undo}>
             Undo
           </Button>
@@ -888,31 +890,43 @@ function NotesPanel({
   )
 }
 
+/**
+ * A note, or a command. The slash menu works as the chat's does: the arrows
+ * move through it, Tab or Enter puts the command in the box to finish, and
+ * Escape closes it. Nothing runs until it is sent.
+ */
 function NoteInput({ presets, onNote }: { presets: Preset[]; onNote: (text: string) => void }): JSX.Element {
   const [text, setText] = useState('')
+  const [pick, setPick] = useState(0)
+  const input = useRef<HTMLInputElement>(null)
   const query = slashQuery(text)
   const matches = query === null ? [] : suggestCommands(query, presets, 5)
+  useEffect(() => setPick(0), [query])
   const send = (): void => {
     const value = text.trim()
     if (!value) return
     onNote(value)
     setText('')
   }
+  const choose = (command: string): void => {
+    setText(`/${command} `)
+    input.current?.focus()
+  }
   return (
     <div className="cl-note-input">
       {matches.length > 0 && (
         <div className="cl-slash" role="listbox" aria-label="Presets">
-          {matches.map((p) => (
+          {matches.map((p, i) => (
             <button
               key={p.command}
               type="button"
               role="option"
-              aria-selected={false}
-              className="cl-slash-item"
+              aria-selected={i === pick}
+              className={`cl-slash-item${i === pick ? ' on' : ''}`}
+              onMouseEnter={() => setPick(i)}
               onMouseDown={(e) => {
                 e.preventDefault()
-                onNote(`/${p.command}`)
-                setText('')
+                choose(p.command)
               }}
             >
               <span className="mono">/{p.command}</span>
@@ -926,16 +940,34 @@ function NoteInput({ presets, onNote }: { presets: Preset[]; onNote: (text: stri
       </label>
       <input
         id="cl-note"
+        ref={input}
         value={text}
         placeholder="Add a note, or type /"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
+          if (matches.length > 0) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault()
+              const step = e.key === 'ArrowDown' ? 1 : -1
+              setPick((p) => (p + step + matches.length) % matches.length)
+              return
+            }
+            // Enter runs a command typed in full; it completes one typed in part.
+            const runs = e.key === 'Enter' && namesCommand(query, matches)
+            if (!runs && (e.key === 'Tab' || e.key === 'Enter')) {
+              e.preventDefault()
+              choose(matches[Math.min(pick, matches.length - 1)].command)
+              return
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              setText('')
+              return
+            }
+          }
           if (e.key === 'Enter') {
             e.preventDefault()
-            if (matches.length > 0 && query !== null && !text.includes(' ')) {
-              onNote(`/${matches[0].command}`)
-              setText('')
-            } else send()
+            send()
           }
         }}
       />
@@ -1075,14 +1107,18 @@ function TakesPanel({
     setJumpTo(null)
   }, [resolved, jumpTo, onSeek])
 
+  // What this panel last did, while that version is the one on screen. The
+  // editor's shared status line belongs to notes, undo and commands, and
+  // would put their words here instead.
+  const [said, setSaid] = useState<{ n: number; text: string } | null>(null)
   const pick = (g: TakeGroup, i: number): void => {
     const done = app.switchTake(g, i)
-    app.setPanel(done ? { text: `v${done.n} is ready. ${done.summary}` } : null)
+    setSaid(done ? { n: done.n, text: `v${done.n} is ready. ${done.summary}` } : null)
     setJumpTo(g.takes[i].from)
   }
 
   const status =
-    app.panel?.text ??
+    (said && said.n === currentVersion(doc).n ? said.text : null) ??
     (groups.length === 0
       ? 'No line was said more than once in this recording.'
       : `${groups.length === 1 ? 'One line was' : `${groups.length} lines were`} said more than once. The take that plays is marked.`)

@@ -39,9 +39,11 @@ export function sfxHelp(): string {
 export function sfxCommand(doc: EditDoc, rest: string, beat: string | null, at: number | null): SfxCommandResult {
   const cut = currentCut(doc)
   const words = rest.trim().toLowerCase()
-  if (cut.beats.length === 0) return { say: 'There is nothing in the cut to put a sound on.' }
-  const target = beat && cut.beats.some((b) => b.id === beat) ? beat : cut.beats[0].id
   const resolved = resolveCut(cut, doc.words, doc.sources)
+  // Only beats that play: one cut to a take that was not kept has no moment to sound on.
+  const playing = resolved.beats.map((b) => b.id)
+  if (playing.length === 0) return { say: 'There is nothing in the cut to put a sound on.' }
+  const target = beat && playing.includes(beat) ? beat : playing[0]
   const here = cut.beats.find((b) => b.id === target)!
 
   if (words === '') return { say: sfxHelp() }

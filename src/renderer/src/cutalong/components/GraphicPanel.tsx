@@ -157,6 +157,34 @@ export function GraphicPanel({
 
 const label = (s: string): string => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/-/g, ' ')
 
+/** Whether a pointer is pressed right now, for a field left by a click. */
+let pressed = false
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', () => (pressed = true), true)
+  document.addEventListener('pointerup', () => (pressed = false), true)
+  document.addEventListener('pointercancel', () => (pressed = false), true)
+}
+
+/**
+ * Makes the change a field holds once it is left. Left by pressing something
+ * else, it waits for that press to land first: the change makes a version, a
+ * version starts a transition, and a click that finished during it was lost
+ * (typing a name, then picking a style, kept the name and dropped the style).
+ */
+function whenSettled(run: () => void): void {
+  if (!pressed) {
+    run()
+    return
+  }
+  const done = (): void => {
+    window.removeEventListener('pointerup', done, true)
+    window.removeEventListener('pointercancel', done, true)
+    setTimeout(run, 0)
+  }
+  window.addEventListener('pointerup', done, true)
+  window.addEventListener('pointercancel', done, true)
+}
+
 /** A line of text that becomes a change when the person leaves the field or presses Return. */
 function TextSlot({
   label: name,
@@ -172,7 +200,10 @@ function TextSlot({
   const [draft, setDraft] = useState(value)
   useEffect(() => setDraft(value), [value])
   const commit = (): void => {
-    if (draft.trim() !== value.trim()) onCommit(draft.trim())
+    if (draft.trim() !== value.trim()) {
+      const next = draft.trim()
+      whenSettled(() => onCommit(next))
+    }
   }
   return (
     <label className="cl-field">
@@ -211,7 +242,10 @@ function RowsSlot({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
-          if (draft.trim() !== text.trim()) onCommit(textToRows(draft, rows))
+          if (draft.trim() !== text.trim()) {
+            const next = textToRows(draft, rows)
+            whenSettled(() => onCommit(next))
+          }
         }}
       />
     </label>

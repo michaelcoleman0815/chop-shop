@@ -9,13 +9,16 @@ import {
   commit,
   currentCut,
   currentVersion,
+  mergeExtension,
   nextSourceId,
   openNotes,
   resolveCut,
   restore,
+  sameValue,
   sentence,
   setNoteStatus,
   stamp,
+  undoTarget,
   type Asset,
   type EditDoc,
   type Op
@@ -38,6 +41,8 @@ import {
   CAPTION_STYLE_PRESETS,
   describePlan,
   findPreset,
+  finishFor,
+  finishOps,
   chaptersCommand,
   chaptersOf,
   chaptersReply,
@@ -48,6 +53,10 @@ import {
   sfxCommand,
   LOOK_COMMANDS,
   lookCommand,
+  numberIn,
+  secondsIn,
+  speedIn,
+  zoomIn,
   onBeatOps,
   parseCommand,
   planStyle,
@@ -131,6 +140,14 @@ export interface PanelStatus {
 
 /** Commands that do something rather than set a style. They sit in the slash menu with the presets. */
 const ACTION_COMMANDS: Preset[] = [
+  {
+    command: 'all',
+    title: 'Everything',
+    summary: 'Every finishing touch at once: voice polish, a music bed, transitions, a look, whooshes and chapters: /all',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
   {
     command: 'broll',
     title: 'B-roll',
@@ -472,14 +489,25 @@ export function useCutalong() {
    * keep. A chat is a project from its first message, so it shows up under
    * Chats straight away, footage or not.
    */
+  /** A project being made, so two saves at once make one file, not two. */
+  const making = useRef<Promise<Project> | null>(null)
   const ensureProject = useCallback(
     async (name: string): Promise<Project> => {
       if (projectRef.current) return projectRef.current
-      const project = await api.createProject(name.replace(/\s+/g, ' ').trim().slice(0, 60) || 'New edit', 'cut')
-      projectRef.current = project
-      rememberPlace(project.path, lastScreen.current)
-      refreshRecent()
-      return project
+      if (making.current) return making.current
+      const made = api
+        .createProject(name.trim() || 'New edit', 'cut')
+        .then((project) => {
+          projectRef.current = project
+          rememberPlace(project.path, lastScreen.current)
+          refreshRecent()
+          return project
+        })
+        .finally(() => {
+          making.current = null
+        })
+      making.current = made
+      return made
     },
     [refreshRecent]
   )
@@ -508,12 +536,16 @@ export function useCutalong() {
     [ensureProject]
   )
 
-  // Every finished turn of the chat is saved with the project, a moment after it settles.
+  // The chat is saved with the project a moment after anything in it settles.
+  // A reply still being worked on is left out, but everything before it,
+  // the person's own message and files included, is saved straight away, so
+  // quitting during a long transcription loses nothing that was said.
+  const settled = useMemo(() => JSON.stringify(messages.filter((m) => !m.progress)), [messages])
   useEffect(() => {
-    if (!projectRef.current || messages.some((m) => m.progress)) return
+    if (!projectRef.current) return
     const t = setTimeout(() => void persist(), 400)
     return () => clearTimeout(t)
-  }, [messages, persist])
+  }, [settled, persist])
 
   const setDoc = useCallback(
     (next: EditDoc): void => {
@@ -598,9 +630,15 @@ export function useCutalong() {
 
   /** Opens a saved chat: its thread when it has one, else straight into the editor. */
   const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
+    // The chat already open is not read again from disk: whatever is running
+    // in it, and anything said since it was last saved, would be lost.
+    if (path === projectRef.current?.path) {
+      setScreen(docRef.current && (prefer === 'editor' || messagesRef.current.length === 0) ? 'editor' : 'thread')
+      return
+    }
     // Work still running belongs to the chat it started in; switching now would
     // land its result in the wrong one.
-    if (isWorking() && path !== projectRef.current?.path) {
+    if (isWorking()) {
       setToast({ text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Open another once I'm done.` })
       return
     }
@@ -614,10 +652,15 @@ export function useCutalong() {
     const edit = project.edit ?? null
     docRef.current = edit
     setDocState(edit)
-    setMediaUrl(edit ? mediaUrlFor(edit.sources[0].path) : null)
+    setMediaUrl(edit?.sources[0] ? mediaUrlFor(edit.sources[0].path) : null)
     const chat = (project.chat ?? []) as Msg[]
     messagesRef.current = chat
     setMessages(chat)
+    // Nothing of the chat left behind comes along: its offers, a command
+    // waiting for footage, a graphic picked in its editor.
+    setOffers([])
+    pendingCommand.current = null
+    setGraphic(null)
     setStudy(null)
     setPanel(null)
     const next = edit && (prefer === 'editor' || chat.length === 0) ? 'editor' : 'thread'
@@ -665,7 +708,7 @@ export function useCutalong() {
       const trial = applyOps(currentCut(d), ops, context)
       if (trial.applied.length === 0) return null
       // Ops that leave the cut as it was make no version.
-      if (JSON.stringify(trial.cut) === JSON.stringify(currentCut(d))) return null
+      if (sameValue(trial.cut, currentCut(d))) return null
       const after = resolveCut(trial.cut, d.words, d.sources)
       const led = lead && lead.text ? lead : null
       const rest = describePlan(led ? trial.applied.slice(led.ops) : trial.applied, before, after, trial.cut)
@@ -753,12 +796,15 @@ export function useCutalong() {
         patch(id, { progress: null, text: `I couldn't add that footage. ${r.message}`, error: true })
         return false
       }
-      setDoc(r.doc)
-      const resolved = resolveCut(currentCut(r.doc), r.doc.words, r.doc.sources)
+      // Versions made while it came in stay: the footage goes onto the edit as it is now.
+      const latest = docRef.current
+      const merged = latest && latest.id === d.id ? mergeExtension(latest, d, r.doc) : r.doc
+      setDoc(merged)
+      const resolved = resolveCut(currentCut(merged), merged.words, merged.sources)
       const added = talking.length
       const text =
         added > 0
-          ? `${added === 1 ? `${talking[0].name} is` : `${added} more clips are`} on the end, and the edit runs ${clock(resolved.durationSec)} now. v${currentVersion(r.doc).n} is ready.`
+          ? `${added === 1 ? `${talking[0].name} is` : `${added} more clips are`} on the end, and the edit runs ${clock(resolved.durationSec)} now. v${currentVersion(merged).n} is ready.`
           : r.lined.length > 0
             ? 'The better sound is under the footage now.'
             : 'Nothing changed.'
@@ -783,7 +829,6 @@ export function useCutalong() {
       const d = docRef.current
       if (!d || files.length === 0) return []
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Bringing it in', percent: 0 } })
-      let next = d
       const added: Asset[] = []
       const failed: string[] = []
       for (const [i, f] of files.entries()) {
@@ -793,16 +838,18 @@ export function useCutalong() {
             percent: Math.round((i / files.length) * 100)
           }
         })
-        const r = await api.addAsset({ docId: d.id, path: f.path })
+        const r = await during(() => api.addAsset({ docId: d.id, path: f.path }))
         if (!r.ok) {
           failed.push(`${f.name}: ${r.message}`)
           continue
         }
-        const { doc: withAsset, asset } = addAssetTo(next, r.asset)
-        next = withAsset
+        // Onto the edit as it is now, so versions made while it came in stay.
+        const latest = docRef.current
+        if (!latest || latest.id !== d.id) break
+        const { doc: withAsset, asset } = addAssetTo(latest, r.asset)
+        setDoc(withAsset)
         added.push(asset)
       }
-      if (next !== d) setDoc(next)
       patch(id, {
         progress: null,
         text:
@@ -814,7 +861,7 @@ export function useCutalong() {
       })
       return added
     },
-    [patch, push, setDoc]
+    [during, patch, push, setDoc]
   )
 
   /** Puts an asset into the doc and cuts to it on the beat that talks about it. */
@@ -858,8 +905,13 @@ export function useCutalong() {
         progress: { stage: req.url ? 'Fetching it' : 'Bringing it in', percent: 10 }
       })
       const off = api.onAssetProgress((p) => patch(id, { progress: p }))
-      const r = await api.addAsset({ docId: d.id, ...req })
+      // Counted as work, so another project can't open while a clip is still coming in.
+      const r = await during(() => api.addAsset({ docId: d.id, ...req }))
       off()
+      if (docRef.current?.id !== d.id) {
+        patch(id, { progress: null, text: 'That edit closed before this came in, so it was left out.' })
+        return
+      }
       if (!r.ok) {
         patch(id, {
           progress: null,
@@ -896,7 +948,7 @@ export function useCutalong() {
         actions: placed.n ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
       })
     },
-    [patch, placeAsset, push]
+    [during, patch, placeAsset, push]
   )
 
   const findBroll = useCallback(
@@ -979,12 +1031,15 @@ export function useCutalong() {
       const { nodes } = await iconData()
       const base64 = await rasterize(iconSvg(nodes[name], { size: 1024, strokeWidth: 1.6 }))
       const title = name.replace(/-/g, ' ')
-      const r = await api.saveImageAsset({
-        docId: d.id,
-        base64,
-        name: title,
-        origin: { type: 'icon', url: `https://lucide.dev/icons/${name}`, author: 'Lucide', license: 'ISC', range: null }
-      })
+      const r = await during(() =>
+        api.saveImageAsset({
+          docId: d.id,
+          base64,
+          name: title,
+          origin: { type: 'icon', url: `https://lucide.dev/icons/${name}`, author: 'Lucide', license: 'ISC', range: null }
+        })
+      )
+      if (docRef.current?.id !== d.id) return
       if (!r.ok) {
         push({ role: 'assistant', text: r.message, error: true })
         return
@@ -997,7 +1052,7 @@ export function useCutalong() {
         actions: placed.n ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
       })
     },
-    [placeAsset, push]
+    [during, placeAsset, push]
   )
 
   /**
@@ -1022,8 +1077,9 @@ export function useCutalong() {
         say('Drop some footage first, then I can put transitions in it.')
         return
       }
-      const secMatch = /(\d+(?:\.\d+)?)\s*(?:s|sec|secs|seconds)?\b/i.exec(rest)
-      const words = (secMatch ? rest.replace(secMatch[0], ' ') : rest).trim()
+      // ".3", "0.3" or "0.3s": how long; the words left say which kind.
+      const secNum = numberIn(rest)
+      const words = (secNum ? rest.replace(secNum.text, ' ') : rest).trim()
       const kind = words ? parseTransition(words) : 'dissolve'
       if (kind === null) {
         say(`I don't know a “${words}” transition. Try dissolve, dip to black, flash, whip, push, slide, wipe or zoom.`)
@@ -1032,7 +1088,7 @@ export function useCutalong() {
       const cut = currentCut(d)
       let targets: string[]
       if (where === 'panel' && beat) {
-        if (cut.beats[0]?.id === beat) {
+        if (resolveCut(cut, d.words, d.sources).beats[0]?.id === beat) {
           say('Beat 1 opens the video, so nothing comes before it. Put the playhead on a later beat, or use /fade.')
           return
         }
@@ -1045,7 +1101,8 @@ export function useCutalong() {
         say('I found no change of section to put it on. Put the playhead on a beat in the editor and run it there.')
         return
       }
-      const sec = secMatch ? Math.min(3, Math.max(0.04, Number(secMatch[1]))) : undefined
+      const asked = secNum ? secondsIn(secNum.text) : null
+      const sec = asked !== null ? Math.min(3, Math.max(0.04, asked)) : undefined
       const ops: Op[] = [
         { op: 'transition', beats: targets, kind, ...(sec !== undefined && kind !== 'cut' ? { sec } : {}) }
       ]
@@ -1099,12 +1156,12 @@ export function useCutalong() {
         return
       }
       const off = /^(off|none|no|0+(\.0+)?)$/i.test(rest.trim())
-      const n = /(\d+(?:\.\d+)?)/.exec(rest)
-      const sec = off ? 0 : n ? Math.min(MAX_SPLIT_EDIT_SEC, Math.max(0.04, Number(n[1]))) : DEFAULT_SPLIT_EDIT_SEC
+      const n = secondsIn(rest)
+      const sec = off ? 0 : n !== null ? Math.min(MAX_SPLIT_EDIT_SEC, Math.max(0.04, n)) : DEFAULT_SPLIT_EDIT_SEC
       const cut = currentCut(d)
       let targets: string[]
       if (where === 'panel' && beat) {
-        if (cut.beats[0]?.id === beat) {
+        if (resolveCut(cut, d.words, d.sources).beats[0]?.id === beat) {
           say('Beat 1 opens the video, so its sound and picture start together. Put the playhead on a later beat.')
           return
         }
@@ -1162,9 +1219,10 @@ export function useCutalong() {
       }
       const cut = currentCut(d)
       const off = /^(off|none|no|normal)$/i.test(rest.trim())
-      const n = /(\d+(?:\.\d+)?)/.exec(rest)
+      // "2", "2x", ".5" or "50%" (of normal speed); for /freeze, seconds.
+      const asked = speedIn(rest)
       const speedOf = (fallback: number | null): number | null =>
-        off ? 1 : n ? Math.min(MAX_SPEED, Math.max(MIN_SPEED, Number(n[1]))) : fallback
+        off ? 1 : asked !== null ? Math.min(MAX_SPEED, Math.max(MIN_SPEED, asked)) : fallback
       let targets: string[]
       if (where === 'panel' && beat) targets = [beat]
       else if (command === 'freeze') {
@@ -1199,7 +1257,8 @@ export function useCutalong() {
           say('That beat has no word to hold on. Put the playhead on a beat with speech in it.')
           return
         }
-        const sec = off ? 0 : n ? Math.min(10, Math.max(0.1, Number(n[1]))) : 1
+        const held = secondsIn(rest)
+        const sec = off ? 0 : held !== null ? Math.min(10, Math.max(0.1, held)) : 1
         ops = [{ op: 'freeze', beat: targets[0], word: word.id, sec }]
       }
       const done = applyAsVersion(ops, 'It plays at a new speed.')
@@ -1245,11 +1304,24 @@ export function useCutalong() {
         return
       }
       const cut = currentCut(d)
-      // "1.2" or "1.2x" is how close; "20%" is 20% in.
-      const n = /(\d+(?:\.\d+)?)\s*(%|x)?/i.exec(rest)
-      const asked = n ? (n[2] === '%' ? 1 + Number(n[1]) / 100 : Number(n[1])) : null
+      // "1.2" or "1.2x" is how close; "20%" is 20% in, and "120%" the same.
+      const asked = zoomIn(rest)
       const zoom = asked !== null && asked > 1 ? { zoom: Math.min(MAX_CAMERA_ZOOM, asked) } : {}
       const inPanel = where === 'panel' && beat !== null
+      // "/pushin off" and the like take the move away, as every other command's "off" does.
+      const off = /^(off|none|no|remove|stop)$/i.test(rest.trim())
+      if (off && command === 'punchin') {
+        const punched = cut.beats.filter((b) => (b.treatment.zoom ?? 1) > 1.001).map((b) => b.id)
+        const targets = inPanel ? [beat as string] : punched
+        if (targets.length === 0 || (inPanel && !punched.includes(beat as string))) {
+          say(inPanel ? 'That beat is not punched in.' : 'Nothing is punched in.')
+          return
+        }
+        const done = applyAsVersion([{ op: 'treat', beats: targets, set: { zoom: 1 } }], 'The punch-ins are gone.')
+        say(done ? `v${done.n} is ready. ${done.summary}` : 'Nothing is punched in.', !!done)
+        return
+      }
+      if (off) command = 'still'
       // The word playing at the playhead, or the last one heard before it.
       const wordHere = (): string | null => {
         const words = resolveCut(cut, d.words, d.sources).words.filter((w) => w.beat === beat)
@@ -1429,24 +1501,12 @@ export function useCutalong() {
         } else path = await api.chooseAudio()
         if (!path) return
         if (where === 'panel') setPanel({ text: '', progress: { stage: 'Finding the beat', percent: 40 } })
-        const read = await api.analyzeMusic(path)
-        if (!read.ok) {
-          say(read.message)
+        const bed = await musicBed(path)
+        if ('say' in bed) {
+          say(bed.say)
           return
         }
-        const f = read.facts
-        ops = [
-          {
-            op: 'music',
-            set: {
-              path,
-              durationSec: f.durationSec,
-              ...(f.lufs !== null ? { lufs: f.lufs } : {}),
-              ...(f.bpm !== null ? { bpm: f.bpm } : {}),
-              beats: f.beats
-            }
-          }
-        ]
+        ops = [bed.op]
       }
       const done = applyAsVersion(ops, 'The sound has changed.')
       if (!done) {
@@ -1882,6 +1942,56 @@ export function useCutalong() {
     [patch, push]
   )
 
+  /**
+   * /all: every finishing touch a video of its kind gets, as one version
+   * (shared/presets/finish). A music bed needs a track the person chooses;
+   * without one the rest still goes on, and the reply says how to add it.
+   */
+  const finishCommand = useCallback(
+    async (where: 'thread' | 'panel'): Promise<void> => {
+      const say = (text: string, aside: string | null = null, open = false): void => {
+        if (where === 'panel') setPanel({ text: aside ? `${text} ${aside}` : text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            aside,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        pendingCommand.current = 'all'
+        say("Drop some footage and I'll run /all on it.")
+        return
+      }
+      const profile = profileFor(d, brandRef.current.niche)
+      let music: Op | null = null
+      let musicNote: string | null = null
+      if (finishFor(profile.id).music && !currentCut(d).music) {
+        const path = await api.chooseAudio()
+        if (path) {
+          if (where === 'panel') setPanel({ text: '', progress: { stage: 'Finding the beat', percent: 40 } })
+          const bed = await musicBed(path)
+          if ('op' in bed) music = bed.op
+          else musicNote = bed.say
+        }
+      }
+      // The edit as it is now: another project may have opened while the track was chosen.
+      const latest = docRef.current
+      if (!latest || latest.id !== d.id) return
+      const plan = finishOps(latest, profile.id, music)
+      const notes = [musicNote, ...plan.notes].filter(Boolean).join(' ') || null
+      const done = applyAsVersion(plan.ops, 'The finishing touches are on.', 'all')
+      if (!done) {
+        say('Everything /all does is already on this cut.', notes)
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, notes, true)
+    },
+    [applyAsVersion, push]
+  )
+
   const commandNow = useCallback(
     async (
       command: string,
@@ -1893,6 +2003,10 @@ export function useCutalong() {
       const d0 = docRef.current
       const r0 = d0 && at !== null ? resolveCut(currentCut(d0), d0.words, d0.sources) : null
       const beat = r0 && at !== null ? ((beatAt(r0, at) ?? r0.beats[r0.beats.length - 1])?.id ?? null) : null
+      if (command === 'all') {
+        await finishCommand(where)
+        return
+      }
       if (command === 'transition') {
         transitionCommand(rest, where, beat)
         return
@@ -2022,7 +2136,8 @@ export function useCutalong() {
       reframeCommandRun,
       chaptersCommandRun,
       premiereCommand,
-      sfxCommandRun
+      sfxCommandRun,
+      finishCommand
     ]
   )
 
@@ -2278,6 +2393,9 @@ export function useCutalong() {
       const talking = roles ? pick(roles.talking) : videos.slice(0, 1)
       const sound = roles ? pick(roles.sound) : []
       const broll = roles ? pick(roles.broll) : fresh.filter((f) => !talking.includes(f))
+      // Named after the talking clip, now it is known, and saved before the long transcription starts.
+      if (!projectRef.current && talking.length > 0)
+        void ensureProject(talking[0].name.replace(/\.[^.]+$/, '')).then(() => persist())
       // An edit with no words yet was only ever pictures; talking footage starts it over.
       const wordless = d !== null && d.words.length === 0 && talking.length > 0
       if (!d || wordless) {
@@ -2296,7 +2414,7 @@ export function useCutalong() {
       if (talking.length > 0 || sound.length > 0) await extend(talking, sound)
       await addMaterial(broll)
     },
-    [addMaterial, extend, push, sortFiles, startEdit]
+    [addMaterial, ensureProject, extend, persist, push, sortFiles, startEdit]
   )
 
   const submit = useCallback(
@@ -2317,7 +2435,7 @@ export function useCutalong() {
       // clip once it is known, not after whichever file was dropped first.
       const sorting = recordingsIn.length > 1 && !docRef.current
       const fallbackName = attachments[0]?.name.replace(/\.[^.]+$/, '') || words || 'New edit'
-      if (!sorting) void ensureProject(fallbackName)
+      if (!sorting) void ensureProject(fallbackName).then(() => persist())
       push({
         role: 'user',
         text: link ? words || 'Make it feel like this' : text,
@@ -2400,25 +2518,43 @@ export function useCutalong() {
         setBusy(false)
       }
     },
-    [addMaterial, answerTakes, ask, bringIn, capturePage, ensureProject, push, runCommand, studyLink, takeIn]
+    [addMaterial, answerTakes, ask, bringIn, capturePage, ensureProject, persist, push, runCommand, studyLink, takeIn]
   )
+
+  /** A study is kept only while its chat stays open; after that, the link is needed again. */
+  const studyGone = useCallback((): void => {
+    push({
+      role: 'assistant',
+      text: "I only keep a video's measurements while its chat is open. Paste the link again and I'll measure it."
+    })
+  }, [push])
 
   const useStyle = useCallback((): void => {
     const s = studyRef.current
     const d = docRef.current
-    if (!s || !d) return
+    if (!s) {
+      studyGone()
+      return
+    }
+    if (!d) {
+      push({ role: 'assistant', text: 'Drop your footage in, and I can put this style on it.' })
+      return
+    }
     const plan = planStyle(d, s.style)
     const done = applyAsVersion(plan.ops, 'The style of the video you sent is on.')
     setPanel(
       plan.open.length ? { text: `${done ? `v${done.n} is ready. ${done.summary} ` : ''}${plan.open.join(' ')}` } : null
     )
     setScreen('editor')
-  }, [applyAsVersion])
+  }, [applyAsVersion, push, studyGone])
 
   const saveStyle = useCallback(
     async (command: string): Promise<void> => {
       const s = studyRef.current
-      if (!s) return
+      if (!s) {
+        studyGone()
+        return
+      }
       // Every command the app answers to is taken, the editing ones and the graphics included.
       if (presetsRef.current.some((p) => p.builtIn && p.command === command)) {
         push({ role: 'assistant', text: `/${command} is built in. Pick another name.`, error: true })
@@ -2440,7 +2576,7 @@ export function useCutalong() {
       setSaved(r.presets)
       push({ role: 'assistant', text: `Saved. Type /${command} on any footage to cut it this way.` })
     },
-    [push]
+    [push, studyGone]
   )
 
   const onAction = useCallback(
@@ -2537,12 +2673,17 @@ export function useCutalong() {
 
   const undo = useCallback((): void => {
     const d = docRef.current
-    if (!d || d.versions.length < 2) return
+    if (!d) return
+    // Back along the versions as they were made, not to the one just undone.
+    const back = undoTarget(d)
+    if (back === null) {
+      setPanel({ text: 'This is the first version; there is nothing earlier to go back to.' })
+      return
+    }
     const n = currentVersion(d).n
-    const back = d.versions[d.versions.length - 2]
-    setDoc(restore(d, back.n))
-    remember({ kind: 'undo', doc: d.id, from: n, to: back.n })
-    setPanel({ text: `v${n + 1} is v${back.n} again.` })
+    setDoc(restore(d, back))
+    remember({ kind: 'undo', doc: d.id, from: n, to: back })
+    setPanel({ text: `v${n + 1} is v${back} again.` })
   }, [setDoc])
 
   /** True while an export runs, so a second press waits for it. */
@@ -2606,6 +2747,7 @@ export function useCutalong() {
     docRef.current = null
     messagesRef.current = []
     pendingCommand.current = null
+    setOffers([])
     setDocState(null)
     setMediaUrl(null)
     setMessages([])
@@ -2665,6 +2807,25 @@ export function useCutalong() {
     selectGraphic: setGraphic,
     updateGraphic,
     removeGraphic
+  }
+}
+
+/** A track as a music bed: its length, loudness and beats, read once, or why it could not be read. */
+async function musicBed(path: string): Promise<{ op: Op } | { say: string }> {
+  const read = await api.analyzeMusic(path)
+  if (!read.ok) return { say: read.message }
+  const f = read.facts
+  return {
+    op: {
+      op: 'music',
+      set: {
+        path,
+        durationSec: f.durationSec,
+        ...(f.lufs !== null ? { lufs: f.lufs } : {}),
+        ...(f.bpm !== null ? { bpm: f.bpm } : {}),
+        beats: f.beats
+      }
+    }
   }
 }
 

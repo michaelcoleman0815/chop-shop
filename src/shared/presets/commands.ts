@@ -30,6 +30,15 @@ export function slashQuery(text: string): string | null {
 }
 
 /**
+ * Whether what is typed after "/" is a command in full, as "/polish" is: Enter
+ * then runs it. A part of one, or "/" alone, is completed to the menu's
+ * choice instead, so nothing runs that was not asked for.
+ */
+export function namesCommand(query: string | null, matches: { command: string }[]): boolean {
+  return !!query && matches.some((m) => m.command.toLowerCase() === query)
+}
+
+/**
  * Presets matching a slash query, best first: the command itself, then a
  * command starting with the query, then a title word starting with it, then
  * the query anywhere in the command. Built-ins win ties, and the list stays in

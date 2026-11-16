@@ -1,5 +1,6 @@
 import { picturesIn } from '../motion/apply'
 import { applyOps, type OpsResult } from './ops'
+import { sameValue } from './same'
 import {
   DEFAULT_CAPTIONS,
   DEFAULT_LOUDNESS,
@@ -273,6 +274,43 @@ export function commit(
 }
 
 /** Brings back an earlier version's cut as the newest version. */
+/**
+ * Footage that finished coming in while the person kept editing. `extended`
+ * is what the main process made from `before`: more sources and their words,
+ * one version that puts them on the end, and sometimes better sound lined up
+ * under a recording already there. Those are added to `current`, the edit as
+ * it is now, so the versions made in the meantime stay. With nothing changed
+ * in between, `extended` is the answer as it is.
+ */
+export function mergeExtension(current: EditDoc, before: EditDoc, extended: EditDoc, at?: string): EditDoc {
+  if (current === before) return extended
+  const known = new Set(before.sources.map((s) => s.id))
+  const fresh = extended.sources.filter((s) => !known.has(s.id))
+  // Sound lined up under a recording that was already in the edit.
+  const relined = new Map(
+    extended.sources
+      .filter((s) => known.has(s.id) && !sameValue(s.audio, before.sources.find((b) => b.id === s.id)?.audio))
+      .map((s) => [s.id, s.audio])
+  )
+  const maps = Object.entries(extended.audio ?? {}).filter(([id, m]) => !sameValue(m, before.audio?.[id]))
+  let next: EditDoc = {
+    ...current,
+    sources: current.sources.map((s) => (relined.has(s.id) ? { ...s, audio: relined.get(s.id) } : s)),
+    ...(maps.length > 0 ? { audio: { ...(current.audio ?? {}), ...Object.fromEntries(maps) } } : {})
+  }
+  if (fresh.length > 0) {
+    const ids = new Set(fresh.map((s) => s.id))
+    next = addSources(
+      next,
+      fresh,
+      extended.words.filter((w) => ids.has(w.source)),
+      currentVersion(extended).summary,
+      at
+    )
+  }
+  return next
+}
+
 export function restore(doc: EditDoc, n: number, at = new Date().toISOString()): EditDoc {
   const target = doc.versions.find((v) => v.n === n)
   if (!target) throw new Error(`There is no v${n}.`)
@@ -281,9 +319,42 @@ export function restore(doc: EditDoc, n: number, at = new Date().toISOString()):
     at,
     summary: `Back to v${n}.`,
     ops: [],
-    cut: target.cut
+    cut: target.cut,
+    restores: n
   }
   return { ...doc, versions: [...doc.versions, version] }
+}
+
+/** The number of the version a restore brings back; versions saved before restores were marked say so in their summary. */
+function restored(v: Version): number | null {
+  if (v.restores) return v.restores
+  const m = /^Back to v(\d+)\.$/.exec(v.summary)
+  return m && v.ops.length === 0 ? Number(m[1]) : null
+}
+
+/** The version a version's cut first came from: itself, or whatever a restore (of a restore) brought back. */
+function origin(doc: EditDoc, v: Version): Version {
+  let at = v
+  for (let guard = 0; guard < doc.versions.length; guard++) {
+    const n = restored(at)
+    const back = n === null ? undefined : doc.versions.find((x) => x.n === n)
+    if (!back || back === at) break
+    at = back
+  }
+  return at
+}
+
+/**
+ * Where Undo goes from the version on screen: to the version it was made
+ * from, through any restores, so pressing it again keeps going back instead
+ * of bringing back what the last press undid. Null when there is nothing
+ * earlier.
+ */
+export function undoTarget(doc: EditDoc): number | null {
+  const from = origin(doc, currentVersion(doc))
+  const i = doc.versions.findIndex((v) => v.n === from.n)
+  if (i <= 0) return null
+  return origin(doc, doc.versions[i - 1]).n
 }
 
 export function addNote(doc: EditDoc, text: string, beat: string | null = null): EditDoc {

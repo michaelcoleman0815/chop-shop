@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
-import { slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
+import { namesCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
 import { api } from '../api'
 import { Poster } from './Poster'
 import { Icon, IconButton, Mark } from './ui'
@@ -84,7 +84,9 @@ export function Composer({
         setPick((p) => (p - 1 + matches.length) % matches.length)
         return
       }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+      // Enter runs a command typed in full; it completes one typed in part.
+      const runs = e.key === 'Enter' && namesCommand(query, matches)
+      if (!runs && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey))) {
         e.preventDefault()
         choose(matches[pick].command)
         return

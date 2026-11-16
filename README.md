@@ -35,8 +35,9 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
   ramps, freeze frames and reverse, camera moves (`/pushin`, `/kenburns`, `/punchin`, `/pan`, `/shake`) and `/focus`
   for screen recordings. A music bed that dips under speech and cuts on its beat, voice polish, sound effects made on
   your Mac, looks and LUTs (`/warm`, `/cinematic`, `/look contrast 0.2`), chapters for YouTube, a second camera
-  (`/angle`), and following the speaker when a wide shot is cropped to vertical (`/reframe`). Each one plays in the
-  preview the moment it exists, exactly as it exports. Where something does not fit, such as a dissolve between
+  (`/angle`), and following the speaker when a wide shot is cropped to vertical (`/reframe`). `/all` puts on every
+  finishing touch a video of its kind gets in one version: voice polish, a music bed, transitions where the sections
+  change, a look, whooshes and chapters. Each one plays in the preview the moment it exists, exactly as it exports. Where something does not fit, such as a dissolve between
   words with no pause between them, it says so instead of pretending.
 - **Motion graphics the way After Effects does.** Lower thirds, callouts, keyword pops, kinetic titles, hook banners,
   end cards, logos, market charts, screenshots of a page and a phone with logos going round it, each a slash command

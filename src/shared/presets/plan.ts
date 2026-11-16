@@ -4,6 +4,7 @@ import { motionPhrases } from '../motion/describe'
 import { applyOps } from '../edit/ops'
 import { pictureSpan, resolveCut, type Resolved, type ResolvedBeat } from '../edit/resolve'
 import { currentCut } from '../edit/doc'
+import { sameValue } from '../edit/same'
 import type { Cut, EditDoc, Op } from '../edit/schema'
 import { beatsOnClock } from '../edit/audio'
 import { CAMERA_INFO } from '../edit/camera'
@@ -97,7 +98,7 @@ export function planStyle(
   if (style.look !== undefined) {
     // A look replaces the one there, keeping any LUT; nothing to do when it is already there.
     const next = mergeLook(cut.look, style.look, true)
-    if (JSON.stringify(next) !== JSON.stringify(cut.look ?? null)) push({ op: 'look', set: style.look, replace: true })
+    if (!sameValue(next, cut.look ?? null)) push({ op: 'look', set: style.look, replace: true })
   }
   if (style.pad) {
     const { inSec, outSec } = style.pad

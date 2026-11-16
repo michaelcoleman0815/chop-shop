@@ -11,6 +11,7 @@ import {
   planStyle,
   PresetSchema,
   slashQuery,
+  namesCommand,
   suggestCommandName,
   suggestCommands,
   type Preset
@@ -82,6 +83,18 @@ describe('slash commands', () => {
     expect(slashQuery('/sho')).toBe('sho')
     expect(slashQuery('/shorts ')).toBeNull()
     expect(slashQuery('shorts')).toBeNull()
+  })
+
+  it('run a command typed in full on Enter, and complete one typed in part', () => {
+    const namesOf = (text: string): boolean => {
+      const q = slashQuery(text)
+      return namesCommand(q, q === null ? [] : suggestCommands(q, ALL))
+    }
+    expect(namesOf('/shorts')).toBe(true)
+    expect(namesOf('/Shorts')).toBe(true)
+    expect(namesOf('/sho')).toBe(false)
+    // "/" alone runs nothing: the first in the menu is only filled in.
+    expect(namesOf('/')).toBe(false)
   })
 
   it('suggest matches, best first', () => {

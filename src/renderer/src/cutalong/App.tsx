@@ -39,11 +39,13 @@ export default function App(): JSX.Element {
   }, [open])
 
   // Toasts that report a result clear themselves; errors and progress stay.
+  // The timer starts when the toast does, not again each time the app draws.
+  const { toast: shown, setToast } = app
   useEffect(() => {
-    if (!app.toast || app.toast.error || app.toast.text.endsWith('%')) return
-    const t = setTimeout(() => app.setToast(null), 6000)
+    if (!shown || shown.error || shown.text.endsWith('%')) return
+    const t = setTimeout(() => setToast(null), 6000)
     return () => clearTimeout(t)
-  }, [app.toast, app])
+  }, [shown, setToast])
 
   const browse = async (): Promise<void> => {
     const project = await api.openProject()

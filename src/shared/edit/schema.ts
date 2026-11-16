@@ -350,7 +350,9 @@ export const VersionSchema = z.object({
   /** What changed from the version before. */
   ops: z.array(OpSchema),
   /** The whole cut as of this version, so restoring never depends on replaying. */
-  cut: CutSchema
+  cut: CutSchema,
+  /** Set when this version brings an earlier one back as it was (undo): that version's number. */
+  restores: z.number().int().positive().optional()
 })
 export type Version = z.infer<typeof VersionSchema>
 
