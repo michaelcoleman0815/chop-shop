@@ -99,7 +99,8 @@ export function finishShoot(
   const span = {
     firstAt: times.length ? Math.min(...times) : null,
     lastAt: times.length ? Math.max(...times) : null,
-    zone: (t: number) => zoneAt(clips, t)
+    zone: (t: number) => zoneAt(clips, t),
+    footage: shoot.scenes
   }
   const scenes = shoot.scenes.map((s, k) => ({ ...s, name: nameScene(s, moments, k, span) }))
   return {

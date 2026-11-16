@@ -14,8 +14,10 @@ import {
   vlogShown,
   withOps
 } from './plan'
+import { composeVlog } from './compose'
 import { dayName, nameScene } from './describe'
-import { pretendVlog } from './pretend'
+import { pretendClip, pretendVlog } from './pretend'
+import { assembleShoot } from './shoot'
 import { sceneInSentence, scenesChanged, storyReply } from './reply'
 import { parseVlogAsk, sceneNamed, wantsVlog } from './request'
 import type { Vlog } from './schema'
@@ -228,28 +230,76 @@ describe('a shoot of more than one day', () => {
     expect(sceneInSentence(nameScene(scene(at(2, 21)), [], 0, span))).toBe('the night at 21:00')
   })
 
-  it('counts the hours after midnight as the night before, not the next morning', () => {
+  it('counts the hours after midnight of a night filmed as the night before, not the next morning', () => {
     const at = (day: number, h: number, m = 0): number => new Date(2026, 4, day, h, m).getTime() / 1000
     const scene = (id: string, startAt: number) => ({ id, name: '', clips: [], startAt, endAt: startAt, place: null })
     // A Saturday party that runs on past midnight.
-    const span = { firstAt: at(2, 19), lastAt: at(3, 0, 50) }
-    const scenes = [scene('sc1', at(2, 19)), scene('sc2', at(2, 23, 10)), scene('sc3', at(3, 0, 50))].map((s, k) => ({
-      ...s,
-      name: nameScene(s, [], k, span)
-    }))
+    const party = [scene('sc1', at(2, 19)), scene('sc2', at(2, 23, 10)), scene('sc3', at(3, 0, 50))]
+    const span = { firstAt: at(2, 19), lastAt: at(3, 0, 50), footage: party }
+    const scenes = party.map((s, k) => ({ ...s, name: nameScene(s, [], k, span) }))
     expect(scenes.map((s) => sceneInSentence(s.name))).toEqual([
       'the evening at 19:00',
       'the night at 23:10',
       'the night at 0:50'
     ])
     expect(sceneNamed('more of the one at 0:50', scenes, [], [])?.id).toBe('sc3')
-    // Two nights on, the small hours are named by the night they belong to.
-    expect(nameScene(scene('sc4', at(4, 1, 30)), [], 3, { firstAt: at(2, 19), lastAt: at(4, 1, 30) })).toBe(
-      'Sunday night, 1:30'
-    )
+    // Two nights on, the small hours are named by the night they belong to, when it was filmed.
+    const sunday = scene('sc4', at(3, 23, 20))
+    const late = scene('sc5', at(4, 1, 30))
+    const longer = { firstAt: at(2, 19), lastAt: at(4, 1, 30), footage: [...party, sunday, late] }
+    expect(nameScene(late, [], 4, longer)).toBe('Sunday night, 1:30')
+    // With nothing filmed since the party, they are Monday's early morning.
+    expect(nameScene(late, [], 3, { ...longer, footage: [...party, late] })).toBe('Monday morning, 1:30')
     // And a second day still starts in its morning.
-    expect(nameScene(scene('sc5', at(3, 8, 30)), [], 1, { firstAt: at(2, 19), lastAt: at(3, 8, 30) })).toBe(
+    expect(nameScene(scene('sc6', at(3, 8, 30)), [], 1, { firstAt: at(2, 19), lastAt: at(3, 8, 30) })).toBe(
       'Sunday morning, 8:30'
     )
+  })
+
+  it('names the small hours as the early morning of their own day when no night ran on to them', () => {
+    // Clips shot at these times on a phone an hour east of UTC, named as a made vlog names its scenes.
+    const shot = (times: [number, number, number][]): Vlog => {
+      const watched = times.map(([day, h, m], i) => ({
+        ...pretendClip(`/shoot/IMG_${2000 + i}.MOV`, i, times.length).watched,
+        recordedAt: new Date(Date.UTC(2026, 4, day, h, m) - 3600_000).toISOString(),
+        zoneMin: 60
+      }))
+      const shoot = assembleShoot(watched)
+      return composeVlog({ id: 'day', title: 'Vlog', shoot, watched, heard: new Map(), ask: null }).vlog
+    }
+    const named = (v: Vlog, words: string): number =>
+      v.scenes.findIndex((s) => s === sceneNamed(words, v.scenes, v.clips, v.moments))
+    // A routine that starts at 4:30 is one day, from its early morning.
+    const routine = shot([
+      [2, 4, 30],
+      [2, 9, 0],
+      [2, 14, 0]
+    ])
+    expect(routine.scenes.map((s) => s.name)).toEqual(['Morning, 4:30', 'Morning, 9:00', 'Afternoon, 14:00'])
+    // A bare 4:35 is read as the morning too when a scene is nearer it than the afternoon's.
+    expect(named(routine, 'more of the one at 4:35')).toBe(0)
+    expect(named(routine, 'drop the night')).toBe(-1)
+    // A Saturday party filmed on past midnight: its small hours are still Saturday night.
+    const party = shot([
+      [2, 19, 0],
+      [2, 23, 10],
+      [3, 0, 50]
+    ])
+    expect(party.scenes.map((s) => s.name)).toEqual(['Evening, 19:00', 'Night, 23:10', 'Night, 0:50'])
+    // A trip with nothing filmed from 22:00 to the flight at 4:10: the flight is Sunday's early morning.
+    const trip = shot([
+      [2, 10, 0],
+      [2, 22, 0],
+      [3, 4, 10],
+      [3, 12, 0]
+    ])
+    expect(trip.scenes.map((s) => s.name)).toEqual([
+      'Morning, 10:00',
+      'Night, 22:00',
+      'Sunday morning, 4:10',
+      'Sunday afternoon, 12:00'
+    ])
+    expect(named(trip, 'the one at 4:10')).toBe(2)
+    expect(named(trip, 'drop the night')).toBe(1)
   })
 })
