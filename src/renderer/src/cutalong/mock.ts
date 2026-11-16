@@ -37,10 +37,38 @@ function fakeWords(): { text: string; startSec: number; endSec: number }[] {
   return out
 }
 
+/**
+ * Raw footage, for files with "raw" in the name: a tech review with
+ * the retakes a person leaves in, so the takes can be seen working. "|0.9|"
+ * is a pause.
+ */
+const RAW_SCRIPT =
+  "Today I'm reviewing the Pixel 9 Pro. |1.2| Today I'm reviewing the Pixel 9 Pro and the Watch. " +
+  "Let's start with the camera. I've been using this phone for three ye- |0.4| for three years now, " +
+  'and the battery still lasts all day. |0.9| The main camera is a big, uh, |0.7| The main camera is a big step up. ' +
+  'Low light is where it shines. |1.0| Low light is where it really shines. ' +
+  "That's it for today. The link is in the description."
+
+function rawWords(): { text: string; startSec: number; endSec: number }[] {
+  const out: { text: string; startSec: number; endSec: number }[] = []
+  let t = 0.6
+  for (const token of RAW_SCRIPT.split(/\s+/)) {
+    const pause = /^\|([\d.]+)\|$/.exec(token)
+    if (pause) {
+      t += Number(pause[1])
+      continue
+    }
+    const len = 0.16 + Math.min(0.32, token.length * 0.035)
+    out.push({ text: token, startSec: t, endSec: t + len })
+    t += len + (/[.!?]$/.test(token) ? 0.5 : /,$/.test(token) ? 0.2 : 0.07)
+  }
+  return out
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 function fakeDoc(path: string): EditDoc {
-  const words = fakeWords()
+  const words = /\braw\b/i.test(path.split('/').pop() ?? '') ? rawWords() : fakeWords()
   const source = {
     id: 's1',
     path,

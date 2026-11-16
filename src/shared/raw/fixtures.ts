@@ -138,6 +138,11 @@ export const FIXTURES: Fixture[] = [
     script: "[The battery lasts two full days.] |4.0| The battery lasts two full days. That's the headline."
   },
   {
+    name: 'whole line said again and taken further',
+    script:
+      "[Today I'm reviewing the Pixel 9 Pro.] |1.2| Today I'm reviewing the Pixel 9 Pro and the Watch. Let's start."
+  },
+  {
     name: 'back up a few words, cut-off stem',
     script:
       "I've been using this phone [for three ye- |0.45|] for three years now, and the battery still lasts all day."

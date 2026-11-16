@@ -377,6 +377,19 @@ export function analyzeTakes(
         A[A.length - 1].norm.length < B[B.length - 1].norm.length &&
         sameWord(A[A.length - 1].norm, B[B.length - 1].norm, true)
       if (!lineGoesOn && !cutStem && !marked) continue
+      // A whole sentence, said again and then taken further ("...the Pixel 9
+      // Pro." then "...the Pixel 9 Pro and the Watch."), is an earlier take
+      // of the line, not a false start: the line pass decides between them.
+      const wholeSentence =
+        best >= 4 &&
+        endsSentence(A[A.length - 1].text) &&
+        gap >= 0.6 &&
+        !cutStem &&
+        !marked &&
+        (end - best === 0 ||
+          endsSentence(content[end - best - 1].text) ||
+          A[0].start - content[end - best - 1].end >= 0.6)
+      if (wholeSentence) continue
 
       // A single repeated content word needs more than a pause to count.
       const single = best === 1
@@ -417,7 +430,8 @@ export function analyzeTakes(
     if (idx.length === 0) return null
     const lastI = cur[cur.length - 1]
     const lastContent = all[idx[idx.length - 1]]
-    const next = all.find((w, j) => j > lastI && !struck.has(j))
+    let next: W | undefined
+    for (let j = lastI + 1; j < all.length && !next; j++) if (!struck.has(j)) next = all[j]
     const after = all.slice(lastI + 1, (next?.i ?? all.length - 1) + 1)
     return {
       n: lines.length,
@@ -455,10 +469,8 @@ export function analyzeTakes(
       // Starting the line over is a new take: after a pause for its first two
       // words, and with no pause at all for its first three.
       const opening = cur.filter((x) => all[x].content).slice(0, 3)
-      const ahead = all
-        .slice(i)
-        .filter((x) => x.content && !struck.has(x.i))
-        .slice(0, 3)
+      const ahead: W[] = []
+      for (let j = i; j < all.length && ahead.length < 3; j++) if (all[j].content && !struck.has(j)) ahead.push(all[j])
       const matches = (n: number): boolean =>
         opening.length >= n &&
         ahead.length >= n &&
@@ -527,6 +539,21 @@ export function analyzeTakes(
   /** Matches too weak alone, kept to be confirmed by the lines around them. */
   const candidates: { j: Line; m: Line; conf: number }[] = []
 
+  // Each line's words as counts, plurals folded, for a quick upper bound on
+  // how much two lines can share: most pairs are rejected on that alone, so
+  // an hour of speech is not compared word by word, line against line.
+  const fold = (t: string): string => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t)
+  const counts = lines.map((l) => {
+    const c = new Map<string, number>()
+    for (const t of l.tokens) c.set(fold(t), (c.get(fold(t)) ?? 0) + 1)
+    return c
+  })
+  const overlap = (x: number, y: number): number => {
+    let n = 0
+    for (const [t, k] of counts[x]) n += Math.min(k, counts[y].get(t) ?? 0)
+    return n
+  }
+
   for (const j of lines) {
     if (setupLines.has(j.n) || j.tokens.length < 2) continue
     if (isCue(j.idx.map((i) => all[i].text)) && j.tokens.length <= 6) {
@@ -541,6 +568,11 @@ export function analyzeTakes(
       const near = apart <= opts.windowSec && j.n - m.n <= 14
       const a = m.tokens
       const b = j.tokens
+      // Lines that start differently can only match on most of their words.
+      if (!sameWord(a[0], b[0])) {
+        const most = Math.max(a.length, b.length) * (near ? 0.6 : 0.85)
+        if (overlap(m.n, j.n) < Math.max(3, most)) continue
+      }
       const shared = lcs(a, b)
       const full = shared / Math.max(a.length, b.length)
       const startsAlike = sharedPrefix(a, b) >= 1
@@ -590,22 +622,27 @@ export function analyzeTakes(
           if (parallel) continue
         }
       } else continue
-      // Something said between the two that is not another take of them.
-      const others = lines.slice(m.n + 1, j.n).filter((l) => !cueLines.has(l.n) && l.tokens.length >= 2)
-      const between = others.filter((l) => find(l.n) !== find(m.n))
       // A shortened rewording away from its twin waits for the lines around
-      // it to confirm it: the intro said again as a whole.
-      if (reworded && (!near || between.length > 0)) {
+      // it to confirm it: the intro said again as a whole. Far apart, any
+      // other line needs to be near-identical and of some length, like the
+      // intro said again at the end.
+      if (reworded && !near) {
         candidates.push({ j, m, conf: 0.65 })
         continue
       }
-      if (!near) {
-        // Far apart: only a near-identical line of some length, like the
-        // intro said again at the end.
-        if (full < 0.85 || Math.min(a.length, b.length) < 5) continue
-        conf -= 0.1
+      if (!near && (full < 0.85 || Math.min(a.length, b.length) < 5)) continue
+      // Something said between the two that is not another take of them.
+      let between = 0
+      for (let x = m.n + 1; x < j.n; x++) {
+        const l = lines[x]
+        if (!cueLines.has(l.n) && l.tokens.length >= 2 && find(l.n) !== find(m.n)) between++
       }
-      if (between.length > 0) {
+      if (reworded && between > 0) {
+        candidates.push({ j, m, conf: 0.65 })
+        continue
+      }
+      if (!near) conf -= 0.1
+      if (between > 0) {
         if (full < 0.75 && prefixShare < 0.8) continue
         conf -= 0.15
       }

@@ -58,9 +58,24 @@ export interface TakesPlanOptions {
   audio?: Record<string, TakeAudio | undefined>
 }
 
-/** The takes of every recording in a doc. */
+const analysed = new WeakMap<Word[], { sources: string; analyses: TakesAnalysis[] }>()
+
+/**
+ * The takes of every recording in a doc. Takes depend on the words alone,
+ * so with the default options the answer is kept per word list: the first
+ * reply, the takes panel and /takes all share one analysis. Callers must not
+ * change what it returns.
+ */
 export function takesOf(doc: EditDoc, opts: TakesPlanOptions = {}): TakesAnalysis[] {
-  return doc.sources.map((s) => analyzeTakes(doc.words, s.id, opts.audio?.[s.id] ?? null, opts.takes ?? DEFAULT_TAKES))
+  const plain = !opts.audio && !opts.takes
+  const sources = doc.sources.map((s) => s.id).join(',')
+  const hit = plain ? analysed.get(doc.words) : undefined
+  if (hit && hit.sources === sources) return hit.analyses
+  const analyses = doc.sources.map((s) =>
+    analyzeTakes(doc.words, s.id, opts.audio?.[s.id] ?? null, opts.takes ?? DEFAULT_TAKES)
+  )
+  if (plain) analysed.set(doc.words, { sources, analyses })
+  return analyses
 }
 
 interface Span {
@@ -68,9 +83,21 @@ interface Span {
   to: string
 }
 
+const indexes = new WeakMap<Word[], ReturnType<typeof indexWords>>()
+
+/** The doc's words in order with positions, worked out once per word list. */
+function indexOf(words: Word[]): ReturnType<typeof indexWords> {
+  let index = indexes.get(words)
+  if (!index) {
+    index = indexWords(words)
+    indexes.set(words, index)
+  }
+  return index
+}
+
 /** Strike ops covering these spans, skipping words already struck, in word order. */
 export function strikeOps(doc: EditDoc, spans: Span[], cut: Cut = currentCut(doc)): Op[] {
-  const index = indexWords(doc.words)
+  const index = indexOf(doc.words)
   const removed = new Set(cut.removed)
   const marked = new Set<number>()
   for (const s of spans) {
@@ -100,7 +127,7 @@ export function strikeOps(doc: EditDoc, spans: Span[], cut: Cut = currentCut(doc
 
 /** Unstrike ops for spans, only over words currently struck. */
 function unstrikeOps(doc: EditDoc, spans: Span[], cut: Cut): Op[] {
-  const index = indexWords(doc.words)
+  const index = indexOf(doc.words)
   const removed = new Set(cut.removed)
   const ops: Op[] = []
   for (const s of spans) {
@@ -122,7 +149,7 @@ function unstrikeOps(doc: EditDoc, spans: Span[], cut: Cut): Op[] {
 
 /** The beat a word sits in, by position in the cut. */
 function beatOf(cut: Cut, doc: EditDoc, wordId: string): number {
-  const index = indexWords(doc.words)
+  const index = indexOf(doc.words)
   const p = index.pos.get(wordId)
   if (p === undefined) return -1
   return cut.beats.findIndex((b) => {
@@ -140,7 +167,7 @@ function beatOf(cut: Cut, doc: EditDoc, wordId: string): number {
  */
 function moveOps(doc: EditDoc, cut: Cut, take: Span, target: Span): { ops: Op[]; cut: Cut } {
   const context = { words: doc.words, sources: doc.sources }
-  const index = indexWords(doc.words)
+  const index = indexOf(doc.words)
   let running = cut
   const ops: Op[] = []
   const push = (op: Op): boolean => {
@@ -183,8 +210,12 @@ function moveOps(doc: EditDoc, cut: Cut, take: Span, target: Span): { ops: Op[];
   return { ops, cut: running }
 }
 
-/** True when lines other than this group's takes play between its first take and the keeper. */
-function filmedElsewhere(group: TakeGroup, words: Word[]): boolean {
+/**
+ * True when other lines still play between a group's first take and the
+ * keeper, so the keeper has to move up to where the line belongs. Struck
+ * words, like the false starts between takes, do not count.
+ */
+function filmedElsewhere(group: TakeGroup, words: Word[], removed: Set<string>): boolean {
   const first = group.takes[0]
   const keep = group.takes[group.chosen]
   if (group.chosen === 0) return false
@@ -193,10 +224,13 @@ function filmedElsewhere(group: TakeGroup, words: Word[]): boolean {
     (w) =>
       w.startSec > first.endSec + 0.01 &&
       w.endSec < keep.startSec - 0.01 &&
+      !removed.has(w.id) &&
       !inGroup(w.startSec) &&
       /[\p{L}\p{N}]/u.test(w.text)
   )
 }
+
+const sourceOf = (doc: EditDoc, wordId: string): string | undefined => doc.words.find((w) => w.id === wordId)?.source
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`
 
@@ -210,16 +244,23 @@ export function lineName(group: TakeGroup): string {
   return group.intro ? 'the intro' : `“${group.label}”`
 }
 
+const outTimes = new WeakMap<Resolved, Map<string, number>>()
+
 /** Where a word plays in a resolved cut, or null when it does not play. */
 function outTime(resolved: Resolved, wordId: string): number | null {
-  return resolved.words.find((w) => w.id === wordId)?.outStart ?? null
+  let times = outTimes.get(resolved)
+  if (!times) {
+    times = new Map(resolved.words.map((w) => [w.id, w.outStart]))
+    outTimes.set(resolved, times)
+  }
+  return times.get(wordId) ?? null
 }
 
 /** The nearest kept word at or after a word, for timing an offer that is not yet cut. */
 function playsAt(resolved: Resolved, doc: EditDoc, wordId: string): number {
   const direct = outTime(resolved, wordId)
   if (direct !== null) return direct
-  const index = indexWords(doc.words)
+  const index = indexOf(doc.words)
   const p = index.pos.get(wordId) ?? 0
   for (let i = p; i < index.words.length; i++) {
     const t = outTime(resolved, index.words[i].id)
@@ -240,10 +281,8 @@ export function planTakes(doc: EditDoc, opts: TakesPlanOptions = {}, from: Cut =
   let falseStarts = 0
   let setup = 0
   const applied: TakeGroup[] = []
-  const moves: { group: TakeGroup }[] = []
 
   for (const a of analyses) {
-    const sourceWords = doc.words.filter((w) => w.source === a.source)
     for (const r of a.restarts) {
       // Already cut by the person, or by an earlier /takes: nothing to say.
       if (removed.has(r.from) && removed.has(r.to)) continue
@@ -276,7 +315,6 @@ export function planTakes(doc: EditDoc, opts: TakesPlanOptions = {}, from: Cut =
         sure.push(...open.map((t) => t.span))
         takes += open.length
         applied.push(g)
-        if (filmedElsewhere(g, sourceWords)) moves.push({ group: g })
       } else if (g.confidence >= thresholds.offerAt) {
         offered.push({
           span: open.map((t) => t.span),
@@ -294,7 +332,17 @@ export function planTakes(doc: EditDoc, opts: TakesPlanOptions = {}, from: Cut =
   // Strikes first, then the moves, worked out against the running cut.
   let ops = strikeOps(doc, sure, from)
   let running = applyOps(from, ops, context).cut
-  for (const { group } of moves) {
+  const struckNow = new Set(running.removed)
+  const bySource = new Map<string, Word[]>()
+  for (const w of doc.words) {
+    const list = bySource.get(w.source)
+    if (list) list.push(w)
+    else bySource.set(w.source, [w])
+  }
+  const moves = applied.filter((g) =>
+    filmedElsewhere(g, bySource.get(sourceOf(doc, g.takes[0].from) ?? '') ?? [], struckNow)
+  )
+  for (const group of moves) {
     const keep = group.takes[group.chosen]
     const first = group.takes[0]
     const moved = moveOps(doc, running, keep, first)
@@ -304,7 +352,7 @@ export function planTakes(doc: EditDoc, opts: TakesPlanOptions = {}, from: Cut =
 
   const before = resolveCut(from, doc.words, doc.sources)
   const after = resolveCut(running, doc.words, doc.sources)
-  const index = indexWords(doc.words)
+  const index = indexOf(doc.words)
   let speech = 0
   for (const id of running.removed) {
     if (removed.has(id)) continue
@@ -371,7 +419,7 @@ function offerSentence(offers: TakesOffer[]): string {
  * strike the one playing now, and move it into place when it was filmed
  * somewhere else.
  */
-export function useTakeOps(doc: EditDoc, group: TakeGroup, takeIndex: number, cut: Cut = currentCut(doc)): Op[] {
+export function switchTakeOps(doc: EditDoc, group: TakeGroup, takeIndex: number, cut: Cut = currentCut(doc)): Op[] {
   const take = group.takes[takeIndex]
   if (!take) return []
   const context = { words: doc.words, sources: doc.sources }
@@ -386,9 +434,9 @@ export function useTakeOps(doc: EditDoc, group: TakeGroup, takeIndex: number, cu
     )
   ]
   let running = applyOps(cut, ops, context).cut
-  const sourceWords = doc.words.filter((w) => w.source === doc.words.find((x) => x.id === take.from)?.source)
+  const sourceWords = doc.words.filter((w) => w.source === sourceOf(doc, take.from))
   const probe = { ...group, chosen: takeIndex }
-  if (takeIndex > 0 && filmedElsewhere(probe, sourceWords)) {
+  if (takeIndex > 0 && filmedElsewhere(probe, sourceWords, new Set(running.removed))) {
     // Already in place when it plays right before the first take's beat.
     const at = beatOf(running, doc, take.from)
     const target = beatOf(running, doc, group.takes[0].from)

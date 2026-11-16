@@ -35,6 +35,16 @@ import {
 } from '../../../shared/presets'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import {
+  acceptsOffer,
+  parseTakeRequest,
+  resolveTakeRequest,
+  switchedSentence,
+  takesOf,
+  switchTakeOps,
+  type TakeGroup,
+  type TakesOffer
+} from '../../../shared/raw'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
@@ -127,6 +137,10 @@ export function useCutalong() {
   const projectRef = useRef<Project | null>(null)
   const studyRef = useRef<InspirationStudy | null>(null)
   const pendingCommand = useRef<string | null>(null)
+  /** Cuts offered and not yet made: "Say 'cut it' and it goes." */
+  const [offers, setOffers] = useState<TakesOffer[]>([])
+  const offersRef = useRef<TakesOffer[]>([])
+  offersRef.current = offers
   studyRef.current = study
 
   const presets = useMemo(() => {
@@ -309,9 +323,18 @@ export function useCutalong() {
     if (path) void openProject(path)
   }, [openProject])
 
-  /** Applies ops as a version and says what changed. Returns the summary, or null when nothing applied. */
+  /**
+   * Applies ops as a version and says what changed. Returns the summary, or
+   * null when nothing applied. A lead sentence speaks for the first ops (the
+   * takes: "I kept the 4th take of the intro..."), and the rest are described.
+   */
   const applyAsVersion = useCallback(
-    (ops: Op[], fallback: string, preset?: string): { summary: string; n: number } | null => {
+    (
+      ops: Op[],
+      fallback: string,
+      preset?: string,
+      lead?: { text: string; ops: number }
+    ): { summary: string; n: number } | null => {
       const d = docRef.current
       if (!d) return null
       const context = { words: d.words, sources: d.sources }
@@ -319,7 +342,9 @@ export function useCutalong() {
       const trial = applyOps(currentCut(d), ops, context)
       if (trial.applied.length === 0) return null
       const after = resolveCut(trial.cut, d.words, d.sources)
-      const summary = describePlan(trial.applied, before, after) || fallback
+      const led = lead && lead.text ? lead : null
+      const rest = describePlan(led ? trial.applied.slice(led.ops) : trial.applied, before, after)
+      const summary = [led?.text, rest].filter(Boolean).join(' ') || fallback
       const next = commit(d, trial.applied, summary, preset ? { preset } : {}).doc
       setDoc(next)
       return { summary, n: currentVersion(next).n }
@@ -341,11 +366,22 @@ export function useCutalong() {
       setMediaUrl(r.mediaUrl)
       const resolved = resolveCut(currentCut(r.doc), r.doc.words, r.doc.sources)
       const beats = currentCut(r.doc).beats.length
+      const found = takesFound(r.doc)
       const text =
         r.doc.words.length > 0
-          ? `Got it. ${file.name} runs ${clock(resolved.durationSec)}: ${r.doc.words.length} words in ${beats} beats.`
+          ? `Got it. ${file.name} runs ${clock(resolved.durationSec)}: ${r.doc.words.length} words in ${beats} beats.${found ? ` ${found}` : ''}`
           : `Got it. ${file.name} runs ${clock(resolved.durationSec)}.`
-      const actions: Action[] = [{ kind: 'open-editor', label: 'Open the editor', primary: !studyRef.current }]
+      const actions: Action[] = [
+        { kind: 'open-editor', label: 'Open the editor', primary: !studyRef.current && !found }
+      ]
+      if (found) {
+        actions.unshift({
+          kind: 'run-command',
+          label: 'Keep the best takes',
+          payload: 'takes',
+          primary: !studyRef.current
+        })
+      }
       if (studyRef.current)
         actions.unshift({ kind: 'use-style', label: 'Cut it like the video you sent', primary: true })
       patch(id, { progress: null, text, aside: r.warning, actions })
@@ -553,10 +589,16 @@ export function useCutalong() {
         return
       }
       const plan = planStyle(d, preset.style)
-      const done = applyAsVersion(plan.ops, `${preset.title} is on.`, command)
-      const open = plan.open.join(' ')
+      const lead = plan.takes ? { text: plan.takes.summary, ops: plan.takes.opCount } : undefined
+      const done = applyAsVersion(plan.ops, `${preset.title} is on.`, command, lead)
+      if (plan.takes) setOffers(plan.takes.offers)
+      const open = [plan.takes?.offerText ?? '', ...plan.open].filter(Boolean).join(' ')
       if (!done) {
-        say(`/${command} is already how this cut looks.${open ? ` ${open}` : ''}`)
+        say(
+          plan.takes && !open
+            ? 'Every line already plays its best take, and there are no false starts left.'
+            : `/${command} is already how this cut looks.${open ? ` ${open}` : ''}`
+        )
         return
       }
       if (where === 'panel') setPanel(open ? { text: `v${done.n} is ready. ${done.summary} ${open}` } : null)
@@ -608,6 +650,69 @@ export function useCutalong() {
       patch(id, { progress: null, text: s.reply, chips: s.chips, details: s.details, aside, actions })
     },
     [patch, push]
+  )
+
+  /** Plays another take of a line, as a version: from the takes panel or a sentence. */
+  const switchTake = useCallback(
+    (group: TakeGroup, index: number): { summary: string; n: number } | null => {
+      const d = docRef.current
+      if (!d) return null
+      const ops = switchTakeOps(d, group, index)
+      const text = switchedSentence(group, index)
+      return applyAsVersion(ops, text, undefined, { text, ops: ops.length })
+    },
+    [applyAsVersion]
+  )
+
+  /** Makes the cuts that were offered, as one version. Null when none still apply. */
+  const acceptOffers = useCallback((): { summary: string; n: number } | null => {
+    const pending = offersRef.current
+    if (pending.length === 0) return null
+    const ops = pending.flatMap((o) => o.ops)
+    const text =
+      pending.length === 1
+        ? `The ${pending[0].kind} at ${clock(pending[0].outSec)} is cut.`
+        : `The ${pending.length} possible cuts are made.`
+    setOffers([])
+    return applyAsVersion(ops, text, undefined, { text, ops: ops.length })
+  }, [applyAsVersion])
+
+  /**
+   * Takes asked for in words, answered here so they work with no API key:
+   * "use the second take of the intro", and "cut it" after an offer. True
+   * when the sentence was one of these.
+   */
+  const answerTakes = useCallback(
+    (text: string, say: (reply: string, done: boolean) => void): boolean => {
+      const d = docRef.current
+      if (!d) return false
+      if (acceptsOffer(text) && offersRef.current.length > 0) {
+        const done = acceptOffers()
+        say(
+          done
+            ? `${done.summary} v${done.n} is ready.`
+            : 'That part of the cut has changed since, so there was nothing to cut.',
+          !!done
+        )
+        return true
+      }
+      const req = parseTakeRequest(text)
+      if (!req) return false
+      const answer = resolveTakeRequest(req, takesOf(d), currentCut(d))
+      if ('problem' in answer) {
+        say(answer.problem, false)
+        return true
+      }
+      const done = switchTake(answer.group, answer.index)
+      say(
+        done
+          ? `${done.summary} v${done.n} is ready.`
+          : `${switchedSentence(answer.group, answer.index)} It already did.`,
+        !!done
+      )
+      return true
+    },
+    [acceptOffers, switchTake]
   )
 
   /** A request in words: the planner turns it into ops. */
@@ -696,13 +801,20 @@ export function useCutalong() {
           await runCommand(command.command, 'thread', command.rest)
           if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
         } else if (attachments.length === 0 && !link && text) {
-          await ask(text)
+          const local = answerTakes(text, (reply, done) =>
+            push({
+              role: 'assistant',
+              text: reply,
+              actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+            })
+          )
+          if (!local) await ask(text)
         }
       } finally {
         setBusy(false)
       }
     },
-    [ask, bringIn, ensureProject, prepare, push, runCommand, studyLink]
+    [answerTakes, ask, bringIn, ensureProject, prepare, push, runCommand, studyLink]
   )
 
   const useStyle = useCallback((): void => {
@@ -745,6 +857,7 @@ export function useCutalong() {
       if (a.kind === 'open-editor') setScreen('editor')
       else if (a.kind === 'open-settings') setScreen('settings')
       else if (a.kind === 'use-style') useStyle()
+      else if (a.kind === 'run-command' && a.payload) void runCommand(a.payload)
       else if (a.kind === 'save-style' && a.payload) void saveStyle(a.payload)
       else if (a.kind === 'reveal' && a.payload) void api.reveal(a.payload)
       else if (a.kind === 'add-clip' && a.payload) {
@@ -761,7 +874,7 @@ export function useCutalong() {
         void api.setVideoSignIn('chrome').then(() => bringIn(req, hint))
       }
     },
-    [addIcon, bringIn, saveStyle, useStyle]
+    [addIcon, bringIn, runCommand, saveStyle, useStyle]
   )
 
   // ---------- Editor ----------
@@ -857,6 +970,12 @@ export function useCutalong() {
     refreshRecent()
   }, [refreshRecent])
 
+  /** For the notes panel: a takes sentence typed as a note is answered, not stored. */
+  const answerInPanel = useCallback(
+    (text: string): boolean => answerTakes(text, (reply) => setPanel({ text: reply })),
+    [answerTakes]
+  )
+
   return {
     brand,
     brandProgress,
@@ -886,9 +1005,28 @@ export function useCutalong() {
     dropNote,
     applyNotes,
     applyOpsDirect,
+    switchTake,
+    offers,
+    acceptOffers,
+    answerInPanel,
     undo,
     exportFinal
   }
+}
+
+/**
+ * The takes found in a fresh recording, in a sentence for the first reply:
+ * "I found 14 lines said more than once and 9 false starts." Empty when none.
+ */
+function takesFound(doc: EditDoc): string {
+  const analyses = takesOf(doc)
+  const lines = analyses.reduce((n, a) => n + a.groups.length, 0)
+  const starts = analyses.reduce((n, a) => n + a.restarts.length, 0)
+  if (lines === 0 && starts === 0) return ''
+  const parts: string[] = []
+  if (lines > 0) parts.push(lines === 1 ? 'one line said more than once' : `${lines} lines said more than once`)
+  if (starts > 0) parts.push(starts === 1 ? 'one false start' : `${starts} false starts`)
+  return `I found ${parts.join(' and ')}.`
 }
 
 export type Cutalong = ReturnType<typeof useCutalong>

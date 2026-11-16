@@ -19,9 +19,10 @@ export interface Action {
     | 'add-icon'
     | 'sign-in'
     | 'open-settings'
+    | 'run-command'
   label: string
   primary?: boolean
-  /** A command name for save-style, a path for reveal, JSON for the asset actions. */
+  /** A command name for save-style and run-command, a path for reveal, JSON for the asset actions. */
   payload?: string
   /** A small picture shown in the button, as a data URL. */
   icon?: string

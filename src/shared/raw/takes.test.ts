@@ -3,7 +3,7 @@ import { applyOps, commit, currentCut, EditDocSchema, OpSchema, resolveCut } fro
 import { docFor, evaluate, evaluateVariants, evalTable } from './eval'
 import { FIXTURES } from './fixtures'
 import { analyzeTakes, choose, ordinal, type Take } from './takes'
-import { planTakes, playingTake, useTakeOps } from './plan'
+import { planTakes, playingTake, switchTakeOps } from './plan'
 import { isCue, meantRepeat, normWord, sameWord } from './text'
 
 const fixture = (name: string): ReturnType<typeof docFor> => {
@@ -228,13 +228,13 @@ describe('takes as an edit', () => {
     expect(playingTake(group, currentCut(v2))).toBe(group.takes.length - 1)
     // "Use the 4th take": the other complete one.
     const four = group.takes.findIndex((t, i) => t.complete && i !== group.takes.length - 1)
-    const v3 = commit(v2, useTakeOps(v2, group, four), 'Take 4.').doc
+    const v3 = commit(v2, switchTakeOps(v2, group, four), 'Take 4.').doc
     expect(playingTake(group, currentCut(v3))).toBe(four)
     const words = resolveCut(currentCut(v3), v3.words, v3.sources).words
     expect(words.map((w) => w.text).join(' ')).toBe('The RTX 5090 is the fastest graphics card you can buy right now.')
     expect(words[0].id).toBe(group.takes[four].from)
     // And back again.
-    const v4 = commit(v3, useTakeOps(v3, group, group.takes.length - 1), 'Back.').doc
+    const v4 = commit(v3, switchTakeOps(v3, group, group.takes.length - 1), 'Back.').doc
     expect(playingTake(group, currentCut(v4))).toBe(group.takes.length - 1)
   })
 
@@ -246,7 +246,7 @@ describe('takes as an edit', () => {
     expect(intro.length).toBeGreaterThan(0)
     // Back to the first take of each intro line: it plays first, in place.
     let d = v2
-    for (const g of intro) d = commit(d, useTakeOps(d, g, 0), 'First take.').doc
+    for (const g of intro) d = commit(d, switchTakeOps(d, g, 0), 'First take.').doc
     const text = resolveCut(currentCut(d), d.words, d.sources)
       .words.map((w) => w.text)
       .join(' ')
@@ -266,5 +266,22 @@ describe('takes as an edit', () => {
     const empty = { ...doc, words: [] }
     expect(analyzeTakes([], 's1').groups).toEqual([])
     expect(planTakes(empty).ops).toEqual([])
+  })
+
+  it('leaves one word, music marks and a single line alone', () => {
+    const at = (texts: string[]): ReturnType<typeof planTakes> => {
+      const words = texts.map((text, i) => ({
+        id: `w${i + 1}`,
+        text,
+        source: 's1',
+        startSec: 0.5 + i * 0.4,
+        endSec: 0.8 + i * 0.4
+      }))
+      const { doc } = fixture('whole line said twice')
+      return planTakes({ ...doc, words })
+    }
+    expect(at(['Hello.']).ops).toEqual([])
+    expect(at(['♪', '♪♪', '♪']).ops).toEqual([])
+    expect(at(['This', 'is', 'the', 'only', 'line.']).ops).toEqual([])
   })
 })

@@ -13,6 +13,7 @@ import {
   type Resolved
 } from '../../../../shared/edit'
 import { parseCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
+import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
@@ -34,7 +35,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const resolved = useMemo(() => resolveCut(cut, doc.words, doc.sources), [cut, doc.words, doc.sources])
   const video = useRef<HTMLVideoElement>(null)
   const player = usePlayer(video, resolved)
-  const [script, setScript] = useState(false)
+  const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
+  const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
 
   const beats: StripBeat[] = useMemo(() => {
     const byId = new Map(cut.beats.map((b) => [b.id, b]))
@@ -76,9 +78,17 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         )}
         <Button
           variant="text"
-          className={script ? 'on' : ''}
-          aria-pressed={script}
-          onClick={() => setScript((s) => !s)}
+          className={side === 'takes' ? 'on' : ''}
+          aria-pressed={side === 'takes'}
+          onClick={() => toggle('takes')}
+        >
+          Takes
+        </Button>
+        <Button
+          variant="text"
+          className={side === 'script' ? 'on' : ''}
+          aria-pressed={side === 'script'}
+          onClick={() => toggle('script')}
         >
           Script
         </Button>
@@ -96,7 +106,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             video={video}
             mediaUrl={app.mediaUrl}
           />
-          {script ? (
+          {side === 'script' ? (
             <ScriptPanel
               doc={doc}
               time={player.time}
@@ -104,6 +114,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               onSeek={player.seek}
               onApply={app.applyOpsDirect}
             />
+          ) : side === 'takes' ? (
+            <TakesPanel app={app} doc={doc} resolved={resolved} onSeek={player.seek} />
           ) : (
             <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} />
           )}
@@ -335,7 +347,7 @@ function NotesPanel({
         onNote={(text) => {
           const command = parseCommand(text)
           if (command) void app.runCommand(command.command, 'panel', command.rest)
-          else app.addNote(text, nowBeat)
+          else if (!app.answerInPanel(text)) app.addNote(text, nowBeat)
         }}
       />
     </aside>
@@ -496,6 +508,112 @@ function ScriptPanel({
       <p className="cl-project-meta">
         Click words to mark them. Double-click a word to jump to it. {clock(resolved.durationSec)} in the cut.
       </p>
+    </aside>
+  )
+}
+
+/**
+ * The lines said more than once, each with its takes as a segmented choice.
+ * The take that plays is marked; picking another makes it play, as a new
+ * version, and jumps there so it can be heard. Uncertain cuts wait below.
+ */
+function TakesPanel({
+  app,
+  doc,
+  resolved,
+  onSeek
+}: {
+  app: Cutalong
+  doc: EditDoc
+  resolved: Resolved
+  onSeek: (sec: number) => void
+}): JSX.Element {
+  const cut = currentCut(doc)
+  // Takes come from the words alone, so they only change when the words do.
+  const groups = useMemo(() => takesOf(doc).flatMap((a) => a.groups), [doc.words, doc.sources]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [jumpTo, setJumpTo] = useState<string | null>(null)
+
+  // After a switch, play from where the new take now sits in the cut.
+  useEffect(() => {
+    if (!jumpTo) return
+    const w = resolved.words.find((x) => x.id === jumpTo)
+    if (w) onSeek(w.outStart)
+    setJumpTo(null)
+  }, [resolved, jumpTo, onSeek])
+
+  const pick = (g: TakeGroup, i: number): void => {
+    const done = app.switchTake(g, i)
+    app.setPanel(done ? { text: `v${done.n} is ready. ${done.summary}` } : null)
+    setJumpTo(g.takes[i].from)
+  }
+
+  const status =
+    app.panel?.text ??
+    (groups.length === 0
+      ? 'No line was said more than once in this recording.'
+      : `${groups.length === 1 ? 'One line was' : `${groups.length} lines were`} said more than once. The take that plays is marked.`)
+  const capital = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1)
+
+  return (
+    <aside className="cl-notes" aria-label="Takes">
+      <div className="cl-notes-scroll">
+        <p className="cl-reply">{status}</p>
+        {groups.length > 0 && (
+          <ol className="cl-note-list">
+            {groups.map((g, k) => {
+              const playing = playingTake(g, cut)
+              const about =
+                playing < 0
+                  ? 'None of its takes plays.'
+                  : `The ${ordinal(playing + 1)} of ${g.takes.length} plays${playing === g.chosen ? `, ${g.reason}` : ''}.`
+              return (
+                <li key={g.id} className="cl-note">
+                  <span className="cl-note-n">{k + 1}</span>
+                  <span className="cl-note-text cl-take">
+                    {capital(lineName(g))}
+                    <span className="cl-segments" role="radiogroup" aria-label={`Takes of ${lineName(g)}`}>
+                      {g.takes.map((t, i) => (
+                        <button
+                          key={t.from}
+                          type="button"
+                          role="radio"
+                          aria-checked={i === playing}
+                          aria-label={`Take ${i + 1}${t.issues.length ? `: ${[...new Set(t.issues)].join(', ')}` : ''}`}
+                          title={t.issues.length ? [...new Set(t.issues)].join(', ') : 'Clean'}
+                          className={i === playing ? 'on' : ''}
+                          onClick={() => (i === playing ? setJumpTo(t.from) : pick(g, i))}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </span>
+                    <span className="cl-project-meta">{about}</span>
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+        {app.offers.length > 0 && (
+          <p className="cl-aside">
+            {app.offers.length === 1
+              ? `Left in at ${clock(app.offers[0].outSec)}: ${app.offers[0].what}.`
+              : `Left in: ${app.offers.map((o) => `${o.what} at ${clock(o.outSec)}`).join('; ')}.`}
+          </p>
+        )}
+      </div>
+      {app.offers.length > 0 && (
+        <Button
+          small
+          onClick={() => {
+            const done = app.acceptOffers()
+            app.setPanel(done ? { text: `v${done.n} is ready. ${done.summary}` } : null)
+          }}
+        >
+          {app.offers.length === 1 ? 'Cut it' : `Cut all ${app.offers.length}`}
+        </Button>
+      )}
+      <p className="cl-project-meta">Pick a take to hear it in the cut. Each change is a version you can undo.</p>
     </aside>
   )
 }
