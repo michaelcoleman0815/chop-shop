@@ -31,7 +31,12 @@ export const SERVICES: readonly Service[] = [
   { id: 'gemini', name: 'Google Gemini', job: 'judge', keyFrom: 'aistudio.google.com' }
 ]
 
-export const TRANSCRIBERS: readonly Service[] = SERVICES.filter((s) => s.job === 'transcribe')
+/** The services that hear the words. */
+export type TranscriberId = 'deepgram' | 'assemblyai'
+
+export const TRANSCRIBERS: readonly (Service & { id: TranscriberId })[] = SERVICES.filter(
+  (s): s is Service & { id: TranscriberId } => s.job === 'transcribe'
+)
 
 export function isServiceId(value: unknown): value is ServiceId {
   return SERVICES.some((s) => s.id === value)
@@ -51,7 +56,7 @@ export function servicesOn(settings: { otherServices?: boolean } | null | undefi
 }
 
 /** Who hears the words: this computer, or a service. Absent means the first service with a key. */
-export type TranscriberChoice = 'local' | 'deepgram' | 'assemblyai'
+export type TranscriberChoice = 'local' | TranscriberId
 
 /**
  * The service that hears the words for a new edit, or null for this
@@ -62,7 +67,7 @@ export type TranscriberChoice = 'local' | 'deepgram' | 'assemblyai'
 export function chosenTranscriber(
   settings: { otherServices?: boolean; transcriber?: string | null } | null | undefined,
   hasKey: (id: ServiceId) => boolean
-): ServiceId | null {
+): TranscriberId | null {
   if (!servicesOn(settings)) return null
   if (settings?.transcriber === 'local') return null
   const picked = TRANSCRIBERS.find((t) => t.id === settings?.transcriber)
