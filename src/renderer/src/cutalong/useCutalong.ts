@@ -54,6 +54,17 @@ import {
   type TakeGroup,
   type TakesOffer
 } from '../../../shared/raw'
+import { withHabits } from '../../../shared/learn/habits'
+import { useLearn } from './useLearn'
+import {
+  remember,
+  rememberAdded,
+  rememberKeep,
+  rememberNotes,
+  rememberVersion,
+  rememberVoice,
+  useMemory
+} from './memory'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
@@ -169,7 +180,7 @@ const LAST = 'cutalong:last'
  * A convenience kept in this window's storage: without it, Cutalong starts on
  * Start, and every chat is still under Chats.
  */
-function remember(path: string | null, screen: 'thread' | 'editor'): void {
+function rememberPlace(path: string | null, screen: 'thread' | 'editor'): void {
   try {
     if (path) localStorage.setItem(LAST, JSON.stringify({ path, screen }))
     else localStorage.removeItem(LAST)
@@ -178,7 +189,7 @@ function remember(path: string | null, screen: 'thread' | 'editor'): void {
   }
 }
 
-function recalled(): { path: string; screen: 'thread' | 'editor' } | null {
+function recallPlace(): { path: string; screen: 'thread' | 'editor' } | null {
   try {
     const v = JSON.parse(localStorage.getItem(LAST) ?? 'null') as { path?: unknown; screen?: unknown } | null
     return v && typeof v.path === 'string'
@@ -222,9 +233,12 @@ export function useCutalong() {
   offersRef.current = offers
   studyRef.current = study
 
+  const learn = useLearn()
+
   const presets = useMemo(() => {
     const mine = brandPreset(brand)
-    return [...BUILT_IN_PRESETS, ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...saved]
+    // /tighten cuts the creator's way once they keep their habits; exactly as built otherwise.
+    return [...withHabits(BUILT_IN_PRESETS, brand.habits), ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...saved]
   }, [saved, brand])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
@@ -266,7 +280,7 @@ export function useCutalong() {
       if (projectRef.current) return projectRef.current
       const project = await api.createProject(name.replace(/\s+/g, ' ').trim().slice(0, 60) || 'New edit', 'cut')
       projectRef.current = project
-      remember(project.path, lastScreen.current)
+      rememberPlace(project.path, lastScreen.current)
       refreshRecent()
       return project
     },
@@ -317,6 +331,7 @@ export function useCutalong() {
     void api
       .getBrand()
       .then((b) => {
+        rememberVoice(b.voice)
         brandRef.current = b
         setBrand(b)
       })
@@ -330,11 +345,14 @@ export function useCutalong() {
     setBrand(next)
     if (brandSave.current) clearTimeout(brandSave.current)
     brandSave.current = setTimeout(() => {
+      rememberVoice(next.voice)
       void api.saveBrand(next).then((r) => {
         if (!r.ok) setToast({ text: r.message, error: true })
       })
     }, 300)
   }, [])
+  // What I learn from how you edit: noted as you go, listed on the brand page.
+  const memory = useMemory(brand, saveBrand, setToast)
 
   const learnFrom = useCallback(
     async (paths: string[]): Promise<void> => {
@@ -389,9 +407,10 @@ export function useCutalong() {
       setToast({ text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Open another once I'm done.` })
       return
     }
+    rememberKeep(docRef.current)
     const project = await api.openProject(path)
     if (!project) {
-      if (recalled()?.path === path) remember(null, 'thread')
+      if (recallPlace()?.path === path) rememberPlace(null, 'thread')
       return
     }
     projectRef.current = project
@@ -405,13 +424,13 @@ export function useCutalong() {
     setStudy(null)
     setPanel(null)
     const next = edit && (prefer === 'editor' || chat.length === 0) ? 'editor' : 'thread'
-    remember(project.path, next)
+    rememberPlace(project.path, next)
     setScreen(next)
   }, [])
 
   // Reopening Cutalong lands back where the person was.
   useEffect(() => {
-    const last = recalled()
+    const last = recallPlace()
     if (last) void openProject(last.path, last.screen)
   }, [openProject])
 
@@ -419,7 +438,7 @@ export function useCutalong() {
   useEffect(() => {
     if (screen !== 'thread' && screen !== 'editor') return
     lastScreen.current = screen
-    if (projectRef.current) remember(projectRef.current.path, screen)
+    if (projectRef.current) rememberPlace(projectRef.current.path, screen)
   }, [screen])
 
   /** The chat being worked on, if there is one, for a way back to it. */
@@ -812,6 +831,7 @@ export function useCutalong() {
       })
       const lead = plan.takes ? { text: plan.takes.summary, ops: plan.takes.opCount } : undefined
       const done = applyAsVersion(plan.ops, `${preset.title} is on.`, command, lead)
+      rememberVersion(docRef.current, { command }, done?.n ?? null)
       if (plan.takes) setOffers(plan.takes.offers)
       const open = [plan.takes?.offerText ?? '', ...plan.open].filter(Boolean).join(' ')
       if (!done) {
@@ -968,6 +988,7 @@ export function useCutalong() {
         return
       }
       const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
+      rememberVersion(docRef.current, { request: text }, done?.n ?? null)
       const aside =
         [...r.needs, ...r.rejected]
           .map((t) => sentence(t))
@@ -1224,6 +1245,7 @@ export function useCutalong() {
       const d = docRef.current
       if (!d) return
       setDoc(addNoteTo(d, text, beat))
+      rememberAdded(d, docRef.current)
     },
     [setDoc]
   )
@@ -1232,6 +1254,7 @@ export function useCutalong() {
     (id: string): void => {
       const d = docRef.current
       if (d) setDoc(setNoteStatus(d, [id], 'dismissed'))
+      rememberNotes(d, [id], 'dismissed')
     },
     [setDoc]
   )
@@ -1254,6 +1277,7 @@ export function useCutalong() {
     const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
     const latest = docRef.current
     if (latest && r.notesHandled.length) setDoc(setNoteStatus(latest, r.notesHandled, 'applied'))
+    rememberNotes(docRef.current, r.notesHandled, 'applied', done?.n ?? null)
     const extra = [...r.needs, ...r.rejected]
       .map((t) => sentence(t))
       .filter(Boolean)
@@ -1279,6 +1303,7 @@ export function useCutalong() {
     const n = currentVersion(d).n
     const back = d.versions[d.versions.length - 2]
     setDoc(restore(d, back.n))
+    remember({ kind: 'undo', doc: d.id, from: n, to: back.n })
     setPanel({ text: `v${n + 1} is v${back.n} again.` })
   }, [setDoc])
 
@@ -1289,6 +1314,7 @@ export function useCutalong() {
     const off = api.onCutProgress((p) => setToast({ text: `Exporting… ${p.percent}%` }))
     const r = await api.renderCut({ doc: d, quality: 'final' })
     off()
+    if (r.ok) rememberKeep(d)
     setToast(
       r.ok
         ? {
@@ -1307,7 +1333,8 @@ export function useCutalong() {
       })
       return
     }
-    remember(null, 'thread')
+    rememberPlace(null, 'thread')
+    rememberKeep(docRef.current)
     projectRef.current = null
     docRef.current = null
     messagesRef.current = []
@@ -1333,6 +1360,8 @@ export function useCutalong() {
     saveBrand,
     learnFrom,
     forgetBrandVideo,
+    learn,
+    memory,
     setSaved,
     screen,
     setScreen,

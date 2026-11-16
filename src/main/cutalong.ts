@@ -27,6 +27,8 @@ import { isLocalUp, localModels } from './local-llm'
 import { OLLAMA_HOST } from './clips'
 import { readBrand, saveBrand } from './brand-store'
 import { hearInCloud, registerServicesIpc } from './providers'
+import { registerLearnIpc } from './learn'
+import { preferencesForPlanner, registerMemoryIpc } from './memory'
 import {
   addSources,
   createDoc,
@@ -287,10 +289,15 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
-    // Claude plans unless the person picked a model on this Mac in Settings.
+  // What has been learned about how the creator edits goes with each request,
+  // read fresh here so a statement they deleted never reaches the planner.
+  // Claude plans unless the person picked a model on this Mac in Settings.
+  ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
+    const preferences = await preferencesForPlanner().catch(() => [])
     const local = getSettings().localPlanner
-    return local ? planEditLocally(req, { host: OLLAMA_HOST, model: local }) : planEdit(req)
+    return local
+      ? planEditLocally({ ...req, preferences }, { host: OLLAMA_HOST, model: local })
+      : planEdit({ ...req, preferences })
   })
 
   // The models Ollama has on this Mac, for planning edits without Claude.
@@ -392,6 +399,16 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   ipcMain.handle('presets:list', () => savedPresets())
   ipcMain.handle('presets:save', (_e, preset: unknown) => savePreset(preset))
   ipcMain.handle('presets:remove', (_e, command: string) => removePreset(command))
+
+  // Learning from the creator's own edits, transcribed the same local way,
+  // and without fetching a model: nothing in it leaves this computer.
+  registerLearnIpc({
+    send: deps.send,
+    transcribe: (path, durationSec, progress) =>
+      transcriptFor(path, durationSec, progress, { download: false, localOnly: true })
+  })
+  // And from how they edit here: small signals in, plain statements out, on this computer.
+  registerMemoryIpc()
 }
 
 interface Lined {
@@ -535,12 +552,9 @@ async function readFootage(
         }
         words.push(...clip)
       } else {
-        const transcript = await transcriptFor(
-          path,
-          source.durationSec,
-          (stage, pct) => step(stage, 10 + pct * 0.85),
-          (sentence) => notes.push(sentence)
-        )
+        const transcript = await transcriptFor(path, source.durationSec, (stage, pct) => step(stage, 10 + pct * 0.85), {
+          notice: (sentence) => notes.push(sentence)
+        })
         let clip = wordsFromTranscript(transcript.words, source.id, prefix)
         // Listen to the recording so every word's edges sit on its sound,
         // which is what lets cuts land tight without clipping a consonant.
@@ -585,16 +599,31 @@ async function transcriptFor(
   path: string,
   durationSec: number,
   progress: (stage: string, percent: number) => void,
-  notice: (sentence: string) => void = () => undefined
+  opts: {
+    /** Says, in one sentence, why another AI service could not hear it. */
+    notice?: (sentence: string) => void
+    /** False when nothing may be downloaded, not even the model: learning from edits. */
+    download?: boolean
+    /** True when the words must be heard on this Mac, never by another service. */
+    localOnly?: boolean
+  } = {}
 ): Promise<Transcript> {
   // Another AI service hears the words when the person has added one. If it
   // cannot, this computer does, and the one sentence saying why goes back.
-  const cloud = await hearInCloud(path, durationSec, progress)
-  if (cloud.service) return cloud.transcript
-  if (cloud.note) notice(cloud.note)
+  if (!opts.localOnly) {
+    const cloud = await hearInCloud(path, durationSec, progress)
+    if (cloud.service) return cloud.transcript
+    if (cloud.note) opts.notice?.(cloud.note)
+  }
 
   const { whisperModel } = getSettings()
   if (!hasModel(whisperModel)) {
+    // Learning from edits never reaches the network, not even for the model.
+    if (opts.download === false) {
+      throw new Error(
+        `The ${whisperModel} transcription model isn't on this Mac yet. Download it in Settings, then try again.`
+      )
+    }
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))
   }
   const brand = await readBrand()

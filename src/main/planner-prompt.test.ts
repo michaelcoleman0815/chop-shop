@@ -71,6 +71,21 @@ describe('the planner request', () => {
     expect(currentCut(doc).removed).toEqual(['w5'])
   })
 
+  it('carries what has been learned about the creator in a block of its own, only when there is some', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const learned = ['You undo zoom punch-ins (3 of 4)', 'Captions at chest height (every edit)']
+    const text = renderRequest(doc, 'tighten it', [], 'Warm and quick.', learned)
+    expect(text).toContain(
+      '<creator-preferences>\n- You undo zoom punch-ins (3 of 4)\n- Captions at chest height (every edit)\n</creator-preferences>'
+    )
+    // After the brand voice, before the request.
+    expect(text.indexOf('<brand-voice>')).toBeLessThan(text.indexOf('<creator-preferences>'))
+    expect(text.indexOf('<creator-preferences>')).toBeLessThan(text.indexOf('<request>'))
+    expect(renderRequest(doc, 'tighten it', [], '', [])).not.toContain('creator-preferences')
+    expect(renderRequest(doc, 'tighten it', [])).not.toContain('creator-preferences')
+    expect(PLANNER_SYSTEM).toContain('<creator-preferences>')
+  })
+
   it('fences a typed request so it reads as a request', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     expect(renderRequest(doc, 'Open on the settings line', [])).toMatch(

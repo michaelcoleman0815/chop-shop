@@ -9,6 +9,8 @@ import { clock, isVideoFile } from '../format'
 import { collapse } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
+import { LearnSection } from './Learn'
+import { MemorySection } from './Memory'
 
 /**
  * Your brand, on one calm page: the videos it learns from, how your edits
@@ -124,6 +126,10 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
               </ul>
             )}
           </section>
+
+          <LearnSection app={app} />
+
+          <MemorySection app={app} />
 
           <section className="cl-section" aria-labelledby="brand-look">
             <h2 id="brand-look">Look</h2>
