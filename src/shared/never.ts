@@ -1,6 +1,6 @@
 import { currentCut } from './edit/doc'
 import { applyOps, type OpContext } from './edit/ops'
-import type { Asset, Cut, EditDoc, Op, Treatment } from './edit/schema'
+import type { Asset, Beat, Cut, EditDoc, Op, Treatment, Word } from './edit/schema'
 import { SFX_KINDS, type Sfx } from './edit/sfx'
 import { parseTransition, type TransitionKind } from './edit/transitions'
 import { MOTION_KINDS, type MotionKind } from './motion/schema'
@@ -462,6 +462,30 @@ export function withoutNever(text: string): string {
 export interface NeverContext {
   /** The edit's material, to tell B-roll from outside from the person's own. */
   assets: Pick<Asset, 'path' | 'origin'>[]
+  /**
+   * The edit's words in order, to read what a beat has by the words it
+   * covers: a split or a join moves things to another beat without adding
+   * any. Without them, by beat.
+   */
+  words?: Pick<Word, 'id'>[]
+}
+
+/** Each word's place, per list of words: built once for the many reads of one change. */
+const PLACES = new WeakMap<Pick<Word, 'id'>[], Map<string, number>>()
+
+/** The words a beat covers, struck or not; the beat itself when it has none (a picture, a cutaway inserted). */
+function spanOf(b: Beat, ctx: NeverContext): string[] {
+  const words = ctx.words
+  if (!words || b.from === null || b.to === null) return [`@${b.id}`]
+  let at = PLACES.get(words)
+  if (!at) {
+    at = new Map(words.map((w, i) => [w.id, i]))
+    PLACES.set(words, at)
+  }
+  const from = at.get(b.from)
+  const to = at.get(b.to)
+  if (from === undefined || to === undefined || to < from) return [`@${b.id}`]
+  return words.slice(from, to + 1).map((w) => w.id)
 }
 
 /** Material from outside the person's own files that a cutaway can show: a fetched clip or a picture from a link. */
@@ -477,7 +501,10 @@ function sfxItem(s: Sfx): NeverItem {
 /**
  * What a cut has of each entry on the list, as keys that stay the same while
  * the thing is unchanged: the same whoosh made louder is the same whoosh, a
- * new one is new.
+ * new one is new. What lies over a beat is keyed by the words under it, and
+ * a sound or move on a word by that word, so splitting a beat or joining two
+ * (which moves them to another beat) adds nothing; what a beat starts with,
+ * a transition or a sound on no word, stays with the beat that keeps its id.
  */
 function present(cut: Cut, entry: NeverItem, ctx: NeverContext): Set<string> {
   const keys = new Set<string>()
@@ -485,24 +512,29 @@ function present(cut: Cut, entry: NeverItem, ctx: NeverContext): Set<string> {
   const covers = (item: NeverItem): boolean => covering([entry], item) !== null
   for (const b of cut.beats) {
     const t = b.treatment
+    // Over every word of the beat; on its word, for a move or sound that lands on one.
+    const over = (key: string, word?: string | null): void => {
+      if (word) keys.add(`${word}|${key}`)
+      else for (const w of spanOf(b, ctx)) keys.add(`${w}|${key}`)
+    }
     if (thing === 'sfx')
-      for (const s of b.sfx ?? []) if (covers(sfxItem(s))) keys.add(`${b.id}|${s.kind ?? s.path}|${s.word ?? ''}`)
+      for (const s of b.sfx ?? [])
+        if (covers(sfxItem(s))) keys.add(s.word ? `${s.word}|sfx|${s.kind ?? s.path}` : `@${b.id}|sfx|${s.kind ?? s.path}`)
     if (thing === 'transition' && b.transition && covers(`transition:${transitionFamily(b.transition.kind)}`))
-      keys.add(`${b.id}|${b.transition.kind}`)
+      keys.add(`@${b.id}|${b.transition.kind}`)
     if (thing === 'punch-in') {
-      if (t.zoom > 1.001) keys.add(`${b.id}|zoom`)
-      if (t.camera?.kind === 'punch-in') keys.add(`${b.id}|camera|${t.camera.word ?? ''}`)
-      if (t.broll?.camera?.kind === 'punch-in') keys.add(`${b.id}|cutaway|${t.broll.camera.word ?? ''}`)
+      if (t.zoom > 1.001) over('zoom')
+      if (t.camera?.kind === 'punch-in') over('camera|punch-in', t.camera.word)
+      if (t.broll?.camera?.kind === 'punch-in') over('cutaway|punch-in', t.broll.camera.word)
     }
     if (thing === 'camera') {
-      if (t.camera && t.camera.kind !== 'punch-in') keys.add(`${b.id}|camera|${JSON.stringify(t.camera)}`)
+      if (t.camera && t.camera.kind !== 'punch-in') over(`camera|${JSON.stringify(t.camera)}`, t.camera.word)
       if (t.broll?.camera && t.broll.camera.kind !== 'punch-in')
-        keys.add(`${b.id}|cutaway|${JSON.stringify(t.broll.camera)}`)
+        over(`cutaway|${JSON.stringify(t.broll.camera)}`, t.broll.camera.word)
     }
-    if (thing === 'motion' && entry === 'motion' && t.bigWord) keys.add(`${b.id}|big|${t.bigWord}`)
-    if (thing === 'broll' && t.broll && t.frame !== 'speaker' && outside(t.broll.path, ctx))
-      keys.add(`${b.id}|${t.broll.path}`)
-    if (thing === 'bw' && t.bw) keys.add(b.id)
+    if (thing === 'motion' && entry === 'motion' && t.bigWord) keys.add(`${t.bigWord}|big`)
+    if (thing === 'broll' && t.broll && t.frame !== 'speaker' && outside(t.broll.path, ctx)) over(`broll|${t.broll.path}`)
+    if (thing === 'bw' && t.bw) over('bw')
   }
   if (thing === 'motion')
     for (const m of cut.motion ?? []) if (covers(`motion:${motionFamily(m.kind)}`)) keys.add(m.id)
@@ -614,8 +646,12 @@ export function neverFilter(ops: Op[], never: NeverItem[], ctx: NeverContext): {
 
 /**
  * Ops checked against the list on the cut they change: whatever they would
- * add from it is left out, and the entries that ruled it out come back. What
- * the cut already had, and changes to it (a sound made louder), stay.
+ * add from it is left out, and the entries that ruled out what was taken out
+ * come back, nothing else. What the cut already had, and changes to it (a
+ * sound made louder, a punch-in made tighter), stay, as do a split or a join
+ * that only moves them. Each op is checked on the cut the ones before it
+ * made, and one over several beats beat by beat, so a beat that has the
+ * thing keeps its change while one that would gain it does not.
  */
 export function neverGuard(
   cut: Cut,
@@ -624,11 +660,30 @@ export function neverGuard(
   context: OpContext & NeverContext
 ): { ops: Op[]; left: NeverItem[] } {
   if (never.length === 0 || ops.length === 0) return { ops, left: [] }
-  const trial = applyOps(cut, ops, context)
-  const grew = addedFromList(cut, trial.cut, never, context)
-  if (grew.length === 0) return { ops, left: [] }
-  const kept = neverFilter(ops, grew, context)
-  return { ops: kept.ops, left: kept.left.length ? kept.left : grew }
+  if (addedFromList(cut, applyOps(cut, ops, context).cut, never, context).length === 0) return { ops, left: [] }
+  const out: Op[] = []
+  const left = new Set<NeverItem>()
+  let at = cut
+  const check = (op: Op): void => {
+    const trial = applyOps(at, [op], context)
+    const grew = trial.applied.length > 0 ? addedFromList(at, trial.cut, never, context) : []
+    if (grew.length === 0) {
+      // Nothing from the list: as it is, refused or not, as it would have been.
+      out.push(op)
+      at = trial.cut
+      return
+    }
+    if ((op.op === 'treat' || op.op === 'camera') && op.beats.length > 1) {
+      for (const beat of op.beats) check({ ...op, beats: [beat] })
+      return
+    }
+    const kept = neverFilter([op], grew, context)
+    for (const item of kept.left) left.add(item)
+    out.push(...kept.ops)
+    at = applyOps(at, kept.ops, context).cut
+  }
+  for (const op of ops) check(op)
+  return { ops: out, left: [...left] }
 }
 
 /**
@@ -691,7 +746,7 @@ export function neverStrip(cut: Cut, never: NeverItem[], ctx: NeverContext): { o
 
 /** neverStrip on an edit's current version. */
 export function stripDoc(doc: EditDoc, never: NeverItem[]): { ops: Op[]; items: NeverItem[] } {
-  return neverStrip(currentCut(doc), never, { assets: doc.assets })
+  return neverStrip(currentCut(doc), never, { assets: doc.assets, words: doc.words })
 }
 
 // ---------- Commands ----------
