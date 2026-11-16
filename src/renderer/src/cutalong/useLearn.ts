@@ -21,8 +21,10 @@ function remembered(): string | null {
 
 /**
  * `brand` is the brand whose videos are shown: each brand learns only from
- * its own (shared/brands). A run keeps going for the brand it started for,
- * and its result shows only while that brand is still the one shown.
+ * its own (shared/brands). Every call is for the brand shown when it was
+ * made; a run keeps going for it, and what comes back shows only while that
+ * brand is still the one shown, so one brand's habits are never offered on
+ * another's page. Moving to another brand starts its page afresh.
  */
 export function useLearn(brand: string) {
   const [recordings, setRecordings] = useState<string[]>([])
@@ -30,28 +32,43 @@ export function useLearn(brand: string) {
   const [progress, setProgress] = useState<Progress | null>(null)
   /** When the current run started, for its stopwatch. */
   const [since, setSince] = useState<number | null>(null)
-  const [state, setState] = useState<LearnState>(EMPTY_LEARN_STATE)
+  /** What has been learned, and the brand it is for. */
+  const [held, setHeld] = useState<{ brand: string; state: LearnState }>({ brand, state: EMPTY_LEARN_STATE })
   const [error, setError] = useState<string | null>(null)
   const [notes, setNotes] = useState<string[]>([])
-  const [checking, setChecking] = useState(false)
+  /** The brand a check is running for. */
+  const [checkingFor, setCheckingFor] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [dismissed, setDismissed] = useState<string | null>(remembered)
   const busy = useRef(false)
   const shown = useRef(brand)
   shown.current = brand
+  /** A state that came back for a brand, kept only while that brand is shown. */
+  const take = useCallback((forBrand: string, state: LearnState): void => {
+    if (shown.current === forBrand) setHeld({ brand: forBrand, state })
+  }, [])
+  const state = held.brand === brand ? held.state : EMPTY_LEARN_STATE
 
   useEffect(() => {
     let live = true
+    // Another brand's page: nothing of the last one's stays on it.
+    setNotes([])
+    setError(null)
+    setAdding(false)
+    if (!busy.current) {
+      setRecordings([])
+      setFinishedState(null)
+    }
     void api
       .learnState(brand)
       .then((s) => {
-        if (live) setState(s)
+        if (live) take(brand, s)
       })
       .catch(() => undefined)
     return () => {
       live = false
     }
-  }, [brand])
+  }, [brand, take])
 
   const addRecordings = useCallback((paths: string[]): void => {
     setError(null)
@@ -85,40 +102,45 @@ export function useLearn(brand: string) {
     setProgress({ stage: 'Listening', percent: 0 })
     setSince(Date.now())
     const off = api.onLearnProgress((p) => setProgress(p))
+    const forBrand = brand
     try {
-      const forBrand = brand
       const r = await api.learnRun({ recordings, finished, brand: forBrand })
-      if (shown.current === forBrand) setState(r.state)
-      if (r.ok) {
-        setNotes(r.video.notes)
-        setRecordings([])
-        setFinishedState(null)
-        setAdding(false)
-      } else setError(r.message)
+      take(forBrand, r.state)
+      // What it says is about that brand's videos: said on its page, not another's.
+      if (shown.current === forBrand) {
+        if (r.ok) {
+          setNotes(r.video.notes)
+          setRecordings([])
+          setFinishedState(null)
+          setAdding(false)
+        } else setError(r.message)
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (shown.current === forBrand) setError(err instanceof Error ? err.message : String(err))
     } finally {
       off()
       setProgress(null)
       setSince(null)
       busy.current = false
     }
-  }, [recordings, finished, brand])
+  }, [recordings, finished, brand, take])
 
   const checkAgain = useCallback(async (): Promise<void> => {
-    setChecking(true)
+    const forBrand = brand
+    setCheckingFor(forBrand)
     try {
-      setState(await api.learnEvaluate(brand))
+      take(forBrand, await api.learnEvaluate(forBrand))
     } finally {
-      setChecking(false)
+      setCheckingFor((c) => (c === forBrand ? null : c))
     }
-  }, [brand])
+  }, [brand, take])
 
   const forget = useCallback(
     async (id: string): Promise<void> => {
-      setState(await api.learnForget(id, brand))
+      const forBrand = brand
+      take(forBrand, await api.learnForget(id, forBrand))
     },
-    [brand]
+    [brand, take]
   )
 
   /** Not now: this proposal stays hidden until learning comes up with a different one. */
@@ -139,7 +161,7 @@ export function useLearn(brand: string) {
     state,
     error,
     notes,
-    checking,
+    checking: checkingFor === brand,
     adding,
     setAdding,
     dismissed,
