@@ -410,6 +410,8 @@ const server = createServer(async (req, res) => {
         })
       if (op === 'run') {
         const started = Date.now()
+        // The arguments as the app gave them, so what the phone's own build must have can be read off a session.
+        log(`[run ${args.id}] ${args.tool} ${JSON.stringify(args.args)}`)
         const result = await runTool(args.id, args.tool, args.args)
         log(`[run ${args.id}] ${args.tool} exited ${result.code} after ${Date.now() - started} ms`)
         return send(res, 200, result)

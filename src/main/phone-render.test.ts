@@ -274,7 +274,8 @@ describe.skipIf(!FFMPEG)('rendering as a phone does', () => {
       expect(probe.streams.some((s) => s.codec_type === 'audio')).toBe(true)
       expect(Math.abs(Number(probe.format.duration) - resolved.durationSec)).toBeLessThan(0.15)
     }
-  })
+    // Two full exports at 1080 x 1920, one for each phone encoder, beside the rest of the suite.
+  }, 180_000)
 
   it('renders a long cut in passes on the phone encoder, chunks and join alike', async () => {
     const cut = withOps([

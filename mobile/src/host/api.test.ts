@@ -297,7 +297,8 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
       })
     ).streams as { codec_type: string }[]
     expect(streams.map((s) => s.codec_type).sort()).toEqual(['audio', 'video'])
-  })
+    // A whole export at 1080 x 1920, beside the rest of the suite.
+  }, 180_000)
 
   it('keeps projects, presets and settings in the app, and offers the models sized for phones', async () => {
     const project = await api.createProject('A very long name for a project made on a phone, kept whole', 'cut')

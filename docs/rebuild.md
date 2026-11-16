@@ -48,7 +48,7 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 
 - **Phase 1:** picking clips with +, sorting them, hearing the words on the phone (the model is downloaded on first use), v1, the thread and the editor, the presets and editing commands, requests to Claude with the person's key, other AI services behind their switch, export with progress to the chat and to Photos, projects, and Settings.
 - **What differs is the host's:** the phone's hardware H.264 encoder at set bitrates in NV12; camera moves with scale and crop, as the phone's LGPL ffmpeg has no `perspective`; ffmpeg's raw output written to segment files and read back; keys in the Keychain or the Android Keystore; the screen kept on while an export runs.
-- **On the Mac for now,** each said in one sentence where it is asked for: vlogs, `/clipping`, `/premiere`, videos from links and B-roll search, motion graphics, the brand and learning from edits, a second camera, following the speaker and LUT files. Planning with Ollama is not offered.
+- **On the Mac for now,** each said in one sentence where it is asked for: vlogs, `/clipping`, `/premiere`, videos from links and B-roll search, motion graphics and icons, the brand and learning from edits, a second camera, following the speaker and LUT files. Planning with Ollama is not offered.
 - **What the phone sends:** the page reaches only itself and Anthropic (its content security policy); the other AI services are reached by the phone's own HTTP through the Mac's gate; the transcription model comes from whisper.cpp's published models.
 
 `mobile/README.md` says how to run it on this computer through the dev bridge, and what the native builds need.
