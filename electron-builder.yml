@@ -17,12 +17,16 @@ asarUnpack:
   - '**/node_modules/ffmpeg-static/**'
   - '**/node_modules/@ffprobe-installer/**'
   - '**/node_modules/@napi-rs/canvas*/**'
+  # Kokoro, the voice that reads on this Mac, runs on onnxruntime's native binary.
+  - '**/node_modules/onnxruntime-node/**'
 
 extraResources:
   - from: resources/bin
     to: bin
   - from: resources/fonts
     to: fonts
+  - from: resources/voices
+    to: voices
 
 mac:
   category: public.app-category.video

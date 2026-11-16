@@ -266,6 +266,8 @@ export interface QuoteOptions {
   autoUnder?: number | null
   /** The script is already written (its cost is spent), or still to be written. */
   scriptWritten?: boolean
+  /** Made again from a made video: what is kept as it is, and so costs nothing and goes nowhere. */
+  reuse?: { narration?: boolean; shots?: boolean }
 }
 
 /**
@@ -277,6 +279,9 @@ export interface QuoteOptions {
 export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: QuoteOptions = {}): Quote {
   const today = opts.today ?? new Date().toISOString().slice(0, 10)
   const cap = brief.cap ?? opts.cap ?? DEFAULT_CAP
+  const keepVoice = !!opts.reuse?.narration
+  const keepShots = !!opts.reuse?.shots
+  if (keepShots) counts = { ...counts, stills: 0, clips: 0, sheets: 0, references: 0 }
   const missing: string[] = []
   const notes: string[] = []
   const keys: KeyService[] = []
@@ -290,18 +295,18 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   const images = pick(brief.images)
   if (brief.images && images !== brief.images)
     notes.push(`There is no ${IMAGE_NAME[brief.images]} key in Settings, so ${images ? IMAGE_NAME[images] : 'nothing'} makes the pictures.`)
-  if (!images && counts.stills + counts.sheets > 0) {
+  if (!images && !keepShots && counts.stills + counts.sheets > 0) {
     missing.push('To make the pictures I need a Google Gemini or fal.ai key in Settings, with other AI services on.')
     keys.push(...(brief.images === 'fal' ? (['fal', 'gemini'] as const) : (['gemini', 'fal'] as const)))
   } else if (brief.images && images !== brief.images) keys.push(brief.images === 'google' ? 'gemini' : 'fal')
   let clipsBy: ImageService | null = counts.clips > 0 ? images : null
   const { voice, note } = voiceFor(brief, can)
-  if (note) {
+  if (note && !keepVoice) {
     notes.push(note)
     const asked = brief.voice.engine === 'gemini' ? 'gemini' : brief.voice.engine
     if (asked === 'gemini' || asked === 'elevenlabs' || asked === 'openai') if (!keys.includes(asked)) keys.push(asked)
   }
-  if (voice.engine === 'own' && voice.id === 'pending') missing.push('Drop your voice-over in and I will make the video to it.')
+  if (!keepVoice && voice.engine === 'own' && voice.id === 'pending') missing.push('Drop your voice-over in and I will make the video to it.')
 
   let c: Counts = { ...counts }
   let size = images ? PRICES.images[images].size : '2K'
@@ -309,9 +314,9 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
     const lines: QuoteLine[] = []
     if (brief.from === 'topic' && !opts.scriptWritten)
       lines.push({ what: 'The script', by: 'Claude, with your Anthropic key', cost: scriptCost(brief.seconds) })
-    if (brief.from !== 'recording' || c.scenes > 0)
+    if (!keepShots && (brief.from !== 'recording' || c.scenes > 0))
       lines.push({ what: `The shot list, ${c.scenes} shots`, by: 'Claude, with your Anthropic key', cost: shotListCost(c.scenes, c.narrationSeconds) })
-    if (voice.engine !== 'own') {
+    if (voice.engine !== 'own' && !keepVoice) {
       const p = voice.engine === 'local' ? PRICES.voices.local : PRICES.voices[voice.engine]
       lines.push({
         what: `The narration, about ${clock(c.narrationSeconds)}`,
@@ -371,27 +376,30 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
     )
 
   // Time: the shot list and the narration at once, then the pictures four at a time, the clips two at a time.
-  const narrate =
-    voice.engine === 'own'
+  const narrate = keepVoice
+    ? 0
+    : voice.engine === 'own'
       ? c.narrationSeconds * 0.2
       : voice.engine === 'local'
         ? c.narrationSeconds * 0.5 + (can.localVoice ? 0 : 60)
         : c.narrationSeconds * 0.15
-  const plan = brief.from === 'topic' && !opts.scriptWritten ? 60 : 40
+  const plan = keepShots ? 0 : brief.from === 'topic' && !opts.scriptWritten ? 60 : 40
   const imageSec = images ? Math.ceil((c.stills + c.sheets) / 4) * (images === 'google' ? 18 : 12) : 0
   const clipSec = clipsBy ? Math.ceil(c.clips / 2) * (clipsBy === 'google' ? 100 : 200) : 0
   const seconds = Math.round(Math.max(plan, narrate) + imageSec + clipSec + 20)
 
   const sends: string[] = []
   if (brief.from === 'topic') sends.push('The topic goes to Claude to write the script, with your Anthropic key.')
-  sends.push('The script goes to Claude to plan the shots, with your Anthropic key.')
-  if (voice.engine === 'local') sends.push(`${voice.name} reads the script on this Mac, so the words go nowhere else.`)
+  if (!keepShots) sends.push('The script goes to Claude to plan the shots, with your Anthropic key.')
+  if (keepVoice) sends.push('The narration stays as it is.')
+  else if (voice.engine === 'local') sends.push(`${voice.name} reads the script on this Mac, so the words go nowhere else.`)
   else if (voice.engine === 'own') sends.push('Your recording stays on this Mac. I listen to it here for the words.')
   else {
     const where = { elevenlabs: 'ElevenLabs', openai: 'OpenAI', gemini: 'Google' }[voice.engine]
     sends.push(`The script goes to ${where} to be read aloud, with your ${where === 'Google' ? 'Gemini' : where} key.`)
   }
-  if (images) {
+  if (keepShots) sends.push('The pictures stay as they are, so nothing goes to make them.')
+  else if (images) {
     sends.push(
       `Only the text prompts for the pictures go to ${IMAGE_NAME[images]}${c.sheets > 0 ? ', with the character sheet it made for each shot the character is in' : ''}.`
     )

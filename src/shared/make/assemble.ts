@@ -13,7 +13,8 @@ import {
   type Cut,
   type EditDoc,
   type Source,
-  type Treatment
+  type Treatment,
+  type Word
 } from '../edit/schema'
 import type { MotionCallInput } from '../motion/schema'
 import { MAP_PUSH } from './map'
@@ -96,6 +97,8 @@ export interface AssembleInput {
   at?: string
   /** The narration's recording id: s1 for a first narration, the next free id when it is read again. */
   sourceId?: string
+  /** The narration's words as the edit already has them, when the narration is kept: the same ids. */
+  docWords?: Word[]
 }
 
 export interface Assembled {
@@ -187,7 +190,7 @@ export function assembleDoc(input: AssembleInput): Assembled {
     height: 0,
     fps: MAKE_FPS[brief.format]
   }
-  const words = wordsFromTranscript(input.words, sid, sid === 's1' ? 'w' : `${sid}w`)
+  const words = input.docWords ?? wordsFromTranscript(input.words, sid, sid === 's1' ? 'w' : `${sid}w`)
   const ranges = phraseRanges(
     make.phrases,
     words.map((w) => w.text)
@@ -328,4 +331,56 @@ export function assembleDoc(input: AssembleInput): Assembled {
     make
   }
   return { doc, unheard, rejected }
+}
+
+/** What a remade cut keeps of the cut it replaces: everything the person set for the whole video. */
+export interface Carry {
+  captions: boolean
+  look: boolean
+  music: boolean
+}
+
+/**
+ * A remade video (a new narration, a new style, a new length) as the next
+ * version of the edit it was made from: its recording and words join the
+ * edit's, its files join the material, and its cut becomes the new version,
+ * keeping what the person had set for the whole video. The versions before
+ * stay as they were, so Undo goes back to them.
+ */
+export function asNewVersion(
+  current: EditDoc,
+  made: EditDoc,
+  summary: string,
+  carry: Carry,
+  at = new Date().toISOString()
+): EditDoc {
+  const known = new Set(current.sources.map((s) => s.id))
+  const sources = [...current.sources, ...made.sources.filter((s) => !known.has(s.id))]
+  const words = [...current.words, ...made.words.filter((w) => !known.has(w.source))]
+  const paths = new Set(current.assets.map((a) => a.path))
+  let n = current.assets.reduce((m, a) => Math.max(m, Number(/^a(\d+)$/.exec(a.id)?.[1] ?? 0)), 0)
+  const assets = [
+    ...current.assets,
+    ...made.assets.filter((a) => !paths.has(a.path)).map((a) => ({ ...a, id: `a${++n}` }))
+  ]
+  const was = current.versions[current.versions.length - 1]
+  const cut = made.versions[made.versions.length - 1].cut
+  const kept: Cut = {
+    ...cut,
+    aspect: was.cut.aspect,
+    loudness: was.cut.loudness,
+    ...(carry.captions ? { captions: was.cut.captions } : {}),
+    ...(carry.look && was.cut.look !== undefined ? { look: was.cut.look } : {}),
+    ...(carry.music && was.cut.music !== undefined ? { music: was.cut.music } : {}),
+    ...(was.cut.voice !== undefined ? { voice: was.cut.voice } : {})
+  }
+  const spent = Math.round(((current.make?.spent ?? 0) + (made.make?.spent ?? 0)) * 10000) / 10000
+  return {
+    ...current,
+    sources,
+    words,
+    assets,
+    versions: [...current.versions, { n: was.n + 1, at, summary, ops: [], cut: kept }],
+    ...(made.make ? { make: { ...made.make, spent } } : {})
+  }
 }

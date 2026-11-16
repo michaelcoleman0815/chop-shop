@@ -6,6 +6,7 @@ import { Button } from '../components/ui'
 import { ClaudeFrames } from './ClaudeFrames'
 import { grow } from '../motion'
 import { Header } from './Header'
+import { MadeVideos } from './MadeVideos'
 import { OtherServices } from './OtherServices'
 import { Planning } from './Planning'
 
@@ -203,6 +204,8 @@ export function SettingsPage(): JSX.Element {
           <Planning settings={settings} onSettings={setSettings} />
 
           <OtherServices settings={settings} onSettings={setSettings} onHearer={setHearer} />
+
+          <MadeVideos settings={settings} onSettings={setSettings} />
 
           <section className="cl-section" aria-labelledby="set-words">
             <h2 id="set-words">Transcription</h2>

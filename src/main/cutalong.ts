@@ -42,6 +42,7 @@ import { registerLearnIpc } from './learn'
 import { preferencesForPlanner, registerMemoryIpc } from './memory'
 import { registerClippingIpc } from './clipping'
 import { registerVlogIpc } from './vlog'
+import { registerMakeIpc } from './make'
 import {
   addSources,
   createDoc,
@@ -685,6 +686,13 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   registerMemoryIpc()
   // /clipping: many short clips from long recordings (main/clipping).
   registerClippingIpc({ send: deps.send })
+
+  // Videos made from nothing (main/make): a narration read or recorded is heard on this Mac only.
+  registerMakeIpc({
+    send: deps.send,
+    mediaUrlFor: deps.mediaUrlFor,
+    transcribe: (path, durationSec, progress) => transcriptFor(path, durationSec, progress, { localOnly: true })
+  })
 
   // Vlogs: a shoot watched and told as a story (main/vlog), its talking heard as footage is here.
   registerVlogIpc({

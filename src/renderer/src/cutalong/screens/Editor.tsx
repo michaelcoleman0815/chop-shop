@@ -77,6 +77,8 @@ import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
 import { grainTile } from '../grain'
+import { FilmOver, filmFps } from '../components/FilmOver'
+import { weaveTransform } from '../../../../shared/edit/film'
 import { clock } from '../format'
 import { collapse } from '../motion'
 import { usePlayer, type DeckView } from '../usePlayer'
@@ -354,7 +356,14 @@ function Preview({
           </svg>
         )}
         {mediaUrl ? (
-          <div className="cl-decks" style={grade ? { filter: 'url(#cl-look)' } : undefined}>
+          <div
+            className="cl-decks"
+            style={{
+              ...(grade ? { filter: 'url(#cl-look)' } : {}),
+              // The gate weave moves the graded picture as the export's crop does (shared/edit/film.ts).
+              transform: look?.weave ? weaveTransform(look.weave, time, filmFps(doc.sources[0]?.fps ?? 30)) : undefined
+            }}
+          >
             <div className="cl-decks-main" style={mainBox}>
               {views.map((view, d) => (
                 <Deck
@@ -395,6 +404,7 @@ function Preview({
           <span className="cl-frame-empty" />
         )}
         {look && <LookOver look={look} playing={playing} />}
+        {look && <FilmOver look={look} time={time} fps={filmFps(doc.sources[0]?.fps ?? 30)} width={box.w} height={box.h} />}
         {showBig && big && (
           <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
             {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}

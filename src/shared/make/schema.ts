@@ -179,8 +179,8 @@ export const MAKERS = ['google', 'fal', 'local', 'broll', 'stand-in'] as const
 export type Maker = (typeof MAKERS)[number]
 
 export const MadeShotSchema = ShotSchema.extend({
-  /** The beat it covers in the edit. */
-  beat: z.string().min(1),
+  /** The beat it covers in the edit; empty when its phrase was not heard in the narration. */
+  beat: z.string().max(40),
   /** The file it made, or null when it could not be made. */
   file: z.string().nullable(),
   maker: z.enum(MAKERS).nullable(),

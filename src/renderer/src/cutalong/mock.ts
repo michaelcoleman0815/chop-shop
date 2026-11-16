@@ -29,6 +29,7 @@ import { detectProvider } from '../../../shared/keys'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
 import { mockVlogApi } from './vlog-mock'
+import { mockMakeApi } from './make-mock'
 import type { Word } from '../../../shared/edit'
 import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
 import { synthFinished, synthRecording } from '../../../shared/learn/synth'
@@ -403,6 +404,8 @@ export function createMockApi(): CutalongApi {
       for (const cb of listeners.cut) cb({ stage, percent: 50 })
       await sleep(150)
     }),
+    // A video made from nothing, quoted over a stand-in script; nothing is made in the preview.
+    ...mockMakeApi(),
     getVersion: async () => '0.2.13',
     pathForFile: (file: File) => `/Users/you/Movies/${file.name}`,
     openVideo: async () => null,

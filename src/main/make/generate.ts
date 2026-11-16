@@ -29,6 +29,8 @@ export interface MadeRequest {
   aspect: 'wide' | 'vertical'
   size?: string
   seconds?: number
+  /** Asked for again as it was ("make it again"): a new take, so not the one in the cache. */
+  take?: number
 }
 
 export function cacheKey(req: MadeRequest): string {
@@ -42,7 +44,8 @@ export function cacheKey(req: MadeRequest): string {
       refs: req.refs.map((r) => createHash('sha256').update(r.data).digest('hex')),
       aspect: req.aspect,
       size: req.size ?? null,
-      seconds: req.seconds ?? null
+      seconds: req.seconds ?? null,
+      ...(req.take ? { take: req.take } : {})
     })
   )
   return h.digest('hex').slice(0, 32)

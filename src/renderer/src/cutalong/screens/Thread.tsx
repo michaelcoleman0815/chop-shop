@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Composer } from '../components/Composer'
 import { AssistantMessage, UserMessage } from '../components/Message'
 import { ClipSet } from '../components/ClipSet'
+import { MakeBrief } from '../components/MakeBrief'
 import { Button, Icon, IconButton } from '../components/ui'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
@@ -36,6 +37,7 @@ export function Thread({ app }: { app: Cutalong }): JSX.Element {
               ) : (
                 <AssistantMessage key={m.id} msg={m} onAction={app.onAction}>
                   {m.clipRun ? <ClipSet app={app} run={m.clipRun} /> : null}
+                  {m.make ? <MakeBrief app={app} id={m.make} /> : null}
                 </AssistantMessage>
               )
             )}

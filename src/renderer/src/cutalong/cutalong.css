@@ -1102,10 +1102,17 @@ button:disabled {
 }
 
 .cl-look-vignette,
-.cl-look-grain {
+.cl-look-grain,
+.cl-film {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+/* Old film's canvases fill the frame; the soft one is drawn small and scaled up, as the export scales it. */
+.cl-film {
+  width: 100%;
+  height: 100%;
 }
 
 /* Larger than the frame, so it can jump about while the video plays. */
@@ -2021,4 +2028,52 @@ button:disabled {
 .cl-inset {
   position: absolute;
   overflow: hidden;
+}
+
+/* A made video's quote: its outline, its script behind a link, how to get a missing key (MakeBrief). */
+.cl-make {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.cl-make > .cl-field {
+  align-self: stretch;
+}
+
+.cl-make-outline,
+.cl-make-key ol {
+  margin: 0;
+  padding-left: var(--space-6);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--muted);
+}
+
+.cl-make-key {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+}
+
+.cl-make-key ol {
+  color: var(--ink);
+}
+
+.cl-toggle .cl-make-under {
+  width: 5.5em;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--ground);
+  padding: 4px 10px;
+  outline: none;
+}
+
+.cl-toggle .cl-make-under:focus-visible {
+  border-color: var(--ink);
 }

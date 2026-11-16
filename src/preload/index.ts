@@ -29,6 +29,8 @@ import type { KeyCheck, ServiceId } from '../shared/services'
 import type { ClipsFound, ClipsReply } from '../shared/clipping'
 import type { Vlog } from '../shared/vlog/schema'
 import type { VlogReply } from '../shared/vlog/reply'
+import type { Change, Draft, Reply as MakeReply, ShotChange } from '../shared/make/draft'
+import type { Make } from '../shared/make/schema'
 
 type Progress = { stage: string; percent: number | null }
 
@@ -244,6 +246,60 @@ const api = {
     doc?: EditDoc | null
   }): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; reply: VlogReply } | { ok: false; message: string }> =>
     ipcRenderer.invoke('vlog:make', req),
+  /**
+   * A video made from nothing (main/make): the prompt read, its script
+   * written and the whole of it quoted. Under "Go ahead without asking" in
+   * Settings it is made straight away. Progress comes on cut:progress.
+   */
+  makeStart: (req: {
+    text: string
+    recording?: string | null
+  }): Promise<
+    | { ok: true; kind: 'quote'; draft: Draft; reply: MakeReply }
+    | { ok: true; kind: 'made'; auto: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
+    | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
+  > => ipcRenderer.invoke('make:start', req),
+  /** A quote confirmed at `confirmed` dollars: made, unless the price is now higher. */
+  makeGo: (req: {
+    draft: Draft
+    confirmed: number
+  }): Promise<
+    | { ok: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
+    | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
+  > => ipcRenderer.invoke('make:go', req),
+  /** What was said next about a quote: the brief changed and quoted again; draft null when nothing changed. */
+  makeRevise: (req: {
+    draft: Draft
+    text: string
+  }): Promise<
+    { ok: true; draft: Draft; reply: MakeReply; changed: string[] } | { ok: true; draft: null } | { ok: false; message: string }
+  > => ipcRenderer.invoke('make:revise', req),
+  /** The script edited before anything is made, quoted again. */
+  makeScript: (req: {
+    draft: Draft
+    script: string
+  }): Promise<{ ok: true; draft: Draft; reply: MakeReply } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('make:script', req),
+  /** An ask of a made video: what making it again costs, before anything is made. Null when it is an ordinary edit. */
+  makeChange: (req: {
+    doc: EditDoc
+    text: string
+    onScreen?: string | null
+    /** The person's own voice-over, dropped for a made video that asked for one. */
+    recording?: string | null
+  }): Promise<{ ok: true; change: Change | null } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('make:change', req),
+  /** One shot made again for its confirmed quote: the op for a new version, the record and the asset. */
+  makeShot: (req: {
+    doc: EditDoc
+    change: ShotChange
+    confirmed: number
+  }): Promise<
+    | { ok: true; ops: Op[]; make: Make; asset: Omit<Asset, 'id'>; summary: string; reply: MakeReply; spent: number }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('make:shot', req),
+  /** Stops whatever is being made: nothing more is asked for or spent. */
+  makeCancel: (): Promise<boolean> => ipcRenderer.invoke('make:cancel'),
   /** A vlog's story told again for what was asked, as ops for a new version and the shoot with its new story. */
   planVlog: (req: {
     doc: EditDoc

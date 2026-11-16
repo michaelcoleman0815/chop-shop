@@ -26,6 +26,7 @@ export interface Action {
     | 'open-settings'
     | 'run-command'
     | 'copy'
+    | 'make'
   label: string
   primary?: boolean
   /** A command name for save-style and run-command, a path for reveal, the text for copy, JSON for the asset actions. */

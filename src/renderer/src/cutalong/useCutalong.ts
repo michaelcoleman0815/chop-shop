@@ -101,6 +101,7 @@ import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
 import { useVlog } from './useVlog'
+import { useMake } from './useMake'
 import {
   remember,
   rememberAdded,
@@ -1054,6 +1055,9 @@ export function useCutalong() {
     },
     [patch, push]
   )
+
+  // Videos made from nothing (useMake), called in from submit, ask and onAction.
+  const make = useMake({ docRef, setDoc, setMediaUrl, push, patch, applyAsVersion, during, findBroll })
 
   const findIcon = useCallback(
     async (query: string): Promise<void> => {
@@ -2371,6 +2375,8 @@ export function useCutalong() {
         push({ role: 'assistant', text: "Drop some footage or paste a video you like, and I'll start from there." })
         return
       }
+      // A shot, the voice, the style or the length of a made video, made again for a quote (useMake).
+      if (await make.asked(text)) return
       // A length, an opening or a part of the day asked of a vlog tells its story again (useVlog).
       if ((await vlog.retell(text, 'thread')).handled) return
       // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
@@ -2402,7 +2408,7 @@ export function useCutalong() {
       const wanted = r.brollWanted ?? []
       if (wanted.length > 0) await Promise.all(wanted.map((w) => findBroll(w.search, w.beat)))
     },
-    [applyAsVersion, findBroll, patch, push, vlog]
+    [applyAsVersion, findBroll, make, patch, push, vlog]
   )
 
   /** Sorts what was dropped in: which files are the talking, which has the better sound, which are B-roll. */
@@ -2547,6 +2553,8 @@ export function useCutalong() {
       })
       setBusy(true)
       try {
+        // A video made from nothing, a quote waiting, or the voice-over one waits for (useMake).
+        if (await make.handle(text, command, attachments)) return
         // /clipping, "find clips", "clip this stream": the recordings are long ones to cut clips from.
         // Asked in words about a short, it is an edit after all, made below as it always was.
         const inWords = command?.command !== 'clipping' && !!clippingAsked(words)
@@ -2635,6 +2643,7 @@ export function useCutalong() {
       bringIn,
       capturePage,
       ensureProject,
+      make,
       persist,
       push,
       runCommand,
@@ -2704,7 +2713,8 @@ export function useCutalong() {
 
   const onAction = useCallback(
     (a: Action): void => {
-      if (a.kind === 'open-editor') setScreen('editor')
+      if (a.kind === 'make') void make.onAction(a)
+      else if (a.kind === 'open-editor') setScreen('editor')
       else if (a.kind === 'open-settings') setScreen('settings')
       else if (a.kind === 'use-style') useStyle()
       else if (a.kind === 'run-command' && a.payload) void runCommand(a.payload)
@@ -2730,7 +2740,7 @@ export function useCutalong() {
         void api.setVideoSignIn('chrome').then(() => bringIn(req, hint, beat))
       }
     },
-    [addIcon, bringIn, runCommand, saveStyle, useStyle]
+    [addIcon, bringIn, make, runCommand, saveStyle, useStyle]
   )
 
   // ---------- Editor ----------
@@ -2926,6 +2936,7 @@ export function useCutalong() {
     setPanel,
     submit,
     onAction,
+    make,
     openProject,
     runCommand,
     addNote,

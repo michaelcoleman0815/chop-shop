@@ -55,6 +55,8 @@ export interface Narrated {
   durationSec: number
   /** The words with their times, when the voice gave them; null when they must be heard. */
   words: TimedWord[] | null
+  /** Where each phrase (one at a time) or each chunk of phrases (a service) sits in the file, in seconds. */
+  spans: { phrases: number[]; startSec: number; endSec: number }[]
 }
 
 /** Any sound file's bytes as 16-bit mono samples at the narration's rate, by ffmpeg. */
@@ -154,6 +156,7 @@ export async function narrate(
   const report = deps.onProgress ?? (() => undefined)
   const parts: Int16Array[] = []
   let words: TimedWord[] | null = null
+  const spans: Narrated['spans'] = []
   let clock = 0
   const push = (pcm: Int16Array): void => {
     parts.push(pcm)
@@ -168,7 +171,9 @@ export async function narrate(
       if (deps.signal?.aborted) throw new Error('Stopped.')
       if (i > 0) push(silence(starts.has(i) ? SECTION_GAP : PHRASE_GAP))
       const spoken = await deps.local.speak(phrase, voice.id, deps.signal)
+      const startSec = clock
       push(toPcm(spoken.samples, spoken.rate))
+      spans.push({ phrases: [i], startSec, endSec: clock })
       report(0.3 + (0.7 * (i + 1)) / input.phrases.length, 'Reading the script')
     }
   } else if (voice.engine === 'elevenlabs' || voice.engine === 'gemini' || voice.engine === 'openai') {
@@ -197,7 +202,9 @@ export async function narrate(
       } else {
         audio = await deps.services.openai(chunk.text, voice.id, READING[input.format], deps.signal)
       }
+      const startSec = clock
       push(await decodeToPcm(deps.ffmpeg, audio, deps.signal))
+      spans.push({ phrases: chunk.phrases, startSec, endSec: clock })
       report((k + 1) / chunks.length, 'Reading the script')
     }
   } else {
@@ -213,5 +220,5 @@ export async function narrate(
     .slice(0, 16)
   const path = join(deps.dir, `narration-${name}.wav`)
   await fs.writeFile(path, wavBytes(pcm))
-  return { path, durationSec: pcm.length / NARRATION_RATE, words }
+  return { path, durationSec: pcm.length / NARRATION_RATE, words, spans }
 }

@@ -51,6 +51,9 @@ import { colorConversion, hasZscale, liveChannel } from './intake'
 import { bedVolume, limiter, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
+import { renderFilm } from './render/film'
+import { weaveFilter } from '../shared/edit/film'
+import { hasFilm } from '../shared/edit/look'
 
 /**
  * Renders a resolved cut: the renderer of record for an edit document.
@@ -222,6 +225,8 @@ export interface GraphOptions {
   look?: Look | null
   /** Whether the look's LUT is a 3D one (most are) or a 1D curve per channel. */
   lutKind?: LutKind
+  /** Old film over the graded picture (render/film.ts): the weave, and one loop of each layer's file. */
+  film?: { fine: string | null; soft: string | null; weave: number } | null
   /** An ffmpeg metadata file of chapters to write into the video, which players show. */
   chaptersPath?: string | null
   /** Sound effects over the finished sound, before any music goes under it. */
@@ -952,6 +957,22 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${vOut}]${graded.join(',')}[vlook]`)
     vOut = 'vlook'
   }
+  // Old film: the graded picture weaves in the gate, then the leaks and the dust loop over it.
+  if (opts.film) {
+    const weave = weaveFilter(opts.film.weave, W, H, fps)
+    if (weave) {
+      chains.push(`[${vOut}]${weave}[vweave]`)
+      vOut = 'vweave'
+    }
+    for (const [i, file] of [opts.film.soft, opts.film.fine].entries()) {
+      if (!file) continue
+      inputs.push('-stream_loop', '-1', '-i', file)
+      const k = next++
+      chains.push(`[${k}:v]${i === 0 ? `scale=${W}:${H}:flags=bicubic,` : ''}format=rgba[film${i}]`)
+      chains.push(`[${vOut}][film${i}]overlay=0:0:shortest=1[vfilm${i}]`)
+      vOut = `vfilm${i}`
+    }
+  }
   if (opts.assPath) {
     const fonts = opts.fontsDir ? `:fontsdir=${filterPath(opts.fontsDir)}` : ''
     chains.push(`[${vOut}]subtitles=${filterPath(opts.assPath)}${fonts}[vsub]`)
@@ -1471,6 +1492,13 @@ export async function renderCut(
     music: cut.music ? bedFor(cut.music, resolved, cut.loudness) : null,
     look: cut.look ?? null,
     lutKind: cut.look?.lut ? await lutKindOf(cut.look.lut.path) : undefined,
+    film:
+      cut.look && hasFilm(cut.look)
+        ? {
+            ...(await renderFilm(cut.look, width, height, fps, opts.ffmpeg, join(opts.workDir, 'film'), opts.signal)),
+            weave: cut.look.weave ?? 0
+          }
+        : null,
     chaptersPath: await writeChapters(cut, resolved, opts.workDir),
     sfx: await sfxFor(cut, resolved, opts.ffmpeg, opts.sfxDir ?? join(opts.workDir, 'sfx')),
     quality,

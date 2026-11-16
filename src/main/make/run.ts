@@ -2,8 +2,9 @@ import { promises as fs } from 'fs'
 import { clock } from '../../shared/presets/preset'
 import type { Music } from '../../shared/edit/audio'
 import type { EditDoc } from '../../shared/edit/schema'
+import type { Draft, Kept, Reply } from '../../shared/make/draft'
 import { readAsk, reviseBrief, cleanTopic } from '../../shared/make/brief'
-import { assembleDoc, type MadeFile } from '../../shared/make/assemble'
+import { assembleDoc, type Carry, type MadeFile } from '../../shared/make/assemble'
 import type { MapShots } from '../../shared/make/map'
 import { PRICES } from '../../shared/make/prices'
 import {
@@ -48,25 +49,6 @@ import type { MakeServices, Picture, TimedWord } from './services'
  * and the shot shows a plain card until it is asked for again.
  */
 
-export interface Draft {
-  id: string
-  brief: Brief
-  title: string
-  outline: string[]
-  script: string
-  phrases: string[]
-  sections: number[]
-  /** What writing the script cost already, on the Anthropic key. */
-  scriptCost: number
-  quote: Quote
-}
-
-export interface Reply {
-  text: string
-  aside: string | null
-  chips: string[]
-  details: { label: string; value: string }[]
-}
 
 export interface MakeRunDeps {
   services: MakeServices
@@ -74,8 +56,17 @@ export interface MakeRunDeps {
   parse: ParseCall
   ffmpeg: string
   probe: (path: string) => Promise<{ durationSec: number; width: number; height: number }>
-  /** The words of a recording, heard on this Mac (never by another service). */
-  transcribe: (path: string, durationSec: number, progress: (stage: string, percent: number) => void) => Promise<TimedWord[]>
+  /**
+   * The words of a recording, heard on this Mac (never by another service).
+   * For a narration read here, `read` says which phrases sit where; whisper
+   * does not need it, and the end-to-end stand-in for whisper does.
+   */
+  transcribe: (
+    path: string,
+    durationSec: number,
+    progress: (stage: string, percent: number) => void,
+    read?: { phrases: string[]; spans: { phrases: number[]; startSec: number; endSec: number }[] }
+  ) => Promise<TimedWord[]>
   maps: MapShots
   /** The edit's own folder for what is made: Assets/<edit>/made. */
   dir: string
@@ -125,12 +116,15 @@ export async function draftFor(
 /** The quote for a draft as it stands. */
 export function quoteDraft(draft: Draft, deps: Pick<DraftDeps, 'can' | 'settings' | 'today'>): Quote {
   const counts = estimateCounts(draft.brief, draft.phrases.length ? draft.phrases : ['a'], draft.script)
-  return quoteFor(draft.brief, counts, deps.can, {
+  const quote = quoteFor(draft.brief, counts, deps.can, {
     today: deps.today,
     cap: deps.settings.cap,
     autoUnder: deps.settings.autoUnder,
-    scriptWritten: true
+    scriptWritten: true,
+    reuse: { narration: !!draft.kept?.narration, shots: !!draft.kept?.shots }
   })
+  // A kept narration is read by the voice it was read by, whatever is available now.
+  return draft.kept?.narration ? { ...quote, voice: draft.kept.narration.voice } : quote
 }
 
 /** A draft with an edited script: new phrases and a new quote. */
@@ -356,7 +350,10 @@ async function narration(
   if (read.words && read.words.length > 0)
     return { path: read.path, durationSec: read.durationSec, words: read.words, timing: 'voice', voice: reader, cost }
   deps.progress('Listening to the narration for its timing', 0)
-  const words = await deps.transcribe(read.path, read.durationSec, (stage, p) => deps.progress(stage, p))
+  const words = await deps.transcribe(read.path, read.durationSec, (stage, p) => deps.progress(stage, p), {
+    phrases: draft.phrases,
+    spans: read.spans
+  })
   return { path: read.path, durationSec: read.durationSec, words, timing: 'whisper', voice: reader, cost }
 }
 
@@ -368,10 +365,21 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
   const notes: string[] = []
 
   // The narration and the shot list at once: neither needs the other.
-  deps.progress(brief.voice.engine === 'own' ? 'Listening to your recording' : 'Reading the script', null)
-  const narrated = narration(draft, quote.voice, budget, deps, notes)
+  const keptVoice = draft.kept?.narration
+  const keptShots = draft.kept?.shots
+  if (!keptVoice) deps.progress(brief.voice.engine === 'own' ? 'Listening to your recording' : 'Reading the script', null)
+  const narrated = keptVoice
+    ? Promise.resolve({
+        path: keptVoice.path,
+        durationSec: keptVoice.durationSec,
+        words: keptVoice.words.map((w) => ({ text: w.text, startSec: w.startSec, endSec: w.endSec })),
+        timing: keptVoice.timing,
+        voice: keptVoice.voice,
+        cost: 0
+      })
+    : narration(draft, quote.voice, budget, deps, notes)
   let ownScript: { phrases: string[]; sections: number[] } | null = null
-  if (brief.voice.engine === 'own') {
+  if (!keptVoice && brief.voice.engine === 'own' && draft.phrases.length === 0) {
     // The recording's own words are the script.
     const heard = await narrated
     const text = heard.words.map((w) => w.text).join(' ')
@@ -381,6 +389,7 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
   }
   const maxClips = quote.clips ? quote.counts.clips : 0
   const planning = (async (): Promise<CheckedShots & { cost: number; note: string | null }> => {
+    if (keptShots) return { bible: keptShots.bible, shots: keptShots.shots, mended: [], cost: 0, note: null }
     const r = await planShots(brief, draft.phrases, { sections: draft.sections, outline: draft.outline, maxClips }, deps.parse)
     if (r.ok) return { ...r.value, cost: r.cost, note: null }
     // Claude could not plan them: each shot shows what its line says, in the format's own style.
@@ -388,7 +397,7 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
   })()
   const [heard, planned] = await Promise.all([narrated, planning])
   if (planned.note) notes.push(planned.note)
-  deps.progress('Planning the shots', 100)
+  if (!keptShots) deps.progress('Planning the shots', 100)
 
   const lengths = phraseLengths(draft.phrases, heard.words)
   const size = quote.size
@@ -398,12 +407,14 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
   )
   if (fit.downgraded > 0) notes.push(`${fit.downgraded === 1 ? 'One clip is' : `${fit.downgraded} clips are`} a still instead, to stay inside the quote.`)
   const ground = await groundFor(brief.format, brief.aspect, deps.dir)
-  const made = await makeShots(
-    { brief, bible: planned.bible, shots: fit.shots, images: quote.images, clips: quote.clips, size, lengths },
-    budget,
-    { ...deps, ground },
-    { clipSeconds: quote.counts.clipSeconds, maxSheets: Math.max(quote.counts.sheets, 0) }
-  )
+  const made = keptShots
+    ? await keptFiles(keptShots, deps.probe)
+    : await makeShots(
+        { brief, bible: planned.bible, shots: fit.shots, images: quote.images, clips: quote.clips, size, lengths },
+        budget,
+        { ...deps, ground },
+        { clipSeconds: quote.counts.clipSeconds, maxSheets: Math.max(quote.counts.sheets, 0) }
+      )
   notes.push(...made.notes)
 
   deps.progress('Finding music in your Music folder', null)
@@ -428,7 +439,16 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
     clips: quote.clips,
     spent: Math.round((spentServices + claudeCost) * 10000) / 10000
   }
-  const { doc, unheard, rejected } = assembleDoc({ id: draft.id, make, words: heard.words, ground, files: made.files, music })
+  const { doc, unheard, rejected } = assembleDoc({
+    id: draft.id,
+    make,
+    words: heard.words,
+    ground,
+    files: made.files,
+    music,
+    sourceId: keptVoice?.sourceId ?? draft.into?.sourceId ?? 's1',
+    ...(keptVoice ? { docWords: keptVoice.words } : {})
+  })
   if (rejected.length) console.warn('[make] left out of the edit:', rejected)
   // Each shot knows the beat it covers.
   const beatOf = new Map(doc.versions[0].cut.beats.map((b, i) => [i, b.id]))
@@ -444,6 +464,18 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
 
   const reply = madeReply(doc, make, quote, notes)
   return { doc, reply, spent: make.spent }
+}
+
+/** Shots kept as they were: their files measured again for the edit, nothing made. */
+async function keptFiles(kept: NonNullable<Kept['shots']>, probe: MakeRunDeps['probe']): Promise<ShotsMade> {
+  const files = new Map<string, MadeFile>()
+  for (const s of kept.shots) {
+    if (!s.file || files.has(s.file)) continue
+    const p = await probe(s.file).catch(() => ({ durationSec: 0, width: 0, height: 0 }))
+    const video = s.visual.kind === 'clip' || s.visual.kind === 'broll'
+    files.set(s.file, { width: p.width, height: p.height, durationSec: video ? p.durationSec : null })
+  }
+  return { shots: kept.shots.map((s) => ({ ...s, cost: 0 })), sheets: kept.sheets, notes: [], files }
 }
 
 /** What was made, in Cutalong's voice: a sentence, three facts, and the rest behind Details. */

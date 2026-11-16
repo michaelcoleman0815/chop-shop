@@ -109,6 +109,14 @@ export interface Settings {
    * services are; nothing is sent without an Anthropic key either way.
    */
   claudeSeesFrames?: boolean
+  /**
+   * Videos made from nothing (main/make): go ahead without asking when one
+   * costs less than this many dollars. Absent or null is off, the default:
+   * every made video is quoted and waits for the person to confirm.
+   */
+  makeAutoUnder?: number | null
+  /** The most one made video may cost, in dollars, unless the prompt says otherwise. Absent is $10. */
+  makeCap?: number | null
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string
@@ -332,6 +340,8 @@ export interface ChatMessage {
   video?: { path: string; name: string; width: number; height: number; durationSec: number }
   /** The /clipping run whose clips this reply shows, as cards under it. */
   clipRun?: number
+  /** The quote for a video made from nothing whose outline and script show under this reply (useMake). */
+  make?: string
 }
 
 export interface TimelineClip {
