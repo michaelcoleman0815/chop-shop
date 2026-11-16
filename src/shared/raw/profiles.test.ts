@@ -74,6 +74,7 @@ describe('cutting profiles', () => {
       'gaming',
       'livestream',
       'church',
+      'vlog',
       'asmr'
     ])
     expect(DEFAULT_PROFILE.id).toBe('talking-head')

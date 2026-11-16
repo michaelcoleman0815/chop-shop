@@ -210,13 +210,25 @@ export function readClip(
     return { usable, left, moments: [] }
   }
 
-  // Moments: each usable stretch cut where the view changes, then every few seconds.
+  // Moments: each usable stretch cut where the view changes, then every few
+  // seconds. A change counts when the palette a second either side differs
+  // too, so a flash of light or a shape crossing the lens is not a new view.
+  const palette = watched.series.palette ?? []
+  const viewChanges = (t: number): boolean => {
+    const before = palette[Math.max(0, Math.floor(t) - 1)]
+    const after = palette[Math.min(palette.length - 1, Math.ceil(t) + 1)]
+    if (!before || !after) return true
+    let d = 0
+    for (let k = 0; k < before.length; k++) d += Math.abs(before[k] - (after[k] ?? 0))
+    return d / 2 >= 0.25
+  }
   const spans: [number, number][] = []
   for (const [a, b] of usable) {
     const cuts = [a]
     for (let i = Math.ceil(a / hop) + 1; i < Math.floor(b / hop) - 1; i++) {
       const t = i * hop
-      if (sig.change[i] >= NEW_VIEW && t - cuts[cuts.length - 1] >= 1.5 && b - t >= 1.5) cuts.push(round3(t))
+      if (sig.change[i] >= NEW_VIEW && t - cuts[cuts.length - 1] >= 1.5 && b - t >= 1.5 && viewChanges(t))
+        cuts.push(round3(t))
     }
     cuts.push(b)
     for (let k = 0; k < cuts.length - 1; k++) {

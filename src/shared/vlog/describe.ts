@@ -1,0 +1,100 @@
+import { PALETTE_HUES } from './frames'
+import type { Clip, Moment, Scene } from './schema'
+
+/**
+ * What is in a moment, in one line, when nothing has looked at its pictures:
+ * said from the measurements alone, plainly, so a person can still tell the
+ * moments apart ("a bright, steady shot, mostly green, with wind on the
+ * microphone"). Claude or a model on this Mac say it better; this is what
+ * there is without either. Scenes are named by their time of day, or by
+ * what their moments were said to show when something looked.
+ */
+
+const HUE_NAMES = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink']
+
+/** The colour a look is mostly, in a word, or null when it is mostly grey or mixed. */
+export function colourOf(look: number[]): string | null {
+  if (look.length < PALETTE_HUES + 4) return null
+  const hues = look.slice(0, PALETTE_HUES)
+  const greys = look.slice(PALETTE_HUES, PALETTE_HUES + 4).reduce((a, b) => a + b, 0)
+  let best = 0
+  for (let k = 1; k < hues.length; k++) if (hues[k] > hues[best]) best = k
+  if (hues[best] >= 0.4) return HUE_NAMES[best]
+  if (greys >= 0.6) return look[PALETTE_HUES] + look[PALETTE_HUES + 1] > greys * 0.6 ? 'dark' : 'grey'
+  return null
+}
+
+const SOUND_WORDS: Record<string, string> = {
+  cheering: 'with cheering',
+  laughter: 'with laughter',
+  music: 'with music playing',
+  wind: 'with wind on the microphone',
+  speech: 'with someone talking'
+}
+
+/** One line from what a moment measured, with the first words said in it when it is talking. */
+export function describeFromMeasures(m: Moment, clip: Clip | undefined, said = ''): string {
+  if (m.kind === 'talk' && said.trim()) {
+    const words = said.trim().split(/\s+/)
+    const quote = words.length > 9 ? `${words.slice(0, 9).join(' ')} …` : words.join(' ')
+    return `you talking to the camera: “${quote}”`
+  }
+  const light = m.light < 0.22 ? 'dark' : m.light < 0.38 ? 'dim' : m.light > 0.72 ? 'very bright' : 'bright'
+  const camera = m.steady >= 0.8 ? 'steady' : m.steady >= 0.45 ? 'handheld' : 'shaky'
+  const motion =
+    m.motion >= 0.6
+      ? 'a lot moving fast'
+      : m.motion >= 0.3
+        ? 'things moving'
+        : m.motion >= 0.1
+          ? 'a little movement'
+          : 'little moving'
+  const colour = clip ? colourOf(clip.look) : null
+  const sound = m.sounds.map((s) => SOUND_WORDS[s]).find(Boolean) ?? (m.loud < 0.15 ? 'quiet' : '')
+  const upright = clip && clip.height > clip.width ? 'upright ' : ''
+  const parts = [`a ${light}, ${camera} ${upright}shot`, colour ? `mostly ${colour}` : null, motion, sound || null]
+  return parts.filter(Boolean).join(', ')
+}
+
+/** A time of day as people say it: 9:12, 13:05. */
+export function timeOfDay(at: number | null): string | null {
+  if (at === null) return null
+  const d = new Date(at * 1000)
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function partOfDay(at: number): string {
+  const h = new Date(at * 1000).getHours()
+  return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 21 ? 'Evening' : 'Night'
+}
+
+/** Words that name a place in a line, for naming a scene from what its moments show. */
+const PLACE =
+  /\b(?:at|in|inside|outside|on|by|into|through|around|near|across)\s+(?:the\s+|a\s+|an\s+)?([a-z][a-z' -]{2,40}?)(?=[,.;]|\s+(?:with|while|as|and|where|at|in)\b|$)/i
+
+/** A place a description names: "walking into the venue, a crowd at the door" names "the venue". */
+export function placeIn(line: string): string | null {
+  const m = PLACE.exec(line)
+  if (!m) return null
+  const place = m[1].trim().replace(/\s+/g, ' ')
+  if (/^(camera|frame|night|day|morning|evening|afternoon|front|back|middle|distance)$/i.test(place)) return null
+  return place.split(' ').length <= 4 ? place : null
+}
+
+/**
+ * A scene's name: the place its moments were said to be in most often, when
+ * something looked at them, else its part of the day and when it started.
+ */
+export function nameScene(scene: Scene, moments: Moment[], index: number): string {
+  const own = new Set(scene.clips)
+  const seen = moments.filter((m) => own.has(m.clip) && m.describedBy !== 'measurements')
+  const counts = new Map<string, number>()
+  for (const m of seen) {
+    const place = placeIn(m.description)
+    if (place) counts.set(place.toLowerCase(), (counts.get(place.toLowerCase()) ?? 0) + 1)
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+  if (top && top[1] >= Math.max(1, seen.length / 4)) return `The ${top[0].replace(/^the /, '')}`
+  if (scene.startAt !== null) return `${partOfDay(scene.startAt)}, ${timeOfDay(scene.startAt)}`
+  return `Scene ${index + 1}`
+}
