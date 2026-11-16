@@ -1,6 +1,7 @@
 import type { Animator, Layer, Span, TextLayer } from '../types'
 import { accentOf, fitSize, spokenTimes } from './kit'
 import { register, type BuildContext } from './registry'
+import { engravedTitle } from './engraved'
 
 /**
  * A kinetic title: a small lead-in line typed in a word at a time, then a big
@@ -11,7 +12,7 @@ import { register, type BuildContext } from './registry'
  * tracking, type with a cursor, and wipe on.
  */
 
-const STYLES = ['slide', 'rise', 'punch', 'blur', 'track', 'type', 'wipe'] as const
+const STYLES = ['slide', 'rise', 'punch', 'blur', 'track', 'type', 'wipe', 'engraved'] as const
 type Style = (typeof STYLES)[number]
 
 const shadow = (u: number): TextLayer['effects'] => ({
@@ -123,6 +124,8 @@ function kinetic(ctx: BuildContext): Layer[] {
   const { start, end } = span
   const u = frame.u
   const style: Style = (STYLES as readonly string[]).includes(item.style) ? (item.style as Style) : 'slide'
+  // A documentary's year or place, in engraved capitals (templates/engraved.ts).
+  if (style === 'engraved') return engravedTitle(ctx)
   const { lead, keyword } = titleLines(item.text)
   if (!keyword) return []
   const vertical = frame.shape === 'vertical'
@@ -218,7 +221,7 @@ register({
   kind: 'title',
   title: 'Kinetic title',
   about:
-    'A title over the picture: text is a small lead-in line then the big keyword line, like ["So what is the", "FOMO & partnership?"], or the keyword line alone. The lead-in types in a word at a time and the keyword line lands with motion blur; when the words are the ones said, each lands as it is said. slide comes in behind its own edge, rise lifts each word out of a slot, punch drops in from big, blur resolves out of a blur, track closes up from wide letter spacing, type types with a cursor, wipe wipes on. color sets the keyword line.',
+    'A title over the picture: text is a small lead-in line then the big keyword line, like ["So what is the", "FOMO & partnership?"], or the keyword line alone. The lead-in types in a word at a time and the keyword line lands with motion blur; when the words are the ones said, each lands as it is said. slide comes in behind its own edge, rise lifts each word out of a slot, punch drops in from big, blur resolves out of a blur, track closes up from wide letter spacing, type types with a cursor, wipe wipes on, engraved sets a documentary year or place in big Roman capitals that settle into the frame (text is an optional small line then the big one, like ["San Bernardino, California", "1954"]). color sets the keyword line.',
   styles: STYLES,
   places: ['middle', 'top', 'bottom'],
   length: 3.5,

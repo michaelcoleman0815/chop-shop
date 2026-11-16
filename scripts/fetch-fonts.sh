@@ -19,3 +19,6 @@ BASE="https://raw.githubusercontent.com/google/fonts/main"
 # instance, which is the weight these presets ask for.
 fetch "Sora.ttf"          "$BASE/ofl/sora/Sora%5Bwght%5D.ttf"
 fetch "Anton-Regular.ttf" "$BASE/ofl/anton/Anton-Regular.ttf"
+# Engraved documentary titles. SIL Open Font License 1.1, kept beside it.
+fetch "Cinzel.ttf"        "$BASE/ofl/cinzel/Cinzel%5Bwght%5D.ttf"
+fetch "Cinzel-OFL.txt"    "$BASE/ofl/cinzel/OFL.txt"

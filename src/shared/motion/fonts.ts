@@ -50,6 +50,16 @@ export const MOTION_FONTS: MotionFont[] = [
     ascent: 0.97,
     descent: 0.29,
     label: 'Sora, a clean sans'
+  },
+  {
+    // SIL Open Font License 1.1, resources/fonts/Cinzel-OFL.txt. For engraved documentary titles.
+    family: 'Cinzel',
+    file: 'Cinzel.ttf',
+    weights: [400, 900],
+    cap: 0.71,
+    ascent: 0.98,
+    descent: 0.37,
+    label: 'Cinzel, Roman capitals'
   }
 ]
 

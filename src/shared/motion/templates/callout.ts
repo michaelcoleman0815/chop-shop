@@ -15,7 +15,7 @@ import { register, type BuildContext } from './registry'
  * the editor lets the person drag the region onto the right spot.
  */
 
-const STYLES = ['spec', 'arrow', 'circle', 'underline', 'box', 'pointer'] as const
+const STYLES = ['spec', 'arrow', 'circle', 'underline', 'box', 'pointer', 'label'] as const
 type Style = (typeof STYLES)[number]
 
 interface Region {
@@ -71,11 +71,13 @@ function label(
   const u = frame.u
   const room = side === 1 ? frame.width - frame.safe.right - at[0] : at[0] - frame.safe.left
   const maxWidth = Math.max(200 * u, room - 16 * u)
-  const plated = item.fx.includes('plate')
+  // An explainer's label: dark words on a white pill, as a diagram is labelled.
+  const light = item.style === 'label'
+  const plated = item.fx.includes('plate') || light
   const common = {
     align: side === 1 ? ('left' as const) : ('right' as const),
     maxWidth,
-    effects: plated ? undefined : shadow(u),
+    effects: light ? { shadow: { color: 'rgba(0, 0, 0, 0.22)', blur: 16 * u, y: 4 * u } } : plated ? undefined : shadow(u),
     animators: [
       {
         by: 'line' as const,
@@ -97,10 +99,15 @@ function label(
       end,
       text: name,
       font: { family: theme.body, size: 42 * u, weight: 700, lineHeight: 1.1 },
-      fill: theme.text,
+      fill: light ? theme.ink : theme.text,
       valign: value ? 'bottom' : 'middle',
-      transform: { x: at[0], y: value ? at[1] + 4 * u : at[1] },
-      plate: plated ? { color: 'rgba(12, 12, 14, 0.72)', radius: 14 * u, padX: 18 * u, padY: 10 * u } : undefined,
+      // Pills need room between them for their padding.
+      transform: { x: at[0], y: value ? at[1] + (light ? -10 : 4) * u : at[1] },
+      plate: plated
+        ? light
+          ? { color: '#FFFFFF', radius: 40 * u, padX: 24 * u, padY: 12 * u }
+          : { color: 'rgba(12, 12, 14, 0.72)', radius: 14 * u, padX: 18 * u, padY: 10 * u }
+        : undefined,
       ...common
     })
   }
@@ -111,9 +118,10 @@ function label(
       end,
       text: value,
       font: { family: theme.body, size: 34 * u, weight: 600, lineHeight: 1.1 },
-      fill: accent,
+      fill: light ? theme.ink : accent,
+      plate: light ? { color: accent, radius: 40 * u, padX: 20 * u, padY: 10 * u } : undefined,
       valign: name ? 'top' : 'middle',
-      transform: { x: at[0], y: name ? at[1] + 10 * u : at[1] },
+      transform: { x: at[0], y: name ? at[1] + (light ? 24 : 10) * u : at[1] },
       ...common,
       animators: common.animators.map((a, i) => (i === 0 ? { ...a, delay: delay + 0.08 } : a))
     })
@@ -138,7 +146,8 @@ function build(ctx: BuildContext): Layer[] {
   const stroke = (width: number, color = accent) => ({ color, width: width * u })
   const layers: Layer[] = []
 
-  if (style === 'spec' || style === 'pointer') {
+  if (style === 'spec' || style === 'pointer' || style === 'label') {
+    const ink = style === 'label' ? theme.ink : theme.text
     // Up and out by default; down when that would run into the top of the safe area.
     const rise = item.place === 'bottom' || r.py - 230 * u < frame.safe.top ? 1 : -1
     // The leader shortens when the label would otherwise be squeezed against the safe edge.
@@ -159,7 +168,7 @@ function build(ctx: BuildContext): Layer[] {
       end,
       shape: { type: 'ellipse', w: 22 * u, h: 22 * u },
       fill: accent,
-      stroke: { color: theme.text, width: 4 * u },
+      stroke: { color: style === 'label' ? '#FFFFFF' : theme.text, width: 4 * u },
       transform: { x: r.px, y: r.py, scale: keys([0, 0, { spring: 0.5 }], [0.3, 1]), ...out() }
     })
     if (style === 'pointer') {
@@ -185,7 +194,7 @@ function build(ctx: BuildContext): Layer[] {
       start,
       end,
       shape: { type: 'line', points: [[r.px, r.py], elbow, end2] },
-      stroke: { ...stroke(5, theme.text), join: 'round' },
+      stroke: { ...stroke(5, ink), join: 'round' },
       trim: { end: keys([0.1, 0, 'snap'], [0.1 + TIMING.draw + 0.06, 1]) },
       effects: { shadow: { color: 'rgba(0, 0, 0, 0.45)', blur: 10 * u, y: 2 * u } },
       transform: out()
@@ -321,7 +330,7 @@ register({
   kind: 'callout',
   title: 'Callout',
   about:
-    'Points at something in the frame. Styles: spec (a dot and a leader line to a label: text is the part, then its value, like ["48 MP main camera", "f/1.78"]), arrow, circle, underline and box (a highlight), each with an optional label in text, and pointer (a pulsing dot). box is the region as fractions of the frame [x, y, width, height], or a point [x, y]; leave it empty if you cannot know where the thing is, and the person places it. place left or right puts the label on that side.',
+    'Points at something in the frame. Styles: spec (a dot and a leader line to a label: text is the part, then its value, like ["48 MP main camera", "f/1.78"]), label (the same, as an explainer labels a diagram: dark words on a white pill, an ink leader line), arrow, circle, underline and box (a highlight), each with an optional label in text, and pointer (a pulsing dot). box is the region as fractions of the frame [x, y, width, height], or a point [x, y]; leave it empty if you cannot know where the thing is, and the person places it. place left or right puts the label on that side.',
   styles: STYLES,
   places: ['', 'left', 'right', 'bottom'],
   length: 3,
@@ -351,6 +360,8 @@ register({
     const noun =
       style === 'spec'
         ? 'a spec callout'
+        : style === 'label'
+          ? 'a label'
         : style === 'box'
           ? 'a highlight box'
           : `${style === 'arrow' ? 'an' : 'a'} ${style}`

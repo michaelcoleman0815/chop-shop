@@ -1,0 +1,453 @@
+import { clock } from '../presets/preset'
+import { CLAUDE_TOKENS, PRICES, PRICES_CHECKED, voiceRate } from './prices'
+import { countWords } from './script'
+import type { Brief, ImageService, Shot, Visual, VoiceChoice, VoiceEngine } from './schema'
+import { defaultVoice, voicePhrase } from './voices'
+
+/**
+ * The quote: before anything that costs money, what will be made, by which
+ * service, what it costs, how long it takes, and what is sent where.
+ *
+ * Before the shot list exists the counts are estimated from the script (one
+ * shot a phrase, a few clips for key moments, maps where places are named);
+ * once Claude has planned the shots they are counted exactly, and the shots
+ * are fitted to the confirmed total so nothing ever costs more than the
+ * person agreed to.
+ */
+
+/** Which services may be used right now: the switch in Settings is on and each has its key. */
+export interface Availability {
+  google: boolean
+  fal: boolean
+  elevenlabs: boolean
+  openai: boolean
+  /** The person's Anthropic key, for the script and the shot list. */
+  claude: boolean
+  /** The voice on this Mac has been downloaded already. */
+  localVoice: boolean
+}
+
+export const NOTHING_AVAILABLE: Availability = {
+  google: false,
+  fal: false,
+  elevenlabs: false,
+  openai: false,
+  claude: false,
+  localVoice: false
+}
+
+/** Dollars a video may cost when neither the prompt nor Settings says otherwise. */
+export const DEFAULT_CAP = 10
+
+export interface Counts {
+  scenes: number
+  /** Stills made by a service: the shots' own, and the first frame of every clip. */
+  stills: number
+  clips: number
+  clipSeconds: number
+  maps: number
+  cards: number
+  graphics: number
+  broll: number
+  /** Character reference sheets, made before the shots. */
+  sheets: number
+  /** Reference images sent with prompts: a sheet with each shot its character is in. */
+  references: number
+  titles: number
+  callouts: number
+  narrationSeconds: number
+  narrationChars: number
+}
+
+export interface QuoteLine {
+  /** What is made: "24 stills", "2 clips of 5 s". */
+  what: string
+  /** Who makes it: "Google Nano Banana 2.1", "this Mac". */
+  by: string
+  cost: number
+}
+
+export interface Quote {
+  lines: QuoteLine[]
+  /** Dollars, everything included. */
+  total: number
+  /** About how long making it takes, in seconds. */
+  seconds: number
+  counts: Counts
+  images: ImageService | null
+  clips: ImageService | null
+  /** The image size asked for. */
+  size: string
+  voice: VoiceChoice
+  /** The most this video may cost: the prompt's limit, else Settings'. */
+  cap: number
+  within: boolean
+  /** Settings says to go ahead without asking when a video costs less than this, and this one does. */
+  auto: boolean
+  /** What stops it being made, in sentences. */
+  missing: string[]
+  /** What was swapped for what was asked, in sentences: a voice whose key is missing, clips over the cap. */
+  notes: string[]
+  /** What is sent where, in sentences. */
+  sends: string[]
+  checked: string
+}
+
+const IMAGE_NAME: Record<ImageService, string> = { google: 'Google', fal: 'fal.ai' }
+
+const round = (n: number): number => Math.round(n * 10000) / 10000
+
+/** Dollars as a person reads them: $0.93, $12.40; under a cent reads as "less than a cent". */
+export function dollars(n: number): string {
+  if (n <= 0) return '$0.00'
+  if (n < 0.005) return 'less than a cent'
+  return `$${n.toFixed(2)}`
+}
+
+/** Places named in a script: capitalised names after in, to, from, across, near. */
+export function placesIn(script: string): string[] {
+  const found = new Set<string>()
+  const re = /\b(?:in|to|from|across|near|outside|around|through|at)\s+((?:[A-Z][a-z]+(?:\s+(?:[A-Z][a-z]+|de|del|la|of))*){1,4})/g
+  for (const m of script.matchAll(re)) {
+    const name = m[1].trim()
+    if (/^(The|This|That|These|Those|It|He|She|They|We|I|A|An|And|But|Then|When|By|Every|One|Two|Three)$/.test(name)) continue
+    if (/^(January|February|March|April|May|June|July|August|September|October|November|December|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(name)) continue
+    found.add(name)
+  }
+  return [...found]
+}
+
+/** Phrases that open on or name a year: where a documentary sets a year big. */
+export function yearsIn(phrases: string[]): number {
+  return phrases.filter((p) => /\b(1[5-9]\d\d|20[0-4]\d)\b/.test(p)).length
+}
+
+/** The counts a script will most likely need, before the shot list is planned. */
+export function estimateCounts(brief: Brief, phrases: string[], script: string): Counts {
+  const scenes = Math.max(1, phrases.length)
+  const doc = brief.format === 'documentary'
+  const clips =
+    brief.clips === 'none'
+      ? 0
+      : brief.clips === 'more'
+        ? Math.max(2, Math.round(scenes * 0.15))
+        : Math.min(doc ? 6 : 4, Math.max(1, Math.round(scenes * 0.06)))
+  const places = placesIn(script).length
+  const maps =
+    brief.maps === 'none'
+      ? 0
+      : brief.maps === 'more'
+        ? Math.min(Math.max(1, places), Math.max(2, Math.round(scenes * 0.12)))
+        : doc
+          ? Math.min(places, Math.max(1, Math.round(scenes * 0.06)))
+          : 0
+  const titles = doc ? Math.min(yearsIn(phrases) + 1, Math.max(1, Math.round(scenes * 0.2))) : 1
+  const graphics = doc ? 0 : Math.round(scenes * 0.1)
+  const callouts = doc ? 0 : Math.round(scenes * 0.3)
+  const cards = doc ? 1 : 0
+  const own = Math.max(0, scenes - clips - maps - graphics - cards)
+  const sheets = doc ? 0 : 1
+  const words = countWords(script)
+  return {
+    scenes,
+    stills: own + clips,
+    clips,
+    clipSeconds: 5,
+    maps,
+    cards,
+    graphics,
+    broll: 0,
+    sheets,
+    references: sheets > 0 ? Math.round((own + clips) * 0.6) : 0,
+    titles,
+    callouts,
+    narrationSeconds: (words / (doc ? 140 : 158)) * 60,
+    narrationChars: script.length
+  }
+}
+
+/** What a visual needs made by a service: a still, a still and a clip, or nothing (made on this Mac). */
+export function needs(visual: Visual): { stills: number; clips: number } {
+  if (visual.kind === 'still') return { stills: 1, clips: 0 }
+  if (visual.kind === 'clip') return { stills: 1, clips: 1 }
+  return { stills: 0, clips: 0 }
+}
+
+/** The counts of a planned shot list, exactly. */
+export function countShots(
+  shots: Shot[],
+  opts: { sheets: number; clipSeconds: number[]; narrationSeconds: number; narrationChars: number }
+): Counts {
+  const by = (k: Visual['kind']): number => shots.filter((s) => s.visual.kind === k).length
+  const stillsAndClips = shots.reduce((n, s) => n + needs(s.visual).stills, 0)
+  const references =
+    opts.sheets > 0
+      ? shots.filter(
+          (s) => (s.visual.kind === 'still' || s.visual.kind === 'clip') && s.visual.characters.length > 0
+        ).length
+      : 0
+  return {
+    scenes: shots.length,
+    stills: stillsAndClips,
+    clips: by('clip'),
+    clipSeconds: opts.clipSeconds.length ? opts.clipSeconds.reduce((a, b) => a + b, 0) / opts.clipSeconds.length : 5,
+    maps: by('map'),
+    cards: by('card'),
+    graphics: by('graphic'),
+    broll: by('broll'),
+    sheets: opts.sheets,
+    references,
+    titles: shots.filter((s) => s.title).length,
+    callouts: shots.reduce((n, s) => n + s.callouts.length, 0),
+    narrationSeconds: opts.narrationSeconds,
+    narrationChars: opts.narrationChars
+  }
+}
+
+/** Dollars a narration costs with a voice, from its length in characters and seconds. */
+export function voiceCost(voice: VoiceChoice, chars: number, seconds: number, today: string): number {
+  if (voice.engine === 'own' || voice.engine === 'local') return 0
+  const rate = voiceRate(PRICES.voices[voice.engine], today)
+  return round((chars / 1000) * rate.perThousandChars + seconds * rate.perSecond)
+}
+
+/** Dollars a still costs at a service, with its reference images. */
+export function stillCost(service: ImageService, size: string, references = 0): number {
+  const p = PRICES.images[service]
+  const per = (p.perImage as Record<string, number>)[size] ?? Object.values(p.perImage)[0]
+  return round(per + references * p.perReference)
+}
+
+/** Dollars a clip of so many seconds costs at a service. */
+export function clipCost(service: ImageService, seconds: number): number {
+  const p = PRICES.clips[service]
+  return round(Math.min(p.maxSec, Math.max(p.minSec, seconds)) * p.perSecond)
+}
+
+/** Dollars Claude's shot list costs, from how many shots and how long the narration is. */
+export function shotListCost(scenes: number, narrationSeconds: number): number {
+  const input = CLAUDE_TOKENS.promptBase + narrationSeconds * CLAUDE_TOKENS.scriptPerSecond
+  const output = scenes * CLAUDE_TOKENS.perShot * (1 + CLAUDE_TOKENS.thinking)
+  return round((input / 1e6) * PRICES.claude.inputPerMillion + (output / 1e6) * PRICES.claude.outputPerMillion)
+}
+
+/** Dollars Claude's script costs, for a narration this long. */
+export function scriptCost(seconds: number): number {
+  const output = seconds * CLAUDE_TOKENS.scriptPerSecond * (1 + CLAUDE_TOKENS.thinking) + 600
+  return round(
+    (CLAUDE_TOKENS.promptBase / 1e6) * PRICES.claude.inputPerMillion + (output / 1e6) * PRICES.claude.outputPerMillion
+  )
+}
+
+/** The voice that will read it: the one asked for when its service can be reached, else the one on this Mac. */
+export function voiceFor(brief: Brief, can: Availability): { voice: VoiceChoice; note: string | null } {
+  const v = brief.voice
+  const engine = v.engine as VoiceEngine
+  const reachable = engine === 'local' || engine === 'own' || (engine === 'gemini' ? can.google : can[engine as 'elevenlabs' | 'openai'])
+  if (reachable) return { voice: v, note: null }
+  const local = defaultVoice(brief.format)
+  const names: Record<string, string> = { elevenlabs: 'ElevenLabs', openai: 'OpenAI', gemini: 'Google Gemini' }
+  return {
+    voice: local,
+    note: `There is no ${names[engine]} key in Settings, or other AI services are off, so ${local.name} reads it on this Mac instead.`
+  }
+}
+
+export interface QuoteOptions {
+  today?: string
+  /** Settings: the most a video may cost. */
+  cap?: number | null
+  /** Settings: go ahead without asking when a video costs less than this; null is off. */
+  autoUnder?: number | null
+  /** The script is already written (its cost is spent), or still to be written. */
+  scriptWritten?: boolean
+}
+
+/**
+ * The quote for making a brief from these counts with what is available:
+ * services chosen, lines priced, the time it takes, and what goes where.
+ * Clips come off first, then the pictures drop to the smaller size, when
+ * the total would pass the cap.
+ */
+export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: QuoteOptions = {}): Quote {
+  const today = opts.today ?? new Date().toISOString().slice(0, 10)
+  const cap = brief.cap ?? opts.cap ?? DEFAULT_CAP
+  const missing: string[] = []
+  const notes: string[] = []
+
+  const pick = (want: ImageService | null): ImageService | null => {
+    if (want && can[want]) return want
+    if (can.google) return 'google'
+    if (can.fal) return 'fal'
+    return null
+  }
+  const images = pick(brief.images)
+  if (brief.images && images !== brief.images)
+    notes.push(`There is no ${IMAGE_NAME[brief.images]} key in Settings, so ${images ? IMAGE_NAME[images] : 'nothing'} makes the pictures.`)
+  if (!images && counts.stills + counts.sheets > 0)
+    missing.push('To make the pictures I need a Google Gemini or fal.ai key in Settings, with other AI services on.')
+  let clipsBy: ImageService | null = counts.clips > 0 ? images : null
+  const { voice, note } = voiceFor(brief, can)
+  if (note) notes.push(note)
+  if (voice.engine === 'own' && voice.id === 'pending') missing.push('Drop your voice-over in and I will make the video to it.')
+
+  let c: Counts = { ...counts }
+  let size = images ? PRICES.images[images].size : '2K'
+  const build = (): { lines: QuoteLine[]; total: number } => {
+    const lines: QuoteLine[] = []
+    if (brief.from === 'topic' && !opts.scriptWritten)
+      lines.push({ what: 'The script', by: 'Claude, with your Anthropic key', cost: scriptCost(brief.seconds) })
+    if (brief.from !== 'recording' || c.scenes > 0)
+      lines.push({ what: `The shot list, ${c.scenes} shots`, by: 'Claude, with your Anthropic key', cost: shotListCost(c.scenes, c.narrationSeconds) })
+    if (voice.engine !== 'own') {
+      const p = voice.engine === 'local' ? PRICES.voices.local : PRICES.voices[voice.engine]
+      lines.push({
+        what: `The narration, about ${clock(c.narrationSeconds)}`,
+        by: voice.engine === 'local' ? `${voice.name} on this Mac` : `${p.name}, ${voice.name}`,
+        cost: voiceCost(voice, c.narrationChars, c.narrationSeconds, today)
+      })
+    }
+    if (images && c.sheets > 0)
+      lines.push({
+        what: c.sheets === 1 ? 'A character sheet' : `${c.sheets} character sheets`,
+        by: `${IMAGE_NAME[images]} ${PRICES.images[images].name}`,
+        cost: round(c.sheets * stillCost(images, size))
+      })
+    if (images && c.stills > 0)
+      lines.push({
+        what: `${c.stills} ${c.stills === 1 ? 'still' : 'stills'}${c.clips > 0 && clipsBy ? `, ${c.clips} of them the first frame of a clip` : ''}`,
+        by: `${IMAGE_NAME[images]} ${PRICES.images[images].name}`,
+        cost: round(c.stills * stillCost(images, size) + c.references * PRICES.images[images].perReference)
+      })
+    if (clipsBy && c.clips > 0)
+      lines.push({
+        what: `${c.clips} ${c.clips === 1 ? 'clip' : 'clips'} of ${Math.round(c.clipSeconds)} s`,
+        by: `${IMAGE_NAME[clipsBy]} ${PRICES.clips[clipsBy].name}`,
+        cost: round(c.clips * clipCost(clipsBy, c.clipSeconds))
+      })
+    const free = [
+      c.maps ? `${c.maps} ${c.maps === 1 ? 'map' : 'maps'}` : '',
+      c.cards ? `${c.cards} title ${c.cards === 1 ? 'card' : 'cards'}` : '',
+      c.titles ? `${c.titles} ${c.titles === 1 ? 'title' : 'titles'}` : '',
+      c.callouts ? `${c.callouts} ${c.callouts === 1 ? 'label' : 'labels'}` : '',
+      c.graphics ? `${c.graphics} ${c.graphics === 1 ? 'graphic' : 'graphics'}` : '',
+      'the look, the cut and the music'
+    ].filter(Boolean)
+    lines.push({ what: free.join(', '), by: 'this Mac', cost: 0 })
+    return { lines, total: round(lines.reduce((n, l) => n + l.cost, 0)) }
+  }
+  let built = build()
+  // Over the cap: clips become stills, then the pictures drop a size.
+  if (built.total > cap && c.clips > 0 && clipsBy) {
+    notes.push(`Clips would take it past ${dollars(cap)}, so every shot is a still with a camera move.`)
+    c = { ...c, clips: 0 }
+    clipsBy = null
+    built = build()
+  }
+  if (built.total > cap && images) {
+    const smaller = Object.keys(PRICES.images[images].perImage)[0]
+    if (smaller !== size) {
+      size = smaller
+      notes.push(`To stay under ${dollars(cap)} the pictures are made at the smaller size.`)
+      built = build()
+    }
+  }
+  const within = built.total <= cap + 1e-9
+  if (!within)
+    missing.push(
+      `That comes to ${dollars(built.total)}, more than the ${dollars(cap)} a video may cost. Ask for a shorter video, or raise the limit.`
+    )
+
+  // Time: the shot list and the narration at once, then the pictures four at a time, the clips two at a time.
+  const narrate =
+    voice.engine === 'own'
+      ? c.narrationSeconds * 0.2
+      : voice.engine === 'local'
+        ? c.narrationSeconds * 0.5 + (can.localVoice ? 0 : 60)
+        : c.narrationSeconds * 0.15
+  const plan = brief.from === 'topic' && !opts.scriptWritten ? 60 : 40
+  const imageSec = images ? Math.ceil((c.stills + c.sheets) / 4) * (images === 'google' ? 18 : 12) : 0
+  const clipSec = clipsBy ? Math.ceil(c.clips / 2) * (clipsBy === 'google' ? 100 : 200) : 0
+  const seconds = Math.round(Math.max(plan, narrate) + imageSec + clipSec + 20)
+
+  const sends: string[] = []
+  if (brief.from === 'topic') sends.push('The topic goes to Claude to write the script, with your Anthropic key.')
+  sends.push('The script goes to Claude to plan the shots, with your Anthropic key.')
+  if (voice.engine === 'local') sends.push(`${voice.name} reads the script on this Mac, so the words go nowhere else.`)
+  else if (voice.engine === 'own') sends.push('Your recording stays on this Mac. I listen to it here for the words.')
+  else {
+    const where = { elevenlabs: 'ElevenLabs', openai: 'OpenAI', gemini: 'Google' }[voice.engine]
+    sends.push(`The script goes to ${where} to be read aloud, with your ${where === 'Google' ? 'Gemini' : where} key.`)
+  }
+  if (images) {
+    sends.push(
+      `Only the text prompts for the pictures go to ${IMAGE_NAME[images]}${c.sheets > 0 ? ', with the character sheet it made for each shot the character is in' : ''}.`
+    )
+    if (clipsBy && c.clips > 0) sends.push(`For each clip, the still ${IMAGE_NAME[clipsBy]} made goes back to it as the first frame.`)
+  }
+  sends.push('Nothing of your own footage leaves this Mac.')
+
+  const auto =
+    opts.autoUnder !== null &&
+    opts.autoUnder !== undefined &&
+    opts.autoUnder > 0 &&
+    built.total < opts.autoUnder &&
+    within &&
+    missing.length === 0
+  return {
+    lines: built.lines,
+    total: built.total,
+    seconds,
+    counts: c,
+    images,
+    clips: clipsBy,
+    size,
+    voice,
+    cap,
+    within,
+    auto,
+    missing,
+    notes,
+    sends,
+    checked: PRICES_CHECKED
+  }
+}
+
+/** About how long, in words: "about 4 minutes", "about 40 seconds". */
+export function aboutHowLong(seconds: number): string {
+  if (seconds < 90) return `about ${Math.max(10, Math.round(seconds / 10) * 10)} seconds`
+  const min = Math.round(seconds / 60)
+  return `about ${min} minute${min === 1 ? '' : 's'}`
+}
+
+/**
+ * The reply that carries a quote: what was understood in a sentence, what
+ * was chosen for what the prompt did not say, at most three facts as chips,
+ * and the cost lines, what goes where and the prices' date behind Details.
+ */
+export function quoteReply(
+  brief: Brief,
+  quote: Quote,
+  opts: { title: string; scenes: number }
+): { text: string; aside: string | null; chips: string[]; details: { label: string; value: string }[] } {
+  const kind = brief.format === 'documentary' ? 'cinematic documentary' : 'animated explainer'
+  const reads = quote.voice.engine === 'own' ? 'over your own voice-over' : `read by ${voicePhrase(quote.voice)}`
+  const shape = brief.aspect === 'vertical' ? ' vertical' : ''
+  const text = `I'll make a ${clock(brief.seconds)}${shape} ${kind} about ${brief.topic}, ${reads}: ${opts.scenes} shots, for ${dollars(quote.total)}, in ${aboutHowLong(quote.seconds)}.`
+  const chose = brief.inferred.length ? `You didn't say, so I chose ${listOf(brief.inferred)}.` : ''
+  const aside = [chose, ...quote.notes, ...quote.missing].filter(Boolean).join(' ') || null
+  const chips = [clock(brief.seconds), `${opts.scenes} shots`, dollars(quote.total)]
+  const details = [
+    ...quote.lines.map((l) => ({ label: l.what, value: `${l.by}: ${dollars(l.cost)}` })),
+    { label: 'In all', value: dollars(quote.total) },
+    { label: 'What goes where', value: quote.sends.join(' ') },
+    { label: 'Prices', value: `From each service's published prices, read on ${quote.checked}.` }
+  ]
+  return { text, aside, chips, details }
+}
+
+/** "a, b and c". */
+export function listOf(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? ''
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+}
