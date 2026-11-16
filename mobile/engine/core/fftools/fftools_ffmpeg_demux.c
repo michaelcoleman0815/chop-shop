@@ -369,6 +369,13 @@ static void thread_stop(Demuxer *d)
     if (!d->in_thread_queue)
         return;
     av_thread_message_queue_set_err_send(d->in_thread_queue, AVERROR_EOF);
+    /* Cutalong: a demuxer thread that is looping (-stream_loop) waits in
+     * seek_to_start for the duration of the last audio frame, which the main
+     * thread no longer sends once the output has ended. Wake it, or it never
+     * ends the queue drained below: in FFmpeg 6.0 the whole run hangs after
+     * its work is done, e.g. with a looped music bed under amix duration=first. */
+    if (f->audio_duration_queue)
+        av_thread_message_queue_set_err_recv(f->audio_duration_queue, AVERROR_EOF);
     while (av_thread_message_queue_recv(d->in_thread_queue, &msg, 0) >= 0)
         av_packet_free(&msg.pkt);
 
