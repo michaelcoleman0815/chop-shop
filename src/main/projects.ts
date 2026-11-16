@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join, basename } from 'path'
 import { randomUUID } from 'crypto'
+import { upgradeProject } from '../shared/project-upgrade'
 import type { Project, ProjectMode, ProjectSummary } from '../shared/types'
 
 /**
@@ -111,10 +112,16 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
 
 export async function openProject(path: string): Promise<Project> {
   const raw = JSON.parse(await fs.readFile(path, 'utf8')) as Project
+  const { project: read, unreadable } = upgradeProject(raw)
+  if (unreadable) {
+    // Kept as it was, beside the project, before anything is saved over it.
+    console.error('[projects] could not read the edit in', path, unreadable)
+    await fs.copyFile(path, `${path}.unread-${Date.now()}.json`).catch(() => undefined)
+  }
   // Trust the file's contents but not its idea of where it lives: it may have
   // been moved or renamed since it was written.
   const project: Project = {
-    ...raw,
+    ...read,
     path,
     // Projects made before Cutalong end in .chopshop; they open the same way.
     name: basename(path).replace(/\.(cutalong|chopshop)$/i, ''),

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
+import { ScreenGuard } from './components/ScreenGuard'
 import { Sidebar, type Place } from './components/Sidebar'
 import { Button, Mark } from './components/ui'
 import { moveRail, useLingering, useMotion } from './motion'
@@ -10,7 +11,7 @@ import { PresetsPage, ProjectsPage } from './screens/Library'
 import { SettingsPage } from './screens/Settings'
 import { Start } from './screens/Start'
 import { Thread } from './screens/Thread'
-import { useCutalong } from './useCutalong'
+import { forgetPlace, useCutalong } from './useCutalong'
 
 const SIDEBAR_KEY = 'cutalong:sidebar-open'
 
@@ -77,15 +78,22 @@ export default function App(): JSX.Element {
         onOpenProject={(path) => void app.openProject(path)}
       />
       <div className="cl-main">
-        <BackToWork.Provider value={place && place !== 'start' && work ? { name: work.name, go: app.resume } : null}>
-          {app.screen === 'start' && <Start app={app} />}
-          {app.screen === 'thread' && <Thread app={app} />}
-          {app.screen === 'editor' && app.doc && <Editor app={app} />}
-          {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
-          {app.screen === 'brand' && <BrandPage app={app} />}
-          {app.screen === 'presets' && <PresetsPage app={app} />}
-          {app.screen === 'settings' && <SettingsPage />}
-        </BackToWork.Provider>
+        <ScreenGuard
+          resetKey={`${app.screen}:${app.doc?.id ?? ''}`}
+          forget={forgetPlace}
+          onBack={app.screen === 'start' ? undefined : app.goStart}
+          backLabel={app.screen === 'start' ? 'Reload' : 'Back to start'}
+        >
+          <BackToWork.Provider value={place && place !== 'start' && work ? { name: work.name, go: app.resume } : null}>
+            {app.screen === 'start' && <Start app={app} />}
+            {app.screen === 'thread' && <Thread app={app} />}
+            {app.screen === 'editor' && app.doc && <Editor app={app} />}
+            {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
+            {app.screen === 'brand' && <BrandPage app={app} />}
+            {app.screen === 'presets' && <PresetsPage app={app} />}
+            {app.screen === 'settings' && <SettingsPage />}
+          </BackToWork.Provider>
+        </ScreenGuard>
       </div>
       {toast.value && (
         <div className={`cl-toast${toast.leaving ? ' leaving' : ''}`} role="status">
@@ -95,6 +103,17 @@ export default function App(): JSX.Element {
             </span>
           )}
           <span>{toast.value.text}</span>
+          {toast.value.chat && app.screen !== 'thread' && (
+            <Button
+              variant="text"
+              onClick={() => {
+                app.setScreen('thread')
+                app.setToast(null)
+              }}
+            >
+              Watch in chat
+            </Button>
+          )}
           {toast.value.path && (
             <Button variant="text" onClick={() => void api.reveal(toast.value!.path!)}>
               Show in Finder

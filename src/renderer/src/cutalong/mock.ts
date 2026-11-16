@@ -1,6 +1,7 @@
 import {
   addSources,
   createDoc,
+  currentCut,
   nextSourceId,
   resolveCut,
   wordsFromTranscript,
@@ -565,7 +566,10 @@ export function createMockApi(): CutalongApi {
         ok: true as const,
         outputPath: `/Users/you/Movies/Cutalong/${doc.title} v${n}.mp4`,
         mediaUrl: '/sample.mp4',
-        chaptersPath: chapters ? `/Users/you/Movies/Cutalong/${doc.title} v${n} chapters.txt` : null
+        chaptersPath: chapters ? `/Users/you/Movies/Cutalong/${doc.title} v${n} chapters.txt` : null,
+        width: 1080,
+        height: 1920,
+        durationSec: resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
       }
     },
     onCutProgress: (cb) => {

@@ -420,7 +420,18 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         chaptersPath = outputPath.replace(/\.mp4$/i, '') + ' chapters.txt'
         await fs.writeFile(chaptersPath, `${chapters.lines}\n`)
       }
-      return { ok: true as const, outputPath, mediaUrl: deps.mediaUrlFor(outputPath), creditsPath, chaptersPath }
+      // The file's own size and length, so the chat can frame it before it loads.
+      const made = await probe(outputPath).catch(() => null)
+      return {
+        ok: true as const,
+        outputPath,
+        mediaUrl: deps.mediaUrlFor(outputPath),
+        creditsPath,
+        chaptersPath,
+        width: made?.width ?? 0,
+        height: made?.height ?? 0,
+        durationSec: made?.durationSec ?? resolved.durationSec
+      }
     } catch (err) {
       console.error('[cut] render failed:', message(err))
       return { ok: false as const, message: message(err) }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { isImagePath } from '../../../../shared/assets'
 import type { ChatMessage } from '../../../../shared/types'
+import { mediaUrlFor } from '../api'
 import { isAudioFile } from '../format'
 import { Poster } from './Poster'
 import { AssistantAvatar, Button } from './ui'
@@ -74,6 +75,38 @@ function Files({ files }: { files: { path: string; name: string }[] }): JSX.Elem
   )
 }
 
+/** The tallest an export plays in the chat: a vertical video is framed to this, a wide one to the column. */
+const EXPORT_MAX_HEIGHT = 'min(64vh, 560px)'
+
+/**
+ * An exported video, played whole in the chat, framed at its own shape so the
+ * reply does not jump when it loads. A file moved or deleted since says so.
+ */
+function ExportedVideo({ video }: { video: NonNullable<Msg['video']> }): JSX.Element {
+  const [missing, setMissing] = useState(false)
+  const aspect = video.width > 0 && video.height > 0 ? video.width / video.height : 16 / 9
+  if (missing) {
+    return <p className="cl-aside">{video.name} is no longer where it was exported.</p>
+  }
+  return (
+    // A width of its own, not a share of the reply's: the reply is only as wide as what it holds.
+    // The stylesheet's max-width keeps a wide export inside the column.
+    <figure className="cl-export" style={{ width: `calc(${EXPORT_MAX_HEIGHT} * ${aspect.toFixed(4)})` }}>
+      <div className="cl-frame" style={{ aspectRatio: String(aspect), width: '100%' }}>
+        <video
+          src={mediaUrlFor(video.path)}
+          controls
+          playsInline
+          preload="auto"
+          aria-label={`${video.name}, the export`}
+          onError={() => setMissing(true)}
+        />
+      </div>
+      <figcaption className="cl-export-name mono">{video.name}</figcaption>
+    </figure>
+  )
+}
+
 export function UserMessage({ msg }: { msg: Msg }): JSX.Element {
   return (
     <div className="cl-msg-user">
@@ -103,6 +136,7 @@ export function AssistantMessage({ msg, onAction }: { msg: Msg; onAction: (a: Ac
         ) : (
           msg.text && <p className="cl-reply">{msg.text}</p>
         )}
+        {!msg.progress && msg.video && <ExportedVideo video={msg.video} />}
         {!msg.progress && ((msg.chips?.length ?? 0) > 0 || (msg.details?.length ?? 0) > 0) && (
           <div className="cl-chips" style={{ alignItems: 'center' }}>
             {(msg.chips ?? []).map((c) => (

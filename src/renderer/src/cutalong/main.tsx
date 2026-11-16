@@ -11,12 +11,17 @@ import './tokens.css'
 import './cutalong.css'
 import './motion.css'
 import App from './App'
+import { ScreenGuard } from './components/ScreenGuard'
+import { forgetPlace } from './useCutalong'
 
 export function mountCutalong(root: Root): void {
   document.title = 'Cutalong'
+  // The last guard: whatever fails above the screens still leaves a way back, never a blank window.
   root.render(
     <React.StrictMode>
-      <App />
+      <ScreenGuard resetKey="app" forget={forgetPlace} backLabel="Reload">
+        <App />
+      </ScreenGuard>
     </React.StrictMode>
   )
 }

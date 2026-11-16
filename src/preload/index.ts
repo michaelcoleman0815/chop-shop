@@ -147,7 +147,17 @@ const api = {
     doc: EditDoc
     quality: 'preview' | 'final'
   }): Promise<
-    | { ok: true; outputPath: string; mediaUrl: string; creditsPath?: string | null; chaptersPath?: string | null }
+    | {
+        ok: true
+        outputPath: string
+        mediaUrl: string
+        creditsPath?: string | null
+        chaptersPath?: string | null
+        /** The exported file's own size and length. */
+        width?: number
+        height?: number
+        durationSec?: number
+      }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:render', req),
   addAsset: (req: {

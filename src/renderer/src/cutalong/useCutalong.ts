@@ -116,6 +116,8 @@ export interface Toast {
   text: string
   path?: string
   error?: boolean
+  /** The result is also in the chat: the toast offers to go and see it there. */
+  chat?: boolean
 }
 
 /** What the notes panel says right now, when it is not just the version summary. */
@@ -354,6 +356,11 @@ function rememberPlace(path: string | null, screen: 'thread' | 'editor'): void {
   }
 }
 
+/** Forgets where the person was, so the next launch starts on Start: after a screen failed to draw. */
+export function forgetPlace(): void {
+  rememberPlace(null, 'thread')
+}
+
 function recallPlace(): { path: string; screen: 'thread' | 'editor' } | null {
   try {
     const v = JSON.parse(localStorage.getItem(LAST) ?? 'null') as { path?: unknown; screen?: unknown } | null
@@ -379,6 +386,21 @@ export function useCutalong() {
   useEffect(() => {
     busyRef.current = busy
   }, [busy])
+  /**
+   * Work the editor starts (a note to the planner, a command, an export)
+   * counts as well as the chat's: while any runs, another chat can't be
+   * opened under it, or its result would land in that chat's edit.
+   */
+  const working = useRef(0)
+  const isWorking = (): boolean => busyRef.current || working.current > 0
+  const during = useCallback(async <T>(work: () => Promise<T>): Promise<T> => {
+    working.current++
+    try {
+      return await work()
+    } finally {
+      working.current--
+    }
+  }, [])
   /** The chat or the editor, whichever the person was last in, for coming back to it. */
   const lastScreen = useRef<'thread' | 'editor'>('thread')
   const [toast, setToast] = useState<Toast | null>(null)
@@ -578,7 +600,7 @@ export function useCutalong() {
   const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
     // Work still running belongs to the chat it started in; switching now would
     // land its result in the wrong one.
-    if (busyRef.current && path !== projectRef.current?.path) {
+    if (isWorking() && path !== projectRef.current?.path) {
       setToast({ text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Open another once I'm done.` })
       return
     }
@@ -1860,7 +1882,7 @@ export function useCutalong() {
     [patch, push]
   )
 
-  const runCommand = useCallback(
+  const commandNow = useCallback(
     async (
       command: string,
       where: 'thread' | 'panel' = 'thread',
@@ -2002,6 +2024,13 @@ export function useCutalong() {
       premiereCommand,
       sfxCommandRun
     ]
+  )
+
+  /** A command, counted as work while it runs: from the editor, nothing else counts it. */
+  const runCommand = useCallback(
+    (command: string, where: 'thread' | 'panel' = 'thread', rest = '', at: number | null = null): Promise<void> =>
+      during(() => commandNow(command, where, rest, at)),
+    [during, commandNow]
   )
 
   const studyLink = useCallback(
@@ -2476,7 +2505,9 @@ export function useCutalong() {
       progress: { stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: null },
       since: Date.now()
     })
-    const r = await api.planEdit({ doc: d, request: '', notes, voice: brandRef.current.voice })
+    const r = await during(() => api.planEdit({ doc: d, request: '', notes, voice: brandRef.current.voice }))
+    // The answer is about this edit; should another be open by now, it is not applied to that one.
+    if (docRef.current?.id !== d.id) return
     if (!r.ok) {
       setPanel({ text: r.message, error: true })
       return
@@ -2494,7 +2525,7 @@ export function useCutalong() {
         ? `v${done.n} is ready. ${r.summary}${extra ? ` ${extra}` : ''}`
         : `${r.reply}${extra ? ` ${extra}` : ''}`
     })
-  }, [applyAsVersion, setDoc])
+  }, [applyAsVersion, during, setDoc])
 
   const applyOpsDirect = useCallback(
     (ops: Op[], fallback: string): void => {
@@ -2514,27 +2545,56 @@ export function useCutalong() {
     setPanel({ text: `v${n + 1} is v${back.n} again.` })
   }, [setDoc])
 
+  /** True while an export runs, so a second press waits for it. */
+  const exporting = useRef(false)
+
+  /**
+   * Exports the version on screen. Its progress shows in the toast and in the
+   * chat, where the finished file then plays, the whole of it.
+   */
   const exportFinal = useCallback(async (): Promise<void> => {
     const d = docRef.current
     if (!d) return
+    const n = currentVersion(d).n
+    if (exporting.current) {
+      setToast({ text: `I'm still exporting. v${n} can go once that's done.` })
+      return
+    }
+    exporting.current = true
+    const stage = `Exporting v${n}`
     setToast({ text: 'Exporting… 0%' })
-    const off = api.onCutProgress((p) => setToast({ text: `Exporting… ${p.percent}%` }))
-    const r = await api.renderCut({ doc: d, quality: 'final' })
-    off()
-    if (r.ok) rememberKeep(d)
-    setToast(
-      r.ok
-        ? {
-            text: `Exported ${fileName(r.outputPath)}${besideIt(r.chaptersPath, r.creditsPath)}`,
-            path: r.outputPath
-          }
-        : { text: r.message, error: true }
-    )
-  }, [])
+    const id = push({ role: 'assistant', text: '', progress: { stage, percent: 0 } })
+    const off = api.onCutProgress((p) => {
+      setToast({ text: `Exporting… ${p.percent ?? 0}%` })
+      patch(id, { progress: { stage, percent: p.percent } })
+    })
+    try {
+      const r = await during(() => api.renderCut({ doc: d, quality: 'final' }))
+      if (!r.ok) {
+        patch(id, { progress: null, text: `I couldn't export v${n}. ${sentence(r.message)}`, error: true })
+        setToast({ text: r.message, error: true })
+        return
+      }
+      rememberKeep(d)
+      const name = fileName(r.outputPath)
+      const durationSec = r.durationSec ?? 0
+      patch(id, {
+        progress: null,
+        text: `v${n} is exported${besideIt(r.chaptersPath, r.creditsPath)}.`,
+        video: { path: r.outputPath, name, width: r.width ?? 0, height: r.height ?? 0, durationSec },
+        chips: [clock(durationSec), ...(r.width && r.height ? [`${r.width} × ${r.height}`] : [])],
+        actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
+      })
+      setToast({ text: `Exported ${name}${besideIt(r.chaptersPath, r.creditsPath)}`, path: r.outputPath, chat: true })
+    } finally {
+      off()
+      exporting.current = false
+    }
+  }, [during, patch, push])
 
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
-    if (busyRef.current) {
+    if (isWorking()) {
       setToast({
         text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Start a new one once I'm done.`
       })

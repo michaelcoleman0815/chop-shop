@@ -319,6 +319,8 @@ export interface ChatMessage {
   aside?: string | null
   actions?: ChatAction[]
   error?: boolean
+  /** An exported video, played in the chat whole. Its size and length are the file's own. */
+  video?: { path: string; name: string; width: number; height: number; durationSec: number }
 }
 
 export interface TimelineClip {
