@@ -938,8 +938,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         labels.push(`[fx${i}]`)
       }
     }
+    // Effects are mixed after the loudness is set, so their peaks are caught
+    // where the voice's are (-1.5 dBFS) and the export stays under the -1 dB
+    // true peak that streaming sites ask for.
     chains.push(
-      `[${aOut}]${labels.join('')}amix=inputs=${labels.length + 1}:duration=first:normalize=0,${limiter(0.95)},apad,atrim=duration=${exact(totalSec)}[asfx]`
+      `[${aOut}]${labels.join('')}amix=inputs=${labels.length + 1}:duration=first:normalize=0,${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[asfx]`
     )
     aOut = 'asfx'
   }
