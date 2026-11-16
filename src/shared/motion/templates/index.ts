@@ -2,6 +2,7 @@
 import './callout'
 import './titles'
 import './kinetic'
+import './logos'
 import './layers'
 
 export * from './registry'

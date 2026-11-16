@@ -322,6 +322,14 @@ export interface ImageLayer<T = number> extends Base<T> {
   kind: 'image'
   asset?: string
   icon?: string
+  /** A brand mark from Simple Icons, by slug, in the brand's own colour. */
+  logo?: string
+  /** A picture on this computer by path: a logo the creator supplied on the brand page. */
+  file?: string
+  /** A tile it sits on: an app icon (square) or a coin (round). A logo's colour fills it; a picture is cut to it. */
+  tile?: 'square' | 'round'
+  /** Drawn instead when the logo or picture is not there: a letter or two, on the tile when there is one. */
+  fallback?: { text: string; family: string }
   w: number
   h: number
   fit?: 'contain' | 'cover'
@@ -344,9 +352,18 @@ export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | G
 export type IconNode = [string, Record<string, string | number>]
 
 /** What drawing needs from the place it runs: decoded images and icon shapes. */
+/** A brand mark from Simple Icons: an SVG path on a 24-unit grid, and the brand's colour without its #. */
+export interface LogoMark {
+  title: string
+  hex: string
+  path: string
+}
+
 export interface DrawResources {
+  /** Pictures by asset id, and by `file:` and a path for the brand's own logos. */
   images?: Map<string, CanvasImageSource>
   icons?: (name: string) => IconNode[] | undefined
+  logos?: (slug: string) => LogoMark | undefined
   /** A person matte for this frame, white where the person is, the frame's size. */
   matte?: CanvasImageSource | null
   /** Makes an offscreen canvas, for layers drawn behind the person. */

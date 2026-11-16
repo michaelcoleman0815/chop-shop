@@ -212,7 +212,7 @@ export function splitPage(
 }
 
 /** The faces nearest a moment, within two seconds. */
-function facesAt(samples: FaceSample[] | undefined, t: number): FaceBox[] {
+export function facesNear(samples: FaceSample[] | undefined, t: number): FaceBox[] {
   if (!samples || samples.length === 0) return []
   let best: FaceSample | null = null
   for (const s of samples) if (!best || Math.abs(s.t - t) < Math.abs(best.t - t)) best = s
@@ -301,7 +301,7 @@ export function captionLayers(input: CaptionInput): Layer[] {
     }))
     const lines = split.at > 0 && split.at < page.length ? 2 : 1
     const height = big * 1.04 * (lines === 2 ? 1 + small : 1)
-    const at = placePage(frame, spec.position, facesAt(input.faces, start), height, maxWidth / 2, backdrop)
+    const at = placePage(frame, spec.position, facesNear(input.faces, start), height, maxWidth / 2, backdrop)
     layers.push({
       kind: 'text',
       start,

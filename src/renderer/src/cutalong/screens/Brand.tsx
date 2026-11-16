@@ -61,6 +61,19 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
 
   const caption = brand.captions
 
+  /** A product's logo, named after its file until the name is changed. */
+  const addProductLogo = async (): Promise<void> => {
+    const picked = await api.chooseMedia()
+    if (!picked || picked.kind !== 'image') return
+    const file = picked.path.startsWith('data:') ? 'Logo' : (picked.path.split(/[\\/]/).pop() ?? 'Logo')
+    const name =
+      file
+        .replace(/\.[^.]+$/, '')
+        .replace(/[-_]+/g, ' ')
+        .trim() || 'Logo'
+    set({ logos: [...brand.logos.filter((l) => l.path !== picked.path), { name, path: picked.path }].slice(0, 24) })
+  }
+
   return (
     <>
       <Header>
@@ -171,6 +184,40 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="cl-field">
+              <span>Product logos</span>
+              <span className="muted cl-field-hint">They pop in when you name them, with /logo or in a request.</span>
+              {brand.logos.length > 0 && (
+                <ul className="cl-list">
+                  {brand.logos.map((l, i) => (
+                    <li key={l.path}>
+                      <img className="cl-logo-thumb" src={mediaUrlFor(l.path)} alt="" width={44} height={44} />
+                      <input
+                        className="cl-list-main"
+                        aria-label="Logo name"
+                        value={l.name}
+                        onChange={(e) =>
+                          set({ logos: brand.logos.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })
+                        }
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Remove ${l.name || 'this logo'}`}
+                        onClick={() => set({ logos: brand.logos.filter((_, j) => j !== i) })}
+                      >
+                        <Icon.close />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="cl-row">
+                <Button small onClick={() => void addProductLogo()}>
+                  Add a product logo
+                </Button>
+              </div>
             </div>
 
             <div className="cl-field">

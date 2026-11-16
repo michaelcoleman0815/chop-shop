@@ -199,3 +199,10 @@ export function spokenTimes(tl: Timeline, words: string[], from: number, ahead =
     return null
   })
 }
+
+/** When a word is first said between `from` and `to`, or null: a brand named somewhere in a stretch. */
+export function whenSaid(tl: Timeline, word: string, from: number, to: number): number | null {
+  const want = token(word)
+  if (!want) return null
+  return wordsBetween(tl, from, to).find((w) => token(w.text) === want)?.outStart ?? null
+}

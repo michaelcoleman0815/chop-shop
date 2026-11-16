@@ -1,6 +1,6 @@
 import type { Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
-import { captionLayers, type CaptionCover, type FaceSample } from './captions'
+import { captionLayers, facesNear, type CaptionCover, type FaceSample } from './captions'
 import type { MotionItem, MotionKind } from './schema'
 import { template } from './templates'
 import { frameFor, type Frame, type MotionTheme } from './theme'
@@ -55,7 +55,7 @@ export function buildScene(input: SceneInput): MotionScene {
   const items: SceneItem[] = []
   const hidden: MotionScene['hidden'] = []
   for (const item of input.cut.motion ?? []) {
-    const built = buildItem(item, tl, frame, input.theme)
+    const built = buildItem(item, tl, frame, input.theme, input.faces)
     if ('reason' in built) hidden.push({ id: item.id, reason: built.reason })
     else items.push(built)
   }
@@ -89,7 +89,13 @@ export function buildScene(input: SceneInput): MotionScene {
   }
 }
 
-function buildItem(item: MotionItem, tl: Timeline, frame: Frame, theme: MotionTheme): SceneItem | { reason: string } {
+function buildItem(
+  item: MotionItem,
+  tl: Timeline,
+  frame: Frame,
+  theme: MotionTheme,
+  faces: FaceSample[] | undefined
+): SceneItem | { reason: string } {
   const tpl = template(item.kind)
   if (!tpl) return { reason: `There is no ${item.kind} graphic.` }
   const problem = tpl.check(item)
@@ -98,7 +104,15 @@ function buildItem(item: MotionItem, tl: Timeline, frame: Frame, theme: MotionTh
   if (!span) return { reason: 'What it was on is no longer in the cut.' }
   let layers: Layer[]
   try {
-    layers = tpl.build({ item, frame, theme, span, tl, time: (ref) => anchorTime(tl, ref) })
+    layers = tpl.build({
+      item,
+      frame,
+      theme,
+      span,
+      tl,
+      time: (ref) => anchorTime(tl, ref),
+      faces: facesNear(faces, span.at)
+    })
   } catch (err) {
     return { reason: `It could not be drawn: ${err instanceof Error ? err.message : String(err)}` }
   }

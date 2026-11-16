@@ -14,7 +14,7 @@ import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { renderCutMotion, subtitlePass } from './motion-render'
-import { loadIcons } from './motion-icons'
+import { loadIcons, loadLogos } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
@@ -132,6 +132,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         workDir: join(workDir, 'motion'),
         fontsDir: FONTS_DIR(),
         icons: loadIcons,
+        logos: loadLogos,
         onProgress: (f) => report(f * 0.25)
       })
       const share = motion.overlays.length > 0 ? 0.25 : 0
@@ -228,8 +229,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) =>
-    planEdit(req)
+  ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) =>
+    // The brand's own logos by name, so a logo pop can show them.
+    planEdit({ ...req, logos: (await readBrand()).logos.map((l) => l.name) })
   )
 
   // The brand: kept in userData, learned from the person's own videos, all

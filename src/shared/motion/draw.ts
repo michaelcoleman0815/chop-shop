@@ -1,10 +1,11 @@
-import { color as sampleColor, isKeyed, mixColor, num } from './anim'
+import { color as sampleColor, isKeyed, luminance, mixColor, num } from './anim'
 import { ease } from './ease'
-import { fontInfo } from './fonts'
+import { fontInfo, fontString } from './fonts'
 import {
   flatten,
   iconElementCmds,
   morphPoints,
+  parsePath,
   pointAt,
   polyCmds,
   shapeCmds,
@@ -23,6 +24,7 @@ import type {
   GroupLayer,
   ImageLayer,
   Layer,
+  LogoMark,
   Mask,
   ShapeLayer,
   Size,
@@ -514,23 +516,112 @@ function drawImageLayer(
     })
     return
   }
-  const img = layer.asset ? st.res.images?.get(layer.asset) : undefined
-  if (!img) return
-  const { width: iw, height: ih } = imageSize(img)
-  if (!iw || !ih) return
-  const k = layer.fit === 'cover' ? Math.max(layer.w / iw, layer.h / ih) : Math.min(layer.w / iw, layer.h / ih)
+  if (layer.logo) {
+    const mark = st.res.logos?.(layer.logo)
+    if (mark) drawLogo(ctx, layer, mark, local, length)
+    else drawFallback(ctx, layer)
+    return
+  }
+  const key = layer.asset ?? (layer.file ? `file:${layer.file}` : undefined)
+  const img = key ? st.res.images?.get(key) : undefined
+  const { width: iw, height: ih } = img ? imageSize(img) : { width: 0, height: 0 }
+  if (!img || !iw || !ih) {
+    drawFallback(ctx, layer)
+    return
+  }
+  // On a tile, a picture fills it; otherwise it fits as asked.
+  const cover = layer.tile !== undefined || layer.fit === 'cover'
+  const k = cover ? Math.max(layer.w / iw, layer.h / ih) : Math.min(layer.w / iw, layer.h / ih)
   const dw = iw * k
   const dh = ih * k
   withEffects(ctx, layer.effects, (pass) => {
     if (pass === 'glow') return
     ctx.save()
-    if (layer.fit === 'cover') {
+    if (layer.tile) {
+      // The tile casts the shadow; the picture is cut to it.
+      ctx.fillStyle = '#FFFFFF'
+      tilePath(ctx, layer)
+      ctx.fill()
+      clearShadow(ctx)
+      ctx.clip()
+    } else if (layer.fit === 'cover') {
       ctx.beginPath()
       ctx.rect(-layer.w / 2, -layer.h / 2, layer.w, layer.h)
       ctx.clip()
     }
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
     ctx.restore()
+  })
+}
+
+/** An app icon's rounded square, or a coin's circle, around the layer's centre. */
+function tilePath(ctx: Ctx, layer: ImageLayer): void {
+  ctx.beginPath()
+  if (layer.tile === 'round') ctx.ellipse(0, 0, layer.w / 2, layer.h / 2, 0, 0, Math.PI * 2)
+  else ctx.roundRect(-layer.w / 2, -layer.h / 2, layer.w, layer.h, Math.min(layer.w, layer.h) * 0.225)
+}
+
+const marks = new Map<string, Cmd[]>()
+function markCmds(slug: string, path: string): Cmd[] {
+  let cmds = marks.get(slug)
+  if (!cmds) {
+    cmds = parsePath(path)
+    marks.set(slug, cmds)
+  }
+  return cmds
+}
+
+/**
+ * A brand mark: on a tile in the brand's colour with the mark in white (or
+ * ink, on a light colour), or bare in the brand's colour, white when that
+ * colour is too dark to read on a picture.
+ */
+function drawLogo(ctx: Ctx, layer: ImageLayer, mark: LogoMark, local: number, length: number): void {
+  const hex = `#${mark.hex}`
+  const cmds = markCmds(layer.logo ?? mark.title, mark.path)
+  const side = Math.min(layer.w, layer.h)
+  const own = layer.color !== undefined ? sampleColor(layer.color, local, length, '#FFFFFF') : null
+  // White on the brand's colour, as app icons are, unless the colour is pale.
+  const onTile = own ?? (luminance(hex) > 0.5 ? '#15161A' : '#FFFFFF')
+  const bare = own ?? (luminance(hex) > 0.12 ? hex : '#FFFFFF')
+  const size = layer.tile ? side * (layer.tile === 'round' ? 0.54 : 0.58) : side
+  withEffects(ctx, layer.effects, (pass, override) => {
+    if (layer.tile) {
+      ctx.fillStyle = override ?? hex
+      tilePath(ctx, layer)
+      ctx.fill()
+      if (pass === 'shadow') clearShadow(ctx)
+      if (override) return
+    }
+    ctx.save()
+    ctx.translate(-size / 2, -size / 2)
+    ctx.scale(size / 24, size / 24)
+    ctx.fillStyle = override ?? (layer.tile ? onTile : bare)
+    ctx.beginPath()
+    tracePath(ctx, cmds)
+    ctx.fill()
+    ctx.restore()
+  })
+}
+
+/** In place of a logo or picture that is not there: its letters, on a dark tile when it has one. */
+function drawFallback(ctx: Ctx, layer: ImageLayer): void {
+  const fb = layer.fallback
+  if (!fb || !fb.text) return
+  const side = Math.min(layer.w, layer.h)
+  const info = fontInfo(fb.family)
+  const size = side * (fb.text.length > 1 ? 0.36 : 0.46)
+  withEffects(ctx, layer.effects, (pass, override) => {
+    if (layer.tile) {
+      ctx.fillStyle = override ?? '#2B2B30'
+      tilePath(ctx, layer)
+      ctx.fill()
+      if (pass === 'shadow') clearShadow(ctx)
+      if (override) return
+    }
+    ctx.font = fontString({ family: info.family, weight: 700 }, size)
+    ctx.fillStyle = override ?? '#FFFFFF'
+    ctx.fillText(fb.text, -ctx.measureText(fb.text).width / 2, (info.cap * size) / 2)
   })
 }
 

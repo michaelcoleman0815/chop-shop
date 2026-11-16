@@ -154,6 +154,35 @@ describe('the planner request', () => {
     expect(renderRequest(doc, 'Bigger', [])).toContain(', hierarchy')
   })
 
+  it('names the brand’s own logos, and pops brands named in a plan', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(renderRequest(doc, 'Pop my app logo', [], '', ['Field Notes App'])).toContain(
+      '<brand-logos>\nField Notes App\n</brand-logos>'
+    )
+    const slots = { to: '', text: [], values: [], icon: '', box: [], place: '', color: '', fx: [] }
+    const plan = PlanSchema.parse({
+      ops: [
+        {
+          op: 'motion-add',
+          kind: 'logo',
+          from: 'w3',
+          style: 'tile',
+          items: [
+            { label: 'Bitcoin', value: '', note: '', mark: '', at: 'w3' },
+            { label: 'Field Notes App', value: '', note: '', mark: '', at: 'w5' }
+          ],
+          ...slots
+        }
+      ],
+      summary: 'Two logos pop in.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(r.rejected).toEqual([])
+  })
+
   it('shows the cut’s graphics in the request', () => {
     let doc = createDoc({ id: 'd', title: 't', source, words })
     doc = commit(doc, [{ op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], style: 'circle' }], 'x').doc

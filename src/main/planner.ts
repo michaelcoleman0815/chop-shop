@@ -31,6 +31,8 @@ export async function planEdit(input: {
   request: string
   notes: Note[]
   voice?: string
+  /** The names of the creator's own logos. */
+  logos?: string[]
 }): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
@@ -58,7 +60,7 @@ export async function planEdit(input: {
             // The transcript only changes with the footage, so it is cached
             // too; the cut and the ask follow the breakpoint.
             { type: 'text', text: renderTranscript(doc), cache_control: { type: 'ephemeral' } },
-            { type: 'text', text: renderRequest(doc, input.request, input.notes, input.voice) }
+            { type: 'text', text: renderRequest(doc, input.request, input.notes, input.voice, input.logos) }
           ]
         }
       ],

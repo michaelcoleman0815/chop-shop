@@ -1,6 +1,7 @@
 import type { MotionCall, MotionCallInput, MotionItem, MotionKind } from '../schema'
 import type { Frame, MotionTheme } from '../theme'
 import type { TimeSpan, Timeline } from '../timing'
+import type { FaceBox } from '../captions'
 import type { Layer } from '../types'
 
 /**
@@ -19,6 +20,8 @@ export interface BuildContext {
   tl: Timeline
   /** Output seconds for an anchor, or null when it is not in the cut. */
   time(ref: string): number | null
+  /** The faces in frame when it lands, from face tracking, as fractions of the frame. Empty when unknown. */
+  faces: FaceBox[]
 }
 
 /** A control the editor shows for a graphic. */

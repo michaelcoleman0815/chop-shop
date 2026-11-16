@@ -16,6 +16,7 @@ import {
   type FaceSample,
   type IconNode,
   type Layer,
+  type LogoMark,
   type MotionScene,
   type Size
 } from '../shared/motion'
@@ -66,6 +67,7 @@ export interface MotionRenderOptions {
   /** Image layers' asset ids and their files. */
   images?: Map<string, string>
   icons?: (name: string) => IconNode[] | undefined
+  logos?: (slug: string) => LogoMark | undefined
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
 }
@@ -81,9 +83,11 @@ export function overlaySpans(layers: Layer[], duration: number, max = MAX_OVERLA
   return spans
 }
 
+/** The pictures the layers draw: asset ids, and `file:` keys for the brand's own logos. */
 function assetIds(layers: Layer[], out = new Set<string>()): Set<string> {
   for (const l of layers) {
     if (l.kind === 'image' && l.asset) out.add(l.asset)
+    if (l.kind === 'image' && l.file) out.add(`file:${l.file}`)
     if (l.kind === 'group') assetIds(l.children, out)
   }
   return out
@@ -91,6 +95,10 @@ function assetIds(layers: Layer[], out = new Set<string>()): Set<string> {
 
 function usesIcons(layers: Layer[]): boolean {
   return layers.some((l) => (l.kind === 'image' && !!l.icon) || (l.kind === 'group' && usesIcons(l.children)))
+}
+
+function usesLogos(layers: Layer[]): boolean {
+  return layers.some((l) => (l.kind === 'image' && !!l.logo) || (l.kind === 'group' && usesLogos(l.children)))
 }
 
 /** Draws every active stretch of the layers into its own overlay file. */
@@ -102,7 +110,7 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
 
   const images = new Map<string, CanvasImageSource>()
   for (const id of assetIds(layers)) {
-    const path = opts.images?.get(id)
+    const path = id.startsWith('file:') ? id.slice(5) : opts.images?.get(id)
     if (!path) continue
     try {
       images.set(id, (await loadImage(path)) as unknown as CanvasImageSource)
@@ -113,6 +121,7 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
   const resources: DrawResources = {
     images,
     icons: opts.icons,
+    logos: opts.logos,
     // Scratch canvases, for motion blur.
     createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>
   }
@@ -225,6 +234,8 @@ export interface CutMotionInput {
   fontsDir: string | null
   /** Loads icon shapes, only when a graphic draws one. */
   icons?: () => Promise<(name: string) => IconNode[] | undefined>
+  /** Loads brand marks, only when a graphic draws one. */
+  logos?: () => Promise<(slug: string) => LogoMark | undefined>
   /** Faces through the cut, from face tracking, for drawn captions to keep off. */
   faces?: FaceSample[]
   /** How strongly each word is stressed, 0 to 1, by word id. */
@@ -290,6 +301,7 @@ export async function renderCutMotion(input: CutMotionInput): Promise<{ overlays
     fontsDir: input.fontsDir,
     images,
     icons: usesIcons(scene.layers) && input.icons ? await input.icons() : undefined,
+    logos: usesLogos(scene.layers) && input.logos ? await input.logos() : undefined,
     onProgress: input.onProgress,
     signal: input.signal
   })

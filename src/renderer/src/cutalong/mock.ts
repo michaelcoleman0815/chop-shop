@@ -367,7 +367,16 @@ export function createMockApi(): CutalongApi {
       listeners.cut.add(cb)
       return () => listeners.cut.delete(cb)
     },
-    chooseMedia: async () => null,
+    // A made-up product logo, so the browser preview can pick a picture.
+    chooseMedia: async () => ({
+      kind: 'image' as const,
+      path:
+        'data:image/svg+xml;utf8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" rx="58" fill="#5B5BF0"/><circle cx="104" cy="128" r="40" fill="#fff"/><circle cx="160" cy="128" r="40" fill="#fff" fill-opacity="0.7"/></svg>'
+        ),
+      durationSec: 0
+    }),
     checkKey: async () =>
       key === null
         ? { ok: false as const, message: 'No key yet.', needsKey: true }

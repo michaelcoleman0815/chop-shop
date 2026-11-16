@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { renderFrame, type IconNode, type Layer, type MotionScene } from '../../../../shared/motion'
+import { renderFrame, type IconNode, type Layer, type LogoMark, type MotionScene } from '../../../../shared/motion'
 import type { Asset } from '../../../../shared/edit'
 import { mediaUrlFor } from '../api'
-import { loadIconNodes, loadMotionFonts, loadPicture } from '../motion'
+import { loadIconNodes, loadLogoMarks, loadMotionFonts, loadPicture } from '../motion'
 
 /**
  * The cut's graphics over the preview: a canvas the size of the frame, drawn
@@ -43,6 +43,7 @@ export function MotionCanvas({
   // Bumped when a face, the icons or an image finishes loading, so the frame redraws with it.
   const [loaded, setLoaded] = useState(0)
   const [icons, setIcons] = useState<((name: string) => IconNode[] | undefined) | null>(null)
+  const [logos, setLogos] = useState<((slug: string) => LogoMark | undefined) | null>(null)
   const [pictures, setPictures] = useState<Map<string, CanvasImageSource>>(new Map())
 
   useEffect(() => {
@@ -51,12 +52,16 @@ export function MotionCanvas({
 
   const needs = useMemo(() => {
     let icon = false
+    let logo = false
     const ids = new Set<string>()
     walk(scene.layers, (l) => {
       if (l.kind === 'image' && l.icon) icon = true
+      if (l.kind === 'image' && l.logo) logo = true
       if (l.kind === 'image' && l.asset) ids.add(l.asset)
+      // The brand's own logos are files on this computer, keyed by their path.
+      if (l.kind === 'image' && l.file) ids.add(`file:${l.file}`)
     })
-    return { icon, ids: [...ids].sort().join(',') }
+    return { icon, logo, ids: [...ids].sort().join('\n') }
   }, [scene])
 
   useEffect(() => {
@@ -65,13 +70,18 @@ export function MotionCanvas({
   }, [needs.icon, icons])
 
   useEffect(() => {
+    if (!needs.logo || logos) return
+    void loadLogoMarks().then((lookup) => setLogos(() => lookup))
+  }, [needs.logo, logos])
+
+  useEffect(() => {
     if (!needs.ids) return
     let live = true
     const byId = new Map(assets.map((a) => [a.id, a]))
     void Promise.all(
-      needs.ids.split(',').map(async (id) => {
-        const asset = byId.get(id)
-        const img = asset ? await loadPicture(mediaUrlFor(asset.path)) : null
+      needs.ids.split('\n').map(async (id) => {
+        const path = id.startsWith('file:') ? id.slice(5) : byId.get(id)?.path
+        const img = path ? await loadPicture(mediaUrlFor(path)) : null
         return [id, img] as const
       })
     ).then((pairs) => {
@@ -99,11 +109,11 @@ export function MotionCanvas({
       scene.layers,
       scene.size,
       { width: pw, height: ph },
-      { icons: icons ?? undefined, images: pictures, createCanvas: makeCanvas }
+      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas }
     )
     // The moment drawn, for anyone checking the preview against the export.
     el.dataset.time = time.toFixed(4)
-  }, [scene, time, width, height, loaded, icons, pictures])
+  }, [scene, time, width, height, loaded, icons, logos, pictures])
 
   if (scene.layers.length === 0) return null
   return <canvas ref={canvas} className="cl-motion" style={{ width, height }} aria-hidden="true" />

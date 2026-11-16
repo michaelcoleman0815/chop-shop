@@ -82,6 +82,8 @@ export interface MotionTheme {
   body: string
   /** The creator's name, for an end card or a lower third with nothing else to say. */
   name: string
+  /** The creator's own logos, by name, for logo pops: their products, their channel. */
+  logos: { name: string; path: string }[]
 }
 
 export const DEFAULT_THEME: MotionTheme = {
@@ -91,7 +93,8 @@ export const DEFAULT_THEME: MotionTheme = {
   paper: '#F5F5F3',
   display: 'Archivo Black',
   body: 'Sora',
-  name: ''
+  name: '',
+  logos: []
 }
 
 /** The parts of a brand a theme reads, so this file does not depend on the brand schema. */
@@ -99,6 +102,7 @@ export interface BrandLook {
   name?: string
   colors?: { text: string; accent: string }
   fonts?: { display?: string; body?: string }
+  logos?: { name: string; path: string }[]
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/
@@ -112,6 +116,7 @@ export function themeFrom(brand: BrandLook | null | undefined): MotionTheme {
     accent: brand.colors && HEX.test(brand.colors.accent) ? brand.colors.accent : DEFAULT_THEME.accent,
     display: font(brand.fonts?.display, DEFAULT_THEME.display),
     body: font(brand.fonts?.body, DEFAULT_THEME.body),
-    name: brand.name?.trim() ?? ''
+    name: brand.name?.trim() ?? '',
+    logos: (brand.logos ?? []).filter((l) => l.name.trim() && l.path)
   }
 }

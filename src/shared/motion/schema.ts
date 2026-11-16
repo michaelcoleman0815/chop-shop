@@ -39,6 +39,7 @@ export const MOTION_KINDS = [
   'progress',
   'steps',
   'sticker',
+  'logo',
   'layers'
 ] as const
 export const MotionKindSchema = z.enum(MOTION_KINDS)
@@ -319,6 +320,10 @@ const ImageLayerSchema = z.object({
   kind: z.literal('image'),
   asset: z.string().max(40).optional(),
   icon: z.string().max(64).optional(),
+  logo: z.string().max(64).optional(),
+  file: z.string().max(1024).optional(),
+  tile: z.enum(['square', 'round']).optional(),
+  fallback: z.object({ text: z.string().max(4), family: z.string().max(64) }).optional(),
   w: z.number().positive().max(10_000),
   h: z.number().positive().max(10_000),
   fit: z.enum(['contain', 'cover']).optional(),

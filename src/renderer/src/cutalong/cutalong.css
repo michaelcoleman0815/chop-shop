@@ -1361,6 +1361,11 @@ button:disabled {
   font-weight: 600;
 }
 
+.cl-field-hint {
+  font-size: 13px;
+  margin-top: calc(var(--space-2) * -1);
+}
+
 .cl-field input:not([type='color']):not([type='checkbox']),
 .cl-field textarea {
   border: 1px solid var(--line);

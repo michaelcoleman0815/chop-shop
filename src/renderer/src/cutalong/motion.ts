@@ -1,7 +1,14 @@
 import antonUrl from '../../../../resources/fonts/Anton-Regular.ttf?url'
 import archivoUrl from '../../../../resources/fonts/ArchivoBlack-Regular.ttf?url'
 import soraUrl from '../../../../resources/fonts/Sora.ttf?url'
-import { MOTION_FONTS, type IconNode } from '../../../shared/motion'
+import {
+  logoLookup,
+  marksFrom,
+  MOTION_FONTS,
+  type IconNode,
+  type LogoEntry,
+  type LogoMark
+} from '../../../shared/motion'
 
 /**
  * What the editor's motion canvas needs from the page: the faces graphics
@@ -48,6 +55,19 @@ export function loadIconNodes(): Promise<(name: string) => IconNode[] | undefine
     return (name: string) => nodes[name]
   })
   return icons
+}
+
+let logos: Promise<(slug: string) => LogoMark | undefined> | null = null
+
+/** Brand marks from Simple Icons (CC0), loaded the first time a graphic has a logo. */
+export function loadLogoMarks(): Promise<(slug: string) => LogoMark | undefined> {
+  logos ??= Promise.all([import('simple-icons'), import('simple-icons/icons.json')]).then(([marks, index]) =>
+    logoLookup(
+      ((index as { default?: unknown }).default ?? index) as LogoEntry[],
+      marksFrom(marks as unknown as Record<string, unknown>)
+    )
+  )
+  return logos
 }
 
 const images = new Map<string, Promise<HTMLImageElement | null>>()

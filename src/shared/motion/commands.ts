@@ -120,6 +120,18 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       if (lines.length === 0) return { problem: 'Tell me the words, like /title So what is the | FOMO & partnership?' }
       return { style: styled ? first : '', text: lines.slice(0, 2) }
     }
+  },
+  {
+    command: 'logo',
+    kind: 'logo',
+    title: 'Logo pop',
+    summary: 'Brand logos beside you as you name them: /logo Bitcoin, Ethereum',
+    parse: (rest) => {
+      const { style, rest: text } = takeStyle(rest, 'logo')
+      const names = parts(text)
+      if (names.length === 0) return { problem: 'Tell me the brand, like /logo Bitcoin.' }
+      return { style, items: names.slice(0, 4).map((label) => ({ label })) }
+    }
   }
 ]
 

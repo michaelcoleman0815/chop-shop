@@ -1,4 +1,4 @@
-import type { IconNode } from '../shared/motion'
+import { logoLookup, marksFrom, type IconNode, type LogoEntry, type LogoMark } from '../shared/motion'
 
 /**
  * Lucide's icon shapes (ISC), for graphics the export draws. They are bundled
@@ -15,4 +15,19 @@ export async function loadIcons(): Promise<(name: string) => IconNode[] | undefi
   }
   const all = nodes
   return (name) => all[name]
+}
+
+let logos: ((slug: string) => LogoMark | undefined) | null = null
+
+/**
+ * Brand marks from Simple Icons (CC0), bundled with the app and loaded the
+ * first time an export has a logo in it.
+ */
+export async function loadLogos(): Promise<(slug: string) => LogoMark | undefined> {
+  if (!logos) {
+    const [marks, index] = await Promise.all([import('simple-icons'), import('simple-icons/icons.json')])
+    const entries = ((index as { default?: unknown }).default ?? index) as LogoEntry[]
+    logos = logoLookup(entries, marksFrom(marks as unknown as Record<string, unknown>))
+  }
+  return logos
 }
