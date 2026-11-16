@@ -282,9 +282,15 @@ export async function searchVideos(
   tools: AssetTools,
   count = 5,
   lists: { prefer: string[]; block: string[] } = { prefer: [], block: [] }
-): Promise<{ results: (Candidate & { preferred: boolean })[]; blocked: number; looked: number }> {
+): Promise<{
+  results: (Candidate & { preferred: boolean })[]
+  blocked: number
+  /** Preferred channels that answered the search with something; `tried` of them were asked. */
+  looked: number
+  tried: number
+}> {
   const q = query.replace(/[\r\n]+/g, ' ').trim()
-  if (!q) return { results: [], blocked: 0, looked: 0 }
+  if (!q) return { results: [], blocked: 0, looked: 0, tried: 0 }
   const prefer = readSources(lists.prefer).sources
   const block = readSources(lists.block).sources
   const channels = prefer
@@ -311,5 +317,7 @@ export async function searchVideos(
     tools.signal
   )
   const ordered = orderFound(preferredRuns, shortest(parseSearch(json)), { prefer, block })
-  return { results: ordered.results.slice(0, count), blocked: ordered.blocked, looked: channels.length }
+  // A channel was looked in only when it answered: one yt-dlp could not search, or that had nothing, was not.
+  const looked = preferredRuns.filter((found) => found.length > 0).length
+  return { results: ordered.results.slice(0, count), blocked: ordered.blocked, looked, tried: channels.length }
 }

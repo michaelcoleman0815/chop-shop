@@ -1181,11 +1181,19 @@ export function useCutalong() {
         patch(id, { progress: null, text: `Nothing came up for “${query}”. Try other words.`, aside: left || null })
         return
       }
+      // The preferred channels that answered; when only some did, which share of them.
       const looked = r.looked ?? 0
+      const tried = Math.max(looked, r.tried ?? looked)
+      const channels =
+        looked === tried
+          ? looked === 1
+            ? 'your preferred channel'
+            : `your ${looked} preferred channels`
+          : `${looked === 1 ? 'one' : looked} of your ${tried} preferred channels`
       const preferred = r.results.slice(0, 3).filter((c) => c.preferred).length
       const sources = [
         looked
-          ? `I looked in ${looked === 1 ? 'your preferred channel' : `your ${looked} preferred channels`} first${preferred ? `, and ${preferred === 1 ? 'one of these is' : `${preferred} of these are`} from them` : ''}.`
+          ? `I looked in ${channels} first${preferred ? `, and ${preferred === 1 ? 'one of these is' : `${preferred} of these are`} from them` : ''}.`
           : preferred
             ? `${preferred === 1 ? 'One of these is' : `${preferred} of these are`} from a source you prefer.`
             : '',

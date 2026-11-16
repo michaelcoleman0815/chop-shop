@@ -194,8 +194,9 @@ const api = {
         }[]
         /** Results left out because their channel or site is blocked. */
         blocked?: number
-        /** Preferred channels looked in first. */
+        /** Preferred channels looked in first: those that answered, of `tried` asked. */
         looked?: number
+        tried?: number
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('assets:search', query, sources),
