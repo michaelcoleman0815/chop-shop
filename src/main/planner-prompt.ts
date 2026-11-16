@@ -4,10 +4,12 @@ import {
   currentCut,
   currentVersion,
   describeLook,
+  gridLine,
   indexWords,
   ANGLE_LAYOUTS,
   LOOK_SETTINGS,
   NAMED_LOOKS,
+  plannedGrid,
   resolveCut,
   SFX_KINDS,
   sfxName,
@@ -89,6 +91,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"sync","source":"s2","of":"s1","offsetSec":1.25}: lines a camera up with its recording: what s1 shows at t, s2 shows at t + offsetSec. Only when asked to move it; "of":"" takes the camera out of the edit.
 - {"op":"reframe","on":true}: cropped to a narrower frame (a wide recording made vertical), the picture follows the speaker instead of keeping the middle; false keeps the middle. It follows recordings the transcript marks speaker="found"; for any other, say /reframe finds the speaker.
 - {"op":"framing","beats":["b4"],"x":0.25}: frames beats by hand when cropped: 0 is the recording's left edge, 0.5 its middle, 1 its right; -1 follows the speaker again.
+- {"op":"grid","beats":["b4"],"panels":[{"show":"","label":"Raw","inSec":0},{"show":"a2","label":"Edited","inSec":0}],"sound":""}: shows a beat as two to four videos at once, side by side on a soft ground, each with a small label (one to three words, or ""). "show":"" is the beat's own picture; otherwise a recording (s2) or material (a2) by id, from inSec seconds into it. "sound":"" keeps the beat's own sound, "1" to "4" plays that panel's instead, "music" leaves only the music. "panels":[] takes the grid away.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ${graphicsGuide()}
@@ -105,6 +108,7 @@ ${graphicsGuide()}
 - Add sound effects only when asked, sparingly: a whoosh through a whip or push transition, a hit on a hard cut to something new, a riser into a new section, a pop on a big word. Never one on every cut.
 - Opening the edit in Premiere is /premiere, which the person types: for that, make no op and say so in the reply.
 - Switch to another camera only when asked, or when asked for variety: at a change of thought, never mid-sentence, and back to the recording often enough that it stays the main view. "pip" and "side" suit a reaction or a second person.
+- Show videos in a grid only when asked, or when the words set finished videos or takes side by side ("here are four edits of the same clip"). A grid covers its whole beat, as a cutaway does, so split first and give it only the words that show them.
 - Make chapters only when asked. Start one where the subject changes, and name it in two to five words for what that part is about, never a whole sentence.
 - Leave the colour alone unless asked. For tech and product videos, "clean" keeps colour true; save warm, cool, cinematic and vintage for when someone asks for a mood.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
@@ -259,6 +263,12 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   // Graphics. Every slot is required, so the schema spends nothing from the
   // structured-output limits on optional or union-typed parameters; an empty
   // slot means the template's default (or, in an update, no change).
+  z.object({
+    op: z.literal('grid'),
+    beats: z.array(z.string()),
+    panels: z.array(z.object({ show: z.string(), label: z.string(), inSec: z.number() })),
+    sound: z.enum(['', 'music', '1', '2', '3', '4'])
+  }),
   z.object({ op: z.literal('motion-add'), kind: z.enum(GRAPHIC_KINDS), ...graphicSlots() }),
   z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
   z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) })
@@ -314,6 +324,8 @@ export function fromPlannerOp(op: PlannerOp): unknown {
       return op.of ? op : { op: op.op, source: op.source, of: null }
     case 'framing':
       return { op: op.op, beats: op.beats, x: op.x >= 0 && op.x <= 1 ? op.x : null }
+    case 'grid':
+      return { op: 'treat', beats: op.beats, set: { grid: plannedGrid(op) } }
     case 'look': {
       if (op.off) return { op: op.op, set: null }
       // A named look comes with its own settings; what the planner names goes over them.
@@ -488,6 +500,7 @@ export function renderRequest(
       typeof t.framing === 'number' ? `framed by hand at ${t.framing}` : null,
       t.broll?.camera ? `cutaway camera ${describeCamera(t.broll.camera)}` : null,
       t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null,
+      t.grid ? gridLine(t.grid) : null,
       beat.sfx?.length
         ? `sounds ${beat.sfx.map((s) => `${sfxName(s)}${s.word ? ` on ${s.word}` : ''}`).join(', ')}`
         : null
@@ -518,6 +531,8 @@ export function renderRequest(
     for (const beat of cut.beats) {
       const id = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
       if (id) shows.set(id, [...(shows.get(id) ?? []), beat.id])
+      for (const p of beat.treatment.grid?.panels ?? [])
+        if (doc.assets.some((a) => a.id === p.show)) shows.set(p.show, [...(shows.get(p.show) ?? []), beat.id])
     }
     // A picture a graphic shows is shown by that graphic.
     for (const m of cut.motion ?? [])

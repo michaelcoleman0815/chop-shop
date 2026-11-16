@@ -101,6 +101,7 @@ import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
 import { useVlog } from './useVlog'
+import { SHOWCASE_ENTRIES, useShowcase, type Showcase } from './useShowcase'
 import {
   remember,
   rememberAdded,
@@ -317,7 +318,7 @@ const MOTION_ENTRIES: Preset[] = motionCommandEntries().map((c) => ({
   inspiration: null
 }))
 // Commands that act rather than set a style; what follows them is theirs, not the planner's.
-const ACTION_NAMES = new Set([...ACTION_COMMANDS, ...MOTION_ENTRIES].map((c) => c.command))
+const ACTION_NAMES = new Set([...ACTION_COMMANDS, ...MOTION_ENTRIES, ...SHOWCASE_ENTRIES].map((c) => c.command))
 
 /** An icon drawn into a PNG, as base64, at the size the renderer will scale from. */
 async function rasterize(svg: string, size = 1024): Promise<string> {
@@ -476,6 +477,7 @@ export function useCutalong() {
       ...ACTION_COMMANDS,
       ...SKILL_PRESETS,
       ...MOTION_ENTRIES,
+      ...SHOWCASE_ENTRIES,
       ...saved
     ]
   }, [saved, brand])
@@ -765,6 +767,9 @@ export function useCutalong() {
     },
     [setDoc]
   )
+
+  // Grids and the talking-head graphics (useShowcase), made below once the commands it runs exist.
+  const showcaseRef = useRef<Showcase | null>(null)
 
   // Vlogs: a day of clips told as a story (useVlog), called in from submit, ask, commandNow and applyNotes.
   const vlog = useVlog({
@@ -2066,6 +2071,8 @@ export function useCutalong() {
       const d0 = docRef.current
       const r0 = d0 && at !== null ? resolveCut(currentCut(d0), d0.words, d0.sources) : null
       const beat = r0 && at !== null ? ((beatAt(r0, at) ?? r0.beats[r0.beats.length - 1])?.id ?? null) : null
+      // A grid, video cards from links, and chips with their icons (useShowcase).
+      if (await showcaseRef.current?.command(command, where, rest, at, beat)) return
       if (command === 'all') {
         await finishCommand(where)
         vlog.onBeats(where)
@@ -2234,6 +2241,21 @@ export function useCutalong() {
       during(() => commandNow(command, where, rest, at)),
     [during, commandNow]
   )
+
+  // Grids, video cards and the talking-head graphics asked for in words (useShowcase).
+  const showcase = useShowcase({
+    docRef,
+    setDoc,
+    setMediaUrl,
+    push,
+    patch,
+    setPanel,
+    applyAsVersion,
+    placeGraphic,
+    run: runCommand,
+    logoNames: () => brandRef.current.logos.map((l) => l.name)
+  })
+  showcaseRef.current = showcase
 
   const studyLink = useCallback(
     async (url: string): Promise<void> => {
@@ -2564,15 +2586,25 @@ export function useCutalong() {
         const materialBefore = docRef.current?.assets.length ?? 0
         // A day of clips to tell as a story (useVlog): every clip is material with its own sound.
         const vlogged = vlog.wanted(said, command?.command ?? null, recordings)
+        // Videos dropped in to play at once, in a grid (useShowcase).
+        const gridded =
+          !vlogged &&
+          recordings.length + stills.length > 1 &&
+          (await showcase.files([...recordings, ...stills], command?.command ?? null, said))
         if (vlogged) await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words)
-        else if (recordings.length > 0) await takeIn(recordings, said)
+        else if (gridded) {
+          // The grid's own reply says what it made.
+        } else if (recordings.length > 0) await takeIn(recordings, said)
         if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
-        if (stills.length > 0) {
+        if (stills.length > 0 && !gridded) {
           if (docRef.current) await addMaterial(stills)
           else push({ role: 'assistant', text: 'Drop your footage too, and these go into the edit with it.' })
         }
         let asked = false
-        if (link && command?.command !== 'screenshot' && command?.command !== 'phone') {
+        if (link && !command && docRef.current && (await showcase.words(text, 'thread', null))) {
+          // Cards from the videos at those links, or the page at it with a ring (useShowcase).
+          asked = true
+        } else if (link && command?.command !== 'screenshot' && command?.command !== 'phone') {
           // A link with a time, an image link, or one called B-roll is
           // material; any other video link is something to learn a style from.
           const range = parseRange(text)
@@ -2599,7 +2631,9 @@ export function useCutalong() {
           const shown = new Set(assetsInCut(d).map((a) => a.id))
           return d.assets.slice(materialBefore).some((a) => !shown.has(a.id))
         }
-        if (command && !(vlogged && command.command === 'vlog')) {
+        if (gridded) {
+          // Made from the files: nothing more to run.
+        } else if (command && !(vlogged && command.command === 'vlog')) {
           await runCommand(command.command, 'thread', command.rest)
           if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
           else if (unplaced()) await ask(PLACE_MATERIAL)
@@ -2620,7 +2654,8 @@ export function useCutalong() {
                 actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
               })
             )
-          if (!local) await ask(text)
+          // A talking-head graphic asked for in words goes on at once; anything else is the planner's.
+          if (!local && !(await showcase.words(text, 'thread', null))) await ask(text)
         } else if (unplaced() && !asked) {
           await ask(PLACE_MATERIAL)
         }
@@ -2638,6 +2673,7 @@ export function useCutalong() {
       persist,
       push,
       runCommand,
+      showcase,
       studyLink,
       takeIn,
       vlog
@@ -2895,8 +2931,14 @@ export function useCutalong() {
 
   /** For the notes panel: a takes sentence typed as a note is answered, not stored. */
   const answerInPanel = useCallback(
-    (text: string): boolean => answerTakes(text, (reply) => setPanel({ text: reply })),
-    [answerTakes]
+    (text: string, at: number | null = null): boolean => {
+      if (answerTakes(text, (reply) => setPanel({ text: reply }))) return true
+      // A talking-head graphic asked for in words goes on at the playhead (useShowcase).
+      if (!showcase.claims(text)) return false
+      void showcase.words(text, 'panel', at)
+      return true
+    },
+    [answerTakes, showcase]
   )
 
   return {

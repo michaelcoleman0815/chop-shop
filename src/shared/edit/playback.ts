@@ -61,8 +61,8 @@ export function layersAt(resolved: Resolved, outSec: number): Layer[] {
     const layer: Layer = {
       piece: i,
       srcSec: pieceTime(piece, t),
-      // A freeze is silent: the sound waits while the picture holds.
-      volume: heard && piece.hold === undefined ? 1 : 0,
+      // A freeze is silent: the sound waits while the picture holds. So is a grid heard from another panel.
+      volume: heard && piece.hold === undefined && !piece.silent ? 1 : 0,
       visible: seen,
       transition: null
     }
@@ -79,7 +79,7 @@ export function layersAt(resolved: Resolved, outSec: number): Layer[] {
     const progress = Math.min(1, Math.max(0, (t - coming.outStart) / Math.max(1e-6, going.outEnd - coming.outStart)))
     const kind = coming.transition.kind
     for (const l of layers) {
-      const silent = pieces[l.piece].hold !== undefined
+      const silent = pieces[l.piece].hold !== undefined || !!pieces[l.piece].silent
       if (l.piece === hit.index - 1) {
         l.volume = silent ? 0 : Math.cos((progress * Math.PI) / 2)
         l.transition = { kind, side: 'out', progress }

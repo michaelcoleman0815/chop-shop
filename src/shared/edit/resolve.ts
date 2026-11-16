@@ -63,6 +63,8 @@ export interface Piece {
   reverse?: boolean
   /** A freeze frame: the picture at srcStart (which equals srcEnd) holds this long, the sound silent. */
   hold?: number
+  /** Its own sound is not heard: a grid that plays another panel's sound, or only the music (edit/grid). */
+  silent?: boolean
 }
 
 /** A J or L cut as it plays: the sound changes at `at`, the picture `sec` later (J) or earlier (L). */

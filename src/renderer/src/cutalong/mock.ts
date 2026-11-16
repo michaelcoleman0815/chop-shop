@@ -2,6 +2,7 @@ import {
   addSources,
   createDoc,
   currentCut,
+  gridDoc,
   nextSourceId,
   resolveCut,
   wordsFromTranscript,
@@ -853,6 +854,39 @@ export function createMockApi(): CutalongApi {
           origin: { type: 'link' as const, url, author: host, license: null, range: null }
         }
       }
+    },
+    // A video's card as if read from its link: a title, round numbers, and a thumbnail drawn here.
+    videoCard: async ({ url }) => {
+      await sleep(500)
+      const id = /(?:v=|youtu\.be\/)([\w-]+)/.exec(url)?.[1] ?? 'video'
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="1280" height="720" fill="#2b2d34"/><circle cx="640" cy="360" r="120" fill="#F5F5F3"/></svg>`
+      return {
+        ok: true as const,
+        card: {
+          url,
+          title: `How I edit a video in ten minutes (${id})`,
+          channel: '@yourchannel',
+          views: 492310,
+          uploaded: new Date(Date.now() - 40 * 86400 * 1000).toISOString()
+        },
+        asset: {
+          kind: 'image' as const,
+          path: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+          title: `How I edit a video in ten minutes (${id})`,
+          durationSec: null,
+          width: 1280,
+          height: 720,
+          origin: { type: 'link' as const, url, author: '@yourchannel', license: null, range: null }
+        }
+      }
+    },
+    // Several videos at once, made by the shared grid logic from files it pretends to have probed.
+    makeGrid: async ({ paths, labels, sound }) => {
+      await sleep(400)
+      const files = paths
+        .slice(0, 4)
+        .map((path, i) => ({ path, durationSec: 20 + i, width: 1920, height: 1080, fps: 30, still: false, sound: true }))
+      return { ok: true as const, doc: gridDoc({ id: `grid-${Date.now()}`, files, labels, sound }), mediaUrl: '/sample.mp4' }
     },
     setVideoSignIn: async (browser) => {
       settings = { ...settings, videoSignIn: browser }

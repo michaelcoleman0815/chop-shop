@@ -195,6 +195,25 @@ const api = {
     url: string
   }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string }> =>
     ipcRenderer.invoke('assets:capturePage', req),
+  /** A video's card from its link: title, views and age, and its thumbnail as material. The video is never fetched. */
+  videoCard: (req: {
+    docId: string
+    url: string
+  }): Promise<
+    | {
+        ok: true
+        card: { url: string; title: string; channel: string | null; views: number | null; uploaded: string | null }
+        asset: Omit<Asset, 'id'> | null
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('assets:videoCard', req),
+  /** Two to four finished videos as one edit, playing at once in a grid. */
+  makeGrid: (req: {
+    paths: string[]
+    labels?: string[]
+    sound?: number | 'none'
+  }): Promise<{ ok: true; doc: EditDoc; mediaUrl: string } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('cut:grid', req),
   setVideoSignIn: (browser: string | null): Promise<string | null> =>
     ipcRenderer.invoke('settings:videoSignIn', browser),
   getBrand: (): Promise<Brand> => ipcRenderer.invoke('brand:get'),

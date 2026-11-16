@@ -169,6 +169,21 @@ export function gridHeard(grid: Grid): 'own' | 'none' | number {
   return sound
 }
 
+/**
+ * The cut as the preview hears it: the pieces of a grid that plays another
+ * panel's sound, or none, are silent on their own picture's deck.
+ */
+export function silenceGrids<R extends { pieces: { beat: string; silent?: boolean }[] }>(
+  cut: { beats: { id: string; treatment: { grid?: Grid | null } }[] },
+  resolved: R
+): R {
+  const quiet = new Set(
+    cut.beats.filter((b) => b.treatment.grid && gridHeard(b.treatment.grid) !== 'own').map((b) => b.id)
+  )
+  if (quiet.size === 0) return resolved
+  return { ...resolved, pieces: resolved.pieces.map((p) => (quiet.has(p.beat) ? { ...p, silent: true } : p)) }
+}
+
 /** A grid in a few words, for the planner and the beat strip: "a grid of 4 with labels". */
 export function describeGrid(grid: Grid): string {
   const labels = grid.panels.map((p) => p.label.trim()).filter(Boolean)
@@ -176,4 +191,33 @@ export function describeGrid(grid: Grid): string {
   const sound =
     heard === 'own' ? '' : heard === 'none' ? ', no sound but the music' : `, sound from panel ${heard + 1}`
   return `a grid of ${grid.panels.length}${labels.length ? ` labelled ${labels.join(', ')}` : ''}${sound}`
+}
+
+/**
+ * A grid as the planner writes it, every slot filled ('' and 0 the usual,
+ * "music" for no sound but the music, "1" to "4" a panel's sound), as the
+ * edit takes it. No panels takes the grid away.
+ */
+export function plannedGrid(op: { panels: { show: string; label: string; inSec: number }[]; sound: string }): Grid | null {
+  if (op.panels.length === 0) return null
+  const sound: GridSound = op.sound === 'music' ? 'none' : /^[1-4]$/.test(op.sound) ? Number(op.sound) - 1 : 'own'
+  return {
+    panels: op.panels.slice(0, 4).map((p) => ({
+      show: p.show.trim(),
+      label: p.label.trim().slice(0, 40),
+      ...(p.inSec > 0 ? { inSec: p.inSec } : {})
+    })),
+    ...(sound === 'own' ? {} : { sound })
+  }
+}
+
+/** A grid in the planner's line for its beat, with what each panel shows: grid own "Raw", a2 "Edited" from 3.0 s, sound from panel 2. */
+export function gridLine(grid: Grid): string {
+  const panels = grid.panels.map((p) => {
+    const label = p.label.trim() ? ` "${p.label.trim()}"` : ''
+    return `${p.show.trim() || 'own'}${label}${p.inSec ? ` from ${p.inSec.toFixed(1)} s` : ''}`
+  })
+  const heard = gridHeard(grid)
+  const sound = heard === 'own' ? '' : heard === 'none' ? ', music only' : `, sound from panel ${heard + 1}`
+  return `grid ${panels.join(', ')}${sound}`
 }

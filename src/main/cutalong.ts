@@ -42,6 +42,8 @@ import { registerLearnIpc } from './learn'
 import { preferencesForPlanner, registerMemoryIpc } from './memory'
 import { registerClippingIpc } from './clipping'
 import { registerVlogIpc } from './vlog'
+import { registerShowcaseIpc } from './showcase'
+import { themeFrom } from '../shared/motion'
 import {
   addSources,
   createDoc,
@@ -434,6 +436,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
         overlays: motion.overlays,
         captionWords: pass.resolved.words,
+        // A grid's panels show material, on a ground in the brand's look.
+        assets: doc.assets,
+        theme: themeFrom(brand),
         sfxDir: sfxDir(),
         onProgress: (f) => report(share + f * (1 - share))
       })
@@ -685,6 +690,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   registerMemoryIpc()
   // /clipping: many short clips from long recordings (main/clipping).
   registerClippingIpc({ send: deps.send })
+
+  // Video cards read from links, and grids of several videos at once (main/showcase).
+  registerShowcaseIpc({ mediaUrlFor: deps.mediaUrlFor })
 
   // Vlogs: a shoot watched and told as a story (main/vlog), its talking heard as footage is here.
   registerVlogIpc({
