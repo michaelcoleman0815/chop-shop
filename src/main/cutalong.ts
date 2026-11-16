@@ -40,6 +40,7 @@ import { readBrand, saveBrand } from './brand-store'
 import { hearInCloud, registerServicesIpc } from './providers'
 import { registerLearnIpc } from './learn'
 import { preferencesForPlanner, registerMemoryIpc } from './memory'
+import { registerClippingIpc } from './clipping'
 import {
   addSources,
   createDoc,
@@ -358,7 +359,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('cut:render', async (e, req: { doc: unknown; quality: 'preview' | 'final' }) => {
+  // A clip from /clipping exports under its own title (name), with no version number on it.
+  ipcMain.handle('cut:render', async (e, req: { doc: unknown; quality: 'preview' | 'final'; name?: string }) => {
     const parsed = EditDocSchema.safeParse(req.doc)
     if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
     const doc = parsed.data
@@ -384,7 +386,11 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       )
       const n = currentVersion(doc).n
       outputPath = final
-        ? await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.mp4')
+        ? await freePath(
+            getSettings().outputDir,
+            req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`,
+            '.mp4'
+          )
         : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
       const brand = await readBrand()
       const report = (f: number): void => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
@@ -661,6 +667,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   })
   // And from how they edit here: small signals in, plain statements out, on this computer.
   registerMemoryIpc()
+  // /clipping: many short clips from long recordings (main/clipping).
+  registerClippingIpc({ send: deps.send })
 }
 
 interface Lined {

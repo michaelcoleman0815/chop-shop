@@ -124,7 +124,7 @@ describe('finding the clips by measuring', () => {
         expect(len).toBeLessThanOrEqual(r.plan.bounds.maxSec)
         expect(starts.has(c.startSec)).toBe(true)
         expect(ends.has(c.endSec)).toBe(true)
-        expect(c.title.split(' ').length).toBeLessThanOrEqual(6)
+        expect(c.title.split(' ').length).toBeLessThanOrEqual(8)
         expect(c.title).not.toMatch(/[.!?,]$/)
       }
     })

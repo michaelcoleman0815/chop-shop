@@ -26,6 +26,7 @@ import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { PremiereFacts, Preset } from '../shared/presets'
 import type { KeyCheck, ServiceId } from '../shared/services'
+import type { ClipsFound, ClipsReply } from '../shared/clipping'
 
 type Progress = { stage: string; percent: number | null }
 
@@ -146,6 +147,8 @@ const api = {
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'
+    /** The file's name in the export folder, when it is not the edit's title and version: a clip's title. */
+    name?: string
   }): Promise<
     | {
         ok: true
@@ -210,6 +213,15 @@ const api = {
   rememberSignal: (signal: Signal): Promise<void> => ipcRenderer.invoke('memory:record', signal),
   updateMemory: (change: MemoryChange): Promise<MemoryView> => ipcRenderer.invoke('memory:update', change),
   onCutProgress: (cb: (p: Progress) => void): (() => void) => listen('cut:progress', cb),
+  /** /clipping: the moments in long recordings that stand on their own, each as its own edit. */
+  findClips: (req: {
+    paths: string[]
+    ask: string
+    known?: Record<string, TranscriptWord[]>
+    avoid?: { path: string; startSec: number; endSec: number }[]
+  }): Promise<({ ok: true; reply: ClipsReply } & ClipsFound) | { ok: false; message: string }> =>
+    ipcRenderer.invoke('clips:find', req),
+  onClipsProgress: (cb: (p: Progress) => void): (() => void) => listen('clips:progress', cb),
   planEdit: (req: {
     doc: EditDoc
     request: string

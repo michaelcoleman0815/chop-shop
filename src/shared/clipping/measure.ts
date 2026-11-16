@@ -260,17 +260,19 @@ function median(values: number[]): number {
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2
 }
 
+/** Words a title never ends on: they leave it hanging. */
 const LITTLE = new Set(
-  'a an the of to and or but my your our his her their in on at for with from into over about up just is was are were who which'.split(
-    ' '
-  )
+  (
+    'a an the of to and or but my your our his her their in on at for with from into over about up just is was are were who which ' +
+    'you i we it they he she me us them'
+  ).split(' ')
 )
 
 /**
  * The first few words of a sentence as a title: up to a comma when one comes
  * early enough, never ending on a little word, never with punctuation.
  */
-function titleFrom(text: string, n = 6): string {
+function titleFrom(text: string, n = 7): string {
   let words = text
     .replace(/["“”]/g, '')
     .replace(/[.!?,;:…]+$/, '')
@@ -280,7 +282,17 @@ function titleFrom(text: string, n = 6): string {
   while (words.length > 1 && /^(?:and|so|but|well|okay|ok|now|um|uh|yeah|oh|like|honestly)[,.]?$/i.test(words[0]))
     words = words.slice(1)
   const comma = words.findIndex((w) => /[,;:]$/.test(w))
-  const end = comma >= 2 && comma < n ? comma + 1 : n
+  let end = comma >= 2 && comma < n ? comma + 1 : n
+  // "skipped a" wants its "Tuesday": one word more finishes the phrase.
+  const bare = (w?: string): string => (w ?? '').toLowerCase().replace(/[,;:.!?]+$/, '')
+  if (
+    end === n &&
+    LITTLE.has(bare(words[n - 1])) &&
+    words[n] &&
+    !LITTLE.has(bare(words[n])) &&
+    !/[,;:]$/.test(words[n - 1])
+  )
+    end = n + 1
   words = words.slice(0, end).map((w) => w.replace(/[,;:.!?]+$/, ''))
   while (words.length > 2 && LITTLE.has(words[words.length - 1].toLowerCase())) words.pop()
   const title = words.join(' ')
@@ -290,24 +302,43 @@ function titleFrom(text: string, n = 6): string {
 /** What a story or point says it means, as a title: "That is what grace looks like" gives "What grace looks like". */
 function meaningTitle(text: string): string | null {
   const t = text.trim().replace(/[.!?…]+$/, '')
+  // "Forgiveness is not a feeling you wait for, it is a door you walk through" says "Forgiveness is a door you walk through".
+  const turn = /^(?:and |so )?(\w+) is not [^,]+, (?:but )?(?:it is|it's) (.+)$/i.exec(t)
+  if (turn) return titleFrom(`${turn[1]} is ${turn[2]}`, 7)
+  // "That is why I keep doing this" says why.
+  const why = /^(?:and |so )?(?:that'?s|that is) (why .+)$/i.exec(t)
+  if (why && !/^why i (?:learned|realized|realised|knew|understood)/i.test(why[1])) return titleFrom(why[1], 7)
   const patterns = [
     /^(?:and |so )?(?:that'?s|that is) (?:when|how|why) i (?:learned|realized|realised|knew|understood|found out)(?: that)?,? (.+)$/i,
     /^(?:and |so )?(?:that'?s|that is) (what .+)$/i,
     /^(?:and |so )?the (?:point|lesson|truth) is,? (?:that )?(.+)$/i,
     /^(?:and |so )?what i learned (?:is|was),? (?:that )?(.+)$/i,
     /^(?:and |so )?i learned that (.+)$/i,
-    /^(?:and |so )?it taught me (?:that )?(.+)$/i
+    /^(?:and |so )?it taught me (?:that )?(.+)$/i,
+    /^((?:grace|love|faith|hope|forgiveness|courage|mercy|freedom) (?:is|means|looks like) .+)$/i
   ]
   for (const p of patterns) {
     const m = p.exec(t)
-    if (m && m[1].split(/\s+/).length >= 2) return titleFrom(m[1], 6)
+    if (m && m[1].split(/\s+/).length >= 2) return titleFrom(m[1], 7)
   }
   return null
 }
 
-/** A question as a title: "What was the worst job you ever had?" reads as it is, shortened. */
+/**
+ * A question as a title: "What was the worst day you ever had?" gives "The
+ * worst day you ever had", and "Someone in chat is asking, what is the hardest
+ * boss..." gives "The hardest boss...".
+ */
 function questionTitle(text: string): string {
-  return titleFrom(text.replace(/^(?:so|and|okay|ok|well|now)[, ]+/i, ''), 6)
+  const q = text
+    .trim()
+    .replace(/^(?:so|and|okay|ok|well|now)[, ]+/i, '')
+    .replace(
+      /^(?:someone|somebody|a viewer|chat|[a-z]+)(?: in (?:the )?chat)? (?:is asking|asks|asked|wants to know|wanted to know)[,:]? /i,
+      ''
+    )
+  const named = /^(?:what|which|who) (?:is|was|are|were)( the .+)$/i.exec(q) ?? /^is it true that (.+)$/i.exec(q)
+  return titleFrom(named ? named[1].trim() : q, 7)
 }
 
 const REASONS: Record<MomentKind, string> = {

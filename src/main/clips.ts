@@ -152,6 +152,14 @@ as a doctrine, even when the doctrinal version is better preaching.`,
     'This is a podcast or interview with more than one speaker. Apply the interview guidance, and watch for answers that cannot stand without the question that prompted them.',
   talk:
     'This is a talk, lecture or keynote by one speaker. Expect a structured argument: prefer a single point made whole over a fragment of the through-line, and treat section transitions as boundaries rather than content.',
+  stream: `This is a livestream recording: hours of one person talking to a chat,
+often over a game. What travels: a story told whole, a question from chat
+answered well, a real reaction to something that happened on screen, and a
+claim or admission with stakes. Read a reaction with its setup: the moment
+before it is part of it. What does not travel: thanking subscribers and
+reading alerts, talk about the stream itself (settings, schedule, the
+overlay), long stretches of play with little said, and anything that only
+makes sense to someone watching live.`,
   comedy:
     'This is comedy or a performance. A bit starts at its first setup word and ends a beat after its punchline; never cut between a setup and its payoff, and never include a punchline whose setup is off-screen.'
 }

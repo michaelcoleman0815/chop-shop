@@ -307,7 +307,7 @@ export const SERVICE: Planted = {
       0.7
     ),
     { quiet: 2 },
-    ...talk(filler(11, 22, 'sermon'), undefined, 'teaching'),
+    ...talk(filler(11, 30, 'sermon'), undefined, 'teaching'),
     { quiet: 1.2 },
     { say: 'I want to tell you about my father.', tag: 'teaching', after: 0.6 },
     ...talk(
@@ -325,7 +325,7 @@ export const SERVICE: Planted = {
       0.5
     ),
     { quiet: 1.6 },
-    ...talk(filler(23, 24, 'sermon'), undefined, 'teaching'),
+    ...talk(filler(23, 32, 'sermon'), undefined, 'teaching'),
     { quiet: 1.2 },
     ...talk(
       [
@@ -352,7 +352,7 @@ export const SERVICE: Planted = {
       'teaching',
       0.5
     ),
-    ...talk(filler(37, 18, 'sermon'), undefined, 'teaching'),
+    ...talk(filler(37, 26, 'sermon'), undefined, 'teaching'),
     { quiet: 1.2 },
     ...talk(
       [
@@ -368,7 +368,7 @@ export const SERVICE: Planted = {
       0.5
     ),
     { quiet: 1.6 },
-    ...talk(filler(41, 16, 'sermon'), undefined, 'teaching'),
+    ...talk(filler(41, 24, 'sermon'), undefined, 'teaching'),
     ...talk(
       [
         'So this week, find one table to sit down at.',
@@ -448,7 +448,7 @@ export const PODCAST: Planted = {
       after: 0.5
     },
     { say: 'Thanks for having me, Sam. I am happy to be here.', voice: 'b', after: 0.6 },
-    ...chatFiller(5, 52),
+    ...chatFiller(5, 56),
     { quiet: 1.2 },
     { say: 'What was the worst day you ever had on the job?', voice: 'a', tag: 'qa-1', after: 0.7 },
     ...talk(
@@ -465,7 +465,7 @@ export const PODCAST: Planted = {
     ),
     { laugh: 2.2 },
     { say: 'I ate it, too. Best tip I ever got.', voice: 'b', tag: 'qa-1', after: 1.4 },
-    ...chatFiller(17, 60),
+    ...chatFiller(17, 64),
     { quiet: 1 },
     ...talk(
       [
@@ -480,7 +480,7 @@ export const PODCAST: Planted = {
       0.5
     ),
     { say: 'Okay, back to Jordan.', voice: 'a', after: 0.8 },
-    ...chatFiller(29, 40),
+    ...chatFiller(29, 44),
     { quiet: 1.2 },
     {
       say: 'Is it true that the close door button in an elevator does not actually do anything?',
@@ -506,7 +506,7 @@ export const PODCAST: Planted = {
       tag: 'qa-2',
       after: 1.5
     },
-    ...chatFiller(43, 58),
+    ...chatFiller(43, 62),
     { quiet: 1.2 },
     { say: 'What would you tell someone who is scared to ride an elevator?', voice: 'a', tag: 'qa-3', after: 0.7 },
     ...talk(
@@ -523,7 +523,7 @@ export const PODCAST: Planted = {
       0.45
     ),
     { quiet: 1.5 },
-    ...chatFiller(59, 52),
+    ...chatFiller(59, 56),
     { quiet: 1.2 },
     ...chat(
       [

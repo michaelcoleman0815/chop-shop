@@ -28,7 +28,11 @@ vi.mock('electron', async () => {
     },
     ipcMain: { handle: (channel: string, fn: Handler) => fake.handlers.set(channel, fn) },
     dialog: {},
-    net: { fetch: async () => { throw new Error('No network in this test.') } },
+    net: {
+      fetch: async () => {
+        throw new Error('No network in this test.')
+      }
+    },
     safeStorage: { isEncryptionAvailable: () => false }
   }
 })
@@ -40,13 +44,18 @@ vi.mock('./ffmpeg', async () => {
     probe: async () => ({ durationSec: 6, width: 320, height: 180, fps: 30 })
   }
 })
-vi.mock('./transcribe', () => ({ hasModel: () => true, downloadModel: async () => '/m', transcribe: async () => ({ words: [] }) }))
+vi.mock('./transcribe', () => ({
+  hasModel: () => true,
+  downloadModel: async () => '/m',
+  transcribe: async () => ({ words: [] })
+}))
 vi.mock('./analysis-cache', () => ({ readAnalysis: async () => null }))
 
 import { registerCutalongIpc } from './cutalong'
 import { saveSettings } from './store'
 import { applyOps, createDoc, currentCut, type EditDoc } from '../shared/edit'
-import { findFfmpeg, makeColourClip } from './test-media'
+import { clipDoc, CLIP_PROFILES } from '../shared/clipping'
+import { findFfmpeg, frameColour, makeColourClip } from './test-media'
 
 const FFMPEG = findFfmpeg()
 
@@ -66,7 +75,9 @@ function decodes(ffmpeg: string, path: string): boolean {
 
 /** How long the file says it runs. */
 function seconds(ffmpeg: string, path: string): number {
-  const d = /Duration: (\d+):(\d+):([\d.]+)/.exec(spawnSync(ffmpeg, ['-hide_banner', '-i', path], { encoding: 'utf8' }).stderr)
+  const d = /Duration: (\d+):(\d+):([\d.]+)/.exec(
+    spawnSync(ffmpeg, ['-hide_banner', '-i', path], { encoding: 'utf8' }).stderr
+  )
   return d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : 0
 }
 
@@ -165,6 +176,46 @@ describe.skipIf(!FFMPEG)('exporting through the app', () => {
     expect(r.ok).toBe(true)
   }, 120000)
 
+  it('a clip from /clipping exports under its title, vertical, from its moment late in the recording, with captions', async () => {
+    // A "stream": eight seconds of green, then eight of red; the clip is a moment in the red.
+    const long = makeColourClip(ffmpeg, join(fake.root, 'stream.mp4'), [
+      { color: 'green', hz: 440, sec: 8 },
+      { color: 'red', hz: 660, sec: 8 }
+    ])
+    const words = Array.from({ length: 12 }, (_, i) => ({
+      text: i === 11 ? 'end.' : 'WORD',
+      startSec: 9 + i * 0.5,
+      endSec: 9.4 + i * 0.5
+    }))
+    const source = { path: long, durationSec: 16, width: 320, height: 180, fps: 30, audio: null }
+    const clip = clipDoc({ id: 'c1', title: 'The red part', source, words, profile: CLIP_PROFILES.livestream })
+    const a = await invoke<Rendered>('cut:render', {
+      doc: clip,
+      quality: 'final',
+      name: clip.title
+    })
+    const b = await invoke<Rendered>('cut:render', { doc: clip, quality: 'final', name: clip.title })
+    expect(a.ok && b.ok).toBe(true)
+    if (!a.ok || !b.ok) return
+    expect(a.outputPath.split('/').pop()).toBe('The red part.mp4')
+    expect(b.outputPath.split('/').pop()).toBe('The red part (2).mp4')
+    // The file's own picture size (probe is faked in this test, so read it from ffmpeg itself).
+    const shown = /Video:.*?(\d{3,4})x(\d{3,4})/.exec(
+      spawnSync(ffmpeg, ['-hide_banner', '-i', a.outputPath], { encoding: 'utf8' }).stderr
+    )
+    expect(shown?.slice(1, 3).map(Number)).toEqual([1080, 1920])
+    expect(decodes(ffmpeg, a.outputPath)).toBe(true)
+    // The moment, word to word with a little room: 9.0 to 14.9 s of the recording.
+    expect(seconds(ffmpeg, a.outputPath)).toBeGreaterThan(5.8)
+    expect(seconds(ffmpeg, a.outputPath)).toBeLessThan(6.4)
+    const [r, g] = frameColour(ffmpeg, a.outputPath, 2, { x: 0, y: 0, w: 1, h: 0.4 })
+    expect(r).toBeGreaterThan(150)
+    expect(g).toBeLessThan(60)
+    // Captions at chest height, inside the fifth word: bright letters over the red, which is plain elsewhere.
+    const [, cg, cb] = frameColour(ffmpeg, a.outputPath, 2.25, { x: 0.3, y: 0.62, w: 0.4, h: 0.05 })
+    expect(cg + cb).toBeGreaterThan(g + 40)
+  }, 120000)
+
   it('an edit of a sound-only recording (a podcast) exports', async () => {
     const wav = join(fake.root, 'interview.wav')
     execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=300:d=4', wav])
@@ -178,4 +229,3 @@ describe.skipIf(!FFMPEG)('exporting through the app', () => {
     expect(seconds(ffmpeg, r.outputPath)).toBeCloseTo(4, 1)
   }, 120000)
 })
-
