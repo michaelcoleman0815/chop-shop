@@ -265,7 +265,12 @@ self-test flag it runs, on the phone's own ffmpeg, ffprobe and whisper:
   while it runs;
 - playing local files in the WebView from `Capacitor.convertFileSrc`,
   seeking and reading a frame's colour, near the start and 45 s into the
-  60 s export;
+  60 s export. A canvas reads the frame from WebKit's video output, not
+  the screen, and on the iPhone simulator that sometimes keeps the frame
+  from before a paused seek; the check then reads it after a second seek
+  or after playing on a moment, and says which (`previewFrameVia`,
+  `previewDeepFrameVia`). An app that draws video frames into a canvas
+  (thumbnails, a scrubber) on iOS needs the same care;
 - `saveToPhotos`, and the importer (on Android through the gallery and
   back).
 

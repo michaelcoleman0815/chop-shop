@@ -730,6 +730,7 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
       video.currentTime = t
       await seeked
       const seekMs = performance.now() - seekAsked
+      const landed = video.currentTime
       const W = 192
       const H = 108
       const canvas = document.createElement('canvas')
@@ -750,19 +751,49 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
       // a moment later. How long it takes is part of the result.
       let rgb: number[] = []
       let frameMs = 0
-      do {
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
-        rgb = look()
-        frameMs = performance.now() - seekAsked
-        if (colourClose(rgb, want, 30)) break
-        await sleep(100)
-      } while (performance.now() - seekAsked < 5000)
+      const settle = async (ms: number): Promise<boolean> => {
+        const from = performance.now()
+        do {
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
+          rgb = look()
+          frameMs = performance.now() - seekAsked
+          if (colourClose(rgb, want, 30)) return true
+          await sleep(100)
+        } while (performance.now() - from < ms)
+        return false
+      }
+      // A canvas reads a video's frame from WebKit's video output, not from
+      // the screen, and on the iPhone simulator that output sometimes keeps
+      // the frame from before a paused seek until the video moves. The frame
+      // is then read after a second seek, or after playing on a moment from
+      // where the seek landed; which one it took is in the result.
+      let via = 'the seek'
+      let shown = await settle(2000)
+      if (!shown && !video.error) {
+        via = 'a second seek'
+        const again = once('seeked', 20000)
+        video.currentTime = t + 0.01
+        await again
+        shown = await settle(1500)
+      }
+      if (!shown && !video.error) {
+        via = 'playing on from the seek'
+        try {
+          await video.play()
+          const from = performance.now()
+          while (video.currentTime < t + 0.1 && performance.now() - from < 3000) await sleep(30)
+        } catch {
+          via = 'playing on from the seek, which would not play'
+        }
+        video.pause()
+        shown = await settle(1500)
+      }
       const ranges = (r: TimeRanges): string => Array.from({ length: r.length }, (_, i) => `${round(r.start(i))}-${round(r.end(i))}`).join(',')
-      const ok = played === 'played' && Math.abs(video.currentTime - t) < 0.1 && colourClose(rgb, want, 30)
+      const ok = played === 'played' && Math.abs(landed - t) < 0.1 && shown
       return {
         ok,
-        detail: `${played}; metadata in ${Math.round(loadMs)} ms; at ${round(video.currentTime, 2)} s (asked ${t}) ${Math.round(seekMs)} ms after the seek, its frame showing after ${Math.round(frameMs)} ms, rgb ${rgb.join(',')} (expected ${want.join(',')}); duration ${round(video.duration)} s, buffered ${ranges(video.buffered)}, seekable ${ranges(video.seekable)}; ${video.src}`,
-        data: { rgb, currentTime: video.currentTime, seekMs, frameMs, loadMs, played, src: video.src }
+        detail: `${played}; metadata in ${Math.round(loadMs)} ms; at ${round(landed, 2)} s (asked ${t}) ${Math.round(seekMs)} ms after the seek, its frame read after ${Math.round(frameMs)} ms by way of ${via}, rgb ${rgb.join(',')} (expected ${want.join(',')}); duration ${round(video.duration)} s, buffered ${ranges(video.buffered)}, seekable ${ranges(video.seekable)}; ${video.src}`,
+        data: { rgb, currentTime: landed, seekMs, frameMs, via, loadMs, played, src: video.src }
       }
     } finally {
       video.removeAttribute('src')
@@ -776,6 +807,7 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     numbers.previewSeekMs = Math.round((r.data as { seekMs: number } | undefined)?.seekMs ?? -1)
     numbers.previewFrameMs = Math.round((r.data as { frameMs: number } | undefined)?.frameMs ?? -1)
     numbers.previewFirstLoadMs = Math.round((r.data as { loadMs: number } | undefined)?.loadMs ?? -1)
+    numbers.previewFrameVia = (r.data as { via?: string } | undefined)?.via ?? null
     return r
   })
 
@@ -787,6 +819,7 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     // Low in the middle: clear of the captions, the logo and the moving box.
     const r = await seekAndLook(export60, 45, want, { x: 0.45, y: 0.78, w: 0.1, h: 0.12 })
     numbers.previewDeepSeekMs = Math.round((r.data as { seekMs: number } | undefined)?.seekMs ?? -1)
+    numbers.previewDeepFrameVia = (r.data as { via?: string } | undefined)?.via ?? null
     return { ...r, detail: `${r.detail}; file ${round(size.bytes / 1048576, 1)} MB` }
   })
 
