@@ -50,6 +50,7 @@ export interface DirEntry {
 
 export interface PlatformFiles {
   readText(path: string): Promise<string>
+  readBytes(path: string): Promise<Uint8Array>
   writeText(path: string, text: string): Promise<void>
   /** Makes the folder and any above it. */
   mkdir(path: string): Promise<void>

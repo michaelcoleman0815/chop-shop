@@ -1,5 +1,5 @@
-import { readFile } from 'fs/promises'
 import { z } from 'zod'
+import { platform } from '../platform'
 import type { Transcript, TranscriptWord } from '../../shared/types'
 import { ServiceError, type Gate, type Reply } from './gate'
 import type { SpeechAudio } from './media'
@@ -111,7 +111,7 @@ export async function transcribeAssemblyAI(
     await gate.send('assemblyai', `${BASE}/v2/upload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
-      body: await readFile(audio.path),
+      body: await platform().files.readBytes(audio.path),
       timeoutMs: UPLOAD_TIMEOUT_MS
     })
   )

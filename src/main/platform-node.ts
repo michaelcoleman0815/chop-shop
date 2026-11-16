@@ -128,6 +128,7 @@ export function nodePlatform(o: NodePlatformOptions): Platform {
     run: runProgram,
     files: {
       readText: (path) => fs.readFile(path, 'utf8'),
+      readBytes: (path) => fs.readFile(path),
       writeText: (path, text) => fs.writeFile(path, text),
       mkdir: async (path) => void (await fs.mkdir(path, { recursive: true })),
       remove: (path) => fs.rm(path, { recursive: true, force: true }),

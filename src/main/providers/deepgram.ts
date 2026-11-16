@@ -1,5 +1,5 @@
-import { readFile } from 'fs/promises'
 import { z } from 'zod'
+import { platform } from '../platform'
 import type { Transcript, TranscriptWord } from '../../shared/types'
 import { ServiceError, type Gate } from './gate'
 import type { SpeechAudio } from './media'
@@ -90,7 +90,7 @@ export async function transcribeDeepgram(gate: Gate, audio: SpeechAudio): Promis
   const reply = await gate.send('deepgram', listenUrl(), {
     method: 'POST',
     headers: { 'Content-Type': audio.contentType },
-    body: await readFile(audio.path),
+    body: await platform().files.readBytes(audio.path),
     timeoutMs: LISTEN_TIMEOUT_MS
   })
   return fromDeepgram(reply.json())

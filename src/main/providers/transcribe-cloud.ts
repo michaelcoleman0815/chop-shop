@@ -21,6 +21,8 @@ export interface CloudDeps {
   /** Takes the sound out into a folder of its own; cleanup removes it. */
   extract: (path: string, durationSec: number) => Promise<{ audio: SpeechAudio; cleanup: () => Promise<void> }>
   assembly?: AssemblyOptions
+  /** Where the words are heard instead, as the fallback sentence says it: "this computer" unless given. */
+  here?: string
 }
 
 export type CloudResult = { service: ServiceId; transcript: Transcript } | { service: null; note: string | null }
@@ -41,7 +43,7 @@ export async function cloudTranscript(
     try {
       taken = await deps.extract(path, durationSec)
     } catch {
-      return { service: null, note: fallback(`I could not take the sound out for ${name}`) }
+      return { service: null, note: fallback(`I could not take the sound out for ${name}`, deps.here) }
     }
     progress(`Sending the sound to ${name}`, 12)
     const transcript =
@@ -54,13 +56,16 @@ export async function cloudTranscript(
     progress(`${name} heard ${transcript.words.length} words`, 95)
     return { service, transcript }
   } catch (err) {
-    return { service: null, note: fallback(err instanceof ServiceError ? err.message : `${name} did not work`) }
+    return {
+      service: null,
+      note: fallback(err instanceof ServiceError ? err.message : `${name} did not work`, deps.here)
+    }
   } finally {
     await taken?.cleanup().catch(() => undefined)
   }
 }
 
 /** "Deepgram did not accept the key, so I heard the words on this computer instead." */
-export function fallback(why: string): string {
-  return `${why.replace(/[.\s]+$/, '')}, so I heard the words on this computer instead.`
+export function fallback(why: string, here = 'this computer'): string {
+  return `${why.replace(/[.\s]+$/, '')}, so I heard the words on ${here} instead.`
 }

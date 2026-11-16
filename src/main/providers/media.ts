@@ -1,6 +1,5 @@
-import { spawn } from 'child_process'
-import { promises as fs } from 'fs'
 import { join } from 'path'
+import { platform } from '../platform'
 
 /**
  * What leaves the Mac for another AI service is made here, with ffmpeg, and
@@ -34,13 +33,13 @@ export async function extractSpeech(
   const ogg = join(dir, 'speech.ogg')
   try {
     await run(ffmpeg, [...common, ...sound, '-c:a', 'libopus', '-b:a', '48k', '-application', 'voip', ogg])
-    return { path: ogg, bytes: (await fs.stat(ogg)).size, contentType: 'audio/ogg', durationSec }
+    return { path: ogg, bytes: await size(ogg), contentType: 'audio/ogg', durationSec }
   } catch (err) {
     if (!/libopus|Unknown encoder|Encoder not found/i.test(message(err))) throw err
   }
   const flac = join(dir, 'speech.flac')
   await run(ffmpeg, [...common, ...sound, '-c:a', 'flac', flac])
-  return { path: flac, bytes: (await fs.stat(flac)).size, contentType: 'audio/flac', durationSec }
+  return { path: flac, bytes: await size(flac), contentType: 'audio/flac', durationSec }
 }
 
 export interface Excerpt {
@@ -101,19 +100,18 @@ export async function cutExcerpt(
     '+faststart',
     out
   ])
-  return { path: out, bytes: (await fs.stat(out)).size, durationSec }
+  return { path: out, bytes: await size(out), durationSec }
 }
 
-function run(bin: string, args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args)
-    let stderr = ''
-    child.stderr.on('data', (d) => (stderr += d.toString()))
-    child.on('error', reject)
-    child.on('close', (code) =>
-      code === 0 ? resolve() : reject(new Error(stderr.trim().slice(-400) || `ffmpeg exit ${code}`))
-    )
-  })
+async function run(bin: string, args: string[]): Promise<void> {
+  const { code, stderr } = await platform().run(bin, args)
+  if (code !== 0) throw new Error(stderr.trim().slice(-400) || `ffmpeg exit ${code}`)
+}
+
+async function size(path: string): Promise<number> {
+  const info = await platform().files.stat(path)
+  if (!info) throw new Error(`ffmpeg wrote nothing to ${path}`)
+  return info.size
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
