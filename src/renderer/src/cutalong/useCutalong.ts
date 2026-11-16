@@ -2507,7 +2507,9 @@ export function useCutalong() {
       // Several files are sorted first, so the chat is named after the talking
       // clip once it is known, not after whichever file was dropped first.
       const sorting = recordingsIn.length > 1 && !docRef.current
-      const fallbackName = attachments[0]?.name.replace(/\.[^.]+$/, '') || words || 'New edit'
+      // A command typed first names the chat after itself ("/vlog 8 min" is "Vlog"), never "-vlog 8 min".
+      const named = command ? command.command.charAt(0).toUpperCase() + command.command.slice(1) : words
+      const fallbackName = attachments[0]?.name.replace(/\.[^.]+$/, '') || named || 'New edit'
       if (!sorting) void ensureProject(fallbackName).then(() => persist())
       push({
         role: 'user',
