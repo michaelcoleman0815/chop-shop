@@ -606,10 +606,17 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('assets:search', async (_e, query: string) => {
+  // The brand's B-roll sources: channels and sites to look in first, and ones never to use.
+  ipcMain.handle('assets:search', async (_e, query: string, sources?: { prefer?: unknown; block?: unknown }) => {
+    const lines = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 30) : []
     try {
       needsYtdlp()
-      return { ok: true as const, results: await searchVideos(query, tools('search')) }
+      const found = await searchVideos(query, tools('search'), 5, {
+        prefer: lines(sources?.prefer),
+        block: lines(sources?.block)
+      })
+      return { ok: true as const, ...found }
     } catch (err) {
       return { ok: false as const, message: message(err) }
     }

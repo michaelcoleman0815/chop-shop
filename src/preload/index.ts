@@ -173,12 +173,27 @@ const api = {
   }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string; signIn: boolean }> =>
     ipcRenderer.invoke('assets:add', req),
   onAssetProgress: (cb: (p: Progress) => void): (() => void) => listen('assets:progress', cb),
+  /** B-roll to choose from; `sources` are the brand's channels and sites to look in first and to leave out. */
   searchVideos: (
-    query: string
+    query: string,
+    sources?: { prefer: string[]; block: string[] }
   ): Promise<
-    | { ok: true; results: { url: string; title: string; author: string | null; durationSec: number | null }[] }
+    | {
+        ok: true
+        results: {
+          url: string
+          title: string
+          author: string | null
+          durationSec: number | null
+          preferred?: boolean
+        }[]
+        /** Results left out because their channel or site is blocked. */
+        blocked?: number
+        /** Preferred channels looked in first. */
+        looked?: number
+      }
     | { ok: false; message: string }
-  > => ipcRenderer.invoke('assets:search', query),
+  > => ipcRenderer.invoke('assets:search', query, sources),
   saveImageAsset: (req: {
     docId: string
     base64: string
