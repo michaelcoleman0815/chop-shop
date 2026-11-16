@@ -1,10 +1,12 @@
 import { execFileSync, spawnSync } from 'child_process'
-import { existsSync, mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { createServer } from 'http'
+import type { AddressInfo } from 'net'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
+import { addAsset, commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
 import { buildRenderArgs, frameSize, renderCut, type RenderSource } from './cut-render'
 import { createCanvas } from '@napi-rs/canvas'
 import { designSize, renderFrame } from '../shared/motion'
@@ -224,7 +226,7 @@ describe.skipIf(!FFMPEG)('exporting graphics', () => {
     return [f[i], f[i + 1], f[i + 2]]
   }
 
-  async function exportWith(doc: EditDoc, sources: RenderSource[], name: string): Promise<string> {
+  async function exportWith(doc: EditDoc, sources: RenderSource[], name: string, spans = 1): Promise<string> {
     const cut = currentCut(doc)
     const resolved = resolveCut(cut, doc.words, doc.sources)
     const work = join(dir, `work-${name}`)
@@ -240,7 +242,7 @@ describe.skipIf(!FFMPEG)('exporting graphics', () => {
       workDir: join(work, 'motion'),
       fontsDir: FONTS
     })
-    expect(overlays.length).toBe(1)
+    expect(overlays.length).toBe(spans)
     // As the app's export does.
     const pass = subtitlePass(cut, resolved, scene)
     return renderCut(pass.cut, pass.resolved, sources, {
@@ -363,6 +365,74 @@ describe.skipIf(!FFMPEG)('exporting graphics', () => {
       if (drawn[i + 3] > 200 && drawn[i] > 215 && drawn[i + 1] > 215 && drawn[i + 2] > 215) own++
     expect(page / own).toBeGreaterThan(0.8)
     expect(page / own).toBeLessThan(1.2)
+  })
+
+  it('exports a captured page as a screenshot, and never fetches a picture from a link', async () => {
+    // A page of four colour bands, on disk as a capture is; and a second picture whose path is a link.
+    const page = createCanvas(430, 1720)
+    const pctx = page.getContext('2d')
+    for (const [i, colour] of ['#E53935', '#43A047', '#1E88E5', '#FDD835'].entries()) {
+      pctx.fillStyle = colour
+      pctx.fillRect(0, i * 430, 430, 430)
+    }
+    const png = join(dir, 'page.png')
+    writeFileSync(png, page.toBuffer('image/png'))
+    let asked = 0
+    const server = createServer((_req, res) => {
+      asked++
+      res.end()
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const port = (server.address() as AddressInfo).port
+    try {
+      const path = clip('shot.mp4', 640, 360)
+      const source = { id: 's1', path, durationSec: 4, width: 640, height: 360, fps: 30 }
+      const picture = (at: string, title: string) => ({
+        kind: 'image' as const,
+        path: at,
+        title,
+        durationSec: null,
+        width: 430,
+        height: 1720,
+        origin: {
+          type: 'link' as const,
+          url: 'https://example.com/',
+          author: 'example.com',
+          license: null,
+          range: null
+        }
+      })
+      let doc = createDoc({ id: 's', title: 'Shot', source, words: words() })
+      doc = addAsset(doc, picture(png, 'page')).doc
+      doc = addAsset(doc, picture(`http://127.0.0.1:${port}/page.png`, 'linked')).doc
+      doc = commit(
+        doc,
+        [
+          { op: 'aspect', aspect: 'wide' },
+          { op: 'motion-add', kind: 'screenshot', from: 'w1', to: '0.9s', text: ['a1'], style: 'still' },
+          { op: 'motion-add', kind: 'screenshot', from: 'w4', to: '1s', text: ['a2'], style: 'still' }
+        ],
+        'Shots.'
+      ).doc
+      expect(currentCut(doc).motion).toHaveLength(2)
+      // Two stretches of graphics: the page, then the one whose picture was never loaded.
+      const out = await exportWith(doc, [{ ...source, hasAudio: true }], 'shot', 2)
+      const [ow, oh] = [960, 540]
+      const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+      const at = resolved.words.find((w) => w.id === 'w1')!.outStart
+      const during = frameAt(out, at + 0.5, ow, oh)
+      // The top of the page in the middle of the frame, the dark around it, the clip back after.
+      const top = rgb(during, ow, ow / 2, oh * 0.2)
+      expect(top[0]).toBeGreaterThan(200)
+      expect(top[1]).toBeLessThan(80)
+      expect(Math.max(...rgb(during, ow, 8, 8))).toBeLessThan(24)
+      const after = frameAt(out, at + 1.0, ow, oh)
+      expect(Math.abs(rgb(after, ow, ow / 2, oh * 0.2)[0] - 128)).toBeLessThan(12)
+      // The picture at a link was left alone: no request reached it.
+      expect(asked).toBe(0)
+    } finally {
+      server.close()
+    }
   })
 
   it('exports a cut with no graphics exactly as before', async () => {

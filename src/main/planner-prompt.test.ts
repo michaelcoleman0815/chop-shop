@@ -263,6 +263,41 @@ describe('the planner request', () => {
     expect(r.rejected).toEqual([])
   })
 
+  it('shows a captured page with a screenshot, and only a page the edit has', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    doc = addAsset(doc, {
+      kind: 'image',
+      path: '/Users/me/Assets/example-com.png',
+      title: 'Example Domain',
+      durationSec: null,
+      width: 860,
+      height: 4300,
+      origin: { type: 'link', url: 'https://example.com/', author: 'example.com', license: null, range: null }
+    }).doc
+    expect(PLANNER_SYSTEM).toContain('- screenshot: A tall screenshot of a page')
+    expect(renderRequest(doc, 'Show the page when I mention it', [])).toContain(
+      'a1 image 860x4300, a page: Example Domain | not in the cut yet'
+    )
+    const slots = { to: '', items: [], values: [], icon: '', box: [], place: '', color: '', fx: [] }
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'motion-add', kind: 'screenshot', from: 'w3', text: ['a1'], style: 'rise', ...slots },
+        { op: 'motion-add', kind: 'screenshot', from: 'w6', text: ['a4'], style: '', ...slots }
+      ],
+      summary: 'The page comes up as you mention it.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const offered = offerPlan(doc, plan, [])
+    if (!offered.ok) throw new Error('expected a plan')
+    expect(offered.ops).toHaveLength(1)
+    expect(offered.ops[0]).toMatchObject({ op: 'motion-add', kind: 'screenshot', text: ['a1'], style: 'rise' })
+    expect(offered.rejected).toEqual(['One change did not fit the cut, so I left it out.'])
+    const shown = commit(doc, offered.ops, offered.summary).doc
+    expect(renderRequest(shown, '', [])).toContain('a1 image 860x4300, a page: Example Domain | shown on m1')
+  })
+
   it('shows the cut’s graphics in the request', () => {
     let doc = createDoc({ id: 'd', title: 't', source, words })
     doc = commit(doc, [{ op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], style: 'circle' }], 'x').doc

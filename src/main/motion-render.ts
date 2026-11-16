@@ -111,7 +111,8 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
   const images = new Map<string, CanvasImageSource>()
   for (const id of assetIds(layers)) {
     const path = id.startsWith('file:') ? id.slice(5) : opts.images?.get(id)
-    if (!path) continue
+    // Pictures come from this computer. A link in their place is never fetched: the export makes no requests.
+    if (!path || /^[a-z][a-z0-9+.-]*:\/\//i.test(path)) continue
     try {
       images.set(id, (await loadImage(path)) as unknown as CanvasImageSource)
     } catch (err) {
@@ -246,7 +247,9 @@ export interface CutMotionInput {
 
 /** The scene a cut's graphics make, laid out in the full-size frame. */
 export function sceneForCut(
-  input: Pick<CutMotionInput, 'cut' | 'resolved' | 'words' | 'sources' | 'brand' | 'faces' | 'emphasis'>
+  input: Pick<CutMotionInput, 'cut' | 'resolved' | 'words' | 'sources' | 'brand' | 'faces' | 'emphasis'> & {
+    assets?: CutMotionInput['assets']
+  }
 ): MotionScene {
   const first = input.sources.find((s) => s.id === input.resolved.pieces[0]?.source) ?? input.sources[0]
   return buildScene({
@@ -256,7 +259,8 @@ export function sceneForCut(
     size: frameSize(input.cut.aspect, first),
     theme: themeFrom(input.brand),
     faces: input.faces,
-    emphasis: input.emphasis
+    emphasis: input.emphasis,
+    assets: input.assets
   })
 }
 

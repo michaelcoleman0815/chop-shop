@@ -22,6 +22,8 @@ export interface BuildContext {
   time(ref: string): number | null
   /** The faces in frame when it lands, from face tracking, as fractions of the frame. Empty when unknown. */
   faces: FaceBox[]
+  /** A picture in the edit by asset id, with its size when known. */
+  picture(id: string): { width: number; height: number } | null
 }
 
 /** A control the editor shows for a graphic. */
@@ -57,6 +59,8 @@ export interface Template {
   example: { call: Omit<MotionCallInput, 'kind'>; says: string }
   /** Why a call cannot be drawn, as a sentence; null when it can. */
   check(call: MotionCall): string | null
+  /** The edit's pictures it shows, by asset id: they must be in the edit, and are credited with it. */
+  pictures?(call: MotionCall): string[]
   build(ctx: BuildContext): Layer[]
   /** A short name for one call: "a lower third for Sam Lee". */
   name(call: MotionCall): string

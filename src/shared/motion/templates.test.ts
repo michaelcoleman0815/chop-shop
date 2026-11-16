@@ -2,7 +2,18 @@ import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { applyOps, commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../edit'
+import {
+  addAsset,
+  applyOps,
+  assetsInCut,
+  commit,
+  createDoc,
+  currentCut,
+  resolveCut,
+  wordsFromTranscript,
+  type EditDoc
+} from '../edit'
+import { creditsText } from '../assets'
 import {
   buildScene,
   DEFAULT_THEME,
@@ -73,13 +84,15 @@ function sceneOf(doc: EditDoc): MotionScene {
 /** The scene drawn at t, read back as straight RGBA, full size. */
 function draw(
   scene: MotionScene,
-  t: number
+  t: number,
+  images?: Map<string, unknown>
 ): { at: (x: number, y: number) => number[]; lit: (x: number, y: number, w: number, h: number) => number } {
   const { width, height } = scene.size
   const canvas = createCanvas(width, height)
   const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D
   renderFrame(ctx, t, scene.layers, scene.size, scene.size, {
     icons: (n) => ICONS[n],
+    images: images as Map<string, CanvasImageSource> | undefined,
     // A scratch canvas, as the export has, for motion blur.
     createCanvas: (w, h) => createCanvas(w, h) as unknown as HTMLCanvasElement
   })
@@ -460,6 +473,172 @@ describe('market chart', () => {
     expect(planMotionCommand('market', 'down crt', { doc, resolved, time: null, brandName: '' })).toMatchObject({
       op: { kind: 'market', style: 'down', fx: ['crt'], text: [], to: '4s' }
     })
+  })
+})
+
+describe('screenshot showcase', () => {
+  // A page 860 wide and ten bands of 430 tall, each its own colour, so where the card is scrolled to shows.
+  const BANDS = [
+    '#E53935',
+    '#43A047',
+    '#1E88E5',
+    '#FDD835',
+    '#8E24AA',
+    '#00ACC1',
+    '#FB8C00',
+    '#6D4C41',
+    '#C0CA33',
+    '#D81B60'
+  ]
+  const page = (() => {
+    const c = createCanvas(860, 4300)
+    const ctx = c.getContext('2d')
+    BANDS.forEach((colour, i) => {
+      ctx.fillStyle = colour
+      ctx.fillRect(0, i * 430, 860, 430)
+    })
+    return c
+  })()
+  const images = new Map<string, unknown>([['a1', page]])
+  const rgb = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+  /** Which band of the page a pixel shows, or -1 when it is not the page. */
+  const band = (px: number[]): number =>
+    BANDS.findIndex((b) => rgb(b).every((v, i) => Math.abs(v - px[i]) < 10) && px[3] > 250)
+
+  function shotDoc(aspect: 'vertical' | 'wide', call: Record<string, unknown>): EditDoc {
+    const base = docWith(aspect, [])
+    const picture = {
+      kind: 'image' as const,
+      path: '/assets/example-com.png',
+      title: 'example.com',
+      durationSec: null,
+      width: 860,
+      height: 4300,
+      origin: { type: 'link' as const, url: 'https://example.com/', author: 'example.com', license: null, range: null }
+    }
+    const { doc } = addAsset(base, picture)
+    const r = commit(doc, [{ op: 'motion-add', kind: 'screenshot', from: 'w3', to: '5s', text: ['a1'], ...call }], 'x')
+    expect(r.rejected).toEqual([])
+    return r.doc
+  }
+  const sceneWith = (doc: EditDoc): MotionScene => {
+    const cut = currentCut(doc)
+    return buildScene({
+      cut,
+      resolved: resolveCut(cut, doc.words, doc.sources),
+      words: doc.words,
+      size: designSize(cut.aspect, doc.sources[0]),
+      theme: DEFAULT_THEME,
+      assets: doc.assets
+    })
+  }
+
+  it('shows the page in a rounded card on dark, reading down it as it scrolls', () => {
+    for (const aspect of ['vertical', 'wide'] as const) {
+      const scene = sceneWith(shotDoc(aspect, {}))
+      const { width: W, height: H } = scene.size
+      const item = scene.items[0]
+      // Five seconds from the word, starting a tenth early so it has landed when the word is said.
+      expect(item.end - item.start).toBeCloseTo(5.1)
+      const settled = draw(scene, item.start + 0.6, images)
+      // Dark everywhere around the card, the top of the page in it.
+      const corner = settled.at(4, 4)
+      expect(corner[3]).toBe(255)
+      expect(Math.max(...corner.slice(0, 3))).toBeLessThan(16)
+      expect(band(settled.at(W / 2, H * 0.14))).toBe(0)
+      // The card's corner is cut round: just inside its corner is the dark, a little further in is the page.
+      const cw = W * (aspect === 'vertical' ? 0.84 : 0.42)
+      const left = W / 2 - cw / 2
+      const top = H * 0.1
+      expect(band(settled.at(left + 3, top + 3))).toBe(-1)
+      expect(band(settled.at(left + 40, top + 40))).toBe(0)
+      // Later it has read further down the page, never past its end.
+      const middle = (t: number): number => band(draw(scene, t, images).at(W / 2, H / 2))
+      const early = middle(item.start + 0.6)
+      const late = middle(item.end - 0.4)
+      expect(late).toBeGreaterThan(early)
+      expect(late).toBeLessThan(BANDS.length)
+      // Nothing before or after it.
+      expect(draw(scene, item.start - 0.05, images).lit(0, 0, W, H)).toBe(0)
+      expect(draw(scene, item.end, images).lit(0, 0, W, H)).toBe(0)
+    }
+  })
+
+  it('comes up to the top of the page and pushes in on its header (rise)', () => {
+    const scene = sceneWith(shotDoc('wide', { style: 'rise' }))
+    const { width: W, height: H } = scene.size
+    const item = scene.items[0]
+    // It starts further down the page and comes up to the top.
+    expect(band(draw(scene, item.start + 0.5, images).at(W / 2, H / 2))).toBeGreaterThan(0)
+    const end = draw(scene, item.end - 0.35, images)
+    // Pushed in: the page's first band fills far wider than the 42% the card is at rest.
+    const across = [0.18, 0.3, 0.5, 0.7, 0.82].map((f) => band(end.at(W * f, H * 0.2)))
+    expect(across).toEqual([0, 0, 0, 0, 0])
+    expect(band(end.at(W * 0.05, H * 0.2))).toBe(-1)
+  })
+
+  it('pushes in on the region given in box', () => {
+    // At the end of the scroll the frame's middle row shows some band; the box around it fills the frame after.
+    const scene = sceneWith(shotDoc('vertical', { style: 'still', box: [0.3, 0.45, 0.4, 0.1] }))
+    const { width: W, height: H } = scene.size
+    const item = scene.items[0]
+    const before = band(draw(scene, item.start + 1.5, images).at(W / 2, H / 2))
+    const after = draw(scene, item.end - 0.3, images)
+    expect(before).toBeGreaterThanOrEqual(0)
+    for (const f of [0.1, 0.5, 0.9]) expect(band(after.at(W * f, H / 2))).toBe(before)
+  })
+
+  it('leans back as it scrolls with fx tilt, and is flat by the end', () => {
+    const scene = sceneWith(shotDoc('wide', { fx: ['tilt'] }))
+    const group = scene.items[0].layers.find((l) => l.kind === 'group')!
+    expect(group.transform?.skewY).toBeDefined()
+    const { width: W, height: H } = scene.size
+    const item = scene.items[0]
+    // Leaning: the card's left and right edges sit at different heights early on.
+    const edgeTop = (f: ReturnType<typeof draw>, x: number): number => {
+      for (let y = 0; y < H; y++) if (band(f.at(x, y)) >= 0) return y
+      return -1
+    }
+    const early = draw(scene, item.start + 0.4, images)
+    const late = draw(scene, item.end - 0.3, images)
+    const cw = W * 0.42
+    expect(Math.abs(edgeTop(early, W / 2 - cw * 0.4) - edgeTop(early, W / 2 + cw * 0.4))).toBeGreaterThan(20)
+    expect(Math.abs(edgeTop(late, W / 2 - cw * 0.4) - edgeTop(late, W / 2 + cw * 0.4))).toBeLessThan(3)
+  })
+
+  it('needs a picture the edit has, and counts it in the credits once shown', () => {
+    const doc = shotDoc('vertical', {})
+    const cut = currentCut(doc)
+    const context = { words: doc.words, sources: doc.sources, assets: doc.assets }
+    const missing = applyOps(cut, [{ op: 'motion-add', kind: 'screenshot', from: 'w3', text: ['a9'] }], context)
+    expect(missing.rejected[0].reason).toBe('There is no picture a9 in this edit.')
+    const link = applyOps(cut, [{ op: 'motion-add', kind: 'screenshot', from: 'w3', text: ['https://x.com'] }], context)
+    expect(link.rejected[0].reason).toBe('A screenshot needs a picture, like /screenshot https://example.com.')
+    expect(assetsInCut(doc).map((a) => a.id)).toEqual(['a1'])
+    expect(creditsText(doc)).toContain('example.com · https://example.com/')
+    // A cut whose graphics name a picture the scene was not told about leaves it out and says why.
+    const blind = sceneOf(doc)
+    expect(blind.items).toEqual([])
+    expect(blind.hidden[0].reason).toContain('There is no picture a1 in this edit.')
+  })
+
+  it('reads /screenshot: the picture named, or the newest one, its style and tilt', () => {
+    const doc = shotDoc('vertical', {})
+    const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+    const ctx = { doc, resolved, time: null, brandName: '' }
+    expect(planMotionCommand('screenshot', 'rise tilt', ctx)).toMatchObject({
+      op: { kind: 'screenshot', text: ['a1'], style: 'rise', fx: ['tilt'] }
+    })
+    expect(planMotionCommand('screenshot', 'a1', ctx)).toMatchObject({ op: { text: ['a1'], style: '', fx: [] } })
+    expect(planMotionCommand('screenshot', 'a7', ctx)).toEqual({ problem: 'There is no picture a7 in this edit.' })
+    const bare = docWith('vertical', [])
+    expect(
+      planMotionCommand('screenshot', '', {
+        ...ctx,
+        doc: bare,
+        resolved: resolveCut(currentCut(bare), bare.words, bare.sources)
+      })
+    ).toEqual({ problem: 'Give me a link to capture, like /screenshot https://example.com.' })
   })
 })
 

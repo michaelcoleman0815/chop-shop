@@ -146,6 +146,24 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       const text = (fx.length ? others.join(' ') : more).trim()
       return { style, fx, text: text ? [text] : [], to: '4s' }
     }
+  },
+  {
+    command: 'screenshot',
+    kind: 'screenshot',
+    title: 'Screenshot',
+    summary: 'A page from a link, captured logged out, scrolled and pushed in on: /screenshot https://example.com rise',
+    // The link itself is captured by the app first; what reaches here names the picture it became.
+    parse: (rest, ctx) => {
+      const tokens = words(rest).map((t) => t.toLowerCase())
+      // Pictures, not the icons drawn for cards.
+      const pictures = ctx.doc.assets.filter((a) => a.kind === 'image' && a.origin.type !== 'icon')
+      const named = tokens.find((t) => /^a\d+$/.test(t))
+      const id = named ?? pictures[pictures.length - 1]?.id
+      if (!id) return { problem: 'Give me a link to capture, like /screenshot https://example.com.' }
+      if (!pictures.some((a) => a.id === id)) return { problem: `There is no picture ${id} in this edit.` }
+      const style = tokens.find((t) => (template('screenshot')?.styles ?? []).includes(t)) ?? ''
+      return { style, fx: tokens.includes('tilt') ? ['tilt'] : [], text: [id] }
+    }
   }
 ]
 

@@ -46,6 +46,8 @@ export interface SceneInput {
   faces?: FaceSample[]
   /** How strongly each word is stressed, 0 to 1, by word id, for which caption words go big. */
   emphasis?: Record<string, number>
+  /** The edit's pictures, for graphics that show one at its own shape. */
+  assets?: { id: string; kind: string; width: number | null; height: number | null }[]
 }
 
 /** Builds every graphic in the cut. Never throws on a bad call: it is hidden instead. */
@@ -55,7 +57,7 @@ export function buildScene(input: SceneInput): MotionScene {
   const items: SceneItem[] = []
   const hidden: MotionScene['hidden'] = []
   for (const item of input.cut.motion ?? []) {
-    const built = buildItem(item, tl, frame, input.theme, input.faces)
+    const built = buildItem(item, tl, frame, input.theme, input.faces, input.assets ?? [])
     if ('reason' in built) hidden.push({ id: item.id, reason: built.reason })
     else items.push(built)
   }
@@ -94,7 +96,8 @@ function buildItem(
   tl: Timeline,
   frame: Frame,
   theme: MotionTheme,
-  faces: FaceSample[] | undefined
+  faces: FaceSample[] | undefined,
+  assets: NonNullable<SceneInput['assets']>
 ): SceneItem | { reason: string } {
   const tpl = template(item.kind)
   if (!tpl) return { reason: `There is no ${item.kind} graphic.` }
@@ -111,7 +114,11 @@ function buildItem(
       span,
       tl,
       time: (ref) => anchorTime(tl, ref),
-      faces: facesNear(faces, span.at)
+      faces: facesNear(faces, span.at),
+      picture: (id) => {
+        const a = assets.find((x) => x.id === id && x.kind === 'image')
+        return a ? { width: a.width ?? 0, height: a.height ?? 0 } : null
+      }
     })
   } catch (err) {
     return { reason: `It could not be drawn: ${err instanceof Error ? err.message : String(err)}` }

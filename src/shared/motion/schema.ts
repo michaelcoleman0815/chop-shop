@@ -41,6 +41,7 @@ export const MOTION_KINDS = [
   'sticker',
   'logo',
   'market',
+  'screenshot',
   'layers'
 ] as const
 export const MotionKindSchema = z.enum(MOTION_KINDS)
@@ -146,6 +147,8 @@ const TransformSchema = z.object({
   scaleX: AnimNum.optional(),
   scaleY: AnimNum.optional(),
   rotation: AnimNum.optional(),
+  skewX: AnimNum.optional(),
+  skewY: AnimNum.optional(),
   opacity: AnimNum.optional()
 })
 const EffectsSchema = z.object({

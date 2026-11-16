@@ -110,6 +110,8 @@ interface Sampled {
   sx: number
   sy: number
   rot: number
+  kx: number
+  ky: number
   opacity: number
 }
 
@@ -123,6 +125,8 @@ export function sampleTransform(tf: Transform | undefined, local: number, length
     sx: s * num(tf?.scaleX, local, length, 1),
     sy: s * num(tf?.scaleY, local, length, 1),
     rot: num(tf?.rotation, local, length, 0),
+    kx: num(tf?.skewX, local, length, 0),
+    ky: num(tf?.skewY, local, length, 0),
     opacity: Math.min(1, Math.max(0, num(tf?.opacity, local, length, 1)))
   }
 }
@@ -130,6 +134,7 @@ export function sampleTransform(tf: Transform | undefined, local: number, length
 function applyTransform(ctx: Ctx, s: Sampled): void {
   ctx.translate(s.x, s.y)
   if (s.rot) ctx.rotate((s.rot * Math.PI) / 180)
+  if (s.kx || s.ky) ctx.transform(1, Math.tan((s.ky * Math.PI) / 180), Math.tan((s.kx * Math.PI) / 180), 1, 0, 0)
   if (s.sx !== 1 || s.sy !== 1) ctx.scale(s.sx, s.sy)
   if (s.ax || s.ay) ctx.translate(-s.ax, -s.ay)
 }

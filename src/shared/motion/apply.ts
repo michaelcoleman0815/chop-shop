@@ -21,6 +21,8 @@ export const MAX_GRAPHICS = 120
 export interface MotionOpContext {
   hasWord(id: string): boolean
   hasBeat(id: string): boolean
+  /** Whether the edit has a picture by this asset id. Unknown (every id passes) when left out. */
+  hasPicture?(id: string): boolean
 }
 
 export type MotionResult = { ok: true; cut: Cut } | { ok: false; reason: string }
@@ -62,7 +64,18 @@ export function checkCall(call: MotionCall, ctx: MotionOpContext): string | null
   if (call.color.trim() && !/^#[0-9a-fA-F]{6}$/.test(call.color.trim())) {
     return `${call.color} is not a colour I can use; give it as #RRGGBB.`
   }
-  return tpl.check(call)
+  const problem = tpl.check(call)
+  if (problem) return problem
+  const missing = (tpl.pictures?.(call) ?? []).find((id) => ctx.hasPicture && !ctx.hasPicture(id))
+  return missing ? `There is no picture ${missing} in this edit.` : null
+}
+
+/** The asset ids of the pictures a cut's graphics show, in the order they come. */
+export function picturesIn(cut: Cut): string[] {
+  const ids: string[] = []
+  for (const m of cut.motion ?? [])
+    for (const id of template(m.kind)?.pictures?.(m) ?? []) if (!ids.includes(id)) ids.push(id)
+  return ids
 }
 
 export function addMotion(cut: Cut, raw: unknown, ctx: MotionOpContext): MotionResult {

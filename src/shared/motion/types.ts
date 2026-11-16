@@ -99,6 +99,9 @@ export interface Transform {
   scaleY?: Anim<number>
   /** Degrees, clockwise. */
   rotation?: Anim<number>
+  /** Degrees of slant: a card leaning back reads as a slight 3D tilt. */
+  skewX?: Anim<number>
+  skewY?: Anim<number>
   /** 0 to 1, multiplied through to children. */
   opacity?: Anim<number>
 }

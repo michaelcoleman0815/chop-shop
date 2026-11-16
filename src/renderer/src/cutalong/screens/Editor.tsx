@@ -61,9 +61,10 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         resolved,
         words: doc.words,
         size: designSize(cut.aspect, doc.sources[0]),
-        theme: themeFrom(app.brand)
+        theme: themeFrom(app.brand),
+        assets: doc.assets
       }),
-    [cut, resolved, doc.words, doc.sources, app.brand]
+    [cut, resolved, doc.words, doc.sources, doc.assets, app.brand]
   )
 
   const beats: StripBeat[] = useMemo(() => {

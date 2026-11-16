@@ -26,6 +26,8 @@ export class OpError extends Error {}
 export interface OpContext {
   words: Word[]
   sources: Source[]
+  /** The edit's material, so graphics that show a picture can check it is there. */
+  assets?: { id: string; kind: string }[]
 }
 
 export interface OpsResult {
@@ -37,10 +39,16 @@ export interface OpsResult {
 interface Ctx {
   index: WordIndex
   sources: Map<string, Source>
+  /** Picture asset ids, or null when the caller did not say. */
+  pictures: Set<string> | null
 }
 
 function makeCtx(ctx: OpContext): Ctx {
-  return { index: indexWords(ctx.words), sources: new Map(ctx.sources.map((s) => [s.id, s])) }
+  return {
+    index: indexWords(ctx.words),
+    sources: new Map(ctx.sources.map((s) => [s.id, s])),
+    pictures: ctx.assets ? new Set(ctx.assets.filter((a) => a.kind === 'image').map((a) => a.id)) : null
+  }
 }
 
 export function applyOps(cut: Cut, ops: unknown[], context: OpContext): OpsResult {
@@ -229,7 +237,12 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
 }
 
 function motionContext(cut: Cut, ctx: Ctx): MotionOpContext {
-  return { hasWord: (id) => ctx.index.pos.has(id), hasBeat: (id) => cut.beats.some((b) => b.id === id) }
+  const pictures = ctx.pictures
+  return {
+    hasWord: (id) => ctx.index.pos.has(id),
+    hasBeat: (id) => cut.beats.some((b) => b.id === id),
+    ...(pictures ? { hasPicture: (id: string) => pictures.has(id) } : {})
+  }
 }
 
 function motionCut(result: MotionResult): Cut {

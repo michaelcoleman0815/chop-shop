@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { currentCut, currentVersion, indexWords, resolveCut, type EditDoc, type Note } from '../shared/edit'
 import { clock } from '../shared/presets'
-import { drawsCaptions, graphicsGuide, graphicsLines, templates } from '../shared/motion'
+import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from '../shared/motion'
 import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { ordinal } from '../shared/raw/takes'
@@ -297,13 +297,18 @@ export function renderRequest(
       const id = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
       if (id) shows.set(id, [...(shows.get(id) ?? []), beat.id])
     }
+    // A picture a graphic shows is shown by that graphic.
+    for (const m of cut.motion ?? [])
+      for (const id of template(m.kind)?.pictures?.(m) ?? []) shows.set(id, [...(shows.get(id) ?? []), m.id])
     parts.push('<material>')
     for (const a of doc.assets) {
       const size = a.width && a.height ? ` ${a.width}x${a.height}` : ''
       const length = a.durationSec ? `, ${a.durationSec.toFixed(1)} s` : ''
       const where = shows.get(a.id)
+      // A picture far taller than wide is a page: it goes in a screenshot graphic, not a cutaway.
+      const page = a.kind === 'image' && a.width && a.height && a.height > a.width * 1.6 ? ', a page' : ''
       parts.push(
-        `${a.id} ${a.kind}${size}${length}: ${a.title}${where ? ` | shown on ${where.join(' ')}` : ' | not in the cut yet'}`
+        `${a.id} ${a.kind}${size}${length}${page}: ${a.title}${where ? ` | shown on ${where.join(' ')}` : ' | not in the cut yet'}`
       )
     }
     parts.push('</material>')

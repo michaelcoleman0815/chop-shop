@@ -117,7 +117,7 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[]): PlanEditResu
     const inSec = Math.max(0, Math.min(op.set.broll.inSec, Math.max(0, (asset.durationSec ?? 0) - 0.5)))
     return [{ ...op, set: { ...op.set, broll: { path: asset.path, inSec, muted: true } } }]
   })
-  const result = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources })
+  const result = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources, assets: doc.assets })
   const known = new Set(notes.map((n) => n.id))
   const beats = new Set(result.cut.beats.map((b) => b.id))
   const plain = (text: string): string => plainIds(doc, text.trim())

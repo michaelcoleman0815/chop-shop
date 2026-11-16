@@ -13,6 +13,7 @@ import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { renderCutMotion, subtitlePass } from './motion-render'
+import { captureLink } from './page-shot'
 import { loadIcons, loadLogos } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
@@ -409,6 +410,24 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
     }
   )
+
+  // A page at a link the person gave, captured here as one tall picture, as it
+  // shows to someone logged out, and kept with the link it came from.
+  ipcMain.handle('assets:capturePage', async (_e, req: { docId: string; url: string }) => {
+    const link = captureLink(req.url)
+    if (!link)
+      return { ok: false as const, message: 'That is not a link I can open. It needs to start with http or https.' }
+    try {
+      const { capturePage } = await import('./page-capture')
+      const shot = await capturePage(link.href)
+      const host = new URL(shot.url || link.href).hostname.replace(/^www\./, '')
+      const origin = { type: 'link' as const, url: link.href, author: host, license: null, range: null }
+      const asset = await saveImage(shot.png, shot.title || host, origin, tools(req.docId))
+      return { ok: true as const, asset }
+    } catch (err) {
+      return { ok: false as const, message: message(err) }
+    }
+  })
 
   ipcMain.handle('settings:videoSignIn', (_e, browser: string | null) => {
     const allowed = ['chrome', 'safari', 'firefox', 'edge', 'brave', 'chromium', 'opera', 'vivaldi']

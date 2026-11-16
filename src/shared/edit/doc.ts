@@ -1,3 +1,4 @@
+import { picturesIn } from '../motion/apply'
 import { applyOps, type OpsResult } from './ops'
 import {
   DEFAULT_CAPTIONS,
@@ -236,7 +237,11 @@ export function commit(
   summary: string,
   opts: { at?: string; preset?: string | null } = {}
 ): CommitResult {
-  const { cut, applied, rejected } = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources })
+  const { cut, applied, rejected } = applyOps(currentCut(doc), ops, {
+    words: doc.words,
+    sources: doc.sources,
+    assets: doc.assets
+  })
   if (applied.length === 0) return { doc, applied, rejected }
   const version: Version = {
     n: currentVersion(doc).n + 1,
@@ -331,12 +336,17 @@ export function addAsset(doc: EditDoc, asset: Omit<Asset, 'id'>): { doc: EditDoc
   return { doc: { ...doc, assets: [...doc.assets, added] }, asset: added }
 }
 
-/** Assets the current cut actually shows, in playing order. */
+/** Assets the current cut actually shows: its cutaways in playing order, then the pictures its graphics show. */
 export function assetsInCut(doc: EditDoc): Asset[] {
   const byPath = new Map(doc.assets.map((a) => [a.path, a]))
   const used: Asset[] = []
-  for (const beat of currentCut(doc).beats) {
+  const cut = currentCut(doc)
+  for (const beat of cut.beats) {
     const asset = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
+    if (asset && !used.includes(asset)) used.push(asset)
+  }
+  for (const id of picturesIn(cut)) {
+    const asset = doc.assets.find((a) => a.id === id)
     if (asset && !used.includes(asset)) used.push(asset)
   }
   return used
