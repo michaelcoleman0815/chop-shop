@@ -255,6 +255,32 @@ describe.skipIf(!FFMPEG)('rendering a cut', () => {
     expect(samples[samples.length - 1].sat).toBeGreaterThan(40)
   })
 
+  it('punches in by amounts that do not divide the frame evenly, as /shorts does', async () => {
+    // 1.12 crops a 540x960 frame to 482x856, which is not quite 9:16; scaled back
+    // up, its pixels are a hair off square, and the join refused the mix.
+    const punched = commit(
+      createDoc({ id: 'p', title: 'Punch', source: doc.sources[0], words: [] }),
+      [
+        { op: 'remove', beats: ['b1'] },
+        { op: 'insert', to: 0, beat: { source: 's1', inSec: 0, outSec: 1 } },
+        { op: 'insert', to: 1, beat: { source: 's1', inSec: 1, outSec: 2, treatment: { zoom: 1.12 } } },
+        { op: 'insert', to: 2, beat: { source: 's1', inSec: 2, outSec: 3, treatment: { zoom: 1.08 } } },
+        { op: 'aspect', aspect: 'vertical' }
+      ],
+      'Punched.'
+    ).doc
+    const cut = currentCut(punched)
+    for (const quality of ['preview', 'final'] as const) {
+      const out = await renderCut(cut, resolveCut(cut, punched.words, punched.sources), sources, {
+        ffmpeg,
+        outputPath: join(dir, `punch-${quality}.mp4`),
+        workDir: join(dir, `work-punch-${quality}`),
+        quality
+      })
+      expect(Math.abs((await probeMedia(ffmpeg, out)).durationSec - 3)).toBeLessThan(0.15)
+    }
+  })
+
   it('exports a recording with no sound at the usual loudness target, in one pass or in chunks', async () => {
     const mute = [{ ...sources[0], hasAudio: false }]
     const cut = currentCut(doc)

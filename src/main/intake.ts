@@ -34,7 +34,11 @@ export interface SourceFacts {
   /** Dolby Vision metadata is present; profile 8.4 plays as HLG. */
   dolbyVision: boolean
   durationSec: number
-  audio: { channels: number; layout: string; sampleFormat: string; rate: number; streams: number } | null
+  /**
+   * The first sound stream. sampleFormat is how ffmpeg decodes it, which is
+   * float for every compressed codec, so only a PCM codec says how it was recorded.
+   */
+  audio: { codec: string; channels: number; layout: string; sampleFormat: string; rate: number; streams: number } | null
 }
 
 /** ffprobe's arguments for everything intake reads. */
@@ -117,6 +121,7 @@ export function readProbe(json: { streams?: ProbeStream[]; format?: { duration?:
     durationSec: Number(json.format?.duration ?? 0),
     audio: a
       ? {
+          codec: a.codec_name ?? '',
           channels: Number(a.channels ?? 0),
           layout: a.channel_layout ?? '',
           sampleFormat: a.sample_fmt ?? '',
@@ -198,7 +203,8 @@ export function intakeReply(name: string, f: SourceFacts): { sentence: string; f
     facts.push('Variable frame rate')
   }
   if (f.audio === null) facts.push('No sound')
-  else if (f.audio.sampleFormat === 'flt' || f.audio.sampleFormat === 'fltp') facts.push('32-bit float sound')
+  // AAC, MP3 and Opus all decode to float; only float PCM was recorded that way.
+  else if (/^pcm_f(32|64)/.test(f.audio.codec)) facts.push('32-bit float sound')
   const sentence = fixes.length === 0 ? '' : `${name}: ${listOf(fixes)}.`
   return { sentence: sentence.charAt(0).toUpperCase() + sentence.slice(1), facts: facts.slice(0, 3) }
 }

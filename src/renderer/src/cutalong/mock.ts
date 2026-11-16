@@ -273,7 +273,7 @@ export function createMockApi(): CutalongApi {
     ['Lighting in a small room', 4]
   ]
   for (const [name, ago] of seed) {
-    const path = `/Users/you/Movies/Cutalong/${name}.chopshop`
+    const path = `/Users/you/Movies/Cutalong/${name}.cutalong`
     const doc = fakeDoc(`/Users/you/Movies/${name}.mov`)
     projects.set(path, {
       id: name,
@@ -469,7 +469,7 @@ export function createMockApi(): CutalongApi {
     recentProjects: async (): Promise<ProjectSummary[]> =>
       [...projects.values()].sort((a, b) => b.openedAt.localeCompare(a.openedAt)),
     createProject: async (name, mode) => {
-      const path = `/Users/you/Movies/Cutalong/${name}.chopshop`
+      const path = `/Users/you/Movies/Cutalong/${name}.cutalong`
       const project: Project = {
         id: path,
         name,

@@ -1113,7 +1113,12 @@ export function useCutalong() {
       // What the person said about their files, without a leading /command.
       const said = command && !ACTION_NAMES.has(command.command) ? command.rest : words
       setScreen('thread')
-      void ensureProject(attachments[0]?.name.replace(/\.[^.]+$/, '') || words || 'New edit')
+      const recordingsIn = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
+      // Several files are sorted first, so the chat is named after the talking
+      // clip once it is known, not after whichever file was dropped first.
+      const sorting = recordingsIn.length > 1 && !docRef.current
+      const fallbackName = attachments[0]?.name.replace(/\.[^.]+$/, '') || words || 'New edit'
+      if (!sorting) void ensureProject(fallbackName)
       push({
         role: 'user',
         text: link ? words || 'Make it feel like this' : text,
@@ -1126,6 +1131,7 @@ export function useCutalong() {
         const stills = attachments.filter((a) => isImagePath(a.name))
         const materialBefore = docRef.current?.assets.length ?? 0
         if (recordings.length > 0) await takeIn(recordings, said)
+        if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
         if (stills.length > 0) {
           if (docRef.current) await addMaterial(stills)
           else push({ role: 'assistant', text: 'Drop your footage too, and these go into the edit with it.' })

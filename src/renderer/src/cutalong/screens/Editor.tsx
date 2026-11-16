@@ -36,7 +36,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const version = currentVersion(doc)
   const resolved = useMemo(() => resolveCut(cut, doc.words, doc.sources), [cut, doc.words, doc.sources])
   const video = useRef<HTMLVideoElement>(null)
-  const player = usePlayer(video, resolved)
+  const sound = useRef<HTMLAudioElement>(null)
+  const player = usePlayer(video, resolved, { sources: doc.sources, urlFor: mediaUrlFor, audio: sound })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
 
@@ -106,7 +107,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             time={player.time}
             playing={player.playing}
             video={video}
-            mediaUrl={app.mediaUrl}
+            sound={sound}
+            mediaUrl={player.src ?? app.mediaUrl}
           />
           {side === 'script' ? (
             <ScriptPanel
@@ -144,6 +146,7 @@ function Preview({
   time,
   playing,
   video,
+  sound,
   mediaUrl
 }: {
   doc: EditDoc
@@ -151,6 +154,8 @@ function Preview({
   time: number
   playing: boolean
   video: React.RefObject<HTMLVideoElement>
+  /** The better sound, for recordings whose own microphone is not the one heard. */
+  sound: React.RefObject<HTMLAudioElement>
   mediaUrl: string | null
 }): JSX.Element {
   const well = useRef<HTMLDivElement>(null)
@@ -204,6 +209,7 @@ function Preview({
         ) : (
           <span className="cl-frame-empty" />
         )}
+        <audio ref={sound} preload="auto" aria-hidden="true" />
         {treatment?.broll && treatment.frame !== 'speaker' && (
           <Cutaway
             frame={treatment.frame}

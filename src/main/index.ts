@@ -1,10 +1,10 @@
 import './app-paths'
-import { app, shell, BrowserWindow, ipcMain, dialog, protocol, desktopCapturer, systemPreferences } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, desktopCapturer, systemPreferences } from 'electron'
 import { join, basename, extname } from 'path'
 import { createHash } from 'crypto'
-import { createReadStream, existsSync, statSync, promises as fs } from 'fs'
-import { Readable } from 'stream'
+import { existsSync, statSync, promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { mediaBase, mediaUrl, startMediaServer } from './media-server'
 import { probe, exportClip, buildFromSegments, runFfmpeg, FFMPEG_PATH, FFPROBE_PATH, leadingQuiet } from './ffmpeg'
 import { autoZooms } from './autozoom'
 import { buildTimelineRender } from './timeline'
@@ -61,77 +61,9 @@ let quitting = false
 /** Edit previews are kept briefly so the player is never reading a deleted file. */
 const previewDirs: string[] = []
 
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'media', privileges: { stream: true, supportFetchAPI: true, bypassCSP: true } }
-])
-
-/** Range responses are capped so huge sources stay seekable. */
-const CHUNK_SIZE = 8 * 1024 * 1024
-
-const MIME: Record<string, string> = {
-  '.mp4': 'video/mp4',
-  '.mov': 'video/quicktime',
-  '.m4v': 'video/mp4',
-  '.webm': 'video/webm',
-  '.mkv': 'video/x-matroska',
-  '.avi': 'video/x-msvideo',
-  // Preview filmstrips and waveforms come back down the same protocol.
-  '.png': 'image/png'
-}
-
+/** A local file as the window can load it, from the media server (main/media-server). */
 export function mediaUrlFor(path: string): string {
-  return `media://local/${encodeURIComponent(path)}`
-}
-
-/**
- * Serves local files to the renderer with byte-range support, which is what
- * makes scrubbing a two-hour source file feel instant.
- */
-function serveMedia(request: Request): Response {
-  const path = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''))
-  let size: number
-  try {
-    size = statSync(path).size
-  } catch {
-    console.error('[media] 404', path)
-    return new Response('Not found', { status: 404 })
-  }
-  const type = MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
-  const range = request.headers.get('Range')
-
-  if (range) {
-    const match = /bytes=(\d*)-(\d*)/.exec(range)
-    const start = match?.[1] ? Number(match[1]) : 0
-    // An open-ended range on a multi-gigabyte file would otherwise stream the
-    // whole thing. Chromium asks for bytes=0- first, and on a file whose moov
-    // atom sits at the end it cannot even read the duration until that request
-    // completes. Capping the chunk lets it seek instead of waiting.
-    const end = match?.[2] ? Number(match[2]) : Math.min(size - 1, start + CHUNK_SIZE - 1)
-    if (start >= size) {
-      console.error('[media] 416', start, 'of', size, path)
-      return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
-    }
-    const stream = createReadStream(path, { start, end })
-    stream.on('error', (err) => {
-      // Chromium aborts in-flight ranges whenever it seeks or swaps source,
-      // which is routine. Only genuine read failures are worth reporting.
-      if (!/abort/i.test(err.message)) console.error('[media] read error', err.message, path)
-    })
-    return new Response(Readable.toWeb(stream) as ReadableStream, {
-      status: 206,
-      headers: {
-        'Content-Type': type,
-        'Content-Length': String(end - start + 1),
-        'Content-Range': `bytes ${start}-${end}/${size}`,
-        'Accept-Ranges': 'bytes'
-      }
-    })
-  }
-
-  return new Response(Readable.toWeb(createReadStream(path)) as ReadableStream, {
-    status: 200,
-    headers: { 'Content-Type': type, 'Content-Length': String(size), 'Accept-Ranges': 'bytes' }
-  })
+  return mediaUrl(path)
 }
 
 function createWindow(): void {
@@ -1133,7 +1065,7 @@ function registerIpc(): void {
       const res = await dialog.showOpenDialog({
         properties: ['openFile'],
         defaultPath: projectsDir(),
-        filters: [{ name: 'Cutalong project', extensions: ['chopshop'] }]
+        filters: [{ name: 'Cutalong project', extensions: ['cutalong', 'chopshop'] }]
       })
       if (res.canceled || !res.filePaths[0]) return null
       target = res.filePaths[0]
@@ -1184,10 +1116,14 @@ if (!app.requestSingleInstanceLock()) {
     }
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     void sweepTemp()
     electronApp.setAppUserModelId('social.brewed.chopshop')
-    protocol.handle('media', serveMedia)
+    // Before the window: the page asks for the media address as it loads.
+    await startMediaServer()
+    ipcMain.on('media:base', (e) => {
+      e.returnValue = mediaBase()
+    })
 
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 

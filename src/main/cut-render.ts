@@ -185,7 +185,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const look = (w: number, h: number, t: Treatment | null, zoom: boolean): string => {
     let f = `fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`
     const z = t?.zoom ?? 1
-    if (zoom && z > 1.001) f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2,scale=${w}:${h}`
+    // A punch-in rarely crops to exactly the frame's shape (1080/1.12 is 964.3), so
+    // scaling it back up stretches the pixels a hair; square them again, or the
+    // join refuses pieces whose pixel shapes differ and the export fails.
+    if (zoom && z > 1.001)
+      f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2,scale=${w}:${h},setsar=1`
     if (t?.bw) f += ',hue=s=0'
     return f
   }

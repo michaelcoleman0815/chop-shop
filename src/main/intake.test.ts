@@ -94,6 +94,27 @@ describe('reading what came in', () => {
     expect(intakeReply('MVI_0101.MP4', f)).toEqual({ sentence: '', facts: ['No sound'] })
   })
 
+  it('calls sound 32-bit float only when it was recorded that way, not when it decodes to float', () => {
+    const video = {
+      codec_type: 'video',
+      codec_name: 'h264',
+      width: 1920,
+      height: 1080,
+      r_frame_rate: '30/1',
+      avg_frame_rate: '30/1'
+    }
+    const sound = (codec_name: string, sample_fmt: string): ReturnType<typeof readProbe> =>
+      readProbe({
+        streams: [video, { codec_type: 'audio', codec_name, channels: 2, sample_fmt, sample_rate: '48000' }],
+        format: { duration: '20' }
+      })
+    // Every phone and camera records AAC, which ffmpeg decodes as planar float.
+    expect(intakeReply('MVI_9293.MP4', sound('aac', 'fltp')).facts).toEqual([])
+    expect(intakeReply('take.mp3', sound('mp3float', 'fltp')).facts).toEqual([])
+    expect(intakeReply('ZOOM0001.WAV', sound('pcm_f32le', 'flt')).facts).toEqual(['32-bit float sound'])
+    expect(intakeReply('ZOOM0002.WAV', sound('pcm_s24le', 's32')).facts).toEqual([])
+  })
+
   it('does not take a timebase for a frame rate', () => {
     const f = readProbe({
       streams: [{ codec_type: 'video', width: 640, height: 480, r_frame_rate: '90000/1', avg_frame_rate: '30/1' }]

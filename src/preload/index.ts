@@ -35,8 +35,19 @@ function listen<T>(channel: string, cb: (payload: T) => void): () => void {
   return () => ipcRenderer.removeListener(channel, handler)
 }
 
+/** Where the main process serves local files from, asked once as the page loads. */
+const mediaBase: string = (() => {
+  try {
+    return String(ipcRenderer.sendSync('media:base'))
+  } catch {
+    return ''
+  }
+})()
+
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  /** http://127.0.0.1:port/token: a file's address is this, a slash, and its encoded path. */
+  mediaBase,
 
   // Cutalong: footage into an edit document, documents into video, videos
   // someone likes into a style, and the saved slash commands.
