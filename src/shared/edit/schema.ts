@@ -236,11 +236,13 @@ export const CutSchema = z.object({
   /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
   reframe: z.boolean().optional(),
   /**
-   * How a picture of another shape fills the frame (edit/fill). Absent is
-   * auto: a picture taller than the frame, a still or a screen recording sits
-   * whole on a blurred copy of itself, and other footage is cropped to fill.
-   * "blur" puts every one on a blurred copy, "black" between black bars, and
-   * "crop" crops them all.
+   * How a picture of another shape fills the frame (edit/fill). A new edit
+   * says auto: a picture taller than the frame, a still or a screen recording
+   * sits whole on a blurred copy of itself, and other footage is cropped to
+   * fill. "blur" puts every one on a blurred copy, "black" between black bars,
+   * and "crop" crops them all. Absent, as in an edit made before the fill, is
+   * the crop it always had. Only the cut says it: a version's ops never carry
+   * a fill (edit/doc).
    */
   fill: FillSchema.optional()
 })

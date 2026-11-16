@@ -262,7 +262,7 @@ export function commit(
     n: currentVersion(doc).n + 1,
     at: opts.at ?? new Date().toISOString(),
     summary,
-    ops: applied,
+    ops: stored(applied),
     cut
   }
   return {
@@ -274,6 +274,16 @@ export function commit(
     applied,
     rejected
   }
+}
+
+/**
+ * The ops a version keeps. The fill is left out: the version's cut says it,
+ * nothing that reads a version's ops (what is learned from them, a vlog
+ * joining the next day's clips, why a length cut a line) needs it, and
+ * Cutalong 0.2.13 cannot open a project with an op it does not know.
+ */
+function stored(applied: Op[]): Op[] {
+  return applied.filter((op) => op.op !== 'fill')
 }
 
 /** Brings back an earlier version's cut as the newest version. */
