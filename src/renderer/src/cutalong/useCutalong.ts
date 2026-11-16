@@ -3435,8 +3435,8 @@ const ON_BEATS = new Set([
 
 function actsOnBeats(command: string, rest: string): boolean {
   if (ON_BEATS.has(command) || findMotionCommand(command)) return true
-  // Captions hidden or shown again over the stretch; a caption style is the whole video's.
-  if (command === 'captions') return /^(off|on|hide|show|none|no)?$/i.test(rest.trim())
+  // Captions hidden or shown again over the stretch; /captions alone and a caption style are the whole video's.
+  if (command === 'captions') return /^(off|on|hide|show|none|no)$/i.test(rest.trim())
   // Framed by hand left, right or in the middle; following the speaker is the whole video's.
   if (command === 'reframe') return /\b(left|right|centre|center|middle)\b/i.test(rest)
   // A chapter started at the stretch.
