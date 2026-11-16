@@ -207,8 +207,8 @@ const PHRASES: [RegExp, NeverItem][] = [
   [/\bblack[- ]and[- ]white\b|\bb ?& ?w\b|\bmonochrome\b|\bgr[ae]yscale\b/, 'bw']
 ]
 
-/** The things named in a stretch of words, each once, in the order said. */
-function thingsIn(span: string): NeverItem[] {
+/** The things named in a stretch of words, each once, in the order said: what a note or a request asks for. */
+export function thingsIn(span: string): NeverItem[] {
   let text = ` ${span.toLowerCase()} `
   const found: { at: number; item: NeverItem }[] = []
   for (const [re, item] of PHRASES) {
@@ -854,6 +854,17 @@ export function neverLeftOut(brand: string, left: NeverItem[]): string {
   if (left.length === 0) return ''
   const them = left.length === 1 && !info(left[0]).plural ? 'it' : 'them'
   return `I left out the ${listWords(left.map(neverSaid))}, as ${brand} never uses ${them}.`
+}
+
+/**
+ * A change the list left nothing of: "Field Notes never uses whooshes, so I
+ * left this edit as it is." and how to use them after all.
+ */
+export function neverEmptiedReply(brand: string, left: NeverItem[]): string {
+  if (left.length === 0) return ''
+  const said = listWords(left.map(neverSaid), 'or')
+  const them = left.length === 1 && !info(left[0]).plural ? 'it' : 'them'
+  return `${brand} never uses ${said}, so I left this edit as it is. To use ${them}, take ${them} off the never list on the Brand page.`
 }
 
 /** /all, in one sentence: "Field Notes never uses whooshes or music beds, so I left them out." */
