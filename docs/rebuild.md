@@ -29,7 +29,6 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 | `src/main/providers/`                        | Other AI services: the one gate every request to them goes through, their keys, transcription with Deepgram or AssemblyAI, and judging excerpts with Google Gemini.                    |
 | `src/main/preset-store.ts`, `brand-store.ts` | Saved commands and the brand, as JSON in userData.                                                                                                                                     |
 | `src/renderer/src/cutalong/`                 | The app: rail, Start, thread, editor, projects, brand, presets, settings. `useCutalong` is the session; `usePlayer` plays a cut straight off the source.                               |
-| `src/renderer/src/legacy/`                   | The classic tools (clip finder, timeline editor, Live Buffer, Settings), loaded only in their own document at `#classic`.                                                              |
 
 ## How an edit moves
 
@@ -46,7 +45,7 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 
 ## Status
 
-Built and tested: the edit document, presets and slash commands, inspiration measuring, the renderer of record, the planner, assets (files, image links, video excerpts, B-roll search, icons, credits), listening for snappy cuts, the brand with learning, chats saved with their projects, Settings (the Claude key, checked as it is saved; the transcription model; the export folder; video sign-in; updates), other AI services behind one switch (transcription that keeps every um, judging takes from their sound and picture), planning edits on a local model through Ollama, and the Cutalong shell with the classic tools one click away.
+Built and tested: the edit document, presets and slash commands, inspiration measuring, the renderer of record, the planner, assets (files, image links, video excerpts, B-roll search, icons, credits), listening for snappy cuts, the brand with learning, chats saved with their projects, Settings (the Claude key, checked as it is saved; the transcription model; the export folder; video sign-in; updates), other AI services behind one switch (transcription that keeps every um, judging takes from their sound and picture), planning edits on a local model through Ollama, raw footage (takes, verbatim transcription, intake that reads and fixes each recording, the audio map, cutting profiles by kind of video), learning from the creator's own edits and chats, calm motion throughout, and the Cutalong shell. An edit takes any number of files: they are measured and sorted into talking, better sound and B-roll, the talking clips become one edit, the better sound is lined up under them by ear, and the planner places the B-roll and asks for more where the edit wants it. The editor plays files from a local HTTP server, because Chromium's player does not resume byte ranges through Electron's protocol bridge. The classic tools are gone.
 
 Not yet: more than one recording per edit, B-roll audio, and a renamed app id. The window says Cutalong, but `appId`, `productName` and the update feed still say Chop Shop on purpose: renaming them breaks auto-update for existing installs, and the name needs a trademark and domain check first.
 
