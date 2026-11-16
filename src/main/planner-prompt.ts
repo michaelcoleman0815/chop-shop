@@ -5,6 +5,7 @@ import {
   currentVersion,
   describeLook,
   indexWords,
+  ANGLE_LAYOUTS,
   LOOK_SETTINGS,
   NAMED_LOOKS,
   resolveCut,
@@ -84,6 +85,8 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"look","name":"warm","set":[],"replace":true,"off":false}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage, with these settings: ${NAMED_LIST}. "name" starts from one of them, or stays "". "set" names only the settings that change: [{"key":"grain","value":0.2}]. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1; 0 takes one away. "replace":false changes the look already there, true starts afresh. "off":true takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
 - {"op":"sfx","beats":["b4"],"kind":"whoosh","word":"","gainDb":0}: a sound effect, made here, on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12), 0 for the usual. "kind":"none" takes a beat's sounds away. The person's own sound files are added with /sfx.
 - {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":[]} takes them out.
+- {"op":"angle","beats":["b4"],"source":"s2","layout":"full"}: another camera of the same take on beats: "full" shows it instead of the recording, "pip" in a box over it, "side" beside it. The sound stays the recording's. Only a source the transcript marks camera-of the beat's recording; "source":"" shows the beat's own recording again.
+- {"op":"sync","source":"s2","of":"s1","offsetSec":1.25}: lines a camera up with its recording: what s1 shows at t, s2 shows at t + offsetSec. Only when asked to move it; "of":"" takes the camera out of the edit.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ${graphicsGuide()}
@@ -99,6 +102,7 @@ ${graphicsGuide()}
 - Camera moves keep stills and long held shots alive: a ken-burns or drift on a product still, a drift on a long talking beat. Put a move on fewer than half the beats unless asked, and never two kinds in a row on the same picture.
 - Add sound effects only when asked, sparingly: a whoosh through a whip or push transition, a hit on a hard cut to something new, a riser into a new section, a pop on a big word. Never one on every cut.
 - Opening the edit in Premiere is /premiere, which the person types: for that, make no op and say so in the reply.
+- Switch to another camera only when asked, or when asked for variety: at a change of thought, never mid-sentence, and back to the recording often enough that it stays the main view. "pip" and "side" suit a reaction or a second person.
 - Make chapters only when asked. Start one where the subject changes, and name it in two to five words for what that part is about, never a whole sentence.
 - Leave the colour alone unless asked. For tech and product videos, "clean" keeps colour true; save warm, cool, cinematic and vintage for when someone asks for a mood.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
@@ -151,6 +155,9 @@ const graphicSlots = () => ({
   color: z.string(),
   fx: z.array(z.string())
 })
+
+/** How a beat shows another camera, in the beat lines. */
+const ANGLE_WORDS = { full: 'instead', pip: 'in a box', side: 'beside it' } as const
 
 /** The music bed's settings, as the planner names them. */
 const MUSIC_SETTINGS = ['levelDb', 'duckDb', 'inSec', 'fadeInSec', 'fadeOutSec'] as const
@@ -219,6 +226,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     gainDb: z.number()
   }),
   z.object({ op: z.literal('chapters'), set: z.array(z.object({ beat: z.string(), title: z.string() })) }),
+  z.object({ op: z.literal('angle'), beats: z.array(z.string()), source: z.string(), layout: z.enum(ANGLE_LAYOUTS) }),
+  z.object({ op: z.literal('sync'), source: z.string(), of: z.string(), offsetSec: z.number() }),
   z.object({
     op: z.literal('look'),
     name: z.enum(['', ...Object.keys(NAMED_LOOKS)]),
@@ -295,6 +304,10 @@ export function fromPlannerOp(op: PlannerOp): unknown {
     }
     case 'chapters':
       return { op: op.op, set: op.set.length > 0 ? op.set : null }
+    case 'angle':
+      return { op: op.op, beats: op.beats, source: op.source || null, layout: op.layout }
+    case 'sync':
+      return op.of ? op : { op: op.op, source: op.source, of: null }
     case 'look': {
       if (op.off) return { op: op.op, set: null }
       // A named look comes with its own settings; what the planner names goes over them.
@@ -337,8 +350,11 @@ export function renderTranscript(doc: EditDoc): string {
   const lines: string[] = []
   for (const source of doc.sources) {
     const sound = source.audio ? ` sound="${attr(fileName(source.audio.path))}"` : ''
+    // Another camera of a recording has no words of its own: the edit shows it on the recording's beats.
+    const angle = (currentCut(doc).angles ?? []).find((a) => a.source === source.id)
+    const camera = angle ? ` camera-of="${angle.of}" offset="${angle.offsetSec.toFixed(2)}"` : ''
     lines.push(
-      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}>`
+      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}${camera}>`
     )
     const words = doc.words.filter((w) => w.source === source.id)
     // One line per sentence keeps it readable without losing a single id.
@@ -460,6 +476,7 @@ export function renderRequest(
       t.reverse ? 'backwards' : null,
       t.broll?.reverse ? 'cutaway backwards' : null,
       t.camera ? `camera ${describeCamera(t.camera)}` : null,
+      t.angle ? `shows ${t.angle.source} ${ANGLE_WORDS[t.angle.layout]}` : null,
       t.broll?.camera ? `cutaway camera ${describeCamera(t.broll.camera)}` : null,
       t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null,
       beat.sfx?.length

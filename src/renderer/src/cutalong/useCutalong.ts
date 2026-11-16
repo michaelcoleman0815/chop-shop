@@ -9,6 +9,7 @@ import {
   commit,
   currentCut,
   currentVersion,
+  nextSourceId,
   openNotes,
   resolveCut,
   restore,
@@ -41,6 +42,7 @@ import {
   chaptersOf,
   chaptersReply,
   ideaStarts,
+  angleCommand,
   premiereReply,
   sfxCommand,
   LOOK_COMMANDS,
@@ -227,7 +229,12 @@ const ACTION_COMMANDS: Preset[] = [
         'YouTube chapters where the ideas change: /chapters, /chapters 2 Battery life, /chapters off'
       ],
       ['sfx', 'Sound effect', 'A sound on the cut or word under the playhead: /sfx whoosh, /sfx pop, /sfx transitions'],
-      ['premiere', 'Premiere', 'Open this version in Premiere, cut on your own files: /premiere']
+      ['premiere', 'Premiere', 'Open this version in Premiere, cut on your own files: /premiere'],
+      [
+        'angle',
+        'Camera angle',
+        'Another camera of the same take: /angle, /angle pip, /angle side, /angle off, /angle sync +2f'
+      ]
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
@@ -1676,6 +1683,76 @@ export function useCutalong() {
     [applyAsVersion]
   )
 
+  /**
+   * /angle: another camera of the same take, lined up by ear when it comes in,
+   * shown on the beat under the playhead instead of the recording, in a box
+   * over it or beside it; off, sync and remove as angleCommand reads them.
+   */
+  const angleCommandRun = useCallback(
+    async (rest: string, where: 'thread' | 'panel', beat: string | null): Promise<void> => {
+      const say = (text: string, aside: string | null = null, open = false): void => {
+        if (where === 'panel') setPanel({ text: aside ? `${text} ${aside}` : text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            aside,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then another camera can go with it.')
+        return
+      }
+      const read = angleCommand(d, rest, beat)
+      if ('file' in read) {
+        const of = d.sources.find((s) => s.id === read.file.of)
+        const path = await api.chooseCamera()
+        if (!path || !of) return
+        const name = fileName(path)
+        if (where === 'panel')
+          setPanel({ text: '', progress: { stage: `Lining up ${name}`, percent: null }, since: Date.now() })
+        const r = await api.lineUpCamera({ path, of: of.path })
+        if (!r.ok) {
+          say(`I couldn't read ${name}. ${r.message}`)
+          return
+        }
+        const now = docRef.current ?? d
+        const id = nextSourceId(now)
+        setDoc({ ...now, sources: [...now.sources, { ...r.camera, id }] })
+        const done = applyAsVersion(
+          [
+            { op: 'sync', source: id, of: of.id, offsetSec: r.offsetSec },
+            { op: 'angle', beats: read.file.beats, source: id, layout: read.file.layout }
+          ],
+          'Another camera is in.'
+        )
+        if (!done) {
+          say('That camera could not go on these beats.')
+          return
+        }
+        const aside = r.sure
+          ? `I lined ${name} up by ear with ${fileName(of.path)}.`
+          : `I couldn't line ${name} up by ear${r.hasSound ? '' : ', as it has no sound'}, so it starts with no offset. /angle sync +0.1 moves it.`
+        say(`v${done.n} is ready. ${done.summary}`, aside, true)
+        return
+      }
+      if (!('ops' in read)) {
+        say(read.say)
+        return
+      }
+      const done = applyAsVersion(read.ops, 'The cameras have changed.')
+      if (!done) {
+        const trial = applyOps(currentCut(d), read.ops, { words: d.words, sources: d.sources })
+        say(trial.rejected[0]?.reason ?? 'That is already how it looks.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, null, true)
+    },
+    [applyAsVersion, push, setDoc]
+  )
+
   /** /premiere: this version as a Premiere project on the person's own files, opened there when it can be. */
   const premiereCommand = useCallback(
     async (where: 'thread' | 'panel'): Promise<void> => {
@@ -1741,6 +1818,10 @@ export function useCutalong() {
       }
       if (command === 'chapters') {
         chaptersCommandRun(rest, where, beat)
+        return
+      }
+      if (command === 'angle') {
+        await angleCommandRun(rest, where, beat)
         return
       }
       if (command === 'premiere') {
@@ -1832,6 +1913,7 @@ export function useCutalong() {
       splitEditCommand,
       timingCommand,
       transitionCommand,
+      angleCommandRun,
       chaptersCommandRun,
       premiereCommand,
       sfxCommandRun

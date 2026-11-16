@@ -213,6 +213,17 @@ export function addSources(
   return commit(withSources, ops, summary, { at }).doc
 }
 
+/**
+ * Another camera of a recording the edit already has, lined up with it by
+ * offsetSec (edit/angles), as a new version. It brings no words and no beats
+ * of its own: the edit stays cut on the recording, and beats can show it.
+ */
+export function addCamera(doc: EditDoc, camera: Source, of: string, offsetSec: number, summary: string): CommitResult {
+  const taken = doc.sources.some((s) => s.id === camera.id)
+  const withCamera: EditDoc = taken ? doc : { ...doc, sources: [...doc.sources, camera] }
+  return commit(withCamera, [{ op: 'sync', source: camera.id, of, offsetSec }], summary)
+}
+
 export function currentVersion(doc: EditDoc): Version {
   return doc.versions[doc.versions.length - 1]
 }

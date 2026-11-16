@@ -20,7 +20,7 @@ import { describeSpeed, seconds, type PremiereFacts } from '../shared/presets'
 import { isImagePath } from '../shared/assets'
 import { buildScene, DEFAULT_THEME, designSize, graphicTitle } from '../shared/motion'
 import { pathUrl } from './premiere'
-import { frameSize, segmentsFor, type Segment } from './cut-render'
+import { cameraSegments, frameSize, type Segment } from './cut-render'
 import { makeSfx } from './sfx'
 
 /**
@@ -172,7 +172,7 @@ export function planPremiere(input: PremiereInput): PremierePlan {
   const cutaways: PremiereClip[] = []
   const voice: PremiereClip[] = []
   const markers: PremiereMarker[] = []
-  const counts = { speed: 0, reverse: 0, freeze: 0, split: 0, card: 0, bw: 0, camera: 0 }
+  const counts = { speed: 0, reverse: 0, freeze: 0, split: 0, card: 0, bw: 0, camera: 0, pip: 0, side: 0 }
   const marked = new Set<string>()
   /** One marker per beat and kind of thing, where its picture starts, counted for the reply. */
   const mark = (beat: string, kind: keyof typeof counts, atSec: number, name: string, comment: string): void => {
@@ -253,6 +253,10 @@ export function planPremiere(input: PremiereInput): PremierePlan {
     }
     if (s.broll && t?.frame === 'card') mark(id, 'card', at, 'Card', 'Cutalong shows the picture on a plain ground.')
     if (t?.bw) mark(id, 'bw', at, 'Black and white', 'Cutalong shows this beat in black and white.')
+    if (s.inset?.layout === 'pip')
+      mark(id, 'pip', at, 'Camera in a box', 'Cutalong shows another camera in a box here.')
+    if (s.inset?.layout === 'side')
+      mark(id, 'side', at, 'Cameras side by side', 'Cutalong shows another camera beside this.')
   })
 
   // The music, from where the bed starts, looped as the export loops it, at
@@ -326,6 +330,8 @@ export function planPremiere(input: PremiereInput): PremierePlan {
     counts.split ? plural(counts.split, 'split screen') : null,
     counts.card ? plural(counts.card, 'card') : null,
     counts.bw ? `black and white on ${plural(counts.bw, 'beat')}` : null,
+    counts.pip ? `another camera in a box on ${plural(counts.pip, 'beat')}` : null,
+    counts.side ? `cameras side by side on ${plural(counts.side, 'beat')}` : null,
     input.graphics.length ? plural(input.graphics.length, 'graphic') : null,
     cut.fade && (cut.fade.inSec > 0 || cut.fade.outSec > 0) ? 'the fades' : null,
     music.length && bed ? musicLeftOut(bed) : null,
@@ -730,8 +736,10 @@ export async function writePremiere(
     const used = resolved.pieces.some((p) => p.source === s.id)
     sources.push({ ...s, hasAudio: used ? (await read(s.path)).channels > 0 : false })
   }
-  const segments = segmentsFor(cut, resolved, sources)
+  // Beats shown through another camera cut that camera's file; one beside or over them is marked.
+  const segments = cameraSegments(cut, resolved, sources)
   for (const s of segments) {
+    await read(s.path)
     if (s.audio) await read(s.audio.path)
     if (s.broll) await read(s.broll.path)
   }

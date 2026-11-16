@@ -12,9 +12,11 @@ import {
   cutawaySteps,
   duckingKeys,
   grainStrength,
+  insetFor,
   lookMatrix,
   outToSrc,
   pictureSpan,
+  pipBox,
   placeChapters,
   placeSfx,
   sfxGainDb,
@@ -22,6 +24,7 @@ import {
   srcLength,
   transitionInfo,
   vignetteAngle,
+  viewThroughAngles,
   type SpeedStep,
   type Aspect,
   type Camera,
@@ -129,6 +132,11 @@ export interface Segment {
   hold?: boolean
   /** A camera move over the speaker's picture. */
   camera?: SegmentCamera
+  /**
+   * Another camera of the same take, in a box over the picture or beside it
+   * (edit/angles): its file, read from startSec as the picture is read.
+   */
+  inset?: { path: string; startSec: number; layout: 'pip' | 'side'; size: { width: number; height: number } }
 }
 
 /**
@@ -378,6 +386,29 @@ export function segmentsFor(
     if (t.camera) segment.camera = moving(t.camera, p.beat, picture.outStart, source)
     return segment
   })
+}
+
+/**
+ * The segments a cut plays, its other cameras included: a beat shown through
+ * another camera reads that camera's file (edit/angle-view), and one with a
+ * camera beside it or in a box over it carries that camera as an inset.
+ */
+export function cameraSegments(
+  cut: Cut,
+  resolved: Resolved,
+  sources: RenderSource[],
+  sizes: Map<string, { width: number; height: number }> = new Map(),
+  zscale = true
+): Segment[] {
+  const seen = viewThroughAngles(cut, resolved, sources)
+  const segments = segmentsFor(cut, seen.resolved, seen.sources, sizes, zscale)
+  seen.resolved.pieces.forEach((p, i) => {
+    const inset = p.reverse ? null : insetFor(cut, p, seen.sources)
+    if (inset) {
+      segments[i].inset = { path: inset.path, startSec: inset.srcStart, layout: inset.layout, size: inset.size }
+    }
+  })
+  return segments
 }
 
 /** Escapes a path for use inside a filter argument. */
@@ -634,6 +665,28 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     } else if (s.broll) {
       // The cutaway fills the frame; the speaker's input is only heard.
       chains.push(`${cutaway()}${moveOver(s.broll.camera, W, H)}${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
+    } else if (s.inset) {
+      // Another camera of the same moment, read as the picture is: held with
+      // a freeze, through the same speed.
+      const inset = s.inset
+      const other = (): string =>
+        s.hold
+          ? `${sourcePicture(input(inset.path, inset.startSec, HOLD_READ_SEC))}trim=end_frame=1,setpts=PTS-STARTPTS,`
+          : `${sourcePicture(input(inset.path, inset.startSec, pic.srcSec))}${retime(pic.steps)}`
+      if (inset.layout === 'side') {
+        // Side by side across a wide frame, one above the other in a tall one; the recording first.
+        const across = W > H
+        const [aw, ah] = across ? [even(W / 2), H] : [W, even(H / 2)]
+        const [bw, bh] = across ? [W - aw, H] : [W, H - ah]
+        chains.push(`${speaker()}${moveOver(s.camera, aw, ah)}${look(aw, ah, t, true)}[${v}a]`)
+        chains.push(`${other()}${look(bw, bh, t, false)}[${v}b]`)
+        chains.push(`[${v}a][${v}b]${across ? 'hstack' : 'vstack'},format=yuv420p,${frames}[${v}]`)
+      } else {
+        const box = pipBox({ width: W, height: H }, inset.size)
+        chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true)}[${v}m]`)
+        chains.push(`${other()}${look(box.width, box.height, t, false)}[${v}p]`)
+        chains.push(`[${v}m][${v}p]overlay=x=${box.x}:y=${box.y},format=yuv420p,${frames}[${v}]`)
+      }
     } else {
       chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
     }
@@ -1010,7 +1063,9 @@ export function inputsFor(s: Segment): number {
   const speaker = s.reverse ? reverseSlices(s.startSec, s.srcSec ?? s.durationSec).length : 1
   // Sound read apart opens its file again, in as many slices as the picture at most.
   const sound = s.audio && !s.hold ? speaker : 0
-  if (!s.broll) return speaker + sound
+  // Another camera beside or over the picture opens its own file.
+  const inset = s.inset && !s.broll ? 1 : 0
+  if (!s.broll) return speaker + sound + inset
   const reads = s.broll.steps ? srcLength(s.broll.steps) : (s.picture?.durationSec ?? s.durationSec)
   return speaker + sound + (s.broll.reverse ? reverseSlices(s.broll.startSec, reads).length : 1)
 }
@@ -1146,6 +1201,7 @@ async function checkInputs(
     paths.add(s.path)
     if (s.broll) paths.add(s.broll.path)
     if (s.audio) paths.add(s.audio.path)
+    if (s.inset) paths.add(s.inset.path)
   }
   if (logo) paths.add(logo.path)
   for (const path of more) if (path) paths.add(path)
@@ -1183,7 +1239,7 @@ export async function renderCut(
       // Missing: checkInputs says so in a sentence.
     }
   }
-  const segments = segmentsFor(cut, resolved, sources, sizes, await hasZscale(opts.ffmpeg))
+  const segments = cameraSegments(cut, resolved, sources, sizes, await hasZscale(opts.ffmpeg))
   await checkInputs(segments, opts.brand?.logo ?? null, [cut.music?.path, cut.look?.lut?.path], cut)
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)

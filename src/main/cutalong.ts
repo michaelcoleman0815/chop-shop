@@ -1,4 +1,4 @@
-import { app, ipcMain, type WebContents } from 'electron'
+import { app, dialog, ipcMain, type WebContents } from 'electron'
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
@@ -285,6 +285,49 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
     } catch (err) {
       console.error('[premiere] failed:', message(err))
+      return { ok: false as const, message: message(err) }
+    }
+  })
+
+  /**
+   * Another camera of a recording: its shape, and where it sits against the
+   * recording, found by ear as the better sound is. Unsure, it starts with no
+   * offset and the reply says so, for /angle sync to move.
+   */
+  ipcMain.handle('angle:choose', async () => {
+    const res = await dialog.showOpenDialog({
+      title: 'Choose the other camera’s recording',
+      properties: ['openFile'],
+      filters: [{ name: 'Video', extensions: ['mov', 'mp4', 'm4v', 'mkv', 'mts', 'avi', 'webm'] }]
+    })
+    return res.canceled ? null : (res.filePaths[0] ?? null)
+  })
+
+  ipcMain.handle('angle:line', async (_e, req: { path: string; of: string }) => {
+    try {
+      const meta = await probe(req.path)
+      const color = meta.facts?.color
+      let offset: Offset | null = null
+      if (meta.facts?.audio) {
+        const mine = await loudnessEnvelope(FFMPEG_PATH, req.of)
+        offset = estimateOffset(mine, await loudnessEnvelope(FFMPEG_PATH, req.path))
+      }
+      const sure = offset !== null && trustworthy(offset)
+      return {
+        ok: true as const,
+        camera: {
+          path: req.path,
+          durationSec: meta.durationSec,
+          width: meta.width,
+          height: meta.height,
+          fps: meta.fps > 0 ? meta.fps : 30,
+          ...(color && color !== 'sdr' ? { color } : {})
+        },
+        offsetSec: sure && offset ? offset.offsetSec : 0,
+        sure,
+        hasSound: !!meta.facts?.audio
+      }
+    } catch (err) {
       return { ok: false as const, message: message(err) }
     }
   })

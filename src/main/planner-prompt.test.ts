@@ -2,6 +2,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { describe, expect, it } from 'vitest'
 import {
   addAsset,
+  addCamera,
   addNote,
   applyOps,
   commit,
@@ -390,6 +391,37 @@ describe('the planner request', () => {
       sources: doc.sources
     })
     expect(off.cut.look).toBeUndefined()
+  })
+
+  it('teaches other cameras, and a plan of them applies and shows in the request', () => {
+    const camera = { id: 's2', path: '/side.mov', durationSec: 14, width: 1920, height: 1080, fps: 30 }
+    const doc = addCamera(createDoc({ id: 'd', title: 't', source, words }), camera, 's1', 1.25, 'Camera 2.').doc
+    expect(PLANNER_SYSTEM).toContain('{"op":"angle"')
+    expect(renderTranscript(doc)).toContain(
+      '<source id="s2" file="side.mov" length="0:14" camera-of="s1" offset="1.25">'
+    )
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'angle', beats: ['b2'], source: 's2', layout: 'pip' },
+        { op: 'angle', beats: ['b1'], source: 's2', layout: 'full' },
+        { op: 'angle', beats: ['b1'], source: '', layout: 'full' },
+        { op: 'sync', source: 's2', of: 's1', offsetSec: 1.3 }
+      ],
+      summary: 'Camera 2 shows in a box on beat 2.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    expect(dry.cut.beats.map((b) => b.treatment.angle ?? null)).toEqual([null, { source: 's2', layout: 'pip' }])
+    expect(dry.cut.angles).toEqual([{ source: 's2', of: 's1', offsetSec: 1.3 }])
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 3, cut: dry.cut }] }
+    expect(renderRequest(after, '', [])).toContain('shows s2 in a box')
+    // "of":"" takes the camera out, and with it every beat that showed it.
+    const out = applyOps(dry.cut, [fromPlannerOp({ op: 'sync', source: 's2', of: '', offsetSec: 0 })], doc)
+    expect(out.cut.angles).toBeUndefined()
+    expect(out.cut.beats.every((b) => !b.treatment.angle)).toBe(true)
   })
 
   it('lists the takes, and a swap of takes is a plan the document accepts', () => {

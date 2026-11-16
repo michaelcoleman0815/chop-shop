@@ -19,7 +19,7 @@ import type {
   VideoMeta,
   ZoomKeyframe
 } from '../shared/types'
-import type { Asset, EditDoc, Note, Op, Region } from '../shared/edit'
+import type { Asset, EditDoc, Note, Op, Region, Source } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
@@ -119,6 +119,20 @@ const api = {
     ranges: { startSec: number; durationSec: number }[]
   }): Promise<{ ok: true; regions: Region[][] } | { ok: false; message: string }> =>
     ipcRenderer.invoke('focus:find', req),
+  chooseCamera: (): Promise<string | null> => ipcRenderer.invoke('angle:choose'),
+  lineUpCamera: (req: {
+    path: string
+    of: string
+  }): Promise<
+    | {
+        ok: true
+        camera: Omit<Source, 'id'>
+        offsetSec: number
+        sure: boolean
+        hasSound: boolean
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('angle:line', req),
   openPremiere: (req: {
     doc: EditDoc
   }): Promise<

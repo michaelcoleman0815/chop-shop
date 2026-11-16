@@ -10,7 +10,9 @@ import { CAMERA_INFO } from '../edit/camera'
 import { transitionInfo } from '../edit/transitions'
 import { describeLook, mergeLook, NAMED_LOOKS } from '../edit/look'
 import { placeChapters } from '../edit/chapters'
+import { LAYOUT_INFO } from '../edit/angles'
 import { describeSfx } from './sfx'
+import { syncSeconds } from './angles'
 import { clock, seconds, type StyleSpec } from './preset'
 import { planTakes, type TakesPlan, type TakesPlanOptions } from '../raw/plan'
 
@@ -361,6 +363,13 @@ function describeSplitEdit(o: Extract<Op, { op: 'jcut' | 'lcut' }>, after: Resol
 }
 
 /** "beat 3" for one beat that plays, "three beats" for more. */
+/** A camera as the person counts them: the recording is camera 1, the first other camera of it camera 2. */
+function cameraName(cut: Cut | null, source: string): string {
+  const angle = cut?.angles?.find((a) => a.source === source)
+  if (!cut?.angles || !angle) return 'another camera'
+  return `camera ${cut.angles.filter((a) => a.of === angle.of).indexOf(angle) + 2}`
+}
+
 function whoOf(ids: string[], after: Resolved): { who: string; one: boolean } {
   const positions = ids
     .map((id) => after.beats.find((b) => b.id === id)?.index)
@@ -537,6 +546,21 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(...describeSound(o, cut))
     } else if (o.op === 'look') {
       said.push(describeLookOp(o, cut))
+    } else if (o.op === 'angle') {
+      const { who, one } = whoOf(o.beats, after)
+      if (o.source === null) said.push(`${who} ${one ? 'shows' : 'show'} your recording again`)
+      else {
+        const layout = o.layout ?? cut?.beats.find((b) => b.id === o.beats[0])?.treatment.angle?.layout ?? 'full'
+        const how = layout === 'full' ? '' : ` ${LAYOUT_INFO[layout].label}`
+        said.push(`${who} ${one ? 'shows' : 'show'} ${cameraName(cut, o.source)}${how}`)
+      }
+    } else if (o.op === 'sync') {
+      if (o.of === null) said.push('the other camera is out of the edit')
+      else {
+        const sec = o.offsetSec ?? 0
+        const where = `${syncSeconds(sec)} ${sec >= 0 ? 'ahead of' : 'behind'} the recording`
+        said.push(`${cameraName(cut, o.source)} is lined up ${where}`)
+      }
     } else if (o.op === 'sfx') {
       // Described together below.
     } else if (o.op === 'chapters') {

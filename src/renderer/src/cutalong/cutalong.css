@@ -1810,3 +1810,16 @@ button:disabled {
 .cl-section .cl-row > .cl-reply {
   flex: 1 1 260px;
 }
+
+/* The picture's own decks, the whole frame or the half beside another camera. */
+.cl-decks-main {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Another camera of the same moment, beside the picture or in a box over it. */
+.cl-inset {
+  position: absolute;
+  overflow: hidden;
+}

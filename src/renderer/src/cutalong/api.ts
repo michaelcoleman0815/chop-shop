@@ -16,6 +16,8 @@ export type CutalongApi = Pick<
   | 'planSession'
   | 'renderCut'
   | 'openPremiere'
+  | 'lineUpCamera'
+  | 'chooseCamera'
   | 'findFocus'
   | 'analyzeMusic'
   | 'findMusic'

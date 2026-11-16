@@ -415,6 +415,46 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       return { ...cut, beats }
     }
 
+    case 'sync': {
+      const camera = ctx.sources.get(op.source)
+      if (!camera) throw new OpError(`There is no recording ${op.source}.`)
+      const others = (cut.angles ?? []).filter((a) => a.source !== op.source || (op.of !== null && a.of !== op.of))
+      if (op.of === null) {
+        // The camera leaves the edit, and every beat that showed it shows its own recording again.
+        const beats = cut.beats.map((b) => {
+          if (b.treatment.angle?.source !== op.source) return b
+          const { angle: _a, ...treatment } = b.treatment
+          return { ...b, treatment }
+        })
+        const { angles: _was, ...rest } = cut
+        return others.length ? { ...rest, beats, angles: others } : { ...rest, beats }
+      }
+      if (op.of === op.source) throw new OpError('A recording cannot be another camera of itself.')
+      if (!ctx.sources.has(op.of)) throw new OpError(`There is no recording ${op.of}.`)
+      const was = (cut.angles ?? []).find((a) => a.source === op.source && a.of === op.of)
+      const offsetSec = op.offsetSec ?? was?.offsetSec ?? 0
+      return { ...cut, angles: [...others, { source: op.source, of: op.of, offsetSec }] }
+    }
+
+    case 'angle': {
+      const targets = op.beats.map((id) => findBeat(cut, id))
+      const beats = [...cut.beats]
+      for (const i of targets) {
+        const beat = beats[i]
+        const { angle: was, ...treatment } = beat.treatment
+        if (op.source === null) {
+          beats[i] = { ...beat, treatment }
+          continue
+        }
+        if (!(cut.angles ?? []).some((a) => a.source === op.source && a.of === beat.source)) {
+          throw new OpError(`${op.source} is not lined up as a camera of ${beat.id}'s recording.`)
+        }
+        const layout = op.layout ?? (was?.source === op.source ? was.layout : 'full')
+        beats[i] = { ...beat, treatment: { ...treatment, angle: { source: op.source, layout } } }
+      }
+      return { ...cut, beats }
+    }
+
     case 'chapters': {
       const { chapters: _was, ...rest } = cut
       if (op.set === null || op.set.length === 0) return rest

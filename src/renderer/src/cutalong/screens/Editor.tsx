@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import {
   beatAt,
   beatLabel,
@@ -16,9 +16,14 @@ import {
   duckingKeys,
   grainSpread,
   indexWords,
+  insetFor,
   levelAt,
   lookMatrix,
   openNotes,
+  pictureSpan,
+  pieceRate,
+  pieceTime,
+  pipBox,
   placeSfx,
   RECORDED_VOICE_LUFS,
   resolveCut,
@@ -27,6 +32,7 @@ import {
   svgColourMatrix,
   transitionInfo,
   viewAt,
+  viewThroughAngles,
   vignetteStops,
   type Camera,
   type EditDoc,
@@ -34,6 +40,7 @@ import {
   type Music,
   type Op,
   type Resolved,
+  type Source,
   type Treatment
 } from '../../../../shared/edit'
 import {
@@ -87,7 +94,9 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const soundA = useRef<HTMLAudioElement>(null)
   const soundB = useRef<HTMLAudioElement>(null)
   const sounds = useMemo(() => [soundA, soundB], [])
-  const player = usePlayer(decks, resolved, { sources: doc.sources, urlFor: mediaUrlFor, sounds })
+  // Beats shown through another camera play its file, heard as the recording is (edit/angle-view).
+  const seen = useMemo(() => viewThroughAngles(cut, resolved, doc.sources), [cut, resolved, doc.sources])
+  const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
   // The cut's graphics on the output clock, in the brand's look: what the export draws.
@@ -195,6 +204,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           <Preview
             doc={doc}
             resolved={resolved}
+            seen={seen}
             scene={scene}
             time={player.time}
             playing={player.playing}
@@ -254,6 +264,7 @@ const CAPTION_TOP: Record<string, number> = { top: 0.22, middle: 0.52, chest: 0.
 function Preview({
   doc,
   resolved,
+  seen,
   scene,
   time,
   playing,
@@ -266,6 +277,8 @@ function Preview({
 }: {
   doc: EditDoc
   resolved: Resolved
+  /** The cut as the decks play it, with beats shown through other cameras. */
+  seen: { resolved: Resolved; sources: Source[] }
   scene: MotionScene
   selected: MotionItem | null
   onRegion: (box: number[]) => void
@@ -316,6 +329,12 @@ function Preview({
   // The look's colour, through the same matrix the export uses; a LUT shows in the export only.
   const look = cut.look ?? null
   const grade = useMemo(() => (look && changesColour(look) ? svgColourMatrix(lookMatrix(look)) : null), [look])
+  // Another camera beside the picture, or in a box over it, for the piece on screen now.
+  const onScreen = resolved.pieces.find((p) => time >= pictureSpan(p).outStart && time < pictureSpan(p).outEnd)
+  const inset = onScreen && !onScreen.reverse ? insetFor(cut, onScreen, doc.sources) : null
+  const across = ratio > 1
+  const mainBox: CSSProperties | undefined =
+    inset?.layout === 'side' ? (across ? { right: '50%' } : { bottom: '50%' }) : undefined
 
   return (
     <div className="cl-well" ref={well}>
@@ -331,19 +350,41 @@ function Preview({
         )}
         {mediaUrl ? (
           <div className="cl-decks" style={grade ? { filter: 'url(#cl-look)' } : undefined}>
-            {views.map((view, d) => (
-              <Deck
-                key={d}
-                videoRef={decks[d]}
-                soundRef={sounds[d]}
-                view={view}
-                doc={doc}
-                resolved={resolved}
-                time={time}
+            <div className="cl-decks-main" style={mainBox}>
+              {views.map((view, d) => (
+                <Deck
+                  key={d}
+                  videoRef={decks[d]}
+                  soundRef={sounds[d]}
+                  view={view}
+                  doc={doc}
+                  resolved={seen.resolved}
+                  sources={seen.sources}
+                  time={time}
+                  playing={playing}
+                  frameAspect={inset?.layout === 'side' ? (across ? ratio / 2 : ratio * 2) : ratio}
+                />
+              ))}
+            </div>
+            {inset && onScreen && (
+              <CameraInset
+                url={mediaUrlFor(inset.path)}
+                at={
+                  inset.srcStart +
+                  pieceTime(onScreen, time) -
+                  (onScreen.hold !== undefined ? onScreen.srcStart : pictureSpan(onScreen).srcStart)
+                }
+                rate={pieceRate(onScreen, time)}
                 playing={playing}
-                frameAspect={ratio}
+                box={
+                  inset.layout === 'side'
+                    ? across
+                      ? { left: '50%', top: 0, right: 0, bottom: 0 }
+                      : { left: 0, top: '50%', right: 0, bottom: 0 }
+                    : pipStyle(ratio, inset.size)
+                }
               />
-            ))}
+            )}
           </div>
         ) : (
           <span className="cl-frame-empty" />
@@ -375,6 +416,56 @@ function Preview({
           <RegionPicker item={selected} onPick={onRegion} />
         )}
       </div>
+    </div>
+  )
+}
+
+/** A picture-in-picture box over a frame of this shape, as the export places it, in shares of the frame. */
+function pipStyle(ratio: number, camera: { width: number; height: number }): CSSProperties {
+  // Any frame of the right shape gives the same shares; the export's own size keeps the rounding alike.
+  const frame =
+    ratio >= 1 ? { width: 1920, height: Math.round(1920 / ratio) } : { width: Math.round(1920 * ratio), height: 1920 }
+  const b = pipBox(frame, camera)
+  const pct = (n: number, of: number): string => `${(n / of) * 100}%`
+  return {
+    left: pct(b.x, frame.width),
+    top: pct(b.y, frame.height),
+    width: pct(b.width, frame.width),
+    height: pct(b.height, frame.height)
+  }
+}
+
+/**
+ * Another camera of the same moment, beside the picture or in a box over it:
+ * muted, kept on the moment the recording plays at the camera's offset, moved
+ * only when it drifts, as the music and sounds are.
+ */
+function CameraInset({
+  url,
+  at,
+  rate,
+  playing,
+  box
+}: {
+  url: string
+  at: number
+  rate: number
+  playing: boolean
+  box: CSSProperties
+}): JSX.Element {
+  const ref = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    const v = ref.current
+    if (!v) return
+    const still = rate === 0
+    if (Math.abs(v.currentTime - at) > (playing && !still ? 0.15 : 0.02)) v.currentTime = Math.max(0, at)
+    if (!still) v.playbackRate = Math.min(16, Math.max(0.0625, rate))
+    if (playing && !still && v.paused) void v.play().catch(() => undefined)
+    if ((!playing || still) && !v.paused) v.pause()
+  }, [at, rate, playing])
+  return (
+    <div className="cl-inset" style={box}>
+      <video ref={ref} src={url} muted playsInline preload="auto" />
     </div>
   )
 }
@@ -557,6 +648,7 @@ function Deck({
   view,
   doc,
   resolved,
+  sources,
   time,
   playing,
   frameAspect
@@ -567,6 +659,8 @@ function Deck({
   view: DeckView
   doc: EditDoc
   resolved: Resolved
+  /** The recordings the pieces name, stand-ins for other cameras included. */
+  sources: Source[]
   time: number
   playing: boolean
   /** The finished frame's width over its height. */
@@ -581,7 +675,7 @@ function Deck({
   const runs = rb && t?.broll ? cutawayClock(resolved, rb.id, time) : null
   const at = runs && t?.broll ? cutawayAt(t.broll, runs.length, runs.offset) : null
   // The camera over the speaker, from the plan the export moves by.
-  const source = piece ? doc.sources.find((s) => s.id === piece.source) : undefined
+  const source = piece ? sources.find((s) => s.id === piece.source) : undefined
   let transform = t && t.zoom > 1.001 ? `scale(${t.zoom})` : undefined
   if (rb && t?.camera && source && source.height > 0) {
     const clock = cameraClock(resolved, rb.id, time, t.camera.word)

@@ -3,6 +3,7 @@ import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
 import { SfxSchema } from './sfx'
+import { AngleSchema, ANGLE_LAYOUTS, BeatAngleSchema } from './angles'
 import { CameraSchema } from './camera'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
@@ -138,7 +139,9 @@ export const TreatmentSchema = z.object({
   /** Played backwards, sound and picture. */
   reverse: z.boolean().optional(),
   /** The frame moving over the speaker: a push-in, a punch-in on a word, a pan. */
-  camera: CameraSchema.optional()
+  camera: CameraSchema.optional(),
+  /** Another camera of the same take shown for this beat: instead, in a box over it, or beside it (edit/angles). */
+  angle: BeatAngleSchema.nullable().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -218,7 +221,9 @@ export const CutSchema = z.object({
   /** A look over the whole picture: colour, a LUT, sharpening, a vignette, grain. */
   look: LookSchema.nullable().optional(),
   /** YouTube chapters, each starting at a beat (edit/chapters). */
-  chapters: z.array(ChapterSchema).optional()
+  chapters: z.array(ChapterSchema).optional(),
+  /** Other cameras of the same takes, each lined up with its recording (edit/angles). */
+  angles: z.array(AngleSchema).max(16).optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -299,6 +304,20 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('look'), set: LookPatchSchema.nullable(), replace: z.boolean().optional() }),
   // A music bed, or changes to it; null takes it out.
   z.object({ op: z.literal('music'), set: MusicSchema.partial().nullable() }),
+  // Another camera of a recording, lined up by offsetSec; of null takes the camera out of the edit.
+  z.object({
+    op: z.literal('sync'),
+    source: z.string().min(1),
+    of: z.string().min(1).nullable(),
+    offsetSec: z.number().optional()
+  }),
+  // Which camera beats show, and how; null shows their own recording again.
+  z.object({
+    op: z.literal('angle'),
+    beats: z.array(beatId).min(1),
+    source: z.string().min(1).nullable(),
+    layout: z.enum(ANGLE_LAYOUTS).optional()
+  }),
   // A camera move over a beat, or over the cutaway it shows; null holds the frame still.
   z.object({
     op: z.literal('camera'),

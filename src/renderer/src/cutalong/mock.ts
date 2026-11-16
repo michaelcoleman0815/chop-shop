@@ -503,6 +503,14 @@ export function createMockApi(): CutalongApi {
         )
       }
     },
+    chooseCamera: async () => '/Users/you/Movies/Side camera.mov',
+    lineUpCamera: async ({ path }) => ({
+      ok: true as const,
+      camera: { path, durationSec: 40, width: 1920, height: 1080, fps: 30 },
+      offsetSec: 1.25,
+      sure: true,
+      hasSound: true
+    }),
     openPremiere: async ({ doc }) => {
       await progress(listeners.cut, ['Writing the Premiere project'])
       const n = doc.versions[doc.versions.length - 1].n
