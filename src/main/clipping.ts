@@ -73,9 +73,7 @@ export interface ClipProgress {
 
 /** What a recording is measured with. Tests hand in their own. */
 export interface ClippingTools {
-  probe: (
-    path: string
-  ) => Promise<{
+  probe: (path: string) => Promise<{
     durationSec: number
     width: number
     height: number
@@ -507,6 +505,7 @@ export async function findClips(
 
   // The moments, by whoever picks them.
   let engine = await tools.engine()
+  let fellBack = false
   progress({
     stage:
       engine.by === 'claude'
@@ -539,6 +538,7 @@ export async function findClips(
         const who = engine.by === 'claude' ? 'Claude' : (engine.model ?? 'The model on this Mac')
         notes.push(`${who} couldn't pick them (${message(err).replace(/\.$/, '')}), so I sorted them by measuring.`)
         engine = { by: 'measured', model: null }
+        fellBack = true
       }
     }
     if (engine.by === 'measured')
@@ -624,7 +624,8 @@ export async function findClips(
     clips,
     notes,
     timings: steps.filter((s) => timings.has(s)).map((s) => ({ step: s, ms: Math.round(timings.get(s) as number) })),
-    had: (req.avoid ?? []).filter((a) => paths.includes(a.path)).length
+    had: (req.avoid ?? []).filter((a) => paths.includes(a.path)).length,
+    ...(fellBack ? { fellBack } : {})
   }
   for (const t of found.timings) console.log(`[clipping] ${t.step}: ${(t.ms / 1000).toFixed(2)} s`)
   progress({ stage: 'Done', percent: 100 })

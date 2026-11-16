@@ -8,7 +8,8 @@ import { fitPick, shapePicks } from './shape'
 import { clipDoc } from './doc'
 import { CLIP_PROFILES } from './profile'
 import { clipsReply, type ClipsFound } from './reply'
-import { overlapWith } from './leave-out'
+import { leaveOut, overlapWith } from './leave-out'
+import { sentencesOf } from './sentences'
 
 /**
  * /clipping on three planted long recordings (shared/clipping/fixtures): a
@@ -56,6 +57,75 @@ describe('what a clip never comes from', () => {
       const span = momentSpan(r.facts.timeline, m)
       expect(overlapWith(r.plan.regions, span.startSec, span.endSec), m.tag).toBe(0)
     }
+  })
+
+  it('leaves out a short closing song wherever it falls against the half-minute windows', () => {
+    const t = factsOf(SERVICE).timeline
+    // Sung at the pace the generated service sang it, 83 s rather than the
+    // 109 s the plan estimates: short enough to slip between the windows.
+    const song = t.words.filter((w) => w.tag === 'worship-2')
+    const a = song[0].startSec
+    const b = song[song.length - 1].endSec
+    const squeeze = (x: number): number => (x <= a ? x : x >= b ? x - (b - a) * 0.24 : a + (x - a) * 0.76)
+    for (let shift = 0; shift < 30; shift += 5) {
+      const words = t.words.map((w) => ({
+        text: w.text,
+        startSec: squeeze(w.startSec) + shift,
+        endSec: squeeze(w.endSec) + shift
+      }))
+      const regions = leaveOut({
+        words,
+        sentences: sentencesOf(words),
+        durationSec: t.durationSec + shift,
+        profile: 'church'
+      })
+      const worship = regions.filter((r) => r.kind === 'worship')
+      const sung = words.filter((_, i) => t.words[i].tag === 'worship-2')
+      expect(
+        sung.every((w) => overlapWith(worship, w.startSec, w.endSec) > 0),
+        `${shift} s later`
+      ).toBe(true)
+      // The prayer before it is not the song: at most its amen, where the windows begin.
+      const around = worship.filter((r) => r.endSec > sung[0].startSec && r.startSec < sung[sung.length - 1].endSec)
+      expect(around.length).toBe(1)
+      expect(around[0].startSec, `${shift} s later`).toBeGreaterThan(sung[0].startSec - 10)
+    }
+  })
+
+  it('does not take a preacher’s refrain, or a run of lines that start alike, for a song', () => {
+    // Most of every line is the same seven words, and the refrain comes back
+    // every other line: as repeated as speech gets, still new words each time.
+    const lines: string[] = []
+    const tails = [
+      'carrying your father’s voice.',
+      'with a speech ready.',
+      'sure the door is locked.',
+      'still sitting in the car.',
+      'counting what you owe.',
+      'tired of starting over.',
+      'hoping nobody would notice.',
+      'with forty dollars left.',
+      'angry at the porch light.',
+      'pretending you are fine.',
+      'afraid of the table.',
+      'rehearsing your sorry speech.'
+    ]
+    tails.forEach((tail, i) => {
+      lines.push(`Some of you walked in here today ${tail}`)
+      if (i % 2 === 1) lines.push('God is not finished with you.')
+    })
+    const words: { text: string; startSec: number; endSec: number }[] = []
+    let at = 600
+    for (const line of lines) {
+      for (const w of line.split(' ')) {
+        words.push({ text: w, startSec: at, endSec: at + 0.3 })
+        at += 0.36
+      }
+      at += 0.6
+    }
+    expect(at - 600).toBeGreaterThan(60)
+    const regions = leaveOut({ words, sentences: sentencesOf(words), durationSec: at + 60, profile: 'church' })
+    expect(regions.filter((r) => r.kind === 'worship')).toEqual([])
   })
 
   it('leaves out a podcast’s warm-up, its sponsor read and its goodbye', () => {

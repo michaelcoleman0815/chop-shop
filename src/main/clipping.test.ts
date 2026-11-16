@@ -310,6 +310,9 @@ describe('the clips Claude picks', () => {
     expect(r.notes[0]).toMatch(
       /^Claude couldn't pick them \(Claude is not reachable in this test\), so I sorted them by measuring\.$/
     )
+    // Said once, and without asking for a key the person already gave.
+    expect(r.reply.aside?.match(/by measuring/g)).toHaveLength(1)
+    expect(r.reply.aside).not.toMatch(/Anthropic key/)
   })
 })
 
