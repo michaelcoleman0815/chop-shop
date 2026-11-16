@@ -389,8 +389,9 @@ function hasSurface(el: HTMLElement): boolean {
  * Removes a list item so the gap closes rather than the item vanishing: it
  * fades and slides out while everything after it rises into its place and
  * the card around it draws in, all with transforms and a clip. Then `remove`
- * runs and the layout catches up in the same frame, so nothing jumps.
- * `from` is the item, or anything inside it (a click's currentTarget).
+ * runs and the layout catches up in the same frame; anything the forecast
+ * could not know eases its last pixels, so nothing jumps. `from` is the item,
+ * or anything inside it (a click's currentTarget).
  */
 export function collapse(from: EventTarget | null, remove: () => unknown): void {
   for (const finish of [...collapsing]) finish()
@@ -448,22 +449,52 @@ export function collapse(from: EventTarget | null, remove: () => unknown): void 
     })
   ]
 
+  // A keyboard user who removed this keeps their place: focus moves to the same control in the row that takes its
+  // place, or, when the list is gone, to the first control around it.
+  const list = item.parentElement
+  const index = list ? [...list.children].indexOf(item) : -1
+  const home = item.parentElement?.closest<HTMLElement>('section, aside, main') ?? null
+  const hadFocus = item.contains(document.activeElement)
+
   let done = false
   const finish = (): void => {
     if (done) return
     done = true
     collapsing.delete(finish)
-    const settle = (): void => animations.forEach((a) => a.cancel())
+    const shown = movers.map(top)
+    let settled = false
+    const settle = (): void => {
+      if (settled) return
+      settled = true
+      animations.forEach((a) => a.cancel())
+      // Whatever the forecast missed (a border that moves, a sentence that rewraps) eases in its last pixels.
+      movers.forEach((m, i) => {
+        const off = m.isConnected ? shown[i] - top(m) : 0
+        if (Math.abs(off) > 0.5)
+          m.animate([{ translate: `0 ${off}px` }, { translate: '0 0' }], {
+            duration: fast,
+            easing: token('ease-standard')
+          })
+      })
+      // A removal that did not happen leaves the item as it was.
+      if (item.isConnected) item.inert = false
+      else if (hadFocus) {
+        const row = list?.isConnected ? list.children[Math.min(index, list.children.length - 1)] : null
+        const target =
+          row?.querySelector<HTMLElement>('button:not([disabled]), [href], input') ??
+          home?.querySelector<HTMLElement>('input, textarea, button:not([disabled])')
+        target?.focus({ preventScroll: true })
+      }
+    }
     flushSync(() => void remove())
     if (!item.isConnected) return settle()
     // The removal is asynchronous: hold the end state until the item leaves.
-    const parent = item.parentElement
     const watch = new MutationObserver(() => {
       if (item.isConnected) return
       watch.disconnect()
       settle()
     })
-    if (parent) watch.observe(parent, { childList: true })
+    if (list) watch.observe(list, { childList: true })
     setTimeout(() => {
       watch.disconnect()
       settle()
