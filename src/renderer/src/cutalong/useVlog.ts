@@ -164,7 +164,8 @@ export function useVlog(deps: VlogDeps): Vlogs {
       }
       const done = applyAsVersion(r.ops, r.reply.summary, 'vlog', { text: r.reply.summary, ops: r.ops.length })
       if (!done) {
-        say({ text: 'The story already plays that way.', aside: r.reply.aside })
+        // Nothing changed: what could not be found is the answer, when something could not.
+        say({ text: r.reply.aside ?? 'The story already plays that way.' })
         return { handled: true, n: null }
       }
       const latest = docRef.current

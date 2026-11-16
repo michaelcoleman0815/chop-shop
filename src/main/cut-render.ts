@@ -1386,6 +1386,10 @@ async function checkInputs(
   }
 }
 
+/** More different files than this in a cut, and it renders in passes of MANY_FILES_INPUTS inputs. */
+const MANY_FILES = 6
+const MANY_FILES_INPUTS = 8
+
 /** Renders a cut to a file and returns its path. */
 export async function renderCut(
   cut: Cut,
@@ -1474,7 +1478,12 @@ export async function renderCut(
     logo: opts.brand?.logo ?? null,
     overlays: opts.overlays ?? null
   }
-  const maxInputs = opts.maxInputs ?? 24
+  // Pieces of many different files (a vlog's clips) go in passes of a few: in
+  // one pass, the loudness filter reads ahead into files the picture has not
+  // reached, and their frames wait at full size. 18 clips of a vlog took more
+  // than 12 GB in one pass, and 1.5 GB in passes of 8.
+  const files = new Set(segments.map((s) => s.path)).size
+  const maxInputs = opts.maxInputs ?? (files > MANY_FILES ? MANY_FILES_INPUTS : 24)
   const inputsNeeded = segments.reduce((n, s) => n + inputsFor(s), 0)
 
   if (inputsNeeded <= maxInputs) {

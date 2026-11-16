@@ -95,7 +95,9 @@ export function finishShoot(
             describedBy: 'measurements' as const
           }
     })
-  const scenes = shoot.scenes.map((s, k) => ({ ...s, name: nameScene(s, moments, k) }))
+  const times = shoot.scenes.map((s) => s.startAt).filter((t): t is number => t !== null)
+  const span = { firstAt: times.length ? Math.min(...times) : null, lastAt: times.length ? Math.max(...times) : null }
+  const scenes = shoot.scenes.map((s, k) => ({ ...s, name: nameScene(s, moments, k, span) }))
   return {
     v: 1,
     clips,

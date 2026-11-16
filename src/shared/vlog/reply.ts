@@ -53,10 +53,12 @@ function listOf(parts: string[]): string {
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`
 
-/** A scene's name inside a sentence: "the venue", "the morning at 9:12". */
+/** A scene's name inside a sentence: "the venue", "the morning at 9:12", "Sunday morning at 8:30". */
 export function sceneInSentence(name: string): string {
-  const time = /^(Morning|Afternoon|Evening|Night), (\d{1,2}:\d{2})$/.exec(name)
-  if (time) return `the ${time[1].toLowerCase()} at ${time[2]}`
+  const time = /^(?:(.+) )?(Morning|Afternoon|Evening|Night|morning|afternoon|evening|night), (\d{1,2}:\d{2})$/.exec(
+    name
+  )
+  if (time) return `${time[1] ? `${time[1]} ` : 'the '}${time[2].toLowerCase()} at ${time[3]}`
   return name.replace(/^The /, 'the ').replace(/^Scene /, 'scene ')
 }
 
@@ -175,11 +177,12 @@ export function storyReply(
     ? `v${opts.version} is a ${clock(total)} vlog of your day in ${scenesSaid}.`
     : `v${opts.version} is ready${joined}.${runs ? ` ${runs}` : ''}`
   const text = story ? `${lead} ${story}` : lead
+  // A version's own summary; how long it runs now is added where the version is made.
   const summary = first
     ? `The day as a story in ${scenesSaid}, ${clock(total)} long.`
     : opts.added
       ? `${plural(opts.added, 'more clip')} in the story, ${clock(total)} long.`
-      : `${runs || `The story is cut again, ${clock(total)} long.`}`
+      : 'The story is told again.'
 
   const details: { label: string; value: string }[] = []
   if (hook.length) {

@@ -408,7 +408,12 @@ export async function makeVlog(
       previousSec,
       first: !before?.vlog,
       added: before?.vlog ? added : undefined,
-      notes: [...(before?.vlog ? [] : (record.clockNotes ?? [])), strikes.summary, ...notes].filter(Boolean)
+      notes: [
+        ...(before?.vlog ? [] : (record.clockNotes ?? [])),
+        // Only the retakes struck now: an edit's own words were struck, or not, before.
+        before ? talkStrikes(more.sources, more.words, more.audio).summary : strikes.summary,
+        ...notes
+      ].filter(Boolean)
     })
     const text = made?.reply ? `${reply.lead} ${made.reply}` : reply.text
     const summary = made?.summary || reply.summary

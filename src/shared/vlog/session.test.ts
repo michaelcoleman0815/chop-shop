@@ -4,8 +4,9 @@ import { commit, currentCut, currentVersion, restore, type EditDoc } from '../ed
 import { resolveCut } from '../edit/resolve'
 import { extendShoot, ontoLatest, toldIn, vlogMusic } from './build'
 import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, storyOnBeats, storyShown, vlogShown } from './plan'
+import { dayName, nameScene } from './describe'
 import { pretendVlog } from './pretend'
-import { storyReply } from './reply'
+import { sceneInSentence, storyReply } from './reply'
 import { parseVlogAsk, wantsVlog } from './request'
 import type { Vlog } from './schema'
 
@@ -157,5 +158,20 @@ describe('a vlog over time', () => {
       /^v2 is ready, with 3 more clips in the story\. It runs \d+:\d\d now, up from \d+:\d\d\.$/
     )
     expect(storyReply(first, vlog, { version: 2, added: 1 }).summary).toMatch(/^1 more clip in the story/)
+  })
+})
+
+describe('a shoot of more than one day', () => {
+  it('names the scenes after the first day by their day, and says them that way', () => {
+    const at = (day: number, h: number, m = 0): number => new Date(2026, 4, day, h, m).getTime() / 1000
+    expect(dayName(at(2, 9), at(2, 8))).toBeNull()
+    expect(dayName(at(3, 8, 30), at(2, 8))).toBe('Sunday')
+    expect(dayName(at(12, 8), at(2, 8), at(12, 8))).toBe('12 May')
+    const scene = (startAt: number) => ({ id: 'sc2', name: '', clips: [], startAt, endAt: startAt, place: null })
+    const span = { firstAt: at(2, 8), lastAt: at(3, 10) }
+    const name = nameScene(scene(at(3, 8, 30)), [], 1, span)
+    expect(name).toBe('Sunday morning, 8:30')
+    expect(sceneInSentence(name)).toBe('Sunday morning at 8:30')
+    expect(sceneInSentence(nameScene(scene(at(2, 21)), [], 0, span))).toBe('the night at 21:00')
   })
 })

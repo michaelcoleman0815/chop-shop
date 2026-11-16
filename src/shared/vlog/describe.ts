@@ -68,6 +68,25 @@ function partOfDay(at: number): string {
   return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 21 ? 'Evening' : 'Night'
 }
 
+/** Midnight before a time, on this computer's clock: the day it falls on. */
+function dayOf(at: number): number {
+  const d = new Date(at * 1000)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000
+}
+
+/**
+ * The day a scene was shot on, when the shoot ran past its first day:
+ * "Sunday", or "3 May" for a shoot longer than a week. Null on the first day.
+ */
+export function dayName(at: number | null, firstAt: number | null, lastAt: number | null = null): string | null {
+  if (at === null || firstAt === null || dayOf(at) === dayOf(firstAt)) return null
+  const d = new Date(at * 1000)
+  const long = lastAt !== null && dayOf(lastAt) - dayOf(firstAt) >= 6 * 86400
+  return long
+    ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+    : d.toLocaleDateString('en-GB', { weekday: 'long' })
+}
+
 /** Words that name a place in a line, for naming a scene from what its moments show. */
 const PLACE =
   /\b(?:at|in|inside|outside|on|by|into|through|around|near|across)\s+(?:the\s+|a\s+|an\s+)?([a-z][a-z' -]{2,40}?)(?=[,.;]|\s+(?:with|while|as|and|where|at|in)\b|$)/i
@@ -83,9 +102,15 @@ export function placeIn(line: string): string | null {
 
 /**
  * A scene's name: the place its moments were said to be in most often, when
- * something looked at them, else its part of the day and when it started.
+ * something looked at them, else its part of the day and when it started,
+ * with the day itself on a shoot of more than one ("Sunday morning, 8:30").
  */
-export function nameScene(scene: Scene, moments: Moment[], index: number): string {
+export function nameScene(
+  scene: Scene,
+  moments: Moment[],
+  index: number,
+  shoot: { firstAt: number | null; lastAt: number | null } = { firstAt: null, lastAt: null }
+): string {
   const own = new Set(scene.clips)
   const seen = moments.filter((m) => own.has(m.clip) && m.describedBy !== 'measurements')
   const counts = new Map<string, number>()
@@ -94,7 +119,11 @@ export function nameScene(scene: Scene, moments: Moment[], index: number): strin
     if (place) counts.set(place.toLowerCase(), (counts.get(place.toLowerCase()) ?? 0) + 1)
   }
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
-  if (top && top[1] >= Math.max(1, seen.length / 4)) return `The ${top[0].replace(/^the /, '')}`
-  if (scene.startAt !== null) return `${partOfDay(scene.startAt)}, ${timeOfDay(scene.startAt)}`
+  const day = dayName(scene.startAt, shoot.firstAt, shoot.lastAt)
+  if (top && top[1] >= Math.max(1, seen.length / 4)) return `The ${top[0].replace(/^the /, '')}${day ? `, ${day}` : ''}`
+  if (scene.startAt !== null) {
+    const part = partOfDay(scene.startAt)
+    return `${day ? `${day} ${part.toLowerCase()}` : part}, ${timeOfDay(scene.startAt)}`
+  }
   return `Scene ${index + 1}`
 }
