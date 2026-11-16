@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('electron', async () => {
+  const os = await import('os')
+  return {
+    app: { getPath: () => os.tmpdir(), isPackaged: false, getAppPath: () => process.cwd() },
+    ipcMain: { handle: () => undefined },
+    safeStorage: { isEncryptionAvailable: () => false }
+  }
+})
+vi.mock('./apikey', () => ({ readApiKey: () => null, hasApiKey: () => false }))
+
 import Anthropic from '@anthropic-ai/sdk'
 import { claudeKeyStatus, fingerprint, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
+import { MODEL } from './planner'
 import { gateOpen, keyMessage } from '../shared/setup'
 
 /**
@@ -8,8 +20,6 @@ import { gateOpen, keyMessage } from '../shared/setup'
  * network: every way Anthropic answers, and what the setup screen and the
  * gate then say. Nothing leaves this computer.
  */
-
-const MODEL = 'claude-opus-5-5'
 
 /** An API error body as Anthropic sends one. */
 const error = (status: number, type: string, message: string): Response =>
@@ -41,7 +51,7 @@ function setup(opts: { key?: string | null; saved?: boolean; answer: () => Respo
 
 const model = (): Response =>
   new Response(
-    JSON.stringify({ type: 'model', id: MODEL, display_name: 'Claude Opus 5.5', created_at: '2026-10-01T00:00:00Z' }),
+    JSON.stringify({ type: 'model', id: MODEL, display_name: 'The model Cutalong plans with', created_at: '2026-10-01T00:00:00Z' }),
     { status: 200, headers: { 'content-type': 'application/json' } }
   )
 

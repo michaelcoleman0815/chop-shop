@@ -41,6 +41,7 @@ import { chaptersOf, chaptersReply } from '../../../shared/presets'
 import { fillDescription, isShort, writeLocally, type UploadKit } from '../../../shared/upload'
 import { groupWords } from '../../../shared/words'
 import { detectProvider } from '../../../shared/keys'
+import { keyMessage } from '../../../shared/setup'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
 import { mockVlogApi } from './vlog-mock'
@@ -731,12 +732,20 @@ export function createMockApi(): CutalongApi {
             message: `Plans come from ${settings.localPlanner} on this Mac, and this browser preview cannot reach it.`
           }
         : key === null
-          ? {
-              ok: false as const,
-              message: 'Add your Anthropic API key in Settings and I can work on this.',
-              needsKey: true
-            }
-          : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' },
+          ? { ok: false as const, message: keyMessage('none'), needsKey: true, keyState: 'none' as const }
+          : { ok: false as const, message: 'Claude reads what you ask, and this browser preview has no connection to it.' },
+    // The preview cannot reach Claude: footage starts an edit, a link is a style to learn, words wait for footage.
+    triage: async ({ files, link, hasEdit }) =>
+      key === null
+        ? { ok: false as const, message: keyMessage('none'), keyState: 'none' as const }
+        : {
+            ok: true as const,
+            route: files.length > 0 || hasEdit ? ('edit' as const) : link ? ('edit' as const) : ('wait' as const),
+            reply: files.length > 0 || hasEdit || link ? '' : "Drop your footage and I'll start on it.",
+            link: link ? ('study' as const) : ('none' as const),
+            clip: { said: '', count: null, length: null, funny: false, topic: null, single: false, profile: null },
+            question: null
+          },
 
     studyInspiration: async ({ url, path }) => {
       await progress(listeners.study, ['Fetching the video', 'Measuring the cuts', 'Listening to the pacing'])
@@ -1037,10 +1046,10 @@ export function createMockApi(): CutalongApi {
     }),
     checkKey: async () =>
       key === null
-        ? { ok: false as const, message: 'No key yet.', needsKey: true }
+        ? { ok: false as const, state: 'none' as const, message: keyMessage('none'), confirmed: false, needsKey: true }
         : detectProvider(key) === 'anthropic'
-          ? { ok: true as const }
-          : { ok: false as const, message: 'The API key was not accepted.', needsKey: true },
+          ? { ok: true as const, state: 'ok' as const, confirmed: true as const }
+          : { ok: false as const, state: 'refused' as const, message: keyMessage('refused'), confirmed: false, needsKey: true },
     serviceKeys: async () =>
       Object.fromEntries(SERVICES.map((s) => [s.id, Boolean(serviceKeys[s.id])])) as Record<ServiceId, boolean>,
     setServiceKey: async (id, next) => {

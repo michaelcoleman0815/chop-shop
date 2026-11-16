@@ -3,8 +3,10 @@
  * Anthropic's published prices for the model the planner uses and the size
  * of a typical plan request in this app, not guessed.
  *
- * Prices: Claude Opus 5.5 at https://platform.claude.com/docs/en/about-claude/pricing,
- * read on 2026-11-16, in dollars per million tokens.
+ * Prices: for the model MODEL names in src/main/planner.ts, at
+ * https://platform.claude.com/docs/en/about-claude/pricing, read on
+ * 2026-11-16, in dollars per million tokens. When the planner moves to
+ * another model, these move with it.
  *
  * Size: a plan request for a 10-minute talking head (1,500 words in 125
  * beats) with a long prompt, measured in characters on 2026-11-16: the
@@ -24,7 +26,6 @@
  */
 
 export const PLANNER_PRICE = {
-  model: 'Claude Opus 5.5',
   source: 'https://platform.claude.com/docs/en/about-claude/pricing',
   read: '2026-11-16',
   /** Dollars per million tokens. */

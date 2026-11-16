@@ -3,7 +3,15 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { hasApiKey, readApiKey } from './apikey'
 import { claudeKeyStatus, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
 import { getSettings, saveSettings } from './store'
-import { commandThing, covering, neverEmptiedReply, neverGuard, neverLeftOut, thingsIn } from '../shared/never'
+import {
+  commandThing,
+  covering,
+  isNeverItem,
+  neverEmptiedReply,
+  neverGuard,
+  neverLeftOut,
+  thingsIn
+} from '../shared/never'
 import { findMotionCommand } from '../shared/motion'
 import {
   applyOps,
@@ -143,7 +151,7 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
                 input.preferences ?? [],
                 input.logos,
                 input.never,
-                { offers: input.offers, chat: input.chat }
+                { offers: input.offers, chat: input.chat, brands: input.brands }
               )
             }
           ]
@@ -301,6 +309,14 @@ export function commandProblem(doc: EditDoc, c: PlannedCommand, named: Set<strin
       return c.what.trim() ? null : 'nothing named to bring back'
     case 'clipping':
       return c.count < 0 || c.minSec < 0 || c.maxSec < 0 ? 'a count or length below zero' : null
+    case 'never': {
+      const items = [...c.never, ...c.allow]
+      if (items.length === 0) return 'no rule named'
+      const odd = items.find((i) => !isNeverItem(i))
+      return odd ? `${odd} is not something the never list can hold` : null
+    }
+    case 'brand':
+      return c.name.trim() ? null : 'no brand named'
     default:
       return null
   }

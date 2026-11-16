@@ -121,7 +121,7 @@ ${graphicsGuide()}
 Besides edit ops, a plan can run Cutalong's own commands: the ones the person can type after a slash, and a few with arguments of their own. They go in "ops" with the edit ops, and every step runs in the order listed, so put an op that names beats or words before a command that reshapes the cut (a preset with takes or pacing, a length, a take), and settings for the whole video after it.
 ${teachCommands()}
 A preset (tighten, snappy, shorts, captions, hook, fade, the looks, the person's saved styles, their brand) applies its whole style, so use it when the request is what it does, and change what it sets with ops after it ("a Short with captions at the top": run shorts, then a captions op). A command that acts on the beat under the playhead acts on the whole video in a plan, or for a note on the beat or stretch the note was left on; to change one moment, use the ops.
-Cut a part by what it is yourself, with remove or strike and its "why", and leave the length of the whole video to the length command, after those cuts. Opening the edit in Premiere is {"op":"run","command":"premiere","rest":""}, and every finishing touch at once is {"op":"run","command":"all","rest":""}.
+Cut a part by what it is yourself, with remove or strike and its "why", and leave the length of the whole video to the length command, after those cuts. When the cut says it is a vlog told as a story, asks of the story (a length, what it opens on, more or less of a place or a part of the day) are the vlog command's, with the person's words. Opening the edit in Premiere is {"op":"run","command":"premiere","rest":"","note":""}, and every finishing touch at once is {"op":"run","command":"all","rest":"","note":""}.
 
 ## When to ask
 Read the whole request and do every part of it you can, in one plan. When a part could mean two different things and the wrong one would cost the person (an export, footage fetched, a lot of cutting, their time), ask about that part instead: one short question in "question" with two to four options, each a complete ask in the person's words, because an option is sent as their next message ("Make the picture warmer", "Make the music warmer"). Make no step for that part, do the parts that are clear, and leave "question" with an empty text and no options when there is nothing to ask. Never ask about something cheap to undo, and never ask twice about the same thing.
@@ -283,7 +283,7 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
   z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) }),
   // Cutalong's own commands (shared/plan/commands.ts), run by the editor in the order given.
-  ...(planCommandSchemas() as unknown as [z.ZodObject<{ op: z.ZodLiteral<'run'> }>])
+  ...planCommandSchemas()
 ])
 
 export const PlanSchema = z.object({
@@ -468,6 +468,8 @@ export interface RequestExtra {
   offers?: string[]
   /** The last few turns of the chat, oldest first, so a short answer reads in context. */
   chat?: { role: 'user' | 'assistant'; text: string }[]
+  /** The person's brands by name, and whether this chat is in each: a plan can switch to another. */
+  brands?: { name: string; current: boolean }[]
 }
 
 /** The cut as it stands, the notes and the ask: the part that changes every time. */
@@ -502,6 +504,8 @@ export function renderRequest(
       : 'pauses as recorded',
     cut.loudness === null ? 'loudness as recorded' : `loudness ${cut.loudness} LUFS`
   ]
+  // A vlog is told as a story, and asks of its story go to the vlog command.
+  if (doc.vlog) settings.push('a vlog told as a story')
   if (cut.voice && cut.voice.polish > 0) settings.push(`voice polish ${cut.voice.polish}`)
   if (cut.look) settings.push(`look ${describeLook(cut.look)}`)
   if (cut.reframe) settings.push('follows the speaker')
@@ -601,6 +605,10 @@ export function renderRequest(
   if (held.length) parts.push(`<cut-on-request>\n${held.join('\n')}\n</cut-on-request>`)
   const offers = (extra.offers ?? []).map((o) => o.trim()).filter(Boolean)
   if (offers.length) parts.push(`<offers>\n${offers.join('\n')}\n</offers>`)
+  // Another brand only when there is one to switch to.
+  const brands = (extra.brands ?? []).filter((b) => b.name.trim())
+  if (brands.length > 1)
+    parts.push(`<brands>\n${brands.map((b) => `${b.name.trim()}${b.current ? ' (this chat)' : ''}`).join('\n')}\n</brands>`)
   for (const source of doc.sources) {
     const map = doc.audio?.[source.id]
     const sound = map ? renderSound(map, text) : ''

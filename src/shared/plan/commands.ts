@@ -38,8 +38,8 @@ export const PLAN_COMMANDS = [
   {
     op: 'run',
     teach:
-      'any command in the <commands> block, with what the person would type after it: {"op":"run","command":"tighten","rest":""}, {"op":"run","command":"music","rest":"lofi"}, {"op":"run","command":"transition","rest":"whip 0.3"}. It runs exactly as if they typed it after a slash.',
-    slots: { command: z.string(), rest: z.string() }
+      'any command in the <commands> block, with what the person would type after it: {"op":"run","command":"tighten","rest":"","note":""}, {"op":"run","command":"music","rest":"lofi","note":""}, {"op":"run","command":"transition","rest":"whip 0.3","note":""}. It runs exactly as if they typed it after a slash. For notes, "note" names the note it carries out, and a command that acts on the beat under the playhead acts on the beat or stretch that note was left on; otherwise "".',
+    slots: { command: z.string(), rest: z.string(), note: z.string() }
   },
   {
     op: 'length',
@@ -106,6 +106,17 @@ export const PLAN_COMMANDS = [
     slots: { mode: z.enum(MOUTH_MODES) }
   },
   {
+    op: 'never',
+    teach:
+      'a rule for this channel’s never list, said as a rule ("never use whooshes", "no transitions on this channel"), or something on it that is fine again ("whooshes are fine again"): {"op":"never","never":["sfx:whoosh"],"allow":[]}. An entry is a thing (sfx, transition, music, look, punch-in, camera, motion, broll, captions, bw, fill) or one kind of it (sfx:whoosh, transition:zoom, motion:lower-third). A “no music” for this edit is the music op instead, and “I never noticed the music was so loud” asks for the music to be quieter.',
+    slots: { never: z.array(z.string()), allow: z.array(z.string()) }
+  },
+  {
+    op: 'brand',
+    teach: 'put this chat in another of the person’s brands, by its name in the <brands> block: {"op":"brand","name":"Field Notes"}.',
+    slots: { name: z.string() }
+  },
+  {
     op: 'undo',
     teach: 'go back to the version before this one: {"op":"undo"}. Only when the person asks to undo, and as the only step.',
     slots: {}
@@ -121,43 +132,27 @@ export function isPlanCommand(op: { op: string }): op is PlannedCommand {
   return (PLAN_COMMAND_NAMES as string[]).includes(op.op)
 }
 
+type CommandSpec = (typeof PLAN_COMMANDS)[number]
+type SlotsOf<C extends CommandSpec> = { [K in keyof C['slots']]: C['slots'][K] extends z.ZodType ? C['slots'][K] : never }
+type SchemaOf<C extends CommandSpec> = z.ZodObject<{ op: z.ZodLiteral<C['op']> } & SlotsOf<C>>
+type SchemasOf<T extends readonly CommandSpec[]> = { -readonly [K in keyof T]: T[K] extends CommandSpec ? SchemaOf<T[K]> : never }
+
 /** One schema per command, made fresh each time: a shared schema object comes out as a $ref in JSON Schema. */
-export function planCommandSchemas() {
-  return PLAN_COMMANDS.map((c) => z.object({ op: z.literal(c.op), ...c.slots }))
+export function planCommandSchemas(): SchemasOf<typeof PLAN_COMMANDS> {
+  return PLAN_COMMANDS.map((c) => z.object({ op: z.literal(c.op), ...c.slots })) as unknown as SchemasOf<
+    typeof PLAN_COMMANDS
+  >
 }
 
-const COMMAND_SCHEMA = z.discriminatedUnion(
-  'op',
-  planCommandSchemas() as unknown as [z.ZodObject<{ op: z.ZodLiteral<PlanCommandName> }>]
-)
+const COMMAND_SCHEMA = z.discriminatedUnion('op', planCommandSchemas())
 
-/** A command step as a plan carries it, its slots checked. */
-export type PlannedCommand =
-  | { op: 'run'; command: string; rest: string }
-  | {
-      op: 'length'
-      targetSec: number
-      minSec: number
-      maxSec: number
-      under: boolean
-      intro: boolean
-      keepAll: boolean
-    }
-  | { op: 'take'; line: string; take: number }
-  | { op: 'bring-back'; what: string }
-  | { op: 'music-track'; find: string }
-  | { op: 'clipping'; count: number; minSec: number; maxSec: number; funny: boolean; topic: string }
-  | { op: 'vlog'; ask: string }
-  | { op: 'export' }
-  | { op: 'accept-offers' }
-  | { op: 'profile'; kind: string }
-  | { op: 'mouth'; mode: (typeof MOUTH_MODES)[number] }
-  | { op: 'undo' }
+/** A command step as a plan carries it, its slots checked: one variant per entry in PLAN_COMMANDS. */
+export type PlannedCommand = z.infer<typeof COMMAND_SCHEMA>
 
 /** A command step checked against its slots, or null when it does not have their shape. */
 export function readPlanCommand(value: unknown): PlannedCommand | null {
   const parsed = COMMAND_SCHEMA.safeParse(value)
-  return parsed.success ? (parsed.data as PlannedCommand) : null
+  return parsed.success ? parsed.data : null
 }
 
 /** The planner's lines for every command, for its instructions. */

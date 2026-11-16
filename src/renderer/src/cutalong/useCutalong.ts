@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react'
 import {
   addAsset as addAssetTo,
   addNote as addNoteTo,
+  amend,
   applyOps,
   assetsInCut,
   beatAt,
@@ -9,7 +10,6 @@ import {
   commit,
   currentCut,
   currentVersion,
-  fillAsked,
   filledIn,
   fillMode,
   fillNotice,
@@ -22,6 +22,7 @@ import {
   nextSourceId,
   openNotes,
   resolveCut,
+  resummarize,
   restore,
   sameValue,
   sentence,
@@ -30,6 +31,7 @@ import {
   undoTarget,
   type Asset,
   type EditDoc,
+  type Note,
   type Op
 } from '../../../shared/edit'
 import {
@@ -113,7 +115,6 @@ import {
   neverLeftOut,
   neverSaid,
   neverStrip,
-  readNever,
   stripDoc,
   type NeverItem,
   type NeverSaid
@@ -121,23 +122,17 @@ import {
 import { uploadReply } from './upload-reply'
 import { findMotionCommand, motionCommandEntries, planMotionCommand, type MotionChange } from '../../../shared/motion'
 import {
-  acceptsOffer,
   bringBack,
-  bringBackAsked,
   DEFAULT_PROFILE,
-  mergeLengthAsks,
   needsTopics,
   parseLengthAsk,
   planLength,
   topicName,
   type LengthAsk,
-  profileAskedFor,
   profileById,
   styleForProfile,
   suggestProfile,
   type CuttingProfile,
-  parseTakeRequest,
-  resolveTakeRequest,
   switchedSentence,
   takesOf,
   switchTakeOps,
@@ -145,7 +140,19 @@ import {
   type TakesOffer
 } from '../../../shared/raw'
 import { withHabits } from '../../../shared/learn/habits'
-import { clippingAsked, vlogOfClip, withDoc } from '../../../shared/clipping'
+import { vlogOfClip, withDoc } from '../../../shared/clipping'
+import { detectProvider } from '../../../shared/keys'
+import {
+  blockedSentence,
+  gateOpen,
+  keyMessage,
+  keyStatus,
+  type Blocked,
+  type ClaudeKeyState,
+  type ClaudeKeyStatus
+} from '../../../shared/setup'
+import type { PlannedCommand } from '../../../shared/plan/commands'
+import { carrySteps, composeReply, Gathered, runCommandStep, type CommandRunners, type PanelLike } from './carry'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
@@ -194,6 +201,8 @@ export interface PanelStatus {
   /** When the work in progress started, for its stopwatch. */
   since?: number
   error?: boolean
+  /** Answers to a question Claude asked, as buttons that send their words, or the way to the key's steps. */
+  actions?: Action[]
 }
 
 /** Commands that do something rather than set a style. They sit in the slash menu with the presets. */
@@ -505,7 +514,35 @@ export function useCutalong() {
   /** The chat or the editor, whichever the person was last in, for coming back to it. */
   const lastScreen = useRef<'thread' | 'editor'>('thread')
   const [toast, setToast] = useState<Toast | null>(null)
-  const [panel, setPanel] = useState<PanelStatus | null>(null)
+  const [panel, setPanelState] = useState<PanelStatus | null>(null)
+  /**
+   * While a plan's steps run (carry.ts), what they say is gathered here for
+   * one reply, and what they change goes into one version, rather than each
+   * step saying its own and making its own.
+   */
+  const gather = useRef<Gathered | null>(null)
+  /** Executors defined further down the hook, which a plan's commands reach before they exist in order. */
+  const exportRef = useRef<() => Promise<void>>(async () => undefined)
+  const undoRef = useRef<() => void>(() => undefined)
+  /** Words said before there was footage, which shape the edit when the footage comes. */
+  const waitingWords = useRef<string | null>(null)
+  const panelRef = useRef<PanelStatus | null>(null)
+  panelRef.current = panel
+  const setPanel = useCallback((next: SetStateAction<PanelStatus | null>): void => {
+    const g = gather.current
+    if (g) {
+      g.panel(typeof next === 'function' ? next(g.panelNow as PanelStatus | null) : next)
+      return
+    }
+    setPanelState(next)
+  }, [])
+  /**
+   * Whether the Anthropic key works, as the gate reads it (shared/setup):
+   * until it does, Cutalong runs nothing, and Start shows the steps.
+   */
+  const [key, setKey] = useState<ClaudeKeyStatus>(keyStatus('checking'))
+  const keyRef = useRef<ClaudeKeyStatus>(key)
+  keyRef.current = key
   /** The graphic selected in the editor, by id. */
   const [graphic, setGraphic] = useState<string | null>(null)
   // A brand per channel (shared/brands): the list, the one this chat is in, and the one the Brand page shows.
@@ -577,11 +614,17 @@ export function useCutalong() {
 
   const push = useCallback((m: Omit<Msg, 'id'>): string => {
     const id = uid()
+    // What a plan's steps say is gathered for its one reply.
+    if (gather.current && m.role === 'assistant') return gather.current.push(m, id)
     // Work starts its stopwatch the moment it shows.
     setMessages((ms) => [...ms, { ...m, id, since: m.progress ? (m.since ?? Date.now()) : undefined }])
     return id
   }, [])
   const patch = useCallback((id: string, p: Partial<Msg>): void => {
+    if (gather.current?.owns(id)) {
+      gather.current.patch(id, p)
+      return
+    }
     setMessages((ms) =>
       ms.map((m) =>
         m.id === id
@@ -590,6 +633,27 @@ export function useCutalong() {
       )
     )
   }, [])
+
+  /** What a failed request said about the Anthropic key, read at once by the gate. */
+  const noteKey = useCallback((state: ClaudeKeyState | undefined): void => {
+    if (!state) return
+    const was = keyRef.current
+    const passing = state === 'busy' || state === 'down' || state === 'offline'
+    const next: ClaudeKeyStatus = { state, message: keyMessage(state), confirmed: passing && was.confirmed }
+    keyRef.current = next
+    setKey(next)
+  }, [])
+
+  /** The gate stopped something: one plain sentence, pointing to the steps on Start. */
+  const stopped = useCallback(
+    (what: Blocked, where: 'thread' | 'panel' | 'toast' = 'thread'): void => {
+      const text = blockedSentence(what, keyRef.current)
+      if (where === 'panel') setPanel({ text, error: true })
+      else if (where === 'toast') setToast({ text, error: true })
+      else push({ role: 'assistant', text, actions: [{ kind: 'setup-key', label: 'Set up the key', primary: true }] })
+    },
+    [push, setPanel]
+  )
 
   /** Saves the doc into its project file, making the project the first time. */
   const messagesRef = useRef<Msg[]>([])
@@ -926,7 +990,17 @@ export function useCutalong() {
       const summary = [on && (on.always || onlyOn(trial.applied, on.beats)) ? leadWith(on.name, said) : said, notice]
         .filter(Boolean)
         .join(' ')
-      const next = commit(d, trial.applied, summary, preset ? { preset } : {}).doc
+      // A plan's steps all go into the version the first of them made, or the one its words shape.
+      const g = gather.current
+      const into = g && g.into === currentVersion(d).n
+      const next = into
+        ? amend(d, trial.applied, summary, preset ? { preset } : {}).doc
+        : commit(d, trial.applied, summary, preset ? { preset } : {}).doc
+      if (next === d) return null
+      if (g) {
+        g.into = currentVersion(next).n
+        g.summaries.push(summary)
+      }
       setDoc(next)
       return { summary, n: currentVersion(next).n, left: guarded.left, notice }
     },
@@ -2298,7 +2372,7 @@ export function useCutalong() {
             ? 'blur'
             : /^(auto|default|reset)$/.test(words)
               ? 'auto'
-              : fillAsked(words, fillMode(currentCut(d)))
+              : null
       if (!mode) {
         const now = fillMode(currentCut(d))
         const n = new Set(filledIn(d).map((p) => p.key)).size
@@ -2717,7 +2791,7 @@ export function useCutalong() {
         return
       }
       if (d.vlog) {
-        await vlog.retell(rest, where, true)
+        await vlog.retell(rest, where)
         return
       }
       const asked = rest.trim() ? parseLengthAsk(rest, { command: true }) : null
@@ -3060,8 +3134,14 @@ export function useCutalong() {
       rest = '',
       at: number | null = null,
       range: string[] | null = null
-    ): Promise<void> => during(() => commandNow(command, where, rest, at, range)),
-    [during, commandNow]
+    ): Promise<void> => {
+      if (!gateOpen(keyRef.current)) {
+        stopped('command', where)
+        return Promise.resolve()
+      }
+      return during(() => commandNow(command, where, rest, at, range))
+    },
+    [during, commandNow, stopped]
   )
 
   const studyLink = useCallback(
@@ -3128,143 +3208,274 @@ export function useCutalong() {
     return applyAsVersion(ops, text, undefined, { text, ops: ops.length })
   }, [applyAsVersion])
 
-  /**
-   * Takes asked for in words, answered here so they work with no API key:
-   * "use the second take of the intro", and "cut it" after an offer; so are
-   * the kind of video ("this one is a podcast") and how the speaker's mouth
-   * is used ("time my cuts to the sound only"). True when the sentence was
-   * one of these.
-   */
-  const answerTakes = useCallback(
-    (text: string, say: (reply: string, done: boolean) => void): boolean => {
-      const d = docRef.current
-      if (!d) return false
-      if (acceptsOffer(text) && offersRef.current.length > 0) {
-        const done = acceptOffers()
-        say(
-          done
-            ? `${done.summary} v${done.n} is ready.`
-            : 'That part of the cut has changed since, so there was nothing to cut.',
-          !!done
-        )
-        return true
-      }
-      const asked = profileAskedFor(text)
-      if (asked) {
-        // How the speaker's mouth is used goes with the kind of video too, and knows kinds not built yet.
-        const mouth = mouthForNiche(d, 'profile' in asked ? asked.profile.id : asked.notBuilt)
-        const also = mouth.reply ? ` ${mouth.reply}` : ''
-        if ('profile' in asked) {
-          setDoc({ ...mouth.doc, profile: asked.profile.id })
-          say(
-            `${asked.profile.says.replace(/^I cut it/, "I'll cut it")} Type /tighten to cut it that way.${also}`,
-            false
-          )
-        } else {
-          setDoc({ ...mouth.doc, profile: DEFAULT_PROFILE.id })
-          say(`I haven't built a ${asked.notBuilt} profile yet, so I'll cut it as a talking head.${also}`, false)
-        }
-        return true
-      }
-      const mode = readMouthMode(text, d.sources.find((s) => s.mouth)?.mouth?.mode ?? 'cuts+sync')
-      if (mode) {
-        const set = setMouthModeAll(d, mode)
-        if (set.doc !== d) setDoc(set.doc)
-        say(set.reply, false)
-        return true
-      }
-      // "Use black bars", "blur the sides", "crop them to fill the frame", "remove the black bars" (edit/fill).
-      const fill = fillAsked(text, fillMode(currentCut(d)))
-      if (fill) {
-        const done = applyAsVersion([{ op: 'fill', mode: fill }], 'Pictures of another shape fill the frame another way.')
-        say(
-          done
-            ? `v${done.n} is ready. ${done.summary}`
-            : leftSentence() || 'That is already how pictures of another shape fill the frame.',
-          !!done
-        )
-        return true
-      }
-      // "Bring back the intro", "bring back the part about the conference": what was cut on request, by its name.
-      const wanted = d.vlog ? null : bringBackAsked(text)
-      const back = wanted ? bringBack(d, wanted) : null
-      if (back) {
-        const done =
-          back.ops.length > 0
-            ? applyAsVersion(back.ops, back.summary, 'length', { text: back.summary, ops: back.ops.length, timed: true })
-            : null
-        say(done ? `v${done.n} is ready. ${done.summary}` : sentence(back.note ?? 'That is already back in.'), !!done)
-        return true
-      }
-      const req = parseTakeRequest(text)
-      if (!req) return false
-      const answer = resolveTakeRequest(req, takesOf(d), currentCut(d))
-      if ('problem' in answer) {
-        say(answer.problem, false)
-        return true
-      }
-      const done = switchTake(answer.group, answer.index)
-      say(
-        done
-          ? `${done.summary} v${done.n} is ready.`
-          : `${switchedSentence(answer.group, answer.index)} It already did.`,
-        !!done
-      )
-      return true
-    },
-    [acceptOffers, applyAsVersion, leftSentence, setDoc, switchTake]
+  /** What the planner is told besides the edit: the commands there are, the offers, the chat so far, the brands. */
+  const planContext = useCallback(
+    (request: string) => ({
+      commands: presetsRef.current.map((p) => ({ command: p.command, summary: p.summary })),
+      offers: offersRef.current.map((o) => `${o.what}, at ${clock(o.outSec)}`),
+      chat: messagesRef.current
+        .filter((m) => !m.progress && m.text.trim() && m.text.trim() !== request.trim())
+        .slice(-6)
+        .map((m) => ({ role: m.role, text: m.text })),
+      brands: brandsRef.current.brands.map((b) => ({ name: brandName(b), current: b.id === brandNow().id }))
+    }),
+    [brandNow]
   )
 
-  /** A request in words: the planner turns it into ops. */
-  const ask = useCallback(
-    async (text: string): Promise<void> => {
+  /**
+   * The executors a plan's commands reach: the ones their slash commands
+   * run, so every guard those have holds. In the editor, a command for a
+   * note acts on the beat or stretch it was left on.
+   */
+  const runners = useCallback(
+    (where: 'thread' | 'panel', ctx: { said: string; notes?: Note[]; held?: string[] | null }): CommandRunners => {
+      const say = (text: string): void => {
+        if (text) push({ role: 'assistant', text })
+      }
+      /** The playhead and the stretch a note's command acts on. */
+      const placeOf = (note: string): { at: number | null; range: string[] | null } => {
+        const d = docRef.current
+        const n = ctx.notes?.find((x) => x.id === note)
+        if (!d || !n) return { at: null, range: ctx.held ?? null }
+        const cut = currentCut(d)
+        const picked = n.range ? noteBeats(cut, n.range) : []
+        const beat = n.beat ? resolveCut(cut, d.words, d.sources).beats.find((b) => b.id === n.beat) : undefined
+        return { at: beat ? beat.outStart + 0.01 : null, range: picked.length ? picked : (ctx.held ?? null) }
+      }
+      return {
+        run: async (command, rest, note) => {
+          if (where === 'panel') {
+            const place = placeOf(note)
+            await commandNow(command, 'panel', rest, place.at, place.range)
+          } else await commandNow(command, 'thread', rest)
+        },
+        length: async (asked) => {
+          const d = docRef.current
+          if (d?.vlog) await vlog.retell(ctx.said, where)
+          else await lengthAsked(asked, ctx.said, where)
+        },
+        take: (line, take) => {
+          const d = docRef.current
+          const group = d ? takesOf(d).flatMap((a) => a.groups).find((g) => g.id === line) : undefined
+          if (!d || !group) return say('That line was not said more than once.')
+          const done = switchTake(group, take - 1)
+          if (!done) say(`${switchedSentence(group, take - 1)} It already did.`)
+        },
+        bringBack: (what) => {
+          const d = docRef.current
+          if (!d) return
+          const back = d.vlog ? null : bringBack(d, what)
+          if (!back) return say(`Nothing called “${what}” was cut on request, so there is nothing to bring back.`)
+          const done =
+            back.ops.length > 0
+              ? applyAsVersion(back.ops, back.summary, 'length', { text: back.summary, ops: back.ops.length, timed: true })
+              : null
+          if (!done) say(sentence(back.note ?? 'That is already back in.'))
+        },
+        musicTrack: (find) => commandNow('music', where, find),
+        clipping: async (asked) => {
+          await clipping.run([], asked.said, true, asked)
+        },
+        vlog: (ask) => vlog.command(ask, where),
+        exportVideo: () => exportRef.current(),
+        acceptOffers: () => {
+          const done = acceptOffers()
+          if (!done) say('That part of the cut has changed since, so there was nothing to cut.')
+        },
+        profile: (kind) => {
+          const d = docRef.current
+          if (!d) return
+          const profile = profileById(kind) ?? DEFAULT_PROFILE
+          // How the speaker's mouth is used goes with the kind of video too.
+          const mouth = mouthForNiche(d, profile.id)
+          setDoc({ ...mouth.doc, profile: profile.id })
+          say([profile.says.replace(/^I cut it/, "I'll cut it"), mouth.reply].filter(Boolean).join(' '))
+        },
+        mouth: (mode) => {
+          const d = docRef.current
+          if (!d) return
+          const set = setMouthModeAll(d, mode)
+          if (set.doc !== d) setDoc(set.doc)
+          say(set.reply)
+        },
+        never: async (never, allow) => {
+          await answerNever({ never, allow, rest: '' }, ctx.said, (reply, extra) =>
+            push({ role: 'assistant', text: reply, ...extra })
+          )
+        },
+        brand: (name) => {
+          const wanted = name.trim().toLowerCase()
+          const found = brandsRef.current.brands.find(
+            (b) => brandName(b).toLowerCase() === wanted || b.id === name.trim()
+          )
+          if (!found) return say(`There is no brand called “${name}”. The Brand page lists yours.`)
+          switchBrand(found.id)
+        },
+        undo: () => undoRef.current()
+      }
+    },
+    [acceptOffers, answerNever, applyAsVersion, clipping, commandNow, lengthAsked, push, setDoc, switchBrand, switchTake, vlog]
+  )
+
+  /**
+   * Carries out a plan Claude made, step by step (carry.ts): its changes as
+   * one version, everything its steps say gathered into one reply. `first`
+   * is set for the words sent with the footage the edit was just made from:
+   * they shape the version it was made with rather than making another.
+   * Notes held to a stretch keep their changes inside it.
+   */
+  const carryPlan = useCallback(
+    async (
+      r: Extract<Awaited<ReturnType<typeof api.planEdit>>, { ok: true }>,
+      where: 'thread' | 'panel',
+      ctx: {
+        said: string
+        first?: boolean
+        notes?: Note[]
+        held?: string[] | null
+        onWork: (p: Progress | null) => void
+      }
+    ): Promise<{ reply: ReturnType<typeof composeReply>; n: number | null; outside: number }> => {
       const d = docRef.current
-      if (!d) {
-        push({ role: 'assistant', text: "Drop some footage or paste a video you like, and I'll start from there." })
+      const empty = composeReply({ plan: { ...r, question: r.question }, outcomes: [], version: null })
+      if (!d) return { reply: empty, n: null, outside: 0 }
+      const shaping = !!ctx.first
+      const g = new Gathered({ into: shaping ? currentVersion(d).n : null, onWork: ctx.onWork })
+      const raw = shaping && currentVersion(d).ops.length === 0
+      let outside = 0
+      const context = (x: EditDoc) => ({ words: x.words, sources: x.sources, assets: x.assets })
+      const shape = (x: EditDoc | null): string =>
+        x ? `${x.versions.length}:${currentVersion(x).n}:${currentVersion(x).ops.length}:${currentVersion(x).at}` : ''
+      gather.current = g
+      let outcomes: Awaited<ReturnType<typeof carrySteps>> = []
+      try {
+        outcomes = await carrySteps(r.steps, {
+          apply: (ops) => {
+            const latest = docRef.current
+            if (!latest) return
+            let use = ops
+            if (ctx.held) {
+              const split = opsInside(currentCut(latest), ops, ctx.held, context(latest))
+              use = split.inside
+              outside += split.outside.length
+            }
+            if (use.length) applyAsVersion(use, r.summary)
+          },
+          command: (c: PlannedCommand) => runCommandStep(c, runners(where, ctx), ctx.said),
+          version: () => shape(docRef.current),
+          said: (from) => g.since(from),
+          mark: () => g.mark(),
+          still: () => docRef.current?.id === d.id
+        })
+      } finally {
+        gather.current = null
+      }
+      const latest = docRef.current
+      const changed = g.summaries.length > 0 && !!latest && latest.id === d.id
+      const draft = composeReply({ plan: r, outcomes, version: changed && latest ? { n: currentVersion(latest).n, summary: '' } : null })
+      if (!changed || !latest) return { reply: draft, n: null, outside }
+      // One summary for the version: Claude's, when every step did what it set out to; what each change said otherwise.
+      const own = g.summaries.join(' ')
+      const summary = draft.complete && r.summary.trim() && outside === 0 ? r.summary.trim() : own
+      const next = resummarize(latest, raw || g.summaries.length > 1 || summary !== own ? summary : currentVersion(latest).summary)
+      if (next !== latest) setDoc(next)
+      const n = currentVersion(next).n
+      return { reply: composeReply({ plan: r, outcomes, version: { n, summary: currentVersion(next).summary } }), n, outside }
+    },
+    [applyAsVersion, runners, setDoc]
+  )
+
+  /**
+   * Words for the edit, a sentence or a whole prompt: Claude reads all of
+   * it, and the plan it answers with is carried out as one version with one
+   * reply. `first` is set for the words sent with the footage the edit was
+   * just made from, which shape its first version.
+   */
+  const planWords = useCallback(
+    async (text: string, opts: { first?: boolean } = {}): Promise<void> => {
+      const d = docRef.current
+      if (!d) return
+      // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
+      const thinking = { stage: 'Thinking', percent: null }
+      const id = push({ role: 'assistant', text: '', progress: thinking })
+      const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandNow().voice, ...planContext(text) })
+      if (docRef.current?.id !== d.id) {
+        patch(id, { progress: null, text: 'Another edit is open now, so I left this one as it was.' })
         return
       }
-      // A length, an opening or a part of the day asked of a vlog tells its story again (useVlog).
-      if ((await vlog.retell(text, 'thread')).handled) return
-      // A length, the intro or every line kept, asked of any other edit, is cut here (shared/raw/length).
-      const length = d.vlog ? null : parseLengthAsk(text)
-      let request = text
-      if (length) {
-        await lengthAsked(length, text, 'thread')
-        // What else the sentence asked ("and add captions") goes to the planner, on the version the length made.
-        if (!length.rest || docRef.current?.id !== d.id) return
-        request = length.rest
-      }
-      const now = docRef.current ?? d
-      // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
-      const id = push({ role: 'assistant', text: '', progress: { stage: 'Thinking', percent: null } })
-      const r = await api.planEdit({ doc: now, request, notes: [], voice: brandNow().voice })
       if (!r.ok) {
+        noteKey(r.keyState)
         patch(id, {
           progress: null,
           text: r.message,
           error: true,
-          actions: r.needsKey ? [{ kind: 'open-settings', label: 'Open Settings', primary: true }] : undefined
+          actions: gateOpen(keyRef.current) ? undefined : [{ kind: 'setup-key', label: 'Set up the key', primary: true }]
         })
         return
       }
-      const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
-      rememberVersion(docRef.current, { request }, done?.n ?? null)
-      const aside =
-        [...r.needs, ...r.rejected, done?.notice ?? '']
-          .map((t) => sentence(t))
-          .filter(Boolean)
-          .join(' ') || null
+      const done = await carryPlan(r, 'thread', {
+        said: text,
+        first: opts.first,
+        onWork: (p) => patch(id, { progress: p ?? thinking })
+      })
+      rememberVersion(docRef.current, { request: text }, done.n)
       patch(id, {
         progress: null,
-        text: done ? `${r.reply} v${done.n} is ready.` : r.reply,
-        aside,
-        actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+        text: done.reply.text,
+        aside: done.reply.aside,
+        actions: done.reply.actions.length ? done.reply.actions : undefined,
+        details: done.reply.details.length ? done.reply.details : undefined
       })
+      // Replies that are choices of their own (B-roll to pick, an export to watch) follow it.
+      for (const m of done.reply.own) {
+        const { id: _id, ...rest } = m
+        push(rest)
+      }
       // Moments that want B-roll the edit does not have yet: one search each, to pick from.
       const wanted = r.brollWanted ?? []
       if (wanted.length > 0) await Promise.all(wanted.map((w) => findBroll(w.search, w.beat)))
     },
-    [applyAsVersion, findBroll, lengthAsked, patch, push, vlog]
+    [brandNow, carryPlan, findBroll, noteKey, patch, planContext, push]
+  )
+
+  /** A request in words: Claude reads it, and Cutalong carries out the plan. */
+  const ask = useCallback(
+    async (text: string): Promise<void> => {
+      if (!docRef.current) {
+        push({ role: 'assistant', text: "Drop some footage or paste a video you like, and I'll start from there." })
+        return
+      }
+      await planWords(text)
+    },
+    [planWords, push]
+  )
+
+  /**
+   * What a message asks Cutalong to make, read by Claude before any footage
+   * is read: an edit, a vlog of a day's clips, clips from a long recording,
+   * something to wait for footage for, or a question to answer; and what a
+   * link is for. Null when Claude could not be asked, with the reason said.
+   */
+  const readAsk = useCallback(
+    async (words: string, files: Attachment[], link: string | null) => {
+      const r = await api.triage({
+        request: words,
+        files: files.map((f) => ({ path: f.path, name: f.name })),
+        link,
+        hasEdit: docRef.current !== null,
+        commands: presetsRef.current.map((p) => ({ command: p.command, summary: p.summary }))
+      })
+      if (r.ok) return r
+      noteKey(r.keyState)
+      push({
+        role: 'assistant',
+        text: r.message,
+        error: true,
+        actions: gateOpen(keyRef.current) ? undefined : [{ kind: 'setup-key', label: 'Set up the key', primary: true }]
+      })
+      return null
+    },
+    [noteKey, push]
   )
 
   /** Sorts what was dropped in: which files are the talking, which has the better sound, which are B-roll. */
@@ -3376,16 +3587,27 @@ export function useCutalong() {
     async (text: string, attachments: Attachment[]): Promise<void> => {
       const link = findLink(text)
       const command = parseCommand(text)
-      const words = link
+      // Words said before there was footage are the ask when the footage comes without any.
+      const typed = link
         ? text
             .replace(link, ' ')
             .replace(/\s{2,}/g, ' ')
             .trim()
         : text
+      const waiting = !typed && !command && attachments.length > 0 ? waitingWords.current : null
+      const words = waiting ?? typed
       // What the person said about their files, without a leading /command.
       const said = command && !ACTION_NAMES.has(command.command) ? command.rest : words
       setScreen('thread')
       const recordingsIn = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
+      const userText = link ? typed || 'Make it feel like this' : text
+      // Nothing runs until the Anthropic key works: the steps are on Start.
+      if (!gateOpen(keyRef.current)) {
+        push({ role: 'user', text: userText, attachments })
+        stopped(attachments.length > 0 ? 'footage' : command ? 'command' : link ? 'link' : 'words')
+        return
+      }
+      if (waiting) waitingWords.current = null
       // Several files are sorted first, so the chat is named after the talking
       // clip once it is known, not after whichever file was dropped first.
       const sorting = recordingsIn.length > 1 && !docRef.current
@@ -3393,49 +3615,62 @@ export function useCutalong() {
       const named = command ? command.command.charAt(0).toUpperCase() + command.command.slice(1) : words
       const fallbackName = attachments[0]?.name.replace(/\.[^.]+$/, '') || named || 'New edit'
       if (!sorting) void ensureProject(fallbackName).then(() => persist())
-      push({
+      const userId = push({
         role: 'user',
-        text: link ? words || 'Make it feel like this' : text,
+        text: userText,
         attachments,
         // A page to capture is not a video to learn from, and its card says so.
         link: link
-          ? {
-              url: link,
-              title: null,
-              meta:
-                command?.command === 'screenshot' ||
-                command?.command === 'phone' ||
-                (docRef.current !== null && SHOW_PAGE.test(words))
-                  ? 'A page to show'
-                  : null
-            }
+          ? { url: link, title: null, meta: command?.command === 'screenshot' || command?.command === 'phone' ? 'A page to show' : null }
           : undefined
       })
       setBusy(true)
       try {
-        // /clipping, "find clips", "clip this stream": the recordings are long ones to cut clips from.
-        // Asked in words about a short, it is an edit after all, made below as it always was.
-        const inWords = command?.command !== 'clipping' && !!clippingAsked(words)
+        const before = docRef.current
+        // Words with footage or a link, or before there is an edit: Claude reads them first, for what to make.
+        const route =
+          !command && words && (recordingsIn.length > 0 || link || !before)
+            ? await readAsk(words, recordingsIn, link)
+            : null
+        if (!command && words && (recordingsIn.length > 0 || link || !before) && !route) return
+        if (route && (route.route === 'answer' || route.route === 'wait')) {
+          // Words for footage still to come are kept for it; a question about Cutalong is answered.
+          if (route.route === 'wait') waitingWords.current = words
+          push({
+            role: 'assistant',
+            text: [route.reply, route.question?.text ?? ''].filter(Boolean).join(' '),
+            actions: route.question?.options.map((o, i) => ({ kind: 'say' as const, label: o, payload: o, primary: i === 0 }))
+          })
+          return
+        }
+        if (route?.link === 'page' && link)
+          setMessages((ms) => ms.map((m) => (m.id === userId && m.link ? { ...m, link: { ...m.link, meta: 'A page to show' } } : m)))
+        // /clipping, or a long recording to cut clips from as Claude read it.
         const clipAsk =
           command?.command === 'clipping'
             ? command.rest
-            : inWords
+            : route?.route === 'clipping'
               ? words
               : recordingsIn.length > 0 && !text.trim()
                 ? clipping.takePending()
                 : null
-        if (clipAsk !== null && (await clipping.run(attachments, clipAsk, inWords))) return
+        if (
+          clipAsk !== null &&
+          (await clipping.run(attachments, clipAsk, route?.route === 'clipping', route?.route === 'clipping' ? route.clip : undefined))
+        )
+          return
         const recordings = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
         const stills = attachments.filter((a) => isImagePath(a.name))
         const materialBefore = docRef.current?.assets.length ?? 0
         // A day of clips to tell as a story (useVlog): every clip is material with its own sound.
-        const vlogged = vlog.wanted(said, command?.command ?? null, recordings)
+        const vlogged = vlog.wanted(command?.command ?? null, recordings, route?.route === 'vlog')
         if (vlogged && (await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words))) {
           // Its story is made in main; whatever the brand never uses comes out as the next version.
           const made = docRef.current
           if (made && stripDoc(made, neverOf(brandNow().id)).ops.length > 0) stripNever('thread')
-        }
-        else if (recordings.length > 0) await takeIn(recordings, said)
+        } else if (recordings.length > 0) await takeIn(recordings, said)
+        // The edit began with this message: its words shape the version it was made with.
+        const started = !before && docRef.current !== null && !vlogged
         if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
         if (stills.length > 0) {
           if (docRef.current) await addMaterial(stills)
@@ -3443,23 +3678,21 @@ export function useCutalong() {
         }
         let asked = false
         if (link && command?.command !== 'screenshot' && command?.command !== 'phone') {
-          // A link with a time, an image link, or one called B-roll is
-          // material; any other video link is something to learn a style from.
+          // What a link is for, as Claude read the words with it; a link alone with a time, or a picture, is material.
           const range = parseRange(text)
-          const material =
-            docRef.current !== null &&
-            (range !== null ||
-              isImageUrl(link) ||
-              /\b(b-?roll|cutaway|clip|insert|overlay|use this|cut to)\b/i.test(words))
-          // A page asked to be shown is captured, then placed on the words it goes with.
-          const page = docRef.current !== null && !material && SHOW_PAGE.test(words)
-          if (page) {
+          const how =
+            route?.link && route.link !== 'none'
+              ? route.link
+              : docRef.current !== null && (range !== null || isImageUrl(link))
+                ? 'material'
+                : 'study'
+          if (how === 'page' && docRef.current) {
             const shot = await capturePage(link, 'thread')
             if (shot) {
-              await ask(`${words}\nThe page at that link is captured as ${shot.asset.id}.`)
+              await planWords(`${words}\nThe page at that link is captured as ${shot.asset.id}.`)
               asked = true
             }
-          } else if (material) await bringIn({ url: link, range }, words)
+          } else if (how === 'material' && docRef.current) await bringIn({ url: link, range }, words)
           else await studyLink(link)
         }
         // Material from this message the cut does not show yet.
@@ -3477,33 +3710,11 @@ export function useCutalong() {
             // Answered: the channel never uses it, and how to change that.
           } else if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
           else if (unplaced()) await ask(PLACE_MATERIAL)
-        } else if (vlogged) {
-          // What was said with the shoot was for its story.
-        } else if (text && !link && attachments.length === 0 && (await vlog.asked(text))) {
-          // An edit made into a vlog, a vlog told again, or its clips waited for (useVlog).
-        } else if (text && !link && (docRef.current || attachments.length === 0)) {
-          // Whatever was said with the files is the ask: the planner sees
-          // the footage as sorted and places the material with it. A word
-          // about takes ("use the second take") is answered here, without it,
-          // and so is a rule for the brand's never list ("never use whooshes"),
-          // whose other words, if any, still go to the planner.
-          const rule = readNever(text)
-          const ruled =
-            attachments.length === 0 &&
-            (await answerNever(rule, text, (reply, extra) => push({ role: 'assistant', text: reply, ...extra })))
-          const said = ruled ? rule.rest : text
-          const local =
-            ruled ||
-            (attachments.length === 0 &&
-              answerTakes(text, (reply, done) =>
-                push({
-                  role: 'assistant',
-                  text: reply,
-                  actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
-                })
-              ))
-          if (!local) await ask(text)
-          else if (ruled && said.trim() && docRef.current) await ask(said)
+        } else if (vlogged || route?.route === 'clipping') {
+          // What was said with the shoot was for its story, or for the clips.
+        } else if (words && !asked && docRef.current && (!link || route?.link === 'none' || !route?.link)) {
+          // Whatever was said is the ask, a sentence or a whole prompt: Claude reads it, with the footage as sorted.
+          await planWords(words, { first: started })
         } else if (unplaced() && !asked) {
           await ask(PLACE_MATERIAL)
         }
@@ -3513,8 +3724,6 @@ export function useCutalong() {
     },
     [
       addMaterial,
-      answerNever,
-      answerTakes,
       ask,
       brandNow,
       bringIn,
@@ -3522,9 +3731,12 @@ export function useCutalong() {
       ensureProject,
       neverOf,
       persist,
+      planWords,
       push,
+      readAsk,
       ruledCommand,
       runCommand,
+      stopped,
       stripNever,
       studyLink,
       takeIn,
@@ -3592,6 +3804,14 @@ export function useCutalong() {
 
   const onAction = useCallback(
     (a: Action): void => {
+      if (a.kind === 'setup-key') {
+        setScreen('start')
+        return
+      }
+      if (a.kind === 'say' && a.payload) {
+        void submit(a.payload, [])
+        return
+      }
       if (a.kind === 'open-editor') setScreen('editor')
       else if (a.kind === 'open-settings') setScreen('settings')
       else if (a.kind === 'use-style') useStyle()
@@ -3646,46 +3866,15 @@ export function useCutalong() {
   const applyNotes = useCallback(async (): Promise<void> => {
     const d = docRef.current
     if (!d) return
-    let notes = openNotes(d)
-    if (notes.length === 0) return
-    // Notes that all ask of a vlog's story tell it again (useVlog); the planner takes the rest.
-    const told = await vlog.fromNotes(notes)
-    if (told) {
-      const latest = docRef.current
-      if (latest && told.length) setDoc(setNoteStatus(latest, told, 'applied'))
+    if (!gateOpen(keyRef.current)) {
+      stopped('notes', 'panel')
       return
     }
-    // A length, the intro or every line kept is cut here as a version of its own (shared/raw/length).
-    // A note left on a picked stretch is not the whole video's: the planner takes it, held to the stretch.
+    let notes = openNotes(d)
+    if (notes.length === 0) return
     let lead = ''
-    if (!d.vlog) {
-      const lengths = notes.flatMap((n) => {
-        const asked = n.range ? null : parseLengthAsk(n.text)
-        return asked ? [{ note: n, asked }] : []
-      })
-      if (lengths.length > 0) {
-        const text = lengths.map((l) => l.note.text.trim().replace(/[.!?]+$/, '')).join('. ')
-        const r = await lengthAsked(mergeLengthAsks(lengths.map((l) => l.asked)), text, 'panel')
-        // Done when the length is so, by this version or already, for a note that asked nothing else.
-        const done = r.n !== null || r.met
-        const ids = lengths.filter((l) => !l.asked.rest).map((l) => l.note.id)
-        const latest = docRef.current
-        if (latest && done && ids.length) setDoc(setNoteStatus(latest, ids, 'applied'))
-        rememberNotes(docRef.current, done ? ids : [], 'applied', r.n)
-        // What else a note asked ("and add captions") goes on to the planner as that note.
-        const rest = new Map(lengths.flatMap((l) => (l.asked.rest ? [[l.note.id, l.asked.rest] as const] : [])))
-        const cut = new Set(lengths.map((l) => l.note.id))
-        notes = notes.flatMap((n) => {
-          const more = rest.get(n.id)
-          return more ? [{ ...n, text: more }] : cut.has(n.id) ? [] : [n]
-        })
-        if (notes.length === 0 || docRef.current?.id !== d.id) return
-        lead = `${r.said} `
-      }
-    }
-    const now = docRef.current ?? d
     // A note on a stretch that is all cut out since is about nothing the cut plays: it stays as it is.
-    const gone = notes.filter((n) => n.range && noteBeats(currentCut(now), n.range).length === 0)
+    const gone = notes.filter((n) => n.range && noteBeats(currentCut(d), n.range).length === 0)
     if (gone.length > 0) {
       notes = notes.filter((n) => !gone.includes(n))
       lead += `${gone.length === 1 ? 'One note is on a stretch that is no longer in the cut, so I left it as it is.' : `${gone.length} notes are on stretches no longer in the cut, so I left them as they are.`} `
@@ -3695,63 +3884,58 @@ export function useCutalong() {
       }
     }
     // Notes all left on stretches picked on the strip: the plan is held to them, or what is left of them (shared/edit/range).
-    const picks = notes.map((n) => noteBeats(currentCut(now), n.range))
+    const picks = notes.map((n) => noteBeats(currentCut(d), n.range))
     const held = picks.every((p) => p.length > 0) ? [...new Set(picks.flat())] : null
-    const heldSpan = held ? rangeTimes(resolveCut(currentCut(now), now.words, now.sources), held) : null
-    setPanel({
-      text: '',
-      progress: { stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: null },
-      since: Date.now()
-    })
-    const r = await during(() => api.planEdit({ doc: now, request: '', notes, voice: brandNow().voice }))
+    const heldSpan = held ? rangeTimes(resolveCut(currentCut(d), d.words, d.sources), held) : null
+    const since = Date.now()
+    const thinking = { stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: null }
+    setPanel({ text: '', progress: thinking, since })
+    // Claude reads every note, a word or a whole prompt, and plans them as one version.
+    const r = await during(() =>
+      api.planEdit({ doc: d, request: '', notes, voice: brandNow().voice, ...planContext('') })
+    )
     // The answer is about this edit; should another be open by now, it is not applied to that one.
     if (docRef.current?.id !== d.id) return
     if (!r.ok) {
+      noteKey(r.keyState)
       setPanel({ text: `${lead}${r.message}`, error: true })
       return
     }
-    let ops = r.ops
-    let outside = 0
-    if (held) {
-      const latest = docRef.current ?? now
-      const split = opsInside(currentCut(latest), r.ops, held, {
-        words: latest.words,
-        sources: latest.sources,
-        assets: latest.assets
-      })
-      ops = split.inside
-      outside = split.outside.length
-    }
     const name = heldSpan ? rangeName(heldSpan) : null
     scope.current = held && name ? { beats: held, name, always: true } : null
-    // With some of the plan left out, the planner's summary says more than was done: the version says what was.
-    const done = ops.length > 0 ? applyAsVersion(ops, outside > 0 ? 'I made the changes that stay inside it.' : r.summary) : null
-    scope.current = null
+    let done: Awaited<ReturnType<typeof carryPlan>>
+    try {
+      done = await during(() =>
+        carryPlan(r, 'panel', {
+          said: notes.map((n) => n.text.trim().replace(/[.!?]+$/, '')).join('. '),
+          notes,
+          held,
+          onWork: (p) => setPanel({ text: '', progress: p ?? thinking, since })
+        })
+      )
+    } finally {
+      scope.current = null
+    }
+    if (docRef.current?.id !== d.id) return
     // Every change reached outside the stretch: nothing is done, so the notes stay open and the reply says why.
-    const allOutside = !!name && outside > 0 && ops.length === 0
+    const allOutside = !!name && done.outside > 0 && done.n === null
     const handled = allOutside ? [] : r.notesHandled
     const latest = docRef.current
     if (latest && handled.length) setDoc(setNoteStatus(latest, handled, 'applied'))
-    rememberNotes(docRef.current, handled, 'applied', done?.n ?? null)
+    rememberNotes(docRef.current, handled, 'applied', done.n)
     const leftOut =
-      outside > 0 && name && !allOutside
-        ? outside === 1
+      done.outside > 0 && name && !allOutside
+        ? done.outside === 1
           ? `I left out one change that reached outside ${name}.`
-          : `I left out ${outside} changes that reached outside ${name}.`
+          : `I left out ${done.outside} changes that reached outside ${name}.`
         : ''
-    // The version's own summary already carries any notice.
-    const extra = [leftOut, ...r.needs, ...r.rejected, outside > 0 ? '' : (done?.notice ?? '')]
-      .map((t) => sentence(t))
-      .filter(Boolean)
-      .join(' ')
-    const summary = done && outside > 0 ? done.summary : name ? leadWith(name, r.summary) : r.summary
-    const reply = allOutside ? `I left the edit as it was: what the plan changed reached outside ${name}.` : r.reply
+    const reply = allOutside ? `I left the edit as it was: what the plan changed reached outside ${name}.` : done.reply.text
+    const extra = [leftOut, done.reply.aside ?? ''].map((t) => sentence(t)).filter(Boolean).join(' ')
     setPanel({
-      text: done
-        ? `${lead}v${done.n} is ready. ${summary}${extra ? ` ${extra}` : ''}`
-        : `${lead}${reply}${extra ? ` ${extra}` : ''}`
+      text: `${lead}${reply}${extra ? ` ${extra}` : ''}`,
+      actions: done.reply.actions.filter((a) => a.kind === 'say' || a.kind === 'setup-key')
     })
-  }, [applyAsVersion, during, lengthAsked, setDoc, vlog])
+  }, [applyAsVersion, brandNow, carryPlan, during, noteKey, planContext, setDoc, stopped])
 
   const applyOpsDirect = useCallback(
     (ops: Op[], fallback: string): void => {
@@ -3783,6 +3967,10 @@ export function useCutalong() {
   const exportFinal = useCallback(async (): Promise<void> => {
     const d = docRef.current
     if (!d) return
+    if (!gateOpen(keyRef.current)) {
+      stopped('export', 'panel')
+      return
+    }
     const n = currentVersion(d).n
     // A second export waits for the first, Export all's included: both report on one channel.
     const wait = exportWait(exportingNow.current, { kind: 'version', n })
@@ -3829,6 +4017,54 @@ export function useCutalong() {
     }
   }, [during, patch, push])
 
+  /** Checks the Anthropic key with Anthropic, for the gate and the setup screen. */
+  const checkClaudeKey = useCallback(async (): Promise<ClaudeKeyStatus> => {
+    const was = keyRef.current
+    setKey({ ...keyStatus('checking'), confirmed: was.confirmed })
+    const r = await api.checkKey()
+    const next: ClaudeKeyStatus = r.ok ? keyStatus('ok', true) : { state: r.state, message: r.message, confirmed: r.confirmed }
+    keyRef.current = next
+    setKey(next)
+    return next
+  }, [])
+  useEffect(() => {
+    void checkClaudeKey()
+  }, [checkClaudeKey])
+
+  /** Saves a pasted key and checks it; a key plainly from another company is turned away first. */
+  const saveClaudeKey = useCallback(
+    async (draft: string): Promise<ClaudeKeyStatus> => {
+      const pasted = draft.trim()
+      const from = detectProvider(pasted)
+      if (from === 'openai' || from === 'google') {
+        const next = keyStatus('wrong', false, pasted)
+        keyRef.current = next
+        setKey(next)
+        return next
+      }
+      try {
+        await api.setApiKey(pasted)
+      } catch (err) {
+        const next: ClaudeKeyStatus = { ...keyStatus('unreadable'), message: err instanceof Error ? err.message : String(err) }
+        keyRef.current = next
+        setKey(next)
+        return next
+      }
+      return checkClaudeKey()
+    },
+    [checkClaudeKey]
+  )
+
+  const removeClaudeKey = useCallback(async (): Promise<void> => {
+    await api.clearApiKey()
+    const next = keyStatus('none')
+    keyRef.current = next
+    setKey(next)
+  }, [])
+
+  exportRef.current = exportFinal
+  undoRef.current = undo
+
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
     if (isWorking()) {
@@ -3856,32 +4092,6 @@ export function useCutalong() {
     setScreen('start')
     refreshRecent()
   }, [refreshRecent, setChatChoice])
-
-  /**
-   * For the notes panel: a takes sentence, or a rule for the brand's never
-   * list, typed as a note is answered, not stored. Whatever else the note
-   * asks for ("never use whooshes and keep the hook short") is kept as a
-   * note of its own.
-   */
-  const answerInPanel = useCallback(
-    (text: string, keep?: (rest: string) => void): boolean => {
-      const rule = readNever(text)
-      if (rule.never.length > 0 || rule.allow.length > 0) {
-        const target = brandNow()
-        const list = neverOf(target.id)
-        const allows = rule.allow.some((a) => covering(list, a) || list.some((e) => e.startsWith(`${a}:`)))
-        if (rule.never.length > 0 || allows) {
-          void answerNever(rule, text, (reply, extra) =>
-            setPanel({ text: [reply, extra?.aside ?? ''].filter(Boolean).join(' ') })
-          )
-          if (rule.rest.trim()) keep?.(rule.rest)
-          return true
-        }
-      }
-      return answerTakes(text, (reply) => setPanel({ text: reply }))
-    },
-    [answerNever, answerTakes, brandNow, neverOf]
-  )
 
   return {
     /** The brand on the Brand page. */
@@ -3932,9 +4142,14 @@ export function useCutalong() {
     switchTake,
     offers,
     acceptOffers,
-    answerInPanel,
     undo,
     exportFinal,
+    /** The Anthropic key, as the gate and the setup screen read it. */
+    claudeKey: key,
+    gateOpen: gateOpen(key),
+    checkClaudeKey,
+    saveClaudeKey,
+    removeClaudeKey,
     graphic,
     selectGraphic: setGraphic,
     updateGraphic,

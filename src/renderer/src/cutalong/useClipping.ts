@@ -9,6 +9,7 @@ import {
   markExported,
   setKept,
   toExport,
+  type ClipAsk,
   type ClipSet
 } from '../../../shared/clipping'
 import { sentence } from '../../../shared/edit'
@@ -163,10 +164,12 @@ export function useClipping(deps: ClippingDeps) {
    *
    * Asked in words ("turn this into shorts") rather than with /clipping, it
    * takes the request only when there is long footage to clip, and answers
-   * false otherwise, so a short is edited the way it always was.
+   * false otherwise, so a short is edited the way it always was. Claude reads
+   * those words first, and `asked` is what it read in them: how many, how
+   * long, the funny parts, a topic.
    */
   const run = useCallback(
-    async (files: Attachment[], ask: string, words = false): Promise<boolean> => {
+    async (files: Attachment[], ask: string, words = false, asked?: ClipAsk): Promise<boolean> => {
       const { push, patch } = d.current
       const dropped = recordingsOf(files)
       const own = d.current.docRef.current && !isClip(d.current.docRef.current) ? d.current.docRef.current : null
@@ -201,7 +204,14 @@ export function useClipping(deps: ClippingDeps) {
       let r: Awaited<ReturnType<typeof api.findClips>>
       try {
         r = await d.current.during(() =>
-          api.findClips({ paths, ask, known, avoid: avoidRanges(current()), brand: d.current.brand?.() ?? null })
+          api.findClips({
+            paths,
+            ask,
+            ...(asked ? { asked } : {}),
+            known,
+            avoid: avoidRanges(current()),
+            brand: d.current.brand?.() ?? null
+          })
         )
       } finally {
         off()
