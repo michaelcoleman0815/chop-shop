@@ -47,7 +47,8 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
 - **Any shape of picture.** A phone clip held upright in a wide video, a still, or a screen recording that a crop would
   cut to a sliver is shown whole on a blurred, darker copy of itself, in the preview and the export alike. Wide footage
   in a vertical video still fills the frame, as Shorts and Reels expect. `/fill blur` puts every picture of another
-  shape on a blurred copy, "use black bars" (`/fill black`) gives plain bars, and `/fill crop` crops them all.
+  shape on a blurred copy, "use black bars" (`/fill black`) gives plain bars, and `/fill crop` crops them all. An edit
+  saved before this keeps the crop it had until `/fill auto` asks for the rest.
 - **Motion graphics the way After Effects does.** Lower thirds, callouts, keyword pops, kinetic titles, hook banners,
   end cards, logos, market charts, screenshots of a page and a phone with logos going round it, each a slash command
   (`/lowerthird`, `/callout`, `/pop`, `/title`, …) that lands on the word you are watching.

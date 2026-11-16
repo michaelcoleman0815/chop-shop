@@ -1,5 +1,6 @@
 import { addMotion, removeMotion, updateMotion, type MotionOpContext, type MotionResult } from '../motion/apply'
 import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
+import { fillMode } from './fill'
 import { mergeLook } from './look'
 import type { Sfx } from './sfx'
 import { indexWords, type WordIndex } from './resolve'
@@ -441,11 +442,9 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       return op.on ? { ...rest, reframe: true } : rest
     }
 
-    case 'fill': {
-      // Auto is what an edit does when it says nothing.
-      const { fill: _was, ...rest } = cut
-      return op.mode === 'auto' ? rest : { ...rest, fill: op.mode }
-    }
+    case 'fill':
+      // Said outright, auto too: a cut that says nothing was made before the fill, and is cropped.
+      return fillMode(cut) === op.mode ? cut : { ...cut, fill: op.mode }
 
     case 'framing': {
       const beats = [...cut.beats]

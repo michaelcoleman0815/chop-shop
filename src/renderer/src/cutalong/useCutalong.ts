@@ -2107,9 +2107,9 @@ export function useCutalong() {
           ? 'crop'
           : /^(blur|blurred|on|all)$/.test(words)
             ? 'blur'
-            : /^(auto|default|as before|reset)$/.test(words)
+            : /^(auto|default|reset)$/.test(words)
               ? 'auto'
-              : fillAsked(words)
+              : fillAsked(words, fillMode(currentCut(d)))
       if (!mode) {
         const now = fillMode(currentCut(d))
         const n = new Set(filledIn(d).map((p) => p.key)).size
@@ -2732,8 +2732,8 @@ export function useCutalong() {
         say(set.reply, false)
         return true
       }
-      // "Use black bars", "blur the sides", "crop them to fill the frame" (edit/fill).
-      const fill = fillAsked(text)
+      // "Use black bars", "blur the sides", "crop them to fill the frame", "remove the black bars" (edit/fill).
+      const fill = fillAsked(text, fillMode(currentCut(d)))
       if (fill) {
         const done = applyAsVersion([{ op: 'fill', mode: fill }], 'Pictures of another shape fill the frame another way.')
         say(done ? `v${done.n} is ready. ${done.summary}` : 'That is already how pictures of another shape fill the frame.', !!done)

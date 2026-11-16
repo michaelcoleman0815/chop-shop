@@ -140,7 +140,9 @@ export function createDoc(input: {
     captions: { ...DEFAULT_CAPTIONS },
     aspect: first.height > first.width ? 'vertical' : 'original',
     loudness: DEFAULT_LOUDNESS,
-    motion: []
+    motion: [],
+    // Said outright: an edit that says nothing was made before the fill, and keeps its crop.
+    fill: 'auto'
   }
   return {
     v: 1,

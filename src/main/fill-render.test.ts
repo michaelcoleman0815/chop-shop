@@ -22,8 +22,9 @@ import { ffmpegRun, findFfmpeg, frameColour, makeClip, type Rgb } from './test-m
  * itself, or between black bars, or cropped as before; a wide talking
  * recording made vertical stays cropped to the speaker, and so does a wide
  * cutaway unless the edit asks for blur or it is a screen recording, when it
- * is filled above and below; a phone clip stored on its side, an HDR clip and
- * a cut rendered in passes are filled the same way.
+ * is filled above and below; a phone clip stored on its side, an HDR clip, a
+ * cut rendered in passes and a beat punched in and in black and white are
+ * filled the same way; and an edit saved before the fill is cropped as it was.
  *
  * The clips are a gradient: red rising left to right, green top to bottom,
  * blue at half. Where a frame's colour comes from in the picture says how it
@@ -305,5 +306,54 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     const wideAt = frameColour(ffmpeg, out, resolved.beats[3].outStart + 0.5, { x: 0, y: 0.4, w: 0.04, h: 0.2 })
     expect(wideAt[0]).toBeLessThan(20)
     expect(wideAt[1]).toBeGreaterThan(70)
+  })
+
+  it('keeps black and white on the copy through a punch-in, a reverse, a speed change and dissolves', async () => {
+    const words = wordsFromTranscript(
+      [
+        { text: 'This', startSec: 0.3, endSec: 0.6 },
+        { text: 'is', startSec: 0.7, endSec: 0.9 },
+        { text: 'it.', startSec: 1.0, endSec: 1.4 }
+      ],
+      's1'
+    )
+    const doc = createDoc({ id: 'd', title: 'T', sources: [wide, tall], words })
+    const r = applyOps(
+      currentCut(doc),
+      [
+        { op: 'loudness', lufs: null },
+        { op: 'insert', to: 1, beat: { source: 's2', inSec: 0.2, outSec: 1.4, treatment: { zoom: 1.2, bw: true } } },
+        { op: 'insert', to: 2, beat: { source: 's2', inSec: 1.5, outSec: 2.5 } },
+        { op: 'insert', to: 3, beat: { source: 's2', inSec: 1.0, outSec: 2.0 } },
+        { op: 'reverse', beats: ['b3'], on: true },
+        { op: 'speed', beats: ['b4'], speed: 2 },
+        { op: 'transition', beats: ['b2', 'b3', 'b4'], kind: 'dissolve', sec: 0.3 }
+      ],
+      { words: doc.words, sources: doc.sources }
+    )
+    expect(r.rejected).toEqual([])
+    const resolved = resolveCut(r.cut, doc.words, doc.sources)
+    const out = await render(doc, r.cut, 'combined', doc.sources)
+    const zoomed = resolved.beats[1]
+    const side = frameColour(ffmpeg, out, (zoomed.outStart + zoomed.outEnd) / 2, { x: 0, y: 0.4, w: 0.08, h: 0.2 })
+    expect(Math.max(...side) - Math.min(...side)).toBeLessThan(12)
+    expect(Math.max(...side)).toBeGreaterThan(40)
+  })
+
+  it('crops an upright clip as it always did in an edit saved before the fill existed', async () => {
+    const { doc, cut } = uprightIn()
+    const { fill: _none, ...saved } = cut
+    const resolved = resolveCut(saved, doc.words, doc.sources)
+    const rs: RenderSource[] = doc.sources.map((s) => ({ ...s, hasAudio: true }))
+    expect(cameraSegments(saved, resolved, rs, new Map(), true, { width: 320, height: 180 }).map((s) => s.fill)).toEqual(
+      resolved.beats.map(() => undefined)
+    )
+    const out = await render(doc, saved, 'upright-saved', doc.sources)
+    // The middle band, as a crop shows it: green from about 87 to 168 top to bottom, and nothing beside it.
+    const top = frameColour(ffmpeg, out, 4.5, { x: 0.45, y: 0, w: 0.1, h: 0.04 })
+    const left = frameColour(ffmpeg, out, 4.5, { x: 0, y: 0.4, w: 0.04, h: 0.2 })
+    expect(top[1]).toBeGreaterThan(70)
+    expect(top[1]).toBeLessThan(110)
+    expect(left[0]).toBeLessThan(20)
   })
 })

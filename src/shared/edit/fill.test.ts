@@ -7,7 +7,9 @@ import {
   backdropSize,
   cutawayFit,
   fillAsked,
+  filledIn,
   filledPictures,
+  fillMode,
   fillNotice,
   fitFor,
   frameShape,
@@ -15,10 +17,12 @@ import {
   screenRecording,
   type FitInput
 } from './fill'
-import { DEFAULT_TREATMENT, type Beat, type Source } from './schema'
+import { DEFAULT_TREATMENT, type Beat, type Cut, type EditDoc, type Source } from './schema'
 
 const WIDE = { width: 1920, height: 1080 }
 const TALL = { width: 1080, height: 1920 }
+/** What a new edit asks for when it is made. */
+const AUTO = { fill: 'auto' as const }
 const base: FitInput = {
   mode: 'auto',
   picture: null,
@@ -128,34 +132,34 @@ describe('which beats show a picture whole', () => {
   })
 
   it('reads the beat: a cutaway or a split shows something else, and a box or side camera keeps its layout', () => {
-    expect(pictureFit({}, beat(), TALL, WIDE)).toBe('blur')
-    expect(pictureFit({}, beat({ from: 'w1', to: 'w2' }), WIDE, TALL)).toBe('cover')
+    expect(pictureFit(AUTO, beat(), TALL, WIDE)).toBe('blur')
+    expect(pictureFit(AUTO, beat({ from: 'w1', to: 'w2' }), WIDE, TALL)).toBe('cover')
     // What is talked over a screen recording is shown whole by its name.
     const screen = { ...WIDE, path: '/Desktop/Screen Recording 2026-11-11 at 09.10.00.mov' }
-    expect(pictureFit({}, beat({ from: 'w1', to: 'w2' }), screen, TALL)).toBe('blur')
+    expect(pictureFit(AUTO, beat({ from: 'w1', to: 'w2' }), screen, TALL)).toBe('blur')
     const broll = { path: '/b.mp4', inSec: 0, muted: true }
-    expect(pictureFit({}, beat({ treatment: { ...DEFAULT_TREATMENT, frame: 'broll', broll } }), TALL, WIDE)).toBe(
+    expect(pictureFit(AUTO, beat({ treatment: { ...DEFAULT_TREATMENT, frame: 'broll', broll } }), TALL, WIDE)).toBe(
       'cover'
     )
     expect(
-      pictureFit({}, beat({ treatment: { ...DEFAULT_TREATMENT, angle: { source: 's2', layout: 'pip' } } }), TALL, WIDE)
+      pictureFit(AUTO, beat({ treatment: { ...DEFAULT_TREATMENT, angle: { source: 's2', layout: 'pip' } } }), TALL, WIDE)
     ).toBe('cover')
     // Following the speaker only frames across, so an upright clip is still shown whole.
-    expect(pictureFit({ reframe: true }, beat(), { ...WIDE, subject: { hz: 2, x: [] } }, TALL)).toBe('cover')
-    expect(pictureFit({ reframe: true }, beat(), { ...TALL, subject: { hz: 2, x: [] } }, WIDE)).toBe('blur')
+    expect(pictureFit({ ...AUTO, reframe: true }, beat(), { ...WIDE, subject: { hz: 2, x: [] } }, TALL)).toBe('cover')
+    expect(pictureFit({ ...AUTO, reframe: true }, beat(), { ...TALL, subject: { hz: 2, x: [] } }, WIDE)).toBe('blur')
   })
 
   it('reads a cutaway over the whole frame, a still and a screen by their own rules, and leaves a card and a split alone', () => {
     const on = (frame: 'broll' | 'split' | 'card', path = '/b.mp4'): Beat =>
       beat({ treatment: { ...DEFAULT_TREATMENT, frame, broll: { path, inSec: 0, muted: true } } })
     // A wide clip cut to in a vertical edit fills it; on blur it is shown whole.
-    expect(cutawayFit({}, on('broll'), WIDE, TALL)).toBe('cover')
+    expect(cutawayFit(AUTO, on('broll'), WIDE, TALL)).toBe('cover')
     expect(cutawayFit({ fill: 'blur' }, on('broll'), WIDE, TALL)).toBe('blur')
-    expect(cutawayFit({}, on('broll', '/Screen Recording 2026-11-11 at 09.10.00.mov'), WIDE, TALL)).toBe('blur')
-    expect(cutawayFit({}, on('broll', '/p.jpg'), WIDE, TALL)).toBe('blur')
-    expect(cutawayFit({}, on('split'), WIDE, TALL)).toBe('cover')
-    expect(cutawayFit({}, on('card'), WIDE, TALL)).toBe('cover')
-    expect(cutawayFit({}, on('broll', '/p.jpg'), { width: 1000, height: 1000 }, WIDE)).toBe('blur')
+    expect(cutawayFit(AUTO, on('broll', '/Screen Recording 2026-11-11 at 09.10.00.mov'), WIDE, TALL)).toBe('blur')
+    expect(cutawayFit(AUTO, on('broll', '/p.jpg'), WIDE, TALL)).toBe('blur')
+    expect(cutawayFit(AUTO, on('split'), WIDE, TALL)).toBe('cover')
+    expect(cutawayFit(AUTO, on('card'), WIDE, TALL)).toBe('cover')
+    expect(cutawayFit(AUTO, on('broll', '/p.jpg'), { width: 1000, height: 1000 }, WIDE)).toBe('blur')
     expect(cutawayFit({ fill: 'black' }, on('broll'), WIDE, TALL)).toBe('black')
   })
 })
@@ -166,13 +170,12 @@ describe('the fill as an op, a reply and a sentence', () => {
   const doc = createDoc({ id: 'd', title: 'Day', sources: [wide, tall], words: [] })
   const context = { words: doc.words, sources: doc.sources }
 
-  it('is auto when an edit says nothing, and an op sets blur, black bars or the crop', () => {
+  it('is auto for a new edit, said outright, and an op sets blur, black bars or the crop', () => {
     const cut = currentCut(doc)
-    expect(cut.fill).toBeUndefined()
+    expect(cut.fill).toBe('auto')
     const black = applyOps(cut, [{ op: 'fill', mode: 'black' }], context).cut
     expect(black.fill).toBe('black')
     expect(applyOps(cut, [{ op: 'fill', mode: 'blur' }], context).cut.fill).toBe('blur')
-    // Auto again is no field at all, so an edit asked for the default matches one that never asked.
     expect(applyOps(black, [{ op: 'fill', mode: 'auto' }], context).cut).toEqual(cut)
     const r = resolveCut(cut, doc.words, doc.sources)
     expect(describePlan([{ op: 'fill', mode: 'black' }], r, r, black)).toBe(
@@ -228,11 +231,85 @@ describe('the fill as an op, a reply and a sentence', () => {
   it('hears asks about bars and blur, and nothing else', () => {
     expect(fillAsked('use black bars')).toBe('black')
     expect(fillAsked('Use black bars instead.')).toBe('black')
-    expect(fillAsked('no blur')).toBe('black')
+    expect(fillAsked('put them between black bars, please')).toBe('black')
+    expect(fillAsked('letterbox it')).toBe('black')
     expect(fillAsked('blur the sides again')).toBe('blur')
+    expect(fillAsked('use a blurred background')).toBe('blur')
     expect(fillAsked('crop them to fill the frame')).toBe('crop')
     expect(fillAsked('fill the frame')).toBe('crop')
+    expect(fillAsked('no bars')).toBe('crop')
     expect(fillAsked('make the hook punchier')).toBeNull()
     expect(fillAsked('put the black bars line from the intro on a card after the part about the camera')).toBeNull()
+  })
+
+  it('never hears black bars in asking them away, nor the fill in a blur or a frame that is about something else', () => {
+    // Away with the bars: back to what a new edit does when this one has them, and the planner's to read otherwise.
+    for (const text of ['remove the black bars', 'get rid of the black bars', 'no black bars please', 'I hate the black bars']) {
+      expect(fillAsked(text), text).toBeNull()
+      expect(fillAsked(text, 'black'), text).toBe('auto')
+    }
+    expect(fillAsked("don't use black bars", 'black')).toBe('auto')
+    // A no or a not that is not the bars says what is not wanted, not what is.
+    expect(fillAsked('no blur')).toBeNull()
+    expect(fillAsked("don't blur the sides")).toBeNull()
+    expect(fillAsked('not black bars, crop them')).toBeNull()
+    // Blurring what is behind the speaker, a logo filling the frame: not the fill.
+    expect(fillAsked('blur the background behind me')).toBeNull()
+    expect(fillAsked('blur the background')).toBeNull()
+    expect(fillAsked('make the logo fill the frame')).toBeNull()
+    expect(fillAsked('crop the logo to fill')).toBeNull()
+    // More besides the fill is the planner's too.
+    expect(fillAsked('use black bars and add captions')).toBeNull()
+  })
+})
+
+describe('an edit saved before the fill existed', () => {
+  const wide: Source = { id: 's1', path: '/talk.mov', durationSec: 40, width: 1920, height: 1080, fps: 30 }
+  const phone: Source = { id: 's2', path: '/phone.mov', durationSec: 10, width: 1080, height: 1920, fps: 30 }
+  const photo = {
+    id: 'a1',
+    kind: 'image' as const,
+    path: '/photo.jpg',
+    title: 'photo',
+    durationSec: null,
+    width: 4032,
+    height: 3024,
+    origin: { type: 'file' as const, url: null, author: null, license: null, range: null }
+  }
+
+  /** A cut as the build before the fill saved it: a phone clip put in by seconds, a 4:3 photo as a cutaway, and no fill. */
+  const saved = (): { doc: EditDoc; cut: Cut } => {
+    const made = createDoc({ id: 'd', title: 't', sources: [wide, phone], words: [] })
+    const { fill: _none, ...before } = applyOps(
+      currentCut(made),
+      [
+        { op: 'insert', to: 1, beat: { source: 's2', inSec: 1, outSec: 3 } },
+        { op: 'treat', beats: ['b1'], set: { frame: 'broll', broll: { path: '/photo.jpg', inSec: 0, muted: true } } }
+      ],
+      { words: made.words, sources: made.sources, assets: [photo] }
+    ).cut
+    const doc = { ...made, assets: [photo], versions: [{ ...made.versions[0], cut: before }] } as EditDoc
+    return { doc, cut: before }
+  }
+
+  it('crops its upright clip and its photo as it always did, and never says it showed them whole', () => {
+    const { doc, cut } = saved()
+    expect(cut.fill).toBeUndefined()
+    expect(fillMode(cut)).toBe('crop')
+    const frame = frameShape(cut.aspect, wide)
+    const phoneBeat = cut.beats.find((b) => b.source === 's2') as Beat
+    const photoBeat = cut.beats.find((b) => b.id === 'b1') as Beat
+    expect(pictureFit(cut, phoneBeat, phone, frame)).toBe('cover')
+    expect(cutawayFit(cut, photoBeat, { width: 4032, height: 3024 }, frame)).toBe('cover')
+    expect(filledIn(doc)).toEqual([])
+    // A version made on it keeps the crop, and says nothing about a fill.
+    const next = applyOps(cut, [{ op: 'treat', beats: ['b2'], set: { bw: true } }], { words: doc.words, sources: doc.sources }).cut
+    expect(next.fill).toBeUndefined()
+    expect(fillNotice(filledIn(doc), filledIn(doc, next), fillMode(next))).toBeNull()
+    // The crop asked of it again changes nothing; the fill a new edit has is there for the asking.
+    expect(applyOps(cut, [{ op: 'fill', mode: 'crop' }], { words: doc.words, sources: doc.sources }).cut).toBe(cut)
+    const auto = applyOps(cut, [{ op: 'fill', mode: 'auto' }], { words: doc.words, sources: doc.sources }).cut
+    expect(auto.fill).toBe('auto')
+    expect(pictureFit(auto, phoneBeat, phone, frame)).toBe('blur')
   })
 })

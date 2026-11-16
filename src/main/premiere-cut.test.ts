@@ -339,8 +339,8 @@ describe('a Premiere project from an edit, read back', () => {
   })
 
   it('fits a picture the export shows whole, and marks the blurred fill, which stays in Cutalong', () => {
-    // As the export plans it: the frame and the still's shape known, the edit asking for nothing, which shows a still whole.
-    const { fill: _bars, ...blurred } = cut
+    // As the export plans it: the frame and the still's shape known, the edit asking for what a new one does, which shows a still whole.
+    const blurred: typeof cut = { ...cut, fill: 'auto' }
     const segments = cameraSegments(blurred, resolved, sources, new Map([[still, { width: 1920, height: 1080 }]]), true, {
       width: 1080,
       height: 1920
