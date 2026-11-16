@@ -31,12 +31,22 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
 - **Learns how you edit.** Give it a recording and the video you made from it, and it learns the pauses you leave, the
   fillers you cut and the take you keep. From your chats it learns what you ask for again and again. Both stay on your
   Mac, and you can see, edit or forget anything it learned on the Brand page.
+- **Edits the way Premiere does.** Transitions (`/transition dissolve`, whip, push, wipe, dip), J and L cuts, speed,
+  ramps, freeze frames and reverse, camera moves (`/pushin`, `/kenburns`, `/punchin`, `/pan`, `/shake`) and `/focus`
+  for screen recordings. A music bed that dips under speech and cuts on its beat, voice polish, sound effects made on
+  your Mac, looks and LUTs (`/warm`, `/cinematic`, `/look contrast 0.2`), chapters for YouTube, a second camera
+  (`/angle`), and following the speaker when a wide shot is cropped to vertical (`/reframe`). Each one plays in the
+  preview the moment it exists, exactly as it exports. Where something does not fit, such as a dissolve between
+  words with no pause between them, it says so instead of pretending.
+- **Motion graphics the way After Effects does.** Lower thirds, callouts, keyword pops, kinetic titles, hook banners,
+  end cards, logos, market charts, screenshots of a page and a phone with logos going round it, each a slash command
+  (`/lowerthird`, `/callout`, `/pop`, `/title`, …) that lands on the word you are watching.
+- **Opens in Premiere.** `/premiere` writes the version as a Premiere project on your own files, with the better sound,
+  cutaways, punch-ins, music and effects on their tracks, captions as an SRT, and markers for what stays in Cutalong.
 - **Exports** with captions, logo and loudness set to -14 LUFS, rendered by ffmpeg.
 
-Premiere Pro and After Effects-level skills are being built now: transitions, J and L cuts, music that ducks under
-speech, voice polish, colour, speed ramps, camera moves and reframing, and keyframed motion graphics for titles,
-callouts and kinetic captions. [docs/rebuild.md](docs/rebuild.md) has the plan and
-[docs/research](docs/research/editing-skills.md) has the research behind the order.
+[docs/rebuild.md](docs/rebuild.md) has the plan and [docs/research](docs/research/editing-skills.md) has the research
+behind the order the skills were built in.
 
 ## What runs where
 
