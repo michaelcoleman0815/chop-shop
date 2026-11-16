@@ -85,7 +85,14 @@ def main():
             problems.append(f"{name}: {spec['output']} was not pulled off the phone")
             continue
         want = expect["renders"][name]
-        got = measure_output(path, spec)
+        try:
+            got = measure_output(path, spec)
+        except RuntimeError as e:
+            # A render that failed on the phone can leave a file nothing can read.
+            last = str(e).strip().splitlines()[-1]
+            print(f"FAIL  {name}: cannot be read: {last}")
+            problems.append(f"{name}: cannot be read: {last}")
+            continue
         bad = []
         gf, wf = got["facts"], want["facts"]
         if gf["bytes"] <= 0:
