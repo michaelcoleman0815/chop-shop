@@ -1,0 +1,1709 @@
+[
+  {
+    "id": "cold-open-hook",
+    "name": "Cold open on the first claim",
+    "category": "cut",
+    "description": "Drop everything before the first sentence that makes a claim, asks a question, states a number or promises a payoff, so speech starts on frame one; no logo, greeting or title-first open. Long-form: thesis spoken within ~10 s, brand sting only after a spoken tease.",
+    "evidence": {
+      "level": "measured",
+      "observedInThisRun": false,
+      "confidence": "high",
+      "note": "Measured on 23 videos with speech in this run (caption timing) and consistent with two published frame-level studies."
+    },
+    "prevalence": {
+      "videos": 23,
+      "of": 23,
+      "niches": [
+        "business-entrepreneur",
+        "education-explainer",
+        "tech-review",
+        "personal-finance",
+        "cooking",
+        "science"
+      ],
+      "shortsShare": 0.9565217391304348,
+      "estimatedShare": 0.95,
+      "basis": "measured in this run (25 videos, 23 with usable speech; caption timing): first word at <=0.4 s in 23/23 (<=0.25 s in 22/23), median 0.04 s, median 10 words in the first 3 s. Secondary: all 13 Shorts in the PandaStudio study reach speech/payoff within 2.5 s; first visual change ~1.9 s in 54 viral Shorts (Viibeo)."
+    },
+    "impact": 5,
+    "buildEffort": 1,
+    "priority": 47.5,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "strike/remove ops exist; needs a hook finder in the planner",
+    "params": {
+      "maxLeadInSec": 0.25,
+      "hookTypes": [
+        "claim",
+        "question",
+        "number",
+        "viewer-address",
+        "show-and-tell"
+      ],
+      "stripGreetings": true,
+      "captionsFromFrame0": true,
+      "longformThesisBySec": 10
+    },
+    "detect": "Word timings of the reference: first word onset, words spoken in the first 3 s (10 is the measured median), hook sentence type; scene detection for time to first visual change.",
+    "render": "No new rendering: strike/remove the lead-in words, then re-run tighten. Planner rule picks the first qualifying sentence.",
+    "acceptance": "Output first word onset <=0.25 s; first sentence classifies as claim/question/number/promise; no greeting tokens (\"hey guys\", \"welcome back\", \"in this video\") before it unless pinned by the creator; >=8 words in the first 3 s for talking-head Shorts.",
+    "examples": [
+      "https://www.youtube.com/watch?v=rWssyQD1uMw&t=0s (first word 0.00 s: the title is the first line)",
+      "https://www.youtube.com/watch?v=KdYlGRvja3M&t=0s (0.00 s, \"Here are the three numbers...\")",
+      "https://www.youtube.com/watch?v=8IUO_I9xuL4&t=0s (0.04 s)",
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/"
+    ]
+  },
+  {
+    "id": "end-on-payoff",
+    "name": "Hard stop after the payoff",
+    "category": "cut",
+    "description": "No outro, no \"follow for more\", no fade: Shorts end within a beat of the last payoff word or on a 1.5-2 s completed-state card; long-form speech runs to within ~6 s of the final frame.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Reported by one 22-video study."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "business-entrepreneur",
+        "podcast-clips",
+        "tech-review",
+        "education-explainer"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.85,
+      "basis": "Secondary: no outro in any of 22 measured top videos (PandaStudio law 7); MKBHD drops to 2-5 cuts in the last 30 s but keeps talking to 99% of runtime."
+    },
+    "impact": 3,
+    "buildEffort": 1,
+    "priority": 25.5,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "remove op exists; needs a rule",
+    "params": {
+      "tailSec": 0.3,
+      "endCardSec": [
+        0,
+        2
+      ],
+      "stripOutroPhrases": true
+    },
+    "detect": "Time from last word end to final frame; presence of outro phrases in the last 10 s of the transcript.",
+    "render": "remove trailing beats; optional end card via the existing title card frame.",
+    "acceptance": "Last word end to final frame <=0.5 s (or = endCardSec); no outro phrase in the final 10 s unless pinned.",
+    "examples": [
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/"
+    ]
+  },
+  {
+    "id": "alternating-punch-in",
+    "name": "Alternating punch-in crops on beat boundaries",
+    "category": "camera",
+    "description": "Each new idea-beat toggles between a wide and a tight framing (about 1.15x to 1.5x), centred on the face, so jump cuts read as escalation and a single camera fakes multi-cam coverage.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Reported by Hormozi and DOAC teardowns and editing guides."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "business-entrepreneur",
+        "podcast-clips",
+        "church-sermon",
+        "entertainment"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.6,
+      "basis": "Secondary: alternating ~1.5x crops in 3/3 measured Hormozi Shorts; DOAC alternates crops every 5-6 s on monologues; sermon clips add punch-ins on key lines (Church Media Training); 100->115% punch zooms (EditorDuel). Not observable in this run."
+    },
+    "impact": 4,
+    "buildEffort": 1,
+    "priority": 24.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "per-beat static zoom exists (treatment.zoom 1-2); needs an alternation preset and face-centred crop",
+    "params": {
+      "levels": [
+        1.0,
+        1.3
+      ],
+      "maxLevel": 1.5,
+      "anchor": "face",
+      "onlyAtBeatBoundaries": true,
+      "onEmphasisWords": "optional extra level"
+    },
+    "detect": "Scene-cut times where the shot is the same camera but the face box scale changes by >10% (face detection on frames either side of a cut).",
+    "render": "ffmpeg crop+scale per beat (already supported); add face-box anchoring and the alternation pattern in the planner.",
+    "acceptance": "Consecutive beats alternate scale; face centre stays within the middle third; zoomed beats never crop the top of the head on 9:16; output sharpness at 1.5x acceptable from 4K or 1080p source (warn below).",
+    "examples": [
+      "https://www.writepanda.ai/blog/hormozi-style-shorts-editing/",
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/",
+      "https://www.churchmediatraining.com/blog/social-media-sermon-clips-premiere-pro-editing-walkthrough"
+    ]
+  },
+  {
+    "id": "active-word-captions",
+    "name": "Word-timed captions with one emphasis rule",
+    "category": "text",
+    "description": "Burned captions on every spoken word in Shorts: 1-4 words per screen (median 3), a new group every ~0.8-1.0 s, high contrast, centre-to-chest band; exactly one emphasis mechanism per video (weight OR colour OR box) on the operative word; optional active-word pop or karaoke fill; per-speaker colour.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "high",
+      "note": "Reported consistently by frame-level teardowns (PandaStudio Hormozi/DOAC/7 laws) and church-media guides; not observable here."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "business-entrepreneur",
+        "podcast-clips",
+        "church-sermon",
+        "entertainment",
+        "education-explainer"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.9,
+      "basis": "Secondary: burned captions in all 13 measured Shorts, 1-6 words per screen, one emphasis style (PandaStudio); Hormozi 1-4 words (median 3), groups every 0.8-1.0 s, white bold mixed case, emphasis by weight; DOAC 1-3 words, bold caps outline, host yellow/guest white; sermon clips: captions mandatory, single line <=22 chars (Church Media Training, ReachRight); MrBeast Shorts in Komika Axis (Shorty). Not observable in this run."
+    },
+    "impact": 5,
+    "buildEffort": 2,
+    "priority": 22.5,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "captions exist (wordsPerScreen, position incl. chest, preset, uppercase); needs per-word timing animation, emphasis choice and speaker colours",
+    "params": {
+      "wordsPerScreen": [
+        1,
+        4
+      ],
+      "groupBreak": "phrase|max-chars",
+      "maxChars": 22,
+      "band": [
+        0.48,
+        0.66
+      ],
+      "case": "mixed|upper",
+      "emphasis": "weight|color|box",
+      "emphasisWords": "operative word per line",
+      "activeWord": "none|pop|fill",
+      "popScale": 1.15,
+      "popMs": 100,
+      "speakerColors": true
+    },
+    "detect": "OCR on sampled frames: words per caption screen, caption swap interval, vertical band, case, colour histogram of text pixels; emphasis = per-word style differences inside a screen.",
+    "render": "libass via ffmpeg subtitles filter: ASS events per word group, \\k or \\kf for karaoke fill, \\t(0,100,\\fscx115\\fscy115)\\t(100,200,\\fscx100\\fscy100) for a pop, per-word {\\b900} or {\\c&H00EBFF&} for emphasis, \\bord/\\shad for contrast. No compositor needed.",
+    "acceptance": "Every word appears within +/-50 ms of its onset; no screen exceeds wordsPerScreen or maxChars; captions never overlap a detected face box; exactly one emphasis style per render; text contrast ratio >=7:1 against sampled background.",
+    "examples": [
+      "https://www.writepanda.ai/blog/hormozi-style-shorts-editing/",
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/",
+      "https://reachrightstudios.com/blog/sermon-clips-for-social-media/",
+      "https://shortyedit.com/edit-like/mrbeast"
+    ]
+  },
+  {
+    "id": "keep-texture-policy",
+    "name": "Keep the texture (fillers, laughter, room feel)",
+    "category": "audio",
+    "description": "Talking-head edits remove dead air between ideas, not personality: keep ums, laughs and room sound by default; keep long pauses on emotional material; strip fillers only for scripted or corporate pieces.",
+    "evidence": {
+      "level": "measured",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Weak measured signal (fillers/laughter surviving in ASR captions of 4 videos) plus reported studies."
+    },
+    "prevalence": {
+      "videos": 4,
+      "of": 25,
+      "niches": [
+        "business-entrepreneur",
+        "cooking"
+      ],
+      "shortsShare": 1.0,
+      "estimatedShare": 0.7,
+      "basis": "measured in this run (25 videos, 23 with usable speech; caption timing): um/uh survive in the captions of 3 videos and laughter is tagged in 1 (ASR drops most fillers, so this is a floor). Secondary: fillers and laughter kept in all measured talking-head videos (PandaStudio); DOAC clips dry with laughter kept and grief clip pauses left long."
+    },
+    "impact": 3,
+    "buildEffort": 1,
+    "priority": 21.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "tighten.fillers flag exists; defaults should depend on format",
+    "params": {
+      "fillers": "keep|cut",
+      "laughter": "keep",
+      "emotionalPauses": "keep",
+      "scriptedVO": "clean"
+    },
+    "detect": "Compare reference ASR against a filler lexicon (um, uh, like, you know) and laughter tags; pause length around emotional keywords.",
+    "render": "Planner defaults only (no renderer change).",
+    "acceptance": "Default talking-head preset leaves fillers in place and only removes gaps; a \"polished\" preset removes them; laughter tagged by ASR survives every preset except \"scripted\".",
+    "examples": [
+      "https://www.youtube.com/watch?v=e21D-V5n7Fk&t=23s (screaming/reaction kept)",
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/",
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/"
+    ]
+  },
+  {
+    "id": "tight-pause-trim",
+    "name": "Snappy pause and breath removal",
+    "category": "cut",
+    "description": "Cut the space between phrases down to a small retained gap so speech runs at ~200+ words per minute with <=8% non-speech time; trims land between beats, never inside a sentence; breaths are cut or ducked.",
+    "evidence": {
+      "level": "measured",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Measured on 23 videos (caption-line timing; estimates, cannot see gaps under ~0.2 s); placement rule (between beats) is reported."
+    },
+    "prevalence": {
+      "videos": 19,
+      "of": 23,
+      "niches": [
+        "business-entrepreneur",
+        "education-explainer",
+        "tech-review",
+        "personal-finance",
+        "cooking",
+        "science"
+      ],
+      "shortsShare": 0.9473684210526315,
+      "estimatedShare": 0.8,
+      "basis": "measured in this run (25 videos, 23 with usable speech; caption timing): 13 tight (est. pause share <=8% and <=2.5 pauses >0.5 s per min) + 6 moderately tightened of 23; median effective rate 210 wpm (IQR 183-220); median est. pause share 5%; in tight videos 90% of caption lines carry <=0.29 s of non-speech. Secondary: cuts placed on voice pauses (Viibeo); trims between beats (PandaStudio law 5)."
+    },
+    "impact": 5,
+    "buildEffort": 2,
+    "priority": 20.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "tighten op exists (maxGapSec, padSec, fillers) with default pads 0.08 s in / 0.12 s out; needs gap targets per format, breath handling and click-free joins",
+    "params": {
+      "targetPauseShare": {
+        "short": 0.05,
+        "long": 0.12
+      },
+      "targetRetainedGapSec": {
+        "short": 0.12,
+        "long": 0.25
+      },
+      "maxGapSec": 0.35,
+      "padInSec": 0.06,
+      "padOutSec": 0.1,
+      "breath": "cut|duck-12dB|keep",
+      "keepFillers": true,
+      "keepLaughter": true,
+      "holdOnEmotionalBeats": true
+    },
+    "detect": "From reference word timings: pause share, pauses >0.5 s per minute, and the distribution of retained gaps at phrase boundaries (this run: tight <=8% / <=2.5 per min; p90 retained gap ~0.3 s). With audio: silencedetect (-35 dB, 0.08 s) on the voice; cut times from scene detection that coincide with speech gaps show jump cuts.",
+    "render": "ffmpeg trim/atrim + concat with 10-20 ms acrossfade at every audio join; breaths found by VAD + energy/flatness classifier and either cut or gain-ducked with volume=enable windows; keep onsets (start at word.start - padIn).",
+    "acceptance": "On a fixture recording: output est. pause share within +/-2 points of target; no joint gap above target+0.1 s unless a hold is marked; no clipped plosive/onset (spectral onset of the next word preserved); no clicks at joins (peak delta check); laughter kept when keepLaughter.",
+    "examples": [
+      "https://www.youtube.com/watch?v=g2NWf7CVy3U&t=0s (0% est. pause, 24 s explainer VO)",
+      "https://www.youtube.com/watch?v=KdYlGRvja3M&t=0s (0.6%, 204 wpm)",
+      "https://www.youtube.com/watch?v=SX1DoqqXk1g&t=0s (1.8%)",
+      "https://www.youtube.com/watch?v=oZteZj3IPCs&t=40s (contrast: call-in Q&A keeps pauses, 22%)",
+      "https://www.viibeo.com/research/viral-shorts-pacing"
+    ]
+  },
+  {
+    "id": "caption-zoning",
+    "name": "Zoning and safe areas",
+    "category": "graphics",
+    "description": "Reserve a caption band for the whole video, keep graphics in the top ~40%, never cover a face, never stack two text elements in one zone, and keep text out of the Shorts/Reels/TikTok UI areas.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Reported by one frame-level study (22 videos) and a second source on safe zones."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "business-entrepreneur",
+        "education-explainer",
+        "podcast-clips"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.9,
+      "basis": "Secondary: held in all 22 measured top videos (PandaStudio law 6); keep text inside the Shorts safe zone (Viibeo)."
+    },
+    "impact": 4,
+    "buildEffort": 2,
+    "priority": 18.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "caption positions exist (top, middle, chest, bottom); needs face-aware placement and platform UI masks",
+    "params": {
+      "captionBand": [
+        0.48,
+        0.66
+      ],
+      "graphicsZone": [
+        0.0,
+        0.4
+      ],
+      "platformMask": "shorts|reels|tiktok",
+      "faceClearancePx": 24
+    },
+    "detect": "Overlay boxes from OCR and graphics detection vs face boxes; overlap ratio and zone occupancy over time.",
+    "render": "Layout solver before rendering: face detection per beat, then position captions/graphics in free zones; platform masks as constants.",
+    "acceptance": "Zero frames where caption or graphic boxes intersect a face box; zero text inside the platform mask; never two text events in one zone at once.",
+    "examples": [
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/",
+      "https://www.viibeo.com/research/viral-shorts-pacing"
+    ]
+  },
+  {
+    "id": "static-stretch-guard",
+    "name": "Pattern-interrupt clock (no static stretch)",
+    "category": "cut",
+    "description": "Something visible changes every 3-8 s in Shorts (median ~5 s; first change by ~2 s); in long-form the micro shot length is 3-6.5 s and the layout (talking head, B-roll, graphic) flips every 20-40 s. Flag and fill any static stretch.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "high",
+      "note": "Reported by three independent frame-level counts (Viibeo 54 Shorts, PandaStudio 22 videos, Tubefilter MrBeast); not observable here."
+    },
+    "prevalence": {
+      "videos": 4,
+      "of": 25,
+      "niches": [
+        "business-entrepreneur",
+        "cooking",
+        "science"
+      ],
+      "shortsShare": 0.75,
+      "estimatedShare": 0.85,
+      "basis": "Secondary: 54 viral Shorts median shot 4.7 s, fastest quartile 2.8 s, 87% cut at least once (Viibeo); 3-8 s state changes in 13 Shorts and 7-13 changes/min long-form (PandaStudio); MKBHD 7.4 cuts/min; MrBeast 38 -> 23 cuts/min mid-video 2023 -> 2024 (Tubefilter). This run could not see cuts; 4 videos hold >2 s non-speech moments."
+    },
+    "impact": 4,
+    "buildEffort": 2,
+    "priority": 17.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "reference measurement of cuts/pace exists; needs a planner rule that fills gaps with zoom, keyword pop or cutaway",
+    "params": {
+      "shortsMaxStaticSec": 8,
+      "shortsTargetChangeSec": 5,
+      "firstChangeBySec": 2,
+      "longformLayoutFlipSec": [
+        20,
+        40
+      ],
+      "fillers": [
+        "punch-in",
+        "drift-zoom",
+        "keyword-pop",
+        "broll",
+        "speaker-switch"
+      ]
+    },
+    "detect": "Scene detection (ffmpeg select=gt(scene,0.3)) plus zoom/overlay change detection gives visible-change times; report median interval, first change time and the longest static stretch.",
+    "render": "Planner inserts the cheapest filler (alternate punch-in, then keyword pop, then B-roll) wherever the projected change interval exceeds the threshold.",
+    "acceptance": "On the rendered output, no static stretch >8 s in Shorts (or >60 s in long-form) unless the beat is marked as a deliberate hold; first visual change <=2.0 s.",
+    "examples": [
+      "https://www.viibeo.com/research/viral-shorts-pacing",
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/",
+      "https://www.writepanda.ai/blog/mkbhd-editing-style-measured/",
+      "https://www.tubefilter.com/2024/03/04/mrbeast-editing-style-number-of-cuts-per-video/"
+    ]
+  },
+  {
+    "id": "look-presets",
+    "name": "Look presets (punchy grade, LUT, B&W, grain, vignette)",
+    "category": "color",
+    "description": "A consistent channel look: saturated high-contrast for entertainment, a LUT on sermon clips so they do not look flat in the feed, B&W for emotional beats, grain and vignette for documentary and essay tones.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "church-sermon",
+        "entertainment",
+        "gaming-highlights",
+        "podcast-clips"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.5,
+      "basis": "Secondary: apply your LUT before export (Church Media Training); bright, saturated grade (Shorty on MrBeast); LUT plus vignette in montages (DOR); dark backgrounds in 77% of DOAC frames (STEALSHOT). Estimate."
+    },
+    "impact": 3,
+    "buildEffort": 1,
+    "priority": 15.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "per-beat black and white exists; no grade/LUT/grain",
+    "params": {
+      "lut": "file",
+      "saturation": 1.15,
+      "contrast": 1.05,
+      "bw": "per beat",
+      "grain": 0.0,
+      "vignette": 0.0
+    },
+    "detect": "Colour statistics per shot: saturation and contrast distribution, B&W share (signalstats SATAVG), grain (high-frequency noise in flat areas), vignette (radial luminance falloff).",
+    "render": "ffmpeg lut3d, eq, colorbalance, hue=s=0 (existing B&W), noise, vignette.",
+    "acceptance": "Measured saturation/contrast of output within 5% of preset targets on a colour chart clip; B&W beats have SATAVG ~0.",
+    "examples": [
+      "https://www.churchmediatraining.com/blog/social-media-sermon-clips-premiere-pro-editing-walkthrough",
+      "https://shortyedit.com/edit-like/mrbeast",
+      "https://clip.dor.gg/en/blog/how-to-make-gaming-montage"
+    ]
+  },
+  {
+    "id": "title-banner",
+    "name": "Hook banner and end card",
+    "category": "text",
+    "description": "A banner naming the payoff at 0:00 (DOAC: white box, black caps) that exits by ~5.5 s; optionally a 1.5-2 s end card restating the title.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "podcast-clips",
+        "church-sermon"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.4,
+      "basis": "Secondary: banner in 3/3 measured DOAC clips, gone by ~5.5 s (PandaStudio); intro bumper and end card in sermon repurposing guides (believers.site)."
+    },
+    "impact": 3,
+    "buildEffort": 1,
+    "priority": 12.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "title card frame exists (full frame); needs an overlay banner that exits",
+    "params": {
+      "text": "payoff phrase",
+      "exitBySec": 5.5,
+      "style": "white box, black caps",
+      "endCardSec": 1.5
+    },
+    "detect": "OCR text present from frame 0 that disappears within ~6 s and is not a caption of the speech.",
+    "render": "ffmpeg drawbox + drawtext (or ASS) with enable between 0 and exitBySec; slide/fade with ASS \\move/\\fad.",
+    "acceptance": "Banner visible from frame 0, gone by exitBySec; never overlaps captions or face; text <=2 lines.",
+    "examples": [
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/"
+    ]
+  },
+  {
+    "id": "keyword-pops",
+    "name": "Keyword pops instead of subtitles (long-form)",
+    "category": "text",
+    "description": "Long-form top channels burn no subtitles; instead 1-4-word pops land on the load-bearing words (timed so the move ends on the stressed syllable), plus 2-4 full-frame quote cards per video.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Reported: one measured long-form frame study (0/502 subtitle frames) plus motion-design references."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "tech-review",
+        "education-explainer",
+        "commentary-essay"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.6,
+      "basis": "Secondary: 0 of 502 long-form frames from Ali Abdaal, MKBHD and Fireship had subtitle captions; keyword pops and quote cards instead (PandaStudio); word-by-word big type on stressed syllables at Vox, Johnny Harris, Cleo Abram (CraftingUI)."
+    },
+    "impact": 4,
+    "buildEffort": 2,
+    "priority": 12.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "bigWord (one word per beat) exists; needs multi-word pops, styles and long-form defaults",
+    "params": {
+      "words": [
+        1,
+        4
+      ],
+      "perMinute": [
+        2,
+        6
+      ],
+      "leadFrames": 8,
+      "style": "serif|sticker|spec-card",
+      "quoteCards": [
+        2,
+        4
+      ],
+      "zone": "not over face"
+    },
+    "detect": "OCR text events that are not full transcripts: short phrases matching transcript keywords, with onset aligned to the spoken word.",
+    "render": "ASS events (scale/fade in 8 frames) via libass; quote cards via the existing title-card frame.",
+    "acceptance": "Each pop is complete on the stressed syllable +/-2 frames; <=4 words; never over a face; long-form preset turns full captions off by default.",
+    "examples": [
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/",
+      "https://craftingui.com/motion/entries/word-by-word-on-the-vo"
+    ]
+  },
+  {
+    "id": "clip-finder",
+    "name": "Find the clip: one idea, payoff in the back half",
+    "category": "cut",
+    "description": "From a long recording (sermon, podcast, stream, lesson) pick 30-90 s segments that hold one idea, open with a hook in the first 3 s and land the payoff at 55-85% of the clip; end right after the payoff.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Reported payoff placement (13 Shorts, 3 DOAC clips) and sermon-clip guides."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "church-sermon",
+        "podcast-clips",
+        "business-entrepreneur"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.7,
+      "basis": "Secondary: payoff at 55-85% in all 13 measured Shorts and at 55/62/69% in 3 DOAC clips (PandaStudio); sermon clips 30-60 s, one idea per clip (ReachRight). Measured Short lengths in this run: 23-152 s."
+    },
+    "impact": 5,
+    "buildEffort": 3,
+    "priority": 11.7,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "planner can cut beats; needs transcript scoring for segments",
+    "params": {
+      "lengthSec": [
+        30,
+        90
+      ],
+      "payoffAt": [
+        0.55,
+        0.85
+      ],
+      "oneIdea": true,
+      "hookWithinSec": 3,
+      "count": 5
+    },
+    "detect": "On a reference: locate the hook sentence and the payoff sentence (answer to the opening question/promise) in the transcript and report the payoff position as a share of runtime.",
+    "render": "Planner output only (beats); no renderer change.",
+    "acceptance": "Every proposed clip passes: length in range, a hook sentence in the first 3 s, payoff sentence between 55% and 85%, no second topic; a human rating panel prefers it over a random 60 s cut in >=70% of pairs.",
+    "examples": [
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/",
+      "https://reachrightstudios.com/blog/sermon-clips-for-social-media/",
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/"
+    ]
+  },
+  {
+    "id": "voice-polish",
+    "name": "Voice polish (denoise, EQ, compression, de-ess, breaths)",
+    "category": "audio",
+    "description": "A clean, forward voice for phone speakers: high-pass, denoise, gentle compression, de-ess, breath reduction, then the existing loudness pass.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "business-entrepreneur",
+        "church-sermon",
+        "podcast-clips"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.7,
+      "basis": "Secondary: voice processed to sit forward with breaths reduced (EditorDuel on Hormozi); EQ and compression for vocal presence in sermon clips (believers.site). Estimate."
+    },
+    "impact": 3,
+    "buildEffort": 2,
+    "priority": 10.5,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "-14 LUFS loudness exists",
+    "params": {
+      "highpassHz": 80,
+      "denoise": "off|light|strong",
+      "compRatio": 3,
+      "deess": true,
+      "breathReductionDb": -10
+    },
+    "detect": "Noise floor in gaps, spectral tilt, crest factor and sibilance energy of the reference voice.",
+    "render": "ffmpeg highpass, afftdn or arnndn, acompressor, deesser, then loudnorm (existing).",
+    "acceptance": "Noise floor in gaps reduced by >=10 dB without speech-band artifacts; no pumping; -14 LUFS +/-1.",
+    "examples": [
+      "https://blog.editorduel.com/blog/alex-hormozi-retention-first-editing-playbook",
+      "https://believers.site/repurposing-broadcast-strategies-for-youtube-shorts-a-bbc-in"
+    ]
+  },
+  {
+    "id": "music-bed-ducking",
+    "name": "Music bed with ducking under the voice",
+    "category": "audio",
+    "description": "A low music bed under speech that ducks when the voice is active and comes up in gaps; dry (no music) for podcast clips and emotional moments.",
+    "evidence": {
+      "level": "measured",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Music-only stretches measured from [Music] tags in 8 of 25 videos; bed levels and dry-vs-bed choices are reported."
+    },
+    "prevalence": {
+      "videos": 8,
+      "of": 25,
+      "niches": [
+        "business-entrepreneur",
+        "education-explainer",
+        "cooking",
+        "personal-finance",
+        "science"
+      ],
+      "shortsShare": 0.875,
+      "estimatedShare": 0.5,
+      "basis": "measured in this run (25 videos, 23 with usable speech; caption timing): 8 of 25 videos have [Music]-tagged stretches without speech (beds under speech are not tagged). Secondary: sermon clips use a bed (Church Media Training; -18 to -24 LUFS suggested by believers.site); faint bed in 1 of 3 Hormozi Shorts; DOAC 3/3 dry (PandaStudio)."
+    },
+    "impact": 4,
+    "buildEffort": 2,
+    "priority": 10.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "loudness to -14 LUFS exists; no music track",
+    "params": {
+      "track": "asset id",
+      "bedLufs": [
+        -28,
+        -20
+      ],
+      "duckDb": [
+        -12,
+        -6
+      ],
+      "attackMs": 50,
+      "releaseMs": 400,
+      "dryFor": [
+        "podcast",
+        "emotional"
+      ]
+    },
+    "detect": "Separate voice and accompaniment (source separation) and measure bed loudness under speech vs in gaps; [Music] tags in captions mark music-only stretches.",
+    "render": "ffmpeg sidechaincompress (voice as sidechain) or volume automation from VAD, amix, then loudnorm to -14 LUFS.",
+    "acceptance": "Voice-to-music level difference >=12 dB while speaking; bed returns within releaseMs in gaps; integrated output -14 +/-1 LUFS, true peak <= -1 dBTP.",
+    "examples": [
+      "https://www.youtube.com/watch?v=DDRP89Lizrg&t=5s ([Music] beat right after the hook line)",
+      "https://www.youtube.com/watch?v=tZdm443AUH4&t=35s",
+      "https://www.churchmediatraining.com/blog/social-media-sermon-clips-premiere-pro-editing-walkthrough",
+      "https://believers.site/repurposing-broadcast-strategies-for-youtube-shorts-a-bbc-in"
+    ]
+  },
+  {
+    "id": "vertical-reframe",
+    "name": "Face-tracked vertical reframing",
+    "category": "camera",
+    "description": "Turn 16:9 sermon, podcast or stream footage into 9:16 with a crop that follows the speaker smoothly, with manual fixes where tracking fails.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Reported as a standard step in sermon-clip workflows."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "church-sermon",
+        "podcast-clips",
+        "gaming-highlights"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.6,
+      "basis": "Secondary: Auto Reframe is a standard step in sermon-clip workflows (Church Media Training, believers.site); estimate for other clip niches."
+    },
+    "impact": 5,
+    "buildEffort": 3,
+    "priority": 10.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "aspect op exists (vertical/wide/square/original); subject tracking to be confirmed",
+    "params": {
+      "aspect": "9:16",
+      "subject": "speaker|active-speaker",
+      "smoothing": "critically damped, 0.4 s",
+      "deadZone": 0.1
+    },
+    "detect": "Reference is 9:16 with a subject that stays centred while the background shifts (crop path visible in background motion).",
+    "render": "Face/person detection per frame (or every 3rd frame) -> smoothed crop path -> ffmpeg crop with sendcmd or per-segment crop; no compositor needed.",
+    "acceptance": "Face centre stays inside the middle 40% of width >=95% of frames; crop velocity has no spikes above a set limit; no black bars.",
+    "examples": [
+      "https://www.churchmediatraining.com/blog/social-media-sermon-clips-premiere-pro-editing-walkthrough",
+      "https://believers.site/repurposing-broadcast-strategies-for-youtube-shorts-a-bbc-in"
+    ]
+  },
+  {
+    "id": "sfx-accents",
+    "name": "Sound effects on accents",
+    "category": "audio",
+    "description": "Whooshes on zooms and transitions, pops/clicks on text, risers before reveals, impacts on cuts; density is a style dial: an SFX on nearly every cut (MrBeast), sparse (modern Hormozi), none (DOAC, podcast clips).",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "entertainment",
+        "gaming-highlights",
+        "business-entrepreneur",
+        "education-explainer"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.45,
+      "basis": "Secondary: impacts, whooshes and risers stitched to nearly every MrBeast cut (Shorty); sparse SFX in Hormozi style (EditorDuel, PandaStudio); DOAC clips have none; zooms ship with a swoosh by default in one creator-derived AI editor (PandaStudio agents guide). ASR cannot tag SFX, so this run could not count them."
+    },
+    "impact": 4,
+    "buildEffort": 2,
+    "priority": 9.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "not supported",
+    "params": {
+      "density": "none|sparse|every-cut",
+      "map": {
+        "zoom": "whoosh",
+        "keyword": "pop",
+        "reveal": "riser",
+        "cut": "impact"
+      },
+      "levelDbBelowVoice": [
+        -18,
+        -10
+      ],
+      "library": "licensed set"
+    },
+    "detect": "Onset detection on the non-speech residual (after voice separation) aligned to cut/zoom/text times; classify transient type (whoosh, pop, impact).",
+    "render": "ffmpeg adelay + amix of SFX samples at event times, then the existing loudness pass; sample library with licences in AssetSchema.",
+    "acceptance": "Each SFX onset within 20 ms of its visual event; never masks a word (voice-band energy check); density matches preset.",
+    "examples": [
+      "https://shortyedit.com/edit-like/mrbeast",
+      "https://blog.editorduel.com/blog/alex-hormozi-retention-first-editing-playbook",
+      "https://www.writepanda.ai/blog/edit-videos-with-ai-agents/"
+    ]
+  },
+  {
+    "id": "hook-pull-forward",
+    "name": "Pull the payoff forward (teaser and redacted hook)",
+    "category": "cut",
+    "description": "Copy the strongest line to 0:00 as a teaser, optionally muting the operative words behind a card so the viewer waits for the payoff, then cut back into the story; or open on the most extreme moment and rewind.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported in 2 of 3 DOAC clips and MrBeast style guides; small samples."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "podcast-clips",
+        "entertainment",
+        "church-sermon"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.35,
+      "basis": "Secondary: DOAC uses a redacted pull-forward in 1 of 3 measured clips and a banner frontload in another; MrBeast cold-opens on the most extreme moment (Shorty, infinitecreation); sermon guides open on the best line (ReachRight)."
+    },
+    "impact": 4,
+    "buildEffort": 2,
+    "priority": 7.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "move op exists; needs a mute-words op and a cover card",
+    "params": {
+      "mode": "teaser|redacted|banner-only",
+      "teaserMaxSec": 4,
+      "redactWords": [],
+      "coverCard": "wordmark|blur|bleep"
+    },
+    "detect": "A sentence near the start that repeats (fuzzy match) later in the transcript; muted span inside the opening sentence (silence while the mouth moves).",
+    "render": "insert beat (duplicate) at index 0 + a new mute-span op (volume=0 window) + title card overlay; ffmpeg only.",
+    "acceptance": "Teaser beat duplicates a later beat; the muted span is exactly the chosen words (+/-40 ms); the full line plays unmuted later; total length change equals teaser length.",
+    "examples": [
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/",
+      "https://shortyedit.com/edit-like/mrbeast",
+      "https://reachrightstudios.com/blog/sermon-clips-for-social-media/"
+    ]
+  },
+  {
+    "id": "broll-matcher",
+    "name": "B-roll cutaways matched to the words",
+    "category": "broll",
+    "description": "Insert short literal cutaways where the speaker names something concrete (1.5-4 s), from own footage, screen captures or licensed stock; the share varies by style from 0% (modern Hormozi, DOAC) to ~43% of frames (MKBHD).",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Reported by frame-level studies of MKBHD, DOAC and Hormozi plus sermon guides; share varies 0-43% by style."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "tech-review",
+        "church-sermon",
+        "education-explainer",
+        "podcast-clips",
+        "vlog-lifestyle"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.5,
+      "basis": "Secondary: MKBHD 43% B-roll frames; DOAC 0-6.5% of runtime, only on concrete nouns; Hormozi modern Shorts zero B-roll (PandaStudio); sermon clips use stock footage over parts that do not need the talking head (Church Media Training)."
+    },
+    "impact": 4,
+    "buildEffort": 3,
+    "priority": 6.7,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "full-frame broll and split frames exist with assets; needs noun/phrase matching, sourcing and placement rules",
+    "params": {
+      "share": [
+        0,
+        0.45
+      ],
+      "insertSec": [
+        1.5,
+        4
+      ],
+      "trigger": "concrete noun|number|named place",
+      "sources": [
+        "own",
+        "screen",
+        "stock"
+      ],
+      "muted": true,
+      "license": "required"
+    },
+    "detect": "Layout classification of sampled frames (talking head vs B-roll vs graphic); share of runtime and insert length distribution; alignment of inserts with transcript nouns.",
+    "render": "Existing broll/split frames in ffmpeg; work is in matching (transcript NER + search) and licensing.",
+    "acceptance": "Each insert starts within 0.2 s of its trigger word; share within the preset range; every asset carries origin and licence (AssetSchema).",
+    "examples": [
+      "https://www.writepanda.ai/blog/mkbhd-editing-style-measured/",
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/",
+      "https://www.churchmediatraining.com/blog/social-media-sermon-clips-premiere-pro-editing-walkthrough"
+    ]
+  },
+  {
+    "id": "ken-burns-stills",
+    "name": "Ken Burns pans on stills and archival",
+    "category": "camera",
+    "description": "Slow pan and zoom across photos, documents and archival images used as B-roll, so stills feel like footage.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "documentary-true-crime",
+        "education-explainer",
+        "commentary-essay",
+        "church-sermon"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.2,
+      "basis": "Secondary: photo pans 15 and collages 25 of 212 indexed explainer motion-graphics moments (Artiphik); slow push-ins on photos in the Vox style guide. Estimate overall."
+    },
+    "impact": 3,
+    "buildEffort": 1,
+    "priority": 6.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "card frame shows still images; no pan",
+    "params": {
+      "from": "box",
+      "to": "box",
+      "durationSec": "beat length",
+      "ease": "linear|easeInOut"
+    },
+    "detect": "Still image (no internal motion) with uniform global zoom/translate over time.",
+    "render": "ffmpeg zoompan (or crop with t expressions) on the image asset; upscale first to avoid jitter.",
+    "acceptance": "No sub-pixel jitter (render from >=2x resolution); move covers the whole beat; framing never shows image edges.",
+    "examples": [
+      "https://artiphik.com/tools/motion-graphics-examples",
+      "https://easy-peasy.ai/blog/how-to-make-vox-style-videos-with-ai"
+    ]
+  },
+  {
+    "id": "drift-zoom",
+    "name": "Slow drift zoom over holds",
+    "category": "camera",
+    "description": "A slow continuous push-in or pull-out (a few percent over the beat) on any hold longer than ~8 s so no frame is ever fully still; the video-equivalent of Ken Burns.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported in one Hormozi teardown; drift magnitudes from the Raylight measured library."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "business-entrepreneur",
+        "podcast-clips",
+        "education-explainer"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.4,
+      "basis": "Secondary: slow push-in holds a 15 s listening shot in a Hormozi call-in clip (PandaStudio); measured product-film scale moves are mostly small (1-8%) eased drifts (Raylight library)."
+    },
+    "impact": 3,
+    "buildEffort": 2,
+    "priority": 6.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "not supported (zoom is static per beat)",
+    "params": {
+      "fromScale": 1.0,
+      "toScale": 1.06,
+      "ease": "linear|easeInOut",
+      "minBeatSec": 8,
+      "anchor": "face"
+    },
+    "detect": "Frame-to-frame scale change with no cut: optical flow or face-box size trend across a shot.",
+    "render": "ffmpeg crop with time expressions (w=iw/(1+k*t), x,y centred on the face) then scale; or zoompan for stills. Sub-pixel smoothness needs scaling from a larger source frame.",
+    "acceptance": "Scale changes monotonically by the set amount with no visible stepping at 30/60 fps (frame-difference of the face box smooth); no drift on beats shorter than minBeatSec.",
+    "examples": [
+      "https://www.writepanda.ai/blog/hormozi-style-shorts-editing/"
+    ]
+  },
+  {
+    "id": "list-counter",
+    "name": "Listicle counter pill and progress bar",
+    "category": "graphics",
+    "description": "A persistent numbered pill above the caption line that increments per list item (a completed item roughly every 4 s), and an optional thin progress bar.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "business-entrepreneur",
+        "personal-finance",
+        "education-explainer"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.15,
+      "basis": "Secondary: numbered pill in Hormozi listicles (PandaStudio); progress bar drawn by an AI short-video renderer (Viibeo). Estimate overall."
+    },
+    "impact": 3,
+    "buildEffort": 1,
+    "priority": 4.5,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "not supported",
+    "params": {
+      "items": "from transcript (first, second, number words)",
+      "style": "pill",
+      "progressBar": false
+    },
+    "detect": "OCR finds a small persistent number that increments in sync with spoken ordinal words.",
+    "render": "ffmpeg drawbox/drawtext with enable windows per item; progress bar via drawbox with width expression w=iw*t/T.",
+    "acceptance": "Counter increments within 100 ms of the spoken ordinal; bar reaches 100% at the last frame.",
+    "examples": [
+      "https://www.writepanda.ai/blog/hormozi-style-shorts-editing/",
+      "https://www.youtube.com/watch?v=KdYlGRvja3M&t=1s (spoken \"first/next/third\" list structure)"
+    ]
+  },
+  {
+    "id": "lower-thirds",
+    "name": "Lower thirds, name tags and spec cards",
+    "category": "graphics",
+    "description": "Speaker name and title in podcasts and sermons, spec cards and credit tags in reviews, entering with a 200-300 ms slide/fade and leaving faster than they enter.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "podcast-clips",
+        "church-sermon",
+        "tech-review"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.3,
+      "basis": "Secondary: spec cards and credit tags in reviews (PandaStudio); measured product-film position moves median 218 ms, fades 100 ms (Raylight library). Estimate overall."
+    },
+    "impact": 3,
+    "buildEffort": 2,
+    "priority": 4.5,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "not supported",
+    "params": {
+      "text": [
+        "name",
+        "role"
+      ],
+      "inMs": 250,
+      "outMs": 150,
+      "holdSec": 3,
+      "zone": "lower-left"
+    },
+    "detect": "OCR text box in the lower third that appears once per speaker for 2-5 s.",
+    "render": "Static or ASS \\move + \\fad in wave 1; eased custom curves in the compositor later.",
+    "acceptance": "Enters and exits within the set durations +/-1 frame; exits faster than it enters; never over a face or captions.",
+    "examples": [
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/",
+      "Raylight motion reference library: shots 21233b523c33/1-3, f3c523c84569/1, f41065d6467c/2 (product films measured frame by frame)"
+    ]
+  },
+  {
+    "id": "screen-zoom",
+    "name": "Screen-recording and screenshot zoom-pans",
+    "category": "camera",
+    "description": "Eased zoom into the part of a screen capture, screenshot or document being talked about (1-2 s moves in long-form, ~1 s in Shorts), optionally following the cursor, then back out.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "tech-review",
+        "education-explainer",
+        "business-entrepreneur"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.2,
+      "basis": "Secondary: zoom defaults of 1.0 s (Shorts) to 1.5-2.5 s (long-form) in an AI editor built from creator measurements (PandaStudio); screen recordings <1% of MKBHD frames but central in tutorial/dev content (Fireship study). Estimate overall."
+    },
+    "impact": 4,
+    "buildEffort": 2,
+    "priority": 4.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "not supported",
+    "params": {
+      "target": "box|cursor",
+      "depth": 2.0,
+      "inMs": 1000,
+      "holdSec": 2,
+      "ease": "easeInOutCubic"
+    },
+    "detect": "Scale change of a screen-like (UI) frame without a cut; text size increases smoothly.",
+    "render": "ffmpeg crop+scale with eased time expressions (sendcmd keyframes) from a high-resolution capture; cursor position from capture metadata or detection.",
+    "acceptance": "Target region fills >=60% of frame at full zoom; motion eased (no velocity jump at start/end); text legible at 1080x1920.",
+    "examples": [
+      "https://www.writepanda.ai/blog/edit-videos-with-ai-agents/",
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/"
+    ]
+  },
+  {
+    "id": "speaker-follow",
+    "name": "Camera follows the voice (multi-speaker clips)",
+    "category": "cut",
+    "description": "For podcasts, interviews and call-in Q&A: switch to the active speaker exactly at turn boundaries, show the listener only as 1-1.5 s reaction cutaways under continuing speech, and colour-code captions per speaker.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "medium",
+      "note": "Reported (DOAC frame-level teardown); this run only saw the call-in turn pattern in 2 Hormozi Shorts."
+    },
+    "prevalence": {
+      "videos": 2,
+      "of": 25,
+      "niches": [
+        "business-entrepreneur"
+      ],
+      "shortsShare": 1.0,
+      "estimatedShare": 0.3,
+      "basis": "Secondary: DOAC 7 switches in 115.6 s, a cut every 4.1-6.3 s, speaker-coloured captions (PandaStudio); this run: 2 Hormozi call-in Shorts show long caller turns (est. pause share 16-22%)."
+    },
+    "impact": 4,
+    "buildEffort": 3,
+    "priority": 4.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "not supported (needs diarization and per-speaker crop regions)",
+    "params": {
+      "switchOn": "turn-boundary",
+      "minShotSec": 1.0,
+      "reactionCutawaySec": [
+        1.0,
+        1.5
+      ],
+      "speakerColors": {
+        "host": "#FFEB00",
+        "guest": "#FFFFFF"
+      }
+    },
+    "detect": "Diarize the reference audio and compare speaker-turn times with cut times (switch within +/-100 ms of a turn = voice-following).",
+    "render": "ffmpeg: per-speaker crop windows (from face tracks) selected per segment; reaction cutaways as video-only inserts over the speaker audio (needs split edits, see j-l-cuts).",
+    "acceptance": ">=90% of speaker turns get a switch within 150 ms; no switch inside a word; reaction cutaways keep audio continuous (no gap in the voice track).",
+    "examples": [
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/",
+      "https://www.youtube.com/watch?v=oZteZj3IPCs&t=0s (call-in format)"
+    ]
+  },
+  {
+    "id": "beat-synced-montage",
+    "name": "Cut to the music beat",
+    "category": "cut",
+    "description": "Detect beats and onsets in a music track; land cuts, punch zooms and impacts on strong beats; let slow sections hold; used in montages, food and travel sequences, gaming and sports highlights.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported in gaming-montage guides; this run only saw 2 music-carried Shorts."
+    },
+    "prevalence": {
+      "videos": 2,
+      "of": 25,
+      "niches": [
+        "cooking"
+      ],
+      "shortsShare": 1.0,
+      "estimatedShare": 0.3,
+      "basis": "Secondary: beat-marker cutting, impact on the drop (DOR, Mark Studios gaming guides); content study of 100 TikToks favours fast pacing with music (DOAJ). This run: 2 Shorts are carried by music with almost no speech; 8 have [Music]-tagged stretches."
+    },
+    "impact": 4,
+    "buildEffort": 3,
+    "priority": 4.0,
+    "needsCompositor": false,
+    "wave": 1,
+    "currentSupport": "not supported",
+    "params": {
+      "track": "asset id",
+      "cutOn": "downbeat|beat|onset",
+      "accentsOnWeakBeats": "zoom|shake|none",
+      "maxDriftMs": 40
+    },
+    "detect": "Beat-track the reference audio (onset envelope + tempo) and measure the share of cuts within 40 ms of a beat; >50% indicates beat sync.",
+    "render": "Beat tracking offline (e.g. aubio/librosa-style onset detection) then beats snap cut points; ffmpeg renders; audio mixed with amix/sidechain.",
+    "acceptance": ">=80% of cuts within 40 ms of a detected beat; no cut inside a spoken word; music ends on a phrase boundary or fades in <=0.5 s.",
+    "examples": [
+      "https://www.youtube.com/watch?v=swNm2DvC5uE&t=6s (music-carried Short)",
+      "https://clip.dor.gg/en/blog/how-to-make-gaming-montage",
+      "https://www.markstudios.com/blog/how-to-make-a-gaming-montage"
+    ]
+  },
+  {
+    "id": "annotation-callouts",
+    "name": "Animated callouts (arrows, circles, underlines, boxes)",
+    "category": "graphics",
+    "description": "Strokes that draw on in ~160-200 ms to point at a detail in the frame, a screenshot or a document: circles, arrows, underlines, highlight boxes, then a quick fade.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "education-explainer",
+        "tech-review",
+        "science",
+        "commentary-essay"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.25,
+      "basis": "Secondary: callouts are 22 of 212 indexed explainer motion-graphics moments (Artiphik); Cleo Abram is on camera only 5-25% of her Shorts with an annotated, zooming world doing the work (PandaStudio); path reveals measured at 160-200 ms (Raylight library)."
+    },
+    "impact": 4,
+    "buildEffort": 3,
+    "priority": 3.3,
+    "needsCompositor": true,
+    "wave": 2,
+    "currentSupport": "not supported",
+    "params": {
+      "shape": "arrow|circle|underline|box",
+      "target": "point or box in frame",
+      "drawMs": 180,
+      "holdSec": 1.5,
+      "color": "accent",
+      "strokePx": 8
+    },
+    "detect": "Thin high-contrast strokes appearing over footage within a few frames, growing along a path (frame differencing near the target).",
+    "render": "Compositor: vector path with trim-path (stroke dash offset) animation on a custom ease; anchored to a fixed point, or to a tracked point once motion tracking exists. Static versions possible with ffmpeg overlay of a pre-rendered PNG sequence.",
+    "acceptance": "Stroke completes in drawMs +/-1 frame; ends on the target box (IoU >0.8 with the intended region); stays clear of captions.",
+    "examples": [
+      "https://artiphik.com/tools/motion-graphics-examples",
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/",
+      "Raylight motion reference library: shots 21233b523c33/1-3, f3c523c84569/1, f41065d6467c/2 (product films measured frame by frame)"
+    ]
+  },
+  {
+    "id": "j-l-cuts",
+    "name": "Split edits (J/L cuts) and reaction cutaways",
+    "category": "cut",
+    "description": "Let sound lead or trail the picture across a cut: the next speaker heard before seen, a listener reaction under continuing speech, B-roll starting a few frames before the word it shows.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "podcast-clips",
+        "documentary-true-crime",
+        "vlog-lifestyle"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.3,
+      "basis": "Secondary: reaction J-cuts twice per 138 s DOAC clip (PandaStudio). Mostly estimate."
+    },
+    "impact": 3,
+    "buildEffort": 3,
+    "priority": 3.0,
+    "needsCompositor": false,
+    "wave": 3,
+    "currentSupport": "not supported (beats tie picture and sound together)",
+    "params": {
+      "audioLeadSec": [
+        0,
+        0.5
+      ],
+      "audioTrailSec": [
+        0,
+        0.5
+      ],
+      "type": "J|L"
+    },
+    "detect": "Cut times in video that do not coincide with audio edit points (speech continues across the picture cut).",
+    "render": "Edit model gains separate audio and video in/out per beat; ffmpeg renders video and audio timelines separately, then muxes.",
+    "acceptance": "Audio waveform continuous across a J/L cut; picture cut lands at the set offset +/-1 frame.",
+    "examples": [
+      "https://www.writepanda.ai/blog/how-diary-of-a-ceo-edits-podcast-clips/"
+    ]
+  },
+  {
+    "id": "transitions-kit",
+    "name": "Hard cuts by default; flash, whip, zoom and slide on accents",
+    "category": "transition",
+    "description": "Keep hard cuts as the default; reserve transitions for section changes and music drops: a 1-frame white flash, whip-pan blur, zoom-through, slide, glitch/RGB split, light leak.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "gaming-highlights",
+        "entertainment",
+        "vlog-lifestyle",
+        "travel"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.25,
+      "basis": "Secondary: measured creators cut hard (Hormozi semantic hard cuts; MKBHD and Fireship counted by scene detection); white flash on the drop and plain cuts in fast sections (DOR); blurred transition frames between topics in DOAC long-form (STEALSHOT). Estimate."
+    },
+    "impact": 2,
+    "buildEffort": 2,
+    "priority": 2.5,
+    "needsCompositor": false,
+    "wave": 3,
+    "currentSupport": "hard cuts only",
+    "params": {
+      "type": "cut|flash|whip|zoom|slide|glitch|leak",
+      "durationFrames": [
+        1,
+        8
+      ],
+      "where": "section|drop",
+      "sfx": "whoosh on whip/zoom"
+    },
+    "detect": "Frames between two shots with uniform brightness spikes (flash), directional blur (whip), or blended content (dissolve/slide) instead of an instant change.",
+    "render": "ffmpeg xfade (fade, slideleft, zoomin, wipes, pixelize, radial...) plus color source overlay for flashes; whip = slide + gblur/avgblur on the crossing frames; light leaks as screen-blended overlay assets.",
+    "acceptance": "Transition length within +/-1 frame; whip blur direction matches the slide; no transition inside a spoken word.",
+    "examples": [
+      "https://clip.dor.gg/en/blog/how-to-make-gaming-montage",
+      "https://stealshot.com/brand/thediaryofaceo",
+      "https://www.writepanda.ai/blog/hormozi-style-shorts-editing/"
+    ]
+  },
+  {
+    "id": "split-pip-cutout",
+    "name": "Split screen, picture-in-picture and speaker cutout",
+    "category": "graphics",
+    "description": "Speaker cut out over B-roll or a screen (green-screen look without a green screen), corner PiP over screen recordings, top/bottom splits for reactions or gameplay.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "tech-review",
+        "gaming-highlights",
+        "commentary-essay"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.2,
+      "basis": "Secondary: split layouts 0% in MKBHD (PandaStudio); green-screen B-roll part of the 2021 Hormozi clone look (PandaStudio); reaction/gameplay splits are an estimate."
+    },
+    "impact": 3,
+    "buildEffort": 3,
+    "priority": 2.0,
+    "needsCompositor": true,
+    "wave": 2,
+    "currentSupport": "split frame (B-roll over speaker) exists; PiP and background removal do not",
+    "params": {
+      "layout": "split-vertical|pip-corner|cutout-over-broll",
+      "pipScale": 0.3,
+      "corner": "bottom-right",
+      "matte": "person segmentation"
+    },
+    "detect": "Two independent motion fields in one frame; a person region with a sharp matte edge over unrelated background.",
+    "render": "Split and PiP are ffmpeg overlay/stack; cutout needs a person-segmentation matte (model) and compositor alpha blending with edge feathering.",
+    "acceptance": "Matte edge error below threshold on a hair test clip; PiP never covers captions or the focus region.",
+    "examples": [
+      "https://www.writepanda.ai/blog/retention-editing-7-laws/",
+      "https://www.writepanda.ai/blog/hormozi-style-shorts-editing/"
+    ]
+  },
+  {
+    "id": "kinetic-typography",
+    "name": "Kinetic typography (lines build on the voice)",
+    "category": "motion",
+    "description": "A line builds word by word with the narration: each word finishes an ~8-frame move on its stressed syllable, the key word takes weight or the one accent colour, the full line holds 9 frames x words + 30 frames, then leaves in one 10-frame fade; highlight-sweep marker strokes over quoted text.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "education-explainer",
+        "commentary-essay",
+        "documentary-true-crime",
+        "science"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.2,
+      "basis": "Secondary: typography is 56 of 212 indexed motion-graphics moments from Vox, Johnny Harris, Cleo Abram and others (Artiphik); timing rules from CraftingUI; highlight sweep is the most copied Vox move (Easy-Peasy guide)."
+    },
+    "impact": 4,
+    "buildEffort": 4,
+    "priority": 2.0,
+    "needsCompositor": true,
+    "wave": 2,
+    "currentSupport": "not supported (bigWord is a single static word)",
+    "params": {
+      "leadFrames": 8,
+      "holdFrames": "9*words+30",
+      "exitFrames": 10,
+      "emphasis": "weight 500 vs 400 | accent colour",
+      "sweep": {
+        "color": "#FFE14D",
+        "ms": 400
+      }
+    },
+    "detect": "OCR word appearance times vs stressed-syllable times from forced alignment; text boxes that grow word by word.",
+    "render": "WebGL compositor: per-word layers with transform keyframes on custom cubic-bezier curves, masks for highlight sweeps; libass can only approximate (no masks, limited easing).",
+    "acceptance": "Word completion within +/-1 frame of the stressed syllable; line exit faster than its entrance; one emphasis per line; renders identically in preview and export (frame-diff < threshold).",
+    "examples": [
+      "https://craftingui.com/motion/entries/word-by-word-on-the-vo",
+      "https://easy-peasy.ai/blog/how-to-make-vox-style-videos-with-ai",
+      "https://artiphik.com/tools/motion-graphics-examples"
+    ]
+  },
+  {
+    "id": "emoji-sticker-meme",
+    "name": "Emoji, stickers and meme inserts",
+    "category": "graphics",
+    "description": "Pop-in emoji/sticker overlays on punchlines and short meme clips or sounds (gaming, comedy, and the older business-clone look).",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "gaming-highlights",
+        "comedy-sketch",
+        "entertainment"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.15,
+      "basis": "Secondary: meme sounds and pop-up graphics as gaming signatures (Adobe Video World); absent from modern Hormozi (PandaStudio). Estimate."
+    },
+    "impact": 2,
+    "buildEffort": 2,
+    "priority": 1.5,
+    "needsCompositor": false,
+    "wave": 3,
+    "currentSupport": "icon title cards exist; no overlays",
+    "params": {
+      "asset": "emoji|sticker|meme",
+      "popMs": 120,
+      "holdSec": 1,
+      "position": "free zone"
+    },
+    "detect": "Small non-photographic overlay appearing with a scale pop, often paired with an SFX onset.",
+    "render": "ffmpeg overlay with enable and a scale expression (or pre-rendered pop animation); compositor later for springy bounce.",
+    "acceptance": "Overlay appears within 1 frame of its cue; never over face or captions; asset licence recorded.",
+    "examples": [
+      "https://adobevideoworld.com/gaming-video-editing/"
+    ]
+  },
+  {
+    "id": "speed-ramp",
+    "name": "Speed ramps and slow-motion impacts",
+    "category": "camera",
+    "description": "Ramp down to 25-50% speed into an impact or reveal, often with a 110-130% zoom, then snap back to full speed on the beat (gaming, sports, cooking reveals).",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "gaming-highlights",
+        "sports-highlights",
+        "cooking"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.15,
+      "basis": "Secondary: gaming montage guides (DOR, Mark Studios). Estimate for other niches."
+    },
+    "impact": 3,
+    "buildEffort": 3,
+    "priority": 1.5,
+    "needsCompositor": false,
+    "wave": 3,
+    "currentSupport": "not supported",
+    "params": {
+      "slowTo": 0.35,
+      "rampSec": 0.25,
+      "zoomTo": 1.2,
+      "snapOn": "beat"
+    },
+    "detect": "Optical-flow magnitude drops sharply while audio continues at normal pitch; duplicated/interpolated frames.",
+    "render": "ffmpeg setpts per segment with stepped ramps; minterpolate for smooth slow motion (slow, offline); 120 fps sources preferred.",
+    "acceptance": "Ramp curve matches the set speeds within 5%; no judder visible at 30 fps (no duplicated frame runs >2 without interpolation); audio not pitch-shifted unless asked.",
+    "examples": [
+      "https://www.markstudios.com/blog/how-to-make-a-gaming-montage",
+      "https://clip.dor.gg/en/blog/how-to-make-gaming-montage"
+    ]
+  },
+  {
+    "id": "maps-charts",
+    "name": "Animated maps and data charts",
+    "category": "graphics",
+    "description": "Zooming annotated maps (country fill, callout lines, orbiting camera) and charts that grow at the moment the number is spoken; timelines that scroll with the decades.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "education-explainer",
+        "commentary-essay",
+        "documentary-true-crime",
+        "personal-finance"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.1,
+      "basis": "Secondary: infographics 77, charts 36, maps 22 and timelines 9 of 212 indexed explainer motion-graphics moments (Artiphik); five-property map camera moves (Vox-style guide). Estimate overall."
+    },
+    "impact": 4,
+    "buildEffort": 5,
+    "priority": 0.8,
+    "needsCompositor": true,
+    "wave": 3,
+    "currentSupport": "not supported",
+    "params": {
+      "type": "map|bar|line|timeline",
+      "data": "table",
+      "revealOn": "spoken number",
+      "camera": "lat, lon, zoom, bearing, pitch"
+    },
+    "detect": "Chart/map-like graphics (large flat colour regions, axes, labels) whose elements grow over time.",
+    "render": "Compositor: vector chart primitives with eased growth; map tiles or a vector world map with label-free style and camera keyframes.",
+    "acceptance": "Chart value equals the spoken number; growth finishes within +/-2 frames of the number; map labels legible at phone size.",
+    "examples": [
+      "https://artiphik.com/tools/motion-graphics-examples",
+      "https://easy-peasy.ai/blog/how-to-make-vox-style-videos-with-ai"
+    ]
+  },
+  {
+    "id": "parallax-2-5d",
+    "name": "2.5D parallax on stills",
+    "category": "motion",
+    "description": "Split a still into foreground and background layers (segmentation plus inpainting) and move them at different speeds with a slow push; paper textures and drop shadows for the Vox look.",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "education-explainer",
+        "documentary-true-crime",
+        "commentary-essay"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.08,
+      "basis": "Secondary: 2.5D parallax between layers in the Vox-style guide (Easy-Peasy). Estimate."
+    },
+    "impact": 3,
+    "buildEffort": 4,
+    "priority": 0.6,
+    "needsCompositor": true,
+    "wave": 3,
+    "currentSupport": "not supported",
+    "params": {
+      "layers": 2,
+      "depthShiftPx": 40,
+      "durationSec": "beat",
+      "texture": "paper|none"
+    },
+    "detect": "Different motion vectors for foreground and background within a still-derived shot.",
+    "render": "Compositor: segment subject (matting model), inpaint background, two textured quads with independent transforms and a virtual camera.",
+    "acceptance": "No visible halo at the matte edge at 1080p; background inpaint has no repeated texture artifacts in the revealed area.",
+    "examples": [
+      "https://easy-peasy.ai/blog/how-to-make-vox-style-videos-with-ai"
+    ]
+  },
+  {
+    "id": "masks-reveals-3d",
+    "name": "Matte reveals, shape wipes and 3D camera moves",
+    "category": "motion",
+    "description": "Images revealed through animated shapes, wipes between layouts, z-space layer moves and orbiting virtual cameras (product-film and explainer polish).",
+    "evidence": {
+      "level": "reported",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "education-explainer",
+        "tech-review"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.05,
+      "basis": "Secondary: matte reveals and group moves throughout the measured product films (Raylight library); 3D is 28 of 212 indexed explainer moments (Artiphik). Estimate for creator videos."
+    },
+    "impact": 3,
+    "buildEffort": 4,
+    "priority": 0.4,
+    "needsCompositor": true,
+    "wave": 3,
+    "currentSupport": "not supported",
+    "params": {
+      "matte": "shape|text|alpha",
+      "durationMs": [
+        200,
+        500
+      ],
+      "curve": "custom bezier",
+      "camera": "orbit|dolly"
+    },
+    "detect": "A frame region that grows along a geometric boundary while showing new content.",
+    "render": "Compositor layer mattes (alpha/luma) with keyframed shapes; perspective camera.",
+    "acceptance": "Matte edges anti-aliased; move timings match keyframes +/-1 frame.",
+    "examples": [
+      "Raylight motion reference library: shots 21233b523c33/1-3, f3c523c84569/1, f41065d6467c/2 (product films measured frame by frame)",
+      "https://artiphik.com/tools/motion-graphics-examples"
+    ]
+  },
+  {
+    "id": "motion-tracking",
+    "name": "Motion-tracked labels and stickers",
+    "category": "motion",
+    "description": "Text, arrows or blur that stay stuck to a moving object or person.",
+    "evidence": {
+      "level": "estimate",
+      "observedInThisRun": false,
+      "confidence": "low",
+      "note": "Reported by published analyses or guides; no measurement in this run."
+    },
+    "prevalence": {
+      "videos": null,
+      "of": null,
+      "niches": [
+        "sports-highlights",
+        "gaming-highlights",
+        "vlog-lifestyle"
+      ],
+      "shortsShare": null,
+      "estimatedShare": 0.05,
+      "basis": "Estimate; not reported in the measured creator studies."
+    },
+    "impact": 3,
+    "buildEffort": 5,
+    "priority": 0.3,
+    "needsCompositor": true,
+    "wave": 3,
+    "currentSupport": "not supported",
+    "params": {
+      "target": "point|box",
+      "tracker": "KLT|deep tracker",
+      "attach": "label|arrow|blur"
+    },
+    "detect": "Overlay whose position correlates with an object track over time.",
+    "render": "Point/box tracker (offline) produces a keyframe path; compositor attaches layers to it.",
+    "acceptance": "Overlay stays within 2% of frame width of the target through the shot; no jitter at rest.",
+    "examples": []
+  }
+]
