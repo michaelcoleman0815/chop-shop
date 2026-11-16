@@ -151,9 +151,58 @@ export function viewTransition(
   }
 }
 
+/**
+ * What glides in the main column while the rail moves, and which edge each
+ * keeps: header controls keep their left edge, centred columns their centre.
+ * They move as live elements, so nothing has to be redrawn while they do.
+ * (The editor's preview and strip stretch inside the View Transition.)
+ */
+const GLIDERS: [string, 'left' | 'centre'][] = [
+  ['.cl-header > :not(.spacer)', 'left'],
+  ['.cl-thread-foot .cl-composer', 'centre'],
+  [':is(.cl-start, .cl-thread-scroll, .cl-page)', 'centre']
+]
+
+const gliding = new Set<Animation>()
+
+type Spot = { el: HTMLElement; keep: 'left' | 'centre'; at: DOMRect }
+
+function spots(): Spot[] {
+  return GLIDERS.flatMap(([selector, keep]) =>
+    [...document.querySelectorAll<HTMLElement>(`.cl-main ${selector}`)].map((el) => ({
+      el,
+      keep,
+      at: el.getBoundingClientRect()
+    }))
+  )
+}
+
+/** Moves each element from where it was to where the new layout puts it, with a transform alone. */
+function glide(from: Spot[]): void {
+  const timing = { duration: ms('duration-calm'), easing: token('ease-standard'), composite: 'add' as const }
+  for (const { el, keep, at } of from) {
+    if (!el.isConnected) continue
+    const now = el.getBoundingClientRect()
+    const dx = keep === 'left' ? at.left - now.left : at.left + at.width / 2 - (now.left + now.width / 2)
+    const dy = at.top - now.top
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue
+    const a = el.animate([{ translate: `${dx}px ${dy}px` }, { translate: '0 0' }], timing)
+    gliding.add(a)
+    const end = (): void => void gliding.delete(a)
+    a.finished.then(end, end)
+  }
+}
+
 /** Opens or closes the rail: names and chats fade and slide while the main column glides to its new place. */
 export function moveRail(update: () => void): void {
-  viewTransition('rail', () => flushSync(update))
+  const from = prefersReducedMotion() ? [] : spots()
+  viewTransition('rail', () => {
+    // A rail that turns back mid-move glides on from wherever things are now.
+    for (const a of gliding) a.cancel()
+    gliding.clear()
+    flushSync(update)
+    glide(from)
+  })
 }
 
 // ---------- Screen changes ----------
@@ -183,12 +232,18 @@ function visibleIn(el: Element): boolean {
 
 /** The footage card in a thread for this edit's recording, when it is on screen. */
 function footageCard(app: Cutalong): HTMLElement | null {
-  const source = app.doc ? fileName(app.doc.sources[0]?.path ?? '') : ''
-  const cards = [...document.querySelectorAll<HTMLElement>('.cl-msg-user .cl-linkcard')].filter((card) =>
-    isVideoFile(card.querySelector('strong')?.textContent ?? '')
+  // Any of the edit's recordings can be the one on screen; the first is the one the preview opens on.
+  const sources = new Set(app.doc ? app.doc.sources.map((s) => fileName(s.path)) : [])
+  const first = app.doc ? fileName(app.doc.sources[0]?.path ?? '') : ''
+  const nameOf = (tile: HTMLElement): string => tile.querySelector('.cl-file-name')?.textContent ?? ''
+  const tiles = [...document.querySelectorAll<HTMLElement>('.cl-msg-user .cl-file')].filter((tile) =>
+    isVideoFile(nameOf(tile))
   )
-  const card = cards.find((c) => c.querySelector('strong')?.textContent === source) ?? cards[cards.length - 1]
-  const thumb = card?.querySelector<HTMLElement>('.cl-linkcard-thumb') ?? null
+  const tile =
+    tiles.find((t) => nameOf(t) === first) ??
+    tiles.filter((t) => sources.has(nameOf(t))).pop() ??
+    tiles[tiles.length - 1]
+  const thumb = tile?.querySelector<HTMLElement>('.cl-poster') ?? null
   return thumb && visibleIn(thumb) ? thumb : null
 }
 
