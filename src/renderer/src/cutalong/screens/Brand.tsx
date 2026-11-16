@@ -161,13 +161,13 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
       return
     }
     const file = picked.path.startsWith('data:') ? 'Logo' : (picked.path.split(/[\\/]/).pop() ?? 'Logo')
-    const name =
-      file
-        .replace(/\.[^.]+$/, '')
-        .replace(/[-_]+/g, ' ')
-        .trim()
-        .slice(0, LOGO_NAME_MAX)
-        .trim() || 'Logo'
+    const named = file
+      .replace(/\.[^.]+$/, '')
+      .replace(/[-_]+/g, ' ')
+      .trim()
+    // Too long a file name is cut where a word ends; one long word, where it has to be.
+    const cut = named.length > LOGO_NAME_MAX ? named.slice(0, LOGO_NAME_MAX + 1).replace(/\s+\S*$/, '') : named
+    const name = cut.slice(0, LOGO_NAME_MAX).trim() || 'Logo'
     set({ logos: [...others, { name, path: picked.path }] })
   }
 
