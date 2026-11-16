@@ -1,6 +1,6 @@
 import { currentCut } from '../edit/doc'
 import { resolveCut } from '../edit/resolve'
-import type { EditDoc } from '../edit/schema'
+import type { Beat, EditDoc } from '../edit/schema'
 import { clock, seconds } from '../presets/preset'
 import { timeOfDay, zoneAt } from './describe'
 import type { Clip, LeftOut, Role, StoryBeat, Vlog } from './schema'
@@ -95,22 +95,51 @@ export function placedBeats(doc: EditDoc, beats: StoryBeat[]): Placed[] {
   return out
 }
 
+/** Whether a beat of a cut plays a beat of a story: the same clip, and its words or a stretch of its shot. */
+function plays(b: Beat, s: StoryBeat): boolean {
+  if (b.source !== s.clip) return false
+  if (s.from) return b.from === s.from && b.to === s.to
+  if (b.inSec === null || b.outSec === null || s.inSec === null || s.outSec === null) return false
+  return Math.min(b.outSec, s.outSec) > Math.max(b.inSec, s.inSec)
+}
+
+/**
+ * How long each part of the day plays in a cut. Each beat counts for the
+ * scene its clip is in, so a cut changed in the editor since the story was
+ * told (a shot taken out, moved or split) counts as it plays now. The tease
+ * the cut opens on is the payoff's, so it counts for no scene.
+ */
+function sceneSeconds(doc: EditDoc, story: StoryBeat[], scenes: Vlog['scenes']): Map<string, number> {
+  const cut = currentCut(doc)
+  const times = new Map(resolveCut(cut, doc.words, doc.sources).beats.map((b) => [b.id, b]))
+  // The tease: the cut's first beats, for as long as they play the story's hook, in order.
+  const hooks = story.filter((s) => s.role === 'hook')
+  let tease = 0
+  for (let h = 0; tease < cut.beats.length; tease++) {
+    let j = h
+    while (j < hooks.length && !plays(cut.beats[tease], hooks[j])) j++
+    if (j >= hooks.length) break
+    h = j + 1
+  }
+  const sceneOf = new Map(scenes.flatMap((s) => s.clips.map((c) => [c, s.id] as const)))
+  const out = new Map<string, number>()
+  cut.beats.forEach((b, i) => {
+    const r = times.get(b.id)
+    const scene = sceneOf.get(b.source)
+    if (i < tease || !r || !scene) return
+    out.set(scene, (out.get(scene) ?? 0) + r.outEnd - r.outStart)
+  })
+  return out
+}
+
 /**
  * What an ask about parts of the day changed, a sentence for each of the
  * biggest two: "The evening at 19:00 runs 0:16 now, up from 0:10." The
  * tease is the payoff's, so it counts for no scene.
  */
 export function scenesChanged(before: EditDoc, beforeBeats: StoryBeat[], after: EditDoc, vlog: Vlog, max = 2): string {
-  const span = (placed: Placed[]): Map<string, number> => {
-    const m = new Map<string, number>()
-    for (const p of placed) {
-      if (p.beat.role === 'hook' || !p.beat.scene) continue
-      m.set(p.beat.scene, (m.get(p.beat.scene) ?? 0) + p.outEnd - p.outStart)
-    }
-    return m
-  }
-  const was = span(placedBeats(before, beforeBeats))
-  const now = span(placedBeats(after, vlog.story.beats))
+  const was = sceneSeconds(before, beforeBeats, vlog.scenes)
+  const now = sceneSeconds(after, vlog.story.beats, vlog.scenes)
   return vlog.scenes
     .map((scene) => ({ scene, a: was.get(scene.id) ?? 0, b: now.get(scene.id) ?? 0 }))
     .filter((c) => Math.abs(c.b - c.a) >= 0.5)

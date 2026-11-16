@@ -3,12 +3,23 @@ import { beatsOnClock } from '../edit/audio'
 import { commit, currentCut, currentVersion, restore, type EditDoc } from '../edit'
 import { resolveCut } from '../edit/resolve'
 import { extendShoot, ontoLatest, toldIn, vlogMusic } from './build'
-import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, storyOnBeats, storyShown, vlogShown } from './plan'
+import {
+  carryAsked,
+  carryTold,
+  opsFor,
+  planLocally,
+  reshapeOp,
+  storyOnBeats,
+  storyShown,
+  vlogShown,
+  withOps
+} from './plan'
 import { dayName, nameScene } from './describe'
 import { pretendVlog } from './pretend'
-import { sceneInSentence, storyReply } from './reply'
+import { sceneInSentence, scenesChanged, storyReply } from './reply'
 import { parseVlogAsk, sceneNamed, wantsVlog } from './request'
 import type { Vlog } from './schema'
+import { clock } from '../presets/preset'
 
 /**
  * What the session does with a vlog over time: the next ask starts from the
@@ -76,6 +87,46 @@ describe('a vlog over time', () => {
     // A version that only changed the look still tells the story before it.
     const look = commit(again, [{ op: 'look', set: { warmth: 0.2 } }], 'Warmer.').doc
     expect(storyShown(look)).toEqual(storyShown(again))
+  })
+
+  it('says what each part of the day ran as the cut played it, after a shot was taken out in the editor', () => {
+    const hooks = (first.vlog as Vlog).story.beats.filter((b) => b.role === 'hook').length
+    // In the editor: the first shot after the tease, out.
+    const out = currentCut(first).beats[hooks]
+    const edited = commit(first, [{ op: 'remove', beats: [out.id] }], 'One shot is out.').doc
+    /** Seconds each scene plays, by the clip of each beat, the tease left out. */
+    const played = (doc: EditDoc, tease: number): Map<string, number> => {
+      const cut = currentCut(doc)
+      const at = new Map(resolveCut(cut, doc.words, doc.sources).beats.map((b) => [b.id, b]))
+      const m = new Map<string, number>()
+      cut.beats.forEach((b, i) => {
+        const scene = (doc.vlog as Vlog).scenes.find((s) => s.clips.includes(b.source))
+        const r = at.get(b.id)
+        if (i >= tease && scene && r) m.set(scene.id, (m.get(scene.id) ?? 0) + r.outEnd - r.outStart)
+      })
+      return m
+    }
+    const was = played(edited, hooks)
+    const shown = vlogShown(edited) as Vlog
+    let checked = 0
+    for (let k = 1; k <= shown.scenes.length; k++) {
+      const planned = planLocally(edited, shown, parseVlogAsk(`more of scene ${k}`))
+      const vlog = { ...shown, story: planned.story }
+      const after = withOps({ ...edited, vlog }, opsFor(edited, planned.story.beats))
+      const said = scenesChanged(edited, shown.story.beats, after, vlog, 10)
+      for (const scene of shown.scenes) {
+        const name = sceneInSentence(scene.name).replace(/^./, (c) => c.toUpperCase())
+        const before = was.get(scene.id) ?? 0
+        // A part of the day that played is never said to be new, and its old length is what it ran.
+        if (before >= 0.5) expect(said, `${name} played ${before} s`).not.toContain(`${name} is in it now`)
+        const from = new RegExp(`${name} runs \\d+:\\d\\d now, (?:up|down) from (\\d+:\\d\\d)`).exec(said)
+        if (from) {
+          expect(from[1]).toBe(clock(before))
+          checked++
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
   })
 
   it('lands its shots on the beats of a bed put under it later, the shots and their order kept', () => {
