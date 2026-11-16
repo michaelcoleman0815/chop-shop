@@ -22,7 +22,7 @@ import { detectShots } from './shots'
 import { buildAudioMap, type Frames } from '../shared/audio/map'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { brandStyle, type Brand } from '../shared/brand'
-import { commit, subjectFrom, type Source, type Subject, type Word } from '../shared/edit'
+import { commit, currentCut, subjectFrom, type Source, type Subject, type Word } from '../shared/edit'
 import {
   clipDoc,
   clipsReply,
@@ -655,12 +655,34 @@ export async function findClips(
  * version, which says so.
  */
 export function clipsInBrand(clips: FoundClip[], brand: Brand, never: NeverItem[]): FoundClip[] {
-  return clips.map((c) => {
-    const doc = stampMade(c.doc, brand.id)
-    const strip = stripDoc(doc, never)
-    if (strip.ops.length === 0) return { ...c, doc }
-    return { ...c, doc: commit(doc, strip.ops, neverFinishNote(brandInSentence(brand), strip.items)).doc }
-  })
+  return clips.map((c) => inBrand(c, brand, never).clip)
+}
+
+function inBrand(c: FoundClip, brand: Brand, never: NeverItem[]): { clip: FoundClip; left: NeverItem[] } {
+  const doc = stampMade(c.doc, brand.id)
+  const strip = stripDoc(doc, never)
+  if (strip.ops.length === 0) return { clip: { ...c, doc }, left: [] }
+  return {
+    clip: { ...c, doc: commit(doc, strip.ops, neverFinishNote(brandInSentence(brand), strip.items)).doc },
+    left: strip.items
+  }
+}
+
+/**
+ * What /clipping sends back: the clips made in the chat's brand (clipsInBrand)
+ * and the reply as they are, said again from them. Captions the never list
+ * took off are not called on, and the reply says what was left out and why.
+ */
+export function sentInBrand<T extends ClipsFound & { reply: ClipsReply }>(found: T, brand: Brand, never: NeverItem[]): T {
+  const made = found.clips.map((c) => inBrand(c, brand, never))
+  const clips = made.map((m) => m.clip)
+  const left = [...new Set(made.flatMap((m) => m.left))]
+  const styled = brand.autoApply && Object.keys(brandStyle(brand).captions ?? {}).length > 0
+  const reply = clipsReply({ ...found, clips }, styled)
+  const captionsOff = clips.length > 0 && clips.every((c) => !currentCut(c.doc).captions.on)
+  const chips = captionsOff ? reply.chips.filter((c) => !/^Captions\b/.test(c)) : reply.chips
+  const aside = [reply.aside, neverFinishNote(brandInSentence(brand), left)].filter(Boolean).join(' ') || null
+  return { ...found, clips, reply: { ...reply, chips, aside } }
 }
 
 export function registerClippingIpc(deps: { send: Send }, tools: () => ClippingTools = defaultTools): void {
@@ -673,7 +695,7 @@ export function registerClippingIpc(deps: { send: Send }, tools: () => ClippingT
       const found = await findClips(req, picked, (p) => deps.send(e.sender, 'clips:progress', p))
       if (!found.ok || !brand) return found
       const never = await neverForBrand(brand.id).catch(() => [])
-      return { ...found, clips: clipsInBrand(found.clips, brand, never) }
+      return sentInBrand(found, brand, never)
     } catch (err) {
       console.error('[clipping] failed:', message(err))
       deps.send(e.sender, 'clips:progress', { stage: 'Failed', percent: 0 })
