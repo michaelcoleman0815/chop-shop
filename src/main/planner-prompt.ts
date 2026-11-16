@@ -3,6 +3,7 @@ import { currentCut, currentVersion, indexWords, resolveCut, type EditDoc, type 
 import { clock } from '../shared/presets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { ordinal } from '../shared/raw/takes'
+import { renderSound } from '../shared/audio/map'
 
 /**
  * Everything the planner sends and expects back, kept apart from the API call
@@ -45,6 +46,9 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 
 ## Takes
 A <takes> block, when present, lists lines said more than once in the raw footage: each take with its word ids, whether it plays or is struck, and what went wrong in it. Cutalong keeps the last complete take unless an earlier one is clearly cleaner. To use another take ("use the second take of the intro"), unstrike that take's words and strike the take that plays now, in the same plan. If the take you bring back was recorded somewhere else, split it into a beat of its own and move that beat to where the line plays. Never strike the take that plays without bringing another one back. False starts listed there are struck already; unstrike one only when asked.
+
+## Sound
+A <sound> block, when present, lists stretches that are not speech (laughter, music, applause, noise) with their times in the recording, and words said with stress. A laugh or a noise between takes is a break, music under speech is not yours to cut, and a stressed word is a good big word.
 
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
@@ -217,6 +221,11 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
   const parts = [`<cut ${settings.join('; ')}>`, ...beats, '</cut>']
   const takes = renderTakes(doc)
   if (takes) parts.push(takes)
+  for (const source of doc.sources) {
+    const map = doc.audio?.[source.id]
+    const sound = map ? renderSound(map, text) : ''
+    if (sound) parts.push(sound)
+  }
   if (notes.length > 0) {
     parts.push('<notes>')
     for (const note of notes) parts.push(`${note.id}${note.beat ? ` (left on ${note.beat})` : ''}: ${note.text}`)

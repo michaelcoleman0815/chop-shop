@@ -13,6 +13,8 @@ import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { loudnessEnvelope } from './audio-envelope'
+import { listenFrames } from './audio-map'
+import { buildAudioMap, type AudioMap } from '../shared/audio/map'
 import { snapWords } from '../shared/audio/snap'
 import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply } from './intake'
@@ -73,15 +75,20 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       const intake = intakeReply(basename(path), meta.facts)
       let words: Word[] = []
       let warning: string | null = null
+      let audio: AudioMap | null = null
       try {
         const transcript = await transcriptFor(path, meta.durationSec, progress)
         words = wordsFromTranscript(transcript.words, source.id)
         // Listen to the recording so every word's edges sit on its sound,
         // which is what lets cuts land tight without clipping a consonant.
+        // The same listen measures pitch and what kind of sound each stretch
+        // is, for the audio map that takes and the planner read.
         if (words.length > 0) {
           progress('Listening for the cuts', 97)
           try {
-            words = snapWords(words, await loudnessEnvelope(FFMPEG_PATH, path))
+            const frames = await listenFrames(FFMPEG_PATH, path)
+            words = snapWords(words, { hopSec: frames.hopSec, db: frames.db })
+            audio = buildAudioMap(frames, words)
           } catch (err) {
             console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
           }
@@ -89,7 +96,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       } catch (err) {
         warning = `I couldn't transcribe it, so it is one long beat for now. ${message(err)}`
       }
-      const doc = createDoc({ id: randomUUID(), title: basename(path, extname(path)), source, words })
+      const created = createDoc({ id: randomUUID(), title: basename(path, extname(path)), source, words })
+      const doc = audio ? { ...created, audio: { [source.id]: audio } } : created
       progress('Ready', 100)
       return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning, intake }
     } catch (err) {

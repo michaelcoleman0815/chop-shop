@@ -111,6 +111,28 @@ describe('the planner request', () => {
     expect(spoken.filter((w) => w === 'Hey').length).toBe(1)
   })
 
+  it('tells the planner what the recording sounds like, when it was heard', () => {
+    const plain = createDoc({ id: 'd', title: 't', source, words })
+    expect(renderRequest(plain, 'x', [])).not.toContain('<sound>')
+    const heard = {
+      ...plain,
+      audio: {
+        s1: {
+          v: 1 as const,
+          words: { w8: [-12, 190] as [number, number | null] },
+          segments: [
+            { kind: 'speech' as const, startSec: 0.5, endSec: 4.9 },
+            { kind: 'laughter' as const, startSec: 5.2, endSec: 6.4 }
+          ],
+          emphasis: ['w8'],
+          level: { floor: -60, speech: -20 }
+        }
+      }
+    }
+    expect(renderRequest(heard, 'x', [])).toContain('<sound>\nlaughter 0:05-0:06\nstressed: w8 "never"\n</sound>')
+    expect(PLANNER_SYSTEM).toContain('A <sound> block')
+  })
+
   it('leaves the takes out when there are none', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     expect(renderRequest(doc, 'x', [])).not.toContain('<takes>')

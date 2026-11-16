@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AudioMapSchema } from '../audio/map'
 
 /**
  * The edit as data.
@@ -219,7 +220,9 @@ export const EditDocSchema = z.object({
   /** Material brought in for the edit. Docs saved before assets existed have none. */
   assets: z.array(AssetSchema).default([]),
   /** The preset command last applied, without its slash. */
-  preset: z.string().nullable()
+  preset: z.string().nullable(),
+  /** What each recording sounds like, by source id (shared/audio/map). Absent until listened to. */
+  audio: z.record(z.string(), AudioMapSchema).optional()
 })
 export type EditDoc = z.infer<typeof EditDocSchema>
 

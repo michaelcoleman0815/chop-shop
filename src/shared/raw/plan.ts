@@ -1,3 +1,4 @@
+import { takeAudioOf } from '../audio/map'
 import { currentCut } from '../edit/doc'
 import { applyOps } from '../edit/ops'
 import { indexWords, resolveCut, type Resolved } from '../edit/resolve'
@@ -58,7 +59,7 @@ export interface TakesPlanOptions {
   audio?: Record<string, TakeAudio | undefined>
 }
 
-const analysed = new WeakMap<Word[], { sources: string; analyses: TakesAnalysis[] }>()
+const analysed = new WeakMap<Word[], { sources: string; audio: EditDoc['audio']; analyses: TakesAnalysis[] }>()
 
 /**
  * The takes of every recording in a doc. Takes depend on the words alone,
@@ -70,11 +71,15 @@ export function takesOf(doc: EditDoc, opts: TakesPlanOptions = {}): TakesAnalysi
   const plain = !opts.audio && !opts.takes
   const sources = doc.sources.map((s) => s.id).join(',')
   const hit = plain ? analysed.get(doc.words) : undefined
-  if (hit && hit.sources === sources) return hit.analyses
-  const analyses = doc.sources.map((s) =>
-    analyzeTakes(doc.words, s.id, opts.audio?.[s.id] ?? null, opts.takes ?? DEFAULT_TAKES)
-  )
-  if (plain) analysed.set(doc.words, { sources, analyses })
+  if (hit && hit.sources === sources && hit.audio === doc.audio) return hit.analyses
+  // What the recording sounds like, when Cutalong listened: loudness and
+  // pitch per word, and the laughs and noises between words.
+  const heard = (id: string): TakeAudio | null => {
+    const map = doc.audio?.[id]
+    return opts.audio?.[id] ?? (map ? takeAudioOf(map) : null)
+  }
+  const analyses = doc.sources.map((s) => analyzeTakes(doc.words, s.id, heard(s.id), opts.takes ?? DEFAULT_TAKES))
+  if (plain) analysed.set(doc.words, { sources, audio: doc.audio, analyses })
   return analyses
 }
 

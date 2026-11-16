@@ -307,7 +307,7 @@ export function analyzeTakes(
       }
       const marked = p.cutOff || between.some((w) => w.mark)
       const filled = between.some((w) => w.filler)
-      const groaned = between.some((w) => w.groan || w.laugh) || unwordedIn(p.end, k.start, ['groan', 'laugh'])
+      const groaned = between.some((w) => w.groan || w.laugh) || unwordedIn(p.end, k.start, ['groan', 'laugh', 'noise'])
       const cued = cueLen > 0 || (isCue(between.filter((w) => !w.mark).map((w) => w.text)) && between.length > 0)
       const dropped = dropAt(p.i)
       const breath = unwordedIn(p.end, k.start, ['breath'])
