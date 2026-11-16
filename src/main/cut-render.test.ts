@@ -183,6 +183,47 @@ describe.skipIf(!FFMPEG)('rendering a cut', () => {
     await check(out)
   })
 
+  it('renders an image as a card and as a full-frame cutaway', async () => {
+    const icon = join(dir, 'icon.png')
+    execFileSync(ffmpeg, [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:s=200x200',
+      '-frames:v',
+      '1',
+      icon
+    ])
+    const broll = { path: icon, inSec: 0, muted: true }
+    const withStills = commit(
+      doc,
+      [
+        { op: 'remove', beats: currentCut(doc).beats.map((b) => b.id) },
+        { op: 'insert', to: 0, beat: { source: 's1', inSec: 0, outSec: 1, treatment: { frame: 'card', broll } } },
+        { op: 'insert', to: 1, beat: { source: 's1', inSec: 1, outSec: 2, treatment: { frame: 'broll', broll } } }
+      ],
+      'Stills.'
+    ).doc
+    const cut = currentCut(withStills)
+    const out = await renderCut(cut, resolveCut(cut, withStills.words, withStills.sources), sources, {
+      ffmpeg,
+      outputPath: join(dir, 'stills.mp4'),
+      workDir: join(dir, 'work-4'),
+      quality: 'preview'
+    })
+    const info = await probeMedia(ffmpeg, out)
+    expect(Math.abs(info.durationSec - 2)).toBeLessThan(0.15)
+    const samples = await sampleColour(out, { ffmpeg, fps: 4 })
+    // The card is mostly Cutalong's light ground; the cutaway is all red.
+    expect(samples[0].luma).toBeGreaterThan(150)
+    expect(samples[samples.length - 1].luma).toBeLessThan(110)
+    expect(samples[samples.length - 1].sat).toBeGreaterThan(40)
+  })
+
   it('burns in captions from the words', async () => {
     const words = wordsFromTranscript(
       [

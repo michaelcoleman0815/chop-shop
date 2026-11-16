@@ -24,7 +24,8 @@ const defaults = (): Settings => ({
   musicDir: null,
   ccliLicense: null,
   ccliStreaming: null,
-  exportPreset: null
+  exportPreset: null,
+  videoSignIn: null
 })
 
 let cache: Settings | null = null

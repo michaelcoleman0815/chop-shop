@@ -85,6 +85,12 @@ export interface Settings {
   ccliLicense: string | null
   /** CCLI Streaming Licence number. Streaming needs both. */
   ccliStreaming: string | null
+  /**
+   * A browser whose sign-in yt-dlp may borrow ("chrome", "safari", "firefox",
+   * "edge", "brave"), for videos a site will only hand to a signed-in viewer.
+   * Off until the person turns it on.
+   */
+  videoSignIn?: string | null
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string

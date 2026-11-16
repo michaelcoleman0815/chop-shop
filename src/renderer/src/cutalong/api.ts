@@ -28,6 +28,11 @@ export type CutalongApi = Pick<
   | 'mediaPreviews'
   | 'reveal'
   | 'hasApiKey'
+  | 'addAsset'
+  | 'onAssetProgress'
+  | 'searchVideos'
+  | 'saveImageAsset'
+  | 'setVideoSignIn'
 >
 
 const bridge = typeof window !== 'undefined' ? (window as { chop?: ChopApi }).chop : undefined
@@ -43,5 +48,6 @@ export const api: CutalongApi = bridge ?? createMockApi()
 
 /** A local file as the player can load it (the main process serves media://). */
 export function mediaUrlFor(path: string): string {
+  if (path.startsWith('data:')) return path
   return isMock ? '/sample.mp4' : `media://local/${encodeURIComponent(path)}`
 }

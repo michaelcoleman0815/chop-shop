@@ -177,6 +177,33 @@ export const NoteSchema = z.object({
 })
 export type Note = z.infer<typeof NoteSchema>
 
+/**
+ * Something brought in to use in the edit: a file, an image from a link, an
+ * excerpt of someone else's video, an icon. Where it came from travels with
+ * it, so every export can credit what it used.
+ */
+export const AssetSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['video', 'image', 'audio']),
+  /** The local copy the edit plays from. */
+  path: z.string().min(1),
+  title: z.string(),
+  durationSec: z.number().nonnegative().nullable(),
+  width: z.number().int().nonnegative().nullable(),
+  height: z.number().int().nonnegative().nullable(),
+  origin: z.object({
+    type: z.enum(['file', 'link', 'video', 'icon']),
+    url: z.string().nullable(),
+    /** Channel, creator or set, for the credit line. */
+    author: z.string().nullable(),
+    /** Known licence, or null when using it is the editor's own call. */
+    license: z.string().nullable(),
+    /** The stretch taken from a longer video. */
+    range: z.object({ startSec: z.number().nonnegative(), endSec: z.number().nonnegative() }).nullable()
+  })
+})
+export type Asset = z.infer<typeof AssetSchema>
+
 export const EditDocSchema = z.object({
   v: z.literal(1),
   id: z.string().min(1),
@@ -187,6 +214,8 @@ export const EditDocSchema = z.object({
   words: z.array(WordSchema),
   versions: z.array(VersionSchema).min(1),
   notes: z.array(NoteSchema),
+  /** Material brought in for the edit. Docs saved before assets existed have none. */
+  assets: z.array(AssetSchema).default([]),
   /** The preset command last applied, without its slash. */
   preset: z.string().nullable()
 })

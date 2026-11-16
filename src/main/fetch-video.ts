@@ -30,7 +30,9 @@ export async function fetchVideo(
    * workflow: on the upstream a church typically has, the download is measured
    * in hours. yt-dlp can ask the host for a range instead.
    */
-  range?: { startSec: number; endSec: number }
+  range?: { startSec: number; endSec: number },
+  /** A browser whose sign-in yt-dlp may use, for videos that need one. */
+  signInFrom?: string | null
 ): Promise<FetchedVideo> {
   const bin = YTDLP_PATH()
   if (!existsSync(bin)) {
@@ -49,6 +51,7 @@ export async function fetchVideo(
     const child = spawn(bin, [
       '--no-playlist',
       '--newline',
+      ...(signInFrom ? ['--cookies-from-browser', signInFrom] : []),
       ...(range
         ? [
             '--download-sections',

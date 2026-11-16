@@ -5,6 +5,7 @@ import {
   DEFAULT_PAD_IN,
   DEFAULT_PAD_OUT,
   DEFAULT_TREATMENT,
+  type Asset,
   type Beat,
   type Cut,
   type EditDoc,
@@ -132,6 +133,7 @@ export function createDoc(input: { id: string; title: string; source: Source; wo
     words,
     versions: [{ n: 1, at, summary: 'The recording as it was shot, split into beats.', ops: [], cut }],
     notes: [],
+    assets: [],
     preset: null
   }
 }
@@ -240,4 +242,28 @@ export function beatLabel(doc: EditDoc, beat: Beat): string {
 
 function clean(text: string): string {
   return text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+}
+
+/** Adds an asset with the next free id (a1, a2, ...), or returns the one already there for that file. */
+export function addAsset(doc: EditDoc, asset: Omit<Asset, 'id'>): { doc: EditDoc; asset: Asset } {
+  const existing = doc.assets.find((a) => a.path === asset.path)
+  if (existing) return { doc, asset: existing }
+  let max = 0
+  for (const a of doc.assets) {
+    const m = /^a(\d+)$/.exec(a.id)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  const added: Asset = { ...asset, id: `a${max + 1}` }
+  return { doc: { ...doc, assets: [...doc.assets, added] }, asset: added }
+}
+
+/** Assets the current cut actually shows, in playing order. */
+export function assetsInCut(doc: EditDoc): Asset[] {
+  const byPath = new Map(doc.assets.map((a) => [a.path, a]))
+  const used: Asset[] = []
+  for (const beat of currentCut(doc).beats) {
+    const asset = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
+    if (asset && !used.includes(asset)) used.push(asset)
+  }
+  return used
 }

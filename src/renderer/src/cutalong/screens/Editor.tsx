@@ -13,6 +13,8 @@ import {
   type Resolved
 } from '../../../../shared/edit'
 import { parseCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
+import { isImagePath } from '../../../../shared/assets'
+import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { clock } from '../format'
@@ -86,7 +88,14 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
       </Header>
       <main className="cl-editor">
         <div className="cl-editor-body">
-          <Preview doc={doc} resolved={resolved} time={player.time} video={video} mediaUrl={app.mediaUrl} />
+          <Preview
+            doc={doc}
+            resolved={resolved}
+            time={player.time}
+            playing={player.playing}
+            video={video}
+            mediaUrl={app.mediaUrl}
+          />
           {script ? (
             <ScriptPanel
               doc={doc}
@@ -119,12 +128,14 @@ function Preview({
   doc,
   resolved,
   time,
+  playing,
   video,
   mediaUrl
 }: {
   doc: EditDoc
   resolved: Resolved
   time: number
+  playing: boolean
   video: React.RefObject<HTMLVideoElement>
   mediaUrl: string | null
 }): JSX.Element {
@@ -179,6 +190,15 @@ function Preview({
         ) : (
           <span className="cl-frame-empty" />
         )}
+        {treatment?.broll && treatment.frame !== 'speaker' && (
+          <Cutaway
+            frame={treatment.frame}
+            path={treatment.broll.path}
+            offset={treatment.broll.inSec + (time - (beat?.outStart ?? 0))}
+            playing={playing}
+            bw={treatment.bw}
+          />
+        )}
         {showBig && big && (
           <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
             {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}
@@ -201,6 +221,46 @@ function Preview({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * What a beat cuts to: B-roll over the whole frame, over the top half for a
+ * split, or centred on a card. Video cutaways follow the playhead, correcting
+ * only when they drift, so playback stays smooth.
+ */
+function Cutaway({
+  frame,
+  path,
+  offset,
+  playing,
+  bw
+}: {
+  frame: string
+  path: string
+  offset: number
+  playing: boolean
+  bw: boolean
+}): JSX.Element {
+  const ref = useRef<HTMLVideoElement>(null)
+  const still = isImagePath(path) || path.startsWith('data:image')
+  useEffect(() => {
+    const v = ref.current
+    if (!v) return
+    if (Math.abs(v.currentTime - offset) > 0.3) v.currentTime = Math.max(0, offset)
+    if (playing && v.paused) void v.play().catch(() => undefined)
+    if (!playing && !v.paused) v.pause()
+  }, [offset, playing])
+  const src = mediaUrlFor(path)
+  const style = bw ? { filter: 'grayscale(1)' } : undefined
+  return (
+    <div className={`cl-cutaway ${frame}`}>
+      {still ? (
+        <img src={src} alt="" style={style} />
+      ) : (
+        <video ref={ref} src={src} muted playsInline preload="auto" style={style} />
+      )}
     </div>
   )
 }
@@ -274,7 +334,7 @@ function NotesPanel({
         presets={presets}
         onNote={(text) => {
           const command = parseCommand(text)
-          if (command) void app.runCommand(command.command, 'panel')
+          if (command) void app.runCommand(command.command, 'panel', command.rest)
           else app.addNote(text, nowBeat)
         }}
       />

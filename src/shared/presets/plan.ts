@@ -58,6 +58,15 @@ export function planStyle(doc: EditDoc, style: StyleSpec, from: Cut = currentCut
   if (style.tighten) push({ op: 'tighten', set: style.tighten })
   if (style.captions) push({ op: 'captions', set: style.captions })
   if (style.loudness && style.loudness.lufs !== cut.loudness) push({ op: 'loudness', lufs: style.loudness.lufs })
+  if (style.pad) {
+    const { inSec, outSec } = style.pad
+    for (const beat of cut.beats) {
+      if (beat.from === null) continue
+      if (Math.abs(beat.padIn - inSec) > 1e-6 || Math.abs(beat.padOut - outSec) > 1e-6) {
+        push({ op: 'pad', beat: beat.id, padIn: inSec, padOut: outSec })
+      }
+    }
+  }
 
   // Pace: long beats are split so something changes about every
   // secondsPerShot. The splits only read as changes because alternate beats
@@ -229,6 +238,7 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved): stri
       said.push('a new line opens it')
     }
   }
+  if (ops.some((o) => o.op === 'pad')) said.push('every cut lands tight on the words')
   if (splits > 0) said.push(`${count(splits, 'long beat')} ${splits === 1 ? 'is' : 'are'} split to the pace`)
   if (treat.some((o) => (o.set.zoom ?? 1) > 1)) said.push('alternate shots punch in')
   const bigWords = treat.filter((o) => o.set.bigWord).length

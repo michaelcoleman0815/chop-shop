@@ -209,6 +209,86 @@ export function createMockApi(): CutalongApi {
     mediaPreviews: async () => {
       throw new Error('No previews in the browser.')
     },
-    reveal: async () => undefined
+    reveal: async () => undefined,
+
+    addAsset: async ({ path, url, range }) => {
+      await sleep(400)
+      if (path) {
+        const image = /\.(png|jpe?g|webp|gif)$/i.test(path)
+        return {
+          ok: true as const,
+          asset: {
+            kind: image ? ('image' as const) : ('video' as const),
+            path,
+            title: path
+              .split('/')
+              .pop()!
+              .replace(/\.[^.]+$/, ''),
+            durationSec: image ? null : 12,
+            width: 1920,
+            height: 1080,
+            origin: { type: 'file' as const, url: null, author: null, license: null, range: null }
+          }
+        }
+      }
+      return {
+        ok: true as const,
+        asset: {
+          kind: 'video' as const,
+          path: `/Users/you/Movies/Chop Shop/Assets/clip-${Date.now()}.mp4`,
+          title: 'City at night, 4K',
+          durationSec: 8,
+          width: 1920,
+          height: 1080,
+          origin: {
+            type: 'video' as const,
+            url: url ?? null,
+            author: '@nightfilm',
+            license: null,
+            range: range ?? { startSec: 30, endSec: 38 }
+          }
+        }
+      }
+    },
+    onAssetProgress: () => () => undefined,
+    searchVideos: async () => {
+      await sleep(300)
+      return {
+        ok: true as const,
+        results: [
+          {
+            url: 'https://www.youtube.com/watch?v=a1',
+            title: 'City at night, 4K',
+            author: 'Nightfilm',
+            durationSec: 42
+          },
+          {
+            url: 'https://www.youtube.com/watch?v=b2',
+            title: 'Camera settings close-up',
+            author: 'Lens Lab',
+            durationSec: 95
+          },
+          {
+            url: 'https://www.youtube.com/watch?v=c3',
+            title: 'Hands on a dial, macro',
+            author: 'Macro Shots',
+            durationSec: 31
+          }
+        ]
+      }
+    },
+    saveImageAsset: async ({ base64, name, origin }) => ({
+      ok: true as const,
+      asset: {
+        kind: 'image' as const,
+        path: `data:image/png;base64,${base64}`,
+        title: name,
+        durationSec: null,
+        width: 1024,
+        height: 1024,
+        origin
+      }
+    }),
+    setVideoSignIn: async (browser) => browser
   }
 }

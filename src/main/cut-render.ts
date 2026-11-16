@@ -56,6 +56,12 @@ export interface GraphOptions {
 
 const even = (n: number): number => Math.max(2, Math.round(n / 2) * 2)
 
+/** Stills are looped rather than seeked. */
+const STILL = /\.(png|jpe?g|webp|gif|bmp)$/i
+
+/** The ground a card sits on: Cutalong's own, so cards read as part of the edit. */
+const CARD_GROUND = 'F5F5F3'
+
 /** Output frame size for an aspect, halved for previews. */
 export function frameSize(
   aspect: Aspect,
@@ -118,7 +124,7 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
     const source = bySource.get(p.source)
     if (!beat || !source) throw new Error(`Piece of ${p.beat} has no beat or recording behind it.`)
     const t = beat.treatment
-    const showsCutaway = (t.frame === 'broll' || t.frame === 'split') && t.broll !== null
+    const showsCutaway = (t.frame === 'broll' || t.frame === 'split' || t.frame === 'card') && t.broll !== null
     const offset = p.outStart - (starts.get(p.beat) ?? p.outStart)
     return {
       path: source.path,
@@ -146,7 +152,9 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const chains: string[] = []
   let next = 0
   const input = (path: string, start: number, duration: number): number => {
-    inputs.push('-ss', fixed(Math.max(0, start)), '-t', fixed(duration), '-i', path)
+    // A still has no timeline to seek: it is looped for as long as it shows.
+    if (STILL.test(path)) inputs.push('-loop', '1', '-t', fixed(duration), '-i', path)
+    else inputs.push('-ss', fixed(Math.max(0, start)), '-t', fixed(duration), '-i', path)
     return next++
   }
 
@@ -173,6 +181,16 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       chains.push(`[${b}:v]${look(W, half, t, false)}[${v}t]`)
       chains.push(`[${main}:v]${look(W, H - half, t, true)}[${v}b]`)
       chains.push(`[${v}t][${v}b]vstack,format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
+    } else if (s.broll && t.frame === 'card') {
+      // A card: the picture centred on Cutalong's ground, at most 60% of the
+      // frame, with the speaker's voice carrying on underneath.
+      const b = input(s.broll.path, s.broll.startSec, s.durationSec)
+      const box = even(Math.min(W, H) * 0.6)
+      chains.push(`color=c=0x${CARD_GROUND}:s=${W}x${H}:r=${fps}:d=${fixed(s.durationSec)}[${v}g]`)
+      chains.push(
+        `[${b}:v]fps=${fps},scale=${box}:${box}:force_original_aspect_ratio=decrease,setsar=1${t.bw ? ',hue=s=0' : ''}[${v}i]`
+      )
+      chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
     } else if (s.broll) {
       const b = input(s.broll.path, s.broll.startSec, s.durationSec)
       chains.push(`[${b}:v]${look(W, H, t, false)},format=yuv420p,setpts=PTS-STARTPTS[${v}]`)

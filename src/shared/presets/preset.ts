@@ -29,6 +29,8 @@ export const StyleSpecSchema = z.object({
   /** Zoom punched in on alternate shots, which is how a single camera keeps changing. */
   punchIn: z.object({ scale: z.number().min(1).max(1.5) }).optional(),
   loudness: z.object({ lufs: z.number().min(-30).max(-6) }).optional(),
+  /** Room kept before and after each beat's words: small numbers make snappy cuts. */
+  pad: z.object({ inSec: z.number().min(0).max(1), outSec: z.number().min(0).max(1) }).optional(),
   aspect: AspectSchema.optional(),
   maxLengthSec: z.number().positive().optional()
 })
@@ -63,6 +65,17 @@ export const BUILT_IN_PRESETS: Preset[] = [
     summary: 'Cuts pauses longer than a third of a second, and the ums.',
     builtIn: true,
     style: { tighten: { maxGapSec: 0.35, padSec: 0.06, fillers: true } },
+    inspiration: null
+  },
+  {
+    command: 'snappy',
+    title: 'Snappy',
+    summary: 'Cuts land right on the words: pauses past 0.15 s go, and the ums.',
+    builtIn: true,
+    style: {
+      tighten: { maxGapSec: 0.15, padSec: 0.03, fillers: true },
+      pad: { inSec: 0.04, outSec: 0.06 }
+    },
     inspiration: null
   },
   {
@@ -140,6 +153,7 @@ export function describeStyle(style: StyleSpec): string[] {
   if (style.hook) facts.push(`First change by ${seconds(style.hook.firstCutSec)}`)
   if (style.tighten) facts.push(`Pauses cut past ${seconds(style.tighten.maxGapSec)}`)
   if (style.punchIn) facts.push('Punch-ins between shots')
+  if (style.pad && style.pad.inSec <= 0.05) facts.push('Cuts tight to the words')
   if (style.aspect === 'vertical') facts.push('Vertical 9:16')
   else if (style.aspect === 'square') facts.push('Square 1:1')
   else if (style.aspect === 'wide') facts.push('Wide 16:9')

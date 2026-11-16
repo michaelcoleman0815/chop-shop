@@ -4,12 +4,17 @@ import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { FFMPEG_PATH, probe } from './ffmpeg'
 import { FONTS_DIR } from './resources'
-import { getSettings } from './store'
+import { getSettings, saveSettings } from './store'
 import { downloadModel, hasModel, transcribe } from './transcribe'
 import { readAnalysis } from './analysis-cache'
-import { fetchVideo } from './fetch-video'
+import { fetchVideo, YTDLP_PATH } from './fetch-video'
+import { fetchExcerpt, fetchImage, importFile, saveImage, searchVideos, type AssetTools, type NewAsset } from './assets'
+import { creditsText, isImageUrl, type Range } from '../shared/assets'
+import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
+import { loudnessEnvelope } from './audio-envelope'
+import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { planEdit } from './planner'
 import {
@@ -67,6 +72,16 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       try {
         const transcript = await transcriptFor(path, meta.durationSec, progress)
         words = wordsFromTranscript(transcript.words, source.id)
+        // Listen to the recording so every word's edges sit on its sound,
+        // which is what lets cuts land tight without clipping a consonant.
+        if (words.length > 0) {
+          progress('Listening for the cuts', 97)
+          try {
+            words = snapWords(words, await loudnessEnvelope(FFMPEG_PATH, path))
+          } catch (err) {
+            console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
+          }
+        }
       } catch (err) {
         warning = `I couldn't transcribe it, so it is one long beat for now. ${message(err)}`
       }
@@ -107,7 +122,14 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         fontsDir: FONTS_DIR(),
         onProgress: (f) => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
       })
-      return { ok: true as const, outputPath, mediaUrl: deps.mediaUrlFor(outputPath) }
+      // Anything from outside the person's own files is credited beside the video.
+      let creditsPath: string | null = null
+      const credits = final ? creditsText(doc) : null
+      if (credits) {
+        creditsPath = outputPath.replace(/\.mp4$/i, '') + ' credits.txt'
+        await fs.writeFile(creditsPath, credits)
+      }
+      return { ok: true as const, outputPath, mediaUrl: deps.mediaUrlFor(outputPath), creditsPath }
     } catch (err) {
       console.error('[cut] render failed:', message(err))
       return { ok: false as const, message: message(err) }
@@ -125,7 +147,12 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       let channel: string | null = null
       if (input.url) {
         progress('Fetching the video', 2)
-        const fetched = await fetchVideo(input.url, (p) => progress('Fetching the video', Math.round(p * 0.4)))
+        const fetched = await fetchVideo(
+          input.url,
+          (p) => progress('Fetching the video', Math.round(p * 0.4)),
+          undefined,
+          getSettings().videoSignIn ?? null
+        )
         path = fetched.path
         title = fetched.title
         channel = fetched.channel
@@ -178,6 +205,63 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   })
 
   ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[] }) => planEdit(req))
+
+  // Material for an edit: files, image links, excerpts of videos at links,
+  // search results to pick B-roll from, and icons the renderer drew. All of it
+  // is kept on this computer, in the edit's own assets folder.
+  const tools = (docId: string): AssetTools => ({
+    ffmpeg: FFMPEG_PATH,
+    ytdlp: YTDLP_PATH(),
+    dir: join(app.getPath('videos'), 'Chop Shop', 'Assets', docId.replace(/[^\w-]/g, '') || 'loose'),
+    signInFrom: getSettings().videoSignIn ?? null
+  })
+  const needsYtdlp = (): void => {
+    if (!existsSync(YTDLP_PATH())) throw new Error('yt-dlp is missing from this build. Run scripts/fetch-ytdlp.sh.')
+  }
+
+  ipcMain.handle('assets:add', async (e, req: { docId: string; path?: string; url?: string; range?: Range | null }) => {
+    try {
+      let asset: NewAsset
+      if (req.path) asset = await importFile(req.path, tools(req.docId))
+      else if (req.url && isImageUrl(req.url)) asset = await fetchImage(req.url, tools(req.docId))
+      else if (req.url) {
+        needsYtdlp()
+        asset = await fetchExcerpt(req.url, req.range ?? null, tools(req.docId), (p) =>
+          deps.send(e.sender, 'assets:progress', { stage: 'Fetching the clip', percent: p })
+        )
+      } else return { ok: false as const, message: 'There was nothing to add.', signIn: false }
+      return { ok: true as const, asset }
+    } catch (err) {
+      const text = message(err)
+      return { ok: false as const, message: text, signIn: /signed-in browser/.test(text) }
+    }
+  })
+
+  ipcMain.handle('assets:search', async (_e, query: string) => {
+    try {
+      needsYtdlp()
+      return { ok: true as const, results: await searchVideos(query, tools('search')) }
+    } catch (err) {
+      return { ok: false as const, message: message(err) }
+    }
+  })
+
+  ipcMain.handle(
+    'assets:saveImage',
+    async (_e, req: { docId: string; base64: string; name: string; origin: NewAsset['origin'] }) => {
+      try {
+        const asset = await saveImage(Buffer.from(req.base64, 'base64'), req.name, req.origin, tools(req.docId))
+        return { ok: true as const, asset }
+      } catch (err) {
+        return { ok: false as const, message: message(err) }
+      }
+    }
+  )
+
+  ipcMain.handle('settings:videoSignIn', (_e, browser: string | null) => {
+    const allowed = ['chrome', 'safari', 'firefox', 'edge', 'brave', 'chromium', 'opera', 'vivaldi']
+    return saveSettings({ videoSignIn: browser && allowed.includes(browser) ? browser : null }).videoSignIn ?? null
+  })
 
   ipcMain.handle('presets:list', () => savedPresets())
   ipcMain.handle('presets:save', (_e, preset: unknown) => savePreset(preset))

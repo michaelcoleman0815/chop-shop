@@ -9,11 +9,13 @@ import type { Attachment } from './Composer'
  */
 
 export interface Action {
-  kind: 'open-editor' | 'use-style' | 'save-style' | 'reveal' | 'retry'
+  kind: 'open-editor' | 'use-style' | 'save-style' | 'reveal' | 'retry' | 'add-clip' | 'add-icon' | 'sign-in'
   label: string
   primary?: boolean
-  /** A command name for save-style, a path for reveal. */
+  /** A command name for save-style, a path for reveal, JSON for the asset actions. */
   payload?: string
+  /** A small picture shown in the button, as a data URL. */
+  icon?: string
 }
 
 export interface Msg {
@@ -101,6 +103,7 @@ export function AssistantMessage({ msg, onAction }: { msg: Msg; onAction: (a: Ac
           <div className="cl-actions">
             {msg.actions!.map((a) => (
               <Button key={a.kind + a.label} variant={a.primary ? 'primary' : 'secondary'} onClick={() => onAction(a)}>
+                {a.icon && <img src={a.icon} alt="" width={20} height={20} />}
                 {a.kind === 'save-style' && a.payload ? (
                   <>
                     Save as <span className="cmd">/{a.payload}</span>

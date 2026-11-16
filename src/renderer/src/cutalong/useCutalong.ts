@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  addAsset as addAssetTo,
   addNote as addNoteTo,
   applyOps,
   commit,
@@ -9,9 +10,21 @@ import {
   resolveCut,
   restore,
   setNoteStatus,
+  type Asset,
   type EditDoc,
   type Op
 } from '../../../shared/edit'
+import {
+  beatForAsset,
+  DEFAULT_EXCERPT_SEC,
+  iconSvg,
+  isImagePath,
+  isImageUrl,
+  parseRange,
+  searchIcons,
+  type IconNode,
+  type Range
+} from '../../../shared/assets'
 import {
   BUILT_IN_PRESETS,
   describePlan,
@@ -48,6 +61,48 @@ export interface PanelStatus {
   error?: boolean
 }
 
+/** Commands that do something rather than set a style. They sit in the slash menu with the presets. */
+const ACTION_COMMANDS: Preset[] = [
+  {
+    command: 'broll',
+    title: 'B-roll',
+    summary: 'Find a clip to cut to: /broll city at night',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
+  {
+    command: 'icon',
+    title: 'Icon',
+    summary: 'Put an icon on a card: /icon camera',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  }
+]
+const ACTION_NAMES = new Set(ACTION_COMMANDS.map((c) => c.command))
+
+/** An icon drawn into a PNG, as base64, at the size the renderer will scale from. */
+async function rasterize(svg: string, size = 1024): Promise<string> {
+  const img = new Image()
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+  await img.decode()
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  canvas.getContext('2d')?.drawImage(img, 0, 0, size, size)
+  return canvas.toDataURL('image/png').split(',')[1]
+}
+
+/** Lucide's icon data, loaded the first time someone asks for an icon. */
+async function iconData(): Promise<{ tags: Record<string, string[]>; nodes: Record<string, IconNode[]> }> {
+  const [tags, nodes] = await Promise.all([import('lucide-static/tags.json'), import('lucide-static/icon-nodes.json')])
+  return {
+    tags: tags.default as unknown as Record<string, string[]>,
+    nodes: nodes.default as unknown as Record<string, IconNode[]>
+  }
+}
+
 let counter = 0
 const uid = (): string => `m${Date.now().toString(36)}${(counter++).toString(36)}`
 
@@ -69,7 +124,7 @@ export function useCutalong() {
   const pendingCommand = useRef<string | null>(null)
   studyRef.current = study
 
-  const presets = useMemo(() => [...BUILT_IN_PRESETS, ...saved], [saved])
+  const presets = useMemo(() => [...BUILT_IN_PRESETS, ...ACTION_COMMANDS, ...saved], [saved])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
 
@@ -188,8 +243,189 @@ export function useCutalong() {
     [patch, push, setDoc]
   )
 
+  /** Puts an asset into the doc and cuts to it on the beat that talks about it. */
+  const placeAsset = useCallback(
+    (incoming: Omit<Asset, 'id'>, hint: string): { text: string; n: number | null } => {
+      const d = docRef.current
+      if (!d) return { text: 'Drop some footage first, then this can go into it.', n: null }
+      const { doc: withAsset, asset } = addAssetTo(d, incoming)
+      setDoc(withAsset)
+      const beatId = beatForAsset(withAsset, hint || asset.title)
+      if (!beatId) return { text: `${asset.title} is in this edit's material. Tell me where it goes.`, n: null }
+      const frame = asset.origin.type === 'icon' ? ('card' as const) : ('broll' as const)
+      const done = applyAsVersion(
+        [{ op: 'treat', beats: [beatId], set: { frame, broll: { path: asset.path, inSec: 0, muted: true } } }],
+        frame === 'card' ? `The ${asset.title} icon sits on a card.` : `${asset.title} cuts in.`
+      )
+      const position = currentCut(docRef.current ?? withAsset).beats.findIndex((b) => b.id === beatId) + 1
+      if (!done) return { text: `${asset.title} is in this edit's material.`, n: null }
+      const what = frame === 'card' ? `The ${asset.title} icon sits on a card` : `${asset.title} cuts in`
+      return { text: `${what} on beat ${position}. v${done.n} is ready.`, n: done.n }
+    },
+    [applyAsVersion, setDoc]
+  )
+
+  /** Brings in a file or a link as material for the edit, then places it. */
+  const bringIn = useCallback(
+    async (req: { path?: string; url?: string; range?: Range | null }, hint: string): Promise<void> => {
+      const d = docRef.current
+      if (!d) {
+        push({ role: 'assistant', text: 'Drop some footage first, then this can go into it.' })
+        return
+      }
+      const id = push({
+        role: 'assistant',
+        text: '',
+        progress: { stage: req.url ? 'Fetching it' : 'Bringing it in', percent: 10 }
+      })
+      const off = api.onAssetProgress((p) => patch(id, { progress: p }))
+      const r = await api.addAsset({ docId: d.id, ...req })
+      off()
+      if (!r.ok) {
+        patch(id, {
+          progress: null,
+          text: r.message,
+          error: true,
+          aside: r.signIn
+            ? 'yt-dlp can use Chrome’s sign-in on this computer to fetch it. Nothing is sent anywhere else.'
+            : null,
+          actions: r.signIn
+            ? [
+                {
+                  kind: 'sign-in',
+                  label: 'Use Chrome’s sign-in',
+                  primary: true,
+                  payload: JSON.stringify({ req, hint })
+                }
+              ]
+            : undefined
+        })
+        return
+      }
+      const placed = placeAsset(r.asset, hint)
+      const range = r.asset.origin.range
+      const aside =
+        r.asset.origin.type === 'file'
+          ? null
+          : range
+            ? `Only ${clock(range.startSec)} to ${clock(range.endSec)} of it is used, and it is credited in the export.`
+            : 'It is credited in the export.'
+      patch(id, {
+        progress: null,
+        text: placed.text,
+        aside,
+        actions: placed.n ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+      })
+    },
+    [patch, placeAsset, push]
+  )
+
+  const findBroll = useCallback(
+    async (query: string): Promise<void> => {
+      if (!query.trim()) {
+        push({ role: 'assistant', text: 'Tell me what to look for, like /broll city at night.' })
+        return
+      }
+      if (!docRef.current) {
+        push({ role: 'assistant', text: 'Drop some footage first, then I can find B-roll for it.' })
+        return
+      }
+      const id = push({ role: 'assistant', text: '', progress: { stage: 'Looking for B-roll', percent: 30 } })
+      const r = await api.searchVideos(query)
+      if (!r.ok) {
+        patch(id, { progress: null, text: `I couldn't search. ${r.message}`, error: true })
+        return
+      }
+      if (r.results.length === 0) {
+        patch(id, { progress: null, text: `Nothing came up for “${query}”. Try other words.` })
+        return
+      }
+      patch(id, {
+        progress: null,
+        text: `Here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it.`,
+        aside:
+          'Only that stretch is fetched, and it is credited in the export. To choose the stretch, paste the link with a time, like 1:02-1:10.',
+        actions: r.results.slice(0, 3).map(
+          (c): Action => ({
+            kind: 'add-clip',
+            label: `${c.title}${c.durationSec ? ` · ${clock(c.durationSec)}` : ''}`,
+            payload: JSON.stringify({ url: c.url, hint: query })
+          })
+        )
+      })
+    },
+    [patch, push]
+  )
+
+  const findIcon = useCallback(
+    async (query: string): Promise<void> => {
+      if (!query.trim()) {
+        push({ role: 'assistant', text: 'Tell me what the icon should show, like /icon camera.' })
+        return
+      }
+      if (!docRef.current) {
+        push({ role: 'assistant', text: 'Drop some footage first, then an icon can go into it.' })
+        return
+      }
+      const { tags, nodes } = await iconData()
+      const names = searchIcons(query, tags, 4)
+      if (names.length === 0) {
+        push({ role: 'assistant', text: `No icon matches “${query}”. Try a simpler word.` })
+        return
+      }
+      push({
+        role: 'assistant',
+        text: `Icons for “${query}”. Pick one and it goes on a card where you talk about it.`,
+        actions: names.map(
+          (name): Action => ({
+            kind: 'add-icon',
+            label: name.replace(/-/g, ' '),
+            payload: JSON.stringify({ name, hint: query }),
+            icon: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(iconSvg(nodes[name], { size: 64 }))}`
+          })
+        )
+      })
+    },
+    [push]
+  )
+
+  const addIcon = useCallback(
+    async (name: string, hint: string): Promise<void> => {
+      const d = docRef.current
+      if (!d) return
+      const { nodes } = await iconData()
+      const base64 = await rasterize(iconSvg(nodes[name], { size: 1024, strokeWidth: 1.6 }))
+      const title = name.replace(/-/g, ' ')
+      const r = await api.saveImageAsset({
+        docId: d.id,
+        base64,
+        name: title,
+        origin: { type: 'icon', url: `https://lucide.dev/icons/${name}`, author: 'Lucide', license: 'ISC', range: null }
+      })
+      if (!r.ok) {
+        push({ role: 'assistant', text: r.message, error: true })
+        return
+      }
+      const placed = placeAsset(r.asset, hint)
+      push({
+        role: 'assistant',
+        text: placed.text,
+        aside: 'The icon is from Lucide, under the ISC licence, and is credited in the export.',
+        actions: placed.n ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+      })
+    },
+    [placeAsset, push]
+  )
+
   const runCommand = useCallback(
-    async (command: string, where: 'thread' | 'panel' = 'thread'): Promise<void> => {
+    async (command: string, where: 'thread' | 'panel' = 'thread', rest = ''): Promise<void> => {
+      if (ACTION_NAMES.has(command)) {
+        // Their results are choices to pick from, which belong in the thread.
+        if (where === 'panel') setScreen('thread')
+        if (command === 'broll') await findBroll(rest)
+        else await findIcon(rest)
+        return
+      }
       const preset = findPreset(command, presetsRef.current)
       const say = (text: string, extra: Partial<Msg> = {}): void => {
         if (where === 'panel') setPanel({ text })
@@ -221,7 +457,7 @@ export function useCutalong() {
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
-    [applyAsVersion, push]
+    [applyAsVersion, findBroll, findIcon, push]
   )
 
   const studyLink = useCallback(
@@ -293,39 +529,59 @@ export function useCutalong() {
     async (text: string, attachments: Attachment[]): Promise<void> => {
       const link = findLink(text)
       const command = parseCommand(text)
+      const words = link ? text.replace(link, '').trim() : text
       setScreen('thread')
       push({
         role: 'user',
-        text: link ? text.replace(link, '').trim() || 'Make it feel like this' : text,
+        text: link ? words || 'Make it feel like this' : text,
         attachments,
         link: link ? { url: link, title: null, meta: null } : undefined
       })
       setBusy(true)
       try {
         const footage = attachments.filter((a) => isVideoFile(a.name))
-        if (footage.length > 1) {
-          push({
-            role: 'assistant',
-            text: `I'll start with ${footage[0].name}. More than one recording per edit comes later.`
-          })
+        const stills = attachments.filter((a) => isImagePath(a.name))
+        if (docRef.current) {
+          // In an edit, everything dropped in is material for it.
+          for (const a of [...footage, ...stills]) await bringIn({ path: a.path }, words || a.name)
+        } else {
+          // Otherwise the first video is the footage the edit is made from.
+          if (footage.length > 1) {
+            push({
+              role: 'assistant',
+              text: `I'll start with ${footage[0].name}. More than one recording per edit comes later.`
+            })
+          }
+          if (footage.length > 0 && (await prepare(footage[0])) && pendingCommand.current) {
+            const waiting = pendingCommand.current
+            pendingCommand.current = null
+            await runCommand(waiting)
+          }
+          for (const a of stills) await bringIn({ path: a.path }, words || a.name)
         }
-        if (footage.length > 0 && (await prepare(footage[0])) && pendingCommand.current) {
-          const waiting = pendingCommand.current
-          pendingCommand.current = null
-          await runCommand(waiting)
+        if (link) {
+          // A link with a time, an image link, or one called B-roll is
+          // material; any other video link is something to learn a style from.
+          const range = parseRange(text)
+          const material =
+            docRef.current !== null &&
+            (range !== null ||
+              isImageUrl(link) ||
+              /\b(b-?roll|cutaway|clip|insert|overlay|use this|cut to)\b/i.test(words))
+          if (material) await bringIn({ url: link, range }, words)
+          else await studyLink(link)
         }
-        if (link) await studyLink(link)
         if (command) {
-          await runCommand(command.command)
-          if (command.rest) await ask(command.rest)
-        } else if (footage.length === 0 && !link && text) {
+          await runCommand(command.command, 'thread', command.rest)
+          if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
+        } else if (attachments.length === 0 && !link && text) {
           await ask(text)
         }
       } finally {
         setBusy(false)
       }
     },
-    [ask, prepare, push, runCommand, studyLink]
+    [ask, bringIn, prepare, push, runCommand, studyLink]
   )
 
   const useStyle = useCallback((): void => {
@@ -369,8 +625,21 @@ export function useCutalong() {
       else if (a.kind === 'use-style') useStyle()
       else if (a.kind === 'save-style' && a.payload) void saveStyle(a.payload)
       else if (a.kind === 'reveal' && a.payload) void api.reveal(a.payload)
+      else if (a.kind === 'add-clip' && a.payload) {
+        const { url, hint } = JSON.parse(a.payload) as { url: string; hint: string }
+        void bringIn({ url }, hint)
+      } else if (a.kind === 'add-icon' && a.payload) {
+        const { name, hint } = JSON.parse(a.payload) as { name: string; hint: string }
+        void addIcon(name, hint)
+      } else if (a.kind === 'sign-in' && a.payload) {
+        const { req, hint } = JSON.parse(a.payload) as {
+          req: { url?: string; path?: string; range?: Range | null }
+          hint: string
+        }
+        void api.setVideoSignIn('chrome').then(() => bringIn(req, hint))
+      }
     },
-    [saveStyle, useStyle]
+    [addIcon, bringIn, saveStyle, useStyle]
   )
 
   // ---------- Editor ----------
@@ -442,7 +711,12 @@ export function useCutalong() {
     const r = await api.renderCut({ doc: d, quality: 'final' })
     off()
     setToast(
-      r.ok ? { text: `Exported ${fileName(r.outputPath)}`, path: r.outputPath } : { text: r.message, error: true }
+      r.ok
+        ? {
+            text: `Exported ${fileName(r.outputPath)}${r.creditsPath ? ', with credits beside it' : ''}`,
+            path: r.outputPath
+          }
+        : { text: r.message, error: true }
     )
   }, [])
 

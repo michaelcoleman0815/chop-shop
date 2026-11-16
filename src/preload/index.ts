@@ -19,7 +19,7 @@ import type {
   VideoMeta,
   ZoomKeyframe
 } from '../shared/types'
-import type { EditDoc, Note, Op } from '../shared/edit'
+import type { Asset, EditDoc, Note, Op } from '../shared/edit'
 import type { InspirationStudy } from '../shared/inspiration'
 import type { Preset } from '../shared/presets'
 
@@ -44,8 +44,32 @@ const api = {
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'
-  }): Promise<{ ok: true; outputPath: string; mediaUrl: string } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('cut:render', req),
+  }): Promise<
+    { ok: true; outputPath: string; mediaUrl: string; creditsPath?: string | null } | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:render', req),
+  addAsset: (req: {
+    docId: string
+    path?: string
+    url?: string
+    range?: { startSec: number; endSec: number } | null
+  }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string; signIn: boolean }> =>
+    ipcRenderer.invoke('assets:add', req),
+  onAssetProgress: (cb: (p: Progress) => void): (() => void) => listen('assets:progress', cb),
+  searchVideos: (
+    query: string
+  ): Promise<
+    | { ok: true; results: { url: string; title: string; author: string | null; durationSec: number | null }[] }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('assets:search', query),
+  saveImageAsset: (req: {
+    docId: string
+    base64: string
+    name: string
+    origin: Asset['origin']
+  }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('assets:saveImage', req),
+  setVideoSignIn: (browser: string | null): Promise<string | null> =>
+    ipcRenderer.invoke('settings:videoSignIn', browser),
   onCutProgress: (cb: (p: Progress) => void): (() => void) => listen('cut:progress', cb),
   planEdit: (req: {
     doc: EditDoc

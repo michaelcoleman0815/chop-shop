@@ -87,6 +87,7 @@ describe('slash commands', () => {
   it('suggest matches, best first', () => {
     expect(suggestCommands('', ALL).map((p) => p.command)).toEqual([
       'tighten',
+      'snappy',
       'shorts',
       'captions',
       'hook',
