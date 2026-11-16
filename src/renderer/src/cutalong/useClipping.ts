@@ -204,7 +204,12 @@ export function useClipping(deps: ClippingDeps) {
       if (!d.current.projectRef.current) await d.current.ensureProject(fileName(paths[0]).replace(/\.[^.]+$/, ''))
       const reply = id ?? push({ role: 'assistant', text: '' })
       if (!r.ok) {
-        patch(reply, { progress: null, text: `I couldn't find clips. ${sentence(r.message)}`, error: true })
+        patch(reply, {
+          progress: null,
+          text: `I couldn't find clips. ${sentence(r.message)}`,
+          details: r.details,
+          error: true
+        })
         return true
       }
       const at = new Date().toISOString()

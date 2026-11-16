@@ -132,6 +132,8 @@ export interface Toast {
   error?: boolean
   /** The result is also in the chat: the toast offers to go and see it there. */
   chat?: boolean
+  /** What a tool printed when it stopped, behind Details. */
+  details?: { label: string; value: string }[]
 }
 
 /** What the notes panel says right now, when it is not just the version summary. */
@@ -641,7 +643,8 @@ export function useCutalong() {
         const current = brandRef.current
         const videos = [...current.videos.filter((v) => !fresh.some((f) => f.path === v.path)), ...fresh]
         saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
-        if (r.failed.length) setToast({ text: `Couldn't watch ${r.failed.join('; ')}`, error: true })
+        if (r.failed.length)
+          setToast({ text: `Couldn't watch ${r.failed.join('; ')}`, error: true, details: r.details })
       } finally {
         off()
         setBrandProgress(null)
@@ -834,6 +837,7 @@ export function useCutalong() {
         text,
         aside: [noticed, r.warning ?? ''].filter(Boolean).join(' ') || null,
         chips: r.intake?.facts.length ? r.intake.facts : undefined,
+        details: r.details,
         actions
       })
       return true
@@ -871,6 +875,7 @@ export function useCutalong() {
         progress: null,
         text,
         aside,
+        details: r.details,
         actions: added > 0 ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
       })
       return true

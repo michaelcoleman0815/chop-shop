@@ -41,6 +41,7 @@ import {
   type SoundStretch
 } from '../shared/clipping'
 import type { SuggestedClip, Transcript, TranscriptWord } from '../shared/types'
+import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 
 /**
  * /clipping, the main process's half: many short clips from long
@@ -66,7 +67,9 @@ export interface ClipFindRequest {
   avoid?: { path: string; startSec: number; endSec: number }[]
 }
 
-export type ClipFindResult = ({ ok: true; reply: ClipsReply } & ClipsFound) | { ok: false; message: string }
+export type ClipFindResult =
+  | ({ ok: true; reply: ClipsReply } & ClipsFound)
+  | { ok: false; message: string; details?: Detail[] }
 
 export interface ClipProgress {
   stage: string
@@ -655,7 +658,9 @@ export function registerClippingIpc(deps: { send: Send }, tools: () => ClippingT
     } catch (err) {
       console.error('[clipping] failed:', message(err))
       deps.send(e.sender, 'clips:progress', { stage: 'Failed', percent: 0 })
-      return { ok: false, message: message(err) }
+      // A sentence; what whisper printed, when it stopped, behind Details.
+      const details = saidDetails(toolSaid(err))
+      return { ok: false, message: message(err), ...(details.length ? { details } : {}) }
     }
   })
 }
