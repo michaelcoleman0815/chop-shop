@@ -1,7 +1,7 @@
 {
   "name": "chop-shop",
   "version": "0.2.13",
-  "description": "Chop Shop - clip long videos and grab the last N seconds of anything on screen.",
+  "description": "Cutalong: a video editor you talk to. Cuts on the words, captions, B-roll and your brand, on your own Mac.",
   "main": "./out/main/index.js",
   "author": "Michael Coleman",
   "license": "UNLICENSED",

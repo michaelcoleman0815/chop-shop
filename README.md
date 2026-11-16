@@ -1,12 +1,49 @@
-# Chop Shop
+# Cutalong
 
-A macOS desktop app for cutting clips. Two halves:
+A video editor you talk to, for YouTube creators. Drop in a recording and say what you want: "cut this for Shorts",
+"make the hook punchier", "keep the calendar shot in colour". Cutalong cuts on the words, shows you a new version, and
+keeps every version so nothing is lost. It runs on your own Mac: your footage never leaves it.
 
-- **Clip Studio**: open a long video, mark in/out, export a 9:16, 1:1 or original-ratio MP4.
-- **Live Buffer**: keep the last 15s to 5m of any screen or window in memory and grab it with a global
-  hotkey, the way a stream clipper does. Nothing is written to disk until you press the key.
+The app still installs as **Chop Shop** while the new name is cleared (see [The name](#the-name)).
 
-Exports run through a bundled ffmpeg, so there is nothing to install alongside it.
+## What it does
+
+- **Edits from what you say.** Requests in the chat and notes left while watching go to Claude, which proposes changes
+  to the edit. Every change is checked before it is offered and lands as a named version.
+- **Cuts on the words.** The recording is transcribed on your computer, split into beats, and every word's edges are
+  tightened to its sound, so a cut lands a hair before a word instead of clipping it. Strike words in the script view
+  to remove them.
+- **Presets are slash commands.** `/tighten`, `/snappy`, `/shorts`, `/captions` and `/hook` are built in. Save any style
+  as your own command, and `/brand` puts your brand on an edit.
+- **Videos you like are inspiration.** Paste a link and Cutalong measures its pattern: pace, cut length, colour,
+  loudness and shape. It applies that pattern to your footage and never takes the other video's footage.
+- **B-roll, images and icons.** `/broll` finds short clips, a link brings in an excerpt or an image, and `/icon`
+  searches Lucide's 1,539 open-source icons. Outside material is kept short, cut to for what it shows, and credited
+  in a file written beside every export.
+- **Your brand.** Drop in videos you have already made and Cutalong learns your look from them. Set a logo, caption
+  colours, how captions sit, and a few sentences on how you talk. New edits pick it up by themselves.
+- **Exports** with captions, logo and loudness set to -14 LUFS, rendered by ffmpeg.
+- **The classic tools** are one click away in the sidebar: the clip finder, the timeline editor and Live Buffer.
+
+Premiere Pro and After Effects-level skills are being built now: transitions, J and L cuts, music that ducks under
+speech, voice polish, colour, speed ramps, camera moves and reframing, and keyframed motion graphics for titles,
+callouts and kinetic captions. [docs/rebuild.md](docs/rebuild.md) has the plan and
+[docs/research](docs/research/editing-skills.md) has the research behind the order.
+
+## What runs where
+
+Everything is processed and stored on your computer: transcription (whisper.cpp), listening, measuring and rendering
+(ffmpeg), projects, assets, presets and your brand. Three things use the network:
+
+- **Claude**, to turn what you say into changes, with your own Anthropic API key. Claude sees the transcript and the
+  edit, never the footage. The key is kept in the macOS keychain and only ever sent to Anthropic.
+- **Fetching a link** you paste: a video through yt-dlp, or an image.
+- **The update check**, which reads this repository's GitHub Releases.
+
+## Getting started
+
+Add your Anthropic API key in **Settings** (bottom of the sidebar). The transcription model downloads the first time
+it is needed, or from Settings.
 
 ## Running it
 
@@ -16,6 +53,27 @@ npm run dev
 ```
 
 `npm run dev` starts Vite with hot reload for the renderer and restarts the main process on change.
+
+Native helpers are not checked in (`resources/bin` is ignored). Build or fetch them once with
+`scripts/build-whisper.sh`, `scripts/build-native.sh` (the Vision helper used for face tracking),
+`scripts/fetch-ytdlp.sh` and `scripts/fetch-fonts.sh`.
+
+### Tests
+
+```bash
+npm test            # unit tests, plus real ffmpeg renders on clips the tests make themselves
+npm run typecheck   # both processes, and every IPC channel the preload uses has a handler
+```
+
+### The interface without Electron
+
+The renderer runs in a plain browser on a mock of the main process that answers with the real shared logic, so every
+screen can be reached and screenshotted:
+
+```bash
+npx electron-vite build
+cd out/renderer && python3 -m http.server 5199
+```
 
 ## Building a local .app
 
@@ -78,25 +136,54 @@ signed to accept. Set the certificate without these three and the build still su
 warning that the result will not open on a machine that has not seen it before. Notarization adds a
 few minutes to the release, most of it waiting on Apple.
 
-## Permissions
+## Layout
+
+```
+src/main                    Electron main: ffmpeg jobs, transcription, the planner, assets, updater
+src/preload                 The contextBridge surface (window.chop)
+src/renderer/src/cutalong   Cutalong: the sidebar, Start, threads, the editor, brand, presets, settings
+src/renderer/src/legacy     The classic tools, loaded only at #classic
+src/shared                  The edit document, presets, inspiration, assets, audio and brand, with their tests
+docs                        The rebuild plan, the research, and the brand guidelines
+build                       Icon, entitlements, icon generator
+```
+
+## The name
+
+The window and the interface say Cutalong. The app id, product name and update feed still say Chop Shop on purpose:
+renaming them breaks auto-update for everyone who already has the app, and the new name needs a trademark and domain
+check first. When it is cleared, change `appId` and `productName` in `electron-builder.yml`, `publish` there and in
+`dev-app-update.yml`, and `RELEASES_URL` in `src/main/updater.ts`, in one release.
+
+## Classic tools
+
+The tools Chop Shop started with are still here, under **Classic tools** in the sidebar.
+
+- **Clip Studio** (the clip finder): open a long video, let Claude find the moments worth clipping, and export each
+  as a 9:16, 1:1 or original-ratio MP4.
+- **Timeline editor**: a multi-track timeline with the tools an editor's hands already know.
+- **Live Buffer**: keep the last 15 s to 5 min of any screen or window in memory and grab it with a global hotkey, the
+  way a stream clipper does. Nothing is written to disk until you press the key.
+
+### Permissions
 
 Live Buffer needs **Screen & System Audio Recording** in System Settings → Privacy & Security. The
 app links straight to the pane when the permission is missing. macOS does not expose system audio to
 screen capture, so only the microphone can be mixed in.
 
-## Hotkeys
+### Hotkeys
 
-| Key | Where | Does |
-| --- | --- | --- |
-| `⌘⇧C` | anywhere on the system | Grab the buffered tail |
-| `Space` | Clip Studio | Play / pause |
-| `I` / `O` | Clip Studio | Set in / out point |
-| `←` `→` | Clip Studio | Step one frame (hold `⇧` for 5s) |
+| Key       | Where                  | Does                             |
+| --------- | ---------------------- | -------------------------------- |
+| `⌘⇧C`     | anywhere on the system | Grab the buffered tail           |
+| `Space`   | Clip Studio            | Play / pause                     |
+| `I` / `O` | Clip Studio            | Set in / out point               |
+| `←` `→`   | Clip Studio            | Step one frame (hold `⇧` for 5s) |
 
 The global hotkey is editable in Settings using Electron accelerator syntax. If another app already
 owns the combination, registration fails silently and the old hotkey stops working.
 
-## How the buffer works
+### How the buffer works
 
 `MediaRecorder` is rotated every 4 seconds, so each retained blob is a complete, independently
 decodable WebM segment. A grab flushes the in-flight segment, concatenates the retained ones
@@ -105,21 +192,6 @@ land on a clean boundary instead of producing a file that only some players can 
 
 Memory is the real limit on buffer length: 5 minutes at 8 Mbps is roughly 300 MB held in the
 renderer.
-
-## Layout
-
-```
-src/main       Electron main: ffmpeg jobs, capture sources, global hotkey, updater
-src/preload    The contextBridge surface (window.chop)
-src/renderer   React UI
-src/shared     Types shared across the boundary
-build/         Icon, entitlements, icon generator
-```
-
-## Icon
-
-`build/icon.icns` is generated by `python3 build/make-icon.py`. Replace it with real artwork when
-there is any.
 
 ## Troubleshooting
 
@@ -142,16 +214,15 @@ ever fails inside `app-builder`.
 
 ## Brand
 
-The design system comes from [docs/brand-guidelines.pdf](docs/brand-guidelines.pdf), not from
-taste. If you change a colour, a type role or a piece of copy, check it against that document first.
+[docs/brand-guidelines.pdf](docs/brand-guidelines.pdf) is printed from
+[docs/brand/guidelines.html](docs/brand/guidelines.html) (`node docs/brand/print.cjs`). The values in it are the ones
+the app is built from, in `src/renderer/src/cutalong/tokens.json`; a test fails if the stylesheet drifts from them. The
+rules for building interface live in [.claude/skills/cutalong-ui/SKILL.md](.claude/skills/cutalong-ui/SKILL.md).
 
-- **Colour.** Ink `#16151A` ground, Ink Raised `#242229` surfaces, Paper `#F2F1EE` type, Chop Red
-  Light `#FF6076` accent. Plain Chop Red `#EF3A5C` is for light grounds and the icon field only.
-- **Accent is punctuation.** Under 10% of any screen, and one element per view carries it: the
-  playhead and the primary action. If two things are red, neither is.
-- **Type.** Archivo Black for display, never below 24px and never for body. Sora for interface.
-  IBM Plex Mono for timecode, durations, filenames and keyboard hints.
-- **Voice.** Short, verb-first, specific about time. No exclamation marks, no hype, no emoji.
+- **Colour.** A warm grey ground (`#F5F5F3`), white cards and ink (`#15161A`). Coral (`#FF5A36`) marks the cut and
+  nothing else: the playhead, the mark, the assistant's avatar. Never text, never a button fill.
+- **Type.** Figtree for everything people read; JetBrains Mono for commands, timecode and file names.
+- **Voice.** First person, plain words, exact numbers. No exclamation marks, no emoji, no praise, never "clone".
 
-The app icon is generated from the mark construction by `python3 build/make-icon.py`, so it stays
-correct at every size instead of drifting when someone re-exports it by eye.
+The Chop Shop guidelines are kept in [docs/archive](docs/archive/chop-shop-brand-guidelines.pdf). The app icon is still
+the Chop Shop mark, generated by `python3 build/make-icon.py`; it changes with the name.
