@@ -17,6 +17,7 @@ import { retakeHints } from './hints'
 import { MouthMeter, type RawMouth } from './meter'
 import { MOUTH_BY_NICHE, mouthModeFor, neverWatches, nicheFrom, nicheKey, readMouthMode, type MouthMode } from './mode'
 import { heardFrom, shiftEnvelope, shiftWords, syncNotice } from './offset'
+import { PROFILES } from '../raw/profiles'
 import { offCameraLine } from './speakers'
 import { detections, envelopeOf, makeRenderer, take, tilesFor, voiceSamples, type Take } from './synthetic'
 
@@ -120,6 +121,31 @@ describe('mouth watching by niche', () => {
     expect(nicheKey('something new')).toBeNull()
     expect(nicheFrom({ niche: 'gaming' })).toBe('gaming')
     expect(nicheFrom({ name: 'x' })).toBeNull()
+    expect(nicheFrom({ niche: '' })).toBeNull()
+  })
+
+  it('reads every cutting profile, and the kinds not built as profiles yet, as a niche', () => {
+    // The brand's niche and an edit's profile are cutting profile ids.
+    const read = Object.fromEntries(PROFILES.map((p) => [p.id, nicheKey(p.id)]))
+    expect(read).toEqual({
+      'talking-head': 'talking-head',
+      tech: 'tech-review',
+      podcast: 'podcast',
+      gaming: 'gaming-facecam',
+      livestream: 'gaming-facecam',
+      church: 'sermon',
+      asmr: 'asmr'
+    })
+    // What "this one is a ... video" names when there is no profile for it yet.
+    expect(['cooking', 'wedding', 'vlog', 'workout', 'makeup', 'reaction', 'sports'].map(nicheKey)).toEqual([
+      'cooking',
+      'events-weddings',
+      'vlog',
+      'fitness',
+      'beauty',
+      'reaction-commentary',
+      'sports'
+    ])
   })
 
   it('takes a sentence that sets it, and leaves every other request to the planner', () => {

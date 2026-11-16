@@ -10,8 +10,10 @@ import { z } from 'zod'
  *
  * The right answer depends on the kind of video, so each niche has a default,
  * and an edit can change it in a sentence ("time my cuts to the sound only").
- * The niche profiles will carry this field; until they do, the table lives
- * here.
+ * The kind of video comes from the brand's niche or the edit's own cutting
+ * profile (shared/raw/profiles: "tech", "asmr"), or a kind named in a
+ * sentence that has no profile yet ("cooking"); nicheKey reads all three
+ * into this table, which covers more kinds than the profiles do so far.
  */
 export const MOUTH_MODES = ['cuts+sync', 'sync', 'off'] as const
 export const MouthModeSchema = z.enum(MOUTH_MODES)
@@ -156,7 +158,7 @@ const ALIASES: [RegExp, Niche][] = [
   [/\btalking.?head|to camera/, 'talking-head']
 ]
 
-/** The niche a brand or profile names, if it names one (the field is coming with the niche profiles). */
+/** The niche a brand names, if it names one: its `niche`, a cutting profile id such as "tech", or empty. */
 export function nicheFrom(holder: unknown): string | null {
   const niche = holder && typeof holder === 'object' ? (holder as { niche?: unknown }).niche : null
   return typeof niche === 'string' && niche.trim() ? niche : null
