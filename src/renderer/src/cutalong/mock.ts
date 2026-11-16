@@ -39,14 +39,16 @@ function fakeWords(): { text: string; startSec: number; endSec: number }[] {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-function fakeDoc(path: string): EditDoc {
+export function fakeDoc(path: string): EditDoc {
   const words = fakeWords()
+  // Footage named as wide or landscape comes out 16:9; everything else is a vertical take.
+  const wide = /wide|landscape|16x9/i.test(path)
   const source = {
     id: 's1',
     path,
     durationSec: words[words.length - 1].endSec + 1.2,
-    width: 1080,
-    height: 1920,
+    width: wide ? 1920 : 1080,
+    height: wide ? 1080 : 1920,
     fps: 30
   }
   return createDoc({

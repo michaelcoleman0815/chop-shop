@@ -1,6 +1,8 @@
+import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { describe, expect, it } from 'vitest'
-import { addNote, commit, createDoc, currentCut, wordsFromTranscript, OpSchema } from '../shared/edit'
-import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript } from './planner-prompt'
+import { addNote, applyOps, commit, createDoc, currentCut, wordsFromTranscript, OpSchema } from '../shared/edit'
+import { templates } from '../shared/motion'
+import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
 
 const source = { id: 's1', path: '/take.mov', durationSec: 12, width: 1080, height: 1920, fps: 30 }
 const words = wordsFromTranscript(
@@ -87,5 +89,93 @@ describe('the planner request', () => {
       needs: []
     }
     expect(PlanSchema.safeParse(plan).success).toBe(true)
+  })
+
+  it('teaches every graphic there is, with an example that parses and applies', () => {
+    expect(PLANNER_SYSTEM).toContain('## Graphics')
+    // A longer recording, so every example's anchors exist.
+    const long = createDoc({
+      id: 'g',
+      title: 'g',
+      source: { ...source, durationSec: 40 },
+      words: wordsFromTranscript(
+        Array.from({ length: 40 }, (_, i) => ({
+          text: `word${i + 1}`,
+          startSec: 0.5 + i * 0.6,
+          endSec: 0.9 + i * 0.6
+        })),
+        's1'
+      )
+    })
+    const examples = [...PLANNER_SYSTEM.matchAll(/\{"op":"motion-add"[^\n]*?\}(?=: )/g)].map((m) => JSON.parse(m[0]))
+    const kinds = templates()
+      .map((t) => t.kind)
+      .filter((k) => k !== 'layers')
+    expect(examples.map((e) => e.kind).sort()).toEqual([...kinds].sort())
+    for (const kind of kinds) expect(PLANNER_SYSTEM).toContain(`\n- ${kind}: `)
+    const r = applyOps(currentCut(long), examples, { words: long.words, sources: long.sources })
+    expect(r.rejected).toEqual([])
+    expect(r.applied).toHaveLength(examples.length)
+  })
+
+  it('accepts graphics in a plan, and they pass the dry run', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const slots = { to: '', items: [], values: [], icon: '', place: '', color: '', fx: [] }
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], box: [], style: 'spec', ...slots },
+        { op: 'motion-update', id: 'm1', from: '', text: [], box: [0.5, 0.4], style: '', ...slots },
+        { op: 'motion-remove', ids: ['m1'] }
+      ],
+      summary: 'A callout points at the settings, then goes.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(r.rejected).toEqual([])
+    expect(r.applied.map((o) => o.op)).toEqual(['motion-add', 'motion-update', 'motion-remove'])
+  })
+
+  it('shows the cut’s graphics in the request', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    doc = commit(doc, [{ op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], style: 'circle' }], 'x').doc
+    const text = renderRequest(doc, 'Make it an arrow', [])
+    expect(text).toContain('<graphics>\nm1 callout [0:02-0:04] from w9 | text "Settings" | style circle\n</graphics>')
+  })
+
+  it('makes icon names real before the dry run', async () => {
+    const [kept, fixed, none] = await withRealIcons([{ icon: 'camera' }, { icon: 'a camera' }, { icon: '' }])
+    expect(kept.icon).toBe('camera')
+    expect(fixed.icon).toBe('camera')
+    expect(none.icon).toBe('')
+  })
+
+  it('keeps the plan’s schema inside the limits of structured output', () => {
+    // Claude's structured output allows at most 24 optional and 16 union-typed
+    // parameters in all, and no recursion. Every slot of a graphic is required for this.
+    const schema = (betaZodOutputFormat(PlanSchema) as unknown as { schema: unknown }).schema
+    let optional = 0
+    let unions = 0
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return
+      const n = node as Record<string, unknown>
+      if (n.type === 'object' && n.properties && typeof n.properties === 'object') {
+        const required = new Set((n.required as string[] | undefined) ?? [])
+        for (const [k, v] of Object.entries(n.properties as Record<string, Record<string, unknown>>)) {
+          if (!required.has(k)) optional++
+          if (Array.isArray(v.anyOf) || Array.isArray(v.oneOf) || Array.isArray(v.type)) unions++
+        }
+      }
+      if (n.type === 'array' && n.items && Array.isArray((n.items as Record<string, unknown>).anyOf)) unions++
+      for (const v of Object.values(n)) {
+        if (Array.isArray(v)) v.forEach(walk)
+        else if (v && typeof v === 'object') walk(v)
+      }
+    }
+    walk(schema)
+    expect(optional).toBeLessThanOrEqual(24)
+    expect(unions).toBeLessThanOrEqual(16)
+    expect(JSON.stringify(schema)).not.toContain('$ref')
   })
 })

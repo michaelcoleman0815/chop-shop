@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { currentCut, currentVersion, indexWords, resolveCut, type EditDoc, type Note } from '../shared/edit'
 import { clock } from '../shared/presets'
+import { graphicsGuide, graphicsLines, templates } from '../shared/motion'
+import { searchIcons } from '../shared/assets'
 
 /**
  * Everything the planner sends and expects back, kept apart from the API call
@@ -33,6 +35,8 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - {"op":"loudness","lufs":-14}.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
+${graphicsGuide()}
+
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
 - "This", "here" and "that bit" in a note mean the beat the note was left on.
@@ -53,6 +57,28 @@ const TreatmentSet = z.object({
   bw: z.boolean().optional(),
   zoom: z.number().optional(),
   bigWord: z.string().nullable().optional()
+})
+
+/** The graphics the planner can make: every built template but hand-built layers. */
+const GRAPHIC_KINDS = templates()
+  .map((t) => t.kind)
+  .filter((k) => k !== 'layers') as [string, ...string[]]
+
+// Made fresh for each op: shared schema objects come out as $refs in the JSON schema.
+const graphicSlots = () => ({
+  from: z.string(),
+  to: z.string(),
+  text: z.array(z.string()),
+  items: z.array(
+    z.object({ label: z.string(), value: z.string(), note: z.string(), mark: z.string(), at: z.string() })
+  ),
+  values: z.array(z.number()),
+  box: z.array(z.number()),
+  icon: z.string(),
+  style: z.string(),
+  place: z.string(),
+  color: z.string(),
+  fx: z.array(z.string())
 })
 
 export const PlannerOpSchema = z.discriminatedUnion('op', [
@@ -82,7 +108,13 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     set: z.object({ maxGapSec: z.number(), padSec: z.number(), fillers: z.boolean() }).nullable()
   }),
   z.object({ op: z.literal('aspect'), aspect: z.enum(['vertical', 'wide', 'square', 'original']) }),
-  z.object({ op: z.literal('loudness'), lufs: z.number().nullable() })
+  z.object({ op: z.literal('loudness'), lufs: z.number().nullable() }),
+  // Graphics. Every slot is required, so the schema spends nothing from the
+  // structured-output limits on optional or union-typed parameters; an empty
+  // slot means the template's default (or, in an update, no change).
+  z.object({ op: z.literal('motion-add'), kind: z.enum(GRAPHIC_KINDS), ...graphicSlots() }),
+  z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
+  z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) })
 ])
 
 export const PlanSchema = z.object({
@@ -175,6 +207,8 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
   })
 
   const parts = [`<cut ${settings.join('; ')}>`, ...beats, '</cut>']
+  const graphics = graphicsLines(cut, resolved, doc.words)
+  if (graphics.length > 0) parts.push('<graphics>', ...graphics, '</graphics>')
   if (notes.length > 0) {
     parts.push('<notes>')
     for (const note of notes) parts.push(`${note.id}${note.beat ? ` (left on ${note.beat})` : ''}: ${note.text}`)
@@ -187,4 +221,23 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
   if (request.trim()) parts.push(`<request>\n${request.trim()}\n</request>`)
   else parts.push('Carry out the notes.')
   return parts.join('\n')
+}
+
+/**
+ * Icons the model names that Lucide does not have become the closest one it
+ * does, or none, so a graphic never waits on an icon that cannot be drawn.
+ */
+export async function withRealIcons<T>(ops: T[]): Promise<T[]> {
+  const named = (o: T): string => {
+    const icon = (o as { icon?: unknown }).icon
+    return typeof icon === 'string' ? icon.trim() : ''
+  }
+  if (!ops.some((o) => named(o) && named(o) !== 'none')) return ops
+  const mod = await import('lucide-static/tags.json')
+  const tags = (mod.default ?? mod) as unknown as Record<string, string[]>
+  return ops.map((o) => {
+    const icon = named(o)
+    if (!icon || icon === 'none' || tags[icon]) return o
+    return { ...o, icon: searchIcons(icon, tags, 1)[0] ?? '' }
+  })
 }

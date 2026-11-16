@@ -35,6 +35,7 @@ import {
 } from '../../../shared/presets'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import { findMotionCommand, motionCommandEntries, planMotionCommand, type MotionChange } from '../../../shared/motion'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
@@ -81,7 +82,15 @@ const ACTION_COMMANDS: Preset[] = [
     inspiration: null
   }
 ]
-const ACTION_NAMES = new Set(ACTION_COMMANDS.map((c) => c.command))
+/** Graphics: each command puts one on the word under the playhead. */
+const MOTION_ENTRIES: Preset[] = motionCommandEntries().map((c) => ({
+  ...c,
+  builtIn: true,
+  style: {},
+  inspiration: null
+}))
+// Commands that act rather than set a style; what follows them is theirs, not the planner's.
+const ACTION_NAMES = new Set([...ACTION_COMMANDS, ...MOTION_ENTRIES].map((c) => c.command))
 
 /** An icon drawn into a PNG, as base64, at the size the renderer will scale from. */
 async function rasterize(svg: string, size = 1024): Promise<string> {
@@ -118,6 +127,8 @@ export function useCutalong() {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const [panel, setPanel] = useState<PanelStatus | null>(null)
+  /** The graphic selected in the editor, by id. */
+  const [graphic, setGraphic] = useState<string | null>(null)
   const [brand, setBrand] = useState<Brand>(EMPTY_BRAND)
   const [brandProgress, setBrandProgress] = useState<{ stage: string; percent: number } | null>(null)
   const brandRef = useRef<Brand>(EMPTY_BRAND)
@@ -131,7 +142,7 @@ export function useCutalong() {
 
   const presets = useMemo(() => {
     const mine = brandPreset(brand)
-    return [...BUILT_IN_PRESETS, ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...saved]
+    return [...BUILT_IN_PRESETS, ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...MOTION_ENTRIES, ...saved]
   }, [saved, brand])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
@@ -528,8 +539,75 @@ export function useCutalong() {
     [placeAsset, push]
   )
 
+  /** A graphics command: one motion-add op, on the word under the playhead when there is one. */
+  const placeGraphic = useCallback(
+    (command: string, where: 'thread' | 'panel', rest: string, at: number | null): void => {
+      const say = (text: string, extra: Partial<Msg> = {}): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text, ...extra })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then a graphic can go on it.')
+        return
+      }
+      const cut = currentCut(d)
+      const resolved = resolveCut(cut, d.words, d.sources)
+      const plan = planMotionCommand(command, rest, {
+        doc: d,
+        resolved,
+        time: at,
+        brandName: brandRef.current.name
+      })
+      if ('problem' in plan) {
+        say(plan.problem)
+        return
+      }
+      const trial = applyOps(cut, [plan.op], { words: d.words, sources: d.sources })
+      if (trial.rejected.length > 0) {
+        say(trial.rejected[0].reason)
+        return
+      }
+      const added = trial.cut.motion[trial.cut.motion.length - 1]
+      const done = applyAsVersion(trial.applied, 'A graphic comes in.')
+      if (!done) return
+      setGraphic(added?.id ?? null)
+      const text = `v${done.n} is ready. ${done.summary}${plan.after ? ` ${plan.after}` : ''}`
+      if (where === 'panel') setPanel({ text })
+      else
+        push({ role: 'assistant', text, actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }] })
+    },
+    [applyAsVersion, push]
+  )
+
+  const updateGraphic = useCallback(
+    (id: string, change: MotionChange): void => {
+      const done = applyAsVersion([{ op: 'motion-update', id, ...change }], 'The graphic changes.')
+      setPanel(done ? null : { text: 'Nothing changed.' })
+    },
+    [applyAsVersion]
+  )
+
+  const removeGraphic = useCallback(
+    (id: string): void => {
+      const done = applyAsVersion([{ op: 'motion-remove', ids: [id] }], 'The graphic is gone.')
+      if (done) setGraphic(null)
+      setPanel(done ? { text: `v${done.n} is ready. ${done.summary}` } : null)
+    },
+    [applyAsVersion]
+  )
+
   const runCommand = useCallback(
-    async (command: string, where: 'thread' | 'panel' = 'thread', rest = ''): Promise<void> => {
+    async (
+      command: string,
+      where: 'thread' | 'panel' = 'thread',
+      rest = '',
+      at: number | null = null
+    ): Promise<void> => {
+      if (findMotionCommand(command)) {
+        placeGraphic(command, where, rest, at)
+        return
+      }
       if (ACTION_NAMES.has(command)) {
         // Their results are choices to pick from, which belong in the thread.
         if (where === 'panel') setScreen('thread')
@@ -568,7 +646,7 @@ export function useCutalong() {
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
-    [applyAsVersion, findBroll, findIcon, push]
+    [applyAsVersion, findBroll, findIcon, placeGraphic, push]
   )
 
   const studyLink = useCallback(
@@ -853,6 +931,7 @@ export function useCutalong() {
     setMessages([])
     setStudy(null)
     setPanel(null)
+    setGraphic(null)
     setScreen('start')
     refreshRecent()
   }, [refreshRecent])
@@ -887,7 +966,11 @@ export function useCutalong() {
     applyNotes,
     applyOpsDirect,
     undo,
-    exportFinal
+    exportFinal,
+    graphic,
+    selectGraphic: setGraphic,
+    updateGraphic,
+    removeGraphic
   }
 }
 

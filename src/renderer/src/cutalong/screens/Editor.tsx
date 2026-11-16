@@ -13,11 +13,21 @@ import {
   type Resolved
 } from '../../../../shared/edit'
 import { parseCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
-import { buildScene, designSize, themeFrom, type MotionScene } from '../../../../shared/motion'
+import {
+  buildScene,
+  designSize,
+  graphicTitle,
+  template,
+  themeFrom,
+  type MotionItem,
+  type MotionScene
+} from '../../../../shared/motion'
 import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
-import { BeatStrip, type StripBeat } from '../components/BeatStrip'
+import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
+import { GraphicPanel } from '../components/GraphicPanel'
 import { MotionCanvas } from '../components/MotionCanvas'
+import { RegionPicker } from '../components/RegionPicker'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { clock } from '../format'
 import { usePlayer } from '../usePlayer'
@@ -61,6 +71,22 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const nowBeat =
     resolved.beats.find((b) => player.time >= b.outStart && player.time < b.outEnd) ??
     resolved.beats[resolved.beats.length - 1]
+
+  // Graphics along the beat strip, stacked in rows where they overlap.
+  const marks: StripMark[] = useMemo(() => {
+    const rows: number[] = []
+    const byId = new Map(cut.motion.map((m) => [m.id, m]))
+    return [...scene.items]
+      .sort((a, b) => a.start - b.start)
+      .map((i) => {
+        let row = rows.findIndex((free) => free <= i.start)
+        if (row < 0) row = rows.length
+        rows[row] = i.end
+        const item = byId.get(i.id)
+        return { id: i.id, label: item ? graphicTitle(item) : 'Graphic', start: i.start, end: i.end, row }
+      })
+  }, [scene, cut.motion])
+  const selected: MotionItem | null = cut.motion.find((m) => m.id === app.graphic) ?? null
 
   // Space plays and pauses, unless someone is typing.
   useEffect(() => {
@@ -110,6 +136,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             playing={player.playing}
             video={video}
             mediaUrl={app.mediaUrl}
+            selected={selected}
+            onRegion={(box) => selected && app.updateGraphic(selected.id, { box })}
           />
           {script ? (
             <ScriptPanel
@@ -119,8 +147,16 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               onSeek={player.seek}
               onApply={app.applyOpsDirect}
             />
+          ) : selected ? (
+            <GraphicPanel
+              item={selected}
+              scene={scene}
+              onChange={(change) => app.updateGraphic(selected.id, change)}
+              onRemove={() => app.removeGraphic(selected.id)}
+              onClose={() => app.selectGraphic(null)}
+            />
           ) : (
-            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} />
+            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} time={player.time} />
           )}
         </div>
         <BeatStrip
@@ -130,6 +166,13 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           playing={player.playing}
           onToggle={player.toggle}
           onSeek={player.seek}
+          marks={marks}
+          selected={selected?.id ?? null}
+          onMark={(id) => {
+            app.selectGraphic(id === selected?.id ? null : id)
+            const at = scene.items.find((i) => i.id === id)
+            if (at && id !== selected?.id) player.seek(Math.min(at.end - 0.05, at.at + 0.4))
+          }}
         />
       </main>
     </>
@@ -146,11 +189,15 @@ function Preview({
   time,
   playing,
   video,
-  mediaUrl
+  mediaUrl,
+  selected,
+  onRegion
 }: {
   doc: EditDoc
   resolved: Resolved
   scene: MotionScene
+  selected: MotionItem | null
+  onRegion: (box: number[]) => void
   time: number
   playing: boolean
   video: React.RefObject<HTMLVideoElement>
@@ -238,6 +285,9 @@ function Preview({
           </div>
         )}
         <MotionCanvas scene={scene} assets={doc.assets} time={time} width={box.w} height={box.h} />
+        {selected && template(selected.kind)?.fields.some((f) => f.slot === 'box') && (
+          <RegionPicker item={selected} onPick={onRegion} />
+        )}
       </div>
     </div>
   )
@@ -287,12 +337,15 @@ function NotesPanel({
   app,
   doc,
   nowBeat,
-  presets
+  presets,
+  time
 }: {
   app: Cutalong
   doc: EditDoc
   nowBeat: string | null
   presets: Preset[]
+  /** The playhead, where a graphic typed here lands. */
+  time: number
 }): JSX.Element {
   const version = currentVersion(doc)
   const notes = openNotes(doc)
@@ -352,7 +405,7 @@ function NotesPanel({
         presets={presets}
         onNote={(text) => {
           const command = parseCommand(text)
-          if (command) void app.runCommand(command.command, 'panel', command.rest)
+          if (command) void app.runCommand(command.command, 'panel', command.rest, time)
           else app.addNote(text, nowBeat)
         }}
       />

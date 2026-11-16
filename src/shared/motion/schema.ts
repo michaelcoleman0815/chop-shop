@@ -369,7 +369,13 @@ export type MotionItem = z.infer<typeof MotionItemSchema>
 
 /** What can change in a graphic. Every field is optional; empty text and lists also keep what is there. */
 export const MotionChangeSchema = z.object({
-  from: AnchorRefSchema.optional(),
+  // Empty keeps the start, like every other slot of a change.
+  from: z
+    .string()
+    .refine((s) => s.trim() === '' || parseAnchor(s) !== null, {
+      message: 'Use start, end, a word id like w12, or a beat id like b3.'
+    })
+    .optional(),
   to: EndRefSchema.optional(),
   text: z.array(z.string().max(300)).max(12).optional(),
   items: z.array(MotionRowSchema).max(12).optional(),

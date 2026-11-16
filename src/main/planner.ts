@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { readApiKey } from './apikey'
 import { applyOps, currentCut, EditDocSchema, type Note, type Op } from '../shared/edit'
-import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript } from './planner-prompt'
+import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
 
 /**
  * Turns a request or a set of notes into ops on an edit document, with Claude.
@@ -75,7 +75,8 @@ export async function planEdit(input: {
     if (!plan) return { ok: false, message: 'The plan came back in a shape I could not read. Try again.' }
 
     // Dry run on a copy: only ops that apply cleanly go back to the editor.
-    const result = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    const ops = await withRealIcons(plan.ops)
+    const result = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources })
     const known = new Set(input.notes.map((n) => n.id))
     return {
       ok: true,

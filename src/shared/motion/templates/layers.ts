@@ -35,6 +35,7 @@ register({
   length: 3,
   lead: 0,
   fields: [],
+  example: { call: { from: 'w1', layers: [] }, says: 'hand-built layers' },
   check: (call) => (call.layers.length === 0 ? 'A custom graphic needs at least one layer.' : null),
   build: (ctx) =>
     ctx.item.layers

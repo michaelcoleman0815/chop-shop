@@ -16,13 +16,25 @@ export interface StripBeat {
   bw: boolean
 }
 
+/** A graphic on the cut: a thin bar over the beats it covers, in a row of its own when graphics overlap. */
+export interface StripMark {
+  id: string
+  label: string
+  start: number
+  end: number
+  row: number
+}
+
 export function BeatStrip({
   beats,
   duration,
   time,
   playing,
   onToggle,
-  onSeek
+  onSeek,
+  marks = [],
+  selected = null,
+  onMark
 }: {
   beats: StripBeat[]
   duration: number
@@ -30,6 +42,9 @@ export function BeatStrip({
   playing: boolean
   onToggle: () => void
   onSeek: (sec: number) => void
+  marks?: StripMark[]
+  selected?: string | null
+  onMark?: (id: string) => void
 }): JSX.Element {
   const track = useRef<HTMLDivElement>(null)
   const now =
@@ -75,6 +90,26 @@ export function BeatStrip({
             {b === now ? b.label : ''}
           </span>
         ))}
+        {duration > 0 &&
+          marks.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={`cl-mark${m.id === selected ? ' on' : ''}`}
+              style={{
+                left: `${(m.start / duration) * 100}%`,
+                width: `${(Math.max(0, m.end - m.start) / duration) * 100}%`,
+                top: -11 - m.row * 8
+              }}
+              aria-label={`${m.label}, ${clock(m.start)}`}
+              aria-pressed={m.id === selected}
+              title={`${m.label} · ${clock(m.start)}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onMark?.(m.id)
+              }}
+            />
+          ))}
         {duration > 0 && (
           <span className="cl-playhead" style={{ left: `${(Math.min(time, duration) / duration) * 100}%` }} />
         )}

@@ -1,4 +1,4 @@
-import type { MotionCall, MotionItem, MotionKind } from '../schema'
+import type { MotionCall, MotionCallInput, MotionItem, MotionKind } from '../schema'
 import type { Frame, MotionTheme } from '../theme'
 import type { TimeSpan, Timeline } from '../timing'
 import type { Layer } from '../types'
@@ -44,6 +44,8 @@ export interface Template {
   /** Seconds the entrance starts before its anchor, so it finishes on the word. */
   lead: number
   fields: Field[]
+  /** A call the planner's instructions show, and what it does, in a few words. */
+  example: { call: Omit<MotionCallInput, 'kind'>; says: string }
   /** Why a call cannot be drawn, as a sentence; null when it can. */
   check(call: MotionCall): string | null
   build(ctx: BuildContext): Layer[]
