@@ -162,6 +162,8 @@ const api = {
         width?: number
         height?: number
         durationSec?: number
+        /** On a phone, whether the export went to Photos too, and why not when it did not. */
+        photos?: { saved: boolean; message?: string }
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:render', req),

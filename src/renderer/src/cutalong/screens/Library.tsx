@@ -1,4 +1,4 @@
-import { api } from '../api'
+import { api, device } from '../api'
 import { Button } from '../components/ui'
 import { collapse } from '../motion'
 import type { Cutalong } from '../useCutalong'
@@ -16,9 +16,12 @@ export function ProjectsPage({ app, onBrowse }: { app: Cutalong; onBrowse: () =>
         <div className="cl-page-inner wide">
           <div className="cl-row" style={{ justifyContent: 'space-between' }}>
             <h1 className="cl-page-title">Projects</h1>
-            <Button small onClick={onBrowse}>
-              Open a project file…
-            </Button>
+            {/* A phone keeps its projects in the app: there is no file to open. */}
+            {device.kind !== 'phone' && (
+              <Button small onClick={onBrowse}>
+                Open a project file…
+              </Button>
+            )}
           </div>
           {app.recent.length === 0 ? (
             <p className="cl-lede">Nothing yet. Start a new edit and it shows up here.</p>
@@ -37,6 +40,8 @@ export function ProjectsPage({ app, onBrowse }: { app: Cutalong; onBrowse: () =>
 
 /** Every slash command: built in, your brand, and the styles you saved. */
 export function PresetsPage({ app }: { app: Cutalong }): JSX.Element {
+  // What is on the Mac for now is not listed on a phone (device.ts).
+  const presets = app.presets.filter((p) => !device.away[p.command])
   return (
     <>
       <Header>
@@ -47,7 +52,7 @@ export function PresetsPage({ app }: { app: Cutalong }): JSX.Element {
           <h1 className="cl-page-title">Presets</h1>
           <p className="cl-lede">Type any of these after a slash, in the composer or in a note.</p>
           <ul className="cl-list">
-            {app.presets.map((p) => (
+            {presets.map((p) => (
               <li key={p.command}>
                 <span className="mono cl-list-cmd">/{p.command}</span>
                 <span className="cl-list-main">

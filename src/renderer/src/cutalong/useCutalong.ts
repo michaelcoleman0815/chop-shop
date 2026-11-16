@@ -111,7 +111,7 @@ import {
   useMemory
 } from './memory'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
-import { api, mediaUrlFor } from './api'
+import { api, device, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
@@ -2057,6 +2057,13 @@ export function useCutalong() {
       const d0 = docRef.current
       const r0 = d0 && at !== null ? resolveCut(currentCut(d0), d0.words, d0.sources) : null
       const beat = r0 && at !== null ? ((beatAt(r0, at) ?? r0.beats[r0.beats.length - 1])?.id ?? null) : null
+      // On a phone, what is on the Mac for now says so in one sentence (device.ts).
+      const away = device.away[command]
+      if (away) {
+        if (where === 'panel') setPanel({ text: away })
+        else push({ role: 'assistant', text: away })
+        return
+      }
       if (command === 'all') {
         await finishCommand(where)
         vlog.onBeats(where)
@@ -2352,7 +2359,13 @@ export function useCutalong() {
     async (text: string): Promise<void> => {
       const d = docRef.current
       if (!d) {
-        push({ role: 'assistant', text: "Drop some footage or paste a video you like, and I'll start from there." })
+        push({
+          role: 'assistant',
+          text:
+            device.kind === 'phone'
+              ? "Add footage with + and I'll start from there."
+              : "Drop some footage or paste a video you like, and I'll start from there."
+        })
         return
       }
       // A length, an opening or a part of the day asked of a vlog tells its story again (useVlog).
@@ -2529,25 +2542,40 @@ export function useCutalong() {
             }
           : undefined
       })
+      // On a phone, links, vlogs and /clipping are on the Mac for now: said once, and the rest still happens.
+      const away = device.away
+      const asVlog = (): boolean =>
+        vlog.wanted(said, command?.command ?? null, attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name)))
+      const awayNow =
+        (away['feature:link'] && link && away['feature:link']) ||
+        (away['feature:vlog'] && command?.command !== 'vlog' && asVlog() && away['feature:vlog']) ||
+        (away['feature:clipping'] && command?.command !== 'clipping' && clippingAsked(words) && away['feature:clipping']) ||
+        null
+      if (awayNow) {
+        push({ role: 'assistant', text: awayNow })
+        if (!attachments.length) return
+      }
       setBusy(true)
       try {
         // /clipping, "find clips", "clip this stream": the recordings are long ones to cut clips from.
         // Asked in words about a short, it is an edit after all, made below as it always was.
         const inWords = command?.command !== 'clipping' && !!clippingAsked(words)
         const clipAsk =
-          command?.command === 'clipping'
-            ? command.rest
-            : inWords
-              ? words
-              : recordingsIn.length > 0 && !text.trim()
-                ? clipping.takePending()
-                : null
+          device.away['feature:clipping'] && command?.command !== 'clipping'
+            ? null
+            : command?.command === 'clipping'
+              ? command.rest
+              : inWords
+                ? words
+                : recordingsIn.length > 0 && !text.trim()
+                  ? clipping.takePending()
+                  : null
         if (clipAsk !== null && (await clipping.run(attachments, clipAsk, inWords))) return
         const recordings = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
         const stills = attachments.filter((a) => isImagePath(a.name))
         const materialBefore = docRef.current?.assets.length ?? 0
         // A day of clips to tell as a story (useVlog): every clip is material with its own sound.
-        const vlogged = vlog.wanted(said, command?.command ?? null, recordings)
+        const vlogged = !device.away['feature:vlog'] && vlog.wanted(said, command?.command ?? null, recordings)
         if (vlogged) await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words)
         else if (recordings.length > 0) await takeIn(recordings, said)
         if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
@@ -2556,7 +2584,7 @@ export function useCutalong() {
           else push({ role: 'assistant', text: 'Drop your footage too, and these go into the edit with it.' })
         }
         let asked = false
-        if (link && command?.command !== 'screenshot' && command?.command !== 'phone') {
+        if (link && !device.away['feature:link'] && command?.command !== 'screenshot' && command?.command !== 'phone') {
           // A link with a time, an image link, or one called B-roll is
           // material; any other video link is something to learn a style from.
           const range = parseRange(text)
@@ -2589,7 +2617,13 @@ export function useCutalong() {
           else if (unplaced()) await ask(PLACE_MATERIAL)
         } else if (vlogged) {
           // What was said with the shoot was for its story.
-        } else if (text && !link && attachments.length === 0 && (await vlog.asked(text))) {
+        } else if (
+          text &&
+          !link &&
+          attachments.length === 0 &&
+          !device.away['feature:vlog'] &&
+          (await vlog.asked(text))
+        ) {
           // An edit made into a vlog, a vlog told again, or its clips waited for (useVlog).
         } else if (text && !link && (docRef.current || attachments.length === 0)) {
           // Whatever was said with the files is the ask: the planner sees
@@ -2816,11 +2850,15 @@ export function useCutalong() {
       return
     }
     exporting.current = true
-    const stage = `Exporting v${n}`
-    setToast({ text: 'Exporting… 0%' })
+    // On a phone the screen is kept on while the export runs, and the person is told so.
+    const stage =
+      device.kind === 'phone' ? `Exporting v${n}. I'm keeping the screen on until it's done` : `Exporting v${n}`
+    // On a phone the toast says so too: it is what shows while the editor is open.
+    const awake = device.kind === 'phone' ? "I'm keeping the screen on. " : ''
+    setToast({ text: `${awake}Exporting… 0%` })
     const id = push({ role: 'assistant', text: '', progress: { stage, percent: 0 } })
     const off = api.onCutProgress((p) => {
-      setToast({ text: `Exporting… ${p.percent ?? 0}%` })
+      setToast({ text: `${awake}Exporting… ${p.percent ?? 0}%` })
       patch(id, { progress: { stage, percent: p.percent } })
     })
     try {
@@ -2835,14 +2873,25 @@ export function useCutalong() {
       rememberKeep(d)
       const name = fileName(r.outputPath)
       const durationSec = r.durationSec ?? 0
+      // Where else it went: Photos, on a phone, or why not.
+      const saved = !r.photos ? '' : r.photos.saved ? ` and saved to ${device.savesTo}` : ''
+      const unsaved =
+        r.photos && !r.photos.saved ? `I couldn't save it to ${device.savesTo}. ${r.photos.message ?? ''}`.trim() : null
       patch(id, {
         progress: null,
-        text: `${clipping.isClip(d) ? `“${d.title}” v${n}` : `v${n}`} is exported${besideIt(r.chaptersPath, r.creditsPath)}.`,
+        text: `${clipping.isClip(d) ? `“${d.title}” v${n}` : `v${n}`} is exported${saved}${besideIt(r.chaptersPath, r.creditsPath)}.`,
+        ...(unsaved ? { aside: unsaved } : {}),
         video: { path: r.outputPath, name, width: r.width ?? 0, height: r.height ?? 0, durationSec },
         chips: [clock(durationSec), ...(r.width && r.height ? [`${r.width} × ${r.height}`] : [])],
-        actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
+        actions: device.reveal ? [{ kind: 'reveal', label: device.reveal, payload: r.outputPath }] : undefined
       })
-      setToast({ text: `Exported ${name}${besideIt(r.chaptersPath, r.creditsPath)}`, path: r.outputPath, chat: true })
+      setToast({
+        text: r.photos?.saved
+          ? `Exported ${name}. It's in ${device.savesTo}.`
+          : `Exported ${name}${besideIt(r.chaptersPath, r.creditsPath)}`,
+        path: r.outputPath,
+        chat: true
+      })
     } finally {
       off()
       exporting.current = false

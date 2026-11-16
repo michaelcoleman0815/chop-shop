@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { detectProvider, wrongKeyMessage } from '../../../../shared/keys'
 import type { Settings, UpdateState } from '../../../../shared/types'
-import { api } from '../api'
+import { api, device } from '../api'
 import { Button } from '../components/ui'
 import { ClaudeFrames } from './ClaudeFrames'
 import { grow } from '../motion'
@@ -21,7 +21,10 @@ const MODELS: { id: Model; label: string }[] = [
   { id: 'base.en', label: 'Fast' },
   { id: 'small.en', label: 'Balanced' },
   { id: 'medium.en', label: 'Most accurate' }
-]
+].filter((m) => !device.models || device.models.includes(m.id as Model)) as { id: Model; label: string }[]
+
+/** A phone has no updates to check and no Ollama to plan with; vlogs and links are on the Mac for now (device.ts). */
+const phone = device.kind === 'phone'
 
 const BROWSERS: { id: string | null; label: string }[] = [
   { id: null, label: 'Off' },
@@ -162,7 +165,7 @@ export function SettingsPage(): JSX.Element {
       <main className="cl-page">
         <div className="cl-page-inner">
           <h1 className="cl-page-title">Settings</h1>
-          <p className="cl-lede">Everything here stays on this computer.</p>
+          <p className="cl-lede">Everything here stays on {device.here}.</p>
 
           <section className="cl-section" aria-labelledby="set-claude">
             <h2 id="set-claude">Claude</h2>
@@ -194,13 +197,15 @@ export function SettingsPage(): JSX.Element {
               </div>
             </div>
             <p className="cl-aside">
-              The key is locked in this computer&apos;s keychain and only ever sent to Anthropic. You can make one at
+              The key is locked in {device.keychain} and only ever sent to Anthropic. You can make one at
               console.anthropic.com.
             </p>
-            <ClaudeFrames settings={settings} hasKey={saved} onSettings={setSettings} />
+            {!device.away['feature:vlog'] && (
+              <ClaudeFrames settings={settings} hasKey={saved} onSettings={setSettings} />
+            )}
           </section>
 
-          <Planning settings={settings} onSettings={setSettings} />
+          {!phone && <Planning settings={settings} onSettings={setSettings} />}
 
           <OtherServices settings={settings} onSettings={setSettings} onHearer={setHearer} />
 
@@ -208,8 +213,8 @@ export function SettingsPage(): JSX.Element {
             <h2 id="set-words">Transcription</h2>
             <p className="cl-reply">
               {hearer
-                ? `${hearer} hears the words now, and this computer does when it cannot. A bigger model here hears more and takes longer.`
-                : 'I hear the words on this computer. A bigger model hears more and takes longer.'}
+                ? `${hearer} hears the words now, and ${device.here} does when it cannot. A bigger model here hears more and takes longer.`
+                : `I hear the words on ${device.here}. A bigger model hears more and takes longer.`}
             </p>
             <div className="cl-segments" role="radiogroup" aria-label="Transcription model">
               {MODELS.map((m) => (
@@ -250,74 +255,82 @@ export function SettingsPage(): JSX.Element {
 
           <section className="cl-section" aria-labelledby="set-exports">
             <h2 id="set-exports">Exports</h2>
-            <div className="cl-row">
-              <span className="cl-path mono" title={settings?.outputDir}>
-                {settings?.outputDir ?? ''}
-              </span>
-              <Button
-                small
-                onClick={() =>
-                  void api
-                    .chooseOutputDir()
-                    .then((dir) => dir && setSettings((s) => (s ? { ...s, outputDir: dir } : s)))
-                }
-              >
-                Change…
-              </Button>
-            </div>
+            {device.savesTo ? (
+              <p className="cl-reply">Each export goes to {device.savesTo}, and stays in Cutalong too.</p>
+            ) : (
+              <div className="cl-row">
+                <span className="cl-path mono" title={settings?.outputDir}>
+                  {settings?.outputDir ?? ''}
+                </span>
+                <Button
+                  small
+                  onClick={() =>
+                    void api
+                      .chooseOutputDir()
+                      .then((dir) => dir && setSettings((s) => (s ? { ...s, outputDir: dir } : s)))
+                  }
+                >
+                  Change…
+                </Button>
+              </div>
+            )}
           </section>
 
-          <section className="cl-section" aria-labelledby="set-links">
-            <h2 id="set-links">Videos from links</h2>
-            <p className="cl-reply">
-              Some sites only hand a video to someone signed in. I can borrow the sign-in from a browser on this
-              computer.
-            </p>
-            <div className="cl-segments" role="radiogroup" aria-label="Sign-in to borrow">
-              {BROWSERS.map((b) => {
-                const on = (settings?.videoSignIn ?? null) === b.id
-                return (
-                  <button
-                    key={b.label}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    className={on ? 'on' : ''}
-                    disabled={!settings}
-                    onClick={() =>
-                      void api
-                        .setVideoSignIn(b.id)
-                        .then((videoSignIn) => setSettings((s) => (s ? { ...s, videoSignIn } : s)))
-                    }
-                  >
-                    {b.label}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
+          {!device.away['feature:link'] && (
+            <section className="cl-section" aria-labelledby="set-links">
+              <h2 id="set-links">Videos from links</h2>
+              <p className="cl-reply">
+                Some sites only hand a video to someone signed in. I can borrow the sign-in from a browser on this
+                computer.
+              </p>
+              <div className="cl-segments" role="radiogroup" aria-label="Sign-in to borrow">
+                {BROWSERS.map((b) => {
+                  const on = (settings?.videoSignIn ?? null) === b.id
+                  return (
+                    <button
+                      key={b.label}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      className={on ? 'on' : ''}
+                      disabled={!settings}
+                      onClick={() =>
+                        void api
+                          .setVideoSignIn(b.id)
+                          .then((videoSignIn) => setSettings((s) => (s ? { ...s, videoSignIn } : s)))
+                      }
+                    >
+                      {b.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          )}
 
-          <section className="cl-section" aria-labelledby="set-updates">
-            <h2 id="set-updates">Updates</h2>
-            <div className="cl-row">
-              <p className="cl-reply">{updateLine(update, version)}</p>
-              {update.status === 'available' && (
-                <Button small onClick={() => void api.downloadUpdate()}>
-                  Download {update.version}
-                </Button>
-              )}
-              {update.status === 'ready' && (
-                <Button small onClick={() => void api.installUpdate()}>
-                  Restart to update
-                </Button>
-              )}
-              {(update.status === 'idle' || update.status === 'none' || update.status === 'error') && (
-                <Button small onClick={() => void api.checkForUpdates().then(setUpdate)}>
-                  Check for updates
-                </Button>
-              )}
-            </div>
-          </section>
+          {!phone && (
+            <section className="cl-section" aria-labelledby="set-updates">
+              <h2 id="set-updates">Updates</h2>
+              <div className="cl-row">
+                <p className="cl-reply">{updateLine(update, version)}</p>
+                {update.status === 'available' && (
+                  <Button small onClick={() => void api.downloadUpdate()}>
+                    Download {update.version}
+                  </Button>
+                )}
+                {update.status === 'ready' && (
+                  <Button small onClick={() => void api.installUpdate()}>
+                    Restart to update
+                  </Button>
+                )}
+                {(update.status === 'idle' || update.status === 'none' || update.status === 'error') && (
+                  <Button small onClick={() => void api.checkForUpdates().then(setUpdate)}>
+                    Check for updates
+                  </Button>
+                )}
+              </div>
+            </section>
+          )}
         </div>
       </main>
     </>

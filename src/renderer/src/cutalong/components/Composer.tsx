@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { namesCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
-import { api } from '../api'
+import { api, device } from '../api'
 import { Poster } from './Poster'
 import { Icon, IconButton, Mark } from './ui'
 
@@ -55,7 +55,11 @@ export function Composer({
   }, [text])
 
   const query = slashQuery(text)
-  const matches = useMemo(() => (query === null ? [] : suggestCommands(query, presets)), [query, presets])
+  // What is on the Mac for now is not offered on a phone (device.ts).
+  const matches = useMemo(
+    () => (query === null ? [] : suggestCommands(query, presets).filter((p) => !device.away[p.command])),
+    [query, presets]
+  )
   useEffect(() => setPick(0), [query])
 
   const send = (): void => {

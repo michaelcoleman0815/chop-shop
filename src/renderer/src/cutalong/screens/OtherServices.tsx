@@ -10,7 +10,7 @@ import {
   type ServiceId
 } from '../../../../shared/services'
 import type { Settings } from '../../../../shared/types'
-import { api } from '../api'
+import { api, device } from '../api'
 import { Button } from '../components/ui'
 
 /**
@@ -21,10 +21,14 @@ import { Button } from '../components/ui'
 
 type KeyState = { status: 'none' } | { status: 'checking' } | { status: 'ok' } | { status: 'bad'; message: string }
 
+/** The device in a sentence: this Mac, or this phone. */
+const MINE = device.kind === 'phone' ? 'this phone' : 'this Mac'
+const Mine = MINE.charAt(0).toUpperCase() + MINE.slice(1)
+
 /** What the switch means, in one sentence for each state. */
 export const SWITCH_ON =
   'I may send audio, and short video excerpts, to the services below that have a key, and nothing goes to one until you add its key.'
-export const SWITCH_OFF = 'Nothing but the transcript leaves this Mac, and it goes only to Claude.'
+export const SWITCH_OFF = `Nothing but the transcript leaves ${MINE}, and it goes only to Claude.`
 
 /** What a service is for, said while it has no key yet. */
 function purpose(s: Service): string {
@@ -180,7 +184,7 @@ export function OtherServices({
         <div className="cl-field">
           <span>Hear the words with</span>
           <div className="cl-segments" role="radiogroup" aria-label="Hear the words with">
-            {[{ id: 'local' as const, name: 'This Mac' }, ...hearers].map((t) => {
+            {[{ id: 'local' as const, name: Mine }, ...hearers].map((t) => {
               const chosen = (hearer ?? 'local') === t.id
               return (
                 <button
@@ -198,8 +202,8 @@ export function OtherServices({
           </div>
           <p className="cl-aside">
             {hearer
-              ? `${serviceName(hearer)} hears the words in new edits. If it cannot, this Mac does, and I say so.`
-              : 'This Mac hears the words in new edits.'}
+              ? `${serviceName(hearer)} hears the words in new edits. If it cannot, ${MINE} does, and I say so.`
+              : `${Mine} hears the words in new edits.`}
           </p>
         </div>
       )}

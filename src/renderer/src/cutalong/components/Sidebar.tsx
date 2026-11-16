@@ -1,4 +1,5 @@
 import type { ProjectSummary } from '../../../../shared/types'
+import { device } from '../api'
 import { Mark } from './ui'
 
 /**
@@ -66,7 +67,7 @@ const PLACES: { place: Place; label: string }[] = [
   { place: 'projects', label: 'Projects' },
   { place: 'brand', label: 'Brand' },
   { place: 'presets', label: 'Presets' }
-]
+].filter((p) => !device.away[`feature:${p.place}`]) as { place: Place; label: string }[]
 
 export function Sidebar({
   open,
@@ -89,9 +90,11 @@ export function Sidebar({
         <button
           type="button"
           className="cl-rail-item"
-          aria-label={open ? 'Close sidebar' : 'Open sidebar'}
+          aria-label={
+            device.kind === 'phone' ? (open ? 'Close the menu' : 'Menu') : open ? 'Close sidebar' : 'Open sidebar'
+          }
           aria-expanded={open}
-          title={open ? 'Close sidebar' : 'Open sidebar'}
+          title={device.kind === 'phone' ? undefined : open ? 'Close sidebar' : 'Open sidebar'}
           onClick={onToggle}
         >
           {ICONS.toggle}

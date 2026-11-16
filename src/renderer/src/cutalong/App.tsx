@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from './api'
+import { api, device } from './api'
 import { ScreenGuard } from './components/ScreenGuard'
 import { Sidebar, type Place } from './components/Sidebar'
 import { Button, Mark } from './components/ui'
@@ -23,20 +23,32 @@ function remembered(): boolean {
   }
 }
 
+/** On a phone the rail is a menu over the screen: it starts closed, and closes once a place is picked. */
+const phone = device.kind === 'phone'
+
 /** The rail and one screen: Start, the thread, the editor, projects, your brand, presets or settings. */
 export default function App(): JSX.Element {
   const app = useMotion(useCutalong())
   const toast = useLingering(app.toast)
-  const [open, setOpen] = useState(remembered)
-  const mac = navigator.userAgent.includes('Mac')
+  const [open, setOpen] = useState(() => !phone && remembered())
+  const mac = !phone && navigator.userAgent.includes('Mac')
 
   useEffect(() => {
+    if (phone) return
     try {
       localStorage.setItem(SIDEBAR_KEY, open ? '1' : '0')
     } catch {
       // Remembering is a convenience; without storage the rail starts closed.
     }
   }, [open])
+
+  /** Leaves the menu as a place is picked, on a phone, where it covers the screen. */
+  const went =
+    <T,>(go: (value: T) => void) =>
+    (value: T) => {
+      if (phone) setOpen(false)
+      go(value)
+    }
 
   // Toasts that report a result clear themselves; errors and progress stay.
   // The timer starts when the toast does, not again each time the app draws.
@@ -70,15 +82,18 @@ export default function App(): JSX.Element {
       : null
 
   return (
-    <div className={`cl-app${mac ? ' mac' : ''}`}>
+    <div className={`cl-app${mac ? ' mac' : ''}${phone ? ' phone' : ''}${phone && open ? ' menu-open' : ''}`}>
       <Sidebar
         open={open}
         onToggle={() => moveRail(() => setOpen((o) => !o))}
         current={place}
-        onGo={(p) => (p === 'start' ? app.goStart() : app.setScreen(p))}
+        onGo={went((p: Place) => (p === 'start' ? app.goStart() : app.setScreen(p)))}
         recent={app.recent}
-        onOpenProject={(path) => void app.openProject(path)}
+        onOpenProject={went((path: string) => void app.openProject(path))}
       />
+      {phone && open && (
+        <button type="button" className="cl-menu-backdrop" aria-label="Close the menu" onClick={() => setOpen(false)} />
+      )}
       <div className="cl-main">
         <ScreenGuard
           resetKey={`${app.screen}:${app.doc?.id ?? ''}`}
@@ -116,9 +131,9 @@ export default function App(): JSX.Element {
               Watch in chat
             </Button>
           )}
-          {toast.value.path && (
+          {toast.value.path && device.reveal && (
             <Button variant="text" onClick={() => void api.reveal(toast.value!.path!)}>
-              Show in Finder
+              {device.reveal}
             </Button>
           )}
           <Button variant="text" onClick={() => app.setToast(null)}>

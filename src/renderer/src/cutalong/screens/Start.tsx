@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProjectSummary } from '../../../../shared/types'
-import { api } from '../api'
+import { api, device } from '../api'
 import { Composer } from '../components/Composer'
 import { when } from '../format'
 import type { Cutalong } from '../useCutalong'
@@ -20,12 +20,17 @@ export function Start({ app }: { app: Cutalong }): JSX.Element {
         <div className="cl-start-inner">
           <h1 className="cl-title">What are we making?</h1>
           <Composer
-            placeholder="Drop footage, paste a video you like, or type /"
+            placeholder={
+              device.kind === 'phone'
+                ? 'Add footage with +, or type /'
+                : 'Drop footage, paste a video you like, or type /'
+            }
             presets={app.presets}
             onSubmit={(text, files) => void app.submit(text, files)}
             seed={seed}
             busy={app.busy}
-            autoFocus
+            // On a phone the keyboard waits for a tap, so Start shows whole.
+            autoFocus={device.kind !== 'phone'}
             menuBelow
           />
           <div className="cl-chips" aria-label="Presets">
