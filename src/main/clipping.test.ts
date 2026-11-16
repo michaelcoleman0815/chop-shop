@@ -54,6 +54,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 import { chooseEngine, findClips, frozenStretches, type ClipProgress, type ClippingTools } from './clipping'
 import { findFfmpeg, ffmpegRun } from './test-media'
 import { suggestClips } from './clips'
+import { MODEL } from './planner'
 import { saveSettings } from './store'
 import { PODCAST, SERVICE, STREAM, type Planted } from '../shared/clipping/fixtures'
 import { factsOf, momentSpan } from '../shared/clipping/testing'
@@ -310,7 +311,7 @@ describe('the clips Claude picks', () => {
     expect(r.reply.aside).toMatch(/Claude picked them from the transcript/)
     // What went to Claude: the clip finder's prompt, the asked-for steer, and no left-out words.
     const req = fake.requests[0] as { model: string; system: string; messages: { content: string }[] }
-    expect(req.model).toBe('claude-opus-5-5')
+    expect(req.model).toBe(MODEL)
     expect(req.system).toMatch(/Cold-open test/)
     const prompt = req.messages[0].content
     expect(prompt).toMatch(/<asked-for>\nthe stories\n<\/asked-for>/)
@@ -394,7 +395,7 @@ describe('the clips a model on this Mac picks', () => {
     })
     expect(await chooseEngine()).toEqual({ by: 'measured', model: null })
     fake.key = 'sk-ant-test'
-    expect(await chooseEngine()).toEqual({ by: 'claude', model: 'claude-opus-5-5' })
+    expect(await chooseEngine()).toEqual({ by: 'claude', model: MODEL })
     fake.key = null
     vi.stubGlobal('fetch', async (url: string) =>
       url.endsWith('/api/tags')
