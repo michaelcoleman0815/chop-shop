@@ -238,7 +238,8 @@ self-test flag it runs, on the phone's own ffmpeg, ffprobe and whisper:
   NV12 at 1080p into the hardware encoder, HEVC, the portrait turned
   upright, WebP and AVIF stills; the app's own final export (1080x1920,
   its encoder settings, `+faststart`, keyframes every 2 s); a chunk of a long
-  cut (Matroska with PCM sound) and two joined by the concat demuxer; the
+  cut (Matroska with PCM sound) and two joined by the concat demuxer; a
+  camera move made of `scale` (`eval=frame`) and `crop` (panning with `t`); the
   blurred background fill; one graph of the filters the app's phone path
   uses; ALAC to WAV, Opus to FLAC, speech to Opus, Motion JPEG to JPEG. Each
   output's size, length, sound and colours at known moments are checked
