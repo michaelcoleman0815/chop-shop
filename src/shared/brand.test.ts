@@ -57,3 +57,15 @@ describe('the brand as a command', () => {
     expect(describeLearned(brand)).toMatch(/^From your video: 2\.0 s per shot/)
   })
 })
+
+describe('a brand saved before niches and product names', () => {
+  it('still reads, with no niche and no names', () => {
+    const old: Record<string, unknown> = { ...EMPTY_BRAND, name: 'Old brand' }
+    delete old.niche
+    delete old.products
+    const parsed = BrandSchema.parse(old)
+    expect(parsed.niche).toBe('')
+    expect(parsed.products).toEqual([])
+    expect(parsed.name).toBe('Old brand')
+  })
+})

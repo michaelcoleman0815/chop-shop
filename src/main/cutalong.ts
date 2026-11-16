@@ -6,7 +6,6 @@ import { FFMPEG_PATH, probe } from './ffmpeg'
 import { FONTS_DIR } from './resources'
 import { getSettings, saveSettings } from './store'
 import { downloadModel, hasModel, transcribe } from './transcribe'
-import { readAnalysis } from './analysis-cache'
 import { fetchVideo, YTDLP_PATH } from './fetch-video'
 import { fetchExcerpt, fetchImage, importFile, saveImage, searchVideos, type AssetTools, type NewAsset } from './assets'
 import { creditsText, isImageUrl, type Range } from '../shared/assets'
@@ -15,8 +14,12 @@ import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
-import { estimateOffset, shiftEnvelope, trustworthy, type Offset } from '../shared/audio/offset'
+import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
 import { assignRoles, factsFor, type FileFacts } from './session'
+import { listenFrames } from './audio-map'
+import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
+import { vocabulary } from '../shared/raw/prompt'
+import { intakeReply } from './intake'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { planEditLocally } from './planner-local'
@@ -77,19 +80,22 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     try {
       if (paths.length === 0) return { ok: false as const, message: 'There is no footage to cut.' }
       const read = await readFootage(paths, soundPaths, progress, 1)
-      const doc = createDoc({
+      const created = createDoc({
         id: randomUUID(),
         title: basename(paths[0], extname(paths[0])),
         sources: read.sources,
         words: read.words
       })
+      // How each recording sounds, word by word: what takes and the planner read.
+      const doc = Object.keys(read.maps).length > 0 ? { ...created, audio: read.maps } : created
       progress('Ready', 100)
       return {
         ok: true as const,
         doc,
         mediaUrl: deps.mediaUrlFor(paths[0]),
         warning: read.notes.length ? read.notes.join(' ') : null,
-        lined: read.lined
+        lined: read.lined,
+        intake: read.intake
       }
     } catch (err) {
       progress('Failed', 0)
@@ -125,6 +131,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         notes.push(...read.notes)
         lined.push(...read.lined)
         const names = fresh.map((p) => basename(p))
+        if (Object.keys(read.maps).length > 0) doc = { ...doc, audio: { ...(doc.audio ?? {}), ...read.maps } }
         doc = addSources(
           doc,
           read.sources,
@@ -387,11 +394,6 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   ipcMain.handle('presets:remove', (_e, command: string) => removePreset(command))
 }
 
-/**
- * The transcript for a whole file: the clip finder's cached one when it
- * covers the same recording, otherwise a fresh run, fetching the model first
- * if it is missing rather than sending anyone to Settings.
- */
 interface Lined {
   name: string
   sound: string
@@ -450,13 +452,24 @@ async function readFootage(
   soundPaths: string[],
   progress: ProgressFn,
   firstIndex: number
-): Promise<{ sources: Source[]; words: Word[]; notes: string[]; lined: Lined[] }> {
+): Promise<{
+  sources: Source[]
+  words: Word[]
+  notes: string[]
+  lined: Lined[]
+  maps: Record<string, AudioMap>
+  intake: { sentence: string; facts: string[] } | undefined
+}> {
   const sources: Source[] = []
   const words: Word[] = []
   const notes: string[] = []
   const lined: Lined[] = []
+  const maps: Record<string, AudioMap> = {}
+  const sentences: string[] = []
+  const facts: string[] = []
   const soundEnv = new Map<string, Envelope>()
   const soundWords = new Map<string, Transcript['words']>()
+  const soundFrames = new Map<string, Frames>()
 
   for (const [i, path] of paths.entries()) {
     const name = basename(path, extname(path))
@@ -466,6 +479,7 @@ async function readFootage(
       progress(`${stage}${of}`, Math.min(99, Math.round(((i + within / 100) / paths.length) * 100)))
     step(`Reading ${name}`, 1)
     const meta = await probe(path)
+    const color = meta.facts?.color
     let source: Source = {
       id: `s${firstIndex + i}`,
       path,
@@ -473,7 +487,14 @@ async function readFootage(
       width: meta.width,
       height: meta.height,
       fps: meta.fps > 0 ? meta.fps : 30,
-      audio: null
+      audio: null,
+      ...(color && color !== 'sdr' ? { color } : {})
+    }
+    // What intake noticed and fixed about this recording, said once for the drop.
+    if (meta.facts) {
+      const said = intakeReply(basename(path), meta.facts)
+      if (said.sentence) sentences.push(said.sentence)
+      for (const f of said.facts) if (!facts.includes(f)) facts.push(f)
     }
     let own: Envelope | null = null
     if (soundPaths.length > 0) {
@@ -504,6 +525,13 @@ async function readFootage(
         if (clip.length > 0) {
           step('Listening for the cuts', 97)
           clip = snapWords(clip, shiftEnvelope(soundEnv.get(sp) as Envelope, at, source.durationSec))
+          // The pitch and kind of each sound come from the recording that is heard.
+          try {
+            if (!soundFrames.has(sp)) soundFrames.set(sp, await listenFrames(FFMPEG_PATH, sp))
+            maps[source.id] = buildAudioMap(shiftFrames(soundFrames.get(sp) as Frames, at, source.durationSec), clip)
+          } catch (err) {
+            console.warn('[cut] could not map the sound:', message(err))
+          }
         }
         words.push(...clip)
       } else {
@@ -516,12 +544,20 @@ async function readFootage(
         let clip = wordsFromTranscript(transcript.words, source.id, prefix)
         // Listen to the recording so every word's edges sit on its sound,
         // which is what lets cuts land tight without clipping a consonant.
+        // The same listen measures pitch and what kind of sound each stretch
+        // is, for the audio map that takes and the planner read.
         if (clip.length > 0) {
           step('Listening for the cuts', 97)
           try {
-            clip = snapWords(clip, own ?? (await loudnessEnvelope(FFMPEG_PATH, path)))
+            const frames = await listenFrames(FFMPEG_PATH, path)
+            clip = snapWords(clip, { hopSec: frames.hopSec, db: frames.db })
+            maps[source.id] = buildAudioMap(frames, clip)
           } catch (err) {
-            console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
+            try {
+              clip = snapWords(clip, own ?? (await loudnessEnvelope(FFMPEG_PATH, path)))
+            } catch {
+              console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
+            }
           }
         }
         words.push(...clip)
@@ -531,9 +567,20 @@ async function readFootage(
     }
     sources.push(source)
   }
-  return { sources, words, notes, lined }
+  const intake =
+    sentences.length || facts.length ? { sentence: sentences.join(' '), facts: facts.slice(0, 3) } : undefined
+  return { sources, words, notes, lined, maps, intake }
 }
 
+/**
+ * The transcript for a whole file, written verbatim: every filler, false
+ * start and retake, the names from the brand and the title listened for,
+ * and a second listen where words went missing. The model is fetched first
+ * if it is missing rather than sending anyone to Settings.
+ *
+ * The clip finder's cached transcript is not reused: it is written the tidy
+ * way, which smooths retakes away, and finding retakes is the point here.
+ */
 async function transcriptFor(
   path: string,
   durationSec: number,
@@ -546,19 +593,15 @@ async function transcriptFor(
   if (cloud.service) return cloud.transcript
   if (cloud.note) notice(cloud.note)
 
-  const cached = await readAnalysis(path).catch(() => null)
-  const whole =
-    cached &&
-    cached.transcript.words.length > 0 &&
-    (cached.options?.startSec ?? 0) < 0.5 &&
-    Math.abs((cached.options?.endSec ?? durationSec) - durationSec) < 0.5
-  if (whole) return cached.transcript
-
   const { whisperModel } = getSettings()
   if (!hasModel(whisperModel)) {
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))
   }
-  return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)))
+  const brand = await readBrand()
+  const names = vocabulary({ title: basename(path, extname(path)), voice: brand.voice, products: brand.products })
+  return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)), 0, {
+    names
+  })
 }
 
 function safeName(title: string): string {

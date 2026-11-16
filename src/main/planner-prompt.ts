@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { currentCut, currentVersion, indexWords, resolveCut, type EditDoc, type Note } from '../shared/edit'
 import { clock } from '../shared/presets'
+import { lineName, playingTake, takesOf } from '../shared/raw/plan'
+import { ordinal } from '../shared/raw/takes'
+import { renderSound } from '../shared/audio/map'
 
 /**
  * Everything the planner sends and expects back, kept apart from the API call
@@ -49,6 +52,12 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 - Keep sentences whole unless asked to cut inside one. Never strike the only words of a beat; remove the beat instead.
 - If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs, one full sentence for each.
 - If nothing can be done, return no ops and say why in reply.
+
+## Takes
+A <takes> block, when present, lists lines said more than once in the raw footage: each take with its word ids, whether it plays or is struck, and what went wrong in it. Cutalong keeps the last complete take unless an earlier one is clearly cleaner. To use another take ("use the second take of the intro"), unstrike that take's words and strike the take that plays now, in the same plan. If the take you bring back was recorded somewhere else, split it into a beat of its own and move that beat to where the line plays. Never strike the take that plays without bringing another one back. False starts listed there are struck already; unstrike one only when asked.
+
+## Sound
+A <sound> block, when present, lists stretches that are not speech (laughter, music, applause, noise) with their times in the recording, and words said with stress. A laugh or a noise between takes is a break, music under speech is not yours to cut, and a stressed word is a good big word.
 
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
@@ -149,6 +158,41 @@ export function renderTranscript(doc: EditDoc): string {
   return lines.join('\n')
 }
 
+/**
+ * The takes Cutalong found, one line per line said more than once, and the
+ * false starts it struck. Compact on purpose: ids and a few words each.
+ */
+export function renderTakes(doc: EditDoc): string {
+  const cut = currentCut(doc)
+  const struck = new Set(cut.removed)
+  const lines: string[] = []
+  const starts: string[] = []
+  for (const a of takesOf(doc)) {
+    for (const g of a.groups) {
+      const playing = playingTake(g, cut)
+      const takes = g.takes.map((t, i) => {
+        const state = struck.has(t.from) && struck.has(t.to) ? 'struck' : i === playing ? 'plays' : 'partly struck'
+        const issues: string[] = [...new Set(t.issues.filter((x) => x !== 'filler'))]
+        const fillers = t.issues.filter((x) => x === 'filler').length
+        if (fillers) issues.push(fillers === 1 ? 'a filler' : `${fillers} fillers`)
+        return `${i + 1} ${t.span.from}-${t.span.to} ${state}${issues.length ? `, ${issues.join(', ')}` : ''}`
+      })
+      lines.push(`${g.id} ${lineName(g)}, ${g.takes.length} takes: ${takes.join(' | ')}`)
+    }
+    for (const r of a.restarts) {
+      if (struck.has(r.from) && struck.has(r.to)) starts.push(`${r.from}-${r.to} before "${r.repeated}"`)
+    }
+  }
+  if (lines.length === 0 && starts.length === 0) return ''
+  if (starts.length) lines.push(`false starts struck: ${starts.join('; ')}`)
+  return `<takes>\n${lines.join('\n')}\n</takes>`
+}
+
+/** "the 2nd take", for replies and the takes panel. */
+export function takeName(n: number): string {
+  return `the ${ordinal(n)} take`
+}
+
 /** The cut as it stands, the notes and the ask: the part that changes every time. */
 export function renderRequest(doc: EditDoc, request: string, notes: Note[], voice = ''): string {
   const cut = currentCut(doc)
@@ -217,6 +261,13 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
       )
     }
     parts.push('</material>')
+  }
+  const takes = renderTakes(doc)
+  if (takes) parts.push(takes)
+  for (const source of doc.sources) {
+    const map = doc.audio?.[source.id]
+    const sound = map ? renderSound(map, text) : ''
+    if (sound) parts.push(sound)
   }
   if (notes.length > 0) {
     parts.push('<notes>')

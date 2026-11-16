@@ -86,13 +86,14 @@ describe('slash commands', () => {
 
   it('suggest matches, best first', () => {
     expect(suggestCommands('', ALL).map((p) => p.command)).toEqual([
+      'takes',
       'tighten',
       'snappy',
       'shorts',
       'captions',
-      'hook',
-      'fieldnotes'
+      'hook'
     ])
+    expect(suggestCommands('', ALL, 7).map((p) => p.command)).toContain('fieldnotes')
     expect(suggestCommands('sh', ALL).map((p) => p.command)).toEqual(['shorts'])
     // A title word matches too: "notes" in "Field notes".
     expect(suggestCommands('no', ALL).map((p) => p.command)).toEqual(['fieldnotes'])
@@ -119,7 +120,11 @@ describe('planning a style', () => {
   it('tightens with one op and nothing left open', () => {
     const doc = makeDoc()
     const plan = planStyle(doc, findPreset('tighten', ALL)!.style)
-    expect(plan).toEqual({ ops: [{ op: 'tighten', set: { maxGapSec: 0.35, padSec: 0.06, fillers: true } }], open: [] })
+    expect(plan.ops).toEqual([{ op: 'tighten', set: { maxGapSec: 0.35, padSec: 0.06, fillers: true } }])
+    expect(plan.open).toEqual([])
+    // /tighten keeps the best takes first; this recording has none to choose between.
+    expect(plan.takes?.ops).toEqual([])
+    expect(plan.takes?.summary).toBe('')
     const next = commit(doc, plan.ops, 'Tightened.').doc
     const before = resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
     const after = resolveCut(currentCut(next), next.words, next.sources).durationSec

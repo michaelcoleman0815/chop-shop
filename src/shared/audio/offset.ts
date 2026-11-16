@@ -1,3 +1,4 @@
+import type { Frames } from './map'
 import type { Envelope } from './snap'
 
 /**
@@ -145,4 +146,25 @@ export function shiftEnvelope(env: Envelope, offsetSec: number, durationSec: num
     db[i] = j >= 0 && j < env.db.length ? env.db[j] : -120
   }
   return { hopSec: env.hopSec, db }
+}
+
+/** Every measure of another recording laid onto a clip's timeline, as shiftEnvelope does for loudness. */
+export function shiftFrames(frames: Frames, offsetSec: number, durationSec: number): Frames {
+  const n = Math.max(0, Math.round(durationSec / frames.hopSec))
+  const shift = Math.round(offsetSec / frames.hopSec)
+  const take = (from: Float32Array, outside: number): Float32Array => {
+    const out = new Float32Array(n)
+    for (let i = 0; i < n; i++) {
+      const j = i + shift
+      out[i] = j >= 0 && j < from.length ? from[j] : outside
+    }
+    return out
+  }
+  return {
+    hopSec: frames.hopSec,
+    db: take(frames.db, -120),
+    zcr: take(frames.zcr, 0),
+    f0: take(frames.f0, 0),
+    voicing: take(frames.voicing, 0)
+  }
 }

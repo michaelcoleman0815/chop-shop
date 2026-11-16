@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { addAsset, addNote, commit, createDoc, currentCut, wordsFromTranscript, OpSchema } from '../shared/edit'
+import {
+  addAsset,
+  addNote,
+  applyOps,
+  commit,
+  createDoc,
+  currentCut,
+  resolveCut,
+  wordsFromTranscript,
+  OpSchema
+} from '../shared/edit'
+import { docFor } from '../shared/raw/eval'
+import { FIXTURES } from '../shared/raw/fixtures'
+import { planTakes, takesOf, switchTakeOps } from '../shared/raw/plan'
 import { offerPlan } from './planner'
 import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript } from './planner-prompt'
 
@@ -74,6 +87,57 @@ describe('the planner request', () => {
       if (json.includes('...')) continue
       expect(OpSchema.safeParse(JSON.parse(json)).success, json).toBe(true)
     }
+  })
+
+  it('lists the takes, and a swap of takes is a plan the document accepts', () => {
+    const f = FIXTURES.find((x) => x.name === 'the intro redone after a run of other lines')
+    if (!f) throw new Error('fixture missing')
+    const { doc: raw } = docFor(f)
+    const doc = commit(raw, planTakes(raw).ops, 'Takes.').doc
+    const text = renderRequest(doc, 'Use the first take of the intro.', [])
+    const block = /<takes>\n([\s\S]*?)\n<\/takes>/.exec(text)?.[1] ?? ''
+    expect(block).toMatch(/^g1 the intro, 2 takes: 1 w1-w\d+ struck \| 2 w\d+-w\d+ plays$/)
+    expect(text.indexOf('<takes>')).toBeGreaterThan(text.indexOf('</cut>'))
+    expect(PLANNER_SYSTEM).toContain('unstrike that take')
+
+    // The plan a planner should return for the request.
+    const group = takesOf(doc)[0].groups[0]
+    const ops = switchTakeOps(doc, group, 0)
+    const plan = { ops, summary: 'The first take of the intro plays now.', reply: 'Done.', notesHandled: [], needs: [] }
+    expect(PlanSchema.safeParse(plan).success).toBe(true)
+    for (const op of ops) expect(OpSchema.safeParse(op).success, JSON.stringify(op)).toBe(true)
+    const dry = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    const spoken = resolveCut(dry.cut, doc.words, doc.sources).words.map((w) => w.text)
+    expect(spoken.slice(0, 4).join(' ')).toBe('Hey everyone, welcome back.')
+    expect(spoken.filter((w) => w === 'Hey').length).toBe(1)
+  })
+
+  it('tells the planner what the recording sounds like, when it was heard', () => {
+    const plain = createDoc({ id: 'd', title: 't', source, words })
+    expect(renderRequest(plain, 'x', [])).not.toContain('<sound>')
+    const heard = {
+      ...plain,
+      audio: {
+        s1: {
+          v: 1 as const,
+          words: { w8: [-12, 190] as [number, number | null] },
+          segments: [
+            { kind: 'speech' as const, startSec: 0.5, endSec: 4.9 },
+            { kind: 'laughter' as const, startSec: 5.2, endSec: 6.4 }
+          ],
+          emphasis: ['w8'],
+          level: { floor: -60, speech: -20 }
+        }
+      }
+    }
+    expect(renderRequest(heard, 'x', [])).toContain('<sound>\nlaughter 0:05-0:06\nstressed: w8 "never"\n</sound>')
+    expect(PLANNER_SYSTEM).toContain('A <sound> block')
+  })
+
+  it('leaves the takes out when there are none', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(renderRequest(doc, 'x', [])).not.toContain('<takes>')
   })
 
   it('accepts a plan shaped like the instructions say', () => {

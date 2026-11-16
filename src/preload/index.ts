@@ -47,6 +47,8 @@ const api = {
         mediaUrl: string
         warning: string | null
         lined?: { name: string; sound: string; offsetSec: number }[]
+        /** What intake noticed and fixed: one sentence, at most three facts. */
+        intake?: { sentence: string; facts: string[] }
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:prepare', input),
