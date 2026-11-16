@@ -231,7 +231,13 @@ export const CutSchema = z.object({
   /** Other cameras of the same takes, each lined up with its recording (edit/angles). */
   angles: z.array(AngleSchema).max(16).optional(),
   /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
-  reframe: z.boolean().optional()
+  reframe: z.boolean().optional(),
+  /**
+   * Which of the person's brands this version is made in, by id (shared/brands):
+   * its captions, logo, graphics, never list and B-roll sources. Absent, the
+   * default brand, as every edit was before there could be more than one.
+   */
+  brand: z.string().min(1).max(80).optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -321,6 +327,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // Follow the speaker when the picture is cropped to a narrower frame, or keep it in the middle.
   z.object({ op: z.literal('reframe'), on: z.boolean() }),
+  // The brand the edit is made in, by id (shared/brands); what that brand changes comes as other ops beside it.
+  z.object({ op: z.literal('brand'), id: z.string().min(1).max(80) }),
   // Where beats are centred when cropped, by hand; null follows the speaker or the middle again.
   z.object({ op: z.literal('framing'), beats: z.array(beatId).min(1), x: z.number().min(0).max(1).nullable() }),
   // Which camera beats show, and how; null shows their own recording again.

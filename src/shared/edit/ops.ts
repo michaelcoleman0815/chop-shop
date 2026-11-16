@@ -441,6 +441,9 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       return op.on ? { ...rest, reframe: true } : rest
     }
 
+    case 'brand':
+      return { ...cut, brand: op.id }
+
     case 'framing': {
       const beats = [...cut.beats]
       for (const i of op.beats.map((id) => findBeat(cut, id))) {

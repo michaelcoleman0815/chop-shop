@@ -46,8 +46,21 @@ export const BrandVideoSchema = z.object({
 })
 export type BrandVideo = z.infer<typeof BrandVideoSchema>
 
+/**
+ * What goes in every export's description, around the parts made for each
+ * video: {opening} is a sentence or two on it, {chapters} the YouTube
+ * chapters when they show, {credits} the outside material it uses. Anything
+ * else is the brand's own lines: links, socials, a standing sponsor line.
+ */
+export const DEFAULT_DESCRIPTION = '{opening}\n\n{chapters}\n\n{credits}'
+
 export const BrandSchema = z.object({
   v: z.literal(1),
+  /**
+   * Which of the person's brands this is (shared/brands). A brand saved before
+   * there could be more than one has none until it joins the list.
+   */
+  id: z.string().max(80).default(''),
   name: z.string(),
   /** Caption text, and the word being spoken. */
   colors: z.object({ text: hex, accent: hex }),
@@ -84,12 +97,29 @@ export const BrandSchema = z.object({
    * chose to. While it is set, /tighten and /brand cut this way. Brands
    * saved before there were habits have none.
    */
-  habits: HabitsSchema.nullable().default(null)
+  habits: HabitsSchema.nullable().default(null),
+  /** Faces for motion graphics, from the bundled ones (shared/motion/fonts). Absent keeps the defaults. */
+  fonts: z
+    .object({ display: z.string().max(60).optional(), body: z.string().max(60).optional() })
+    .default({}),
+  /**
+   * Where B-roll is looked for: YouTube channels and websites searched first,
+   * and ones that never come back, as the person pasted them (shared/broll-sources).
+   */
+  broll: z
+    .object({
+      prefer: z.array(z.string().max(300)).max(30).default([]),
+      block: z.array(z.string().max(300)).max(30).default([])
+    })
+    .default({ prefer: [], block: [] }),
+  /** Every export's description, with the brand's own lines around the parts made for each video. */
+  description: z.string().max(5000).default(DEFAULT_DESCRIPTION)
 })
 export type Brand = z.infer<typeof BrandSchema>
 
 export const EMPTY_BRAND: Brand = {
   v: 1,
+  id: '',
   name: '',
   colors: { text: '#FFFFFF', accent: '#FFD84D' },
   logo: null,
@@ -102,7 +132,10 @@ export const EMPTY_BRAND: Brand = {
   style: {},
   autoApply: true,
   updatedAt: '',
-  habits: null
+  habits: null,
+  fonts: {},
+  broll: { prefer: [], block: [] },
+  description: DEFAULT_DESCRIPTION
 }
 
 function median(values: number[]): number | null {
