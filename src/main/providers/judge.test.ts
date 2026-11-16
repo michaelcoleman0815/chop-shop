@@ -1,5 +1,5 @@
-import { execFileSync, spawnSync } from 'child_process'
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { execFileSync } from 'child_process'
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, describe, expect, it, vi } from 'vitest'
@@ -7,7 +7,7 @@ import { checkGemini, fromGemini, GEMINI_MAX_INLINE_BYTES, JUDGE_SYSTEM, VERDICT
 import { ServiceError } from './gate'
 import { judgeExcerpts, type ExcerptClip, type JudgeDeps } from './judge'
 import type { Excerpt } from './media'
-import { gateFor, json, scriptedFetch, type Answer } from './testing'
+import { findFfmpeg, gateFor, json, NO_FFMPEG, scriptedFetch, type Answer } from './testing'
 
 const root = mkdtempSync(join(tmpdir(), 'cutalong-judge-test-'))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -290,17 +290,9 @@ describe('judging excerpts with Google Gemini', () => {
   })
 })
 
-function findFfmpeg(): string | null {
-  for (const bin of [process.env.FFMPEG_PATH, 'ffmpeg']) {
-    if (!bin) continue
-    if (bin !== 'ffmpeg' && !existsSync(bin)) continue
-    if (spawnSync(bin, ['-version']).status === 0) return bin
-  }
-  return null
-}
 const FFMPEG = findFfmpeg()
 
-describe.skipIf(!FFMPEG)('judging excerpts cut by ffmpeg', () => {
+describe.skipIf(!FFMPEG)(`judging excerpts cut by ffmpeg${FFMPEG ? '' : ` (${NO_FFMPEG})`}`, () => {
   it('sends real low-resolution MP4 excerpts, small enough to go inline', async () => {
     const source = join(root, 'take.mp4')
     execFileSync(FFMPEG as string, [

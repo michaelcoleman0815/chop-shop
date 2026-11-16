@@ -1,20 +1,13 @@
 import { execFileSync, spawnSync } from 'child_process'
-import { chmodSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
+import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { cutExcerpt, extractSpeech } from './media'
+import { findFfmpeg, hasEncoder, NO_FFMPEG } from './testing'
 
-function findFfmpeg(): string | null {
-  for (const bin of [process.env.FFMPEG_PATH, 'ffmpeg']) {
-    if (!bin) continue
-    if (bin !== 'ffmpeg' && !existsSync(bin)) continue
-    if (spawnSync(bin, ['-version']).status === 0) return bin
-  }
-  return null
-}
 const FFMPEG = findFfmpeg()
-const hasOpus = FFMPEG ? /libopus/.test(spawnSync(FFMPEG, ['-hide_banner', '-encoders']).stdout.toString()) : false
+const hasOpus = hasEncoder(FFMPEG, 'libopus')
 
 /** What ffmpeg says about a file's streams. */
 function streams(path: string): string {
@@ -25,7 +18,7 @@ function seconds(info: string): number {
   return d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : NaN
 }
 
-describe.skipIf(!FFMPEG)('what leaves the Mac', () => {
+describe.skipIf(!FFMPEG)(`what leaves the Mac${FFMPEG ? '' : ` (${NO_FFMPEG})`}`, () => {
   let dir = ''
   let wide = ''
   let tall = ''
@@ -65,19 +58,22 @@ describe.skipIf(!FFMPEG)('what leaves the Mac', () => {
   })
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
-  it.skipIf(!hasOpus)('takes out the sound only, as compressed mono Opus', async () => {
-    const audio = await extractSpeech(FFMPEG as string, wide, dir, 3)
-    expect(audio.contentType).toBe('audio/ogg')
-    expect(audio.path.endsWith('.ogg')).toBe(true)
-    expect(audio.bytes).toBe(statSync(audio.path).size)
-    expect(audio.bytes).toBeLessThan(statSync(wide).size)
-    const info = streams(audio.path)
-    expect(info).toMatch(/Audio: opus/)
-    expect(info).toMatch(/mono/)
-    expect(info).not.toMatch(/Video:/)
-    expect(seconds(info)).toBeGreaterThan(2.8)
-    expect(seconds(info)).toBeLessThan(3.2)
-  })
+  it.skipIf(!hasOpus)(
+    `takes out the sound only, as compressed mono Opus${hasOpus ? '' : ' (skipped: this ffmpeg has no Opus encoder; the FLAC case below covers it)'}`,
+    async () => {
+      const audio = await extractSpeech(FFMPEG as string, wide, dir, 3)
+      expect(audio.contentType).toBe('audio/ogg')
+      expect(audio.path.endsWith('.ogg')).toBe(true)
+      expect(audio.bytes).toBe(statSync(audio.path).size)
+      expect(audio.bytes).toBeLessThan(statSync(wide).size)
+      const info = streams(audio.path)
+      expect(info).toMatch(/Audio: opus/)
+      expect(info).toMatch(/mono/)
+      expect(info).not.toMatch(/Video:/)
+      expect(seconds(info)).toBeGreaterThan(2.8)
+      expect(seconds(info)).toBeLessThan(3.2)
+    }
+  )
 
   it('falls back to lossless FLAC when ffmpeg has no Opus encoder', async () => {
     const fake = join(dir, 'ffmpeg-without-opus')
