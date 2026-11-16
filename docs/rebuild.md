@@ -35,6 +35,23 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 | `src/main/providers/`                        | Other AI services: the one gate every request to them goes through, their keys, transcription with Deepgram or AssemblyAI, and judging excerpts with Google Gemini.                    |
 | `src/main/preset-store.ts`, `brand-store.ts` | Saved commands and the brand, as JSON in userData.                                                                                                                                     |
 | `src/renderer/src/cutalong/`                 | The app: rail, Start, thread, editor, projects, brand, presets, settings. `useCutalong` is the session; `usePlayer` plays a cut straight off the source.                               |
+| `src/main/platform.ts`, `platform-*.ts`      | What the main-process work runs on: run a tool and stream its lines, files, paths, settings, keys, HTTP. The Mac installs Node's (`platform-electron.ts`), the phone its own.          |
+| `src/main/cut-work.ts`                       | The work behind `cut:prepare`, `cut:extend`, sorting footage and `cut:render`, given a host: the Mac's in `cutalong.ts`, the phone's in `mobile/src/host/api.ts`.                      |
+| `src/main/render/`                           | The renderer's parts: sound, speed, camera moves (scale and crop where the phone's ffmpeg has no `perspective`), encoder profiles (x264 on the Mac, the phone's hardware encoder with its bitrates), and what the phone's LGPL ffmpeg lacks. |
+| `mobile/`                                    | The phone app (Capacitor): this React app and this `src/main` work on the phone's platform, `phone.css` over the layout. See the Phone section and `mobile/README.md`.                 |
+| `mobile/engine/`                             | The `CutalongEngine` plugin's contract: ffmpeg, ffprobe and whisper.cpp in-process on the phone, with the arguments their command-line tools take on the Mac.                          |
+| `mobile/dev/engine-bridge.mjs`               | The engine on this computer, so the phone app runs in a browser here with the real ffmpeg.                                                                                             |
+
+## Phone
+
+`mobile/` is Cutalong on iPhone and Android, editing on the phone itself: a Capacitor app that shows the same React app as the Mac and runs the same main-process work. That work reaches its machine only through `src/main/platform.ts`, which the Mac implements with Node and Electron and the phone with the `CutalongEngine` plugin and Capacitor's Filesystem, Preferences and secure storage. On the phone, ffmpeg, ffprobe and whisper.cpp run in-process with exactly the arguments their command-line tools take on the Mac, so the renderer of record, intake and transcription are one copy.
+
+- **Phase 1:** picking clips with +, sorting them, hearing the words on the phone (the model is downloaded on first use), v1, the thread and the editor, the presets and editing commands, requests to Claude with the person's key, other AI services behind their switch, export with progress to the chat and to Photos, projects, and Settings.
+- **What differs is the host's:** the phone's hardware H.264 encoder at set bitrates in NV12; camera moves with scale and crop, as the phone's LGPL ffmpeg has no `perspective`; ffmpeg's raw output written to segment files and read back; keys in the Keychain or the Android Keystore; the screen kept on while an export runs.
+- **On the Mac for now,** each said in one sentence where it is asked for: vlogs, `/clipping`, `/premiere`, videos from links and B-roll search, motion graphics, the brand and learning from edits, a second camera, following the speaker and LUT files. Planning with Ollama is not offered.
+- **What the phone sends:** the page reaches only itself and Anthropic (its content security policy); the other AI services are reached by the phone's own HTTP through the Mac's gate; the transcription model comes from whisper.cpp's published models.
+
+`mobile/README.md` says how to run it on this computer through the dev bridge, and what the native builds need.
 
 ## How an edit moves
 
