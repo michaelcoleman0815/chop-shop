@@ -42,6 +42,14 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
 - **Motion graphics the way After Effects does.** Lower thirds, callouts, keyword pops, kinetic titles, hook banners,
   end cards, logos, market charts, screenshots of a page and a phone with logos going round it, each a slash command
   (`/lowerthird`, `/callout`, `/pop`, `/title`, …) that lands on the word you are watching.
+- **Vlogs.** Drop a day of clips with "make a vlog" or `/vlog 8 min`. Cutalong watches every clip, leaves out the
+  shaky, dark, pocket and repeated ones, works out the day from when and where each was shot, and tells it as a
+  story: a tease of the best moment, the day in order, what you said to camera cut on the words, the payoff and a
+  close. Ask for a length, an opening or more of a part, and each is a new version; the next day's clips join it.
+- **Clips from long recordings.** `/clipping` on a stream, a Sunday service or a podcast finds the moments that stand
+  on their own, leaves out the worship set, the announcements, the BRB screen and the sponsor read, and makes each one
+  a vertical, captioned short you can open, change and export, or export all at once (`/clipping 10`,
+  `/clipping the funny parts`).
 - **Opens in Premiere.** `/premiere` writes the version as a Premiere project on your own files, with the better sound,
   cutaways, punch-ins, music and effects on their tracks, captions as an SRT, and markers for what stays in Cutalong.
 - **Exports** with captions, logo and loudness set to -14 LUFS, rendered by ffmpeg.
@@ -55,7 +63,9 @@ Everything is processed and stored on your computer: transcription (whisper.cpp)
 (ffmpeg), projects, assets, presets and your brand. Three things use the network:
 
 - **Claude**, to turn what you say into changes, with your own Anthropic API key. Claude sees the transcript and the
-  edit, never the footage. The key is kept in the macOS keychain and only ever sent to Anthropic.
+  edit, never the footage itself. For a vlog it also sees three small stills from each moment, to say what is in it,
+  unless "Let Claude see frames from my footage" is off in Settings. The key is kept in the macOS keychain and only
+  ever sent to Anthropic.
 - **Fetching a link** you paste: a video through yt-dlp, or an image.
 - **The update check**, which reads this repository's GitHub Releases.
 
