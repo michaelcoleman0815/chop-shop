@@ -51,6 +51,21 @@ const listeners = new Map<string, (line: EngineLine) => void>()
 let subscribed: Promise<unknown> | null = null
 let seq = 0
 
+/** Runs asked for and not yet answered, for saying what a check that timed out was waiting on. */
+export const active = new Map<string, { tool: EngineTool; started: number; lines: TimedLine[] }>()
+
+/** What each run still going was doing, as the 'line' events last said. */
+export function describeActive(): string {
+  const now = performance.now()
+  return Array.from(active.entries())
+    .map(([id, a]) => {
+      const last = a.lines[a.lines.length - 1]
+      const said = last ? `its last line ${Math.round((now - a.started - last.at) / 1000)} s ago: "${last.line.slice(0, 160)}"` : 'no lines yet'
+      return `${id} (${a.tool}) running ${Math.round((now - a.started) / 1000)} s, ${said}`
+    })
+    .join('; ')
+}
+
 function subscribe(): Promise<unknown> {
   if (!subscribed) subscribed = Engine.addListener('line', (line) => listeners.get(line.id)?.(line))
   return subscribed
@@ -70,10 +85,12 @@ export async function run(
     lines.push({ ...line, at: performance.now() - started })
     opts.onLine?.(line)
   })
+  active.set(id, { tool, started, lines })
   try {
     const result = await Engine.run({ id, tool, args })
     return { ...result, id, lines, ms: performance.now() - started }
   } finally {
+    active.delete(id)
     // Lines come before the result on both platforms; this keeps stragglers out of the next run's.
     setTimeout(() => listeners.delete(id), 1000)
   }

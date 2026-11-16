@@ -8,7 +8,7 @@ import { whisperArgs } from '../../../../src/main/whisper-args'
 import { parseWhisperJson, tokensToWords } from '../../../../src/main/whisper-parse'
 import desktopRenders from './desktop-renders.json'
 import { colourClose, keyframeTimes, loudness, meanColour, meanColourOf, meanVolume, probe, type Facts } from './measure'
-import { Engine, Host, run, stderrLines, stdoutLines, type RunOutcome } from './plugins'
+import { describeActive, Engine, Host, run, stderrLines, stdoutLines, type RunOutcome } from './plugins'
 import specs from './renders.json'
 
 export interface Check {
@@ -85,6 +85,8 @@ interface Expected {
 type Outcome = { ok: boolean; detail: string; data?: unknown; skipped?: boolean }
 
 const CHECK_TIMEOUT_MS = 8 * 60 * 1000
+/** The step a long check is at, said if it times out. */
+let stage = ''
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const round = (n: number, d = 1): number => Math.round(n * 10 ** d) / 10 ** d
 
@@ -209,8 +211,14 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     try {
       res = await timeout(fn(), CHECK_TIMEOUT_MS, name)
     } catch (e) {
-      res = { ok: false, detail: `threw: ${e instanceof Error ? e.message : String(e)}` }
+      // What it was waiting on: a run still going, and the step it was at.
+      const going = describeActive()
+      res = {
+        ok: false,
+        detail: `threw: ${e instanceof Error ? e.message : String(e)}${stage ? `; at "${stage}"` : ''}${going ? `; still going: ${going}` : ''}`
+      }
     }
+    stage = ''
     const c: Check = { name, ok: res.ok, ms: Math.round(performance.now() - start), detail: res.detail }
     if (res.skipped) c.skipped = true
     if (res.data !== undefined) c.data = res.data
@@ -632,6 +640,7 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
         await sleep(250)
       }
     })()
+    stage = 'rendering 60 s of 1080p'
     const r = await run('ffmpeg', [
       '-hide_banner', '-y', '-nostats', '-progress', 'pipe:1', '-i', source60, '-i', `${media}/logo.png`,
       '-filter_complex',
@@ -641,8 +650,11 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
       '-map', '[v]', '-map', '[a]', '-c:v', h264, '-b:v', '10M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k',
       '-movflags', '+faststart', export60
     ])
+    stage = 'the 60 s render returned; waiting for the memory sampler'
     polling = false
-    await poll
+    // A sample the bridge never answers must not hold the check.
+    await Promise.race([poll, sleep(3000)])
+    stage = 'reading memory after the render'
     const after = await Host.memory()
     peak = Math.max(peak, after.residentBytes, reset ? after.peakBytes : 0)
     const progress = stdoutLines(r).filter((l) => l.startsWith('progress=')).length
@@ -652,6 +664,7 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     const early = arrivals.filter((at) => at < r.ms - 2000).length
     numbers.render60ProgressLines = progress
     numbers.render60FirstProgressMs = arrivals.length ? Math.round(arrivals[0]) : null
+    stage = 'probing the 60 s export'
     const facts = r.code === 0 ? (await probe(export60)).facts : null
     numbers.render60Seconds = round(r.ms / 1000, 1)
     numbers.render60Realtime = round(60 / (r.ms / 1000), 2)
