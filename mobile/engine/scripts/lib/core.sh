@@ -117,6 +117,12 @@ package_ios() {
       for arch in $sims; do bins+=("$BUILD/ios-sim-$arch/frameworks/$name.framework/$name"); done
       lipo -create "${bins[@]}" -output "$BUILD/ios-sim/frameworks/$name.framework/$name"
     fi
+    # Each binary is changed after linking (install names, strip), which voids
+    # the signature the linker gave it, and arm64 code must be signed to load:
+    # the simulator runs nothing unsigned. So each is signed ad hoc here; an
+    # app's build signs the device ones again as its own when it embeds them.
+    codesign --force --sign - --timestamp=none "$BUILD/ios-arm64/frameworks/$name.framework"
+    codesign --force --sign - --timestamp=none "$BUILD/ios-sim/frameworks/$name.framework"
     xcodebuild -create-xcframework \
       -framework "$BUILD/ios-arm64/frameworks/$name.framework" \
       -framework "$BUILD/ios-sim/frameworks/$name.framework" \

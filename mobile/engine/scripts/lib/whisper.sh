@@ -3,9 +3,10 @@
 # keyed on this file, env.sh and versions.env.
 #
 # iOS: Metal with its shaders embedded (no .metallib to ship) and Accelerate.
-# Android: the CPU backend with NEON on arm64 (the baseline every arm64 phone
-# has; GGML_NATIVE is off so nothing is tuned to the build machine) and
-# AVX2/FMA on x86_64, which is for the emulator.
+# Android: the CPU backend. GGML_NATIVE is off and the NDK cross-compiles,
+# so ggml asks for no instruction set beyond the ABI's own: NEON on arm64,
+# which every arm64 phone has, and SSE4.2 on x86_64, which is for the
+# emulator and runs on any (slowly next to a phone; it is there for testing).
 
 build_whisper() {
   if stage_done "$WPREFIX" whisper; then
