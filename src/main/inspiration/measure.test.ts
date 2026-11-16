@@ -33,7 +33,12 @@ const SHOT = 1.5
 function makeClip(ffmpeg: string, out: string, gainDb: number): void {
   const size = '320x568'
   const shots = ['testsrc2', 'color=c=red', 'testsrc2', 'color=c=blue', 'testsrc2', 'color=c=green']
-  const inputs = shots.flatMap((s) => ['-f', 'lavfi', '-i', `${s}${s.includes('=') ? ':' : '='}size=${size}:rate=30:duration=${SHOT}`])
+  const inputs = shots.flatMap((s) => [
+    '-f',
+    'lavfi',
+    '-i',
+    `${s}${s.includes('=') ? ':' : '='}size=${size}:rate=30:duration=${SHOT}`
+  ])
   execFileSync(ffmpeg, [
     '-hide_banner',
     '-loglevel',
@@ -113,7 +118,13 @@ describe.skipIf(!FFMPEG)('measuring a video', () => {
   })
 
   it('tiles frames into one contact sheet', async () => {
-    const sheet = await contactSheet(clip, join(dir, 'sheet.jpg'), { ffmpeg, durationSec: 9, cols: 5, rows: 4, tileWidth: 120 })
+    const sheet = await contactSheet(clip, join(dir, 'sheet.jpg'), {
+      ffmpeg,
+      durationSec: 9,
+      cols: 5,
+      rows: 4,
+      tileWidth: 120
+    })
     const info = await probeMedia(ffmpeg, sheet)
     expect(info.width).toBe(600)
     // 120 wide keeps the 320x568 shape: 213 rounds to an even 214, four rows.

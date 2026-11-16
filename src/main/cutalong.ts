@@ -11,7 +11,17 @@ import { fetchVideo } from './fetch-video'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { removePreset, savedPresets, savePreset } from './preset-store'
-import { createDoc, currentCut, currentVersion, EditDocSchema, resolveCut, wordsFromTranscript, type Word } from '../shared/edit'
+import { planEdit } from './planner'
+import {
+  createDoc,
+  currentCut,
+  currentVersion,
+  EditDocSchema,
+  resolveCut,
+  wordsFromTranscript,
+  type Note,
+  type Word
+} from '../shared/edit'
 import { BUILT_IN_PRESETS, describeStyle, suggestCommandName } from '../shared/presets'
 import {
   factDetails,
@@ -75,7 +85,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     const doc = parsed.data
     const cut = currentCut(doc)
     const resolved = resolveCut(cut, doc.words, doc.sources)
-    if (resolved.pieces.length === 0) return { ok: false as const, message: 'There is nothing left in the cut to render.' }
+    if (resolved.pieces.length === 0)
+      return { ok: false as const, message: 'There is nothing left in the cut to render.' }
 
     const final = req.quality === 'final'
     const stage = final ? 'Exporting' : 'Rendering a preview'
@@ -165,6 +176,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       return { ok: false as const, message: message(err) }
     }
   })
+
+  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[] }) => planEdit(req))
 
   ipcMain.handle('presets:list', () => savedPresets())
   ipcMain.handle('presets:save', (_e, preset: unknown) => savePreset(preset))

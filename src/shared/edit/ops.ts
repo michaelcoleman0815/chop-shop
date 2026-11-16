@@ -258,7 +258,17 @@ function buildBeat(input: BeatInput, id: string, ctx: Ctx): Beat {
     if (from === null || to === null) throw new OpError('A beat made of words needs both a first and a last word.')
     const [a] = wordRange(ctx, from, to)
     if (ctx.index.words[a].source !== source.id) throw new OpError(`${from} is not in ${source.id}.`)
-    return { id, source: source.id, from, to, inSec: null, outSec: null, padIn: DEFAULT_PAD_IN, padOut: DEFAULT_PAD_OUT, treatment }
+    return {
+      id,
+      source: source.id,
+      from,
+      to,
+      inSec: null,
+      outSec: null,
+      padIn: DEFAULT_PAD_IN,
+      padOut: DEFAULT_PAD_OUT,
+      treatment
+    }
   }
 
   const inSec = input.inSec ?? null
@@ -267,7 +277,17 @@ function buildBeat(input: BeatInput, id: string, ctx: Ctx): Beat {
     throw new OpError('A beat without words needs a start and an end, the end after the start.')
   }
   if (inSec >= source.durationSec) throw new OpError(`${source.id} is only ${source.durationSec.toFixed(1)} s long.`)
-  return { id, source: source.id, from: null, to: null, inSec, outSec: Math.min(outSec, source.durationSec), padIn: 0, padOut: 0, treatment }
+  return {
+    id,
+    source: source.id,
+    from: null,
+    to: null,
+    inSec,
+    outSec: Math.min(outSec, source.durationSec),
+    padIn: 0,
+    padOut: 0,
+    treatment
+  }
 }
 
 /**

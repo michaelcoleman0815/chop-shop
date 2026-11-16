@@ -1,0 +1,441 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  beatLabel,
+  beatWords,
+  captionPages,
+  currentCut,
+  currentVersion,
+  indexWords,
+  openNotes,
+  resolveCut,
+  type EditDoc,
+  type Op,
+  type Resolved
+} from '../../../../shared/edit'
+import { parseCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
+import { BeatStrip, type StripBeat } from '../components/BeatStrip'
+import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
+import { clock } from '../format'
+import { usePlayer } from '../usePlayer'
+import type { Cutalong, PanelStatus } from '../useCutalong'
+import { Header } from './Header'
+
+/**
+ * The editor: the preview on the left, the notes on the right, the beats along
+ * the bottom. The preview plays the cut straight off the recording, with the
+ * captions, black and white, punch-ins and big words drawn live.
+ */
+export function Editor({ app }: { app: Cutalong }): JSX.Element {
+  const doc = app.doc as EditDoc
+  const cut = currentCut(doc)
+  const version = currentVersion(doc)
+  const resolved = useMemo(() => resolveCut(cut, doc.words, doc.sources), [cut, doc.words, doc.sources])
+  const video = useRef<HTMLVideoElement>(null)
+  const player = usePlayer(video, resolved)
+  const [script, setScript] = useState(false)
+
+  const beats: StripBeat[] = useMemo(() => {
+    const byId = new Map(cut.beats.map((b) => [b.id, b]))
+    return resolved.beats.map((rb) => {
+      const beat = byId.get(rb.id)!
+      return { id: rb.id, label: beatLabel(doc, beat), start: rb.outStart, end: rb.outEnd, bw: beat.treatment.bw }
+    })
+  }, [resolved, cut.beats, doc])
+
+  const nowBeat =
+    resolved.beats.find((b) => player.time >= b.outStart && player.time < b.outEnd) ??
+    resolved.beats[resolved.beats.length - 1]
+
+  // Space plays and pauses, unless someone is typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const el = e.target as HTMLElement
+      if (e.code !== 'Space' || el.closest('input, textarea, [contenteditable]')) return
+      e.preventDefault()
+      player.toggle()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [player])
+
+  return (
+    <>
+      <Header>
+        <IconButton label="Back" onClick={() => (app.messages.length ? app.setScreen('thread') : app.goStart())}>
+          <Icon.back />
+        </IconButton>
+        <span className="cl-heading">{doc.title}</span>
+        <span className="cl-version">v{version.n}</span>
+        <span className="spacer" />
+        {doc.versions.length > 1 && (
+          <Button variant="text" onClick={app.undo}>
+            Undo
+          </Button>
+        )}
+        <Button
+          variant="text"
+          className={script ? 'on' : ''}
+          aria-pressed={script}
+          onClick={() => setScript((s) => !s)}
+        >
+          Script
+        </Button>
+        <Button variant="primary" small onClick={() => void app.exportFinal()}>
+          Export
+        </Button>
+      </Header>
+      <main className="cl-editor">
+        <div className="cl-editor-body">
+          <Preview doc={doc} resolved={resolved} time={player.time} video={video} mediaUrl={app.mediaUrl} />
+          {script ? (
+            <ScriptPanel
+              doc={doc}
+              time={player.time}
+              resolved={resolved}
+              onSeek={player.seek}
+              onApply={app.applyOpsDirect}
+            />
+          ) : (
+            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} />
+          )}
+        </div>
+        <BeatStrip
+          beats={beats}
+          duration={resolved.durationSec}
+          time={player.time}
+          playing={player.playing}
+          onToggle={player.toggle}
+          onSeek={player.seek}
+        />
+      </main>
+    </>
+  )
+}
+
+const ASPECT: Record<string, number> = { vertical: 9 / 16, square: 1, wide: 16 / 9 }
+const CAPTION_TOP: Record<string, number> = { top: 0.22, middle: 0.52, chest: 0.66, bottom: 0.84 }
+
+function Preview({
+  doc,
+  resolved,
+  time,
+  video,
+  mediaUrl
+}: {
+  doc: EditDoc
+  resolved: Resolved
+  time: number
+  video: React.RefObject<HTMLVideoElement>
+  mediaUrl: string | null
+}): JSX.Element {
+  const well = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState({ w: 0, h: 0 })
+  const cut = currentCut(doc)
+  const source = doc.sources[0]
+  const ratio = ASPECT[cut.aspect] ?? (source.width > 0 && source.height > 0 ? source.width / source.height : 16 / 9)
+
+  useEffect(() => {
+    const el = well.current
+    if (!el) return
+    const fit = (): void => {
+      const pad = 48
+      const w = Math.max(0, el.clientWidth - pad)
+      const h = Math.max(0, el.clientHeight - pad)
+      const width = Math.min(w, h * ratio)
+      setBox({ w: width, h: width / ratio })
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ratio])
+
+  const beat = resolved.beats.find((b) => time >= b.outStart && time < b.outEnd)
+  const treatment = beat ? cut.beats[beat.index]?.treatment : undefined
+  const pages = useMemo(
+    () => captionPages(resolved, cut.captions.wordsPerScreen),
+    [resolved, cut.captions.wordsPerScreen]
+  )
+  const page = cut.captions.on
+    ? pages.find((p) => time >= p[0].outStart - 0.05 && time <= p[p.length - 1].outEnd + 0.25)
+    : undefined
+  const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined
+  const showBig = big && time >= big.outStart - 0.1 && time <= big.outEnd + 0.7
+
+  return (
+    <div className="cl-well" ref={well}>
+      <div className="cl-frame" style={{ width: box.w, height: box.h }}>
+        {mediaUrl ? (
+          <video
+            ref={video}
+            src={mediaUrl}
+            playsInline
+            preload="auto"
+            style={{
+              filter: treatment?.bw ? 'grayscale(1)' : undefined,
+              transform: treatment && treatment.zoom > 1.001 ? `scale(${treatment.zoom})` : undefined
+            }}
+          />
+        ) : (
+          <span className="cl-frame-empty" />
+        )}
+        {showBig && big && (
+          <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
+            {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}
+          </div>
+        )}
+        {page && !showBig && (
+          <div
+            className="cl-caption"
+            style={{
+              top: `${CAPTION_TOP[cut.captions.position] * 100}%`,
+              fontSize: Math.max(12, Math.round(box.h * 0.042))
+            }}
+          >
+            {page.map((w, i) => (
+              <span key={w.id} className={time >= w.outStart ? 'on' : 'off'}>
+                {i > 0 ? ' ' : ''}
+                {cut.captions.uppercase ? w.text.toUpperCase() : w.text}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NotesPanel({
+  app,
+  doc,
+  nowBeat,
+  presets
+}: {
+  app: Cutalong
+  doc: EditDoc
+  nowBeat: string | null
+  presets: Preset[]
+}): JSX.Element {
+  const version = currentVersion(doc)
+  const notes = openNotes(doc)
+  const beats = currentCut(doc).beats
+  const status: PanelStatus = app.panel ?? {
+    text:
+      version.n === 1
+        ? `v1 is the recording in ${beats.length} beats. Leave notes as you watch, or type / for a preset.`
+        : `v${version.n} is ready. ${version.summary}`
+  }
+  const position = (id: string | null): string => {
+    const i = beats.findIndex((b) => b.id === id)
+    return i < 0 ? '' : `Beat ${i + 1}`
+  }
+
+  return (
+    <aside className="cl-notes" aria-label="Notes">
+      <div className="cl-notes-scroll">
+        <div className="cl-msg-assistant" aria-live="polite">
+          <AssistantAvatar />
+          <div className="cl-msg-body">
+            {status.progress ? (
+              <div className="cl-progress">
+                <span>{status.progress.stage}</span>
+                <span className="cl-progress-bar" aria-hidden="true">
+                  <span style={{ width: `${status.progress.percent}%` }} />
+                </span>
+              </div>
+            ) : (
+              <p className="cl-reply">{status.text}</p>
+            )}
+          </div>
+        </div>
+        {notes.length > 0 && (
+          <ol className="cl-note-list">
+            {notes.map((n, i) => (
+              <li key={n.id} className="cl-note">
+                <span className="cl-note-n">{i + 1}</span>
+                <span className="cl-note-text">
+                  {n.text}
+                  {n.beat && <span className="cl-project-meta">{position(n.beat)}</span>}
+                </span>
+                <button type="button" aria-label={`Remove note ${i + 1}`} onClick={() => app.dropNote(n.id)}>
+                  <Icon.close />
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+      {notes.length > 0 && (
+        <Button variant="primary" small onClick={() => void app.applyNotes()} disabled={!!status.progress}>
+          Apply {notes.length === 1 ? '1 note' : `${notes.length} notes`} as v{version.n + 1}
+        </Button>
+      )}
+      <NoteInput
+        presets={presets}
+        onNote={(text) => {
+          const command = parseCommand(text)
+          if (command) void app.runCommand(command.command, 'panel')
+          else app.addNote(text, nowBeat)
+        }}
+      />
+    </aside>
+  )
+}
+
+function NoteInput({ presets, onNote }: { presets: Preset[]; onNote: (text: string) => void }): JSX.Element {
+  const [text, setText] = useState('')
+  const query = slashQuery(text)
+  const matches = query === null ? [] : suggestCommands(query, presets, 5)
+  const send = (): void => {
+    const value = text.trim()
+    if (!value) return
+    onNote(value)
+    setText('')
+  }
+  return (
+    <div className="cl-note-input">
+      {matches.length > 0 && (
+        <div className="cl-slash" role="listbox" aria-label="Presets">
+          {matches.map((p) => (
+            <button
+              key={p.command}
+              type="button"
+              role="option"
+              aria-selected={false}
+              className="cl-slash-item"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                onNote(`/${p.command}`)
+                setText('')
+              }}
+            >
+              <span className="mono">/{p.command}</span>
+              <span className="summary">{p.summary}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <label className="sr-only" htmlFor="cl-note">
+        Add a note, or type /
+      </label>
+      <input
+        id="cl-note"
+        value={text}
+        placeholder="Add a note, or type /"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            if (matches.length > 0 && query !== null && !text.includes(' ')) {
+              onNote(`/${matches[0].command}`)
+              setText('')
+            } else send()
+          }
+        }}
+      />
+      <IconButton label="Add note" filled disabled={!text.trim()} onClick={send}>
+        <Icon.send />
+      </IconButton>
+    </div>
+  )
+}
+
+/**
+ * The words of the cut, beat by beat. Clicking words marks them; the button
+ * cuts the marked words, or brings back struck ones, as one new version.
+ */
+function ScriptPanel({
+  doc,
+  time,
+  resolved,
+  onSeek,
+  onApply
+}: {
+  doc: EditDoc
+  time: number
+  resolved: Resolved
+  onSeek: (sec: number) => void
+  onApply: (ops: Op[], fallback: string) => void
+}): JSX.Element {
+  const cut = currentCut(doc)
+  const struck = useMemo(() => new Set(cut.removed), [cut.removed])
+  const [marked, setMarked] = useState<Set<string>>(new Set())
+  const timing = useMemo(() => new Map(resolved.words.map((w) => [w.id, w])), [resolved])
+  const nowWord = resolved.words.find((w) => time >= w.outStart && time < w.outEnd)?.id
+
+  useEffect(() => setMarked(new Set()), [cut])
+
+  const toggle = (id: string): void =>
+    setMarked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const apply = (): void => {
+    const index = indexWords(doc.words)
+    const ids = [...marked].sort((a, b) => (index.pos.get(a) ?? 0) - (index.pos.get(b) ?? 0))
+    const ops: Op[] = []
+    // Contiguous runs of the same kind become one op each.
+    let run: string[] = []
+    const flush = (): void => {
+      if (run.length === 0) return
+      ops.push({ op: struck.has(run[0]) ? 'unstrike' : 'strike', from: run[0], to: run[run.length - 1] })
+      run = []
+    }
+    for (const id of ids) {
+      const prev = run[run.length - 1]
+      const adjacent = prev !== undefined && (index.pos.get(id) ?? -2) === (index.pos.get(prev) ?? -9) + 1
+      if (!adjacent || struck.has(id) !== struck.has(prev)) flush()
+      run.push(id)
+    }
+    flush()
+    onApply(ops, 'Words changed.')
+  }
+
+  const cutting = [...marked].filter((id) => !struck.has(id)).length
+  const restoring = marked.size - cutting
+  const label =
+    cutting && restoring
+      ? `Cut ${cutting} and bring back ${restoring} words`
+      : cutting
+        ? `Cut ${cutting === 1 ? '1 word' : `${cutting} words`}`
+        : `Bring back ${restoring === 1 ? '1 word' : `${restoring} words`}`
+
+  return (
+    <aside className="cl-notes" aria-label="Script">
+      <div className="cl-notes-scroll cl-script">
+        {cut.beats.map((beat) => (
+          <p key={beat.id}>
+            {beatWords(doc, beat).map((w, i) => (
+              <span key={w.id}>
+                {i > 0 && ' '}
+                <button
+                  type="button"
+                  className={`cl-word${struck.has(w.id) ? ' struck' : ''}${marked.has(w.id) ? ' pending' : ''}${w.id === nowWord ? ' now' : ''}`}
+                  onClick={() => toggle(w.id)}
+                  onDoubleClick={() => {
+                    const t = timing.get(w.id)
+                    if (t) onSeek(t.outStart)
+                  }}
+                >
+                  {w.text}
+                </button>
+              </span>
+            ))}
+          </p>
+        ))}
+        {cut.beats.every((b) => b.from === null) && <p className="muted">No words in this edit yet.</p>}
+      </div>
+      {marked.size > 0 && (
+        <Button variant="primary" small onClick={apply}>
+          {label}
+        </Button>
+      )}
+      <p className="cl-project-meta">
+        Click words to mark them. Double-click a word to jump to it. {clock(resolved.durationSec)} in the cut.
+      </p>
+    </aside>
+  )
+}

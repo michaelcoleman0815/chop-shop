@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
-import type { MusicTrack, OverlayClip, TranscriptWord, ZoomKeyframe } from '../../../shared/types'
-import { groupWords, respaceGroup } from '../../../shared/words'
+import type { MusicTrack, OverlayClip, TranscriptWord, ZoomKeyframe } from '../../../../shared/types'
+import { groupWords, respaceGroup } from '../../../../shared/words'
 import { timecode } from '../lib/format'
 
 export interface Segment {

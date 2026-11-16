@@ -148,7 +148,8 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 640,
     show: false,
-    backgroundColor: '#0f0d0c',
+    // Cutalong's ground, so the window never flashes dark before the page paints.
+    backgroundColor: '#F5F5F3',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {

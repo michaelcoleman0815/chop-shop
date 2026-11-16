@@ -123,7 +123,10 @@ export function styleFromFacts(f: InspirationFacts): StyleSpec {
   }
   if (f.firstCutSec !== null && f.firstCutSec < 3) {
     const short = f.durationSec <= 90
-    style.hook = { firstCutSec: clamp(round(f.firstCutSec, 0.1), 0.3, 3), strongestFirst: short && f.firstCutSec <= 1.5 }
+    style.hook = {
+      firstCutSec: clamp(round(f.firstCutSec, 0.1), 0.3, 3),
+      strongestFirst: short && f.firstCutSec <= 1.5
+    }
   }
   if (f.bwShare >= 0.1) style.bw = { share: round(f.bwShare, 0.01) }
   if (f.loudnessLufs !== null && Number.isFinite(f.loudnessLufs)) {
@@ -159,7 +162,9 @@ function list(parts: string[]): string {
 export function factsReply(f: InspirationFacts): string {
   const said: string[] = []
   if (f.firstCutSec !== null && f.firstCutSec <= 1.2) {
-    said.push(f.cutsInFirst3s >= 3 ? `opens fast, with ${f.cutsInFirst3s} cuts in the first three seconds` : 'opens fast')
+    said.push(
+      f.cutsInFirst3s >= 3 ? `opens fast, with ${f.cutsInFirst3s} cuts in the first three seconds` : 'opens fast'
+    )
   } else if (f.shots > 1 && (f.firstCutSec === null || f.firstCutSec > 5)) {
     said.push(`holds its first shot for ${seconds(f.firstCutSec ?? f.durationSec)}`)
   }
@@ -226,7 +231,10 @@ export function cutShape(cut: Cut, resolved: Resolved): CutShape {
     if (jump || look(prev.beat) !== look(p.beat)) changes.push(p.outStart)
   })
   const edges = [0, ...changes, resolved.durationSec]
-  const lengths = edges.slice(1).map((t, i) => t - edges[i]).filter((l) => l > 0)
+  const lengths = edges
+    .slice(1)
+    .map((t, i) => t - edges[i])
+    .filter((l) => l > 0)
   return {
     durationSec: resolved.durationSec,
     changes,
@@ -245,15 +253,27 @@ const closeness = (a: number, b: number, k = 1): number =>
  * both can be measured on: pace, how fast it opens, and black and white. The
  * parts are in likenessParts so Details can show where the gap is.
  */
-export function likenessParts(ref: InspirationFacts, shape: CutShape): { label: string; score: number; weight: number }[] {
+export function likenessParts(
+  ref: InspirationFacts,
+  shape: CutShape
+): { label: string; score: number; weight: number }[] {
   const parts: { label: string; score: number; weight: number }[] = []
-  if (ref.shots > 1) parts.push({ label: 'Pace', score: closeness(shape.secondsPerShot, ref.secondsPerShot, 1.2), weight: 0.5 })
+  if (ref.shots > 1)
+    parts.push({ label: 'Pace', score: closeness(shape.secondsPerShot, ref.secondsPerShot, 1.2), weight: 0.5 })
   if (ref.firstCutSec !== null) {
     const opens = shape.firstCutSec ?? shape.durationSec
-    parts.push({ label: 'Opening', score: closeness(Math.max(opens, 0.3), Math.max(ref.firstCutSec, 0.3)), weight: 0.25 })
+    parts.push({
+      label: 'Opening',
+      score: closeness(Math.max(opens, 0.3), Math.max(ref.firstCutSec, 0.3)),
+      weight: 0.25
+    })
   }
   if (ref.bwShare >= 0.1 || shape.bwShare >= 0.1) {
-    parts.push({ label: 'Black and white', score: 1 - Math.min(1, Math.abs(shape.bwShare - ref.bwShare) * 1.5), weight: 0.25 })
+    parts.push({
+      label: 'Black and white',
+      score: 1 - Math.min(1, Math.abs(shape.bwShare - ref.bwShare) * 1.5),
+      weight: 0.25
+    })
   }
   return parts
 }

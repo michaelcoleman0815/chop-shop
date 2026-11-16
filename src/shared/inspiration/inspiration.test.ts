@@ -93,7 +93,11 @@ describe('a style from facts', () => {
 describe('likeness', () => {
   const source = { id: 's1', path: '/a.mov', durationSec: 60, width: 1080, height: 1920, fps: 30 }
   const words = wordsFromTranscript(
-    Array.from({ length: 120 }, (_, i) => ({ text: i % 8 === 7 ? 'word.' : 'word', startSec: i * 0.4, endSec: i * 0.4 + 0.3 })),
+    Array.from({ length: 120 }, (_, i) => ({
+      text: i % 8 === 7 ? 'word.' : 'word',
+      startSec: i * 0.4,
+      endSec: i * 0.4 + 0.3
+    })),
     's1'
   )
   const doc = createDoc({ id: 'd', title: 't', source, words })

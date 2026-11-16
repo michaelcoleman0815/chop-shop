@@ -1,21 +1,16 @@
-import React from 'react'
 import ReactDOM from 'react-dom/client'
 
-// Brand type, bundled rather than fetched: Archivo Black for display, Sora for
-// interface, IBM Plex Mono for timecode and filenames.
-import '@fontsource/archivo-black/latin-400.css'
-import '@fontsource/sora/latin-400.css'
-import '@fontsource/sora/latin-500.css'
-import '@fontsource/sora/latin-600.css'
-import '@fontsource/sora/latin-700.css'
-import '@fontsource/ibm-plex-mono/latin-400.css'
-import '@fontsource/ibm-plex-mono/latin-500.css'
+/**
+ * Two apps share this window: Cutalong, and the classic tools it is
+ * replacing. Each loads only its own code and stylesheet, because the classic
+ * stylesheet styles bare elements (every button, every paragraph) and would
+ * leak into Cutalong if both were on the page. Switching sets the hash and
+ * reloads, so each always starts from a clean document.
+ */
+const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
 
-import App from './App'
-import './styles.css'
-
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-)
+if (window.location.hash === '#classic') {
+  void import('./legacy/main').then((m) => m.mountClassic(root))
+} else {
+  void import('./cutalong/main').then((m) => m.mountCutalong(root))
+}

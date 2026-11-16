@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { AspectPreset, Settings } from '../../../shared/types'
+import type { AspectPreset, Settings } from '../../../../shared/types'
 
 interface Props {
   settings: Settings

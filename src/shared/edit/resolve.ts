@@ -257,7 +257,7 @@ export function sourceTimeAt(
 export function beatAt(resolved: Resolved, outSec: number): ResolvedBeat | null {
   return (
     resolved.beats.find((b) => outSec >= b.outStart && outSec < b.outEnd) ??
-    (outSec >= resolved.durationSec ? resolved.beats[resolved.beats.length - 1] ?? null : null)
+    (outSec >= resolved.durationSec ? (resolved.beats[resolved.beats.length - 1] ?? null) : null)
   )
 }
 

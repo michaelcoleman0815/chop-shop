@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { CaptureSource, Settings } from '../../../shared/types'
+import type { CaptureSource, Settings } from '../../../../shared/types'
 import type { Job } from './JobList'
 import { rollingBuffer, type BufferState } from '../lib/buffer'
 import { performGrab } from '../lib/grab'

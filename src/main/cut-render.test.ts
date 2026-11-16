@@ -3,7 +3,15 @@ import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { commit, createDoc, currentCut, resolveCut, wordsFromTranscript, DEFAULT_TREATMENT, type EditDoc } from '../shared/edit'
+import {
+  commit,
+  createDoc,
+  currentCut,
+  resolveCut,
+  wordsFromTranscript,
+  DEFAULT_TREATMENT,
+  type EditDoc
+} from '../shared/edit'
 import { buildRenderArgs, frameRate, frameSize, renderCut, type RenderSource, type Segment } from './cut-render'
 import { greyShare, probeMedia, sampleColour } from './inspiration/measure'
 
@@ -34,7 +42,16 @@ describe('render arguments', () => {
     broll: null,
     ...over
   })
-  const opts = { width: 540, height: 960, fps: 30, assPath: null, fontsDir: null, loudness: null, quality: 'preview' as const, outputPath: '/out.mp4' }
+  const opts = {
+    width: 540,
+    height: 960,
+    fps: 30,
+    assPath: null,
+    fontsDir: null,
+    loudness: null,
+    quality: 'preview' as const,
+    outputPath: '/out.mp4'
+  }
 
   it('seeks each piece as its own input and joins them in order', () => {
     const args = buildRenderArgs([seg(), seg({ startSec: 0.5, durationSec: 1 })], opts)
@@ -51,10 +68,14 @@ describe('render arguments', () => {
       return args[args.indexOf('-filter_complex') + 1]
     }
     expect(graph(seg({ treatment: { ...DEFAULT_TREATMENT, bw: true } }))).toContain('hue=s=0')
-    expect(graph(seg({ treatment: { ...DEFAULT_TREATMENT, zoom: 1.2 } }))).toContain('crop=trunc(iw/1.2000/2)*2:trunc(ih/1.2000/2)*2')
+    expect(graph(seg({ treatment: { ...DEFAULT_TREATMENT, zoom: 1.2 } }))).toContain(
+      'crop=trunc(iw/1.2000/2)*2:trunc(ih/1.2000/2)*2'
+    )
     expect(graph(seg({ hasAudio: false }))).toContain('anullsrc=r=48000:cl=stereo')
     expect(graph(seg())).toContain('loudnorm=I=-14')
-    const split = graph(seg({ treatment: { ...DEFAULT_TREATMENT, frame: 'split' }, broll: { path: '/b.mov', startSec: 3 } }))
+    const split = graph(
+      seg({ treatment: { ...DEFAULT_TREATMENT, frame: 'split' }, broll: { path: '/b.mov', startSec: 3 } })
+    )
     expect(split).toContain('vstack')
     expect(split).toContain('[1:v]')
   })
@@ -79,10 +100,28 @@ describe.skipIf(!FFMPEG)('rendering a cut', () => {
     dir = mkdtempSync(join(tmpdir(), 'cutalong-render-'))
     const path = join(dir, 'source.mp4')
     execFileSync(ffmpeg, [
-      '-hide_banner', '-loglevel', 'error', '-y',
-      '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=6',
-      '-f', 'lavfi', '-i', 'sine=frequency=330:sample_rate=48000:duration=6',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', path
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=640x360:rate=30:duration=6',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=330:sample_rate=48000:duration=6',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-shortest',
+      path
     ])
     const source = { id: 's1', path, durationSec: 6, width: 640, height: 360, fps: 30 }
     sources = [{ ...source, hasAudio: true }]

@@ -51,7 +51,8 @@ export async function probeMedia(ffmpeg: string, path: string, signal?: AbortSig
   const { stderr } = await run(ffmpeg, ['-hide_banner', '-i', path], signal)
   const d = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderr)
   const video = /Stream #\d+:\d+[^\n]*?: Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b/.exec(stderr)
-  if (!video) throw new Error(stderr.includes('No such file') ? `No file at ${path}` : 'That file has no picture to measure.')
+  if (!video)
+    throw new Error(stderr.includes('No such file') ? `No file at ${path}` : 'That file has no picture to measure.')
   let width = Number(video[1])
   let height = Number(video[2])
   const rotation = /rotation of (-?\d+(?:\.\d+)?) degrees/.exec(stderr)
@@ -156,7 +157,19 @@ export function greyShare(samples: ColourSample[]): number | null {
 export async function measureLoudness(path: string, opts: MeasureOptions): Promise<number | null> {
   const { stderr } = await run(
     opts.ffmpeg,
-    ['-hide_banner', '-nostats', ...limit(opts.maxSec), '-i', path, '-vn', '-af', 'ebur128=framelog=quiet', '-f', 'null', '-'],
+    [
+      '-hide_banner',
+      '-nostats',
+      ...limit(opts.maxSec),
+      '-i',
+      path,
+      '-vn',
+      '-af',
+      'ebur128=framelog=quiet',
+      '-f',
+      'null',
+      '-'
+    ],
     opts.signal
   )
   const summary = stderr.lastIndexOf('Integrated loudness:')
@@ -221,6 +234,7 @@ export async function contactSheet(
     ],
     opts.signal
   )
-  if (result.code !== 0) throw new Error(result.stderr.trim().split('\n').slice(-3).join('\n') || 'Could not make a contact sheet.')
+  if (result.code !== 0)
+    throw new Error(result.stderr.trim().split('\n').slice(-3).join('\n') || 'Could not make a contact sheet.')
   return outPath
 }

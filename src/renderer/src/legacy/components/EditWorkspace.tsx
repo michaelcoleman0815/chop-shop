@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Project, Timeline, TimelineClip, TransitionKind } from '../../../shared/types'
-import { clipAt, timelineDuration, mediaKind } from '../../../shared/timeline'
+import type { Project, Timeline, TimelineClip, TransitionKind } from '../../../../shared/types'
+import { clipAt, timelineDuration, mediaKind } from '../../../../shared/timeline'
 import type { Job } from './JobList'
 import { timecode } from '../lib/format'
 

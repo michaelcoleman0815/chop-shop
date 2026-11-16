@@ -39,7 +39,13 @@ export function suggestCommands(query: string, presets: Preset[], limit = 6): Pr
   const rank = (p: Preset): number => {
     if (q === '') return 0
     if (p.command.startsWith(q)) return 0
-    if (p.title.toLowerCase().split(/\s+/).some((w) => w.startsWith(q))) return 1
+    if (
+      p.title
+        .toLowerCase()
+        .split(/\s+/)
+        .some((w) => w.startsWith(q))
+    )
+      return 1
     if (p.command.includes(q)) return 2
     return -1
   }

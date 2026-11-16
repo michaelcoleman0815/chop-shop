@@ -1,0 +1,53 @@
+import { useEffect, useRef } from 'react'
+import { Composer } from '../components/Composer'
+import { AssistantMessage, UserMessage } from '../components/Message'
+import { Button, Icon, IconButton } from '../components/ui'
+import type { Cutalong } from '../useCutalong'
+import { Header } from './Header'
+
+/** The conversation: what was given, what was understood, what happens next. */
+export function Thread({ app }: { app: Cutalong }): JSX.Element {
+  const end = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [app.messages])
+
+  return (
+    <>
+      <Header>
+        <IconButton label="Back to start" onClick={app.goStart}>
+          <Icon.back />
+        </IconButton>
+        <span className="cl-heading">{app.doc?.title ?? 'New edit'}</span>
+        <span className="spacer" />
+        {app.doc && (
+          <Button variant="text" onClick={() => app.setScreen('editor')}>
+            Editor
+          </Button>
+        )}
+      </Header>
+      <main className="cl-thread">
+        <div className="cl-thread-scroll">
+          <div className="cl-thread-column">
+            {app.messages.map((m) =>
+              m.role === 'user' ? (
+                <UserMessage key={m.id} msg={m} />
+              ) : (
+                <AssistantMessage key={m.id} msg={m} onAction={app.onAction} />
+              )
+            )}
+            <div ref={end} />
+          </div>
+        </div>
+        <div className="cl-thread-foot">
+          <Composer
+            placeholder="Reply, or type /"
+            presets={app.presets}
+            busy={app.busy}
+            onSubmit={(t, f) => void app.submit(t, f)}
+          />
+        </div>
+      </main>
+    </>
+  )
+}

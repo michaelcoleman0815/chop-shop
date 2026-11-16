@@ -57,7 +57,11 @@ export interface GraphOptions {
 const even = (n: number): number => Math.max(2, Math.round(n / 2) * 2)
 
 /** Output frame size for an aspect, halved for previews. */
-export function frameSize(aspect: Aspect, source: { width: number; height: number }, preview = false): { width: number; height: number } {
+export function frameSize(
+  aspect: Aspect,
+  source: { width: number; height: number },
+  preview = false
+): { width: number; height: number } {
   let width: number
   let height: number
   if (aspect === 'vertical') [width, height] = [1080, 1920]
@@ -95,7 +99,11 @@ export function captionStyleFor(spec: CaptionSpec, width: number): CaptionStyle 
     outlinePx: Math.max(1, Math.round(base.outlinePx * scale)),
     shadowPx: Math.round(base.shadowPx * scale),
     second: base.second
-      ? { ...base.second, fontSizePx: Math.max(8, Math.round(base.second.fontSizePx * scale)), gapPx: Math.round(base.second.gapPx * scale) }
+      ? {
+          ...base.second,
+          fontSizePx: Math.max(8, Math.round(base.second.fontSizePx * scale)),
+          gapPx: Math.round(base.second.gapPx * scale)
+        }
       : base.second
   }
 }
@@ -198,8 +206,38 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     opts.quality === 'intermediate'
       ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '12', '-pix_fmt', 'yuv420p', '-c:a', 'pcm_s16le']
       : opts.quality === 'preview'
-        ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart']
-        : ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart']
+        ? [
+            '-c:v',
+            'libx264',
+            '-preset',
+            'veryfast',
+            '-crf',
+            '26',
+            '-pix_fmt',
+            'yuv420p',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '128k',
+            '-movflags',
+            '+faststart'
+          ]
+        : [
+            '-c:v',
+            'libx264',
+            '-preset',
+            'medium',
+            '-crf',
+            '18',
+            '-pix_fmt',
+            'yuv420p',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '192k',
+            '-movflags',
+            '+faststart'
+          ]
 
   return [
     '-hide_banner',
@@ -260,7 +298,12 @@ export interface RenderCutOptions {
 }
 
 /** Renders a cut to a file and returns its path. */
-export async function renderCut(cut: Cut, resolved: Resolved, sources: RenderSource[], opts: RenderCutOptions): Promise<string> {
+export async function renderCut(
+  cut: Cut,
+  resolved: Resolved,
+  sources: RenderSource[],
+  opts: RenderCutOptions
+): Promise<string> {
   const quality = opts.quality ?? 'final'
   const first = sources.find((s) => s.id === resolved.pieces[0]?.source) ?? sources[0]
   if (!first) throw new Error('The edit has no recording to render.')
@@ -273,7 +316,11 @@ export async function renderCut(cut: Cut, resolved: Resolved, sources: RenderSou
 
   let assPath: string | null = null
   if (cut.captions.on && resolved.words.length > 0) {
-    const words: TranscriptWord[] = resolved.words.map((w) => ({ text: w.text, startSec: w.outStart, endSec: w.outEnd }))
+    const words: TranscriptWord[] = resolved.words.map((w) => ({
+      text: w.text,
+      startSec: w.outStart,
+      endSec: w.outEnd
+    }))
     assPath = join(opts.workDir, 'captions.ass')
     await fs.writeFile(assPath, buildAss(words, width, height, captionStyleFor(cut.captions, width)))
   }
@@ -283,7 +330,13 @@ export async function renderCut(cut: Cut, resolved: Resolved, sources: RenderSou
   const inputsNeeded = segments.reduce((n, s) => n + (s.broll ? 2 : 1), 0)
 
   if (inputsNeeded <= maxInputs) {
-    const args = buildRenderArgs(segments, { ...base, assPath, loudness: cut.loudness, quality, outputPath: opts.outputPath })
+    const args = buildRenderArgs(segments, {
+      ...base,
+      assPath,
+      loudness: cut.loudness,
+      quality,
+      outputPath: opts.outputPath
+    })
     await runRender(opts.ffmpeg, args, total, progress, opts.signal)
     return opts.outputPath
   }
@@ -312,12 +365,24 @@ export async function renderCut(cut: Cut, resolved: Resolved, sources: RenderSou
     const chunk = chunks[i]
     const length = chunk.reduce((n, s) => n + s.durationSec, 0)
     const path = join(opts.workDir, `chunk-${String(i).padStart(3, '0')}.mkv`)
-    const args = buildRenderArgs(chunk, { ...base, assPath: null, loudness: null, quality: 'intermediate', outputPath: path })
+    const args = buildRenderArgs(chunk, {
+      ...base,
+      assPath: null,
+      loudness: null,
+      quality: 'intermediate',
+      outputPath: path
+    })
     await runRender(opts.ffmpeg, args, length, (f) => progress(((done + f * length) / total) * 0.8), opts.signal)
     done += length
     joined.push({ path, startSec: 0, durationSec: length, hasAudio: true, treatment: null, broll: null })
   }
-  const args = buildRenderArgs(joined, { ...base, assPath, loudness: cut.loudness, quality, outputPath: opts.outputPath })
+  const args = buildRenderArgs(joined, {
+    ...base,
+    assPath,
+    loudness: cut.loudness,
+    quality,
+    outputPath: opts.outputPath
+  })
   await runRender(opts.ffmpeg, args, total, (f) => progress(0.8 + f * 0.2), opts.signal)
   return opts.outputPath
 }

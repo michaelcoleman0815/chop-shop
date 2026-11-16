@@ -19,7 +19,7 @@ import type {
   VideoMeta,
   ZoomKeyframe
 } from '../shared/types'
-import type { EditDoc } from '../shared/edit'
+import type { EditDoc, Note, Op } from '../shared/edit'
 import type { InspirationStudy } from '../shared/inspiration'
 import type { Preset } from '../shared/presets'
 
@@ -47,6 +47,14 @@ const api = {
   }): Promise<{ ok: true; outputPath: string; mediaUrl: string } | { ok: false; message: string }> =>
     ipcRenderer.invoke('cut:render', req),
   onCutProgress: (cb: (p: Progress) => void): (() => void) => listen('cut:progress', cb),
+  planEdit: (req: {
+    doc: EditDoc
+    request: string
+    notes: Note[]
+  }): Promise<
+    | { ok: true; ops: Op[]; summary: string; reply: string; notesHandled: string[]; needs: string[]; rejected: string[] }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:plan', req),
   studyInspiration: (input: {
     url?: string
     path?: string

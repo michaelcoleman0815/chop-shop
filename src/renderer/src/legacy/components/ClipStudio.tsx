@@ -10,13 +10,13 @@ import type {
   TranscriptWord,
   VideoMeta,
   ZoomKeyframe
-} from '../../../shared/types'
+} from '../../../../shared/types'
 import ClipEditor, { type Segment } from './ClipEditor'
-import { CAPTION_PRESETS } from '../../../shared/caption-presets'
+import { CAPTION_PRESETS } from '../../../../shared/caption-presets'
 import CaptionPicker from './CaptionPicker'
 import type { Job } from './JobList'
 import { bytes, slug, stamp, timecode } from '../lib/format'
-import { groupWords } from '../../../shared/words'
+import { groupWords } from '../../../../shared/words'
 
 interface Props {
   settings: Settings

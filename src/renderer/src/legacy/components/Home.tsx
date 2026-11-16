@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Project, ProjectMode, ProjectSummary, Settings } from '../../../shared/types'
+import type { Project, ProjectMode, ProjectSummary, Settings } from '../../../../shared/types'
 import Mark from './Mark'
 import SettingsPanel from './SettingsPanel'
 import UpdateBanner from './UpdateBanner'
@@ -38,6 +38,20 @@ function size(bytes: number | null): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
+/**
+ * Cutalong and the classic tools are separate documents with separate
+ * stylesheets, so moving between them is a reload, never a re-render.
+ */
+function switchToCutalong(openPath?: string): void {
+  try {
+    if (openPath) sessionStorage.setItem('cutalong:open', openPath)
+  } catch {
+    // Storage can be unavailable; Cutalong simply opens on Start.
+  }
+  window.location.hash = ''
+  window.location.reload()
+}
+
 export default function Home({ onOpen, version, settings, patch }: Props): JSX.Element {
   const [recent, setRecent] = useState<ProjectSummary[]>([])
   // An empty placeholder box reads as a failed image. A project's own first
@@ -74,16 +88,20 @@ export default function Home({ onOpen, version, settings, patch }: Props): JSX.E
   const open = useCallback(
     async (path?: string) => {
       const project = await window.chop.openProject(path)
-      if (project) onOpen(project)
+      if (!project) return
+      // A Cutalong edit opens in Cutalong, not in the classic workspace.
+      if (project.mode === 'cut') switchToCutalong(project.path)
+      else onOpen(project)
     },
     [onOpen]
   )
 
   const rows = useMemo(() => {
     const needle = filter.trim().toLowerCase()
+    const classic = recent.filter((p) => p.mode !== 'cut')
     const matched = needle
-      ? recent.filter((p) => p.name.toLowerCase().includes(needle))
-      : recent.slice()
+      ? classic.filter((p) => p.name.toLowerCase().includes(needle))
+      : classic
     return matched.sort((a, b) => {
       if (sort === 'name') return a.name.localeCompare(b.name)
       // Missing sizes sort last rather than counting as zero, which would put
@@ -116,6 +134,9 @@ export default function Home({ onOpen, version, settings, patch }: Props): JSX.E
           <span>Chop Shop</span>
         </div>
         <div className="spacer" />
+        <button className="ghost" onClick={() => switchToCutalong()}>
+          Back to Cutalong
+        </button>
         <span className="mono muted">{version}</span>
       </div>
 

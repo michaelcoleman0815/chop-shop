@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CAPTION_PRESETS } from '../../../shared/caption-presets'
+import { CAPTION_PRESETS } from '../../../../shared/caption-presets'
 
 interface Props {
   value: string

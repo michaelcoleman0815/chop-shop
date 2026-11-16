@@ -1,4 +1,4 @@
-import type { Settings } from '../../../shared/types'
+import type { Settings } from '../../../../shared/types'
 import type { Job } from '../components/JobList'
 import { rollingBuffer } from './buffer'
 import { stamp } from './format'

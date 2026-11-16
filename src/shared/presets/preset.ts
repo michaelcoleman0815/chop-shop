@@ -107,9 +107,19 @@ const POSITION_WORDS: Record<(typeof CAPTION_POSITIONS)[number], string> = {
   bottom: 'low in frame'
 }
 
-/** Seconds in the app's register: one decimal under ten, whole numbers above. */
+/**
+ * Seconds in the app's register, exact without being fussy: two places under
+ * a second (0.15 s, 0.4 s), one under ten (1.8 s), whole numbers above (12 s).
+ */
 export function seconds(sec: number): string {
+  if (sec < 1) return `${Number((Math.round(sec * 100) / 100).toFixed(2))} s`
   return sec < 10 ? `${(Math.round(sec * 10) / 10).toFixed(1)} s` : `${Math.round(sec)} s`
+}
+
+/** A running time as m:ss: 0:52, 1:04, 12:30. */
+export function clock(sec: number): string {
+  const total = Math.max(0, Math.round(sec))
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
 
 /**
@@ -135,6 +145,7 @@ export function describeStyle(style: StyleSpec): string[] {
   else if (style.aspect === 'wide') facts.push('Wide 16:9')
   if (style.maxLengthSec) facts.push(`Under ${seconds(style.maxLengthSec)}`)
   if (style.loudness) facts.push(`${style.loudness.lufs} LUFS`)
-  if (style.captions?.position && style.captions.on !== false) facts.push(`Captions ${POSITION_WORDS[style.captions.position]}`)
+  if (style.captions?.position && style.captions.on !== false)
+    facts.push(`Captions ${POSITION_WORDS[style.captions.position]}`)
   return facts
 }

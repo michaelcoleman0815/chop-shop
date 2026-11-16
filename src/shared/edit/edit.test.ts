@@ -50,14 +50,27 @@ function makeDoc(): EditDoc {
   })
 }
 
-const ctx = (doc: EditDoc): { words: EditDoc['words']; sources: Source[] } => ({ words: doc.words, sources: doc.sources })
+const ctx = (doc: EditDoc): { words: EditDoc['words']; sources: Source[] } => ({
+  words: doc.words,
+  sources: doc.sources
+})
 const resolve = (doc: EditDoc, cut: Cut = currentCut(doc)): ReturnType<typeof resolveCut> =>
   resolveCut(cut, doc.words, doc.sources)
 
 describe('making a doc', () => {
   it('gives words stable ids in time order', () => {
-    const words = wordsFromTranscript([{ text: ' b ', startSec: 2, endSec: 3 }, { text: 'a', startSec: 1, endSec: 1.5 }, { text: '  ', startSec: 4, endSec: 5 }], 's1')
-    expect(words.map((w) => [w.id, w.text])).toEqual([['w1', 'a'], ['w2', 'b']])
+    const words = wordsFromTranscript(
+      [
+        { text: ' b ', startSec: 2, endSec: 3 },
+        { text: 'a', startSec: 1, endSec: 1.5 },
+        { text: '  ', startSec: 4, endSec: 5 }
+      ],
+      's1'
+    )
+    expect(words.map((w) => [w.id, w.text])).toEqual([
+      ['w1', 'a'],
+      ['w2', 'b']
+    ])
   })
 
   it('splits speech into beats at sentences', () => {
@@ -135,7 +148,11 @@ describe('resolving a cut', () => {
   it('tightens long pauses and drops fillers', () => {
     const doc = makeDoc()
     const loose = resolve(doc).durationSec
-    const { cut } = applyOps(currentCut(doc), [{ op: 'tighten', set: { maxGapSec: 0.3, padSec: 0.05, fillers: true } }], ctx(doc))
+    const { cut } = applyOps(
+      currentCut(doc),
+      [{ op: 'tighten', set: { maxGapSec: 0.3, padSec: 0.05, fillers: true } }],
+      ctx(doc)
+    )
     const r = resolve(doc, cut)
     expect(r.words.map((w) => w.text)).not.toContain('Um')
     expect(r.durationSec).toBeLessThan(loose)
@@ -185,7 +202,12 @@ describe('ops', () => {
   it('splits and joins back to the same span', () => {
     const doc = makeDoc()
     const split = applyOps(currentCut(doc), [{ op: 'split', beat: 'b2', at: 'w8' }], ctx(doc))
-    expect(split.cut.beats.map((b) => `${b.id}:${b.from}-${b.to}`)).toEqual(['b1:w1-w4', 'b2:w5-w7', 'b4:w8-w11', 'b3:w12-w14'])
+    expect(split.cut.beats.map((b) => `${b.id}:${b.from}-${b.to}`)).toEqual([
+      'b1:w1-w4',
+      'b2:w5-w7',
+      'b4:w8-w11',
+      'b3:w12-w14'
+    ])
     const joined = applyOps(split.cut, [{ op: 'join', beat: 'b2' }], ctx(doc))
     expect(joined.rejected).toEqual([])
     expect(resolve(doc, joined.cut).durationSec).toBeCloseTo(resolve(doc).durationSec)
@@ -210,7 +232,14 @@ describe('ops', () => {
     const tryJoin = applyOps(moved.cut, [{ op: 'join', beat: 'b1' }], ctx(doc))
     expect(tryJoin.rejected[0].reason).toMatch(/not next to each other/)
     // Once the words between are struck, nothing hidden comes back.
-    const struck = applyOps(moved.cut, [{ op: 'strike', from: 'w5', to: 'w11' }, { op: 'join', beat: 'b1' }], ctx(doc))
+    const struck = applyOps(
+      moved.cut,
+      [
+        { op: 'strike', from: 'w5', to: 'w11' },
+        { op: 'join', beat: 'b1' }
+      ],
+      ctx(doc)
+    )
     expect(struck.rejected).toEqual([])
     expect(struck.cut.beats).toHaveLength(1)
   })
@@ -240,14 +269,25 @@ describe('ops', () => {
     expect(noCutaway.rejected[0].reason).toMatch(/needs a cutaway/)
 
     const broll = { path: '/broll/desk.mov', inSec: 0, muted: true }
-    const withCutaway = applyOps(currentCut(doc), [{ op: 'treat', beats: ['b1'], set: { frame: 'broll', broll } }, { op: 'treat', beats: ['b1'], set: { broll: null } }], ctx(doc))
+    const withCutaway = applyOps(
+      currentCut(doc),
+      [
+        { op: 'treat', beats: ['b1'], set: { frame: 'broll', broll } },
+        { op: 'treat', beats: ['b1'], set: { broll: null } }
+      ],
+      ctx(doc)
+    )
     expect(withCutaway.rejected).toEqual([])
     expect(withCutaway.cut.beats[0].treatment.frame).toBe('speaker')
   })
 
   it('inserts a held shot with no words', () => {
     const doc = makeDoc()
-    const { cut, rejected } = applyOps(currentCut(doc), [{ op: 'insert', to: 1, beat: { source: 's1', inSec: 18, outSec: 25 } }], ctx(doc))
+    const { cut, rejected } = applyOps(
+      currentCut(doc),
+      [{ op: 'insert', to: 1, beat: { source: 's1', inSec: 18, outSec: 25 } }],
+      ctx(doc)
+    )
     expect(rejected).toEqual([])
     expect(cut.beats[1]).toMatchObject({ id: 'b4', from: null, inSec: 18, outSec: 20 })
     expect(checkCut(cut, ctx(doc))).toEqual([])
@@ -264,7 +304,10 @@ describe('ops', () => {
 describe('versions and notes', () => {
   it('commits ops as a new version with a summary', () => {
     const doc = makeDoc()
-    const { doc: v2, rejected } = commit(doc, [{ op: 'move', beat: 'b3', to: 0 }], 'Opens on the call to action.', { at: '2026-11-15T12:05:00.000Z', preset: 'hook' })
+    const { doc: v2, rejected } = commit(doc, [{ op: 'move', beat: 'b3', to: 0 }], 'Opens on the call to action.', {
+      at: '2026-11-15T12:05:00.000Z',
+      preset: 'hook'
+    })
     expect(rejected).toEqual([])
     expect(v2.versions.map((v) => v.n)).toEqual([1, 2])
     expect(v2.versions[1].summary).toBe('Opens on the call to action.')

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ExportProgress, Settings } from '../../shared/types'
+import type { ExportProgress, Settings } from '../../../shared/types'
 import UpdateBanner from './components/UpdateBanner'
 import ClipStudio from './components/ClipStudio'
 import LiveBuffer from './components/LiveBuffer'
@@ -9,7 +9,7 @@ import Mark from './components/Mark'
 import { performGrab } from './lib/grab'
 import Home from './components/Home'
 import EditWorkspace from './components/EditWorkspace'
-import type { Project } from '../../shared/types'
+import type { Project } from '../../../shared/types'
 
 type Tab = 'studio' | 'live' | 'settings' | 'exports'
 

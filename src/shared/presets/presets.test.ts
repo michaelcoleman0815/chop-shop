@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { applyOps, commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../edit'
 import {
   BUILT_IN_PRESETS,
+  clock,
+  describePlan,
   commandProblem,
   describeStyle,
   findPreset,
@@ -43,7 +45,12 @@ const FIELDNOTES: Preset = {
   summary: 'Fast, two-word captions, black-and-white B-roll.',
   builtIn: false,
   style: { pace: { secondsPerShot: 1.8 }, captions: { wordsPerScreen: 2 }, bw: { share: 0.33 } },
-  inspiration: { url: 'https://example.com/v', title: 'How I edit', channel: '@fieldnotes', measuredAt: '2026-11-15T00:00:00Z' }
+  inspiration: {
+    url: 'https://example.com/v',
+    title: 'How I edit',
+    channel: '@fieldnotes',
+    measuredAt: '2026-11-15T00:00:00Z'
+  }
 }
 const ALL = [...BUILT_IN_PRESETS, FIELDNOTES]
 
@@ -78,7 +85,13 @@ describe('slash commands', () => {
   })
 
   it('suggest matches, best first', () => {
-    expect(suggestCommands('', ALL).map((p) => p.command)).toEqual(['tighten', 'shorts', 'captions', 'hook', 'fieldnotes'])
+    expect(suggestCommands('', ALL).map((p) => p.command)).toEqual([
+      'tighten',
+      'shorts',
+      'captions',
+      'hook',
+      'fieldnotes'
+    ])
     expect(suggestCommands('sh', ALL).map((p) => p.command)).toEqual(['shorts'])
     // A title word matches too: "notes" in "Field notes".
     expect(suggestCommands('no', ALL).map((p) => p.command)).toEqual(['fieldnotes'])
@@ -151,7 +164,9 @@ describe('planning a style', () => {
 
   it('asks for B-roll before it can make it black and white', () => {
     const doc = makeDoc()
-    expect(planStyle(doc, { bw: { share: 0.33 } }).open).toEqual(['Add some B-roll and about 33% of it goes black and white.'])
+    expect(planStyle(doc, { bw: { share: 0.33 } }).open).toEqual([
+      'Add some B-roll and about 33% of it goes black and white.'
+    ])
 
     const broll = { path: '/broll/a.mov', inSec: 0, muted: true }
     const withCutaways = commit(
@@ -171,5 +186,46 @@ describe('planning a style', () => {
   it('says how far over a length limit the cut runs', () => {
     const plan = planStyle(makeDoc(), { maxLengthSec: 3 })
     expect(plan.open).toEqual(['It runs 5.0 s, 2.0 s over 3.0 s. Say what to drop, or ask me to pick.'])
+  })
+})
+
+describe('saying what changed', () => {
+  it('reads a plan back in one breath', () => {
+    const doc = makeDoc()
+    const plan = planStyle(doc, findPreset('shorts', ALL)!.style)
+    const before = resolveCut(currentCut(doc), doc.words, doc.sources)
+    const after = resolveCut(
+      applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources }).cut,
+      doc.words,
+      doc.sources
+    )
+    // Under half a second shorter, so the running time goes unmentioned.
+    expect(describePlan(plan.ops, before, after)).toBe(
+      'Pauses longer than 0.4 s are cut, ums included, captions show two words at a time, and alternate shots punch in.'
+    )
+  })
+
+  it('mentions the running time when it moves', () => {
+    const doc = makeDoc()
+    const ops = [{ op: 'remove' as const, beats: ['b2'] }]
+    const before = resolveCut(currentCut(doc), doc.words, doc.sources)
+    const after = resolveCut(
+      applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources }).cut,
+      doc.words,
+      doc.sources
+    )
+    expect(describePlan(ops, before, after)).toBe('One beat is gone. It runs 0:02, down from 0:05.')
+  })
+
+  it('says nothing when nothing changed', () => {
+    const doc = makeDoc()
+    const r = resolveCut(currentCut(doc), doc.words, doc.sources)
+    expect(describePlan([], r, r)).toBe('')
+  })
+
+  it('formats running time', () => {
+    expect(clock(52.4)).toBe('0:52')
+    expect(clock(64)).toBe('1:04')
+    expect(clock(750)).toBe('12:30')
   })
 })

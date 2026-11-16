@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { UpdateState } from '../../../shared/types'
+import type { UpdateState } from '../../../../shared/types'
 
 export default function UpdateBanner(): JSX.Element | null {
   const [state, setState] = useState<UpdateState>({ status: 'idle' })

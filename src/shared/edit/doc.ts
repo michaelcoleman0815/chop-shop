@@ -57,11 +57,7 @@ export const DEFAULT_BEAT_SPLIT: BeatSplitOptions = { pauseSec: 0.6, softMaxWord
  * comma once a sentence runs long. A beat is the unit people point at ("make
  * that one black and white"), so it should be a thought, not a word.
  */
-export function beatsFromWords(
-  words: Word[],
-  source: string,
-  opts: BeatSplitOptions = DEFAULT_BEAT_SPLIT
-): Beat[] {
+export function beatsFromWords(words: Word[], source: string, opts: BeatSplitOptions = DEFAULT_BEAT_SPLIT): Beat[] {
   const own = words.filter((w) => w.source === source).sort((a, b) => a.startSec - b.startSec)
   const beats: Beat[] = []
   let first: Word | null = null
@@ -99,17 +95,9 @@ export function beatsFromWords(
   return beats
 }
 
-export function createDoc(input: {
-  id: string
-  title: string
-  source: Source
-  words: Word[]
-  at?: string
-}): EditDoc {
+export function createDoc(input: { id: string; title: string; source: Source; words: Word[]; at?: string }): EditDoc {
   const at = input.at ?? new Date().toISOString()
-  const words = input.words
-    .filter((w) => w.source === input.source.id)
-    .sort((a, b) => a.startSec - b.startSec)
+  const words = input.words.filter((w) => w.source === input.source.id).sort((a, b) => a.startSec - b.startSec)
   const beats: Beat[] =
     words.length > 0
       ? beatsFromWords(words, input.source.id)
@@ -244,7 +232,9 @@ export function beatLabel(doc: EditDoc, beat: Beat): string {
     const w = doc.words.find((x) => x.id === beat.treatment.bigWord)
     if (w) return clean(w.text).toUpperCase()
   }
-  const words = beatWords(doc, beat).slice(0, 3).map((w) => clean(w.text))
+  const words = beatWords(doc, beat)
+    .slice(0, 3)
+    .map((w) => clean(w.text))
   return words.length > 0 ? words.join(' ').toUpperCase() : beat.treatment.frame === 'card' ? 'CARD' : 'SHOT'
 }
 
