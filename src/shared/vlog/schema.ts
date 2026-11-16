@@ -81,6 +81,8 @@ export const ClipSchema = z.object({
   at: z.number().nullable(),
   /** What was added to this camera's clock to line it up with the others. */
   clockFixSec: z.number().optional(),
+  /** The camera's time zone, in minutes east of UTC, when it gave one: times read on the clock where it was shot. */
+  zoneMin: z.number().nullable().optional(),
   /** The camera, by make and model or by how it names its files. */
   camera: z.string(),
   gps: GpsSchema.nullable(),

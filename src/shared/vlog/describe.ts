@@ -56,35 +56,67 @@ export function describeFromMeasures(m: Moment, clip: Clip | undefined, said = '
   return parts.filter(Boolean).join(', ')
 }
 
-/** A time of day as people say it: 9:12, 13:05. */
-export function timeOfDay(at: number | null): string | null {
+/** Where a time was shot, as a time zone: minutes east of UTC, or null for this computer's own. */
+export type ZoneAt = (at: number) => number | null
+
+const LOCAL: ZoneAt = () => null
+
+/**
+ * The time zone of the day at a moment: the one the camera of the nearest
+ * clip gave with its time (an iPhone gives it), so a day shot in Tokyo reads
+ * on Tokyo's clock wherever it is edited. Null when no camera gave one.
+ */
+export function zoneAt(clips: { at: number | null; zoneMin?: number | null }[], at: number | null): number | null {
   if (at === null) return null
-  const d = new Date(at * 1000)
-  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+  let best: { d: number; zone: number } | null = null
+  for (const c of clips) {
+    if (c.at === null || typeof c.zoneMin !== 'number') continue
+    const d = Math.abs(c.at - at)
+    if (!best || d < best.d) best = { d, zone: c.zoneMin }
+  }
+  return best?.zone ?? null
 }
 
-function partOfDay(at: number): string {
-  const h = new Date(at * 1000).getHours()
+/** A time as the clock where it was shot showed it, read with the UTC getters; this computer's clock without a zone. */
+export function wallClock(at: number, zoneMin: number | null = null): Date {
+  if (zoneMin !== null) return new Date((at + zoneMin * 60) * 1000)
+  const d = new Date(at * 1000)
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()))
+}
+
+/** A time of day as people say it: 9:12, 13:05. */
+export function timeOfDay(at: number | null, zoneMin: number | null = null): string | null {
+  if (at === null) return null
+  const d = wallClock(at, zoneMin)
+  return `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+}
+
+function partOfDay(at: number, zoneMin: number | null): string {
+  const h = wallClock(at, zoneMin).getUTCHours()
   return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 21 ? 'Evening' : 'Night'
 }
 
-/** Midnight before a time, on this computer's clock: the day it falls on. */
-function dayOf(at: number): number {
-  const d = new Date(at * 1000)
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000
+/** The day a time falls on where it was shot, counted in days. */
+function dayOf(at: number, zoneMin: number | null): number {
+  return Math.floor(wallClock(at, zoneMin).getTime() / 86400000)
 }
 
 /**
  * The day a scene was shot on, when the shoot ran past its first day:
  * "Sunday", or "3 May" for a shoot longer than a week. Null on the first day.
  */
-export function dayName(at: number | null, firstAt: number | null, lastAt: number | null = null): string | null {
-  if (at === null || firstAt === null || dayOf(at) === dayOf(firstAt)) return null
-  const d = new Date(at * 1000)
-  const long = lastAt !== null && dayOf(lastAt) - dayOf(firstAt) >= 6 * 86400
+export function dayName(
+  at: number | null,
+  firstAt: number | null,
+  lastAt: number | null = null,
+  zone: ZoneAt = LOCAL
+): string | null {
+  if (at === null || firstAt === null || dayOf(at, zone(at)) === dayOf(firstAt, zone(firstAt))) return null
+  const d = wallClock(at, zone(at))
+  const long = lastAt !== null && dayOf(lastAt, zone(lastAt)) - dayOf(firstAt, zone(firstAt)) >= 6
   return long
-    ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
-    : d.toLocaleDateString('en-GB', { weekday: 'long' })
+    ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })
+    : d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' })
 }
 
 /** Words that name a place in a line, for naming a scene from what its moments show. */
@@ -109,8 +141,9 @@ export function nameScene(
   scene: Scene,
   moments: Moment[],
   index: number,
-  shoot: { firstAt: number | null; lastAt: number | null } = { firstAt: null, lastAt: null }
+  shoot: { firstAt: number | null; lastAt: number | null; zone?: ZoneAt } = { firstAt: null, lastAt: null }
 ): string {
+  const zone = shoot.zone ?? LOCAL
   const own = new Set(scene.clips)
   const seen = moments.filter((m) => own.has(m.clip) && m.describedBy !== 'measurements')
   const counts = new Map<string, number>()
@@ -119,11 +152,11 @@ export function nameScene(
     if (place) counts.set(place.toLowerCase(), (counts.get(place.toLowerCase()) ?? 0) + 1)
   }
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
-  const day = dayName(scene.startAt, shoot.firstAt, shoot.lastAt)
+  const day = dayName(scene.startAt, shoot.firstAt, shoot.lastAt, zone)
   if (top && top[1] >= Math.max(1, seen.length / 4)) return `The ${top[0].replace(/^the /, '')}${day ? `, ${day}` : ''}`
   if (scene.startAt !== null) {
-    const part = partOfDay(scene.startAt)
-    return `${day ? `${day} ${part.toLowerCase()}` : part}, ${timeOfDay(scene.startAt)}`
+    const part = partOfDay(scene.startAt, zone(scene.startAt))
+    return `${day ? `${day} ${part.toLowerCase()}` : part}, ${timeOfDay(scene.startAt, zone(scene.startAt))}`
   }
   return `Scene ${index + 1}`
 }

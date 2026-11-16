@@ -1,5 +1,6 @@
 import { normWord } from '../raw/text'
 import type { Clip, Moment, Scene } from './schema'
+import { wallClock, zoneAt } from './describe'
 
 /**
  * What a person asks of a vlog, in their words: a length ("make it 10
@@ -152,10 +153,10 @@ const STOP = new Set(
   )
 )
 
-/** A scene's time of day in words, for "the morning", "the evening". */
-function partOfDay(at: number | null): string[] {
+/** A scene's time of day in words, for "the morning", "the evening", on the clock where it was shot. */
+function partOfDay(at: number | null, zoneMin: number | null): string[] {
   if (at === null) return []
-  const h = new Date(at * 1000).getHours()
+  const h = wallClock(at, zoneMin).getUTCHours()
   if (h < 12) return ['morning']
   if (h < 17) return ['afternoon', 'day']
   if (h < 21) return ['evening']
@@ -186,10 +187,11 @@ export function sceneNamed(
     let best: { scene: Scene; d: number } | null = null
     for (const s of scenes) {
       if (s.startAt === null) continue
-      const d0 = new Date(s.startAt * 1000)
-      const d1 = new Date((s.endAt ?? s.startAt) * 1000)
-      const a = d0.getHours() * 60 + d0.getMinutes()
-      const b = d1.getHours() * 60 + d1.getMinutes()
+      // The times the reply and Details showed: the clock where it was shot.
+      const d0 = wallClock(s.startAt, zoneAt(clips, s.startAt))
+      const d1 = wallClock(s.endAt ?? s.startAt, zoneAt(clips, s.endAt ?? s.startAt))
+      const a = d0.getUTCHours() * 60 + d0.getUTCMinutes()
+      const b = d1.getUTCHours() * 60 + d1.getUTCMinutes()
       const d = minute < a ? a - minute : minute > b ? minute - b : 0
       if (!best || d < best.d) best = { scene: s, d }
     }
@@ -204,7 +206,7 @@ export function sceneNamed(
       s.name,
       ...moments.filter((m) => own.has(m.clip)).map((m) => m.description),
       ...clips.filter((c) => own.has(c.id)).map((c) => `${c.name} ${said.get(c.id) ?? ''}`),
-      ...partOfDay(s.startAt)
+      ...partOfDay(s.startAt, zoneAt(clips, s.startAt))
     ].join(' ')
     const have = new Set(keywords(text))
     const score = wanted.filter((w) => have.has(w) || [...have].some((h) => h.startsWith(w) || w.startsWith(h))).length

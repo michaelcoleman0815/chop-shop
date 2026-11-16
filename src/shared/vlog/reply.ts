@@ -2,7 +2,7 @@ import { currentCut } from '../edit/doc'
 import { resolveCut } from '../edit/resolve'
 import type { EditDoc } from '../edit/schema'
 import { clock, seconds } from '../presets/preset'
-import { timeOfDay } from './describe'
+import { timeOfDay, zoneAt } from './describe'
 import type { Clip, LeftOut, Role, StoryBeat, Vlog } from './schema'
 
 /**
@@ -136,7 +136,8 @@ function what(vlog: Vlog, beat: StoryBeat | undefined, words: Map<string, string
   if (!m) return null
   if (m.describedBy !== 'measurements' && m.description) return m.description
   const scene = vlog.scenes.find((s) => s.id === beat.scene)
-  const when = timeOfDay(vlog.clips.find((c) => c.id === beat.clip)?.at ?? null)
+  const at = vlog.clips.find((c) => c.id === beat.clip)?.at ?? null
+  const when = timeOfDay(at, zoneAt(vlog.clips, at))
   if (m.sounds.includes('cheering')) return `the crowd cheering${when ? ` at ${when}` : ''}`
   if (m.sounds.includes('laughter')) return `the laughter${when ? ` at ${when}` : ''}`
   // The payoff is the day's strongest moment, and so is the tease of it; an opening asked for is of its scene.
