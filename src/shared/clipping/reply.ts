@@ -2,6 +2,7 @@ import { clock, seconds } from '../presets/preset'
 import { currentCut } from '../edit/doc'
 import { resolveCut } from '../edit/resolve'
 import type { EditDoc } from '../edit/schema'
+import { MIN_RECORDING_SEC } from './plan'
 import { CLIP_PROFILES, type ClipProfileId } from './profile'
 import type { Picker, Region } from './schema'
 
@@ -75,6 +76,36 @@ function named(r: FoundRecording, several: boolean): string {
   return several ? fileName(r.path) : CLIP_PROFILES[r.profile].name
 }
 
+/** Files named in a sentence: all of them when there are few, else the first three and how many more. */
+function filesNamed(rs: FoundRecording[]): string {
+  const names = rs.map((r) => fileName(r.path))
+  return names.length <= 4 ? listOf(names) : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`
+}
+
+/**
+ * Why recordings gave no clips: a sentence for each reason, so a vlog's
+ * fifty short clips get one sentence, not fifty.
+ */
+function whyNoneAll(rs: FoundRecording[]): string {
+  const out: string[] = []
+  for (const reason of ['short', 'speechless', 'nothing'] as const) {
+    const these = rs.filter((r) => r.none === reason)
+    if (these.length === 0) continue
+    if (these.length === 1) {
+      out.push(whyNone(these[0]))
+      continue
+    }
+    if (reason === 'short')
+      out.push(
+        `${filesNamed(these)} each run under ${clock(MIN_RECORDING_SEC)}, too short to cut clips from. Drop them without /clipping and I'll edit them as they are.`
+      )
+    else if (reason === 'speechless')
+      out.push(`I heard nobody talking in ${filesNamed(these)}, so there is nothing to clip: clips are cut on what is said.`)
+    else out.push(`I couldn't find a moment that stands on its own in ${filesNamed(these)}.`)
+  }
+  return out.join(' ')
+}
+
 /** Why a recording gave no clips, in a sentence. */
 function whyNone(r: FoundRecording): string {
   const p = CLIP_PROFILES[r.profile]
@@ -97,7 +128,7 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
     // Asked for more, a recording with nothing left is not one with nothing in it.
     const lonely = found.recordings.filter((r) => r.none && !(found.had > 0 && r.none === 'nothing'))
     text = lonely.length
-      ? lonely.map(whyNone).join(' ')
+      ? whyNoneAll(lonely)
       : found.had > 0
         ? `I found no more moments that stand on their own beside the ${found.had === 1 ? 'clip' : `${found.had} clips`} you have.`
         : `I couldn't find a moment that stands on its own.`
@@ -105,7 +136,7 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
     const parts = per.filter((x) => x.n > 0).map((x) => `${x.n} in ${fileName(x.r.path)}`)
     text = `I found ${count(n)}${more} clip${n === 1 ? '' : 's'}${parts.length > 1 ? `: ${listOf(parts)}` : ` in ${fileName(per.find((x) => x.n > 0)!.r.path)}`}.`
     const lonely = per.filter((x) => x.n === 0 && x.r.none)
-    if (lonely.length) text += ` ${lonely.map((x) => whyNone(x.r)).join(' ')}`
+    if (lonely.length) text += ` ${whyNoneAll(lonely.map((x) => x.r))}`
   } else {
     text = `I found ${count(n)}${more} clip${n === 1 ? '' : 's'} in ${named(found.recordings[0], false)}.`
   }

@@ -548,6 +548,22 @@ describe('what /clipping says', () => {
     )
   })
 
+  it('says why many short recordings give no clips in one sentence, not one each', () => {
+    // A vlog's clips, asked for clips: fifty files under two minutes.
+    const many = Array.from({ length: 50 }, (_, i) => rec(`/s/IMG_${1000 + i}.MOV`, { durationSec: 9, none: 'short' }))
+    expect(clipsReply({ ...base, recordings: many }, false).text).toBe(
+      "IMG_1000.MOV, IMG_1001.MOV, IMG_1002.MOV and 47 more each run under 2:00, too short to cut clips from. Drop them without /clipping and I'll edit them as they are."
+    )
+    const mixed = [
+      rec('/s/a.mp4', { durationSec: 48, none: 'short' }),
+      rec('/s/b.mp4', { durationSec: 30, none: 'short' }),
+      rec('/s/c.mp4', { none: 'speechless' })
+    ]
+    expect(clipsReply({ ...base, recordings: mixed }, false).text).toBe(
+      "a.mp4 and b.mp4 each run under 2:00, too short to cut clips from. Drop them without /clipping and I'll edit them as they are. I heard nobody talking in c.mp4, so there is nothing to clip: clips are cut on what is said."
+    )
+  })
+
   it('counts two recordings apart', () => {
     const clip = (source: string) => ({
       source,
