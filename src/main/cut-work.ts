@@ -3,6 +3,7 @@ import { platform } from './platform'
 import { downloadModel, hasModel, transcribe, type WhisperModel } from './transcribe'
 import { creditsText } from '../shared/assets'
 import { renderCut, type OverlaySpan, type RenderSource } from './cut-render'
+import type { Encoder } from './render/encoder'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
@@ -91,6 +92,8 @@ export interface WorkHost {
   }) => Promise<Watched>
   /** Draws the cut's motion graphics to overlay files; empty overlays when it has none. */
   motion(input: CutMotionInput): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }>
+  /** How video is encoded: the computer's x264 when absent. */
+  encoder?: Encoder
 }
 
 export type ProgressFn = (stage: string, percent: number) => void
@@ -320,6 +323,7 @@ export async function renderEdit(
       overlays: motion.overlays,
       captionWords: pass.resolved.words,
       sfxDir: host.sfxDir(),
+      encoder: host.encoder,
       onProgress: (f) => progress(share + f * (1 - share))
     })
     // Anything from outside the person's own files is credited beside the video.

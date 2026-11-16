@@ -47,9 +47,10 @@ import { makeSfx } from './sfx'
 import { heardFrom } from '../shared/vision/offset'
 import { colorConversion, hasZscale, liveChannel } from './intake'
 import { bedVolume, limiter, voicePolish } from './render/audio'
-import { perspectiveFor } from './render/camera'
+import { cropMove, perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
 import { platform } from './platform'
+import { encodeArgs, X264, type Encoder } from './render/encoder'
 
 /**
  * Renders a resolved cut: the renderer of record for an edit document.
@@ -227,6 +228,13 @@ export interface GraphOptions {
   sfx?: SfxOptions[]
   quality: Quality
   outputPath: string
+  /** How the picture is encoded: x264 when absent, as on a computer. */
+  encoder?: Encoder
+  /**
+   * False for an ffmpeg built without its GPL parts, as a phone's is: camera
+   * moves are drawn without the perspective filter (render/camera cropMove).
+   */
+  perspective?: boolean
 }
 
 /**
@@ -581,6 +589,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     if (!cam) return ''
     const plan = cameraPlan(cam.move, cam.length, cam.wordAt, cam.size.width / Math.max(1, cam.size.height), w / h)
     const read = even(Math.min(cam.size.width, Math.ceil((w * maxZoom(plan)) / plan.fw)))
+    if (opts.perspective === false) {
+      // An ffmpeg without its GPL parts, as a phone's: the same window, scaled and cropped.
+      const picture = { width: read, height: even((read * cam.size.height) / Math.max(1, cam.size.width)) }
+      const move = cropMove(plan, cam.offset, fps, picture, { width: w, height: h })
+      return `fps=${fps},scale=${picture.width}:${picture.height},${move},setsar=1,`
+    }
     return `fps=${fps},scale=${read}:-2,${perspectiveFor(plan, cam.offset, fps, w / h)},scale=${w}:${h},setsar=1,`
   }
 
@@ -1092,42 +1106,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   chains.push(`[${aOut}]aformat=channel_layouts=stereo:sample_rates=48000[aout]`)
   aOut = 'aout'
 
-  const encode =
-    opts.quality === 'intermediate'
-      ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '12', '-pix_fmt', 'yuv420p', '-c:a', 'pcm_s16le']
-      : opts.quality === 'preview'
-        ? [
-            '-c:v',
-            'libx264',
-            '-preset',
-            'veryfast',
-            '-crf',
-            '26',
-            '-pix_fmt',
-            'yuv420p',
-            '-c:a',
-            'aac',
-            '-b:a',
-            '128k',
-            '-movflags',
-            '+faststart'
-          ]
-        : [
-            '-c:v',
-            'libx264',
-            '-preset',
-            'medium',
-            '-crf',
-            '18',
-            '-pix_fmt',
-            'yuv420p',
-            '-c:a',
-            'aac',
-            '-b:a',
-            '192k',
-            '-movflags',
-            '+faststart'
-          ]
+  const encode = encodeArgs(opts.encoder ?? X264, opts.quality, { width: W, height: H }, fps)
 
   // Chapters come from a metadata file, the last input, so no other input's number moves.
   const chapters: string[] = []
@@ -1199,6 +1178,10 @@ export interface RenderCutOptions {
    * every word when absent. The music still dips and sounds still land on all of them.
    */
   captionWords?: Resolved['words']
+  /** How the picture is encoded: x264 when absent, as on a computer. */
+  encoder?: Encoder
+  /** False for an ffmpeg without the perspective filter, as a phone's is. */
+  perspective?: boolean
 }
 
 /**
@@ -1452,7 +1435,7 @@ export async function renderCut(
     )
   }
 
-  const base = { width, height, fps, fontsDir: opts.fontsDir ?? null }
+  const base = { width, height, fps, fontsDir: opts.fontsDir ?? null, encoder: opts.encoder, perspective: opts.perspective }
   const finishing = {
     assPath,
     loudness: cut.loudness,

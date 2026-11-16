@@ -48,6 +48,60 @@ function viewTree(keys: Key[]): string {
   return `if(lt(ld(0),${n(keys[0].t)}),${hold(keys[0])},if(gte(ld(0),${n(last.t)}),${hold(last)},${tree(1, keys.length - 1)}))`
 }
 
+/** A shake's jolts added to the centre in ld(2) and ld(3), decaying, scaled to the window. */
+function shakeParts(plan: CameraPlan): string[] {
+  if (!plan.shake) return []
+  const { start, sec, amp } = plan.shake
+  const jolt = (hz: number, phase: number): string =>
+    `if(between(ld(0),${n(start)},${n(start + sec)}),${n(amp)}*pow(1-(ld(0)-${n(start)})/${n(sec)},2)*sin(${n(2 * Math.PI * hz)}*(ld(0)-${n(start)})+${n(phase)}),0)`
+  return [`st(2,ld(2)+${jolt(9, 0)}*ld(4)/ld(1))`, `st(3,ld(3)+${jolt(7, 1.3)}*ld(5)/ld(1))`]
+}
+
+/**
+ * The same move without the perspective filter, for an ffmpeg built without
+ * its GPL parts, as a phone's is (perspective is GPL; scale and crop are not).
+ *
+ * The picture, `picture` in size, is scaled each frame so the window is
+ * exactly `out` wide, then cropped to the window. Scale and crop place it to
+ * the nearest pixel of the finished frame where perspective samples between
+ * pixels, so a slow push-in steps by up to half a pixel. The view is the
+ * plan's, worked out by the same expressions, so the move is the same.
+ */
+export function cropMove(
+  plan: CameraPlan,
+  offset: number,
+  fps: number,
+  picture: { width: number; height: number },
+  out: { width: number; height: number }
+): string {
+  const aspect = out.width / out.height
+  // The frame's width and height at zoom 1, as fractions of this picture: constants here.
+  const fw = Math.min(1, (aspect * picture.height) / picture.width)
+  const fh = Math.min(1, picture.width / (aspect * picture.height))
+  const prefix = [
+    // Scale and crop count frames from 0.
+    `st(0,${n(offset)}+n/${fps})`,
+    `st(4,${n(fw)})`,
+    `st(5,${n(fh)})`,
+    viewTree(plan.keys),
+    ...shakeParts(plan),
+    'st(6,clip(ld(1),1,3))'
+  ].join(';')
+  // The picture's size once the window is the frame's width, kept even.
+  const scaled = (side: number): string => `2*trunc(${n(side / 2)}*ld(6)/${n(fw)}+0.5)`
+  const sw = scaled(out.width)
+  const sh = scaled((out.width * picture.height) / picture.width)
+  const hw = 'ld(4)/(2*ld(6))'
+  const hh = 'ld(5)/(2*ld(6))'
+  const left = `${prefix};trunc((clip(ld(2),${hw},1-${hw})-${hw})*${sw}+0.5)`
+  const top = `${prefix};trunc((clip(ld(3),${hh},1-${hh})-${hh})*${sh}+0.5)`
+  const q = (e: string): string => `'${e}'`
+  return (
+    `scale=w=${q(`${prefix};${sw}`)}:h=${q(`${prefix};${sh}`)}:eval=frame,` +
+    `crop=${out.width}:${out.height}:x=${q(left)}:y=${q(top)}:exact=1`
+  )
+}
+
 /**
  * The perspective filter for a plan, on a picture whose finished shape is
  * `aspect` (width over height). `offset` is how far into the beat's picture
@@ -60,14 +114,9 @@ export function perspectiveFor(plan: CameraPlan, offset: number, fps: number, as
     // The frame's width and height at zoom 1, as fractions of this picture.
     `st(4,min(1,${n(aspect)}*H/W))`,
     `st(5,min(1,W/(${n(aspect)}*H)))`,
-    viewTree(plan.keys)
+    viewTree(plan.keys),
+    ...shakeParts(plan)
   ]
-  if (plan.shake) {
-    const { start, sec, amp } = plan.shake
-    const jolt = (hz: number, phase: number): string =>
-      `if(between(ld(0),${n(start)},${n(start + sec)}),${n(amp)}*pow(1-(ld(0)-${n(start)})/${n(sec)},2)*sin(${n(2 * Math.PI * hz)}*(ld(0)-${n(start)})+${n(phase)}),0)`
-    parts.push(`st(2,ld(2)+${jolt(9, 0)}*ld(4)/ld(1))`, `st(3,ld(3)+${jolt(7, 1.3)}*ld(5)/ld(1))`)
-  }
   parts.push('st(6,clip(ld(1),1,3))')
   const prefix = parts.join(';')
   // Half the window across and down, and its clamped centre.
