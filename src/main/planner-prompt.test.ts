@@ -11,7 +11,7 @@ import {
   wordsFromTranscript,
   OpSchema
 } from '../shared/edit'
-import { templates } from '../shared/motion'
+import { BUSY_EXAMPLE, buildScene, DEFAULT_THEME, designSize, fullCall, template, templates } from '../shared/motion'
 import { docFor } from '../shared/raw/eval'
 import { FIXTURES } from '../shared/raw/fixtures'
 import { planTakes, takesOf, switchTakeOps } from '../shared/raw/plan'
@@ -361,6 +361,63 @@ describe('the planner request', () => {
     expect(optional).toBeLessThanOrEqual(24)
     expect(unions).toBeLessThanOrEqual(16)
     expect(JSON.stringify(schema)).not.toContain('$ref')
+  })
+})
+
+describe('a busy edit', () => {
+  it('teaches a graphic every few seconds on its words, the full-frame ones taking turns with the speaker', () => {
+    expect(PLANNER_SYSTEM).toContain('## Busy edits')
+    // The example's own script, at an even pace, with the captured profile as a1.
+    let t = 0.5
+    const said = wordsFromTranscript(
+      BUSY_EXAMPLE.said.split(' ').map((text) => {
+        const w = { text, startSec: t, endSec: t + 0.3 }
+        t += 0.4
+        return w
+      }),
+      's1'
+    )
+    const clip = { id: 's1', path: '/take.mov', durationSec: t + 1, width: 1080, height: 1920, fps: 30 }
+    const doc = addAsset(createDoc({ id: 'b', title: 'Busy', source: clip, words: said }), {
+      kind: 'image',
+      path: '/Users/me/Assets/profile.png',
+      title: 'My profile',
+      durationSec: null,
+      width: 860,
+      height: 3400,
+      origin: { type: 'link', url: 'https://example.com/me', author: 'example.com', license: null, range: null }
+    }).doc
+    // As the planner writes them: every slot of a graphic filled in.
+    const row = { label: '', value: '', note: '', mark: '', at: '' }
+    const ops = BUSY_EXAMPLE.ops.map((o) => {
+      if (o.op !== 'motion-add') return o
+      const call = fullCall(o)
+      return { op: o.op, kind: o.kind, ...call, items: (call.items as object[]).map((r) => ({ ...row, ...r })) }
+    })
+    const offered = offerPlan(doc, PlanSchema.parse({ ops, summary: 's', reply: 'r', notesHandled: [], needs: [] }), [])
+    if (!offered.ok) throw new Error('expected a plan')
+    expect(offered.rejected).toEqual([])
+    const done = commit(doc, offered.ops, 's').doc
+    const cut = currentCut(done)
+    const resolved = resolveCut(cut, done.words, done.sources)
+    const scene = buildScene({
+      cut,
+      resolved,
+      words: done.words,
+      size: designSize(cut.aspect, clip),
+      theme: DEFAULT_THEME,
+      assets: done.assets
+    })
+    expect(scene.hidden).toEqual([])
+    // A graphic every few seconds: five in a clip of about 22.
+    expect(scene.items).toHaveLength(5)
+    expect(resolved.durationSec / scene.items.length).toBeLessThan(5)
+    // Each on its word, and the full-frame ones never together, with the speaker back between them.
+    const full = scene.items.filter((i) => template(i.kind)?.covers === 'card').sort((a, b) => a.start - b.start)
+    expect(full.map((i) => i.kind)).toEqual(['title', 'market', 'screenshot', 'device'])
+    for (let k = 1; k < full.length; k++) expect(full[k].start - full[k - 1].end).toBeGreaterThan(1)
+    const at = (id: string): number => resolved.words.find((w) => w.id === id)!.outStart
+    expect(scene.items.find((i) => i.kind === 'device')!.at).toBeCloseTo(at('w44'))
   })
 })
 

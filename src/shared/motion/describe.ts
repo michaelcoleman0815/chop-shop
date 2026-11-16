@@ -65,6 +65,69 @@ export function fullCall(call: Record<string, unknown>): Record<string, unknown>
   return out
 }
 
+/**
+ * A busy edit, in the pattern of fast tech and finance shorts: a graphic every
+ * few seconds, each landing on the word it is about, the full-frame ones
+ * taking turns with the speaker, and drawn captions carrying the rest. The
+ * planner's instructions show it, and a test applies it to this script.
+ */
+export const BUSY_EXAMPLE = {
+  said:
+    'Most apps make buying crypto feel like filing taxes. This one does it in one tap. ' +
+    'Pick Bitcoin, Ethereum or Solana and it lands in under a second. No hidden fees and no waiting. ' +
+    'Here is my profile after one week. On the phone it looks like this. Hold it as long as you want.',
+  /** The profile, captured from a link, is the edit's first picture. */
+  ops: [
+    { op: 'captions', set: { on: true, preset: 'hierarchy' } },
+    {
+      op: 'motion-add',
+      kind: 'title',
+      from: 'w1',
+      to: 'w9.end+0.5',
+      text: ['Most apps make it feel like', 'filing taxes']
+    },
+    {
+      op: 'motion-add',
+      kind: 'logo',
+      from: 'w18',
+      style: 'coin',
+      items: [
+        { label: 'Bitcoin', at: 'w18' },
+        { label: 'Ethereum', at: 'w19' },
+        { label: 'Solana', at: 'w21' }
+      ]
+    },
+    { op: 'motion-add', kind: 'market', from: 'w24', to: '2.6s', style: 'up', text: ['in under a second'] },
+    { op: 'motion-add', kind: 'screenshot', from: 'w35', to: 'w39.end', text: ['a1'], style: 'rise' },
+    {
+      op: 'motion-add',
+      kind: 'device',
+      from: 'w44',
+      to: '3s',
+      text: ['a1'],
+      items: [{ label: 'Bitcoin' }, { label: 'Ethereum' }, { label: 'Solana' }]
+    }
+  ] as Record<string, unknown>[]
+}
+
+/** The busy example as the planner reads it: the words each graphic lands on, and its call. */
+function busyGuide(): string[] {
+  const words = BUSY_EXAMPLE.said.split(/\s+/)
+  const said = (ref: string): string => {
+    const n = /^w(\d+)$/.exec(ref)
+    return n ? `"${words[Number(n[1]) - 1]?.replace(/[.,]$/, '')}"` : ref
+  }
+  return [
+    '## Busy edits',
+    'When the request asks for a busy, graphic-heavy edit (a fast tech or finance short, "lots of motion graphics"), place a graphic every 2 to 5 seconds, each starting on the word it is about. The full-frame ones (title, market, screenshot, device) take turns with the speaker: never two at once, and at least a second of the speaker between them. Drawn captions carry the words in between, and logo pops land on each brand as it is named. Keep each short: 2 to 4 seconds.',
+    `For example, a clip that says "${BUSY_EXAMPLE.said}", with the profile captured as a1, becomes these ops (every slot written out as usual):`,
+    ...BUSY_EXAMPLE.ops.map((o) => {
+      const from = typeof o.from === 'string' ? ` (on ${said(o.from)})` : ''
+      return `- ${JSON.stringify(o)}${from}`
+    })
+  ]
+}
+
 /** The planner's instructions for graphics. Empty while no template is built. */
 export function graphicsGuide(): string {
   const list = templates().filter((t) => t.kind !== 'layers')
@@ -85,7 +148,8 @@ export function graphicsGuide(): string {
       const places = t.places.filter(Boolean)
       return `- ${t.kind}: ${t.about} Styles: ${styles.join(', ')}, the first by default.${places.length ? ` Places: ${places.join(', ')}.` : ''}`
     }),
-    'Put a graphic on the word it is about, so it lands as the word is said. Keep its text short, about six words a line. Leave color empty unless the request names one. You cannot see the picture, so never guess where something is in the frame: leave box empty, and say in the reply that the person can drag it into place.'
+    'Put a graphic on the word it is about, so it lands as the word is said. Keep its text short, about six words a line. Leave color empty unless the request names one. You cannot see the picture, so never guess where something is in the frame: leave box empty, and say in the reply that the person can drag it into place.',
+    ...(template('market') && template('screenshot') && template('device') ? busyGuide() : [])
   ].join('\n')
 }
 
