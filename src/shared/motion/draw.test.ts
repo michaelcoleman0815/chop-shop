@@ -339,6 +339,19 @@ describe('text', () => {
     expect(wide.lines).toHaveLength(1)
   })
 
+  it('balances lines when asked, so no word is left alone', () => {
+    const { ctx } = frame(1080, 1920)
+    const layer = sora({ text: 'Subscribe for part two', font: { family: 'Archivo Black', size: 70 }, maxWidth: 733 })
+    const greedy = layoutText(measurer(ctx), layer)
+    const even = layoutText(measurer(ctx), { ...layer, balance: true })
+    expect(greedy.lines.map((l) => l.words.length)).toEqual([3, 1])
+    expect(even.lines).toHaveLength(2)
+    expect(even.lines[1].words.length).toBeGreaterThan(1)
+    expect(even.w).toBeLessThan(greedy.w)
+    // One line stays one line.
+    expect(layoutText(measurer(ctx), { ...layer, text: 'Subscribe', balance: true }).lines).toHaveLength(1)
+  })
+
   it('draws text where the layout puts it', () => {
     const { ctx } = frame(1080, 1920)
     drawFrame(ctx, 1, [sora({ text: 'HELLO', fill: '#ffffff', font: { family: 'Anton', size: 200 } })], {
@@ -409,6 +422,53 @@ describe('text', () => {
     const boxLeft = px(ctx, 540 + off.x - 4, 960 + off.baseline - off.cap / 2)
     expect(boxLeft[0]).toBeGreaterThan(240)
     expect(boxLeft[2]).toBeLessThan(120)
+  })
+
+  it('gives each line its own plate: hugging the capitals, coloured by span, one after another', () => {
+    const layer = sora({
+      text: '',
+      align: 'left',
+      valign: 'top',
+      maxWidth: undefined,
+      transform: { x: 100, y: 400 },
+      font: { family: 'Sora', size: 80, weight: 700, lineHeight: 1.7 },
+      spans: [{ text: 'Sam Lee' }, { text: '\nFounder', scale: 0.6 }],
+      plate: {
+        color: '#0000ff',
+        spanColors: ['#0000ff', '#ff0000'],
+        perLine: true,
+        hug: true,
+        stagger: 0.5,
+        padX: 20,
+        padY: 20,
+        scaleX: {
+          keys: [
+            { t: 0, v: 0 },
+            { t: 0.2, v: 1 }
+          ]
+        },
+        edge: { color: '#00ff00', width: 10 }
+      }
+    })
+    const { ctx } = frame(1080, 1920)
+    const { block } = textUnits(ctx, layer, 0.3)
+    const [name, role] = block.lines
+    // The plates run on their own time: at 0.3 s the first is in, the second not yet begun.
+    drawFrame(ctx, 0.3, [layer], { width: 1080, height: 1920 })
+    const nameMid = 400 + name.baseline - name.cap / 2
+    const roleMid = 400 + role.baseline - role.cap / 2
+    expect(px(ctx, 100 - 5, nameMid)).toEqual([0, 0, 255, 255])
+    expect(px(ctx, 100 - 15, nameMid)).toEqual([0, 255, 0, 255])
+    expect(px(ctx, 100 - 5, roleMid)[3]).toBe(0)
+    // Later the second line has its own plate in the second span's colour.
+    const later = frame(1080, 1920)
+    drawFrame(later.ctx, 1, [layer], { width: 1080, height: 1920 })
+    expect(px(later.ctx, 100 - 5, roleMid)).toEqual([255, 0, 0, 255])
+    // Hugging: between the two lines' plates the picture shows through.
+    const nameBottom = 400 + name.baseline + 20
+    const roleTop = 400 + role.baseline - role.cap - 20 * 0.6
+    expect(roleTop - nameBottom).toBeGreaterThan(10)
+    expect(px(later.ctx, 100 - 5, (nameBottom + roleTop) / 2)[3]).toBe(0)
   })
 
   it('counts numbers in fixed-width digits', () => {

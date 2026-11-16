@@ -60,6 +60,48 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       return { style, text: parts(text).slice(0, 2) }
     },
     after: 'Drag on the picture to point it at the part.'
+  },
+  {
+    command: 'lowerthird',
+    kind: 'lower-third',
+    title: 'Lower third',
+    summary: 'Name a person or a product: /lowerthird Pixel 9 Pro, Google, 128 GB',
+    parse: (rest, ctx) => {
+      const { style, rest: text } = takeStyle(rest, 'lower-third')
+      const [name, ...role] = parts(text)
+      const who = name ?? ctx.brandName.trim()
+      if (!who) return { problem: 'Tell me the name, like /lowerthird Sam Lee, Founder.' }
+      return { style, text: [who, role.join(', ')].filter((t, i) => i === 0 || t) }
+    }
+  },
+  {
+    command: 'banner',
+    kind: 'banner',
+    title: 'Hook banner',
+    summary: 'The payoff on screen from the first frame, gone by 5 s: /banner The one setting I change first',
+    parse: (rest) => {
+      const { style, rest: text } = takeStyle(rest, 'banner')
+      const [hook, ...more] = text.split(/\s*\|\s*/)
+      if (!hook?.trim()) return { problem: 'Tell me the hook, like /banner The one setting I change first.' }
+      return {
+        style,
+        text: [hook.trim(), more.join(' ').trim()].filter((t, i) => i === 0 || t),
+        from: 'start',
+        to: '5s'
+      }
+    }
+  },
+  {
+    command: 'endcard',
+    kind: 'end-card',
+    title: 'End card',
+    summary: 'A closing card over the last 2 s: /endcard Subscribe for part two, @yourchannel',
+    parse: (rest) => {
+      const { style, rest: text } = takeStyle(rest, 'end-card')
+      const [line, ...more] = parts(text)
+      if (!line) return { problem: 'Tell me the line to end on, like /endcard Subscribe for part two.' }
+      return { style, text: [line, more.join(', ')].filter((t, i) => i === 0 || t), from: 'end-2', to: 'end' }
+    }
   }
 ]
 

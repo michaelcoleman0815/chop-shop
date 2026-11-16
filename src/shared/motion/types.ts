@@ -214,14 +214,29 @@ export interface Plate {
   radius?: number
   padX?: number
   padY?: number
-  /** One plate per line rather than one around the block. */
+  /** One plate per line rather than one around the block; a line's plate shows once its line starts to appear. */
   perLine?: boolean
+  /**
+   * With perLine, each plate hugs its line's capitals rather than the line
+   * box, with padY scaled to the line's size; line height makes the gaps.
+   * Leave padY room for descenders.
+   */
+  hug?: boolean
+  /**
+   * With perLine, each line's plate runs its keys this many seconds after the
+   * one above, and shows on that timing rather than its line's.
+   */
+  stagger?: number
   scaleX?: Anim<number>
   scaleY?: Anim<number>
   opacity?: Anim<number>
   /** Where scaleX grows from: 0 the left edge, 0.5 the centre. */
   originX?: number
   stroke?: Stroke
+  /** A bar along one side of the plate, as tall as the plate: a lower third's accent. */
+  edge?: { color: Color; width: number; side?: 'left' | 'right' }
+  /** With perLine, each line's plate takes the colour of the span its first word belongs to. */
+  spanColors?: Fill[]
 }
 
 /** The spoken word: its own colour and size, and a box that sweeps from word to word. */
@@ -271,6 +286,8 @@ export interface TextLayer<T = number> extends Base<T> {
   valign?: 'top' | 'middle' | 'bottom' | 'baseline'
   /** Wrap width in design pixels. */
   maxWidth?: number
+  /** Wrap to lines of even length rather than filling each line, so no word is left alone on the last. */
+  balance?: boolean
   plate?: Plate
   animators?: Animator[]
   active?: Active

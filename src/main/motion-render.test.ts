@@ -16,8 +16,15 @@ import { probeMedia } from './inspiration/measure'
  * after it.
  */
 
+/** The same search cut-render.test.ts makes: FFMPEG_PATH, then ffmpeg-static, then the PATH. */
 function findFfmpeg(): string | null {
-  for (const bin of [process.env.FFMPEG_PATH, 'ffmpeg']) {
+  const candidates = [process.env.FFMPEG_PATH, 'ffmpeg']
+  try {
+    candidates.splice(1, 0, require('ffmpeg-static') as string)
+  } catch {
+    // Not installed in this checkout; the system one will do.
+  }
+  for (const bin of candidates) {
     if (!bin) continue
     if (bin !== 'ffmpeg' && !existsSync(bin)) continue
     if (spawnSync(bin, ['-version']).status === 0) return bin

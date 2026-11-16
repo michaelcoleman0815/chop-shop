@@ -788,17 +788,38 @@ function drawPlates(
   if (!plate) return
   const padX = plate.padX ?? layer.font.size * 0.35
   const padY = plate.padY ?? layer.font.size * 0.18
-  const sx = num(plate.scaleX, local, length, 1)
-  const sy = num(plate.scaleY, local, length, 1)
-  const a = opacity * Math.max(0, Math.min(1, num(plate.opacity, local, length, 1)))
-  if (a <= 0.002 || sx <= 0.001 || sy <= 0.001) return
-  const rects: Box[] = plate.perLine
+  // Per-line plates follow their lines in, unless they keep their own staggered time.
+  const ownTime = plate.stagger !== undefined
+  const rects: (Box & { fill: Fill; lag: number })[] = plate.perLine
     ? block.lines
-        .filter((l) => frame.lines[l.index].opacity > 0.002)
-        .map((l) => ({ x: l.x - padX, y: l.top - padY, w: l.w + padX * 2, h: l.height + padY * 2 }))
-    : [{ x: block.left - padX, y: block.top - padY, w: block.w + padX * 2, h: block.h + padY * 2 }]
-  const strokeW = plate.stroke ? num(plate.stroke.width, local, length, 0) : 0
+        .filter((l) => ownTime || frame.lines[l.index].opacity > 0.002)
+        .map((l) => {
+          const span = block.words[l.words[0]]?.span ?? 0
+          const fill = plate.spanColors?.[span] ?? plate.color
+          const lag = l.index * (plate.stagger ?? 0)
+          if (!plate.hug)
+            return { x: l.x - padX, y: l.top - padY, w: l.w + padX * 2, h: l.height + padY * 2, fill, lag }
+          // Hugging the capitals; padX stays as given so the plates' edges line up.
+          const py = (padY * l.size) / layer.font.size
+          return { x: l.x - padX, y: l.baseline - l.cap - py, w: l.w + padX * 2, h: l.cap + py * 2, fill, lag }
+        })
+    : [
+        {
+          x: block.left - padX,
+          y: block.top - padY,
+          w: block.w + padX * 2,
+          h: block.h + padY * 2,
+          fill: plate.color,
+          lag: 0
+        }
+      ]
   for (const r of rects) {
+    const t = local - r.lag
+    const strokeW = plate.stroke ? num(plate.stroke.width, t, length, 0) : 0
+    const sx = num(plate.scaleX, t, length, 1)
+    const sy = num(plate.scaleY, t, length, 1)
+    const a = opacity * Math.max(0, Math.min(1, num(plate.opacity, t, length, 1)))
+    if (a <= 0.002 || sx <= 0.001 || sy <= 0.001) continue
     ctx.save()
     const ox = r.x + r.w * (plate.originX ?? 0.5)
     const oy = r.y + r.h / 2
@@ -808,15 +829,27 @@ function drawPlates(
     ctx.globalAlpha = a
     const radius = Math.min(plate.radius ?? 0, r.h / 2, r.w / 2)
     withEffects(ctx, layer.effects, (pass, override) => {
-      ctx.fillStyle = override ?? paint(ctx, plate.color, local, length, r, '#000000')
+      ctx.fillStyle = override ?? paint(ctx, r.fill, t, length, r, '#000000')
       ctx.beginPath()
       if (radius > 0) ctx.roundRect(r.x, r.y, r.w, r.h, radius)
       else ctx.rect(r.x, r.y, r.w, r.h)
       ctx.fill()
+      if (pass === 'shadow') clearShadow(ctx)
       if (plate.stroke && strokeW > 0) {
-        if (pass === 'shadow') clearShadow(ctx)
-        applyStroke(ctx, plate.stroke, local, length, strokeW, override)
+        applyStroke(ctx, plate.stroke, t, length, strokeW, override)
         ctx.stroke()
+      }
+      if (plate.edge) {
+        // The bar sits on the plate's side, as tall as it, and clipped to its rounded corners.
+        const w = Math.min(plate.edge.width, r.w)
+        ctx.save()
+        ctx.beginPath()
+        if (radius > 0) ctx.roundRect(r.x, r.y, r.w, r.h, radius)
+        else ctx.rect(r.x, r.y, r.w, r.h)
+        ctx.clip()
+        ctx.fillStyle = override ?? plate.edge.color
+        ctx.fillRect(plate.edge.side === 'right' ? r.x + r.w - w : r.x, r.y, w, r.h)
+        ctx.restore()
       }
     })
     ctx.restore()

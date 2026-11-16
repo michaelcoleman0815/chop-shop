@@ -190,6 +190,108 @@ describe('callouts', () => {
   })
 })
 
+/** Nothing drawn in the outermost two pixels of the frame. */
+function edgeInk(scene: MotionScene, t: number): number {
+  const f = draw(scene, t)
+  const { width, height } = scene.size
+  return (
+    f.lit(0, 0, width, 2) + f.lit(0, height - 2, width, 2) + f.lit(0, 0, 2, height) + f.lit(width - 2, 0, 2, height)
+  )
+}
+
+describe('titles', () => {
+  it('slides a lower third in low on the left, and takes it out faster than it came', () => {
+    const scene = sceneOf(
+      docWith('vertical', [
+        { op: 'motion-add', kind: 'lower-third', from: 'w9', text: ['Pixel 9 Pro', 'Google, 128 GB'], style: 'product' }
+      ])
+    )
+    const item = scene.items[0]
+    expect(item.end - item.at).toBeCloseTo(4)
+    // The block hangs from 90 px above the bottom safe edge (1536), inside the left safe edge.
+    const plate = (t: number) => draw(scene, t).lit(80, 1340, 400, 110)
+    expect(plate(item.start)).toBe(0)
+    const settled = plate(item.start + 0.5)
+    expect(settled).toBeGreaterThan(20000)
+    // The plate wipes in from the left over about a quarter second.
+    const wiping = plate(item.start + 0.03)
+    expect(wiping).toBeGreaterThan(0)
+    expect(wiping).toBeLessThan(settled * 0.8)
+    // Nothing past the right half of the frame, and nothing in the caption area under it.
+    const f = draw(scene, item.start + 1)
+    expect(f.lit(700, 1250, 300, 250)).toBe(0)
+    expect(f.lit(0, 1536, 1080, 384)).toBe(0)
+    // Leaving takes 0.16 s: near the end it is fainter, then it is gone.
+    expect(plate(item.end - 0.05)).toBeLessThan(plate(item.start + 1))
+    expect(draw(scene, item.end).lit(0, 0, 1080, 1920)).toBe(0)
+  })
+
+  it('puts a lower third on the right when asked', () => {
+    const scene = sceneOf(
+      docWith('wide', [
+        { op: 'motion-add', kind: 'lower-third', from: 'w9', text: ['Sam Lee', 'Founder'], place: 'right' }
+      ])
+    )
+    const f = draw(scene, scene.items[0].start + 1)
+    // Two lines whose bottom is 52 px above the bottom safe edge (972).
+    expect(f.lit(1920 - 600, 800, 500, 120)).toBeGreaterThan(5000)
+    expect(f.lit(0, 760, 900, 200)).toBe(0)
+    expect(f.lit(0, 972, 1920, 108)).toBe(0)
+  })
+
+  it('shows the hook banner from the start and has it gone by five seconds', () => {
+    const scene = sceneOf(
+      docWith('vertical', [
+        { op: 'motion-add', kind: 'banner', from: 'start', to: '5s', text: ['The one setting I change first'] }
+      ])
+    )
+    const item = scene.items[0]
+    expect([item.start, item.end]).toEqual([0, 5])
+    // In the box's padding above the words, under the top safe edge.
+    const box = (t: number) => draw(scene, t).at(540, 0.09 * 1920 + 12)
+    // A white box under the words at the top.
+    expect(box(0.6)).toEqual([255, 255, 255, 255])
+    expect(box(5)[3]).toBe(0)
+  })
+
+  it('closes on an end card over the last two seconds, the picture dimmed', () => {
+    const scene = sceneOf(
+      docWith('wide', [
+        { op: 'motion-add', kind: 'end-card', from: 'end-2', to: 'end', text: ['Subscribe for part two'], icon: 'bell' }
+      ])
+    )
+    const item = scene.items[0]
+    expect(item.end).toBeCloseTo(scene.duration)
+    expect(item.end - item.start).toBeCloseTo(2)
+    const f = draw(scene, item.end - 0.5)
+    // The scrim, dark and mostly opaque, in a corner far from the words.
+    const corner = f.at(40, 40)
+    expect(corner[3]).toBeGreaterThan(180)
+    expect(corner[0]).toBeLessThan(30)
+    // The bell sits above the line.
+    expect(f.lit(960 - 60, 540 - 260, 120, 120)).toBeGreaterThan(300)
+  })
+
+  it('keeps long titles inside the frame, in both shapes', () => {
+    const long = 'A very long name that keeps going past where it should stop'
+    for (const aspect of ['vertical', 'wide'] as const) {
+      const scene = sceneOf(
+        docWith(aspect, [
+          { op: 'motion-add', kind: 'lower-third', from: 'w3', text: [long, long], style: 'bar' },
+          { op: 'motion-add', kind: 'lower-third', from: 'w3', text: [long, long], style: 'product', place: 'right' },
+          { op: 'motion-add', kind: 'lower-third', from: 'w3', text: [long, long], style: 'plate', place: 'right' },
+          { op: 'motion-add', kind: 'lower-third', from: 'w3', text: [long, long], style: 'line' },
+          { op: 'motion-add', kind: 'banner', from: 'start', text: [long, long] },
+          { op: 'motion-add', kind: 'end-card', from: 'w3', text: [long, long], style: 'solid' }
+        ])
+      )
+      // The end card fills the frame on purpose; everything else stays off the edges.
+      const noCard = { ...scene, layers: scene.items.filter((i) => i.kind !== 'end-card').flatMap((i) => i.layers) }
+      expect(edgeInk(noCard, 1.5), aspect).toBe(0)
+    }
+  })
+})
+
 describe('graphics commands', () => {
   it('reads /callout into a call that lands on the word under the playhead', () => {
     const doc = docWith('vertical', [])
@@ -209,6 +311,25 @@ describe('graphics commands', () => {
     expect(plain).toMatchObject({ op: { style: 'circle', text: [], from: resolved.words[0].id } })
     expect(planMotionCommand('nothing', '', { doc, resolved, time: null, brandName: '' })).toEqual({
       problem: 'There is no /nothing.'
+    })
+  })
+
+  it('reads titles: a name and a role, a hook at the start, an end card at the end', () => {
+    const doc = docWith('vertical', [])
+    const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+    const ctx = { doc, resolved, time: null, brandName: 'Field Notes' }
+    expect(planMotionCommand('lowerthird', 'product Pixel 9 Pro, Google, 128 GB', ctx)).toMatchObject({
+      op: { kind: 'lower-third', style: 'product', text: ['Pixel 9 Pro', 'Google, 128 GB'] }
+    })
+    expect(planMotionCommand('lowerthird', '', ctx)).toMatchObject({ op: { text: ['Field Notes'] } })
+    expect(planMotionCommand('lowerthird', '', { ...ctx, brandName: '' })).toEqual({
+      problem: 'Tell me the name, like /lowerthird Sam Lee, Founder.'
+    })
+    expect(planMotionCommand('banner', 'Lock it first | then shoot', ctx)).toMatchObject({
+      op: { kind: 'banner', from: 'start', to: '5s', text: ['Lock it first', 'then shoot'] }
+    })
+    expect(planMotionCommand('endcard', 'Subscribe for part two, @fieldnotes', ctx)).toMatchObject({
+      op: { kind: 'end-card', from: 'end-2', to: 'end', text: ['Subscribe for part two', '@fieldnotes'] }
     })
   })
 

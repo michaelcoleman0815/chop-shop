@@ -235,6 +235,7 @@ const TextLayerSchema = z.object({
   align: z.enum(['left', 'center', 'right']).optional(),
   valign: z.enum(['top', 'middle', 'bottom', 'baseline']).optional(),
   maxWidth: z.number().positive().optional(),
+  balance: z.boolean().optional(),
   plate: z
     .object({
       color: FillSchema,
@@ -242,11 +243,15 @@ const TextLayerSchema = z.object({
       padX: n.optional(),
       padY: n.optional(),
       perLine: z.boolean().optional(),
+      hug: z.boolean().optional(),
+      stagger: n.optional(),
       scaleX: AnimNum.optional(),
       scaleY: AnimNum.optional(),
       opacity: AnimNum.optional(),
       originX: n.optional(),
-      stroke: StrokeSchema.optional()
+      stroke: StrokeSchema.optional(),
+      edge: z.object({ color: ColorSchema, width: n, side: z.enum(['left', 'right']).optional() }).optional(),
+      spanColors: z.array(FillSchema).max(8).optional()
     })
     .optional(),
   animators: z

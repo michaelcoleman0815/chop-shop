@@ -141,19 +141,34 @@ export function layoutText(measure: Measure, layer: TextLayer, text = layer.text
   }
 
   // Greedy wrapping, with a space as wide as the face's own.
-  const lines: { words: number[]; w: number }[] = []
+  const spaces = placed.map((word) => measure(word.font, ' ') + tracking)
+  const wrap = (max: number): { words: number[]; w: number }[] => {
+    const out: { words: number[]; w: number }[] = []
+    placed.forEach((word, i) => {
+      const line = out[out.length - 1]
+      const extra = line && line.words.length > 0 ? spaces[i] + word.w : word.w
+      if (!line || breaks[i] || (line.words.length > 0 && line.w + extra > max)) {
+        out.push({ words: [i], w: word.w })
+      } else {
+        line.words.push(i)
+        line.w += extra
+      }
+    })
+    return out
+  }
   const max = layer.maxWidth ?? Infinity
-  placed.forEach((word, i) => {
-    const space = measure(word.font, ' ') + tracking
-    const line = lines[lines.length - 1]
-    const extra = line && line.words.length > 0 ? space + word.w : word.w
-    if (!line || breaks[i] || (line.words.length > 0 && line.w + extra > max)) {
-      lines.push({ words: [i], w: word.w })
-    } else {
-      line.words.push(i)
-      line.w += extra
+  let lines = wrap(max)
+  if (layer.balance && Number.isFinite(max) && lines.length > 1) {
+    // The narrowest width that still takes no more lines evens them out.
+    let lo = placed.reduce((m, w) => Math.max(m, w.w), 0)
+    let hi = Math.max(lo, max)
+    for (let i = 0; i < 14 && hi - lo > 0.5; i++) {
+      const mid = (lo + hi) / 2
+      if (wrap(mid).length > lines.length) lo = mid
+      else hi = mid
     }
-  })
+    lines = wrap(hi)
+  }
 
   const align = layer.align ?? 'left'
   const blockW = lines.reduce((m, l) => Math.max(m, l.w), 0)
