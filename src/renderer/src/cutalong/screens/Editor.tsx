@@ -23,6 +23,7 @@ import {
   type MotionItem,
   type MotionScene
 } from '../../../../shared/motion'
+import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
@@ -30,7 +31,9 @@ import { GraphicPanel } from '../components/GraphicPanel'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { RegionPicker } from '../components/RegionPicker'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
+import { Working } from '../components/Working'
 import { clock } from '../format'
+import { collapse } from '../motion'
 import { usePlayer } from '../usePlayer'
 import type { Cutalong, PanelStatus } from '../useCutalong'
 import { Header } from './Header'
@@ -46,8 +49,10 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const version = currentVersion(doc)
   const resolved = useMemo(() => resolveCut(cut, doc.words, doc.sources), [cut, doc.words, doc.sources])
   const video = useRef<HTMLVideoElement>(null)
-  const player = usePlayer(video, resolved)
-  const [script, setScript] = useState(false)
+  const sound = useRef<HTMLAudioElement>(null)
+  const player = usePlayer(video, resolved, { sources: doc.sources, urlFor: mediaUrlFor, audio: sound })
+  const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
+  const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
   // The cut's graphics on the output clock, in the brand's look: what the export draws.
   const scene = useMemo(
     () =>
@@ -117,9 +122,17 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         )}
         <Button
           variant="text"
-          className={script ? 'on' : ''}
-          aria-pressed={script}
-          onClick={() => setScript((s) => !s)}
+          className={side === 'takes' ? 'on' : ''}
+          aria-pressed={side === 'takes'}
+          onClick={() => toggle('takes')}
+        >
+          Takes
+        </Button>
+        <Button
+          variant="text"
+          className={side === 'script' ? 'on' : ''}
+          aria-pressed={side === 'script'}
+          onClick={() => toggle('script')}
         >
           Script
         </Button>
@@ -136,11 +149,12 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             time={player.time}
             playing={player.playing}
             video={video}
-            mediaUrl={app.mediaUrl}
+            sound={sound}
+            mediaUrl={player.src ?? app.mediaUrl}
             selected={selected}
             onRegion={(box) => selected && app.updateGraphic(selected.id, { box })}
           />
-          {script ? (
+          {side === 'script' ? (
             <ScriptPanel
               doc={doc}
               time={player.time}
@@ -148,6 +162,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               onSeek={player.seek}
               onApply={app.applyOpsDirect}
             />
+          ) : side === 'takes' ? (
+            <TakesPanel app={app} doc={doc} resolved={resolved} onSeek={player.seek} />
           ) : selected ? (
             <GraphicPanel
               item={selected}
@@ -170,6 +186,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           marks={marks}
           selected={selected?.id ?? null}
           onMark={(id) => {
+            setSide('notes')
             app.selectGraphic(id === selected?.id ? null : id)
             const at = scene.items.find((i) => i.id === id)
             if (at && id !== selected?.id) player.seek(Math.min(at.end - 0.05, at.at + 0.4))
@@ -190,6 +207,7 @@ function Preview({
   time,
   playing,
   video,
+  sound,
   mediaUrl,
   selected,
   onRegion
@@ -202,6 +220,8 @@ function Preview({
   time: number
   playing: boolean
   video: React.RefObject<HTMLVideoElement>
+  /** The better sound, for recordings whose own microphone is not the one heard. */
+  sound: React.RefObject<HTMLAudioElement>
   mediaUrl: string | null
 }): JSX.Element {
   const well = useRef<HTMLDivElement>(null)
@@ -258,6 +278,7 @@ function Preview({
         ) : (
           <span className="cl-frame-empty" />
         )}
+        <audio ref={sound} preload="auto" aria-hidden="true" />
         {treatment?.broll && treatment.frame !== 'speaker' && (
           <Cutaway
             frame={treatment.frame}
@@ -372,12 +393,7 @@ function NotesPanel({
           <AssistantAvatar />
           <div className="cl-msg-body">
             {status.progress ? (
-              <div className="cl-progress">
-                <span>{status.progress.stage}</span>
-                <span className="cl-progress-bar" aria-hidden="true">
-                  <span style={{ width: `${status.progress.percent}%` }} />
-                </span>
-              </div>
+              <Working progress={status.progress} since={status.since} />
             ) : (
               <p className="cl-reply">{status.text}</p>
             )}
@@ -392,7 +408,11 @@ function NotesPanel({
                   {n.text}
                   {n.beat && <span className="cl-project-meta">{position(n.beat)}</span>}
                 </span>
-                <button type="button" aria-label={`Remove note ${i + 1}`} onClick={() => app.dropNote(n.id)}>
+                <button
+                  type="button"
+                  aria-label={`Remove note ${i + 1}`}
+                  onClick={(e) => collapse(e.currentTarget, () => app.dropNote(n.id))}
+                >
                   <Icon.close />
                 </button>
               </li>
@@ -410,7 +430,7 @@ function NotesPanel({
         onNote={(text) => {
           const command = parseCommand(text)
           if (command) void app.runCommand(command.command, 'panel', command.rest, time)
-          else app.addNote(text, nowBeat)
+          else if (!app.answerInPanel(text)) app.addNote(text, nowBeat)
         }}
       />
     </aside>
@@ -571,6 +591,112 @@ function ScriptPanel({
       <p className="cl-project-meta">
         Click words to mark them. Double-click a word to jump to it. {clock(resolved.durationSec)} in the cut.
       </p>
+    </aside>
+  )
+}
+
+/**
+ * The lines said more than once, each with its takes as a segmented choice.
+ * The take that plays is marked; picking another makes it play, as a new
+ * version, and jumps there so it can be heard. Uncertain cuts wait below.
+ */
+function TakesPanel({
+  app,
+  doc,
+  resolved,
+  onSeek
+}: {
+  app: Cutalong
+  doc: EditDoc
+  resolved: Resolved
+  onSeek: (sec: number) => void
+}): JSX.Element {
+  const cut = currentCut(doc)
+  // Takes come from the words and the sound, so they only change when those do.
+  const groups = useMemo(() => takesOf(doc).flatMap((a) => a.groups), [doc.words, doc.sources, doc.audio]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [jumpTo, setJumpTo] = useState<string | null>(null)
+
+  // After a switch, play from where the new take now sits in the cut.
+  useEffect(() => {
+    if (!jumpTo) return
+    const w = resolved.words.find((x) => x.id === jumpTo)
+    if (w) onSeek(w.outStart)
+    setJumpTo(null)
+  }, [resolved, jumpTo, onSeek])
+
+  const pick = (g: TakeGroup, i: number): void => {
+    const done = app.switchTake(g, i)
+    app.setPanel(done ? { text: `v${done.n} is ready. ${done.summary}` } : null)
+    setJumpTo(g.takes[i].from)
+  }
+
+  const status =
+    app.panel?.text ??
+    (groups.length === 0
+      ? 'No line was said more than once in this recording.'
+      : `${groups.length === 1 ? 'One line was' : `${groups.length} lines were`} said more than once. The take that plays is marked.`)
+  const capital = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1)
+
+  return (
+    <aside className="cl-notes" aria-label="Takes">
+      <div className="cl-notes-scroll">
+        <p className="cl-reply">{status}</p>
+        {groups.length > 0 && (
+          <ol className="cl-note-list">
+            {groups.map((g, k) => {
+              const playing = playingTake(g, cut)
+              const about =
+                playing < 0
+                  ? 'None of its takes plays.'
+                  : `The ${ordinal(playing + 1)} of ${g.takes.length} plays${playing === g.chosen ? `, ${g.reason}` : ''}.`
+              return (
+                <li key={g.id} className="cl-note">
+                  <span className="cl-note-n">{k + 1}</span>
+                  <span className="cl-note-text cl-take">
+                    {capital(lineName(g))}
+                    <span className="cl-segments" role="radiogroup" aria-label={`Takes of ${lineName(g)}`}>
+                      {g.takes.map((t, i) => (
+                        <button
+                          key={t.from}
+                          type="button"
+                          role="radio"
+                          aria-checked={i === playing}
+                          aria-label={`Take ${i + 1}${t.issues.length ? `: ${[...new Set(t.issues)].join(', ')}` : ''}`}
+                          title={t.issues.length ? [...new Set(t.issues)].join(', ') : 'Clean'}
+                          className={i === playing ? 'on' : ''}
+                          onClick={() => (i === playing ? setJumpTo(t.from) : pick(g, i))}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </span>
+                    <span className="cl-project-meta">{about}</span>
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+        {app.offers.length > 0 && (
+          <p className="cl-aside">
+            {app.offers.length === 1
+              ? `Left in at ${clock(app.offers[0].outSec)}: ${app.offers[0].what}.`
+              : `Left in: ${app.offers.map((o) => `${o.what} at ${clock(o.outSec)}`).join('; ')}.`}
+          </p>
+        )}
+      </div>
+      {app.offers.length > 0 && (
+        <Button
+          small
+          onClick={() => {
+            const done = app.acceptOffers()
+            app.setPanel(done ? { text: `v${done.n} is ready. ${done.summary}` } : null)
+          }}
+        >
+          {app.offers.length === 1 ? 'Cut it' : `Cut all ${app.offers.length}`}
+        </Button>
+      )}
+      <p className="cl-project-meta">Pick a take to hear it in the cut. Each change is a version you can undo.</p>
     </aside>
   )
 }

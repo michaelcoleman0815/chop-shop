@@ -1,5 +1,6 @@
 import { api } from '../api'
 import { Button } from '../components/ui'
+import { collapse } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { ProjectCard } from './Start'
@@ -57,7 +58,10 @@ export function PresetsPage({ app }: { app: Cutalong }): JSX.Element {
                   </span>
                 </span>
                 {!p.builtIn && (
-                  <Button variant="text" onClick={() => void api.removePreset(p.command).then(app.setSaved)}>
+                  <Button
+                    variant="text"
+                    onClick={(e) => collapse(e.currentTarget, () => api.removePreset(p.command).then(app.setSaved))}
+                  >
                     Remove
                   </Button>
                 )}

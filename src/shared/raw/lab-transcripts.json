@@ -1,0 +1,3645 @@
+{
+"about": "Whisper small (int8, faster-whisper 1.1.1) on an 85 s espeak-ng session with planted retakes. Synthetic speech; see docs/research/raw-footage.md.",
+"pieces": [
+{
+"kind": "line",
+"text": "Hey everyone, welcome back to the channel.",
+"start": 0.8,
+"end": 3.192
+},
+{
+"kind": "take",
+"text": "Today I'm reviewing the Pixel 9 Pro and the M4 MacBook Air.",
+"start": 3.792,
+"end": 7.512,
+"id": "L1",
+"take": 1
+},
+{
+"kind": "take",
+"text": "Today I'm reviewing the Pixel 9 Pro and the M4 MacBook Air.",
+"start": 8.912,
+"end": 12.794,
+"id": "L1",
+"take": 2
+},
+{
+"kind": "line",
+"text": "Let's start with the camera.",
+"start": 13.994,
+"end": 15.421
+},
+{
+"kind": "cut",
+"text": "I've been using this phone for three ye-",
+"start": 15.921,
+"end": 17.956,
+"id": "L2",
+"take": 1
+},
+{
+"kind": "line",
+"text": "for three years now, and the battery still lasts all day.",
+"start": 18.406,
+"end": 21.644,
+"id": "L2",
+"take": 2
+},
+{
+"kind": "cut",
+"text": "So the best camera for-",
+"start": 22.344,
+"end": 23.657,
+"id": "L3",
+"take": 1
+},
+{
+"kind": "line",
+"text": "the best camera for beginners is the Sony Z V E 10.",
+"start": 24.007,
+"end": 26.947,
+"id": "L3",
+"take": 2
+},
+{
+"kind": "cut",
+"text": "The RTX 5090 is the fastest graphics ca-",
+"start": 27.747,
+"end": 31.216,
+"id": "L4",
+"take": 1
+},
+{
+"kind": "cut",
+"text": "The RTX 5090 is the fa-",
+"start": 32.116,
+"end": 34.57,
+"id": "L4",
+"take": 2
+},
+{
+"kind": "take",
+"text": "ugh.",
+"start": 35.17,
+"end": 35.462,
+"id": "L4",
+"take": "noise"
+},
+{
+"kind": "cut",
+"text": "The RTX 5090 is the fastest graphics card you can b-",
+"start": 36.562,
+"end": 40.701,
+"id": "L4",
+"take": 3
+},
+{
+"kind": "take",
+"text": "The RTX 5090 is the fastest graphics card you can buy right now.",
+"start": 41.701,
+"end": 46.251,
+"id": "L4",
+"take": 4
+},
+{
+"kind": "line",
+"text": "The RTX 5090 is the fastest graphics card you can buy right now.",
+"start": 47.551,
+"end": 52.362,
+"id": "L4",
+"take": 5
+},
+{
+"kind": "take",
+"text": "This laptop has the best battery I've tested this year.",
+"start": 52.962,
+"end": 55.964,
+"id": "L5",
+"take": 1
+},
+{
+"kind": "line",
+"text": "This laptop has the best battery life I've tested all year.",
+"start": 57.064,
+"end": 60.331,
+"id": "L5",
+"take": 2
+},
+{
+"kind": "line",
+"text": "Never, never buy a laptop with eight gigabytes of memory.",
+"start": 61.031,
+"end": 64.359
+},
+{
+"kind": "line",
+"text": "I tested it again and again and again.",
+"start": 64.959,
+"end": 67.169
+},
+{
+"kind": "line",
+"text": "So, um, the, uh, speakers are fine.",
+"start": 67.769,
+"end": 70.583
+},
+{
+"kind": "line",
+"text": "The the the screen is really bright.",
+"start": 71.183,
+"end": 72.662
+},
+{
+"kind": "take",
+"text": "ha ha ha",
+"start": 73.262,
+"end": 74.032,
+"id": "L6",
+"take": "laugh"
+},
+{
+"kind": "line",
+"text": "Okay, that is it for today.",
+"start": 74.832,
+"end": 76.621
+},
+{
+"kind": "line",
+"text": "Hey everyone, welcome back. Today I'm reviewing the Pixel 9 Pro and the M4 MacBook Air.",
+"start": 77.321,
+"end": 83.195,
+"id": "L1",
+"take": 3
+}
+],
+"transcripts": {
+"verbatim prompt, no rolling context": [
+{
+"text": "Hey",
+"start": 0.0,
+"end": 0.98,
+"p": 0.507
+},
+{
+"text": "everyone,",
+"start": 0.98,
+"end": 1.5,
+"p": 0.737
+},
+{
+"text": "welcome",
+"start": 1.8,
+"end": 2.0,
+"p": 0.912
+},
+{
+"text": "back",
+"start": 2.0,
+"end": 2.46,
+"p": 0.997
+},
+{
+"text": "to",
+"start": 2.46,
+"end": 2.66,
+"p": 0.995
+},
+{
+"text": "the",
+"start": 2.66,
+"end": 2.78,
+"p": 0.992
+},
+{
+"text": "channel.",
+"start": 2.78,
+"end": 3.12,
+"p": 0.986
+},
+{
+"text": "Today",
+"start": 3.8,
+"end": 4.0,
+"p": 0.954
+},
+{
+"text": "I'm",
+"start": 4.0,
+"end": 4.24,
+"p": 0.928
+},
+{
+"text": "reviewing",
+"start": 4.24,
+"end": 4.54,
+"p": 0.992
+},
+{
+"text": "the",
+"start": 4.54,
+"end": 4.84,
+"p": 0.974
+},
+{
+"text": "Pixel",
+"start": 4.84,
+"end": 5.16,
+"p": 0.983
+},
+{
+"text": "9",
+"start": 5.16,
+"end": 5.44,
+"p": 0.731
+},
+{
+"text": "Pro",
+"start": 5.44,
+"end": 5.72,
+"p": 0.939
+},
+{
+"text": "and",
+"start": 5.72,
+"end": 6.08,
+"p": 0.967
+},
+{
+"text": "the",
+"start": 6.08,
+"end": 6.28,
+"p": 0.977
+},
+{
+"text": "M4",
+"start": 6.28,
+"end": 6.66,
+"p": 0.98
+},
+{
+"text": "MacBook",
+"start": 6.66,
+"end": 6.98,
+"p": 0.815
+},
+{
+"text": "Air.",
+"start": 6.98,
+"end": 7.48,
+"p": 0.993
+},
+{
+"text": "Today",
+"start": 8.9,
+"end": 9.08,
+"p": 0.066
+},
+{
+"text": "I'm",
+"start": 9.08,
+"end": 9.38,
+"p": 0.987
+},
+{
+"text": "reviewing",
+"start": 9.38,
+"end": 9.66,
+"p": 0.998
+},
+{
+"text": "the",
+"start": 9.66,
+"end": 9.98,
+"p": 0.998
+},
+{
+"text": "Pixel",
+"start": 9.98,
+"end": 10.36,
+"p": 0.992
+},
+{
+"text": "9",
+"start": 10.36,
+"end": 10.6,
+"p": 0.991
+},
+{
+"text": "Pro",
+"start": 10.6,
+"end": 10.9,
+"p": 0.973
+},
+{
+"text": "and",
+"start": 10.9,
+"end": 11.28,
+"p": 0.997
+},
+{
+"text": "the",
+"start": 11.28,
+"end": 11.48,
+"p": 0.974
+},
+{
+"text": "M4",
+"start": 11.48,
+"end": 11.9,
+"p": 0.998
+},
+{
+"text": "MacBook",
+"start": 11.9,
+"end": 12.26,
+"p": 0.984
+},
+{
+"text": "Air.",
+"start": 12.26,
+"end": 12.76,
+"p": 0.998
+},
+{
+"text": "Let's",
+"start": 13.78,
+"end": 14.38,
+"p": 0.977
+},
+{
+"text": "start",
+"start": 14.38,
+"end": 14.58,
+"p": 0.993
+},
+{
+"text": "with",
+"start": 14.58,
+"end": 14.86,
+"p": 0.999
+},
+{
+"text": "the",
+"start": 14.86,
+"end": 15.04,
+"p": 0.996
+},
+{
+"text": "camera.",
+"start": 15.04,
+"end": 15.3,
+"p": 0.962
+},
+{
+"text": "I've",
+"start": 15.84,
+"end": 16.12,
+"p": 0.993
+},
+{
+"text": "been",
+"start": 16.12,
+"end": 16.3,
+"p": 0.999
+},
+{
+"text": "using",
+"start": 16.3,
+"end": 16.5,
+"p": 0.998
+},
+{
+"text": "this",
+"start": 16.5,
+"end": 16.84,
+"p": 0.994
+},
+{
+"text": "phone",
+"start": 16.84,
+"end": 17.16,
+"p": 0.996
+},
+{
+"text": "for",
+"start": 17.16,
+"end": 17.38,
+"p": 0.997
+},
+{
+"text": "three",
+"start": 17.38,
+"end": 17.72,
+"p": 0.312
+},
+{
+"text": "ye",
+"start": 17.72,
+"end": 17.92,
+"p": 0.004
+},
+{
+"text": "-",
+"start": 17.92,
+"end": 18.18,
+"p": 0.235
+},
+{
+"text": "for",
+"start": 18.18,
+"end": 18.54,
+"p": 0.248
+},
+{
+"text": "three",
+"start": 18.54,
+"end": 18.88,
+"p": 0.934
+},
+{
+"text": "years",
+"start": 18.88,
+"end": 19.08,
+"p": 0.958
+},
+{
+"text": "now,",
+"start": 19.08,
+"end": 19.48,
+"p": 0.989
+},
+{
+"text": "and",
+"start": 19.66,
+"end": 19.84,
+"p": 0.99
+},
+{
+"text": "the",
+"start": 19.84,
+"end": 20.02,
+"p": 0.996
+},
+{
+"text": "battery",
+"start": 20.02,
+"end": 20.3,
+"p": 0.954
+},
+{
+"text": "still",
+"start": 20.3,
+"end": 20.66,
+"p": 0.977
+},
+{
+"text": "lasts",
+"start": 20.66,
+"end": 20.98,
+"p": 0.963
+},
+{
+"text": "all",
+"start": 20.98,
+"end": 21.28,
+"p": 0.997
+},
+{
+"text": "day.",
+"start": 21.28,
+"end": 21.62,
+"p": 0.995
+},
+{
+"text": "So",
+"start": 22.26,
+"end": 22.54,
+"p": 0.972
+},
+{
+"text": "the",
+"start": 22.54,
+"end": 22.72,
+"p": 0.935
+},
+{
+"text": "best",
+"start": 22.72,
+"end": 22.94,
+"p": 0.984
+},
+{
+"text": "camera",
+"start": 22.94,
+"end": 23.34,
+"p": 0.981
+},
+{
+"text": "for,",
+"start": 23.34,
+"end": 23.62,
+"p": 0.993
+},
+{
+"text": "the",
+"start": 23.92,
+"end": 24.14,
+"p": 0.973
+},
+{
+"text": "best",
+"start": 24.14,
+"end": 24.38,
+"p": 0.987
+},
+{
+"text": "camera",
+"start": 24.38,
+"end": 24.72,
+"p": 0.994
+},
+{
+"text": "for",
+"start": 24.72,
+"end": 25.0,
+"p": 0.996
+},
+{
+"text": "beginners",
+"start": 25.0,
+"end": 25.34,
+"p": 0.987
+},
+{
+"text": "is",
+"start": 25.34,
+"end": 25.6,
+"p": 0.964
+},
+{
+"text": "the",
+"start": 25.6,
+"end": 25.76,
+"p": 0.991
+},
+{
+"text": "Sony",
+"start": 25.76,
+"end": 25.98,
+"p": 0.995
+},
+{
+"text": "ZV",
+"start": 25.98,
+"end": 26.4,
+"p": 0.909
+},
+{
+"text": "-E10.",
+"start": 26.4,
+"end": 26.84,
+"p": 0.544
+},
+{
+"text": "The",
+"start": 26.84,
+"end": 27.88,
+"p": 0.37
+},
+{
+"text": "RTX",
+"start": 27.88,
+"end": 28.1,
+"p": 0.955
+},
+{
+"text": "5000",
+"start": 28.1,
+"end": 29.0,
+"p": 0.786
+},
+{
+"text": "is",
+"start": 29.0,
+"end": 29.42,
+"p": 0.144
+},
+{
+"text": "the",
+"start": 29.42,
+"end": 29.86,
+"p": 0.973
+},
+{
+"text": "fastest",
+"start": 29.86,
+"end": 30.18,
+"p": 0.978
+},
+{
+"text": "graphics",
+"start": 30.18,
+"end": 30.76,
+"p": 0.951
+},
+{
+"text": "car.",
+"start": 30.76,
+"end": 31.2,
+"p": 0.217
+},
+{
+"text": "The",
+"start": 31.74,
+"end": 32.24,
+"p": 0.811
+},
+{
+"text": "RTX",
+"start": 32.24,
+"end": 32.56,
+"p": 0.987
+},
+{
+"text": "5000",
+"start": 32.56,
+"end": 33.36,
+"p": 0.934
+},
+{
+"text": "is",
+"start": 33.36,
+"end": 34.04,
+"p": 0.853
+},
+{
+"text": "the",
+"start": 34.04,
+"end": 34.34,
+"p": 0.96
+},
+{
+"text": "fa",
+"start": 34.34,
+"end": 34.46,
+"p": 0.039
+},
+{
+"text": "-",
+"start": 34.46,
+"end": 35.02,
+"p": 0.498
+},
+{
+"text": "UGH.",
+"start": 35.02,
+"end": 35.46,
+"p": 0.18
+},
+{
+"text": "The",
+"start": 36.42,
+"end": 36.68,
+"p": 0.981
+},
+{
+"text": "RTX",
+"start": 36.68,
+"end": 37.08,
+"p": 0.999
+},
+{
+"text": "5000",
+"start": 37.08,
+"end": 37.8,
+"p": 0.968
+},
+{
+"text": "is",
+"start": 37.8,
+"end": 38.42,
+"p": 0.99
+},
+{
+"text": "the",
+"start": 38.42,
+"end": 38.7,
+"p": 0.998
+},
+{
+"text": "fastest",
+"start": 38.7,
+"end": 39.02,
+"p": 0.994
+},
+{
+"text": "graphics",
+"start": 39.02,
+"end": 39.54,
+"p": 0.996
+},
+{
+"text": "car",
+"start": 39.54,
+"end": 39.94,
+"p": 0.539
+},
+{
+"text": "you",
+"start": 39.94,
+"end": 40.14,
+"p": 0.961
+},
+{
+"text": "can",
+"start": 40.14,
+"end": 40.5,
+"p": 0.965
+},
+{
+"text": "buy.",
+"start": 40.5,
+"end": 40.72,
+"p": 0.672
+},
+{
+"text": "The",
+"start": 41.38,
+"end": 41.82,
+"p": 0.989
+},
+{
+"text": "RTX",
+"start": 41.82,
+"end": 42.18,
+"p": 0.999
+},
+{
+"text": "5000",
+"start": 42.18,
+"end": 42.74,
+"p": 0.981
+},
+{
+"text": "is",
+"start": 42.74,
+"end": 43.36,
+"p": 0.993
+},
+{
+"text": "the",
+"start": 43.36,
+"end": 43.78,
+"p": 0.999
+},
+{
+"text": "fastest",
+"start": 43.78,
+"end": 44.08,
+"p": 0.996
+},
+{
+"text": "graphics",
+"start": 44.08,
+"end": 44.58,
+"p": 0.997
+},
+{
+"text": "card",
+"start": 44.58,
+"end": 45.0,
+"p": 0.306
+},
+{
+"text": "you",
+"start": 45.0,
+"end": 45.2,
+"p": 0.994
+},
+{
+"text": "can",
+"start": 45.2,
+"end": 45.4,
+"p": 0.997
+},
+{
+"text": "buy",
+"start": 45.4,
+"end": 45.62,
+"p": 0.99
+},
+{
+"text": "right",
+"start": 45.62,
+"end": 45.84,
+"p": 0.982
+},
+{
+"text": "now.",
+"start": 45.84,
+"end": 46.18,
+"p": 0.983
+},
+{
+"text": "The",
+"start": 47.14,
+"end": 47.68,
+"p": 0.89
+},
+{
+"text": "RTX",
+"start": 47.68,
+"end": 48.06,
+"p": 0.998
+},
+{
+"text": "5000",
+"start": 48.06,
+"end": 48.84,
+"p": 0.976
+},
+{
+"text": "is",
+"start": 48.84,
+"end": 49.42,
+"p": 0.998
+},
+{
+"text": "the",
+"start": 49.42,
+"end": 49.74,
+"p": 0.999
+},
+{
+"text": "fastest",
+"start": 49.74,
+"end": 50.04,
+"p": 0.996
+},
+{
+"text": "graphics",
+"start": 50.04,
+"end": 50.56,
+"p": 0.996
+},
+{
+"text": "card",
+"start": 50.56,
+"end": 51.02,
+"p": 0.986
+},
+{
+"text": "you",
+"start": 51.02,
+"end": 51.22,
+"p": 0.998
+},
+{
+"text": "can",
+"start": 51.22,
+"end": 51.42,
+"p": 0.999
+},
+{
+"text": "buy",
+"start": 51.42,
+"end": 51.64,
+"p": 0.995
+},
+{
+"text": "right",
+"start": 51.64,
+"end": 51.84,
+"p": 0.994
+},
+{
+"text": "now.",
+"start": 51.84,
+"end": 52.3,
+"p": 0.998
+},
+{
+"text": "This",
+"start": 52.88,
+"end": 53.16,
+"p": 0.84
+},
+{
+"text": "laptop",
+"start": 53.16,
+"end": 53.56,
+"p": 0.975
+},
+{
+"text": "has",
+"start": 53.56,
+"end": 53.9,
+"p": 0.998
+},
+{
+"text": "the",
+"start": 53.9,
+"end": 54.06,
+"p": 0.997
+},
+{
+"text": "best",
+"start": 54.06,
+"end": 54.3,
+"p": 0.992
+},
+{
+"text": "battery",
+"start": 54.3,
+"end": 54.7,
+"p": 0.981
+},
+{
+"text": "I've",
+"start": 54.7,
+"end": 54.92,
+"p": 0.849
+},
+{
+"text": "tested",
+"start": 54.92,
+"end": 55.24,
+"p": 0.997
+},
+{
+"text": "this",
+"start": 55.24,
+"end": 55.58,
+"p": 0.992
+},
+{
+"text": "year.",
+"start": 55.58,
+"end": 55.9,
+"p": 0.998
+},
+{
+"text": "This",
+"start": 56.64,
+"end": 57.24,
+"p": 0.514
+},
+{
+"text": "laptop",
+"start": 57.24,
+"end": 57.68,
+"p": 0.971
+},
+{
+"text": "has",
+"start": 57.68,
+"end": 58.0,
+"p": 0.989
+},
+{
+"text": "the",
+"start": 58.0,
+"end": 58.16,
+"p": 0.989
+},
+{
+"text": "best",
+"start": 58.16,
+"end": 58.4,
+"p": 0.991
+},
+{
+"text": "battery",
+"start": 58.4,
+"end": 58.74,
+"p": 0.938
+},
+{
+"text": "life",
+"start": 58.74,
+"end": 59.08,
+"p": 0.995
+},
+{
+"text": "I've",
+"start": 59.08,
+"end": 59.3,
+"p": 0.95
+},
+{
+"text": "tested",
+"start": 59.3,
+"end": 59.6,
+"p": 0.99
+},
+{
+"text": "all",
+"start": 59.6,
+"end": 59.92,
+"p": 0.985
+},
+{
+"text": "year.",
+"start": 59.92,
+"end": 60.26,
+"p": 0.994
+},
+{
+"text": "Never,",
+"start": 60.94,
+"end": 61.4,
+"p": 0.952
+},
+{
+"text": "never",
+"start": 61.66,
+"end": 61.86,
+"p": 0.928
+},
+{
+"text": "buy",
+"start": 61.86,
+"end": 62.16,
+"p": 0.995
+},
+{
+"text": "a",
+"start": 62.16,
+"end": 62.28,
+"p": 0.97
+},
+{
+"text": "laptop",
+"start": 62.28,
+"end": 62.62,
+"p": 0.999
+},
+{
+"text": "with",
+"start": 62.62,
+"end": 62.94,
+"p": 0.99
+},
+{
+"text": "8GB",
+"start": 62.94,
+"end": 63.36,
+"p": 0.8
+},
+{
+"text": "of",
+"start": 63.36,
+"end": 63.9,
+"p": 0.966
+},
+{
+"text": "memory.",
+"start": 63.9,
+"end": 64.26,
+"p": 0.987
+},
+{
+"text": "I",
+"start": 64.88,
+"end": 65.08,
+"p": 0.996
+},
+{
+"text": "tested",
+"start": 65.08,
+"end": 65.4,
+"p": 0.986
+},
+{
+"text": "it",
+"start": 65.4,
+"end": 65.62,
+"p": 0.995
+},
+{
+"text": "again",
+"start": 65.62,
+"end": 65.9,
+"p": 0.995
+},
+{
+"text": "and",
+"start": 65.9,
+"end": 66.24,
+"p": 0.627
+},
+{
+"text": "again",
+"start": 66.24,
+"end": 66.5,
+"p": 0.998
+},
+{
+"text": "and",
+"start": 66.5,
+"end": 66.68,
+"p": 0.958
+},
+{
+"text": "again.",
+"start": 66.68,
+"end": 67.1,
+"p": 0.998
+},
+{
+"text": "So,",
+"start": 67.7,
+"end": 68.06,
+"p": 0.949
+},
+{
+"text": "um,",
+"start": 68.36,
+"end": 68.56,
+"p": 0.714
+},
+{
+"text": "the,",
+"start": 68.9,
+"end": 68.98,
+"p": 0.61
+},
+{
+"text": "uh,",
+"start": 69.4,
+"end": 69.4,
+"p": 0.9
+},
+{
+"text": "speakers",
+"start": 69.62,
+"end": 69.84,
+"p": 0.993
+},
+{
+"text": "are",
+"start": 69.84,
+"end": 70.14,
+"p": 0.998
+},
+{
+"text": "fine.",
+"start": 70.14,
+"end": 70.5,
+"p": 0.996
+},
+{
+"text": "But",
+"start": 71.14,
+"end": 71.32,
+"p": 0.608
+},
+{
+"text": "the",
+"start": 71.32,
+"end": 71.46,
+"p": 0.937
+},
+{
+"text": "screen",
+"start": 71.46,
+"end": 71.74,
+"p": 0.927
+},
+{
+"text": "is",
+"start": 71.74,
+"end": 72.0,
+"p": 0.994
+},
+{
+"text": "really",
+"start": 72.0,
+"end": 72.2,
+"p": 0.995
+},
+{
+"text": "bright.",
+"start": 72.2,
+"end": 72.54,
+"p": 0.989
+},
+{
+"text": "Ha",
+"start": 73.24,
+"end": 73.48,
+"p": 0.368
+},
+{
+"text": "ha",
+"start": 73.48,
+"end": 73.68,
+"p": 0.687
+},
+{
+"text": "ha.",
+"start": 73.68,
+"end": 73.94,
+"p": 0.984
+},
+{
+"text": "Okay,",
+"start": 74.56,
+"end": 75.08,
+"p": 0.597
+},
+{
+"text": "that",
+"start": 75.42,
+"end": 75.64,
+"p": 0.987
+},
+{
+"text": "is",
+"start": 75.64,
+"end": 75.72,
+"p": 0.639
+},
+{
+"text": "it",
+"start": 75.72,
+"end": 75.9,
+"p": 0.995
+},
+{
+"text": "for",
+"start": 75.9,
+"end": 76.12,
+"p": 0.999
+},
+{
+"text": "today.",
+"start": 76.12,
+"end": 76.5,
+"p": 0.999
+},
+{
+"text": "Hey",
+"start": 77.28,
+"end": 77.52,
+"p": 0.99
+},
+{
+"text": "everyone,",
+"start": 77.52,
+"end": 78.02,
+"p": 0.958
+},
+{
+"text": "welcome",
+"start": 78.32,
+"end": 78.54,
+"p": 0.984
+},
+{
+"text": "back.",
+"start": 78.54,
+"end": 79.0,
+"p": 0.999
+},
+{
+"text": "Today",
+"start": 79.44,
+"end": 79.66,
+"p": 0.994
+},
+{
+"text": "I'm",
+"start": 79.66,
+"end": 79.92,
+"p": 0.969
+},
+{
+"text": "reviewing",
+"start": 79.92,
+"end": 80.22,
+"p": 0.998
+},
+{
+"text": "the",
+"start": 80.22,
+"end": 80.52,
+"p": 0.98
+},
+{
+"text": "Pixel",
+"start": 80.52,
+"end": 80.86,
+"p": 0.993
+},
+{
+"text": "9",
+"start": 80.86,
+"end": 81.12,
+"p": 0.955
+},
+{
+"text": "Pro",
+"start": 81.12,
+"end": 81.44,
+"p": 0.968
+},
+{
+"text": "and",
+"start": 81.44,
+"end": 81.76,
+"p": 0.985
+},
+{
+"text": "the",
+"start": 81.76,
+"end": 81.96,
+"p": 0.97
+},
+{
+"text": "M4",
+"start": 81.96,
+"end": 82.34,
+"p": 0.975
+},
+{
+"text": "MacBook",
+"start": 82.34,
+"end": 82.64,
+"p": 0.933
+},
+{
+"text": "Air.",
+"start": 82.64,
+"end": 83.14,
+"p": 0.993
+}
+],
+"no prompt, no fallback": [
+{
+"text": "Hey",
+"start": 0.0,
+"end": 0.98,
+"p": 0.507
+},
+{
+"text": "everyone,",
+"start": 0.98,
+"end": 1.5,
+"p": 0.737
+},
+{
+"text": "welcome",
+"start": 1.8,
+"end": 2.0,
+"p": 0.912
+},
+{
+"text": "back",
+"start": 2.0,
+"end": 2.46,
+"p": 0.997
+},
+{
+"text": "to",
+"start": 2.46,
+"end": 2.66,
+"p": 0.995
+},
+{
+"text": "the",
+"start": 2.66,
+"end": 2.78,
+"p": 0.992
+},
+{
+"text": "channel.",
+"start": 2.78,
+"end": 3.12,
+"p": 0.986
+},
+{
+"text": "Today",
+"start": 3.8,
+"end": 4.0,
+"p": 0.954
+},
+{
+"text": "I'm",
+"start": 4.0,
+"end": 4.24,
+"p": 0.928
+},
+{
+"text": "reviewing",
+"start": 4.24,
+"end": 4.54,
+"p": 0.992
+},
+{
+"text": "the",
+"start": 4.54,
+"end": 4.84,
+"p": 0.974
+},
+{
+"text": "Pixel",
+"start": 4.84,
+"end": 5.16,
+"p": 0.983
+},
+{
+"text": "9",
+"start": 5.16,
+"end": 5.44,
+"p": 0.731
+},
+{
+"text": "Pro",
+"start": 5.44,
+"end": 5.72,
+"p": 0.939
+},
+{
+"text": "and",
+"start": 5.72,
+"end": 6.08,
+"p": 0.967
+},
+{
+"text": "the",
+"start": 6.08,
+"end": 6.28,
+"p": 0.977
+},
+{
+"text": "M4",
+"start": 6.28,
+"end": 6.66,
+"p": 0.98
+},
+{
+"text": "MacBook",
+"start": 6.66,
+"end": 6.98,
+"p": 0.815
+},
+{
+"text": "Air.",
+"start": 6.98,
+"end": 7.48,
+"p": 0.993
+},
+{
+"text": "Today",
+"start": 8.9,
+"end": 9.08,
+"p": 0.066
+},
+{
+"text": "I'm",
+"start": 9.08,
+"end": 9.38,
+"p": 0.987
+},
+{
+"text": "reviewing",
+"start": 9.38,
+"end": 9.66,
+"p": 0.998
+},
+{
+"text": "the",
+"start": 9.66,
+"end": 9.98,
+"p": 0.998
+},
+{
+"text": "Pixel",
+"start": 9.98,
+"end": 10.36,
+"p": 0.992
+},
+{
+"text": "9",
+"start": 10.36,
+"end": 10.6,
+"p": 0.991
+},
+{
+"text": "Pro",
+"start": 10.6,
+"end": 10.9,
+"p": 0.973
+},
+{
+"text": "and",
+"start": 10.9,
+"end": 11.28,
+"p": 0.997
+},
+{
+"text": "the",
+"start": 11.28,
+"end": 11.48,
+"p": 0.974
+},
+{
+"text": "M4",
+"start": 11.48,
+"end": 11.9,
+"p": 0.998
+},
+{
+"text": "MacBook",
+"start": 11.9,
+"end": 12.26,
+"p": 0.984
+},
+{
+"text": "Air.",
+"start": 12.26,
+"end": 12.76,
+"p": 0.998
+},
+{
+"text": "Let's",
+"start": 13.78,
+"end": 14.38,
+"p": 0.977
+},
+{
+"text": "start",
+"start": 14.38,
+"end": 14.58,
+"p": 0.993
+},
+{
+"text": "with",
+"start": 14.58,
+"end": 14.86,
+"p": 0.999
+},
+{
+"text": "the",
+"start": 14.86,
+"end": 15.04,
+"p": 0.996
+},
+{
+"text": "camera.",
+"start": 15.04,
+"end": 15.3,
+"p": 0.962
+},
+{
+"text": "I've",
+"start": 15.84,
+"end": 16.12,
+"p": 0.993
+},
+{
+"text": "been",
+"start": 16.12,
+"end": 16.3,
+"p": 0.999
+},
+{
+"text": "using",
+"start": 16.3,
+"end": 16.5,
+"p": 0.998
+},
+{
+"text": "this",
+"start": 16.5,
+"end": 16.84,
+"p": 0.994
+},
+{
+"text": "phone",
+"start": 16.84,
+"end": 17.16,
+"p": 0.996
+},
+{
+"text": "for",
+"start": 17.16,
+"end": 17.38,
+"p": 0.997
+},
+{
+"text": "3",
+"start": 17.38,
+"end": 17.74,
+"p": 0.684
+},
+{
+"text": "years.",
+"start": 17.74,
+"end": 17.96,
+"p": 0.808
+},
+{
+"text": "For",
+"start": 18.28,
+"end": 18.58,
+"p": 0.906
+},
+{
+"text": "3",
+"start": 18.58,
+"end": 18.88,
+"p": 0.977
+},
+{
+"text": "years",
+"start": 18.88,
+"end": 19.08,
+"p": 0.988
+},
+{
+"text": "now,",
+"start": 19.08,
+"end": 19.46,
+"p": 0.973
+},
+{
+"text": "and",
+"start": 19.64,
+"end": 19.84,
+"p": 0.992
+},
+{
+"text": "the",
+"start": 19.84,
+"end": 20.02,
+"p": 0.997
+},
+{
+"text": "battery",
+"start": 20.02,
+"end": 20.3,
+"p": 0.949
+},
+{
+"text": "still",
+"start": 20.3,
+"end": 20.66,
+"p": 0.976
+},
+{
+"text": "lasts",
+"start": 20.66,
+"end": 20.98,
+"p": 0.948
+},
+{
+"text": "all",
+"start": 20.98,
+"end": 21.28,
+"p": 0.999
+},
+{
+"text": "day.",
+"start": 21.28,
+"end": 21.62,
+"p": 0.999
+},
+{
+"text": "So",
+"start": 22.26,
+"end": 22.54,
+"p": 0.984
+},
+{
+"text": "the",
+"start": 22.54,
+"end": 22.72,
+"p": 0.953
+},
+{
+"text": "best",
+"start": 22.72,
+"end": 22.94,
+"p": 0.987
+},
+{
+"text": "camera",
+"start": 22.94,
+"end": 23.34,
+"p": 0.987
+},
+{
+"text": "for.",
+"start": 23.34,
+"end": 23.62,
+"p": 0.993
+},
+{
+"text": "The",
+"start": 23.9,
+"end": 24.14,
+"p": 0.99
+},
+{
+"text": "best",
+"start": 24.14,
+"end": 24.38,
+"p": 0.979
+},
+{
+"text": "camera",
+"start": 24.38,
+"end": 24.72,
+"p": 0.993
+},
+{
+"text": "for",
+"start": 24.72,
+"end": 25.0,
+"p": 0.996
+},
+{
+"text": "beginners",
+"start": 25.0,
+"end": 25.34,
+"p": 0.992
+},
+{
+"text": "is",
+"start": 25.34,
+"end": 25.54,
+"p": 0.004
+},
+{
+"text": "the",
+"start": 25.54,
+"end": 25.74,
+"p": 0.58
+},
+{
+"text": "Sony",
+"start": 25.74,
+"end": 25.98,
+"p": 0.094
+},
+{
+"text": "Mi",
+"start": 25.98,
+"end": 26.24,
+"p": 0.214
+},
+{
+"text": "Mi",
+"start": 26.24,
+"end": 26.46,
+"p": 0.517
+},
+{
+"text": "10.",
+"start": 26.46,
+"end": 26.9,
+"p": 0.889
+},
+{
+"text": "The",
+"start": 27.84,
+"end": 27.88,
+"p": 0.691
+},
+{
+"text": "RTX",
+"start": 27.88,
+"end": 28.18,
+"p": 0.991
+},
+{
+"text": "590",
+"start": 28.18,
+"end": 29.34,
+"p": 0.45
+},
+{
+"text": "is",
+"start": 29.34,
+"end": 29.72,
+"p": 0.909
+},
+{
+"text": "the",
+"start": 29.72,
+"end": 29.88,
+"p": 0.985
+},
+{
+"text": "fastest",
+"start": 29.88,
+"end": 30.18,
+"p": 0.976
+},
+{
+"text": "graphics",
+"start": 30.18,
+"end": 30.76,
+"p": 0.974
+},
+{
+"text": "card.",
+"start": 30.76,
+"end": 31.2,
+"p": 0.847
+},
+{
+"text": "The",
+"start": 31.92,
+"end": 32.24,
+"p": 0.886
+},
+{
+"text": "RTX",
+"start": 32.24,
+"end": 32.6,
+"p": 0.995
+},
+{
+"text": "590",
+"start": 32.6,
+"end": 33.62,
+"p": 0.938
+},
+{
+"text": "is",
+"start": 33.62,
+"end": 34.18,
+"p": 0.886
+},
+{
+"text": "the",
+"start": 34.18,
+"end": 34.36,
+"p": 0.962
+},
+{
+"text": "fastest,",
+"start": 34.36,
+"end": 34.66,
+"p": 0.151
+},
+{
+"text": "uh.",
+"start": 35.1,
+"end": 35.28,
+"p": 0.404
+},
+{
+"text": "The",
+"start": 36.24,
+"end": 36.68,
+"p": 0.968
+},
+{
+"text": "RTX",
+"start": 36.68,
+"end": 37.12,
+"p": 0.998
+},
+{
+"text": "590",
+"start": 37.12,
+"end": 38.06,
+"p": 0.974
+},
+{
+"text": "is",
+"start": 38.06,
+"end": 38.54,
+"p": 0.992
+},
+{
+"text": "the",
+"start": 38.54,
+"end": 38.7,
+"p": 0.999
+},
+{
+"text": "fastest",
+"start": 38.7,
+"end": 39.06,
+"p": 0.994
+},
+{
+"text": "graphics",
+"start": 39.06,
+"end": 39.54,
+"p": 0.935
+},
+{
+"text": "card",
+"start": 39.54,
+"end": 39.96,
+"p": 0.994
+},
+{
+"text": "you",
+"start": 39.96,
+"end": 40.16,
+"p": 0.963
+},
+{
+"text": "can",
+"start": 40.16,
+"end": 40.5,
+"p": 0.986
+},
+{
+"text": "buy.",
+"start": 40.5,
+"end": 40.72,
+"p": 0.855
+},
+{
+"text": "The",
+"start": 41.26,
+"end": 41.82,
+"p": 0.992
+},
+{
+"text": "RTX",
+"start": 41.82,
+"end": 42.22,
+"p": 0.999
+},
+{
+"text": "590",
+"start": 42.22,
+"end": 43.1,
+"p": 0.968
+},
+{
+"text": "is",
+"start": 43.1,
+"end": 43.6,
+"p": 0.986
+},
+{
+"text": "the",
+"start": 43.6,
+"end": 43.76,
+"p": 0.999
+},
+{
+"text": "fastest",
+"start": 43.76,
+"end": 44.06,
+"p": 0.995
+},
+{
+"text": "graphics",
+"start": 44.06,
+"end": 44.54,
+"p": 0.969
+},
+{
+"text": "card",
+"start": 44.54,
+"end": 45.0,
+"p": 0.996
+},
+{
+"text": "you",
+"start": 45.0,
+"end": 45.2,
+"p": 0.99
+},
+{
+"text": "can",
+"start": 45.2,
+"end": 45.38,
+"p": 0.997
+},
+{
+"text": "buy",
+"start": 45.38,
+"end": 45.62,
+"p": 0.984
+},
+{
+"text": "right",
+"start": 45.62,
+"end": 45.86,
+"p": 0.974
+},
+{
+"text": "now.",
+"start": 45.86,
+"end": 46.18,
+"p": 0.975
+},
+{
+"text": "The",
+"start": 46.96,
+"end": 47.68,
+"p": 0.974
+},
+{
+"text": "RTX",
+"start": 47.68,
+"end": 48.06,
+"p": 0.999
+},
+{
+"text": "590",
+"start": 48.06,
+"end": 49.06,
+"p": 0.99
+},
+{
+"text": "is",
+"start": 49.06,
+"end": 49.58,
+"p": 0.996
+},
+{
+"text": "the",
+"start": 49.58,
+"end": 49.72,
+"p": 0.999
+},
+{
+"text": "fastest",
+"start": 49.72,
+"end": 50.08,
+"p": 0.996
+},
+{
+"text": "graphics",
+"start": 50.08,
+"end": 50.56,
+"p": 0.992
+},
+{
+"text": "card",
+"start": 50.56,
+"end": 51.02,
+"p": 0.997
+},
+{
+"text": "you",
+"start": 51.02,
+"end": 51.22,
+"p": 0.997
+},
+{
+"text": "can",
+"start": 51.22,
+"end": 51.42,
+"p": 0.999
+},
+{
+"text": "buy",
+"start": 51.42,
+"end": 51.64,
+"p": 0.99
+},
+{
+"text": "right",
+"start": 51.64,
+"end": 51.86,
+"p": 0.995
+},
+{
+"text": "now.",
+"start": 51.86,
+"end": 52.28,
+"p": 0.02
+},
+{
+"text": "This",
+"start": 52.88,
+"end": 53.16,
+"p": 0.758
+},
+{
+"text": "laptop",
+"start": 53.16,
+"end": 53.56,
+"p": 0.959
+},
+{
+"text": "has",
+"start": 53.56,
+"end": 53.9,
+"p": 0.989
+},
+{
+"text": "the",
+"start": 53.9,
+"end": 54.06,
+"p": 0.991
+},
+{
+"text": "best",
+"start": 54.06,
+"end": 54.3,
+"p": 0.986
+},
+{
+"text": "battery",
+"start": 54.3,
+"end": 54.7,
+"p": 0.95
+},
+{
+"text": "I've",
+"start": 54.7,
+"end": 54.94,
+"p": 0.859
+},
+{
+"text": "tested",
+"start": 54.94,
+"end": 55.24,
+"p": 0.993
+},
+{
+"text": "this",
+"start": 55.24,
+"end": 55.58,
+"p": 0.985
+},
+{
+"text": "year.",
+"start": 55.58,
+"end": 55.92,
+"p": 0.992
+},
+{
+"text": "This",
+"start": 57.04,
+"end": 57.24,
+"p": 0.77
+},
+{
+"text": "laptop",
+"start": 57.24,
+"end": 57.68,
+"p": 0.995
+},
+{
+"text": "has",
+"start": 57.68,
+"end": 58.0,
+"p": 0.994
+},
+{
+"text": "the",
+"start": 58.0,
+"end": 58.16,
+"p": 0.995
+},
+{
+"text": "best",
+"start": 58.16,
+"end": 58.4,
+"p": 0.993
+},
+{
+"text": "battery",
+"start": 58.4,
+"end": 58.82,
+"p": 0.996
+},
+{
+"text": "life",
+"start": 58.82,
+"end": 59.08,
+"p": 0.995
+},
+{
+"text": "I've",
+"start": 59.08,
+"end": 59.3,
+"p": 0.989
+},
+{
+"text": "tested",
+"start": 59.3,
+"end": 59.62,
+"p": 0.991
+},
+{
+"text": "all",
+"start": 59.62,
+"end": 59.92,
+"p": 0.983
+},
+{
+"text": "year.",
+"start": 59.92,
+"end": 60.26,
+"p": 0.995
+},
+{
+"text": "Never,",
+"start": 61.0,
+"end": 61.4,
+"p": 0.941
+},
+{
+"text": "never",
+"start": 61.68,
+"end": 61.86,
+"p": 0.921
+},
+{
+"text": "buy",
+"start": 61.86,
+"end": 62.16,
+"p": 0.995
+},
+{
+"text": "a",
+"start": 62.16,
+"end": 62.28,
+"p": 0.968
+},
+{
+"text": "laptop",
+"start": 62.28,
+"end": 62.64,
+"p": 0.999
+},
+{
+"text": "with",
+"start": 62.64,
+"end": 62.94,
+"p": 0.994
+},
+{
+"text": "8GB",
+"start": 62.94,
+"end": 63.36,
+"p": 0.813
+},
+{
+"text": "of",
+"start": 63.36,
+"end": 63.9,
+"p": 0.963
+},
+{
+"text": "memory.",
+"start": 63.9,
+"end": 64.26,
+"p": 0.978
+},
+{
+"text": "I",
+"start": 64.86,
+"end": 65.08,
+"p": 0.995
+},
+{
+"text": "tested",
+"start": 65.08,
+"end": 65.4,
+"p": 0.969
+},
+{
+"text": "it",
+"start": 65.4,
+"end": 65.62,
+"p": 0.995
+},
+{
+"text": "again",
+"start": 65.62,
+"end": 65.92,
+"p": 0.995
+},
+{
+"text": "and",
+"start": 65.92,
+"end": 66.24,
+"p": 0.453
+},
+{
+"text": "again",
+"start": 66.24,
+"end": 66.52,
+"p": 0.997
+},
+{
+"text": "and",
+"start": 66.52,
+"end": 66.68,
+"p": 0.963
+},
+{
+"text": "again.",
+"start": 66.68,
+"end": 67.04,
+"p": 0.998
+},
+{
+"text": "So,",
+"start": 67.7,
+"end": 68.06,
+"p": 0.919
+},
+{
+"text": "um,",
+"start": 68.32,
+"end": 68.56,
+"p": 0.741
+},
+{
+"text": "the,",
+"start": 68.84,
+"end": 69.0,
+"p": 0.527
+},
+{
+"text": "uh,",
+"start": 69.2,
+"end": 69.34,
+"p": 0.921
+},
+{
+"text": "speakers",
+"start": 69.62,
+"end": 69.84,
+"p": 0.995
+},
+{
+"text": "are",
+"start": 69.84,
+"end": 70.14,
+"p": 0.998
+},
+{
+"text": "fine.",
+"start": 70.14,
+"end": 70.5,
+"p": 0.996
+},
+{
+"text": "But",
+"start": 71.12,
+"end": 71.34,
+"p": 0.579
+},
+{
+"text": "the",
+"start": 71.34,
+"end": 71.44,
+"p": 0.924
+},
+{
+"text": "screen",
+"start": 71.44,
+"end": 71.76,
+"p": 0.811
+},
+{
+"text": "is",
+"start": 71.76,
+"end": 72.0,
+"p": 0.993
+},
+{
+"text": "really",
+"start": 72.0,
+"end": 72.2,
+"p": 0.992
+},
+{
+"text": "bright.",
+"start": 72.2,
+"end": 72.54,
+"p": 0.987
+},
+{
+"text": "Ha",
+"start": 73.2,
+"end": 73.5,
+"p": 0.341
+},
+{
+"text": "ha",
+"start": 73.5,
+"end": 73.66,
+"p": 0.635
+},
+{
+"text": "ha.",
+"start": 73.66,
+"end": 73.94,
+"p": 0.976
+},
+{
+"text": "Okay,",
+"start": 74.56,
+"end": 75.1,
+"p": 0.603
+},
+{
+"text": "that",
+"start": 75.42,
+"end": 75.64,
+"p": 0.987
+},
+{
+"text": "is",
+"start": 75.64,
+"end": 75.72,
+"p": 0.692
+},
+{
+"text": "it",
+"start": 75.72,
+"end": 75.9,
+"p": 0.995
+},
+{
+"text": "for",
+"start": 75.9,
+"end": 76.12,
+"p": 0.998
+},
+{
+"text": "today.",
+"start": 76.12,
+"end": 76.5,
+"p": 0.997
+},
+{
+"text": "Hey",
+"start": 77.26,
+"end": 77.52,
+"p": 0.987
+},
+{
+"text": "everyone,",
+"start": 77.52,
+"end": 78.02,
+"p": 0.941
+},
+{
+"text": "welcome",
+"start": 78.3,
+"end": 78.52,
+"p": 0.985
+},
+{
+"text": "back.",
+"start": 78.52,
+"end": 79.0,
+"p": 0.998
+},
+{
+"text": "Today",
+"start": 79.0,
+"end": 79.68,
+"p": 0.862
+},
+{
+"text": "I'm",
+"start": 79.68,
+"end": 79.92,
+"p": 0.903
+},
+{
+"text": "reviewing",
+"start": 79.92,
+"end": 80.24,
+"p": 0.994
+},
+{
+"text": "the",
+"start": 80.24,
+"end": 80.52,
+"p": 0.965
+},
+{
+"text": "Pixel",
+"start": 80.52,
+"end": 80.84,
+"p": 0.987
+},
+{
+"text": "9",
+"start": 80.84,
+"end": 81.1,
+"p": 0.619
+},
+{
+"text": "Pro",
+"start": 81.1,
+"end": 81.46,
+"p": 0.95
+},
+{
+"text": "and",
+"start": 81.46,
+"end": 81.76,
+"p": 0.958
+},
+{
+"text": "the",
+"start": 81.76,
+"end": 81.96,
+"p": 0.965
+},
+{
+"text": "M4",
+"start": 81.96,
+"end": 82.34,
+"p": 0.964
+},
+{
+"text": "MacBook",
+"start": 82.34,
+"end": 82.7,
+"p": 0.674
+},
+{
+"text": "Air.",
+"start": 82.7,
+"end": 83.14,
+"p": 0.993
+}
+],
+"today, with a swallowed take": [
+{
+"text": "Hey",
+"start": 0.0,
+"end": 0.98,
+"p": 0.507
+},
+{
+"text": "everyone,",
+"start": 0.98,
+"end": 1.5,
+"p": 0.737
+},
+{
+"text": "welcome",
+"start": 1.8,
+"end": 2.0,
+"p": 0.912
+},
+{
+"text": "back",
+"start": 2.0,
+"end": 2.46,
+"p": 0.997
+},
+{
+"text": "to",
+"start": 2.46,
+"end": 2.66,
+"p": 0.995
+},
+{
+"text": "the",
+"start": 2.66,
+"end": 2.78,
+"p": 0.992
+},
+{
+"text": "channel.",
+"start": 2.78,
+"end": 3.12,
+"p": 0.986
+},
+{
+"text": "Today",
+"start": 3.8,
+"end": 4.0,
+"p": 0.954
+},
+{
+"text": "I'm",
+"start": 4.0,
+"end": 4.24,
+"p": 0.928
+},
+{
+"text": "reviewing",
+"start": 4.24,
+"end": 4.54,
+"p": 0.992
+},
+{
+"text": "the",
+"start": 4.54,
+"end": 4.84,
+"p": 0.974
+},
+{
+"text": "Pixel",
+"start": 4.84,
+"end": 5.16,
+"p": 0.983
+},
+{
+"text": "9",
+"start": 5.16,
+"end": 5.44,
+"p": 0.731
+},
+{
+"text": "Pro",
+"start": 5.44,
+"end": 5.72,
+"p": 0.939
+},
+{
+"text": "and",
+"start": 5.72,
+"end": 6.08,
+"p": 0.967
+},
+{
+"text": "the",
+"start": 6.08,
+"end": 6.28,
+"p": 0.977
+},
+{
+"text": "M4",
+"start": 6.28,
+"end": 6.66,
+"p": 0.98
+},
+{
+"text": "MacBook",
+"start": 6.66,
+"end": 6.98,
+"p": 0.815
+},
+{
+"text": "Air.",
+"start": 6.98,
+"end": 7.48,
+"p": 0.993
+},
+{
+"text": "Today",
+"start": 8.9,
+"end": 9.08,
+"p": 0.066
+},
+{
+"text": "I'm",
+"start": 9.08,
+"end": 9.38,
+"p": 0.987
+},
+{
+"text": "reviewing",
+"start": 9.38,
+"end": 9.66,
+"p": 0.998
+},
+{
+"text": "the",
+"start": 9.66,
+"end": 9.98,
+"p": 0.998
+},
+{
+"text": "Pixel",
+"start": 9.98,
+"end": 10.36,
+"p": 0.992
+},
+{
+"text": "9",
+"start": 10.36,
+"end": 10.6,
+"p": 0.991
+},
+{
+"text": "Pro",
+"start": 10.6,
+"end": 10.9,
+"p": 0.973
+},
+{
+"text": "and",
+"start": 10.9,
+"end": 11.28,
+"p": 0.997
+},
+{
+"text": "the",
+"start": 11.28,
+"end": 11.48,
+"p": 0.974
+},
+{
+"text": "M4",
+"start": 11.48,
+"end": 11.9,
+"p": 0.998
+},
+{
+"text": "MacBook",
+"start": 11.9,
+"end": 12.26,
+"p": 0.984
+},
+{
+"text": "Air.",
+"start": 12.26,
+"end": 12.76,
+"p": 0.998
+},
+{
+"text": "Let's",
+"start": 13.78,
+"end": 14.38,
+"p": 0.977
+},
+{
+"text": "start",
+"start": 14.38,
+"end": 14.58,
+"p": 0.993
+},
+{
+"text": "with",
+"start": 14.58,
+"end": 14.86,
+"p": 0.999
+},
+{
+"text": "the",
+"start": 14.86,
+"end": 15.04,
+"p": 0.996
+},
+{
+"text": "camera.",
+"start": 15.04,
+"end": 15.3,
+"p": 0.962
+},
+{
+"text": "I've",
+"start": 15.84,
+"end": 16.12,
+"p": 0.993
+},
+{
+"text": "been",
+"start": 16.12,
+"end": 16.3,
+"p": 0.999
+},
+{
+"text": "using",
+"start": 16.3,
+"end": 16.5,
+"p": 0.998
+},
+{
+"text": "this",
+"start": 16.5,
+"end": 16.84,
+"p": 0.994
+},
+{
+"text": "phone",
+"start": 16.84,
+"end": 17.16,
+"p": 0.996
+},
+{
+"text": "for",
+"start": 17.16,
+"end": 17.38,
+"p": 0.997
+},
+{
+"text": "3",
+"start": 17.38,
+"end": 17.74,
+"p": 0.684
+},
+{
+"text": "years.",
+"start": 17.74,
+"end": 17.96,
+"p": 0.808
+},
+{
+"text": "For",
+"start": 18.28,
+"end": 18.58,
+"p": 0.906
+},
+{
+"text": "3",
+"start": 18.58,
+"end": 18.88,
+"p": 0.977
+},
+{
+"text": "years",
+"start": 18.88,
+"end": 19.08,
+"p": 0.988
+},
+{
+"text": "now,",
+"start": 19.08,
+"end": 19.46,
+"p": 0.973
+},
+{
+"text": "and",
+"start": 19.64,
+"end": 19.84,
+"p": 0.992
+},
+{
+"text": "the",
+"start": 19.84,
+"end": 20.02,
+"p": 0.997
+},
+{
+"text": "battery",
+"start": 20.02,
+"end": 20.3,
+"p": 0.949
+},
+{
+"text": "still",
+"start": 20.3,
+"end": 20.66,
+"p": 0.976
+},
+{
+"text": "lasts",
+"start": 20.66,
+"end": 20.98,
+"p": 0.948
+},
+{
+"text": "all",
+"start": 20.98,
+"end": 21.28,
+"p": 0.999
+},
+{
+"text": "day.",
+"start": 21.28,
+"end": 21.62,
+"p": 0.999
+},
+{
+"text": "So",
+"start": 22.26,
+"end": 22.54,
+"p": 0.984
+},
+{
+"text": "the",
+"start": 22.54,
+"end": 22.72,
+"p": 0.953
+},
+{
+"text": "best",
+"start": 22.72,
+"end": 22.94,
+"p": 0.987
+},
+{
+"text": "camera",
+"start": 22.94,
+"end": 23.34,
+"p": 0.987
+},
+{
+"text": "for.",
+"start": 23.34,
+"end": 23.62,
+"p": 0.993
+},
+{
+"text": "The",
+"start": 23.9,
+"end": 24.14,
+"p": 0.99
+},
+{
+"text": "best",
+"start": 24.14,
+"end": 24.38,
+"p": 0.979
+},
+{
+"text": "camera",
+"start": 24.38,
+"end": 24.72,
+"p": 0.993
+},
+{
+"text": "for",
+"start": 24.72,
+"end": 25.0,
+"p": 0.996
+},
+{
+"text": "beginners",
+"start": 25.0,
+"end": 25.34,
+"p": 0.992
+},
+{
+"text": "is",
+"start": 25.34,
+"end": 25.54,
+"p": 0.004
+},
+{
+"text": "the",
+"start": 25.54,
+"end": 25.74,
+"p": 0.58
+},
+{
+"text": "Sony",
+"start": 25.74,
+"end": 25.98,
+"p": 0.094
+},
+{
+"text": "MIDI",
+"start": 25.98,
+"end": 26.36,
+"p": 0.021
+},
+{
+"text": "10.",
+"start": 26.36,
+"end": 26.92,
+"p": 0.843
+},
+{
+"text": "The",
+"start": 27.74,
+"end": 27.88,
+"p": 0.675
+},
+{
+"text": "RTX",
+"start": 27.88,
+"end": 28.28,
+"p": 0.992
+},
+{
+"text": "5000",
+"start": 28.28,
+"end": 29.0,
+"p": 0.75
+},
+{
+"text": "is",
+"start": 29.0,
+"end": 29.4,
+"p": 0.15
+},
+{
+"text": "the",
+"start": 29.4,
+"end": 29.86,
+"p": 0.985
+},
+{
+"text": "fastest",
+"start": 29.86,
+"end": 30.18,
+"p": 0.974
+},
+{
+"text": "graphics",
+"start": 30.18,
+"end": 30.76,
+"p": 0.977
+},
+{
+"text": "card.",
+"start": 30.76,
+"end": 31.2,
+"p": 0.838
+},
+{
+"text": "The",
+"start": 31.7,
+"end": 32.24,
+"p": 0.879
+},
+{
+"text": "RTX",
+"start": 32.24,
+"end": 32.54,
+"p": 0.992
+},
+{
+"text": "5000",
+"start": 32.54,
+"end": 33.2,
+"p": 0.912
+},
+{
+"text": "is",
+"start": 33.2,
+"end": 33.92,
+"p": 0.858
+},
+{
+"text": "the",
+"start": 33.92,
+"end": 34.36,
+"p": 0.957
+},
+{
+"text": "fastest",
+"start": 34.36,
+"end": 34.58,
+"p": 0.386
+},
+{
+"text": "graphics",
+"start": 34.58,
+"end": 39.44,
+"p": 0.146
+},
+{
+"text": "card",
+"start": 39.44,
+"end": 39.94,
+"p": 0.926
+},
+{
+"text": "you",
+"start": 39.94,
+"end": 40.16,
+"p": 0.807
+},
+{
+"text": "can",
+"start": 40.16,
+"end": 40.48,
+"p": 0.972
+},
+{
+"text": "buy.",
+"start": 40.48,
+"end": 40.74,
+"p": 0.921
+},
+{
+"text": "The",
+"start": 41.26,
+"end": 41.82,
+"p": 0.966
+},
+{
+"text": "RTX",
+"start": 41.82,
+"end": 42.18,
+"p": 0.996
+},
+{
+"text": "5000",
+"start": 42.18,
+"end": 42.72,
+"p": 0.975
+},
+{
+"text": "is",
+"start": 42.72,
+"end": 43.36,
+"p": 0.993
+},
+{
+"text": "the",
+"start": 43.36,
+"end": 43.76,
+"p": 0.999
+},
+{
+"text": "fastest",
+"start": 43.76,
+"end": 44.06,
+"p": 0.989
+},
+{
+"text": "graphics",
+"start": 44.06,
+"end": 44.54,
+"p": 0.993
+},
+{
+"text": "card",
+"start": 44.54,
+"end": 45.0,
+"p": 0.995
+},
+{
+"text": "you",
+"start": 45.0,
+"end": 45.2,
+"p": 0.991
+},
+{
+"text": "can",
+"start": 45.2,
+"end": 45.38,
+"p": 0.996
+},
+{
+"text": "buy",
+"start": 45.38,
+"end": 45.62,
+"p": 0.991
+},
+{
+"text": "right",
+"start": 45.62,
+"end": 45.88,
+"p": 0.977
+},
+{
+"text": "now.",
+"start": 45.88,
+"end": 46.18,
+"p": 0.978
+},
+{
+"text": "This",
+"start": 52.34,
+"end": 53.14,
+"p": 0.077
+},
+{
+"text": "laptop",
+"start": 53.14,
+"end": 53.58,
+"p": 0.994
+},
+{
+"text": "has",
+"start": 53.58,
+"end": 53.9,
+"p": 0.996
+},
+{
+"text": "the",
+"start": 53.9,
+"end": 54.06,
+"p": 0.998
+},
+{
+"text": "best",
+"start": 54.06,
+"end": 54.3,
+"p": 0.992
+},
+{
+"text": "battery",
+"start": 54.3,
+"end": 54.7,
+"p": 0.076
+},
+{
+"text": "i've",
+"start": 54.7,
+"end": 54.94,
+"p": 0.441
+},
+{
+"text": "tested",
+"start": 54.94,
+"end": 55.22,
+"p": 0.992
+},
+{
+"text": "this",
+"start": 55.22,
+"end": 55.58,
+"p": 0.992
+},
+{
+"text": "year",
+"start": 55.58,
+"end": 55.92,
+"p": 0.995
+},
+{
+"text": "this",
+"start": 55.92,
+"end": 57.24,
+"p": 0.308
+},
+{
+"text": "laptop",
+"start": 57.24,
+"end": 57.68,
+"p": 0.986
+},
+{
+"text": "has",
+"start": 57.68,
+"end": 58.0,
+"p": 0.987
+},
+{
+"text": "the",
+"start": 58.0,
+"end": 58.16,
+"p": 0.992
+},
+{
+"text": "best",
+"start": 58.16,
+"end": 58.4,
+"p": 0.996
+},
+{
+"text": "battery",
+"start": 58.4,
+"end": 58.8,
+"p": 0.975
+},
+{
+"text": "life",
+"start": 58.8,
+"end": 59.08,
+"p": 0.992
+},
+{
+"text": "i've",
+"start": 59.08,
+"end": 59.3,
+"p": 0.974
+},
+{
+"text": "tested",
+"start": 59.3,
+"end": 59.6,
+"p": 0.994
+},
+{
+"text": "all",
+"start": 59.6,
+"end": 59.92,
+"p": 0.99
+},
+{
+"text": "year",
+"start": 59.92,
+"end": 60.38,
+"p": 0.995
+},
+{
+"text": "never",
+"start": 60.94,
+"end": 61.38,
+"p": 0.784
+},
+{
+"text": "never",
+"start": 61.38,
+"end": 61.82,
+"p": 0.366
+},
+{
+"text": "buy",
+"start": 61.82,
+"end": 62.16,
+"p": 0.987
+},
+{
+"text": "a",
+"start": 62.16,
+"end": 62.3,
+"p": 0.908
+},
+{
+"text": "laptop",
+"start": 62.3,
+"end": 62.62,
+"p": 0.999
+},
+{
+"text": "with",
+"start": 62.62,
+"end": 62.96,
+"p": 0.997
+},
+{
+"text": "8",
+"start": 62.96,
+"end": 63.2,
+"p": 0.78
+},
+{
+"text": "gigabytes",
+"start": 63.2,
+"end": 63.54,
+"p": 0.774
+},
+{
+"text": "of",
+"start": 63.54,
+"end": 63.9,
+"p": 0.995
+},
+{
+"text": "memory",
+"start": 63.9,
+"end": 64.3,
+"p": 0.993
+},
+{
+"text": "i",
+"start": 64.3,
+"end": 65.06,
+"p": 0.89
+},
+{
+"text": "tested",
+"start": 65.06,
+"end": 65.4,
+"p": 0.976
+},
+{
+"text": "it",
+"start": 65.4,
+"end": 65.6,
+"p": 0.998
+},
+{
+"text": "again",
+"start": 65.6,
+"end": 65.92,
+"p": 0.999
+},
+{
+"text": "and",
+"start": 65.92,
+"end": 66.24,
+"p": 0.986
+},
+{
+"text": "again",
+"start": 66.24,
+"end": 66.5,
+"p": 0.999
+},
+{
+"text": "and",
+"start": 66.5,
+"end": 66.68,
+"p": 0.991
+},
+{
+"text": "again",
+"start": 66.68,
+"end": 67.12,
+"p": 0.999
+},
+{
+"text": "so",
+"start": 67.66,
+"end": 68.04,
+"p": 0.969
+},
+{
+"text": "um",
+"start": 68.04,
+"end": 68.6,
+"p": 0.81
+},
+{
+"text": "the",
+"start": 68.6,
+"end": 69.0,
+"p": 0.524
+},
+{
+"text": "uh",
+"start": 69.0,
+"end": 69.44,
+"p": 0.6
+},
+{
+"text": "speakers",
+"start": 69.44,
+"end": 69.84,
+"p": 0.995
+},
+{
+"text": "are",
+"start": 69.84,
+"end": 70.12,
+"p": 1.0
+},
+{
+"text": "fine",
+"start": 70.12,
+"end": 70.54,
+"p": 0.999
+},
+{
+"text": "the",
+"start": 70.54,
+"end": 71.3,
+"p": 0.29
+},
+{
+"text": "screen",
+"start": 71.3,
+"end": 71.72,
+"p": 0.353
+},
+{
+"text": "is",
+"start": 71.72,
+"end": 72.0,
+"p": 0.999
+},
+{
+"text": "really",
+"start": 72.0,
+"end": 72.18,
+"p": 0.999
+},
+{
+"text": "bright",
+"start": 72.18,
+"end": 72.62,
+"p": 0.985
+},
+{
+"text": "ha",
+"start": 73.12,
+"end": 73.46,
+"p": 0.302
+},
+{
+"text": "ha",
+"start": 73.46,
+"end": 73.7,
+"p": 0.962
+},
+{
+"text": "ha",
+"start": 73.7,
+"end": 74.12,
+"p": 0.964
+},
+{
+"text": "okay",
+"start": 74.12,
+"end": 75.12,
+"p": 0.803
+},
+{
+"text": "that",
+"start": 75.12,
+"end": 75.62,
+"p": 0.975
+},
+{
+"text": "is",
+"start": 75.62,
+"end": 75.74,
+"p": 0.947
+},
+{
+"text": "it",
+"start": 75.74,
+"end": 75.9,
+"p": 0.998
+},
+{
+"text": "for",
+"start": 75.9,
+"end": 76.12,
+"p": 1.0
+},
+{
+"text": "today",
+"start": 76.12,
+"end": 76.54,
+"p": 0.999
+},
+{
+"text": "hey",
+"start": 76.54,
+"end": 77.5,
+"p": 0.956
+},
+{
+"text": "everyone",
+"start": 77.5,
+"end": 78.06,
+"p": 0.997
+},
+{
+"text": "welcome",
+"start": 78.06,
+"end": 78.54,
+"p": 0.989
+},
+{
+"text": "back",
+"start": 78.54,
+"end": 79.1,
+"p": 1.0
+},
+{
+"text": "today",
+"start": 79.1,
+"end": 79.66,
+"p": 0.98
+},
+{
+"text": "i'm",
+"start": 79.66,
+"end": 79.92,
+"p": 0.986
+},
+{
+"text": "reviewing",
+"start": 79.92,
+"end": 80.2,
+"p": 0.998
+},
+{
+"text": "the",
+"start": 80.2,
+"end": 80.52,
+"p": 0.997
+},
+{
+"text": "pixel",
+"start": 80.52,
+"end": 80.86,
+"p": 0.668
+},
+{
+"text": "i'm",
+"start": 80.86,
+"end": 81.22,
+"p": 0.499
+},
+{
+"text": "pro",
+"start": 81.22,
+"end": 81.46,
+"p": 0.98
+},
+{
+"text": "and",
+"start": 81.46,
+"end": 81.76,
+"p": 0.869
+},
+{
+"text": "the",
+"start": 81.76,
+"end": 81.98,
+"p": 0.292
+},
+{
+"text": "m4",
+"start": 81.98,
+"end": 82.34,
+"p": 0.739
+},
+{
+"text": "macbook",
+"start": 82.34,
+"end": 82.82,
+"p": 0.622
+},
+{
+"text": "air",
+"start": 82.82,
+"end": 83.14,
+"p": 0.461
+}
+]
+}
+}

@@ -91,6 +91,17 @@ export interface Settings {
    * Off until the person turns it on.
    */
   videoSignIn?: string | null
+  /**
+   * Whether Cutalong may send audio, and short video excerpts, to the other
+   * AI services the person has added keys for (see shared/services.ts). On
+   * unless turned off: nothing goes to a service until its key is added, and
+   * settings saved before this existed read as on.
+   */
+  otherServices?: boolean
+  /** Who hears the words: 'local' is this computer; absent means the first transcription service with a key. */
+  transcriber?: 'local' | 'deepgram' | 'assemblyai'
+  /** The Ollama model that plans edits on this computer. Absent or null means Claude, the default. */
+  localPlanner?: string | null
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string
@@ -233,7 +244,7 @@ export interface MusicTrack {
   duck: boolean
 }
 
-/** clip and edit are the classic tools; cut is a Cutalong edit document. */
+/** clip and edit are projects from Chop Shop, which Cutalong replaced; cut is a Cutalong edit. */
 export type ProjectMode = 'clip' | 'edit' | 'cut'
 
 /** Which guidance applies. The failure modes differ by kind of recording. */
@@ -281,7 +292,7 @@ export interface Project extends ProjectSummary {
   transcript: Transcript | null
   /** Editing-mode timeline. Null for clipping projects. */
   timeline: Timeline | null
-  /** The edit document of a Cutalong project. Absent from classic projects. */
+  /** The edit document of a Cutalong project. Absent from Chop Shop's old projects. */
   edit?: EditDoc | null
   /** The conversation that made the edit, so a chat can be picked up again. */
   chat?: ChatMessage[]

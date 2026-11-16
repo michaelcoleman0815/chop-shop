@@ -13,6 +13,7 @@ export type CutalongApi = Pick<
   | 'pathForFile'
   | 'openVideo'
   | 'prepareCut'
+  | 'planSession'
   | 'renderCut'
   | 'onCutProgress'
   | 'planEdit'
@@ -26,6 +27,9 @@ export type CutalongApi = Pick<
   | 'openProject'
   | 'saveProject'
   | 'mediaPreviews'
+  | 'mediaPoster'
+  | 'openMedia'
+  | 'extendCut'
   | 'reveal'
   | 'hasApiKey'
   | 'addAsset'
@@ -37,8 +41,23 @@ export type CutalongApi = Pick<
   | 'saveBrand'
   | 'learnBrand'
   | 'onBrandProgress'
+  | 'learnChoose'
+  | 'learnRun'
+  | 'learnState'
+  | 'learnEvaluate'
+  | 'learnForget'
+  | 'onLearnProgress'
+  | 'memoryView'
+  | 'rememberSignal'
+  | 'updateMemory'
   | 'chooseMedia'
   | 'checkKey'
+  | 'serviceKeys'
+  | 'setServiceKey'
+  | 'clearServiceKey'
+  | 'checkServiceKey'
+  | 'setOtherServices'
+  | 'localPlanners'
   | 'setApiKey'
   | 'clearApiKey'
   | 'provider'
@@ -67,8 +86,8 @@ export const isMock = !bridge
  */
 export const api: CutalongApi = bridge ?? createMockApi()
 
-/** A local file as the player can load it (the main process serves media://). */
+/** A local file as the player can load it, from the main process's media server. */
 export function mediaUrlFor(path: string): string {
   if (path.startsWith('data:')) return path
-  return isMock ? '/sample.mp4' : `media://local/${encodeURIComponent(path)}`
+  return isMock || !bridge ? '/sample.mp4' : `${bridge.mediaBase}/${encodeURIComponent(path)}`
 }

@@ -375,16 +375,33 @@ button:disabled {
   gap: var(--space-2);
 }
 
+/* Files waiting to be sent: they wrap, and a big drop scrolls rather than pushing the text away. */
+.cl-composer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  max-height: 112px;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
 .cl-attachment {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 32px;
-  max-width: 320px;
-  padding: 0 6px 0 12px;
+  height: 34px;
+  max-width: 260px;
+  padding: 0 6px 0 4px;
   border-radius: var(--radius-pill);
   background: var(--ground);
   font-size: 13.5px;
+}
+
+.cl-attachment .cl-poster {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: var(--radius-pill);
 }
 
 .cl-attachment span {
@@ -586,6 +603,83 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+/* Everything dropped in with a message, each a still of itself. */
+.cl-files {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+
+.cl-file {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 136px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.cl-file .cl-poster {
+  width: 136px;
+  height: 77px;
+  border-radius: var(--radius-thumb);
+  border: 1px solid var(--line);
+}
+
+.cl-file-name {
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-file-more {
+  cursor: pointer;
+}
+
+.cl-file-more .cl-poster {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cl-file-more:hover .cl-poster {
+  background: var(--beat);
+}
+
+/* A file's still: grey until the frame is ready, then the frame fades in. */
+.cl-poster {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--well);
+  color: var(--muted);
+}
+
+.cl-poster img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--duration-gentle) var(--ease-standard);
+}
+
+.cl-poster.ready img {
+  opacity: 1;
+}
+
 .cl-linkcard {
   display: flex;
   align-items: center;
@@ -675,9 +769,26 @@ button:disabled {
 .cl-progress {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
   color: var(--muted);
   font-size: 15px;
+}
+
+.cl-progress-stage {
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The stopwatch: tabular, so the row does not shuffle as seconds tick. */
+.cl-progress-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-progress-time::before {
+  content: '·';
+  margin-right: var(--space-3);
 }
 
 .cl-progress-bar {
@@ -694,6 +805,37 @@ button:disabled {
   background: var(--ink);
   border-radius: inherit;
   transition: width 200ms ease;
+}
+
+/* No percent to show: a short fill sweeps across, so it never looks stuck. */
+.cl-progress-bar.unknown > span {
+  width: 36%;
+  animation: cl-sweep calc(var(--duration-calm) * 3) var(--ease-standard) infinite;
+}
+
+@keyframes cl-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(280%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-progress-bar.unknown > span {
+    width: 100%;
+    animation: cl-pulse calc(var(--duration-calm) * 3) var(--ease-standard) infinite alternate;
+  }
+}
+
+@keyframes cl-pulse {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 0.7;
+  }
 }
 
 .cl-details {
@@ -981,6 +1123,26 @@ button:disabled {
   width: 22px;
   height: 22px;
   border-radius: var(--radius-pill);
+}
+
+/* A line said more than once: its name, its takes, and which one plays. */
+.cl-take {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.cl-take .cl-segments button {
+  width: auto;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 10px;
+  color: var(--ink-soft);
+}
+
+.cl-take .cl-segments button.on {
+  color: var(--ink);
 }
 
 .cl-note-input {
@@ -1523,6 +1685,16 @@ button:disabled {
   width: 18px;
   height: 18px;
   accent-color: var(--ink);
+}
+
+/* What I've learned: statements read as sentences, and one at a time is reworded in place. */
+.cl-memory .cl-list-main {
+  font-weight: 400;
+}
+
+.cl-memory-edit {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Settings */

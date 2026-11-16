@@ -10,6 +10,12 @@ import { AspectSchema, CAPTION_POSITIONS, CaptionSpecSchema, TightenSpecSchema }
  * touches pacing and /tighten never touches captions.
  */
 export const StyleSpecSchema = z.object({
+  /**
+   * Raw footage first: keep the best take of each line said more than once,
+   * and drop false starts and set-up talk (src/shared/raw). Runs before
+   * everything else, so the rest of the style lands on the kept takes.
+   */
+  takes: z.boolean().optional(),
   /** Average time between visual changes: cuts, punch-ins and cutaways. */
   pace: z.object({ secondsPerShot: z.number().min(0.3).max(30) }).optional(),
   tighten: TightenSpecSchema.optional(),
@@ -60,19 +66,28 @@ export type Preset = z.infer<typeof PresetSchema>
 
 export const BUILT_IN_PRESETS: Preset[] = [
   {
+    command: 'takes',
+    title: 'Takes',
+    summary: 'Keeps the best take of each line, and drops false starts and set-up talk.',
+    builtIn: true,
+    style: { takes: true },
+    inspiration: null
+  },
+  {
     command: 'tighten',
     title: 'Tighten',
-    summary: 'Cuts pauses longer than a third of a second, and the ums.',
+    summary: 'Keeps the best takes, then cuts pauses longer than a third of a second, and the ums.',
     builtIn: true,
-    style: { tighten: { maxGapSec: 0.35, padSec: 0.06, fillers: true } },
+    style: { takes: true, tighten: { maxGapSec: 0.35, padSec: 0.06, fillers: true } },
     inspiration: null
   },
   {
     command: 'snappy',
     title: 'Snappy',
-    summary: 'Cuts land right on the words: pauses past 0.15 s go, and the ums.',
+    summary: 'Keeps the best takes, and cuts land right on the words: pauses past 0.15 s go, and the ums.',
     builtIn: true,
     style: {
+      takes: true,
       tighten: { maxGapSec: 0.15, padSec: 0.03, fillers: true },
       pad: { inSec: 0.04, outSec: 0.06 }
     },
@@ -157,6 +172,7 @@ export function clock(sec: number): string {
  */
 export function describeStyle(style: StyleSpec): string[] {
   const facts: string[] = []
+  if (style.takes) facts.push('Best takes kept')
   if (style.pace) facts.push(`${seconds(style.pace.secondsPerShot)} per shot`)
   if (style.captions?.on === false) facts.push('No captions')
   else if (style.captions?.wordsPerScreen) {

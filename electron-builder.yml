@@ -1,5 +1,5 @@
 appId: social.brewed.chopshop
-productName: Chop Shop
+productName: Cutalong
 copyright: Copyright © 2026 Michael Coleman
 
 directories:
@@ -31,9 +31,6 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    NSMicrophoneUsageDescription: Chop Shop mixes your microphone into buffered clips when you enable it.
-    NSCameraUsageDescription: Not used. Present only because Chromium requests media permissions as a pair.
   target:
     - target: dmg
       arch: [arm64]

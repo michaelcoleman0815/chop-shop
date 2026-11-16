@@ -58,12 +58,17 @@ export async function isLocalUp(host: string): Promise<boolean> {
   }
 }
 
-export async function selectLocally(
+/**
+ * One chat turn on a model on this machine, held to a JSON schema, and the
+ * JSON it answers with. Shared by the clip finder and the edit planner.
+ */
+export async function chatLocally(
   host: string,
   model: string,
   system: string,
-  user: string
-): Promise<RawClip[]> {
+  user: string,
+  format: object
+): Promise<unknown> {
   const res = await fetch(`${host}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -73,7 +78,7 @@ export async function selectLocally(
       // Ollama defaults to a 4k window sized from VRAM, which silently drops
       // the front of a long transcript. A sermon is far past that.
       options: { num_ctx: 32768, temperature: 0 },
-      format: SCHEMA,
+      format,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user }
@@ -85,9 +90,7 @@ export async function selectLocally(
 
   if (!res.ok) {
     throw new Error(
-      res.status === 404
-        ? `${model} is not pulled. Run: ollama pull ${model}`
-        : `Ollama answered ${res.status}.`
+      res.status === 404 ? `${model} is not pulled. Run: ollama pull ${model}` : `Ollama answered ${res.status}.`
     )
   }
 
@@ -95,12 +98,15 @@ export async function selectLocally(
   const text = json.message?.content?.trim()
   if (!text) throw new Error('The local model returned nothing.')
 
-  let parsed: { clips?: RawClip[] }
   try {
-    parsed = JSON.parse(text)
+    return JSON.parse(text) as unknown
   } catch {
     throw new Error('The local model returned something that was not JSON.')
   }
-  if (!Array.isArray(parsed.clips)) throw new Error('The local model returned no clips.')
+}
+
+export async function selectLocally(host: string, model: string, system: string, user: string): Promise<RawClip[]> {
+  const parsed = (await chatLocally(host, model, system, user, SCHEMA)) as { clips?: RawClip[] } | null
+  if (!Array.isArray(parsed?.clips)) throw new Error('The local model returned no clips.')
   return parsed.clips
 }

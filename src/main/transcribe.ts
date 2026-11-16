@@ -2,12 +2,15 @@ import { spawn } from 'child_process'
 import { promises as fs, createWriteStream, existsSync } from 'fs'
 import { join } from 'path'
 import { app, net } from 'electron'
+import { loudnessEnvelope } from './audio-envelope'
 import { FFMPEG_PATH } from './ffmpeg'
 import { WHISPER_PATH } from './resources'
-import { tokensToWords } from './whisper-parse'
+import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
+import { voicedRegions } from '../shared/audio/voiced'
+import { whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
 import type { Transcript, TranscriptWord } from '../shared/types'
 
-export type WhisperModel = 'base.en' | 'small.en' | 'medium.en'
+export type { VerbatimOptions, WhisperModel }
 
 const MODEL_SIZES: Record<WhisperModel, number> = {
   'base.en': 148,
@@ -34,10 +37,7 @@ export function hasModel(model: WhisperModel): boolean {
  * megabytes and the download only lives as long as the app does, so quitting
  * mid-transfer is normal and should not cost the whole thing.
  */
-export async function downloadModel(
-  model: WhisperModel,
-  onProgress: (percent: number) => void
-): Promise<string> {
+export async function downloadModel(model: WhisperModel, onProgress: (percent: number) => void): Promise<string> {
   const dest = modelPath(model)
   if (existsSync(dest)) return dest
   await fs.mkdir(join(app.getPath('userData'), 'models'), { recursive: true })
@@ -84,9 +84,7 @@ export async function downloadModel(
   if (total > 0 && finalSize < total) {
     // Leave the partial in place so the next attempt can pick up where this
     // one stopped.
-    throw new Error(
-      `Model download incomplete: ${Math.round(finalSize / 1e6)} of ${Math.round(total / 1e6)} MB.`
-    )
+    throw new Error(`Model download incomplete: ${Math.round(finalSize / 1e6)} of ${Math.round(total / 1e6)} MB.`)
   }
 
   await fs.rename(tmp, dest)
@@ -138,8 +136,32 @@ async function extractAudio(
     })
     child.stderr.on('data', (d) => (stderr += d.toString()))
     child.on('error', reject)
+    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(stderr.trim() || `ffmpeg exit ${code}`))))
+  })
+}
+
+/** Runs whisper-cli to the end, reporting its progress from 0 to 100. */
+function runWhisper(bin: string, args: string[], onProgress: (percent: number) => void): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(bin, args)
+    let stderr = ''
+    // whisper prints a line per segment, and with -ml 1 that is one per word.
+    // Nothing reading stdout means the 64KB pipe fills and the process blocks
+    // forever at 0% CPU, which looks exactly like a hang.
+    child.stdout.on('data', (d) => {
+      const match = /progress\s*=\s*(\d+)%/.exec(d.toString())
+      if (match) onProgress(Number(match[1]))
+    })
+    child.stderr.on('data', (d) => {
+      const text = d.toString()
+      stderr = (stderr + text).slice(-8000)
+      // whisper prints progress to stderr as it consumes the audio.
+      const match = /progress\s*=\s*(\d+)%/.exec(text)
+      if (match) onProgress(Number(match[1]))
+    })
+    child.on('error', reject)
     child.on('close', (code) =>
-      code === 0 ? resolve() : reject(new Error(stderr.trim() || `ffmpeg exit ${code}`))
+      code === 0 ? resolve() : reject(new Error(stderr.trim().slice(-400) || `whisper exit ${code}`))
     )
   })
 }
@@ -154,7 +176,8 @@ export async function transcribe(
    * window, so its timings start at zero and are shifted back onto the source
    * here — everything downstream addresses the original recording.
    */
-  startSec = 0
+  startSec = 0,
+  verbatim?: VerbatimOptions
 ): Promise<Transcript> {
   const bin = WHISPER_PATH()
   if (!existsSync(bin)) {
@@ -178,60 +201,47 @@ export async function transcribe(
 
     onProgress(12, 'Transcribing')
     const prefix = join(dir, 'out')
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(bin, [
-        '-m',
-        modelFile,
-        '-f',
-        wav,
-        '-oj',
-        '-of',
-        prefix,
-        // One token per segment is what yields real per-word timings; without it
-        // whisper spreads words evenly across a whole segment.
-        '-ml',
-        '1',
-        // A token is not a word: alone, -ml 1 cuts "epileptic" into "epile" and
-        // "ptic", and each fragment becomes its own caption. Splitting on word
-        // boundaries instead is what makes word-level captions read as speech.
-        // (-dtw was measured here too and changed no timing at all, so it is
-        // not worth the memory it costs.)
-        '-sow',
-        // --print-progress is the only way to see how far along a long file is.
-        // -np would suppress it along with everything else.
-        '-pp'
-      ])
-      let stderr = ''
-      // whisper prints a line per segment, and with -ml 1 that is one per word.
-      // Nothing reading stdout means the 64KB pipe fills and the process blocks
-      // forever at 0% CPU, which looks exactly like a hang.
-      child.stdout.on('data', (d) => {
-        const match = /progress\s*=\s*(\d+)%/.exec(d.toString())
-        if (match) onProgress(12 + Math.round(Number(match[1]) * 0.86), 'Transcribing')
-      })
-      child.stderr.on('data', (d) => {
-        const text = d.toString()
-        stderr += text
-        // whisper prints progress to stderr as it consumes the audio.
-        const match = /progress\s*=\s*(\d+)%/.exec(text)
-        if (match) onProgress(12 + Math.round(Number(match[1]) * 0.86), 'Transcribing')
-      })
-      child.on('error', reject)
-      child.on('close', (code) =>
-        code === 0 ? resolve() : reject(new Error(stderr.trim().slice(-400) || `whisper exit ${code}`))
-      )
-    })
+    const until = verbatim ? 86 : 98
+    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim }), (p) =>
+      onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
+    )
+    const json = parseWhisperJson(await fs.readFile(`${prefix}.json`))
+    let heard = tokensToWords(json.transcription)
 
-    const json = JSON.parse(await fs.readFile(`${prefix}.json`, 'utf8'))
-    const windowWords = tokensToWords(json.transcription ?? [])
-    const words =
-      startSec > 0
-        ? windowWords.map((w) => ({
-            text: w.text,
-            startSec: w.startSec + startSec,
-            endSec: w.endSec + startSec
-          }))
-        : windowWords
+    if (verbatim && heard.length > 0) {
+      // Listen again, alone, wherever there is voiced sound no word accounts
+      // for: a take Whisper skipped, or swallowed into one stretched word.
+      onProgress(until, 'Listening again')
+      try {
+        const voiced = voicedRegions(await loudnessEnvelope(FFMPEG_PATH, wav))
+        let n = 0
+        const pass = await secondPass(heard, voiced, async (span) => {
+          const part = join(dir, `again-${++n}.wav`)
+          await extractAudio(wav, part, span.endSec - span.startSec, () => undefined, span.startSec)
+          const partPrefix = join(dir, `again-${n}`)
+          await runWhisper(
+            bin,
+            whisperArgs({ model, modelFile, wav: part, prefix: partPrefix, verbatim }),
+            () => undefined
+          )
+          const again = tokensToWords(parseWhisperJson(await fs.readFile(`${partPrefix}.json`)).transcription)
+          onProgress(Math.min(98, until + n), 'Listening again')
+          return again.map((w) => ({ ...w, startSec: w.startSec + span.startSec, endSec: w.endSec + span.startSec }))
+        })
+        heard = pass.words
+        if (pass.changed > 0) {
+          console.log(`[stt] a second listen restored words in ${pass.changed} of ${pass.spans.length} places`)
+        }
+      } catch (err) {
+        console.warn('[stt] the second listen failed, keeping the first:', err instanceof Error ? err.message : err)
+      }
+    }
+
+    const words: TranscriptWord[] = heard.map((w) => ({
+      text: w.text,
+      startSec: w.startSec + startSec,
+      endSec: w.endSec + startSec
+    }))
     onProgress(100, 'Done')
 
     return {

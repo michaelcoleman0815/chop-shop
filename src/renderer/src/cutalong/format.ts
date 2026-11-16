@@ -37,3 +37,18 @@ export function initials(name: string): string {
     .filter(Boolean)
   return (parts[0]?.[0] ?? 'Y').toUpperCase() + (parts[1]?.[0] ?? '').toUpperCase()
 }
+
+const AUDIO_EXT = /\.(wav|mp3|m4a|aac|flac|aif|aiff|ogg|opus|caf)$/i
+
+/** A recording with sound and no picture, like a mic or recorder file. */
+export function isAudioFile(name: string): boolean {
+  return AUDIO_EXT.test(name)
+}
+
+/** How long something has been running, the way a stopwatch reads: "12s", "9m 4s", "1h 2m". */
+export function elapsed(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+}

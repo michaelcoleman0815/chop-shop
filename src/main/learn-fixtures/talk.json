@@ -1,0 +1,1015 @@
+{
+ "rate": 22050,
+ "durationSec": 84.47931972789115,
+ "lines": [
+  {
+   "text": "So today I want to show you the one setting I change on every camera.",
+   "voice": "a",
+   "pause": 0.9,
+   "breath": true
+  },
+  {
+   "text": "Um, most people never open the settings menu.",
+   "voice": "a",
+   "pause": 0.52,
+   "breath": true
+  },
+  {
+   "text": "That's where the good stuff is.",
+   "voice": "a",
+   "pause": 1.5,
+   "breath": true
+  },
+  {
+   "text": "Here is the one I change before I shoot anything.",
+   "voice": "b",
+   "pause": 1.1
+  },
+  {
+   "text": "Here is the one I change before I shoot anything.",
+   "voice": "a",
+   "pause": 0.6
+  },
+  {
+   "text": "Turn off auto exposure, lock it, and your face",
+   "voice": "a",
+   "pause": 0.7
+  },
+  {
+   "text": "lock it, and your face stops pulsing every time you move.",
+   "voice": "a",
+   "pause": 0.8,
+   "breath": true
+  },
+  {
+   "text": "It sounds small, uh, but it is the difference between footage that looks cheap and footage that looks shot.",
+   "voice": "a",
+   "pause": 1.2
+  },
+  {
+   "text": "The second setting is shutter speed.",
+   "voice": "a",
+   "pause": 0.9
+  },
+  {
+   "text": "The second setting is shutter speed.",
+   "voice": "c",
+   "pause": 0.7
+  },
+  {
+   "text": "Set it to double your frame rate, so fifty for twenty five frames.",
+   "voice": "a",
+   "pause": 2,
+   "breath": true
+  },
+  {
+   "text": "And the last one is white balance.",
+   "voice": "b",
+   "pause": 0.8
+  },
+  {
+   "text": "And the last one is white balance.",
+   "voice": "c",
+   "pause": 0.9
+  },
+  {
+   "text": "And the last one is white balance.",
+   "voice": "a",
+   "pause": 0.5
+  },
+  {
+   "text": "Lock it to daylight and leave it there.",
+   "voice": "a",
+   "pause": 0.6
+  },
+  {
+   "text": "Do it today, and tell me what changed.",
+   "voice": "a",
+   "pause": 0.8
+  }
+ ],
+ "words": [
+  {
+   "text": "So",
+   "startSec": 0.6,
+   "endSec": 0.9956,
+   "line": 0
+  },
+  {
+   "text": "today",
+   "startSec": 1.04966,
+   "endSec": 1.53791,
+   "line": 0
+  },
+  {
+   "text": "I",
+   "startSec": 1.61179,
+   "endSec": 1.92431,
+   "line": 0
+  },
+  {
+   "text": "want",
+   "startSec": 1.96844,
+   "endSec": 2.42857,
+   "line": 0
+  },
+  {
+   "text": "to",
+   "startSec": 2.47941,
+   "endSec": 2.77302,
+   "line": 0
+  },
+  {
+   "text": "show",
+   "startSec": 2.83374,
+   "endSec": 3.23129,
+   "line": 0
+  },
+  {
+   "text": "you",
+   "startSec": 3.29043,
+   "endSec": 3.61664,
+   "line": 0
+  },
+  {
+   "text": "the",
+   "startSec": 3.66172,
+   "endSec": 3.93388,
+   "line": 0
+  },
+  {
+   "text": "one",
+   "startSec": 3.97533,
+   "endSec": 4.37397,
+   "line": 0
+  },
+  {
+   "text": "setting",
+   "startSec": 4.43701,
+   "endSec": 4.92376,
+   "line": 0
+  },
+  {
+   "text": "I",
+   "startSec": 5.00073,
+   "endSec": 5.30245,
+   "line": 0
+  },
+  {
+   "text": "change",
+   "startSec": 5.38113,
+   "endSec": 5.90327,
+   "line": 0
+  },
+  {
+   "text": "on",
+   "startSec": 5.97429,
+   "endSec": 6.35057,
+   "line": 0
+  },
+  {
+   "text": "every",
+   "startSec": 6.42494,
+   "endSec": 6.86023,
+   "line": 0
+  },
+  {
+   "text": "camera.",
+   "startSec": 6.93506,
+   "endSec": 7.32159,
+   "line": 0
+  },
+  {
+   "text": "Um,",
+   "startSec": 8.22159,
+   "endSec": 8.56825,
+   "line": 1
+  },
+  {
+   "text": "most",
+   "startSec": 8.81379,
+   "endSec": 9.2507,
+   "line": 1
+  },
+  {
+   "text": "people",
+   "startSec": 9.302,
+   "endSec": 9.66726,
+   "line": 1
+  },
+  {
+   "text": "never",
+   "startSec": 9.7307,
+   "endSec": 10.17125,
+   "line": 1
+  },
+  {
+   "text": "open",
+   "startSec": 10.23465,
+   "endSec": 10.64871,
+   "line": 1
+  },
+  {
+   "text": "the",
+   "startSec": 10.69256,
+   "endSec": 10.96354,
+   "line": 1
+  },
+  {
+   "text": "settings",
+   "startSec": 11.00848,
+   "endSec": 11.58626,
+   "line": 1
+  },
+  {
+   "text": "menu.",
+   "startSec": 11.63946,
+   "endSec": 12.12535,
+   "line": 1
+  },
+  {
+   "text": "That's",
+   "startSec": 12.64535,
+   "endSec": 13.13152,
+   "line": 2
+  },
+  {
+   "text": "where",
+   "startSec": 13.1927,
+   "endSec": 13.60354,
+   "line": 2
+  },
+  {
+   "text": "the",
+   "startSec": 13.68277,
+   "endSec": 13.95864,
+   "line": 2
+  },
+  {
+   "text": "good",
+   "startSec": 14.02408,
+   "endSec": 14.31728,
+   "line": 2
+  },
+  {
+   "text": "stuff",
+   "startSec": 14.38045,
+   "endSec": 14.7878,
+   "line": 2
+  },
+  {
+   "text": "is.",
+   "startSec": 14.85152,
+   "endSec": 15.18862,
+   "line": 2
+  },
+  {
+   "text": "Here",
+   "startSec": 16.68862,
+   "endSec": 17.10776,
+   "line": 3
+  },
+  {
+   "text": "is",
+   "startSec": 17.17315,
+   "endSec": 17.51438,
+   "line": 3
+  },
+  {
+   "text": "the",
+   "startSec": 17.57488,
+   "endSec": 17.87111,
+   "line": 3
+  },
+  {
+   "text": "one",
+   "startSec": 17.92431,
+   "endSec": 18.34245,
+   "line": 3
+  },
+  {
+   "text": "I",
+   "startSec": 18.39905,
+   "endSec": 18.74603,
+   "line": 3
+  },
+  {
+   "text": "change",
+   "startSec": 18.80639,
+   "endSec": 19.3239,
+   "line": 3
+  },
+  {
+   "text": "before",
+   "startSec": 19.39796,
+   "endSec": 19.90431,
+   "line": 3
+  },
+  {
+   "text": "I",
+   "startSec": 19.98113,
+   "endSec": 20.3254,
+   "line": 3
+  },
+  {
+   "text": "shoot",
+   "startSec": 20.3737,
+   "endSec": 20.78204,
+   "line": 3
+  },
+  {
+   "text": "anything.",
+   "startSec": 20.83932,
+   "endSec": 21.39878,
+   "line": 3
+  },
+  {
+   "text": "Here",
+   "startSec": 22.49878,
+   "endSec": 22.87932,
+   "line": 4
+  },
+  {
+   "text": "is",
+   "startSec": 22.92127,
+   "endSec": 23.26567,
+   "line": 4
+  },
+  {
+   "text": "the",
+   "startSec": 23.339,
+   "endSec": 23.60349,
+   "line": 4
+  },
+  {
+   "text": "one",
+   "startSec": 23.65773,
+   "endSec": 24.062,
+   "line": 4
+  },
+  {
+   "text": "I",
+   "startSec": 24.13483,
+   "endSec": 24.44376,
+   "line": 4
+  },
+  {
+   "text": "change",
+   "startSec": 24.5073,
+   "endSec": 25.02943,
+   "line": 4
+  },
+  {
+   "text": "before",
+   "startSec": 25.10612,
+   "endSec": 25.60862,
+   "line": 4
+  },
+  {
+   "text": "I",
+   "startSec": 25.67819,
+   "endSec": 25.98898,
+   "line": 4
+  },
+  {
+   "text": "shoot",
+   "startSec": 26.0644,
+   "endSec": 26.46172,
+   "line": 4
+  },
+  {
+   "text": "anything.",
+   "startSec": 26.51347,
+   "endSec": 27.04884,
+   "line": 4
+  },
+  {
+   "text": "Turn",
+   "startSec": 27.64884,
+   "endSec": 28.03374,
+   "line": 5
+  },
+  {
+   "text": "off",
+   "startSec": 28.10299,
+   "endSec": 28.42902,
+   "line": 5
+  },
+  {
+   "text": "auto",
+   "startSec": 28.47079,
+   "endSec": 28.83914,
+   "line": 5
+  },
+  {
+   "text": "exposure,",
+   "startSec": 28.89256,
+   "endSec": 29.52245,
+   "line": 5
+  },
+  {
+   "text": "lock",
+   "startSec": 29.77311,
+   "endSec": 30.13433,
+   "line": 5
+  },
+  {
+   "text": "it,",
+   "startSec": 30.19918,
+   "endSec": 30.46816,
+   "line": 5
+  },
+  {
+   "text": "and",
+   "startSec": 30.73787,
+   "endSec": 31.1219,
+   "line": 5
+  },
+  {
+   "text": "your",
+   "startSec": 31.18,
+   "endSec": 31.602,
+   "line": 5
+  },
+  {
+   "text": "face",
+   "startSec": 31.64816,
+   "endSec": 32.06776,
+   "line": 5
+  },
+  {
+   "text": "lock",
+   "startSec": 32.76776,
+   "endSec": 33.15134,
+   "line": 6
+  },
+  {
+   "text": "it,",
+   "startSec": 33.20748,
+   "endSec": 33.47655,
+   "line": 6
+  },
+  {
+   "text": "and",
+   "startSec": 33.73714,
+   "endSec": 34.11478,
+   "line": 6
+  },
+  {
+   "text": "your",
+   "startSec": 34.16195,
+   "endSec": 34.58585,
+   "line": 6
+  },
+  {
+   "text": "face",
+   "startSec": 34.65238,
+   "endSec": 35.05515,
+   "line": 6
+  },
+  {
+   "text": "stops",
+   "startSec": 35.11819,
+   "endSec": 35.67937,
+   "line": 6
+  },
+  {
+   "text": "pulsing",
+   "startSec": 35.72522,
+   "endSec": 36.22703,
+   "line": 6
+  },
+  {
+   "text": "every",
+   "startSec": 36.29918,
+   "endSec": 36.7219,
+   "line": 6
+  },
+  {
+   "text": "time",
+   "startSec": 36.76218,
+   "endSec": 37.18599,
+   "line": 6
+  },
+  {
+   "text": "you",
+   "startSec": 37.23787,
+   "endSec": 37.57501,
+   "line": 6
+  },
+  {
+   "text": "move.",
+   "startSec": 37.63329,
+   "endSec": 38.05814,
+   "line": 6
+  },
+  {
+   "text": "It",
+   "startSec": 38.85814,
+   "endSec": 39.10707,
+   "line": 7
+  },
+  {
+   "text": "sounds",
+   "startSec": 39.1795,
+   "endSec": 39.74567,
+   "line": 7
+  },
+  {
+   "text": "small,",
+   "startSec": 39.80236,
+   "endSec": 40.26735,
+   "line": 7
+  },
+  {
+   "text": "uh,",
+   "startSec": 40.54571,
+   "endSec": 40.77846,
+   "line": 7
+  },
+  {
+   "text": "but",
+   "startSec": 41.0337,
+   "endSec": 41.33814,
+   "line": 7
+  },
+  {
+   "text": "it",
+   "startSec": 41.39025,
+   "endSec": 41.65256,
+   "line": 7
+  },
+  {
+   "text": "is",
+   "startSec": 41.73043,
+   "endSec": 42.05288,
+   "line": 7
+  },
+  {
+   "text": "the",
+   "startSec": 42.11696,
+   "endSec": 42.38644,
+   "line": 7
+  },
+  {
+   "text": "difference",
+   "startSec": 42.43102,
+   "endSec": 42.91964,
+   "line": 7
+  },
+  {
+   "text": "between",
+   "startSec": 42.96916,
+   "endSec": 43.54168,
+   "line": 7
+  },
+  {
+   "text": "footage",
+   "startSec": 43.60073,
+   "endSec": 44.09243,
+   "line": 7
+  },
+  {
+   "text": "that",
+   "startSec": 44.15583,
+   "endSec": 44.54399,
+   "line": 7
+  },
+  {
+   "text": "looks",
+   "startSec": 44.62349,
+   "endSec": 45.05592,
+   "line": 7
+  },
+  {
+   "text": "cheap",
+   "startSec": 45.11147,
+   "endSec": 45.48757,
+   "line": 7
+  },
+  {
+   "text": "and",
+   "startSec": 45.55469,
+   "endSec": 45.92975,
+   "line": 7
+  },
+  {
+   "text": "footage",
+   "startSec": 45.99642,
+   "endSec": 46.47705,
+   "line": 7
+  },
+  {
+   "text": "that",
+   "startSec": 46.55079,
+   "endSec": 46.94739,
+   "line": 7
+  },
+  {
+   "text": "looks",
+   "startSec": 46.99542,
+   "endSec": 47.42558,
+   "line": 7
+  },
+  {
+   "text": "shot.",
+   "startSec": 47.49379,
+   "endSec": 47.89728,
+   "line": 7
+  },
+  {
+   "text": "The",
+   "startSec": 49.09728,
+   "endSec": 49.37234,
+   "line": 8
+  },
+  {
+   "text": "second",
+   "startSec": 49.43111,
+   "endSec": 49.9419,
+   "line": 8
+  },
+  {
+   "text": "setting",
+   "startSec": 50.01483,
+   "endSec": 50.4995,
+   "line": 8
+  },
+  {
+   "text": "is",
+   "startSec": 50.54218,
+   "endSec": 50.8658,
+   "line": 8
+  },
+  {
+   "text": "shutter",
+   "startSec": 50.91946,
+   "endSec": 51.32703,
+   "line": 8
+  },
+  {
+   "text": "speed.",
+   "startSec": 51.39347,
+   "endSec": 51.80068,
+   "line": 8
+  },
+  {
+   "text": "The",
+   "startSec": 52.70068,
+   "endSec": 52.961,
+   "line": 9
+  },
+  {
+   "text": "second",
+   "startSec": 53.02059,
+   "endSec": 53.52018,
+   "line": 9
+  },
+  {
+   "text": "setting",
+   "startSec": 53.58803,
+   "endSec": 54.03211,
+   "line": 9
+  },
+  {
+   "text": "is",
+   "startSec": 54.10517,
+   "endSec": 54.42322,
+   "line": 9
+  },
+  {
+   "text": "shutter",
+   "startSec": 54.49011,
+   "endSec": 54.87696,
+   "line": 9
+  },
+  {
+   "text": "speed.",
+   "startSec": 54.94789,
+   "endSec": 55.33134,
+   "line": 9
+  },
+  {
+   "text": "Set",
+   "startSec": 56.03134,
+   "endSec": 56.39188,
+   "line": 10
+  },
+  {
+   "text": "it",
+   "startSec": 56.45778,
+   "endSec": 56.7288,
+   "line": 10
+  },
+  {
+   "text": "to",
+   "startSec": 56.79202,
+   "endSec": 57.09379,
+   "line": 10
+  },
+  {
+   "text": "double",
+   "startSec": 57.14254,
+   "endSec": 57.51052,
+   "line": 10
+  },
+  {
+   "text": "your",
+   "startSec": 57.55946,
+   "endSec": 57.98739,
+   "line": 10
+  },
+  {
+   "text": "frame",
+   "startSec": 58.04898,
+   "endSec": 58.52086,
+   "line": 10
+  },
+  {
+   "text": "rate,",
+   "startSec": 58.58263,
+   "endSec": 58.98345,
+   "line": 10
+  },
+  {
+   "text": "so",
+   "startSec": 59.25864,
+   "endSec": 59.6429,
+   "line": 10
+  },
+  {
+   "text": "fifty",
+   "startSec": 59.70812,
+   "endSec": 60.1581,
+   "line": 10
+  },
+  {
+   "text": "for",
+   "startSec": 60.22925,
+   "endSec": 60.62399,
+   "line": 10
+  },
+  {
+   "text": "twenty",
+   "startSec": 60.69687,
+   "endSec": 61.19574,
+   "line": 10
+  },
+  {
+   "text": "five",
+   "startSec": 61.2473,
+   "endSec": 61.70018,
+   "line": 10
+  },
+  {
+   "text": "frames.",
+   "startSec": 61.74776,
+   "endSec": 62.32549,
+   "line": 10
+  },
+  {
+   "text": "And",
+   "startSec": 64.32549,
+   "endSec": 64.7176,
+   "line": 11
+  },
+  {
+   "text": "the",
+   "startSec": 64.78249,
+   "endSec": 65.07501,
+   "line": 11
+  },
+  {
+   "text": "last",
+   "startSec": 65.14159,
+   "endSec": 65.59256,
+   "line": 11
+  },
+  {
+   "text": "one",
+   "startSec": 65.65642,
+   "endSec": 66.0868,
+   "line": 11
+  },
+  {
+   "text": "is",
+   "startSec": 66.138,
+   "endSec": 66.49138,
+   "line": 11
+  },
+  {
+   "text": "white",
+   "startSec": 66.56644,
+   "endSec": 66.99605,
+   "line": 11
+  },
+  {
+   "text": "balance.",
+   "startSec": 67.05206,
+   "endSec": 67.54748,
+   "line": 11
+  },
+  {
+   "text": "And",
+   "startSec": 68.34748,
+   "endSec": 68.70798,
+   "line": 12
+  },
+  {
+   "text": "the",
+   "startSec": 68.77887,
+   "endSec": 69.03039,
+   "line": 12
+  },
+  {
+   "text": "last",
+   "startSec": 69.08902,
+   "endSec": 69.48141,
+   "line": 12
+  },
+  {
+   "text": "one",
+   "startSec": 69.56,
+   "endSec": 69.91927,
+   "line": 12
+  },
+  {
+   "text": "is",
+   "startSec": 69.97279,
+   "endSec": 70.2878,
+   "line": 12
+  },
+  {
+   "text": "white",
+   "startSec": 70.35882,
+   "endSec": 70.7166,
+   "line": 12
+  },
+  {
+   "text": "balance.",
+   "startSec": 70.79093,
+   "endSec": 71.25283,
+   "line": 12
+  },
+  {
+   "text": "And",
+   "startSec": 72.15283,
+   "endSec": 72.52902,
+   "line": 13
+  },
+  {
+   "text": "the",
+   "startSec": 72.59878,
+   "endSec": 72.88281,
+   "line": 13
+  },
+  {
+   "text": "last",
+   "startSec": 72.92966,
+   "endSec": 73.3405,
+   "line": 13
+  },
+  {
+   "text": "one",
+   "startSec": 73.4049,
+   "endSec": 73.80522,
+   "line": 13
+  },
+  {
+   "text": "is",
+   "startSec": 73.85029,
+   "endSec": 74.17288,
+   "line": 13
+  },
+  {
+   "text": "white",
+   "startSec": 74.21937,
+   "endSec": 74.62014,
+   "line": 13
+  },
+  {
+   "text": "balance.",
+   "startSec": 74.6766,
+   "endSec": 75.16431,
+   "line": 13
+  },
+  {
+   "text": "Lock",
+   "startSec": 75.66431,
+   "endSec": 76.04698,
+   "line": 14
+  },
+  {
+   "text": "it",
+   "startSec": 76.1185,
+   "endSec": 76.37587,
+   "line": 14
+  },
+  {
+   "text": "to",
+   "startSec": 76.4342,
+   "endSec": 76.72599,
+   "line": 14
+  },
+  {
+   "text": "daylight",
+   "startSec": 76.77288,
+   "endSec": 77.20476,
+   "line": 14
+  },
+  {
+   "text": "and",
+   "startSec": 77.25791,
+   "endSec": 77.63125,
+   "line": 14
+  },
+  {
+   "text": "leave",
+   "startSec": 77.67995,
+   "endSec": 78.10952,
+   "line": 14
+  },
+  {
+   "text": "it",
+   "startSec": 78.16649,
+   "endSec": 78.42898,
+   "line": 14
+  },
+  {
+   "text": "there.",
+   "startSec": 78.47932,
+   "endSec": 78.89787,
+   "line": 14
+  },
+  {
+   "text": "Do",
+   "startSec": 79.49787,
+   "endSec": 79.77442,
+   "line": 15
+  },
+  {
+   "text": "it",
+   "startSec": 79.84381,
+   "endSec": 80.10857,
+   "line": 15
+  },
+  {
+   "text": "today,",
+   "startSec": 80.18209,
+   "endSec": 80.65306,
+   "line": 15
+  },
+  {
+   "text": "and",
+   "startSec": 80.8946,
+   "endSec": 81.26553,
+   "line": 15
+  },
+  {
+   "text": "tell",
+   "startSec": 81.32399,
+   "endSec": 81.67057,
+   "line": 15
+  },
+  {
+   "text": "me",
+   "startSec": 81.71728,
+   "endSec": 82.04576,
+   "line": 15
+  },
+  {
+   "text": "what",
+   "startSec": 82.1156,
+   "endSec": 82.46259,
+   "line": 15
+  },
+  {
+   "text": "changed.",
+   "startSec": 82.52086,
+   "endSec": 83.07932,
+   "line": 15
+  }
+ ],
+ "breaths": [
+  {
+   "startSec": 7.63159,
+   "endSec": 7.91159
+  },
+  {
+   "startSec": 12.28535,
+   "endSec": 12.48535
+  },
+  {
+   "startSec": 15.79862,
+   "endSec": 16.07862
+  },
+  {
+   "startSec": 38.31814,
+   "endSec": 38.59814
+  },
+  {
+   "startSec": 63.18549,
+   "endSec": 63.46549
+  }
+ ]
+}

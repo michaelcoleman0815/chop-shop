@@ -1,4 +1,4 @@
-import { createDoc, wordsFromTranscript, type EditDoc } from '../../../shared/edit'
+import { addSources, createDoc, nextSourceId, wordsFromTranscript, type EditDoc } from '../../../shared/edit'
 import { BUILT_IN_PRESETS, describeStyle, LOOK_PRESETS, suggestCommandName, type Preset } from '../../../shared/presets'
 import {
   factDetails,
@@ -11,6 +11,18 @@ import {
 import type { Project, ProjectSummary, Settings } from '../../../shared/types'
 import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
 import { detectProvider } from '../../../shared/keys'
+import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
+import type { Word } from '../../../shared/edit'
+import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
+import { synthFinished, synthRecording } from '../../../shared/learn/synth'
+import {
+  changeMemory,
+  EMPTY_MEMORY,
+  memoryView,
+  recordSignal,
+  type Memory,
+  type SignalInput
+} from '../../../shared/memory'
 import type { CutalongApi } from './api'
 
 /**
@@ -37,10 +49,38 @@ function fakeWords(): { text: string; startSec: number; endSec: number }[] {
   return out
 }
 
+/**
+ * Raw footage, for files with "raw" in the name: a tech review with
+ * the retakes a person leaves in, so the takes can be seen working. "|0.9|"
+ * is a pause.
+ */
+const RAW_SCRIPT =
+  "Today I'm reviewing the Pixel 9 Pro. |1.2| Today I'm reviewing the Pixel 9 Pro and the Watch. " +
+  "Let's start with the camera. I've been using this phone for three ye- |0.4| for three years now, " +
+  'and the battery still lasts all day. |0.9| The main camera is a big, uh, |0.7| The main camera is a big step up. ' +
+  'Low light is where it shines. |1.0| Low light is where it really shines. ' +
+  "That's it for today. The link is in the description."
+
+function rawWords(): { text: string; startSec: number; endSec: number }[] {
+  const out: { text: string; startSec: number; endSec: number }[] = []
+  let t = 0.6
+  for (const token of RAW_SCRIPT.split(/\s+/)) {
+    const pause = /^\|([\d.]+)\|$/.exec(token)
+    if (pause) {
+      t += Number(pause[1])
+      continue
+    }
+    const len = 0.16 + Math.min(0.32, token.length * 0.035)
+    out.push({ text: token, startSec: t, endSec: t + len })
+    t += len + (/[.!?]$/.test(token) ? 0.5 : /,$/.test(token) ? 0.2 : 0.07)
+  }
+  return out
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 export function fakeDoc(path: string): EditDoc {
-  const words = fakeWords()
+  const words = /\braw\b/i.test(path.split('/').pop() ?? '') ? rawWords() : fakeWords()
   // Footage named as wide or landscape comes out 16:9; everything else is a vertical take.
   const wide = /wide|landscape|16x9/i.test(path)
   const source = {
@@ -62,6 +102,163 @@ export function fakeDoc(path: string): EditDoc {
   })
 }
 
+/**
+ * A raw take for learning from edits: retakes with no cue, a restart that
+ * backs up, ums and long pauses. Each take has its own made-up sound, so
+ * the real alignment can tell them apart.
+ */
+const TAKE = [
+  { text: 'So today I want to show you the one setting I change on every camera.', pause: 0.9 },
+  { text: 'Um, most people never open the settings menu.', pause: 0.45 },
+  { text: "That's where the good stuff is.", pause: 1.4 },
+  { text: 'Here is the one I change before I shoot anything.', pause: 1.1 },
+  { text: 'Here is the one I change before I shoot anything.', pause: 0.6 },
+  { text: 'Turn off auto exposure, lock it, and your face', pause: 0.7 },
+  { text: 'lock it, and your face stops pulsing every time you move.', pause: 0.8 },
+  {
+    text: 'It sounds small, uh, but it is the difference between footage that looks cheap and footage that looks shot.',
+    pause: 1.2
+  },
+  { text: 'Do it today, and tell me what changed.', pause: 0.8 }
+]
+
+function takeWords(): { words: Word[]; line: number[]; durationSec: number } {
+  const words: Word[] = []
+  const line: number[] = []
+  let t = 0.6
+  TAKE.forEach((l, li) => {
+    for (const part of l.text.split(' ')) {
+      const len = 0.12 + 0.045 * part.length
+      words.push({ id: `s1w${words.length + 1}`, source: 's1', text: part, startSec: t, endSec: t + len })
+      line.push(li)
+      t += len + 0.06 + (/,$/.test(part) ? 0.18 : 0)
+    }
+    t += l.pause
+  })
+  return { words, line, durationSec: t + 1 }
+}
+
+/** Learns from a made-up edit with the real shared logic; the nth run keeps different takes. */
+function mockLearn(
+  n: number,
+  recording: string,
+  finished: string
+): { ok: true; pair: LabelledPair } | { ok: false; message: string } {
+  const name = finished.split('/').pop() ?? finished
+  if (/music|silence/i.test(name)) {
+    return { ok: false, message: `I couldn't hear any speech in ${name}, so there is nothing to line up.` }
+  }
+  const take = takeWords()
+  const first = (li: number, nth = 0): number => take.line.indexOf(li) + nth
+  const last = (li: number): number => take.line.lastIndexOf(li)
+  // Even runs keep the first take of line 3 rather than the second.
+  const keeps: [number, number][] = [
+    [first(0), last(0)],
+    [first(1, 1), last(2)],
+    n % 2 === 0 ? [first(3), last(3)] : [first(4), last(4)],
+    [first(5), first(5, 3)],
+    [first(6), last(6)],
+    [first(7), first(7, 2)],
+    [first(7, 4), last(7)],
+    [first(8), last(8)]
+  ]
+  const voice = (w: Pick<Word, 'id'>): string => {
+    const i = take.words.findIndex((x) => x.id === w.id)
+    return `line${take.line[i]}:${i}`
+  }
+  const raw = synthRecording(take.words, take.durationSec, voice)
+  const before = 0.04 + 0.01 * (n % 3)
+  const after = 0.08
+  const pieces = keeps.map(([a, b]) => ({
+    rec: 0,
+    rawStart: take.words[a].startSec - before,
+    rawEnd: take.words[b].endSec + after
+  }))
+  // A different video altogether sounds nothing like this take.
+  const source = /other/i.test(name) ? synthRecording(take.words, take.durationSec, (w) => `other:${w.id}`) : raw
+  const fin = synthFinished([source], pieces, { bedDb: -44, gainDb: 4, leadSec: 1.2, seed: n + 3 })
+  const finWords = keeps.flatMap(([a, b], i) =>
+    take.words.slice(a, b + 1).map((w) => {
+      const shift = fin.outStarts[i] - pieces[i].rawStart
+      return { text: w.text, startSec: w.startSec + shift, endSec: w.endSec + shift }
+    })
+  )
+  const recordings = [
+    { id: 's1', name: recording.split('/').pop(), durationSec: take.durationSec, words: take.words, features: raw }
+  ]
+  const durationSec = fin.features.frames * fin.features.hopSec
+  const alignment = alignPair(recordings, { name, durationSec, words: finWords, features: fin.features })
+  if (!alignment.ok) return { ok: false, message: alignment.issues[0]?.text ?? 'I could not line these up.' }
+  const pair = buildPair(
+    {
+      id: `mock-${n}-${Date.now()}`,
+      title: name.replace(/\.[^.]+$/, ''),
+      createdAt: new Date().toISOString(),
+      recordings: [{ id: 's1', path: recording, durationSec: take.durationSec, bytes: null, modifiedAt: null }],
+      finished: { path: finished, durationSec, bytes: null, modifiedAt: null }
+    },
+    recordings,
+    alignment
+  )
+  return { ok: true, pair }
+}
+
+/**
+ * Four edits' worth of what someone asked for, undid and kept, so the brand
+ * page shows what learning looks like. ?memory=empty starts from nothing;
+ * ?memory=captions adds captions asked for at chest height on three edits,
+ * which become a brand default.
+ */
+function seededMemory(): Memory {
+  const which = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('memory')
+  if (which === 'empty') return { ...EMPTY_MEMORY }
+  const ask = (doc: string, text: string, version: number, tags: string[] = []): SignalInput => ({
+    kind: 'request',
+    doc,
+    text,
+    version,
+    tags
+  })
+  const run = (doc: string, command: string, version: number, tags: string[]): SignalInput => ({
+    kind: 'command',
+    doc,
+    command,
+    version,
+    tags
+  })
+  const undo = (doc: string, from: number, to: number): SignalInput => ({ kind: 'undo', doc, from, to })
+  const events: SignalInput[] = [
+    run('e1', 'snappy', 2, ['tight-cuts', 'fillers-cut']),
+    ask('e1', 'no, keep the pause before the joke', 3, ['restore-words']),
+    run('e1', 'shorts', 4, ['punch-in', 'aspect:vertical', 'captions-words:2']),
+    undo('e1', 4, 3),
+    ask('e1', 'keep the laugh at the end', 6, ['restore-words']),
+    run('e2', 'snappy', 2, ['tight-cuts']),
+    ask('e2', 'punch in on the reveal', 3, ['punch-in']),
+    undo('e2', 3, 2),
+    ask('e2', 'leave the laughs in', 5),
+    ask('e2', 'use the second take of the intro', 6, ['cut-words']),
+    run('e3', 'snappy', 2, ['tight-cuts']),
+    run('e3', 'hook', 3, ['punch-in']),
+    undo('e3', 3, 2),
+    ask('e3', 'keep the pauses, it feels rushed', 5),
+    ask('e3', "don't cut the laugh", 6),
+    ask('e3', 'go with the last take', 7, ['cut-words']),
+    run('e4', 'shorts', 2, ['punch-in', 'captions-words:2']),
+    ask('e4', 'keep the laughing bit', 3),
+    ask('e4', 'use the later take', 4, ['cut-words']),
+    run('e4', 'snappy', 5, ['tight-cuts']),
+    ...(which === 'captions'
+      ? ['e1', 'e2', 'e3'].map((doc) => ask(doc, 'put the captions at chest height', 9, ['captions-position:chest']))
+      : [])
+  ]
+  const start = Date.now() - 21 * 86_400_000
+  return events.reduce(
+    (m, e, i) => recordSignal(m, { ...e, at: new Date(start + i * 3_600_000).toISOString() }),
+    EMPTY_MEMORY
+  )
+}
+
 export function createMockApi(): CutalongApi {
   const listeners = {
     cut: new Set<(p: { stage: string; percent: number }) => void>(),
@@ -78,7 +275,7 @@ export function createMockApi(): CutalongApi {
     ['Lighting in a small room', 4]
   ]
   for (const [name, ago] of seed) {
-    const path = `/Users/you/Movies/Cutalong/${name}.chopshop`
+    const path = `/Users/you/Movies/Cutalong/${name}.cutalong`
     const doc = fakeDoc(`/Users/you/Movies/${name}.mov`)
     projects.set(path, {
       id: name,
@@ -109,8 +306,9 @@ export function createMockApi(): CutalongApi {
   }
 
   let key: string | null = null
+  const serviceKeys: Partial<Record<ServiceId, string>> = {}
   let settings: Settings = {
-    outputDir: '/Users/you/Movies/Chop Shop',
+    outputDir: '/Users/you/Movies/Cutalong',
     bufferSeconds: 60,
     grabShortcut: 'CommandOrControl+Shift+C',
     captureSourceId: null,
@@ -129,7 +327,8 @@ export function createMockApi(): CutalongApi {
     ccliLicense: null,
     ccliStreaming: null,
     exportPreset: null,
-    videoSignIn: null
+    videoSignIn: null,
+    otherServices: true
   }
   const models: Record<string, { mb: number; has: boolean }> = {
     'base.en': { mb: 148, has: true },
@@ -137,6 +336,10 @@ export function createMockApi(): CutalongApi {
     'medium.en': { mb: 1533, has: false }
   }
   const aiListeners = new Set<(p: { stage: string; percent: number }) => void>()
+  const learnListeners = new Set<(p: { stage: string; percent: number }) => void>()
+  let learned: LabelledPair[] = []
+  let runs = 0
+  let memory = seededMemory()
 
   return {
     getVersion: async () => '0.2.13',
@@ -144,9 +347,50 @@ export function createMockApi(): CutalongApi {
     openVideo: async () => null,
     hasApiKey: async () => key !== null,
 
-    prepareCut: async (path: string) => {
-      await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Transcribing', 'Splitting into beats'])
-      return { ok: true as const, doc: fakeDoc(path), mediaUrl: '/sample.mp4', warning: null }
+    prepareCut: async (input) => {
+      const paths = typeof input === 'string' ? [input] : input.paths
+      const sound = typeof input === 'string' ? [] : (input.soundPaths ?? [])
+      await progress(listeners.cut, [
+        'Reading the footage',
+        ...(sound.length ? ['Lining up your audio'] : []),
+        'Transcribing',
+        'Transcribing',
+        'Listening for the cuts'
+      ])
+      const doc = fakeDoc(paths[0])
+      const lined = sound.length
+        ? [
+            {
+              name: paths[0]
+                .split('/')
+                .pop()!
+                .replace(/\.[^.]+$/, ''),
+              sound: sound[0].split('/').pop()!,
+              offsetSec: 3.42
+            }
+          ]
+        : []
+      if (sound.length) doc.sources[0] = { ...doc.sources[0], audio: { path: sound[0], offsetSec: 3.42 } }
+      return { ok: true as const, doc, mediaUrl: '/sample.mp4', warning: null, lined }
+    },
+    planSession: async ({ request, paths }) => {
+      await progress(listeners.cut, ['Looking through your footage', 'Working out which file is which'])
+      const name = (p: string): string => p.split('/').pop() as string
+      const sound = paths.filter((p) => /^\d{4}-\d{2}-\d{2}/.test(name(p)) && /audio|computer|screen/i.test(request))
+      const rest = paths.filter((p) => !sound.includes(p))
+      const talking = rest.slice(0, 1)
+      const broll = rest.slice(1)
+      return {
+        ok: true as const,
+        roles: {
+          talking,
+          sound,
+          broll,
+          ignored: [],
+          reply: `${talking.map(name).join(', ')} is the talking.${sound.length ? ` The sound comes from ${sound.map(name).join(', ')}.` : ''}${broll.length ? ` ${broll.map(name).join(', ')} ${broll.length === 1 ? 'is' : 'are'} B-roll.` : ''}`,
+          by: 'measurement' as const
+        }
+      }
     },
     renderCut: async ({ doc, quality }) => {
       await progress(listeners.cut, [quality === 'final' ? 'Exporting' : 'Rendering a preview'])
@@ -162,13 +406,18 @@ export function createMockApi(): CutalongApi {
       return () => listeners.cut.delete(cb)
     },
     planEdit: async () =>
-      key === null
+      settings.localPlanner
         ? {
             ok: false as const,
-            message: 'Add your Anthropic API key in Settings and I can work on this.',
-            needsKey: true
+            message: `Plans come from ${settings.localPlanner} on this Mac, and this browser preview cannot reach it.`
           }
-        : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' },
+        : key === null
+          ? {
+              ok: false as const,
+              message: 'Add your Anthropic API key in Settings and I can work on this.',
+              needsKey: true
+            }
+          : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' },
 
     studyInspiration: async ({ url, path }) => {
       await progress(listeners.study, ['Fetching the video', 'Measuring the cuts', 'Listening to the pacing'])
@@ -222,7 +471,7 @@ export function createMockApi(): CutalongApi {
     recentProjects: async (): Promise<ProjectSummary[]> =>
       [...projects.values()].sort((a, b) => b.openedAt.localeCompare(a.openedAt)),
     createProject: async (name, mode) => {
-      const path = `/Users/you/Movies/Cutalong/${name}.chopshop`
+      const path = `/Users/you/Movies/Cutalong/${name}.cutalong`
       const project: Project = {
         id: path,
         name,
@@ -247,6 +496,25 @@ export function createMockApi(): CutalongApi {
     },
     mediaPreviews: async () => {
       throw new Error('No previews in the browser.')
+    },
+    mediaPoster: async () => null,
+    openMedia: async () => [],
+    extendCut: async ({ doc, paths, soundPaths }) => {
+      await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Listening for the cuts'])
+      const sound = soundPaths ?? []
+      const next = paths.reduce((d, path) => {
+        const extra = fakeDoc(path)
+        const id = nextSourceId(d)
+        const words = extra.words.map((w) => ({ ...w, id: `${id}${w.id}`, source: id }))
+        return addSources(d, [{ ...extra.sources[0], id }], words, `${path.split('/').pop()} is on the end.`)
+      }, doc)
+      const withSound = sound.length
+        ? {
+            ...next,
+            sources: next.sources.map((s) => (s.audio ? s : { ...s, audio: { path: sound[0], offsetSec: 3.42 } }))
+          }
+        : next
+      return { ok: true as const, doc: withSound, warning: null, lined: [] }
     },
     reveal: async () => undefined,
 
@@ -274,7 +542,7 @@ export function createMockApi(): CutalongApi {
         ok: true as const,
         asset: {
           kind: 'video' as const,
-          path: `/Users/you/Movies/Chop Shop/Assets/clip-${Date.now()}.mp4`,
+          path: `/Users/you/Movies/Cutalong/Assets/clip-${Date.now()}.mp4`,
           title: 'City at night, 4K',
           durationSec: 8,
           width: 1920,
@@ -367,6 +635,43 @@ export function createMockApi(): CutalongApi {
       listeners.cut.add(cb)
       return () => listeners.cut.delete(cb)
     },
+    learnChoose: async (kind) =>
+      kind === 'recordings' ? ['/Users/you/Movies/studio-take-03.mov'] : ['/Users/you/Movies/The $40 camera setup.mp4'],
+    learnRun: async ({ recordings, finished }) => {
+      const names = [...recordings, finished].map((p) => p.split('/').pop() ?? p)
+      const stages = names.flatMap((n) => [`Listening to ${n}`, `Transcribing ${n}`, `Transcribing ${n}`])
+      for (let i = 0; i < stages.length; i++) {
+        for (const cb of learnListeners) cb({ stage: stages[i], percent: Math.round((i / stages.length) * 92) })
+        await sleep(450)
+      }
+      for (const cb of learnListeners) cb({ stage: 'Lining them up', percent: 95 })
+      await sleep(400)
+      const r = mockLearn(++runs, recordings[0], finished)
+      if (!r.ok) return { ok: false as const, message: r.message, state: learnState(learned) }
+      learned = [...learned, r.pair]
+      return { ok: true as const, video: learnedVideo(r.pair), state: learnState(learned) }
+    },
+    learnState: async () => learnState(learned),
+    learnEvaluate: async () => {
+      await sleep(500)
+      return learnState(learned)
+    },
+    learnForget: async (id) => {
+      learned = learned.filter((p) => p.id !== id)
+      return learnState(learned)
+    },
+    onLearnProgress: (cb) => {
+      learnListeners.add(cb)
+      return () => learnListeners.delete(cb)
+    },
+    memoryView: async () => memoryView(memory),
+    rememberSignal: async (signal) => {
+      memory = recordSignal(memory, signal)
+    },
+    updateMemory: async (change) => {
+      memory = changeMemory(memory, change)
+      return memoryView(memory)
+    },
     // A made-up product logo, so the browser preview can pick a picture.
     chooseMedia: async () => ({
       kind: 'image' as const,
@@ -383,6 +688,52 @@ export function createMockApi(): CutalongApi {
         : detectProvider(key) === 'anthropic'
           ? { ok: true as const }
           : { ok: false as const, message: 'The API key was not accepted.', needsKey: true },
+    serviceKeys: async () =>
+      Object.fromEntries(SERVICES.map((s) => [s.id, Boolean(serviceKeys[s.id])])) as Record<ServiceId, boolean>,
+    setServiceKey: async (id, next) => {
+      const wrong = wrongServiceKey(id, next)
+      if (wrong) return { ok: false as const, message: wrong }
+      if (next.trim()) serviceKeys[id] = next.trim()
+      else delete serviceKeys[id]
+      return { ok: true as const }
+    },
+    clearServiceKey: async (id) => {
+      delete serviceKeys[id]
+    },
+    // The browser preview reaches no service, so it stands in for one: it
+    // takes a moment, and accepts keys of 20 characters or more.
+    checkServiceKey: async (id) => {
+      await sleep(900)
+      const saved = serviceKeys[id]
+      if (!saved)
+        return { ok: false as const, state: 'none' as const, message: `There is no ${serviceName(id)} key yet.` }
+      if (settings.otherServices === false) {
+        return {
+          ok: false as const,
+          state: 'off' as const,
+          message: 'Other AI services are off, so I did not check the key.'
+        }
+      }
+      return saved.length >= 20
+        ? { ok: true as const }
+        : {
+            ok: false as const,
+            state: 'refused' as const,
+            message: `${serviceName(id)} did not accept that key. Paste it again, or make a new one.`
+          }
+    },
+    setOtherServices: async (on) => {
+      settings = { ...settings, otherServices: on }
+      return on
+    },
+    // Stands in for Ollama running on this Mac with two models pulled.
+    localPlanners: async () => ({
+      up: true,
+      models: [
+        { name: 'local-8b', sizeBytes: 4_900_000_000 },
+        { name: 'local-3b', sizeBytes: 2_000_000_000 }
+      ]
+    }),
     setApiKey: async (next) => {
       key = next.trim() || null
     },

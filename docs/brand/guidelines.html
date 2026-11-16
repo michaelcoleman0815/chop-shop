@@ -1,0 +1,1012 @@
+<!doctype html>
+<!--
+  Cutalong brand guidelines. docs/brand-guidelines.pdf is printed from this
+  file, so change this and print it again rather than editing the PDF:
+
+    node docs/brand/print.cjs
+
+  Colours, type, spacing and motion are copied from src/renderer/src/cutalong/tokens.json,
+  and the mark is drawn exactly as components/ui.tsx draws it.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cutalong brand guidelines</title>
+    <style>
+      @font-face {
+        font-family: 'Figtree';
+        src: url('../../node_modules/@fontsource-variable/figtree/files/figtree-latin-wght-normal.woff2') format('woff2');
+        font-weight: 300 900;
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: url('../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2')
+          format('woff2');
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: url('../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2')
+          format('woff2');
+        font-weight: 500;
+      }
+
+      :root {
+        --ground: #f5f5f3;
+        --card: #ffffff;
+        --well: #ecebe8;
+        --line: #e8e7e4;
+        --beat: #e7e6e2;
+        --ink: #15161a;
+        --ink-soft: #4b4d55;
+        --muted: #5e6068;
+        --coral: #ff5a36;
+        --sans: 'Figtree', -apple-system, sans-serif;
+        --mono: 'JetBrains Mono', ui-monospace, monospace;
+      }
+
+      @page {
+        size: Letter;
+        margin: 0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: var(--ground);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 13px;
+        line-height: 20px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .page {
+        width: 8.5in;
+        height: 11in;
+        padding: 0.7in 0.75in 0.85in;
+        position: relative;
+        overflow: hidden;
+        page-break-after: always;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .page:last-child {
+        page-break-after: auto;
+      }
+
+      .folio {
+        position: absolute;
+        left: 0.75in;
+        right: 0.75in;
+        bottom: 0.4in;
+        display: flex;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 8px;
+      }
+
+      h1 {
+        font-size: 52px;
+        line-height: 56px;
+        font-weight: 700;
+        letter-spacing: -0.045em;
+        margin: 0;
+      }
+
+      h2 {
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+        font-size: 30px;
+        line-height: 34px;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        margin: 0 0 6px;
+      }
+
+      h2 .n {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      h3 {
+        font-size: 14px;
+        line-height: 20px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        margin: 0 0 4px;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .lede {
+        font-size: 15px;
+        line-height: 23px;
+        color: var(--ink-soft);
+        max-width: 5.6in;
+        margin-bottom: 22px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .two {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .three {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+
+      .four {
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 18px 20px;
+      }
+
+      .stage {
+        height: 104px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 12px;
+      }
+
+      .note {
+        color: var(--ink-soft);
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      .lockup {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 800;
+        letter-spacing: -0.045em;
+      }
+
+      .tile {
+        display: grid;
+        place-items: center;
+        background: var(--coral);
+        border-radius: 10px;
+      }
+
+      .mono {
+        font-family: var(--mono);
+      }
+
+      /* Cover */
+      .cover .top {
+        flex: 1;
+      }
+
+      .cover h1 {
+        font-size: 64px;
+        line-height: 66px;
+        margin-top: 2.1in;
+      }
+
+      .cover .meta {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 18px 0 30px;
+      }
+
+      .cover .lede {
+        font-size: 17px;
+        line-height: 26px;
+        max-width: 5.8in;
+      }
+
+      .aside {
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 18px;
+        max-width: 5.8in;
+      }
+
+      /* Construction */
+      .construction {
+        display: grid;
+        grid-template-columns: 1fr 1.25fr;
+        gap: 22px;
+        align-items: center;
+      }
+
+      .specs {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        column-gap: 14px;
+        row-gap: 6px;
+        font-size: 12px;
+        line-height: 17px;
+      }
+
+      .specs dt {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--muted);
+      }
+
+      .specs dd {
+        margin: 0;
+      }
+
+      .misuse .stage {
+        height: 62px;
+        position: relative;
+        margin-bottom: 8px;
+      }
+
+      .misuse .stage::after {
+        content: '';
+        position: absolute;
+        left: 12%;
+        right: 12%;
+        top: 50%;
+        border-top: 1.5px solid var(--ink);
+        transform: rotate(-24deg);
+        opacity: 0.55;
+      }
+
+      /* Colour */
+      .swatch {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--card);
+      }
+
+      .swatch .chip {
+        height: 74px;
+      }
+
+      .swatch .body {
+        padding: 10px 12px 12px;
+      }
+
+      .swatch .name {
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      .swatch .hex {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--muted);
+        margin: 2px 0 6px;
+      }
+
+      .swatch .use {
+        font-size: 11px;
+        line-height: 15.5px;
+        color: var(--ink-soft);
+      }
+
+      .rule {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 12px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .rule:first-child {
+        border-top: 0;
+      }
+
+      .rule .k {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--muted);
+        width: 22px;
+        flex: 0 0 22px;
+        padding-top: 1px;
+      }
+
+      /* Type */
+      .specimen {
+        display: grid;
+        grid-template-columns: 1fr 1.5in;
+        gap: 18px;
+        align-items: baseline;
+        padding: 11px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .specimen:first-child {
+        border-top: 0;
+      }
+
+      .specimen .spec {
+        font-family: var(--mono);
+        font-size: 10px;
+        line-height: 15px;
+        color: var(--muted);
+        text-align: right;
+      }
+
+      .scale {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        height: 54px;
+      }
+
+      .scale span {
+        display: block;
+        background: var(--ink);
+        border-radius: 2px;
+      }
+
+      .scale-labels {
+        display: flex;
+        gap: 10px;
+        font-family: var(--mono);
+        font-size: 9.5px;
+        color: var(--muted);
+        margin-top: 6px;
+      }
+
+      .radii {
+        display: flex;
+        gap: 12px;
+        align-items: flex-end;
+      }
+
+      .radii div {
+        border: 1.5px solid var(--ink);
+        background: var(--card);
+      }
+
+      /* Product */
+      .shot {
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--card);
+      }
+
+      .shot img {
+        display: block;
+        width: 100%;
+      }
+
+      .caption {
+        font-size: 11px;
+        line-height: 16px;
+        color: var(--muted);
+        margin-top: 6px;
+      }
+
+      /* Voice */
+      .say {
+        font-size: 15px;
+        line-height: 22px;
+        padding: 10px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .say:first-of-type {
+        border-top: 0;
+      }
+
+      .never .say {
+        color: var(--muted);
+        text-decoration: line-through;
+        text-decoration-color: rgba(21, 22, 26, 0.35);
+      }
+
+      /* Motion */
+      .durations {
+        display: grid;
+        gap: 10px;
+      }
+
+      .duration {
+        display: grid;
+        grid-template-columns: 1.4in 52px 1fr;
+        gap: 10px;
+        align-items: center;
+        font-size: 11.5px;
+        line-height: 16px;
+        color: var(--ink-soft);
+      }
+
+      .duration .bar {
+        height: 6px;
+        border-radius: 999px;
+        background: var(--ink);
+      }
+
+      .duration .mono {
+        font-size: 10.5px;
+        color: var(--ink);
+      }
+
+      .curves {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+
+      .curves svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        margin-bottom: 6px;
+      }
+
+      .march {
+        display: flex;
+        gap: 18px;
+        align-items: flex-end;
+        margin: 6px 0 12px;
+      }
+
+      .march div {
+        font-family: var(--mono);
+        font-size: 9.5px;
+        color: var(--muted);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The mark, drawn once and reused. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="mark" viewBox="0 0 64 52">
+          <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+          <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" />
+        </symbol>
+        <symbol id="mark-white" viewBox="0 0 64 52">
+          <rect x="2" y="4" width="44" height="18" rx="9" fill="#FFFFFF" />
+          <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-dasharray="7 6" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <!-- Cover -->
+    <section class="page cover">
+      <div class="top">
+        <span class="lockup" style="font-size: 30px; gap: 16px">
+          <svg width="52" height="42.25"><use href="#mark" /></svg>
+          cutalong
+        </span>
+        <h1>Brand guidelines</h1>
+        <div class="meta">Version 1.0 · November 2026</div>
+        <p class="lede">
+          Cutalong is a video editor you talk to. The identity is one idea: cut along the dotted line. The solid bar is
+          the take as it was recorded; the dashed coral bar under it is where the cut goes. Everything here exists so that
+          idea stays clear on a 20 pixel avatar, beside a creator's own footage, and across a thousand edits.
+        </p>
+      </div>
+      <p class="aside">
+        The app still installs as Chop Shop while the new name is cleared, so updates keep reaching everyone who already
+        has it. The Chop Shop guidelines are kept in docs/archive. Colours, type, spacing and motion below are the same
+        values the app is built from (src/renderer/src/cutalong/tokens.json).
+      </p>
+      <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>1</span></div>
+    </section>
+
+    <!-- 01 Logo -->
+    <section class="page">
+      <h2><span class="n">01</span>Logo</h2>
+      <p class="lede">The mark is two bars: the take, and the line you cut along. It always comes as a pair.</p>
+
+      <div class="grid three" style="margin-bottom: 14px">
+        <div class="card">
+          <div class="stage">
+            <span class="lockup" style="font-size: 25px"
+              ><svg width="40" height="32.5"><use href="#mark" /></svg>cutalong</span
+            >
+          </div>
+          <h3>Lockup</h3>
+          <p class="note">The default: the mark and the wordmark, always lower case. The open rail, a site header, a deck cover.</p>
+        </div>
+        <div class="card">
+          <div class="stage"><svg width="72" height="58.5"><use href="#mark" /></svg></div>
+          <h3>Mark alone</h3>
+          <p class="note">Once the name is known: the collapsed rail, an app tile, a watermark corner.</p>
+        </div>
+        <div class="card">
+          <div class="stage">
+            <span class="tile" style="width: 64px; height: 64px; border-radius: 18px"
+              ><svg width="40" height="32.5"><use href="#mark-white" /></svg
+            ></span>
+          </div>
+          <h3>Avatar</h3>
+          <p class="note">The mark in white on a coral tile. It speaks for Cutalong in a thread, and is the only coral surface.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom: 14px">
+        <div class="construction">
+          <svg viewBox="-6 -4 76 64" width="100%" height="190" aria-label="The mark on its 64 by 52 grid">
+            <defs>
+              <pattern id="g" width="4" height="4" patternUnits="userSpaceOnUse">
+                <path d="M4 0H0V4" fill="none" stroke="#E8E7E4" stroke-width="0.25" />
+              </pattern>
+            </defs>
+            <rect x="0" y="0" width="64" height="52" fill="url(#g)" stroke="#D8D7D3" stroke-width="0.3" />
+            <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+            <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" />
+            <g font-family="JetBrains Mono" font-size="2.6" fill="#5E6068">
+              <path d="M2 1.2H46" stroke="#5E6068" stroke-width="0.25" />
+              <text x="24" y="0.4" text-anchor="middle">44</text>
+              <path d="M48.5 4V22" stroke="#5E6068" stroke-width="0.25" />
+              <text x="50" y="14">18</text>
+              <path d="M2 26H18" stroke="#5E6068" stroke-width="0.25" stroke-dasharray="0.8 0.6" />
+              <text x="10" y="25" text-anchor="middle">16</text>
+              <path d="M18 54.5H60" stroke="#5E6068" stroke-width="0.25" />
+              <text x="39" y="57.6" text-anchor="middle">42</text>
+            </g>
+          </svg>
+          <div>
+            <h3>Construction</h3>
+            <dl class="specs">
+              <dt>grid</dt>
+              <dd>64 × 52. Scale the whole mark; never redraw a part.</dd>
+              <dt>take</dt>
+              <dd>Solid bar, 44 × 18, ends fully round. Ink.</dd>
+              <dt>cut line</dt>
+              <dd>Dashed bar, 42 × 16 on its centre line, 5 thick, dashes 7 on and 6 off, ends fully round. Coral.</dd>
+              <dt>offset</dt>
+              <dd>The cut line sits 16 to the right of the take and 8 below it. It always runs right.</dd>
+              <dt>clear space</dt>
+              <dd>One take height (18) on every side.</dd>
+              <dt>wordmark</dt>
+              <dd>Figtree ExtraBold, tracking −0.045em, lower case, 12 from the mark at 30 wide.</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid four misuse">
+        <div class="card">
+          <div class="stage">
+            <svg width="62" height="50" viewBox="0 0 64 52">
+              <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+              <rect x="18" y="30" width="42" height="16" rx="8" fill="#FF5A36" />
+            </svg>
+          </div>
+          <p class="note">Don't fill the cut line.</p>
+        </div>
+        <div class="card">
+          <div class="stage">
+            <svg width="62" height="50" viewBox="0 0 64 52">
+              <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+              <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#3A7BFF" stroke-width="5" stroke-dasharray="7 6" />
+            </svg>
+          </div>
+          <p class="note">Don't recolour the cut line.</p>
+        </div>
+        <div class="card">
+          <div class="stage">
+            <svg width="62" height="50" viewBox="0 0 64 52">
+              <rect x="18" y="30" width="44" height="18" rx="9" fill="#15161A" />
+              <rect x="2" y="4" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" />
+            </svg>
+          </div>
+          <p class="note">Don't swap the bars.</p>
+        </div>
+        <div class="card">
+          <div class="stage">
+            <span class="lockup" style="font-size: 13px; gap: 6px; text-transform: uppercase"
+              ><svg width="22" height="18"><use href="#mark" /></svg>Cutalong</span
+            >
+          </div>
+          <p class="note">Don't capitalise the wordmark.</p>
+        </div>
+      </div>
+      <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>2</span></div>
+    </section>
+
+    <!-- 02 Colour -->
+    <section class="page">
+      <h2><span class="n">02</span>Colour</h2>
+      <p class="lede">
+        A warm grey ground, white cards and ink do the work, so a creator's footage is the loudest thing on the page.
+        Coral marks the cut and nothing else.
+      </p>
+      <div class="grid four" style="margin-bottom: 14px">
+        <div class="swatch">
+          <div class="chip" style="background: #f5f5f3; border-bottom: 1px solid var(--line)"></div>
+          <div class="body">
+            <div class="name">Ground</div>
+            <div class="hex">#F5F5F3</div>
+            <div class="use">Behind every screen.</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: #ffffff; border-bottom: 1px solid var(--line)"></div>
+          <div class="body">
+            <div class="name">Card</div>
+            <div class="hex">#FFFFFF</div>
+            <div class="use">The composer, panels, cards. Text on ink.</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: #ecebe8"></div>
+          <div class="body">
+            <div class="name">Well</div>
+            <div class="hex">#ECEBE8</div>
+            <div class="use">The well the video sits in. Never behind small text.</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: #e7e6e2"></div>
+          <div class="body">
+            <div class="name">Beat</div>
+            <div class="hex">#E7E6E2</div>
+            <div class="use">Beats in the strip that are not playing.</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: #e8e7e4"></div>
+          <div class="body">
+            <div class="name">Line</div>
+            <div class="hex">#E8E7E4</div>
+            <div class="use">Hairlines on cards, chips and the composer.</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: #15161a"></div>
+          <div class="body">
+            <div class="name">Ink</div>
+            <div class="hex">#15161A · 17.9:1</div>
+            <div class="use">Text, primary buttons, the playing beat.</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: #4b4d55"></div>
+          <div class="body">
+            <div class="name">Ink soft</div>
+            <div class="hex">#4B4D55 · 7.7:1</div>
+            <div class="use">Secondary text and chip labels.</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: #5e6068"></div>
+          <div class="body">
+            <div class="name">Muted</div>
+            <div class="hex">#5E6068 · 5.9:1</div>
+            <div class="use">Dates, counts, the second half of a timecode.</div>
+          </div>
+        </div>
+      </div>
+      <div class="grid two" style="grid-template-columns: 1fr 2fr; margin-bottom: 18px">
+        <div class="swatch">
+          <div class="chip" style="background: #ff5a36; height: 120px"></div>
+          <div class="body">
+            <div class="name">Coral</div>
+            <div class="hex">#FF5A36</div>
+            <div class="use">The cut: the playhead, the mark's dashed bar, the avatar, the composer's glow.</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="rule">
+            <span class="k">1</span>
+            <p>Coral is never text and never a button fill. A screen with two coral things has one too many.</p>
+          </div>
+          <div class="rule">
+            <span class="k">2</span>
+            <p>Primary actions are ink. There is one per view; everything else is a white card with a hairline, or text.</p>
+          </div>
+          <div class="rule">
+            <span class="k">3</span>
+            <p>
+              Contrast figures are on the ground. Muted text is for meta only; anything a person has to read to act is
+              ink or ink soft.
+            </p>
+          </div>
+          <div class="rule">
+            <span class="k">4</span>
+            <p>No new colours in components. Brand colours a creator picks belong to their videos, not to the app.</p>
+          </div>
+        </div>
+      </div>
+      <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>3</span></div>
+    </section>
+
+    <!-- 03 Type and space -->
+    <section class="page">
+      <h2><span class="n">03</span>Type and space</h2>
+      <p class="lede">
+        Figtree for everything people read. JetBrains Mono for the few things a machine names: commands, timecode and
+        file names.
+      </p>
+      <div class="card" style="margin-bottom: 14px; padding-top: 10px; padding-bottom: 10px">
+        <div class="specimen">
+          <div style="font-size: 44px; line-height: 48px; font-weight: 700; letter-spacing: -0.045em">What are we making?</div>
+          <div class="spec">Title · 52 / 56<br />Bold · −0.045em<br />One per screen, at most</div>
+        </div>
+        <div class="specimen">
+          <div style="font-size: 17px; line-height: 26px">Got it. It opens fast and keeps two words of caption on screen at a time.</div>
+          <div class="spec">Reply · 17 / 26<br />Regular</div>
+        </div>
+        <div class="specimen">
+          <div style="font-size: 17px; line-height: 24px; font-weight: 700; letter-spacing: -0.01em">The $40 camera setup</div>
+          <div class="spec">Heading · 17 / 24<br />Bold</div>
+        </div>
+        <div class="specimen">
+          <div style="font-size: 15px; line-height: 22px">Keep the calendar shot in colour.</div>
+          <div class="spec">Body · 15 / 22<br />Regular</div>
+        </div>
+        <div class="specimen">
+          <div style="font-size: 14px; line-height: 20px; font-weight: 600">Apply 2 notes as v4</div>
+          <div class="spec">Label · 14 / 20<br />Semibold, buttons</div>
+        </div>
+        <div class="specimen">
+          <div style="font-size: 12.5px; line-height: 17px; color: var(--muted)">v3 · today</div>
+          <div class="spec">Meta · 12.5 / 17<br />Muted</div>
+        </div>
+        <div class="specimen">
+          <div class="mono" style="font-size: 13px; line-height: 18px">/tighten &nbsp; 0:04 / 0:27 &nbsp; studio-take-03.mov</div>
+          <div class="spec">Command · 13 / 18<br />JetBrains Mono</div>
+        </div>
+      </div>
+      <div class="grid two" style="align-items: start; margin-bottom: 14px">
+        <div class="card">
+          <h3>Spacing</h3>
+          <p class="note" style="margin-bottom: 12px">A 4 pixel base. Page margins are 32; a reply sits 24 above its buttons.</p>
+          <div class="scale">
+            <span style="width: 4px; height: 4px"></span><span style="width: 8px; height: 8px"></span
+            ><span style="width: 12px; height: 12px"></span><span style="width: 16px; height: 16px"></span
+            ><span style="width: 24px; height: 24px"></span><span style="width: 32px; height: 32px"></span
+            ><span style="width: 48px; height: 48px"></span>
+          </div>
+          <div class="scale-labels"><span>4 · 8 · 12 · 16 · 24 · 32 · 48</span></div>
+        </div>
+        <div class="card">
+          <h3>Radius</h3>
+          <p class="note" style="margin-bottom: 12px">Pills for every button and chip; generous corners elsewhere.</p>
+          <div class="radii">
+            <div style="width: 36px; height: 36px; border-radius: 10px"></div>
+            <div style="width: 44px; height: 44px; border-radius: 16px"></div>
+            <div style="width: 56px; height: 56px; border-radius: 24px"></div>
+            <div style="width: 60px; height: 60px; border-radius: 28px"></div>
+            <div style="width: 64px; height: 28px; border-radius: 999px"></div>
+          </div>
+          <div class="scale-labels"><span>tile 10 · thumb 16 · card 24 · composer 28 · pill</span></div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <h3>Shadow</h3>
+          <p class="note">
+            Only two things are lifted: the composer, with a faint coral ring, and the video frame. The selected segment of
+            a control gets a 1 pixel tab shadow. Menus and the toast float with one shared shadow.
+          </p>
+        </div>
+      </div>
+      <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>4</span></div>
+    </section>
+
+    <!-- 04 In product -->
+    <section class="page">
+      <h2><span class="n">04</span>In product</h2>
+      <p class="lede">
+        The interface is calm so the video is the loud part. One thing per screen: a question and a composer, a reply and
+        its buttons, or a preview with notes and the beat strip.
+      </p>
+      <div class="grid two" style="margin-bottom: 12px">
+        <div>
+          <div class="shot"><img src="start.png" alt="Start: one question and the composer" /></div>
+          <p class="caption">Start: one question and the composer. The rail holds everything else.</p>
+        </div>
+        <div>
+          <div class="shot"><img src="thread.png" alt="A thread: a plain sentence and one primary action" /></div>
+          <p class="caption">A thread: a plain sentence with exact numbers, and one primary action.</p>
+        </div>
+      </div>
+      <div class="grid two" style="grid-template-columns: 1.55fr 1fr; align-items: start">
+        <div>
+          <div class="shot"><img src="editor.png" alt="The editor: preview, notes and the beat strip" /></div>
+          <p class="caption">The editor: the preview, notes, and the beat strip with the coral playhead. Stand-in footage.</p>
+        </div>
+        <div class="card" style="padding-top: 6px; padding-bottom: 6px">
+          <div class="rule"><span class="k">1</span><p>One thing per screen. A second thing goes behind a button, a menu or Details.</p></div>
+          <div class="rule"><span class="k">2</span><p>Talk, don't configure. Settings are sentences and slash commands.</p></div>
+          <div class="rule"><span class="k">3</span><p>Numbers live behind Details. A plain sentence first, at most three facts as chips.</p></div>
+          <div class="rule"><span class="k">4</span><p>Every change is a named version, so nothing a person does is lost.</p></div>
+        </div>
+      </div>
+      <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>5</span></div>
+    </section>
+
+    <!-- 05 Voice -->
+    <section class="page">
+      <h2><span class="n">05</span>Voice</h2>
+      <p class="lede">
+        A good editor sitting next to you: first person, plain words, exact numbers. It says what it did and what happens
+        next, then stops.
+      </p>
+      <div class="grid two" style="margin-bottom: 18px">
+        <div class="card">
+          <p class="eyebrow">We sound like</p>
+          <p class="say">"Got it. studio-take-03.mov runs 0:27: 66 words in 6 beats."</p>
+          <p class="say">"v3 is ready. The hook word is bigger and the ending stays on you."</p>
+          <p class="say">"Add your Anthropic API key in Settings and I can work on this."</p>
+          <p class="say">"Connected. I can turn what you say into edits."</p>
+        </div>
+        <div class="card never">
+          <p class="eyebrow">We never sound like</p>
+          <p class="say">"Your edit is looking amazing!"</p>
+          <p class="say">"Let AI work its magic."</p>
+          <p class="say">"Clone any creator's style in one click."</p>
+          <p class="say">"Oops! Something went wrong."</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="rule"><span class="k">1</span><p>First person for Cutalong, second person for the creator. "I" and "you", never "we" or "the user".</p></div>
+        <div class="rule"><span class="k">2</span><p>No exclamation marks, no emoji, no praise. Nothing is magic or effortless.</p></div>
+        <div class="rule">
+          <span class="k">3</span>
+          <p>
+            Never the word clone. A video someone likes is inspiration: Cutalong measures its pattern and never takes its
+            footage.
+          </p>
+        </div>
+        <div class="rule"><span class="k">4</span><p>Labels are verbs that say what happens: "Open the editor", "Apply 2 notes as v4", "Save key".</p></div>
+        <div class="rule">
+          <span class="k">5</span>
+          <p>
+            Seconds read as <span class="mono">0.15 s</span>, <span class="mono">1.8 s</span>, <span class="mono">12 s</span>;
+            running times as <span class="mono">0:52</span>. Say the number rather than "a bit" or "some".
+          </p>
+        </div>
+        <div class="rule"><span class="k">6</span><p>When something fails, say what happened and the one thing to do next, in a sentence.</p></div>
+      </div>
+      <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>6</span></div>
+    </section>
+
+    <!-- 06 Motion -->
+    <section class="page">
+      <h2><span class="n">06</span>Motion</h2>
+      <p class="lede">
+        Cutalong moves the way a good editor works: quickly, without fuss, and only when something changes. Four
+        durations and three curves cover everything; what a hand moves springs.
+      </p>
+      <div class="grid two" style="grid-template-columns: 1.15fr 1fr; align-items: start; margin-bottom: 14px">
+        <div class="card">
+          <h3>Durations</h3>
+          <p class="note" style="margin-bottom: 14px">Nothing takes longer than 320 ms. Leaving is always quicker than arriving.</p>
+          <div class="durations">
+            <div class="duration"><span>Hover, press, focus</span><span class="mono">120 ms</span><span class="bar" style="width: 37.5%"></span></div>
+            <div class="duration"><span>Menus, things leaving</span><span class="mono">180 ms</span><span class="bar" style="width: 56.25%"></span></div>
+            <div class="duration"><span>Messages, notes, toasts</span><span class="mono">240 ms</span><span class="bar" style="width: 75%"></span></div>
+            <div class="duration"><span>Screens, the rail, a new version</span><span class="mono">320 ms</span><span class="bar" style="width: 100%"></span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Curves</h3>
+          <p class="note" style="margin-bottom: 12px">Over time, left to right; from where a thing starts, bottom, to where it ends.</p>
+          <div class="curves">
+            <div>
+              <svg viewBox="-4 4 108 62" aria-label="Enter: quick at first, then settling">
+                <path d="M0 10H100M0 60H100" stroke="#E8E7E4" stroke-width="1" fill="none" />
+                <path d="M0 60C25 10 50 10 100 10" stroke="#15161A" stroke-width="2.4" fill="none" stroke-linecap="round" />
+              </svg>
+              <h3 style="font-size: 12px">Enter</h3>
+              <p class="note" style="font-size: 10.5px; line-height: 15px">Arriving: quick, then settling.</p>
+            </div>
+            <div>
+              <svg viewBox="-4 4 108 62" aria-label="Exit: soft at first, then away">
+                <path d="M0 10H100M0 60H100" stroke="#E8E7E4" stroke-width="1" fill="none" />
+                <path d="M0 60C40 60 100 10 100 10" stroke="#15161A" stroke-width="2.4" fill="none" stroke-linecap="round" />
+              </svg>
+              <h3 style="font-size: 12px">Exit</h3>
+              <p class="note" style="font-size: 10.5px; line-height: 15px">Leaving: soft, then away.</p>
+            </div>
+            <div>
+              <svg viewBox="-4 4 108 62" aria-label="Standard: from one place to another">
+                <path d="M0 10H100M0 60H100" stroke="#E8E7E4" stroke-width="1" fill="none" />
+                <path d="M0 60C20 60 0 10 100 10" stroke="#15161A" stroke-width="2.4" fill="none" stroke-linecap="round" />
+              </svg>
+              <h3 style="font-size: 12px">Standard</h3>
+              <p class="note" style="font-size: 10.5px; line-height: 15px">Moving from place to place.</p>
+            </div>
+            <div>
+              <svg viewBox="-4 4 108 62" aria-label="Spring: overshoots by 4% and settles">
+                <path d="M0 10H100M0 60H100" stroke="#E8E7E4" stroke-width="1" fill="none" />
+                <polyline
+                  points="0,60 2.8,58.85 6.3,54.9 12,45.3 20.8,29.75 26.8,21.3 32.8,15.15 39.3,11.05 47,8.7 58.8,8.15 97.3,10 100,10"
+                  stroke="#15161A"
+                  stroke-width="2.4"
+                  fill="none"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <h3 style="font-size: 12px">Spring</h3>
+              <p class="note" style="font-size: 10.5px; line-height: 15px">What a hand moves: a switch.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid two" style="grid-template-columns: 1fr 1.15fr; align-items: start">
+        <div class="card">
+          <h3>The loading signal</h3>
+          <div class="march">
+            <div>
+              <svg width="64" height="52" viewBox="0 0 64 52">
+                <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+                <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" />
+              </svg>
+              0 s
+            </div>
+            <div>
+              <svg width="64" height="52" viewBox="0 0 64 52">
+                <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+                <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" stroke-dashoffset="-4.1" />
+              </svg>
+              0.4 s
+            </div>
+            <div>
+              <svg width="64" height="52" viewBox="0 0 64 52">
+                <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+                <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" stroke-dashoffset="-8.6" />
+              </svg>
+              0.85 s
+            </div>
+          </div>
+          <p class="note">
+            While Cutalong works, the dashed bar marches along its line, one dash and gap every 1.28 s: on the assistant
+            beside its progress, and in the send button. It is the only thing that loops, and never a spinner. With reduced
+            motion it breathes instead.
+          </p>
+        </div>
+        <div class="card" style="padding-top: 6px; padding-bottom: 6px">
+          <div class="rule"><span class="k">1</span><p>Arrive with Enter, leave sooner with Exit, move between places with Standard. What a hand moves springs.</p></div>
+          <div class="rule"><span class="k">2</span><p>Only position and opacity change, plus a clip or a dash. Layout never animates, and text never reflows while it moves.</p></div>
+          <div class="rule">
+            <span class="k">3</span>
+            <p>Screens fade through with a slight rise. The composer carries over, and footage grows from its card into the preview.</p>
+          </div>
+          <div class="rule"><span class="k">4</span><p>Nothing moves when nothing is happening. The footage never moves for show, and motion never adds coral.</p></div>
+          <div class="rule"><span class="k">5</span><p>With reduced motion, opacity still changes and nothing travels.</p></div>
+        </div>
+      </div>
+      <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>7</span></div>
+    </section>
+  </body>
+</html>

@@ -23,8 +23,8 @@ describe('design tokens', () => {
     }
   })
 
-  it('match spacing, radius and shadow', () => {
-    for (const family of ['spacing', 'radius', 'shadow']) {
+  it('match spacing, radius, shadow and motion', () => {
+    for (const family of ['spacing', 'radius', 'shadow', 'motion']) {
       for (const t of tokens[family].tokens) {
         expect(norm(declared.get(t.name) ?? 'missing'), t.name).toBe(norm(t.value))
       }

@@ -1,11 +1,20 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
+import { Button, Icon } from '../components/ui'
 
-/** Classic tools live in their own document; switching is a reload. */
-export function openClassic(): void {
-  window.location.hash = '#classic'
-  window.location.reload()
-}
+/** Where "back" goes from Projects, Brand, Presets and Settings: the chat being worked on. */
+export const BackToWork = createContext<{ name: string; go: () => void } | null>(null)
 
 export function Header({ children }: { children: ReactNode }): JSX.Element {
-  return <header className="cl-header">{children}</header>
+  const back = useContext(BackToWork)
+  return (
+    <header className="cl-header">
+      {back && (
+        <Button variant="text" onClick={back.go} aria-label={`Back to ${back.name}`}>
+          <Icon.back />
+          {back.name}
+        </Button>
+      )}
+      {children}
+    </header>
+  )
 }

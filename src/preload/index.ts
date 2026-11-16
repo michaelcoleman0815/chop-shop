@@ -22,9 +22,12 @@ import type {
 import type { Asset, EditDoc, Note, Op } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
+import type { LearnRunResult, LearnState } from '../shared/learn/state'
+import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { Preset } from '../shared/presets'
+import type { KeyCheck, ServiceId } from '../shared/services'
 
-type Progress = { stage: string; percent: number }
+type Progress = { stage: string; percent: number | null }
 
 function listen<T>(channel: string, cb: (payload: T) => void): () => void {
   const handler = (_e: unknown, payload: T): void => cb(payload)
@@ -32,15 +35,68 @@ function listen<T>(channel: string, cb: (payload: T) => void): () => void {
   return () => ipcRenderer.removeListener(channel, handler)
 }
 
+/** Where the main process serves local files from, asked once as the page loads. */
+const mediaBase: string = (() => {
+  try {
+    return String(ipcRenderer.sendSync('media:base'))
+  } catch {
+    return ''
+  }
+})()
+
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  /** http://127.0.0.1:port/token: a file's address is this, a slash, and its encoded path. */
+  mediaBase,
 
   // Cutalong: footage into an edit document, documents into video, videos
   // someone likes into a style, and the saved slash commands.
   prepareCut: (
-    path: string
-  ): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('cut:prepare', path),
+    input: string | { paths: string[]; soundPaths?: string[] }
+  ): Promise<
+    | {
+        ok: true
+        doc: EditDoc
+        mediaUrl: string
+        warning: string | null
+        lined?: { name: string; sound: string; offsetSec: number }[]
+        /** What intake noticed and fixed: one sentence, at most three facts. */
+        intake?: { sentence: string; facts: string[] }
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:prepare', input),
+  /** More footage for an edit under way: talking clips on the end, better sound under every clip. */
+  extendCut: (req: {
+    doc: EditDoc
+    paths: string[]
+    soundPaths?: string[]
+  }): Promise<
+    | {
+        ok: true
+        doc: EditDoc
+        warning: string | null
+        lined: { name: string; sound: string; offsetSec: number }[]
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:extend', req),
+  /** Which dropped file is the talking, which has the better sound, and which is B-roll. */
+  planSession: (req: {
+    request: string
+    paths: string[]
+  }): Promise<
+    | {
+        ok: true
+        roles: {
+          talking: string[]
+          sound: string[]
+          broll: string[]
+          ignored: string[]
+          reply: string
+          by: 'claude' | 'measurement'
+        }
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:session', req),
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'
@@ -78,6 +134,18 @@ const api = {
   ): Promise<{ learned: { path: string; title: string; facts: InspirationFacts }[]; failed: string[] }> =>
     ipcRenderer.invoke('brand:learn', paths),
   onBrandProgress: (cb: (p: Progress) => void): (() => void) => listen('brand:progress', cb),
+  // Learning from your edits: recordings and the video made from them, lined up on this computer.
+  learnChoose: (kind: 'recordings' | 'finished'): Promise<string[]> => ipcRenderer.invoke('learn:choose', kind),
+  learnRun: (req: { recordings: string[]; finished: string }): Promise<LearnRunResult> =>
+    ipcRenderer.invoke('learn:run', req),
+  learnState: (): Promise<LearnState> => ipcRenderer.invoke('learn:state'),
+  learnEvaluate: (): Promise<LearnState> => ipcRenderer.invoke('learn:evaluate'),
+  learnForget: (id: string): Promise<LearnState> => ipcRenderer.invoke('learn:forget', id),
+  onLearnProgress: (cb: (p: Progress) => void): (() => void) => listen('learn:progress', cb),
+  // What has been learned about how you edit, kept on this computer.
+  memoryView: (): Promise<MemoryView> => ipcRenderer.invoke('memory:get'),
+  rememberSignal: (signal: Signal): Promise<void> => ipcRenderer.invoke('memory:record', signal),
+  updateMemory: (change: MemoryChange): Promise<MemoryView> => ipcRenderer.invoke('memory:update', change),
   onCutProgress: (cb: (p: Progress) => void): (() => void) => listen('cut:progress', cb),
   planEdit: (req: {
     doc: EditDoc
@@ -93,11 +161,22 @@ const api = {
         notesHandled: string[]
         needs: string[]
         rejected: string[]
+        brollWanted?: { beat: string; search: string }[]
       }
     | { ok: false; message: string; needsKey?: boolean }
   > => ipcRenderer.invoke('cut:plan', req),
   checkKey: (): Promise<{ ok: true } | { ok: false; message: string; needsKey?: boolean }> =>
     ipcRenderer.invoke('claude:check'),
+  // Other AI services: whether each key exists (never what it is), saving and
+  // checking a key, and the one switch that lets anything go to them.
+  serviceKeys: (): Promise<Record<ServiceId, boolean>> => ipcRenderer.invoke('services:keys'),
+  setServiceKey: (id: ServiceId, key: string): Promise<{ ok: true } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('services:setKey', id, key),
+  clearServiceKey: (id: ServiceId): Promise<void> => ipcRenderer.invoke('services:clearKey', id),
+  checkServiceKey: (id: ServiceId): Promise<KeyCheck> => ipcRenderer.invoke('services:check', id),
+  setOtherServices: (on: boolean): Promise<boolean> => ipcRenderer.invoke('services:setOn', on),
+  localPlanners: (): Promise<{ up: boolean; models: { name: string; sizeBytes: number }[] }> =>
+    ipcRenderer.invoke('planner:local'),
   studyInspiration: (input: {
     url?: string
     path?: string
@@ -258,6 +337,10 @@ const api = {
     ipcRenderer.invoke('timeline:probe', path),
 
   mediaPreviews: (path: string): Promise<MediaPreviews> => ipcRenderer.invoke('media:previews', path),
+  /** One still for a thumbnail, or null when the file has no picture. */
+  mediaPoster: (path: string): Promise<string | null> => ipcRenderer.invoke('media:poster', path),
+  /** Footage, sound and images, as many as the person picks. */
+  openMedia: (): Promise<{ path: string; name: string }[]> => ipcRenderer.invoke('dialog:openMedia'),
   renderTimeline: (req: {
     jobId: string
     timeline: Timeline

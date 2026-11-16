@@ -3,7 +3,10 @@ import { detectProvider, wrongKeyMessage } from '../../../../shared/keys'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api } from '../api'
 import { Button } from '../components/ui'
+import { grow } from '../motion'
 import { Header } from './Header'
+import { OtherServices } from './OtherServices'
+import { Planning } from './Planning'
 
 /**
  * The few things that belong to this computer rather than to an edit: the
@@ -64,6 +67,7 @@ export function SettingsPage(): JSX.Element {
   const [download, setDownload] = useState<number | null>(null)
   const [version, setVersion] = useState('')
   const [update, setUpdate] = useState<UpdateState>({ status: 'idle' })
+  const [hearer, setHearer] = useState<string | null>(null)
 
   const check = async (): Promise<void> => {
     setKey({ status: 'checking' })
@@ -194,9 +198,17 @@ export function SettingsPage(): JSX.Element {
             </p>
           </section>
 
+          <Planning settings={settings} onSettings={setSettings} />
+
+          <OtherServices settings={settings} onSettings={setSettings} onHearer={setHearer} />
+
           <section className="cl-section" aria-labelledby="set-words">
             <h2 id="set-words">Transcription</h2>
-            <p className="cl-reply">I hear the words on this computer. A bigger model hears more and takes longer.</p>
+            <p className="cl-reply">
+              {hearer
+                ? `${hearer} hears the words now, and this computer does when it cannot. A bigger model here hears more and takes longer.`
+                : 'I hear the words on this computer. A bigger model hears more and takes longer.'}
+            </p>
             <div className="cl-segments" role="radiogroup" aria-label="Transcription model">
               {MODELS.map((m) => (
                 <button
@@ -216,7 +228,7 @@ export function SettingsPage(): JSX.Element {
               <div className="cl-progress">
                 <span>Downloading {modelName}</span>
                 <span className="cl-progress-bar" aria-hidden="true">
-                  <span style={{ width: `${Math.max(4, Math.min(100, download))}%` }} />
+                  <span style={grow(Math.max(4, Math.min(100, download)))} />
                 </span>
               </div>
             ) : ready[model] === undefined ? null : ready[model] ? (

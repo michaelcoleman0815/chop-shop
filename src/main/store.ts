@@ -6,7 +6,7 @@ import type { Settings } from '../shared/types'
 const file = () => join(app.getPath('userData'), 'settings.json')
 
 const defaults = (): Settings => ({
-  outputDir: join(app.getPath('videos'), 'Chop Shop'),
+  outputDir: join(app.getPath('videos'), 'Cutalong'),
   bufferSeconds: 60,
   grabShortcut: 'CommandOrControl+Shift+C',
   captureSourceId: null,
@@ -25,7 +25,8 @@ const defaults = (): Settings => ({
   ccliLicense: null,
   ccliStreaming: null,
   exportPreset: null,
-  videoSignIn: null
+  videoSignIn: null,
+  otherServices: true
 })
 
 let cache: Settings | null = null

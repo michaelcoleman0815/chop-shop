@@ -96,32 +96,47 @@ export function beatsFromWords(words: Word[], source: string, opts: BeatSplitOpt
   return beats
 }
 
-export function createDoc(input: { id: string; title: string; source: Source; words: Word[]; at?: string }): EditDoc {
+export function createDoc(input: {
+  id: string
+  title: string
+  /** One recording, or several in the order they were shot. */
+  source?: Source
+  sources?: Source[]
+  words: Word[]
+  at?: string
+}): EditDoc {
   const at = input.at ?? new Date().toISOString()
-  const words = input.words.filter((w) => w.source === input.source.id).sort((a, b) => a.startSec - b.startSec)
-  const beats: Beat[] =
-    words.length > 0
-      ? beatsFromWords(words, input.source.id)
-      : // No speech: the whole recording is one beat until someone cuts it.
-        [
-          {
-            id: 'b1',
-            source: input.source.id,
-            from: null,
-            to: null,
-            inSec: 0,
-            outSec: input.source.durationSec,
-            padIn: 0,
-            padOut: 0,
-            treatment: { ...DEFAULT_TREATMENT }
-          }
-        ]
+  const sources = input.sources ?? (input.source ? [input.source] : [])
+  if (sources.length === 0) throw new Error('An edit needs at least one recording.')
+  const ids = new Set(sources.map((s) => s.id))
+  const words = input.words.filter((w) => ids.has(w.source))
+  const beats: Beat[] = []
+  for (const source of sources) {
+    const own = words.filter((w) => w.source === source.id).sort((a, b) => a.startSec - b.startSec)
+    if (own.length > 0) beats.push(...beatsFromWords(own, source.id))
+    else
+      // No speech: the whole recording is one beat until someone cuts it.
+      beats.push({
+        id: 'b',
+        source: source.id,
+        from: null,
+        to: null,
+        inSec: 0,
+        outSec: source.durationSec,
+        padIn: 0,
+        padOut: 0,
+        treatment: { ...DEFAULT_TREATMENT }
+      })
+  }
+  // Beat ids run through every recording, in order.
+  beats.forEach((b, i) => (b.id = `b${i + 1}`))
+  const first = sources[0]
   const cut: Cut = {
     beats,
     removed: [],
     tighten: null,
     captions: { ...DEFAULT_CAPTIONS },
-    aspect: input.source.height > input.source.width ? 'vertical' : 'original',
+    aspect: first.height > first.width ? 'vertical' : 'original',
     loudness: DEFAULT_LOUDNESS,
     motion: []
   }
@@ -130,13 +145,71 @@ export function createDoc(input: { id: string; title: string; source: Source; wo
     id: input.id,
     title: input.title,
     createdAt: at,
-    sources: [input.source],
-    words,
+    sources,
+    words: [...words].sort((a, b) =>
+      a.source === b.source
+        ? a.startSec - b.startSec
+        : sources.findIndex((s) => s.id === a.source) - sources.findIndex((s) => s.id === b.source)
+    ),
     versions: [{ n: 1, at, summary: 'The recording as it was shot, split into beats.', ops: [], cut }],
     notes: [],
     assets: [],
     preset: null
   }
+}
+
+/** The next free recording id: s3 after s1 and s2. */
+export function nextSourceId(doc: EditDoc): string {
+  let max = 0
+  for (const s of doc.sources) {
+    const m = /^s(\d+)$/.exec(s.id)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return `s${max + 1}`
+}
+
+/**
+ * More footage for an edit already under way. The recordings and their words
+ * join the doc, and their beats go on the end of the cut as one new version,
+ * so nothing already cut moves and the step can be undone like any other.
+ */
+export function addSources(
+  doc: EditDoc,
+  sources: Source[],
+  words: Word[],
+  summary: string,
+  at = new Date().toISOString()
+): EditDoc {
+  const taken = new Set(doc.sources.map((s) => s.id))
+  const fresh = sources.filter((s) => !taken.has(s.id))
+  if (fresh.length === 0) return doc
+  const all = [...doc.sources, ...fresh]
+  const ids = new Set(fresh.map((s) => s.id))
+  const added = words.filter((w) => ids.has(w.source))
+  const order = new Map(all.map((s, i) => [s.id, i]))
+  const withSources: EditDoc = {
+    ...doc,
+    sources: all,
+    words: [...doc.words, ...added].sort((a, b) =>
+      a.source === b.source ? a.startSec - b.startSec : (order.get(a.source) ?? 0) - (order.get(b.source) ?? 0)
+    )
+  }
+  const end = currentCut(doc).beats.length
+  const ops: Op[] = []
+  for (const source of fresh) {
+    const own = added.filter((w) => w.source === source.id)
+    if (own.length > 0) {
+      for (const b of beatsFromWords(own, source.id))
+        ops.push({ op: 'insert', to: end + ops.length, beat: { source: source.id, from: b.from, to: b.to } })
+    } else {
+      ops.push({
+        op: 'insert',
+        to: end + ops.length,
+        beat: { source: source.id, inSec: 0, outSec: source.durationSec }
+      })
+    }
+  }
+  return commit(withSources, ops, summary, { at }).doc
 }
 
 export function currentVersion(doc: EditDoc): Version {

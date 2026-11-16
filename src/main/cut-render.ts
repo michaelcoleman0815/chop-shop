@@ -5,6 +5,7 @@ import type { Aspect, CaptionSpec, Cut, Resolved, Source, Treatment } from '../s
 import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
+import { colorConversion, hasZscale } from './intake'
 
 /**
  * Renders a resolved cut: the renderer of record for an edit document.
@@ -37,6 +38,10 @@ export interface Segment {
   treatment: Treatment | null
   /** Cutaway footage for this stretch, when the beat shows one. */
   broll: { path: string; startSec: number } | null
+  /** Sound from another recording of the same take, lined up: startSec here is startSec + offsetSec there. */
+  audio?: { path: string; offsetSec: number } | null
+  /** A conversion that goes first on the recording's picture: HDR to ordinary video (main/intake). */
+  convert?: string | null
 }
 
 export type Quality = 'preview' | 'final' | 'intermediate'
@@ -140,7 +145,7 @@ export function captionStyleFor(
 }
 
 /** The inputs for each resolved piece, with its beat's look. */
-export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[]): Segment[] {
+export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[], zscale = true): Segment[] {
   const beats = new Map(cut.beats.map((b) => [b.id, b]))
   const starts = new Map(resolved.beats.map((b) => [b.id, b.outStart]))
   const bySource = new Map(sources.map((s) => [s.id, s]))
@@ -156,8 +161,10 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
       startSec: p.srcStart,
       durationSec: p.srcEnd - p.srcStart,
       hasAudio: source.hasAudio,
+      audio: source.audio ?? null,
       treatment: t,
-      broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null
+      broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null,
+      convert: colorConversion(source.color, zscale)
     }
   })
 }
@@ -187,7 +194,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const look = (w: number, h: number, t: Treatment | null, zoom: boolean): string => {
     let f = `fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`
     const z = t?.zoom ?? 1
-    if (zoom && z > 1.001) f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2,scale=${w}:${h}`
+    // A punch-in rarely crops to exactly the frame's shape (1080/1.12 is 964.3), so
+    // scaling it back up stretches the pixels a hair; square them again, or the
+    // join refuses pieces whose pixel shapes differ and the export fails.
+    if (zoom && z > 1.001)
+      f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2,scale=${w}:${h},setsar=1`
     if (t?.bw) f += ',hue=s=0'
     return f
   }
@@ -197,6 +208,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     const v = `v${k}`
     const a = `a${k}`
     const t = s.treatment
+    // The recording's own conversion goes before anything else touches it.
+    const raw = s.convert ? `${s.convert},` : ''
 
     if (t === null) {
       chains.push(`[${main}:v]setsar=1,format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
@@ -204,7 +217,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       const b = input(s.broll.path, s.broll.startSec, s.durationSec)
       const half = even(H / 2)
       chains.push(`[${b}:v]${look(W, half, t, false)}[${v}t]`)
-      chains.push(`[${main}:v]${look(W, H - half, t, true)}[${v}b]`)
+      chains.push(`[${main}:v]${raw}${look(W, H - half, t, true)}[${v}b]`)
       chains.push(`[${v}t][${v}b]vstack,format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
     } else if (s.broll && t.frame === 'card') {
       // A card: the picture centred on Cutalong's ground, at most 60% of the
@@ -220,13 +233,24 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       const b = input(s.broll.path, s.broll.startSec, s.durationSec)
       chains.push(`[${b}:v]${look(W, H, t, false)},format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
     } else {
-      chains.push(`[${main}:v]${look(W, H, t, true)},format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
+      chains.push(`[${main}:v]${raw}${look(W, H, t, true)},format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
     }
 
     // Every segment's audio is exactly as long as its piece: padded with
     // silence then trimmed, so the join never drifts out of sync.
     const shape = `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${fixed(s.durationSec)},asetpts=PTS-STARTPTS`
-    if (s.hasAudio) chains.push(`[${main}:a]${shape}[${a}]`)
+    if (s.audio) {
+      // The better sound, from its own recording. Where that recording starts
+      // after this piece does, the gap is silence rather than a shifted voice.
+      const from = s.startSec + s.audio.offsetSec
+      const lead = Math.max(0, -from)
+      const length = s.durationSec - lead
+      if (length > 0.01) {
+        const ext = input(s.audio.path, Math.max(0, from), length)
+        const delay = lead > 0 ? `adelay=${Math.round(lead * 1000)}:all=1,` : ''
+        chains.push(`[${ext}:a]${delay}${shape}[${a}]`)
+      } else chains.push(`anullsrc=r=48000:cl=stereo,${shape}[${a}]`)
+    } else if (s.hasAudio) chains.push(`[${main}:a]${shape}[${a}]`)
     else chains.push(`anullsrc=r=48000:cl=stereo,${shape}[${a}]`)
   })
 
@@ -265,11 +289,18 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${vOut}][logo]overlay=x=${x}:y=${y}:shortest=1[vlogo]`)
     vOut = 'vlogo'
   }
-  let aOut = 'acat'
-  if (opts.loudness !== null) {
-    chains.push(`[acat]loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000[aloud]`)
-    aOut = 'aloud'
-  }
+  // The output is always stereo at 48 kHz. Pinning it here, at the end of the
+  // chain, lets ffmpeg rebuild the graph mid-stream when a decoder reports a
+  // different layout: the macOS ffmpeg-static build re-initialises on that and
+  // otherwise fails with "Cannot select channel layout". The sample format is
+  // left free, because intermediate passes write 16-bit PCM and finals AAC.
+  const pin = 'aformat=channel_layouts=stereo:sample_rates=48000'
+  // Loudness is only set when there is sound to set it on: loudnorm over pure
+  // silence asks for infinite gain, and the encoder then fails the export.
+  const sounds = segments.some((s) => !!s.audio || s.hasAudio)
+  const loud = opts.loudness !== null && sounds ? `loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000,` : ''
+  chains.push(`[acat]${loud}${pin}[aout]`)
+  const aOut = 'aout'
 
   const encode =
     opts.quality === 'intermediate'
@@ -382,7 +413,7 @@ export async function renderCut(
   if (!first) throw new Error('The edit has no recording to render.')
   const { width, height } = frameSize(cut.aspect, first, quality === 'preview')
   const fps = frameRate(first.fps)
-  const segments = segmentsFor(cut, resolved, sources)
+  const segments = segmentsFor(cut, resolved, sources, await hasZscale(opts.ffmpeg))
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)
   await fs.mkdir(opts.workDir, { recursive: true })
@@ -438,6 +469,9 @@ export async function renderCut(
   if (current.length > 0) chunks.push(current)
 
   const joined: Segment[] = []
+  // A chunk file always carries an audio track, silent or not; the join only
+  // sets loudness when some piece of the cut had sound.
+  const anySound = segments.some((s) => !!s.audio || s.hasAudio)
   let done = 0
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]
@@ -452,7 +486,7 @@ export async function renderCut(
     })
     await runRender(opts.ffmpeg, args, length, (f) => progress(((done + f * length) / total) * 0.8), opts.signal)
     done += length
-    joined.push({ path, startSec: 0, durationSec: length, hasAudio: true, treatment: null, broll: null })
+    joined.push({ path, startSec: 0, durationSec: length, hasAudio: anySound, treatment: null, broll: null })
   }
   const args = buildRenderArgs(joined, {
     ...base,

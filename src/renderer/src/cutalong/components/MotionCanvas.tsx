@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { renderFrame, type IconNode, type Layer, type LogoMark, type MotionScene } from '../../../../shared/motion'
 import type { Asset } from '../../../../shared/edit'
 import { mediaUrlFor } from '../api'
-import { loadIconNodes, loadLogoMarks, loadMotionFonts, loadPicture } from '../motion'
+import { loadIconNodes, loadLogoMarks, loadMotionFonts, loadPicture } from '../graphics'
 
 /**
  * The cut's graphics over the preview: a canvas the size of the frame, drawn

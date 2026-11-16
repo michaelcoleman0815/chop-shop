@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
 import { api } from '../api'
-import { Icon, IconButton } from './ui'
+import { Poster } from './Poster'
+import { Icon, IconButton, Mark } from './ui'
 
 /**
  * The one input. Footage and images are dropped or added with +, a video
@@ -101,7 +102,7 @@ export function Composer({
 
   const add = (files: File[]): void => {
     const next = files.map((f) => ({ path: api.pathForFile(f), name: f.name })).filter((a) => a.path)
-    if (next.length) setAttachments((prev) => [...prev, ...next])
+    if (next.length) setAttachments((prev) => [...prev, ...next.filter((n) => !prev.some((a) => a.path === n.path))])
   }
 
   const onDrop = (e: DragEvent): void => {
@@ -111,15 +112,16 @@ export function Composer({
   }
 
   const browse = async (): Promise<void> => {
-    const meta = await api.openVideo()
-    if (meta) setAttachments((prev) => [...prev, { path: meta.path, name: meta.fileName }])
+    const picked = await api.openMedia()
+    if (picked.length)
+      setAttachments((prev) => [...prev, ...picked.filter((p) => !prev.some((a) => a.path === p.path))])
   }
 
   const canSend = !busy && (text.trim().length > 0 || attachments.length > 0)
 
   return (
     <div
-      className={`cl-composer${dropping ? ' dropping' : ''}`}
+      className={`cl-composer${dropping ? ' dropping' : ''}${busy ? ' busy' : ''}`}
       onDragOver={(e) => {
         e.preventDefault()
         setDropping(true)
@@ -148,6 +150,26 @@ export function Composer({
           ))}
         </div>
       )}
+      {attachments.length > 0 && (
+        <div
+          className="cl-composer-files"
+          aria-label={`${attachments.length} ${attachments.length === 1 ? 'file' : 'files'} to send`}
+        >
+          {attachments.map((a, i) => (
+            <span key={`${a.path}-${i}`} className="cl-attachment" title={a.name}>
+              <Poster path={a.path} name={a.name} />
+              <span>{a.name}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${a.name}`}
+                onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+              >
+                <Icon.close />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <label className="sr-only" htmlFor="cl-ask">
         {placeholder}
       </label>
@@ -162,24 +184,15 @@ export function Composer({
         onKeyDown={onKey}
       />
       <div className="cl-composer-row">
-        <IconButton label="Add footage or images" onClick={() => void browse()}>
+        <IconButton label="Add footage, audio or images" onClick={() => void browse()}>
           <Icon.plus />
         </IconButton>
-        {attachments.map((a, i) => (
-          <span key={`${a.path}-${i}`} className="cl-attachment">
-            <span>{a.name}</span>
-            <button
-              type="button"
-              aria-label={`Remove ${a.name}`}
-              onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-            >
-              <Icon.close />
-            </button>
-          </span>
-        ))}
         <span className="spacer" />
         <IconButton label="Send" filled disabled={!canSend} onClick={send}>
           <Icon.send />
+          <span className="cl-send-mark" aria-hidden="true">
+            <Mark size={22} white />
+          </span>
         </IconButton>
       </div>
     </div>
