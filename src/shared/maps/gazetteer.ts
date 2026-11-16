@@ -397,6 +397,8 @@ export interface MapQuery {
   style: 'satellite-dark' | 'vintage' | null
   /** Facts asked for in words. */
   facts: ('area' | 'population' | 'capital')[]
+  /** The words that named places, plates and lines, as matched (lower case, no accents). */
+  matched: string[]
 }
 
 const VINTAGE = /\b(vintage|old[- ]?(?:style|school|world|timey)? ?map|antique|parchment|old[- ]style|historic(?:al)?|treasure map)\b/
@@ -502,7 +504,8 @@ export function readMapQuery(text: string): MapQuery {
     latitudes: [],
     ambiguous: null,
     style: VINTAGE.test(said) ? 'vintage' : SATELLITE.test(said) ? 'satellite-dark' : null,
-    facts: []
+    facts: [],
+    matched: []
   }
   if (/\bpopulation|people live|inhabitants\b/.test(said)) out.facts.push('population')
   if (/\bcapital\b/.test(said)) out.facts.push('capital')
@@ -519,6 +522,7 @@ export function readMapQuery(text: string): MapQuery {
     const b = plate(pair[2])?.code
     if (a && b) {
       out.plates.push(a, b)
+      out.matched.push(pair[0])
       rest = rest.replace(pair[0], ' ')
     }
   }
@@ -526,6 +530,7 @@ export function readMapQuery(text: string): MapQuery {
     const code = plate(m[1])?.code
     if (code && !out.plates.includes(code)) {
       out.plates.push(code)
+      out.matched.push(m[0])
       rest = rest.replace(m[0], ' ')
     }
   }
@@ -540,12 +545,14 @@ export function readMapQuery(text: string): MapQuery {
       const to = choose(b[b.length - 1].name, b[b.length - 1].entries, said, [from]).place
       out.route = { from, to }
       out.stops.push([from, to])
+      out.matched.push(a[0].name, b[b.length - 1].name)
       return out
     }
   }
 
   const words = rest.split(' ').filter(Boolean)
   const found = namesIn(words)
+  out.matched.push(...found.map((f) => f.name))
   // Plain readings first, so "Atlanta" can settle "Georgia".
   const plain = found.filter((f) => f.entries.length === 1).map((f) => f.entries[0].place)
   const places: Place[] = []

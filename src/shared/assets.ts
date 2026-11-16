@@ -1,4 +1,5 @@
 import { assetsInCut, beatWords, currentCut, type EditDoc } from './edit'
+import { mapCredits } from './maps/command'
 import { clock } from './presets'
 
 /**
@@ -172,5 +173,7 @@ export function creditsText(doc: EditDoc): string | null {
       if (a.origin.license) parts.push(a.origin.license)
       return `- ${parts.join(' · ')}`
     })
+  // The data the cut's maps draw on; the plate data's licence asks for its credit wherever it is used.
+  lines.push(...mapCredits(currentCut(doc).motion ?? []).map((l) => `- ${l}`))
   return lines.length ? `Credits for ${doc.title}\n\n${lines.join('\n')}\n` : null
 }

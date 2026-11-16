@@ -63,6 +63,8 @@ export interface Template {
   check(call: MotionCall): string | null
   /** The edit's pictures it shows, by asset id: they must be in the edit, and are credited with it. */
   pictures?(call: MotionCall): string[]
+  /** Rows for Details: where what it shows comes from, such as a map's facts and data. */
+  details?(call: MotionCall): { label: string; value: string }[]
   build(ctx: BuildContext): Layer[]
   /** A short name for one call: "a lower third for Sam Lee". */
   name(call: MotionCall): string

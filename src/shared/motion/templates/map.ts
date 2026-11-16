@@ -1,3 +1,4 @@
+import { mapDetails } from '../../maps/command'
 import { readMapQuery, whichOne } from '../../maps/gazetteer'
 import { mapLayers } from '../../maps/layers'
 import { isMapStyle, MAP_PLACES, specFromQuery, type MapPlace } from '../../maps/spec'
@@ -83,6 +84,7 @@ register({
     return null
   },
   build,
+  details: (call) => mapDetails(call.text, call.style, call.fx.map((f) => f.toLowerCase())),
   name: (call) => {
     const q = readMapQuery(mapQuery(call.text))
     if (q.route) return `a map from ${q.route.from.name} to ${q.route.to.name}`
