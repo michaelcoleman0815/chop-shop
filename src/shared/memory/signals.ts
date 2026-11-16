@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Cut, Op } from '../edit/schema'
+import { withoutNever } from '../never'
 
 /**
  * What Cutalong notices as someone edits, kept as small events on their own
@@ -56,7 +57,20 @@ export const SignalSchema = z.discriminatedUnion('kind', [
     aspect: z.string().max(20)
   }),
   /** The brand's voice notes, as they now read. */
-  z.object({ kind: z.literal('voice'), at, text: z.string().max(4000) })
+  z.object({ kind: z.literal('voice'), at, text: z.string().max(4000) }),
+  /**
+   * A rule for a brand's never list (shared/never): said in a chat or set on
+   * the Brand page. The latest for a brand and a thing is the one that holds.
+   */
+  z.object({
+    kind: z.literal('never'),
+    at,
+    brand: z.string().min(1).max(80),
+    item: z.string().min(1).max(60),
+    on: z.boolean(),
+    /** What was said, when it was said in a chat. */
+    text: z.string().max(400).optional()
+  })
 ])
 export type Signal = z.infer<typeof SignalSchema>
 type WithoutTime<T> = T extends unknown ? Omit<T, 'at'> : never
@@ -219,8 +233,14 @@ const RULES: { topic: string; value: string | ((m: RegExpMatchArray) => string);
   { topic: 'captions', value: 'on', re: /\badd captions\b|\bcaptions on\b|\bturn (the )?captions on\b/i }
 ]
 
-/** The corrections in a request, a note or the voice notes. */
-export function classify(text: string): Said[] {
+/**
+ * The corrections in a request, a note or the voice notes. In a request or a
+ * note, rules for the never list ("never use whooshes") are the list's, not
+ * corrections, so they are read past rather than counted twice. The voice
+ * notes are the brand's own words and are read whole (`whole`).
+ */
+export function classify(said: string, whole = false): Said[] {
+  const text = whole ? said : withoutNever(said)
   const out: Said[] = []
   const seen = new Set<string>()
   for (const rule of RULES) {

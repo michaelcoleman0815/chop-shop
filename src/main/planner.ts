@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { readApiKey } from './apikey'
+import { covering, neverGuard, neverLeftOut } from '../shared/never'
 import {
   applyOps,
   currentCut,
@@ -54,6 +55,8 @@ export async function planEdit(input: {
   preferences?: string[]
   /** The names of the creator's own logos. */
   logos?: string[]
+  /** What the channel never uses, in words (shared/never). */
+  never?: string[]
 }): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
@@ -83,7 +86,15 @@ export async function planEdit(input: {
             { type: 'text', text: renderTranscript(doc), cache_control: { type: 'ephemeral' } },
             {
               type: 'text',
-              text: renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos)
+              text: renderRequest(
+                doc,
+                input.request,
+                input.notes,
+                input.voice,
+                input.preferences ?? [],
+                input.logos,
+                input.never
+              )
             }
           ]
         }
@@ -156,6 +167,28 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[]): PlanEditResu
       .filter((w) => beats.has(w.beat) && w.search.trim())
       .slice(0, 3)
       .map((w) => ({ beat: w.beat, search: w.search.trim() }))
+  }
+}
+
+/**
+ * A plan checked against the channel's never list (shared/never): whatever it
+ * would add from the list is left out and said in one sentence, and no B-roll
+ * is looked for when B-roll from outside is on it. Claude is told the list;
+ * this holds whichever model planned.
+ */
+export function keepOffList(result: PlanEditResult, doc: EditDoc, never: string[], brand: string): PlanEditResult {
+  if (!result.ok || never.length === 0) return result
+  const kept = neverGuard(currentCut(doc), result.ops, never, {
+    words: doc.words,
+    sources: doc.sources,
+    assets: doc.assets
+  })
+  const noBroll = covering(never, 'broll') !== null
+  return {
+    ...result,
+    ops: kept.ops,
+    rejected: kept.left.length ? [...result.rejected, neverLeftOut(brand, kept.left)] : result.rejected,
+    brollWanted: noBroll ? [] : result.brollWanted
   }
 }
 

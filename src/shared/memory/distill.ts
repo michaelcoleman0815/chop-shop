@@ -152,7 +152,7 @@ export function distill(signals: Signal[]): Preference[] {
     }
   }
   const voice = [...sorted].reverse().find((s): s is Of<'voice'> => s.kind === 'voice')
-  if (voice) for (const c of classify(voice.text)) add(c.topic, { value: c.value, at: voice.at, kind: 'voice' })
+  if (voice) for (const c of classify(voice.text, true)) add(c.topic, { value: c.value, at: voice.at, kind: 'voice' })
 
   // Each version once, however many notes it carried out.
   const made = new Map<string, Made>()

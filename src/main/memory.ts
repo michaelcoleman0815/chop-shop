@@ -1,6 +1,13 @@
 import { app, ipcMain } from 'electron'
 import { join } from 'path'
-import { MemoryChangeSchema, memoryView, plannerPreferences, type MemoryView } from '../shared/memory'
+import {
+  MemoryChangeSchema,
+  memoryView,
+  neverEntries,
+  neverFor,
+  plannerPreferences,
+  type MemoryView
+} from '../shared/memory'
 import { MemoryStore } from './memory-store'
 
 /**
@@ -27,4 +34,9 @@ export function registerMemoryIpc(): void {
 /** The strongest statements, read fresh for each request, so a deleted one never goes. */
 export async function preferencesForPlanner(): Promise<string[]> {
   return plannerPreferences(await memory().current())
+}
+
+/** A brand's never list (shared/never), read fresh for each request and export. */
+export async function neverForBrand(brand: string): Promise<string[]> {
+  return neverFor(neverEntries(await memory().current()), brand)
 }

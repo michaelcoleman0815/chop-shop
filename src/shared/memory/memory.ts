@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import type { Brand } from '../brand'
+import { isNeverItem } from '../never'
 import { distill, type Preference } from './distill'
-import { SignalSchema } from './signals'
+import { SignalSchema, type Signal } from './signals'
 
 /**
  * What Cutalong has learned about how someone edits, as it is kept on their
@@ -59,13 +60,48 @@ export function parseMemory(raw: unknown): Memory {
  * Notes a signal, unless learning is paused or the signal is not one we know.
  * The voice notes count only as they now read, so a new reading replaces the
  * last one rather than piling up.
+ *
+ * A rule for the never list is a setting the person gave, not something
+ * noticed: it is kept while learning is paused, replaces the last word on
+ * the same thing for the same brand, and is never trimmed away.
  */
 export function recordSignal(memory: Memory, signal: unknown): Memory {
-  if (memory.paused) return memory
   const parsed = SignalSchema.safeParse(signal)
   if (!parsed.success) return memory
-  const kept = parsed.data.kind === 'voice' ? memory.signals.filter((s) => s.kind !== 'voice') : memory.signals
-  return { ...memory, signals: [...kept, parsed.data].slice(-MAX_SIGNALS) }
+  const next = parsed.data
+  if (memory.paused && next.kind !== 'never') return memory
+  const kept = memory.signals.filter((s) => {
+    if (next.kind === 'voice') return s.kind !== 'voice'
+    if (next.kind === 'never') return !(s.kind === 'never' && s.brand === next.brand && s.item === next.item)
+    return true
+  })
+  const all = [...kept, next]
+  const rules = all.filter((s) => s.kind === 'never').length
+  if (rules === 0) return { ...memory, signals: all.slice(-MAX_SIGNALS) }
+  const rest = new Set(all.filter((s) => s.kind !== 'never').slice(-Math.max(0, MAX_SIGNALS - rules)))
+  return { ...memory, signals: all.filter((s) => s.kind === 'never' || rest.has(s)) }
+}
+
+/** A thing on a brand's never list, and where it came from. */
+export interface NeverEntry {
+  brand: string
+  item: string
+  at: string
+  /** The words it was said in, when it was said in a chat. */
+  said: string | null
+}
+
+/** Every brand's never list: the latest word on each thing, where that word was never. */
+export function neverEntries(memory: Memory): NeverEntry[] {
+  return memory.signals
+    .filter((s): s is Extract<Signal, { kind: 'never' }> => s.kind === 'never' && s.on && isNeverItem(s.item))
+    .sort((a, b) => a.at.localeCompare(b.at))
+    .map((s) => ({ brand: s.brand, item: s.item, at: s.at, said: s.text ?? null }))
+}
+
+/** One brand's never list, as entries the rest of the app reads (shared/never). */
+export function neverFor(entries: NeverEntry[], brand: string): string[] {
+  return entries.filter((e) => e.brand === brand).map((e) => e.item)
 }
 
 export const MemoryChangeSchema = z.object({
@@ -76,12 +112,25 @@ export const MemoryChangeSchema = z.object({
   paused: z.boolean().optional(),
   /** A statement was made into a brand default, or that was turned back. */
   applied: z.string().max(200).optional(),
-  declined: z.string().max(200).optional()
+  declined: z.string().max(200).optional(),
+  /** Things put on a brand's never list, or taken off it, on the Brand page or in a chat. */
+  never: z
+    .array(
+      z.object({
+        brand: z.string().min(1).max(80),
+        item: z.string().min(1).max(60),
+        on: z.boolean(),
+        text: z.string().max(400).optional()
+      })
+    )
+    .max(40)
+    .optional()
 })
 export type MemoryChange = z.infer<typeof MemoryChangeSchema>
 
-export function changeMemory(memory: Memory, change: MemoryChange): Memory {
+export function changeMemory(memory: Memory, change: MemoryChange, at = new Date().toISOString()): Memory {
   let next = { ...memory }
+  for (const rule of change.never ?? []) next = recordSignal(next, { kind: 'never', at, ...rule })
   const once = (list: string[], id: string): string[] => (list.includes(id) ? list : [...list, id])
   if (change.forget) {
     const edits = { ...next.edits }
@@ -131,6 +180,8 @@ export interface MemoryView {
   declined: string[]
   /** Signals noted so far, so the page can tell nothing learned from nothing seen. */
   signals: number
+  /** Every brand's never list. Views from before there was one have none. */
+  never?: NeverEntry[]
 }
 
 export function memoryView(memory: Memory): MemoryView {
@@ -139,11 +190,19 @@ export function memoryView(memory: Memory): MemoryView {
     learned: learned(memory),
     applied: memory.applied,
     declined: memory.declined,
-    signals: memory.signals.length
+    signals: memory.signals.filter((s) => s.kind !== 'never').length,
+    never: neverEntries(memory)
   }
 }
 
-export const EMPTY_MEMORY_VIEW: MemoryView = { paused: false, learned: [], applied: [], declined: [], signals: 0 }
+export const EMPTY_MEMORY_VIEW: MemoryView = {
+  paused: false,
+  learned: [],
+  applied: [],
+  declined: [],
+  signals: 0,
+  never: []
+}
 
 /**
  * Statements that set a brand default the brand does not have yet: each is
