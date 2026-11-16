@@ -148,7 +148,9 @@ export const TreatmentSchema = z.object({
   /** Another camera of the same take shown for this beat: instead, in a box over it, or beside it (edit/angles). */
   angle: BeatAngleSchema.nullable().optional(),
   /** Where the picture is centred when it is cropped to a narrower frame, by hand: 0 the left edge, 1 the right. */
-  framing: z.number().min(0).max(1).nullable().optional()
+  framing: z.number().min(0).max(1).nullable().optional(),
+  /** False hides the captions while this beat plays (over a title, a screen recording); absent follows the video's. */
+  captions: z.boolean().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -371,6 +373,8 @@ export const NoteSchema = z.object({
   text: z.string().min(1),
   /** The beat the note was left on, if any. */
   beat: z.string().nullable(),
+  /** The stretch picked on the beat strip when the note was left, by its first and last beat: the note is about those only. */
+  range: z.object({ from: z.string(), to: z.string() }).optional(),
   status: z.enum(['open', 'applied', 'dismissed']),
   /** The version the note was written against. */
   version: z.number().int().positive()

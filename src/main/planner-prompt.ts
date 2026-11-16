@@ -9,6 +9,8 @@ import {
   ANGLE_LAYOUTS,
   LOOK_SETTINGS,
   NAMED_LOOKS,
+  pickedBeats,
+  rangeTimes,
   resolveCut,
   SFX_KINDS,
   sfxName,
@@ -45,7 +47,7 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - An edit can be cut from several recordings, in the order they were shot. Each <source> names its file. When it says sound="...", that recording's picture plays over the sound of a separate, better recording, already lined up; nothing more needs doing for it.
 - The cut is an ordered list of beats. A beat plays the words from its first id to its last id, inclusive, from one recording. Beats play in list order, so moving a beat moves that moment in the video.
 - Struck words are inside a beat but cut out of it. Words in no beat are not in the video.
-- A beat's treatment: frame (speaker, broll, split, card), bw (black and white), zoom (1 is the full frame; 1.08 to 1.2 is a punch-in), bigWord (the id of one word in that beat shown big on screen), broll (a cutaway from the material: {"asset":"a1","inSec":0} shows material a1 from that second, muted, over the beat's sound).
+- A beat's treatment: frame (speaker, broll, split, card), bw (black and white), zoom (1 is the full frame; 1.08 to 1.2 is a punch-in), bigWord (the id of one word in that beat shown big on screen), broll (a cutaway from the material: {"asset":"a1","inSec":0} shows material a1 from that second, muted, over the beat's sound), captions (false hides the captions while the beat plays, true shows them again).
 
 ## Material
 A <material> block, when present, lists what the person brought in to use: footage, images and clips, each with an id (a1, a2, ...), its length and where the cut already shows it.
@@ -98,6 +100,7 @@ ${graphicsGuide()}
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
 - "This", "here" and "that bit" in a note mean the beat the note was left on.
+- A note left on a stretch ("on b3 to b6 only") is about those beats alone, and "this" means all of them: change nothing outside them, nothing that changes the whole video (a look, music, captions, the shape), and when it cannot be done inside them, make no op for it and say why in reply.
 - To open on a stronger line, move the beat that holds it to position 0; if it sits inside a long beat, split it out first.
 - Keep sentences whole unless asked to cut inside one. Never strike the only words of a beat; remove the beat instead.
 - If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs, one full sentence for each.
@@ -135,7 +138,8 @@ const TreatmentSet = z.object({
   zoom: z.number().optional(),
   bigWord: z.string().nullable().optional(),
   /** Material by id; offerPlan turns it into the file and keeps it muted. */
-  broll: z.object({ asset: z.string(), inSec: z.number() }).nullable().optional()
+  broll: z.object({ asset: z.string(), inSec: z.number() }).nullable().optional(),
+  captions: z.boolean().optional()
 })
 
 /** The graphics the planner can make: every built template but hand-built layers. */
@@ -491,6 +495,7 @@ export function renderRequest(
       t.camera ? `camera ${describeCamera(t.camera)}` : null,
       t.angle ? `shows ${t.angle.source} ${ANGLE_WORDS[t.angle.layout]}` : null,
       typeof t.framing === 'number' ? `framed by hand at ${t.framing}` : null,
+      t.captions === false ? 'no captions' : null,
       t.broll?.camera ? `cutaway camera ${describeCamera(t.broll.camera)}` : null,
       t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null,
       beat.sfx?.length
@@ -549,7 +554,18 @@ export function renderRequest(
   }
   if (notes.length > 0) {
     parts.push('<notes>')
-    for (const note of notes) parts.push(`${note.id}${note.beat ? ` (left on ${note.beat})` : ''}: ${note.text}`)
+    for (const note of notes) {
+      // A note on a stretch picked on the strip is about its beats only.
+      const picked = note.range ? pickedBeats(cut, { anchor: note.range.from, focus: note.range.to }) : []
+      const times = picked.length ? rangeTimes(resolved, picked) : null
+      const where =
+        picked.length && times
+          ? ` (on ${picked[0]} to ${picked[picked.length - 1]} only, ${clock(times.start)}-${clock(times.end)})`
+          : note.beat
+            ? ` (left on ${note.beat})`
+            : ''
+      parts.push(`${note.id}${where}: ${note.text}`)
+    }
     parts.push('</notes>')
   }
   // The creator's own words about how their edits should feel.

@@ -7,10 +7,12 @@ import {
   cameraClock,
   cameraPlan,
   cameraTransform,
+  captionedWords,
   captionPages,
   changesColour,
   currentCut,
   currentVersion,
+  cutsPicked,
   undoTarget,
   cutawayAt,
   cutawayClock,
@@ -28,9 +30,11 @@ import {
   pieceRate,
   pieceTime,
   pictureFit,
+  pickedBeats,
   pipBox,
   placeSfx,
   RECORDED_VOICE_LUFS,
+  rangeTimes,
   resolveCut,
   SFX_INFO,
   sfxGainDb,
@@ -40,6 +44,7 @@ import {
   viewThroughAngles,
   vignetteStops,
   windowShare,
+  type BeatPick,
   type Camera,
   type EditDoc,
   type Fit,
@@ -146,6 +151,16 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
 
   const nowBeat = beatAt(resolved, player.time) ?? resolved.beats[resolved.beats.length - 1]
 
+  // A stretch picked on the strip: notes and commands act on its beats until it is let go.
+  const [pick, setPick] = useState<BeatPick | null>(null)
+  const picked = useMemo(() => pickedBeats(cut, pick), [cut, pick])
+  const span = useMemo(() => (picked.length ? rangeTimes(resolved, picked) : null), [resolved, picked])
+  // It goes when either end leaves the cut, and with the edit.
+  useEffect(() => {
+    if (pick && picked.length === 0) setPick(null)
+  }, [pick, picked])
+  useEffect(() => setPick(null), [doc.id])
+
   // Graphics along the beat strip, stacked in rows where they overlap.
   const marks: StripMark[] = useMemo(() => {
     const rows: number[] = []
@@ -243,7 +258,16 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               onClose={() => app.selectGraphic(null)}
             />
           ) : (
-            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} time={player.time} />
+            <NotesPanel
+              app={app}
+              doc={doc}
+              nowBeat={nowBeat?.id ?? null}
+              presets={app.presets}
+              time={player.time}
+              picked={picked}
+              span={span}
+              onLetGo={() => setPick(null)}
+            />
           )}
         </div>
         <BeatStrip
@@ -255,6 +279,15 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           onSeek={player.seek}
           marks={marks}
           selected={selected?.id ?? null}
+          pick={pick}
+          onPick={setPick}
+          onCutPick={() => {
+            if (picked.length === 0) return
+            // The answer shows in the notes, so they come up.
+            setSide('notes')
+            if (selected) app.selectGraphic(null)
+            app.cutBeats(picked, 'panel')
+          }}
           onMark={(id) => {
             setSide('notes')
             app.selectGraphic(id === selected?.id ? null : id)
@@ -323,9 +356,10 @@ function Preview({
 
   const beat = beatAt(resolved, time)
   const treatment = beat ? cut.beats[beat.index]?.treatment : undefined
+  // Beats whose captions are off show none, as the export has it.
   const pages = useMemo(
-    () => captionPages(resolved, cut.captions.wordsPerScreen),
-    [resolved, cut.captions.wordsPerScreen]
+    () => captionPages(captionedWords(cut, resolved), cut.captions.wordsPerScreen),
+    [cut, resolved]
   )
   // Captions the graphics draw are on the canvas, not here; and captions wait while a card or title is up.
   const carded = scene.items.some((i) => template(i.kind)?.covers === 'card' && time >= i.start && time < i.end)
@@ -853,7 +887,10 @@ function NotesPanel({
   doc,
   nowBeat,
   presets,
-  time
+  time,
+  picked,
+  span,
+  onLetGo
 }: {
   app: Cutalong
   doc: EditDoc
@@ -861,6 +898,10 @@ function NotesPanel({
   presets: Preset[]
   /** The playhead: where a graphic typed here lands, and what the commands that act on a word or beat act on. */
   time: number
+  /** The beats of a stretch picked on the strip, and where it plays: a note or a command acts on those. */
+  picked: string[]
+  span: { start: number; end: number } | null
+  onLetGo: () => void
 }): JSX.Element {
   const version = currentVersion(doc)
   const notes = openNotes(doc)
@@ -875,6 +916,14 @@ function NotesPanel({
     const i = beats.findIndex((b) => b.id === id)
     return i < 0 ? '' : `Beat ${i + 1}`
   }
+  // A note left on a stretch says where it played then.
+  const resolved = useMemo(() => resolveCut(currentCut(doc), doc.words, doc.sources), [doc])
+  const where = (n: (typeof notes)[number]): string => {
+    if (!n.range) return position(n.beat)
+    const times = rangeTimes(resolved, pickedBeats(currentCut(doc), { anchor: n.range.from, focus: n.range.to }))
+    return times ? `${clock(times.start)} to ${clock(times.end)}` : position(n.beat)
+  }
+  const stretch = span ? `${clock(span.start)} to ${clock(span.end)}` : null
 
   return (
     <aside className="cl-notes" aria-label="Notes">
@@ -896,7 +945,7 @@ function NotesPanel({
                 <span className="cl-note-n">{i + 1}</span>
                 <span className="cl-note-text">
                   {n.text}
-                  {n.beat && <span className="cl-project-meta">{position(n.beat)}</span>}
+                  {(n.beat || n.range) && <span className="cl-project-meta">{where(n)}</span>}
                 </span>
                 <button
                   type="button"
@@ -915,12 +964,26 @@ function NotesPanel({
           Apply {notes.length === 1 ? '1 note' : `${notes.length} notes`} as v{version.n + 1}
         </Button>
       )}
+      {stretch && (
+        <div className="cl-picked">
+          <span>
+            <span className="mono">{stretch}</span> picked
+          </span>
+          <Button variant="text" small onClick={onLetGo}>
+            Clear
+          </Button>
+        </div>
+      )}
       <NoteInput
         presets={presets}
+        placeholder={stretch ? `A note on ${stretch}, or type /` : undefined}
         onNote={(text) => {
           const command = parseCommand(text)
-          if (command) void app.runCommand(command.command, 'panel', command.rest, time)
-          else if (!app.answerInPanel(text)) app.addNote(text, nowBeat)
+          const range = picked.length ? picked : null
+          if (command) void app.runCommand(command.command, 'panel', command.rest, time, range)
+          else if (range && cutsPicked(text)) app.cutBeats(range, 'panel')
+          else if (!app.answerInPanel(text))
+            app.addNote(text, nowBeat, range ? { from: range[0], to: range[range.length - 1] } : null)
         }}
       />
     </aside>
@@ -932,7 +995,15 @@ function NotesPanel({
  * move through it, Tab or Enter puts the command in the box to finish, and
  * Escape closes it. Nothing runs until it is sent.
  */
-function NoteInput({ presets, onNote }: { presets: Preset[]; onNote: (text: string) => void }): JSX.Element {
+function NoteInput({
+  presets,
+  onNote,
+  placeholder = 'Add a note, or type /'
+}: {
+  presets: Preset[]
+  onNote: (text: string) => void
+  placeholder?: string
+}): JSX.Element {
   const [text, setText] = useState('')
   const [pick, setPick] = useState(0)
   const input = useRef<HTMLInputElement>(null)
@@ -973,13 +1044,13 @@ function NoteInput({ presets, onNote }: { presets: Preset[]; onNote: (text: stri
         </div>
       )}
       <label className="sr-only" htmlFor="cl-note">
-        Add a note, or type /
+        {placeholder}
       </label>
       <input
         id="cl-note"
         ref={input}
         value={text}
-        placeholder="Add a note, or type /"
+        placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (matches.length > 0) {

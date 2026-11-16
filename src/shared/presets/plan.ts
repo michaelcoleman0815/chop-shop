@@ -612,6 +612,14 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
   if (bigWords > 0) said.push(bigWords === 1 ? 'one big word lands' : `a big word lands in ${count(bigWords, 'beat')}`)
   const bw = treat.filter((o) => o.set.bw === true).reduce((n, o) => n + o.beats.length, 0)
   if (bw > 0) said.push(`${count(bw, 'cutaway')} ${bw === 1 ? 'goes' : 'go'} black and white`)
+  for (const on of [false, true]) {
+    const beats = treat.filter((o) => o.set.captions === on).flatMap((o) => o.beats)
+    if (beats.length === 0) continue
+    const { who, one } = whoOf(beats, after)
+    said.push(
+      on ? `${who} ${one ? 'shows' : 'show'} captions again` : `${who} ${one ? 'shows' : 'show'} no captions`
+    )
+  }
   if (removed > 0) said.push(`${count(removed, 'beat')} ${removed === 1 ? 'is' : 'are'} gone`)
   if (struck > 0) said.push(`${count(struck, 'stretch', 'stretches')} of words ${struck === 1 ? 'is' : 'are'} cut`)
   said.push(...motionPhrases(ops))

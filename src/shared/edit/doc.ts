@@ -357,7 +357,12 @@ export function undoTarget(doc: EditDoc): number | null {
   return origin(doc, doc.versions[i - 1]).n
 }
 
-export function addNote(doc: EditDoc, text: string, beat: string | null = null): EditDoc {
+export function addNote(
+  doc: EditDoc,
+  text: string,
+  beat: string | null = null,
+  range: { from: string; to: string } | null = null
+): EditDoc {
   const trimmed = text.trim()
   if (!trimmed) return doc
   let max = 0
@@ -365,7 +370,14 @@ export function addNote(doc: EditDoc, text: string, beat: string | null = null):
     const m = /^n(\d+)$/.exec(note.id)
     if (m) max = Math.max(max, Number(m[1]))
   }
-  const note: Note = { id: `n${max + 1}`, text: trimmed, beat, status: 'open', version: currentVersion(doc).n }
+  const note: Note = {
+    id: `n${max + 1}`,
+    text: trimmed,
+    beat,
+    ...(range ? { range } : {}),
+    status: 'open',
+    version: currentVersion(doc).n
+  }
   return { ...doc, notes: [...doc.notes, note] }
 }
 

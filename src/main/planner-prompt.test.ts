@@ -83,6 +83,18 @@ describe('the planner request', () => {
     expect(currentCut(doc).removed).toEqual(['w5'])
   })
 
+  it('holds a note left on a stretch picked on the strip to its beats', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    doc = addNote(doc, 'Make this black and white.', 'b2', { from: 'b2', to: 'b1' })
+    expect(doc.notes[0].range).toEqual({ from: 'b2', to: 'b1' })
+    const text = renderRequest(doc, '', doc.notes)
+    expect(text).toContain('n1 (on b1 to b2 only, 0:00-0:04): Make this black and white.')
+    expect(PLANNER_SYSTEM).toContain('A note left on a stretch ("on b3 to b6 only") is about those beats alone')
+    // Once an end of it is cut, the note is the beat's it was left on.
+    doc = commit(doc, [{ op: 'remove', beats: ['b1'] }], 'x').doc
+    expect(renderRequest(doc, '', doc.notes)).toContain('n1 (left on b2): Make this black and white.')
+  })
+
   it('carries what has been learned about the creator in a block of its own, only when there is some', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     const learned = ['You undo zoom punch-ins (3 of 4)', 'Captions at chest height (every edit)']

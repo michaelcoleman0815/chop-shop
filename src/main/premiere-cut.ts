@@ -4,6 +4,7 @@ import { promises as fs } from 'fs'
 import { basename, dirname, join } from 'path'
 import {
   CAMERA_INFO,
+  captionedWords,
   captionPages,
   currentCut,
   describeLook,
@@ -805,7 +806,8 @@ export async function writePremiere(
   })
   await fs.mkdir(dirname(opts.xmlPath), { recursive: true })
   await fs.writeFile(opts.xmlPath, buildPremiereXml(plan, media))
-  const srt = captionsSrt(resolved, cut.captions)
+  // Beats whose captions are off are left out, as the export leaves them.
+  const srt = captionsSrt(captionedWords(cut, resolved), cut.captions)
   const srtPath = srt ? join(dirname(opts.xmlPath), `${name} captions.srt`) : null
   if (srt && srtPath) await fs.writeFile(srtPath, srt)
   const showsCutaway = new Set(resolved.pieces.filter((_, i) => segments[i].broll).map((p) => p.beat))
