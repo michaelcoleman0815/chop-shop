@@ -750,23 +750,30 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
 
   // concat hands its output a microsecond timebase, and xfade refuses two
   // pictures on different timebases, so every run is put back on frames.
-  const joinRun = (run: number[], name: { v: string; a: string }): void => {
+  // xfade also wants to be told the pictures are at a steady rate: ffmpeg 7
+  // forgets the rate after setpts and concat, and refuses the transition
+  // outright. fps on pictures already on the frame grid changes no frame;
+  // it only says the rate again.
+  const steady = `settb=1/${fps},fps=${fps}`
+  const joinRun = (run: number[], name: { v: string; a: string }, toTransition: boolean): void => {
     if (run.length === 1) {
-      chains.push(`[v${run[0]}]null[${name.v}]`, `[a${run[0]}]anull[${name.a}]`)
+      chains.push(`[v${run[0]}]${toTransition ? steady : 'null'}[${name.v}]`, `[a${run[0]}]anull[${name.a}]`)
       return
     }
-    chains.push(`${run.map((k) => `[v${k}]`).join('')}concat=n=${run.length}:v=1:a=0,settb=1/${fps}[${name.v}]`)
+    chains.push(
+      `${run.map((k) => `[v${k}]`).join('')}concat=n=${run.length}:v=1:a=0,${toTransition ? steady : `settb=1/${fps}`}[${name.v}]`
+    )
     chains.push(`${run.map((k) => `[a${k}]`).join('')}concat=n=${run.length}:v=0:a=1[${name.a}]`)
   }
 
   if (runs.length === 1) {
-    joinRun(runs[0], { v: 'vcat', a: 'acat' })
+    joinRun(runs[0], { v: 'vcat', a: 'acat' }, false)
   } else {
     let vAcc = ''
     let aAcc = ''
     runs.forEach((run, r) => {
       const last = r === runs.length - 1
-      joinRun(run, { v: `vr${r}`, a: `ar${r}` })
+      joinRun(run, { v: `vr${r}`, a: `ar${r}` }, true)
       if (r === 0) {
         vAcc = `vr${r}`
         aAcc = `ar${r}`
@@ -781,7 +788,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       if (overlapFrames(k) < 1) {
         // Shorter than a frame once both ends land on frames: the pictures
         // simply cut, while the sound still crossfades below.
-        chains.push(`[${vAcc}][vr${r}]concat=n=2:v=1:a=0,settb=1/${fps}[${vOut}]`)
+        chains.push(`[${vAcc}][vr${r}]concat=n=2:v=1:a=0,${steady}[${vOut}]`)
       } else if (info.preview === 'dip') {
         // A dip: the old picture is all the way to the colour by the middle,
         // the new one comes up from it after, and a dissolve joins the two.

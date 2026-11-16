@@ -53,6 +53,8 @@ jobs:
           test -x resources/bin/whisper-cli || { echo "::error::whisper-cli missing"; exit 1; }
           test -x resources/bin/chopshop-vision || { echo "::error::chopshop-vision missing"; exit 1; }
           test -x resources/bin/yt-dlp || { echo "::error::yt-dlp missing"; exit 1; }
+          # The renderer of record: its version decides how exports behave.
+          "$(node -p "require('ffmpeg-static')")" -hide_banner -version | head -1
 
       # A test build is only made from work that passes every check.
       - name: Typecheck and test

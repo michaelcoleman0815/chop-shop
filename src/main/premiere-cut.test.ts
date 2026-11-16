@@ -522,6 +522,10 @@ describe.skipIf(!FFMPEG)('a Premiere project plays as the export does', () => {
       `[${over}]`,
       '-map',
       '[voice]',
+      // The sequence's rate, as Premiere plays it. ffmpeg 7 does not carry a
+      // rate through setpts and concat, and without this writes 25 fps.
+      '-r',
+      String(seq.fps),
       '-c:v',
       'libx264',
       '-preset',

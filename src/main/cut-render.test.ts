@@ -105,7 +105,9 @@ describe('render arguments', () => {
     )
     const graph = args[args.indexOf('-filter_complex') + 1]
     // The first run is one piece; the second is the wipe's piece and the hard cut after it.
-    expect(graph).toContain('[v1][v2]concat=n=2:v=1:a=0,settb=1/30[vr1]')
+    // Each is told its frame rate again on the way in: ffmpeg 7's xfade refuses a picture without one.
+    expect(graph).toContain('[v0]settb=1/30,fps=30[vr0]')
+    expect(graph).toContain('[v1][v2]concat=n=2:v=1:a=0,settb=1/30,fps=30[vr1]')
     expect(graph).toContain('[vr0][vr1]xfade=transition=wipeleft:duration=0.400000:offset=1.600000[vcat]')
     expect(graph).toContain('[ar0][ar1]acrossfade=d=0.400000:c1=qsin:c2=qsin[acat]')
     expect(graph).toContain('fade=t=in:st=0:d=0.500000:color=white,fade=t=out:st=3.100000:d=1.000000:color=white')
