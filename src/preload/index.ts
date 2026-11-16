@@ -39,8 +39,17 @@ const api = {
   // someone likes into a style, and the saved slash commands.
   prepareCut: (
     path: string
-  ): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('cut:prepare', path),
+  ): Promise<
+    | {
+        ok: true
+        doc: EditDoc
+        mediaUrl: string
+        warning: string | null
+        /** What intake noticed and fixed: one sentence, at most three facts. */
+        intake?: { sentence: string; facts: string[] }
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:prepare', path),
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'

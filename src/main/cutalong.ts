@@ -15,6 +15,7 @@ import { renderCut } from './cut-render'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { vocabulary } from '../shared/raw/prompt'
+import { intakeReply } from './intake'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { readBrand, saveBrand } from './brand-store'
@@ -66,8 +67,10 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         durationSec: meta.durationSec,
         width: meta.width,
         height: meta.height,
-        fps: meta.fps > 0 ? meta.fps : 30
+        fps: meta.fps > 0 ? meta.fps : 30,
+        ...(meta.facts.color !== 'sdr' ? { color: meta.facts.color } : {})
       }
+      const intake = intakeReply(basename(path), meta.facts)
       let words: Word[] = []
       let warning: string | null = null
       try {
@@ -88,7 +91,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
       const doc = createDoc({ id: randomUUID(), title: basename(path, extname(path)), source, words })
       progress('Ready', 100)
-      return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning }
+      return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning, intake }
     } catch (err) {
       progress('Failed', 0)
       return { ok: false as const, message: message(err) }

@@ -384,7 +384,14 @@ export function useCutalong() {
       }
       if (studyRef.current)
         actions.unshift({ kind: 'use-style', label: 'Cut it like the video you sent', primary: true })
-      patch(id, { progress: null, text, aside: r.warning, actions })
+      const noticed = r.intake?.sentence ?? ''
+      patch(id, {
+        progress: null,
+        text,
+        aside: [noticed, r.warning ?? ''].filter(Boolean).join(' ') || null,
+        chips: r.intake?.facts.length ? r.intake.facts : undefined,
+        actions
+      })
       return true
     },
     [patch, push, setDoc]

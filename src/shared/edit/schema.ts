@@ -30,7 +30,9 @@ export const SourceSchema = z.object({
   durationSec: z.number().nonnegative(),
   width: z.number().int().nonnegative(),
   height: z.number().int().nonnegative(),
-  fps: z.number().positive()
+  fps: z.number().positive(),
+  /** How its picture is encoded: HDR is converted first when it renders. Absent is ordinary video. */
+  color: z.enum(['sdr', 'hlg', 'pq']).optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 
