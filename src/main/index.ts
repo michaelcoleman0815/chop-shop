@@ -1138,8 +1138,11 @@ if (!app.requestSingleInstanceLock()) {
 
     if (mainWindow) {
       initUpdater(mainWindow)
-      // Cutalong records nothing: no camera, microphone or screen.
-      mainWindow.webContents.session.setPermissionRequestHandler((_wc, _permission, cb) => cb(false))
+      // Cutalong records nothing: no camera, microphone or screen. It only puts text on the
+      // clipboard, for the Copy buttons under a reply ("Copy the description").
+      mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, cb) =>
+        cb(permission === 'clipboard-sanitized-write')
+      )
     }
 
     if (getSettings().autoCheckUpdates) {

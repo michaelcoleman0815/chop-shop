@@ -9,6 +9,7 @@ import type { TransitionKind } from '../edit/transitions'
 import { planChapters } from './chapters'
 import { ideaStarts } from './plan'
 import { sfxCommand } from './sfx'
+import { covering, transitionFamily, type NeverItem } from '../never'
 
 /**
  * /all: the finishing a video of its kind gets, as one version. The voice is
@@ -17,7 +18,9 @@ import { sfxCommand } from './sfx'
  * moving transition gets a whoosh, and a video YouTube shows chapters on gets
  * them. What the cut already has stays as the person set it. What a kind of
  * video should not have is left off, and the reply says so: ASMR's sound is
- * never processed, and a podcast or a stream cuts straight.
+ * never processed, and a podcast or a stream cuts straight. What the
+ * brand's never list rules out (shared/never) is left off too, and comes
+ * back in `left` for the reply to say in one sentence.
  */
 
 export interface Finish {
@@ -101,6 +104,8 @@ export interface FinishPlan {
   ops: Op[]
   /** A sentence for each thing left off, and why. */
   notes: string[]
+  /** What /all would have put on that the brand's never list rules out, by its entry. */
+  left: NeverItem[]
 }
 
 /**
@@ -109,12 +114,24 @@ export interface FinishPlan {
  * reads the cut as the steps before it left it, so a whoosh goes on the
  * transitions just put in.
  */
-export function finishOps(doc: EditDoc, profileId: string | null | undefined, music: Op | null = null): FinishPlan {
+export function finishOps(
+  doc: EditDoc,
+  profileId: string | null | undefined,
+  music: Op | null = null,
+  never: NeverItem[] = []
+): FinishPlan {
   const finish = finishFor(profileId)
   const context = { words: doc.words, sources: doc.sources, assets: doc.assets }
   let cut = currentCut(doc)
   const ops: Op[] = []
   const notes: string[] = []
+  const left: NeverItem[] = []
+  /** Whether the never list rules a thing out; noted once when it does. */
+  const ruled = (item: NeverItem): boolean => {
+    const entry = covering(never, item)
+    if (entry && !left.includes(entry)) left.push(entry)
+    return entry !== null
+  }
   /** Takes ops that change the cut, on top of the changes so far. */
   const take = (more: Op[]): void => {
     if (more.length === 0) return
@@ -132,17 +149,17 @@ export function finishOps(doc: EditDoc, profileId: string | null | undefined, mu
   }
 
   // The look, unless the picture already has one.
-  if (finish.look && !cut.look) take([{ op: 'look', set: NAMED_LOOKS[finish.look].look, replace: true }])
+  if (finish.look && !cut.look && !ruled('look')) take([{ op: 'look', set: NAMED_LOOKS[finish.look].look, replace: true }])
 
   // The music bed, unless there is one.
-  if (finish.music && !cut.music) {
+  if (finish.music && !cut.music && !ruled('music')) {
     if (music) take([music])
     else notes.push('There is no music bed: /music puts one in from a track you choose.')
   }
 
   // A transition at each change of section that has room for one: the words
   // must leave footage either side of the cut, or it would stay a hard cut.
-  if (finish.transition) {
+  if (finish.transition && !ruled(`transition:${transitionFamily(finish.transition.kind)}`)) {
     const t = finish.transition
     const targets = ideaStarts(withCut(doc, cut), cut).filter((id) => !cut.beats.find((b) => b.id === id)?.transition)
     if (targets.length > 0) {
@@ -160,7 +177,7 @@ export function finishOps(doc: EditDoc, profileId: string | null | undefined, mu
   // A whoosh through each moving transition that has none.
   if (finish.whoosh) {
     const read = sfxCommand(withCut(doc, cut), 'transitions', null, null)
-    if ('ops' in read) take(read.ops)
+    if ('ops' in read && !ruled('sfx:whoosh')) take(read.ops)
   }
 
   // Chapters, on a video YouTube shows them on: not a Short, and long enough.
@@ -172,5 +189,5 @@ export function finishOps(doc: EditDoc, profileId: string | null | undefined, mu
     }
   }
 
-  return { ops, notes }
+  return { ops, notes, left }
 }

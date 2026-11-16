@@ -39,7 +39,7 @@ export async function planEditLocally(input: PlanInput, local: { host: string; m
       [
         renderCommands(input.commands ?? []),
         renderTranscript(doc),
-        renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos, {
+        renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos, input.never, {
           offers: input.offers,
           chat: input.chat
         }),

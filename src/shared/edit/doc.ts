@@ -252,6 +252,27 @@ export interface CommitResult {
 }
 
 /**
+ * Ops a version never keeps, because the version's cut says what they set
+ * and Cutalong 0.2.13 cannot open a project with an op it does not know: the
+ * brand an edit is made in (Cut.brand) and how pictures fill the frame
+ * (Cut.fill). Nothing that reads a version's ops (what is learned from them,
+ * a vlog joining the next day's clips, why a length cut a line) needs them,
+ * and nothing replays saved ops, since every version holds its whole cut.
+ */
+const UNSAVED: ReadonlySet<Op['op']> = new Set(['brand', 'fill'])
+
+/** The ops a version keeps. */
+export function savedOps(ops: Op[]): Op[] {
+  return ops.some((o) => UNSAVED.has(o.op)) ? ops.filter((o) => !UNSAVED.has(o.op)) : ops
+}
+
+/** An edit as it is saved: no version keeps an op it never keeps, even one saved before that was so. */
+export function withSavedOps(doc: EditDoc): EditDoc {
+  if (!doc.versions.some((v) => v.ops.some((o) => UNSAVED.has(o.op)))) return doc
+  return { ...doc, versions: doc.versions.map((v) => ({ ...v, ops: savedOps(v.ops) })) }
+}
+
+/**
  * Applies ops as a new version. When nothing applies, the doc comes back
  * unchanged: an empty version would only be noise in the notes panel.
  */
@@ -266,12 +287,14 @@ export function commit(
     sources: doc.sources,
     assets: doc.assets
   })
-  if (applied.length === 0) return { doc, applied, rejected }
+  const kept = savedOps(applied)
+  // Only a brand or fill op, naming what the edit already has, changes nothing.
+  if (applied.length === 0 || (kept.length === 0 && sameValue(cut, currentCut(doc)))) return { doc, applied, rejected }
   const version: Version = {
     n: currentVersion(doc).n + 1,
     at: opts.at ?? new Date().toISOString(),
     summary,
-    ops: stored(applied),
+    ops: kept,
     cut
   }
   return {
@@ -283,16 +306,6 @@ export function commit(
     applied,
     rejected
   }
-}
-
-/**
- * The ops a version keeps. The fill is left out: the version's cut says it,
- * nothing that reads a version's ops (what is learned from them, a vlog
- * joining the next day's clips, why a length cut a line) needs it, and
- * Cutalong 0.2.13 cannot open a project with an op it does not know.
- */
-function stored(applied: Op[]): Op[] {
-  return applied.filter((op) => op.op !== 'fill')
 }
 
 /** Brings back an earlier version's cut as the newest version. */

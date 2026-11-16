@@ -3,10 +3,13 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { hasApiKey, readApiKey } from './apikey'
 import { claudeKeyStatus, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
 import { getSettings, saveSettings } from './store'
+import { commandThing, covering, neverEmptiedReply, neverGuard, neverLeftOut, thingsIn } from '../shared/never'
+import { findMotionCommand } from '../shared/motion'
 import {
   applyOps,
   currentCut,
   EditDocSchema,
+  NAMED_LOOKS,
   plainIds,
   sentence,
   type EditDoc,
@@ -95,6 +98,8 @@ export interface PlanInput extends RequestExtra {
   preferences?: string[]
   /** The names of the creator's own logos. */
   logos?: string[]
+  /** What the channel never uses, in words (shared/never). */
+  never?: string[]
   /** The slash commands there are, the person's own among them: a plan may run any of them. */
   commands?: CommandLine[]
 }
@@ -130,10 +135,16 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
             { type: 'text', text: renderTranscript(doc), cache_control: { type: 'ephemeral' } },
             {
               type: 'text',
-              text: renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos, {
-                offers: input.offers,
-                chat: input.chat
-              })
+              text: renderRequest(
+                doc,
+                input.request,
+                input.notes,
+                input.voice,
+                input.preferences ?? [],
+                input.logos,
+                input.never,
+                { offers: input.offers, chat: input.chat }
+              )
             }
           ]
         }
@@ -293,6 +304,83 @@ export function commandProblem(doc: EditDoc, c: PlannedCommand, named: Set<strin
     default:
       return null
   }
+}
+
+/** What the planner did, when part of it was left out for the never list. */
+const OTHERS_DONE = 'I made the other changes you asked for.'
+
+/**
+ * A plan checked against the channel's never list (shared/never): whatever it
+ * would add from the list is left out, and no B-roll is looked for when
+ * B-roll from outside is on it. Claude is told the list; this holds
+ * whichever model planned.
+ *
+ * When something was left out, the planner's own words no longer say what
+ * happened, so they are said again: the other changes are in, and what was
+ * left out and why beside them, or, when nothing was left to do, that the
+ * edit stayed as it was. A note that asked for what was left out, and every
+ * note when nothing was left to do, is not marked done.
+ */
+export function keepOffList(result: PlanEditResult, doc: EditDoc, never: string[], brand: string): PlanEditResult {
+  if (!result.ok || never.length === 0) return result
+  const context = { words: doc.words, sources: doc.sources, assets: doc.assets }
+  // Step by step, as the editor runs them: each run of ops on the cut the runs before it left.
+  let cut = currentCut(doc)
+  const left = new Set<string>()
+  const steps: PlanStep[] = []
+  const ops: Op[] = []
+  for (const step of result.steps) {
+    if ('ops' in step) {
+      const kept = neverGuard(cut, step.ops as Op[], never, context)
+      kept.left.forEach((item) => left.add(item))
+      if (kept.ops.length === 0) continue
+      steps.push({ ops: kept.ops })
+      ops.push(...kept.ops)
+      cut = applyOps(cut, kept.ops, context).cut
+      continue
+    }
+    // A command that would add something on the list is left out, as typing it would be.
+    const thing = plannedThing(step.command)
+    const ruled = thing ? covering(never, thing) : null
+    if (ruled) {
+      left.add(ruled)
+      continue
+    }
+    steps.push(step)
+  }
+  const brollWanted = covering(never, 'broll') !== null ? [] : result.brollWanted
+  if (left.size === 0) return { ...result, ops, steps, brollWanted }
+  const out = [...left]
+  const emptied = steps.length === 0
+  // A thing and one kind of it ask for the same: "a sound effect" and the whooshes left out.
+  const overlaps = (a: string, b: string): boolean => covering([a], b) !== null || covering([b], a) !== null
+  const askedFor = (id: string): boolean => {
+    const note = doc.notes.find((n) => n.id === id)
+    return !!note && thingsIn(note.text).some((item) => out.some((l) => overlaps(item, l)))
+  }
+  return {
+    ...result,
+    ops,
+    steps,
+    summary: emptied ? result.summary : OTHERS_DONE,
+    reply: emptied ? neverEmptiedReply(brand, out) : OTHERS_DONE,
+    // Said once: beside the reply, or as the reply when nothing else was done.
+    rejected: emptied ? result.rejected : [...result.rejected, neverLeftOut(brand, out)],
+    notesHandled: emptied ? [] : result.notesHandled.filter((id) => !askedFor(id)),
+    brollWanted
+  }
+}
+
+/** What a command step would add that a never list can name, as the same command typed would. */
+function plannedThing(c: PlannedCommand): string | null {
+  if (c.op === 'music-track') return 'music'
+  if (c.op !== 'run') return null
+  const command = c.command.trim().replace(/^\//, '').toLowerCase()
+  return commandThing(command, c.rest, {
+    looks: new Set(Object.keys(NAMED_LOOKS)),
+    graphic: findMotionCommand(command)?.kind ?? null,
+    captions: command === 'hierarchy'
+  })
 }
 
 /**

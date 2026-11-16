@@ -1,4 +1,4 @@
-import { EditDocSchema } from './edit'
+import { EditDocSchema, withSavedOps } from './edit'
 import { readClipSet } from './clipping/set'
 import type { ChatMessage, Project } from './types'
 
@@ -13,6 +13,10 @@ import type { ChatMessage, Project } from './types'
  *
  * Clips from /clipping are read the same way, each on its own. A project
  * saved before clipping existed has none, and opens exactly as it did.
+ *
+ * Builds before brands and the fill cannot read an edit with a brand or fill
+ * op in its versions, so none is kept (edit/doc savedOps): each version's cut
+ * says them.
  */
 export function upgradeProject(raw: Project): { project: Project; unreadable: string | null } {
   const read = upgradeEdit(raw)
@@ -20,7 +24,7 @@ export function upgradeProject(raw: Project): { project: Project; unreadable: st
   const { set, dropped, note } = readClipSet(raw.clipping)
   const project: Project = {
     ...read.project,
-    clipping: set,
+    clipping: set && { ...set, clips: set.clips.map((c) => ({ ...c, doc: withSavedOps(c.doc) })) },
     chat: note ? [...(read.project.chat ?? []), note] : read.project.chat
   }
   const why = note
@@ -34,7 +38,8 @@ export function upgradeProject(raw: Project): { project: Project; unreadable: st
 function upgradeEdit(raw: Project): { project: Project; unreadable: string | null } {
   if (!raw.edit) return { project: raw, unreadable: null }
   const parsed = EditDocSchema.safeParse(raw.edit)
-  if (parsed.success) return { project: { ...raw, edit: parsed.data }, unreadable: null }
+  // Saved by a build that kept the brand op in its versions: as it is saved now, so an older build reads it.
+  if (parsed.success) return { project: { ...raw, edit: withSavedOps(parsed.data) }, unreadable: null }
   const why = parsed.error.issues
     .slice(0, 3)
     .map((i) => `${i.path.join('.')}: ${i.message}`)
