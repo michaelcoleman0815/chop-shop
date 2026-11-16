@@ -115,7 +115,9 @@ export class FeatureStream {
   private tailStart = 0
   private total = 0
   private next = 0
-  private out: number[] = []
+  /** Frames so far, grown by doubling: an hour is 8.6 million values. */
+  private out = new Float32Array(BANDS * 1024)
+  private written = 0
   private readonly re = new Float64Array(FFT_SIZE)
   private readonly im = new Float64Array(FFT_SIZE)
 
@@ -138,10 +140,15 @@ export class FeatureStream {
   finish(): Features {
     const frames = Math.ceil(this.total / HOP)
     while (this.next < frames) this.frame(this.next++)
-    return { hopSec: HOP_SEC, bands: BANDS, frames: this.out.length / BANDS, data: Float32Array.from(this.out) }
+    return { hopSec: HOP_SEC, bands: BANDS, frames: this.written / BANDS, data: this.out.slice(0, this.written) }
   }
 
   private frame(k: number): void {
+    if (this.written + BANDS > this.out.length) {
+      const grown = new Float32Array(this.out.length * 2)
+      grown.set(this.out)
+      this.out = grown
+    }
     const from = k * HOP + HOP / 2 - WINDOW / 2
     const { re, im } = this
     re.fill(0)
@@ -158,7 +165,7 @@ export class FeatureStream {
         const k2 = band.start + i
         e += band.weights[i] * (re[k2] * re[k2] + im[k2] * im[k2])
       }
-      this.out.push(Math.max(FLOOR_DB, 10 * Math.log10(e / norm + 1e-12)))
+      this.out[this.written++] = Math.max(FLOOR_DB, 10 * Math.log10(e / norm + 1e-12))
     }
   }
 }
@@ -309,8 +316,10 @@ export function bestShift(
  * How badly one frame of a fails to be the frame of b plus a gain: the
  * finished video is the recording plus whatever was laid over it, so a
  * frame may be louder than the recording predicts (music under the voice)
- * but should not be quieter. Quieter counts heavily, louder only a little,
- * and a band within `toleranceDb` of the prediction counts as matching.
+ * but should not be quieter. Quieter counts heavily and louder only a
+ * little. Within `toleranceDb` of the prediction a band still counts a
+ * little by how far off it is, because the room's own grain (a couple of
+ * decibels, frame to frame) is what places a cut inside a quiet pause.
  */
 export function frameMismatch(
   a: Features,
@@ -322,11 +331,13 @@ export function frameMismatch(
 ): number {
   if (ta < 0 || tb < 0 || ta >= a.frames || tb >= b.frames) return Infinity
   const B = a.bands
+  const edge = 0.15 * toleranceDb * toleranceDb
   let cost = 0
   for (let band = 0; band < B; band++) {
     const e = a.data[ta * B + band] - (b.data[tb * B + band] + gainDb)
-    if (e < -toleranceDb) cost += (e + toleranceDb) * (e + toleranceDb)
-    else if (e > toleranceDb) cost += 0.5 * Math.min(e - toleranceDb, 30)
+    if (e < -toleranceDb) cost += (e + toleranceDb) * (e + toleranceDb) + edge
+    else if (e > toleranceDb) cost += 0.5 * Math.min(e - toleranceDb, 30) + edge
+    else cost += 0.15 * e * e
   }
   return cost / B
 }

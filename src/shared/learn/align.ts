@@ -264,7 +264,7 @@ export function alignPair(
   // alike, and scored for how alike.
   if (sound && F) {
     const radius = Math.round(o.searchSec / hop)
-    cands.forEach((list, k) => {
+    const patch = (k: number): [number, number] => {
       const fw = finWord(k)
       let a = Math.max(0, Math.floor((fw.startSec - 0.06) / hop))
       let b = Math.min(F.frames, Math.ceil((fw.endSec + 0.06) / hop))
@@ -273,7 +273,12 @@ export function alignPair(
         a = Math.max(0, mid - 4)
         b = Math.min(F.frames, a + 8)
       }
+      return [a, b]
+    }
+    const refine = (k: number, list: Cand[]): void => {
+      const [a, b] = patch(k)
       for (const c of list) {
+        if (c.score !== null) continue
         const R = recordings[c.rec].features
         if (!R) continue
         const m = bestShift(F, a, b - a, R, c.d / hop, c.neighbour ? 5 : radius)
@@ -288,7 +293,42 @@ export function alignPair(
         if (list.slice(0, i).some((c) => c.rec === list[i].rec && Math.abs(c.d - list[i].d) < 0.02)) list.splice(i, 1)
       }
       for (let i = list.length - 1; i >= 0; i--) if (list[i].score !== null && list[i].score! < 0) list.splice(i, 1)
-    })
+      if (list.length > 2 * MAX_CANDIDATES) list.length = 2 * MAX_CANDIDATES
+    }
+    cands.forEach((list, k) => refine(k, list))
+    // A word one transcript missed has no candidate in the take it came
+    // from, so each word is also tried where its neighbours' takes sit,
+    // twice over so it reaches across a missing word or two.
+    for (let pass = 0; pass < 2; pass++) {
+      const added = cands.map((list, k) => {
+        const fw = finWord(k)
+        const fresh: Cand[] = []
+        for (const nb of [k - 1, k + 1]) {
+          for (const c of cands[nb] ?? []) {
+            if ((c.score ?? 0) < o.matchFloor) continue
+            if ([...list, ...fresh].some((x) => x.rec === c.rec && Math.abs(x.d - c.d) < 0.05)) continue
+            const at = nearestWord(recordings[c.rec].words, fw.startSec + c.d)
+            if (at < 0) continue
+            const same = normToken(recordings[c.rec].words[at].text) === finToks[k].tok
+            fresh.push({
+              rec: c.rec,
+              word: at,
+              d: c.d,
+              score: null,
+              text: same ? 0.9 : 0.2,
+              context: 0,
+              neighbour: true
+            })
+          }
+        }
+        return fresh
+      })
+      added.forEach((fresh, k) => {
+        if (fresh.length === 0) return
+        cands[k].push(...fresh)
+        refine(k, cands[k])
+      })
+    }
   }
 
   // 4. One path through the candidates: alike-sounding words, few cuts.
@@ -364,6 +404,73 @@ export function alignPair(
     acc.push(p)
     return acc
   }, [])
+
+  // A stretch played faster than it was recorded shows up as a string of
+  // short pieces whose offsets creep the same way, word after word. If its
+  // sound matches once stretched back to the recording's pace, it was sped
+  // up: that is said, and none of it is labelled.
+  const handled = new Set<number>()
+  const spedUp: { rec: number; f0: number; f1: number; r0: number; r1: number; factor: number }[] = []
+  if (sound && F) {
+    const creeps = (p: Draft, q: Draft, sign: number): boolean => {
+      if (p.rec !== q.rec || p.ks.length > 4 || q.ks.length > 4) return false
+      const words = recordings[p.rec].words
+      if (words[q.firstRaw].startSec <= words[p.lastRaw].startSec) return false
+      const gap = finWord(q.ks[0]).startSec - finWord(p.ks[p.ks.length - 1]).endSec
+      const stepSec = q.d - p.d
+      return gap < 0.3 && Math.abs(stepSec) > tol && Math.sign(stepSec) === sign
+    }
+    const found: typeof spedUp = []
+    let i = 0
+    while (i + 2 < drafts.length) {
+      const sign = Math.sign(drafts[i + 1].d - drafts[i].d)
+      let j = i
+      while (sign !== 0 && j + 1 < drafts.length && creeps(drafts[j], drafts[j + 1], sign)) j++
+      let hit = false
+      if (j - i >= 2) {
+        const run = drafts.slice(i, j + 1)
+        // The pieces either side of a sped-up stretch may have joined the run; try without them too.
+        for (const part of [run, run.slice(1), run.slice(0, -1), run.slice(1, -1)].filter((r) => r.length >= 3)) {
+          const words = recordings[part[0].rec].words
+          const lastPart = part[part.length - 1]
+          const f0 = finWord(part[0].ks[0]).startSec
+          const f1 = finWord(lastPart.ks[lastPart.ks.length - 1]).endSec
+          const r0 = words[part[0].firstRaw].startSec
+          const r1 = words[lastPart.lastRaw].endSec
+          const factor = speedChange(F, recordings[part[0].rec], f0, f1, r0, r1)
+          if (!factor) continue
+          found.push({ rec: part[0].rec, f0, f1, r0, r1, factor })
+          hit = true
+          break
+        }
+      }
+      i = hit ? j + 1 : i + 1
+    }
+    // Neighbouring findings that agree are one stretch, and every word inside it is settled.
+    for (const s of found.sort((a, b) => a.f0 - b.f0)) {
+      const last = spedUp[spedUp.length - 1]
+      if (last && last.rec === s.rec && s.f0 - last.f1 < 2.5 && Math.abs(s.factor - last.factor) < 0.15) {
+        last.f1 = Math.max(last.f1, s.f1)
+        last.r1 = Math.max(last.r1, s.r1)
+        last.factor = Math.round(((last.r1 - last.r0) / (last.f1 - last.f0)) * 100) / 100
+      } else spedUp.push({ ...s })
+    }
+    const inside = (k: number, s: (typeof spedUp)[number]): boolean => {
+      const fw = finWord(k)
+      return (fw.startSec + fw.endSec) / 2 >= s.f0 - 0.02 && (fw.startSec + fw.endSec) / 2 <= s.f1 + 0.02
+    }
+    finToks.forEach((_, k) => {
+      if (spedUp.some((s) => inside(k, s))) handled.add(k)
+    })
+    drafts = drafts.filter((p) => !p.ks.every((k) => handled.has(k)))
+    for (const p of drafts) {
+      if (!p.ks.some((k) => handled.has(k))) continue
+      p.ks = p.ks.filter((k) => !handled.has(k))
+      p.firstRaw = Math.min(...p.ks.map((k) => choice[k]!.word))
+      p.lastRaw = Math.max(...p.ks.map((k) => choice[k]!.word))
+    }
+    for (const k of handled) choice[k] = null
+  }
 
   // 6. Edges. Between two pieces that follow each other, the cut is found in
   // the gap between their words; elsewhere a piece reaches out until its
@@ -457,12 +564,25 @@ export function alignPair(
 
   // 8. What could not be handled, said rather than guessed.
   const unsure: Alignment['unsure'] = []
+  for (const s of spedUp) {
+    const rec = recordings[s.rec]
+    unsure.push({ source: rec.id, startSec: s.r0, endSec: s.r1 })
+    issues.push({
+      kind: 'speed',
+      source: rec.id,
+      outStart: s.f0,
+      outEnd: s.f1,
+      factor: s.factor,
+      text: `${clock(s.f0)} to ${clock(s.f1)} plays about ${s.factor.toFixed(2)} times as fast as the recording. I can't label sped-up stretches yet, so I left those words out.`
+    })
+  }
   const covered = (k: number): boolean => {
     const fw = finWord(k)
     const mid = (fw.startSec + fw.endSec) / 2
     return pieces.some((p) => mid >= p.outStart - 0.02 && mid <= p.outEnd + 0.02)
   }
-  for (const run of unmatchedRuns(choice, path, rawToks, recordings, covered)) {
+  const settled = (k: number): boolean => handled.has(k) || (choice[k] !== null && covered(k))
+  for (const run of unmatchedRuns(choice, path, rawToks, recordings, settled)) {
     const f0 = finWord(run.ks[0]).startSec
     const f1 = finWord(run.ks[run.ks.length - 1]).endSec
     if (run.raw) {
@@ -497,22 +617,42 @@ export function alignPair(
     }
   }
 
-  // Two takes that sounded alike: neither is labelled.
+  // Two takes that sounded alike: neither is labelled. A rival is the same
+  // line said elsewhere (three or more words in a row match there too). With
+  // the sound, it counts when the stretch around the word, inside the piece
+  // that was chosen, sounds about as much like the rival take as like the
+  // chosen one; with the words alone, when as many words around it match.
+  const draftOf = new Map<number, Draft>()
+  for (const p of drafts) for (const k of p.ks) draftOf.set(k, p)
   let alike = 0
   choice.forEach((c, k) => {
     if (!c) return
-    // A rival is the same line said elsewhere (three or more words in a row
-    // match there too) that sounds about as much like it, or, when only the
-    // words were compared, that matches as many words around it.
-    const rival = cands[k].find(
+    const rivals = cands[k].filter(
       (x) =>
         x !== c &&
         !x.neighbour &&
         x.text >= 1 &&
         x.context >= 3 &&
-        (x.rec !== c.rec || Math.abs(rawStartOf(x) - rawStartOf(c)) > 0.3) &&
-        (c.score !== null && x.score !== null ? x.score >= c.score - o.takeMargin : x.context >= Math.min(c.context, 4))
+        (x.rec !== c.rec || Math.abs(rawStartOf(x) - rawStartOf(c)) > 0.3)
     )
+    if (rivals.length === 0) return
+    let rival: Cand | undefined
+    const p = draftOf.get(k)
+    const R = p ? recordings[p.rec].features : null
+    if (sound && F && p && R && c.score !== null) {
+      const fw = finWord(k)
+      const a = Math.max(0, Math.round(Math.max(p.outStart, fw.startSec - 1.5) / hop))
+      const b = Math.min(F.frames, Math.round(Math.min(p.outEnd, fw.endSec + 1.5) / hop))
+      if (b - a < 8) return
+      const mine = patchCorrelation(F, a, R, a + Math.round(p.d / hop), b - a)
+      rival = rivals.find((x) => {
+        const Rx = recordings[x.rec].features
+        const theirs = Rx && x.score !== null ? bestShift(F, a, b - a, Rx, x.d / hop, 2) : null
+        return theirs !== null && Number.isFinite(mine) && theirs.score >= mine - o.takeMargin
+      })
+    } else if (c.score === null) {
+      rival = rivals.find((x) => x.context >= Math.min(c.context, 4))
+    }
     if (!rival) return
     alike++
     for (const x of [c, rival]) {
@@ -809,15 +949,16 @@ function searchEverywhere(
 }
 
 /**
- * Runs of finished words the path left out or no piece covers. Each comes
- * with the stretch of recording its words were read as, when they were.
+ * Runs of finished words that are not settled: left out of the path, or in no
+ * piece, and not already explained (a sped-up stretch). Each comes with the
+ * stretch of recording its words were read as, when they were.
  */
 function unmatchedRuns(
   choice: (Cand | null)[],
   path: Int32Array,
   rawToks: { rec: number; word: number }[],
   recordings: RecordingInput[],
-  covered: (k: number) => boolean
+  settled: (k: number) => boolean
 ): { ks: number[]; raw: { rec: number; start: number; end: number } | null }[] {
   const runs: { ks: number[]; raw: { rec: number; start: number; end: number } | null }[] = []
   let ks: number[] = []
@@ -838,9 +979,9 @@ function unmatchedRuns(
     if (raw ? ks.length >= 2 : ks.length >= 1) runs.push({ ks, raw })
     ks = []
   }
-  choice.forEach((c, k) => {
-    if (!c || !covered(k)) ks.push(k)
-    else flush()
+  choice.forEach((_, k) => {
+    if (settled(k)) flush()
+    else ks.push(k)
   })
   flush()
   return runs

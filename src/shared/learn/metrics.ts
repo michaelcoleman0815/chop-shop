@@ -182,8 +182,9 @@ export function evaluateCutter(
     }
 
     // Edges, where both cut out exactly the same words (or the same pause).
+    // A cut inside a quiet pause is only known to within that pause, which
+    // shows up here as a little of the error.
     for (const c of pair.cuts) {
-      if (!c.sure) continue
       const a = c.startMs / 1000
       const b = c.endMs / 1000
       const removed = removedBetween(spansOf.get(c.source) ?? [])

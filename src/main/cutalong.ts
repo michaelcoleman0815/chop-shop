@@ -18,6 +18,7 @@ import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { readBrand, saveBrand } from './brand-store'
+import { registerLearnIpc } from './learn'
 import {
   createDoc,
   currentCut,
@@ -301,6 +302,13 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   ipcMain.handle('presets:list', () => savedPresets())
   ipcMain.handle('presets:save', (_e, preset: unknown) => savePreset(preset))
   ipcMain.handle('presets:remove', (_e, command: string) => removePreset(command))
+
+  // Learning from the creator's own edits, transcribed the same local way,
+  // and without fetching a model: nothing in it leaves this computer.
+  registerLearnIpc({
+    send: deps.send,
+    transcribe: (path, durationSec, progress) => transcriptFor(path, durationSec, progress, { download: false })
+  })
 }
 
 /**
@@ -311,7 +319,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 async function transcriptFor(
   path: string,
   durationSec: number,
-  progress: (stage: string, percent: number) => void
+  progress: (stage: string, percent: number) => void,
+  opts: { download?: boolean } = {}
 ): Promise<Transcript> {
   const cached = await readAnalysis(path).catch(() => null)
   const whole =
@@ -323,6 +332,12 @@ async function transcriptFor(
 
   const { whisperModel } = getSettings()
   if (!hasModel(whisperModel)) {
+    // Learning from edits never reaches the network, not even for the model.
+    if (opts.download === false) {
+      throw new Error(
+        `The ${whisperModel} transcription model isn't on this Mac yet. Download it in Settings, then try again.`
+      )
+    }
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))
   }
   return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)))

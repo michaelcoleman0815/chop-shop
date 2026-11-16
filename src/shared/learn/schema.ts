@@ -141,12 +141,19 @@ export const HabitsSchema = z.object({
   pauseCuts: count.nullable(),
   /** Pauses up to this long were kept whole and longer ones shortened. Null when none was shortened. */
   maxPauseSec: z.number().positive().nullable(),
-  /** Room left before the first word after a cut, and after the last word before one. */
+  /**
+   * Room left before the first word after a cut, and after the last word
+   * before one. The two together are always known exactly (they are the
+   * pause the cut leaves); how they split is only known when the cut could
+   * be heard, not when it sat in a quiet pause or under music. Then each is
+   * half, and heard is false.
+   */
   pad: z
     .object({
       beforeSec: z.number().nonnegative(),
       afterSec: z.number().nonnegative(),
-      count: z.number().int().nonnegative()
+      count: z.number().int().nonnegative(),
+      heard: z.boolean().default(true)
     })
     .nullable(),
   /** Ums and uhs inside kept speech, and how many were cut. */

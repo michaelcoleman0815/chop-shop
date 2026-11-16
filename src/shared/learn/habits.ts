@@ -105,27 +105,35 @@ export function pauseDecisions(pair: LabelledPair): { gap: number; shortened: bo
 }
 
 /** Room either side of each cut whose edges were heard. */
-export function cutPadding(pair: LabelledPair): { before: number[]; after: number[] } {
+/**
+ * Room either side of each cut between two pieces that play back to back:
+ * the split for the cuts whose position was heard, and the total (which is
+ * exact either way) for all of them.
+ */
+export function cutPadding(pair: LabelledPair): { before: number[]; after: number[]; total: number[] } {
   const before: number[] = []
   const after: number[] = []
+  const total: number[] = []
   const kept = pair.words.filter((w) => w.label === 'kept')
   const inPiece = (i: number): LabelledWord[] => kept.filter((w) => pieceOf(pair, w) === i)
   const order = pair.pieces.map((_, i) => i).sort((x, y) => pair.pieces[x].outStart - pair.pieces[y].outStart)
   for (let k = 1; k < order.length; k++) {
     const p = pair.pieces[order[k - 1]]
     const q = pair.pieces[order[k]]
-    if (!p.sureEnd || !q.sureStart || Math.abs(q.outStart - p.outEnd) > 0.01) continue
+    if (Math.abs(q.outStart - p.outEnd) > 0.01) continue
     const pw = inPiece(order[k - 1])
     const qw = inPiece(order[k])
     if (pw.length === 0 || qw.length === 0) continue
-    const lastEnd = Math.max(...pw.map((w) => w.endSec))
-    const firstStart = Math.min(...qw.map((w) => w.startSec))
-    const a = p.rawEnd - lastEnd
-    const b = firstStart - q.rawStart
-    if (a > -0.02 && a < 1) after.push(Math.max(0, a))
-    if (b > -0.02 && b < 1) before.push(Math.max(0, b))
+    const a = p.rawEnd - Math.max(...pw.map((w) => w.endSec))
+    const b = Math.min(...qw.map((w) => w.startSec)) - q.rawStart
+    if (a <= -0.02 || a >= 1 || b <= -0.02 || b >= 1) continue
+    total.push(Math.max(0, a) + Math.max(0, b))
+    if (p.sureEnd && q.sureStart) {
+      after.push(Math.max(0, a))
+      before.push(Math.max(0, b))
+    }
   }
-  return { before, after }
+  return { before, after, total }
 }
 
 /** Ums and uhs inside kept speech: the words either side of them were kept. */
@@ -164,54 +172,64 @@ export interface TakeGroup {
 }
 
 /**
- * Lines said more than once, read from the labels: a stretch that was cut
- * and whose first words open a kept stretch close by (within 90 s) is an
- * earlier or later take of it. A restart that backs up a few words counts:
- * the abandoned take ends where the next one picks up again.
+ * Lines said more than once, read from the labels: a stretch that was cut,
+ * whose opening words are said again somewhere in kept speech close by
+ * (within 90 s), is another take of that line. A restart that backs up a
+ * few words counts: the abandoned take ends where the next one picks up
+ * again. The kept take can sit anywhere in a longer kept stretch, since it
+ * is usually played straight on from what came before it.
  */
 export function takeGroups(pair: LabelledPair): TakeGroup[] {
   const groups: TakeGroup[] = []
   for (const [source, list] of bySource(pair)) {
     // Runs of the same fate, ignoring ums and words that are neither kept nor cut.
-    const runs: { label: 'kept' | 'cut'; words: LabelledWord[] }[] = []
+    const runs: { label: 'kept' | 'cut'; words: LabelledWord[]; toks: string[] }[] = []
     for (const w of list) {
-      if (isFiller(w.text) || (w.label !== 'kept' && w.label !== 'cut')) continue
+      const tok = normToken(w.text)
+      if (!tok || isFiller(w.text) || (w.label !== 'kept' && w.label !== 'cut')) continue
       const last = runs[runs.length - 1]
-      if (last && last.label === w.label) last.words.push(w)
-      else runs.push({ label: w.label, words: [w] })
+      if (last && last.label === w.label) {
+        last.words.push(w)
+        last.toks.push(tok)
+      } else runs.push({ label: w.label, words: [w], toks: [tok] })
     }
-    const toks = (r: { words: LabelledWord[] }): string[] => r.words.map((w) => normToken(w.text)).filter(Boolean)
-    const opens = (cutToks: string[], keptToks: string[]): boolean => {
-      let n = 0
-      while (n < cutToks.length && n < keptToks.length && cutToks[n] === keptToks[n]) n++
-      return n >= Math.min(3, cutToks.length) && n >= 2
-    }
-    const linked = new Map<number, { at: number; before: boolean }[]>()
+    // Kept takes by where they start: run and word.
+    const linked = new Map<string, { run: number; at: number; length: number; cuts: number[] }>()
     runs.forEach((run, i) => {
-      if (run.label !== 'cut' || toks(run).length < 2) return
-      const ct = toks(run)
-      // The kept stretch this is another take of: nearest first, after it then before it.
-      const candidates = runs
-        .map((r, j) => ({ r, j }))
-        .filter(({ r, j }) => r.label === 'kept' && j !== i)
-        .filter(({ r }) => Math.abs(r.words[0].startSec - run.words[0].startSec) <= 90)
-        .sort((x, y) => Math.abs(x.j - i) - Math.abs(y.j - i) || y.j - x.j)
-      const match = candidates.find(({ r }) => opens(ct, toks(r)))
-      if (!match) return
-      const list2 = linked.get(match.j) ?? []
-      list2.push({ at: i, before: i < match.j })
-      linked.set(match.j, list2)
+      if (run.label !== 'cut' || run.toks.length < 2) return
+      const need = Math.min(3, run.toks.length)
+      const opening = run.toks.slice(0, need)
+      let best: { run: number; at: number; distance: number } | null = null
+      runs.forEach((kept, j) => {
+        if (kept.label !== 'kept') return
+        for (let p = 0; p + need <= kept.toks.length; p++) {
+          if (opening.some((t, q) => kept.toks[p + q] !== t)) continue
+          const distance = Math.abs(kept.words[p].startSec - run.words[0].startSec)
+          if (distance <= 90 && (!best || distance < best.distance)) best = { run: j, at: p, distance }
+        }
+      })
+      const found = best as { run: number; at: number; distance: number } | null
+      if (!found) return
+      const key = `${found.run}:${found.at}`
+      const entry = linked.get(key) ?? { run: found.run, at: found.at, length: run.toks.length, cuts: [] }
+      entry.cuts.push(i)
+      entry.length = Math.max(entry.length, run.toks.length)
+      linked.set(key, entry)
     })
-    for (const [j, others] of linked) {
-      const all = [...others.map((o) => o.at), j].sort((a, b) => a - b)
-      groups.push({
-        source,
-        takes: all.map((i) => ({
+    for (const entry of linked.values()) {
+      const keptRun = runs[entry.run]
+      const keptTake = {
+        startSec: keptRun.words[entry.at].startSec,
+        endSec: keptRun.words[Math.min(keptRun.words.length - 1, entry.at + entry.length - 1)].endSec
+      }
+      const takes = [
+        ...entry.cuts.map((i) => ({
           startSec: runs[i].words[0].startSec,
           endSec: runs[i].words[runs[i].words.length - 1].endSec
         })),
-        kept: all.indexOf(j)
-      })
+        keptTake
+      ].sort((a, b) => a.startSec - b.startSec)
+      groups.push({ source, takes, kept: takes.indexOf(keptTake) })
     }
   }
   return groups
@@ -226,6 +244,7 @@ export function fitHabits(pairs: LabelledPair[], at = new Date().toISOString()):
   const pads = scored.map(cutPadding)
   const before = pads.flatMap((p) => p.before)
   const after = pads.flatMap((p) => p.after)
+  const total = pads.flatMap((p) => p.total)
   const fillers = scored.flatMap(fillerFates)
   const breaths = scored.flatMap(breathFates)
   const groups = scored.flatMap(takeGroups)
@@ -239,10 +258,14 @@ export function fitHabits(pairs: LabelledPair[], at = new Date().toISOString()):
         : null,
     pauseCuts: decisions.length >= 3 ? { n: shortened, of: decisions.length } : null,
     maxPauseSec: decisions.length >= 3 && shortened > 0 ? r3(threshold(decisions)) : null,
+    // The split is only claimed from cuts that were heard, and only when
+    // there are enough of them to stand for the rest.
     pad:
-      before.length >= 2 && after.length >= 2
-        ? { beforeSec: r3(median(before)), afterSec: r3(median(after)), count: Math.min(before.length, after.length) }
-        : null,
+      before.length >= 3 && before.length >= 0.3 * total.length
+        ? { beforeSec: r3(median(before)), afterSec: r3(median(after)), count: before.length, heard: true }
+        : total.length >= 2
+          ? { beforeSec: r3(median(total) / 2), afterSec: r3(median(total) / 2), count: total.length, heard: false }
+          : null,
     fillers: fillers.length ? { n: fillers.filter(Boolean).length, of: fillers.length } : null,
     breaths: breaths.length ? { n: breaths.filter(Boolean).length, of: breaths.length } : null,
     lastTake: groups.length
@@ -301,9 +324,11 @@ export function withHabits(presets: Preset[], habits: Habits | null): Preset[] {
 function habitTighten(p: Preset, h: Habits): Preset {
   const style = habitsStyle(h)
   const t = style.tighten!
-  const room = style.pad
-    ? `, leaving ${seconds(style.pad.inSec)} before the words and ${seconds(style.pad.outSec)} after`
-    : ''
+  const room = !style.pad
+    ? ''
+    : h.pad && !h.pad.heard
+      ? `, leaving ${seconds(style.pad.inSec + style.pad.outSec)} at each cut`
+      : `, leaving ${seconds(style.pad.inSec)} before the words and ${seconds(style.pad.outSec)} after`
   const summary =
     t.maxGapSec >= 5
       ? `Cuts the way you do: pauses stay as you leave them${t.fillers ? ', the ums go' : ''}.`
@@ -338,7 +363,13 @@ export function habitFacts(h: Habits): string[] {
   const facts: string[] = []
   if (h.pauses) facts.push(`Pauses about ${seconds(h.pauses.medianSec)}`)
   if (h.lastTake) facts.push(`Last take ${h.lastTake.n} of ${h.lastTake.of} times`)
-  if (h.pad) facts.push(`${seconds(h.pad.beforeSec)} before a cut, ${seconds(h.pad.afterSec)} after`)
+  if (h.pad) {
+    facts.push(
+      h.pad.heard
+        ? `${seconds(h.pad.beforeSec)} before a cut, ${seconds(h.pad.afterSec)} after`
+        : `${seconds(h.pad.beforeSec + h.pad.afterSec)} of room at a cut`
+    )
+  }
   if (h.fillers) facts.push(`${h.fillers.n} of ${h.fillers.of} ums cut`)
   if (h.breaths) facts.push(`${h.breaths.n} of ${h.breaths.of} breaths cut`)
   return facts.slice(0, 3)
@@ -365,7 +396,9 @@ export function habitDetails(h: Habits): { label: string; value: string }[] {
   if (h.pad)
     rows.push({
       label: 'Room at a cut',
-      value: `${seconds(h.pad.beforeSec)} before, ${seconds(h.pad.afterSec)} after (${h.pad.count} cuts)`
+      value: h.pad.heard
+        ? `${seconds(h.pad.beforeSec)} before, ${seconds(h.pad.afterSec)} after (${h.pad.count} cuts)`
+        : `${seconds(h.pad.beforeSec + h.pad.afterSec)} in all (${h.pad.count} cuts); where in the pause you cut, I couldn't hear`
     })
   if (h.fillers) rows.push({ label: 'Ums and uhs cut', value: `${h.fillers.n} of ${h.fillers.of}` })
   if (h.breaths) rows.push({ label: 'Breaths cut', value: `${h.breaths.n} of ${h.breaths.of}` })
@@ -385,8 +418,11 @@ export function habitChanges(current: Habits | null, next: Habits): string[] {
   }
   pair('Pauses', sec(current.pauses?.medianSec), sec(next.pauses?.medianSec))
   pair('Shortened from', sec(current.maxPauseSec), sec(next.maxPauseSec))
-  pair('Room before a cut', sec(current.pad?.beforeSec), sec(next.pad?.beforeSec))
-  pair('Room after a cut', sec(current.pad?.afterSec), sec(next.pad?.afterSec))
+  const total = (h: Habits): number | null => (h.pad ? h.pad.beforeSec + h.pad.afterSec : null)
+  if (current.pad?.heard && next.pad?.heard) {
+    pair('Room before a cut', sec(current.pad.beforeSec), sec(next.pad.beforeSec))
+    pair('Room after a cut', sec(current.pad.afterSec), sec(next.pad.afterSec))
+  } else pair('Room at a cut', sec(total(current)), sec(total(next)))
   pair('Ums cut', share(current.fillers), share(next.fillers))
   pair('Breaths cut', share(current.breaths), share(next.breaths))
   pair('Last take kept', share(current.lastTake), share(next.lastTake))
