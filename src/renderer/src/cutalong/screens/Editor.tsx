@@ -19,7 +19,10 @@ import {
   levelAt,
   lookMatrix,
   openNotes,
+  placeSfx,
   resolveCut,
+  SFX_INFO,
+  sfxGainDb,
   svgColourMatrix,
   transitionInfo,
   viewAt,
@@ -42,7 +45,7 @@ import {
 } from '../../../../shared/presets'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { isImagePath } from '../../../../shared/assets'
-import { mediaUrlFor } from '../api'
+import { api, mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
@@ -246,6 +249,7 @@ function Preview({
   return (
     <div className="cl-well" ref={well}>
       {cut.music && <Bed music={cut.music} resolved={resolved} time={time} playing={playing} />}
+      <Effects doc={doc} resolved={resolved} time={time} playing={playing} />
       <div className="cl-frame" style={{ width: box.w, height: box.h }}>
         {grade && (
           <svg className="cl-look-defs" aria-hidden="true" focusable="false">
@@ -347,6 +351,89 @@ function LookOver({ look, playing }: { look: Look; playing: boolean }): JSX.Elem
       )}
     </>
   )
+}
+
+/**
+ * The sound effects, each played from the file the export uses, starting
+ * where the export starts it. The preview plays the voice as recorded rather
+ * than at the loudness target, so the effects are set against a typical
+ * recording level, as the bed is; the export sets both exactly.
+ */
+function Effects({
+  doc,
+  resolved,
+  time,
+  playing
+}: {
+  doc: EditDoc
+  resolved: Resolved
+  time: number
+  playing: boolean
+}): JSX.Element | null {
+  const cut = currentCut(doc)
+  const placed = useMemo(() => placeSfx(cut.beats, resolved), [cut.beats, resolved])
+  const [built, setBuilt] = useState<Record<string, string> | null>(null)
+  const wanted = placed.some((p) => p.sfx.kind)
+  useEffect(() => {
+    if (!wanted || built) return
+    void api.sfxFiles().then((r) => r.ok && setBuilt(r.files))
+  }, [wanted, built])
+  if (placed.length === 0) return null
+  const offsetDb = RECORDED_VOICE_LUFS - (cut.loudness ?? RECORDED_VOICE_LUFS)
+  return (
+    <>
+      {placed.map((p, i) => {
+        const path = p.sfx.kind ? built?.[p.sfx.kind] : p.sfx.path
+        if (!path) return null
+        return (
+          <Effect
+            key={`${p.beat}-${p.sfx.kind ?? p.sfx.path}-${p.sfx.word ?? ''}-${i}`}
+            url={mediaUrlFor(path)}
+            startSec={p.startSec}
+            trimSec={p.trimSec}
+            lengthSec={p.sfx.kind ? SFX_INFO[p.sfx.kind].sec : null}
+            gainDb={sfxGainDb(p.sfx) + offsetDb}
+            time={time}
+            playing={playing}
+          />
+        )
+      })}
+    </>
+  )
+}
+
+/** One sound effect: playing while the playhead is inside it, put back in step only when it drifts. */
+function Effect({
+  url,
+  startSec,
+  trimSec,
+  lengthSec,
+  gainDb,
+  time,
+  playing
+}: {
+  url: string
+  startSec: number
+  trimSec: number
+  lengthSec: number | null
+  gainDb: number
+  time: number
+  playing: boolean
+}): JSX.Element {
+  const ref = useRef<HTMLAudioElement>(null)
+  useEffect(() => {
+    const a = ref.current
+    if (!a) return
+    const into = time - startSec + trimSec
+    const length = lengthSec ?? (Number.isFinite(a.duration) ? a.duration : 5)
+    const inside = time >= startSec && into < length
+    a.volume = Math.min(1, Math.max(0, 10 ** (gainDb / 20)))
+    if (playing && inside) {
+      if (Math.abs(a.currentTime - into) > 0.08) a.currentTime = into
+      if (a.paused) void a.play().catch(() => undefined)
+    } else if (!a.paused) a.pause()
+  }, [time, playing, startSec, trimSec, lengthSec, gainDb])
+  return <audio ref={ref} src={url} preload="auto" aria-hidden="true" />
 }
 
 /** The level a voice is usually recorded at, which the preview, playing the recording as it is, has to assume. */

@@ -14,6 +14,7 @@ import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
+import { findSounds, makeAllSfx, readSound } from './sfx'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
@@ -72,6 +73,17 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
 
 /** How much of a reference video is transcribed for speech pacing. */
 const SPEECH_SAMPLE_SEC = 180
+
+/** Where the built-in sound effects are kept once made. */
+const sfxDir = (): string => join(app.getPath('userData'), 'sfx')
+
+/** The folders a person's own sound effects are usually in. */
+const soundFolders = (): string[] => [
+  join(app.getPath('music'), 'Sound Effects'),
+  join(app.getPath('music'), 'Sounds'),
+  join(app.getPath('music'), 'SFX'),
+  join(app.getPath('userData'), 'sounds')
+]
 
 export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: string) => string }): void {
   /**
@@ -140,6 +152,27 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
   // The person's own music, by name, from their Music folder.
   ipcMain.handle('music:find', async (_e, query: string) => findTracks(query, [app.getPath('music')]))
+
+  // The built-in sound effects, made once and kept, so the preview plays the files the export uses.
+  ipcMain.handle('sfx:built', async () => {
+    try {
+      return { ok: true as const, files: await makeAllSfx(FFMPEG_PATH, sfxDir()) }
+    } catch (err) {
+      console.error('[sfx] making the sounds failed:', message(err))
+      return { ok: false as const, message: "I couldn't make the sound effects." }
+    }
+  })
+  // The person's own sounds, by name, from the folders sounds are usually kept in.
+  ipcMain.handle('sfx:find', async (_e, query: string) => findSounds(query, soundFolders()))
+  // What one of their sounds needs to land on its moment at a known level.
+  ipcMain.handle('sfx:read', async (_e, path: string) => {
+    try {
+      return { ok: true as const, ...(await readSound(FFMPEG_PATH, path)) }
+    } catch (err) {
+      console.error('[sfx] reading a sound failed:', message(err))
+      return { ok: false as const, message: `I couldn't read ${basename(path)} as a sound.` }
+    }
+  })
   /**
    * More footage for an edit already under way: new talking clips go on the
    * end of the cut as a new version, and a new recording with better sound is
@@ -247,6 +280,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         quality: req.quality,
         fontsDir: FONTS_DIR(),
         brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
+        sfxDir: sfxDir(),
         onProgress: (f) => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
       })
       // Anything from outside the person's own files is credited beside the video.

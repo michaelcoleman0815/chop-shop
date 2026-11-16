@@ -39,6 +39,7 @@ import {
   chaptersOf,
   chaptersReply,
   ideaStarts,
+  sfxCommand,
   LOOK_COMMANDS,
   lookCommand,
   onBeatOps,
@@ -220,7 +221,8 @@ const ACTION_COMMANDS: Preset[] = [
         'chapters',
         'Chapters',
         'YouTube chapters where the ideas change: /chapters, /chapters 2 Battery life, /chapters off'
-      ]
+      ],
+      ['sfx', 'Sound effect', 'A sound on the cut or word under the playhead: /sfx whoosh, /sfx pop, /sfx transitions']
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
@@ -1494,6 +1496,68 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /**
+   * /sfx: a built-in sound on the cut or the word under the playhead, one of
+   * the person's own found by name or chosen by hand, louder, quieter, off, or
+   * a whoosh through every moving transition.
+   */
+  const sfxCommandRun = useCallback(
+    async (rest: string, where: 'thread' | 'panel', beat: string | null, at: number | null): Promise<void> => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can put sounds on it.')
+        return
+      }
+      const read = sfxCommand(d, rest, beat, at)
+      if ('say' in read) {
+        say(read.say)
+        return
+      }
+      let ops: Op[]
+      if ('file' in read) {
+        let path: string | null
+        let name: string
+        if (read.file.name) {
+          const found = await api.findSounds(read.file.name)
+          if (found.length === 0) {
+            say(`I found no sound called “${read.file.name}” in your sound folders. /sfx file lets you choose one.`)
+            return
+          }
+          path = found[0].path
+          name = found[0].name
+        } else {
+          path = await api.chooseAudio()
+          if (!path) return
+          name = fileName(path).replace(/\.[^.]+$/, '')
+        }
+        const facts = await api.readSound(path)
+        if (!facts.ok) {
+          say(facts.message)
+          return
+        }
+        const add = { path, name, leadSec: facts.leadSec, peakDb: facts.peakDb }
+        ops = [{ op: 'sfx', beats: [read.file.beat], add: read.file.word ? { ...add, word: read.file.word } : add }]
+      } else ops = read.ops
+      const done = applyAsVersion(ops, 'The sounds have changed.')
+      if (!done) {
+        const trial = applyOps(currentCut(d), ops, { words: d.words, sources: d.sources })
+        say(trial.rejected[0]?.reason ?? 'That is already how it sounds.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   const runCommand = useCallback(
     async (
       command: string,
@@ -1528,6 +1592,10 @@ export function useCutalong() {
       }
       if (command === 'chapters') {
         chaptersCommandRun(rest, where, beat)
+        return
+      }
+      if (command === 'sfx') {
+        await sfxCommandRun(rest, where, beat, at)
         return
       }
       if (ACTION_NAMES.has(command)) {
@@ -1590,7 +1658,8 @@ export function useCutalong() {
       splitEditCommand,
       timingCommand,
       transitionCommand,
-      chaptersCommandRun
+      chaptersCommandRun,
+      sfxCommandRun
     ]
   )
 

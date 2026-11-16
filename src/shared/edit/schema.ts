@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
+import { SfxSchema } from './sfx'
 import { CameraSchema } from './camera'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
@@ -159,7 +160,9 @@ export const BeatSchema = z.object({
   /** How this beat comes in from the one before. Absent is a hard cut. */
   transition: TransitionSchema.optional(),
   /** A J or L cut into this beat: its picture and its sound change at different moments. */
-  splitEdit: SplitEditSchema.optional()
+  splitEdit: SplitEditSchema.optional(),
+  /** Sound effects on this beat's moment or on its words (edit/sfx). */
+  sfx: z.array(SfxSchema).max(12).optional()
 })
 export type Beat = z.infer<typeof BeatSchema>
 
@@ -285,6 +288,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // The voice cleaned up; 0 leaves it as recorded.
   z.object({ op: z.literal('voice'), polish: z.number().min(0).max(1) }),
+  // A sound effect added to beats, on a word when it names one; null takes the beats' sounds away.
+  z.object({ op: z.literal('sfx'), beats: z.array(beatId).min(1), add: SfxSchema.nullable() }),
   // YouTube chapters, each at a beat, in any order; null takes them out.
   z.object({ op: z.literal('chapters'), set: z.array(ChapterSchema).max(100).nullable() }),
   // A look over the whole picture, or changes to it; replace starts it afresh, keeping the LUT; null takes it off.

@@ -426,6 +426,23 @@ export function createMockApi(): CutalongApi {
         path: `/Users/you/LUTs/${name}.cube`
       })),
     chooseLut: async () => '/Users/you/LUTs/Kodak 2383.cube',
+    sfxFiles: async () => ({
+      ok: true as const,
+      files: Object.fromEntries(
+        ['whoosh', 'pop', 'click', 'riser', 'hit', 'ding'].map((k) => [
+          k,
+          `/Users/you/Library/Cutalong/sfx/${k}-v1.wav`
+        ])
+      )
+    }),
+    findSounds: async (query) => {
+      const sounds = ['Big boom', 'Soft swoosh', 'Typewriter', 'Camera shutter']
+      const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+      return sounds
+        .filter((s) => words.every((w) => s.toLowerCase().includes(w)))
+        .map((name) => ({ path: `/Users/you/Music/Sound Effects/${name}.wav`, name }))
+    },
+    readSound: async () => ({ ok: true as const, leadSec: 0.04, peakDb: -2.5, durationSec: 1.1 }),
     // As if the top left of the screen were busy a moment in, then the bottom right.
     findFocus: async ({ ranges }) => {
       await sleep(500)

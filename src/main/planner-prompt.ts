@@ -7,6 +7,8 @@ import {
   indexWords,
   NAMED_LOOKS,
   resolveCut,
+  SFX_KINDS,
+  sfxName,
   TRANSITION_KINDS,
   type EditDoc,
   type Note
@@ -77,6 +79,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"voice","polish":0.6}: clean up the voice: rumble, hiss and harsh esses out, levels evened, presence lifted. 0 leaves it as recorded, 1 is the most.
 - {"op":"music","set":{"levelDb":-15,"duckDb":12}}: change the music bed: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. Set "path" only to a file the request names. {"op":"music","set":null} takes it out.
 - {"op":"look","set":{"name":"warm","temperature":0.4,"saturation":0.08,"contrast":0.05},"replace":true}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage; their settings: ${NAMED_LIST}. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1. Without "replace" the settings change the look already there; 0 takes one away. {"op":"look","set":null} takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
+- {"op":"sfx","beats":["b4"],"add":{"kind":"whoosh"}}: a sound effect, made here, on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12). {"op":"sfx","beats":["b4"],"add":null} takes a beat's sounds away. The person's own sound files are added with /sfx.
 - {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":null} takes them out.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
@@ -89,6 +92,7 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 - If nothing can be done, return no ops and say why in reply.
 - Hard cuts are the default. Add a transition only where it is asked for, or at a change of section when asked to "add transitions"; between a talking head and B-roll a dissolve or a short push reads cleanest. Never put one on every beat unless asked.
 - Camera moves keep stills and long held shots alive: a ken-burns or drift on a product still, a drift on a long talking beat. Put a move on fewer than half the beats unless asked, and never two kinds in a row on the same picture.
+- Add sound effects only when asked, sparingly: a whoosh through a whip or push transition, a hit on a hard cut to something new, a riser into a new section, a pop on a big word. Never one on every cut.
 - Make chapters only when asked. Start one where the subject changes, and name it in two to five words for what that part is about, never a whole sentence.
 - Leave the colour alone unless asked. For tech and product videos, "clean" keeps colour true; save warm, cool, cinematic and vintage for when someone asks for a mood.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
@@ -176,6 +180,17 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     of: z.enum(['beat', 'cutaway']).optional()
   }),
   z.object({ op: z.literal('voice'), polish: z.number() }),
+  z.object({
+    op: z.literal('sfx'),
+    beats: z.array(z.string()),
+    add: z
+      .object({
+        kind: z.enum(SFX_KINDS),
+        word: z.string().optional(),
+        gainDb: z.number().optional()
+      })
+      .nullable()
+  }),
   z.object({
     op: z.literal('chapters'),
     set: z.array(z.object({ beat: z.string(), title: z.string() })).nullable()
@@ -385,7 +400,10 @@ export function renderRequest(
       t.broll?.reverse ? 'cutaway backwards' : null,
       t.camera ? `camera ${describeCamera(t.camera)}` : null,
       t.broll?.camera ? `cutaway camera ${describeCamera(t.broll.camera)}` : null,
-      t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null
+      t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null,
+      beat.sfx?.length
+        ? `sounds ${beat.sfx.map((s) => `${sfxName(s)}${s.word ? ` on ${s.word}` : ''}`).join(', ')}`
+        : null
     ]
       .filter(Boolean)
       .join(', ')

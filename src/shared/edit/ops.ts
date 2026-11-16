@@ -1,5 +1,6 @@
 import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
 import { mergeLook } from './look'
+import type { Sfx } from './sfx'
 import { indexWords, type WordIndex } from './resolve'
 import { MIN_TRANSITION_SEC, TRANSITION_INFO } from './transitions'
 import {
@@ -125,8 +126,12 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         const { camera: _c, ...rest } = treatment
         return rest
       }
+      const inTail = (e: Sfx): boolean => !!e.word && (ctx.index.pos.get(e.word) ?? -1) >= s
+      const headSfx = (beat.sfx ?? []).filter((e) => !inTail(e))
+      const tailSfx = (beat.sfx ?? []).filter(inTail)
       const head: Beat = {
         ...beat,
+        ...(beat.sfx ? { sfx: headSfx } : {}),
         to: ctx.index.words[s - 1].id,
         padOut: DEFAULT_PAD_OUT,
         treatment: camera(
@@ -139,9 +144,10 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         )
       }
       // The way the beat came in stays with its head; the tail carries straight on.
-      const { transition: _in, splitEdit: _split, ...rest } = beat
+      const { transition: _in, splitEdit: _split, sfx: _sfx, ...rest } = beat
       const tail: Beat = {
         ...rest,
+        ...(tailSfx.length ? { sfx: tailSfx } : {}),
         id: nextBeatId(cut),
         from: op.at,
         padIn: DEFAULT_PAD_IN,
@@ -177,7 +183,8 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       if (start <= end || between.some((w) => !removed.has(w.id))) {
         throw new OpError(`${beat.id} and ${next.id} are not next to each other in the recording.`)
       }
-      const joined: Beat = { ...beat, to: next.to, padOut: next.padOut }
+      const kept = [...(beat.sfx ?? []), ...(next.sfx ?? []).filter((e) => e.word)]
+      const joined: Beat = { ...beat, to: next.to, padOut: next.padOut, ...(kept.length ? { sfx: kept } : {}) }
       const beats = [...cut.beats]
       beats.splice(at, 2, joined)
       return { ...cut, beats }
@@ -368,6 +375,33 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
           op.sec > 0
             ? { ...beat, splitEdit: { kind: op.op === 'jcut' ? 'j' : 'l', sec: Math.max(MIN_TRANSITION_SEC, op.sec) } }
             : { ...beat, ...(beats[i].transition ? { transition: beats[i].transition } : {}) }
+      }
+      return { ...cut, beats }
+    }
+
+    case 'sfx': {
+      const targets = op.beats.map((id) => findBeat(cut, id))
+      const add = op.add
+      if (add?.word) {
+        if (targets.length !== 1) throw new OpError('A sound on a word belongs to one beat; name only that beat.')
+        const beat = cut.beats[targets[0]]
+        const p = ctx.index.pos.get(add.word)
+        const inside =
+          beat.from !== null && p !== undefined && p >= beatRange(ctx, beat)[0] && p <= beatRange(ctx, beat)[1]
+        if (!inside) throw new OpError(`${add.word} is not a word in ${beat.id}.`)
+      }
+      const beats = [...cut.beats]
+      for (const t of targets) {
+        const { sfx: was, ...rest } = beats[t]
+        if (add === null) {
+          beats[t] = rest
+          continue
+        }
+        // The same sound on the same moment is replaced, so adding it again changes it.
+        const same = (e: Sfx): boolean => e.word === add.word && (e.kind ?? e.path) === (add.kind ?? add.path)
+        const next = [...(was ?? []).filter((e) => !same(e)), add]
+        if (next.length > 12) throw new OpError(`${beats[t].id} has as many sounds as a beat can hold.`)
+        beats[t] = { ...rest, sfx: next }
       }
       return { ...cut, beats }
     }

@@ -16,6 +16,8 @@ import {
   outToSrc,
   pictureSpan,
   placeChapters,
+  placeSfx,
+  sfxGainDb,
   sliceSteps,
   srcLength,
   transitionInfo,
@@ -38,6 +40,7 @@ import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
+import { makeSfx } from './sfx'
 import { heardFrom } from '../shared/vision/offset'
 import { colorConversion, hasZscale } from './intake'
 import { bedVolume, limiter, voicePolish } from './render/audio'
@@ -175,8 +178,21 @@ export interface GraphOptions {
   lutKind?: LutKind
   /** An ffmpeg metadata file of chapters to write into the video, which players show. */
   chaptersPath?: string | null
+  /** Sound effects over the finished sound, before any music goes under it. */
+  sfx?: SfxOptions[]
   quality: Quality
   outputPath: string
+}
+
+/**
+ * A sound effect as one pass plays it: its file, where on the output clock
+ * it starts, how far into the file it starts from, and its gain.
+ */
+export interface SfxOptions {
+  path: string
+  startSec: number
+  trimSec: number
+  gainDb: number
 }
 
 /**
@@ -781,6 +797,35 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     )
     aOut = 'aloud'
   }
+  const effects = opts.sfx ?? []
+  if (effects.length > 0) {
+    // Sound effects go over the finished voice, each to the sample where it
+    // lands, after loudness is set so they never change the voice's level.
+    // A file used more than once is read once and split.
+    const byPath = new Map<string, number[]>()
+    effects.forEach((e, i) => byPath.set(e.path, [...(byPath.get(e.path) ?? []), i]))
+    const labels: string[] = []
+    for (const [path, uses] of byPath) {
+      inputs.push('-i', path)
+      const k = next++
+      const copies = uses.map((i) => `[fx${i}s]`)
+      chains.push(
+        `[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${uses.length > 1 ? `,asplit=${uses.length}` : ''}${copies.join('')}`
+      )
+      for (const i of uses) {
+        const e = effects[i]
+        chains.push(
+          `[fx${i}s]atrim=start=${exact(e.trimSec)},asetpts=PTS-STARTPTS,volume=${e.gainDb.toFixed(2)}dB,` +
+            `adelay=delays=${Math.round(e.startSec * 48000)}S:all=1,asetpts=N/SR/TB,apad,atrim=duration=${exact(totalSec)}[fx${i}]`
+        )
+        labels.push(`[fx${i}]`)
+      }
+    }
+    chains.push(
+      `[${aOut}]${labels.join('')}amix=inputs=${labels.length + 1}:duration=first:normalize=0,${limiter(0.95)},apad,atrim=duration=${exact(totalSec)}[asfx]`
+    )
+    aOut = 'asfx'
+  }
   const bed = opts.music
   if (bed) {
     // The track loops for as long as the video runs, sits at its gain, dips
@@ -924,6 +969,8 @@ export interface RenderCutOptions {
   signal?: AbortSignal
   /** The person's brand: caption colours and a logo in a corner. */
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
+  /** Where the built-in sound effects are kept once made; the work folder when absent. */
+  sfxDir?: string
 }
 
 /**
@@ -1032,6 +1079,17 @@ async function writeChapters(cut: Cut, resolved: Resolved, workDir: string): Pro
   return path
 }
 
+/** Every sound effect in the cut, placed, with the built-in ones made as needed. */
+async function sfxFor(cut: Cut, resolved: Resolved, ffmpeg: string, dir: string): Promise<SfxOptions[]> {
+  const placed = placeSfx(cut.beats, resolved)
+  const out: SfxOptions[] = []
+  for (const p of placed) {
+    const path = p.sfx.kind ? await makeSfx(ffmpeg, p.sfx.kind, dir) : (p.sfx.path as string)
+    out.push({ path, startSec: p.startSec, trimSec: p.trimSec, gainDb: sfxGainDb(p.sfx) })
+  }
+  return out
+}
+
 export type LutKind = '1d' | '3d'
 
 /**
@@ -1049,7 +1107,12 @@ export async function lutKindOf(path: string): Promise<LutKind> {
 }
 
 /** Every file a render reads must be there; a missing one is named in a sentence before ffmpeg starts. */
-async function checkInputs(segments: Segment[], logo: LogoMark | null, more: (string | undefined)[]): Promise<void> {
+async function checkInputs(
+  segments: Segment[],
+  logo: LogoMark | null,
+  more: (string | undefined)[],
+  cut: Cut
+): Promise<void> {
   const paths = new Set<string>()
   for (const s of segments) {
     paths.add(s.path)
@@ -1058,6 +1121,7 @@ async function checkInputs(segments: Segment[], logo: LogoMark | null, more: (st
   }
   if (logo) paths.add(logo.path)
   for (const path of more) if (path) paths.add(path)
+  for (const b of cut.beats) for (const e of b.sfx ?? []) if (e.path) paths.add(e.path)
   for (const path of paths) {
     try {
       await fs.access(path)
@@ -1092,7 +1156,7 @@ export async function renderCut(
     }
   }
   const segments = segmentsFor(cut, resolved, sources, sizes, await hasZscale(opts.ffmpeg))
-  await checkInputs(segments, opts.brand?.logo ?? null, [cut.music?.path, cut.look?.lut?.path])
+  await checkInputs(segments, opts.brand?.logo ?? null, [cut.music?.path, cut.look?.lut?.path], cut)
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)
   await fs.mkdir(opts.workDir, { recursive: true })
@@ -1121,6 +1185,7 @@ export async function renderCut(
     look: cut.look ?? null,
     lutKind: cut.look?.lut ? await lutKindOf(cut.look.lut.path) : undefined,
     chaptersPath: await writeChapters(cut, resolved, opts.workDir),
+    sfx: await sfxFor(cut, resolved, opts.ffmpeg, opts.sfxDir ?? join(opts.workDir, 'sfx')),
     quality,
     outputPath: opts.outputPath,
     logo: opts.brand?.logo ?? null

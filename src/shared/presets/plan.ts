@@ -8,6 +8,7 @@ import { CAMERA_INFO } from '../edit/camera'
 import { transitionInfo } from '../edit/transitions'
 import { describeLook, mergeLook, NAMED_LOOKS } from '../edit/look'
 import { placeChapters } from '../edit/chapters'
+import { describeSfx } from './sfx'
 import { clock, seconds, type StyleSpec } from './preset'
 import { planTakes, type TakesPlan, type TakesPlanOptions } from '../raw/plan'
 
@@ -532,6 +533,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(...describeSound(o, cut))
     } else if (o.op === 'look') {
       said.push(describeLookOp(o, cut))
+    } else if (o.op === 'sfx') {
+      // Described together below.
     } else if (o.op === 'chapters') {
       const placed = cut
         ? placeChapters(cut.chapters ?? [], new Map(after.beats.map((b) => [b.id, b.outStart])), after.durationSec)
@@ -548,6 +551,7 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       else if (o.inSec === 0 && o.outSec === 0) said.push('it no longer fades in or out')
     }
   }
+  said.push(...describeSfx(ops, after))
   if (ops.some((o) => o.op === 'pad')) said.push('every cut lands tight on the words')
   if (splits > 0) said.push(`${count(splits, 'long beat')} ${splits === 1 ? 'is' : 'are'} split to the pace`)
   if (treat.some((o) => (o.set.zoom ?? 1) > 1)) said.push('alternate shots punch in')

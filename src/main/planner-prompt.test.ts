@@ -233,6 +233,29 @@ describe('the planner request', () => {
     expect(text).toContain('music bright.mp3, 120 BPM at -15 dB under the voice, dipping 9 dB')
   })
 
+  it('teaches sound effects, and a plan of them applies and shows in the request', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(PLANNER_SYSTEM).toContain('{"op":"sfx"')
+    const ids = currentCut(doc).beats.map((b) => b.id)
+    const word = doc.words.find((w) => w.text === 'thing.')!
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'sfx', beats: [ids[1]], add: { kind: 'hit' } },
+        { op: 'sfx', beats: [ids[0]], add: { kind: 'pop', word: word.id, gainDb: -3 } }
+      ],
+      summary: 'A hit and a pop.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    const text = renderRequest(after, '', [])
+    expect(text).toContain(`sounds a pop on ${word.id}`)
+    expect(text).toContain('sounds a hit')
+  })
+
   it('teaches chapters, and a plan of them applies and shows in the request', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     expect(PLANNER_SYSTEM).toContain('{"op":"chapters"')

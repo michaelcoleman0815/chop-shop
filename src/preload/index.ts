@@ -107,6 +107,13 @@ const api = {
     | { ok: false; message: string }
   > => ipcRenderer.invoke('music:analyze', path),
   findMusic: (query: string): Promise<{ path: string; name: string }[]> => ipcRenderer.invoke('music:find', query),
+  sfxFiles: (): Promise<{ ok: true; files: Record<string, string> } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('sfx:built'),
+  findSounds: (query: string): Promise<{ path: string; name: string }[]> => ipcRenderer.invoke('sfx:find', query),
+  readSound: (
+    path: string
+  ): Promise<{ ok: true; leadSec: number; peakDb: number; durationSec: number } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('sfx:read', path),
   findFocus: (req: {
     path: string
     ranges: { startSec: number; durationSec: number }[]
