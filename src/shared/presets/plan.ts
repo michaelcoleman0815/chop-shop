@@ -11,6 +11,7 @@ import { transitionInfo } from '../edit/transitions'
 import { describeLook, mergeLook, NAMED_LOOKS } from '../edit/look'
 import { placeChapters } from '../edit/chapters'
 import { LAYOUT_INFO } from '../edit/angles'
+import { describeFraming } from '../edit/reframe'
 import { describeSfx } from './sfx'
 import { syncSeconds } from './angles'
 import { clock, seconds, type StyleSpec } from './preset'
@@ -546,6 +547,15 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(...describeSound(o, cut))
     } else if (o.op === 'look') {
       said.push(describeLookOp(o, cut))
+    } else if (o.op === 'reframe') {
+      said.push(o.on ? 'the picture follows you' : 'the picture keeps the middle')
+    } else if (o.op === 'framing') {
+      const { who, one } = whoOf(o.beats, after)
+      said.push(
+        o.x === null
+          ? `${who} ${one ? 'follows' : 'follow'} you again`
+          : `${who} ${one ? 'is' : 'are'} ${describeFraming(o.x)}`
+      )
     } else if (o.op === 'angle') {
       const { who, one } = whoOf(o.beats, after)
       if (o.source === null) said.push(`${who} ${one ? 'shows' : 'show'} your recording again`)

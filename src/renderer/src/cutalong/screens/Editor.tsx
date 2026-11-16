@@ -14,6 +14,7 @@ import {
   cutawayAt,
   cutawayClock,
   duckingKeys,
+  frameAt,
   grainSpread,
   indexWords,
   insetFor,
@@ -21,6 +22,7 @@ import {
   lookMatrix,
   openNotes,
   pictureSpan,
+  pieceFraming,
   pieceRate,
   pieceTime,
   pipBox,
@@ -34,6 +36,7 @@ import {
   viewAt,
   viewThroughAngles,
   vignetteStops,
+  windowShare,
   type Camera,
   type EditDoc,
   type Look,
@@ -677,6 +680,12 @@ function Deck({
   // The camera over the speaker, from the plan the export moves by.
   const source = piece ? sources.find((s) => s.id === piece.source) : undefined
   let transform = t && t.zoom > 1.001 ? `scale(${t.zoom})` : undefined
+  // Cropped to the frame, the picture looks where the speaker is, or where it was framed by hand (edit/reframe).
+  const framing = piece && t && !t.camera ? pieceFraming(cut, t, piece, source?.subject) : null
+  const objectPosition =
+    framing && piece && source
+      ? `${windowShare(frameAt(framing, time - pictureSpan(piece).outStart), source, frameAspect) * 100}% 50%`
+      : undefined
   if (rb && t?.camera && source && source.height > 0) {
     const clock = cameraClock(resolved, rb.id, time, t.camera.word)
     if (clock) {
@@ -693,7 +702,7 @@ function Deck({
           ref={videoRef}
           playsInline
           preload="auto"
-          style={{ filter: t?.bw ? 'grayscale(1)' : undefined, transform }}
+          style={{ filter: t?.bw ? 'grayscale(1)' : undefined, transform, objectPosition }}
         />
         <audio ref={soundRef} preload="auto" aria-hidden="true" />
         {view.layer && t?.broll && t.frame !== 'speaker' && at && (

@@ -424,6 +424,33 @@ describe('the planner request', () => {
     expect(out.cut.beats.every((b) => !b.treatment.angle)).toBe(true)
   })
 
+  it('teaches following the speaker and framing by hand, and a plan of them applies and shows in the request', () => {
+    const subject = { hz: 2, x: [0.3, 0.3, 0.4] }
+    const doc = createDoc({ id: 'd', title: 't', source: { ...source, width: 1920, height: 1080, subject }, words })
+    expect(PLANNER_SYSTEM).toContain('{"op":"reframe"')
+    expect(renderTranscript(doc)).toContain('length="0:12" speaker="found">')
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'aspect', aspect: 'vertical' },
+        { op: 'reframe', on: true },
+        { op: 'framing', beats: ['b1'], x: 0.2 },
+        { op: 'framing', beats: ['b2'], x: -1 }
+      ],
+      summary: 'It follows you.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    expect(dry.cut.reframe).toBe(true)
+    expect(dry.cut.beats.map((b) => b.treatment.framing)).toEqual([0.2, undefined])
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    const text = renderRequest(after, '', [])
+    expect(text).toContain('follows the speaker')
+    expect(text).toContain('framed by hand at 0.2')
+  })
+
   it('lists the takes, and a swap of takes is a plan the document accepts', () => {
     const f = FIXTURES.find((x) => x.name === 'the intro redone after a run of other lines')
     if (!f) throw new Error('fixture missing')

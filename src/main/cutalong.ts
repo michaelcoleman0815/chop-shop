@@ -28,7 +28,7 @@ import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
 import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply } from './intake'
 import { watchClip } from './mouth'
-import { detectFaces } from './track'
+import { detectFaces, VISION_PATH } from './track'
 import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
@@ -45,6 +45,8 @@ import {
   currentCut,
   nextSourceId,
   currentVersion,
+  subjectFrom,
+  type Subject,
   EditDocSchema,
   resolveCut,
   wordsFromTranscript,
@@ -294,6 +296,25 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    * recording, found by ear as the better sound is. Unsure, it starts with no
    * offset and the reply says so, for /angle sync to move.
    */
+  /**
+   * Where the speaker is through each recording, for following them into a
+   * narrower frame: the faces the Mac's Vision helper finds, twice a second.
+   * Without that helper (it is a Mac one), the reply says so and framing by
+   * hand still works.
+   */
+  ipcMain.handle('reframe:find', async (_e, req: { sources: { id: string; path: string; durationSec: number }[] }) => {
+    const subjects: Record<string, Subject> = {}
+    try {
+      for (const s of req.sources) {
+        const samples = await detectFaces(s.path, 0, s.durationSec, 2)
+        subjects[s.id] = subjectFrom(samples, s.durationSec, 2)
+      }
+      return { ok: true as const, subjects }
+    } catch (err) {
+      return { ok: false as const, finder: existsSync(VISION_PATH()), message: message(err) }
+    }
+  })
+
   ipcMain.handle('angle:choose', async () => {
     const res = await dialog.showOpenDialog({
       title: 'Choose the other camera’s recording',

@@ -18,6 +18,7 @@ export type CutalongApi = Pick<
   | 'openPremiere'
   | 'lineUpCamera'
   | 'chooseCamera'
+  | 'findSpeaker'
   | 'findFocus'
   | 'analyzeMusic'
   | 'findMusic'

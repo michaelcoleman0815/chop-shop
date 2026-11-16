@@ -436,6 +436,20 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       return { ...cut, angles: [...others, { source: op.source, of: op.of, offsetSec }] }
     }
 
+    case 'reframe': {
+      const { reframe: _was, ...rest } = cut
+      return op.on ? { ...rest, reframe: true } : rest
+    }
+
+    case 'framing': {
+      const beats = [...cut.beats]
+      for (const i of op.beats.map((id) => findBeat(cut, id))) {
+        const { framing: _was, ...treatment } = beats[i].treatment
+        beats[i] = { ...beats[i], treatment: op.x === null ? treatment : { ...treatment, framing: op.x } }
+      }
+      return { ...cut, beats }
+    }
+
     case 'angle': {
       const targets = op.beats.map((id) => findBeat(cut, id))
       const beats = [...cut.beats]

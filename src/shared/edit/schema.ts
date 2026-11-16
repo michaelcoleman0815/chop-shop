@@ -4,6 +4,7 @@ import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
 import { SfxSchema } from './sfx'
 import { AngleSchema, ANGLE_LAYOUTS, BeatAngleSchema } from './angles'
+import { SubjectSchema } from './reframe'
 import { CameraSchema } from './camera'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
@@ -94,7 +95,9 @@ export const SourceSchema = z.object({
       /** Set in a sentence ("time my cuts to the sound only"), so the kind of video no longer decides it. */
       chosen: z.boolean().optional()
     })
-    .optional()
+    .optional(),
+  /** Where the speaker was across the recording, found by face finding, for following them into a narrower frame. */
+  subject: SubjectSchema.optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 
@@ -141,7 +144,9 @@ export const TreatmentSchema = z.object({
   /** The frame moving over the speaker: a push-in, a punch-in on a word, a pan. */
   camera: CameraSchema.optional(),
   /** Another camera of the same take shown for this beat: instead, in a box over it, or beside it (edit/angles). */
-  angle: BeatAngleSchema.nullable().optional()
+  angle: BeatAngleSchema.nullable().optional(),
+  /** Where the picture is centred when it is cropped to a narrower frame, by hand: 0 the left edge, 1 the right. */
+  framing: z.number().min(0).max(1).nullable().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -223,7 +228,9 @@ export const CutSchema = z.object({
   /** YouTube chapters, each starting at a beat (edit/chapters). */
   chapters: z.array(ChapterSchema).optional(),
   /** Other cameras of the same takes, each lined up with its recording (edit/angles). */
-  angles: z.array(AngleSchema).max(16).optional()
+  angles: z.array(AngleSchema).max(16).optional(),
+  /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
+  reframe: z.boolean().optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -311,6 +318,10 @@ export const OpSchema = z.discriminatedUnion('op', [
     of: z.string().min(1).nullable(),
     offsetSec: z.number().optional()
   }),
+  // Follow the speaker when the picture is cropped to a narrower frame, or keep it in the middle.
+  z.object({ op: z.literal('reframe'), on: z.boolean() }),
+  // Where beats are centred when cropped, by hand; null follows the speaker or the middle again.
+  z.object({ op: z.literal('framing'), beats: z.array(beatId).min(1), x: z.number().min(0).max(1).nullable() }),
   // Which camera beats show, and how; null shows their own recording again.
   z.object({
     op: z.literal('angle'),

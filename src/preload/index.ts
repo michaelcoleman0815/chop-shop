@@ -19,7 +19,7 @@ import type {
   VideoMeta,
   ZoomKeyframe
 } from '../shared/types'
-import type { Asset, EditDoc, Note, Op, Region, Source } from '../shared/edit'
+import type { Asset, EditDoc, Note, Op, Region, Source, Subject } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
@@ -120,6 +120,10 @@ const api = {
   }): Promise<{ ok: true; regions: Region[][] } | { ok: false; message: string }> =>
     ipcRenderer.invoke('focus:find', req),
   chooseCamera: (): Promise<string | null> => ipcRenderer.invoke('angle:choose'),
+  findSpeaker: (req: {
+    sources: { id: string; path: string; durationSec: number }[]
+  }): Promise<{ ok: true; subjects: Record<string, Subject> } | { ok: false; finder: boolean; message: string }> =>
+    ipcRenderer.invoke('reframe:find', req),
   lineUpCamera: (req: {
     path: string
     of: string

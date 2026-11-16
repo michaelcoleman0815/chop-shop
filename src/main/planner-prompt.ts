@@ -87,6 +87,8 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":[]} takes them out.
 - {"op":"angle","beats":["b4"],"source":"s2","layout":"full"}: another camera of the same take on beats: "full" shows it instead of the recording, "pip" in a box over it, "side" beside it. The sound stays the recording's. Only a source the transcript marks camera-of the beat's recording; "source":"" shows the beat's own recording again.
 - {"op":"sync","source":"s2","of":"s1","offsetSec":1.25}: lines a camera up with its recording: what s1 shows at t, s2 shows at t + offsetSec. Only when asked to move it; "of":"" takes the camera out of the edit.
+- {"op":"reframe","on":true}: cropped to a narrower frame (a wide recording made vertical), the picture follows the speaker instead of keeping the middle; false keeps the middle. It follows recordings the transcript marks speaker="found"; for any other, say /reframe finds the speaker.
+- {"op":"framing","beats":["b4"],"x":0.25}: frames beats by hand when cropped: 0 is the recording's left edge, 0.5 its middle, 1 its right; -1 follows the speaker again.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ${graphicsGuide()}
@@ -228,6 +230,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('chapters'), set: z.array(z.object({ beat: z.string(), title: z.string() })) }),
   z.object({ op: z.literal('angle'), beats: z.array(z.string()), source: z.string(), layout: z.enum(ANGLE_LAYOUTS) }),
   z.object({ op: z.literal('sync'), source: z.string(), of: z.string(), offsetSec: z.number() }),
+  z.object({ op: z.literal('reframe'), on: z.boolean() }),
+  z.object({ op: z.literal('framing'), beats: z.array(z.string()), x: z.number() }),
   z.object({
     op: z.literal('look'),
     name: z.enum(['', ...Object.keys(NAMED_LOOKS)]),
@@ -308,6 +312,8 @@ export function fromPlannerOp(op: PlannerOp): unknown {
       return { op: op.op, beats: op.beats, source: op.source || null, layout: op.layout }
     case 'sync':
       return op.of ? op : { op: op.op, source: op.source, of: null }
+    case 'framing':
+      return { op: op.op, beats: op.beats, x: op.x >= 0 && op.x <= 1 ? op.x : null }
     case 'look': {
       if (op.off) return { op: op.op, set: null }
       // A named look comes with its own settings; what the planner names goes over them.
@@ -353,8 +359,9 @@ export function renderTranscript(doc: EditDoc): string {
     // Another camera of a recording has no words of its own: the edit shows it on the recording's beats.
     const angle = (currentCut(doc).angles ?? []).find((a) => a.source === source.id)
     const camera = angle ? ` camera-of="${angle.of}" offset="${angle.offsetSec.toFixed(2)}"` : ''
+    const found = source.subject ? ' speaker="found"' : ''
     lines.push(
-      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}${camera}>`
+      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}${camera}${found}>`
     )
     const words = doc.words.filter((w) => w.source === source.id)
     // One line per sentence keeps it readable without losing a single id.
@@ -444,6 +451,7 @@ export function renderRequest(
   ]
   if (cut.voice && cut.voice.polish > 0) settings.push(`voice polish ${cut.voice.polish}`)
   if (cut.look) settings.push(`look ${describeLook(cut.look)}`)
+  if (cut.reframe) settings.push('follows the speaker')
   const chapters = chaptersOf(cut, resolved).chapters
   if (chapters.length) settings.push(`chapters ${chapters.map((c) => `${c.beat} "${c.title}"`).join(', ')}`)
   if (cut.music) {
@@ -477,6 +485,7 @@ export function renderRequest(
       t.broll?.reverse ? 'cutaway backwards' : null,
       t.camera ? `camera ${describeCamera(t.camera)}` : null,
       t.angle ? `shows ${t.angle.source} ${ANGLE_WORDS[t.angle.layout]}` : null,
+      typeof t.framing === 'number' ? `framed by hand at ${t.framing}` : null,
       t.broll?.camera ? `cutaway camera ${describeCamera(t.broll.camera)}` : null,
       t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null,
       beat.sfx?.length

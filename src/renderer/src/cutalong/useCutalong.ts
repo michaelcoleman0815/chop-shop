@@ -44,6 +44,7 @@ import {
   ideaStarts,
   angleCommand,
   premiereReply,
+  reframeCommand,
   sfxCommand,
   LOOK_COMMANDS,
   lookCommand,
@@ -234,6 +235,11 @@ const ACTION_COMMANDS: Preset[] = [
         'angle',
         'Camera angle',
         'Another camera of the same take: /angle, /angle pip, /angle side, /angle off, /angle sync +2f'
+      ],
+      [
+        'reframe',
+        'Follow the speaker',
+        'Keep you in the frame when it is narrower: /reframe, /reframe left, /reframe off'
       ]
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
@@ -1753,6 +1759,63 @@ export function useCutalong() {
     [applyAsVersion, push, setDoc]
   )
 
+  /**
+   * /reframe: a narrower frame follows the speaker, found first in any
+   * recording not yet looked at; framed by hand on a beat; off.
+   */
+  const reframeCommandRun = useCallback(
+    async (rest: string, where: 'thread' | 'panel', beat: string | null): Promise<void> => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can keep you in the frame.')
+        return
+      }
+      const read = reframeCommand(d, rest, beat)
+      let ops: Op[]
+      if ('find' in read) {
+        if (where === 'panel')
+          setPanel({ text: '', progress: { stage: 'Finding you in the picture', percent: null }, since: Date.now() })
+        const sources = d.sources
+          .filter((s) => read.find.sources.includes(s.id))
+          .map((s) => ({ id: s.id, path: s.path, durationSec: s.durationSec }))
+        const r = await api.findSpeaker({ sources })
+        if (!r.ok) {
+          say(
+            r.finder
+              ? `I couldn't find you in the picture. ${r.message}`
+              : 'Following you needs the face finder Cutalong has on a Mac, and this computer does not have it. /reframe left, centre or right frames the beat under the playhead by hand.'
+          )
+          return
+        }
+        const now = docRef.current ?? d
+        setDoc({
+          ...now,
+          sources: now.sources.map((s) => (r.subjects[s.id] ? { ...s, subject: r.subjects[s.id] } : s))
+        })
+        ops = [{ op: 'reframe', on: true }]
+      } else if ('say' in read) {
+        say(read.say)
+        return
+      } else ops = read.ops
+      const done = applyAsVersion(ops, 'The framing has changed.')
+      if (!done) {
+        say('That is already how it is framed.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push, setDoc]
+  )
+
   /** /premiere: this version as a Premiere project on the person's own files, opened there when it can be. */
   const premiereCommand = useCallback(
     async (where: 'thread' | 'panel'): Promise<void> => {
@@ -1818,6 +1881,10 @@ export function useCutalong() {
       }
       if (command === 'chapters') {
         chaptersCommandRun(rest, where, beat)
+        return
+      }
+      if (command === 'reframe') {
+        await reframeCommandRun(rest, where, beat)
         return
       }
       if (command === 'angle') {
@@ -1914,6 +1981,7 @@ export function useCutalong() {
       timingCommand,
       transitionCommand,
       angleCommandRun,
+      reframeCommandRun,
       chaptersCommandRun,
       premiereCommand,
       sfxCommandRun

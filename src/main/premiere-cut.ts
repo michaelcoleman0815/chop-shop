@@ -320,6 +320,8 @@ export function planPremiere(input: PremiereInput): PremierePlan {
   for (const g of input.graphics) markers.push({ atSec: g.start, name: g.title, comment: 'A graphic in Cutalong.' })
   if (cut.look) markers.push({ atSec: 0, name: `Look: ${describeLook(cut.look)}`, comment: 'The look in Cutalong.' })
 
+  // Premiere gets the picture in the middle; following the speaker, or framing by hand, stays here.
+  const byHand = cut.beats.filter((b) => typeof b.treatment.framing === 'number').length
   const leftOut = [
     cut.look ? 'the look' : null,
     transitions.length ? plural(transitions.length, 'transition') : null,
@@ -332,6 +334,8 @@ export function planPremiere(input: PremiereInput): PremierePlan {
     counts.bw ? `black and white on ${plural(counts.bw, 'beat')}` : null,
     counts.pip ? `another camera in a box on ${plural(counts.pip, 'beat')}` : null,
     counts.side ? `cameras side by side on ${plural(counts.side, 'beat')}` : null,
+    cut.reframe ? 'the framing that follows you' : null,
+    byHand ? `${plural(byHand, 'beat')} framed by hand` : null,
     input.graphics.length ? plural(input.graphics.length, 'graphic') : null,
     cut.fade && (cut.fade.inSec > 0 || cut.fade.outSec > 0) ? 'the fades' : null,
     music.length && bed ? musicLeftOut(bed) : null,

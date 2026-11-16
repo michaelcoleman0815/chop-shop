@@ -504,6 +504,22 @@ export function createMockApi(): CutalongApi {
       }
     },
     chooseCamera: async () => '/Users/you/Movies/Side camera.mov',
+    findSpeaker: async ({ sources }) => ({
+      ok: true as const,
+      // The speaker drifts from left of centre to the right and back, as someone talking with their hands does.
+      subjects: Object.fromEntries(
+        sources.map((s) => [
+          s.id,
+          {
+            hz: 2,
+            x: Array.from(
+              { length: Math.ceil(s.durationSec * 2) },
+              (_, i) => Math.round((0.5 + 0.22 * Math.sin(i / 9)) * 1e4) / 1e4
+            )
+          }
+        ])
+      )
+    }),
     lineUpCamera: async ({ path }) => ({
       ok: true as const,
       camera: { path, durationSec: 40, width: 1920, height: 1080, fps: 30 },

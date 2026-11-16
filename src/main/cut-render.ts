@@ -13,6 +13,7 @@ import {
   duckingKeys,
   grainStrength,
   insetFor,
+  pieceFraming,
   lookMatrix,
   outToSrc,
   pictureSpan,
@@ -25,6 +26,7 @@ import {
   transitionInfo,
   vignetteAngle,
   viewThroughAngles,
+  type FrameKey,
   type SpeedStep,
   type Aspect,
   type Camera,
@@ -137,6 +139,12 @@ export interface Segment {
    * (edit/angles): its file, read from startSec as the picture is read.
    */
   inset?: { path: string; startSec: number; layout: 'pip' | 'side'; size: { width: number; height: number } }
+  /**
+   * Where the speaker's picture looks when it is cropped to the frame: its
+   * centre across the picture, 0 to 1, through keys on the segment's own
+   * picture clock (edit/reframe). Absent: the middle.
+   */
+  framing?: FrameKey[]
 }
 
 /**
@@ -402,13 +410,37 @@ export function cameraSegments(
 ): Segment[] {
   const seen = viewThroughAngles(cut, resolved, sources)
   const segments = segmentsFor(cut, seen.resolved, seen.sources, sizes, zscale)
+  const beats = new Map(cut.beats.map((b) => [b.id, b]))
+  const bySource = new Map(seen.sources.map((s) => [s.id, s]))
   seen.resolved.pieces.forEach((p, i) => {
     const inset = p.reverse ? null : insetFor(cut, p, seen.sources)
     if (inset) {
       segments[i].inset = { path: inset.path, startSec: inset.srcStart, layout: inset.layout, size: inset.size }
     }
+    // Following the speaker, or framed by hand (edit/reframe).
+    const beat = beats.get(p.beat)
+    const framing = beat ? pieceFraming(cut, beat.treatment, p, bySource.get(p.source)?.subject) : null
+    if (framing) segments[i].framing = framing
   })
   return segments
+}
+
+/**
+ * A crop's left edge that keeps its window's centre on a path across the
+ * picture: eased between keys as the preview eases, never past an edge. `t`
+ * is the crop filter's own clock, the segment's picture from its start.
+ */
+export function framingX(keys: FrameKey[], w: number): string {
+  const n = (v: number): string => v.toFixed(4)
+  let centre = n(keys[keys.length - 1].x)
+  for (let i = keys.length - 1; i >= 1; i--) {
+    const a = keys[i - 1]
+    const b = keys[i]
+    if (b.t - a.t <= 1e-6) continue
+    const k = `((t-${n(a.t)})/${n(b.t - a.t)})`
+    centre = `if(lt(t,${n(b.t)}),${n(a.x)}+${n(b.x - a.x)}*${k}*${k}*(3-2*${k}),${centre})`
+  }
+  return `clip((if(lt(t,${n(keys[0].t)}),${n(keys[0].x)},${centre}))*iw-${w}/2,0,iw-${w})`
 }
 
 /** Escapes a path for use inside a filter argument. */
@@ -465,8 +497,10 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   }
 
   /** Scale to cover w x h, crop the overflow, then apply the look. */
-  const look = (w: number, h: number, t: Treatment | null, zoom: boolean): string => {
-    let f = `fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`
+  const look = (w: number, h: number, t: Treatment | null, zoom: boolean, framing?: FrameKey[]): string => {
+    // Cropped to the frame's shape: in the middle, or where the speaker is.
+    const crop = framing?.length ? `crop=${w}:${h}:x='${framingX(framing, w)}':y=(ih-${h})/2` : `crop=${w}:${h}`
+    let f = `fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,${crop},setsar=1`
     const z = t?.zoom ?? 1
     // A punch-in rarely crops to exactly the frame's shape (1080/1.12 is 964.3), so
     // scaling it back up stretches the pixels a hair; square them again, or the
@@ -591,6 +625,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       ? { startSec: s.picture.startSec, srcSec: s.picture.srcSec ?? s.picture.durationSec, steps: s.picture.steps }
       : { startSec: s.startSec, srcSec: soundSrc, steps: s.steps }
     const showFor = s.picture ? s.picture.durationSec : s.durationSec
+    // Where the speaker's picture looks when cropped; a camera move frames it itself.
+    const aim = s.camera ? undefined : s.framing
 
     // The speaker: its picture ready for a look, built only if something
     // shows it, and its sound cut from the same input, ready to be timed; or,
@@ -651,7 +687,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     } else if (s.broll && t.frame === 'split') {
       const half = even(H / 2)
       chains.push(`${cutaway()}${moveOver(s.broll.camera, W, half)}${look(W, half, t, false)}[${v}t]`)
-      chains.push(`${speaker()}${moveOver(s.camera, W, H - half)}${look(W, H - half, t, true)}[${v}b]`)
+      chains.push(`${speaker()}${moveOver(s.camera, W, H - half)}${look(W, H - half, t, true, aim)}[${v}b]`)
       chains.push(`[${v}t][${v}b]vstack,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'card') {
       // A card: the picture centred on Cutalong's ground, at most 60% of the
@@ -678,17 +714,17 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         const across = W > H
         const [aw, ah] = across ? [even(W / 2), H] : [W, even(H / 2)]
         const [bw, bh] = across ? [W - aw, H] : [W, H - ah]
-        chains.push(`${speaker()}${moveOver(s.camera, aw, ah)}${look(aw, ah, t, true)}[${v}a]`)
+        chains.push(`${speaker()}${moveOver(s.camera, aw, ah)}${look(aw, ah, t, true, aim)}[${v}a]`)
         chains.push(`${other()}${look(bw, bh, t, false)}[${v}b]`)
         chains.push(`[${v}a][${v}b]${across ? 'hstack' : 'vstack'},format=yuv420p,${frames}[${v}]`)
       } else {
         const box = pipBox({ width: W, height: H }, inset.size)
-        chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true)}[${v}m]`)
+        chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim)}[${v}m]`)
         chains.push(`${other()}${look(box.width, box.height, t, false)}[${v}p]`)
         chains.push(`[${v}m][${v}p]overlay=x=${box.x}:y=${box.y},format=yuv420p,${frames}[${v}]`)
       }
     } else {
-      chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
+      chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim)},format=yuv420p,${frames}[${v}]`)
     }
 
     // Every segment's audio is exactly as long as its piece: through its
