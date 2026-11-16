@@ -2843,6 +2843,8 @@ export function useCutalong() {
         return
       }
       rememberKeep(d)
+      // A clip's export is kept on its card, as Export all's are.
+      if (clipping.isClip(d)) clipping.exported(d.id, { path: r.outputPath, version: n, at: new Date().toISOString() })
       const name = fileName(r.outputPath)
       const durationSec = r.durationSec ?? 0
       patch(id, {

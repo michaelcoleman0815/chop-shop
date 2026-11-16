@@ -83,6 +83,16 @@ export function markExported(set: ClipSet, id: string, exported: NonNullable<Cli
   return { ...set, clips: set.clips.map((c) => (c.id === id ? { ...c, exported } : c)) }
 }
 
+/**
+ * An export made in the editor, kept on the clip whose edit it is, the way
+ * Export all keeps its own: the clip is out as it is now, so Export all
+ * makes no copy of it. The set as it was for any other edit.
+ */
+export function markDocExported(set: ClipSet, docId: string, exported: NonNullable<Clip['exported']>): ClipSet {
+  const clip = clipOfDoc(set, docId)
+  return clip ? markExported(set, clip.id, exported) : set
+}
+
 /** A run's clips, in the order they were found. */
 export function clipsOfRun(set: ClipSet | null | undefined, run: number): Clip[] {
   return (set?.clips ?? []).filter((c) => c.run === run)

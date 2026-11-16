@@ -5,6 +5,7 @@ import {
   avoidRanges,
   clipOfDoc,
   keptClips,
+  markDocExported,
   markExported,
   setKept,
   toExport,
@@ -139,6 +140,15 @@ export function useClipping(deps: ClippingDeps) {
     (id: string, kept: boolean): void => {
       const s = current()
       if (s) update(setKept(s, id, kept))
+    },
+    [update]
+  )
+
+  /** A clip exported from the editor: kept on its card, so Export all makes no copy of it. */
+  const exported = useCallback(
+    (docId: string, out: { path: string; version: number; at: string }): void => {
+      const s = current()
+      if (s && clipOfDoc(s, docId)) update(markDocExported(s, docId, out))
     },
     [update]
   )
@@ -349,7 +359,7 @@ export function useClipping(deps: ClippingDeps) {
     )
   }, [update])
 
-  return { set, jobs, exporting, load, open, leave, keep, run, takePending, exportAll, isClip }
+  return { set, jobs, exporting, load, open, leave, keep, run, takePending, exportAll, exported, isClip }
 }
 
 export type Clipping = ReturnType<typeof useClipping>

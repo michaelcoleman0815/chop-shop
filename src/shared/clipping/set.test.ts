@@ -11,6 +11,7 @@ import {
   clipsOfRun,
   exportedNow,
   keptClips,
+  markDocExported,
   markExported,
   readClipSet,
   setKept,
@@ -123,6 +124,26 @@ describe('the clip set in a project', () => {
     expect(toExport(changed).map((c) => c.id)).toEqual(['c1', 'c2'])
     const both = markExported(one, 'c2', { path: '/out/Clip b.mp4', version: 2, at: 'now' })
     expect(toExport(both).map((c) => c.id)).toEqual(['c1', 'c2'])
+  })
+
+  it('keeps an export made in the editor on its clip, so Export all makes no copy of it', () => {
+    const { set } = run(null, [clip('a', 100), clip('b', 400)])
+    const all = markExported(markExported(set, 'c1', { path: '/out/Clip a.mp4', version: 2, at: 'then' }), 'c2', {
+      path: '/out/Clip b.mp4',
+      version: 2,
+      at: 'then'
+    })
+    // Clip b changed in the editor, then exported from there as v3.
+    const changed = commit(all.clips[1].doc, [{ op: 'aspect', aspect: 'square' }], 'Square now.').doc
+    const saved = { ...all, clips: all.clips.map((c) => (c.id === 'c2' ? { ...c, doc: changed } : c)) }
+    expect(toExport(saved).map((c) => c.id)).toEqual(['c2'])
+    const out = markDocExported(saved, changed.id, { path: '/out/Clip b v3.mp4', version: 3, at: 'now' })
+    expect(exportedNow(out.clips[1])).toBe(true)
+    // Every clip is out as it is now: Export all offers all of them again, and asks nothing new of b.
+    expect(toExport(out).map((c) => c.id)).toEqual(['c1', 'c2'])
+    expect(keptClips(out).every(exportedNow)).toBe(true)
+    // An edit that is no clip leaves the set as it was.
+    expect(markDocExported(saved, 'own', { path: '/out/Own v2.mp4', version: 2, at: 'now' })).toBe(saved)
   })
 
   it('saves an edit made to a clip back into that clip, and leaves the chat’s own edit alone', () => {
