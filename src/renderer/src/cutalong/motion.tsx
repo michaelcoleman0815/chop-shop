@@ -105,7 +105,8 @@ function keepFocus(update: () => void): () => void {
  * it returns (wrap React state in flushSync). The kind is set on <html> as
  * data-cl-move while the transition runs, so motion.css can name what
  * travels; a screen change also sets data-cl-entering, which staggers lists in
- * and keeps messages already on the new screen still.
+ * and keeps messages already on the new screen still, and data-cl-arriving
+ * once the old screen is captured, which lets the live new one rise in.
  */
 export function viewTransition(
   kind: Move,
@@ -120,6 +121,7 @@ export function viewTransition(
   const id = ++latest
   unname()
   root.dataset.clMove = kind
+  delete root.dataset.clArriving
   if (kind === 'screen') root.dataset.clEntering = ''
   else delete root.dataset.clEntering
   shared.before?.()
@@ -127,11 +129,14 @@ export function viewTransition(
     if (id !== latest) return
     delete root.dataset.clMove
     delete root.dataset.clEntering
+    delete root.dataset.clArriving
     unname()
   }
   try {
     const t = document.startViewTransition({
       update: () => {
+        // The old screen has been captured; from here the live new one rises in beneath it.
+        if (kind === 'screen') root.dataset.clArriving = ''
         keepFocus(update)()
         shared.after?.()
       },

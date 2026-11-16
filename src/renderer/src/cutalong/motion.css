@@ -448,9 +448,15 @@ html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
 
 /*
  * motion.tsx sets data-cl-move on <html> while a transition runs: "screen",
- * "rail" or "version". These rules name what travels for each; everything
- * else crossfades with the page.
+ * "rail" or "version". The page never becomes one big picture: it stays live
+ * underneath, and only what these rules name is captured. A large picture is
+ * only ever moved, or faded once it has stopped changing, never faded while
+ * live, so a transition stays light even without a GPU. Anything not named
+ * simply updates in place.
  */
+html[data-cl-move] {
+  view-transition-name: none;
+}
 
 ::view-transition {
   pointer-events: none;
@@ -470,6 +476,12 @@ html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
 @keyframes cl-fade-out {
   to {
     opacity: 0;
+  }
+}
+
+@keyframes cl-rise {
+  from {
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
   }
 }
 
@@ -495,13 +507,20 @@ html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
 }
 
 /*
- * Screen changes: a calm crossfade with a slight rise. The old screen is gone
- * within duration-fast; the new one rises in over duration-gentle, starting
- * once the old has mostly left, so the two never muddle. The composer carries
- * over, and footage grows into the preview, over the whole duration-calm.
+ * Screen changes: a calm crossfade with a slight rise. The old screen is
+ * captured once, as one opaque picture, and fades within duration-fast over
+ * the live new screen, which rises into place over duration-gentle once the
+ * old has mostly gone. The composer carries over, and footage grows into the
+ * preview, over the whole duration-calm. (data-cl-arriving is set once the
+ * old screen has been captured.)
  */
-html[data-cl-move='screen'] .cl-main {
+html[data-cl-move='screen']:not([data-cl-arriving]) .cl-main {
   view-transition-name: cl-screen;
+  background: var(--ground);
+}
+
+html[data-cl-arriving] .cl-main {
+  animation: var(--duration-gentle) var(--ease-enter) calc(var(--duration-calm) - var(--duration-gentle)) both cl-rise;
 }
 
 html[data-cl-move='screen'] .cl-composer {
@@ -515,7 +534,6 @@ html[data-cl-move='screen'] .cl-composer {
   mix-blend-mode: normal;
 }
 
-::view-transition-new(cl-screen),
 ::view-transition-new(cl-composer):only-child,
 ::view-transition-new(cl-footage):only-child {
   animation: var(--duration-gentle) var(--ease-enter) calc(var(--duration-calm) - var(--duration-gentle)) both
@@ -561,9 +579,10 @@ html[data-cl-move='screen'] .cl-composer {
 }
 
 /*
- * The rail: it grows or shrinks over the page with its edge, while each
- * thing in the main column glides to its new place. Centred columns keep
- * their size and slide; the well, the strip and the beats stretch.
+ * The rail: it grows or shrinks with its edge, while each thing in the main
+ * column glides to its new place. Centred columns keep their size and slide;
+ * the well, the strip and the beats stretch. Before and after are the same
+ * picture for all of these, so only the live one is shown.
  */
 html[data-cl-move='rail'] .cl-rail {
   view-transition-name: cl-rail;
@@ -593,6 +612,19 @@ html[data-cl-move='rail'] :is(.cl-well, .cl-strip, .cl-beats) {
   view-transition-class: cl-stretch;
 }
 
+::view-transition-old(*.cl-slide),
+::view-transition-old(*.cl-centred),
+::view-transition-old(*.cl-stretch) {
+  display: none;
+}
+
+::view-transition-new(*.cl-slide),
+::view-transition-new(*.cl-centred),
+::view-transition-new(*.cl-stretch) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
 /* The rail's hairline rides its moving edge; the rail's own is hidden while it moves. */
 html[data-cl-move='rail']::view-transition-group(cl-rail) {
   border-right: 1px solid var(--line);
@@ -612,7 +644,6 @@ html[data-cl-move='rail']::view-transition-group(cl-rail) {
   object-position: 0 0;
 }
 
-::view-transition-old(*.cl-centred),
 ::view-transition-new(*.cl-centred) {
   width: 100%;
   height: 100%;
@@ -620,21 +651,10 @@ html[data-cl-move='rail']::view-transition-group(cl-rail) {
   object-position: 50% 0;
 }
 
-/* What stretches shows the new picture over the old one almost at once, so nothing ghosts. */
-::view-transition-old(*.cl-stretch),
 ::view-transition-new(*.cl-stretch) {
   width: 100%;
   height: 100%;
   object-fit: fill;
-  mix-blend-mode: normal;
-}
-
-::view-transition-old(*.cl-stretch) {
-  animation: none;
-}
-
-::view-transition-new(*.cl-stretch) {
-  animation: var(--duration-fast) var(--ease-standard) both cl-fade-in;
 }
 
 /* A new version crossfades into the preview; applied notes slide out; the rest updates in place. */
@@ -645,14 +665,6 @@ html[data-cl-move='version'] .cl-frame {
 html[data-cl-move='version'] .cl-note {
   view-transition-name: match-element;
   view-transition-class: cl-note;
-}
-
-html[data-cl-move='version']::view-transition-old(root) {
-  display: none;
-}
-
-html[data-cl-move='version']::view-transition-new(root) {
-  animation: none;
 }
 
 ::view-transition-old(cl-preview),
