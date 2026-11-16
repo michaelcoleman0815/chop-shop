@@ -157,6 +157,27 @@ describe('clipping a long recording, start to finish', () => {
     expect(r.timings.map((t) => t.step)).toEqual(['transcribing', 'listening', 'watching', 'finding', 'making clips'])
   })
 
+  it('captions every clip in the brand’s style when the brand applies itself, and says so', async () => {
+    const brand = { ...EMPTY_BRAND, captions: { preset: 'marker', uppercase: true } }
+    const req = { paths: ['/rec/Sunday service.mp4'], ask: '' }
+    const r = await findClips(req, tools({ brand: async () => brand }), quiet)
+    if (!r.ok) throw new Error(r.message)
+    expect(r.clips.length).toBeGreaterThan(0)
+    for (const c of r.clips)
+      expect(currentCut(c.doc).captions).toMatchObject({
+        on: true,
+        wordsPerScreen: 2,
+        preset: 'marker',
+        uppercase: true
+      })
+    expect(r.reply.chips).toContain('Captions in your brand')
+    // A brand that waits to be asked leaves the captions as a short's own.
+    const off = await findClips(req, tools({ brand: async () => ({ ...brand, autoApply: false }) }), quiet)
+    if (!off.ok) throw new Error(off.message)
+    for (const c of off.clips) expect(currentCut(c.doc).captions).toMatchObject({ on: true, preset: 'clean' })
+    expect(off.reply.chips).toContain('Captions on')
+  })
+
   it('keeps what it heard, so asking again takes no transcription and seconds at most', async () => {
     const counted = { transcribe: 0, listen: 0, frozen: 0 }
     const req = { paths: ['/rec/Friday stream.mkv'], ask: '' }

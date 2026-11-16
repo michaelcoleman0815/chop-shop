@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { currentCut, resolveCut } from '../../../../shared/edit'
-import { clipsOfRun, exportedNow, keptClips, toExport, type Clip } from '../../../../shared/clipping'
+import {
+  clipsOfRun,
+  exportedNow,
+  keptClips,
+  toExport,
+  type Clip,
+  type ClipSet as ClipSetData
+} from '../../../../shared/clipping'
 import { api } from '../api'
 import { clock } from '../format'
 import { grow } from '../motion'
@@ -21,18 +28,6 @@ export function ClipSet({ app, run }: { app: Cutalong; run: number }): JSX.Eleme
   // Export all sits on the newest set of clips only, so a chat never shows two.
   const newest = Math.max(...(set?.clips ?? []).map((c) => c.run))
   const kept = keptClips(set).length
-  const waiting = toExport(set).length
-  // What it makes: every clip, the ones not out yet as they are now, or all of them again.
-  const label =
-    waiting < kept
-      ? `Export ${waiting} more`
-      : keptClips(set).every(exportedNow)
-        ? kept === 1
-          ? 'Export it again'
-          : `Export all ${kept} again`
-        : kept === 1
-          ? 'Export the clip'
-          : `Export all ${kept}`
   return (
     <div className="cl-clipset">
       <ul className="cl-clips" aria-label={`${clips.length} clips`}>
@@ -46,12 +41,23 @@ export function ClipSet({ app, run }: { app: Cutalong; run: number }): JSX.Eleme
         ) : (
           <div className="cl-actions">
             <Button variant="primary" disabled={kept === 0} onClick={() => void app.clipping.exportAll()}>
-              {label}
+              {exportLabel(set)}
             </Button>
           </div>
         ))}
     </div>
   )
+}
+
+/** What Export all says it makes: every clip, the ones not out yet as they are now, or all of them again. */
+function exportLabel(set: ClipSetData | null): string {
+  const kept = keptClips(set)
+  const waiting = toExport(set).length
+  if (kept.length === 0) return 'Export all'
+  if (waiting < kept.length) return `Export ${waiting} more`
+  const again = kept.every(exportedNow)
+  if (kept.length === 1) return again ? 'Export it again' : 'Export the clip'
+  return `Export all ${kept.length}${again ? ' again' : ''}`
 }
 
 /** A clip's still: its first moment, framed the way the short is. */
