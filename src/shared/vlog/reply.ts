@@ -52,6 +52,7 @@ function listOf(parts: string[]): string {
 }
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`
+const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
 
 /** A scene's name inside a sentence: "the venue", "the morning at 9:12", "Sunday morning at 8:30". */
 export function sceneInSentence(name: string): string {
@@ -174,7 +175,7 @@ export function storyReply(
       ? `It runs ${clock(total)} now, ${total < opts.previousSec ? 'down' : 'up'} from ${clock(opts.previousSec)}.`
       : ''
   const scenesSaid = `${plural(scenesUsed.length, 'scene')}`
-  const joined = opts.added ? `, with ${plural(opts.added, 'more clip')} in the story` : ''
+  const joined = opts.added ? `, with your ${plural(opts.added, 'new clip')}` : ''
   const lead = first
     ? `v${opts.version} is a ${clock(total)} vlog of your day in ${scenesSaid}.`
     : `v${opts.version} is ready${joined}.${runs ? ` ${runs}` : ''}`
@@ -183,7 +184,7 @@ export function storyReply(
   const summary = first
     ? `The day as a story in ${scenesSaid}, ${clock(total)} long.`
     : opts.added
-      ? `${plural(opts.added, 'more clip')} in the story, ${clock(total)} long.`
+      ? `${capital(plural(opts.added, 'new clip'))} in the day, ${clock(total)} long.`
       : 'The story is told again.'
 
   const details: { label: string; value: string }[] = []

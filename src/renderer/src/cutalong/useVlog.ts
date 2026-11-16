@@ -107,7 +107,8 @@ export function useVlog(deps: VlogDeps): Vlogs {
   const make = useCallback(async (files: Attachment[], said: string): Promise<boolean> => {
     const { docRef, pendingCommand, push, patch, setDoc, setMediaUrl, during } = live.current
     const sent = docRef.current
-    const request = said.trim() || (pendingCommand.current === 'vlog' ? waiting.current : '')
+    // What /vlog was given before the clips came, and what was said with them.
+    const request = [pendingCommand.current === 'vlog' ? waiting.current : '', said.trim()].filter(Boolean).join('. ')
     if (pendingCommand.current === 'vlog') pendingCommand.current = null
     waiting.current = ''
     const id = push({ role: 'assistant', text: '', progress: { stage: 'Watching your clips', percent: 0 } })

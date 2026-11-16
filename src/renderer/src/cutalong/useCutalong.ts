@@ -2029,6 +2029,7 @@ export function useCutalong() {
       const beat = r0 && at !== null ? ((beatAt(r0, at) ?? r0.beats[r0.beats.length - 1])?.id ?? null) : null
       if (command === 'all') {
         await finishCommand(where)
+        vlog.onBeats(where)
         return
       }
       if (command === 'vlog') {

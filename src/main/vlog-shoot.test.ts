@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'fs'
+import { execFileSync } from 'child_process'
+import { mkdtempSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { findFfmpeg } from './test-media'
 import { findFfprobe, GOPRO_OFF_SEC, makeShoot, realTime, smallShoot, type ShootTruth } from './vlog-fixtures'
-import { watchClip } from './vlog-watch'
+import { stripOf, watchClip } from './vlog-watch'
 import { assembleShoot, type ShootPart } from '../shared/vlog/shoot'
 import { strongest } from '../shared/vlog/story'
 import type { WatchedClip } from '../shared/vlog/watched'
@@ -102,5 +103,86 @@ describe.skipIf(!ffmpeg || !ffprobe)('watching a shoot', () => {
     expect(used.map((c) => c.id)).toEqual(used.map((_, i) => `s${i + 1}`))
     const times = used.map((c) => c.at ?? Infinity)
     expect([...times].sort((a, b) => a - b)).toEqual(times)
+  })
+})
+
+/** A still's size and mean brightness, from 0 to 1. */
+function stillFacts(path: string): { width: number; height: number; mean: number } {
+  const probe = execFileSync(
+    ffprobe as string,
+    ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', path],
+    {
+      encoding: 'utf8'
+    }
+  )
+  const [width, height] = probe.trim().split(',').map(Number)
+  const raw = execFileSync(ffmpeg as string, ['-v', 'error', '-i', path, '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], {
+    maxBuffer: 1e8
+  })
+  return { width, height, mean: raw.reduce((s, v) => s + v, 0) / raw.length / 255 }
+}
+
+describe.skipIf(!ffmpeg || !ffprobe)('the stills a moment is described from', () => {
+  it('makes one small strip of three frames, kept beside the clip, made once', async () => {
+    const clip = truth.clips.find((c) => c.name === 'IMG_0110.MOV')!
+    const out = join(dir, 'strips', 'IMG_0110', 'strip-1.0-4.0.jpg')
+    await stripOf(ffmpeg as string, clip.path, [1, 2.5, 4], out)
+    expect(stillFacts(out)).toMatchObject({ width: 768, height: 144 })
+    const made = statSync(out).mtimeMs
+    await stripOf(ffmpeg as string, clip.path, [1, 2.5, 4], out)
+    expect(statSync(out).mtimeMs).toBe(made)
+  })
+
+  it('makes the stills of an HDR clip through the colour conversion the app uses for HDR', async () => {
+    // A clip in HLG: a test picture converted from SDR, tagged as an iPhone tags its HDR video.
+    const sdr = join(dir, 'IMG_0402.MOV')
+    execFileSync(ffmpeg as string, [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=s=640x360:r=30:d=3',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      sdr
+    ])
+    const hlg = join(dir, 'IMG_0401.MOV')
+    execFileSync(ffmpeg as string, [
+      '-v',
+      'error',
+      '-y',
+      '-i',
+      sdr,
+      '-vf',
+      'zscale=tin=bt709:pin=bt709:min=bt709:rin=tv:t=arib-std-b67:p=bt2020:m=bt2020nc:r=tv:npl=100,format=yuv420p10le',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-profile:v',
+      'high10',
+      '-color_primaries',
+      'bt2020',
+      '-color_trc',
+      'arib-std-b67',
+      '-colorspace',
+      'bt2020nc',
+      hlg
+    ])
+    const w = await watchClip(hlg, { ffmpeg: ffmpeg as string, ffprobe: ffprobe as string, cacheDir: null })
+    expect(w.color).toBe('hlg')
+    const converted = stillFacts(
+      await stripOf(ffmpeg as string, hlg, [1], join(dir, 'strips', 'hlg.jpg'), { color: w.color })
+    )
+    const raw = stillFacts(await stripOf(ffmpeg as string, hlg, [1], join(dir, 'strips', 'hlg-raw.jpg')))
+    expect(converted).toMatchObject({ width: 256, height: 144 })
+    // Converted, it is not the flat picture HLG makes when shown as it is.
+    expect(Math.abs(converted.mean - raw.mean)).toBeGreaterThan(0.03)
   })
 })

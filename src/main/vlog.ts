@@ -27,7 +27,7 @@ import type { AudioMap } from '../shared/audio/map'
 import { aspectFor, extendShoot, shootDoc, talkStrikes, vlogMusic, withStory } from '../shared/vlog/build'
 import { emptyStory, finishShoot, mergeTalk, type HeardClip } from '../shared/vlog/compose'
 import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, vlogShown, withOps } from '../shared/vlog/plan'
-import { shapeSentence, storyReply, type VlogReply } from '../shared/vlog/reply'
+import { leftOutSentence, shapeSentence, storyReply, type VlogReply } from '../shared/vlog/reply'
 import { parseVlogAsk, type VlogAsk } from '../shared/vlog/request'
 import type { Moment, Story, Vlog } from '../shared/vlog/schema'
 import { assembleShoot, type ShootPart } from '../shared/vlog/shoot'
@@ -250,23 +250,34 @@ async function describe(
 }
 
 /** The story by a model when one may tell it, else null and the rules tell it. */
+/**
+ * The story by a model when one may tell it, else null and the rules tell it.
+ * When a model was asked and could not, `note` says so, so the person knows
+ * whose story they are looking at.
+ */
 async function storyByModel(
   doc: EditDoc,
   vlog: Vlog,
   request: string,
   ask: VlogAsk | null
-): Promise<ModelStory | null> {
+): Promise<{ made: ModelStory | null; note: string | null }> {
   const local = getSettings().localPlanner
+  const who = local ? local : 'Claude'
+  const failed = `${who} could not tell the story this time, so I told it by its rules.`
   try {
     if (local) {
-      if (!(await isLocalUp(OLLAMA_HOST))) return null
-      return await storyLocally(doc, vlog, request, ask, { host: OLLAMA_HOST, model: local })
+      if (!(await isLocalUp(OLLAMA_HOST)))
+        return { made: null, note: `${local} is not running on this Mac, so I told the story by its rules.` }
+      const made = await storyLocally(doc, vlog, request, ask, { host: OLLAMA_HOST, model: local })
+      return { made, note: made ? null : failed }
     }
     const key = readApiKey()
-    return key ? await storyWithClaude(doc, vlog, request, ask, claudeStoryCall(key)) : null
+    if (!key) return { made: null, note: null }
+    const made = await storyWithClaude(doc, vlog, request, ask, claudeStoryCall(key))
+    return { made, note: made ? null : failed }
   } catch (err) {
     console.warn('[vlog] the story pass failed; the rules tell it:', message(err))
-    return null
+    return { made: null, note: failed }
   }
 }
 
@@ -304,7 +315,16 @@ export async function makeVlog(
       faces: (p, s, d, r) => detectFaces(p, s, d, r)
     }
     const { watched, failed } = await watchAll(paths, tools, progress)
-    const bed = before && currentCut(before).music ? { op: null, notes: [] } : await bedFrom(watched)
+    const dropped = new Set(req.paths)
+    const hasBed = !!before && !!currentCut(before).music
+    const bed = hasBed
+      ? {
+          op: null,
+          notes: watched
+            .filter((w) => !w.hasVideo && w.hasAudio && dropped.has(w.path))
+            .map((w) => `It has music under it already, so ${w.name} is not in it. /music changes the track.`)
+        }
+      : await bedFrom(watched)
     const pictures = watched.filter((w) => w.hasVideo && w.series)
     if (pictures.length === 0) return { ok: false, message: 'None of those has a picture I could read.' }
     // The story so far as the version on screen tells it, for what was asked of it to carry over.
@@ -392,13 +412,18 @@ export async function makeVlog(
     }
     const base = fresh ?? extendShoot(before as EditDoc, more, planning, 'The story, told again.')
 
-    const made = await storyByModel(base, planning, req.request, ask)
+    const { made, note: storyNote } = await storyByModel(base, planning, req.request, ask)
+    if (storyNote) notes.push(storyNote)
     const planned = made ? null : planLocally(base, planning, ask)
     const story = made?.story ?? (planned as NonNullable<typeof planned>).story
     const vlog: Vlog = { ...planning, scenes: made ? renamed(planning.scenes, made.names) : planning.scenes, story }
     if (planned?.unmatched.length) notes.push(unmatchedSentence(planned.unmatched))
 
-    const added = more.sources.length
+    // The files just dropped that have a picture, and those of them left out, for the reply.
+    const earlierSet = new Set(earlier)
+    const added = pictures.filter((w) => !earlierSet.has(w.path)).length
+    const leftNew = record.clips.filter((c) => c.left && !earlierSet.has(c.path))
+    if (before?.vlog && leftNew.length) notes.push(leftOutSentence(leftNew))
     const doc = fresh
       ? withStory(fresh, vlog)
       : extendShoot(
@@ -443,7 +468,10 @@ export async function makeVlog(
 
 /** A vlog's title: what its files have in common, else the day it was shot. */
 function titleFor(paths: string[], watched: WatchedClip[]): string {
-  const first = watched.find((w) => w.recordedAt)?.recordedAt
+  const first = watched
+    .map((w) => w.recordedAt)
+    .filter((t): t is string => !!t)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0]
   if (first) {
     const d = new Date(first)
     return `Vlog ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
@@ -460,7 +488,7 @@ export async function planVlog(req: { doc: unknown; request: string }): Promise<
   if (!shown) return { ok: false, message: 'This edit was not cut from a shoot, so it has no story to change.' }
   try {
     const ask = parseVlogAsk(req.request)
-    const made = await storyByModel(doc, shown, req.request, ask)
+    const { made, note: storyNote } = await storyByModel(doc, shown, req.request, ask)
     const planned = made ? null : planLocally(doc, shown, ask)
     const story = made?.story ?? (planned as NonNullable<typeof planned>).story
     const vlog: Vlog = { ...shown, scenes: made ? renamed(shown.scenes, made.names) : shown.scenes, story }
@@ -468,7 +496,9 @@ export async function planVlog(req: { doc: unknown; request: string }): Promise<
     const ops: Op[] = [...opsFor(doc, story.beats), ...(reshape ? [reshape] : [])]
     const preview = withOps({ ...doc, vlog }, ops)
     const now = resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
-    const notes = planned?.unmatched.length ? [unmatchedSentence(planned.unmatched)] : []
+    const notes = [storyNote ?? '', planned?.unmatched.length ? unmatchedSentence(planned.unmatched) : ''].filter(
+      Boolean
+    )
     const reply = storyReply(preview, vlog, { version: currentVersion(doc).n + 1, previousSec: now, notes })
     // A new shape is said first: "v4 is ready. It is vertical now, 9:16. It opens on ..."
     const lead = reshape ? `${reply.lead} ${shapeSentence(reshape.aspect)}` : reply.lead

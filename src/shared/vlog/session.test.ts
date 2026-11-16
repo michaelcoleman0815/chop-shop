@@ -155,9 +155,11 @@ describe('a vlog over time', () => {
       /^v4 is a \d+:\d\d vlog of your day in \d+ scenes?\.$/
     )
     expect(storyReply(first, vlog, { version: 2, added: 3, previousSec: runs(first) - 20 }).lead).toMatch(
-      /^v2 is ready, with 3 more clips in the story\. It runs \d+:\d\d now, up from \d+:\d\d\.$/
+      /^v2 is ready, with your 3 new clips\. It runs \d+:\d\d now, up from \d+:\d\d\.$/
     )
-    expect(storyReply(first, vlog, { version: 2, added: 1 }).summary).toMatch(/^1 more clip in the story/)
+    expect(storyReply(first, vlog, { version: 2, added: 1 }).summary).toMatch(
+      /^1 new clip in the day, \d+:\d\d long\.$/
+    )
   })
 })
 

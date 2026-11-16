@@ -39,6 +39,7 @@ import { makeVlog, planVlog, type TalkHeard } from './vlog'
 import { applyOps } from '../shared/edit/ops'
 import { currentCut, currentVersion, resolveCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
 import { FIXTURES } from './learn-fixtures'
+import { saveSettings } from './store'
 
 const ffmpeg = findFfmpeg()
 const ffprobe = findFfprobe()
@@ -171,7 +172,7 @@ describe.skipIf(!ffmpeg || !ffprobe)('a vlog made the way the app makes it', () 
     expect(r.doc.words.filter((w) => v1.words.some((x) => x.id === w.id))).toHaveLength(v1.words.length)
     expect(r.doc.vlog?.clips).toHaveLength(truth.clips.length + 2)
     expect(r.doc.vlog?.told?.map((t) => t.n)).toEqual([1, 2])
-    expect(r.reply.lead).toMatch(/^v2 is ready, with 2 more clips in the story\./)
+    expect(r.reply.lead).toMatch(/^v2 is ready, with your 2 new clips\./)
     // The talking was heard before, and is not heard again.
     expect(heardFiles).toEqual([])
     expect(existsSync(join(fake.userData, 'vlog'))).toBe(true)
@@ -200,5 +201,23 @@ describe.skipIf(!ffmpeg || !ffprobe)('a vlog made the way the app makes it', () 
     const r = await makeVlog({ paths: [join(dir, 'memo.m4a')], request: '' }, deps, () => undefined)
     expect(r).toEqual({ ok: false, message: 'None of those has a picture I could read.' })
     expect(talkWords().length).toBeGreaterThan(0)
+  })
+
+  it('says why a track dropped into a vlog with music is not used', async () => {
+    const r = await makeVlog({ paths: [join(dir, 'bed.m4a')], request: '', doc: v1 }, deps, () => undefined)
+    if (!r.ok) throw new Error(r.message)
+    expect(r.reply.aside).toContain('It has music under it already, so bed.m4a is not in it. /music changes the track.')
+  }, 60_000)
+
+  it('says whose story it is when the model picked to plan edits is not running', async () => {
+    saveSettings({ localPlanner: 'local-8b' })
+    try {
+      const r = await planVlog({ doc: v1, request: 'make it 20 seconds' })
+      if (!r.ok) throw new Error(r.message)
+      expect(r.by).toBe('rules')
+      expect(r.reply.aside).toContain('local-8b is not running on this Mac, so I told the story by its rules.')
+    } finally {
+      saveSettings({ localPlanner: null })
+    }
   })
 })
