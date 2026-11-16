@@ -18,6 +18,7 @@ import type { Attachment } from './components/Composer'
 import type { Msg } from './components/Message'
 import type { Progress } from './components/Working'
 import { clock, fileName, isAudioFile, isVideoFile } from './format'
+import { uploadReply } from './upload-reply'
 
 /**
  * /clipping in the session: finding clips in long recordings, the set they
@@ -52,6 +53,8 @@ export interface ClippingDeps {
   during: <T>(work: () => Promise<T>) => Promise<T>
   /** Clears what belongs to the edit on screen: offers, a waiting command, a picked graphic, the panel. */
   clearEditor: () => void
+  /** The chat's brand, by id, for its kind of video and caption look. */
+  brand?: () => string | null
 }
 
 /** The recordings a drop holds: footage and sound, not stills. */
@@ -184,7 +187,9 @@ export function useClipping(deps: ClippingDeps) {
       }
       let r: Awaited<ReturnType<typeof api.findClips>>
       try {
-        r = await d.current.during(() => api.findClips({ paths, ask, known, avoid: avoidRanges(current()) }))
+        r = await d.current.during(() =>
+          api.findClips({ paths, ask, known, avoid: avoidRanges(current()), brand: d.current.brand?.() ?? null })
+        )
       } finally {
         off()
       }
@@ -320,6 +325,8 @@ export function useClipping(deps: ClippingDeps) {
           chips: [clock(durationSec), ...(r.width && r.height ? [`${r.width} × ${r.height}`] : [])],
           actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
         })
+        // What its upload needs, beside it: captions, a description, titles and tags.
+        if (r.upload) push(uploadReply(r.upload))
       }
     } finally {
       exportingRef.current = false

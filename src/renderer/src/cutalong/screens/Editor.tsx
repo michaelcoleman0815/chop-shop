@@ -104,7 +104,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
-  // The cut's graphics on the output clock, in the brand's look: what the export draws.
+  // The cut's graphics on the output clock, in the look of the brand this version is made in: what the export draws.
   const scene = useMemo(
     () =>
       buildScene({
@@ -112,10 +112,10 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         resolved,
         words: doc.words,
         size: designSize(cut.aspect, doc.sources[0]),
-        theme: themeFrom(app.brand),
+        theme: themeFrom(app.chatBrand),
         assets: doc.assets
       }),
-    [cut, resolved, doc.words, doc.sources, doc.assets, app.brand]
+    [cut, resolved, doc.words, doc.sources, doc.assets, app.chatBrand]
   )
 
   const beats: StripBeat[] = useMemo(() => {

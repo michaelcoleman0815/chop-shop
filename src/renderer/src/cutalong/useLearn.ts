@@ -19,7 +19,12 @@ function remembered(): string | null {
   }
 }
 
-export function useLearn() {
+/**
+ * `brand` is the brand whose videos are shown: each brand learns only from
+ * its own (shared/brands). A run keeps going for the brand it started for,
+ * and its result shows only while that brand is still the one shown.
+ */
+export function useLearn(brand: string) {
   const [recordings, setRecordings] = useState<string[]>([])
   const [finished, setFinishedState] = useState<string | null>(null)
   const [progress, setProgress] = useState<Progress | null>(null)
@@ -32,13 +37,21 @@ export function useLearn() {
   const [adding, setAdding] = useState(false)
   const [dismissed, setDismissed] = useState<string | null>(remembered)
   const busy = useRef(false)
+  const shown = useRef(brand)
+  shown.current = brand
 
   useEffect(() => {
+    let live = true
     void api
-      .learnState()
-      .then(setState)
+      .learnState(brand)
+      .then((s) => {
+        if (live) setState(s)
+      })
       .catch(() => undefined)
-  }, [])
+    return () => {
+      live = false
+    }
+  }, [brand])
 
   const addRecordings = useCallback((paths: string[]): void => {
     setError(null)
@@ -73,8 +86,9 @@ export function useLearn() {
     setSince(Date.now())
     const off = api.onLearnProgress((p) => setProgress(p))
     try {
-      const r = await api.learnRun({ recordings, finished })
-      setState(r.state)
+      const forBrand = brand
+      const r = await api.learnRun({ recordings, finished, brand: forBrand })
+      if (shown.current === forBrand) setState(r.state)
       if (r.ok) {
         setNotes(r.video.notes)
         setRecordings([])
@@ -89,20 +103,23 @@ export function useLearn() {
       setSince(null)
       busy.current = false
     }
-  }, [recordings, finished])
+  }, [recordings, finished, brand])
 
   const checkAgain = useCallback(async (): Promise<void> => {
     setChecking(true)
     try {
-      setState(await api.learnEvaluate())
+      setState(await api.learnEvaluate(brand))
     } finally {
       setChecking(false)
     }
-  }, [])
+  }, [brand])
 
-  const forget = useCallback(async (id: string): Promise<void> => {
-    setState(await api.learnForget(id))
-  }, [])
+  const forget = useCallback(
+    async (id: string): Promise<void> => {
+      setState(await api.learnForget(id, brand))
+    },
+    [brand]
+  )
 
   /** Not now: this proposal stays hidden until learning comes up with a different one. */
   const dismiss = useCallback((key: string): void => {

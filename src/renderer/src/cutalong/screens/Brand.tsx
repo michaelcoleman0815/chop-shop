@@ -1,5 +1,7 @@
-import { useState, type DragEvent } from 'react'
+import { useEffect, useState, type DragEvent } from 'react'
 import { CORNERS, describeLearned, type Brand } from '../../../../shared/brand'
+import { brandName } from '../../../../shared/brands'
+import { MOTION_FONTS } from '../../../../shared/motion/fonts'
 import { describeStyle } from '../../../../shared/presets'
 import { PROFILES, profileById } from '../../../../shared/raw/profiles'
 import { api, mediaUrlFor } from '../api'
@@ -11,10 +13,13 @@ import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { LearnSection } from './Learn'
 import { MemorySection } from './Memory'
+import { DescriptionSection, NeverSection, SourcesSection } from './BrandRules'
 
 /**
- * Your brand, on one calm page: the videos it learns from, how your edits
- * look, and how they should feel. Every change saves as it is made.
+ * Your brands, on one calm page: one per channel, and for the one shown, the
+ * videos it learns from, how its edits look, how they should feel, what it
+ * never uses, where its B-roll comes from and what its descriptions say.
+ * Every change saves as it is made.
  */
 
 const CORNER_NAMES: Record<(typeof CORNERS)[number], string> = {
@@ -37,11 +42,63 @@ const LOOKS = [
   ['hierarchy', 'Hierarchy']
 ] as const
 
+/** The person's brands, which one is shown, and which one new chats use. */
+function BrandList({ app }: { app: Cutalong }): JSX.Element {
+  const { brands } = app
+  const shown = app.brand
+  const several = brands.brands.length > 1
+  const isDefault = shown.id === brands.default
+  const defaultName = brandName(brands.brands.find((b) => b.id === brands.default) ?? shown)
+  return (
+    <div className="cl-field">
+      {several && (
+        <div className="cl-segments" role="radiogroup" aria-label="Brand">
+          {brands.brands.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              role="radio"
+              aria-checked={b.id === shown.id}
+              className={b.id === shown.id ? 'on' : ''}
+              onClick={() => app.showBrand(b.id)}
+            >
+              {brandName(b)}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="cl-row">
+        <p className="cl-aside">
+          {several
+            ? isDefault
+              ? `${defaultName} is your default: new chats use it. Switch a chat's brand from its header.`
+              : `New chats use ${defaultName}. Switch a chat to ${brandName(shown)} from its header.`
+            : 'One brand per channel. Add another for a second channel.'}
+        </p>
+        {several && !isDefault && (
+          <Button variant="text" onClick={() => app.makeDefaultBrand(shown.id)}>
+            Make it the default
+          </Button>
+        )}
+        <Button small onClick={app.newBrand}>
+          Add a brand
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
   const brand = app.brand
   const [dropping, setDropping] = useState(false)
   // Typed as one line and saved as a list when the field is left.
   const [products, setProducts] = useState(app.brand.products.join(', '))
+  const [deleting, setDeleting] = useState(false)
+  // Another brand shown: its own names to listen for, and no question left open.
+  useEffect(() => {
+    setProducts(brand.products.join(', '))
+    setDeleting(false)
+  }, [brand.id, brand.products])
   const set = (patch: Partial<Brand>): void => app.saveBrand({ ...brand, ...patch })
   const facts = describeStyle(brand.style).slice(0, 4)
 
@@ -88,8 +145,10 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
       </Header>
       <main className="cl-page">
         <div className="cl-page-inner">
-          <h1 className="cl-page-title">Your brand</h1>
+          <h1 className="cl-page-title">{app.brands.brands.length > 1 ? 'Your brands' : 'Your brand'}</h1>
           <p className="cl-lede">What keeps every video yours. New edits get it automatically.</p>
+
+          <BrandList app={app} />
 
           <section className="cl-section" aria-labelledby="brand-videos">
             <h2 id="brand-videos">Your videos</h2>
@@ -231,7 +290,8 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
             </div>
 
             <div className="cl-field">
-              <span>Caption colours</span>
+              <span>Colours</span>
+              <span className="muted cl-field-hint">For the captions and the graphics.</span>
               <div className="cl-row">
                 <label className="cl-swatch">
                   <input
@@ -254,6 +314,41 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                   <span style={{ color: brand.colors.accent }}>never</span>
                 </span>
               </div>
+            </div>
+
+            <div className="cl-field">
+              <span>Graphics</span>
+              <span className="muted cl-field-hint">Lower thirds, titles and pops use the colours above and these faces.</span>
+              {(
+                [
+                  ['display', 'Headings', 'Archivo Black'],
+                  ['body', 'Everything smaller', 'Sora']
+                ] as const
+              ).map(([part, label, fallback]) => (
+                <div key={part} className="cl-row">
+                  <span className="muted cl-row-label" aria-hidden="true">
+                    {label}
+                  </span>
+                  <div className="cl-segments" role="radiogroup" aria-label={`${label} in graphics`}>
+                    {MOTION_FONTS.map((f) => {
+                      const on = (brand.fonts[part] ?? fallback) === f.family
+                      return (
+                        <button
+                          key={f.family}
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          title={f.label}
+                          className={on ? 'on' : ''}
+                          onClick={() => set({ fonts: { ...brand.fonts, [part]: f.family } })}
+                        >
+                          {f.family}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="cl-field">
@@ -319,6 +414,12 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
             </label>
           </section>
 
+          <NeverSection app={app} brand={brand} />
+
+          <SourcesSection app={app} brand={brand} />
+
+          <DescriptionSection app={app} brand={brand} />
+
           <section className="cl-section" aria-labelledby="brand-niche">
             <h2 id="brand-niche">Raw footage</h2>
             <div className="cl-field">
@@ -363,8 +464,31 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
 
           <label className="cl-toggle">
             <input type="checkbox" checked={brand.autoApply} onChange={(e) => set({ autoApply: e.target.checked })} />
-            Use my brand on new edits and exports
+            {app.brands.brands.length > 1
+              ? `Use ${brandName(brand)} on the edits made in it and their exports`
+              : 'Use my brand on new edits and exports'}
           </label>
+
+          {app.brands.brands.length > 1 &&
+            (deleting ? (
+              <div className="cl-row">
+                <p className="cl-aside">
+                  Delete {brandName(brand)}? Edits made in it use your default brand from then on.
+                </p>
+                <Button variant="text" onClick={() => app.deleteBrand(brand.id)}>
+                  Delete it
+                </Button>
+                <Button variant="text" onClick={() => setDeleting(false)}>
+                  Keep it
+                </Button>
+              </div>
+            ) : (
+              <div className="cl-row">
+                <Button variant="text" onClick={() => setDeleting(true)}>
+                  Delete this brand
+                </Button>
+              </div>
+            ))}
         </div>
       </main>
     </>

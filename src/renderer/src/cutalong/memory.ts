@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
 import { currentCut, currentVersion, type EditDoc, type Note } from '../../../shared/edit'
 import {
@@ -6,6 +6,7 @@ import {
   defaultsToApply,
   EMPTY_MEMORY_VIEW,
   keptSettings,
+  neverFor,
   opTags,
   type MemoryChange,
   type MemoryView,
@@ -107,15 +108,21 @@ export interface Notice {
  * be written over a brand that is still on its way.
  */
 export function useMemory(brand: Brand, saveBrand: (b: Brand) => void, say: (toast: { text: string }) => void) {
-  const [view, setView] = useState<MemoryView>(EMPTY_MEMORY_VIEW)
+  const [view, setViewState] = useState<MemoryView>(EMPTY_MEMORY_VIEW)
   const [notices, setNotices] = useState<Notice[]>([])
+  // The view as last read, for work that reads it between two draws: a rule said, then a command run.
+  const latest = useRef<MemoryView>(EMPTY_MEMORY_VIEW)
+  const setView = useCallback((next: MemoryView): void => {
+    latest.current = next
+    setViewState(next)
+  }, [])
 
   const refresh = useCallback((): void => {
     void api
       .memoryView()
       .then(setView)
       .catch(() => undefined)
-  }, [])
+  }, [setView])
 
   useEffect(() => {
     refresh()
@@ -132,13 +139,16 @@ export function useMemory(brand: Brand, saveBrand: (b: Brand) => void, say: (toa
     }
   }, [refresh])
 
-  const update = useCallback(async (change: MemoryChange): Promise<void> => {
-    try {
-      setView(await api.updateMemory(change))
-    } catch {
-      // The list stays as it was; the next change or visit reads it again.
-    }
-  }, [])
+  const update = useCallback(
+    async (change: MemoryChange): Promise<void> => {
+      try {
+        setView(await api.updateMemory(change))
+      } catch {
+        // The list stays as it was; the next change or visit reads it again.
+      }
+    },
+    [setView]
+  )
 
   useEffect(() => {
     if (brand === EMPTY_BRAND) return
@@ -174,7 +184,14 @@ export function useMemory(brand: Brand, saveBrand: (b: Brand) => void, say: (toa
     undoDefault,
     forget: (id: string) => update({ forget: id }),
     edit: (id: string, text: string) => update({ edit: { id, text } }),
-    setPaused: (paused: boolean) => update({ paused })
+    setPaused: (paused: boolean) => update({ paused }),
+    /** A brand's never list (shared/never), read as of the last change. */
+    neverFor: (brandId: string): string[] => neverFor(latest.current.never ?? [], brandId),
+    /** Things put on a brand's never list or taken off it: from the Brand page, or said in a chat. */
+    setNever: (brandId: string, items: string[], on: boolean, text?: string) =>
+      update({
+        never: items.map((item) => ({ brand: brandId, item, on, ...(text ? { text: text.slice(0, 400) } : {}) }))
+      })
   }
 }
 

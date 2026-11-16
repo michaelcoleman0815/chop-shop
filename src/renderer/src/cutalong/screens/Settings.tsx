@@ -3,7 +3,7 @@ import { detectProvider, wrongKeyMessage } from '../../../../shared/keys'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api } from '../api'
 import { Button } from '../components/ui'
-import { ClaudeFrames } from './ClaudeFrames'
+import { ClaudeFrames, ClaudeWrites } from './ClaudeFrames'
 import { grow } from '../motion'
 import { Header } from './Header'
 import { OtherServices } from './OtherServices'
@@ -198,6 +198,7 @@ export function SettingsPage(): JSX.Element {
               console.anthropic.com.
             </p>
             <ClaudeFrames settings={settings} hasKey={saved} onSettings={setSettings} />
+            <ClaudeWrites settings={settings} hasKey={saved} onSettings={setSettings} />
           </section>
 
           <Planning settings={settings} onSettings={setSettings} />

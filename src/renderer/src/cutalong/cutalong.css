@@ -861,6 +861,8 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: 13px;
   overflow-wrap: anywhere;
+  /* A value of several lines (a description, the files beside an export) keeps its lines. */
+  white-space: pre-wrap;
 }
 
 /* ---------- Clips from a long recording ---------- */
@@ -1790,6 +1792,12 @@ button:disabled {
 .cl-field-hint {
   font-size: 13px;
   margin-top: calc(var(--space-2) * -1);
+}
+
+/* What a control in a field's row is for, beside it: "Headings [Archivo Black | Anton | Sora]". */
+.cl-row-label {
+  min-width: 140px;
+  font-size: 14px;
 }
 
 .cl-field input:not([type='color']):not([type='checkbox']),

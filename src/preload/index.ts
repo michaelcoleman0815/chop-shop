@@ -22,6 +22,8 @@ import type {
 import type { Asset, EditDoc, Note, Op, Region, Source, Subject } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
+import type { Brands } from '../shared/brands'
+import type { UploadKit } from '../shared/upload'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { PremiereFacts, Preset } from '../shared/presets'
@@ -55,7 +57,8 @@ const api = {
   // Cutalong: footage into an edit document, documents into video, videos
   // someone likes into a style, and the saved slash commands.
   prepareCut: (
-    input: string | { paths: string[]; soundPaths?: string[] }
+    /** With `brand`, the chat's brand by id: its kind of video and the names it listens for. */
+    input: string | { paths: string[]; soundPaths?: string[]; brand?: string | null }
   ): Promise<
     | {
         ok: true
@@ -158,6 +161,8 @@ const api = {
         mediaUrl: string
         creditsPath?: string | null
         chaptersPath?: string | null
+        /** What an upload needs, written beside the export (shared/upload). */
+        upload?: UploadKit | null
         /** The exported file's own size and length. */
         width?: number
         height?: number
@@ -212,6 +217,10 @@ const api = {
   getBrand: (): Promise<Brand> => ipcRenderer.invoke('brand:get'),
   saveBrand: (brand: Brand): Promise<{ ok: true; brand: Brand } | { ok: false; message: string }> =>
     ipcRenderer.invoke('brand:save', brand),
+  /** A brand per channel, and which one new chats use (shared/brands). */
+  getBrands: (): Promise<Brands> => ipcRenderer.invoke('brands:get'),
+  saveBrands: (brands: Brands): Promise<{ ok: true; brands: Brands } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('brands:save', brands),
   learnBrand: (
     paths: string[]
   ): Promise<{ learned: { path: string; title: string; facts: InspirationFacts }[]; failed: string[] }> =>
@@ -219,11 +228,13 @@ const api = {
   onBrandProgress: (cb: (p: Progress) => void): (() => void) => listen('brand:progress', cb),
   // Learning from your edits: recordings and the video made from them, lined up on this computer.
   learnChoose: (kind: 'recordings' | 'finished'): Promise<string[]> => ipcRenderer.invoke('learn:choose', kind),
-  learnRun: (req: { recordings: string[]; finished: string }): Promise<LearnRunResult> =>
+  // Each brand learns from its own videos: `brand` is its id, the default brand's when absent.
+  learnRun: (req: { recordings: string[]; finished: string; brand?: string | null }): Promise<LearnRunResult> =>
     ipcRenderer.invoke('learn:run', req),
-  learnState: (): Promise<LearnState> => ipcRenderer.invoke('learn:state'),
-  learnEvaluate: (): Promise<LearnState> => ipcRenderer.invoke('learn:evaluate'),
-  learnForget: (id: string): Promise<LearnState> => ipcRenderer.invoke('learn:forget', id),
+  learnState: (brand?: string | null): Promise<LearnState> => ipcRenderer.invoke('learn:state', brand),
+  learnEvaluate: (brand?: string | null): Promise<LearnState> => ipcRenderer.invoke('learn:evaluate', brand),
+  learnForget: (id: string, brand?: string | null): Promise<LearnState> =>
+    ipcRenderer.invoke('learn:forget', id, brand),
   onLearnProgress: (cb: (p: Progress) => void): (() => void) => listen('learn:progress', cb),
   // What has been learned about how you edit, kept on this computer.
   memoryView: (): Promise<MemoryView> => ipcRenderer.invoke('memory:get'),
@@ -236,6 +247,8 @@ const api = {
     ask: string
     known?: Record<string, TranscriptWord[]>
     avoid?: { path: string; startSec: number; endSec: number }[]
+    /** The chat's brand, by id. */
+    brand?: string | null
   }): Promise<({ ok: true; reply: ClipsReply } & ClipsFound) | { ok: false; message: string }> =>
     ipcRenderer.invoke('clips:find', req),
   onClipsProgress: (cb: (p: Progress) => void): (() => void) => listen('clips:progress', cb),
