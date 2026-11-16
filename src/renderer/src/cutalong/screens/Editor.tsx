@@ -16,6 +16,7 @@ import { parseCommand, slashQuery, suggestCommands, type Preset } from '../../..
 import {
   buildScene,
   designSize,
+  drawsCaptions,
   graphicTitle,
   template,
   themeFrom,
@@ -231,9 +232,11 @@ function Preview({
     () => captionPages(resolved, cut.captions.wordsPerScreen),
     [resolved, cut.captions.wordsPerScreen]
   )
-  const page = cut.captions.on
-    ? pages.find((p) => time >= p[0].outStart - 0.05 && time <= p[p.length - 1].outEnd + 0.25)
-    : undefined
+  // Captions the graphics draw are on the canvas, not here.
+  const page =
+    cut.captions.on && !drawsCaptions(cut.captions)
+      ? pages.find((p) => time >= p[0].outStart - 0.05 && time <= p[p.length - 1].outEnd + 0.25)
+      : undefined
   const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined
   const showBig = big && time >= big.outStart - 0.1 && time <= big.outEnd + 0.7
 

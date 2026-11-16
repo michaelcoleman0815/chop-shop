@@ -6,10 +6,12 @@ import type { Asset, Cut, Resolved, Source, Word } from '../shared/edit'
 import {
   activeSpans,
   buildScene,
+  drawsCaptions,
   MOTION_FONTS,
   renderFrame,
   themeFrom,
   type BrandLook,
+  type FaceSample,
   type IconNode,
   type Layer,
   type MotionScene,
@@ -216,13 +218,17 @@ export interface CutMotionInput {
   fontsDir: string | null
   /** Loads icon shapes, only when a graphic draws one. */
   icons?: () => Promise<(name: string) => IconNode[] | undefined>
+  /** Faces through the cut, from face tracking, for drawn captions to keep off. */
+  faces?: FaceSample[]
+  /** How strongly each word is stressed, 0 to 1, by word id. */
+  emphasis?: Record<string, number>
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
 }
 
 /** The scene a cut's graphics make, laid out in the full-size frame. */
 export function sceneForCut(
-  input: Pick<CutMotionInput, 'cut' | 'resolved' | 'words' | 'sources' | 'brand'>
+  input: Pick<CutMotionInput, 'cut' | 'resolved' | 'words' | 'sources' | 'brand' | 'faces' | 'emphasis'>
 ): MotionScene {
   const first = input.sources.find((s) => s.id === input.resolved.pieces[0]?.source) ?? input.sources[0]
   return buildScene({
@@ -230,8 +236,18 @@ export function sceneForCut(
     resolved: input.resolved,
     words: input.words,
     size: frameSize(input.cut.aspect, first),
-    theme: themeFrom(input.brand)
+    theme: themeFrom(input.brand),
+    faces: input.faces,
+    emphasis: input.emphasis
   })
+}
+
+/**
+ * The cut the picture and subtitle pass renders: when the graphics draw the
+ * captions, the subtitle pass leaves them out, so they are not drawn twice.
+ */
+export function subtitleCut(cut: Cut): Cut {
+  return drawsCaptions(cut.captions) ? { ...cut, captions: { ...cut.captions, on: false } } : cut
 }
 
 /** Renders a cut's graphics to overlay files for renderCut. Empty when the cut has none. */

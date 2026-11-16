@@ -13,7 +13,7 @@ import { creditsText, isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
-import { renderCutMotion } from './motion-render'
+import { renderCutMotion, subtitleCut } from './motion-render'
 import { loadIcons } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
@@ -30,7 +30,7 @@ import {
   type Note,
   type Word
 } from '../shared/edit'
-import { BUILT_IN_PRESETS, describeStyle, suggestCommandName } from '../shared/presets'
+import { BUILT_IN_PRESETS, describeStyle, LOOK_PRESETS, suggestCommandName } from '../shared/presets'
 import {
   factDetails,
   factsReply,
@@ -135,7 +135,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         onProgress: (f) => report(f * 0.25)
       })
       const share = motion.overlays.length > 0 ? 0.25 : 0
-      await renderCut(cut, resolved, sources, {
+      await renderCut(subtitleCut(cut), resolved, sources, {
         ffmpeg: FFMPEG_PATH,
         outputPath,
         workDir,
@@ -208,7 +208,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
       const facts = summarize(measures, speech)
       const style = styleFromFacts(facts)
-      const taken = [...BUILT_IN_PRESETS, ...(await savedPresets())]
+      const taken = [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...(await savedPresets())]
       const study: InspirationStudy = {
         source: { url: input.url ?? null, path, title, durationSec: measures.durationSec },
         facts,

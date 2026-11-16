@@ -1,5 +1,6 @@
 import type { Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
+import { captionLayers, type CaptionCover, type FaceSample } from './captions'
 import type { MotionItem, MotionKind } from './schema'
 import { template } from './templates'
 import { frameFor, type Frame, type MotionTheme } from './theme'
@@ -41,6 +42,10 @@ export interface SceneInput {
   /** The full-size output frame: design pixels. */
   size: Size
   theme: MotionTheme
+  /** Faces through the cut, from face tracking, for drawn captions to keep off. */
+  faces?: FaceSample[]
+  /** How strongly each word is stressed, 0 to 1, by word id, for which caption words go big. */
+  emphasis?: Record<string, number>
 }
 
 /** Builds every graphic in the cut. Never throws on a bad call: it is hidden instead. */
@@ -54,11 +59,31 @@ export function buildScene(input: SceneInput): MotionScene {
     if ('reason' in built) hidden.push({ id: item.id, reason: built.reason })
     else items.push(built)
   }
+  const covers: CaptionCover[] = items.flatMap((i) => {
+    const kind = template(i.kind)?.covers
+    return kind ? [{ start: i.start, end: i.end, kind }] : []
+  })
+  const captions = captionLayers({
+    spec: input.cut.captions,
+    resolved: input.resolved,
+    frame,
+    theme: input.theme,
+    duration: tl.duration,
+    faces: input.faces,
+    emphasis: input.emphasis,
+    covers
+  })
+  // Backdrops replace the picture, so they go under the captions; everything else goes over.
+  const backdrop = (i: SceneItem): boolean => template(i.kind)?.covers === 'backdrop'
   return {
     size: input.size,
     frame,
     duration: tl.duration,
-    layers: items.flatMap((i) => i.layers),
+    layers: [
+      ...items.filter(backdrop).flatMap((i) => i.layers),
+      ...captions,
+      ...items.filter((i) => !backdrop(i)).flatMap((i) => i.layers)
+    ],
     items,
     hidden
   }

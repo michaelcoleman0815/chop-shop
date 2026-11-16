@@ -216,7 +216,8 @@ const TextLayerSchema = z.object({
         end: n.optional(),
         color: ColorSchema.optional(),
         scale: n.optional(),
-        weight: n.optional()
+        weight: n.optional(),
+        align: z.enum(['left', 'center', 'right']).optional()
       })
     )
     .max(400)

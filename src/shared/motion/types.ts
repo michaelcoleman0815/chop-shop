@@ -154,6 +154,8 @@ export interface Span {
   /** Size relative to the layer's font. */
   scale?: number
   weight?: number
+  /** Lines that begin in this span sit this way inside the block, rather than as the layer aligns. */
+  align?: 'left' | 'center' | 'right'
 }
 
 export interface Font {

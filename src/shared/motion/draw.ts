@@ -680,6 +680,64 @@ function glyph(
   ctx.fillText(text, x, y)
 }
 
+/**
+ * Letters blurred by `blur` device pixels, drawn cheaply: the letters go far
+ * off the canvas and only their shadow, blurred, lands where they belong. A
+ * blur filter would blur a canvas-sized layer for every word; a shadow blurs
+ * only the letters' own mask. A shadow's blur is twice its deviation, a
+ * filter's is the deviation itself. In the shadow pass the drop shadow goes
+ * first, softened by the same amount.
+ */
+function softGlyph(
+  ctx: Ctx,
+  text: string,
+  x: number,
+  y: number,
+  fill: string,
+  stroke: Stroke | undefined,
+  strokeW: number,
+  local: number,
+  length: number,
+  pass: Pass,
+  blur: number
+): void {
+  const m = ctx.getTransform()
+  const det = m.a * m.d - m.b * m.c
+  if (Math.abs(det) < 1e-12) return
+  const far = 20000
+  // The step in this transform that moves the letters `far` device pixels to the right.
+  const fx = x + (m.d * far) / det
+  const fy = y + (-m.b * far) / det
+  const drop =
+    pass === 'shadow'
+      ? { color: ctx.shadowColor, blur: ctx.shadowBlur, x: ctx.shadowOffsetX, y: ctx.shadowOffsetY }
+      : null
+  const cast = (color: string, spread: number, dx: number, dy: number, outline: boolean, letters: boolean): void => {
+    ctx.shadowColor = color
+    ctx.shadowBlur = spread
+    ctx.shadowOffsetX = dx - far
+    ctx.shadowOffsetY = dy
+    if (outline && stroke && strokeW > 0) {
+      applyStroke(ctx, stroke, local, length, strokeW * 2, '#000000')
+      ctx.strokeText(text, fx, fy)
+    }
+    if (letters) {
+      ctx.fillStyle = '#000000'
+      ctx.fillText(text, fx, fy)
+    }
+  }
+  if (drop) cast(drop.color, drop.blur + blur * 2, drop.x, drop.y, true, true)
+  if (stroke && strokeW > 0) cast(sampleColor(stroke.color, local, length, '#000000'), blur * 2, 0, 0, true, false)
+  cast(fill, blur * 2, 0, 0, false, true)
+  clearShadow(ctx)
+  if (drop) {
+    ctx.shadowColor = drop.color
+    ctx.shadowBlur = drop.blur
+    ctx.shadowOffsetX = drop.x
+    ctx.shadowOffsetY = drop.y
+  }
+}
+
 function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opacity: number, st: DrawState): void {
   const text = layer.count ? countText(layer.count, local, length) : null
   const block = layoutFor(ctx, layer, st, text)
@@ -700,8 +758,11 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
     return
   }
 
+  // Letters go one at a time when they move on their own, or when the font's tracking spaces them.
   const charLevel =
-    (layer.animators ?? []).some((a) => a.by === 'char' || a.from.tracking !== undefined) || !!layer.cursor
+    (layer.animators ?? []).some((a) => a.by === 'char' || a.from.tracking !== undefined) ||
+    !!layer.cursor ||
+    (layer.font.tracking ?? 0) !== 0
   const strokeW = layer.stroke ? num(layer.stroke.width, local, length, 0) : 0
   const mids = block.lines.map((line) => {
     const first = block.words[line.words[0]]
@@ -727,15 +788,31 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
         unitTransform(ctx, { ...wu, scale: wu.scale * activeScale }, word.x + word.w / 2, word.baseline - word.cap / 2)
         if (wu.clip || wu.wipe < 0.999) clipBox(ctx, word.x, line.top, word.w, line.height, wu, word.size)
         const blurred = wu.blur + lu.blur
-        if (blurred > 0.01 && pass !== 'glow') ctx.filter = `blur(${(blurred * k).toFixed(2)}px)`
         ctx.font = word.font
         let fill: string | CanvasGradient = layer.spans?.[word.span]?.color ?? baseFill
         if (isActive && layer.active?.color) fill = layer.active.color
         if (typeof fill === 'string') fill = tinted(tinted(fill, lu), wu)
+        // Blurred letters go through a shadow; a gradient fill cannot, so it takes the filter.
+        const soft = (b: number): boolean => b > 0.01 && pass !== 'glow' && typeof fill === 'string'
+        if (blurred > 0.01 && pass !== 'glow' && !soft(blurred)) ctx.filter = `blur(${(blurred * k).toFixed(2)}px)`
 
         if (!charLevel) {
           ctx.globalAlpha = alpha
-          glyph(ctx, word.text, word.x, word.baseline, fill, layer.stroke, strokeW, local, length, pass, override)
+          if (soft(blurred))
+            softGlyph(
+              ctx,
+              word.text,
+              word.x,
+              word.baseline,
+              fill as string,
+              layer.stroke,
+              strokeW,
+              local,
+              length,
+              pass,
+              blurred * k
+            )
+          else glyph(ctx, word.text, word.x, word.baseline, fill, layer.stroke, strokeW, local, length, pass, override)
         } else {
           const tracking = lu.tracking + wu.tracking
           const mid = mids[line.index]
@@ -749,21 +826,26 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
             ctx.save()
             unitTransform(ctx, cu, cx + c.w / 2, word.baseline - word.cap / 2)
             if (cu.clip || cu.wipe < 0.999) clipBox(ctx, cx, line.top, c.w, line.height, cu, word.size)
-            if (cu.blur > 0.01 && pass !== 'glow') ctx.filter = `blur(${((cu.blur + blurred) * k).toFixed(2)}px)`
+            const charBlur = cu.blur + blurred
+            if (charBlur > 0.01 && pass !== 'glow' && !soft(charBlur))
+              ctx.filter = `blur(${(charBlur * k).toFixed(2)}px)`
             ctx.globalAlpha = a
-            glyph(
-              ctx,
-              c.ch,
-              cx,
-              word.baseline,
-              typeof fill === 'string' ? tinted(fill, cu) : fill,
-              layer.stroke,
-              strokeW,
-              local,
-              length,
-              pass,
-              override
-            )
+            const charFill = typeof fill === 'string' ? tinted(fill, cu) : fill
+            if (soft(charBlur))
+              softGlyph(
+                ctx,
+                c.ch,
+                cx,
+                word.baseline,
+                charFill as string,
+                layer.stroke,
+                strokeW,
+                local,
+                length,
+                pass,
+                charBlur * k
+              )
+            else glyph(ctx, c.ch, cx, word.baseline, charFill, layer.stroke, strokeW, local, length, pass, override)
             ctx.restore()
           })
         }

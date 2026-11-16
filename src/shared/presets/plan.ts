@@ -1,4 +1,5 @@
 import { isFiller } from '../fillers'
+import { motionCaptionLook } from '../motion/captions'
 import { motionPhrases } from '../motion/describe'
 import { applyOps } from '../edit/ops'
 import { resolveCut, type Resolved, type ResolvedBeat } from '../edit/resolve'
@@ -217,7 +218,9 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved): stri
           : 'pauses are back as recorded'
       )
     } else if (o.op === 'captions') {
+      const look = o.set.on === false ? null : motionCaptionLook(o.set.preset)
       if (o.set.on === false) said.push('captions are off')
+      else if (look) said.push(look.phrase)
       else if (o.set.wordsPerScreen) {
         const n = o.set.wordsPerScreen
         said.push(

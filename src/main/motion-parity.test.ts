@@ -214,6 +214,22 @@ function frames(): Frame[] {
   ]
   const text: Layer[] = [
     {
+      // Words fading up out of a blur, as drawn captions do: the blur goes through a shadow.
+      kind: 'text',
+      start: 0,
+      end: 4,
+      text: 'Then once after you buy',
+      font: { family: 'Sora', size: 70, weight: 700, tracking: -1.4 },
+      align: 'center',
+      valign: 'top',
+      fill: '#ffffff',
+      effects: { shadow: { color: 'rgba(0,0,0,0.5)', blur: 18, y: 3 } },
+      animators: [
+        { by: 'word', delay: 0.3, stagger: 0.3, duration: 0.6, ease: 'ease-out', from: { opacity: 0, blur: 10, y: 14 } }
+      ],
+      transform: { x: 540, y: 250 }
+    },
+    {
       kind: 'text',
       start: 0,
       end: 4,
@@ -378,8 +394,8 @@ describe('preview and export draw the same frame', () => {
     const f = frames()[0]
     const moved: Frame = {
       ...f,
-      layers: f.layers.map((l, i) =>
-        i === 0 && l.transform ? { ...l, transform: { ...l.transform, x: (l.transform.x as number) + 4 } } : l
+      layers: f.layers.map((l) =>
+        l.transform ? { ...l, transform: { ...l.transform, x: (l.transform.x as number) + 4 } } : l
       )
     }
     const a = await inChromium(moved, {})

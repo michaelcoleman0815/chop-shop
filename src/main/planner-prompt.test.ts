@@ -137,6 +137,23 @@ describe('the planner request', () => {
     expect(r.applied.map((o) => o.op)).toEqual(['motion-add', 'motion-update', 'motion-remove'])
   })
 
+  it('can turn on drawn hierarchy captions, and says so in the request', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(PLANNER_SYSTEM).toContain('"preset":"hierarchy"')
+    const plan = PlanSchema.parse({
+      ops: [{ op: 'captions', set: { on: true, preset: 'hierarchy', position: 'chest' } }],
+      summary: 'Captions come in word by word.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(r.rejected).toEqual([])
+    expect(r.cut.captions.preset).toBe('hierarchy')
+    doc = commit(doc, plan.ops, 'x').doc
+    expect(renderRequest(doc, 'Bigger', [])).toContain(', hierarchy')
+  })
+
   it('shows the cut’s graphics in the request', () => {
     let doc = createDoc({ id: 'd', title: 't', source, words })
     doc = commit(doc, [{ op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], style: 'circle' }], 'x').doc

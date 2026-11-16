@@ -27,6 +27,7 @@ import {
 } from '../../../shared/assets'
 import {
   BUILT_IN_PRESETS,
+  LOOK_PRESETS,
   describePlan,
   findPreset,
   parseCommand,
@@ -142,7 +143,14 @@ export function useCutalong() {
 
   const presets = useMemo(() => {
     const mine = brandPreset(brand)
-    return [...BUILT_IN_PRESETS, ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...MOTION_ENTRIES, ...saved]
+    return [
+      ...BUILT_IN_PRESETS,
+      ...(mine ? [mine] : []),
+      ...LOOK_PRESETS,
+      ...ACTION_COMMANDS,
+      ...MOTION_ENTRIES,
+      ...saved
+    ]
   }, [saved, brand])
   const presetsRef = useRef(presets)
   presetsRef.current = presets

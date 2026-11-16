@@ -6,8 +6,9 @@ import { fileURLToPath } from 'url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
 import { buildRenderArgs, frameSize, renderCut, type RenderSource } from './cut-render'
-import { designSize } from '../shared/motion'
-import { overlaySpans, renderCutMotion } from './motion-render'
+import { createCanvas } from '@napi-rs/canvas'
+import { designSize, renderFrame } from '../shared/motion'
+import { overlaySpans, renderCutMotion, sceneForCut, subtitleCut } from './motion-render'
 import { probeMedia } from './inspiration/measure'
 
 /**
@@ -90,6 +91,25 @@ describe('the final pass with graphics', () => {
       }
     )
     expect(plain.join(' ')).not.toContain('overlay')
+  })
+
+  it('leaves captions the graphics draw out of the subtitle pass, and only those', () => {
+    const source = { id: 's1', path: '/x.mov', durationSec: 4, width: 1080, height: 1920, fps: 30 }
+    const words = wordsFromTranscript([{ text: 'Hello', startSec: 0.5, endSec: 0.9 }], 's1')
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const plain = currentCut(doc)
+    expect(subtitleCut(plain)).toBe(plain)
+    const drawn = commit(doc, [{ op: 'captions', set: { preset: 'hierarchy' } }], 'x').doc
+    const cut = currentCut(drawn)
+    expect(subtitleCut(cut).captions).toEqual({ ...cut.captions, on: false })
+    const scene = sceneForCut({
+      cut,
+      resolved: resolveCut(cut, words, [source]),
+      words,
+      sources: [source],
+      brand: null
+    })
+    expect(scene.layers.length).toBe(1)
   })
 
   it('merges stretches until there are few enough inputs', () => {
@@ -182,7 +202,8 @@ describe.skipIf(!FFMPEG)('exporting graphics', () => {
       fontsDir: FONTS
     })
     expect(overlays.length).toBe(1)
-    return renderCut(cut, resolved, sources, {
+    // As the app's export does.
+    return renderCut(subtitleCut(cut), resolved, sources, {
       ffmpeg,
       outputPath: join(dir, `${name}-export.mp4`),
       workDir: work,
@@ -259,6 +280,50 @@ describe.skipIf(!FFMPEG)('exporting graphics', () => {
       }
     })
   }
+
+  it('draws hierarchy captions in place of the subtitles', async () => {
+    const path = clip('captions.mp4', 360, 640)
+    const source = { id: 's1', path, durationSec: 4, width: 360, height: 640, fps: 30 }
+    const doc = commit(
+      createDoc({ id: 'c', title: 'Captions', source, words: words() }),
+      [
+        { op: 'aspect', aspect: 'vertical' },
+        // At the top, so the page and where subtitles would sit (a little lower) are told apart.
+        { op: 'captions', set: { on: true, preset: 'hierarchy', position: 'top' } }
+      ],
+      'Captions.'
+    ).doc
+    const out = await exportWith(doc, [{ ...source, hasAudio: true }], 'captions')
+    const [ow, oh] = [540, 960]
+    const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+    // Settled on the second page, "exposure", after it has faded in and before it goes.
+    const said = resolved.words.find((w) => w.id === 'w3')!.outStart + 0.45
+    // White letters where the graphics put the page (its top 11% down), and nowhere else.
+    const bright = (f: Buffer, y0: number, y1: number): number => {
+      let n = 0
+      for (let y = y0; y < y1; y++)
+        for (let x = 0; x < ow; x++) {
+          const [r, g, b] = rgb(f, ow, x, y)
+          if (r > 215 && g > 215 && b > 215) n++
+        }
+      return n
+    }
+    const during = frameAt(out, said, ow, oh)
+    const page = bright(during, Math.round(oh * 0.09), Math.round(oh * 0.17))
+    expect(page).toBeGreaterThan(300)
+    expect(bright(during, 0, Math.round(oh * 0.09)) + bright(during, Math.round(oh * 0.17), oh)).toBe(0)
+    // As many white pixels as the graphics alone draw: the subtitle pass added no words of its own.
+    const scene = sceneForCut({ cut: currentCut(doc), resolved, words: doc.words, sources: [source], brand: null })
+    const canvas = createCanvas(ow, oh)
+    const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D
+    renderFrame(ctx, said, scene.layers, scene.size, { width: ow, height: oh })
+    const drawn = ctx.getImageData(0, 0, ow, oh).data
+    let own = 0
+    for (let i = 0; i < drawn.length; i += 4)
+      if (drawn[i + 3] > 200 && drawn[i] > 215 && drawn[i + 1] > 215 && drawn[i + 2] > 215) own++
+    expect(page / own).toBeGreaterThan(0.8)
+    expect(page / own).toBeLessThan(1.2)
+  })
 
   it('exports a cut with no graphics exactly as before', async () => {
     const path = clip('plain.mp4', 640, 360)

@@ -85,7 +85,7 @@ export const CaptionSpecSchema = z.object({
   /** Words on screen at once. Two reads fastest on a phone. */
   wordsPerScreen: z.number().int().min(1).max(8),
   position: z.enum(CAPTION_POSITIONS),
-  /** A caption look from shared/caption-presets. */
+  /** A caption look from shared/caption-presets, or one the graphics draw (shared/motion/captions). */
   preset: z.string().min(1),
   uppercase: z.boolean()
 })

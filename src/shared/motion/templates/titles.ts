@@ -369,6 +369,7 @@ register({
   places: [],
   length: 2,
   lead: 0,
+  covers: 'card',
   fields: [
     { slot: 'text', index: 0, label: 'Line' },
     { slot: 'text', index: 1, label: 'Second line' },

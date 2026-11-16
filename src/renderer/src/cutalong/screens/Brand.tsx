@@ -26,6 +26,12 @@ const POSITIONS = [
   ['bottom', 'Low']
 ] as const
 
+/** Subtitles, or captions the graphics draw: two lines, the key words big. */
+const LOOKS = [
+  ['clean', 'Subtitles'],
+  ['hierarchy', 'Hierarchy']
+] as const
+
 export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
   const brand = app.brand
   const [dropping, setDropping] = useState(false)
@@ -195,6 +201,23 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
 
             <div className="cl-field">
               <span>Captions</span>
+              <div className="cl-segments" role="radiogroup" aria-label="Caption look">
+                {LOOKS.map(([value, label]) => {
+                  const on = (caption.preset === 'hierarchy' ? 'hierarchy' : 'clean') === value
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      className={on ? 'on' : ''}
+                      onClick={() => set({ captions: { ...caption, preset: value } })}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
               <div className="cl-segments" role="radiogroup" aria-label="Words at a time">
                 {[1, 2, 3, 4].map((n) => (
                   <button

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { currentCut, currentVersion, indexWords, resolveCut, type EditDoc, type Note } from '../shared/edit'
 import { clock } from '../shared/presets'
-import { graphicsGuide, graphicsLines, templates } from '../shared/motion'
+import { drawsCaptions, graphicsGuide, graphicsLines, templates } from '../shared/motion'
 import { searchIcons } from '../shared/assets'
 
 /**
@@ -29,7 +29,7 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - {"op":"join","beat":"b4"}: join a beat with the one after it. Only when they sit together in the recording.
 - {"op":"insert","to":2,"beat":{"source":"s1","from":"w40","to":"w52"}}: bring words back as a new beat.
 - {"op":"treat","beats":["b2","b5"],"set":{"bw":true}}: set treatment fields. A bigWord set names exactly one beat.
-- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom.
+- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest; "preset":"clean" goes back to plain subtitles.
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
 - {"op":"aspect","aspect":"vertical"}: vertical, wide, square or original.
 - {"op":"loudness","lufs":-14}.
@@ -100,7 +100,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
       on: z.boolean().optional(),
       wordsPerScreen: z.number().optional(),
       position: z.enum(['top', 'middle', 'chest', 'bottom']).optional(),
-      uppercase: z.boolean().optional()
+      uppercase: z.boolean().optional(),
+      preset: z.enum(['clean', 'hierarchy']).optional()
     })
   }),
   z.object({
@@ -173,7 +174,7 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
     `runs ${clock(resolved.durationSec)}`,
     `aspect ${cut.aspect}`,
     cut.captions.on
-      ? `captions ${cut.captions.wordsPerScreen} at a time, ${cut.captions.position}${cut.captions.uppercase ? ', upper case' : ''}`
+      ? `captions ${cut.captions.wordsPerScreen} at a time, ${cut.captions.position}${cut.captions.uppercase ? ', upper case' : ''}${drawsCaptions(cut.captions) ? `, ${cut.captions.preset}` : ''}`
       : 'captions off',
     cut.tighten
       ? `pauses over ${cut.tighten.maxGapSec} s cut${cut.tighten.fillers ? ', fillers cut' : ''}`

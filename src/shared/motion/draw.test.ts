@@ -352,6 +352,26 @@ describe('text', () => {
     expect(layoutText(measurer(ctx), { ...layer, text: 'Subscribe', balance: true }).lines).toHaveLength(1)
   })
 
+  it('spaces letters by the font’s tracking, where the layout measured them', () => {
+    const layer = sora({
+      text: 'HI HI',
+      align: 'left',
+      valign: 'baseline',
+      maxWidth: undefined,
+      transform: { x: 100, y: 400 },
+      font: { family: 'Sora', size: 100, weight: 700, tracking: 60 },
+      fill: '#ffffff'
+    })
+    const { ctx } = frame(1080, 1920)
+    drawFrame(ctx, 1, [layer], { width: 1080, height: 1920 })
+    const { block } = textUnits(ctx, layer, 1)
+    const [first, last] = block.words
+    const i = last.chars[1]
+    expect(px(ctx, 100 + last.x + i.x + i.w / 2, 400 - 30)[3]).toBeGreaterThan(200)
+    // Between the words, nothing.
+    expect(px(ctx, 100 + (first.x + first.w + last.x) / 2, 400 - 30)[3]).toBe(0)
+  })
+
   it('draws text where the layout puts it', () => {
     const { ctx } = frame(1080, 1920)
     drawFrame(ctx, 1, [sora({ text: 'HELLO', fill: '#ffffff', font: { family: 'Anton', size: 200 } })], {

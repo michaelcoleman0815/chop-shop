@@ -179,7 +179,8 @@ export function layoutText(measure: Measure, layer: TextLayer, text = layer.text
     const height = size * lineHeight
     // Caps sit in the middle of the line, which is what plates and centring want.
     const baseline = top + height / 2 + (info.cap * size) / 2
-    const x = align === 'center' ? (blockW - l.w) / 2 : align === 'right' ? blockW - l.w : 0
+    const own = spans[placed[l.words[0]]?.span ?? -1]?.align ?? align
+    const x = own === 'center' ? (blockW - l.w) / 2 : own === 'right' ? blockW - l.w : 0
     boxes.push({ index: li, x, w: l.w, top, height, baseline, size, cap: info.cap * size, words: l.words })
     top += height
   })

@@ -43,6 +43,11 @@ export interface Template {
   length: number
   /** Seconds the entrance starts before its anchor, so it finishes on the word. */
   lead: number
+  /**
+   * When it fills the frame: a backdrop replaces the picture and drawn
+   * captions move over it; a card has words of its own and captions wait.
+   */
+  covers?: 'backdrop' | 'card'
   fields: Field[]
   /** A call the planner's instructions show, and what it does, in a few words. */
   example: { call: Omit<MotionCallInput, 'kind'>; says: string }
