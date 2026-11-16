@@ -2,31 +2,19 @@ import { useEffect, useState } from 'react'
 import type { ProjectSummary } from '../../../../shared/types'
 import { api } from '../api'
 import { Composer } from '../components/Composer'
-import { Lockup } from '../components/ui'
 import { when } from '../format'
 import type { Cutalong } from '../useCutalong'
-import { AccountMenu, Header, ProjectsMenu } from './Header'
+import { Header } from './Header'
 
 const CHIPS = ['tighten', 'shorts', 'captions', 'hook']
 
 /** One question, one composer, four presets, three projects. Nothing else. */
-export function Start({
-  app,
-  version,
-  onBrowse
-}: {
-  app: Cutalong
-  version: string
-  onBrowse: () => void
-}): JSX.Element {
+export function Start({ app }: { app: Cutalong }): JSX.Element {
   const [seed, setSeed] = useState<{ text: string; nonce: number } | null>(null)
   return (
     <>
       <Header>
-        <Lockup />
         <span className="spacer" />
-        <ProjectsMenu recent={app.recent} onOpen={(p) => void app.openProject(p)} onBrowse={onBrowse} />
-        <AccountMenu version={version} />
       </Header>
       <main className="cl-start">
         <div className="cl-start-inner">
@@ -60,7 +48,7 @@ export function Start({
             </div>
             <div className="cl-continue-row">
               {app.recent.slice(0, 3).map((p) => (
-                <ProjectCard key={p.path} project={p} onOpen={() => void app.openProject(p.path)} />
+                <ProjectCard key={p.path} project={p} onOpen={() => void app.openProject(p.path, 'editor')} />
               ))}
             </div>
           </section>
@@ -70,7 +58,7 @@ export function Start({
   )
 }
 
-function ProjectCard({ project, onOpen }: { project: ProjectSummary; onOpen: () => void }): JSX.Element {
+export function ProjectCard({ project, onOpen }: { project: ProjectSummary; onOpen: () => void }): JSX.Element {
   const [poster, setPoster] = useState<string | null>(null)
   useEffect(() => {
     if (!project.primaryMedia) return

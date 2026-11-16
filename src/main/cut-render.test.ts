@@ -9,10 +9,19 @@ import {
   currentCut,
   resolveCut,
   wordsFromTranscript,
+  DEFAULT_CAPTIONS,
   DEFAULT_TREATMENT,
   type EditDoc
 } from '../shared/edit'
-import { buildRenderArgs, frameRate, frameSize, renderCut, type RenderSource, type Segment } from './cut-render'
+import {
+  buildRenderArgs,
+  captionStyleFor,
+  frameRate,
+  frameSize,
+  renderCut,
+  type RenderSource,
+  type Segment
+} from './cut-render'
 import { greyShare, probeMedia, sampleColour } from './inspiration/measure'
 
 function findFfmpeg(): string | null {
@@ -78,6 +87,27 @@ describe('render arguments', () => {
     )
     expect(split).toContain('vstack')
     expect(split).toContain('[1:v]')
+  })
+
+  it('keeps a logo in its corner and captions in the brand colours', () => {
+    const args = buildRenderArgs([seg()], {
+      ...opts,
+      logo: { path: '/brand/logo.png', corner: 'bottom-right', opacity: 0.8 }
+    })
+    expect(args.slice(args.indexOf('/brand/logo.png') - 5, args.indexOf('/brand/logo.png') + 1)).toEqual([
+      '-loop',
+      '1',
+      '-t',
+      '2.000',
+      '-i',
+      '/brand/logo.png'
+    ])
+    const graph = args[args.indexOf('-filter_complex') + 1]
+    expect(graph).toContain('scale=76:-1,format=rgba,colorchannelmixer=aa=0.80[logo]')
+    expect(graph).toContain('overlay=x=main_w-overlay_w-24:y=main_h-overlay_h-24:shortest=1[vlogo]')
+    expect(args).toContain('[vlogo]')
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS }, 1080, { text: '#FAFAFA', accent: '#FF5A36' })
+    expect([style.textColor, style.activeColor]).toEqual(['#FAFAFA', '#FF5A36'])
   })
 
   it('sizes frames by shape and keeps frame rates standard', () => {

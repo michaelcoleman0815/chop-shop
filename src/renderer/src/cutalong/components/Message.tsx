@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AssistantAvatar, Button } from './ui'
-import type { Attachment } from './Composer'
+import type { ChatMessage } from '../../../../shared/types'
 
 /**
  * One turn in a thread. The user's words sit in an ink bubble on the right;
@@ -18,18 +18,10 @@ export interface Action {
   icon?: string
 }
 
-export interface Msg {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
-  attachments?: Attachment[]
-  link?: { url: string; title: string | null; meta: string | null }
-  chips?: string[]
-  details?: { label: string; value: string }[]
-  aside?: string | null
+export interface Msg extends Omit<ChatMessage, 'actions'> {
   actions?: Action[]
+  /** Set while the work behind a reply is still running. Never saved. */
   progress?: { stage: string; percent: number } | null
-  error?: boolean
 }
 
 export function UserMessage({ msg }: { msg: Msg }): JSX.Element {

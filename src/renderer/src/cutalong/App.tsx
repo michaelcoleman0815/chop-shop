@@ -1,23 +1,38 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
+import { Sidebar, type Place } from './components/Sidebar'
 import { Button } from './components/ui'
+import { BrandPage } from './screens/Brand'
 import { Editor } from './screens/Editor'
+import { openClassic } from './screens/Header'
+import { PresetsPage, ProjectsPage } from './screens/Library'
 import { Start } from './screens/Start'
 import { Thread } from './screens/Thread'
 import { useCutalong } from './useCutalong'
 
-/** Three screens and one session: Start, the thread, and the editor. */
+const SIDEBAR_KEY = 'cutalong:sidebar-open'
+
+function remembered(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** The rail and one screen: Start, the thread, the editor, projects, your brand or presets. */
 export default function App(): JSX.Element {
   const app = useCutalong()
-  const [version, setVersion] = useState('')
+  const [open, setOpen] = useState(remembered)
   const mac = navigator.userAgent.includes('Mac')
 
   useEffect(() => {
-    void api
-      .getVersion()
-      .then(setVersion)
-      .catch(() => undefined)
-  }, [])
+    try {
+      localStorage.setItem(SIDEBAR_KEY, open ? '1' : '0')
+    } catch {
+      // Remembering is a convenience; without storage the rail starts closed.
+    }
+  }, [open])
 
   // Toasts that report a result clear themselves; errors and progress stay.
   useEffect(() => {
@@ -30,19 +45,36 @@ export default function App(): JSX.Element {
     const project = await api.openProject()
     if (!project) return
     if (project.mode !== 'cut') {
-      app.setToast({
-        text: `${project.name} was made with the classic tools. Open it from the menu, under Classic tools.`
-      })
+      app.setToast({ text: `${project.name} was made with the classic tools. Open it from Classic tools.` })
       return
     }
     await app.openProject(project.path)
   }
 
+  const place: Place | null =
+    app.screen === 'start' || app.screen === 'projects' || app.screen === 'brand' || app.screen === 'presets'
+      ? app.screen
+      : null
+
   return (
     <div className={`cl-app${mac ? ' mac' : ''}`}>
-      {app.screen === 'start' && <Start app={app} version={version} onBrowse={() => void browse()} />}
-      {app.screen === 'thread' && <Thread app={app} />}
-      {app.screen === 'editor' && app.doc && <Editor app={app} />}
+      <Sidebar
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+        current={place}
+        onGo={(p) => (p === 'start' ? app.goStart() : app.setScreen(p))}
+        recent={app.recent}
+        onOpenProject={(path) => void app.openProject(path)}
+        onClassic={openClassic}
+      />
+      <div className="cl-main">
+        {app.screen === 'start' && <Start app={app} />}
+        {app.screen === 'thread' && <Thread app={app} />}
+        {app.screen === 'editor' && app.doc && <Editor app={app} />}
+        {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
+        {app.screen === 'brand' && <BrandPage app={app} />}
+        {app.screen === 'presets' && <PresetsPage app={app} />}
+      </div>
       {app.toast && (
         <div className="cl-toast" role="status">
           <span>{app.toast.text}</span>

@@ -17,6 +17,7 @@ import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { planEdit } from './planner'
+import { readBrand, saveBrand } from './brand-store'
 import {
   createDoc,
   currentCut,
@@ -114,12 +115,14 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       const outputPath = final
         ? await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.mp4')
         : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
+      const brand = await readBrand()
       await renderCut(cut, resolved, sources, {
         ffmpeg: FFMPEG_PATH,
         outputPath,
         workDir,
         quality: req.quality,
         fontsDir: FONTS_DIR(),
+        brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
         onProgress: (f) => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
       })
       // Anything from outside the person's own files is credited beside the video.
@@ -204,7 +207,37 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[] }) => planEdit(req))
+  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) =>
+    planEdit(req)
+  )
+
+  // The brand: kept in userData, learned from the person's own videos, all
+  // measured here on this computer.
+  ipcMain.handle('brand:get', () => readBrand())
+  ipcMain.handle('brand:save', (_e, brand: unknown) => saveBrand(brand))
+  ipcMain.handle('brand:learn', async (e, paths: string[]) => {
+    const learned: { path: string; title: string; facts: ReturnType<typeof summarize> }[] = []
+    const failed: string[] = []
+    const settings = getSettings()
+    for (const [i, path] of paths.entries()) {
+      const at = (f: number): number => Math.round(((i + f) / paths.length) * 100)
+      deps.send(e.sender, 'brand:progress', { stage: `Watching ${basename(path)}`, percent: at(0) })
+      try {
+        const measures = await measureVideo(path, { ffmpeg: FFMPEG_PATH, maxSec: 600 })
+        let speech: SpeechMeasures | null = null
+        if (measures.hasAudio && hasModel(settings.whisperModel)) {
+          deps.send(e.sender, 'brand:progress', { stage: `Listening to ${basename(path)}`, percent: at(0.5) })
+          const t = await transcribe(path, settings.whisperModel, Math.min(measures.measuredSec, 120), () => undefined)
+          speech = measureSpeech(t.words)
+        }
+        learned.push({ path, title: basename(path, extname(path)), facts: summarize(measures, speech) })
+      } catch (err) {
+        failed.push(`${basename(path)}: ${message(err)}`)
+      }
+    }
+    deps.send(e.sender, 'brand:progress', { stage: 'Done', percent: 100 })
+    return { learned, failed }
+  })
 
   // Material for an edit: files, image links, excerpts of videos at links,
   // search results to pick B-roll from, and icons the renderer drew. All of it

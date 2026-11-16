@@ -34,7 +34,8 @@ import {
   type Preset
 } from '../../../shared/presets'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
-import type { Project, ProjectSummary } from '../../../shared/types'
+import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
@@ -46,7 +47,7 @@ import { clock, fileName, findLink, isVideoFile } from './format'
  * commit(), so each one is a version the notes panel can name and undo.
  */
 
-export type Screen = 'start' | 'thread' | 'editor'
+export type Screen = 'start' | 'thread' | 'editor' | 'projects' | 'brand' | 'presets'
 
 export interface Toast {
   text: string
@@ -117,6 +118,10 @@ export function useCutalong() {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const [panel, setPanel] = useState<PanelStatus | null>(null)
+  const [brand, setBrand] = useState<Brand>(EMPTY_BRAND)
+  const [brandProgress, setBrandProgress] = useState<{ stage: string; percent: number } | null>(null)
+  const brandRef = useRef<Brand>(EMPTY_BRAND)
+  brandRef.current = brand
 
   const docRef = useRef<EditDoc | null>(null)
   const projectRef = useRef<Project | null>(null)
@@ -124,7 +129,10 @@ export function useCutalong() {
   const pendingCommand = useRef<string | null>(null)
   studyRef.current = study
 
-  const presets = useMemo(() => [...BUILT_IN_PRESETS, ...ACTION_COMMANDS, ...saved], [saved])
+  const presets = useMemo(() => {
+    const mine = brandPreset(brand)
+    return [...BUILT_IN_PRESETS, ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...saved]
+  }, [saved, brand])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
 
@@ -138,17 +146,62 @@ export function useCutalong() {
   }, [])
 
   /** Saves the doc into its project file, making the project the first time. */
-  const persist = useCallback(async (next: EditDoc): Promise<void> => {
-    try {
-      let project = projectRef.current
-      if (!project) project = await api.createProject(next.title, 'cut')
-      const updated: Project = { ...project, media: next.sources.map((s) => s.path), edit: next }
-      projectRef.current = updated
-      await api.saveProject(updated)
-    } catch (err) {
-      setToast({ text: `Couldn't save: ${err instanceof Error ? err.message : String(err)}`, error: true })
-    }
+  const messagesRef = useRef<Msg[]>([])
+  messagesRef.current = messages
+
+  const refreshRecent = useCallback((): void => {
+    void api
+      .recentProjects()
+      .then((rows) => setRecent(rows.filter((r) => r.mode === 'cut')))
+      .catch(() => undefined)
   }, [])
+
+  /**
+   * The project file for this chat, made the first time there is something to
+   * keep. A chat is a project from its first message, so it shows up under
+   * Chats straight away, footage or not.
+   */
+  const ensureProject = useCallback(
+    async (name: string): Promise<Project> => {
+      if (projectRef.current) return projectRef.current
+      const project = await api.createProject(name.replace(/\s+/g, ' ').trim().slice(0, 60) || 'New edit', 'cut')
+      projectRef.current = project
+      refreshRecent()
+      return project
+    },
+    [refreshRecent]
+  )
+
+  /** Saves the chat and the edit together. Replies still in progress are left out. */
+  const persist = useCallback(
+    async (next: EditDoc | null = docRef.current): Promise<void> => {
+      try {
+        const project = projectRef.current ?? (next ? await ensureProject(next.title) : null)
+        if (!project) return
+        const chat: ChatMessage[] = messagesRef.current
+          .filter((m) => !m.progress)
+          .map(({ progress: _progress, ...m }) => m)
+        const updated: Project = {
+          ...project,
+          media: next ? next.sources.map((s) => s.path) : project.media,
+          edit: next ?? project.edit ?? null,
+          chat
+        }
+        projectRef.current = updated
+        await api.saveProject(updated)
+      } catch (err) {
+        setToast({ text: `Couldn't save: ${err instanceof Error ? err.message : String(err)}`, error: true })
+      }
+    },
+    [ensureProject]
+  )
+
+  // Every finished turn of the chat is saved with the project, a moment after it settles.
+  useEffect(() => {
+    if (!projectRef.current || messages.some((m) => m.progress)) return
+    const t = setTimeout(() => void persist(), 400)
+    return () => clearTimeout(t)
+  }, [messages, persist])
 
   const setDoc = useCallback(
     (next: EditDoc): void => {
@@ -157,6 +210,63 @@ export function useCutalong() {
       void persist(next)
     },
     [persist]
+  )
+
+  useEffect(() => {
+    void api
+      .getBrand()
+      .then((b) => {
+        brandRef.current = b
+        setBrand(b)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  // Brand edits save as they are made, a moment after the last keystroke.
+  const brandSave = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveBrand = useCallback((next: Brand): void => {
+    brandRef.current = next
+    setBrand(next)
+    if (brandSave.current) clearTimeout(brandSave.current)
+    brandSave.current = setTimeout(() => {
+      void api.saveBrand(next).then((r) => {
+        if (!r.ok) setToast({ text: r.message, error: true })
+      })
+    }, 300)
+  }, [])
+
+  const learnFrom = useCallback(
+    async (paths: string[]): Promise<void> => {
+      setBrandProgress({ stage: 'Watching your videos', percent: 0 })
+      const off = api.onBrandProgress((p) => setBrandProgress(p))
+      try {
+        const r = await api.learnBrand(paths)
+        const now = new Date().toISOString()
+        const fresh: BrandVideo[] = r.learned.map((l) => ({
+          path: l.path,
+          title: l.title,
+          measuredAt: now,
+          facts: l.facts
+        }))
+        const current = brandRef.current
+        const videos = [...current.videos.filter((v) => !fresh.some((f) => f.path === v.path)), ...fresh]
+        saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
+        if (r.failed.length) setToast({ text: `Couldn't watch ${r.failed.join('; ')}`, error: true })
+      } finally {
+        off()
+        setBrandProgress(null)
+      }
+    },
+    [saveBrand]
+  )
+
+  const forgetBrandVideo = useCallback(
+    (path: string): void => {
+      const current = brandRef.current
+      const videos = current.videos.filter((v) => v.path !== path)
+      saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
+    },
+    [saveBrand]
   )
 
   useEffect(() => {
@@ -170,19 +280,21 @@ export function useCutalong() {
       .catch(() => undefined)
   }, [])
 
-  const openProject = useCallback(async (path: string): Promise<void> => {
+  /** Opens a saved chat: its thread when it has one, else straight into the editor. */
+  const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
     const project = await api.openProject(path)
-    if (!project?.edit) {
-      setToast({ text: 'That project has no edit in it.', error: true })
-      return
-    }
+    if (!project) return
     projectRef.current = project
-    docRef.current = project.edit
-    setDocState(project.edit)
-    setMediaUrl(mediaUrlFor(project.edit.sources[0].path))
-    setMessages([])
+    const edit = project.edit ?? null
+    docRef.current = edit
+    setDocState(edit)
+    setMediaUrl(edit ? mediaUrlFor(edit.sources[0].path) : null)
+    const chat = (project.chat ?? []) as Msg[]
+    messagesRef.current = chat
+    setMessages(chat)
+    setStudy(null)
     setPanel(null)
-    setScreen('editor')
+    setScreen(edit && (prefer === 'editor' || chat.length === 0) ? 'editor' : 'thread')
   }, [])
 
   // Opened from the classic tools: they hand over the path and reload.
@@ -225,7 +337,6 @@ export function useCutalong() {
         patch(id, { progress: null, text: `I couldn't open ${file.name}. ${r.message}`, error: true })
         return false
       }
-      projectRef.current = null
       setDoc(r.doc)
       setMediaUrl(r.mediaUrl)
       const resolved = resolveCut(currentCut(r.doc), r.doc.words, r.doc.sources)
@@ -508,7 +619,7 @@ export function useCutalong() {
         return
       }
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Working it out', percent: 35 } })
-      const r = await api.planEdit({ doc: d, request: text, notes: [] })
+      const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandRef.current.voice })
       if (!r.ok) {
         patch(id, { progress: null, text: r.message, error: true })
         return
@@ -531,6 +642,7 @@ export function useCutalong() {
       const command = parseCommand(text)
       const words = link ? text.replace(link, '').trim() : text
       setScreen('thread')
+      void ensureProject(attachments[0]?.name.replace(/\.[^.]+$/, '') || words || 'New edit')
       push({
         role: 'user',
         text: link ? words || 'Make it feel like this' : text,
@@ -552,10 +664,14 @@ export function useCutalong() {
               text: `I'll start with ${footage[0].name}. More than one recording per edit comes later.`
             })
           }
-          if (footage.length > 0 && (await prepare(footage[0])) && pendingCommand.current) {
-            const waiting = pendingCommand.current
-            pendingCommand.current = null
-            await runCommand(waiting)
+          if (footage.length > 0 && (await prepare(footage[0]))) {
+            // Your brand first, so whatever was asked for lands on top of it.
+            if (brandRef.current.autoApply && brandPreset(brandRef.current)) await runCommand('brand')
+            if (pendingCommand.current) {
+              const waiting = pendingCommand.current
+              pendingCommand.current = null
+              await runCommand(waiting)
+            }
           }
           for (const a of stills) await bringIn({ path: a.path }, words || a.name)
         }
@@ -581,7 +697,7 @@ export function useCutalong() {
         setBusy(false)
       }
     },
-    [ask, bringIn, prepare, push, runCommand, studyLink]
+    [ask, bringIn, ensureProject, prepare, push, runCommand, studyLink]
   )
 
   const useStyle = useCallback((): void => {
@@ -670,7 +786,7 @@ export function useCutalong() {
       text: '',
       progress: { stage: `Working on ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: 35 }
     })
-    const r = await api.planEdit({ doc: d, request: '', notes })
+    const r = await api.planEdit({ doc: d, request: '', notes, voice: brandRef.current.voice })
     if (!r.ok) {
       setPanel({ text: r.message, error: true })
       return
@@ -720,15 +836,28 @@ export function useCutalong() {
     )
   }, [])
 
+  /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
+    projectRef.current = null
+    docRef.current = null
+    messagesRef.current = []
+    pendingCommand.current = null
+    setDocState(null)
+    setMediaUrl(null)
+    setMessages([])
+    setStudy(null)
+    setPanel(null)
     setScreen('start')
-    void api
-      .recentProjects()
-      .then((rows) => setRecent(rows.filter((r) => r.mode === 'cut')))
-      .catch(() => undefined)
-  }, [])
+    refreshRecent()
+  }, [refreshRecent])
 
   return {
+    brand,
+    brandProgress,
+    saveBrand,
+    learnFrom,
+    forgetBrandVideo,
+    setSaved,
     screen,
     setScreen,
     goStart,

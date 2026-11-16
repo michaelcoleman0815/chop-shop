@@ -206,7 +206,7 @@ function Preview({
         )}
         {page && !showBig && (
           <div
-            className="cl-caption"
+            className={`cl-caption${treatment?.frame === 'card' && treatment.broll ? ' on-card' : ''}`}
             style={{
               top: `${CAPTION_TOP[cut.captions.position] * 100}%`,
               fontSize: Math.max(12, Math.round(box.h * 0.042))

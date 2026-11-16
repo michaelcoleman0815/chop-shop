@@ -71,6 +71,12 @@ button:disabled {
 .cl-app {
   height: 100%;
   display: flex;
+}
+
+.cl-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
 }
 
@@ -82,11 +88,6 @@ button:disabled {
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-8);
-}
-
-/* The window has no titlebar on a Mac; the traffic lights sit top left. */
-.cl-app.mac .cl-header {
-  padding-left: 88px;
 }
 
 .cl-header button,
@@ -788,6 +789,12 @@ button:disabled {
   pointer-events: none;
 }
 
+/* On a light card, words are set in ink rather than white. */
+.cl-caption.on-card {
+  color: var(--ink);
+  text-shadow: none;
+}
+
 .cl-caption .on {
   opacity: 1;
 }
@@ -1086,4 +1093,353 @@ button:disabled {
   max-width: 420px;
   text-align: center;
   color: var(--muted);
+}
+
+/* ---------- Rail ---------- */
+
+.cl-rail {
+  -webkit-app-region: drag;
+  flex: 0 0 72px;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 0;
+  border-right: 1px solid var(--line);
+  background: var(--ground);
+  transition:
+    flex-basis 160ms ease,
+    width 160ms ease;
+  overflow: hidden;
+}
+
+/* The window has no titlebar on a Mac; the traffic lights sit in the rail's top corner. */
+.cl-app.mac .cl-rail {
+  padding-top: 52px;
+}
+
+.cl-rail.open {
+  flex-basis: 248px;
+  width: 248px;
+  align-items: stretch;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.cl-rail button {
+  -webkit-app-region: no-drag;
+}
+
+.cl-rail-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* The toggle stays its own size, so the lockup beside it shows when the rail is open. */
+.cl-rail.open .cl-rail-top .cl-rail-item {
+  width: 44px;
+  flex: 0 0 44px;
+  justify-content: center;
+  padding: 0;
+}
+
+.cl-rail-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+}
+
+.cl-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-rail.open .cl-rail-item {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 12px;
+}
+
+.cl-rail-item:hover {
+  background: rgba(21, 22, 26, 0.05);
+  color: var(--ink);
+}
+
+.cl-rail-item.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-tab);
+}
+
+.cl-rail-recent {
+  margin-top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.cl-rail-heading {
+  padding: 0 12px 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cl-rail-project {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-rail-project:hover {
+  background: rgba(21, 22, 26, 0.05);
+  color: var(--ink);
+}
+
+/* ---------- Pages: projects, brand, presets ---------- */
+
+.cl-page {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-8) var(--space-12);
+}
+
+.cl-page-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.cl-page-inner.wide {
+  max-width: 1000px;
+}
+
+.cl-page-title {
+  margin: 0;
+  font-size: 34px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.cl-lede {
+  margin: -12px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.cl-section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cl-section h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 700;
+}
+
+.cl-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-field > span:first-child {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-field input:not([type='color']):not([type='checkbox']),
+.cl-field textarea {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--ground);
+  padding: 10px 14px;
+  outline: none;
+  resize: vertical;
+}
+
+.cl-field input:focus-visible,
+.cl-field textarea:focus-visible {
+  border-color: var(--ink);
+}
+
+.cl-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cl-segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--ground);
+  align-self: flex-start;
+}
+
+.cl-segments button {
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.cl-segments button.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-tab);
+}
+
+.cl-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+}
+
+.cl-swatch input {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: none;
+  cursor: pointer;
+}
+
+.cl-caption-sample {
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: #1d1f25;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.cl-logo-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--ground);
+}
+
+.cl-drop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-6);
+  border: 1px dashed #d6d5d1;
+  border-radius: var(--radius-thumb);
+  color: var(--muted);
+}
+
+.cl-drop.dropping {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.cl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.cl-list li:first-child {
+  border-top: 0;
+}
+
+.cl-list-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+}
+
+.cl-list-main .cl-project-meta {
+  font-weight: 400;
+}
+
+.cl-list-cmd {
+  flex: 0 0 120px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.cl-list li > button:not(.cl-btn) {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+}
+
+.cl-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: 600;
+}
+
+.cl-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ink);
 }

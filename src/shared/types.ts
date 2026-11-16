@@ -283,6 +283,31 @@ export interface Project extends ProjectSummary {
   timeline: Timeline | null
   /** The edit document of a Cutalong project. Absent from classic projects. */
   edit?: EditDoc | null
+  /** The conversation that made the edit, so a chat can be picked up again. */
+  chat?: ChatMessage[]
+}
+
+/** A button under a reply. The kinds are the renderer's to define. */
+export interface ChatAction {
+  kind: string
+  label: string
+  primary?: boolean
+  payload?: string
+  icon?: string
+}
+
+/** One turn of a Cutalong chat, as it is kept in the project file. */
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  attachments?: { path: string; name: string }[]
+  link?: { url: string; title: string | null; meta: string | null }
+  chips?: string[]
+  details?: { label: string; value: string }[]
+  aside?: string | null
+  actions?: ChatAction[]
+  error?: boolean
 }
 
 export interface TimelineClip {

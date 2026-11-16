@@ -33,6 +33,11 @@ export type CutalongApi = Pick<
   | 'searchVideos'
   | 'saveImageAsset'
   | 'setVideoSignIn'
+  | 'getBrand'
+  | 'saveBrand'
+  | 'learnBrand'
+  | 'onBrandProgress'
+  | 'chooseMedia'
 >
 
 const bridge = typeof window !== 'undefined' ? (window as { chop?: ChopApi }).chop : undefined

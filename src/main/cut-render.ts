@@ -41,10 +41,21 @@ export interface Segment {
 
 export type Quality = 'preview' | 'final' | 'intermediate'
 
+export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+
+/** A logo kept in one corner for the whole video. */
+export interface LogoMark {
+  path: string
+  corner: Corner
+  opacity: number
+}
+
 export interface GraphOptions {
   width: number
   height: number
   fps: number
+  /** Drawn over everything, captions included. */
+  logo?: LogoMark | null
   /** An ASS file to burn in over the joined picture. */
   assPath: string | null
   fontsDir: string | null
@@ -92,12 +103,17 @@ export function frameRate(fps: number): number {
 
 const POSITION_FRAC: Record<CaptionSpec['position'], number> = { top: 0.22, middle: 0.52, chest: 0.66, bottom: 0.84 }
 
-/** The caption look for a spec, sized for the frame being rendered. */
-export function captionStyleFor(spec: CaptionSpec, width: number): CaptionStyle {
+/** The caption look for a spec, sized for the frame being rendered, in the brand's colours when there is one. */
+export function captionStyleFor(
+  spec: CaptionSpec,
+  width: number,
+  colors: { text: string; accent: string } | null = null
+): CaptionStyle {
   const base = presetById(spec.preset).style
   const scale = width / 1080
   return {
     ...base,
+    ...(colors ? { textColor: colors.text, activeColor: colors.accent } : {}),
     wordsPerGroup: spec.wordsPerScreen,
     uppercase: spec.uppercase || base.uppercase,
     positionFrac: POSITION_FRAC[spec.position],
@@ -214,6 +230,20 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[vcat]subtitles='${filterPath(opts.assPath)}'${fonts}[vsub]`)
     vOut = 'vsub'
   }
+  if (opts.logo) {
+    // The logo is an image looped for the whole video, a seventh of the frame
+    // wide, set in from its corner by about a twentieth.
+    const total = segments.reduce((n, s) => n + s.durationSec, 0)
+    const l = input(opts.logo.path, 0, total)
+    const w = even(W * 0.14)
+    const m = Math.round(W * 0.045)
+    const x = opts.logo.corner.endsWith('right') ? `main_w-overlay_w-${m}` : String(m)
+    const y = opts.logo.corner.startsWith('bottom') ? `main_h-overlay_h-${m}` : String(m)
+    const alpha = Math.min(1, Math.max(0.1, opts.logo.opacity)).toFixed(2)
+    chains.push(`[${l}:v]scale=${w}:-1,format=rgba,colorchannelmixer=aa=${alpha}[logo]`)
+    chains.push(`[${vOut}][logo]overlay=x=${x}:y=${y}:shortest=1[vlogo]`)
+    vOut = 'vlogo'
+  }
   let aOut = 'acat'
   if (opts.loudness !== null) {
     chains.push(`[acat]loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000[aloud]`)
@@ -313,6 +343,8 @@ export interface RenderCutOptions {
   maxInputs?: number
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
+  /** The person's brand: caption colours and a logo in a corner. */
+  brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
 }
 
 /** Renders a cut to a file and returns its path. */
@@ -340,7 +372,10 @@ export async function renderCut(
       endSec: w.outEnd
     }))
     assPath = join(opts.workDir, 'captions.ass')
-    await fs.writeFile(assPath, buildAss(words, width, height, captionStyleFor(cut.captions, width)))
+    await fs.writeFile(
+      assPath,
+      buildAss(words, width, height, captionStyleFor(cut.captions, width, opts.brand?.colors ?? null))
+    )
   }
 
   const base = { width, height, fps, fontsDir: opts.fontsDir ?? null }
@@ -353,7 +388,8 @@ export async function renderCut(
       assPath,
       loudness: cut.loudness,
       quality,
-      outputPath: opts.outputPath
+      outputPath: opts.outputPath,
+      logo: opts.brand?.logo ?? null
     })
     await runRender(opts.ffmpeg, args, total, progress, opts.signal)
     return opts.outputPath
@@ -399,7 +435,8 @@ export async function renderCut(
     assPath,
     loudness: cut.loudness,
     quality,
-    outputPath: opts.outputPath
+    outputPath: opts.outputPath,
+    logo: opts.brand?.logo ?? null
   })
   await runRender(opts.ffmpeg, args, total, (f) => progress(0.8 + f * 0.2), opts.signal)
   return opts.outputPath

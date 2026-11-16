@@ -9,6 +9,7 @@ import {
   type InspirationStudy
 } from '../../../shared/inspiration'
 import type { Project, ProjectSummary } from '../../../shared/types'
+import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
 import type { CutalongApi } from './api'
 
 /**
@@ -64,6 +65,7 @@ export function createMockApi(): CutalongApi {
     study: new Set<(p: { stage: string; percent: number }) => void>()
   }
   let saved: Preset[] = []
+  let brand: Brand = { ...EMPTY_BRAND }
   const projects = new Map<string, Project>()
   const now = Date.now()
   const day = 86_400_000
@@ -289,6 +291,42 @@ export function createMockApi(): CutalongApi {
         origin
       }
     }),
-    setVideoSignIn: async (browser) => browser
+    setVideoSignIn: async (browser) => browser,
+    getBrand: async () => brand,
+    saveBrand: async (next) => {
+      brand = { ...next, updatedAt: new Date().toISOString() }
+      return { ok: true as const, brand }
+    },
+    learnBrand: async (paths) => {
+      await progress(listeners.cut, ['Watching'])
+      return {
+        learned: paths.map((path, i) => ({
+          path,
+          title: path
+            .split('/')
+            .pop()!
+            .replace(/\.[^.]+$/, ''),
+          facts: summarize(
+            {
+              durationSec: 48 + i * 6,
+              measuredSec: 48 + i * 6,
+              width: 1080,
+              height: 1920,
+              hasAudio: true,
+              cuts: Array.from({ length: 20 }, (_, k) => 0.8 + k * (2.1 + i * 0.2)),
+              bwShare: 0,
+              loudnessLufs: -14.2
+            },
+            measureSpeech(Array.from({ length: 160 }, (_, k) => ({ startSec: k * 0.33, endSec: k * 0.33 + 0.28 })))
+          )
+        })),
+        failed: []
+      }
+    },
+    onBrandProgress: (cb) => {
+      listeners.cut.add(cb)
+      return () => listeners.cut.delete(cb)
+    },
+    chooseMedia: async () => null
   }
 }

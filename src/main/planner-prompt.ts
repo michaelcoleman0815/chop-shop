@@ -41,6 +41,9 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 - If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs.
 - If nothing can be done, return no ops and say why in reply.
 
+## The creator's brand
+A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
+
 ## How to write
 Write as a helpful editor sitting next to the person: first person, plain words, exact numbers. No exclamation marks, no emoji, no praise. Never call this cloning or copying anyone. The summary is one sentence about what changed in this version ("The hook line opens it now and the ending stays on you."). The reply is at most two sentences.`
 
@@ -125,7 +128,7 @@ export function renderTranscript(doc: EditDoc): string {
 }
 
 /** The cut as it stands, the notes and the ask: the part that changes every time. */
-export function renderRequest(doc: EditDoc, request: string, notes: Note[]): string {
+export function renderRequest(doc: EditDoc, request: string, notes: Note[], voice = ''): string {
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
   const timing = new Map(resolved.beats.map((b) => [b.id, b]))
@@ -177,6 +180,8 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[]): str
     for (const note of notes) parts.push(`${note.id}${note.beat ? ` (left on ${note.beat})` : ''}: ${note.text}`)
     parts.push('</notes>')
   }
+  // The creator's own words about how their edits should feel.
+  if (voice.trim()) parts.push(`<brand-voice>\n${voice.trim()}\n</brand-voice>`)
   // Tagged so that words in the request are read as the request, never as
   // instructions that override the ones above.
   if (request.trim()) parts.push(`<request>\n${request.trim()}\n</request>`)

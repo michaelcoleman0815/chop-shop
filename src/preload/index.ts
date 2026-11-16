@@ -20,7 +20,8 @@ import type {
   ZoomKeyframe
 } from '../shared/types'
 import type { Asset, EditDoc, Note, Op } from '../shared/edit'
-import type { InspirationStudy } from '../shared/inspiration'
+import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
+import type { Brand } from '../shared/brand'
 import type { Preset } from '../shared/presets'
 
 type Progress = { stage: string; percent: number }
@@ -38,9 +39,8 @@ const api = {
   // someone likes into a style, and the saved slash commands.
   prepareCut: (
     path: string
-  ): Promise<
-    { ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }
-  > => ipcRenderer.invoke('cut:prepare', path),
+  ): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('cut:prepare', path),
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'
@@ -70,13 +70,30 @@ const api = {
     ipcRenderer.invoke('assets:saveImage', req),
   setVideoSignIn: (browser: string | null): Promise<string | null> =>
     ipcRenderer.invoke('settings:videoSignIn', browser),
+  getBrand: (): Promise<Brand> => ipcRenderer.invoke('brand:get'),
+  saveBrand: (brand: Brand): Promise<{ ok: true; brand: Brand } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('brand:save', brand),
+  learnBrand: (
+    paths: string[]
+  ): Promise<{ learned: { path: string; title: string; facts: InspirationFacts }[]; failed: string[] }> =>
+    ipcRenderer.invoke('brand:learn', paths),
+  onBrandProgress: (cb: (p: Progress) => void): (() => void) => listen('brand:progress', cb),
   onCutProgress: (cb: (p: Progress) => void): (() => void) => listen('cut:progress', cb),
   planEdit: (req: {
     doc: EditDoc
     request: string
     notes: Note[]
+    voice?: string
   }): Promise<
-    | { ok: true; ops: Op[]; summary: string; reply: string; notesHandled: string[]; needs: string[]; rejected: string[] }
+    | {
+        ok: true
+        ops: Op[]
+        summary: string
+        reply: string
+        notesHandled: string[]
+        needs: string[]
+        rejected: string[]
+      }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:plan', req),
   studyInspiration: (input: {
@@ -86,15 +103,12 @@ const api = {
     ipcRenderer.invoke('inspiration:study', input),
   onInspirationProgress: (cb: (p: Progress) => void): (() => void) => listen('inspiration:progress', cb),
   listPresets: (): Promise<Preset[]> => ipcRenderer.invoke('presets:list'),
-  savePreset: (
-    preset: Preset
-  ): Promise<{ ok: true; presets: Preset[] } | { ok: false; message: string }> =>
+  savePreset: (preset: Preset): Promise<{ ok: true; presets: Preset[] } | { ok: false; message: string }> =>
     ipcRenderer.invoke('presets:save', preset),
   removePreset: (command: string): Promise<Preset[]> => ipcRenderer.invoke('presets:remove', command),
 
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
-  setSettings: (patch: Partial<Settings>): Promise<Settings> =>
-    ipcRenderer.invoke('settings:set', patch),
+  setSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:set', patch),
   chooseOutputDir: (): Promise<string | null> => ipcRenderer.invoke('dialog:chooseOutputDir'),
 
   openVideo: (): Promise<VideoMeta | null> => ipcRenderer.invoke('dialog:openVideo'),
@@ -109,8 +123,7 @@ const api = {
 
   listCaptureSources: (): Promise<CaptureSource[]> => ipcRenderer.invoke('capture:sources'),
   screenPermission: (): Promise<string> => ipcRenderer.invoke('capture:permission'),
-  openPermissionSettings: (): Promise<void> =>
-    ipcRenderer.invoke('capture:openPermissionSettings'),
+  openPermissionSettings: (): Promise<void> => ipcRenderer.invoke('capture:openPermissionSettings'),
 
   grabBuffer: (payload: {
     jobId: string
@@ -126,14 +139,12 @@ const api = {
   clearApiKey: (): Promise<void> => ipcRenderer.invoke('ai:clearKey'),
 
   provider: (): Promise<string> => ipcRenderer.invoke('ai:provider'),
-  listModels: (): Promise<
-    { ok: true; models: { id: string; name: string }[] } | { ok: false; message: string }
-  > => ipcRenderer.invoke('ai:models'),
+  listModels: (): Promise<{ ok: true; models: { id: string; name: string }[] } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('ai:models'),
 
   hasModel: (model: string): Promise<boolean> => ipcRenderer.invoke('stt:hasModel', model),
   modelSizeMb: (model: string): Promise<number> => ipcRenderer.invoke('stt:modelSize', model),
-  downloadModel: (model: string): Promise<boolean> =>
-    ipcRenderer.invoke('stt:downloadModel', model),
+  downloadModel: (model: string): Promise<boolean> => ipcRenderer.invoke('stt:downloadModel', model),
 
   analyze: (
     videoPath: string,
@@ -147,13 +158,20 @@ const api = {
   searchArtlist: (
     query: string
   ): Promise<
-    | { ok: true; songs: { id: string; name: string; artist: string; durationSec: number; bpm: number | null; url: string }[] }
+    | {
+        ok: true
+        songs: { id: string; name: string; artist: string; durationSec: number; bpm: number | null; url: string }[]
+      }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('artlist:search', query),
-  fetchArtlistSong: (
-    song: { id: string; name: string; artist: string; durationSec: number; bpm: number | null; url: string }
-  ): Promise<{ ok: true; path: string } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('artlist:fetch', song),
+  fetchArtlistSong: (song: {
+    id: string
+    name: string
+    artist: string
+    durationSec: number
+    bpm: number | null
+    url: string
+  }): Promise<{ ok: true; path: string } | { ok: false; message: string }> => ipcRenderer.invoke('artlist:fetch', song),
   listMusic: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke('music:list'),
   chooseMusicDir: (): Promise<string | null> => ipcRenderer.invoke('music:choose'),
   renderClipPreview: (
@@ -169,22 +187,15 @@ const api = {
     range?: { startSec: number; endSec: number }
   ): Promise<{ ok: true; meta: VideoMeta } | { ok: false; message: string }> =>
     ipcRenderer.invoke('video:fromUrl', url, range),
-  onFetchProgress: (
-    cb: (p: { percent: number; stage: string; message?: string }) => void
-  ): (() => void) => {
-    const handler = (_e: unknown, p: { percent: number; stage: string; message?: string }): void =>
-      cb(p)
+  onFetchProgress: (cb: (p: { percent: number; stage: string; message?: string }) => void): (() => void) => {
+    const handler = (_e: unknown, p: { percent: number; stage: string; message?: string }): void => cb(p)
     ipcRenderer.on('video:fetchProgress', handler)
     return () => ipcRenderer.removeListener('video:fetchProgress', handler)
   },
-  cachedAnalysis: (videoPath: string): Promise<CachedAnalysis | null> =>
-    ipcRenderer.invoke('ai:cached', videoPath),
+  cachedAnalysis: (videoPath: string): Promise<CachedAnalysis | null> => ipcRenderer.invoke('ai:cached', videoPath),
 
-  onAiProgress: (
-    cb: (p: { stage: string; percent: number; message?: string }) => void
-  ): (() => void) => {
-    const handler = (_e: unknown, p: { stage: string; percent: number; message?: string }): void =>
-      cb(p)
+  onAiProgress: (cb: (p: { stage: string; percent: number; message?: string }) => void): (() => void) => {
+    const handler = (_e: unknown, p: { stage: string; percent: number; message?: string }): void => cb(p)
     ipcRenderer.on('ai:progress', handler)
     return () => ipcRenderer.removeListener('ai:progress', handler)
   },
@@ -200,9 +211,8 @@ const api = {
     clips: SuggestedClip[]
     words: TranscriptWord[]
     tighten: boolean
-  }): Promise<
-    { ok: true; xmlPath: string; srtPath: string | null } | { ok: false; message: string }
-  > => ipcRenderer.invoke('premiere:export', req),
+  }): Promise<{ ok: true; xmlPath: string; srtPath: string | null } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('premiere:export', req),
 
   previewClip: (
     req: ClipRequest & { jobId: string }
@@ -225,7 +235,17 @@ const api = {
   listLuts: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke('lut:list'),
   chooseLut: (): Promise<string | null> => ipcRenderer.invoke('lut:choose'),
   importEpr: (): Promise<
-    | { ok: true; preset: { name: string; width: number | null; height: number | null; videoBitrate: number | null; audioBitrate: number | null; fps: number | null } }
+    | {
+        ok: true
+        preset: {
+          name: string
+          width: number | null
+          height: number | null
+          videoBitrate: number | null
+          audioBitrate: number | null
+          fps: number | null
+        }
+      }
     | { ok: false; message: string }
     | null
   > => ipcRenderer.invoke('preset:importEpr'),
@@ -235,22 +255,19 @@ const api = {
   ): Promise<{ path: string; durationSec: number; width: number; height: number; fps: number }> =>
     ipcRenderer.invoke('timeline:probe', path),
 
-  mediaPreviews: (path: string): Promise<MediaPreviews> =>
-    ipcRenderer.invoke('media:previews', path),
+  mediaPreviews: (path: string): Promise<MediaPreviews> => ipcRenderer.invoke('media:previews', path),
   renderTimeline: (req: {
     jobId: string
     timeline: Timeline
     name: string
     preview: boolean
-  }): Promise<
-    { ok: true; outputPath: string; mediaUrl: string } | { ok: false; message: string }
-  > => ipcRenderer.invoke('timeline:render', req),
+  }): Promise<{ ok: true; outputPath: string; mediaUrl: string } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('timeline:render', req),
 
   recentProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('project:recent'),
   createProject: (name: string, mode: ProjectMode): Promise<Project> =>
     ipcRenderer.invoke('project:create', name, mode),
-  openProject: (path?: string): Promise<Project | null> =>
-    ipcRenderer.invoke('project:open', path),
+  openProject: (path?: string): Promise<Project | null> => ipcRenderer.invoke('project:open', path),
   saveProject: (project: Project): Promise<void> => ipcRenderer.invoke('project:save', project),
   forgetProject: (path: string): Promise<void> => ipcRenderer.invoke('project:forget', path),
 
