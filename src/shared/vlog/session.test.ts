@@ -18,7 +18,7 @@ import { composeVlog } from './compose'
 import { dayName, nameScene } from './describe'
 import { pretendClip, pretendVlog } from './pretend'
 import { assembleShoot } from './shoot'
-import { sceneInSentence, scenesChanged, storyReply } from './reply'
+import { carriedNote, sceneInSentence, scenesChanged, storyReply } from './reply'
 import { parseVlogAsk, sceneNamed, wantsVlog } from './request'
 import type { Vlog } from './schema'
 import { clock } from '../presets/preset'
@@ -212,6 +212,69 @@ describe('a vlog over time', () => {
     )
     expect(storyReply(first, vlog, { version: 2, added: 1 }).summary).toMatch(
       /^1 new clip in the day, \d+:\d\d long\.$/
+    )
+  })
+})
+
+describe('a story told again after edits in the editor', () => {
+  // A day long enough that 40 seconds keeps some of its moments (clips s13 and s20) and leaves others out (s10).
+  const v1 = made(paths(30)).doc
+  const beatOf = (doc: EditDoc, clip: string, talking = false): string =>
+    currentCut(doc).beats.find((b) => b.source === clip && !!b.from === talking)?.id as string
+  const lunch = beatOf(v1, 's20')
+  const edited = commit(
+    v1,
+    [
+      { op: 'transition', beats: [beatOf(v1, 's13')], kind: 'dissolve', sec: 0.5 },
+      {
+        op: 'chapters',
+        set: [
+          { beat: lunch, title: 'Lunch' },
+          { beat: beatOf(v1, 's10', true), title: 'The quiet bit' }
+        ]
+      },
+      { op: 'motion-add', kind: 'lower-third', from: lunch, to: `${lunch}.end`, text: ['Sam Lee', 'Host'] }
+    ],
+    'Edits in the editor.'
+  ).doc
+
+  it('keeps a dissolve added in the editor on the moment it was on', () => {
+    const v3 = retold(edited, 'make it 40 seconds')
+    const beats = currentCut(v3).beats
+    expect(beats.find((b) => b.source === 's13')?.transition).toEqual({ kind: 'dissolve', sec: 0.5 })
+    expect(beats.filter((b) => b.transition)).toHaveLength(1)
+  })
+
+  it('keeps a chapter and a graphic on the beat that plays their moment now', () => {
+    const v3 = retold(edited, 'make it 40 seconds')
+    const now = beatOf(v3, 's20')
+    // The moment plays on another beat than it did, and what was on it went with it.
+    expect(now).not.toBe(lunch)
+    expect(currentCut(v3).chapters).toEqual([{ beat: now, title: 'Lunch' }])
+    expect(currentCut(v3).motion.map((m) => [m.from, m.to])).toEqual([[now, `${now}.end`]])
+  })
+
+  it('takes out a chapter whose moment the new story leaves out, and says so', () => {
+    const v3 = retold(edited, 'make it 40 seconds')
+    expect(currentCut(v3).beats.some((b) => b.source === 's10')).toBe(false)
+    expect((currentCut(v3).chapters ?? []).map((c) => c.title)).toEqual(['Lunch'])
+    const reply = storyReply(v3, vlogShown(v3) as Vlog, { version: 3, previousSec: runs(edited) })
+    expect(reply.aside).toContain(
+      'The chapter “The quiet bit” was on a moment the new story leaves out, so I took it out; Undo brings it back.'
+    )
+    // Undo brings back the chapters as they were.
+    expect(currentCut(restore(v3, 2)).chapters).toEqual(currentCut(edited).chapters)
+  })
+
+  it('says what could not come along where its moment still plays', () => {
+    // The shot with the dissolve told first: nothing comes before it to dissolve from.
+    const story = (vlogShown(edited) as Vlog).story.beats
+    const opening = story.find((b) => b.clip === 's13') as Vlog['story']['beats'][number]
+    const v3 = commit(edited, opsFor(edited, [opening, ...story.filter((b) => b !== opening)]), 'Opens on s13.').doc
+    expect(currentCut(v3).beats[0].source).toBe('s13')
+    expect(currentCut(v3).beats[0].transition).toBeUndefined()
+    expect(carriedNote(v3)).toBe(
+      "I couldn't carry the dissolve over to the new story, so I took it out; Undo brings it back."
     )
   })
 })

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, type MutableRefObject } from 'react'
 import { currentVersion, type EditDoc, type Note, type Op } from '../../../shared/edit'
 import { ontoLatest, toldIn } from '../../../shared/vlog/build'
 import { storyOnBeats } from '../../../shared/vlog/plan'
-import type { VlogReply } from '../../../shared/vlog/reply'
+import { carriedNote, type VlogReply } from '../../../shared/vlog/reply'
 import { parseVlogAsk, wantsVlog } from '../../../shared/vlog/request'
 import { api } from './api'
 import type { Attachment } from './components/Composer'
@@ -231,7 +231,9 @@ export function useVlog(deps: VlogDeps): Vlogs {
     }
     const latest = docRef.current
     if (latest) setDoc({ ...latest, vlog: toldIn(fit.vlog, done.n) })
-    say(`v${done.n} is ready. ${summary}`, true)
+    // What was done to a shot whose moment no longer plays, or no longer fits, is said too.
+    const lost = latest ? carriedNote(latest) : ''
+    say([`v${done.n} is ready. ${summary}`, lost].filter(Boolean).join(' '), true)
   }, [])
 
   const fromNotes = useCallback(

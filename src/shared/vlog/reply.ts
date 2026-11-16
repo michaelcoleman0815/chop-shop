@@ -2,6 +2,7 @@ import { currentCut } from '../edit/doc'
 import { resolveCut } from '../edit/resolve'
 import type { Beat, EditDoc } from '../edit/schema'
 import { clock, seconds } from '../presets/preset'
+import { leftOut } from './carry'
 import { timeOfDay, zoneAt } from './describe'
 import type { Clip, LeftOut, Role, StoryBeat, Vlog } from './schema'
 
@@ -53,6 +54,37 @@ function listOf(parts: string[]): string {
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`
 const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
+
+/**
+ * What a version that told the story again could not bring along of what
+ * was done to the cut before it, in one sentence, or '' when all of it came:
+ * "The chapter “Lunch” was on a moment the new story leaves out, so I took
+ * it out; Undo brings it back."
+ */
+export function carriedNote(doc: EditDoc): string {
+  const n = doc.versions.length
+  if (n < 2) return ''
+  const lost = leftOut(doc.versions[n - 2].cut, doc.versions[n - 1].cut, doc.words)
+  if (lost.length === 0) return ''
+  const parts: string[] = []
+  const counted = new Set<string>()
+  for (const l of lost) {
+    // Chapters and graphics by name, up to three of a kind; edits by what they are, counted.
+    const kin = lost.filter((x) => x.kind === l.kind && (l.kind !== 'edit' || x.one === l.one))
+    const group = l.kind === 'edit' ? `edit:${l.one}` : l.kind
+    if (l.kind !== 'edit' && kin.length <= 3) parts.push(l.one)
+    else if (!counted.has(group)) {
+      counted.add(group)
+      parts.push(kin.length === 1 ? l.one : l.many(kin.length))
+    }
+  }
+  const several = lost.length > 1
+  const them = several ? 'them' : 'it'
+  const list = listOf(parts)
+  return lost.every((l) => l.gone)
+    ? `${capital(list)} ${several ? 'were' : 'was'} on ${several ? 'moments' : 'a moment'} the new story leaves out, so I took ${them} out; Undo brings ${them} back.`
+    : `I couldn't carry ${list} over to the new story, so I took ${them} out; Undo brings ${them} back.`
+}
 
 /** A scene's name inside a sentence: "the venue", "the morning at 9:12", "Sunday morning at 8:30". */
 export function sceneInSentence(name: string): string {
@@ -291,6 +323,8 @@ export function storyReply(
 
   const aside = [
     ...(opts.notes ?? []),
+    // What was done to the cut before and could not come along to this story.
+    carriedNote(doc),
     first ? left : '',
     vlog.described.by === 'claude' && vlog.described.stills > 0 && (first || opts.added)
       ? `Claude looked at ${plural(vlog.described.stills, 'still')} from your footage to say what is in each moment.`
