@@ -37,10 +37,13 @@ export interface SelfTestHostPlugin {
 
 export const Host = registerPlugin<SelfTestHostPlugin>('SelfTestHost')
 
+/** A line as it arrived, `at` milliseconds after the run was asked for. */
+export type TimedLine = EngineLine & { at: number }
+
 export interface RunOutcome extends EngineRunResult {
   id: string
   /** Every line it printed, in order, as the 'line' events brought them. */
-  lines: EngineLine[]
+  lines: TimedLine[]
   ms: number
 }
 
@@ -61,12 +64,12 @@ export async function run(
 ): Promise<RunOutcome> {
   await subscribe()
   const id = opts.id ?? `${tool}-${++seq}`
-  const lines: EngineLine[] = []
+  const lines: TimedLine[] = []
+  const started = performance.now()
   listeners.set(id, (line) => {
-    lines.push(line)
+    lines.push({ ...line, at: performance.now() - started })
     opts.onLine?.(line)
   })
-  const started = performance.now()
   try {
     const result = await Engine.run({ id, tool, args })
     return { ...result, id, lines, ms: performance.now() - started }

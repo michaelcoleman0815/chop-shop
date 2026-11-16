@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # Runs the self-test on the Android device adb sees (the emulator in CI, or a
 # phone with USB debugging): installs the test app, gives it the whisper
-# model, launches it with the self-test flag, waits for its report, and pulls
-# the report and everything the self-test made.
+# models, launches it with the self-test flag, waits for its report, and
+# pulls the report and everything the self-test made.
 #
-#   ci/android-selftest.sh APK MODEL OUT_DIR
+#   ci/android-selftest.sh APK MODELS_DIR OUT_DIR
 #
-# OUT_DIR gets selftest.json, selftest-out/ (the exports) and logcat.txt.
+# MODELS_DIR holds ggml-base.en.bin and ggml-small.en.bin; they go where the
+# app keeps them, Cutalong/models in its documents. OUT_DIR gets
+# selftest.json, selftest-out/ (the exports) and logcat.txt.
 # SELFTEST_TIMEOUT (seconds, default 2700) bounds the wait.
 set -euo pipefail
 
 APK=$1
-MODEL=$2
+MODELS=$2
 OUT=$3
 PKG=app.cutalong.engine.example
 TIMEOUT=${SELFTEST_TIMEOUT:-2700}
@@ -21,16 +23,20 @@ app() { adb shell run-as "$PKG" "$@" | tr -d '\r'; }
 
 adb install -r -t "$APK"
 
-# The model goes into the app's own files; run-as works because the test
-# app is debuggable. It is piped through the shell, which may read
+# The models go into the app's own files; run-as works because the test
+# app is debuggable. They are piped through the shell, which may read
 # /data/local/tmp where the app may not.
-adb push "$MODEL" /data/local/tmp/ggml-base.en.bin >/dev/null
-adb shell "run-as $PKG mkdir -p files/models && cat /data/local/tmp/ggml-base.en.bin | run-as $PKG sh -c 'cat > files/models/ggml-base.en.bin'"
-adb shell rm -f /data/local/tmp/ggml-base.en.bin
-want=$(wc -c < "$MODEL" | tr -d ' ')
-got=$(app stat -c %s files/models/ggml-base.en.bin)
-[ "$got" = "$want" ] || { echo "::error::the model arrived as $got bytes of $want"; exit 1; }
-echo "model in place: $got bytes"
+app mkdir -p files/Cutalong/models
+for model in "$MODELS"/ggml-*.bin; do
+  name=$(basename "$model")
+  adb push "$model" "/data/local/tmp/$name" >/dev/null
+  adb shell "cat /data/local/tmp/$name | run-as $PKG sh -c 'cat > files/Cutalong/models/$name'"
+  adb shell rm -f "/data/local/tmp/$name"
+  want=$(wc -c < "$model" | tr -d ' ')
+  got=$(app stat -c %s "files/Cutalong/models/$name")
+  [ "$got" = "$want" ] || { echo "::error::$name arrived as $got bytes of $want"; exit 1; }
+  echo "$name in place: $got bytes"
+done
 
 app rm -f files/selftest.json files/selftest-progress.txt
 adb logcat -c || true

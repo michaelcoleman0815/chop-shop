@@ -7,7 +7,7 @@ import { readProbe } from '../../../../src/main/intake'
 import { whisperArgs } from '../../../../src/main/whisper-args'
 import { parseWhisperJson, tokensToWords } from '../../../../src/main/whisper-parse'
 import desktopRenders from './desktop-renders.json'
-import { colourClose, loudness, meanColour, probe, type Facts } from './measure'
+import { colourClose, keyframeTimes, loudness, meanColour, meanColourOf, meanVolume, probe, type Facts } from './measure'
 import { Engine, Host, run, stderrLines, stdoutLines, type RunOutcome } from './plugins'
 import specs from './renders.json'
 
@@ -48,13 +48,32 @@ interface RenderSpec {
   about: string
   args: string[]
   output: string
+  /** Runs made first, whose outputs the render reads. */
+  pre?: string[][]
   files?: Record<string, string>
   samples?: Sample[]
   tolerance?: number
   loudness?: boolean
   needs?: string
   stderrIncludes?: string[]
+  /** No more than this many seconds between keyframes, from the start to the end. */
+  keyframesWithin?: number
+  /** The H.264 profile ffprobe should read on iOS, where the app asks for it. */
+  profileOnIos?: string
+  /** Written with -movflags +faststart (checked on the runner, which can read the atoms). */
+  faststart?: boolean
+  bytesBetween?: [number, number]
   desktop?: boolean
+}
+
+/**
+ * The app's own export video settings, as phase 1 records them
+ * (mobile/src: VideoToolbox and MediaCodec export profiles).
+ */
+export function exportVideo(platform: string): string[] {
+  return platform === 'ios'
+    ? ['-c:v', 'h264_videotoolbox', '-profile:v', 'high', '-b:v', '12000k', '-g', '60', '-pix_fmt', 'nv12']
+    : ['-c:v', 'h264_mediacodec', '-b:v', '12000k', '-g', '60', '-pix_fmt', 'nv12']
 }
 
 interface Expected {
@@ -224,26 +243,66 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     const version = await run('ffmpeg', ['-version'])
     if (!/^ffmpeg version 6\.0 /.test(version.stdout)) problems.push(`-version says ${version.stdout.split('\n')[0]}`)
     const conf = await run('ffmpeg', ['-hide_banner', '-buildconf'])
-    for (const want of ['--enable-libass', '--enable-libfreetype', '--enable-libfribidi', '--enable-libzimg', '--enable-libwebp', '--enable-libdav1d'])
+    for (const want of ['--enable-libass', '--enable-libfreetype', '--enable-libfribidi', '--enable-libzimg', '--enable-libwebp', '--enable-libdav1d', '--enable-libopus'])
       if (!conf.stdout.includes(want)) problems.push(`not built with ${want}`)
     for (const never of ['--enable-gpl', '--enable-nonfree', 'libx264', 'libx265'])
       if (conf.stdout.includes(never)) problems.push(`built with ${never}`)
-    const encoders = await run('ffmpeg', ['-hide_banner', '-encoders'])
-    for (const want of [' aac ', ` ${h264} `]) if (!encoders.stdout.includes(want)) problems.push(`-encoders lacks${want}`)
     const filters = await run('ffmpeg', ['-hide_banner', '-filters'])
     const has = (f: string): boolean => new RegExp(` ${f} `).test(filters.stdout)
-    // What src/main/intake.ts hasZscale reads, and what the renderer uses.
-    for (const f of ['zscale', 'subtitles', 'ass', 'lut3d', 'lut1d', 'xfade', 'overlay', 'amix', 'sidechaincompress', 'loudnorm', 'atempo', 'acrossfade', 'tonemap', 'colorchannelmixer', 'alimiter', 'afftdn', 'freezedetect', 'ebur128', 'zoompan'])
-      if (!has(f)) problems.push(`no ${f} filter`)
+    // The desktop renderer's, what src/main/intake.ts hasZscale reads, and
+    // every filter the app's phone path records (phase 1), the blurred
+    // background fill's gblur among them.
+    const wanted = [
+      'zscale', 'subtitles', 'ass', 'lut3d', 'lut1d', 'xfade', 'overlay', 'amix', 'sidechaincompress', 'loudnorm',
+      'atempo', 'acrossfade', 'tonemap', 'colorchannelmixer', 'alimiter', 'afftdn', 'freezedetect', 'ebur128', 'zoompan',
+      'acompressor', 'adelay', 'afade', 'aformat', 'anoisesrc', 'anull', 'apad', 'aresample', 'asendcmd', 'asetnsamples',
+      'asetpts', 'astats', 'atrim', 'concat', 'crop', 'deesser', 'equalizer', 'fade', 'format', 'fps', 'highpass',
+      'lowpass', 'noise', 'null', 'pan', 'scale', 'setpts', 'setsar', 'settb', 'split', 'tpad', 'trim', 'unsharp',
+      'vignette', 'volume', 'volumedetect', 'gblur', 'pad', 'asplit'
+    ]
+    const missing = wanted.filter((f) => !has(f))
+    if (missing.length) problems.push(`no ${missing.join(', ')} filter`)
     // GPL-only filters must not be here. The desktop's camera moves use
-    // perspective (src/main/render/camera.ts): the phone needs another way.
-    const gpl = ['perspective', 'eq', 'hqdn3d', 'boxblur', 'cropdetect'].filter(has)
+    // perspective (src/main/render/camera.ts), and its background fill may
+    // use boxblur or eq: on the phone those need gblur, colorchannelmixer,
+    // scale and crop instead.
+    const gpl = ['perspective', 'eq', 'boxblur', 'hqdn3d', 'cropdetect'].filter(has)
     if (gpl.length) problems.push(`GPL-only filters in an LGPL build: ${gpl.join(', ')}`)
+    numbers.filtersChecked = wanted.length
     return {
       ok: problems.length === 0 && version.code === 0 && filters.code === 0,
       detail:
         problems.join('; ') ||
-        `LGPL build: ${conf.stdout.split('\n').filter((l) => l.includes('--enable-lib')).length} external libraries, the renderer's filters present but perspective (GPL-only), which its camera moves use`
+        `LGPL build: ${conf.stdout.split('\n').filter((l) => l.includes('--enable-lib')).length} external libraries; all ${wanted.length} filters the renderer and the app use; no perspective, boxblur or eq (GPL-only)`
+    }
+  })
+
+  await check('the codecs and formats the app uses', async () => {
+    // Each list printed by ffmpeg, its names taken from the second column.
+    const list = async (what: string): Promise<Set<string>> => {
+      const r = await run('ffmpeg', ['-hide_banner', `-${what}`])
+      return new Set(r.stdout.split('\n').map((l) => l.trim().split(/\s+/)[1]).filter(Boolean))
+    }
+    const encoders = await list('encoders')
+    const decoders = await list('decoders')
+    const muxers = await list('muxers')
+    const demuxers = await list('demuxers')
+    const want: Record<string, [Set<string>, string[]]> = {
+      encoders: [encoders, ['aac', 'pcm_s16le', 'pcm_f32le', 'rawvideo', 'flac', 'mjpeg', 'libopus', 'png', 'libwebp', h264]],
+      decoders: [decoders, ['h264', 'hevc', 'aac', 'alac', 'opus', 'amrnb', 'amrwb', 'mjpeg', 'pcm_s16le', 'pcm_s24le', 'pcm_f32le', 'flac', 'mp3float', 'vorbis', 'prores', 'png', 'webp', 'libdav1d']],
+      muxers: [muxers, ['mp4', 'mov', 'ipod', 'matroska', 'wav', 'segment', 'f32le', 'rawvideo', 'null', 'image2', 'flac', 'ogg', 'opus', 'webm']],
+      demuxers: [demuxers, ['mov,mp4,m4a,3gp,3g2,mj2', 'matroska,webm', 'wav', 'ogg', 'flac', 'mp3', 'aac', 'amr', 'image2', 'concat', 'f32le', 'rawvideo', 'avi']]
+    }
+    const problems: string[] = []
+    for (const [what, [have, names]] of Object.entries(want)) {
+      const lacking = names.filter((n) => !have.has(n))
+      if (lacking.length) problems.push(`no ${lacking.join(', ')} among the ${what}`)
+    }
+    return {
+      ok: problems.length === 0,
+      detail:
+        problems.join('; ') ||
+        `encoders ${want.encoders[1].join(', ')}; decoders ${want.decoders[1].join(', ')}; muxers ${want.muxers[1].join(', ')}; demuxers ${want.demuxers[1].join(', ')}`
     }
   })
 
@@ -312,8 +371,15 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     await check(`render ${spec.name}`, async () => {
       if (spec.needs === 'hevc' && !info.encoders.includes(hevc))
         return { ok: true, skipped: true, detail: `${hevc} is not on this device` }
-      for (const [file, text] of Object.entries(spec.files ?? {})) await Host.writeText({ path: `${work}/${file}`, text })
-      let args = spec.args.map((a) => fill(a, dirs))
+      for (const [file, text] of Object.entries(spec.files ?? {}))
+        await Host.writeText({ path: `${work}/${file}`, text: fill(text, dirs) })
+      const expand = (list: string[]): string[] =>
+        list.flatMap((a) => (a === '{exportVideo}' ? exportVideo(platform) : [fill(a, dirs)]))
+      for (const pre of spec.pre ?? []) {
+        const p = await run('ffmpeg', expand(pre))
+        if (p.code !== 0) return { ok: false, detail: `a run before it exited ${p.code}: ${p.stderr.trim().split('\n').slice(-4).join(' | ')}` }
+      }
+      let args = expand(spec.args)
       if (spec.desktop) args = useHardwareEncoder(args, h264)
       const r = await run('ffmpeg', args)
       const path = `${out}/${spec.output}`
@@ -321,7 +387,8 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
       const problems: string[] = []
       for (const want of spec.stderrIncludes ?? []) if (!r.stderr.includes(want)) problems.push(`stderr lacks "${want}"`)
       const want = expect.renders[spec.name]
-      const got = (await probe(path)).facts
+      const probed = await probe(path)
+      const got = probed.facts
       if (want.facts.video || got.video) {
         for (const k of ['codec', 'width', 'height'] as const)
           if ((got.video?.[k] ?? null) !== (want.facts.video?.[k] ?? null))
@@ -331,6 +398,21 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
       if (!!got.audio !== !!want.facts.audio) problems.push(got.audio ? 'has sound, expected none' : 'no sound')
       if (got.audio && want.facts.audio && got.audio.sample_rate !== want.facts.audio.sample_rate)
         problems.push(`sound at ${got.audio.sample_rate} Hz, expected ${want.facts.audio.sample_rate}`)
+      if (got.audio && want.facts.audio && got.audio.codec !== want.facts.audio.codec)
+        problems.push(`sound in ${got.audio.codec}, expected ${want.facts.audio.codec}`)
+      if (spec.bytesBetween && !(got.bytes >= spec.bytesBetween[0] && got.bytes <= spec.bytesBetween[1]))
+        problems.push(`${got.bytes} bytes, expected ${spec.bytesBetween[0]} to ${spec.bytesBetween[1]}`)
+      let keyframes: number[] | undefined
+      if (spec.keyframesWithin) {
+        keyframes = await keyframeTimes(path)
+        const ends = [...keyframes, got.duration]
+        const gap = Math.max(...ends.slice(1).map((t, i) => t - ends[i]))
+        if (keyframes.length < 2 || gap > spec.keyframesWithin)
+          problems.push(`keyframes at ${keyframes.join(', ')} s: ${round(gap, 2)} s apart at most, asked for ${spec.keyframesWithin}`)
+      }
+      const profile = (probed.json.streams ?? []).find((s) => s.codec_type === 'video')?.profile
+      if (spec.profileOnIos && platform === 'ios' && profile !== spec.profileOnIos)
+        problems.push(`profile ${profile}, expected ${spec.profileOnIos}`)
       if (want.facts.duration > 0 && Math.abs(got.duration - want.facts.duration) > 0.12)
         problems.push(`${got.duration} s long, expected ${want.facts.duration}`)
       const tolerance = spec.tolerance ?? 16
@@ -351,84 +433,141 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
         ok: problems.length === 0,
         detail:
           problems.join('; ') ||
-          `${got.video ? `${got.video.codec} ${got.video.width}x${got.video.height} ` : ''}${got.audio ? `${got.audio.codec} ` : ''}${got.duration} s, ${got.bytes} bytes, in ${round(r.ms / 1000, 2)} s; ${colours.length} colours as on the runner${lufs !== undefined ? `, ${lufs} LUFS` : ''}`,
-        data: { args, facts: got, colours, lufs, ms: Math.round(r.ms) }
+          `${got.video ? `${got.video.codec}${profile ? ` (${profile})` : ''} ${got.video.width}x${got.video.height} ` : ''}${got.audio ? `${got.audio.codec} ` : ''}${got.duration} s, ${got.bytes} bytes, in ${round(r.ms / 1000, 2)} s; ${colours.length} colours as on the runner${lufs !== undefined ? `, ${lufs} LUFS` : ''}${keyframes ? `; keyframes at ${keyframes.join(', ')} s` : ''}`,
+        data: { args, facts: got, profile, colours, lufs, keyframes, ms: Math.round(r.ms) }
       }
     })
   }
 
+  // ---- Raw output, as the app writes it: segment files, never stdout ----------------
+
+  const part = (dir: string, i: number, ext: string): string => `${dir}/part${String(i).padStart(6, '0')}.${ext}`
+  async function partSizes(dir: string, ext: string): Promise<number[]> {
+    const sizes: number[] = []
+    for (let i = 0; i < 100; i++) {
+      const f = await Host.fileSize({ path: part(dir, i, ext) })
+      if (!f.exists) break
+      sizes.push(f.bytes)
+    }
+    return sizes
+  }
+
+  await check('raw sound in segment files (pcm_f32le, segment, f32le)', async () => {
+    // As the app writes a long recording's sound: <cache>/cutalong/cutalong-raw-*/part%06d.f32le.
+    const dir = `${info.cache}/cutalong/cutalong-raw-selftest-sound`
+    await Host.remove({ path: dir })
+    await Host.writeText({ path: `${dir}/.made`, text: '' })
+    // 65 s of the music, looped: two whole 30 s parts and a short one.
+    const r = await run('ffmpeg', [
+      '-hide_banner', '-y', '-stream_loop', '-1', '-t', '65', '-i', `${media}/music.m4a`,
+      '-map', '0:a:0', '-c:a', 'pcm_f32le', '-f', 'segment', '-segment_format', 'f32le', '-segment_time', '30', `${dir}/part%06d.f32le`
+    ])
+    if (r.code !== 0) return { ok: false, detail: `exited ${r.code}: ${r.stderr.trim().split('\n').slice(-4).join(' | ')}` }
+    const sizes = await partSizes(dir, 'f32le')
+    const second = 48000 * 2 * 4
+    const secs = sizes.map((b) => round(b / second, 3))
+    const total = round(sizes.reduce((a, b) => a + b, 0) / second, 3)
+    const problems: string[] = []
+    if (sizes.length !== 3) problems.push(`${sizes.length} parts, expected 3`)
+    if (Math.abs((secs[0] ?? 0) - 30) > 0.1 || Math.abs((secs[1] ?? 0) - 30) > 0.1) problems.push(`parts of ${secs.join(', ')} s`)
+    // Each pass of a looped AAC file loses its priming, so 65 s asked comes out a little short.
+    if (Math.abs(total - 65) > 0.5) problems.push(`${total} s in all, expected 65`)
+    // What is in them is the music: three tones at 0.1 each, about -18.2 dB.
+    const level = sizes.length > 1 ? await meanVolume(['-f', 'f32le', '-ar', '48000', '-ac', '2', '-i', part(dir, 1, 'f32le')]) : NaN
+    if (!(Math.abs(level + 18.2) < 1.5)) problems.push(`the second part is at ${level} dB, expected about -18.2`)
+    return {
+      ok: problems.length === 0,
+      detail: problems.join('; ') || `${sizes.length} parts of ${secs.join(', ')} s (${total} s, ${sizes.reduce((a, b) => a + b, 0)} bytes), the music at ${level} dB, in ${round(r.ms / 1000, 2)} s`
+    }
+  })
+
+  await check('raw video in segment files (rawvideo, segment)', async () => {
+    const dir = `${info.cache}/cutalong/cutalong-raw-selftest-video`
+    await Host.remove({ path: dir })
+    await Host.writeText({ path: `${dir}/.made`, text: '' })
+    const r = await run('ffmpeg', [
+      '-hide_banner', '-y', '-i', `${media}/h264_1080p.mp4`, '-map', '0:v:0', '-vf', 'fps=10,scale=64:36,format=rgb24',
+      '-c:v', 'rawvideo', '-f', 'segment', '-segment_format', 'rawvideo', '-segment_time', '2', `${dir}/part%06d.rgb`
+    ])
+    if (r.code !== 0) return { ok: false, detail: `exited ${r.code}: ${r.stderr.trim().split('\n').slice(-4).join(' | ')}` }
+    const sizes = await partSizes(dir, 'rgb')
+    const frame = 64 * 36 * 3
+    const frames = sizes.map((b) => b / frame)
+    const problems: string[] = []
+    if (sizes.length !== 5 || frames.some((n) => n !== 20)) problems.push(`parts of ${frames.join(', ')} frames, expected 5 of 20`)
+    // The third part starts at 4 s, whose colour is 2040E0 (make_media.py).
+    const colour = sizes.length > 2 ? await meanColourOf(['-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '64x36', '-i', part(dir, 2, 'rgb')]) : []
+    if (!colourClose(colour, [0x20, 0x40, 0xe0], 16)) problems.push(`the third part starts rgb ${colour.join(',')}, expected 32,64,224`)
+    return {
+      ok: problems.length === 0,
+      detail: problems.join('; ') || `${sizes.length} parts of ${frames.join(', ')} frames of 64x36 RGB, the third starting rgb ${colour.join(',')}, in ${round(r.ms / 1000, 2)} s`
+    }
+  })
+
   // ---- whisper ---------------------------------------------------------------
 
-  const model = `${docs}/models/ggml-base.en.bin`
+  // Where the app keeps its models (phase 1: <Documents>/Cutalong/models).
+  const models = `${docs}/Cutalong/models`
   const truth = JSON.parse((await Host.readText({ path: `${media}/speech-truth.json` })).text) as {
     durationSec: number
     words: { text: string; startSec: number; endSec: number }[]
   }
 
-  await check('whisper base.en on speech.wav', async () => {
-    const m = await Host.fileSize({ path: model })
-    if (!m.exists) return { ok: false, detail: `no model at ${model}` }
-    const prefix = `${out}/speech`
-    // The desktop app's arguments for captions (src/main/whisper-args.ts).
-    const args = whisperArgs({ model: 'base.en', modelFile: model, wav: `${media}/speech.wav`, prefix })
+  /**
+   * Runs whisper as the app does, with the desktop's own arguments
+   * (src/main/whisper-args.ts) and reads <prefix>.json with its parser
+   * (src/main/whisper-parse.ts); then scores the words against what the
+   * speech says, and when.
+   */
+  async function transcribe(model: 'base.en' | 'small.en', verbatim: boolean, key: string): Promise<Outcome> {
+    const modelFile = `${models}/ggml-${model}.bin`
+    if (!(await Host.fileSize({ path: modelFile })).exists) return { ok: false, detail: `no model at ${modelFile}` }
+    const prefix = `${out}/speech-${model}${verbatim ? '-verbatim' : ''}`
+    const args = whisperArgs({ model, modelFile, wav: `${media}/speech.wav`, prefix, verbatim: verbatim ? { names: ['Cutalong'] } : undefined })
     let progress = 0
     const r = await run('whisper', args, { onLine: (l) => void (/progress =/.test(l.line) && progress++) })
     if (r.code !== 0) return { ok: false, detail: `exited ${r.code}: ${r.stderr.trim().split('\n').slice(-4).join(' | ')}` }
     const json = parseWhisperJson((await Host.readText({ path: `${prefix}.json` })).text)
     const words = tokensToWords(json.transcription)
-    const want = truth.words.map((w) => wordsOf(w.text)[0]).filter(Boolean)
+    const said = truth.words.filter((w) => wordsOf(w.text)[0])
+    const want = said.map((w) => wordsOf(w.text)[0])
     const got = words.map((w) => wordsOf(w.text)[0] ?? '')
     const { matched, pairs } = inOrder(want, got)
-    const errors = pairs.map(([i, j]) => Math.abs(words[j].startSec - truth.words.filter((w) => wordsOf(w.text)[0])[i].startSec))
-    errors.sort((a, b) => a - b)
+    const errors = pairs.map(([i, j]) => Math.abs(words[j].startSec - said[i].startSec)).sort((a, b) => a - b)
     const median = errors.length ? errors[Math.floor(errors.length / 2)] : Infinity
     const ordered = words.every((w, i) => w.endSec >= w.startSec && (i === 0 || w.startSec >= words[i - 1].startSec - 0.01))
     const inside = words.every((w) => w.startSec >= 0 && w.endSec <= truth.durationSec + 0.5)
-    const backend = stderrLines(r).find((l) => /whisper_backend_init_gpu|using .* backend|no GPU found|Metal/i.test(l)) ?? ''
-    numbers.whisperSeconds = round(r.ms / 1000, 2)
-    numbers.whisperRealtime = round(truth.durationSec / (r.ms / 1000), 2)
-    numbers.whisperWords = got.join(' ')
-    numbers.whisperMatched = `${matched} of ${want.length}`
-    numbers.whisperMedianStartError = round(median, 3)
-    numbers.whisperBackend = backend
+    const tokens = json.transcription.flatMap((s) => s.tokens ?? []).filter((t) => !/^\[_/.test(t.text))
+    const aligned = tokens.filter((t) => typeof t.t_dtw === 'number' && t.t_dtw >= 0).length
+    const backend = stderrLines(r).find((l) => /whisper_backend_init_gpu|using .* backend|no GPU found/i.test(l)) ?? ''
+    const system = stderrLines(r).find((l) => l.startsWith('system_info')) ?? ''
+    numbers[`${key}Seconds`] = round(r.ms / 1000, 2)
+    numbers[`${key}Realtime`] = round(truth.durationSec / (r.ms / 1000), 2)
+    numbers[`${key}Matched`] = `${matched} of ${want.length}`
+    numbers[`${key}MedianStartError`] = round(median, 3)
+    numbers[`${key}Words`] = words.map((w) => w.text).join(' ')
+    if (!numbers.whisperBackend) numbers.whisperBackend = backend
+    if (!numbers.whisperSystem) numbers.whisperSystem = system
     const problems: string[] = []
     if (matched / want.length < 0.8) problems.push(`heard ${matched} of ${want.length} words in order`)
     if (!(median < 0.6)) problems.push(`words start ${round(median, 2)} s from where they are said (median)`)
     if (!ordered) problems.push('word times go backwards')
     if (!inside) problems.push('word times fall outside the recording')
     if (progress === 0) problems.push('no progress lines')
+    // -ojf and --dtw: every token with its aligned onset.
+    if (verbatim && !(tokens.length > 0 && aligned / tokens.length > 0.8)) problems.push(`${aligned} of ${tokens.length} tokens have aligned onsets`)
     return {
       ok: problems.length === 0,
       detail:
         problems.join('; ') ||
-        `${matched} of ${want.length} words in order in ${round(r.ms / 1000, 1)} s (${numbers.whisperRealtime}x real time), starts ${round(median, 2)} s from the truth (median), ${progress} progress lines: "${words.map((w) => w.text).join(' ')}"`,
-      data: { words, ms: Math.round(r.ms), backend }
+        `${matched} of ${want.length} words in order in ${round(r.ms / 1000, 1)} s (${numbers[`${key}Realtime`]}x real time), starts ${round(median, 2)} s from the truth (median)${verbatim ? `, ${aligned} of ${tokens.length} tokens aligned` : ''}, ${progress} progress lines: "${words.map((w) => w.text).join(' ')}"`,
+      data: { args, words, ms: Math.round(r.ms), backend, system }
     }
-  })
+  }
 
-  await check('whisper verbatim (-ojf, prompt, --dtw)', async () => {
-    const m = await Host.fileSize({ path: model })
-    if (!m.exists) return { ok: false, detail: `no model at ${model}` }
-    const prefix = `${out}/speech-verbatim`
-    const args = whisperArgs({
-      model: 'base.en',
-      modelFile: model,
-      wav: `${media}/speech.wav`,
-      prefix,
-      verbatim: { names: ['Cutalong'] }
-    })
-    const r = await run('whisper', args)
-    if (r.code !== 0) return { ok: false, detail: `exited ${r.code}: ${r.stderr.trim().split('\n').slice(-4).join(' | ')}` }
-    const json = parseWhisperJson((await Host.readText({ path: `${prefix}.json` })).text)
-    const tokens = json.transcription.flatMap((s) => s.tokens ?? []).filter((t) => !/^\[_/.test(t.text))
-    const aligned = tokens.filter((t) => typeof t.t_dtw === 'number' && t.t_dtw >= 0).length
-    const words = tokensToWords(json.transcription)
-    numbers.whisperVerbatimSeconds = round(r.ms / 1000, 2)
-    return {
-      ok: tokens.length > 0 && aligned / tokens.length > 0.8 && words.length > 10,
-      detail: `${words.length} words, ${aligned} of ${tokens.length} tokens with aligned onsets, in ${round(r.ms / 1000, 1)} s`
-    }
-  })
+  await check('whisper base.en for captions (-oj)', () => transcribe('base.en', false, 'whisper'))
+  await check("whisper base.en as the app calls it (-ojf, prompt, --dtw, -nfa)", () => transcribe('base.en', true, 'whisperVerbatim'))
+  await check("whisper small.en as the app calls it (-ojf, prompt, --dtw, -nfa)", () => transcribe('small.en', true, 'whisperSmall'))
 
   // ---- Cancel ----------------------------------------------------------------
 
@@ -500,6 +639,12 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     const after = await Host.memory()
     peak = Math.max(peak, after.residentBytes, reset ? after.peakBytes : 0)
     const progress = stdoutLines(r).filter((l) => l.startsWith('progress=')).length
+    // The app shows an export's progress from these lines as they come: they
+    // must arrive while the render runs, not all at its end.
+    const arrivals = r.lines.filter((l) => l.stream === 'stdout' && l.line.startsWith('progress=')).map((l) => l.at)
+    const early = arrivals.filter((at) => at < r.ms - 2000).length
+    numbers.render60ProgressLines = progress
+    numbers.render60FirstProgressMs = arrivals.length ? Math.round(arrivals[0]) : null
     const facts = r.code === 0 ? (await probe(export60)).facts : null
     numbers.render60Seconds = round(r.ms / 1000, 1)
     numbers.render60Realtime = round(60 / (r.ms / 1000), 2)
@@ -512,11 +657,13 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     if (facts && Math.abs(facts.duration - 60) > 0.2) problems.push(`${facts.duration} s long`)
     if (facts && (facts.video?.width !== 1920 || facts.video?.height !== 1080)) problems.push(`${facts.video?.width}x${facts.video?.height}`)
     if (!progress) problems.push('no -progress lines on stdout')
+    else if (early < Math.min(5, progress - 1) || arrivals[0] > r.ms / 2)
+      problems.push(`progress lines came late: ${early} of ${progress} more than 2 s before the end, the first after ${Math.round(arrivals[0])} ms of ${Math.round(r.ms)}`)
     return {
       ok: problems.length === 0,
       detail:
         problems.join('; ') ||
-        `${round(r.ms / 1000, 1)} s (${numbers.render60Realtime}x real time), memory ${numbers.render60BaselineMB} MB before, ${numbers.render60PeakMB} MB at the peak; ${round((facts?.bytes ?? 0) / 1048576, 1)} MB out; ${progress} progress reports`
+        `${round(r.ms / 1000, 1)} s (${numbers.render60Realtime}x real time), memory ${numbers.render60BaselineMB} MB before, ${numbers.render60PeakMB} MB at the peak; ${round((facts?.bytes ?? 0) / 1048576, 1)} MB out; ${progress} progress reports as it ran, the first after ${Math.round(arrivals[0])} ms`
     }
   })
 

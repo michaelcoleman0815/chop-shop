@@ -59,12 +59,21 @@ document.getElementById('pick-video')?.addEventListener('click', () =>
   })
 )
 
-document.getElementById('pick-audio')?.addEventListener('click', () =>
-  void busy(async () => {
-    const { files } = await Engine.pick({ multiple: false, kinds: ['audio'] })
-    say(`picked ${files.length}: ${JSON.stringify(files, null, 1)}`)
-  })
-)
+// The picks the app makes (phase 1): one sound, one picture, and videos,
+// sound and pictures together.
+const picks: Record<string, { multiple: boolean; kinds: Array<'video' | 'audio' | 'image'> }> = {
+  'pick-audio': { multiple: false, kinds: ['audio'] },
+  'pick-image': { multiple: false, kinds: ['image'] },
+  'pick-all': { multiple: true, kinds: ['video', 'audio', 'image'] }
+}
+for (const [button, options] of Object.entries(picks)) {
+  document.getElementById(button)?.addEventListener('click', () =>
+    void busy(async () => {
+      const { files } = await Engine.pick(options)
+      say(`picked ${files.length}: ${JSON.stringify(files, null, 1)}`)
+    })
+  )
+}
 
 document.getElementById('save')?.addEventListener('click', () =>
   void busy(async () => {

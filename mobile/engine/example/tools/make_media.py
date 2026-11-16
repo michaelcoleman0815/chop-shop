@@ -95,6 +95,14 @@ def make():
     chord = "+".join(f"0.1*sin(2*PI*{f}*t)" for f in (220, 277.18, 329.63))
     ff("-filter_complex", f"aevalsrc=exprs='{chord}|{chord}':s=48000:d=8", "-c:a", "aac", "-b:a", "160k",
        o("music.m4a"))
+
+    # What else phones record or receive: Apple Lossless (an iPhone voice
+    # memo can be), an Opus voice note in Ogg, Motion JPEG video.
+    ff("-filter_complex", f"{tone(4, 262)},aresample=44100", "-c:a", "alac", o("alac.m4a"))
+    ff("-t", "6", "-i", o("speech.wav"), "-c:a", "libopus", "-b:a", "32k", "-application", "voip", o("voice.ogg"))
+    mj = ";".join(f"color=c=0x{c}:s=640x360:r=30:d=1[m{i}]" for i, c in enumerate(SECONDS[:3]))
+    ff("-filter_complex", f"{mj};[m0][m1][m2]concat=n=3:v=1:a=0,format=yuvj420p[v]", "-map", "[v]",
+       "-c:v", "mjpeg", "-q:v", "3", o("mjpeg.avi"))
     ff("-filter_complex", "anoisesrc=d=0.6:c=pink:a=0.5:r=48000,afade=t=in:d=0.2,afade=t=out:st=0.3:d=0.3,"
        "aformat=channel_layouts=stereo", "-c:a", "pcm_s16le", o("whoosh.wav"))
 
@@ -121,6 +129,21 @@ def fill(arg, dirs, encoders):
     return arg
 
 
+# The app's export video settings, with libx264 for the hardware encoder
+# (selftest.ts has the phones' own).
+EXPORT_VIDEO = ["-c:v", "libx264", "-profile:v", "high", "-b:v", "12000k", "-g", "60", "-pix_fmt", "nv12"]
+
+
+def expand(args, dirs, encoders):
+    out = []
+    for a in args:
+        if a == "{exportVideo}":
+            out += EXPORT_VIDEO
+        else:
+            out.append(fill(a, dirs, encoders))
+    return out
+
+
 def expectations():
     with open(os.path.join(EXAMPLE, "src/renders.json")) as f:
         specs = json.load(f)
@@ -132,7 +155,7 @@ def expectations():
 
     expect = {"probe": {}, "renders": {}}
     for name in ["h264_1080p.mp4", "hevc_portrait.mov", "hlg_10bit.mov", "speech.wav", "logo.png", "still.png",
-                 "still.webp", "still.avif", "music.m4a"]:
+                 "still.webp", "still.avif", "music.m4a", "alac.m4a", "voice.ogg", "mjpeg.avi"]:
         expect["probe"][name] = facts(os.path.join(OUT, name))
     expect["preview"] = {"file": "h264_1080p.mp4", "t": 2.5,
                          "rgb": mean_colour(os.path.join(OUT, "h264_1080p.mp4"), 2.5, 896, 476, 128, 128),
@@ -148,8 +171,12 @@ def expectations():
         for spec in renders:
             for fname, text in (spec.get("files") or {}).items():
                 with open(os.path.join(work, fname), "w") as f:
-                    f.write(text)
-            args = [fill(a, dirs, encoders) for a in spec["args"]]
+                    f.write(fill(text, dirs, encoders))
+            for pre in spec.get("pre", []):
+                p = run(["ffmpeg", "-nostdin", *expand(pre, dirs, encoders)], check=False)
+                if p.returncode != 0:
+                    raise SystemExit(f"{spec['name']} failed on the runner before its render:\n{p.stderr[-3000:]}")
+            args = expand(spec["args"], dirs, encoders)
             p = run(["ffmpeg", "-nostdin", *args], check=False)
             if p.returncode != 0:
                 raise SystemExit(f"{spec['name']} failed on the runner:\n{p.stderr[-3000:]}")

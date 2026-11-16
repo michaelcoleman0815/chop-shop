@@ -19,10 +19,6 @@ permissions:
 env:
   MESON_VERSION: 1.12.1
   NODE_VERSION: 22
-  # The model the self-test transcribes with, as the desktop app downloads
-  # it (src/main/transcribe.ts), checked against whisper.cpp's models/README.md.
-  WHISPER_MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
-  WHISPER_MODEL_SHA1: 137c40403d78fd54d454da0f9bd998f78703390c
 
 jobs:
   android:
@@ -257,28 +253,24 @@ jobs:
           name: selftest-media
           path: ${{ runner.temp }}/media
 
-      - name: Restore the whisper model
-        id: model
+      # The two models the app offers, base.en and small.en, downloaded and
+      # checked by ci/fetch-models.sh, and kept between runs.
+      - name: Restore the whisper models
+        id: models
         uses: actions/cache/restore@v6
         with:
-          path: ${{ runner.temp }}/model
-          key: whisper-model-${{ runner.os }}-${{ env.WHISPER_MODEL_SHA1 }}
+          path: ${{ runner.temp }}/models
+          key: whisper-models-${{ runner.os }}-${{ hashFiles('mobile/engine/example/ci/fetch-models.sh') }}
 
-      - name: Download the whisper model
-        if: steps.model.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$RUNNER_TEMP/model"
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/model/ggml-base.en.bin" "$WHISPER_MODEL_URL"
+      - name: The whisper models
+        run: mobile/engine/example/ci/fetch-models.sh "$RUNNER_TEMP/models"
 
-      - name: Check the whisper model
-        run: echo "$WHISPER_MODEL_SHA1  $RUNNER_TEMP/model/ggml-base.en.bin" | sha1sum -c -
-
-      - name: Save the whisper model
-        if: steps.model.outputs.cache-hit != 'true'
+      - name: Save the whisper models
+        if: steps.models.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: ${{ runner.temp }}/model
-          key: ${{ steps.model.outputs.cache-primary-key }}
+          path: ${{ runner.temp }}/models
+          key: ${{ steps.models.outputs.cache-primary-key }}
 
       - uses: actions/cache@v6
         with:
@@ -305,6 +297,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           sdk="$ANDROID_HOME/cmdline-tools/latest/bin"
           yes | "$sdk/sdkmanager" --install emulator platform-tools "$IMAGE" >/dev/null
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo no | "$sdk/avdmanager" create avd --force -n selftest -k "$IMAGE" -d pixel_6
           nohup "$ANDROID_HOME/emulator/emulator" -avd selftest -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect -camera-back none -camera-front none -memory 4096 -cores 4 -partition-size 8192 \
@@ -334,7 +328,7 @@ jobs:
           status=0
           SELFTEST_TIMEOUT=3600 mobile/engine/example/ci/android-selftest.sh \
             mobile/engine/example/android/app/build/outputs/apk/debug/app-debug.apk \
-            "$RUNNER_TEMP/model/ggml-base.en.bin" "$RUNNER_TEMP/selftest" || status=$?
+            "$RUNNER_TEMP/models" "$RUNNER_TEMP/selftest" || status=$?
           if [ -f "$RUNNER_TEMP/selftest/selftest.json" ]; then
             python3 mobile/engine/example/tools/check_report.py "$RUNNER_TEMP/selftest/selftest.json" || status=1
           fi
@@ -384,28 +378,24 @@ jobs:
           name: selftest-media
           path: ${{ runner.temp }}/media
 
-      - name: Restore the whisper model
-        id: model
+      # The two models the app offers, base.en and small.en, downloaded and
+      # checked by ci/fetch-models.sh, and kept between runs.
+      - name: Restore the whisper models
+        id: models
         uses: actions/cache/restore@v6
         with:
-          path: ${{ runner.temp }}/model
-          key: whisper-model-${{ runner.os }}-${{ env.WHISPER_MODEL_SHA1 }}
+          path: ${{ runner.temp }}/models
+          key: whisper-models-${{ runner.os }}-${{ hashFiles('mobile/engine/example/ci/fetch-models.sh') }}
 
-      - name: Download the whisper model
-        if: steps.model.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$RUNNER_TEMP/model"
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/model/ggml-base.en.bin" "$WHISPER_MODEL_URL"
+      - name: The whisper models
+        run: mobile/engine/example/ci/fetch-models.sh "$RUNNER_TEMP/models"
 
-      - name: Check the whisper model
-        run: echo "$WHISPER_MODEL_SHA1  $RUNNER_TEMP/model/ggml-base.en.bin" | shasum -a 1 -c -
-
-      - name: Save the whisper model
-        if: steps.model.outputs.cache-hit != 'true'
+      - name: Save the whisper models
+        if: steps.models.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: ${{ runner.temp }}/model
-          key: ${{ steps.model.outputs.cache-primary-key }}
+          path: ${{ runner.temp }}/models
+          key: ${{ steps.models.outputs.cache-primary-key }}
 
       - name: Pick an iPhone simulator and boot it
         id: sim
@@ -436,7 +426,7 @@ jobs:
           status=0
           SELFTEST_TIMEOUT=3600 mobile/engine/example/ci/ios-selftest.sh \
             "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app" \
-            "$RUNNER_TEMP/model/ggml-base.en.bin" "$RUNNER_TEMP/selftest" "${{ steps.sim.outputs.udid }}" || status=$?
+            "$RUNNER_TEMP/models" "$RUNNER_TEMP/selftest" "${{ steps.sim.outputs.udid }}" || status=$?
           if [ -f "$RUNNER_TEMP/selftest/selftest.json" ]; then
             python3 mobile/engine/example/tools/check_report.py "$RUNNER_TEMP/selftest/selftest.json" || status=1
           fi

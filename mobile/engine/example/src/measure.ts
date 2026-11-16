@@ -11,6 +11,7 @@ export const PROBE_ARGS = ['-v', 'error', '-show_streams', '-show_format', '-of'
 interface ProbeStream {
   codec_type?: string
   codec_name?: string
+  profile?: string
   width?: number
   height?: number
   pix_fmt?: string
@@ -84,16 +85,38 @@ const MEAN = /mean:\[(\d+) (\d+) (\d+)/
 
 /** The mean colour of a region of the frame at t, as [r, g, b]. */
 export async function meanColour(path: string, t: number, x: number, y: number, w: number, h: number): Promise<number[]> {
-  const args = ['-hide_banner']
-  if (t) args.push('-ss', t.toFixed(3))
-  args.push('-i', path, '-frames:v', '1', '-vf', `crop=${w}:${h}:${x}:${y},format=gbrp,showinfo`, '-f', 'null', '-')
-  const r = await run('ffmpeg', args)
+  const input = t ? ['-ss', t.toFixed(3), '-i', path] : ['-i', path]
+  return meanColourOf(input, `crop=${w}:${h}:${x}:${y}`)
+}
+
+/** The mean colour of the first frame of an input (its options and -i), after a filter. */
+export async function meanColourOf(input: string[], filter = 'null'): Promise<number[]> {
+  const r = await run('ffmpeg', ['-hide_banner', ...input, '-frames:v', '1', '-vf', `${filter},format=gbrp,showinfo`, '-f', 'null', '-'])
   // The first frame shown is the one at t (see tools/measure.py).
   for (const line of stderrLines(r)) {
     const m = MEAN.exec(line)
     if (m) return [Number(m[3]), Number(m[1]), Number(m[2])]
   }
-  throw new Error(`no colour from ${path} at ${t} (exit ${r.code}): ${r.stderr.slice(-400)}`)
+  throw new Error(`no colour from ${input.join(' ')} (exit ${r.code}): ${r.stderr.slice(-400)}`)
+}
+
+/** volumedetect's mean volume, in dB. */
+export async function meanVolume(input: string[]): Promise<number> {
+  const r = await run('ffmpeg', ['-hide_banner', ...input, '-af', 'volumedetect', '-f', 'null', '-'])
+  const m = /mean_volume:\s+(-?[\d.]+) dB/.exec(r.stderr)
+  if (!m) throw new Error(`no volume from ${input.join(' ')} (exit ${r.code}): ${r.stderr.slice(-400)}`)
+  return Number(m[1])
+}
+
+/** When the video's keyframes fall, in seconds. */
+export async function keyframeTimes(path: string): Promise<number[]> {
+  const r = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-skip_frame', 'nokey', '-show_entries', 'frame=pts_time', '-of', 'csv=p=0', path])
+  if (r.code !== 0) throw new Error(`ffprobe keyframes of ${path} exited ${r.code}: ${r.stderr.slice(-300)}`)
+  return r.stdout
+    .split('\n')
+    .map((l) => l.trim().replace(/,$/, ''))
+    .filter((l) => /^-?[\d.]+$/.test(l))
+    .map((l) => Math.round(Number(l) * 1000) / 1000)
 }
 
 const LOUDNESS = /I:\s+(-?[\d.]+) LUFS/
