@@ -92,11 +92,12 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
   const more = found.had > 0 ? ' more' : ''
   let text: string
   if (n === 0) {
-    const lonely = found.recordings.filter((r) => r.none)
+    // Asked for more, a recording with nothing left is not one with nothing in it.
+    const lonely = found.recordings.filter((r) => r.none && !(found.had > 0 && r.none === 'nothing'))
     text = lonely.length
       ? lonely.map(whyNone).join(' ')
       : found.had > 0
-        ? `I found no more moments that stand on their own outside the ${found.had} clips you have.`
+        ? `I found no more moments that stand on their own beside the ${found.had === 1 ? 'clip' : `${found.had} clips`} you have.`
         : `I couldn't find a moment that stands on its own.`
   } else if (several) {
     const parts = per.filter((x) => x.n > 0).map((x) => `${x.n} in ${fileName(x.r.path)}`)

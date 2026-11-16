@@ -256,11 +256,24 @@ describe('finding the clips by measuring', () => {
   })
 
   it('finds new moments when asked again, never the ones already in the set', () => {
-    const first = run(STREAM)
-    const again = run(STREAM, 'more', first.picks)
+    const first = run(SERVICE)
+    const again = run(SERVICE, '2 more', first.picks)
+    expect(again.picks.length).toBeGreaterThan(0)
+    expect(again.picks.length).toBeLessThanOrEqual(2)
     for (const c of again.picks) {
       for (const f of first.picks)
         expect(Math.min(c.endSec, f.endSec) - Math.max(c.startSec, f.startSec)).toBeLessThanOrEqual(0)
+      // Never opened on a run-up such as the reading's announcement.
+      expect(c.hook).not.toMatch(/^(?:Our reading|Good morning)/)
+    }
+  })
+
+  it('asked again, offers only what measures up to the clips already found, not talk to pad the set', () => {
+    for (const p of [PODCAST, STREAM]) {
+      const first = run(p)
+      // Every planted moment was found the first time; what is left is the talk around them.
+      expect(first.picks.length, p.kind).toBeGreaterThanOrEqual(p.moments.length)
+      expect(run(p, 'more', first.picks).picks, p.kind).toEqual([])
     }
   })
 

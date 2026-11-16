@@ -86,6 +86,9 @@ const THROAT =
   /^(?:(?:so|well|okay|ok|alright|all right|now|um|uh)\s+)*(?:let me tell you|i want to tell you|here'?s a story|let me share|i want to share|good morning|good evening|welcome|hello|hi everyone|hey guys|hey everyone|hey chat|before we|turn with me|turn to|open your bibles?|if you have your bibles?|our (?:reading|text|scripture|passage) (?:this morning|today|tonight|this evening) is|let'?s pray|let us pray|subscribe|hit the like|make sure you)\b/
 const ROOM =
   /\b(?:those of you|stand with me|turn to your neighbor|turn to your neighbour|come down to the front|raise your hand|in this room|you guys in chat)\b/
+/** A show introducing itself or its guest: context, never the moment, however concrete the guest's story. */
+const INTRO =
+  /\b(?:(?:today|tonight|this week)'?s guest|my guests? (?:today |tonight |this week )?(?:is|are)|today my guests? (?:is|are)|joining me (?:today|tonight|now|this week|here)|i'?m your host|i am your host|this is episode|welcome (?:back )?to (?:the |my |our |another )?(?:show|podcast|episode|program|stream))\b/
 
 /** The meaning said out loud: how a story or a point ends. */
 const MEANING =
@@ -149,9 +152,20 @@ interface Feature {
   tail: number | null
   /** Opens on something: a concrete detail, a story, a question, a claim or an admission. */
   strong: boolean
+  /** Clears its throat and nothing more ("Our reading this morning is from Luke", "Good morning"), or introduces the show. */
+  throat: boolean
   /** The speaker paused before it, and after it: the edges of a thought. */
   edgeBefore: boolean
   edgeAfter: boolean
+}
+
+/**
+ * Whether what follows a run-up still opens on something: "let me tell you
+ * about the winter of 1987" does, "our reading this morning is from Luke"
+ * does not (its "this morning" is the run-up's, not a detail).
+ */
+function opensAfterThroat(rest: string, question: boolean): boolean {
+  return question || CONCRETE.test(rest) || NARRATIVE.test(rest) || CLAIM.test(rest) || ADMISSION.test(rest)
 }
 
 /** How soon after a line a laugh has to start to be the laugh at that line. */
@@ -247,6 +261,7 @@ function features(
       loud,
       tail,
       strong,
+      throat: (THROAT.test(t) && !opensAfterThroat(t.replace(THROAT, '').trim(), question)) || INTRO.test(t),
       edgeBefore: gapBefore >= 0.8,
       edgeAfter: gapAfter >= 1
     }
@@ -380,7 +395,13 @@ export function pickMeasured(input: MeasureInput): MeasuredPick[] {
     signal: boolean
   }
   const candidates: Window[] = []
+  // The clips already found still set the bar: asked for more, a recording
+  // offers what measures up to them, not whatever is left.
+  let found = -Infinity
+  let foundSignal = false
   for (let s = 0; s < sentences.length; s++) {
+    // A clip never opens on a run-up with nothing in it, however well the rest scores.
+    if (f[s].throat) continue
     const start = sentences[s].startSec
     let best: Window | null = null
     let words = 0
@@ -409,7 +430,7 @@ export function pickMeasured(input: MeasureInput): MeasuredPick[] {
       if (len < bounds.minSec || len > bounds.maxSec) continue
       if (worstGap > 6) break
       if (overlapWith(regions, start, end) > 0.5) break
-      if (avoid.some((a) => Math.min(end, a.endSec) - Math.max(start, a.startSec) > Math.min(2, 0.25 * len))) continue
+      const avoided = avoid.some((a) => Math.min(end, a.endSec) - Math.max(start, a.startSec) > Math.min(2, 0.25 * len))
       if (stems.length && topicHits === 0) continue
 
       let score = f[s].open + f[e].close
@@ -450,16 +471,23 @@ export function pickMeasured(input: MeasureInput): MeasuredPick[] {
         if (kind === 'point') kind = 'topic'
       }
       score += 1 - Math.abs(len - bounds.targetSec) / Math.max(10, bounds.maxSec - bounds.minSec)
+      if (avoided) {
+        found = Math.max(found, score)
+        foundSignal ||= signal
+        continue
+      }
       if (!best || score > best.score) best = { s, e, score, kind, signal }
     }
     if (best) candidates.push(best)
   }
 
-  // Only windows with something in them; when none has, the two best-shaped thoughts at most.
+  // Only windows with something in them; when nothing in the recording has
+  // anything, the two best-shaped thoughts at most.
   const signalled = candidates.filter((c) => c.signal)
-  const pool = (signalled.length > 0 ? signalled : candidates).sort((a, b) => b.score - a.score)
-  const limit = signalled.length > 0 ? input.count : Math.min(input.count, 2)
-  const floor = pool.length ? Math.max(2, pool[0].score * 0.35) : 0
+  const anything = signalled.length > 0 || foundSignal
+  const pool = (anything ? signalled : candidates).sort((a, b) => b.score - a.score)
+  const limit = anything ? input.count : Math.min(input.count, 2)
+  const floor = pool.length ? Math.max(2, Math.max(found, pool[0].score) * 0.35) : 0
   const chosen: Window[] = []
   for (const c of pool) {
     if (chosen.length >= limit) break
