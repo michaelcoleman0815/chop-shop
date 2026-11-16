@@ -5,12 +5,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createDoc, currentCut, resolveCut, wordsFromTranscript } from '../shared/edit'
 import { probeSource } from './intake'
 import { hasEncoder } from './providers/testing'
-import { ffmpegRun, findFfmpeg } from './test-media'
+import { ffmpegRun, findFfmpeg, findFfprobe } from './test-media'
 
 const FFMPEG = findFfmpeg()
-const FFPROBE = process.env.FFPROBE_PATH ?? 'ffprobe'
+const FFPROBE = findFfprobe()
 
-describe.skipIf(!FFMPEG)('reading real recordings as they come in', () => {
+describe.skipIf(!FFMPEG || !FFPROBE)('reading real recordings as they come in', () => {
   const ffmpeg = FFMPEG as string
   let dir = ''
   beforeAll(() => {
@@ -32,7 +32,7 @@ describe.skipIf(!FFMPEG)('reading real recordings as they come in', () => {
         : ['-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-live', '1', '-f', 'matroska']),
       webm
     ])
-    const facts = await probeSource(FFPROBE, webm)
+    const facts = await probeSource(FFPROBE as string, webm)
     // What cut:prepare does next with it: the source and its words, then the first cut.
     const source = { id: 's1', path: webm, durationSec: facts.durationSec, width: facts.width, height: facts.height, fps: facts.fps, audio: null }
     const words = wordsFromTranscript(

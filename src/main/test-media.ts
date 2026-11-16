@@ -25,6 +25,25 @@ export function findFfmpeg(): string | null {
   return null
 }
 
+/**
+ * The ffprobe to test with: FFPROBE_PATH, then the one the app bundles, then
+ * the system's. The Mac build machine has only the bundled one.
+ */
+export function findFfprobe(): string | null {
+  const candidates = [process.env.FFPROBE_PATH, 'ffprobe']
+  try {
+    candidates.splice(1, 0, (require('@ffprobe-installer/ffprobe') as { path: string }).path)
+  } catch {
+    // Not installed in this checkout; the system one will do.
+  }
+  for (const bin of candidates) {
+    if (!bin) continue
+    if (bin !== 'ffprobe' && !existsSync(bin)) continue
+    if (spawnSync(bin, ['-version']).status === 0) return bin
+  }
+  return null
+}
+
 /** Runs ffmpeg quietly and throws with its last words when it fails. */
 export function ffmpegRun(ffmpeg: string, args: string[]): void {
   execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: ['ignore', 'ignore', 'pipe'] })

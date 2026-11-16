@@ -33,10 +33,11 @@ vi.mock('electron', async () => {
   }
 })
 vi.mock('./ffmpeg', async () => {
-  const { findFfmpeg } = await import('./test-media')
+  const { findFfmpeg, findFfprobe } = await import('./test-media')
   return {
     FFMPEG_PATH: findFfmpeg() ?? 'ffmpeg',
-    FFPROBE_PATH: process.env.FFPROBE_PATH ?? 'ffprobe',
+    // The bundled ffprobe, as the app has: the Mac build machine has no other.
+    FFPROBE_PATH: findFfprobe() ?? 'ffprobe',
     probe: async () => ({ durationSec: 6, width: 320, height: 180, fps: 30 })
   }
 })
