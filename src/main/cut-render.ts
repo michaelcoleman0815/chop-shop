@@ -587,7 +587,14 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
 
   let aOut = 'acat'
   if (opts.loudness !== null) {
-    chains.push(`[acat]loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000[aloud]`)
+    // loudnorm works in 100 ms frames and looks 3 s ahead; at the end of sound
+    // that is not a whole number of frames it puts those last seconds late by
+    // the shortfall. Given more silence than it looks ahead, it never meets
+    // that end, and the silence is cut off after. Silence does not change the
+    // loudness it measures.
+    chains.push(
+      `[acat]apad=pad_dur=3.2,loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000,atrim=duration=${exact(totalSec)}[aloud]`
+    )
     aOut = 'aloud'
   }
   if (fade && (fade.inSec > 0 || fade.outSec > 0)) {
