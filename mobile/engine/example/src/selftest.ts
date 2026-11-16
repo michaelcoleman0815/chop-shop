@@ -538,7 +538,12 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
     const errors = pairs.map(([i, j]) => Math.abs(words[j].startSec - said[i].startSec)).sort((a, b) => a - b)
     const median = errors.length ? errors[Math.floor(errors.length / 2)] : Infinity
     const ordered = words.every((w, i) => w.endSec >= w.startSec && (i === 0 || w.startSec >= words[i - 1].startSec - 0.01))
-    const inside = words.every((w) => w.startSec >= 0 && w.endSec <= truth.durationSec + 0.5)
+    // whisper can end the last word where its 30 s window ends, past the end
+    // of a shorter recording (the Mac's whisper-cli does the same); the app
+    // should hold a word's end to the recording's length.
+    const last = words[words.length - 1]
+    const inside = words.every((w, i) => w.startSec >= 0 && w.startSec <= truth.durationSec && (w.endSec <= truth.durationSec + 0.5 || i === words.length - 1))
+    if (last && last.endSec > truth.durationSec + 0.5) numbers[`${key}LastWordEnds`] = `${last.endSec} s, in a ${truth.durationSec} s recording`
     const tokens = json.transcription.flatMap((s) => s.tokens ?? []).filter((t) => !/^\[_/.test(t.text))
     const aligned = tokens.filter((t) => typeof t.t_dtw === 'number' && t.t_dtw >= 0).length
     const backend = stderrLines(r).find((l) => /whisper_backend_init_gpu|using .* backend|no GPU found/i.test(l)) ?? ''
@@ -694,7 +699,8 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
       )
     try {
       const loading = performance.now()
-      if (video.readyState < 1) await once('loadedmetadata', 20000)
+      // The simulator's first video can take seconds to start its media stack.
+      if (video.readyState < 1) await once('loadedmetadata', 45000)
       const loadMs = performance.now() - loading
       let played = 'played'
       try {
@@ -711,26 +717,39 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
       video.currentTime = t
       await seeked
       const seekMs = performance.now() - seekAsked
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
       const W = 192
       const H = 108
       const canvas = document.createElement('canvas')
       canvas.width = W
       canvas.height = H
       const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
-      ctx.drawImage(video, 0, 0, W, H)
-      const px = ctx.getImageData(Math.round(region.x * W), Math.round(region.y * H), Math.round(region.w * W), Math.round(region.h * H)).data
-      const rgb = [0, 1, 2].map((k) => {
-        let sum = 0
-        for (let i = k; i < px.length; i += 4) sum += px[i]
-        return Math.round(sum / (px.length / 4))
-      })
+      const look = (): number[] => {
+        ctx.drawImage(video, 0, 0, W, H)
+        const px = ctx.getImageData(Math.round(region.x * W), Math.round(region.y * H), Math.round(region.w * W), Math.round(region.h * H)).data
+        return [0, 1, 2].map((k) => {
+          let sum = 0
+          for (let i = k; i < px.length; i += 4) sum += px[i]
+          return Math.round(sum / (px.length / 4))
+        })
+      }
+      // WebKit can still be showing the frame from before the seek when
+      // 'seeked' fires; the frame the seek asked for is what a person sees
+      // a moment later. How long it takes is part of the result.
+      let rgb: number[] = []
+      let frameMs = 0
+      do {
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
+        rgb = look()
+        frameMs = performance.now() - seekAsked
+        if (colourClose(rgb, want, 30)) break
+        await sleep(100)
+      } while (performance.now() - seekAsked < 5000)
       const ranges = (r: TimeRanges): string => Array.from({ length: r.length }, (_, i) => `${round(r.start(i))}-${round(r.end(i))}`).join(',')
       const ok = played === 'played' && Math.abs(video.currentTime - t) < 0.1 && colourClose(rgb, want, 30)
       return {
         ok,
-        detail: `${played}; metadata in ${Math.round(loadMs)} ms; at ${round(video.currentTime, 2)} s (asked ${t}) ${Math.round(seekMs)} ms after the seek, rgb ${rgb.join(',')} (expected ${want.join(',')}); duration ${round(video.duration)} s, buffered ${ranges(video.buffered)}, seekable ${ranges(video.seekable)}; ${video.src}`,
-        data: { rgb, currentTime: video.currentTime, seekMs, loadMs, played, src: video.src }
+        detail: `${played}; metadata in ${Math.round(loadMs)} ms; at ${round(video.currentTime, 2)} s (asked ${t}) ${Math.round(seekMs)} ms after the seek, its frame showing after ${Math.round(frameMs)} ms, rgb ${rgb.join(',')} (expected ${want.join(',')}); duration ${round(video.duration)} s, buffered ${ranges(video.buffered)}, seekable ${ranges(video.seekable)}; ${video.src}`,
+        data: { rgb, currentTime: video.currentTime, seekMs, frameMs, loadMs, played, src: video.src }
       }
     } finally {
       video.removeAttribute('src')
@@ -742,6 +761,8 @@ export async function runSelfTest(say: (line: string) => void): Promise<Report> 
   await check('preview: play and seek a local file in the WebView', async () => {
     const r = await seekAndLook(`${media}/${expect.preview.file}`, expect.preview.t, expect.preview.rgb)
     numbers.previewSeekMs = Math.round((r.data as { seekMs: number } | undefined)?.seekMs ?? -1)
+    numbers.previewFrameMs = Math.round((r.data as { frameMs: number } | undefined)?.frameMs ?? -1)
+    numbers.previewFirstLoadMs = Math.round((r.data as { loadMs: number } | undefined)?.loadMs ?? -1)
     return r
   })
 
