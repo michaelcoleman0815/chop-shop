@@ -1,4 +1,4 @@
-import { beatsFromWords, currentCut } from '../edit/doc'
+import { beatsFromWords, currentCut, recordingBeats } from '../edit/doc'
 import { applyOps } from '../edit/ops'
 import { indexWords, resolveCut, type Resolved } from '../edit/resolve'
 import type { Beat, Cut, EditDoc, Op } from '../edit/schema'
@@ -886,6 +886,19 @@ function goneFrom(
   return prev?.gone ?? new Map()
 }
 
+/**
+ * The versions as goneFrom reads them. A first version shaped by the words
+ * sent with the footage already plays less than the recording, so the
+ * recording as it was shot counts as the version it was made from: what that
+ * first version cut is then out for the reason it gave, as in any later one.
+ */
+function history(doc: EditDoc): { n: number; ops: Op[]; cut: Cut; restores?: number }[] {
+  const first = doc.versions[0]
+  if (!first || first.ops.length === 0) return doc.versions
+  const raw = { ...first.cut, beats: recordingBeats(doc.sources, doc.words) }
+  return [{ n: 0, ops: [], cut: raw }, ...doc.versions]
+}
+
 /** What was cut on request and is still out: the names it was cut by, and whether any was cut unnamed. */
 interface HeldBack {
   names: string[]
@@ -956,7 +969,7 @@ function restoreOps(
   const index = indexWords(doc.words)
   // The ask being planned counts as a version of its own: what it cut is out on request.
   const last = doc.versions[doc.versions.length - 1]
-  const gone = goneFrom([...doc.versions, { n: last.n + 1, ops: planned, cut }], index)
+  const gone = goneFrom([...history(doc), { n: last.n + 1, ops: planned, cut }], index)
   const covered = coveredBy(cut, index)
   const struck = new Set(cut.removed)
   const out = doc.words.filter((w) => !covered.has(w.id) && !struck.has(w.id))
@@ -1083,7 +1096,7 @@ const keyWords = (text: string): string[] =>
 export function bringBack(doc: EditDoc, what: string): LengthPlan | null {
   const index = indexWords(doc.words)
   const cut = currentCut(doc)
-  const gone = goneFrom(doc.versions, index)
+  const gone = goneFrom(history(doc), index)
   const struck = new Set(cut.removed)
   const byName = new Map<string, Set<string>>()
   for (const [id, g] of gone) {
@@ -1119,4 +1132,25 @@ export function bringBack(doc: EditDoc, what: string): LengthPlan | null {
     note: null,
     met: true
   }
+}
+
+/**
+ * What was cut on request and is still out of the cut, by the name it was
+ * cut under ("the intro", "the part about the conference"): what "bring
+ * back …" can name. Lines a length took are not here, as a longer length
+ * brings those back on its own.
+ */
+export function cutOnRequest(doc: EditDoc): string[] {
+  const index = indexWords(doc.words)
+  const cut = currentCut(doc)
+  const gone = goneFrom(history(doc), index)
+  const covered = coveredBy(cut, index)
+  const struck = new Set(cut.removed)
+  const names = doc.words
+    .filter((w) => !covered.has(w.id) && !struck.has(w.id))
+    .flatMap((w) => {
+      const why = gone.get(w.id)?.why
+      return why && why !== 'length' ? [why] : []
+    })
+  return [...new Set(names)]
 }

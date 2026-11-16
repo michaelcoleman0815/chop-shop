@@ -99,20 +99,12 @@ export function beatsFromWords(words: Word[], source: string, opts: BeatSplitOpt
   return beats
 }
 
-export function createDoc(input: {
-  id: string
-  title: string
-  /** One recording, or several in the order they were shot. */
-  source?: Source
-  sources?: Source[]
-  words: Word[]
-  at?: string
-}): EditDoc {
-  const at = input.at ?? new Date().toISOString()
-  const sources = input.sources ?? (input.source ? [input.source] : [])
-  if (sources.length === 0) throw new Error('An edit needs at least one recording.')
-  const ids = new Set(sources.map((s) => s.id))
-  const words = input.words.filter((w) => ids.has(w.source))
+/**
+ * The recordings as they were shot, split into beats: what a new edit's
+ * first version plays before anything is asked of it. Beat ids run through
+ * every recording, in order.
+ */
+export function recordingBeats(sources: Source[], words: Word[]): Beat[] {
   const beats: Beat[] = []
   for (const source of sources) {
     const own = words.filter((w) => w.source === source.id).sort((a, b) => a.startSec - b.startSec)
@@ -131,8 +123,25 @@ export function createDoc(input: {
         treatment: { ...DEFAULT_TREATMENT }
       })
   }
-  // Beat ids run through every recording, in order.
   beats.forEach((b, i) => (b.id = `b${i + 1}`))
+  return beats
+}
+
+export function createDoc(input: {
+  id: string
+  title: string
+  /** One recording, or several in the order they were shot. */
+  source?: Source
+  sources?: Source[]
+  words: Word[]
+  at?: string
+}): EditDoc {
+  const at = input.at ?? new Date().toISOString()
+  const sources = input.sources ?? (input.source ? [input.source] : [])
+  if (sources.length === 0) throw new Error('An edit needs at least one recording.')
+  const ids = new Set(sources.map((s) => s.id))
+  const words = input.words.filter((w) => ids.has(w.source))
+  const beats = recordingBeats(sources, words)
   const first = sources[0]
   const cut: Cut = {
     beats,
