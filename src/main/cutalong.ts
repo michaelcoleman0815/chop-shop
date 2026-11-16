@@ -15,6 +15,7 @@ import { renderCut } from './cut-render'
 import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
 import { findSounds, makeAllSfx, readSound } from './sfx'
+import { findPremiere, openInPremiere, writePremiere } from './premiere-cut'
 import { renderCutMotion, subtitlePass } from './motion-render'
 import { captureLink } from './page-shot'
 import { loadIcons, loadLogos } from './motion-icons'
@@ -258,6 +259,32 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       const roles = await assignRoles(req.request, facts)
       return { ok: true as const, roles, facts }
     } catch (err) {
+      return { ok: false as const, message: message(err) }
+    }
+  })
+
+  /**
+   * The current version as a Premiere project beside the exports, cut on the
+   * person's own files, with the captions beside it as SRT; Premiere opens it
+   * when it is on this computer.
+   */
+  ipcMain.handle('cut:premiere', async (_e, req: { doc: unknown }) => {
+    const parsed = EditDocSchema.safeParse(req.doc)
+    if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
+    const doc = parsed.data
+    try {
+      const n = currentVersion(doc).n
+      const xmlPath = await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.xml')
+      const written = await writePremiere(doc, { ffmpeg: FFMPEG_PATH, xmlPath, sfxDir: sfxDir() })
+      const premiere = await findPremiere()
+      if (premiere) openInPremiere(premiere, xmlPath)
+      return {
+        ok: true as const,
+        ...written,
+        opened: premiere ? basename(premiere).replace(/\.(app|exe)$/i, '') : null
+      }
+    } catch (err) {
+      console.error('[premiere] failed:', message(err))
       return { ok: false as const, message: message(err) }
     }
   })

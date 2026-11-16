@@ -1,4 +1,11 @@
-import { addSources, createDoc, nextSourceId, wordsFromTranscript, type EditDoc } from '../../../shared/edit'
+import {
+  addSources,
+  createDoc,
+  nextSourceId,
+  resolveCut,
+  wordsFromTranscript,
+  type EditDoc
+} from '../../../shared/edit'
 import {
   BUILT_IN_PRESETS,
   describeStyle,
@@ -494,6 +501,36 @@ export function createMockApi(): CutalongApi {
                 { at: Math.min(r.durationSec - 0.8, 2.4), x: 0.52, y: 0.58, w: 0.42, h: 0.34 }
               ]
         )
+      }
+    },
+    openPremiere: async ({ doc }) => {
+      await progress(listeners.cut, ['Writing the Premiere project'])
+      const n = doc.versions[doc.versions.length - 1].n
+      const cut = doc.versions[doc.versions.length - 1].cut
+      const resolved = resolveCut(cut, doc.words, doc.sources)
+      const count = (n: number, one: string): string | null => (n ? `${n} ${n === 1 ? one : `${one}s`}` : null)
+      const leftOut = [
+        cut.look ? 'the look' : null,
+        count((resolved.transitions ?? []).length, 'transition'),
+        count(cut.beats.filter((b) => b.treatment.camera || b.treatment.broll?.camera).length, 'camera move'),
+        count(cut.beats.filter((b) => b.treatment.speed !== undefined || b.treatment.ramp).length, 'speed change'),
+        count(cut.motion.length, 'graphic')
+      ].filter((x): x is string => x !== null)
+      const base = `/Users/you/Movies/Cutalong/${doc.title} v${n}`
+      return {
+        ok: true as const,
+        xmlPath: `${base}.xml`,
+        srtPath: resolved.words.length ? `${base} captions.srt` : null,
+        opened: 'Adobe Premiere Pro 2026',
+        facts: {
+          cuts: resolved.pieces.length,
+          recordings: new Set(resolved.pieces.map((p) => p.source)).size,
+          cutaways: cut.beats.filter((b) => b.treatment.broll && b.treatment.frame !== 'speaker').length,
+          music: !!cut.music,
+          sounds: cut.beats.reduce((sum, b) => sum + (b.sfx?.length ?? 0), 0),
+          markers: leftOut.length + (cut.chapters?.length ?? 0),
+          leftOut
+        }
       }
     },
     renderCut: async ({ doc, quality }) => {

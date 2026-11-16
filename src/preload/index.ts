@@ -24,7 +24,7 @@ import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
-import type { Preset } from '../shared/presets'
+import type { PremiereFacts, Preset } from '../shared/presets'
 import type { KeyCheck, ServiceId } from '../shared/services'
 
 type Progress = { stage: string; percent: number | null }
@@ -119,6 +119,12 @@ const api = {
     ranges: { startSec: number; durationSec: number }[]
   }): Promise<{ ok: true; regions: Region[][] } | { ok: false; message: string }> =>
     ipcRenderer.invoke('focus:find', req),
+  openPremiere: (req: {
+    doc: EditDoc
+  }): Promise<
+    | { ok: true; xmlPath: string; srtPath: string | null; opened: string | null; facts: PremiereFacts }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:premiere', req),
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'

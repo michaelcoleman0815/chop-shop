@@ -41,6 +41,7 @@ import {
   chaptersOf,
   chaptersReply,
   ideaStarts,
+  premiereReply,
   sfxCommand,
   LOOK_COMMANDS,
   lookCommand,
@@ -225,7 +226,8 @@ const ACTION_COMMANDS: Preset[] = [
         'Chapters',
         'YouTube chapters where the ideas change: /chapters, /chapters 2 Battery life, /chapters off'
       ],
-      ['sfx', 'Sound effect', 'A sound on the cut or word under the playhead: /sfx whoosh, /sfx pop, /sfx transitions']
+      ['sfx', 'Sound effect', 'A sound on the cut or word under the playhead: /sfx whoosh, /sfx pop, /sfx transitions'],
+      ['premiere', 'Premiere', 'Open this version in Premiere, cut on your own files: /premiere']
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
@@ -1674,6 +1676,34 @@ export function useCutalong() {
     [applyAsVersion]
   )
 
+  /** /premiere: this version as a Premiere project on the person's own files, opened there when it can be. */
+  const premiereCommand = useCallback(
+    async (where: 'thread' | 'panel'): Promise<void> => {
+      const d = docRef.current
+      if (!d) {
+        const text = 'Drop some footage first, then I can open the edit in Premiere.'
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+        return
+      }
+      const stage = { stage: 'Writing the Premiere project', percent: null }
+      const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: stage }) : null
+      if (where === 'panel') setPanel({ text: '', progress: stage, since: Date.now() })
+      const r = await api.openPremiere({ doc: d })
+      if (!r.ok) {
+        const text = `I couldn't make the Premiere project. ${r.message}`
+        if (id) patch(id, { progress: null, text, error: true })
+        else setPanel({ text, error: true })
+        return
+      }
+      const reply = premiereReply(r)
+      const actions: Action[] = [{ kind: 'reveal', label: 'Show in Finder', payload: r.xmlPath }]
+      if (id) patch(id, { progress: null, text: reply.text, aside: reply.aside, actions })
+      else setPanel({ text: reply.aside ? `${reply.text} ${reply.aside}` : reply.text })
+    },
+    [patch, push]
+  )
+
   const runCommand = useCallback(
     async (
       command: string,
@@ -1711,6 +1741,10 @@ export function useCutalong() {
       }
       if (command === 'chapters') {
         chaptersCommandRun(rest, where, beat)
+        return
+      }
+      if (command === 'premiere') {
+        await premiereCommand(where)
         return
       }
       if (command === 'sfx') {
@@ -1799,6 +1833,7 @@ export function useCutalong() {
       timingCommand,
       transitionCommand,
       chaptersCommandRun,
+      premiereCommand,
       sfxCommandRun
     ]
   )

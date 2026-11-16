@@ -20,6 +20,7 @@ import {
   lookMatrix,
   openNotes,
   placeSfx,
+  RECORDED_VOICE_LUFS,
   resolveCut,
   SFX_INFO,
   sfxGainDb,
@@ -509,9 +510,6 @@ function Effect({
   }, [time, playing, startSec, trimSec, lengthSec, gainDb])
   return <audio ref={ref} src={url} preload="auto" aria-hidden="true" />
 }
-
-/** The level a voice is usually recorded at, which the preview, playing the recording as it is, has to assume. */
-const RECORDED_VOICE_LUFS = -20
 
 /**
  * The music bed, played under the preview: looping, at its level against the

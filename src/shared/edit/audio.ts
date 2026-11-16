@@ -40,6 +40,13 @@ export type Music = z.infer<typeof MusicSchema>
 
 export const DEFAULT_MUSIC = { levelDb: -12, duckDb: 12, inSec: 0, fadeInSec: 1, fadeOutSec: 2 }
 
+/**
+ * The level a voice is usually recorded at. Whatever plays the recording as it
+ * is, rather than at the loudness target (the preview, a project opened in
+ * Premiere), sets the music and the sounds against this.
+ */
+export const RECORDED_VOICE_LUFS = -20
+
 /** A point on the bed's level: at `t` seconds of the video, `db` relative to where it sits. */
 export interface LevelKey {
   t: number
