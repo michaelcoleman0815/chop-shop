@@ -25,7 +25,8 @@ const defaults = (): Settings => ({
   ccliLicense: null,
   ccliStreaming: null,
   exportPreset: null,
-  videoSignIn: null
+  videoSignIn: null,
+  otherServices: true
 })
 
 let cache: Settings | null = null

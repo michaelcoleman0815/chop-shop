@@ -17,7 +17,11 @@ import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
+import { planEditLocally } from './planner-local'
+import { isLocalUp, localModels } from './local-llm'
+import { OLLAMA_HOST } from './clips'
 import { readBrand, saveBrand } from './brand-store'
+import { hearInCloud, registerServicesIpc } from './providers'
 import {
   createDoc,
   currentCut,
@@ -70,8 +74,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
       let words: Word[] = []
       let warning: string | null = null
+      let heard: string | null = null
       try {
-        const transcript = await transcriptFor(path, meta.durationSec, progress)
+        const transcript = await transcriptFor(path, meta.durationSec, progress, (sentence) => (heard = sentence))
         words = wordsFromTranscript(transcript.words, source.id)
         // Listen to the recording so every word's edges sit on its sound,
         // which is what lets cuts land tight without clipping a consonant.
@@ -88,7 +93,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
       const doc = createDoc({ id: randomUUID(), title: basename(path, extname(path)), source, words })
       progress('Ready', 100)
-      return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning }
+      return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning: warning ?? heard }
     } catch (err) {
       progress('Failed', 0)
       return { ok: false as const, message: message(err) }
@@ -207,9 +212,17 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) =>
-    planEdit(req)
-  )
+  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
+    // Claude plans unless the person picked a model on this Mac in Settings.
+    const local = getSettings().localPlanner
+    return local ? planEditLocally(req, { host: OLLAMA_HOST, model: local }) : planEdit(req)
+  })
+
+  // The models Ollama has on this Mac, for planning edits without Claude.
+  ipcMain.handle('planner:local', async () => {
+    if (!(await isLocalUp(OLLAMA_HOST))) return { up: false, models: [] }
+    return { up: true, models: await localModels(OLLAMA_HOST).catch(() => []) }
+  })
 
   // The brand: kept in userData, learned from the person's own videos, all
   // measured here on this computer.
@@ -298,6 +311,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
   ipcMain.handle('claude:check', () => checkKey())
 
+  // Other AI services: keys, the switch, and key checks (providers/index.ts).
+  registerServicesIpc()
+
   ipcMain.handle('presets:list', () => savedPresets())
   ipcMain.handle('presets:save', (_e, preset: unknown) => savePreset(preset))
   ipcMain.handle('presets:remove', (_e, command: string) => removePreset(command))
@@ -311,8 +327,15 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 async function transcriptFor(
   path: string,
   durationSec: number,
-  progress: (stage: string, percent: number) => void
+  progress: (stage: string, percent: number) => void,
+  notice: (sentence: string) => void = () => undefined
 ): Promise<Transcript> {
+  // Another AI service hears the words when the person has added one. If it
+  // cannot, this computer does, and the one sentence saying why goes back.
+  const cloud = await hearInCloud(path, durationSec, progress)
+  if (cloud.service) return cloud.transcript
+  if (cloud.note) notice(cloud.note)
+
   const cached = await readAnalysis(path).catch(() => null)
   const whole =
     cached &&

@@ -11,6 +11,7 @@ import {
 import type { Project, ProjectSummary, Settings } from '../../../shared/types'
 import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
 import { detectProvider } from '../../../shared/keys'
+import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import type { CutalongApi } from './api'
 
 /**
@@ -107,6 +108,7 @@ export function createMockApi(): CutalongApi {
   }
 
   let key: string | null = null
+  const serviceKeys: Partial<Record<ServiceId, string>> = {}
   let settings: Settings = {
     outputDir: '/Users/you/Movies/Chop Shop',
     bufferSeconds: 60,
@@ -127,7 +129,8 @@ export function createMockApi(): CutalongApi {
     ccliLicense: null,
     ccliStreaming: null,
     exportPreset: null,
-    videoSignIn: null
+    videoSignIn: null,
+    otherServices: true
   }
   const models: Record<string, { mb: number; has: boolean }> = {
     'base.en': { mb: 148, has: true },
@@ -160,13 +163,18 @@ export function createMockApi(): CutalongApi {
       return () => listeners.cut.delete(cb)
     },
     planEdit: async () =>
-      key === null
+      settings.localPlanner
         ? {
             ok: false as const,
-            message: 'Add your Anthropic API key in Settings and I can work on this.',
-            needsKey: true
+            message: `Plans come from ${settings.localPlanner} on this Mac, and this browser preview cannot reach it.`
           }
-        : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' },
+        : key === null
+          ? {
+              ok: false as const,
+              message: 'Add your Anthropic API key in Settings and I can work on this.',
+              needsKey: true
+            }
+          : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' },
 
     studyInspiration: async ({ url, path }) => {
       await progress(listeners.study, ['Fetching the video', 'Measuring the cuts', 'Listening to the pacing'])
@@ -372,6 +380,52 @@ export function createMockApi(): CutalongApi {
         : detectProvider(key) === 'anthropic'
           ? { ok: true as const }
           : { ok: false as const, message: 'The API key was not accepted.', needsKey: true },
+    serviceKeys: async () =>
+      Object.fromEntries(SERVICES.map((s) => [s.id, Boolean(serviceKeys[s.id])])) as Record<ServiceId, boolean>,
+    setServiceKey: async (id, next) => {
+      const wrong = wrongServiceKey(id, next)
+      if (wrong) return { ok: false as const, message: wrong }
+      if (next.trim()) serviceKeys[id] = next.trim()
+      else delete serviceKeys[id]
+      return { ok: true as const }
+    },
+    clearServiceKey: async (id) => {
+      delete serviceKeys[id]
+    },
+    // The browser preview reaches no service, so it stands in for one: it
+    // takes a moment, and accepts keys of 20 characters or more.
+    checkServiceKey: async (id) => {
+      await sleep(900)
+      const saved = serviceKeys[id]
+      if (!saved)
+        return { ok: false as const, state: 'none' as const, message: `There is no ${serviceName(id)} key yet.` }
+      if (settings.otherServices === false) {
+        return {
+          ok: false as const,
+          state: 'off' as const,
+          message: 'Other AI services are off, so I did not check the key.'
+        }
+      }
+      return saved.length >= 20
+        ? { ok: true as const }
+        : {
+            ok: false as const,
+            state: 'refused' as const,
+            message: `${serviceName(id)} did not accept that key. Paste it again, or make a new one.`
+          }
+    },
+    setOtherServices: async (on) => {
+      settings = { ...settings, otherServices: on }
+      return on
+    },
+    // Stands in for Ollama running on this Mac with two models pulled.
+    localPlanners: async () => ({
+      up: true,
+      models: [
+        { name: 'local-8b', sizeBytes: 4_900_000_000 },
+        { name: 'local-3b', sizeBytes: 2_000_000_000 }
+      ]
+    }),
     setApiKey: async (next) => {
       key = next.trim() || null
     },

@@ -6,7 +6,7 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 
 - **The edit is data.** Every change to a video is an op on one document. The chat, presets, notes, the script view and the beat strip all speak the same ops, so every version can be replayed, compared or undone, and a model's proposal can be checked before anything moves.
 - **Timing is anchored to words**, not seconds, and the words are tightened to their sound. Strikes, tightening and re-transcription move the cut with the speech, and cuts land a hair before an onset.
-- **Local first.** Processing and storage happen on the owner's computer: transcription (whisper.cpp), listening, measuring and rendering (ffmpeg), projects, assets, presets and the brand. Only two things use the network: Claude, for turning words into edits, and fetching a video from a link.
+- **Local first.** Processing and storage happen on the owner's computer: transcription (whisper.cpp), listening, measuring and rendering (ffmpeg), projects, assets, presets and the brand. Only two things use the network: Claude, for turning words into edits, and fetching a video from a link. Beyond those, other AI services sit behind one switch in Settings, on by default: nothing goes to one until its key is added, then only the sound (to Deepgram or AssemblyAI, to hear every um and false start) or short excerpts (to Google Gemini, to judge a take), and turning it off stops them all.
 - **Talk, don't configure.** Settings are sentences and slash commands. Numbers live behind Details.
 - **Pattern, not footage.** A video someone likes is measured for its pattern only. Material pulled into an edit (B-roll, excerpts, icons) is short, cut to for what it shows, and credited in every export.
 
@@ -26,6 +26,7 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 | `src/main/audio-envelope.ts`                 | Loudness every 10 ms, streamed from ffmpeg.                                                                                                                                            |
 | `src/main/assets.ts`                         | Files, image links, video excerpts and search via yt-dlp, saved icons.                                                                                                                 |
 | `src/main/planner.ts`, `planner-prompt.ts`   | Requests and notes to ops with Claude (claude-opus-5-5, adaptive thinking, structured output, prompt caching, server-side refusal fallback). Every op is dry-run before it is offered. |
+| `src/main/providers/`                        | Other AI services: the one gate every request to them goes through, their keys, transcription with Deepgram or AssemblyAI, and judging excerpts with Google Gemini.                    |
 | `src/main/preset-store.ts`, `brand-store.ts` | Saved commands and the brand, as JSON in userData.                                                                                                                                     |
 | `src/renderer/src/cutalong/`                 | The app: rail, Start, thread, editor, projects, brand, presets, settings. `useCutalong` is the session; `usePlayer` plays a cut straight off the source.                               |
 | `src/renderer/src/legacy/`                   | The classic tools (clip finder, timeline editor, Live Buffer, Settings), loaded only in their own document at `#classic`.                                                              |
@@ -45,9 +46,9 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 
 ## Status
 
-Built and tested: the edit document, presets and slash commands, inspiration measuring, the renderer of record, the planner, assets (files, image links, video excerpts, B-roll search, icons, credits), listening for snappy cuts, the brand with learning, chats saved with their projects, Settings (the Claude key, checked as it is saved; the transcription model; the export folder; video sign-in; updates), and the Cutalong shell with the classic tools one click away.
+Built and tested: the edit document, presets and slash commands, inspiration measuring, the renderer of record, the planner, assets (files, image links, video excerpts, B-roll search, icons, credits), listening for snappy cuts, the brand with learning, chats saved with their projects, Settings (the Claude key, checked as it is saved; the transcription model; the export folder; video sign-in; updates), other AI services behind one switch (transcription that keeps every um, judging takes from their sound and picture), planning edits on a local model through Ollama, and the Cutalong shell with the classic tools one click away.
 
-Not yet: more than one recording per edit, B-roll audio, a local model for the planner (the clip finder already supports Ollama), and a renamed app id. The window says Cutalong, but `appId`, `productName` and the update feed still say Chop Shop on purpose: renaming them breaks auto-update for existing installs, and the name needs a trademark and domain check first.
+Not yet: more than one recording per edit, B-roll audio, and a renamed app id. The window says Cutalong, but `appId`, `productName` and the update feed still say Chop Shop on purpose: renaming them breaks auto-update for existing installs, and the name needs a trademark and domain check first.
 
 ## Next
 

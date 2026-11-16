@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { readApiKey } from './apikey'
-import { applyOps, currentCut, EditDocSchema, type Note, type Op } from '../shared/edit'
-import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript } from './planner-prompt'
+import { applyOps, currentCut, EditDocSchema, type EditDoc, type Note, type Op } from '../shared/edit'
+import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, type Plan } from './planner-prompt'
 
 /**
  * Turns a request or a set of notes into ops on an edit document, with Claude.
@@ -73,21 +73,28 @@ export async function planEdit(input: {
     }
     const plan = response.parsed_output
     if (!plan) return { ok: false, message: 'The plan came back in a shape I could not read. Try again.' }
-
-    // Dry run on a copy: only ops that apply cleanly go back to the editor.
-    const result = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
-    const known = new Set(input.notes.map((n) => n.id))
-    return {
-      ok: true,
-      ops: result.applied,
-      summary: plan.summary.trim(),
-      reply: plan.reply.trim(),
-      notesHandled: plan.notesHandled.filter((id) => known.has(id)),
-      needs: plan.needs.map((n) => n.trim()).filter(Boolean),
-      rejected: result.rejected.map((r) => r.reason)
-    }
+    return offerPlan(doc, plan, input.notes)
   } catch (err) {
     return { ok: false, message: describeError(err), needsKey: err instanceof Anthropic.AuthenticationError }
+  }
+}
+
+/**
+ * A plan as it is offered, whichever model made it: a dry run on a copy of
+ * the cut, so only ops that apply cleanly go back to the editor and the
+ * rest come back as sentences.
+ */
+export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[]): PlanEditResult {
+  const result = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+  const known = new Set(notes.map((n) => n.id))
+  return {
+    ok: true,
+    ops: result.applied,
+    summary: plan.summary.trim(),
+    reply: plan.reply.trim(),
+    notesHandled: plan.notesHandled.filter((id) => known.has(id)),
+    needs: plan.needs.map((n) => n.trim()).filter(Boolean),
+    rejected: result.rejected.map((r) => r.reason)
   }
 }
 

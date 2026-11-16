@@ -23,6 +23,7 @@ import type { Asset, EditDoc, Note, Op } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
 import type { Preset } from '../shared/presets'
+import type { KeyCheck, ServiceId } from '../shared/services'
 
 type Progress = { stage: string; percent: number }
 
@@ -98,6 +99,16 @@ const api = {
   > => ipcRenderer.invoke('cut:plan', req),
   checkKey: (): Promise<{ ok: true } | { ok: false; message: string; needsKey?: boolean }> =>
     ipcRenderer.invoke('claude:check'),
+  // Other AI services: whether each key exists (never what it is), saving and
+  // checking a key, and the one switch that lets anything go to them.
+  serviceKeys: (): Promise<Record<ServiceId, boolean>> => ipcRenderer.invoke('services:keys'),
+  setServiceKey: (id: ServiceId, key: string): Promise<{ ok: true } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('services:setKey', id, key),
+  clearServiceKey: (id: ServiceId): Promise<void> => ipcRenderer.invoke('services:clearKey', id),
+  checkServiceKey: (id: ServiceId): Promise<KeyCheck> => ipcRenderer.invoke('services:check', id),
+  setOtherServices: (on: boolean): Promise<boolean> => ipcRenderer.invoke('services:setOn', on),
+  localPlanners: (): Promise<{ up: boolean; models: { name: string; sizeBytes: number }[] }> =>
+    ipcRenderer.invoke('planner:local'),
   studyInspiration: (input: {
     url?: string
     path?: string
