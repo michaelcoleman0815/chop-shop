@@ -19,6 +19,7 @@ import { BeatStrip, type StripBeat } from '../components/BeatStrip'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { clock } from '../format'
 import { usePlayer } from '../usePlayer'
+import { useAudioOffset } from '../useAudioOffset'
 import type { Cutalong, PanelStatus } from '../useCutalong'
 import { Header } from './Header'
 
@@ -34,6 +35,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const resolved = useMemo(() => resolveCut(cut, doc.words, doc.sources), [cut, doc.words, doc.sources])
   const video = useRef<HTMLVideoElement>(null)
   const player = usePlayer(video, resolved)
+  // The sound lined up with the mouth, the way the export plays it.
+  useAudioOffset(video, doc.sources[0]?.audioOffsetSec ?? 0, app.mediaUrl)
   const [script, setScript] = useState(false)
 
   const beats: StripBeat[] = useMemo(() => {
