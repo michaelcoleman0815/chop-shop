@@ -473,7 +473,7 @@ describe.skipIf(!FFMPEG)('ready to upload', () => {
     const cut = currentCut(doc)
     const resolved = resolveCut(cut, doc.words, doc.sources)
     const scene = sceneForCut({ cut, resolved, words: doc.words, sources: doc.sources, brand: null })
-    const cues = exportCues({ cut, pass: subtitlePass(cut, resolved, scene), scene, width: 640 })
+    const cues = exportCues({ cut, resolved, pass: subtitlePass(cut, resolved, scene), scene, width: 640 })
     expect(cues.burned).toBe(false)
     expect(cues.cues.length).toBeGreaterThan(5)
     expect(captionStyleFor(cut.captions, 640).wordsPerGroup).toBe(cut.captions.wordsPerScreen)

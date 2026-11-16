@@ -115,19 +115,26 @@ export interface KitInput {
   why: 'no-key' | 'off' | null
 }
 
-/** The caption pages for the export, and whether they are in its picture. */
-export function exportCues(input: Pick<KitInput, 'cut' | 'pass' | 'scene' | 'width'>): { cues: Cue[]; burned: boolean } {
+/**
+ * The caption pages for the export, and whether they are in its picture.
+ * Burned in, they are the pages the picture shows, which wait while a card
+ * is up. With nothing burned in, they are for viewers to turn on, and every
+ * word said is in them, cards or not.
+ */
+export function exportCues(input: Pick<KitInput, 'cut' | 'resolved' | 'pass' | 'scene' | 'width'>): {
+  cues: Cue[]
+  burned: boolean
+} {
   if (drawsCaptions(input.cut.captions)) return { cues: drawnCues(input.scene), burned: true }
-  const words: TranscriptWord[] = input.pass.resolved.words.map((w) => ({
+  const burned = input.pass.cut.captions.on
+  const from = burned ? input.pass : { cut: input.cut, resolved: input.resolved }
+  const words: TranscriptWord[] = from.resolved.words.map((w) => ({
     text: w.text,
     startSec: w.outStart,
     endSec: w.outEnd
   }))
-  const style = captionStyleFor(input.pass.cut.captions, input.width, null)
-  return {
-    cues: subtitleCues(words, style.wordsPerGroup, style.uppercase),
-    burned: input.pass.cut.captions.on
-  }
+  const style = captionStyleFor(from.cut.captions, input.width, null)
+  return { cues: subtitleCues(words, style.wordsPerGroup, style.uppercase), burned }
 }
 
 /** The request for Claude: what kind of video, the brand, the chapters and the words as they play. */
