@@ -185,7 +185,7 @@ describe('the quote', () => {
     const q = quoteFor(brief, counts, ALL, { today: '2026-11-16', scriptWritten: true })
     expect(q.images).toBe('google')
     expect(q.clips).toBe('google')
-    const stills = q.lines.find((l) => l.what.startsWith('20 stills'))
+    const stills = q.lines.find((l) => l.what.startsWith('Up to 20 stills'))
     expect(stills?.cost).toBeCloseTo(20 * 0.0504, 6)
     const clips = q.lines.find((l) => l.what.startsWith('2 clips'))
     expect(clips?.cost).toBeCloseTo(2 * 5 * 0.0695, 6)

@@ -94,6 +94,8 @@ export interface AssembleInput {
   mapGraphics?: Map<number, Omit<MotionCallInput, 'from'>>
   music?: Music | null
   at?: string
+  /** The narration's recording id: s1 for a first narration, the next free id when it is read again. */
+  sourceId?: string
 }
 
 export interface Assembled {
@@ -176,15 +178,16 @@ export function assembleDoc(input: AssembleInput): Assembled {
   const brief = make.brief
   const at = input.at ?? new Date().toISOString()
   const files = input.files ?? new Map<string, MadeFile>()
+  const sid = input.sourceId ?? 's1'
   const source: Source = {
-    id: 's1',
+    id: sid,
     path: make.narration.path,
     durationSec: make.narration.durationSec,
     width: 0,
     height: 0,
     fps: MAKE_FPS[brief.format]
   }
-  const words = wordsFromTranscript(input.words, 's1')
+  const words = wordsFromTranscript(input.words, sid, sid === 's1' ? 'w' : `${sid}w`)
   const ranges = phraseRanges(
     make.phrases,
     words.map((w) => w.text)
@@ -203,7 +206,7 @@ export function assembleDoc(input: AssembleInput): Assembled {
     const shot = make.shots.find((s) => s.phrase === i)
     beats.push({
       id,
-      source: 's1',
+      source: sid,
       from: words[a].id,
       to: words[b].id,
       inSec: null,

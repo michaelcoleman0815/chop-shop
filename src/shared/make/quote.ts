@@ -3,6 +3,7 @@ import { CLAUDE_TOKENS, PRICES, PRICES_CHECKED, voiceRate } from './prices'
 import { countWords } from './script'
 import type { Brief, ImageService, Shot, Visual, VoiceChoice, VoiceEngine } from './schema'
 import { defaultVoice, voicePhrase } from './voices'
+import type { KeyService } from './key-steps'
 
 /**
  * The quote: before anything that costs money, what will be made, by which
@@ -90,6 +91,8 @@ export interface Quote {
   notes: string[]
   /** What is sent where, in sentences. */
   sends: string[]
+  /** Keys that are missing for what was asked, first the one that would help most: their steps show with the quote. */
+  keys: KeyService[]
   checked: string
 }
 
@@ -145,12 +148,14 @@ export function estimateCounts(brief: Brief, phrases: string[], script: string):
   const graphics = doc ? 0 : Math.round(scenes * 0.1)
   const callouts = doc ? 0 : Math.round(scenes * 0.3)
   const cards = doc ? 1 : 0
-  const own = Math.max(0, scenes - clips - maps - graphics - cards)
+  // Every shot is counted as a still until it is planned: maps, cards and graphics made here only bring it down,
+  // so what is quoted is the most it can cost.
+  const own = scenes - clips
   const sheets = doc ? 0 : 1
   const words = countWords(script)
   return {
     scenes,
-    stills: own + clips,
+    stills: scenes,
     clips,
     clipSeconds: 5,
     maps,
@@ -274,6 +279,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   const cap = brief.cap ?? opts.cap ?? DEFAULT_CAP
   const missing: string[] = []
   const notes: string[] = []
+  const keys: KeyService[] = []
 
   const pick = (want: ImageService | null): ImageService | null => {
     if (want && can[want]) return want
@@ -284,11 +290,17 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   const images = pick(brief.images)
   if (brief.images && images !== brief.images)
     notes.push(`There is no ${IMAGE_NAME[brief.images]} key in Settings, so ${images ? IMAGE_NAME[images] : 'nothing'} makes the pictures.`)
-  if (!images && counts.stills + counts.sheets > 0)
+  if (!images && counts.stills + counts.sheets > 0) {
     missing.push('To make the pictures I need a Google Gemini or fal.ai key in Settings, with other AI services on.')
+    keys.push(...(brief.images === 'fal' ? (['fal', 'gemini'] as const) : (['gemini', 'fal'] as const)))
+  } else if (brief.images && images !== brief.images) keys.push(brief.images === 'google' ? 'gemini' : 'fal')
   let clipsBy: ImageService | null = counts.clips > 0 ? images : null
   const { voice, note } = voiceFor(brief, can)
-  if (note) notes.push(note)
+  if (note) {
+    notes.push(note)
+    const asked = brief.voice.engine === 'gemini' ? 'gemini' : brief.voice.engine
+    if (asked === 'gemini' || asked === 'elevenlabs' || asked === 'openai') if (!keys.includes(asked)) keys.push(asked)
+  }
   if (voice.engine === 'own' && voice.id === 'pending') missing.push('Drop your voice-over in and I will make the video to it.')
 
   let c: Counts = { ...counts }
@@ -315,7 +327,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
       })
     if (images && c.stills > 0)
       lines.push({
-        what: `${c.stills} ${c.stills === 1 ? 'still' : 'stills'}${c.clips > 0 && clipsBy ? `, ${c.clips} of them the first frame of a clip` : ''}`,
+        what: `Up to ${c.stills} ${c.stills === 1 ? 'still' : 'stills'}${c.clips > 0 && clipsBy ? `, ${c.clips} of them the first frame of a clip` : ''}`,
         by: `${IMAGE_NAME[images]} ${PRICES.images[images].name}`,
         cost: round(c.stills * stillCost(images, size) + c.references * PRICES.images[images].perReference)
       })
@@ -409,6 +421,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
     missing,
     notes,
     sends,
+    keys,
     checked: PRICES_CHECKED
   }
 }

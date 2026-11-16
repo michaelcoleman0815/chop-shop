@@ -2,6 +2,8 @@ import { serviceName, type KeyCheck, type ServiceId } from '../../shared/service
 import { checkAssemblyAI } from './assemblyai'
 import { checkDeepgram } from './deepgram'
 import { checkGemini } from './gemini'
+import { checkFal } from './fal'
+import { checkElevenLabs, checkOpenAI } from './voices'
 import { ServiceError, type Gate } from './gate'
 
 /**
@@ -14,7 +16,10 @@ import { ServiceError, type Gate } from './gate'
 const CHECKS: Record<ServiceId, (gate: Gate) => Promise<void>> = {
   deepgram: checkDeepgram,
   assemblyai: checkAssemblyAI,
-  gemini: checkGemini
+  gemini: checkGemini,
+  fal: checkFal,
+  elevenlabs: checkElevenLabs,
+  openai: checkOpenAI
 }
 
 export async function checkServiceKey(
