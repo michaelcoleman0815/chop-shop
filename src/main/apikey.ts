@@ -1,44 +1,30 @@
 import { app, safeStorage } from 'electron'
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
-import { join } from 'path'
 import { detectProvider, type Provider } from '../shared/keys'
+import { keyFile } from './keychain'
 
 /**
  * The Anthropic key is encrypted with the OS keychain via safeStorage, so it is
  * never written to disk in the clear and never leaves the main process. The
  * renderer can ask whether a key exists, never what it is.
  */
-const keyFile = (): string => join(app.getPath('userData'), 'anthropic.key')
+const anthropic = keyFile('anthropic.key', { dir: () => app.getPath('userData'), sealer: () => safeStorage })
 
 export function hasApiKey(): boolean {
-  return existsSync(keyFile())
+  return anthropic.has()
 }
 
 export function setApiKey(key: string): void {
-  const trimmed = key.trim()
-  if (!trimmed) {
-    clearApiKey()
-    return
-  }
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('The system keychain is unavailable, so the key cannot be stored safely.')
-  }
-  writeFileSync(keyFile(), safeStorage.encryptString(trimmed), { mode: 0o600 })
+  anthropic.set(key)
 }
 
 export function clearApiKey(): void {
-  if (existsSync(keyFile())) unlinkSync(keyFile())
+  anthropic.clear()
 }
 
 export function readApiKey(): string | null {
   // An explicit environment key wins, which keeps CI and scripted runs simple.
   if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
-  if (!existsSync(keyFile())) return null
-  try {
-    return safeStorage.decryptString(readFileSync(keyFile()))
-  } catch {
-    return null
-  }
+  return anthropic.read()
 }
 
 export function currentProvider(): Provider {
