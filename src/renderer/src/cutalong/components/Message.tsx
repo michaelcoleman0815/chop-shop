@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { isImagePath } from '../../../../shared/assets'
 import type { ChatMessage } from '../../../../shared/types'
 import { mediaUrlFor } from '../api'
@@ -125,7 +125,16 @@ export function UserMessage({ msg }: { msg: Msg }): JSX.Element {
   )
 }
 
-export function AssistantMessage({ msg, onAction }: { msg: Msg; onAction: (a: Action) => void }): JSX.Element {
+/** `children` is what the reply shows under its sentence: the clips a /clipping run found. */
+export function AssistantMessage({
+  msg,
+  onAction,
+  children
+}: {
+  msg: Msg
+  onAction: (a: Action) => void
+  children?: ReactNode
+}): JSX.Element {
   const [open, setOpen] = useState(false)
   return (
     <div className="cl-msg-assistant" aria-live={msg.progress ? 'polite' : undefined}>
@@ -162,6 +171,7 @@ export function AssistantMessage({ msg, onAction }: { msg: Msg; onAction: (a: Ac
           </dl>
         )}
         {!msg.progress && msg.aside && <p className="cl-aside">{msg.aside}</p>}
+        {!msg.progress && children}
         {!msg.progress && (msg.actions?.length ?? 0) > 0 && (
           <div className="cl-actions">
             {msg.actions!.map((a) => (

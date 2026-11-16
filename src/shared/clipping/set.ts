@@ -1,3 +1,4 @@
+import { currentVersion } from '../edit/doc'
 import type { EditDoc } from '../edit/schema'
 import type { ChatMessage, Project } from '../types'
 import { ClipRunSchema, ClipSchema, type Clip, type ClipRun, type ClipSet } from './schema'
@@ -77,6 +78,22 @@ export function clipsOfRun(set: ClipSet | null | undefined, run: number): Clip[]
 /** The clips Export all renders: every one still kept, in the order found. */
 export function keptClips(set: ClipSet | null | undefined): Clip[] {
   return (set?.clips ?? []).filter((c) => c.kept)
+}
+
+/** Whether a clip's export is of the version it is at now. */
+export function exportedNow(clip: Clip): boolean {
+  return !!clip.exported && clip.exported.version === currentVersion(clip.doc).n
+}
+
+/**
+ * What Export all makes: the kept clips not exported as they are now, so a
+ * second run's clips go out without copies of the first's. When every one
+ * is out already, all of them again, as asked.
+ */
+export function toExport(set: ClipSet | null | undefined): Clip[] {
+  const kept = keptClips(set)
+  const waiting = kept.filter((c) => !exportedNow(c))
+  return waiting.length > 0 ? waiting : kept
 }
 
 /** Where the set already has clips, by recording: a new run finds others. */
