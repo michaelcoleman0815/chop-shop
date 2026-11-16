@@ -112,33 +112,67 @@ export function readCues(text: string): Cue[] {
 
 // ---------- The description ----------
 
+/** An empty line or two at most, and no spaces left at the ends of lines. */
+const tidyLines = (text: string): string =>
+  text
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+/** Words up to a length, cut where a word ends. */
+function wordsUpTo(text: string, length: number): string {
+  if (text.length <= length) return text
+  const cut = text.slice(0, Math.max(0, length))
+  const space = cut.lastIndexOf(' ')
+  return (space > 0 ? cut.slice(0, space) : cut).replace(/[\s,;:–-]+$/, '')
+}
+
 /**
  * The brand's template with the parts made for this video: {opening},
  * {chapters} and {credits}. A part the template leaves out still goes in, so
  * no description lacks what YouTube or the credits need: the opening first,
  * chapters after it, credits at the end. An empty part takes its line with it.
+ * Each part goes in as written: a dollar sign is a dollar sign.
+ *
+ * Past YouTube's 5,000 characters, the brand's own lines give way first,
+ * whole and from the last, then the opening, at a word; the chapters and the
+ * credits never do.
  */
 export function fillDescription(
   template: string,
   parts: { opening: string; chapters: string[]; credits: string[] }
 ): string {
   let text = template.trim() ? template : DEFAULT_DESCRIPTION
-  const chapters = parts.chapters.join('\n')
-  const credits = parts.credits.length ? `Credits\n${parts.credits.join('\n')}` : ''
+  const made: Record<string, string> = {
+    '{chapters}': parts.chapters.join('\n'),
+    '{credits}': parts.credits.length ? `Credits\n${parts.credits.join('\n')}` : ''
+  }
   if (!text.includes('{opening}')) text = `{opening}\n\n${text}`
-  if (!text.includes('{chapters}')) text = text.replace('{opening}', '{opening}\n\n{chapters}')
+  if (!text.includes('{chapters}')) text = text.replace('{opening}', () => '{opening}\n\n{chapters}')
   if (!text.includes('{credits}')) text = `${text}\n\n{credits}`
-  text = text
-    .replace(/\{opening\}/g, parts.opening.trim())
-    .replace(/\{chapters\}/g, chapters)
-    .replace(/\{credits\}/g, credits)
-  text = text
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-  if (text.length <= DESCRIPTION_MAX) return text
-  const cut = text.slice(0, DESCRIPTION_MAX)
-  return cut.slice(0, Math.max(cut.lastIndexOf('\n'), DESCRIPTION_MAX - 200)).trim()
+  // The template's own text between the parts, line by line; the parts at the odd places.
+  const pieces = text.split(/(\{(?:opening|chapters|credits)\})/)
+  const own = pieces.map((piece, i) => (i % 2 === 0 ? piece.split('\n') : null))
+  const fill = (opening: string): string =>
+    tidyLines(
+      pieces.map((piece, i) => (i % 2 === 1 ? (piece === '{opening}' ? opening : made[piece]) : own[i]!.join('\n'))).join('')
+    )
+  let opening = parts.opening.trim()
+  let out = fill(opening)
+  for (let i = own.length - 1; i >= 0 && out.length > DESCRIPTION_MAX; i--) {
+    const lines = own[i]
+    if (!lines) continue
+    for (let j = lines.length - 1; j >= 0 && out.length > DESCRIPTION_MAX; j--) {
+      if (!lines[j].trim()) continue
+      lines[j] = ''
+      out = fill(opening)
+    }
+  }
+  if (out.length > DESCRIPTION_MAX) {
+    opening = wordsUpTo(opening, opening.length - (out.length - DESCRIPTION_MAX))
+    out = fill(opening)
+  }
+  return out
 }
 
 // ---------- Writing them from the words ----------
