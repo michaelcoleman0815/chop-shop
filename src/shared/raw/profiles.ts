@@ -116,7 +116,7 @@ const NAMES: Record<string, RegExp> = {
   gaming: /\b(gaming|game|gameplay|let'?s play|playthrough)\b/,
   livestream: /\b(stream|livestream|live stream|vod|just chatting)\b/,
   church: /\b(church|sermon|service|worship|homily)\b/,
-  asmr: /\basmr\b/,
+  asmr: /\b(asmr)\b/,
   'talking-head': /\b(talking head|commentary|explainer|education|essay)\b/
 }
 

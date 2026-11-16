@@ -12,6 +12,7 @@ import type { Project, ProjectSummary, Settings } from '../../../shared/types'
 import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
 import { detectProvider } from '../../../shared/keys'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
+import { syncNotice } from '../../../shared/vision/offset'
 import type { Word } from '../../../shared/edit'
 import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
 import { synthFinished, synthRecording } from '../../../shared/learn/synth'
@@ -353,9 +354,17 @@ export function createMockApi(): CutalongApi {
         ...(sound.length ? ['Lining up your audio'] : []),
         'Transcribing',
         'Transcribing',
-        'Listening for the cuts'
+        'Listening for the cuts',
+        'Watching the speaker'
       ])
       const doc = fakeDoc(paths[0])
+      // As if the take came through a wireless microphone 0.12 s late, and was lined up.
+      const late = 0.12
+      doc.sources[0] = {
+        ...doc.sources[0],
+        audioOffsetSec: late,
+        mouth: { mode: 'cuts+sync', measuredOffsetSec: late, confidence: 0.92, seenShare: 0.96 }
+      }
       const lined = sound.length
         ? [
             {
@@ -369,7 +378,7 @@ export function createMockApi(): CutalongApi {
           ]
         : []
       if (sound.length) doc.sources[0] = { ...doc.sources[0], audio: { path: sound[0], offsetSec: 3.42 } }
-      return { ok: true as const, doc, mediaUrl: '/sample.mp4', warning: null, lined }
+      return { ok: true as const, doc, mediaUrl: '/sample.mp4', warning: null, lined, notice: syncNotice(late) }
     },
     planSession: async ({ request, paths }) => {
       await progress(listeners.cut, ['Looking through your footage', 'Working out which file is which'])

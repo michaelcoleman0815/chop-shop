@@ -16,8 +16,9 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
 - **Finds your retakes.** Lines said again, restarted mid-sentence or broken off are found from the words and their
   timing, and the best take is kept with one click, a sentence ("use the second take") or the Takes panel.
 - **Cuts on the words.** The recording is transcribed on your computer, split into beats, and every word's edges are
-  tightened to its sound, so a cut lands a hair before a word instead of clipping it. Strike words in the script view
-  to remove them.
+  tightened to its sound, so a cut lands a hair before a word instead of clipping it. When your face is on camera,
+  Cutalong also watches your mouth: it lines the sound up with your lips and opens each cut on a still mouth. Strike
+  words in the script view to remove them.
 - **Presets are slash commands.** `/tighten`, `/snappy`, `/shorts`, `/captions` and `/hook` are built in. Save any style
   as your own command, and `/brand` puts your brand on an edit.
 - **Videos you like are inspiration.** Paste a link and Cutalong measures its pattern: pace, cut length, colour,

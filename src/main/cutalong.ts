@@ -20,6 +20,9 @@ import { listenFrames } from './audio-map'
 import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
 import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply } from './intake'
+import { watchClip } from './mouth'
+import { detectFaces } from './track'
+import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { planEditLocally } from './planner-local'
@@ -81,7 +84,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
     try {
       if (paths.length === 0) return { ok: false as const, message: 'There is no footage to cut.' }
-      const read = await readFootage(paths, soundPaths, progress, 1)
+      const read = await readFootage(paths, soundPaths, progress, 1, { niche: nicheFrom(await readBrand()) })
       const created = createDoc({
         id: randomUUID(),
         title: basename(paths[0], extname(paths[0])),
@@ -97,7 +100,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         mediaUrl: deps.mediaUrlFor(paths[0]),
         warning: read.notes.length ? read.notes.join(' ') : null,
         lined: read.lined,
-        intake: read.intake
+        intake: read.intake,
+        notice: read.notice
       }
     } catch (err) {
       progress('Failed', 0)
@@ -119,6 +123,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       const soundPaths = req.soundPaths ?? []
       const notes: string[] = []
       const lined: Lined[] = []
+      let notice: string | null = null
       if (soundPaths.length > 0) {
         const lonely = doc.sources.filter((s) => !s.audio)
         const found = await lineUp(lonely, soundPaths, progress)
@@ -129,9 +134,15 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       const fresh = req.paths.filter((p) => !doc.sources.some((s) => s.path === p))
       if (fresh.length > 0) {
         const first = Number(nextSourceId(doc).slice(1))
-        const read = await readFootage(fresh, soundPaths, progress, first)
+        // New clips are watched the way this edit already is: its profile, and
+        // a mode a sentence chose for its mouth watching.
+        const read = await readFootage(fresh, soundPaths, progress, first, {
+          niche: doc.profile || nicheFrom(await readBrand()),
+          mode: doc.sources.find((s) => s.mouth?.chosen)?.mouth?.mode
+        })
         notes.push(...read.notes)
         lined.push(...read.lined)
+        notice = read.notice
         const names = fresh.map((p) => basename(p))
         if (Object.keys(read.maps).length > 0) doc = { ...doc, audio: { ...(doc.audio ?? {}), ...read.maps } }
         doc = addSources(
@@ -142,7 +153,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         )
       }
       progress('Ready', 100)
-      return { ok: true as const, doc, warning: notes.length ? notes.join(' ') : null, lined }
+      return { ok: true as const, doc, warning: notes.length ? notes.join(' ') : null, lined, notice }
     } catch (err) {
       progress('Failed', 0)
       return { ok: false as const, message: message(err) }
@@ -468,7 +479,8 @@ async function readFootage(
   paths: string[],
   soundPaths: string[],
   progress: ProgressFn,
-  firstIndex: number
+  firstIndex: number,
+  mouth: { niche?: string | null; mode?: MouthMode } = {}
 ): Promise<{
   sources: Source[]
   words: Word[]
@@ -476,6 +488,8 @@ async function readFootage(
   lined: Lined[]
   maps: Record<string, AudioMap>
   intake: { sentence: string; facts: string[] } | undefined
+  /** What watching the speaker's mouth changed or marked, in a sentence or two. */
+  notice: string | null
 }> {
   const sources: Source[] = []
   const words: Word[] = []
@@ -487,6 +501,7 @@ async function readFootage(
   const soundEnv = new Map<string, Envelope>()
   const soundWords = new Map<string, Transcript['words']>()
   const soundFrames = new Map<string, Frames>()
+  const watched: WatchedClip[] = []
 
   for (const [i, path] of paths.entries()) {
     const name = basename(path, extname(path))
@@ -524,6 +539,9 @@ async function readFootage(
 
     // The first recording's words are w1, w2, ...; later ones carry their id.
     const prefix = firstIndex + i === 1 ? 'w' : `${source.id}w`
+    // The loudness the words are snapped to, on this clip's clock: watching the mouth reads it too.
+    let heard: Envelope | null = null
+    let clip: Word[] = []
     try {
       if (source.audio) {
         const sp = source.audio.path
@@ -538,10 +556,11 @@ async function readFootage(
         const mine = (soundWords.get(sp) as Transcript['words'])
           .filter((w) => w.startSec >= at - 0.05 && w.endSec <= at + source.durationSec + 0.05)
           .map((w) => ({ ...w, startSec: w.startSec - at, endSec: w.endSec - at }))
-        let clip = wordsFromTranscript(mine, source.id, prefix)
+        clip = wordsFromTranscript(mine, source.id, prefix)
         if (clip.length > 0) {
           step('Listening for the cuts', 97)
-          clip = snapWords(clip, shiftEnvelope(soundEnv.get(sp) as Envelope, at, source.durationSec))
+          heard = shiftEnvelope(soundEnv.get(sp) as Envelope, at, source.durationSec)
+          clip = snapWords(clip, heard)
           // The pitch and kind of each sound come from the recording that is heard.
           try {
             if (!soundFrames.has(sp)) soundFrames.set(sp, await listenFrames(FFMPEG_PATH, sp))
@@ -550,12 +569,11 @@ async function readFootage(
             console.warn('[cut] could not map the sound:', message(err))
           }
         }
-        words.push(...clip)
       } else {
         const transcript = await transcriptFor(path, source.durationSec, (stage, pct) => step(stage, 10 + pct * 0.85), {
           notice: (sentence) => notes.push(sentence)
         })
-        let clip = wordsFromTranscript(transcript.words, source.id, prefix)
+        clip = wordsFromTranscript(transcript.words, source.id, prefix)
         // Listen to the recording so every word's edges sit on its sound,
         // which is what lets cuts land tight without clipping a consonant.
         // The same listen measures pitch and what kind of sound each stretch
@@ -564,18 +582,35 @@ async function readFootage(
           step('Listening for the cuts', 97)
           try {
             const frames = await listenFrames(FFMPEG_PATH, path)
-            clip = snapWords(clip, { hopSec: frames.hopSec, db: frames.db })
+            heard = { hopSec: frames.hopSec, db: frames.db }
+            clip = snapWords(clip, heard)
             maps[source.id] = buildAudioMap(frames, clip)
           } catch (err) {
             try {
-              clip = snapWords(clip, own ?? (await loudnessEnvelope(FFMPEG_PATH, path)))
+              heard = own ?? (await loudnessEnvelope(FFMPEG_PATH, path))
+              clip = snapWords(clip, heard)
             } catch {
               console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
             }
           }
         }
-        words.push(...clip)
       }
+      // Watch the speaker's mouth (main/mouth): the sound lined up with it,
+      // cuts timed to it and voices from off camera marked, all on this
+      // clip's own picture clock. Without a face, or without the sound to
+      // compare it with, sound timing stays.
+      if (clip.length > 0 && heard) {
+        step('Watching the speaker', 98)
+        const w = await watchClip(
+          { source, words: clip, envelope: heard, map: maps[source.id], ...mouth },
+          detectFaces,
+          FFMPEG_PATH
+        )
+        ;({ source, words: clip } = w)
+        if (w.map) maps[source.id] = w.map
+        if (w.seen) watched.push({ name: basename(path), source, words: clip })
+      }
+      words.push(...clip)
     } catch (err) {
       notes.push(`I couldn't transcribe ${name}, so it is one long beat for now. ${message(err)}`)
     }
@@ -583,7 +618,7 @@ async function readFootage(
   }
   const intake =
     sentences.length || facts.length ? { sentence: sentences.join(' '), facts: facts.slice(0, 3) } : undefined
-  return { sources, words, notes, lined, maps, intake }
+  return { sources, words, notes, lined, maps, intake, notice: mouthNotice(watched, paths.length) }
 }
 
 /**

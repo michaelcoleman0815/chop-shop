@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { sourceTimeAt, type Piece, type Resolved, type Source } from '../../../shared/edit'
+import { heardFrom } from '../../../shared/vision/offset'
 import { steady } from './motion'
 
 /**
@@ -11,7 +12,9 @@ import { steady } from './motion'
  * A recording whose sound comes from another file (a screen or recorder
  * recording with the better microphone) plays muted, with that file in an
  * audio element kept on the same moment: corrected only when it drifts, so
- * the sound stays smooth.
+ * the sound stays smooth. So does one whose own sound was lined up with the
+ * mouth: its own file, a moment later (vision/offset heardFrom), as the
+ * export plays it.
  *
  * Without media to play (the browser mock) the same clock runs on its own.
  */
@@ -97,7 +100,8 @@ export function usePlayer(
       const v = video.current
       const a = mediaRef.current?.audio?.current
       if (!v) return
-      const lined = sourceOf(p)?.audio
+      const source = sourceOf(p)
+      const lined = source ? heardFrom(source) : null
       if (!lined || !a || !mediaRef.current) {
         v.muted = false
         if (a && !a.paused) a.pause()
