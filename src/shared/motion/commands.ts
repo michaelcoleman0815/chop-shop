@@ -41,10 +41,10 @@ export function takeStyle(rest: string, kind: MotionKind): { style: string; rest
   return { style: '', rest: rest.trim() }
 }
 
-/** "48 MP camera, f/1.78" into its parts. */
+/** "48 MP camera, f/1.78" into its parts. A comma inside a number, as in $1,299, stays in it. */
 export function parts(rest: string): string[] {
   return rest
-    .split(/\s*[,;|]\s*/)
+    .split(/\s*(?:[;|]|,(?!\d))\s*/)
     .map((s) => s.trim())
     .filter(Boolean)
 }
@@ -101,6 +101,20 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       const [line, ...more] = parts(text)
       if (!line) return { problem: 'Tell me the line to end on, like /endcard Subscribe for part two.' }
       return { style, text: [line, more.join(', ')].filter((t, i) => i === 0 || t), from: 'end-2', to: 'end' }
+    }
+  },
+  {
+    command: 'pop',
+    kind: 'keyword',
+    title: 'Keyword pop',
+    summary: 'The number or word you say, big, as you say it: /pop 120 Hz, or /pop $999, starting price',
+    parse: (rest, ctx) => {
+      const { style, rest: text } = takeStyle(rest, 'keyword')
+      const [value, ...label] = parts(text)
+      if (!value) return { problem: 'Tell me the word or number, like /pop 120 Hz.' }
+      // On the word itself when it is said, nearest the playhead.
+      const at = wordFor(ctx.resolved, value, ctx.time)
+      return { style, text: [value, label.join(', ')].filter((t, i) => i === 0 || t), ...(at ? { from: at } : {}) }
     }
   },
   {

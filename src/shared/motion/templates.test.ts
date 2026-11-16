@@ -23,6 +23,9 @@ import {
   renderFrame,
   rowsToText,
   sampleTransform,
+  countText,
+  numberIn,
+  type Layer,
   textToRows,
   wordAt,
   type IconNode,
@@ -785,6 +788,75 @@ describe('phone with logos', () => {
       op: { text: ['a1'], style: 'float', items: [{ label: 'Bitcoin' }, { label: 'Tether' }] }
     })
     expect(planMotionCommand('phone', 'a4 Bitcoin', ctx)).toEqual({ problem: 'There is no picture a4 in this edit.' })
+  })
+})
+
+describe('keyword pops', () => {
+  it('lands the number on its word in the accent, counting up to it, and is gone after', () => {
+    for (const aspect of ['vertical', 'wide'] as const) {
+      const doc = docWith(aspect, [
+        { op: 'motion-add', kind: 'keyword', from: 'w16', text: ['$999', 'starting price'], icon: 'tag' }
+      ])
+      const scene = sceneOf(doc)
+      const item = scene.items[0]
+      const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+      expect(item.at).toBeCloseTo(resolved.words.find((w) => w.id === 'w16')!.outStart)
+      const { width: W, height: H } = scene.size
+      // The plate in the accent, near the top and in the middle, once it has landed.
+      const f = draw(scene, item.start + 1.2)
+      const yellow = (px: number[]): boolean => px[0] > 230 && px[1] > 190 && px[2] < 140 && px[3] > 250
+      let hits = 0
+      let lowest = 0
+      for (let y = 0; y < H * 0.5; y += 4)
+        for (let x = W * 0.3; x < W * 0.7; x += 4)
+          if (yellow(f.at(x, y))) {
+            hits++
+            lowest = Math.max(lowest, y)
+          }
+      expect(hits).toBeGreaterThan(200)
+      // In the top third, above where a speaker's face usually is.
+      expect(lowest).toBeLessThan(H * (aspect === 'vertical' ? 0.34 : 0.45))
+      expect(draw(scene, item.start - 0.05).lit(0, 0, W, H)).toBe(0)
+      expect(draw(scene, item.end).lit(0, 0, W, H)).toBe(0)
+      // It counts up: $0 as it lands, $999 once it has.
+      const text = (item.layers[0] as { children: Layer[] }).children.find(
+        (l): l is TextLayer => l.kind === 'text' && !!l.count
+      )!
+      expect(text.count).toMatchObject({ prefix: '$', to: 999, suffix: '' })
+      const local = (t: number): string => countText(text.count!, t, item.end - item.start)
+      expect(local(0)).toBe('$0')
+      expect(Number(local(0.4).slice(1))).toBeGreaterThan(0)
+      expect(Number(local(0.4).slice(1))).toBeLessThan(999)
+      expect(local(1.2)).toBe('$999')
+    }
+  })
+
+  it('reads the number in a word, and counts only a figure', () => {
+    expect(numberIn('$1,299')).toEqual({ prefix: '$', to: 1299, decimals: 0, suffix: '', group: true })
+    expect(numberIn('f/1.78')).toEqual({ prefix: 'f/', to: 1.78, decimals: 2, suffix: '', group: false })
+    expect(numberIn('120 Hz')).toMatchObject({ to: 120, suffix: ' Hz' })
+    expect(numberIn('USB-C')).toBeNull()
+    const year = sceneOf(docWith('wide', [{ op: 'motion-add', kind: 'keyword', from: 'w5', text: ['2024'] }]))
+    const plain = (year.items[0].layers[0] as { children: Layer[] }).children.find(
+      (l) => l.kind === 'text'
+    ) as TextLayer
+    expect(plain.count).toBeUndefined()
+  })
+
+  it('reads /pop: the word, a label, and lands on the word said', () => {
+    const doc = docWith('vertical', [])
+    const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+    const plan = planMotionCommand('pop', '120 Hz, refresh rate', { doc, resolved, time: null, brandName: '' })
+    expect(plan).toMatchObject({ op: { kind: 'keyword', text: ['120 Hz', 'refresh rate'], from: 'w19' } })
+    // A comma inside a number stays in it.
+    expect(
+      planMotionCommand('pop', '$1,299, starting price', { doc, resolved, time: null, brandName: '' })
+    ).toMatchObject({
+      op: { text: ['$1,299', 'starting price'] }
+    })
+    expect(planMotionCommand('pop', 'bare', { doc, resolved, time: null, brandName: '' })).toEqual({
+      problem: 'Tell me the word or number, like /pop 120 Hz.'
+    })
   })
 })
 
