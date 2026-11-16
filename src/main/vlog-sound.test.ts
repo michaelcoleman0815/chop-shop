@@ -22,7 +22,7 @@ const SOUNDS: Record<string, string[]> = {
     '-f',
     'lavfi',
     '-i',
-    "anoisesrc=color=pink:amplitude=0.5:duration=6:sample_rate=48000,volume='0.6+0.4*sin(2*PI*0.7*t)':eval=frame"
+    "anoisesrc=color=pink:amplitude=0.5:duration=6:sample_rate=48000:seed=1,volume='0.6+0.4*sin(2*PI*0.7*t)':eval=frame"
   ],
   // Laughter: a high voice pulsing five times a second.
   laughter: [
@@ -36,7 +36,7 @@ const SOUNDS: Record<string, string[]> = {
     '-f',
     'lavfi',
     '-i',
-    "anoisesrc=color=brown:amplitude=0.9:duration=6:sample_rate=48000,lowpass=f=250,volume='0.5+0.5*sin(2*PI*0.4*t)':eval=frame"
+    "anoisesrc=color=brown:amplitude=0.9:duration=6:sample_rate=48000:seed=1,lowpass=f=250,volume='0.5+0.5*sin(2*PI*0.4*t)':eval=frame"
   ],
   // Music: a chord held over a kick on every beat.
   music: [
@@ -46,7 +46,7 @@ const SOUNDS: Record<string, string[]> = {
     "aevalsrc='0.25*sin(2*PI*220*t)+0.2*sin(2*PI*277.2*t)+0.2*sin(2*PI*329.6*t)+0.5*sin(2*PI*55*t)*exp(-8*mod(t,0.5))':s=48000:d=6"
   ],
   // A quiet room.
-  room: ['-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.004:duration=5:sample_rate=48000']
+  room: ['-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.004:duration=5:sample_rate=48000:seed=1']
 }
 
 const heard = new Map<string, ReturnType<typeof hearClip>>()

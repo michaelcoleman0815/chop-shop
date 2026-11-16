@@ -389,18 +389,18 @@ function soundGraph(c: PlannedClip, input: number): { inputs: string[]; graph: s
   }
   switch (s) {
     case 'room':
-      return lav(`anoisesrc=color=pink:amplitude=0.004:duration=${d}:sample_rate=48000`)
+      return lav(`anoisesrc=color=pink:amplitude=0.004:duration=${d}:sample_rate=48000:seed=1`)
     case 'street':
-      return lav(`anoisesrc=color=pink:amplitude=0.02:duration=${d}:sample_rate=48000,lowpass=f=1800`)
+      return lav(`anoisesrc=color=pink:amplitude=0.02:duration=${d}:sample_rate=48000:seed=1,lowpass=f=1800`)
     case 'pocket':
-      return lav(`anoisesrc=color=brown:amplitude=0.01:duration=${d}:sample_rate=48000,lowpass=f=300`)
+      return lav(`anoisesrc=color=brown:amplitude=0.01:duration=${d}:sample_rate=48000:seed=1,lowpass=f=300`)
     case 'wind':
       return lav(
-        `anoisesrc=color=brown:amplitude=0.9:duration=${d}:sample_rate=48000,lowpass=f=250,volume='0.5+0.5*sin(2*PI*0.4*t)':eval=frame`
+        `anoisesrc=color=brown:amplitude=0.9:duration=${d}:sample_rate=48000:seed=1,lowpass=f=250,volume='0.5+0.5*sin(2*PI*0.4*t)':eval=frame`
       )
     case 'crowd':
       return lav(
-        `anoisesrc=color=pink:amplitude=0.6:duration=${d}:sample_rate=48000,volume='0.65+0.35*sin(2*PI*0.7*t)':eval=frame`
+        `anoisesrc=color=pink:amplitude=0.6:duration=${d}:sample_rate=48000:seed=1,volume='0.65+0.35*sin(2*PI*0.7*t)':eval=frame`
       )
     case 'laughter':
       return lav(
