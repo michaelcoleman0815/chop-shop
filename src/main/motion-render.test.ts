@@ -5,7 +5,8 @@ import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
-import { buildRenderArgs, renderCut, type RenderSource } from './cut-render'
+import { buildRenderArgs, frameSize, renderCut, type RenderSource } from './cut-render'
+import { designSize } from '../shared/motion'
 import { overlaySpans, renderCutMotion } from './motion-render'
 import { probeMedia } from './inspiration/measure'
 
@@ -28,6 +29,20 @@ const FFMPEG = findFfmpeg()
 const FONTS = fileURLToPath(new URL('../../resources/fonts/', import.meta.url))
 
 describe('the final pass with graphics', () => {
+  it('lays graphics out in the frame the renderer makes', () => {
+    // The editor draws in designSize; the export renders frameSize. They must agree.
+    for (const aspect of ['vertical', 'wide', 'square', 'original'] as const) {
+      for (const source of [
+        { width: 1920, height: 1080 },
+        { width: 3840, height: 2160 },
+        { width: 1080, height: 1920 },
+        { width: 1000, height: 750 }
+      ]) {
+        expect(designSize(aspect, source)).toEqual(frameSize(aspect, source))
+      }
+    }
+  })
+
   it('lays each overlay over the captions and under the logo, shifted to its start', () => {
     const args = buildRenderArgs(
       [{ path: '/a.mov', startSec: 0, durationSec: 4, hasAudio: true, treatment: null, broll: null }],

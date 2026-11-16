@@ -13,9 +13,11 @@ import {
   type Resolved
 } from '../../../../shared/edit'
 import { parseCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
+import { buildScene, designSize, themeFrom, type MotionScene } from '../../../../shared/motion'
 import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
+import { MotionCanvas } from '../components/MotionCanvas'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { clock } from '../format'
 import { usePlayer } from '../usePlayer'
@@ -35,6 +37,18 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const video = useRef<HTMLVideoElement>(null)
   const player = usePlayer(video, resolved)
   const [script, setScript] = useState(false)
+  // The cut's graphics on the output clock, in the brand's look: what the export draws.
+  const scene = useMemo(
+    () =>
+      buildScene({
+        cut,
+        resolved,
+        words: doc.words,
+        size: designSize(cut.aspect, doc.sources[0]),
+        theme: themeFrom(app.brand)
+      }),
+    [cut, resolved, doc.words, doc.sources, app.brand]
+  )
 
   const beats: StripBeat[] = useMemo(() => {
     const byId = new Map(cut.beats.map((b) => [b.id, b]))
@@ -91,6 +105,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           <Preview
             doc={doc}
             resolved={resolved}
+            scene={scene}
             time={player.time}
             playing={player.playing}
             video={video}
@@ -127,6 +142,7 @@ const CAPTION_TOP: Record<string, number> = { top: 0.22, middle: 0.52, chest: 0.
 function Preview({
   doc,
   resolved,
+  scene,
   time,
   playing,
   video,
@@ -134,6 +150,7 @@ function Preview({
 }: {
   doc: EditDoc
   resolved: Resolved
+  scene: MotionScene
   time: number
   playing: boolean
   video: React.RefObject<HTMLVideoElement>
@@ -220,6 +237,7 @@ function Preview({
             ))}
           </div>
         )}
+        <MotionCanvas scene={scene} assets={doc.assets} time={time} width={box.w} height={box.h} />
       </div>
     </div>
   )

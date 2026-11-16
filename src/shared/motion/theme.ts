@@ -29,6 +29,25 @@ export const SAFE_AREAS: Record<Frame['shape'], { top: number; bottom: number; l
   square: { top: 0.06, bottom: 0.08, left: 0.06, right: 0.06 }
 }
 
+const even = (n: number): number => Math.max(2, Math.round(n / 2) * 2)
+
+/**
+ * The full-size output frame for an aspect: the design pixels graphics are
+ * laid out in, in the editor and in the export alike. It has to agree with
+ * the renderer's frameSize, which a test checks.
+ */
+export function designSize(
+  aspect: 'vertical' | 'wide' | 'square' | 'original',
+  source: { width: number; height: number }
+): Size {
+  if (aspect === 'vertical') return { width: 1080, height: 1920 }
+  if (aspect === 'square') return { width: 1080, height: 1080 }
+  if (aspect === 'wide') return { width: 1920, height: 1080 }
+  const long = Math.max(source.width, source.height, 2)
+  const k = Math.min(1, 1920 / long)
+  return { width: even(source.width * k), height: even(source.height * k) }
+}
+
 export function frameFor(size: Size): Frame {
   const ratio = size.width / Math.max(1, size.height)
   const shape: Frame['shape'] = ratio < 0.85 ? 'vertical' : ratio > 1.2 ? 'wide' : 'square'

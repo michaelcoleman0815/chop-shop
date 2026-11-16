@@ -1,0 +1,102 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { renderFrame, type IconNode, type Layer, type MotionScene } from '../../../../shared/motion'
+import type { Asset } from '../../../../shared/edit'
+import { mediaUrlFor } from '../api'
+import { loadIconNodes, loadMotionFonts, loadPicture } from '../motion'
+
+/**
+ * The cut's graphics over the preview: a canvas the size of the frame, drawn
+ * with the export's own drawing code at the player's output time on every
+ * animation frame the player gives. It sits over the picture and the
+ * captions and never takes the pointer.
+ */
+
+function walk(layers: Layer[], visit: (l: Layer) => void): void {
+  for (const l of layers) {
+    visit(l)
+    if (l.kind === 'group') walk(l.children, visit)
+  }
+}
+
+export function MotionCanvas({
+  scene,
+  assets,
+  time,
+  width,
+  height
+}: {
+  scene: MotionScene
+  assets: Asset[]
+  time: number
+  width: number
+  height: number
+}): JSX.Element | null {
+  const canvas = useRef<HTMLCanvasElement>(null)
+  // Bumped when a face, the icons or an image finishes loading, so the frame redraws with it.
+  const [loaded, setLoaded] = useState(0)
+  const [icons, setIcons] = useState<((name: string) => IconNode[] | undefined) | null>(null)
+  const [pictures, setPictures] = useState<Map<string, CanvasImageSource>>(new Map())
+
+  useEffect(() => {
+    void loadMotionFonts().then(() => setLoaded((n) => n + 1))
+  }, [])
+
+  const needs = useMemo(() => {
+    let icon = false
+    const ids = new Set<string>()
+    walk(scene.layers, (l) => {
+      if (l.kind === 'image' && l.icon) icon = true
+      if (l.kind === 'image' && l.asset) ids.add(l.asset)
+    })
+    return { icon, ids: [...ids].sort().join(',') }
+  }, [scene])
+
+  useEffect(() => {
+    if (!needs.icon || icons) return
+    void loadIconNodes().then((lookup) => setIcons(() => lookup))
+  }, [needs.icon, icons])
+
+  useEffect(() => {
+    if (!needs.ids) return
+    let live = true
+    const byId = new Map(assets.map((a) => [a.id, a]))
+    void Promise.all(
+      needs.ids.split(',').map(async (id) => {
+        const asset = byId.get(id)
+        const img = asset ? await loadPicture(mediaUrlFor(asset.path)) : null
+        return [id, img] as const
+      })
+    ).then((pairs) => {
+      if (!live) return
+      setPictures(new Map(pairs.filter((p): p is readonly [string, HTMLImageElement] => p[1] !== null)))
+    })
+    return () => {
+      live = false
+    }
+  }, [needs.ids, assets])
+
+  useLayoutEffect(() => {
+    const el = canvas.current
+    if (!el || width <= 0 || height <= 0) return
+    const dpr = window.devicePixelRatio || 1
+    const pw = Math.max(1, Math.round(width * dpr))
+    const ph = Math.max(1, Math.round(height * dpr))
+    if (el.width !== pw) el.width = pw
+    if (el.height !== ph) el.height = ph
+    const ctx = el.getContext('2d')
+    if (!ctx) return
+    renderFrame(
+      ctx,
+      time,
+      scene.layers,
+      scene.size,
+      { width: pw, height: ph },
+      { icons: icons ?? undefined, images: pictures }
+    )
+    // The moment drawn, for anyone checking the preview against the export.
+    el.dataset.time = time.toFixed(4)
+  }, [scene, time, width, height, loaded, icons, pictures])
+
+  if (scene.layers.length === 0) return null
+  return <canvas ref={canvas} className="cl-motion" style={{ width, height }} aria-hidden="true" />
+}

@@ -849,6 +849,13 @@ button:disabled {
   pointer-events: none;
 }
 
+/* Motion graphics: the export's own drawing, over the picture and the captions. */
+.cl-motion {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .cl-notes {
   min-height: 0;
   display: flex;
