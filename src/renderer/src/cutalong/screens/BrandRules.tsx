@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Brand } from '../../../../shared/brand'
-import { describeSources, MAX_SOURCES, readSources } from '../../../../shared/broll-sources'
+import { DESCRIPTION_TEMPLATE_MAX, type Brand } from '../../../../shared/brand'
+import { describeSources, MAX_SOURCE_LENGTH, MAX_SOURCES, readSources } from '../../../../shared/broll-sources'
 import { brandInSentence } from '../../../../shared/brands'
 import { listWords, neverName, readNever } from '../../../../shared/never'
 import { Button, Icon } from '../components/ui'
@@ -113,9 +113,12 @@ function SourceList({
   const entries = text.split(/\n/).map((l) => l.trim()).filter(Boolean)
   const read = readSources(entries)
   const over = entries.length > MAX_SOURCES
+  // A brand keeps a line to MAX_SOURCE_LENGTH characters: any channel or site's address fits.
+  const long = entries.some((l) => l.length > MAX_SOURCE_LENGTH)
   const says = [
     read.sources.length ? sentence(describeSources(read.sources)) : '',
     over ? `I keep the first ${MAX_SOURCES}.` : '',
+    long ? `A line runs past ${MAX_SOURCE_LENGTH} characters, so I keep its first ${MAX_SOURCE_LENGTH}: paste the channel's own address instead.` : '',
     read.problems[0] ?? ''
   ]
     .filter(Boolean)
@@ -130,7 +133,7 @@ function SourceList({
           placeholder={placeholder}
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
-          onBlur={() => onSave(entries.slice(0, MAX_SOURCES))}
+          onBlur={() => onSave(entries.slice(0, MAX_SOURCES).map((l) => l.slice(0, MAX_SOURCE_LENGTH)))}
         />
       </label>
       {says && (
@@ -189,7 +192,7 @@ export function DescriptionSection({ app, brand }: { app: Cutalong; brand: Brand
           rows={7}
           value={brand.description}
           spellCheck={false}
-          onChange={(e) => app.saveBrand({ ...brand, description: e.target.value.slice(0, 5000) })}
+          onChange={(e) => app.saveBrand({ ...brand, description: e.target.value.slice(0, DESCRIPTION_TEMPLATE_MAX) })}
         />
       </label>
     </section>

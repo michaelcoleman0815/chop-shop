@@ -1,5 +1,5 @@
 import { useEffect, useState, type DragEvent } from 'react'
-import { CORNERS, describeLearned, type Brand } from '../../../../shared/brand'
+import { CORNERS, describeLearned, LOGO_NAME_MAX, MAX_LOGOS, type Brand } from '../../../../shared/brand'
 import { brandName } from '../../../../shared/brands'
 import { MOTION_FONTS } from '../../../../shared/motion/fonts'
 import { describeStyle } from '../../../../shared/presets'
@@ -41,6 +41,32 @@ const LOOKS = [
   ['clean', 'Subtitles'],
   ['hierarchy', 'Hierarchy']
 ] as const
+
+/**
+ * A product logo's name, as long as a brand keeps one. Saved as it is typed,
+ * except while it is empty: cleared to type it again, it stays on the page
+ * and comes back as it was if it is left empty.
+ */
+function LogoName({ name, onSave }: { name: string; onSave: (name: string) => void }): JSX.Element {
+  const [text, setText] = useState(name)
+  useEffect(() => setText(name), [name])
+  return (
+    <input
+      className="cl-list-main"
+      aria-label="Logo name"
+      value={text}
+      maxLength={LOGO_NAME_MAX}
+      onChange={(e) => {
+        const next = e.target.value.slice(0, LOGO_NAME_MAX)
+        setText(next)
+        if (next.trim()) onSave(next)
+      }}
+      onBlur={() => {
+        if (!text.trim()) setText(name)
+      }}
+    />
+  )
+}
 
 /** The person's brands, which one is shown, and which one new chats use. */
 function BrandList({ app }: { app: Cutalong }): JSX.Element {
@@ -125,17 +151,24 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
 
   const caption = brand.captions
 
-  /** A product's logo, named after its file until the name is changed. */
+  /** A product's logo, named after its file (as long a name as a brand keeps) until the name is changed. */
   const addProductLogo = async (): Promise<void> => {
     const picked = await api.chooseMedia()
     if (!picked || picked.kind !== 'image') return
+    const others = brand.logos.filter((l) => l.path !== picked.path)
+    if (others.length >= MAX_LOGOS) {
+      app.setToast({ text: `A brand keeps ${MAX_LOGOS} product logos. Remove one to add another.`, error: true })
+      return
+    }
     const file = picked.path.startsWith('data:') ? 'Logo' : (picked.path.split(/[\\/]/).pop() ?? 'Logo')
     const name =
       file
         .replace(/\.[^.]+$/, '')
         .replace(/[-_]+/g, ' ')
+        .trim()
+        .slice(0, LOGO_NAME_MAX)
         .trim() || 'Logo'
-    set({ logos: [...brand.logos.filter((l) => l.path !== picked.path), { name, path: picked.path }].slice(0, 24) })
+    set({ logos: [...others, { name, path: picked.path }] })
   }
 
   return (
@@ -263,13 +296,9 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                   {brand.logos.map((l, i) => (
                     <li key={l.path}>
                       <img className="cl-logo-thumb" src={mediaUrlFor(l.path)} alt="" width={44} height={44} />
-                      <input
-                        className="cl-list-main"
-                        aria-label="Logo name"
-                        value={l.name}
-                        onChange={(e) =>
-                          set({ logos: brand.logos.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })
-                        }
+                      <LogoName
+                        name={l.name}
+                        onSave={(name) => set({ logos: brand.logos.map((x, j) => (j === i ? { ...x, name } : x)) })}
                       />
                       <button
                         type="button"

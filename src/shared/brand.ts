@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_SOURCE_LENGTH, MAX_SOURCES } from './broll-sources'
 import { CaptionSpecSchema } from './edit/schema'
 import { styleFromFacts, type InspirationFacts } from './inspiration/facts'
 import { habitsStyle } from './learn/habits'
@@ -54,6 +55,12 @@ export type BrandVideo = z.infer<typeof BrandVideoSchema>
  */
 export const DEFAULT_DESCRIPTION = '{opening}\n\n{chapters}\n\n{credits}'
 
+/** Product logos a brand keeps, and how long a logo's name may be. */
+export const MAX_LOGOS = 24
+export const LOGO_NAME_MAX = 60
+/** How long the description template may be: YouTube's own limit. */
+export const DESCRIPTION_TEMPLATE_MAX = 5000
+
 export const BrandSchema = z.object({
   v: z.literal(1),
   /**
@@ -74,8 +81,8 @@ export const BrandSchema = z.object({
   captions: CaptionSpecSchema.partial(),
   /** Logos of the creator's own products and channel, by name, for logo pops. Brands saved before had none. */
   logos: z
-    .array(z.object({ name: z.string().trim().min(1).max(60), path: z.string().min(1) }))
-    .max(24)
+    .array(z.object({ name: z.string().trim().min(1).max(LOGO_NAME_MAX), path: z.string().min(1) }))
+    .max(MAX_LOGOS)
     .default([]),
   /** How edits should sound, in the person's words. The planner reads it. */
   voice: z.string(),
@@ -108,12 +115,12 @@ export const BrandSchema = z.object({
    */
   broll: z
     .object({
-      prefer: z.array(z.string().max(300)).max(30).default([]),
-      block: z.array(z.string().max(300)).max(30).default([])
+      prefer: z.array(z.string().max(MAX_SOURCE_LENGTH)).max(MAX_SOURCES).default([]),
+      block: z.array(z.string().max(MAX_SOURCE_LENGTH)).max(MAX_SOURCES).default([])
     })
     .default({ prefer: [], block: [] }),
   /** Every export's description, with the brand's own lines around the parts made for each video. */
-  description: z.string().max(5000).default(DEFAULT_DESCRIPTION)
+  description: z.string().max(DESCRIPTION_TEMPLATE_MAX).default(DEFAULT_DESCRIPTION)
 })
 export type Brand = z.infer<typeof BrandSchema>
 

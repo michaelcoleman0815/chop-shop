@@ -2,7 +2,17 @@ import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { BrandSchema, type Brand } from '../shared/brand'
-import { brandById, brandOfCut, brandsFromLegacy, defaultBrand, parseBrands, type Brands } from '../shared/brands'
+import {
+  brandById,
+  brandOfCut,
+  brandsFromLegacy,
+  checkBrands,
+  defaultBrand,
+  parseBrands,
+  replaceBrand,
+  unreadBrands,
+  type Brands
+} from '../shared/brands'
 import { currentCut, type EditDoc } from '../shared/edit'
 
 /**
@@ -12,9 +22,13 @@ import { currentCut, type EditDoc } from '../shared/edit'
  * Before there could be more than one, the brand lived alone in brand.json.
  * That file is read as the first brand of the list, as it was, until the list
  * is first saved; after that the default brand is also written back to it,
- * so a build from before still opens with the brand it knows. A file that no
- * longer validates is set aside rather than overwritten, so nothing a person
- * built is lost to a bad write.
+ * so a build from before still opens with the brand it knows. A build from
+ * before saves that file without the brand's id, which marks what it wrote:
+ * changes made there since this build last wrote it come back into the
+ * default brand, and what that build does not know (the fonts, the B-roll
+ * sources, the description) stays as it was. A file that no longer validates
+ * is set aside rather than overwritten, so nothing a person built is lost to
+ * a bad write, and a brand this build cannot read is kept as it is.
  *
  * The folder is an argument so the tests can use these without Electron.
  */
@@ -51,18 +65,60 @@ async function readSingle(dir: string): Promise<Brand | null> {
   return null
 }
 
-export async function readBrands(dir = userData()): Promise<Brands> {
+/**
+ * brand.json as a build from before brands last saved it, when it did so
+ * after this build last wrote it there: a brand with no id, newer than the
+ * default brand it was written from. With the fields that build wrote.
+ */
+async function savedByOlder(dir: string, list: Brands): Promise<{ brand: Brand; fields: string[] } | null> {
+  const read = await readJson(join(dir, SINGLE))
+  if (!read.found || !read.value || typeof read.value !== 'object') return null
+  const raw = read.value as Record<string, unknown>
+  if (typeof raw.id === 'string' && raw.id) return null
+  const parsed = BrandSchema.safeParse(raw)
+  if (!parsed.success) return null
+  if (!(parsed.data.updatedAt > defaultBrand(list).updatedAt)) return null
+  return { brand: parsed.data, fields: Object.keys(raw).filter((k) => k !== 'id' && k in parsed.data) }
+}
+
+/** The list on disk; `folded` when brand.json holds changes an older build made, now in the default brand. */
+async function readList(dir: string): Promise<{ list: Brands; unread: unknown[]; folded: boolean }> {
   const file = join(dir, LIST)
   const read = await readJson(file)
   if (read.found) {
     const list = parseBrands(read.value)
-    if (list) return list
+    if (list) {
+      const unread = unreadBrands(read.value, list)
+      const older = await savedByOlder(dir, list)
+      if (!older) return { list, unread, folded: false }
+      const target = defaultBrand(list)
+      const changed = Object.fromEntries(older.fields.map((k) => [k, older.brand[k as keyof Brand]])) as Partial<Brand>
+      return { list: replaceBrand(list, { ...target, ...changed, id: target.id }), unread, folded: true }
+    }
     await setAside(file)
   }
-  return brandsFromLegacy(await readSingle(dir))
+  return { list: brandsFromLegacy(await readSingle(dir)), unread: [], folded: false }
 }
 
 let queue: Promise<unknown> = Promise.resolve()
+
+/** Work on the files, one at a time, in the order asked. */
+function queued<T>(work: () => Promise<T>): Promise<T> {
+  const run = queue.then(work)
+  queue = run.catch(() => undefined)
+  return run
+}
+
+export async function readBrands(dir = userData()): Promise<Brands> {
+  const first = await readList(dir)
+  if (!first.folded) return first.list
+  // An older build's changes come in once, from the files as they are by the time it is this one's turn.
+  return queued(async () => {
+    const now = await readList(dir)
+    if (now.folded) await writeList(dir, now.list, now.unread)
+    return now.list
+  })
+}
 
 async function writeAtomic(path: string, value: unknown): Promise<void> {
   const tmp = `${path}.tmp`
@@ -70,34 +126,40 @@ async function writeAtomic(path: string, value: unknown): Promise<void> {
   await fs.rename(tmp, path)
 }
 
+/** The list, with any brand this build cannot read put back as it was, and the default for older builds. */
+async function writeList(dir: string, list: Brands, unread: unknown[]): Promise<void> {
+  await fs.mkdir(dir, { recursive: true })
+  await writeAtomic(join(dir, LIST), { ...list, brands: [...list.brands, ...unread] })
+  await writeAtomic(join(dir, SINGLE), defaultBrand(list)).catch(() => undefined)
+}
+
 /**
- * Saves the whole list. A brand that changed is stamped with the time; the
- * default is written to brand.json as well, for builds from before.
+ * Saves the whole list, or nothing: a brand that does not hold refuses the
+ * save, saying which field (shared/brands checkBrands). A brand that changed
+ * is stamped with the time; the default is written to brand.json as well,
+ * for builds from before.
  */
 export function saveBrands(
   input: unknown,
   dir = userData()
 ): Promise<{ ok: true; brands: Brands } | { ok: false; message: string }> {
-  const run = queue.then(async () => {
-    const list = parseBrands(input)
-    if (!list) return { ok: false as const, message: 'Those brands are not in a shape I can save.' }
-    await fs.mkdir(dir, { recursive: true })
-    const before = await readBrands(dir)
+  return queued(async () => {
+    const checked = checkBrands(input)
+    if (!checked.ok) return { ok: false as const, message: checked.message }
+    const list = checked.brands
+    const before = await readList(dir)
     const now = new Date().toISOString()
     const same = (a: Brand, b: Brand | undefined): boolean =>
       !!b && JSON.stringify({ ...a, updatedAt: '' }) === JSON.stringify({ ...b, updatedAt: '' })
     const next: Brands = {
       ...list,
       brands: list.brands.map((b) =>
-        same(b, before.brands.find((x) => x.id === b.id)) ? b : { ...b, updatedAt: now }
+        same(b, before.list.brands.find((x) => x.id === b.id)) ? b : { ...b, updatedAt: now }
       )
     }
-    await writeAtomic(join(dir, LIST), next)
-    await writeAtomic(join(dir, SINGLE), defaultBrand(next)).catch(() => undefined)
+    await writeList(dir, next, before.unread)
     return { ok: true as const, brands: next }
   })
-  queue = run.catch(() => undefined)
-  return run
 }
 
 /** The default brand: what a new chat uses. */

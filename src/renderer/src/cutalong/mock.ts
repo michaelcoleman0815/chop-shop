@@ -27,10 +27,10 @@ import type { Project, ProjectSummary, Settings } from '../../../shared/types'
 import {
   brandById,
   brandOfCut,
+  checkBrands,
   defaultBrand,
   EMPTY_BRANDS,
   FIRST_BRAND_ID,
-  parseBrands,
   stampBrand,
   stampMade,
   type Brands
@@ -950,9 +950,10 @@ export function createMockApi(): CutalongApi {
     },
     getBrands: async () => brands,
     saveBrands: async (next) => {
-      const list = parseBrands(next)
-      if (!list) return { ok: false as const, message: 'Those brands are not in a shape I can save.' }
-      brands = list
+      // All or nothing, as the main process saves them (shared/brands checkBrands).
+      const checked = checkBrands(next)
+      if (!checked.ok) return { ok: false as const, message: checked.message }
+      brands = checked.brands
       return { ok: true as const, brands }
     },
     learnBrand: async (paths) => {

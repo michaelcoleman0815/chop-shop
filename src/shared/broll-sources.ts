@@ -8,6 +8,8 @@
 
 /** Entries a list holds: about what anyone pastes. */
 export const MAX_SOURCES = 30
+/** How long one pasted line may be: any channel or site link, with room to spare. */
+export const MAX_SOURCE_LENGTH = 300
 
 export type BrollSource =
   | {

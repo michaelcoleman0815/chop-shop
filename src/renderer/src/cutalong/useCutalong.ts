@@ -685,7 +685,16 @@ export function useCutalong() {
       // Each brand's voice notes are learned from as that brand's, when they changed.
       rememberVoices(next)
       void api.saveBrands(next).then((r) => {
-        if (!r.ok) setToast({ text: r.message, error: true })
+        // Refused whole, saying which field; the page keeps what was typed, to put right.
+        if (!r.ok) {
+          setToast({ text: r.message, error: true })
+          return
+        }
+        // The list as saved (each changed brand stamped), unless more was changed since.
+        if (brandsRef.current === next) {
+          brandsRef.current = r.brands
+          setBrands(r.brands)
+        }
       })
     }, 300)
   }, [])

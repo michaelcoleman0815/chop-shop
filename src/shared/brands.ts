@@ -57,6 +57,90 @@ export function parseBrands(raw: unknown): Brands | null {
   return { v: 1, default: seen.has(file.data.default) ? file.data.default : fallback, brands: brands.slice(0, MAX_BRANDS) }
 }
 
+/**
+ * The entries of brands.json this version cannot read (from a newer build,
+ * or damaged), as they are, so a save puts them back rather than losing them.
+ */
+export function unreadBrands(raw: unknown, readable: Brands): unknown[] {
+  const file = BrandsFileSchema.safeParse(raw)
+  if (!file.success) return []
+  const ids = new Set(readable.brands.map((b) => b.id))
+  return file.data.brands.filter((entry) => {
+    const r = BrandSchema.safeParse(entry)
+    if (r.success) return false
+    const id = (entry as { id?: unknown } | null)?.id
+    return typeof id === 'string' && id !== '' && !ids.has(id)
+  })
+}
+
+/** A brand's fields as the Brand page names them, for saying which one could not be saved. */
+const FIELDS: [RegExp, string][] = [
+  [/^name$/, 'name'],
+  [/^logos\.\d+\.name$/, 'product logo name'],
+  [/^logos\.\d+\.path$/, 'product logo file'],
+  [/^logos$/, 'list of product logos'],
+  [/^broll\.prefer\.\d+$/, 'B-roll source to look in first'],
+  [/^broll\.block\.\d+$/, 'B-roll source never to use'],
+  [/^broll\.prefer$/, 'list of B-roll sources to look in first'],
+  [/^broll\.block$/, 'list of B-roll sources never to use'],
+  [/^description$/, 'description'],
+  [/^fonts\.display$/, 'display font'],
+  [/^fonts\.body$/, 'body font'],
+  [/^colors\./, 'colours'],
+  [/^logo\b/, 'logo'],
+  [/^captions\./, 'caption settings'],
+  [/^voice$/, 'voice notes'],
+  [/^products/, 'names to listen for'],
+  [/^habits/, 'habits'],
+  [/^id$/, 'id']
+]
+
+/** What is wrong with a field, from the schema's issue. */
+function problem(issue: z.core.$ZodIssue): string {
+  if (issue.code === 'too_big') {
+    const max = Number(issue.maximum)
+    return issue.origin === 'string' ? `is longer than ${max} characters` : `has more than ${max}`
+  }
+  if (issue.code === 'too_small') return issue.origin === 'string' ? 'is empty' : 'has too few'
+  return "isn't something I can save"
+}
+
+export type BrandsCheck = { ok: true; brands: Brands } | { ok: false; message: string; field: string }
+
+/**
+ * A list of brands to save, held to the schema as a whole: one brand that does
+ * not hold refuses the save, saying which brand and which field, and nothing
+ * on the list is ever left out to make it fit.
+ */
+export function checkBrands(raw: unknown): BrandsCheck {
+  const refuse = (field: string, message: string): BrandsCheck => ({
+    ok: false,
+    field,
+    message: `${message}, so I didn't save the change.`
+  })
+  const file = BrandsFileSchema.safeParse(raw)
+  if (!file.success) return refuse('brands', 'Those brands are not in a shape I can save')
+  if (file.data.brands.length === 0) return refuse('brands', 'There are no brands to save')
+  if (file.data.brands.length > MAX_BRANDS) return refuse('brands', `That is more than the ${MAX_BRANDS} brands Cutalong keeps`)
+  const brands: Brand[] = []
+  for (const entry of file.data.brands) {
+    const named = (entry as { name?: unknown } | null)?.name
+    const owner = typeof named === 'string' && named.trim() ? `${named.trim()}’s` : 'An untitled brand’s'
+    const r = BrandSchema.safeParse(entry)
+    if (!r.success) {
+      const issue = r.error.issues[0]
+      const path = issue.path.map(String).join('.')
+      const field = FIELDS.find(([re]) => re.test(path))?.[1] ?? (path || 'brand')
+      return refuse(`${brands.length}.${path}`, `${owner} ${field} ${problem(issue)}`)
+    }
+    if (!r.data.id) return refuse(`${brands.length}.id`, `${owner} id is empty`)
+    if (brands.some((b) => b.id === r.data.id)) return refuse(`${brands.length}.id`, `Two brands have the same id`)
+    brands.push(r.data)
+  }
+  if (!brands.some((b) => b.id === file.data.default)) return refuse('default', 'The default brand is not on the list')
+  return { ok: true, brands: { v: 1, default: file.data.default, brands } }
+}
+
 /** The list a person had before there could be more than one brand: theirs, as it was, or an empty one. */
 export function brandsFromLegacy(brand: Brand | null): Brands {
   const first: Brand = { ...(brand ?? EMPTY_BRAND), id: FIRST_BRAND_ID }
