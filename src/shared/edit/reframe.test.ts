@@ -125,3 +125,39 @@ describe('a beat’s framing', () => {
     )
   })
 })
+
+describe('following the speaker through a switched feed', () => {
+  // Two cameras: the wide one has the speaker at 0.42, the close one at 0.58.
+  // 0.16 apart is a glide on one camera; across a cut it must be a cut.
+  const xs = [0.42, 0.42, 0.43, 0.42, 0.58, 0.58, 0.57, 0.58, 0.42, 0.42]
+  const cuts = [62, 64]
+
+  it('cuts with the camera instead of gliding through a shot it was never measuring', () => {
+    const keys = planReframe({ hz: 2, x: xs, from: 60, cuts })
+    // Before the cut, the window holds on the wide shot's speaker; just after it, it is on the close one's.
+    expect(frameAt(keys, 61.99)).toBeCloseTo(0.42, 6)
+    expect(frameAt(keys, 62.01)).toBeCloseTo(0.58, 2)
+    expect(frameAt(keys, 63.9)).toBeCloseTo(0.58, 2)
+    expect(frameAt(keys, 64.05)).toBeCloseTo(0.42, 2)
+    // Without the cuts, the same samples glide for 0.6 s across the change.
+    const glide = planReframe({ hz: 2, x: xs, from: 60 })
+    expect(frameAt(glide, 62.3)).toBeGreaterThan(0.43)
+    expect(frameAt(glide, 62.3)).toBeLessThan(0.57)
+  })
+
+  it('places samples from where they were looked at, for a clip late in a long recording', () => {
+    const subject = subjectFrom(
+      [
+        { t: 0, faces: [face(0.3)] },
+        { t: 0.5, faces: [face(0.3)] }
+      ],
+      1,
+      2,
+      3600
+    )
+    expect(subject).toEqual({ hz: 2, x: [0.3, 0.3], from: 3600 })
+    expect(planReframe(subject)[0]).toEqual({ t: 3600, x: 0.3 })
+    // A subject from before clipping, with no start, reads from the recording's start as always.
+    expect(planReframe({ hz: 2, x: [0.3] })[0]).toEqual({ t: 0, x: 0.3 })
+  })
+})
