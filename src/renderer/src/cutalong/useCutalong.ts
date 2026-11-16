@@ -115,6 +115,7 @@ import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
+import { exportWait, type ExportJob } from './exporting'
 import { clock, fileName, findLink, isAudioFile, isVideoFile } from './format'
 
 /**
@@ -453,6 +454,8 @@ export function useCutalong() {
   const projectRef = useRef<Project | null>(null)
   const studyRef = useRef<InspirationStudy | null>(null)
   const pendingCommand = useRef<string | null>(null)
+  /** The export running now, the editor's or Export all's: one at a time (exporting.ts). */
+  const exportingNow = useRef<ExportJob | null>(null)
   /** Cuts offered and not yet made: "Say 'cut it' and it goes." */
   const [offers, setOffers] = useState<TakesOffer[]>([])
   const offersRef = useRef<TakesOffer[]>([])
@@ -586,6 +589,7 @@ export function useCutalong() {
     ensureProject,
     setToast,
     during,
+    exportingNow,
     clearEditor: () => {
       setOffers([])
       pendingCommand.current = null
@@ -2800,9 +2804,6 @@ export function useCutalong() {
     setPanel({ text: `v${n + 1} is v${back} again.` })
   }, [setDoc])
 
-  /** True while an export runs, so a second press waits for it. */
-  const exporting = useRef(false)
-
   /**
    * Exports the version on screen. Its progress shows in the toast and in the
    * chat, where the finished file then plays, the whole of it.
@@ -2811,11 +2812,13 @@ export function useCutalong() {
     const d = docRef.current
     if (!d) return
     const n = currentVersion(d).n
-    if (exporting.current) {
-      setToast({ text: `I'm still exporting. v${n} can go once that's done.` })
+    // A second export waits for the first, Export all's included: both report on one channel.
+    const wait = exportWait(exportingNow.current, { kind: 'version', n })
+    if (wait) {
+      setToast({ text: wait })
       return
     }
-    exporting.current = true
+    exportingNow.current = { kind: 'version', n }
     const stage = `Exporting v${n}`
     setToast({ text: 'Exporting… 0%' })
     const id = push({ role: 'assistant', text: '', progress: { stage, percent: 0 } })
@@ -2845,7 +2848,7 @@ export function useCutalong() {
       setToast({ text: `Exported ${name}${besideIt(r.chaptersPath, r.creditsPath)}`, path: r.outputPath, chat: true })
     } finally {
       off()
-      exporting.current = false
+      exportingNow.current = null
     }
   }, [during, patch, push])
 
