@@ -1,7 +1,6 @@
-import { spawn } from 'child_process'
-import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { SFX_INFO, type SfxKind } from '../shared/edit'
+import { platform } from './platform'
 
 /**
  * The built-in sound effects, made by ffmpeg from noise and tones, so nothing
@@ -64,14 +63,11 @@ const RECIPES: Record<SfxKind, (sec: number) => string> = {
     `+0.35*sin(2*PI*2888.3*t)*exp(-t/0.25)+0.2*sin(2*PI*4259.3*t)*exp(-t/0.15))*0.45*(1-exp(-t/0.002))':s=48000:d=${sec}[out]`
 }
 
-function run(ffmpeg: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const p = spawn(ffmpeg, ['-hide_banner', ...args])
-    let err = ''
-    p.stderr.on('data', (d) => (err += d))
-    p.on('error', reject)
-    p.on('close', (code) => (code === 0 ? resolve(err) : reject(new Error(err.trim().split('\n').slice(-2).join(' ')))))
-  })
+async function run(ffmpeg: string, args: string[]): Promise<string> {
+  let err = ''
+  const r = await platform().run(ffmpeg, ['-hide_banner', ...args], { onStderr: (text) => (err += text) })
+  if (r.code === 0) return err
+  throw new Error(err.trim().split('\n').slice(-2).join(' '))
 }
 
 /** The loudest sample of a file, in dBFS. */
@@ -87,12 +83,8 @@ const making = new Map<string, Promise<string>>()
 /** Makes a built-in sound in `dir`, once, and returns its path. */
 export async function makeSfx(ffmpeg: string, kind: SfxKind, dir: string): Promise<string> {
   const path = join(dir, `${kind}-v${RECIPE_VERSION}.wav`)
-  try {
-    await fs.access(path)
-    return path
-  } catch {
-    // Not made yet.
-  }
+  // Made already.
+  if (await platform().files.stat(path)) return path
   let made = making.get(path)
   if (!made) {
     made = makeSfxFile(ffmpeg, kind, dir, path).finally(() => making.delete(path))
@@ -102,9 +94,9 @@ export async function makeSfx(ffmpeg: string, kind: SfxKind, dir: string): Promi
 }
 
 async function makeSfxFile(ffmpeg: string, kind: SfxKind, dir: string, path: string): Promise<string> {
-  await fs.mkdir(dir, { recursive: true })
+  await platform().files.mkdir(dir)
   // Working files of this making alone, so two at once never read each other's.
-  const own = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const own = `${typeof process === 'undefined' ? 'app' : process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const raw = join(dir, `${kind}-v${RECIPE_VERSION}.${own}.raw.wav`)
   const sec = SFX_INFO[kind].sec
   await run(ffmpeg, [
@@ -133,8 +125,8 @@ async function makeSfxFile(ffmpeg: string, kind: SfxKind, dir: string, path: str
     sec.toFixed(3),
     part
   ])
-  await fs.rename(part, path)
-  await fs.rm(raw, { force: true })
+  await platform().files.rename(part, path)
+  await platform().files.remove(raw)
   return path
 }
 
@@ -151,17 +143,12 @@ const SOUND_FILE = /\.(wav|mp3|m4a|aif|aiff|flac|ogg|caf)$/i
 export async function listSounds(root: string): Promise<{ name: string; path: string }[]> {
   const found: { name: string; path: string }[] = []
   const walk = async (dir: string, depth: number): Promise<void> => {
-    let entries: import('fs').Dirent[]
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
+    const entries = await platform().files.list(dir)
     for (const e of entries) {
       if (e.name.startsWith('.')) continue
       const path = join(dir, e.name)
-      if (e.isDirectory() && depth < 2) await walk(path, depth + 1)
-      else if (e.isFile() && SOUND_FILE.test(e.name)) found.push({ name: basename(e.name, extname(e.name)), path })
+      if (e.directory && depth < 2) await walk(path, depth + 1)
+      else if (e.file && SOUND_FILE.test(e.name)) found.push({ name: basename(e.name, extname(e.name)), path })
     }
   }
   await walk(root, 0)

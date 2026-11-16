@@ -1,7 +1,6 @@
-import { spawn } from 'child_process'
-import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { findBeats, readMono, SAMPLE_RATE } from './beats'
+import { platform } from './platform'
 
 /**
  * A music track made ready to be a bed: how long it runs, how loud it was
@@ -19,19 +18,18 @@ export interface TrackFacts {
 const AUDIO = /\.(mp3|m4a|aac|wav|aiff?|flac|ogg|opus)$/i
 
 /** Integrated loudness of a file, from ffmpeg's EBU R128 meter; null when it cannot say. */
-export function trackLoudness(ffmpeg: string, path: string, signal?: AbortSignal): Promise<number | null> {
-  return new Promise((resolve) => {
-    const child = spawn(ffmpeg, ['-hide_banner', '-nostats', '-i', path, '-vn', '-af', 'ebur128', '-f', 'null', '-'], {
-      signal
+export async function trackLoudness(ffmpeg: string, path: string, signal?: AbortSignal): Promise<number | null> {
+  let log = ''
+  try {
+    await platform().run(ffmpeg, ['-hide_banner', '-nostats', '-i', path, '-vn', '-af', 'ebur128', '-f', 'null', '-'], {
+      signal,
+      onStderr: (text) => (log = (log + text).slice(-6000))
     })
-    let log = ''
-    child.stderr.on('data', (d) => (log = (log + d.toString()).slice(-6000)))
-    child.on('error', () => resolve(null))
-    child.on('close', () => {
-      const m = /I:\s+(-?\d+(?:\.\d+)?) LUFS/.exec(log.slice(log.lastIndexOf('Summary:')))
-      resolve(m ? Number(m[1]) : null)
-    })
-  })
+  } catch {
+    return null
+  }
+  const m = /I:\s+(-?\d+(?:\.\d+)?) LUFS/.exec(log.slice(log.lastIndexOf('Summary:')))
+  return m ? Number(m[1]) : null
 }
 
 /** Everything a bed needs to know about a track. */
@@ -61,16 +59,11 @@ export async function findTracks(query: string, roots: string[], limit = 8): Pro
   let seen = 0
   const walk = async (dir: string, depth: number): Promise<void> => {
     if (depth > 2 || seen > 5000) return
-    let entries: import('fs').Dirent[]
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
+    const entries = await platform().files.list(dir)
     for (const e of entries) {
       if (e.name.startsWith('.')) continue
       const path = join(dir, e.name)
-      if (e.isDirectory()) await walk(path, depth + 1)
+      if (e.directory) await walk(path, depth + 1)
       else if (AUDIO.test(e.name)) {
         seen++
         const name = basename(e.name, extname(e.name))

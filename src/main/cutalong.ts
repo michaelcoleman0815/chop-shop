@@ -1,36 +1,38 @@
 import { app, dialog, ipcMain, type WebContents } from 'electron'
-import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { FFMPEG_PATH, FFPROBE_PATH, probe } from './ffmpeg'
 import { FONTS_DIR } from './resources'
 import { getSettings, saveSettings } from './store'
-import { downloadModel, hasModel, transcribe } from './transcribe'
+import { hasModel, transcribe } from './transcribe'
 import { fetchVideo, YTDLP_PATH } from './fetch-video'
 import { fetchExcerpt, fetchImage, importFile, saveImage, searchVideos, type AssetTools, type NewAsset } from './assets'
-import { creditsText, isImageUrl, type Range } from '../shared/assets'
+import { isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo } from './inspiration/measure'
-import { renderCut } from './cut-render'
 import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
 import { findSounds, makeAllSfx, readSound } from './sfx'
 import { findPremiere, openInPremiere, writePremiere } from './premiere-cut'
-import { renderCutMotion, subtitlePass } from './motion-render'
+import { renderCutMotion } from './motion-render'
 import { captureLink } from './page-shot'
 import { loadIcons, loadLogos } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
-import { snapWords, type Envelope } from '../shared/audio/snap'
-import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
-import { assignRoles, factsFor, separateSameTakes, type FileFacts } from './session'
-import { listenFrames } from './audio-map'
-import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
-import { vocabulary } from '../shared/raw/prompt'
-import { intakeReply, probeSource } from './intake'
-import { projectName } from '../shared/project-name'
+import { estimateOffset, trustworthy, type Offset } from '../shared/audio/offset'
 import { watchClip } from './mouth'
 import { detectFaces, VISION_PATH } from './track'
-import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
+import { readApiKey } from './apikey'
+import {
+  extendCut,
+  freePath,
+  prepareCut,
+  readFootage,
+  renderEdit,
+  safeName,
+  sortFootage,
+  transcriptFor,
+  type WorkHost
+} from './cut-work'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { planEditLocally } from './planner-local'
@@ -42,24 +44,9 @@ import { registerLearnIpc } from './learn'
 import { preferencesForPlanner, registerMemoryIpc } from './memory'
 import { registerClippingIpc } from './clipping'
 import { registerVlogIpc } from './vlog'
-import {
-  addSources,
-  createDoc,
-  currentCut,
-  nextSourceId,
-  currentVersion,
-  subjectFrom,
-  type Subject,
-  EditDocSchema,
-  resolveCut,
-  wordsFromTranscript,
-  type Note,
-  type Source,
-  type Word
-} from '../shared/edit'
+import { currentVersion, subjectFrom, type Subject, EditDocSchema, type Note } from '../shared/edit'
 import {
   BUILT_IN_PRESETS,
-  chaptersReply,
   describeStyle,
   CAPTION_STYLE_PRESETS,
   SKILL_PRESETS,
@@ -74,7 +61,6 @@ import {
   type InspirationStudy,
   type SpeechMeasures
 } from '../shared/inspiration'
-import type { Transcript } from '../shared/types'
 
 /**
  * The main-process side of Cutalong: turning footage into an edit document,
@@ -101,6 +87,25 @@ const soundFolders = (): string[] => [
   join(app.getPath('userData'), 'sounds')
 ]
 
+/**
+ * The Mac as the shared work sees it (cut-work.ts): its ffmpeg, the brand and
+ * settings in userData, other AI services, the face finder and drawing
+ * motion graphics. Each is read when it is used.
+ */
+export const macWork: WorkHost = {
+  ffmpeg: () => FFMPEG_PATH,
+  ffprobe: () => FFPROBE_PATH,
+  probe: (path) => probe(path),
+  readBrand: () => readBrand(),
+  whisperModel: () => getSettings().whisperModel,
+  outputDir: () => getSettings().outputDir,
+  sfxDir: () => sfxDir(),
+  fontsDir: () => FONTS_DIR(),
+  hearInCloud: (path, durationSec, progress) => hearInCloud(path, durationSec, progress),
+  watch: (input) => watchClip(input, detectFaces, FFMPEG_PATH),
+  motion: (input) => renderCutMotion({ ...input, icons: loadIcons, logos: loadLogos })
+}
+
 export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: string) => string }): void {
   /**
    * Turns footage into an edit. Several talking clips become one edit in the
@@ -108,36 +113,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    * each clip is lined up with it by ear, and the words, the preview and the
    * export all use that sound.
    */
-  ipcMain.handle('cut:prepare', async (e, input: string | { paths: string[]; soundPaths?: string[] }) => {
-    const paths = typeof input === 'string' ? [input] : input.paths
-    const soundPaths = typeof input === 'string' ? [] : (input.soundPaths ?? [])
-    const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
-    try {
-      if (paths.length === 0) return { ok: false as const, message: 'There is no footage to cut.' }
-      const read = await readFootage(paths, soundPaths, progress, 1, { niche: nicheFrom(await readBrand()) })
-      const created = createDoc({
-        id: randomUUID(),
-        title: basename(paths[0], extname(paths[0])),
-        sources: read.sources,
-        words: read.words
-      })
-      // How each recording sounds, word by word: what takes and the planner read.
-      const doc = Object.keys(read.maps).length > 0 ? { ...created, audio: read.maps } : created
-      progress('Ready', 100)
-      return {
-        ok: true as const,
-        doc,
-        mediaUrl: deps.mediaUrlFor(paths[0]),
-        warning: read.notes.length ? read.notes.join(' ') : null,
-        lined: read.lined,
-        intake: read.intake,
-        notice: read.notice
-      }
-    } catch (err) {
-      progress('Failed', 0)
-      return { ok: false as const, message: message(err) }
-    }
-  })
+  ipcMain.handle('cut:prepare', (e, input: string | { paths: string[]; soundPaths?: string[] }) =>
+    prepareCut(macWork, input, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }), deps.mediaUrlFor)
+  )
 
   // Where a screen recording changes, stretch by stretch, for a camera to follow.
   ipcMain.handle(
@@ -194,81 +172,14 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    * end of the cut as a new version, and a new recording with better sound is
    * lined up under every clip that does not have one yet.
    */
-  ipcMain.handle('cut:extend', async (e, req: { doc: unknown; paths: string[]; soundPaths?: string[] }) => {
-    const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
-    try {
-      const parsed = EditDocSchema.safeParse(req.doc)
-      if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
-      let doc = parsed.data
-      const soundPaths = req.soundPaths ?? []
-      const notes: string[] = []
-      const lined: Lined[] = []
-      let notice: string | null = null
-      if (soundPaths.length > 0) {
-        const lonely = doc.sources.filter((s) => !s.audio)
-        const found = await lineUp(lonely, soundPaths, progress)
-        notes.push(...found.notes)
-        lined.push(...found.lined)
-        doc = { ...doc, sources: doc.sources.map((s) => found.audio.get(s.id) ?? s) }
-      }
-      const fresh = req.paths.filter((p) => !doc.sources.some((s) => s.path === p))
-      if (fresh.length > 0) {
-        const first = Number(nextSourceId(doc).slice(1))
-        // New clips are watched the way this edit already is: its profile, and
-        // a mode a sentence chose for its mouth watching.
-        const read = await readFootage(fresh, soundPaths, progress, first, {
-          niche: doc.profile || nicheFrom(await readBrand()),
-          mode: doc.sources.find((s) => s.mouth?.chosen)?.mouth?.mode
-        })
-        notes.push(...read.notes)
-        lined.push(...read.lined)
-        notice = read.notice
-        const names = fresh.map((p) => basename(p))
-        if (Object.keys(read.maps).length > 0) doc = { ...doc, audio: { ...(doc.audio ?? {}), ...read.maps } }
-        doc = addSources(
-          doc,
-          read.sources,
-          read.words,
-          names.length === 1 ? `${names[0]} is on the end.` : `${names.length} more clips are on the end.`
-        )
-      }
-      progress('Ready', 100)
-      return { ok: true as const, doc, warning: notes.length ? notes.join(' ') : null, lined, notice }
-    } catch (err) {
-      progress('Failed', 0)
-      return { ok: false as const, message: message(err) }
-    }
-  })
+  ipcMain.handle('cut:extend', (e, req: { doc: unknown; paths: string[]; soundPaths?: string[] }) =>
+    extendCut(macWork, req, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }))
+  )
 
   /** Which file is which: measured, then read against what the person said. */
-  ipcMain.handle('cut:session', async (e, req: { request: string; paths: string[] }) => {
-    const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
-    try {
-      const facts: FileFacts[] = new Array(req.paths.length)
-      let done = 0
-      // A few at a time: a shoot can be dozens of files.
-      const queue = req.paths.map((p, i) => ({ p, i }))
-      const worker = async (): Promise<void> => {
-        for (let job = queue.shift(); job; job = queue.shift()) {
-          facts[job.i] = await factsFor(job.p)
-          done++
-          progress(
-            `Looking through your footage (${done} of ${req.paths.length})`,
-            Math.round((done / req.paths.length) * 90)
-          )
-        }
-      }
-      await Promise.all(Array.from({ length: Math.min(4, req.paths.length) }, worker))
-      // Claude reading the request has no percent to give, so the bar sweeps.
-      deps.send(e.sender, 'cut:progress', { stage: 'Working out which file is which', percent: null })
-      const assigned = await assignRoles(req.request, facts)
-      // Sorted without reading the request, one take recorded twice would be cut in twice.
-      const roles = assigned.by === 'measurement' ? await separateSameTakes(assigned, facts) : assigned
-      return { ok: true as const, roles, facts }
-    } catch (err) {
-      return { ok: false as const, message: message(err) }
-    }
-  })
+  ipcMain.handle('cut:session', (e, req: { request: string; paths: string[] }) =>
+    sortFootage(req, readApiKey(), (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }))
+  )
 
   /**
    * The current version as a Premiere project beside the exports, cut on the
@@ -361,106 +272,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   })
 
   // A clip from /clipping exports under its own title (name), with no version number on it.
-  ipcMain.handle('cut:render', async (e, req: { doc: unknown; quality: 'preview' | 'final'; name?: string }) => {
-    const parsed = EditDocSchema.safeParse(req.doc)
-    if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
-    const doc = parsed.data
-    const cut = currentCut(doc)
-    const resolved = resolveCut(cut, doc.words, doc.sources)
-    if (resolved.pieces.length === 0)
-      return { ok: false as const, message: 'There is nothing left in the cut to render.' }
-
-    const final = req.quality === 'final'
-    const stage = final ? 'Exporting' : 'Rendering a preview'
-    const workDir = await fs.mkdtemp(join(app.getPath('temp'), 'cutalong-render-'))
-    let outputPath: string | null = null
-    try {
-      // What each recording has now. One the cut no longer uses may be gone
-      // from the disk; nothing reads it, and one the cut does use is named in
-      // a sentence before anything renders. A podcast has sound and no picture.
-      const sources = await Promise.all(
-        doc.sources.map(async (s) => {
-          const facts = await probeSource(FFPROBE_PATH, s.path).catch(() => null)
-          if (!facts) return { ...s, hasAudio: false }
-          return { ...s, hasAudio: facts.audio !== null, hasVideo: facts.width > 0 && facts.height > 0 }
-        })
-      )
-      const n = currentVersion(doc).n
-      outputPath = final
-        ? await freePath(
-            getSettings().outputDir,
-            req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`,
-            '.mp4'
-          )
-        : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
-      const brand = await readBrand()
-      const report = (f: number): void => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
-      // Graphics first: drawn frame by frame, then laid over the picture in the final pass.
-      const motion = await renderCutMotion({
-        cut,
-        resolved,
-        words: doc.words,
-        sources,
-        assets: doc.assets,
-        brand,
-        quality: req.quality,
-        ffmpeg: FFMPEG_PATH,
-        workDir: join(workDir, 'motion'),
-        fontsDir: FONTS_DIR(),
-        icons: loadIcons,
-        logos: loadLogos,
-        onProgress: (f) => report(f * 0.25)
-      })
-      const share = motion.overlays.length > 0 ? 0.25 : 0
-      const pass = subtitlePass(cut, resolved, motion.scene)
-      // The subtitles leave out what a card holds back; the music and the sounds still follow every word.
-      await renderCut(pass.cut, resolved, sources, {
-        ffmpeg: FFMPEG_PATH,
-        outputPath,
-        workDir,
-        quality: req.quality,
-        fontsDir: FONTS_DIR(),
-        brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
-        overlays: motion.overlays,
-        captionWords: pass.resolved.words,
-        sfxDir: sfxDir(),
-        onProgress: (f) => report(share + f * (1 - share))
-      })
-      // Anything from outside the person's own files is credited beside the video.
-      let creditsPath: string | null = null
-      const credits = final ? creditsText(doc) : null
-      if (credits) {
-        creditsPath = outputPath.replace(/\.mp4$/i, '') + ' credits.txt'
-        await fs.writeFile(creditsPath, credits)
-      }
-      // Chapters for the YouTube description, the same ones the video file carries.
-      let chaptersPath: string | null = null
-      const chapters = final ? chaptersReply(cut, resolved) : null
-      if (chapters?.shows) {
-        chaptersPath = outputPath.replace(/\.mp4$/i, '') + ' chapters.txt'
-        await fs.writeFile(chaptersPath, `${chapters.lines}\n`)
-      }
-      // The file's own size and length, so the chat can frame it before it loads.
-      const made = await probe(outputPath).catch(() => null)
-      return {
-        ok: true as const,
-        outputPath,
-        mediaUrl: deps.mediaUrlFor(outputPath),
-        creditsPath,
-        chaptersPath,
-        width: made?.width ?? 0,
-        height: made?.height ?? 0,
-        durationSec: made?.durationSec ?? resolved.durationSec
-      }
-    } catch (err) {
-      console.error('[cut] render failed:', message(err))
-      // Nothing half-made, and no empty file holding the name, is left in the export folder.
-      if (outputPath) await fs.rm(outputPath, { force: true }).catch(() => undefined)
-      return { ok: false as const, message: message(err) }
-    } finally {
-      await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined)
-    }
-  })
+  ipcMain.handle('cut:render', (e, req: { doc: unknown; quality: 'preview' | 'final'; name?: string }) =>
+    renderEdit(macWork, req, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }), deps.mediaUrlFor)
+  )
 
   ipcMain.handle('inspiration:study', async (e, input: { url?: string; path?: string }) => {
     const progress = (stage: string, percent: number): void =>
@@ -492,7 +306,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       let speech: SpeechMeasures | null = null
       let note: string | null = null
       const settings = getSettings()
-      if (measures.hasAudio && hasModel(settings.whisperModel)) {
+      if (measures.hasAudio && (await hasModel(settings.whisperModel))) {
         try {
           progress('Listening to the pacing', 70)
           const span = Math.min(measures.measuredSec, SPEECH_SAMPLE_SEC)
@@ -538,7 +352,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     const local = getSettings().localPlanner
     return local
       ? planEditLocally({ ...req, preferences, logos }, { host: OLLAMA_HOST, model: local })
-      : planEdit({ ...req, preferences, logos })
+      : planEdit({ ...req, preferences, logos, apiKey: readApiKey() })
   })
 
   // The models Ollama has on this Mac, for planning edits without Claude.
@@ -561,7 +375,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       try {
         const measures = await measureVideo(path, { ffmpeg: FFMPEG_PATH, maxSec: 600 })
         let speech: SpeechMeasures | null = null
-        if (measures.hasAudio && hasModel(settings.whisperModel)) {
+        if (measures.hasAudio && (await hasModel(settings.whisperModel))) {
           deps.send(e.sender, 'brand:progress', { stage: `Listening to ${basename(path)}`, percent: at(0.5) })
           const t = await transcribe(path, settings.whisperModel, Math.min(measures.measuredSec, 120), () => undefined)
           speech = measureSpeech(t.words)
@@ -650,7 +464,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     return saveSettings({ videoSignIn: browser && allowed.includes(browser) ? browser : null }).videoSignIn ?? null
   })
 
-  ipcMain.handle('claude:check', () => checkKey())
+  ipcMain.handle('claude:check', () => checkKey(readApiKey()))
 
   // Other AI services: keys, the switch, and key checks (providers/index.ts).
   registerServicesIpc()
@@ -664,7 +478,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   registerLearnIpc({
     send: deps.send,
     transcribe: (path, durationSec, progress) =>
-      transcriptFor(path, durationSec, progress, { download: false, localOnly: true })
+      transcriptFor(macWork, path, durationSec, progress, { download: false, localOnly: true })
   })
   // And from how they edit here: small signals in, plain statements out, on this computer.
   registerMemoryIpc()
@@ -676,284 +490,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     send: deps.send,
     mediaUrlFor: deps.mediaUrlFor,
     readTalking: async (path, n, progress) => {
-      const read = await readFootage([path], [], progress, n, { niche: 'vlog' })
+      const read = await readFootage(macWork, [path], [], progress, n, { niche: 'vlog' })
       const source = read.sources[0]
       return { source, words: read.words, map: read.maps[source.id], notes: read.notes }
     }
   })
-}
-
-interface Lined {
-  name: string
-  sound: string
-  offsetSec: number
-}
-
-type ProgressFn = (stage: string, percent: number) => void
-
-/**
- * Finds where each clip sits in the recordings with the better sound, by
- * matching their loudness. A clip keeps its own sound when no match is sure.
- */
-async function lineUp(
-  sources: Source[],
-  soundPaths: string[],
-  progress: ProgressFn,
-  envelopes = new Map<string, Envelope>()
-): Promise<{ audio: Map<string, Source>; lined: Lined[]; notes: string[]; own: Map<string, Envelope> }> {
-  const audio = new Map<string, Source>()
-  const lined: Lined[] = []
-  const notes: string[] = []
-  const own = new Map<string, Envelope>()
-  for (const [i, source] of sources.entries()) {
-    const name = basename(source.path, extname(source.path))
-    progress(
-      `Lining up ${name} with your audio${sources.length > 1 ? ` (${i + 1} of ${sources.length})` : ''}`,
-      Math.round((i / Math.max(1, sources.length)) * 100)
-    )
-    try {
-      const mine = await loudnessEnvelope(FFMPEG_PATH, source.path)
-      own.set(source.id, mine)
-      let best: { path: string; offset: Offset } | null = null
-      for (const sp of soundPaths) {
-        if (!envelopes.has(sp)) envelopes.set(sp, await loudnessEnvelope(FFMPEG_PATH, sp))
-        const offset = estimateOffset(mine, envelopes.get(sp) as Envelope)
-        if (trustworthy(offset) && (!best || offset.confidence > best.offset.confidence)) best = { path: sp, offset }
-      }
-      if (best) {
-        audio.set(source.id, { ...source, audio: { path: best.path, offsetSec: best.offset.offsetSec } })
-        lined.push({ name: basename(source.path), sound: basename(best.path), offsetSec: best.offset.offsetSec })
-      } else notes.push(`I couldn't line ${name} up with your audio, so it keeps its own sound.`)
-    } catch (err) {
-      notes.push(`I couldn't listen to ${name}, so it keeps its own sound. ${message(err)}`)
-    }
-  }
-  return { audio, lined, notes, own }
-}
-
-/**
- * Reads talking clips into recordings and words. With a better recording of
- * the sound, each clip is lined up with it first, and the words are heard
- * from that recording, once for every clip it covers.
- */
-async function readFootage(
-  paths: string[],
-  soundPaths: string[],
-  progress: ProgressFn,
-  firstIndex: number,
-  mouth: { niche?: string | null; mode?: MouthMode } = {}
-): Promise<{
-  sources: Source[]
-  words: Word[]
-  notes: string[]
-  lined: Lined[]
-  maps: Record<string, AudioMap>
-  intake: { sentence: string; facts: string[] } | undefined
-  /** What watching the speaker's mouth changed or marked, in a sentence or two. */
-  notice: string | null
-}> {
-  const sources: Source[] = []
-  const words: Word[] = []
-  const notes: string[] = []
-  const lined: Lined[] = []
-  const maps: Record<string, AudioMap> = {}
-  const sentences: string[] = []
-  const facts: string[] = []
-  const soundEnv = new Map<string, Envelope>()
-  const soundWords = new Map<string, Transcript['words']>()
-  const soundFrames = new Map<string, Frames>()
-  const watched: WatchedClip[] = []
-
-  for (const [i, path] of paths.entries()) {
-    const name = basename(path, extname(path))
-    const of = paths.length > 1 ? ` (${i + 1} of ${paths.length})` : ''
-    // Each clip's share of the bar.
-    const step = (stage: string, within: number): void =>
-      progress(`${stage}${of}`, Math.min(99, Math.round(((i + within / 100) / paths.length) * 100)))
-    step(`Reading ${name}`, 1)
-    const meta = await probe(path)
-    const color = meta.facts?.color
-    let source: Source = {
-      id: `s${firstIndex + i}`,
-      path,
-      durationSec: meta.durationSec,
-      width: meta.width,
-      height: meta.height,
-      fps: meta.fps > 0 ? meta.fps : 30,
-      audio: null,
-      ...(color && color !== 'sdr' ? { color } : {})
-    }
-    // What intake noticed and fixed about this recording, said once for the drop.
-    if (meta.facts) {
-      const said = intakeReply(basename(path), meta.facts)
-      if (said.sentence) sentences.push(said.sentence)
-      for (const f of said.facts) if (!facts.includes(f)) facts.push(f)
-    }
-    let own: Envelope | null = null
-    if (soundPaths.length > 0) {
-      const found = await lineUp([source], soundPaths, (stage) => step(stage, 5), soundEnv)
-      source = found.audio.get(source.id) ?? source
-      own = found.own.get(source.id) ?? null
-      notes.push(...found.notes)
-      lined.push(...found.lined)
-    }
-
-    // The first recording's words are w1, w2, ...; later ones carry their id.
-    const prefix = firstIndex + i === 1 ? 'w' : `${source.id}w`
-    // The loudness the words are snapped to, on this clip's clock: watching the mouth reads it too.
-    let heard: Envelope | null = null
-    let clip: Word[] = []
-    try {
-      if (source.audio) {
-        const sp = source.audio.path
-        if (!soundWords.has(sp)) {
-          const length = (await probe(sp)).durationSec
-          const heard = await transcriptFor(sp, length, (stage, pct) =>
-            step(`${stage} ${basename(sp, extname(sp))}`, 10 + pct * 0.85)
-          )
-          soundWords.set(sp, heard.words)
-        }
-        const at = source.audio.offsetSec
-        const mine = (soundWords.get(sp) as Transcript['words'])
-          .filter((w) => w.startSec >= at - 0.05 && w.endSec <= at + source.durationSec + 0.05)
-          .map((w) => ({ ...w, startSec: w.startSec - at, endSec: w.endSec - at }))
-        clip = wordsFromTranscript(mine, source.id, prefix)
-        if (clip.length > 0) {
-          step('Listening for the cuts', 97)
-          heard = shiftEnvelope(soundEnv.get(sp) as Envelope, at, source.durationSec)
-          clip = snapWords(clip, heard)
-          // The pitch and kind of each sound come from the recording that is heard.
-          try {
-            if (!soundFrames.has(sp)) soundFrames.set(sp, await listenFrames(FFMPEG_PATH, sp))
-            maps[source.id] = buildAudioMap(shiftFrames(soundFrames.get(sp) as Frames, at, source.durationSec), clip)
-          } catch (err) {
-            console.warn('[cut] could not map the sound:', message(err))
-          }
-        }
-      } else {
-        const transcript = await transcriptFor(path, source.durationSec, (stage, pct) => step(stage, 10 + pct * 0.85), {
-          notice: (sentence) => notes.push(sentence)
-        })
-        clip = wordsFromTranscript(transcript.words, source.id, prefix)
-        // Listen to the recording so every word's edges sit on its sound,
-        // which is what lets cuts land tight without clipping a consonant.
-        // The same listen measures pitch and what kind of sound each stretch
-        // is, for the audio map that takes and the planner read.
-        if (clip.length > 0) {
-          step('Listening for the cuts', 97)
-          try {
-            const frames = await listenFrames(FFMPEG_PATH, path)
-            heard = { hopSec: frames.hopSec, db: frames.db }
-            clip = snapWords(clip, heard)
-            maps[source.id] = buildAudioMap(frames, clip)
-          } catch (err) {
-            try {
-              heard = own ?? (await loudnessEnvelope(FFMPEG_PATH, path))
-              clip = snapWords(clip, heard)
-            } catch {
-              console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
-            }
-          }
-        }
-      }
-      // Watch the speaker's mouth (main/mouth): the sound lined up with it,
-      // cuts timed to it and voices from off camera marked, all on this
-      // clip's own picture clock. Without a face, or without the sound to
-      // compare it with, sound timing stays.
-      if (clip.length > 0 && heard) {
-        step('Watching the speaker', 98)
-        const w = await watchClip(
-          { source, words: clip, envelope: heard, map: maps[source.id], ...mouth },
-          detectFaces,
-          FFMPEG_PATH
-        )
-        ;({ source, words: clip } = w)
-        if (w.map) maps[source.id] = w.map
-        if (w.seen) watched.push({ name: basename(path), source, words: clip })
-      }
-      words.push(...clip)
-    } catch (err) {
-      notes.push(`I couldn't transcribe ${name}, so it is one long beat for now. ${message(err)}`)
-    }
-    sources.push(source)
-  }
-  const intake =
-    sentences.length || facts.length ? { sentence: sentences.join(' '), facts: facts.slice(0, 3) } : undefined
-  return { sources, words, notes, lined, maps, intake, notice: mouthNotice(watched, paths.length) }
-}
-
-/**
- * The transcript for a whole file, written verbatim: every filler, false
- * start and retake, the names from the brand and the title listened for,
- * and a second listen where words went missing. The model is fetched first
- * if it is missing rather than sending anyone to Settings.
- *
- * The clip finder's cached transcript is not reused: it is written the tidy
- * way, which smooths retakes away, and finding retakes is the point here.
- */
-async function transcriptFor(
-  path: string,
-  durationSec: number,
-  progress: (stage: string, percent: number) => void,
-  opts: {
-    /** Says, in one sentence, why another AI service could not hear it. */
-    notice?: (sentence: string) => void
-    /** False when nothing may be downloaded, not even the model: learning from edits. */
-    download?: boolean
-    /** True when the words must be heard on this Mac, never by another service. */
-    localOnly?: boolean
-  } = {}
-): Promise<Transcript> {
-  // Another AI service hears the words when the person has added one. If it
-  // cannot, this computer does, and the one sentence saying why goes back.
-  if (!opts.localOnly) {
-    const cloud = await hearInCloud(path, durationSec, progress)
-    if (cloud.service) return cloud.transcript
-    if (cloud.note) opts.notice?.(cloud.note)
-  }
-
-  const { whisperModel } = getSettings()
-  if (!hasModel(whisperModel)) {
-    // Learning from edits never reaches the network, not even for the model.
-    if (opts.download === false) {
-      throw new Error(
-        `The ${whisperModel} transcription model isn't on this Mac yet. Download it in Settings, then try again.`
-      )
-    }
-    await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))
-  }
-  const brand = await readBrand()
-  const names = vocabulary({ title: basename(path, extname(path)), voice: brand.voice, products: brand.products })
-  return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)), 0, {
-    names
-  })
-}
-
-/** An export's name from the edit's title: what a project is named by, short enough for any file system. */
-function safeName(title: string): string {
-  return projectName(title)
-}
-
-/**
- * A name in `dir` no other file has, taken by making the file empty there and
- * then: two exports started together, or two edits with the same title, each
- * get their own file instead of writing over one another.
- */
-async function freePath(dir: string, name: string, ext: string): Promise<string> {
-  await fs.mkdir(dir, { recursive: true })
-  for (let n = 1; ; n++) {
-    const candidate = join(dir, n === 1 ? `${name}${ext}` : `${name} (${n})${ext}`)
-    try {
-      await (await fs.open(candidate, 'wx')).close()
-      return candidate
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-    }
-  }
-}
-
-async function previewDir(): Promise<string> {
-  const dir = join(app.getPath('temp'), 'cutalong-previews')
-  await fs.mkdir(dir, { recursive: true })
-  return dir
 }

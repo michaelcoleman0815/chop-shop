@@ -1,10 +1,6 @@
-import { spawn } from 'child_process'
-import { promises as fs, createWriteStream, existsSync } from 'fs'
 import { join } from 'path'
-import { app, net } from 'electron'
 import { loudnessEnvelope } from './audio-envelope'
-import { FFMPEG_PATH } from './ffmpeg'
-import { WHISPER_PATH } from './resources'
+import { platform } from './platform'
 import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
 import { voicedRegions } from '../shared/audio/voiced'
 import { whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
@@ -12,82 +8,46 @@ import type { Transcript, TranscriptWord } from '../shared/types'
 
 export type { VerbatimOptions, WhisperModel }
 
+/**
+ * Transcription with whisper.cpp, on the machine itself: a program on a Mac,
+ * built into the app on a phone. The arguments, the reading of what it
+ * writes and the second listen are the same on both (platform.ts).
+ */
+
 const MODEL_SIZES: Record<WhisperModel, number> = {
   'base.en': 148,
   'small.en': 488,
   'medium.en': 1533
 }
 
+/** Where whisper.cpp publishes its models. */
+export const MODEL_URL = (model: WhisperModel): string =>
+  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`
+
 export function modelPath(model: WhisperModel): string {
-  return join(app.getPath('userData'), 'models', `ggml-${model}.bin`)
+  return join(platform().paths.userData(), 'models', `ggml-${model}.bin`)
 }
 
 export function modelSizeMb(model: WhisperModel): number {
   return MODEL_SIZES[model]
 }
 
-export function hasModel(model: WhisperModel): boolean {
-  return existsSync(modelPath(model))
+export async function hasModel(model: WhisperModel): Promise<boolean> {
+  return (await platform().files.stat(modelPath(model))) !== null
 }
 
 /**
  * Fetches a model from the whisper.cpp model repository, reporting 0-100.
  *
- * Resumes a partial file rather than restarting it. These are hundreds of
- * megabytes and the download only lives as long as the app does, so quitting
- * mid-transfer is normal and should not cost the whole thing.
+ * Resumes a partial file rather than restarting it where the platform can.
+ * These are hundreds of megabytes and the download only lives as long as the
+ * app does, so quitting mid-transfer is normal and should not cost the whole thing.
  */
 export async function downloadModel(model: WhisperModel, onProgress: (percent: number) => void): Promise<string> {
   const dest = modelPath(model)
-  if (existsSync(dest)) return dest
-  await fs.mkdir(join(app.getPath('userData'), 'models'), { recursive: true })
-
-  const url = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`
-  const tmp = `${dest}.part`
-
-  let have = 0
-  try {
-    have = (await fs.stat(tmp)).size
-  } catch {
-    have = 0
-  }
-
-  const response = await net.fetch(url, have > 0 ? { headers: { Range: `bytes=${have}-` } } : {})
-  if (!response.ok || !response.body) {
-    throw new Error(`Model download failed: HTTP ${response.status}`)
-  }
-
-  // A server that ignores the range header sends 200 and the whole file, so the
-  // partial has to be discarded rather than appended to.
-  const resuming = response.status === 206
-  if (!resuming) have = 0
-
-  const remaining = Number(response.headers.get('content-length') ?? 0)
-  const total = have + remaining
-  let received = have
-
-  const out = createWriteStream(tmp, resuming ? { flags: 'a' } : { flags: 'w' })
-  const reader = response.body.getReader()
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    received += value.byteLength
-    out.write(Buffer.from(value))
-    if (total > 0) onProgress(Math.min(99, Math.round((received / total) * 100)))
-  }
-  await new Promise<void>((resolve, reject) => {
-    out.end(() => resolve())
-    out.on('error', reject)
-  })
-
-  const finalSize = (await fs.stat(tmp)).size
-  if (total > 0 && finalSize < total) {
-    // Leave the partial in place so the next attempt can pick up where this
-    // one stopped.
-    throw new Error(`Model download incomplete: ${Math.round(finalSize / 1e6)} of ${Math.round(total / 1e6)} MB.`)
-  }
-
-  await fs.rename(tmp, dest)
+  if (await hasModel(model)) return dest
+  await platform().files.mkdir(join(platform().paths.userData(), 'models'))
+  await platform().download(MODEL_URL(model), dest, onProgress)
   onProgress(100)
   return dest
 }
@@ -100,8 +60,10 @@ async function extractAudio(
   onProgress: (percent: number) => void,
   startSec = 0
 ): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(FFMPEG_PATH, [
+  let stderr = ''
+  const r = await platform().run(
+    platform().tool('ffmpeg'),
+    [
       '-hide_banner',
       '-loglevel',
       'error',
@@ -123,47 +85,42 @@ async function extractAudio(
       '-c:a',
       'pcm_s16le',
       wavPath
-    ])
-    let stderr = ''
-    child.stdout.on('data', (d) => {
-      for (const line of d.toString().split('\n')) {
-        const [key, value] = line.split('=')
-        if (key === 'out_time_ms' && durationSec > 0) {
-          const done = Number(value) / 1_000_000
-          onProgress(Math.max(0, Math.min(100, (done / durationSec) * 100)))
+    ],
+    {
+      onStdout: (text) => {
+        for (const line of text.split('\n')) {
+          const [key, value] = line.split('=')
+          if (key === 'out_time_ms' && durationSec > 0) {
+            const done = Number(value) / 1_000_000
+            onProgress(Math.max(0, Math.min(100, (done / durationSec) * 100)))
+          }
         }
-      }
-    })
-    child.stderr.on('data', (d) => (stderr += d.toString()))
-    child.on('error', reject)
-    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(stderr.trim() || `ffmpeg exit ${code}`))))
-  })
+      },
+      onStderr: (text) => (stderr += text)
+    }
+  )
+  if (r.code !== 0) throw new Error(stderr.trim() || `ffmpeg exit ${r.code}`)
 }
 
-/** Runs whisper-cli to the end, reporting its progress from 0 to 100. */
-function runWhisper(bin: string, args: string[], onProgress: (percent: number) => void): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(bin, args)
-    let stderr = ''
-    // whisper prints a line per segment, and with -ml 1 that is one per word.
-    // Nothing reading stdout means the 64KB pipe fills and the process blocks
-    // forever at 0% CPU, which looks exactly like a hang.
-    child.stdout.on('data', (d) => {
-      const match = /progress\s*=\s*(\d+)%/.exec(d.toString())
+/** Runs whisper to the end, reporting its progress from 0 to 100. */
+async function runWhisper(bin: string, args: string[], onProgress: (percent: number) => void): Promise<void> {
+  let stderr = ''
+  // whisper prints a line per segment, and with -ml 1 that is one per word.
+  // Everything it writes is read as it comes: a pipe nobody reads fills, and
+  // the process blocks forever at 0% CPU, which looks exactly like a hang.
+  const r = await platform().run(bin, args, {
+    onStdout: (text) => {
+      const match = /progress\s*=\s*(\d+)%/.exec(text)
       if (match) onProgress(Number(match[1]))
-    })
-    child.stderr.on('data', (d) => {
-      const text = d.toString()
+    },
+    onStderr: (text) => {
       stderr = (stderr + text).slice(-8000)
       // whisper prints progress to stderr as it consumes the audio.
       const match = /progress\s*=\s*(\d+)%/.exec(text)
       if (match) onProgress(Number(match[1]))
-    })
-    child.on('error', reject)
-    child.on('close', (code) =>
-      code === 0 ? resolve() : reject(new Error(stderr.trim().slice(-400) || `whisper exit ${code}`))
-    )
+    }
   })
+  if (r.code !== 0) throw new Error(stderr.trim().slice(-400) || `whisper exit ${r.code}`)
 }
 
 export async function transcribe(
@@ -179,16 +136,18 @@ export async function transcribe(
   startSec = 0,
   verbatim?: VerbatimOptions
 ): Promise<Transcript> {
-  const bin = WHISPER_PATH()
-  if (!existsSync(bin)) {
+  const host = platform()
+  const bin = host.tool('whisper')
+  // A computer runs whisper-cli from the app's resources; a phone has it built in.
+  if (host.kind === 'computer' && !(await host.files.stat(bin))) {
     throw new Error('whisper-cli is missing. Run scripts/build-whisper.sh.')
   }
   const modelFile = modelPath(model)
-  if (!existsSync(modelFile)) {
+  if (!(await host.files.stat(modelFile))) {
     throw new Error(`Model ${model} is not downloaded yet.`)
   }
 
-  const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-stt-'))
+  const dir = await host.files.tempDir('chopshop-stt-')
   try {
     const wav = join(dir, 'audio.wav')
     await extractAudio(
@@ -205,7 +164,7 @@ export async function transcribe(
     await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim }), (p) =>
       onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
     )
-    const json = parseWhisperJson(await fs.readFile(`${prefix}.json`))
+    const json = parseWhisperJson(await host.files.readText(`${prefix}.json`))
     let heard = tokensToWords(json.transcription)
 
     if (verbatim && heard.length > 0) {
@@ -213,7 +172,7 @@ export async function transcribe(
       // for: a take Whisper skipped, or swallowed into one stretched word.
       onProgress(until, 'Listening again')
       try {
-        const voiced = voicedRegions(await loudnessEnvelope(FFMPEG_PATH, wav))
+        const voiced = voicedRegions(await loudnessEnvelope(host.tool('ffmpeg'), wav))
         let n = 0
         const pass = await secondPass(heard, voiced, async (span) => {
           const part = join(dir, `again-${++n}.wav`)
@@ -224,7 +183,7 @@ export async function transcribe(
             whisperArgs({ model, modelFile, wav: part, prefix: partPrefix, verbatim }),
             () => undefined
           )
-          const again = tokensToWords(parseWhisperJson(await fs.readFile(`${partPrefix}.json`)).transcription)
+          const again = tokensToWords(parseWhisperJson(await host.files.readText(`${partPrefix}.json`)).transcription)
           onProgress(Math.min(98, until + n), 'Listening again')
           return again.map((w) => ({ ...w, startSec: w.startSec + span.startSec, endSec: w.endSec + span.startSec }))
         })
@@ -250,6 +209,6 @@ export async function transcribe(
       language: json.result?.language ?? 'en'
     }
   } finally {
-    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    await host.files.remove(dir).catch(() => undefined)
   }
 }

@@ -1,5 +1,5 @@
-import { spawn } from 'child_process'
 import type { Region } from '../shared/edit'
+import { joinBytes, platform } from './platform'
 
 /**
  * Where a screen recording changes: what is being typed, clicked, opened or
@@ -59,7 +59,7 @@ export async function findFocus(
 }
 
 /** The recording as small grey frames, read straight from ffmpeg. */
-function greyFrames(
+async function greyFrames(
   ffmpeg: string,
   path: string,
   startSec: number,
@@ -67,45 +67,39 @@ function greyFrames(
   fps: number,
   signal?: AbortSignal
 ): Promise<Uint8Array[]> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      '-hide_banner',
-      '-nostats',
-      '-loglevel',
-      'error',
-      '-ss',
-      Math.max(0, startSec).toFixed(3),
-      '-t',
-      Math.max(0.1, durationSec).toFixed(3),
-      '-i',
-      path,
-      '-an',
-      '-vf',
-      `fps=${fps},scale=${SCAN_W}:${SCAN_H}:flags=area,format=gray`,
-      '-f',
-      'rawvideo',
-      '-pix_fmt',
-      'gray',
-      '-'
-    ]
-    const child = spawn(ffmpeg, args, { signal })
-    const chunks: Buffer[] = []
-    let stderr = ''
-    child.stdout.on('data', (d: Buffer) => chunks.push(d))
-    child.stderr.on('data', (d) => (stderr = (stderr + d.toString()).slice(-4000)))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(stderr.trim().split('\n').pop() || `ffmpeg exited with ${code}`))
-        return
-      }
-      const all = Buffer.concat(chunks)
-      const size = SCAN_W * SCAN_H
-      const frames: Uint8Array[] = []
-      for (let at = 0; at + size <= all.length; at += size) frames.push(new Uint8Array(all.subarray(at, at + size)))
-      resolve(frames)
-    })
+  const args = [
+    '-hide_banner',
+    '-nostats',
+    '-loglevel',
+    'error',
+    '-ss',
+    Math.max(0, startSec).toFixed(3),
+    '-t',
+    Math.max(0.1, durationSec).toFixed(3),
+    '-i',
+    path,
+    '-an',
+    '-vf',
+    `fps=${fps},scale=${SCAN_W}:${SCAN_H}:flags=area,format=gray`,
+    '-f',
+    'rawvideo',
+    '-pix_fmt',
+    'gray',
+    '-'
+  ]
+  const chunks: Uint8Array[] = []
+  let stderr = ''
+  const r = await platform().run(ffmpeg, args, {
+    signal,
+    onBytes: (d) => chunks.push(d),
+    onStderr: (text) => (stderr = (stderr + text).slice(-4000))
   })
+  if (r.code !== 0) throw new Error(stderr.trim().split('\n').pop() || `ffmpeg exited with ${r.code}`)
+  const all = joinBytes(chunks)
+  const size = SCAN_W * SCAN_H
+  const frames: Uint8Array[] = []
+  for (let at = 0; at + size <= all.length; at += size) frames.push(new Uint8Array(all.subarray(at, at + size)))
+  return frames
 }
 
 type Box = { x0: number; y0: number; x1: number; y1: number }

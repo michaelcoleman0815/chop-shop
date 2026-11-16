@@ -240,7 +240,7 @@ export function defaultTools(): ClippingTools {
     },
     transcribe: async (path, durationSec, progress) => {
       const { whisperModel } = getSettings()
-      if (!hasModel(whisperModel)) await downloadModel(whisperModel, () => undefined)
+      if (!(await hasModel(whisperModel))) await downloadModel(whisperModel, () => undefined)
       const heard: Transcript = await transcribe(path, whisperModel, durationSec, (p, stage) => {
         if (stage === 'Transcribing') progress(Math.max(0, Math.min(1, (p - 12) / 86)))
       })

@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { platform } from './platform'
 
 /**
  * What a recording is, read once when it comes in: its shape as shown, its
@@ -156,16 +156,11 @@ export function readProbe(json: { streams?: ProbeStream[]; format?: { duration?:
   }
 }
 
-function run(bin: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args)
-    let out = ''
-    let err = ''
-    child.stdout.on('data', (d) => (out += d.toString()))
-    child.stderr.on('data', (d) => (err = (err + d.toString()).slice(-4000)))
-    child.on('error', reject)
-    child.on('close', (code) => (code === 0 ? resolve(out || err) : reject(new Error(err.trim().split('\n').pop()))))
-  })
+async function run(bin: string, args: string[]): Promise<string> {
+  let err = ''
+  const r = await platform().run(bin, args, { onStderr: (text) => (err = (err + text).slice(-4000)) })
+  if (r.code === 0) return r.stdout || err
+  throw new Error(err.trim().split('\n').pop())
 }
 
 /**
@@ -196,6 +191,15 @@ export async function probeSource(ffprobe: string, path: string): Promise<Source
   const facts = readProbe(JSON.parse(await run(ffprobe, [...PROBE_ARGS, path])))
   if (facts.durationSec > 0) return facts
   return { ...facts, durationSec: await readDuration(ffprobe, path) }
+}
+
+/** A recording as an edit takes it, the shape ffmpeg.ts's probe gives: its length, shown size, rate and facts. */
+export async function probeFile(
+  ffprobe: string,
+  path: string
+): Promise<{ durationSec: number; width: number; height: number; fps: number; facts: SourceFacts }> {
+  const facts = await probeSource(ffprobe, path)
+  return { durationSec: facts.durationSec, width: facts.width, height: facts.height, fps: facts.fps, facts }
 }
 
 /**

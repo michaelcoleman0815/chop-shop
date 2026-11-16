@@ -1,5 +1,5 @@
-import { spawn } from 'child_process'
 import type { VideoMeasures } from '../../shared/inspiration'
+import { platform } from '../platform'
 
 /**
  * Measures a video someone likes: where the shots change, how much of it is
@@ -26,16 +26,10 @@ interface RunResult {
 }
 
 /** Runs a binary to completion. Rejects only when it cannot start or is aborted. */
-function run(bin: string, args: string[], signal?: AbortSignal): Promise<RunResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { signal })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (d) => (stdout += d.toString()))
-    child.stderr.on('data', (d) => (stderr += d.toString()))
-    child.on('error', reject)
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
-  })
+async function run(bin: string, args: string[], signal?: AbortSignal): Promise<RunResult> {
+  let stderr = ''
+  const r = await platform().run(bin, args, { signal, onStderr: (text) => (stderr += text) })
+  return { code: r.code, stdout: r.stdout, stderr }
 }
 
 export interface MediaInfo {

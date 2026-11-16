@@ -7,8 +7,10 @@ import { defineConfig } from 'vitest/config'
  */
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'mobile/src/**/*.test.ts'],
     environment: 'node',
+    // The platform the main-process work runs on: Node's, with the tools the tests find.
+    setupFiles: ['src/main/test-platform.ts'],
     testTimeout: 60_000
   }
 })

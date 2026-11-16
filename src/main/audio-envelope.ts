@@ -1,5 +1,5 @@
-import { spawn } from 'child_process'
 import type { Envelope } from '../shared/audio/snap'
+import { FloatReader, platform } from './platform'
 
 /**
  * The loudness of a recording, 100 times a second, measured locally with
@@ -39,19 +39,15 @@ export async function loudnessEnvelope(
     '-'
   ]
 
-  return new Promise<Envelope>((resolve, reject) => {
-    const child = spawn(ffmpeg, args, { signal: opts.signal })
-    const out: number[] = []
-    let sum = 0
-    let count = 0
-    let carry: Buffer = Buffer.alloc(0)
-    let stderr = ''
-
-    child.stdout.on('data', (chunk: Buffer) => {
-      const data = carry.length ? Buffer.concat([carry, chunk]) : chunk
-      const whole = data.length - (data.length % 4)
-      for (let i = 0; i < whole; i += 4) {
-        const v = data.readFloatLE(i)
+  const out: number[] = []
+  let sum = 0
+  let count = 0
+  let stderr = ''
+  const floats = new FloatReader()
+  const r = await platform().run(ffmpeg, args, {
+    signal: opts.signal,
+    onBytes: (chunk) => {
+      for (const v of floats.push(chunk)) {
         sum += v * v
         if (++count === perFrame) {
           out.push(10 * Math.log10(sum / count + 1e-12))
@@ -59,21 +55,13 @@ export async function loudnessEnvelope(
           count = 0
         }
       }
-      carry = data.subarray(whole)
-    })
-    child.stderr.on('data', (d) => (stderr = (stderr + d.toString()).slice(-4000)))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (count > 0) out.push(10 * Math.log10(sum / count + 1e-12))
-      // No audio stream is not an error worth stopping for: nothing to listen to.
-      if (
-        code !== 0 &&
-        !/does not contain any stream|matches no streams|Output file #0 does not contain/i.test(stderr)
-      ) {
-        reject(new Error(stderr.trim().split('\n').pop() || `ffmpeg exited with ${code}`))
-        return
-      }
-      resolve({ hopSec, db: Float32Array.from(out) })
-    })
+    },
+    onStderr: (text) => (stderr = (stderr + text).slice(-4000))
   })
+  if (count > 0) out.push(10 * Math.log10(sum / count + 1e-12))
+  // No audio stream is not an error worth stopping for: nothing to listen to.
+  if (r.code !== 0 && !/does not contain any stream|matches no streams|Output file #0 does not contain/i.test(stderr)) {
+    throw new Error(stderr.trim().split('\n').pop() || `ffmpeg exited with ${r.code}`)
+  }
+  return { hopSec, db: Float32Array.from(out) }
 }

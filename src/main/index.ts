@@ -1,4 +1,5 @@
 import './app-paths'
+import './platform-electron'
 import { app, shell, BrowserWindow, ipcMain, dialog, desktopCapturer, systemPreferences } from 'electron'
 import { join, basename, extname } from 'path'
 import { createHash } from 'crypto'
@@ -460,7 +461,7 @@ function registerIpc(): void {
 
       // Progress is one bar over three stages, so each stage gets a slice of it
       // sized to how long it actually takes.
-      const needsDownload = !hasModel(settings.whisperModel)
+      const needsDownload = !(await hasModel(settings.whisperModel))
       const base = needsDownload ? 30 : 0
       const span = 88 - base
 

@@ -1,18 +1,20 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
-import { execFile } from 'child_process'
 import { basename } from 'path'
-import { promisify } from 'util'
 import { z } from 'zod'
 import { estimateOffset, trustworthy } from '../shared/audio/offset'
 import { levels, type Envelope } from '../shared/audio/snap'
-import { readApiKey } from './apikey'
 import { loudnessEnvelope } from './audio-envelope'
-import { FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
 import { PROBE_ARGS, readDuration, readProbe } from './intake'
-import { MODEL } from './planner'
+import { claude, MODEL } from './planner'
+import { platform } from './platform'
 
-const run = promisify(execFile)
+/** Runs a tool to the end, as execFile does: its output, or an error when it fails. */
+async function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+  let stderr = ''
+  const r = await platform().run(bin, args, { onStderr: (text) => (stderr += text) })
+  if (r.code !== 0) throw new Error(`Command failed: ${[bin, ...args].join(' ')}\n${stderr}`)
+  return { stdout: r.stdout, stderr }
+}
 
 /**
  * A shoot is rarely one file. A creator drops in the camera clips they talk
@@ -60,17 +62,18 @@ export async function factsFor(path: string): Promise<FileFacts> {
   // Whole streams, as intake reads them: the entries a narrower call names
   // differ between ffprobe versions, and the disposition that marks cover art
   // is only shown whole.
-  const { stdout } = await run(FFPROBE_PATH, [...PROBE_ARGS, path])
+  const ffprobe = platform().tool('ffprobe')
+  const { stdout } = await run(ffprobe, [...PROBE_ARGS, path])
   const json = JSON.parse(stdout) as { format?: { tags?: { creation_time?: string } } }
   // Cover art is a video stream too; readProbe leaves it out, as it is not footage.
   const facts = readProbe(JSON.parse(stdout))
-  const durationSec = facts.durationSec > 0 ? facts.durationSec : await readDuration(FFPROBE_PATH, path)
+  const durationSec = facts.durationSec > 0 ? facts.durationSec : await readDuration(ffprobe, path)
   const hasVideo = facts.width > 0 && facts.height > 0
   const hasAudio = facts.audio !== null
   let speech = 0
   if (hasAudio) {
     try {
-      const env = await loudnessEnvelope(FFMPEG_PATH, path, { durationSec: SPEECH_WINDOW_SEC })
+      const env = await loudnessEnvelope(platform().tool('ffmpeg'), path, { durationSec: SPEECH_WINDOW_SEC })
       speech = speechShare(env.db, env.hopSec, levels(env).threshold)
     } catch {
       // Unreadable sound counts as no talking.
@@ -188,7 +191,7 @@ function describeRoles(talking: FileFacts[], sound: FileFacts[], broll: FileFact
 export async function separateSameTakes(
   roles: Roles,
   files: FileFacts[],
-  envelopeOf: (path: string) => Promise<Envelope> = (path) => loudnessEnvelope(FFMPEG_PATH, path)
+  envelopeOf: (path: string) => Promise<Envelope> = (path) => loudnessEnvelope(platform().tool('ffmpeg'), path)
 ): Promise<Roles> {
   if (roles.talking.length < 2) return roles
   const byPath = new Map(files.map((f) => [f.path, f]))
@@ -265,10 +268,12 @@ const ROLES_SYSTEM = `You sort a video creator's footage before an edit. They dr
 - ignore: files the person said not to use.
 Every file gets exactly one role. Follow what the person said over the measurements; use the measurements when they said nothing. Never invent files.`
 
-/** Reads what the person said about their files, with the measurements, and sorts them. */
-export async function assignRoles(request: string, files: FileFacts[]): Promise<Roles> {
+/**
+ * Reads what the person said about their files, with the measurements, and
+ * sorts them. Without the person's Anthropic key they are sorted by measurement.
+ */
+export async function assignRoles(request: string, files: FileFacts[], apiKey: string | null = null): Promise<Roles> {
   const guess = guessRoles(files, request)
-  const apiKey = readApiKey()
   if (!apiKey || files.length === 0) return guess
   const table = files
     .map(
@@ -279,7 +284,7 @@ export async function assignRoles(request: string, files: FileFacts[]): Promise<
     )
     .join('\n')
   try {
-    const client = new Anthropic({ apiKey })
+    const client = claude(apiKey)
     const response = await client.beta.messages.parse({
       model: MODEL,
       max_tokens: 4000,

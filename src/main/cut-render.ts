@@ -1,5 +1,3 @@
-import { spawn } from 'child_process'
-import { promises as fs } from 'fs'
 import { basename, join } from 'path'
 import {
   cameraClock,
@@ -51,6 +49,7 @@ import { colorConversion, hasZscale, liveChannel } from './intake'
 import { bedVolume, limiter, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
+import { platform } from './platform'
 
 /**
  * Renders a resolved cut: the renderer of record for an edit document.
@@ -1156,31 +1155,26 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
 }
 
 /** Runs ffmpeg, reporting 0 to 1 against the expected output length. */
-export function runRender(
+export async function runRender(
   ffmpeg: string,
   args: string[],
   durationSec: number,
   onProgress: (fraction: number) => void = () => undefined,
   signal?: AbortSignal
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(ffmpeg, ['-nostats', '-progress', 'pipe:1', ...args], { signal })
-    let stderr = ''
-    child.stdout.on('data', (d) => {
-      for (const line of d.toString().split('\n')) {
+  let stderr = ''
+  const r = await platform().run(ffmpeg, ['-nostats', '-progress', 'pipe:1', ...args], {
+    signal,
+    onStdout: (text) => {
+      for (const line of text.split('\n')) {
         const m = /^out_time_us=(\d+)/.exec(line) ?? /^out_time_ms=(\d+)/.exec(line)
         if (m && durationSec > 0) onProgress(Math.min(0.99, Number(m[1]) / 1e6 / durationSec))
       }
-    })
-    child.stderr.on('data', (d) => (stderr = (stderr + d.toString()).slice(-8000)))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code === 0) {
-        onProgress(1)
-        resolve()
-      } else reject(new Error(stderr.trim().split('\n').slice(-6).join('\n') || `ffmpeg exited with ${code}`))
-    })
+    },
+    onStderr: (text) => (stderr = (stderr + text).slice(-8000))
   })
+  if (r.code !== 0) throw new Error(stderr.trim().split('\n').slice(-6).join('\n') || `ffmpeg exited with ${r.code}`)
+  onProgress(1)
 }
 
 export interface RenderCutOptions {
@@ -1309,9 +1303,9 @@ async function writeChapters(cut: Cut, resolved: Resolved, workDir: string): Pro
     resolved.durationSec
   )
   if (placed.problem) return null
-  await fs.mkdir(workDir, { recursive: true })
+  await platform().files.mkdir(workDir)
   const path = join(workDir, 'chapters.ffmeta')
-  await fs.writeFile(path, chaptersMetadata(placed.chapters, resolved.durationSec))
+  await platform().files.writeText(path, chaptersMetadata(placed.chapters, resolved.durationSec))
   return path
 }
 
@@ -1334,7 +1328,7 @@ export type LutKind = '1d' | '3d'
  * than left for ffmpeg to fail on.
  */
 export async function lutKindOf(path: string): Promise<LutKind> {
-  const head = (await fs.readFile(path, 'utf8').catch(() => '')).slice(0, 4096)
+  const head = (await platform().files.readText(path).catch(() => '')).slice(0, 4096)
   if (/^\s*LUT_3D_SIZE\s+\d+/m.test(head)) return '3d'
   if (/^\s*LUT_1D_SIZE\s+\d+/m.test(head)) return '1d'
   throw new Error(
@@ -1349,7 +1343,7 @@ export async function lutKindOf(path: string): Promise<LutKind> {
  */
 const channelMemo = new Map<string, Promise<0 | 1 | null>>()
 async function soundChannelOf(ffmpeg: string, path: string): Promise<0 | 1 | null> {
-  const stat = await fs.stat(path).catch(() => null)
+  const stat = await platform().files.stat(path)
   if (!stat) return null
   const key = `${path}\u0000${stat.size}\u0000${stat.mtimeMs}`
   let found = channelMemo.get(key)
@@ -1378,11 +1372,7 @@ async function checkInputs(
   for (const path of more) if (path) paths.add(path)
   for (const b of cut.beats) for (const e of b.sfx ?? []) if (e.path) paths.add(e.path)
   for (const path of paths) {
-    try {
-      await fs.access(path)
-    } catch {
-      throw new Error(`I can't find ${basename(path)}. It was at ${path}.`)
-    }
+    if (!(await platform().files.stat(path))) throw new Error(`I can't find ${basename(path)}. It was at ${path}.`)
   }
 }
 
@@ -1445,7 +1435,7 @@ export async function renderCut(
   await checkInputs(segments, opts.brand?.logo ?? null, [cut.music?.path, cut.look?.lut?.path], cut)
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)
-  await fs.mkdir(opts.workDir, { recursive: true })
+  await platform().files.mkdir(opts.workDir)
 
   let assPath: string | null = null
   const shown = opts.captionWords ?? resolved.words
@@ -1456,7 +1446,7 @@ export async function renderCut(
       endSec: w.outEnd
     }))
     assPath = join(opts.workDir, 'captions.ass')
-    await fs.writeFile(
+    await platform().files.writeText(
       assPath,
       buildAss(words, width, height, captionStyleFor(cut.captions, width, opts.brand?.colors ?? null))
     )

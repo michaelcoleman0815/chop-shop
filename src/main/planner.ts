@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
-import { readApiKey } from './apikey'
+import { platform } from './platform'
 import {
   applyOps,
   currentCut,
@@ -31,6 +31,18 @@ import {
 
 export const MODEL = 'claude-opus-5-5'
 
+/**
+ * A client for Claude with the person's own key, over the platform's network.
+ * On a phone the page itself calls Anthropic, which the API allows when it
+ * is asked to: the key never leaves the device for anywhere else.
+ */
+export function claude(apiKey: string): Anthropic {
+  const host = platform()
+  return host.kind === 'phone'
+    ? new Anthropic({ apiKey, fetch: host.fetch, dangerouslyAllowBrowser: true })
+    : new Anthropic({ apiKey })
+}
+
 export type PlanEditResult =
   | {
       ok: true
@@ -54,15 +66,17 @@ export async function planEdit(input: {
   preferences?: string[]
   /** The names of the creator's own logos. */
   logos?: string[]
+  /** The person's Anthropic key, or null when there is none. */
+  apiKey: string | null
 }): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
   const doc = parsedDoc.data
 
-  const apiKey = readApiKey()
+  const apiKey = input.apiKey
   if (!apiKey)
     return { ok: false, message: 'Add your Anthropic API key in Settings and I can work on this.', needsKey: true }
-  const client = new Anthropic({ apiKey })
+  const client = claude(apiKey)
 
   try {
     const response = await client.beta.messages.parse({
@@ -163,11 +177,12 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[]): PlanEditResu
  * Whether the saved key works with the model the planner uses: one small
  * request, so a bad key shows up in Settings rather than at the first edit.
  */
-export async function checkKey(): Promise<{ ok: true } | { ok: false; message: string; needsKey?: boolean }> {
-  const apiKey = readApiKey()
+export async function checkKey(
+  apiKey: string | null
+): Promise<{ ok: true } | { ok: false; message: string; needsKey?: boolean }> {
   if (!apiKey) return { ok: false, message: 'No key yet.', needsKey: true }
   try {
-    await new Anthropic({ apiKey }).models.retrieve(MODEL)
+    await claude(apiKey).models.retrieve(MODEL)
     return { ok: true }
   } catch (err) {
     return { ok: false, message: describeError(err), needsKey: err instanceof Anthropic.AuthenticationError }

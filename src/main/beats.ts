@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { FloatReader, platform } from './platform'
 
 /**
  * Finding the beat of a piece of music, so cuts can land on it.
@@ -47,46 +47,44 @@ export interface BeatGrid {
 }
 
 /** The music as mono samples at SAMPLE_RATE, read with ffmpeg. */
-export function readMono(ffmpeg: string, path: string, maxSec = 900, signal?: AbortSignal): Promise<Float32Array> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      ffmpeg,
-      [
-        '-hide_banner',
-        '-nostats',
-        '-loglevel',
-        'error',
-        '-t',
-        String(maxSec),
-        '-i',
-        path,
-        '-vn',
-        '-ac',
-        '1',
-        '-ar',
-        String(SAMPLE_RATE),
-        '-f',
-        'f32le',
-        '-'
-      ],
-      { signal }
-    )
-    const chunks: Buffer[] = []
-    let stderr = ''
-    child.stdout.on('data', (d: Buffer) => chunks.push(d))
-    child.stderr.on('data', (d) => (stderr = (stderr + d.toString()).slice(-4000)))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(stderr.trim().split('\n').pop() || `ffmpeg exited with ${code}`))
-        return
-      }
-      const all = Buffer.concat(chunks)
-      const out = new Float32Array(Math.floor(all.length / 4))
-      for (let i = 0; i < out.length; i++) out[i] = all.readFloatLE(i * 4)
-      resolve(out)
-    })
-  })
+export async function readMono(ffmpeg: string, path: string, maxSec = 900, signal?: AbortSignal): Promise<Float32Array> {
+  const floats = new FloatReader()
+  const parts: Float32Array[] = []
+  let stderr = ''
+  const r = await platform().run(
+    ffmpeg,
+    [
+      '-hide_banner',
+      '-nostats',
+      '-loglevel',
+      'error',
+      '-t',
+      String(maxSec),
+      '-i',
+      path,
+      '-vn',
+      '-ac',
+      '1',
+      '-ar',
+      String(SAMPLE_RATE),
+      '-f',
+      'f32le',
+      '-'
+    ],
+    {
+      signal,
+      onBytes: (chunk) => parts.push(floats.push(chunk)),
+      onStderr: (text) => (stderr = (stderr + text).slice(-4000))
+    }
+  )
+  if (r.code !== 0) throw new Error(stderr.trim().split('\n').pop() || `ffmpeg exited with ${r.code}`)
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0))
+  let at = 0
+  for (const p of parts) {
+    out.set(p, at)
+    at += p.length
+  }
+  return out
 }
 
 /** In-place radix-2 FFT of re/im, length a power of two. */
