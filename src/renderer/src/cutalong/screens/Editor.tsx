@@ -529,8 +529,8 @@ function TakesPanel({
   onSeek: (sec: number) => void
 }): JSX.Element {
   const cut = currentCut(doc)
-  // Takes come from the words alone, so they only change when the words do.
-  const groups = useMemo(() => takesOf(doc).flatMap((a) => a.groups), [doc.words, doc.sources]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Takes come from the words and the sound, so they only change when those do.
+  const groups = useMemo(() => takesOf(doc).flatMap((a) => a.groups), [doc.words, doc.sources, doc.audio]) // eslint-disable-line react-hooks/exhaustive-deps
   const [jumpTo, setJumpTo] = useState<string | null>(null)
 
   // After a switch, play from where the new take now sits in the cut.
