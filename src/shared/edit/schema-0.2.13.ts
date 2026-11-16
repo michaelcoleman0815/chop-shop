@@ -1,8 +1,10 @@
 // The edit's schema as Cutalong 0.2.13 shipped it (commit 391798b), word for
-// word below this comment, kept for the tests alone: what this build saves must
-// still open in the version before, which someone may go back to. 0.2.13 drops
-// a field it does not know, and cannot read an op it does not know at all. The
-// modules it imports have not changed since. Do not edit it to match the app.
+// word below this comment but for one import, kept for the tests alone: what
+// this build saves must still open in the version before, which someone may go
+// back to. 0.2.13 drops a field it does not know, and cannot read an op it does
+// not know at all. The modules it imports are as they were then, but the vlog's
+// schema, which has changed since and is 0.2.13's own in schema-0.2.13-vlog.ts.
+// Do not edit it to match the app.
 
 import { z } from 'zod'
 import { MusicSchema, VoiceSchema } from './audio'
@@ -25,7 +27,7 @@ import {
 import { AudioMapSchema } from '../audio/map'
 import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 import { MouthModeSchema } from '../vision/mode'
-import { VlogSchema } from '../vlog/schema'
+import { VlogSchema } from './schema-0.2.13-vlog'
 
 /**
  * The edit as data.

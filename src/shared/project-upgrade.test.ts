@@ -3,6 +3,7 @@ import { addNote, commit, createDoc, currentCut, EditDocSchema, fillMode, wordsF
 import { EditDocSchema as SHIPPED_0_2_13 } from './edit/schema-0.2.13'
 import { upgradeProject } from './project-upgrade'
 import type { Project } from './types'
+import { pretendVlog } from './vlog/pretend'
 
 const SOURCE = { id: 's1', path: '/take.mov', durationSec: 10, width: 1920, height: 1080, fps: 30 }
 
@@ -98,5 +99,13 @@ describe('a project this build saves, opened again in 0.2.13', () => {
     }
     // Here it reads back whole.
     expect(EditDocSchema.parse(saved)).toEqual(doc)
+  })
+
+  it('reads there a vlog this build told, with captions turned off over a shot and the fill asked for', () => {
+    let doc = pretendVlog(Array.from({ length: 12 }, (_, i) => `/shoot/IMG_${2000 + i}.MOV`)).doc
+    doc = commit(doc, [{ op: 'treat', beats: [currentCut(doc).beats[0].id], set: { captions: false } }], 'x').doc
+    doc = commit(doc, [{ op: 'fill', mode: 'blur' }], 'y').doc
+    const there = SHIPPED_0_2_13.safeParse(JSON.parse(JSON.stringify(doc)))
+    expect(there.success ? [] : there.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`)).toEqual([])
   })
 })
