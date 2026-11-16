@@ -41,17 +41,14 @@ export interface SourceFacts {
   audio: { codec: string; channels: number; layout: string; sampleFormat: string; rate: number; streams: number } | null
 }
 
-/** ffprobe's arguments for everything intake reads. */
-export const PROBE_ARGS = [
-  '-v',
-  'error',
-  '-show_entries',
-  'stream=index,codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,pix_fmt,bits_per_raw_sample,' +
-    'color_transfer,color_primaries,channels,channel_layout,sample_fmt,sample_rate:stream_side_data:' +
-    'stream_tags=rotate:format=duration',
-  '-of',
-  'json'
-]
+/**
+ * ffprobe's arguments for everything intake reads: every stream and the
+ * container, whole. Naming the entries to show is leaner, but the section
+ * names changed between versions: the ffprobe 5 bundled for macOS has no
+ * stream_side_data section and refused the whole call, so every file failed
+ * to open. Whole streams read the same on every version.
+ */
+export const PROBE_ARGS = ['-v', 'error', '-show_streams', '-show_format', '-of', 'json']
 
 interface ProbeStream {
   codec_type?: string

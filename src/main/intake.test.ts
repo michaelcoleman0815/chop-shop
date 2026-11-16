@@ -170,12 +170,13 @@ describe.skipIf(!FFMPEG || !FFPROBE)('intake on real files', () => {
         'sine=frequency=220:duration=2',
         '-c:a',
         'pcm_s16le',
+        // 10-bit H.264 carries its colour in the stream, as phone and camera
+        // footage does, so every ffprobe reads it; the ffprobe 5 bundled for
+        // macOS does not read ProRes's colour from a .mov.
         '-c:v',
-        'prores_ks',
-        '-profile:v',
-        '3',
+        'libx264',
         '-pix_fmt',
-        'yuv422p10le',
+        'yuv420p10le',
         '-color_primaries',
         'bt2020',
         '-color_trc',

@@ -93,5 +93,8 @@ export const api: CutalongApi = bridge ?? createMockApi()
 /** A local file as the player can load it, from the main process's media server. */
 export function mediaUrlFor(path: string): string {
   if (path.startsWith('data:')) return path
-  return isMock || !bridge ? '/sample.mp4' : `${bridge.mediaBase}/${encodeURIComponent(path)}`
+  if (isMock || !bridge) return '/sample.mp4'
+  // Without the server (it could not start), the packaged page plays files by path.
+  if (!bridge.mediaBase) return `file://${path.split('/').map(encodeURIComponent).join('/')}`
+  return `${bridge.mediaBase}/${encodeURIComponent(path)}`
 }
