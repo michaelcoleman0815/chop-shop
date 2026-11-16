@@ -44,6 +44,7 @@ export type CutalongApi = Pick<
   | 'clearServiceKey'
   | 'checkServiceKey'
   | 'setOtherServices'
+  | 'localPlanners'
   | 'setApiKey'
   | 'clearApiKey'
   | 'provider'

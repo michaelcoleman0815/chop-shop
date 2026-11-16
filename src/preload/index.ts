@@ -107,6 +107,8 @@ const api = {
   clearServiceKey: (id: ServiceId): Promise<void> => ipcRenderer.invoke('services:clearKey', id),
   checkServiceKey: (id: ServiceId): Promise<KeyCheck> => ipcRenderer.invoke('services:check', id),
   setOtherServices: (on: boolean): Promise<boolean> => ipcRenderer.invoke('services:setOn', on),
+  localPlanners: (): Promise<{ up: boolean; models: { name: string; sizeBytes: number }[] }> =>
+    ipcRenderer.invoke('planner:local'),
   studyInspiration: (input: {
     url?: string
     path?: string

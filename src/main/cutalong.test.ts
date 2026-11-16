@@ -72,6 +72,8 @@ vi.mock('./analysis-cache', () => ({ readAnalysis: async () => null }))
 vi.mock('./audio-envelope', () => ({ loudnessEnvelope: async () => ({ hopSec: 0.01, db: [] }) }))
 
 import { registerCutalongIpc } from './cutalong'
+import { saveSettings } from './store'
+import { createDoc, wordsFromTranscript } from '../shared/edit'
 import { findFfmpeg, NO_FFMPEG } from './providers/testing'
 
 const FOUND = findFfmpeg()
@@ -106,14 +108,18 @@ type Prepared =
   | { ok: true; doc: { words: { text: string }[] }; warning: string | null }
   | { ok: false; message: string }
 
+const root = mkdtempSync(join(tmpdir(), 'cutalong-prepare-'))
+beforeAll(() => {
+  fake.userData = join(root, 'userData')
+  mkdirSync(fake.userData, { recursive: true })
+  registerCutalongIpc({ send: () => undefined, mediaUrlFor: (p) => `media://${p}` })
+})
+afterAll(() => rmSync(root, { recursive: true, force: true }))
+
 describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' : ` (${NO_FFMPEG})`}`, () => {
-  let root = ''
   let clip = ''
 
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), 'cutalong-prepare-'))
-    fake.userData = join(root, 'userData')
-    mkdirSync(fake.userData, { recursive: true })
     clip = join(root, 'take.mp4')
     execFileSync(FFMPEG, [
       '-hide_banner',
@@ -137,9 +143,7 @@ describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' 
       '-shortest',
       clip
     ])
-    registerCutalongIpc({ send: () => undefined, mediaUrlFor: (p) => `media://${p}` })
   })
-  afterAll(() => rmSync(root, { recursive: true, force: true }))
   beforeEach(() => {
     fake.sent = []
     fake.answer = null
@@ -228,5 +232,84 @@ describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' 
 
   it('turns away a key for a service it does not know', async () => {
     await expect(invoke('services:setKey', 'openai', 'sk-abc')).rejects.toThrow('That is not a service Cutalong knows.')
+  })
+})
+
+describe('planning edits', () => {
+  const doc = createDoc({
+    id: 'd1',
+    title: 'take',
+    source: { id: 's1', path: '/Users/you/Movies/take.mov', durationSec: 2, width: 1280, height: 720, fps: 30 },
+    words: wordsFromTranscript(
+      [
+        { text: 'So', startSec: 0.1, endSec: 0.3 },
+        { text: 'um,', startSec: 0.4, endSec: 0.8 },
+        { text: 'this.', startSec: 0.9, endSec: 1.3 }
+      ],
+      's1'
+    )
+  })
+  const plan = {
+    ops: [{ op: 'strike', from: 'w2', to: 'w2' }],
+    summary: 'The um is gone.',
+    reply: 'Done.',
+    notesHandled: [],
+    needs: []
+  }
+  const env = process.env.ANTHROPIC_API_KEY
+
+  // With no Anthropic key, the Claude path answers without sending anything.
+  beforeAll(() => {
+    delete process.env.ANTHROPIC_API_KEY
+  })
+  afterAll(() => {
+    if (env !== undefined) process.env.ANTHROPIC_API_KEY = env
+    saveSettings({ localPlanner: null })
+    vi.unstubAllGlobals()
+  })
+
+  it('Claude plans by default', async () => {
+    saveSettings({ localPlanner: null })
+    const local = vi.fn()
+    vi.stubGlobal('fetch', local)
+    expect(await invoke('cut:plan', { doc, request: 'Cut the um.', notes: [] })).toEqual({
+      ok: false,
+      message: 'Add your Anthropic API key in Settings and I can work on this.',
+      needsKey: true
+    })
+    expect(local).not.toHaveBeenCalled()
+  })
+
+  it('a model on this Mac plans when it is picked, and only this Mac is asked', async () => {
+    saveSettings({ localPlanner: 'local-8b' })
+    const urls: string[] = []
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url)
+      if (url.endsWith('/api/version')) return new Response('{"version":"0.12.0"}')
+      return new Response(JSON.stringify({ message: { role: 'assistant', content: JSON.stringify(plan) }, done: true }))
+    })
+    const r = await invoke<{ ok: boolean; ops?: unknown[]; summary?: string }>('cut:plan', {
+      doc,
+      request: 'Cut the um.',
+      notes: []
+    })
+    expect(r).toMatchObject({ ok: true, ops: [{ op: 'strike', from: 'w2', to: 'w2' }], summary: 'The um is gone.' })
+    expect(urls).toEqual(['http://127.0.0.1:11434/api/version', 'http://127.0.0.1:11434/api/chat'])
+  })
+
+  it('lists the models Ollama has, or says it is not running', async () => {
+    vi.stubGlobal('fetch', async (url: string) =>
+      url.endsWith('/api/version')
+        ? new Response('{"version":"0.12.0"}')
+        : new Response(JSON.stringify({ models: [{ name: 'local-8b', size: 4_900_000_000 }] }))
+    )
+    expect(await invoke('planner:local')).toEqual({
+      up: true,
+      models: [{ name: 'local-8b', sizeBytes: 4_900_000_000 }]
+    })
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('fetch failed')
+    })
+    expect(await invoke('planner:local')).toEqual({ up: false, models: [] })
   })
 })

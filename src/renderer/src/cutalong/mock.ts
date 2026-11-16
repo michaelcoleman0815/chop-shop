@@ -163,13 +163,18 @@ export function createMockApi(): CutalongApi {
       return () => listeners.cut.delete(cb)
     },
     planEdit: async () =>
-      key === null
+      settings.localPlanner
         ? {
             ok: false as const,
-            message: 'Add your Anthropic API key in Settings and I can work on this.',
-            needsKey: true
+            message: `Plans come from ${settings.localPlanner} on this Mac, and this browser preview cannot reach it.`
           }
-        : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' },
+        : key === null
+          ? {
+              ok: false as const,
+              message: 'Add your Anthropic API key in Settings and I can work on this.',
+              needsKey: true
+            }
+          : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' },
 
     studyInspiration: async ({ url, path }) => {
       await progress(listeners.study, ['Fetching the video', 'Measuring the cuts', 'Listening to the pacing'])
@@ -413,6 +418,14 @@ export function createMockApi(): CutalongApi {
       settings = { ...settings, otherServices: on }
       return on
     },
+    // Stands in for Ollama running on this Mac with two models pulled.
+    localPlanners: async () => ({
+      up: true,
+      models: [
+        { name: 'local-8b', sizeBytes: 4_900_000_000 },
+        { name: 'local-3b', sizeBytes: 2_000_000_000 }
+      ]
+    }),
     setApiKey: async (next) => {
       key = next.trim() || null
     },

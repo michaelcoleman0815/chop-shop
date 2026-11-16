@@ -100,6 +100,8 @@ export interface Settings {
   otherServices?: boolean
   /** Who hears the words: 'local' is this computer; absent means the first transcription service with a key. */
   transcriber?: 'local' | 'deepgram' | 'assemblyai'
+  /** The Ollama model that plans edits on this computer. Absent or null means Claude, the default. */
+  localPlanner?: string | null
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string

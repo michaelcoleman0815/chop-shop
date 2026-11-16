@@ -17,6 +17,9 @@ import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
+import { planEditLocally } from './planner-local'
+import { isLocalUp, localModels } from './local-llm'
+import { OLLAMA_HOST } from './clips'
 import { readBrand, saveBrand } from './brand-store'
 import { hearInCloud, registerServicesIpc } from './providers'
 import {
@@ -209,9 +212,17 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) =>
-    planEdit(req)
-  )
+  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
+    // Claude plans unless the person picked a model on this Mac in Settings.
+    const local = getSettings().localPlanner
+    return local ? planEditLocally(req, { host: OLLAMA_HOST, model: local }) : planEdit(req)
+  })
+
+  // The models Ollama has on this Mac, for planning edits without Claude.
+  ipcMain.handle('planner:local', async () => {
+    if (!(await isLocalUp(OLLAMA_HOST))) return { up: false, models: [] }
+    return { up: true, models: await localModels(OLLAMA_HOST).catch(() => []) }
+  })
 
   // The brand: kept in userData, learned from the person's own videos, all
   // measured here on this computer.

@@ -5,6 +5,7 @@ import { api } from '../api'
 import { Button } from '../components/ui'
 import { Header } from './Header'
 import { OtherServices } from './OtherServices'
+import { Planning } from './Planning'
 
 /**
  * The few things that belong to this computer rather than to an edit: the
@@ -195,6 +196,8 @@ export function SettingsPage(): JSX.Element {
               console.anthropic.com.
             </p>
           </section>
+
+          <Planning settings={settings} onSettings={setSettings} />
 
           <OtherServices settings={settings} onSettings={setSettings} onHearer={setHearer} />
 
