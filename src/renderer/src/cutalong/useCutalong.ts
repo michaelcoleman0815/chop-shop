@@ -297,7 +297,7 @@ const ACTION_COMMANDS: Preset[] = [
       [
         'fill',
         'Fill',
-        'A picture of another shape, whole on a blurred copy, between black bars, or cropped: /fill blur, /fill black, /fill crop'
+        'How a picture of another shape fills the frame: /fill blur, /fill black, /fill crop, /fill auto'
       ],
       ['length', 'Length', 'Cut it to a length: /length 10m, /length 8-10 min, /length 60s, /length no intro'],
       ['cut', 'Cut', 'Cut out the stretch picked on the strip, or the beat under the playhead: /cut']
@@ -2102,24 +2102,27 @@ export function useCutalong() {
         ? 'black'
         : /^(crop|cropped|fill|cover|zoom)$/.test(words)
           ? 'crop'
-          : /^(blur|blurred|on|default)$/.test(words)
+          : /^(blur|blurred|on|all)$/.test(words)
             ? 'blur'
-            : fillAsked(words)
+            : /^(auto|default|as before|reset)$/.test(words)
+              ? 'auto'
+              : fillAsked(words)
       if (!mode) {
         const now = fillMode(currentCut(d))
         const n = new Set(filledIn(d).map((p) => p.key)).size
-        const how = { blur: 'on a blurred copy of itself', black: 'between black bars', crop: 'cropped to fill the frame' }[
-          now
-        ]
+        const how = {
+          auto: 'A phone clip in a wide video, a still or a screen recording is shown whole on a blurred copy of itself, and other footage is cropped to fill the frame.',
+          blur: 'Every picture of another shape than the frame is shown whole on a blurred copy of itself.',
+          black: 'A picture of another shape than the frame is shown whole between black bars.',
+          crop: 'Every picture is cropped to fill the frame.'
+        }[now]
         const touches =
           now === 'crop'
-            ? 'Every picture fills the frame.'
+            ? ''
             : n === 0
-              ? 'No picture in this edit is far from the frame’s shape, so none is shown that way yet.'
-              : `${n === 1 ? 'One picture is' : `${n} pictures are`} shown that way.`
-        say(
-          `A picture of another shape than the frame is shown whole, ${how}. ${touches} /fill blur, /fill black and /fill crop change it.`
-        )
+              ? ' No picture in this edit is shown that way yet.'
+              : ` ${n === 1 ? 'One picture is' : `${n} pictures are`} shown that way.`
+        say(`${how}${touches} /fill blur, /fill black, /fill crop and /fill auto change it.`)
         return
       }
       const done = applyAsVersion([{ op: 'fill', mode }], 'Pictures of another shape fill the frame another way.')

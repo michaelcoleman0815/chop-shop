@@ -20,9 +20,10 @@ import { ffmpegRun, findFfmpeg, frameColour, makeClip, type Rgb } from './test-m
  * Pictures of another shape than the frame (edit/fill), rendered for real:
  * an upright clip in a wide frame is shown whole on a blurred, darker copy of
  * itself, or between black bars, or cropped as before; a wide talking
- * recording made vertical stays cropped to the speaker; a wide cutaway in a
- * tall frame is filled above and below; a phone clip stored on its side, an
- * HDR clip and a cut rendered in passes are filled the same way.
+ * recording made vertical stays cropped to the speaker, and so does a wide
+ * cutaway unless the edit asks for blur or it is a screen recording, when it
+ * is filled above and below; a phone clip stored on its side, an HDR clip and
+ * a cut rendered in passes are filled the same way.
  *
  * The clips are a gradient: red rising left to right, green top to bottom,
  * blue at half. Where a frame's colour comes from in the picture says how it
@@ -175,7 +176,7 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     expect(left[0]).toBeLessThan(20)
   })
 
-  it('keeps a wide talking recording cropped to the speaker in a vertical frame, and fills a wide cutaway', async () => {
+  it('keeps wide footage cropped in a vertical frame, and shows a wide cutaway whole on blur or when it is a screen recording', async () => {
     const words = wordsFromTranscript(
       [
         { text: 'This', startSec: 0.3, endSec: 0.6 },
@@ -185,25 +186,42 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
       's1'
     )
     const doc = createDoc({ id: 'd', title: 'T', sources: [wide], words })
-    const broll = { path: wide.path, inSec: 0, muted: true }
-    const r = applyOps(
-      currentCut(doc),
-      [
-        { op: 'aspect', aspect: 'vertical' },
-        { op: 'loudness', lufs: null },
-        { op: 'insert', to: 1, beat: { source: 's1', inSec: 1.5, outSec: 2.5, treatment: { frame: 'broll', broll } } }
-      ],
-      { words: doc.words, sources: doc.sources }
-    )
-    expect(r.rejected).toEqual([])
-    const resolved = resolveCut(r.cut, doc.words, doc.sources)
-    const segments = cameraSegments(r.cut, resolved, [{ ...wide, hasAudio: true }], new Map([[wide.path, wide]]), true, {
-      width: 1080,
-      height: 1920
-    })
-    expect(segments[0].fill).toBeUndefined()
-    expect(segments[segments.length - 1].broll?.fill).toBe('blur')
-    const out = await render(doc, r.cut, 'vertical', doc.sources)
+    const vertical = (path: string, fill: unknown[] = []): Cut => {
+      const broll = { path, inSec: 0, muted: true }
+      const r = applyOps(
+        currentCut(doc),
+        [
+          { op: 'aspect', aspect: 'vertical' },
+          { op: 'loudness', lufs: null },
+          { op: 'insert', to: 1, beat: { source: 's1', inSec: 1.5, outSec: 2.5, treatment: { frame: 'broll', broll } } },
+          ...fill
+        ],
+        { words: doc.words, sources: doc.sources }
+      )
+      expect(r.rejected).toEqual([])
+      return r.cut
+    }
+    const fills = (cut: Cut, path: string): (Segment['fill'] | undefined)[] => {
+      const segments = cameraSegments(
+        cut,
+        resolveCut(cut, doc.words, doc.sources),
+        [{ ...wide, hasAudio: true }],
+        new Map([[path, wide]]),
+        true,
+        { width: 1080, height: 1920 }
+      )
+      return [segments[0].fill, segments[segments.length - 1].broll?.fill]
+    }
+    // By default the wide cutaway fills the frame as the speaker does, as Shorts expect.
+    expect(fills(vertical(wide.path), wide.path)).toEqual([undefined, undefined])
+    // A screen recording, by its name, is shown whole: a crop would lose what it shows.
+    const screen = join(dir, 'Screen Recording 2026-11-11 at 09.10.00.mp4')
+    expect(fills(vertical(screen), screen)).toEqual([undefined, 'blur'])
+    // Asked for blur, the cutaway is shown whole; the speaker is still reframed, not shrunk.
+    const cut = vertical(wide.path, [{ op: 'fill', mode: 'blur' }])
+    expect(fills(cut, wide.path)).toEqual([undefined, 'blur'])
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const out = await render(doc, cut, 'vertical', doc.sources)
     // The speaker fills the frame, cropped to the middle: red near half at both edges' midpoints.
     const speaker = frameColour(ffmpeg, out, 0.6, { x: 0.4, y: 0, w: 0.2, h: 0.05 })
     expect(speaker[1]).toBeLessThan(40)

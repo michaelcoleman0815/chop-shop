@@ -236,9 +236,11 @@ export const CutSchema = z.object({
   /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
   reframe: z.boolean().optional(),
   /**
-   * How a picture of another shape fills the frame (edit/fill): whole on a
-   * blurred copy of itself, which is what absent means, between black bars,
-   * or cropped to fill it.
+   * How a picture of another shape fills the frame (edit/fill). Absent is
+   * auto: a picture taller than the frame, a still or a screen recording sits
+   * whole on a blurred copy of itself, and other footage is cropped to fill.
+   * "blur" puts every one on a blurred copy, "black" between black bars, and
+   * "crop" crops them all.
    */
   fill: FillSchema.optional()
 })
@@ -330,7 +332,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // Follow the speaker when the picture is cropped to a narrower frame, or keep it in the middle.
   z.object({ op: z.literal('reframe'), on: z.boolean() }),
-  // How pictures of another shape fill the frame: on a blurred copy, between black bars, or cropped.
+  // How pictures of another shape fill the frame: as an edit does unless asked, on a blurred copy, between black bars, or cropped.
   z.object({ op: z.literal('fill'), mode: FillSchema }),
   // Where beats are centred when cropped, by hand; null follows the speaker or the middle again.
   z.object({ op: z.literal('framing'), beats: z.array(beatId).min(1), x: z.number().min(0).max(1).nullable() }),

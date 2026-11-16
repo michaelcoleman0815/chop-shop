@@ -44,9 +44,10 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
   finishing touch a video of its kind gets in one version: voice polish, a music bed, transitions where the sections
   change, a look, whooshes and chapters. Each one plays in the preview the moment it exists, exactly as it exports. Where something does not fit, such as a dissolve between
   words with no pause between them, it says so instead of pretending.
-- **Any shape of picture.** A phone clip held upright in a wide video, or a wide clip or still in a vertical one, is
-  shown whole on a blurred, darker copy of itself instead of being cropped to a sliver, in the preview and the export
-  alike. "Use black bars" (`/fill black`) gives plain bars, and `/fill crop` crops as before.
+- **Any shape of picture.** A phone clip held upright in a wide video, a still, or a screen recording that a crop would
+  cut to a sliver is shown whole on a blurred, darker copy of itself, in the preview and the export alike. Wide footage
+  in a vertical video still fills the frame, as Shorts and Reels expect. `/fill blur` puts every picture of another
+  shape on a blurred copy, "use black bars" (`/fill black`) gives plain bars, and `/fill crop` crops them all.
 - **Motion graphics the way After Effects does.** Lower thirds, callouts, keyword pops, kinetic titles, hook banners,
   end cards, logos, market charts, screenshots of a page and a phone with logos going round it, each a slash command
   (`/lowerthird`, `/callout`, `/pop`, `/title`, …) that lands on the word you are watching.

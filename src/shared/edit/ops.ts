@@ -442,9 +442,9 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
     }
 
     case 'fill': {
-      // Blur is what an edit does when it says nothing.
+      // Auto is what an edit does when it says nothing.
       const { fill: _was, ...rest } = cut
-      return op.mode === 'blur' ? rest : { ...rest, fill: op.mode }
+      return op.mode === 'auto' ? rest : { ...rest, fill: op.mode }
     }
 
     case 'framing': {

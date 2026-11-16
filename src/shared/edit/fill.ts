@@ -3,25 +3,28 @@ import type { Beat, Cut } from './schema'
 
 /**
  * A picture of another shape than the frame: a phone clip held upright in a
- * wide video, a wide clip or a cutaway in a vertical one, a still.
+ * wide video, a still, a screen recording in a vertical one.
  *
- * Cropping it to fill the frame keeps less than half of it, so it is shown
- * whole instead, and the space either side is filled with a blurred, darker
- * copy of the same picture rather than left as black bars. The copy is made
- * small, blurred there and scaled back up, which is cheap and soft; the
- * preview draws it the same way from the frame on screen, and the export
- * makes it with ffmpeg from the same numbers, so the two look alike.
+ * Cropping such a picture to fill the frame keeps less than half of it, so
+ * where that loses what matters it is shown whole instead, on a blurred,
+ * darker copy of the same picture. The copy is made small, blurred there and
+ * scaled back up, which is cheap and soft; the preview draws it the same way
+ * from the frame on screen, and the export makes it with ffmpeg from the same
+ * numbers, so the two look alike.
  *
- * Someone talking is the exception when their recording is wider than the
- * frame: making a wide talking head vertical is reframing, and it stays
- * cropped to them (centred, following them, or framed by hand). So does a
- * picture a camera move frames. Each edit can have black bars instead, or
- * have every picture cropped to fill the frame as it used to be.
+ * By default ('auto') that is a picture taller than the frame (a phone clip
+ * in a YouTube video), a still, and a screen recording. Wide footage in a
+ * vertical frame fills it, cropped, as Shorts, Reels and TikTok expect:
+ * blurred bars there read as reposted footage. Someone talking whose
+ * recording is wider than the frame stays cropped to them in any mode, as
+ * making a talking head vertical is reframing; so does a picture a camera
+ * move or a framing frames. An edit can put every picture of another shape
+ * on a blurred copy ('blur'), between black bars, or cropped ('crop').
  */
 
-export const FILL_MODES = ['blur', 'black', 'crop'] as const
+export const FILL_MODES = ['auto', 'blur', 'black', 'crop'] as const
 export const FillSchema = z.enum(FILL_MODES)
-/** How pictures of another shape fill the frame. Absent on a cut is blur. */
+/** How pictures of another shape fill the frame. Absent on a cut is auto. */
 export type FillMode = z.infer<typeof FillSchema>
 
 /** How one picture sits in its box: cropped to cover it, or whole on a blurred copy or between black bars. */
@@ -50,6 +53,23 @@ const STILL_KEEPS_AT_LEAST = 0.8
 /** Pictures with no timeline, by file name: the same list as shared/assets. */
 const STILL = /\.(png|jpe?g|webp|gif|bmp|avif)$/i
 
+/**
+ * A screen recording, by the name its recorder gives it: macOS ("Screen
+ * Recording 2026-11-11 at 09.10.00.mov", and as it is named in German,
+ * French and Spanish), iOS ("RPReplay_Final1699…"), Windows' Snipping Tool
+ * ("Screen Recording 2026-11-11 091000.mp4") and Game Bar ("Visual Studio
+ * Code 2026-11-11 09-10-00.mp4"). OBS names every recording by its date and
+ * time alone, a camera's as much as a screen's, so it cannot be told.
+ */
+export function screenRecording(path: string): boolean {
+  const name = path.split(/[\\/]/).pop() ?? path
+  return (
+    /^(screen ?recording|screen ?cast|rpreplay|bildschirmaufnahme|enregistrement de l.(é|e)cran|grabaci(ó|o)n de pantalla)/i.test(name) ||
+    // Game Bar: the window's title, then the date and time. A name that is the date alone is OBS's.
+    (/^\S.*\S \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.\w+$/.test(name) && !/^replay /i.test(name))
+  )
+}
+
 /** The small copy's size for a box of this shape: BACKDROP_LONG along its long side, even sizes. */
 export function backdropSize(box: Size): Size {
   const long = Math.max(box.width, box.height)
@@ -66,6 +86,8 @@ export interface FitInput {
   box: Size
   /** A still rather than footage. */
   still: boolean
+  /** A screen recording, by its file's name. */
+  screen: boolean
   /** Someone talking: a beat cut on words. */
   speaker: boolean
   /** Framed across by hand, or following the speaker: that framing decides the crop. */
@@ -89,14 +111,18 @@ export function fitFor(input: FitInput): Fit {
   if (!picture || picture.width <= 0 || picture.height <= 0 || box.width <= 0 || box.height <= 0) return 'cover'
   const q = shapeRatio(picture, box)
   // Narrowing someone talking is reframing them, and a framing set by hand or following them decides where.
-  if (q > 1 && (input.speaker || input.framed)) return 'cover'
+  // A screen recording has no one in it to reframe on.
+  if (q > 1 && (input.framed || (input.speaker && !input.screen))) return 'cover'
   const keeps = Math.min(q, 1 / q)
-  return keeps < (input.still ? STILL_KEEPS_AT_LEAST : KEEPS_AT_LEAST) - 1e-9 ? input.mode : 'cover'
+  if (keeps >= (input.still ? STILL_KEEPS_AT_LEAST : KEEPS_AT_LEAST) - 1e-9) return 'cover'
+  if (input.mode !== 'auto') return input.mode
+  // By default only where a crop loses what matters: a picture taller than the frame, a still, a screen.
+  return q < 1 || input.still || input.screen ? 'blur' : 'cover'
 }
 
 /** The fill an edit asks for. */
 export function fillMode(cut: Pick<Cut, 'fill'>): FillMode {
-  return cut.fill ?? 'blur'
+  return cut.fill ?? 'auto'
 }
 
 /**
@@ -107,7 +133,7 @@ export function fillMode(cut: Pick<Cut, 'fill'>): FillMode {
 export function pictureFit(
   cut: Pick<Cut, 'fill' | 'reframe'>,
   beat: Pick<Beat, 'from' | 'treatment'>,
-  picture: (Size & { subject?: unknown }) | null | undefined,
+  picture: (Size & { subject?: unknown; path?: string }) | null | undefined,
   frame: Size
 ): Fit {
   const t = beat.treatment
@@ -117,6 +143,7 @@ export function pictureFit(
     picture: picture ?? null,
     box: frame,
     still: false,
+    screen: !!picture?.path && screenRecording(picture.path),
     speaker: beat.from !== null,
     framed: typeof t.framing === 'number' || (!!cut.reframe && !!picture?.subject),
     moving: !!t.camera
@@ -137,6 +164,7 @@ export function cutawayFit(
     picture: size ?? null,
     box: frame,
     still: STILL.test(t.broll.path),
+    screen: screenRecording(t.broll.path),
     speaker: false,
     framed: false,
     moving: !!t.broll.camera
@@ -237,11 +265,12 @@ const counted = (n: number, one: string, many: string): string => `${NUMBERS[n] 
 
 /**
  * The sentence for the first version in which pictures sit whole on a
- * blurred copy: what is filled, why, and how to have bars instead. Null when
- * none do, or some already did before.
+ * blurred copy: what is shown whole, why, what it replaces (a crop), and how
+ * to have it cropped or between bars instead. Null when none are, or some
+ * already were before.
  */
 export function fillNotice(before: FilledPicture[], after: FilledPicture[], mode: FillMode): string | null {
-  if (mode !== 'blur' || after.length === 0 || before.length > 0) return null
+  if (mode === 'black' || mode === 'crop' || after.length === 0 || before.length > 0) return null
   const pictures = [...new Map(after.map((p) => [p.key, p])).values()]
   const n = pictures.length
   const one = n === 1
@@ -257,15 +286,16 @@ export function fillNotice(before: FilledPicture[], after: FilledPicture[], mode
       ? `The ${kind[0]} ${named}`
       : named
   const be = one ? 'is' : 'are'
-  const its = one ? 'its' : 'their'
-  const each = one ? 'it' : 'each'
-  let said: string
-  if (pictures.every((p) => p.taller))
-    said = `${subject} ${be} ${pictures.every((p) => p.upright) ? 'upright' : 'narrower than the frame'}, so I filled ${its} sides with a blurred copy of ${each}`
-  else if (pictures.every((p) => !p.taller))
-    said = `${subject} ${be} wider than the frame, so I filled above and below ${one ? 'it' : 'them'} with a blurred copy of ${each}`
-  else said = `${subject} ${be} a different shape from the frame, so I filled around each with a blurred copy of it`
-  return `${said} instead of black bars. Say “use black bars” to have plain bars.`
+  const them = one ? 'it' : 'them'
+  const copy = one ? 'a blurred copy of itself' : 'blurred copies of themselves'
+  const why = pictures.every((p) => p.taller)
+    ? pictures.every((p) => p.upright)
+      ? 'upright'
+      : 'narrower than the frame'
+    : pictures.every((p) => !p.taller)
+      ? 'wider than the frame'
+      : 'a different shape from the frame'
+  return `${subject} ${be} ${why}, so I showed ${them} whole on ${copy} instead of cropping ${them}. Say “crop ${them} to fill” to have ${them} cropped, or “use black bars” for plain bars.`
 }
 
 /**
@@ -296,5 +326,6 @@ export function fillAsked(text: string): FillMode | null {
 export function describeFill(mode: FillMode): string {
   if (mode === 'black') return 'pictures of another shape sit between black bars'
   if (mode === 'crop') return 'pictures of another shape are cropped to fill the frame'
-  return 'pictures of another shape sit on a blurred copy of themselves'
+  if (mode === 'blur') return 'every picture of another shape sits whole on a blurred copy of itself'
+  return 'a phone clip in a wide video, a still or a screen recording sits whole on a blurred copy of itself, and other footage fills the frame'
 }
