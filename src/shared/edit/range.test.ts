@@ -141,6 +141,98 @@ describe('a stretch picked on the beat strip', () => {
   })
 })
 
+describe('a plan held to a stretch', () => {
+  const picked = ['b2', 'b3', 'b4']
+  const order = (ops: Op[], doc: EditDoc): string[] => applyOps(currentCut(doc), ops, ctx(doc)).cut.beats.map((b) => b.id)
+
+  it('moves a picked beat only among the picked ones, never to just past them', () => {
+    const doc = makeDoc()
+    const cut = currentCut(doc)
+    const past = opsInside(cut, [{ op: 'move', beat: 'b2', to: 4 }] as Op[], picked, ctx(doc))
+    expect(past.inside).toEqual([])
+    expect(past.outside.map((o) => o.reason)).toEqual(['It puts a beat outside the stretch.'])
+    const last = opsInside(cut, [{ op: 'move', beat: 'b2', to: 3 }] as Op[], picked, ctx(doc))
+    expect(order(last.inside, doc)).toEqual(['b1', 'b3', 'b4', 'b2', 'b5', 'b6'])
+    // A beat put in may go just after the last of them, and is one of them from then on.
+    const put = opsInside(
+      cut,
+      [
+        { op: 'insert', to: 4, beat: { source: 's1', inSec: 30, outSec: 31 } },
+        { op: 'treat', beats: ['b7'], set: { bw: true } }
+      ] as Op[],
+      picked,
+      ctx(doc)
+    )
+    expect(put.outside).toEqual([])
+    expect(order(put.inside, doc)).toEqual(['b1', 'b2', 'b3', 'b4', 'b7', 'b5', 'b6'])
+  })
+
+  it('strikes words only when every word between its ends plays in the stretch', () => {
+    const doc = makeDoc()
+    // b5 moved up between b2 and b3: the cut plays b1 b2 b5 b3 b4 b6, and b2 and b5 sit side by side.
+    const cut = applyOps(currentCut(doc), [{ op: 'move', beat: 'b5', to: 2 }] as Op[], ctx(doc)).cut
+    const across = opsInside(cut, [{ op: 'strike', from: 'w6', to: 'w13' }] as Op[], ['b2', 'b5'], ctx(doc))
+    expect(across.inside).toEqual([])
+    expect(across.outside.map((o) => o.reason)).toEqual(['It cuts words outside the stretch.'])
+    const within = opsInside(cut, [{ op: 'strike', from: 'w5', to: 'w6' }] as Op[], ['b2', 'b5'], ctx(doc))
+    expect(within.inside).toHaveLength(1)
+  })
+
+  it('keeps a graphic on the stretch however it is anchored, and turns away one that starts, ends or moves outside it', () => {
+    const doc = makeDoc()
+    const cut = currentCut(doc)
+    // On a picked beat by its id, on a word less a fifth of a second, on a word's end: all on the stretch.
+    const on = [
+      { op: 'motion-add', kind: 'keyword', from: 'b3', text: ['Matters'] },
+      { op: 'motion-add', kind: 'keyword', from: 'w8-0.2', text: ['Matters'] },
+      { op: 'motion-add', kind: 'keyword', from: 'w8.end', text: ['Matters'] }
+    ] as Op[]
+    expect(opsInside(cut, on, picked, ctx(doc)).inside).toEqual(on)
+    // Running on to the end of the video, to a word past the stretch, or starting outside it, it is left out.
+    const off = [
+      { op: 'motion-add', kind: 'keyword', from: 'w8', to: 'end', text: ['Matters'] },
+      { op: 'motion-add', kind: 'keyword', from: 'w8', to: 'w17', text: ['Matters'] },
+      { op: 'motion-add', kind: 'keyword', from: 'w14', text: ['Tangent'] },
+      { op: 'motion-add', kind: 'keyword', from: 'b4.end', text: ['After'] }
+    ] as Op[]
+    const away = opsInside(cut, off, picked, ctx(doc))
+    expect(away.inside).toEqual([])
+    expect(away.outside.map((o) => o.reason)).toEqual(Array(4).fill('It puts a graphic outside the stretch.'))
+    // A graphic on the stretch moved to a word outside it stays where it was; moved within, it moves.
+    const placed = applyOps(cut, [on[0]], ctx(doc)).cut
+    const id = placed.motion![0].id
+    const moved = opsInside(placed, [{ op: 'motion-update', id, from: 'w17' }] as Op[], picked, ctx(doc))
+    expect(moved.outside.map((o) => o.reason)).toEqual(['It moves a graphic outside the stretch.'])
+    expect(opsInside(placed, [{ op: 'motion-update', id, from: 'w5' }] as Op[], picked, ctx(doc)).inside).toHaveLength(1)
+    // A graphic outside it is not the stretch's to change or take away.
+    const elsewhere = applyOps(cut, [off[2]], ctx(doc)).cut
+    const other = elsewhere.motion![0].id
+    expect(opsInside(elsewhere, [{ op: 'motion-remove', ids: [other] }] as Op[], picked, ctx(doc)).inside).toEqual([])
+  })
+
+  it('puts later ops to the beats the cut really makes once an op that made one is left out', () => {
+    const doc = makeDoc()
+    const cut = currentCut(doc)
+    // As the planner counted: b5 split makes b7, b3 split makes b8, then b7 (half of b5, outside) goes.
+    const ops = [
+      { op: 'split', beat: 'b5', at: 'w14' },
+      { op: 'split', beat: 'b3', at: 'w8' },
+      { op: 'remove', beats: ['b7'] }
+    ] as Op[]
+    const r = opsInside(cut, ops, picked, ctx(doc))
+    expect(r.inside).toEqual([ops[1]])
+    expect(r.outside.map((o) => o.reason)).toEqual(['It reaches outside the stretch.', 'It depends on a change left out.'])
+    const res = resolveCut(applyOps(cut, r.inside, ctx(doc)).cut, doc.words, doc.sources)
+    expect(res.words.map((w) => w.text)).toContain('matters')
+    // The half of b3 the plan called b8 is b7 in the cut, and a later op on it lands there.
+    const then = opsInside(cut, [ops[0], ops[1], { op: 'treat', beats: ['b8'], set: { bw: true } }] as Op[], picked, ctx(doc))
+    expect(then.inside).toEqual([ops[1], { op: 'treat', beats: ['b7'], set: { bw: true } }])
+    const after = applyOps(cut, then.inside, ctx(doc)).cut
+    expect(after.beats.find((b) => b.id === 'b7')?.from).toBe('w8')
+    expect(after.beats.find((b) => b.id === 'b7')?.treatment.bw).toBe(true)
+  })
+})
+
 describe('captions off over some beats', () => {
   it('leave those beats out of what the captions read, and say so', () => {
     const doc = makeDoc()

@@ -1,6 +1,9 @@
+import { parseAnchor } from '../motion/schema'
+import { template } from '../motion/templates'
+import { spanFor, timelineFor } from '../motion/timing'
 import { clock } from '../presets/preset'
 import { applyOps, type OpContext } from './ops'
-import { indexWords, type Resolved } from './resolve'
+import { indexWords, resolveCut, type Resolved } from './resolve'
 import type { Cut, Op } from './schema'
 
 /**
@@ -80,11 +83,56 @@ function beatsOf(op: Op): string[] | null {
   }
 }
 
+/** A beat id's number, to put the beats an op makes in the order it made them. */
+const idNumber = (id: string): number => Number(/\d+$/.exec(id)?.[0] ?? 0)
+
+/** The beat ids a graphic's anchor names, as its from or to: "b7", "b7.end", "b7+0.5". */
+const anchorBeat = (ref: string | undefined, made: Set<string>): string | null => {
+  const id = ref ? parseAnchor(ref)?.id : null
+  return id && made.has(id) ? id : null
+}
+
+/** Every beat id an op names, its graphics' anchors too. */
+function idsIn(op: Op, made: Set<string>): string[] {
+  const named = beatsOf(op) ?? []
+  if (op.op === 'motion-add' || op.op === 'motion-update') {
+    for (const ref of [op.from, op.to]) {
+      const id = anchorBeat(ref, made)
+      if (id) named.push(id)
+    }
+  }
+  return named
+}
+
+/** The op with the beat ids the plan meant put to the ones the cut has. */
+function renamed(op: Op, rename: Map<string, string>): Op {
+  if (rename.size === 0) return op
+  const to = (id: string): string => rename.get(id) ?? id
+  const anchor = (ref: string | undefined): string | undefined => {
+    const id = ref ? parseAnchor(ref)?.id : null
+    return ref && id && rename.has(id) ? `${to(id)}${ref.trim().slice(id.length)}` : ref
+  }
+  if ('beats' in op && Array.isArray(op.beats)) return { ...op, beats: op.beats.map(to) } as Op
+  if ('beat' in op && typeof op.beat === 'string') return { ...op, beat: to(op.beat) } as Op
+  if (op.op === 'motion-add') return { ...op, from: anchor(op.from) as string, to: anchor(op.to) as string }
+  if (op.op === 'motion-update') return { ...op, from: anchor(op.from), to: anchor(op.to) }
+  return op
+}
+
+/** How near the stretch's edges a graphic may start or end and still be on it, in seconds. */
+const EDGE = 0.05
+
 /**
  * Splits a plan for a picked stretch into the ops that stay inside it and
  * those that do not, each with why. The plan is followed in order: a beat
  * split off one inside, or put in among them, is inside too; a move must
- * land among them; struck words and graphics must be words they play.
+ * land among them; struck words must all be words they play; and a graphic
+ * must start where they play, and end there when its end is said, wherever
+ * its anchor is (a word, a beat, a word less two seconds, the cut's start).
+ * An op left out may have made a beat a later op names: the planner counted
+ * its ids with every op in, so later ops are put to the ids the cut really
+ * has, and one that names a beat an op left out would have made is left out
+ * too.
  */
 export function opsInside(
   cut: Cut,
@@ -92,6 +140,26 @@ export function opsInside(
   beats: string[],
   context: OpContext
 ): { inside: Op[]; outside: { op: Op; reason: string }[] } {
+  // The beats each op of the plan makes, as the planner checked it: every op in, in order.
+  const made: string[][] = []
+  let planned = cut
+  for (const op of ops) {
+    const before = new Set(planned.beats.map((b) => b.id))
+    const r = applyOps(planned, [op], context)
+    if (r.applied.length > 0) planned = r.cut
+    made.push(
+      planned.beats
+        .filter((b) => !before.has(b.id))
+        .map((b) => b.id)
+        .sort((a, b) => idNumber(a) - idNumber(b))
+    )
+  }
+  const madeAll = new Set(made.flat())
+  /** The plan's ids for beats it made, put to the ids those beats have in the cut. */
+  const rename = new Map<string, string>()
+  /** The plan's ids for beats only an op left out would have made. */
+  const dead = new Set<string>()
+
   const inRange = new Set(beats)
   const index = indexWords(context.words)
   let running = cut
@@ -114,6 +182,19 @@ export function opsInside(
     const at = running.beats.map((b, i) => (inRange.has(b.id) ? i : -1)).filter((i) => i >= 0)
     return at.length ? [Math.min(...at), Math.max(...at)] : [-1, -2]
   }
+  /** Whether a graphic plays on the stretch in this cut: it starts there, and ends there when its end is said. */
+  const onStretch = (c: Cut, id: string): boolean => {
+    const item = (c.motion ?? []).find((m) => m.id === id)
+    if (!item) return false
+    const resolved = resolveCut(c, context.words, context.sources)
+    const times = rangeTimes(resolved, [...inRange])
+    const tpl = template(item.kind)
+    const at = spanFor(timelineFor(c, resolved, context.words), item.from, item.to, tpl?.length ?? 3, tpl?.lead ?? 0)
+    if (!times || !at) return false
+    if (at.at < times.start - EDGE || at.at > times.end - EDGE) return false
+    // Its own length may run past the stretch, as it would on any beat; an end said outright may not.
+    return item.to.trim() === '' || at.end <= times.end + EDGE
+  }
   const reason = (op: Op): string | null => {
     if (WHOLE.has(op.op)) return 'It would change the whole video.'
     const named = beatsOf(op)
@@ -123,52 +204,64 @@ export function opsInside(
       const next = running.beats[at + 1]
       if (!next || !inRange.has(next.id)) return 'It reaches outside the stretch.'
     }
+    // A beat moved lands among the picked ones; one put in may also go just after the last of them.
     if (op.op === 'move' || op.op === 'insert') {
       const [a, z] = span()
-      if (op.to < a || op.to > z + 1) return 'It puts a beat outside the stretch.'
+      if (op.to < a || op.to > (op.op === 'insert' ? z + 1 : z)) return 'It puts a beat outside the stretch.'
     }
     if (op.op === 'strike' || op.op === 'unstrike') {
       const words = wordsInRange()
       const a = index.pos.get(op.from)
       const z = index.pos.get(op.to)
-      if (a === undefined || z === undefined || !words.has(a) || !words.has(z)) return 'It cuts words outside the stretch.'
+      if (a === undefined || z === undefined) return 'It cuts words outside the stretch.'
+      for (let i = Math.min(a, z); i <= Math.max(a, z); i++)
+        if (!words.has(i)) return 'It cuts words outside the stretch.'
     }
     if (op.op === 'freeze') {
       const p = index.pos.get(op.word)
       if (p === undefined || !wordsInRange().has(p)) return 'It holds on a word outside the stretch.'
     }
-    if (op.op === 'motion-add') {
-      const p = index.pos.get(op.from)
-      if (p === undefined || !wordsInRange().has(p)) return 'It puts a graphic outside the stretch.'
-    }
     if (op.op === 'motion-update' || op.op === 'motion-remove') {
       const ids = op.op === 'motion-update' ? [op.id] : op.ids
-      const words = wordsInRange()
-      for (const id of ids) {
-        const item = (running.motion ?? []).find((m) => m.id === id)
-        const p = item ? index.pos.get(item.from) : undefined
-        if (p === undefined || !words.has(p)) return 'It changes a graphic outside the stretch.'
-      }
+      for (const id of ids) if (!onStretch(running, id)) return 'It changes a graphic outside the stretch.'
     }
     return null
   }
-  for (const op of ops) {
+  /** What the op did, checked once it is done: a graphic put on the stretch, or moved, stays on it. */
+  const after = (op: Op, before: Cut, next: Cut): string | null => {
+    if (op.op === 'motion-add') {
+      const known = new Set((before.motion ?? []).map((m) => m.id))
+      const added = (next.motion ?? []).filter((m) => !known.has(m.id))
+      if (!added.every((m) => onStretch(next, m.id))) return 'It puts a graphic outside the stretch.'
+    }
+    if (op.op === 'motion-update' && !onStretch(next, op.id)) return 'It moves a graphic outside the stretch.'
+    return null
+  }
+  ops.forEach((asked, k) => {
+    const leftOut = (why: string): void => {
+      outside.push({ op: asked, reason: why })
+      for (const id of made[k]) dead.add(id)
+    }
+    if (idsIn(asked, madeAll).some((id) => dead.has(id))) return leftOut('It depends on a change left out.')
+    const op = renamed(asked, rename)
     const why = reason(op)
-    if (why) {
-      outside.push({ op, reason: why })
-      continue
-    }
-    const before = new Set(running.beats.map((b) => b.id))
+    if (why) return leftOut(why)
+    const before = running
+    const known = new Set(running.beats.map((b) => b.id))
     const r = applyOps(running, [op], context)
-    if (r.applied.length === 0) {
-      outside.push({ op, reason: r.rejected[0]?.reason ?? 'It does not fit the cut.' })
-      continue
-    }
+    if (r.applied.length === 0) return leftOut(r.rejected[0]?.reason ?? 'It does not fit the cut.')
+    const done = after(op, before, r.cut)
+    if (done) return leftOut(done)
     running = r.cut
     inside.push(op)
-    // A beat split off one inside, or put in among them, belongs to the stretch.
-    for (const b of running.beats) if (!before.has(b.id)) inRange.add(b.id)
-  }
+    // A beat split off one inside, or put in among them, belongs to the stretch, by the id the cut gave it.
+    const fresh = running.beats
+      .filter((b) => !known.has(b.id))
+      .map((b) => b.id)
+      .sort((a, b) => idNumber(a) - idNumber(b))
+    made[k].forEach((id, i) => (fresh[i] ? rename.set(id, fresh[i]) : dead.add(id)))
+    for (const id of fresh) inRange.add(id)
+  })
   return { inside, outside }
 }
 
