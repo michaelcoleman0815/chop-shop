@@ -61,6 +61,25 @@ export function fileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path
 }
 
+/**
+ * Each recording's name as the reply says it: its file name, and for two
+ * with the same name ("Sunday service.mp4" from two weeks' folders), as
+ * many of the folders above it as tell them apart: "Week 1/Sunday
+ * service.mp4".
+ */
+export function recordingNames(paths: string[]): Map<string, string> {
+  const parts = new Map(paths.map((p) => [p, p.split(/[\\/]/).filter(Boolean)]))
+  const tail = (p: string, n: number): string => (parts.get(p) ?? []).slice(-n).join('/')
+  const names = new Map<string, string>()
+  for (const p of parts.keys()) {
+    const most = parts.get(p)?.length ?? 1
+    let n = 1
+    while (n < most && [...parts.keys()].some((q) => q !== p && tail(q, n) === tail(p, n))) n++
+    names.set(p, tail(p, n) || p)
+  }
+  return names
+}
+
 /** "a", "a and b", "a, b and c". */
 export function listOf(items: string[]): string {
   const u = [...new Set(items)]
@@ -71,14 +90,12 @@ export function listOf(items: string[]): string {
 const NUMBER = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
 const count = (n: number): string => NUMBER[n] ?? String(n)
 
-/** A recording named the way the reply says it: "the service", or its file name when there are several. */
-function named(r: FoundRecording, several: boolean): string {
-  return several ? fileName(r.path) : CLIP_PROFILES[r.profile].name
-}
+/** A recording's name in the reply, by its path. */
+type Namer = (path: string) => string
 
 /** Files named in a sentence: all of them when there are few, else the first three and how many more. */
-function filesNamed(rs: FoundRecording[]): string {
-  const names = rs.map((r) => fileName(r.path))
+function filesNamed(rs: FoundRecording[], name: Namer): string {
+  const names = rs.map((r) => name(r.path))
   return names.length <= 4 ? listOf(names) : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`
 }
 
@@ -86,30 +103,32 @@ function filesNamed(rs: FoundRecording[]): string {
  * Why recordings gave no clips: a sentence for each reason, so a vlog's
  * fifty short clips get one sentence, not fifty.
  */
-function whyNoneAll(rs: FoundRecording[]): string {
+function whyNoneAll(rs: FoundRecording[], name: Namer): string {
   const out: string[] = []
   for (const reason of ['short', 'speechless', 'nothing'] as const) {
     const these = rs.filter((r) => r.none === reason)
     if (these.length === 0) continue
     if (these.length === 1) {
-      out.push(whyNone(these[0]))
+      out.push(whyNone(these[0], name))
       continue
     }
     if (reason === 'short')
       out.push(
-        `${filesNamed(these)} each run under ${clock(MIN_RECORDING_SEC)}, too short to cut clips from. Drop them without /clipping and I'll edit them as they are.`
+        `${filesNamed(these, name)} each run under ${clock(MIN_RECORDING_SEC)}, too short to cut clips from. Drop them without /clipping and I'll edit them as they are.`
       )
     else if (reason === 'speechless')
-      out.push(`I heard nobody talking in ${filesNamed(these)}, so there is nothing to clip: clips are cut on what is said.`)
-    else out.push(`I couldn't find a moment that stands on its own in ${filesNamed(these)}.`)
+      out.push(
+        `I heard nobody talking in ${filesNamed(these, name)}, so there is nothing to clip: clips are cut on what is said.`
+      )
+    else out.push(`I couldn't find a moment that stands on its own in ${filesNamed(these, name)}.`)
   }
   return out.join(' ')
 }
 
 /** Why a recording gave no clips, in a sentence. */
-function whyNone(r: FoundRecording): string {
+function whyNone(r: FoundRecording, named: Namer): string {
   const p = CLIP_PROFILES[r.profile]
-  const name = fileName(r.path)
+  const name = named(r.path)
   if (r.none === 'short')
     return `${name} runs ${clock(r.durationSec)}, too short to cut clips from: a clip runs ${clock(p.minSec)} to ${clock(p.maxSec)}, so it would be nearly the whole thing. Drop it without /clipping and I'll edit it as it is.`
   if (r.none === 'speechless')
@@ -120,6 +139,8 @@ function whyNone(r: FoundRecording): string {
 /** The sentence for a clip set, and what goes beside it. */
 export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsReply {
   const several = found.recordings.length > 1
+  const names = recordingNames(found.recordings.map((r) => r.path))
+  const name: Namer = (path) => names.get(path) ?? fileName(path)
   const n = found.clips.length
   const per = found.recordings.map((r) => ({ r, n: found.clips.filter((c) => c.source === r.path).length }))
   const more = found.had > 0 ? ' more' : ''
@@ -128,17 +149,18 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
     // Asked for more, a recording with nothing left is not one with nothing in it.
     const lonely = found.recordings.filter((r) => r.none && !(found.had > 0 && r.none === 'nothing'))
     text = lonely.length
-      ? whyNoneAll(lonely)
+      ? whyNoneAll(lonely, name)
       : found.had > 0
         ? `I found no more moments that stand on their own beside the ${found.had === 1 ? 'clip' : `${found.had} clips`} you have.`
         : `I couldn't find a moment that stands on its own.`
   } else if (several) {
-    const parts = per.filter((x) => x.n > 0).map((x) => `${x.n} in ${fileName(x.r.path)}`)
-    text = `I found ${count(n)}${more} clip${n === 1 ? '' : 's'}${parts.length > 1 ? `: ${listOf(parts)}` : ` in ${fileName(per.find((x) => x.n > 0)!.r.path)}`}.`
+    const parts = per.filter((x) => x.n > 0).map((x) => `${x.n} in ${name(x.r.path)}`)
+    text = `I found ${count(n)}${more} clip${n === 1 ? '' : 's'}${parts.length > 1 ? `: ${listOf(parts)}` : ` in ${name(per.find((x) => x.n > 0)!.r.path)}`}.`
     const lonely = per.filter((x) => x.n === 0 && x.r.none)
-    if (lonely.length) text += ` ${whyNoneAll(lonely.map((x) => x.r))}`
+    if (lonely.length) text += ` ${whyNoneAll(lonely.map((x) => x.r), name)}`
   } else {
-    text = `I found ${count(n)}${more} clip${n === 1 ? '' : 's'} in ${named(found.recordings[0], false)}.`
+    // One recording is named by what it is: "the service".
+    text = `I found ${count(n)}${more} clip${n === 1 ? '' : 's'} in ${CLIP_PROFILES[found.recordings[0].profile].name}.`
   }
 
   const left = found.recordings.flatMap((r) => r.left.map((x) => x.label))
@@ -177,14 +199,14 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
 
   const details: { label: string; value: string }[] = []
   for (const r of found.recordings) {
-    const name = several ? `${fileName(r.path)}: ` : ''
+    const file = name(r.path)
     details.push({
-      label: several ? fileName(r.path) : 'Transcript',
+      label: several ? file : 'Transcript',
       value: `${clock(r.durationSec)}, ${r.words.toLocaleString('en-US')} words${r.cached ? ', kept from before' : ''}`
     })
     if (r.left.length) {
       details.push({
-        label: `${several ? name : ''}Left out`,
+        label: `${several ? `${file}: ` : ''}Left out`,
         value: r.left.map((x) => `${x.label} ${clock(x.startSec)}–${clock(x.endSec)}`).join('; ')
       })
     }

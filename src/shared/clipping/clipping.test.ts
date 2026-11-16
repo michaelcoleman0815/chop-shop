@@ -7,7 +7,7 @@ import { measureRecording, planRecording } from './plan'
 import { fitPick, shapePicks } from './shape'
 import { clipDoc } from './doc'
 import { CLIP_PROFILES } from './profile'
-import { clipsReply, type ClipsFound } from './reply'
+import { clipsReply, recordingNames, type ClipsFound } from './reply'
 import { leaveOut, overlapWith } from './leave-out'
 import { sentencesOf } from './sentences'
 
@@ -585,5 +585,53 @@ describe('what /clipping says', () => {
     const mixed = { ...found, recordings: [rec('/s/part one.mp4'), rec('/s/part two.mp4', { profile: 'podcast' })] }
     expect(clipsReply(mixed, false).chips[0]).toBe('Sermon and podcast, 0:40 each')
     expect(clipsReply({ ...found, had: 4 }, true).text).toMatch(/^I found three more clips/)
+  })
+
+  it('tells two recordings with the same name apart, by their folders', () => {
+    const clip = (source: string) => ({
+      source,
+      startSec: 0,
+      endSec: 40,
+      title: 't',
+      hook: 'h',
+      reason: 'r',
+      score: 50,
+      doc: null as never
+    })
+    // Two weeks' services, each saved under the same name in its own folder.
+    const a = '/Users/me/Services/Week 1/Sunday service.mp4'
+    const b = '/Users/me/Services/Week 2/Sunday service.mp4'
+    const found: ClipsFound = {
+      ...base,
+      recordings: [rec(a), rec(b)],
+      clips: [clip(a), clip(a), clip(b), clip(b)]
+    }
+    const reply = clipsReply(found, false)
+    expect(reply.text).toBe(
+      'I found four clips: 2 in Week 1/Sunday service.mp4 and 2 in Week 2/Sunday service.mp4.'
+    )
+    expect(reply.details.map((d) => d.label)).toEqual([
+      'Week 1/Sunday service.mp4',
+      'Week 2/Sunday service.mp4',
+      'Picked by'
+    ])
+    const short = clipsReply(
+      { ...base, recordings: [rec(a, { durationSec: 50, none: 'short' }), rec(b, { durationSec: 40, none: 'short' })] },
+      false
+    )
+    expect(short.text).toMatch(/^Week 1\/Sunday service\.mp4 and Week 2\/Sunday service\.mp4 each run under 2:00/)
+    const one = clipsReply({ ...base, recordings: [rec(a), rec(b, { none: 'speechless' })], clips: [clip(a)] }, false)
+    expect(one.text).toBe(
+      'I found one clip in Week 1/Sunday service.mp4. I heard nobody talking in Week 2/Sunday service.mp4, so there is nothing to clip: clips are cut on what is said.'
+    )
+    // Names that differ already stay as they are.
+    expect(recordingNames(['/a/x.mp4', '/b/y.mp4', '/c/d/y.mp4', '/c/e/y.mp4'])).toEqual(
+      new Map([
+        ['/a/x.mp4', 'x.mp4'],
+        ['/b/y.mp4', 'b/y.mp4'],
+        ['/c/d/y.mp4', 'd/y.mp4'],
+        ['/c/e/y.mp4', 'e/y.mp4']
+      ])
+    )
   })
 })
