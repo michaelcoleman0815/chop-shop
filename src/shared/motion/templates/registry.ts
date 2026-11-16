@@ -54,6 +54,8 @@ export interface Template {
    * card, a title that quotes the speech), so captions wait until it is gone.
    */
   covers?: 'backdrop' | 'card'
+  /** How one call meets the captions, when that depends on the call (a map inset in a corner covers nothing). */
+  coversFor?(call: MotionCall): 'backdrop' | 'card' | undefined
   fields: Field[]
   /** A call the planner's instructions show, and what it does, in a few words. */
   example: { call: Omit<MotionCallInput, 'kind'>; says: string }

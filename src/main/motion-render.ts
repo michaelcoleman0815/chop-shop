@@ -9,7 +9,6 @@ import {
   drawsCaptions,
   MOTION_FONTS,
   renderFrame,
-  template,
   themeFrom,
   type BrandLook,
   type DrawResources,
@@ -279,7 +278,7 @@ export function subtitleCut(cut: Cut): Cut {
  * Only the subtitles read the words, so the picture is unchanged.
  */
 export function subtitlePass(cut: Cut, resolved: Resolved, scene: MotionScene): { cut: Cut; resolved: Resolved } {
-  const cards = scene.items.filter((i) => template(i.kind)?.covers === 'card')
+  const cards = scene.items.filter((i) => i.covers === 'card')
   const words = resolved.words.filter((w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end))
   return {
     cut: subtitleCut(cut),
