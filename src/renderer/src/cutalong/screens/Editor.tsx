@@ -883,7 +883,7 @@ function NotesPanel({
         onNote={(text) => {
           const command = parseCommand(text)
           if (command) void app.runCommand(command.command, 'panel', command.rest, time)
-          else if (!app.answerInPanel(text)) app.addNote(text, nowBeat)
+          else if (!app.answerInPanel(text, (rest) => app.addNote(rest, nowBeat))) app.addNote(text, nowBeat)
         }}
       />
     </aside>

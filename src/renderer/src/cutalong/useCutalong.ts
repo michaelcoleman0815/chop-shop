@@ -3300,10 +3300,12 @@ export function useCutalong() {
 
   /**
    * For the notes panel: a takes sentence, or a rule for the brand's never
-   * list, typed as a note is answered, not stored.
+   * list, typed as a note is answered, not stored. Whatever else the note
+   * asks for ("never use whooshes and keep the hook short") is kept as a
+   * note of its own.
    */
   const answerInPanel = useCallback(
-    (text: string): boolean => {
+    (text: string, keep?: (rest: string) => void): boolean => {
       const rule = readNever(text)
       if (rule.never.length > 0 || rule.allow.length > 0) {
         const target = brandNow()
@@ -3313,6 +3315,7 @@ export function useCutalong() {
           void answerNever(rule, text, (reply, extra) =>
             setPanel({ text: [reply, extra?.aside ?? ''].filter(Boolean).join(' ') })
           )
+          if (rule.rest.trim()) keep?.(rule.rest)
           return true
         }
       }

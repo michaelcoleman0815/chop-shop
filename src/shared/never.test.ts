@@ -52,6 +52,56 @@ describe('reading a rule from what someone says', () => {
     expect(readNever(text).never).toEqual(items)
   })
 
+  it.each([
+    ['Never put zoom transitions in', ['transition:zoom']],
+    ['This channel never uses lower thirds', ['motion:lower-third']],
+    ['I never want black and white again', ['bw']],
+    ['never whooshes', ['sfx:whoosh']],
+    ['never any music', ['music']],
+    ["Don't use whooshes on this channel", ['sfx:whoosh']],
+    ["I don't want music in my videos", ['music']],
+    ['No more zoom transitions on this channel, please', ['transition:zoom']],
+    ["This channel doesn't use captions", ['captions']],
+    ['You should never use stock footage', ['broll']],
+    ["We'd never use pops or dings", ['sfx:pop', 'sfx:ding']],
+    ['Never use whooshes, they are cheesy', ['sfx:whoosh']],
+    ['Please never add lower thirds again', ['motion:lower-third']],
+    ['No B-roll from outside, ever', ['broll']]
+  ])('reads the thing said as what is used: “%s”', (text, items) => {
+    expect(readNever(text).never).toEqual(items)
+  })
+
+  it.each([
+    // Feedback on this edit, said with "never" or "don't ever".
+    'I never noticed the music was so loud, turn it down',
+    "Don't ever let the music drown me out",
+    'You can never have too many captions',
+    'I never thought the zoom would look this good',
+    'You never know with captions',
+    "don't ever let the captions cover my face",
+    // How much, not whether.
+    'never use too much music',
+    "There's never enough b-roll",
+    // A rule for part of a video, or for this one.
+    'never use whooshes under my voice',
+    'never put music in the intro',
+    "don't use transitions this time",
+    // About the edit, not the channel.
+    'the edit never uses whooshes, add one',
+    'you never use whooshes',
+    'No, the music on this channel is too loud'
+  ])('reads no rule into “%s”, and keeps it all for the planner', (text) => {
+    expect(readNever(text)).toEqual({ never: [], allow: [], rest: text })
+  })
+
+  it('passes on what a rule’s sentence asks for besides', () => {
+    expect(readNever('Never use whooshes and keep the hook short.')).toEqual({
+      never: ['sfx:whoosh'],
+      allow: [],
+      rest: 'keep the hook short.'
+    })
+  })
+
   it('leaves edits of this one video to the planner', () => {
     for (const text of ['no transitions', 'no more punch-ins', 'no captions on this one', 'remove the music', 'make the hook punchier'])
       expect(readNever(text)).toEqual({ never: [], allow: [], rest: text })
@@ -66,6 +116,9 @@ describe('reading a rule from what someone says', () => {
     expect(readNever('whooshes are fine again').allow).toEqual(['sfx:whoosh'])
     expect(readNever('you can use transitions on this channel').allow).toEqual(['transition'])
     expect(readNever('take music beds off the never list').allow).toEqual(['music'])
+    expect(readNever('feel free to add music again').allow).toEqual(['music'])
+    // "You can" is not a use: nothing comes off the list.
+    expect(readNever('You can never have too many captions').allow).toEqual([])
   })
 
   it('keeps the rest of what was said for the planner', () => {

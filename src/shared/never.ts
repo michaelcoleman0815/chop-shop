@@ -198,7 +198,10 @@ const PHRASES: [RegExp, NeverItem][] = [
     /\bmotion graphics?\b|\bgraphics\b|\banimations?\b|\banimated text\b|\btext animations?\b|\bbig words?\b/,
     'motion'
   ],
-  [/\bb-?roll\b|\bstock (?:footage|clips?|videos?)\b|\boutside (?:footage|clips?|material)\b/, 'broll'],
+  [
+    /\bb-?roll from (?:outside|youtube|the (?:internet|web)|stock sites?|other (?:channels|people))\b|\bb-?roll\b|\bstock (?:footage|clips?|videos?)\b|\boutside (?:footage|clips?|material)\b/,
+    'broll'
+  ],
   [/\bcaptions?\b|\bsubtitles?\b|\bsubs\b/, 'captions'],
   [/\bblack[- ]and[- ]white\b|\bb ?& ?w\b|\bmonochrome\b|\bgr[ae]yscale\b/, 'bw']
 ]
@@ -221,31 +224,181 @@ function thingsIn(span: string): NeverItem[] {
   return out
 }
 
-const SCOPE =
-  /(?:\b(?:on|for|in|across) (?:this|my|our|the) (?:channel|brand)\b|\bever\b|\b(?:in|on|for|across) (?:all|any|every)(?: of)? (?:my|our|the) (?:videos|edits|shorts|uploads)\b|\bfrom now on\b)/
+/** The phrases, each anchored to the start of some words, to read a list of things from its start. */
+const AT_START: [RegExp, NeverItem][] = PHRASES.map(([re, item]) => [new RegExp(`^(?:${re.source})`), item])
 
-/** Rules that rule things out: the words after the trigger, or between it and its scope. */
-const NEVER_RULES: ((s: string) => string | null)[] = [
-  (s) => (/\bnever mind\b/.test(s) ? null : (/\b(?:never|don'?t ever|do not ever|dont ever)\b(.*)$/.exec(s)?.[1] ?? null)),
-  (s) =>
-    /\b(?:this|my|our|the) (?:channel|brand) (?:never|doesn'?t|does not|won'?t|will not) (?:use|uses|have|has|want|wants|get|gets|do|does)\b(.*)$/.exec(
-      s
-    )?.[1] ?? null,
+/** The longest thing named at the very start of some words. */
+function thingAt(text: string): { item: NeverItem; length: number } | null {
+  let best: { item: NeverItem; length: number } | null = null
+  for (const [re, item] of AT_START) {
+    const m = re.exec(text)
+    if (m && m[0].length > 0 && (!best || m[0].length > best.length)) best = { item, length: m[0].length }
+  }
+  return best
+}
+
+/** Words before a thing that leave it whole: "any music", "more whooshes", "any of the transitions". */
+const BEFORE_THING = /^(?:(?:any|more|the|those|these|some|other|a|an|of|all)\s+)+/
+
+/** An amount is not the thing: "too many captions", "enough B-roll" are about how much. */
+const AMOUNT = /^(?:too (?:many|much)|so (?:many|much)|enough|plenty)\b/
+
+/**
+ * The things some words start with, as a list ("any whooshes, pops or zoom
+ * transitions"), and the words after it; null when they start with
+ * anything else, or with an amount.
+ */
+function thingList(text: string): { items: NeverItem[]; after: string } | null {
+  let rest = text.trimStart()
+  const items: NeverItem[] = []
+  for (;;) {
+    if (AMOUNT.test(rest)) return null
+    const bare = rest.replace(BEFORE_THING, '')
+    if (AMOUNT.test(bare)) return null
+    const hit = thingAt(bare)
+    if (!hit) break
+    if (!items.includes(hit.item)) items.push(hit.item)
+    rest = bare.slice(hit.length).trimStart()
+    const join = /^(?:,\s*(?:and\s+|or\s+|nor\s+)?|and\s+|or\s+|nor\s+|&\s*|\/\s*)/.exec(rest)
+    if (!join) break
+    // A join with no thing after it ends the list: "whooshes, and keep it short".
+    const next = rest.slice(join[0].length)
+    if (!thingAt(next.replace(BEFORE_THING, ''))) break
+    rest = next
+  }
+  return items.length ? { items, after: rest } : null
+}
+
+/** Where a rule holds: the channel, every video, from now on. */
+const SCOPE =
+  /^(?:(?:on|for|in|across) (?:all |any |every )?(?:of )?(?:this|my|our|the) (?:channel|brand|videos|edits|shorts|uploads|content)\b|from now on\b|going forward\b|ever again\b|ever\b)/
+
+/**
+ * Words after the things that leave a rule whole: where and when it holds,
+ * who it is on ("zoom in on me"), "in", "again", "please".
+ */
+const TAIL =
+  /^(?:[\s,.!]*(?:(?:on|for|in|across) (?:all |any |every )?(?:of )?(?:this|my|our|the) (?:channel|brand|videos|edits|shorts|uploads|content)|on (?:me|us|my face|the speaker)|from now on|going forward|ever again|ever|again|anymore|any more|at all|whatsoever|in the future|in future|now|in|please|thanks|thank you|ok|okay|either|period))*[\s,.!]*$/
+
+/** What may follow the things: nothing that limits them, or a clause of its own. What a clause asks for besides is passed on. */
+function ruleTail(after: string): { ok: boolean; also: string } {
+  if (TAIL.test(after)) return { ok: true, also: '' }
+  // The tail words first, then the clause: "again, and keep the hook short".
+  const tail = /^(?:[\s,.!]*(?:again|ever|anymore|any more|at all|please|now)\b)*\s*/.exec(after)?.[0] ?? ''
+  const clause = after.slice(tail.length)
+  // Another request in the same sentence: "never use whooshes and keep it short".
+  const more = /^(?:[,;:]|[-–—])?\s*(?:and then|and also|and|but|then|also|plus)\s+(.+)$/.exec(clause)
+  if (more) return { ok: true, also: more[1] }
+  // Why, or what counts: "they're cheesy", "because…", "like ken burns".
+  if (/^(?:[,;:]|[-–—])\s*\S/.test(clause)) return { ok: true, also: '' }
+  if (/^(?:because|since|as|cause|'cause|cuz|like|such as|e\.?g\.?|including|especially)\b/.test(clause))
+    return { ok: true, also: '' }
+  return { ok: false, also: '' }
+}
+
+/** Saying a thing is used: "never use", "don't ever put". */
+const USE =
+  /^(?:use|uses|using|add|adds|adding|put|puts|putting|include|includes|including|want|wants|have|has|having|show|shows|showing|play|plays|playing|give me|gives me|do|does|doing|throw in|throws in)\b\s*/
+
+/** Words that open a sentence and change nothing: "please", "and", "from now on,". */
+const LEAD = /^(?:(?:please|pls|and|also|just|so|ok|okay|alright|oh|but|then|now|remember|from now on|going forward)\b[\s,]*)*/
+
+/** Who a never is about: the person, a "you should", or the channel. Anyone else is not a rule ("the edit never uses whooshes"). */
+const RULER =
+  /^(?:(?:i|we)(?:'d|'ll| will| would)?(?: really| just| basically| literally)?|you (?:should|must|shall)|(?:this|my|our|the) (?:channel|brand)(?: should| will)?)\s*$/
+
+interface Ruled {
+  items: NeverItem[]
+  /** What else the sentence asks for, in the same words: "keep it short". */
+  also: string
+}
+
+/** The things a stretch rules out, from its start: a list, then nothing that limits it. */
+function ruledFrom(text: string, needScope: boolean): Ruled | null {
+  const list = thingList(text)
+  if (!list) return null
+  let after = list.after
+  if (needScope) {
+    const unlisted = after.replace(/^,\s*/, '')
+    const scoped = SCOPE.exec(unlisted)
+    if (!scoped) return null
+    after = unlisted.slice(scoped[0].length)
+  }
+  const tail = ruleTail(after)
+  return tail.ok ? { items: list.items, also: tail.also } : null
+}
+
+/**
+ * Rules that rule things out. Each needs the thing said as what is used:
+ * "never use whooshes", "never any music", "don't ever put zoom transitions
+ * in", "this channel never uses lower thirds", "no transitions on this
+ * channel". Not "I never noticed the music", "don't ever let the music drown
+ * me out" or "you can never have too many captions".
+ */
+const NEVER_RULES: ((s: string) => Ruled | null)[] = [
+  // "never use whooshes", "I never want black and white again", "this channel never uses lower thirds".
   (s) => {
-    const m = /\b(?:no|zero|without)\b(.*)$/.exec(s)
-    if (!m || !SCOPE.test(m[1])) return null
-    return m[1].split(SCOPE)[0]
+    const m = /^(.*?)\b(?:never|don'?t ever|do not ever)\b\s*(.*)$/.exec(s)
+    if (!m || /^mind\b/.test(m[2])) return null
+    const before = m[1].replace(LEAD, '')
+    if (before && !RULER.test(before)) return null
+    const verb = USE.exec(m[2])
+    return ruledFrom(verb ? m[2].slice(verb[0].length) : m[2], false)
+  },
+  // "this channel doesn't use captions".
+  (s) => {
+    const m =
+      /^(?:.*?\b)?(?:this|my|our|the) (?:channel|brand) (?:doesn'?t|does not|won'?t|will not|shouldn'?t|should not)\s+(.*)$/.exec(
+        s
+      )
+    const verb = m ? USE.exec(m[1]) : null
+    return m && verb ? ruledFrom(m[1].slice(verb[0].length), false) : null
+  },
+  // "no transitions on this channel", "no more whooshes, ever": the things, then where the rule holds.
+  (s) => {
+    const m = /^(?:(?:i|we) want |there should be |there will be |there'?ll be )?(?:no|zero)\s+(.*)$/.exec(
+      s.replace(LEAD, '')
+    )
+    return m ? ruledFrom(m[1], true) : null
+  },
+  // "don't use whooshes on this channel", "I don't want music in my videos": only with where the rule holds.
+  (s) => {
+    const m = /^(?:(?:i|we)\s+)?(?:don'?t|do not)\s+(.*)$/.exec(s.replace(LEAD, ''))
+    const verb = m ? USE.exec(m[1]) : null
+    return m && verb ? ruledFrom(m[1].slice(verb[0].length), true) : null
   }
 ]
 
 /** Rules that take things off the list again. */
-const ALLOW_RULES: ((s: string) => string | null)[] = [
-  (s) => /\b(?:take|remove|drop)\b(.*?)\b(?:off|from) (?:the|my|this channel'?s|the channel'?s) never list\b/.exec(s)?.[1] ?? null,
-  (s) => /^(.*?)\b(?:is|are) (?:fine|ok|okay|allowed|back)(?: again)?\b/.exec(s)?.[1] ?? null,
-  (s) =>
-    /\b(?:you can|you may|it'?s (?:fine|ok|okay) to|it is (?:fine|ok|okay) to|feel free to|go ahead and|start using|allow)\b(.*)$/.exec(
-      s
-    )?.[1] ?? null
+const ALLOW_RULES: ((s: string) => Ruled | null)[] = [
+  // "take music beds off the never list".
+  (s) => {
+    const m =
+      /\b(?:take|remove|drop|delete)\b(.*?)\b(?:off|from) (?:the|my|our|this channel'?s|the channel'?s) never list\b/.exec(s)
+    const items = m ? thingsIn(m[1]) : []
+    return items.length ? { items, also: '' } : null
+  },
+  // "whooshes are fine again": the things alone, then fine.
+  (s) => {
+    const m = /^(.*?)\s+(?:is|are)\s+(?:fine|ok|okay|allowed|back|good)\b(.*)$/.exec(s.replace(LEAD, ''))
+    if (!m) return null
+    const list = thingList(m[1])
+    if (!list || list.after.trim()) return null
+    const tail = ruleTail(m[2])
+    return tail.ok ? { items: list.items, also: tail.also } : null
+  },
+  // "you can use transitions on this channel", "feel free to add music again", "allow B-roll from outside".
+  (s) => {
+    const opened = s.replace(LEAD, '')
+    const m =
+      /^(?:you can|you may|you're allowed to|you are allowed to|it'?s (?:fine|ok|okay) to|it is (?:fine|ok|okay) to|feel free to|go ahead and|start|allow)\s+(.*)$/.exec(
+        opened
+      )
+    if (!m) return null
+    const verb = USE.exec(m[1])
+    if (!verb && !/^allow\b/.test(opened)) return null
+    return ruledFrom(verb ? m[1].slice(verb[0].length) : m[1], false)
+  }
 ]
 
 export interface NeverSaid {
@@ -253,14 +406,18 @@ export interface NeverSaid {
   never: NeverItem[]
   /** Things said to be fine again. Only these when they are on the list; the caller knows the list. */
   allow: NeverItem[]
-  /** What else was said, without the sentences about the list. */
+  /** What else was said, without the rules: for the planner, as a request. */
   rest: string
 }
 
 /**
- * The rules in what someone said. A rule needs "never", or a "no" with its
- * scope ("on this channel", "ever", "in any of my videos"): "no transitions"
- * alone is about this edit, and goes to the planner like any request.
+ * The rules in what someone said, sentence by sentence. A rule says a thing
+ * is never used: "never" or "don't ever" with a word for using it, or the
+ * thing itself ("never whooshes"), or "no" with where it holds ("no
+ * transitions on this channel"). Anything else, "no transitions" for this
+ * edit or "I never noticed the music was so loud", is a request, and goes to
+ * the planner as one. What a rule's sentence asks for besides ("and keep it
+ * short") goes too.
  */
 export function readNever(text: string): NeverSaid {
   const sentences = text.split(/(?<=[.!?;])\s+|\n+/)
@@ -268,31 +425,30 @@ export function readNever(text: string): NeverSaid {
   const allow: NeverItem[] = []
   const rest: string[] = []
   for (const sentence of sentences) {
-    const s = sentence.toLowerCase().replace(/[’‘]/g, "'")
-    let hit = false
-    for (const rule of NEVER_RULES) {
-      const span = rule(s)
-      const items = span === null ? [] : thingsIn(span)
-      if (items.length) {
-        for (const i of items) if (!never.includes(i)) never.push(i)
-        hit = true
-        break
-      }
+    const trimmed = sentence.trim()
+    if (!trimmed) continue
+    const s = trimmed.toLowerCase().replace(/[’‘]/g, "'")
+    const ruled = firstOf(NEVER_RULES, s)
+    const allowed = ruled ? null : firstOf(ALLOW_RULES, s)
+    const found = ruled ?? allowed
+    if (!found) {
+      rest.push(trimmed)
+      continue
     }
-    if (!hit) {
-      for (const rule of ALLOW_RULES) {
-        const span = rule(s)
-        const items = span === null ? [] : thingsIn(span)
-        if (items.length) {
-          for (const i of items) if (!allow.includes(i)) allow.push(i)
-          hit = true
-          break
-        }
-      }
-    }
-    if (!hit && sentence.trim()) rest.push(sentence.trim())
+    const into = ruled ? never : allow
+    for (const i of found.items) if (!into.includes(i)) into.push(i)
+    // What else it asks for, in the words it was said in when lower case kept every letter in place.
+    if (found.also) rest.push(s.length === trimmed.length ? trimmed.slice(s.length - found.also.length) : found.also)
   }
   return { never, allow, rest: rest.join(' ') }
+}
+
+function firstOf(rules: ((s: string) => Ruled | null)[], s: string): Ruled | null {
+  for (const rule of rules) {
+    const r = rule(s)
+    if (r && r.items.length) return r
+  }
+  return null
 }
 
 /** The words with every rule about the list taken out, so a sentence of rules is never also counted as a request. */
