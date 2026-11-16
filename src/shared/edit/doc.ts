@@ -122,7 +122,8 @@ export function createDoc(input: { id: string; title: string; source: Source; wo
     tighten: null,
     captions: { ...DEFAULT_CAPTIONS },
     aspect: input.source.height > input.source.width ? 'vertical' : 'original',
-    loudness: DEFAULT_LOUDNESS
+    loudness: DEFAULT_LOUDNESS,
+    motion: []
   }
   return {
     v: 1,

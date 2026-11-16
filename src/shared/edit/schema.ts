@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 
 /**
  * The edit as data.
@@ -112,7 +113,9 @@ export const CutSchema = z.object({
   captions: CaptionSpecSchema,
   aspect: AspectSchema,
   /** Integrated loudness the master is set to, in LUFS. Null leaves the audio as recorded. */
-  loudness: z.number().min(-30).max(-6).nullable()
+  loudness: z.number().min(-30).max(-6).nullable(),
+  /** Motion graphics over the picture, drawn in order. Cuts saved before graphics existed have none. */
+  motion: z.array(MotionItemSchema).default([])
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -149,7 +152,9 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('captions'), set: CaptionSpecSchema.partial() }),
   z.object({ op: z.literal('tighten'), set: TightenSpecSchema.nullable() }),
   z.object({ op: z.literal('aspect'), aspect: AspectSchema }),
-  z.object({ op: z.literal('loudness'), lufs: z.number().min(-30).max(-6).nullable() })
+  z.object({ op: z.literal('loudness'), lufs: z.number().min(-30).max(-6).nullable() }),
+  // motion-add, motion-update, motion-remove: graphics over the picture (shared/motion).
+  ...MotionOpSchemas
 ])
 export type Op = z.infer<typeof OpSchema>
 export type OpName = Op['op']
