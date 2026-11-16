@@ -499,6 +499,19 @@ export function grow(percent: number): CSSProperties {
 }
 
 /**
+ * The player's clock as the playhead shows it. A video's own clock advances
+ * in uneven steps (15 to 19 ms a frame, and it stalls while it starts or
+ * seeks), so each frame moves on by exactly the time that passed and then
+ * leans a tenth of the way toward the video, which keeps the playhead gliding
+ * evenly without ever drifting from the sound. A real jump is taken at once.
+ */
+export function steady(shown: number, media: number, elapsedSec: number): number {
+  const predicted = shown + Math.max(0, elapsedSec)
+  const off = media - predicted
+  return Math.abs(off) > 0.25 ? media : predicted + off * 0.1
+}
+
+/**
  * The playhead at a fraction of the strip, as a transform (the strip is a
  * size container, so 100cqw is its width). Moving it costs no layout, so it
  * keeps up with every frame the player's clock gives it.

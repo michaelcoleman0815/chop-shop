@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { sourceTimeAt, type Resolved } from '../../../shared/edit'
+import { steady } from './motion'
 
 /**
  * Plays a cut straight off the source recording. The video element plays one
@@ -76,7 +77,8 @@ export function usePlayer(
           p = r.pieces[next]
           v.currentTime = p.srcStart
         }
-        now.current = p.outStart + Math.max(0, Math.min(p.srcEnd, v.currentTime) - p.srcStart)
+        const media = p.outStart + Math.max(0, Math.min(p.srcEnd, v.currentTime) - p.srcStart)
+        now.current = steady(now.current, media, (stamp - last.current) / 1000)
       } else {
         now.current = Math.min(r.durationSec, now.current + (stamp - last.current) / 1000)
         const hit = sourceTimeAt(r, now.current)
