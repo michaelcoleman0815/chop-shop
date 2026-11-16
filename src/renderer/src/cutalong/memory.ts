@@ -23,6 +23,9 @@ import { api } from './api'
  */
 
 const listeners = new Set<() => void>()
+/** As long as a signal's words may be; longer ones are cut short rather than lost. */
+const TEXT_MAX = 2000
+const VOICE_MAX = 4000
 
 /** Notes something that happened. Never throws and never waits: learning must not get in the way of editing. */
 export function remember(signal: SignalInput): void {
@@ -42,7 +45,7 @@ export function rememberVersion(
   if (!doc) return
   const version = n === null ? undefined : doc.versions.find((v) => v.n === n)
   const made = { doc: doc.id, version: version ? version.n : null, tags: version ? opTags(version.ops) : [] }
-  if ('request' in what) remember({ kind: 'request', text: what.request.trim(), ...made })
+  if ('request' in what) remember({ kind: 'request', text: what.request.trim().slice(0, TEXT_MAX), ...made })
   else remember({ kind: 'command', command: what.command, ...made })
 }
 
@@ -51,7 +54,8 @@ export function rememberAdded(before: EditDoc, after: EditDoc | null): void {
   if (!after) return
   const had = new Set(before.notes.map((n) => n.id))
   for (const note of after.notes) {
-    if (!had.has(note.id)) remember({ kind: 'note', doc: after.id, text: note.text, status: 'added' })
+    if (!had.has(note.id))
+      remember({ kind: 'note', doc: after.id, text: note.text.slice(0, TEXT_MAX), status: 'added' })
   }
 }
 
@@ -68,7 +72,7 @@ export function rememberNotes(
     remember({
       kind: 'note',
       doc: doc.id,
-      text: note.text,
+      text: note.text.slice(0, TEXT_MAX),
       status,
       ...(version ? { version: version.n, tags: opTags(version.ops) } : {})
     })
@@ -86,7 +90,7 @@ let voiceNow: string | null = null
 export function rememberVoice(text: string): void {
   const before = voiceNow
   voiceNow = text
-  if (before !== null && before !== text) remember({ kind: 'voice', text })
+  if (before !== null && before !== text) remember({ kind: 'voice', text: text.slice(0, VOICE_MAX) })
 }
 
 export interface Notice {

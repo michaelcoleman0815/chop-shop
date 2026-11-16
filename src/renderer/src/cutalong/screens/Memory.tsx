@@ -20,6 +20,24 @@ function sentence(paused: boolean, items: number, signals: number): string {
   return "As you edit, I'll notice what you ask for again and again, what you undo and what you keep, and list it here."
 }
 
+/** A statement, with any slash command in it set as a command. */
+function Statement({ text }: { text: string }): JSX.Element {
+  const parts = text.split(/((?<=^|\s)\/[a-z][a-z0-9-]*)/i)
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <span key={i} className="mono">
+            {part}
+          </span>
+        ) : (
+          part
+        )
+      )}
+    </>
+  )
+}
+
 function where(items: number): string {
   const which =
     items > PLANNER_PREFERENCES ? `The first ${PLANNER_PREFERENCES} go` : items === 1 ? 'This goes' : 'These go'
@@ -86,7 +104,9 @@ export function MemorySection({ app }: { app: Cutalong }): JSX.Element {
                 ) : (
                   <>
                     <span className="cl-list-main">
-                      {p.text}
+                      <span>
+                        <Statement text={p.text} />
+                      </span>
                       {p.edited && <span className="cl-project-meta">In your words</span>}
                     </span>
                     <Button
