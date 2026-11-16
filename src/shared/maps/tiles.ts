@@ -37,16 +37,28 @@ export function tilesInView(view: View, size: { width: number; height: number },
 export const tileKey = (z: number, x: number, y: number): string => `${z}/${x}/${y}`
 
 /**
- * Every tile a map layer draws over its life, sampled at a rate, as keys
- * "z/x/y". `k` is canvas pixels per design pixel of the render.
+ * Every tile a map layer draws over its life, or between two of its moments,
+ * sampled at a rate, as keys "z/x/y". `k` is canvas pixels per design pixel
+ * of the render.
  */
-export function tilesForPaint(paint: MapPaint, geo: MapGeo | null, length: number, k: number, maxLevel: number, fps = 30): Set<string> {
+export function tilesForPaint(
+  paint: MapPaint,
+  geo: MapGeo | null,
+  length: number,
+  k: number,
+  maxLevel: number,
+  fps = 30,
+  from = 0,
+  to = length
+): Set<string> {
   const out = new Set<string>()
   if (paint.style !== 'satellite-dark') return out
   const size = { width: paint.viewport.w, height: paint.viewport.h }
-  const frames = Math.max(1, Math.ceil(length * fps))
+  const a = Math.max(0, from)
+  const b = Math.min(length, to)
+  const frames = Math.max(1, Math.ceil((b - a) * fps))
   for (let i = 0; i <= frames; i++) {
-    const view = viewAt(paint, geo, Math.min(length, i / fps))
+    const view = viewAt(paint, geo, Math.min(b, a + i / fps))
     const z = tileLevel(view.zoom, k, maxLevel)
     for (const [tz, tx, ty] of tilesInView(view, size, z)) out.add(tileKey(tz, tx, ty))
   }

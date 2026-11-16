@@ -86,8 +86,10 @@ export type MapFeature =
 
 export interface MapPaint {
   style: MapStyle
-  /** The highlight's colour. */
+  /** The highlight's colour: the call's own, else the brand's accent on the satellite map, else the style's. */
   accent: string
+  /** The face the map's names are set in, the brand's, where the style takes one; the style's own when not given. */
+  font?: string
   /** Where the camera starts, before the first stop: the whole world or a box. */
   open: GeoBox | 'world'
   stops: MapStop[]
@@ -99,3 +101,16 @@ export interface MapPaint {
   /** Kept clear of labels: the title's block. */
   reserve: Rect[]
 }
+
+/** What map data is on this computer, as Settings and the editor read it. */
+export interface MapStatus {
+  /** The finest level of satellite tiles here: 3 is what ships, 7 is everything. */
+  level: number
+  plates: boolean
+  /** Everything the download fetches is here. */
+  complete: boolean
+  downloadMb: number
+  downloading?: boolean
+}
+
+export type MapDownloadResult = { ok: true; status: MapStatus } | { ok: false; message: string; status: MapStatus }

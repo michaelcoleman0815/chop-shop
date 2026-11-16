@@ -67,7 +67,7 @@ const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
 export function platesFromGeoJson(boundaries: unknown, plates: unknown): PlatesFile {
   const features = (fc: unknown): Feature[] =>
     fc && typeof fc === 'object' && Array.isArray((fc as { features?: unknown }).features)
-      ? ((fc as { features: Feature[] }).features ?? [])
+      ? (fc as { features: unknown[] }).features.filter((f): f is Feature => !!f && typeof f === 'object')
       : []
   const outBoundaries: PlatesFile['boundaries'] = []
   for (const f of features(boundaries)) {
