@@ -14,6 +14,7 @@ import {
   textToRows,
   wordAt,
   type IconNode,
+  marketSeries,
   type MotionScene,
   type TextLayer
 } from '.'
@@ -384,6 +385,80 @@ describe('kinetic title', () => {
     expect(planMotionCommand('title', 'Type less', ctx)).toMatchObject({ op: { style: '', text: ['Type less'] } })
     expect(planMotionCommand('title', '', ctx)).toEqual({
       problem: 'Tell me the words, like /title So what is the | FOMO & partnership?'
+    })
+  })
+})
+
+describe('market chart', () => {
+  const SAID =
+    'This is the easiest way to ever buy a financial asset and hold it for good without the usual fees at all.'
+  const chart = (extra: Record<string, unknown> = {}) => ({
+    op: 'motion-add',
+    kind: 'market',
+    from: 'w3',
+    to: '5s',
+    ...extra
+  })
+
+  it('fills the frame while it is up, runs its candles left to right, and lands the words said on it', () => {
+    const scene = sceneOf(docWith('wide', [chart({ style: 'up', fx: ['crt'] })], SAID))
+    const item = scene.items[0]
+    expect(item.end - item.start).toBeCloseTo(5)
+    // Opaque everywhere while it is up; nothing before or after.
+    const during = draw(scene, item.start + 2)
+    for (const [x, y] of [
+      [5, 5],
+      [1915, 1075],
+      [960, 900]
+    ])
+      expect(during.at(x, y)[3]).toBe(255)
+    expect(draw(scene, item.start - 0.05).lit(0, 0, 1920, 1080)).toBe(0)
+    expect(draw(scene, item.end).lit(0, 0, 1920, 1080)).toBe(0)
+    // Candles: green or red, more of them across the frame as it runs.
+    const candles = (f: ReturnType<typeof draw>, x0: number, x1: number): number => {
+      let n = 0
+      for (let x = x0; x < x1; x += 3)
+        for (let y = 60; y < 680; y += 3) {
+          const [r, g] = f.at(x, y)
+          if (g > 150 && r < 90) n++
+          else if (r > 200 && g < 110) n++
+        }
+      return n
+    }
+    const early = draw(scene, item.start + 0.2)
+    const late = draw(scene, item.start + 3.6)
+    expect(candles(early, 1500, 1920)).toBe(0)
+    expect(candles(late, 1500, 1920)).toBeGreaterThan(20)
+    // The words said over it are its words, in pages, in the middle.
+    const pages = scene.layers.filter((l): l is TextLayer => l.kind === 'text' && (l.spans?.length ?? 0) > 0)
+    expect(pages.map((p) => p.spans!.map((s) => s.text.trim()).join(' ')).join(' ')).toContain(
+      'easiest way to ever buy'
+    )
+    for (const p of pages) expect(p.transform?.x).toBeCloseTo(960)
+  })
+
+  it('makes the same chart every time, trending as asked and through the prices given', () => {
+    const a = sceneOf(docWith('wide', [chart({ style: 'down' })], SAID))
+    const b = sceneOf(docWith('wide', [chart({ style: 'down' })], SAID))
+    expect(JSON.stringify(a.layers)).toBe(JSON.stringify(b.layers))
+    let r = 1
+    const random = (): number => (r = (r * 16807) % 2147483647) / 2147483647
+    const down = marketSeries(60, 'down', [], random)
+    expect(down[59].close).toBeLessThan(down[0].open)
+    const through = marketSeries(41, 'choppy', [100, 180, 120], random)
+    expect(through[20].close).toBeGreaterThan(150)
+    expect(Math.abs(through[40].close - 120)).toBeLessThan(25)
+  })
+
+  it('keeps captions off it, and reads /market', () => {
+    const doc = docWith('vertical', [{ op: 'captions', set: { on: true, preset: 'hierarchy' } }, chart()], SAID)
+    const scene = sceneOf(doc)
+    const item = scene.items[0]
+    const caps = scene.layers.filter((l) => !item.layers.includes(l) && l.kind === 'text')
+    for (const c of caps) expect(c.end <= item.start + 1e-9 || c.start >= item.end - 1e-9).toBe(true)
+    const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+    expect(planMotionCommand('market', 'down crt', { doc, resolved, time: null, brandName: '' })).toMatchObject({
+      op: { kind: 'market', style: 'down', fx: ['crt'], text: [], to: '4s' }
     })
   })
 })

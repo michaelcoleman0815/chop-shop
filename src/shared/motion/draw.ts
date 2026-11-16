@@ -351,11 +351,20 @@ function withEffects(
 ): void {
   const k = pixelScale(ctx)
   if (effects?.glow) {
+    // The shape goes far off the canvas and only its blurred shadow, in the
+    // glow's colour, lands where it is: a blur filter would blur a canvas-sized
+    // layer for every draw. A shadow's blur is twice a filter's deviation.
     const n = Math.max(1, Math.min(4, Math.round(effects.glow.strength ?? 1)))
-    const filter = ctx.filter
-    ctx.filter = `blur(${Math.max(0.01, effects.glow.blur * k).toFixed(2)}px)`
+    const far = 20000
+    const m = ctx.getTransform()
+    ctx.save()
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e + far, m.f)
+    ctx.shadowColor = effects.glow.color
+    ctx.shadowBlur = Math.max(0.01, effects.glow.blur * k) * 2
+    ctx.shadowOffsetX = -far
+    ctx.shadowOffsetY = 0
     for (let i = 0; i < n; i++) draw('glow', effects.glow.color)
-    ctx.filter = filter
+    ctx.restore()
   }
   const s = effects?.shadow
   if (s) {

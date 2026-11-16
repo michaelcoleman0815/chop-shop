@@ -132,6 +132,20 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       if (names.length === 0) return { problem: 'Tell me the brand, like /logo Bitcoin.' }
       return { style, items: names.slice(0, 4).map((label) => ({ label })) }
     }
+  },
+  {
+    command: 'market',
+    kind: 'market',
+    title: 'Market chart',
+    summary: 'A full-screen market chart with your words on it: /market up, or /market down crt',
+    parse: (rest) => {
+      const { style, rest: more } = takeStyle(rest, 'market')
+      // A texture word, then any words of its own to show instead of what is said.
+      const [first, ...others] = words(more)
+      const fx = first === 'crt' || first === 'scanlines' ? [first] : []
+      const text = (fx.length ? others.join(' ') : more).trim()
+      return { style, fx, text: text ? [text] : [], to: '4s' }
+    }
   }
 ]
 

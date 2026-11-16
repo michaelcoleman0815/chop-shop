@@ -2,7 +2,7 @@ import type { Resolved, ResolvedWord } from '../edit/resolve'
 import type { CaptionSpec } from '../edit/schema'
 import { tail } from './anim'
 import type { Frame, MotionTheme } from './theme'
-import type { Layer, Span } from './types'
+import type { Layer, Span, TextLayer } from './types'
 
 /**
  * Captions the graphics draw, in place of the subtitle pass, when the cut's
@@ -258,18 +258,91 @@ function placePage(
 const shown = (text: string): string =>
   /\..*\./.test(text) ? text : text.replace(/[.,;:]+(["')\]’”]*)$/, '$1') || text
 
+/** The look of hierarchy pages in a frame: sizes, wrap width, and how long a big line may run. */
+export function hierarchyLook(frame: Frame): { big: number; small: number; maxWidth: number; maxBigChars: number } {
+  const vertical = frame.shape === 'vertical'
+  // Sizes from the look this follows: the big line about a tenth of the frame's short side, the small one two thirds of it.
+  const big = (vertical ? 86 : 96) * frame.u
+  const safeWidth = frame.width - frame.safe.left - frame.safe.right
+  const maxWidth = vertical ? safeWidth * 0.94 : frame.shape === 'wide' ? frame.width * 0.46 : safeWidth * 0.8
+  return { big, small: 0.68, maxWidth, maxBigChars: Math.max(8, Math.floor(maxWidth / (big * 0.58))) }
+}
+
+/** One page's height, for placing it before it is laid out. */
+export function pageHeight(
+  page: Pick<ResolvedWord, 'id' | 'text'>[],
+  frame: Frame,
+  emphasis?: Record<string, number>
+): number {
+  const { big, small, maxBigChars } = hierarchyLook(frame)
+  const split = splitPage(page, emphasis, maxBigChars)
+  const lines = split.at > 0 && split.at < page.length ? 2 : 1
+  return big * 1.04 * (lines === 2 ? 1 + small : 1)
+}
+
+/**
+ * One hierarchy page as a text layer: its top centred on `at`, on screen from
+ * `start` to `end`, each word fading up out of a blur as it is said.
+ */
+export function hierarchyPage(
+  page: ResolvedWord[],
+  start: number,
+  end: number,
+  at: { x: number; y: number },
+  opts: { frame: Frame; theme: MotionTheme; uppercase?: boolean; emphasis?: Record<string, number> }
+): TextLayer {
+  const { frame, theme } = opts
+  const u = frame.u
+  const { big, small, maxWidth, maxBigChars } = hierarchyLook(frame)
+  const split = splitPage(page, opts.emphasis, maxBigChars)
+  const isBig = (i: number): boolean => (split.big === 'first' ? i < split.at : i >= split.at)
+  // The small line hangs from the big one's start when it leads, and tucks under its end when it trails.
+  const smallAlign = split.big === 'first' ? ('right' as const) : ('left' as const)
+  const spans: Span[] = page.map((w, i) => ({
+    text: `${i === split.at && i > 0 ? '\n' : ''}${shown(w.text)}`,
+    t: Math.max(0, w.outStart - start),
+    scale: isBig(i) ? 1 : small,
+    weight: isBig(i) ? 600 : 500,
+    align: isBig(i) ? 'left' : smallAlign
+  }))
+  return {
+    kind: 'text',
+    start,
+    end,
+    text: '',
+    spans,
+    font: {
+      family: theme.body,
+      size: big,
+      weight: 600,
+      lineHeight: 1.04,
+      tracking: -0.03 * big,
+      uppercase: opts.uppercase
+    },
+    fill: theme.text,
+    align: 'center',
+    valign: 'top',
+    maxWidth,
+    effects: { shadow: { color: 'rgba(0, 0, 0, 0.5)', blur: 18 * u, y: 3 * u } },
+    animators: [
+      {
+        by: 'word',
+        timing: 'spoken',
+        delay: -0.03,
+        duration: 0.32,
+        ease: 'ease-out',
+        from: { opacity: 0, blur: 8 * u, y: 14 * u }
+      }
+    ],
+    transform: { x: at.x, y: at.y, opacity: { keys: [{ t: 0, v: 1 }, ...tail([0.12, 1, 'ease-in'], [0, 0])] } }
+  }
+}
+
 /** Hierarchy captions as text layers, one a page, on the output clock. Empty unless the cut asks for them. */
 export function captionLayers(input: CaptionInput): Layer[] {
   const { spec, resolved, frame, theme } = input
   if (!drawsCaptions(spec) || resolved.words.length === 0) return []
-  const u = frame.u
-  const vertical = frame.shape === 'vertical'
-  // Sizes from the look this follows: the big line about a tenth of the frame's short side, the small one two thirds of it.
-  const big = (vertical ? 86 : 96) * u
-  const small = 0.68
-  const safeWidth = frame.width - frame.safe.left - frame.safe.right
-  const maxWidth = vertical ? safeWidth * 0.94 : frame.shape === 'wide' ? frame.width * 0.46 : safeWidth * 0.8
-  const maxBigChars = Math.max(8, Math.floor(maxWidth / (big * 0.58)))
+  const { maxWidth } = hierarchyLook(frame)
   const maxWords = Math.max(3, Math.min(8, spec.wordsPerScreen * 2))
   const covers = input.covers ?? []
   const pages = hierarchyPages(resolved.words, maxWords)
@@ -287,56 +360,11 @@ export function captionLayers(input: CaptionInput): Layer[] {
     }
     if (end - start < 0.2) return
     const backdrop = covers.some((c) => c.kind === 'backdrop' && start >= c.start - 0.05 && start < c.end)
-
-    const split = splitPage(page, input.emphasis, maxBigChars)
-    const isBig = (i: number): boolean => (split.big === 'first' ? i < split.at : i >= split.at)
-    // The small line hangs from the big one's start when it leads, and tucks under its end when it trails.
-    const smallAlign = split.big === 'first' ? ('right' as const) : ('left' as const)
-    const spans: Span[] = page.map((w, i) => ({
-      text: `${i === split.at && i > 0 ? '\n' : ''}${shown(w.text)}`,
-      t: Math.max(0, w.outStart - start),
-      scale: isBig(i) ? 1 : small,
-      weight: isBig(i) ? 600 : 500,
-      align: isBig(i) ? 'left' : smallAlign
-    }))
-    const lines = split.at > 0 && split.at < page.length ? 2 : 1
-    const height = big * 1.04 * (lines === 2 ? 1 + small : 1)
+    const height = pageHeight(page, frame, input.emphasis)
     const at = placePage(frame, spec.position, facesNear(input.faces, start), height, maxWidth / 2, backdrop)
-    layers.push({
-      kind: 'text',
-      start,
-      end,
-      text: '',
-      spans,
-      font: {
-        family: theme.body,
-        size: big,
-        weight: 600,
-        lineHeight: 1.04,
-        tracking: -0.03 * big,
-        uppercase: spec.uppercase
-      },
-      fill: theme.text,
-      align: 'center',
-      valign: 'top',
-      maxWidth,
-      effects: { shadow: { color: 'rgba(0, 0, 0, 0.5)', blur: 18 * u, y: 3 * u } },
-      animators: [
-        {
-          by: 'word',
-          timing: 'spoken',
-          delay: -0.03,
-          duration: 0.32,
-          ease: 'ease-out',
-          from: { opacity: 0, blur: 8 * u, y: 14 * u }
-        }
-      ],
-      transform: {
-        x: at.x,
-        y: at.y,
-        opacity: { keys: [{ t: 0, v: 1 }, ...tail([0.12, 1, 'ease-in'], [0, 0])] }
-      }
-    })
+    layers.push(
+      hierarchyPage(page, start, end, at, { frame, theme, uppercase: spec.uppercase, emphasis: input.emphasis })
+    )
   })
   return layers
 }

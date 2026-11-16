@@ -114,6 +114,9 @@ export function starPoints(n: number, outer: number, inner: number, cx = 0, cy =
 }
 
 /** Commands for any shape. */
+// Parsed path data, kept: a chart or a texture draws the same long path every frame.
+const parsed = new Map<string, Cmd[]>()
+
 export function shapeCmds(g: Geometry): Cmd[] {
   switch (g.type) {
     case 'rect':
@@ -132,8 +135,15 @@ export function shapeCmds(g: Geometry): Cmd[] {
       return polyCmds(g.points, true)
     case 'star':
       return polyCmds(starPoints(g.points, g.outer, g.inner, g.x ?? 0, g.y ?? 0, g.rotation ?? -90), true)
-    case 'path':
-      return parsePath(g.d)
+    case 'path': {
+      let cmds = parsed.get(g.d)
+      if (!cmds) {
+        if (parsed.size > 256) parsed.clear()
+        cmds = parsePath(g.d)
+        parsed.set(g.d, cmds)
+      }
+      return cmds
+    }
   }
 }
 

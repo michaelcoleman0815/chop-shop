@@ -40,6 +40,7 @@ export const MOTION_KINDS = [
   'steps',
   'sticker',
   'logo',
+  'market',
   'layers'
 ] as const
 export const MotionKindSchema = z.enum(MOTION_KINDS)
