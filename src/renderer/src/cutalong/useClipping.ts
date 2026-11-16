@@ -268,7 +268,8 @@ export function useClipping(deps: ClippingDeps) {
     const { push, setToast, during, exportingNow } = d.current
     const wait = exportWait(exportingNow.current, { kind: 'clips' })
     if (wait) {
-      setToast({ text: wait })
+      // In the chat, where it stays: the toast is the running export's, and its next count would replace it.
+      push({ role: 'assistant', text: wait })
       return
     }
     const clips = toExport(current())

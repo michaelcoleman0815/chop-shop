@@ -2822,7 +2822,8 @@ export function useCutalong() {
     // A second export waits for the first, Export all's included: both report on one channel.
     const wait = exportWait(exportingNow.current, { kind: 'version', n })
     if (wait) {
-      setToast({ text: wait })
+      // In the panel, where it stays: the toast is the running export's, and its next count would replace it.
+      setPanel({ text: wait })
       return
     }
     exportingNow.current = { kind: 'version', n }
