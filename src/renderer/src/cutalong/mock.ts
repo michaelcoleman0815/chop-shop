@@ -146,6 +146,21 @@ export function createMockApi(): CutalongApi {
       await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Transcribing', 'Splitting into beats'])
       return { ok: true as const, doc: fakeDoc(path), mediaUrl: '/sample.mp4', warning: null }
     },
+    // As if the top left of the screen were busy a moment in, then the bottom right.
+    findFocus: async ({ ranges }) => {
+      await sleep(500)
+      return {
+        ok: true as const,
+        regions: ranges.map((r) =>
+          r.durationSec < 1.5
+            ? []
+            : [
+                { at: 0.3, x: 0.04, y: 0.06, w: 0.42, h: 0.34 },
+                { at: Math.min(r.durationSec - 0.8, 2.4), x: 0.52, y: 0.58, w: 0.42, h: 0.34 }
+              ]
+        )
+      }
+    },
     renderCut: async ({ doc, quality }) => {
       await progress(listeners.cut, [quality === 'final' ? 'Exporting' : 'Rendering a preview'])
       const n = doc.versions[doc.versions.length - 1].n

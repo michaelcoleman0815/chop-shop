@@ -19,7 +19,7 @@ import type {
   VideoMeta,
   ZoomKeyframe
 } from '../shared/types'
-import type { Asset, EditDoc, Note, Op } from '../shared/edit'
+import type { Asset, EditDoc, Note, Op, Region } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
 import type { Preset } from '../shared/presets'
@@ -41,6 +41,11 @@ const api = {
     path: string
   ): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }> =>
     ipcRenderer.invoke('cut:prepare', path),
+  findFocus: (req: {
+    path: string
+    ranges: { startSec: number; durationSec: number }[]
+  }): Promise<{ ok: true; regions: Region[][] } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('focus:find', req),
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'

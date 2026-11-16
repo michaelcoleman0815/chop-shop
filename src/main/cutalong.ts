@@ -13,6 +13,7 @@ import { creditsText, isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
+import { findFocus } from './focus'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
@@ -94,6 +95,23 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       return { ok: false as const, message: message(err) }
     }
   })
+
+  // Where a screen recording changes, stretch by stretch, for a camera to follow.
+  ipcMain.handle(
+    'focus:find',
+    async (_e, req: { path: string; ranges: { startSec: number; durationSec: number }[] }) => {
+      try {
+        const regions = []
+        for (const r of req.ranges.slice(0, 64)) {
+          regions.push(await findFocus(FFMPEG_PATH, req.path, r.startSec, Math.min(r.durationSec, 600)))
+        }
+        return { ok: true as const, regions }
+      } catch (err) {
+        console.error('[focus] failed:', message(err))
+        return { ok: false as const, message: `I couldn't read ${basename(req.path)} to see what changes in it.` }
+      }
+    }
+  )
 
   ipcMain.handle('cut:render', async (e, req: { doc: unknown; quality: 'preview' | 'final' }) => {
     const parsed = EditDocSchema.safeParse(req.doc)

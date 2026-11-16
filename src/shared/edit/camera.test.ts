@@ -6,6 +6,7 @@ import {
   coverWindow,
   createDoc,
   currentCut,
+  focusSource,
   resolveCut,
   viewAt,
   windowAt,
@@ -149,6 +150,30 @@ describe('the camera op', () => {
     const clock = cameraClock(resolved, beat.id, beat.outStart + 0.1, 'w4')!
     expect(clock.t).toBeCloseTo(0.1, 9)
     expect(clock.wordAt).toBeCloseTo(resolved.words.find((w) => w.id === 'w4')!.outStart - beat.outStart, 9)
+  })
+
+  it('reads a beat for what changes on screen, and puts what it finds on the beat’s clock', () => {
+    // The speaker's own recording, in two stretches around a struck word.
+    const cut = apply([{ op: 'strike', from: 'w2', to: 'w2' }])
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const own = focusSource(resolved, cut, doc.sources, 'b1')!
+    const pieces = resolved.pieces.filter((p) => p.beat === 'b1')
+    expect(own.path).toBe('/take.mov')
+    expect(own.ranges).toEqual(pieces.map((p) => ({ startSec: p.srcStart, durationSec: p.srcEnd - p.srcStart })))
+    expect(own.toClock(1, 0.1)).toBeCloseTo(pieces[1].outStart + 0.1 - pieces[0].outStart, 9)
+    // A screen recording cut to at double speed: a second into it is half a second into the beat.
+    const screen = { path: '/screen.mov', inSec: 4, muted: true }
+    const sped = apply([
+      { op: 'treat', beats: ['b2'], set: { frame: 'broll', broll: screen } },
+      { op: 'speed', beats: ['b2'], speed: 2 }
+    ])
+    const cutaway = focusSource(resolveCut(sped, doc.words, doc.sources), sped, doc.sources, 'b2')!
+    expect(cutaway.path).toBe('/screen.mov')
+    expect(cutaway.ranges[0].startSec).toBe(4)
+    expect(cutaway.toClock(0, 1)).toBeCloseTo(0.5, 9)
+    // Backwards is not followed.
+    const back = apply([{ op: 'reverse', beats: ['b2'], on: true }], sped)
+    expect(focusSource(resolveCut(back, doc.words, doc.sources), back, doc.sources, 'b2')).toBeNull()
   })
 
   it('keeps a card still', () => {

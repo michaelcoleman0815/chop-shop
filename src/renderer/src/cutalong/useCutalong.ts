@@ -40,6 +40,7 @@ import {
 import {
   DEFAULT_RAMP_SEC,
   DEFAULT_SPLIT_EDIT_SEC,
+  focusSource,
   MAX_CAMERA_ZOOM,
   MAX_SPEED,
   MAX_SPLIT_EDIT_SEC,
@@ -159,7 +160,7 @@ const ACTION_COMMANDS: Preset[] = [
       ['pan', 'Pan', 'Slide across a picture: /pan left, /pan right, /pan up'],
       ['punchin', 'Punch-in', 'Punch in on the word under the playhead: /punchin, /punchin 1.2'],
       ['shake', 'Shake', 'Jolt the frame on the word under the playhead: /shake'],
-      ['focus', 'Focus', 'Move in on part of a screen recording: /focus top left'],
+      ['focus', 'Focus', 'Follow what changes on a screen recording: /focus, or /focus top left'],
       ['still', 'Still', 'Hold the frame still again: /still']
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
@@ -833,7 +834,13 @@ export function useCutalong() {
    * changing at each new idea.
    */
   const cameraCommand = useCallback(
-    (command: CameraCommand, rest: string, where: 'thread' | 'panel', beat: string | null, at: number | null): void => {
+    async (
+      command: CameraCommand,
+      rest: string,
+      where: 'thread' | 'panel',
+      beat: string | null,
+      at: number | null
+    ): Promise<void> => {
       const say = (text: string, open = false): void => {
         if (where === 'panel') setPanel({ text })
         else
@@ -912,8 +919,37 @@ export function useCutalong() {
             | 'up'
             | 'down'
           move = { kind: `pan-${way}`, ...zoom }
-        } else if (command === 'focus') {
+        } else if (command === 'focus' && /\b(top|bottom|left|right|centre|center|middle)\b/i.test(rest)) {
           move = { kind: 'focus', regions: [{ at: 0, ...namedRegion(rest) }] }
+        } else if (command === 'focus') {
+          // Nothing named: follow what changes on screen, found by reading the footage.
+          const found = focusSource(resolveCut(cut, d.words, d.sources), cut, d.sources, beat as string)
+          if (!found) {
+            say('I follow what changes in footage that plays forwards. Name a part to move in on: /focus top left.')
+            return
+          }
+          if (isImagePath(found.path)) {
+            say('That is a still, so nothing in it changes. Name a part to move in on: /focus top left.')
+            return
+          }
+          if (where === 'panel')
+            setPanel({ text: '', progress: { stage: 'Finding what changes on screen', percent: 40 } })
+          const r = await api.findFocus({ path: found.path, ranges: found.ranges })
+          if (!r.ok) {
+            say(r.message)
+            return
+          }
+          const regions = r.regions
+            .flatMap((list, k) => list.map((g) => ({ ...g, at: Math.max(0, found.toClock(k, g.at)) })))
+            .sort((a, b) => a.at - b.at)
+            .slice(0, 240)
+          if (regions.length === 0) {
+            say(
+              'Nothing on screen changes in that beat, so the frame stays as it is. Name a part to move in on: /focus top left.'
+            )
+            return
+          }
+          move = { kind: 'focus', regions }
         } else {
           const word = wordHere()
           if (!word) {
@@ -952,7 +988,7 @@ export function useCutalong() {
         return
       }
       if (CAMERA_COMMANDS.has(command)) {
-        cameraCommand(command as CameraCommand, rest, where, beat, at)
+        await cameraCommand(command as CameraCommand, rest, where, beat, at)
         return
       }
       if (command === 'jcut' || command === 'lcut') {

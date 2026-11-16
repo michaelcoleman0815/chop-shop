@@ -1,6 +1,6 @@
 import { pictureSpan, sourceTimeAt, srcTimeAt, type Piece, type Resolved } from './resolve'
-import type { Broll } from './schema'
-import { outToSrc, speedAt, srcLength, stepsForOutput, type SpeedStep } from './timing'
+import type { Broll, Cut, Source } from './schema'
+import { outToSrc, speedAt, srcLength, srcToOut, stepsForOutput, type SpeedStep } from './timing'
 import type { TransitionKind } from './transitions'
 
 /**
@@ -167,6 +167,51 @@ export function cameraClock(
   if (!span) return null
   const w = word ? resolved.words.find((x) => x.id === word && x.beat === beat) : undefined
   return { t: outSec - span.start, length: span.end - span.start, wordAt: w ? w.outStart - span.start : null }
+}
+
+/**
+ * What a beat's picture is read from to find what changes on screen: the
+ * cutaway when it shows one, otherwise its own recording, as stretches of
+ * footage in playing order, and how to put a moment found `at` seconds into
+ * stretch `k` on the beat's camera clock. Null when the picture plays
+ * backwards, which this does not follow.
+ */
+export function focusSource(
+  resolved: Resolved,
+  cut: Cut,
+  sources: Source[],
+  beat: string
+): {
+  path: string
+  ranges: { startSec: number; durationSec: number }[]
+  toClock: (k: number, at: number) => number
+} | null {
+  const b = cut.beats.find((x) => x.id === beat)
+  const span = beatPicture(resolved, beat)
+  if (!b || !span) return null
+  const t = b.treatment
+  if (t.broll && t.frame !== 'speaker') {
+    if (t.broll.reverse) return null
+    const length = cutawayClock(resolved, beat, span.start)?.length ?? span.end - span.start
+    const steps = cutawaySteps(t.broll, length)
+    return {
+      path: t.broll.path,
+      ranges: [{ startSec: t.broll.inSec, durationSec: steps ? srcLength(steps) : length }],
+      toClock: (_k, at) => (steps ? srcToOut(steps, at) : at)
+    }
+  }
+  const pieces = resolved.pieces.filter((p) => p.beat === beat && p.hold === undefined)
+  if (pieces.length === 0 || pieces.some((p) => p.reverse)) return null
+  const source = sources.find((x) => x.id === pieces[0].source)
+  if (!source) return null
+  return {
+    path: source.path,
+    ranges: pieces.map((p) => ({ startSec: p.srcStart, durationSec: p.srcEnd - p.srcStart })),
+    toClock: (k, at) => {
+      const p = pieces[k]
+      return p.outStart + (p.steps ? srcToOut(p.steps, at) : at) - span.start
+    }
+  }
 }
 
 /** The piece that starts next after an output time: what the idle deck should be ready with. */

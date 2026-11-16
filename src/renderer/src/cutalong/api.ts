@@ -14,6 +14,7 @@ export type CutalongApi = Pick<
   | 'openVideo'
   | 'prepareCut'
   | 'renderCut'
+  | 'findFocus'
   | 'onCutProgress'
   | 'planEdit'
   | 'studyInspiration'
