@@ -293,12 +293,27 @@ export function bestShift(
 ): OffsetMatch | null {
   let best: { shift: number; score: number } | null = null
   const scores = new Map<number, number>()
-  for (let s = Math.round(around - radius); s <= Math.round(around + radius); s++) {
+  const look = (s: number): void => {
+    if (scores.has(s)) return
     const score = patchCorrelation(a, aStart, b, aStart + s, length)
-    if (!Number.isFinite(score)) continue
+    if (!Number.isFinite(score)) return
     scores.set(s, score)
     if (!best || score > best.score) best = { shift: s, score }
   }
+  // A wide search looks at every other shift first, then either side of the
+  // best: a match is smooth over a few frames, so it is not stepped over.
+  const step = radius > 6 ? 2 : 1
+  for (let s = Math.round(around - radius); s <= Math.round(around + radius); s += step) look(s)
+  if (!best) return null
+  if (step > 1) {
+    const top = (best as { shift: number }).shift
+    look(top - 1)
+    look(top + 1)
+    const now = (best as { shift: number }).shift
+    look(now - 1)
+    look(now + 1)
+  }
+  best = best as { shift: number; score: number } | null
   if (!best) return null
   const left = scores.get(best.shift - 1)
   const right = scores.get(best.shift + 1)
