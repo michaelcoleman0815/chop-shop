@@ -21,7 +21,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "regress": "node scripts/regress.mjs",
-    "eval:clips": "node scripts/eval-clips.mjs"
+    "eval:clips": "node scripts/eval-clips.mjs",
+    "eval:learn": "node scripts/eval-learn.mjs",
+    "fixtures:learn": "node scripts/make-learn-fixtures.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

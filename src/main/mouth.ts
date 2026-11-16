@@ -2,12 +2,14 @@ import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import type { AudioMap } from '../shared/audio/map'
 import type { Envelope } from '../shared/audio/snap'
 import type { Source, Word } from '../shared/edit/schema'
 import { analyseMouth, type MouthResult } from '../shared/vision/analyse'
 import { linkFaces, planCrops, sendcmdScript, type CropPlan, type FaceSample } from '../shared/vision/faces'
 import { MouthMeter, type RawMouth } from '../shared/vision/meter'
-import { neverWatches } from '../shared/vision/mode'
+import { neverWatches, type MouthMode } from '../shared/vision/mode'
+import { audioOffset, shiftMapSegments } from '../shared/vision/offset'
 
 /**
  * Watching the speaker's mouth with ffmpeg alone.
@@ -215,6 +217,12 @@ export interface WatchOptions {
   /** Where the faces are: the Mac's Vision helper in the app, given boxes in tests. */
   detect: FaceDetector
   niche?: string | null
+  /**
+   * A mode already chosen for the edit, over the niche's: footage added to an
+   * edit whose mouth watching was set in a sentence. Even "off" is measured,
+   * so a later sentence can turn it back on.
+   */
+  mode?: MouthMode
   facesPerSec?: number
   signal?: AbortSignal
   onProgress?: (fraction: number) => void
@@ -230,7 +238,7 @@ export interface WatchOptions {
 export async function watchMouth(opts: WatchOptions): Promise<MouthResult | null> {
   const { source, words } = opts
   const own = words.filter((w) => w.source === source.id)
-  if (own.length === 0 || neverWatches(opts.niche)) return null
+  if (own.length === 0 || (!opts.mode && neverWatches(opts.niche))) return null
   const startSec = Math.max(0, Math.min(...own.map((w) => w.startSec)) - 1)
   const endSec = Math.min(source.durationSec, Math.max(...own.map((w) => w.endSec)) + 1)
   const durationSec = Math.max(0.5, endSec - startSec)
@@ -253,5 +261,44 @@ export async function watchMouth(opts: WatchOptions): Promise<MouthResult | null
     signal: opts.signal,
     onProgress: opts.onProgress
   })
-  return analyseMouth({ raw, words, envelope: opts.envelope, source, niche: opts.niche })
+  return analyseMouth({ raw, words, envelope: opts.envelope, source, niche: opts.niche, mode: opts.mode })
+}
+
+/**
+ * Watches one clip as footage comes in (main/cutalong readFootage). When the
+ * sound is lined up, the clip's words and its audio map's stretches move
+ * onto the picture's clock together. Any failure, or no face, leaves the
+ * clip as it was, timed by its sound, with `seen` null.
+ */
+export async function watchClip(
+  clip: {
+    source: Source
+    words: Word[]
+    envelope: Envelope | null
+    map?: AudioMap
+    niche?: string | null
+    mode?: MouthMode
+  },
+  detect: FaceDetector,
+  ffmpeg: string
+): Promise<{ source: Source; words: Word[]; map?: AudioMap; seen: MouthResult | null }> {
+  const kept = { source: clip.source, words: clip.words, map: clip.map, seen: null }
+  try {
+    const seen = await watchMouth({
+      ffmpeg,
+      source: clip.source,
+      words: clip.words,
+      envelope: clip.envelope,
+      detect,
+      niche: clip.niche,
+      mode: clip.mode
+    })
+    if (!seen) return kept
+    // The words moved by exactly the offset the source now plays with.
+    const moved = audioOffset(seen.source)
+    return { source: seen.source, words: seen.words, map: clip.map && shiftMapSegments(clip.map, moved), seen }
+  } catch (err) {
+    console.warn('[cut] could not watch the speaker, keeping sound timing:', err instanceof Error ? err.message : err)
+    return kept
+  }
 }

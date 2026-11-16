@@ -10,6 +10,7 @@ export function Mark({ size = 30, white = false }: { size?: number; white?: bool
     <svg width={size} height={(size * 52) / 64} viewBox="0 0 64 52" aria-hidden="true">
       <rect x="2" y="4" width="44" height="18" rx="9" fill={white ? '#FFFFFF' : 'var(--ink)'} />
       <rect
+        className="cl-cut"
         x="18"
         y="30"
         width="42"
@@ -113,6 +114,12 @@ export const Icon = {
   close: (): JSX.Element => (
     <svg width="12" height="12" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2" aria-hidden="true">
       <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  ),
+  /** A recording that is sound only. */
+  wave: (): JSX.Element => (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth="1.9" aria-hidden="true">
+      <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
     </svg>
   )
 }

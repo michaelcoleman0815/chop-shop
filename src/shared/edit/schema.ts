@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AudioMapSchema } from '../audio/map'
 import { MouthModeSchema } from '../vision/mode'
 
 /**
@@ -43,9 +44,22 @@ export const SourceSchema = z.object({
   height: z.number().int().nonnegative(),
   fps: z.number().positive(),
   /**
-   * How far the sound runs behind the picture, in seconds (negative: ahead).
-   * Render and preview read the sound from t + offset while showing picture
-   * t, and this source's words are on the picture's clock.
+   * Sound from another recording of the same take, such as a computer or a
+   * recorder with the better microphone, lined up by ear: the moment at this
+   * source's time t is at t + offsetSec in that recording.
+   */
+  audio: z
+    .object({ path: z.string().min(1), offsetSec: z.number() })
+    .nullable()
+    .optional(),
+  /** How its picture is encoded: HDR is converted first when it renders. Absent is ordinary video. */
+  color: z.enum(['sdr', 'hlg', 'pq']).optional(),
+  /**
+   * How far the sound heard runs behind the picture, found by watching the
+   * mouth, in seconds (negative: ahead). Render and preview read the sound
+   * from t + offset while showing picture t, on top of `audio`'s own offset
+   * when the sound is from another recording (vision/offset heardFrom), and
+   * this source's words are on the picture's clock.
    */
   audioOffsetSec: z.number().min(-1).max(1).optional(),
   /** What watching the speaker's mouth found, and what this edit uses it for. */
@@ -56,7 +70,12 @@ export const SourceSchema = z.object({
       measuredOffsetSec: z.number().nullable(),
       confidence: z.number().min(0).max(1),
       /** Share of the speech during which a mouth could be read. */
-      seenShare: z.number().min(0).max(1)
+      seenShare: z.number().min(0).max(1),
+      /** The watched face's width, in source pixels and as a share of the frame's, for the niches that ask. */
+      facePx: z.number().nonnegative().optional(),
+      faceShare: z.number().min(0).max(1).optional(),
+      /** Set in a sentence ("time my cuts to the sound only"), so the kind of video no longer decides it. */
+      chosen: z.boolean().optional()
     })
     .optional()
 })
@@ -245,7 +264,11 @@ export const EditDocSchema = z.object({
   /** Material brought in for the edit. Docs saved before assets existed have none. */
   assets: z.array(AssetSchema).default([]),
   /** The preset command last applied, without its slash. */
-  preset: z.string().nullable()
+  preset: z.string().nullable(),
+  /** What each recording sounds like, by source id (shared/audio/map). Absent until listened to. */
+  audio: z.record(z.string(), AudioMapSchema).optional(),
+  /** The cutting profile this edit asked for ("this one is a podcast"), over the brand's niche. */
+  profile: z.string().optional()
 })
 export type EditDoc = z.infer<typeof EditDocSchema>
 

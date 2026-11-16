@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { CaptionSpecSchema } from './edit/schema'
 import { styleFromFacts, type InspirationFacts } from './inspiration/facts'
+import { habitsStyle } from './learn/habits'
+import { HabitsSchema } from './learn/schema'
 import { describeStyle, StyleSpecSchema, type Preset, type StyleSpec } from './presets/preset'
 
 /**
@@ -58,12 +60,25 @@ export const BrandSchema = z.object({
   captions: CaptionSpecSchema.partial(),
   /** How edits should sound, in the person's words. The planner reads it. */
   voice: z.string(),
+  /**
+   * What kind of videos these are, as a cutting profile id ("tech",
+   * "talking-head"): how raw footage is cut. Empty until chosen or suggested.
+   */
+  niche: z.string().default(''),
+  /** Names Whisper should listen for in raw footage: products, people, places. */
+  products: z.array(z.string()).default([]),
   videos: z.array(BrandVideoSchema),
   /** The look learned from the videos. */
   style: StyleSpecSchema,
   /** New edits get the brand without being asked. */
   autoApply: z.boolean(),
-  updatedAt: z.string()
+  updatedAt: z.string(),
+  /**
+   * How the creator cuts, learned from their own edits, kept only when they
+   * chose to. While it is set, /tighten and /brand cut this way. Brands
+   * saved before there were habits have none.
+   */
+  habits: HabitsSchema.nullable().default(null)
 })
 export type Brand = z.infer<typeof BrandSchema>
 
@@ -74,10 +89,13 @@ export const EMPTY_BRAND: Brand = {
   logo: null,
   captions: {},
   voice: '',
+  niche: '',
+  products: [],
   videos: [],
   style: {},
   autoApply: true,
-  updatedAt: ''
+  updatedAt: '',
+  habits: null
 }
 
 function median(values: number[]): number | null {
@@ -127,10 +145,15 @@ export function learnStyle(facts: InspirationFacts[]): StyleSpec {
   return styleFromFacts(merged)
 }
 
-/** The brand's whole style: the learned look with the chosen captions on top. */
+/**
+ * The brand's whole style: the learned look, the creator's own cutting
+ * habits over its pacing when they chose to use them, and the chosen
+ * captions on top.
+ */
 export function brandStyle(brand: Brand): StyleSpec {
+  const look = brand.habits ? { ...brand.style, ...habitsStyle(brand.habits) } : { ...brand.style }
   const captions = { ...(brand.style.captions ?? {}), ...brand.captions }
-  return Object.keys(captions).length > 0 ? { ...brand.style, captions } : { ...brand.style }
+  return Object.keys(captions).length > 0 ? { ...look, captions } : look
 }
 
 /** /brand, or null while the brand has nothing to apply yet. */

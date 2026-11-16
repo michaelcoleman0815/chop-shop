@@ -10,13 +10,13 @@ import {
   type Source,
   type Word
 } from '../edit'
-import { analyseMouth, setMouthMode, type MouthResult } from './analyse'
+import { analyseMouth, mouthForNiche, mouthNotice, setMouthMode, setMouthModeAll, type MouthResult } from './analyse'
 import { cutInAt, cutOutAt } from './cuts'
 import { boxAt, linkFaces, planCrops, sendcmdScript, type FaceSample } from './faces'
 import { retakeHints } from './hints'
 import { MouthMeter, type RawMouth } from './meter'
 import { MOUTH_BY_NICHE, mouthModeFor, neverWatches, nicheFrom, nicheKey, readMouthMode, type MouthMode } from './mode'
-import { shiftEnvelope, shiftWords, syncNotice } from './offset'
+import { heardFrom, shiftEnvelope, shiftWords, syncNotice } from './offset'
 import { offCameraLine } from './speakers'
 import { detections, envelopeOf, makeRenderer, take, tilesFor, voiceSamples, type Take } from './synthetic'
 
@@ -491,5 +491,152 @@ describe('documents', () => {
     expect(back.doc.sources[0].audioOffsetSec).toBe(0.12)
     expect(back.doc.words[0].startSec).toBeCloseTo(1, 6)
     expect(back.reply).toBe('Cuts start just before your mouth moves again, and the audio stays lined up with it.')
+  })
+
+  /** A second recording of the same shoot, its words carrying its id. */
+  const twoClips = (): EditDoc => {
+    const one = plainDoc()
+    const s2: Source = { id: 's2', path: '/b.mov', durationSec: 8, width: 1920, height: 1080, fps: 30 }
+    const words = wordsFromTranscript(
+      [
+        { text: 'Second', startSec: 2, endSec: 2.4 },
+        { text: 'clip.', startSec: 2.45, endSec: 2.9 }
+      ],
+      's2',
+      's2w'
+    )
+    return createDoc({
+      id: 'd2',
+      title: 'Two',
+      sources: [one.sources[0], s2],
+      words: [...one.words, ...words],
+      at: '2026-11-16T00:00:00.000Z'
+    })
+  }
+  const seenAt = (offsetSec: number, extra: Partial<NonNullable<Source['mouth']>> = {}): Partial<Source> => ({
+    audioOffsetSec: offsetSec,
+    mouth: { mode: 'cuts+sync', measuredOffsetSec: offsetSec, confidence: 0.9, seenShare: 0.8, ...extra }
+  })
+
+  it('adds the mouth offset to the better sound from another recording, for the export and the preview alike', () => {
+    const base: Source = { id: 's1', path: '/cam.mov', durationSec: 10, width: 1920, height: 1080, fps: 30 }
+    expect(heardFrom(base)).toBeNull()
+    expect(heardFrom({ ...base, audio: null })).toBeNull()
+    // Only the mouth: the recording's own sound, read a moment later.
+    expect(heardFrom({ ...base, audioOffsetSec: 0.12 })).toEqual({ path: '/cam.mov', offsetSec: 0.12 })
+    // Only by ear: the other recording as it was lined up.
+    expect(heardFrom({ ...base, audio: { path: '/rec.wav', offsetSec: 1.38 } })).toEqual({
+      path: '/rec.wav',
+      offsetSec: 1.38
+    })
+    // Both: they add up.
+    const both = heardFrom({ ...base, audio: { path: '/rec.wav', offsetSec: 1.38 }, audioOffsetSec: 0.12 })
+    expect(both?.path).toBe('/rec.wav')
+    expect(both?.offsetSec).toBeCloseTo(1.5, 9)
+  })
+
+  it('says which clips were lined up when several come in together', () => {
+    const doc = twoClips()
+    const [a, b] = doc.sources
+    const clip = (name: string, source: Source): { name: string; source: Source; words: Word[] } => ({
+      name,
+      source,
+      words: doc.words.filter((w) => w.source === source.id)
+    })
+    expect(mouthNotice([clip('a.mov', { ...a, ...seenAt(0.12) })])).toBe(
+      'Your audio was 0.12 s behind your mouth. I lined it up.'
+    )
+    expect(mouthNotice([clip('a.mov', { ...a, ...seenAt(0.12) }), clip('b.mov', b)])).toBe(
+      'In a.mov, your audio was 0.12 s behind your mouth. I lined it up.'
+    )
+    expect(mouthNotice([clip('a.mov', { ...a, ...seenAt(0.12) }), clip('b.mov', { ...b, ...seenAt(0.121) })])).toBe(
+      'Your audio was 0.12 s behind your mouth in both clips. I lined it up.'
+    )
+    expect(mouthNotice([clip('a.mov', { ...a, ...seenAt(0.08) }), clip('b.mov', { ...b, ...seenAt(0.12) })], 3)).toBe(
+      'Your audio was 0.08 to 0.12 s behind your mouth in 2 of 3 clips. I lined it up.'
+    )
+    expect(mouthNotice([clip('a.mov', { ...a, ...seenAt(-0.05) }), clip('b.mov', { ...b, ...seenAt(0.12) })])).toBe(
+      'Your audio was out of step with your mouth by 0.05 to 0.12 s in both clips. I lined it up.'
+    )
+    expect(mouthNotice([clip('a.mov', a), clip('b.mov', b)])).toBeNull()
+    // A voice from off camera is said with the clip it is in.
+    const asked = doc.words.map((w) => (w.id === 's2w1' ? { ...w, offCamera: true } : w))
+    expect(
+      mouthNotice([
+        { name: 'a.mov', source: a, words: asked.filter((w) => w.source === 's1') },
+        { name: 'b.mov', source: b, words: asked.filter((w) => w.source === 's2') }
+      ])
+    ).toBe('Someone off camera speaks at 0:02 in b.mov, and I marked it.')
+  })
+
+  it('moves the sound map with the words when the sync is switched', () => {
+    const doc = plainDoc()
+    const seen: EditDoc = {
+      ...doc,
+      sources: [{ ...doc.sources[0], ...seenAt(0.12) }],
+      audio: {
+        s1: {
+          v: 1,
+          words: { w1: [-20, 180] },
+          segments: [{ kind: 'laughter', startSec: 2, endSec: 2.5 }],
+          emphasis: ['w1'],
+          level: { floor: -60, speech: -20 }
+        }
+      }
+    }
+    const off = setMouthMode(seen, 's1', 'off')
+    expect(off.doc.audio?.s1.segments[0].startSec).toBeCloseTo(2.12, 6)
+    expect(off.doc.audio?.s1.words).toEqual({ w1: [-20, 180] })
+    const back = setMouthMode(off.doc, 's1', 'sync')
+    expect(back.doc.audio?.s1.segments[0].startSec).toBeCloseTo(2, 6)
+    expect(back.doc.words[0].startSec).toBeCloseTo(1, 6)
+  })
+
+  it('switches every clip in one sentence, and the choice outlasts a change of the kind of video', () => {
+    const two = twoClips()
+    const doc: EditDoc = {
+      ...two,
+      sources: [
+        { ...two.sources[0], ...seenAt(0.12, { facePx: 400, faceShare: 0.21 }) },
+        { ...two.sources[1], ...seenAt(0.05, { facePx: 90, faceShare: 0.05 }) }
+      ]
+    }
+    const off = setMouthModeAll(doc, 'off')
+    expect(off.doc.sources.map((s) => [s.mouth?.mode, s.audioOffsetSec, s.mouth?.chosen])).toEqual([
+      ['off', undefined, true],
+      ['off', undefined, true]
+    ])
+    expect(off.reply).toBe('Cuts follow the sound now, and the audio is back where it was recorded.')
+    expect(off.doc.words.find((w) => w.id === 's2w1')?.startSec).toBeCloseTo(2.05, 6)
+    // Chosen in a sentence, so "this one is ASMR" leaves it alone.
+    expect(mouthForNiche(off.doc, 'asmr')).toEqual({ doc: off.doc, reply: null })
+  })
+
+  it('takes the mode of the kind of video named in a sentence, with its face-size rule', () => {
+    const two = twoClips()
+    const doc: EditDoc = {
+      ...two,
+      sources: [
+        { ...two.sources[0], ...seenAt(0.12, { facePx: 400, faceShare: 0.21 }) },
+        { ...two.sources[1], ...seenAt(0.05, { facePx: 90, faceShare: 0.05 }) }
+      ]
+    }
+    // ASMR never trims by the mouth, but keeps the sound lined up.
+    const asmr = mouthForNiche(doc, 'asmr')
+    expect(asmr.doc.sources.map((s) => s.mouth?.mode)).toEqual(['sync', 'sync'])
+    expect(asmr.doc.sources.map((s) => s.audioOffsetSec)).toEqual([0.12, 0.05])
+    expect(asmr.reply).toBe('Cuts follow the sound now. The audio stays lined up with your mouth.')
+    // Gaming: only the facecam big enough to read times the cuts.
+    const gaming = mouthForNiche(asmr.doc, 'gaming')
+    expect(gaming.doc.sources.map((s) => s.mouth?.mode)).toEqual(['cuts+sync', 'sync'])
+    // A kind not built as a cutting profile still has a mouth rule: a wedding is never watched.
+    const wedding = mouthForNiche(doc, 'wedding')
+    expect(wedding.doc.sources.map((s) => [s.mouth?.mode, s.audioOffsetSec])).toEqual([
+      ['off', undefined],
+      ['off', undefined]
+    ])
+    expect(wedding.doc.words[0].startSec).toBeCloseTo(1.12, 6)
+    // The same kind again changes nothing.
+    expect(mouthForNiche(doc, 'tech').reply).toBeNull()
   })
 })

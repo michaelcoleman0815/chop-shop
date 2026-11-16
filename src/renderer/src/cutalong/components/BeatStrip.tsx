@@ -1,5 +1,6 @@
 import { useRef, type MouseEvent } from 'react'
 import { clock } from '../format'
+import { along } from '../motion'
 import { Icon, IconButton } from './ui'
 
 /**
@@ -75,9 +76,7 @@ export function BeatStrip({
             {b === now ? b.label : ''}
           </span>
         ))}
-        {duration > 0 && (
-          <span className="cl-playhead" style={{ left: `${(Math.min(time, duration) / duration) * 100}%` }} />
-        )}
+        {duration > 0 && <span className="cl-playhead" style={along(Math.min(time, duration) / duration)} />}
       </div>
     </div>
   )

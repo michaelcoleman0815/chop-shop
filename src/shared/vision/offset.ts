@@ -298,6 +298,19 @@ export function shiftWords(words: Word[], sourceId: string, offsetSec: number): 
   )
 }
 
+/**
+ * An audio map's stretches (speech, laughter, music) moved onto the picture's
+ * clock with the words. Its per-word measures go by word id, so they stay.
+ */
+export function shiftMapSegments<T extends { segments: { startSec: number; endSec: number }[] }>(
+  map: T,
+  offsetSec: number
+): T {
+  if (Math.abs(offsetSec) < 1e-9) return map
+  const move = (t: number): number => Math.max(0, t - offsetSec)
+  return { ...map, segments: map.segments.map((s) => ({ ...s, startSec: move(s.startSec), endSec: move(s.endSec) })) }
+}
+
 /** A loudness envelope moved onto the picture's clock the same way. */
 export function shiftEnvelope(env: Envelope, offsetSec: number): Envelope {
   const hops = Math.round(offsetSec / env.hopSec)
@@ -322,4 +335,20 @@ export function syncNotice(offsetSec: number): string {
 /** The offset a source plays with: read the sound from t + offset when showing picture t. */
 export function audioOffset(source: Pick<Source, 'audioOffsetSec'>): number {
   return source.audioOffsetSec ?? 0
+}
+
+/**
+ * Where the sound heard with a recording's picture comes from, when it is not
+ * the recording's own sound at the same moment: the better recording lined up
+ * by ear, this recording's own sound lined up with the mouth, or the better
+ * recording with both offsets added. Picture t plays that file at
+ * t + offsetSec. Null plays the picture's own sound as it is. The export and
+ * the preview both read this, so they always agree.
+ */
+export function heardFrom(
+  source: Pick<Source, 'path' | 'audio' | 'audioOffsetSec'>
+): { path: string; offsetSec: number } | null {
+  const d = audioOffset(source)
+  if (source.audio) return d ? { path: source.audio.path, offsetSec: source.audio.offsetSec + d } : source.audio
+  return Math.abs(d) >= 0.0005 ? { path: source.path, offsetSec: d } : null
 }

@@ -3,6 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { AudioMap } from '../shared/audio/map'
+import { estimateOffset as lineUpByEar, shiftEnvelope as onClipClock } from '../shared/audio/offset'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import {
   applyOps,
@@ -16,6 +18,7 @@ import {
 import { BUILT_IN_PRESETS, planStyle } from '../shared/presets'
 import type { MouthResult } from '../shared/vision/analyse'
 import type { FaceSample } from '../shared/vision/faces'
+import { heardFrom } from '../shared/vision/offset'
 import {
   detections,
   makeRenderer,
@@ -29,7 +32,7 @@ import {
 } from '../shared/vision/synthetic'
 import { loudnessEnvelope } from './audio-envelope'
 import { renderCut } from './cut-render'
-import { displaySize, measureMouth, watchMouth, type FaceDetector } from './mouth'
+import { displaySize, measureMouth, watchClip, watchMouth, type FaceDetector } from './mouth'
 
 function findFfmpeg(): string | null {
   const candidates = [process.env.FFMPEG_PATH, 'ffmpeg']
@@ -299,6 +302,61 @@ describe.skipIf(!FFMPEG)('watching the mouth in real footage', () => {
       expect(Math.abs((await onsetIn(out)) - expected)).toBeLessThan(0.02)
     }
     expect(existsSync(path)).toBe(true)
+  })
+
+  it('lines up the better sound from another recording with the mouth, on top of lining it up by ear', async () => {
+    // The camera hears the voice 0.12 s late, through a wireless microphone;
+    // a recorder on the speaker hears it in time, and started 1.5 s earlier.
+    const t = take({ seed: 6, words: 14 })
+    const camera = join(dir, 'two-recorders.mp4')
+    await encode(ffmpeg, t, t.lines, 0.12, camera)
+    const recorder = join(dir, 'two-recorders-recorder.wav')
+    writeFileSync(recorder, wav(voiceSamples(t.lines, 48000, t.durationSec + 1.5, 1.5), 48000))
+    // As intake does it: by ear first, then the recorder's words and loudness on the clip's clock.
+    const byEar = lineUpByEar(await loudnessEnvelope(ffmpeg, camera), await loudnessEnvelope(ffmpeg, recorder))
+    expect(byEar && Math.abs(byEar.offsetSec - 1.38)).toBeLessThan(0.015)
+    const at = (byEar as { offsetSec: number }).offsetSec
+    const heard = onClipClock(await loudnessEnvelope(ffmpeg, recorder), at, t.durationSec)
+    const words = transcribed(t, heard, 0.12)
+    const map: AudioMap = {
+      v: 1,
+      words: {},
+      segments: [{ kind: 'laughter', startSec: 4, endSec: 4.5 }],
+      emphasis: [],
+      level: { floor: -60, speech: -20 }
+    }
+    const w = await watchClip(
+      { source: { ...sourceFor(t, camera), audio: { path: recorder, offsetSec: at } }, words, envelope: heard, map },
+      detectorFor(t),
+      ffmpeg
+    )
+    const d = w.source.audioOffsetSec ?? 0
+    expect(Math.abs(d - 0.12)).toBeLessThan(0.015)
+    // Picture t plays the recorder at t + 1.5: the two offsets add up.
+    expect(Math.abs((heardFrom(w.source)?.offsetSec ?? 0) - 1.5)).toBeLessThan(0.02)
+    expect(heardFrom(w.source)?.path).toBe(recorder)
+    // The sound's stretches moved with the words.
+    expect(w.map?.segments[0].startSec).toBeCloseTo(4 - d, 6)
+
+    // And the export plays the recorder's voice on the mouth.
+    const doc = createDoc({ id: 'd', title: 'take', source: w.source, words: w.words, at: '2026-11-16T00:00:00.000Z' })
+    const base = currentCut(doc)
+    const cut = { ...base, beats: [base.beats[1]], captions: { ...base.captions, on: false }, loudness: null }
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const piece = resolved.pieces[0]
+    const first = w.words.find((x) => x.id === cut.beats[0].from) as Word
+    const truth = t.words[Number(first.text.slice(1)) - 1]
+    const out = join(dir, 'two-recorders-out.mp4')
+    await renderCut(cut, resolved, [{ ...w.source, hasAudio: true }], {
+      ffmpeg,
+      outputPath: out,
+      workDir: join(dir, 'work-two-recorders'),
+      quality: 'preview'
+    })
+    const env = await loudnessEnvelope(ffmpeg, out)
+    const peak = Math.max(...Array.from(env.db))
+    const onset = Array.from(env.db).findIndex((v) => v > peak - 20) * env.hopSec
+    expect(Math.abs(onset - (truth.onsetSec - piece.srcStart))).toBeLessThan(0.025)
   })
 
   it('opens every /snappy cut of the export on a still mouth, frame for frame', async () => {

@@ -1,0 +1,293 @@
+{
+ "rate": 22050,
+ "durationSec": 26.237913832199546,
+ "lines": [
+  {
+   "text": "First you want to heat the pan until it just starts to smoke.",
+   "voice": "d",
+   "pause": 0.7
+  },
+  {
+   "text": "Then add the butter and let it foam before the eggs go in.",
+   "voice": "d",
+   "pause": 0.8
+  },
+  {
+   "text": "Keep them moving, and pull the pan off while they still look wet.",
+   "voice": "d",
+   "pause": 0.9
+  },
+  {
+   "text": "Links are in the description.",
+   "voice": "d",
+   "pause": 0.6
+  }
+ ],
+ "words": [
+  {
+   "text": "First",
+   "startSec": 0.6,
+   "endSec": 1.05129,
+   "line": 0
+  },
+  {
+   "text": "you",
+   "startSec": 1.11401,
+   "endSec": 1.57891,
+   "line": 0
+  },
+  {
+   "text": "want",
+   "startSec": 1.65166,
+   "endSec": 2.11914,
+   "line": 0
+  },
+  {
+   "text": "to",
+   "startSec": 2.16748,
+   "endSec": 2.57791,
+   "line": 0
+  },
+  {
+   "text": "heat",
+   "startSec": 2.63746,
+   "endSec": 3.00535,
+   "line": 0
+  },
+  {
+   "text": "the",
+   "startSec": 3.05569,
+   "endSec": 3.4576,
+   "line": 0
+  },
+  {
+   "text": "pan",
+   "startSec": 3.52404,
+   "endSec": 3.99138,
+   "line": 0
+  },
+  {
+   "text": "until",
+   "startSec": 4.04816,
+   "endSec": 4.61909,
+   "line": 0
+  },
+  {
+   "text": "it",
+   "startSec": 4.69497,
+   "endSec": 4.98327,
+   "line": 0
+  },
+  {
+   "text": "just",
+   "startSec": 5.05397,
+   "endSec": 5.41556,
+   "line": 0
+  },
+  {
+   "text": "starts",
+   "startSec": 5.46884,
+   "endSec": 6.02689,
+   "line": 0
+  },
+  {
+   "text": "to",
+   "startSec": 6.08798,
+   "endSec": 6.51075,
+   "line": 0
+  },
+  {
+   "text": "smoke.",
+   "startSec": 6.58467,
+   "endSec": 7.06649,
+   "line": 0
+  },
+  {
+   "text": "Then",
+   "startSec": 7.76649,
+   "endSec": 8.25007,
+   "line": 1
+  },
+  {
+   "text": "add",
+   "startSec": 8.29297,
+   "endSec": 8.67039,
+   "line": 1
+  },
+  {
+   "text": "the",
+   "startSec": 8.73506,
+   "endSec": 9.11814,
+   "line": 1
+  },
+  {
+   "text": "butter",
+   "startSec": 9.16717,
+   "endSec": 9.65102,
+   "line": 1
+  },
+  {
+   "text": "and",
+   "startSec": 9.71751,
+   "endSec": 10.16009,
+   "line": 1
+  },
+  {
+   "text": "let",
+   "startSec": 10.20254,
+   "endSec": 10.58009,
+   "line": 1
+  },
+  {
+   "text": "it",
+   "startSec": 10.62295,
+   "endSec": 10.90989,
+   "line": 1
+  },
+  {
+   "text": "foam",
+   "startSec": 10.95256,
+   "endSec": 11.42789,
+   "line": 1
+  },
+  {
+   "text": "before",
+   "startSec": 11.49587,
+   "endSec": 12.08961,
+   "line": 1
+  },
+  {
+   "text": "the",
+   "startSec": 12.16703,
+   "endSec": 12.5668,
+   "line": 1
+  },
+  {
+   "text": "eggs",
+   "startSec": 12.60984,
+   "endSec": 13.03125,
+   "line": 1
+  },
+  {
+   "text": "go",
+   "startSec": 13.08322,
+   "endSec": 13.53206,
+   "line": 1
+  },
+  {
+   "text": "in.",
+   "startSec": 13.59615,
+   "endSec": 13.91007,
+   "line": 1
+  },
+  {
+   "text": "Keep",
+   "startSec": 14.71007,
+   "endSec": 15.07619,
+   "line": 2
+  },
+  {
+   "text": "them",
+   "startSec": 15.11927,
+   "endSec": 15.55388,
+   "line": 2
+  },
+  {
+   "text": "moving,",
+   "startSec": 15.60653,
+   "endSec": 16.20073,
+   "line": 2
+  },
+  {
+   "text": "and",
+   "startSec": 16.48059,
+   "endSec": 16.92776,
+   "line": 2
+  },
+  {
+   "text": "pull",
+   "startSec": 16.98948,
+   "endSec": 17.34707,
+   "line": 2
+  },
+  {
+   "text": "the",
+   "startSec": 17.40821,
+   "endSec": 17.79415,
+   "line": 2
+  },
+  {
+   "text": "pan",
+   "startSec": 17.87143,
+   "endSec": 18.34907,
+   "line": 2
+  },
+  {
+   "text": "off",
+   "startSec": 18.40966,
+   "endSec": 18.74998,
+   "line": 2
+  },
+  {
+   "text": "while",
+   "startSec": 18.82608,
+   "endSec": 19.38249,
+   "line": 2
+  },
+  {
+   "text": "they",
+   "startSec": 19.42399,
+   "endSec": 19.93678,
+   "line": 2
+  },
+  {
+   "text": "still",
+   "startSec": 20.00163,
+   "endSec": 20.48689,
+   "line": 2
+  },
+  {
+   "text": "look",
+   "startSec": 20.53329,
+   "endSec": 20.89342,
+   "line": 2
+  },
+  {
+   "text": "wet.",
+   "startSec": 20.93515,
+   "endSec": 21.31855,
+   "line": 2
+  },
+  {
+   "text": "Links",
+   "startSec": 22.21855,
+   "endSec": 22.75424,
+   "line": 3
+  },
+  {
+   "text": "are",
+   "startSec": 22.8195,
+   "endSec": 23.28109,
+   "line": 3
+  },
+  {
+   "text": "in",
+   "startSec": 23.35515,
+   "endSec": 23.67565,
+   "line": 3
+  },
+  {
+   "text": "the",
+   "startSec": 23.74785,
+   "endSec": 24.14893,
+   "line": 3
+  },
+  {
+   "text": "description.",
+   "startSec": 24.21261,
+   "endSec": 25.03791,
+   "line": 3
+  }
+ ],
+ "breaths": []
+}
