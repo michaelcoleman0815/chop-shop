@@ -4,12 +4,22 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { snapWords, type Envelope } from '../shared/audio/snap'
-import { createDoc, currentCut, resolveCut, wordsFromTranscript, type Source, type Word } from '../shared/edit'
+import {
+  applyOps,
+  createDoc,
+  currentCut,
+  resolveCut,
+  wordsFromTranscript,
+  type Source,
+  type Word
+} from '../shared/edit'
+import { BUILT_IN_PRESETS, planStyle } from '../shared/presets'
 import type { MouthResult } from '../shared/vision/analyse'
 import type { FaceSample } from '../shared/vision/faces'
 import {
   detections,
   makeRenderer,
+  readStamp,
   take,
   voiceSamples,
   wav,
@@ -287,6 +297,45 @@ describe.skipIf(!FFMPEG)('watching the mouth in real footage', () => {
       })
       const expected = truth.onsetSec - piece.srcStart + (name === 'lined-up' ? 0 : 0.12)
       expect(Math.abs((await onsetIn(out)) - expected)).toBeLessThan(0.02)
+    }
+    expect(existsSync(path)).toBe(true)
+  })
+
+  it('opens every /snappy cut of the export on a still mouth, frame for frame', async () => {
+    // Each source frame carries its number, so the export can be read back.
+    const { take: t, path, result } = await watch('stamped', { seed: 3, words: 10, stamp: true }, 0.12)
+    const r = result as MouthResult
+    const doc = createDoc({ id: 'd', title: 'take', source: r.source, words: r.words, at: '2026-11-16T00:00:00.000Z' })
+    const snappy = BUILT_IN_PRESETS.find((p) => p.command === 'snappy')
+    const plan = planStyle(doc, snappy?.style ?? {})
+    const snapped = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources }).cut
+    const cut = { ...snapped, captions: { ...snapped.captions, on: false }, loudness: null }
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const out = join(dir, 'snappy.mp4')
+    await renderCut(cut, resolved, [{ ...doc.sources[0], hasAudio: true }], {
+      ffmpeg,
+      outputPath: out,
+      workDir: join(dir, 'work-snappy'),
+      quality: 'final'
+    })
+    const { width: W, height: H } = t.scene
+    const raw = spawnSync(
+      ffmpeg,
+      ['-hide_banner', '-loglevel', 'error', '-i', out, '-f', 'rawvideo', '-pix_fmt', 'gray', '-'],
+      {
+        maxBuffer: 1 << 28
+      }
+    ).stdout
+    const stamps: number[] = []
+    for (let i = 0; i + W * H <= raw.length; i += W * H) stamps.push(readStamp(raw.subarray(i, i + W * H), W))
+    expect(stamps.every((s) => s >= 0)).toBe(true)
+    // Where the source frame number jumps is a cut; each must open where it was planned, on a still mouth.
+    const opening = [stamps[0], ...stamps.filter((s, i) => i > 0 && s !== stamps[i - 1] + 1)]
+    expect(opening).toEqual(resolved.pieces.map((p) => Math.ceil(p.srcStart * FPS - 1e-6)))
+    // At rest or just starting: under 15% of how wide that word opens.
+    for (const f of opening) {
+      const word = t.words.find((w) => f / FPS <= w.settleSec) ?? t.words[0]
+      expect(t.scene.faces[0].mouth(f / FPS) / word.peak).toBeLessThan(0.15)
     }
     expect(existsSync(path)).toBe(true)
   })

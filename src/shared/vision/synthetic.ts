@@ -58,6 +58,28 @@ export interface Scene {
   /** Sensor noise, in grey levels. */
   noise?: number
   seed?: number
+  /**
+   * Stamp each frame's number in its top-left corner as 12 black and white
+   * squares, so an export can be read back frame by frame (see readStamp).
+   */
+  stamp?: boolean
+}
+
+const STAMP_BITS = 12
+const STAMP_CELL = 6
+
+/** The frame number stamped into a frame by a scene with `stamp`, or -1 when there is none. */
+export function readStamp(frame: Uint8Array, width: number): number {
+  let n = 0
+  for (let b = 0; b < STAMP_BITS; b++) {
+    let s = 0
+    for (let y = 1; y < STAMP_CELL - 1; y++)
+      for (let x = 1; x < STAMP_CELL - 1; x++) s += frame[(2 + y) * width + 2 + b * STAMP_CELL + x]
+    const v = s / ((STAMP_CELL - 2) * (STAMP_CELL - 2))
+    if (v > 170) n |= 1 << b
+    else if (v > 85) return -1
+  }
+  return n
 }
 
 /** A face box is taller than wide in pixels, about as Vision draws one. */
@@ -190,6 +212,14 @@ export function makeRenderer(scene: Scene): (t: number, out?: Uint8Array) => Uin
     for (let i = 0; i < frame.length; i++) {
       const v = frame[i] * light + sigma * gauss()
       out[i] = v < 0 ? 0 : v > 255 ? 255 : v
+    }
+    if (scene.stamp) {
+      const n = Math.round(t * scene.fps)
+      for (let b = 0; b < STAMP_BITS; b++) {
+        const v = (n >> b) & 1 ? 255 : 0
+        for (let y = 0; y < STAMP_CELL; y++)
+          for (let x = 0; x < STAMP_CELL; x++) out[(2 + y) * W + 2 + b * STAMP_CELL + x] = v
+      }
     }
     return out
   }
@@ -429,6 +459,8 @@ export interface TakeOptions {
   listener?: boolean
   /** A stretch where the head turns to a profile and back, over a third of a second each way. */
   turned?: [number, number] | null
+  /** Stamp each frame's number into it (see Scene.stamp). */
+  stamp?: boolean
 }
 
 /** A synthetic take with its truth: the scene, the words as spoken, the voices, and where the distractors are. */
@@ -521,7 +553,7 @@ export function take(opts: TakeOptions = {}): Take {
   }
   const light = opts.light ?? 1
   return {
-    scene: { width, height, fps, durationSec, faces, light: () => light, seed: opts.seed ?? 3 },
+    scene: { width, height, fps, durationSec, faces, light: () => light, seed: opts.seed ?? 3, stamp: opts.stamp },
     words,
     lines,
     nods,
