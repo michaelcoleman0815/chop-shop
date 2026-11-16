@@ -89,8 +89,12 @@ describe('Deepgram', () => {
     expect(sent).toHaveLength(1)
     const [req] = sent
     expect(req.method).toBe('POST')
-    expect(req.url).toBe('https://api.deepgram.com/v1/listen?model=nova-3&filler_words=true&punctuate=true')
+    expect(req.url).toBe(
+      'https://api.deepgram.com/v1/listen?model=nova-3&filler_words=true&punctuate=true&mip_opt_out=true'
+    )
     expect(listenUrl()).toBe(req.url)
+    // Opted out of Deepgram's Model Improvement Program, as a query parameter, on every transcription request.
+    expect(new URL(req.url).searchParams.get('mip_opt_out')).toBe('true')
     expect(req.headers.get('authorization')).toBe('Token dg-key-0123456789')
     expect(req.headers.get('content-type')).toBe('audio/ogg')
     expect(Buffer.from(req.bytes as Uint8Array).equals(AUDIO_BYTES)).toBe(true)

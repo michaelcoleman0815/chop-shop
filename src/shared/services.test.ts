@@ -10,6 +10,12 @@ describe('the other AI services switch', () => {
     expect(servicesOn(null)).toBe(true)
   })
 
+  it('says under the Deepgram key that the audio is not used to improve its models', () => {
+    expect(SERVICES.find((s) => s.id === 'deepgram')?.note).toBe(
+      'I ask Deepgram not to use your audio to improve its models, so it keeps neither the audio nor the words once it has answered.'
+    )
+  })
+
   it('names each service plainly', () => {
     expect(SERVICES.map((s) => s.name)).toEqual(['Deepgram', 'AssemblyAI', 'Google Gemini'])
     expect(serviceName('gemini')).toBe('Google Gemini')

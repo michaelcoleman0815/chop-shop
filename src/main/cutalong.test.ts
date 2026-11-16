@@ -167,7 +167,9 @@ describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' 
     expect(fake.localCalls).toBe(0)
     expect(fake.sent).toHaveLength(1)
     const [req] = fake.sent
-    expect(req.url).toBe('https://api.deepgram.com/v1/listen?model=nova-3&filler_words=true&punctuate=true')
+    expect(req.url).toBe(
+      'https://api.deepgram.com/v1/listen?model=nova-3&filler_words=true&punctuate=true&mip_opt_out=true'
+    )
     expect(req.headers.get('authorization')).toBe('Token dg-0123456789abcdef')
     // The body is the sound taken out of the recording, never the video file:
     // Ogg Opus, or FLAC from an ffmpeg built without Opus.

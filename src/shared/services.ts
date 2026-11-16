@@ -23,10 +23,19 @@ export interface Service {
   job: ServiceJob
   /** Where a key comes from, said plainly. */
   keyFrom: string
+  /** One sentence shown under the key: what happens to what is sent there. */
+  note?: string
 }
 
 export const SERVICES: readonly Service[] = [
-  { id: 'deepgram', name: 'Deepgram', job: 'transcribe', keyFrom: 'console.deepgram.com' },
+  {
+    id: 'deepgram',
+    name: 'Deepgram',
+    job: 'transcribe',
+    keyFrom: 'console.deepgram.com',
+    // Every transcription request carries mip_opt_out=true (providers/deepgram.ts).
+    note: 'I ask Deepgram not to use your audio to improve its models, so it keeps neither the audio nor the words once it has answered.'
+  },
   { id: 'assemblyai', name: 'AssemblyAI', job: 'transcribe', keyFrom: 'assemblyai.com/dashboard' },
   { id: 'gemini', name: 'Google Gemini', job: 'judge', keyFrom: 'aistudio.google.com' }
 ]
