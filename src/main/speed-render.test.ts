@@ -354,9 +354,10 @@ describe.skipIf(!FFMPEG)('speech at speed', () => {
     })
     const heard = onsets(ffmpeg, out, -30, 0.05)
     const off = (w: { outStart: number }): number => Math.min(...heard.map((h) => Math.abs(h - w.outStart))) * 1000
-    // Steady speeds land within 25 ms; an eased ramp within 50 ms, its sound a little early.
+    // Steady speeds land within 25 ms; an eased ramp, played a stretch at a time, within 30 ms.
+    // The same on ffmpeg 6.0, which ignores atempo's tempo command, as on 6.1 and 7.
     for (const w of resolved.words.filter((w) => w.id !== 'w1')) {
-      expect(off(w), `${w.id} in ${w.beat}`).toBeLessThan(w.beat === 'b3' ? 50 : 25)
+      expect(off(w), `${w.id} in ${w.beat}`).toBeLessThan(w.beat === 'b3' ? 30 : 25)
     }
   })
 })

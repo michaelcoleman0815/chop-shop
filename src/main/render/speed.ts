@@ -68,39 +68,68 @@ export function atempoLead(speed: number): number {
   return pts[pts.length - 1][1]
 }
 
-/** The speed most of the steps' playing time is at: a ramp's steady middle. */
-function mainSpeed(steps: SpeedStep[]): number {
-  return steps.reduce((best, s) => (s.srcSec / s.speed > best.srcSec / best.speed ? s : best), steps[0]).speed
+/** A step this long or longer is played on its own; shorter ones, a ramp's, are played together. */
+const CHUNK_SEC = 0.15
+
+/**
+ * The steps played as stretches of sound: each long step alone, and each run
+ * of a ramp's short steps as one stretch at the speed that takes exactly as
+ * long as they do. atempo needs some sound to work on; a ramp's steps are
+ * 30 ms or so each, too short to stretch cleanly one by one.
+ */
+export function soundChunks(steps: SpeedStep[]): SpeedStep[] {
+  const chunks: { srcSec: number; outSec: number }[] = []
+  let open: { srcSec: number; outSec: number } | null = null
+  for (const s of steps) {
+    if (s.srcSec >= CHUNK_SEC) {
+      if (open) chunks.push(open)
+      open = null
+      chunks.push({ srcSec: s.srcSec, outSec: s.srcSec / s.speed })
+      continue
+    }
+    open = open ?? { srcSec: 0, outSec: 0 }
+    open.srcSec += s.srcSec
+    open.outSec += s.srcSec / s.speed
+  }
+  if (open) chunks.push(open)
+  return chunks.map((c) => ({ srcSec: c.srcSec, speed: c.srcSec / c.outSec }))
 }
 
 /**
  * The sound of the steps, played at their speeds with atempo, which keeps the
- * pitch. A ramp is one atempo told each new speed at its step's moment in the
- * recording, so the sound runs on without a seam; atempo takes 0.5 to 100, so
- * a profile that goes slower than half speed runs through two, each at the
- * square root. The result is delayed by atempo's lead at the main speed.
- * `from` is the input label and `to` the output; `name` keeps the filter
- * names this makes unique in the graph.
+ * pitch (and chains for slower than half speed). One speed is one atempo,
+ * delayed by its lead. Several, a ramp, are played a stretch at a time
+ * (soundChunks), each from its own moment of the recording, delayed by its
+ * own lead and cut to exactly its length, then joined, so every stretch
+ * starts where the picture's does. (Telling one atempo each new speed as it
+ * plays would avoid the joins, but ffmpeg 6.0, the one the Mac app ships,
+ * ignores atempo's tempo command and plays the whole ramp at its first speed.)
+ * `from` is the input label and `to` the output; `name` keeps the labels this
+ * makes unique in the graph.
  */
 export function speedSound(steps: SpeedStep[], from: string, to: string, name: string): string {
-  const lead = Math.round(atempoLead(mainSpeed(steps)) * 1000)
   // adelay leaves timestamps that no longer count the samples; they are counted again after it.
-  const delay = `${lead > 0 ? `,adelay=delays=${lead}:all=1` : ''},asetpts=N/SR/TB`
-  if (steps.length === 1) return `[${from}]asetpts=PTS-STARTPTS,${atempoChain(steps[0].speed)}${delay}[${to}]`
-  const twice = steps.some((s) => s.speed < 0.5)
-  const tempo = (speed: number): string => n(twice ? Math.sqrt(speed) : speed)
-  const commands: string[] = []
-  let at = 0
-  for (const s of steps) {
-    commands.push(`${n(at)} atempo@${name}a tempo ${tempo(s.speed)}`)
-    if (twice) commands.push(`${n(at)} atempo@${name}b tempo ${tempo(s.speed)}`)
-    at += s.srcSec
+  const delayed = (speed: number): string => {
+    const lead = Math.round(atempoLead(speed) * 1000)
+    return `${lead > 0 ? `,adelay=delays=${lead}:all=1` : ''},asetpts=N/SR/TB`
   }
-  const first = tempo(steps[0].speed)
-  return (
-    `[${from}]asetpts=PTS-STARTPTS,asetnsamples=n=480,asendcmd=c='${commands.join(';')}',` +
-    `atempo@${name}a=${first}${twice ? `,atempo@${name}b=${first}` : ''}${delay}[${to}]`
-  )
+  const tempo = (speed: number): string => (Math.abs(speed - 1) < 1e-6 ? 'anull' : atempoChain(speed))
+  if (steps.length === 1) {
+    return `[${from}]asetpts=PTS-STARTPTS,${tempo(steps[0].speed)}${delayed(steps[0].speed)}[${to}]`
+  }
+  const chunks = soundChunks(steps)
+  const labels = chunks.map((_, i) => `${name}k${i}`)
+  const parts = [`[${from}]asetpts=PTS-STARTPTS,asplit=${chunks.length}${labels.map((l) => `[${l}i]`).join('')}`]
+  let at = 0
+  chunks.forEach((c, i) => {
+    parts.push(
+      `[${labels[i]}i]atrim=start=${n(at)}:end=${n(at + c.srcSec)},asetpts=PTS-STARTPTS,${tempo(c.speed)}` +
+        `${delayed(c.speed)},apad,atrim=duration=${n(c.srcSec / c.speed)}[${labels[i]}]`
+    )
+    at += c.srcSec
+  })
+  parts.push(`${labels.map((l) => `[${l}]`).join('')}concat=n=${chunks.length}:v=0:a=1,asetpts=N/SR/TB[${to}]`)
+  return parts.join(';')
 }
 
 /**
