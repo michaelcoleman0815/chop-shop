@@ -215,15 +215,33 @@ function edges(input: LeaveOutInput): Region[] {
   return out
 }
 
-/** Four words in a row: long enough that a sermon rarely says them three times in two minutes. */
+/**
+ * Four words in a row said again inside two minutes. Twice is enough: a
+ * transcript often keeps only two of a chorus's repeats, and speech that
+ * repeats itself still brings new words between, which the share and the
+ * run below catch.
+ */
 const LYRIC_GRAM = 4
 const LYRIC_REACH_SEC = 60
-const LYRIC_REPEATS = 3
+const LYRIC_REPEATS = 2
 /** Share of a stretch's words inside repeated lines, past which it is sung rather than said. */
 const LYRIC_SHARE = 0.6
 const LYRIC_WINDOW_SEC = 20
 /** Shorter than this, a run of repeated lines is a refrain or a chant, not a song. */
 const LYRIC_MIN_SEC = 45
+/**
+ * Whisper often writes a chorus down once or twice and leaves the rest of
+ * its repeats out (a real run on the generated service did, for minutes),
+ * so a song's written lines can sit half a minute apart.
+ */
+const LYRIC_GAP_SEC = 30
+/**
+ * Past this share of a run's words in repeated lines, with as few different
+ * words across the run as a song's windows have, it is sung however few of
+ * its repeats were written down. Speech built from stock phrases repeats
+ * as much, but says many more different words.
+ */
+const LYRIC_WHOLE = 0.8
 
 /**
  * Whether every half minute of a run says few words over and over, as
@@ -248,12 +266,12 @@ function fewWords(words: TimedWord[], a: number, b: number): boolean {
  * Songs found line by line. The half-minute windows of shared/clipping/worship
  * miss a song shorter than about two minutes, such as the one a service ends
  * on, when its first or last window also holds speech. Here every run of four
- * words that comes back three times inside two minutes counts as sung, and a
- * stretch of at least 45 s where most words are sung, and few are new, is a
- * song. A preacher's refrain comes back too, but between sentences that do
- * not.
+ * words that comes back inside two minutes counts as sung, and a
+ * stretch of at least 45 s where most words are sung, and few are new (or
+ * nearly all of them are sung), is a song. A preacher's refrain comes back
+ * too, but between sentences that do not.
  */
-function repeatedLines(words: TimedWord[]): { startSec: number; endSec: number }[] {
+export function songsByLine(words: TimedWord[]): { startSec: number; endSec: number }[] {
   const n = words.length
   const texts = words.map((w) => plain(w.text))
   const at = new Map<string, number[]>()
@@ -288,9 +306,13 @@ function repeatedLines(words: TimedWord[]): { startSec: number; endSec: number }
       let { a, b } = run
       // At a song's edges the words around it are partly speech, so the share
       // falls; its repeated words there are still the song.
-      while (a > 0 && repeated[a - 1] && words[a].startSec - words[a - 1].endSec < 8) a--
-      while (b + 1 < n && repeated[b + 1] && words[b + 1].startSec - words[b].endSec < 8) b++
-      if (words[b].endSec - words[a].startSec >= LYRIC_MIN_SEC && fewWords(words, a, b))
+      while (a > 0 && repeated[a - 1] && words[a].startSec - words[a - 1].endSec < LYRIC_GAP_SEC) a--
+      while (b + 1 < n && repeated[b + 1] && words[b + 1].startSec - words[b].endSec < LYRIC_GAP_SEC) b++
+      let sung = 0
+      for (let k = a; k <= b; k++) sung += repeated[k]
+      const said = texts.slice(a, b + 1)
+      const whole = sung / said.length >= LYRIC_WHOLE && new Set(said).size / said.length < DEFAULT_MUSIC.uniqueBelow
+      if (words[b].endSec - words[a].startSec >= LYRIC_MIN_SEC && (whole || fewWords(words, a, b)))
         out.push({ startSec: words[a].startSec, endSec: words[b].endSec })
     }
     run = null
@@ -301,7 +323,7 @@ function repeatedLines(words: TimedWord[]): { startSec: number; endSec: number }
     while (words[lo].startSec < t - LYRIC_WINDOW_SEC / 2) inside -= repeated[lo++]
     const share = inside / (hi - lo)
     if (share >= LYRIC_SHARE && repeated[k]) {
-      if (run && words[k].startSec - words[run.b].endSec < 8) run.b = k
+      if (run && words[k].startSec - words[run.b].endSec < LYRIC_GAP_SEC) run.b = k
       else {
         flush()
         run = { a: k, b: k }
@@ -321,7 +343,8 @@ function repeatedLines(words: TimedWord[]): { startSec: number; endSec: number }
  */
 function sung(input: LeaveOutInput): { startSec: number; endSec: number }[] {
   const { sentences } = input
-  const found = [...detectMusic(input.words), ...repeatedLines(input.words)].sort((a, b) => a.startSec - b.startSec)
+  const byLine = songsByLine(input.words)
+  const found = [...detectMusic(input.words), ...byLine].sort((a, b) => a.startSec - b.startSec)
   const songs: { startSec: number; endSec: number }[] = []
   for (const m of found) {
     const last = songs[songs.length - 1]
@@ -354,7 +377,10 @@ function sung(input: LeaveOutInput): { startSec: number; endSec: number }[] {
       b++
     out.push({ startSec: sentences[a].startSec, endSec: sentences[b].endSec })
   }
-  return out
+  // What was found line by line is sung whatever its sentences look like:
+  // "You are the light in the dark, you are the light in the dark" written
+  // as one long sentence is still the song. leaveOut joins the two.
+  return [...out, ...byLine]
 }
 
 /** Every stretch a clip never comes from, earliest first. */

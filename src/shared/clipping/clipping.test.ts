@@ -92,6 +92,63 @@ describe('what a clip never comes from', () => {
     }
   })
 
+  it('finds the worship set when the transcript wrote each line down only once or twice, as Whisper does', () => {
+    // Whisper on the generated service wrote most choruses down once or
+    // twice and left out the rest of their repeats, half a minute at a time.
+    const t = factsOf(SERVICE).timeline
+    const kept: typeof t.words = []
+    let line: typeof t.words = []
+    let last = ''
+    let seen = 0
+    const flush = (): void => {
+      const text = line.map((w) => w.text).join(' ')
+      seen = text === last ? seen + 1 : 1
+      last = text
+      if (seen <= 2) kept.push(...line)
+      line = []
+    }
+    for (const [i, w] of t.words.entries()) {
+      if (!w.tag?.startsWith('worship')) {
+        if (line.length) flush()
+        kept.push(w)
+        continue
+      }
+      const prev = t.words[i - 1]
+      if (line.length && prev && w.startSec - prev.endSec > 0.5) flush()
+      line.push(w)
+    }
+    if (line.length) flush()
+    const sung = (tag: string) => kept.filter((w) => w.tag === tag)
+    expect(sung('worship').length).toBeLessThan(t.words.filter((w) => w.tag === 'worship').length * 0.6)
+    // Named the way nothing in its name gives away what it is.
+    const facts = {
+      ...factsOf(SERVICE, '/rec/0412.mp4'),
+      words: kept.map(({ text, startSec, endSec }) => ({ text, startSec, endSec }))
+    }
+    const plan = planRecording(facts, ask, null)
+    expect(plan.profile.id).toBe('church')
+    const worship = plan.regions.filter((r) => r.kind === 'worship')
+    for (const tag of ['worship', 'worship-2'])
+      expect(
+        sung(tag).every((w) => overlapWith(worship, w.startSec, w.endSec) > 0),
+        tag
+      ).toBe(true)
+    for (const m of SERVICE.moments) {
+      const span = momentSpan(t, m)
+      expect(overlapWith(plan.regions, span.startSec, span.endSec), m.tag).toBe(0)
+    }
+  })
+
+  it('tells a service, a podcast and a stream apart by what is in them, whatever the files are called', () => {
+    for (const p of PLANTED) {
+      const facts = factsOf(p, '/rec/0412.mp4')
+      expect(planRecording(facts, ask, null).profile.id, p.kind).toBe(p.kind)
+    }
+    // And by the name, when that is all there is to go on.
+    const talk = factsOf(PODCAST, '/rec/Sunday_service-2026.mp4')
+    expect(planRecording({ ...talk, words: talk.words.slice(0, 400) }, ask, null).profile.id).toBe('church')
+  })
+
   it('does not take a preacher’s refrain, or a run of lines that start alike, for a song', () => {
     // Most of every line is the same seven words, and the refrain comes back
     // every other line: as repeated as speech gets, still new words each time.

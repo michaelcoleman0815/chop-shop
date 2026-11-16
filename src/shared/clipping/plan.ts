@@ -1,6 +1,6 @@
 import { suggestProfile } from '../raw/profiles'
-import type { ClipAsk } from './ask'
-import { leaveOut, overlapWith, usableSec, type SoundStretch } from './leave-out'
+import { profileNamed, type ClipAsk } from './ask'
+import { leaveOut, overlapWith, songsByLine, usableSec, type SoundStretch } from './leave-out'
 import { pickMeasured, type MeasuredPick } from './measure'
 import { clipBounds, clipCount, pickProfile, type ClipProfile } from './profile'
 import type { Region } from './schema'
@@ -49,7 +49,7 @@ export function planRecording(facts: RecordingFacts, ask: ClipAsk, niche: string
     .filter((s) => s.startSec < Math.min(600, facts.durationSec * 0.3))
     .map((s) => s.text)
     .join(' ')
-  const worship = detectMusic(words).length > 0
+  const worship = detectMusic(words).length > 0 || songsByLine(words).length > 0
   const furniture = (facts.frozen ?? []).some((f) => f.endSec - f.startSec >= 30 && quiet(facts, f.startSec, f.endSec))
   const profile = pickProfile({
     asked: ask.profile,
@@ -58,7 +58,8 @@ export function planRecording(facts: RecordingFacts, ask: ClipAsk, niche: string
     durationSec: facts.durationSec,
     worship,
     furniture,
-    opening
+    opening,
+    named: profileNamed(nameOf(facts.path))
   })
   const bounds = clipBounds(profile, ask.length)
   const regions = leaveOut({
@@ -80,6 +81,12 @@ export function planRecording(facts: RecordingFacts, ask: ClipAsk, niche: string
     usableSec: usable,
     none
   }
+}
+
+/** A file's name as words: "sunday_service-2026.mp4" is "sunday service 2026". */
+function nameOf(path: string): string {
+  const base = path.split(/[\\/]/).pop() ?? ''
+  return base.replace(/\.[^.]+$/, '').replace(/[_\-.]+/g, ' ')
 }
 
 /** Whether nobody talks across a stretch, by its sound when it was heard, else by its words. */

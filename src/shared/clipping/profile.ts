@@ -126,6 +126,8 @@ export interface ProfileEvidence {
   furniture: boolean
   /** Words from the first minutes that say what this is: "welcome to the podcast". */
   opening: string
+  /** What the file's name calls it ("Sunday service.mp4"), a cutting profile id. */
+  named?: string | null
 }
 
 const PODCAST_OPENING = /\b(podcast|episode|my guest|our guest|welcome (back )?to the show|on the show today)\b/i
@@ -134,15 +136,18 @@ const CHURCH_OPENING = /\b(church|worship|let us pray|sermon|scripture|the lord)
 
 /**
  * What kind of recording this is, for clipping: what the person said, then
- * what the recording itself shows (a worship set, stream furniture), then the
- * brand's niche, then the words, then its length. A long recording nothing
- * else names is clipped as a stream; anything else as a talk.
+ * what the recording itself shows (a worship set, stream furniture), then
+ * what its file is called, then the brand's niche, then the words, then its
+ * length. A long recording nothing else names is clipped as a stream;
+ * anything else as a talk.
  */
 export function pickProfile(e: ProfileEvidence): ClipProfile {
   const asked = clipProfileFor(e.asked)
   if (asked) return asked
   if (e.worship) return CLIP_PROFILES.church
   if (e.furniture) return CLIP_PROFILES.livestream
+  const named = clipProfileFor(e.named)
+  if (named) return named
   const niche = clipProfileFor(e.niche)
   if (niche && niche.id !== 'talk') return niche
   if (CHURCH_OPENING.test(e.opening) && e.suggested === 'church') return CLIP_PROFILES.church
