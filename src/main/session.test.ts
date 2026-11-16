@@ -14,7 +14,9 @@ vi.mock('./ffmpeg', async () => {
   }
   const installed = installer.default?.path ?? installer.path ?? 'ffprobe'
   const { spawnSync: probeRuns } = await import('child_process')
-  const ffprobe = [installed, 'ffprobe'].find((bin) => probeRuns(bin, ['-version']).status === 0) ?? 'ffprobe'
+  const ffprobe =
+    [process.env.FFPROBE_PATH, installed, 'ffprobe'].find((bin) => bin && probeRuns(bin, ['-version']).status === 0) ??
+    'ffprobe'
   return { FFMPEG_PATH: findFfmpeg() ?? 'ffmpeg', FFPROBE_PATH: ffprobe }
 })
 
