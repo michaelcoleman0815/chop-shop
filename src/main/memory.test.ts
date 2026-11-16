@@ -87,6 +87,7 @@ describe('what leaves this computer', () => {
         .map((f) => join(root, 'shared/memory', f)),
       join(root, 'main/memory.ts'),
       join(root, 'main/memory-store.ts'),
+      join(root, 'main/never-store.ts'),
       join(root, 'renderer/src/cutalong/memory.ts')
     ]
     for (const file of files) {
@@ -97,7 +98,7 @@ describe('what leaves this computer', () => {
     }
     // The statements are read in one place in the main process: the planner's request.
     const cutalong = readFileSync(join(root, 'main/cutalong.ts'), 'utf8')
-    expect(cutalong.match(/preferencesForPlanner\(\)/g)).toHaveLength(1)
-    expect(cutalong).toMatch(/'cut:plan'[\s\S]{0,200}preferencesForPlanner\(\)/)
+    expect(cutalong.match(/preferencesForPlanner\(/g)).toHaveLength(1)
+    expect(cutalong).toMatch(/'cut:plan'[\s\S]{0,400}preferencesForPlanner\(brand\.id\)/)
   })
 })

@@ -583,9 +583,10 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   // Claude plans unless the person picked a model on this Mac in Settings.
   // The edit's own brand gives the logos and the never list, which the plan is checked against too.
   ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
-    const preferences = await preferencesForPlanner().catch(() => [])
     const parsed = EditDocSchema.safeParse(req.doc)
     const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
+    // What this brand has learned from its own chats.
+    const preferences = await preferencesForPlanner(brand.id).catch(() => [])
     const logos = brand.logos.map((l) => l.name)
     const never = await neverForBrand(brand.id).catch(() => [])
     const said = neverForPlanner(never)

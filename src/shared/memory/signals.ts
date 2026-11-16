@@ -15,12 +15,19 @@ import { withoutNever } from '../never'
 const at = z.string()
 const doc = z.string().max(200)
 const text = z.string().max(2000)
+/**
+ * The brand of the chat it happened in (shared/brands), so each brand learns
+ * from its own chats. Signals noted before there could be more than one brand
+ * have none, and belong to the brand from then (legacyBrandId).
+ */
+const brand = z.string().min(1).max(80).optional()
 
 export const SignalSchema = z.discriminatedUnion('kind', [
   /** A typed request, the version it made (null when nothing changed) and what that version did. */
   z.object({
     kind: z.literal('request'),
     at,
+    brand,
     doc,
     text,
     version: z.number().int().nullable(),
@@ -30,17 +37,19 @@ export const SignalSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('command'),
     at,
+    brand,
     doc,
     command: z.string().max(40),
     version: z.number().int().nullable(),
     tags: z.array(z.string().max(60)).max(40)
   }),
   /** Going back from one version to an earlier one. */
-  z.object({ kind: z.literal('undo'), at, doc, from: z.number().int(), to: z.number().int() }),
+  z.object({ kind: z.literal('undo'), at, brand, doc, from: z.number().int(), to: z.number().int() }),
   /** A note: written, carried out (in which version, doing what), or taken away. */
   z.object({
     kind: z.literal('note'),
     at,
+    brand,
     doc,
     text,
     status: z.enum(['added', 'applied', 'dismissed']),
@@ -51,13 +60,14 @@ export const SignalSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('keep'),
     at,
+    brand,
     doc,
     version: z.number().int(),
     captions: z.object({ on: z.boolean(), position: z.string().max(20), wordsPerScreen: z.number().int() }),
     aspect: z.string().max(20)
   }),
-  /** The brand's voice notes, as they now read. */
-  z.object({ kind: z.literal('voice'), at, text: z.string().max(4000) }),
+  /** A brand's voice notes, as they now read. */
+  z.object({ kind: z.literal('voice'), at, brand, text: z.string().max(4000) }),
   /**
    * A rule for a brand's never list (shared/never): said in a chat or set on
    * the Brand page. The latest for a brand and a thing is the one that holds.

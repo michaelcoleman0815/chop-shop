@@ -77,14 +77,14 @@ import {
 } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { mouthForNiche, readMouthMode, setMouthModeAll } from '../../../shared/vision'
-import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import { brandPreset, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import {
   addBrand,
   brandById,
   brandInSentence,
   brandName,
+  brandOfCut,
   chatBrand as chatBrandOf,
-  defaultBrand,
   EMPTY_BRANDS,
   removeBrand as removeBrandFrom,
   replaceBrand,
@@ -134,12 +134,14 @@ import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import {
+  brandTag,
   remember,
   rememberAdded,
   rememberKeep,
   rememberNotes,
   rememberVersion,
-  rememberVoice,
+  rememberVoices,
+  tagSignalsWith,
   useMemory
 } from './memory'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
@@ -660,10 +662,12 @@ export function useCutalong() {
   })
 
   useEffect(() => {
+    // What is learned is noted with the brand of the edit it happened in.
+    tagSignalsWith((cut) => brandOfCut(brandsRef.current, cut).id)
     void api
       .getBrands()
       .then((list) => {
-        rememberVoice(defaultBrand(list).voice)
+        rememberVoices(list)
         brandsRef.current = list
         setBrands(list)
         setBrandsLoaded(true)
@@ -678,8 +682,8 @@ export function useCutalong() {
     setBrands(next)
     if (brandSave.current) clearTimeout(brandSave.current)
     brandSave.current = setTimeout(() => {
-      // The voice notes learned from are the default brand's.
-      rememberVoice(defaultBrand(next).voice)
+      // Each brand's voice notes are learned from as that brand's, when they changed.
+      rememberVoices(next)
       void api.saveBrands(next).then((r) => {
         if (!r.ok) setToast({ text: r.message, error: true })
       })
@@ -717,8 +721,8 @@ export function useCutalong() {
   )
 
   // What I learn from how you edit: noted as you go, listed on the brand page.
-  // Caption defaults learned from chats go on the default brand, once the list has loaded.
-  const memory = useMemory(brandsLoaded ? defaultBrand(brands) : EMPTY_BRAND, saveBrand, setToast)
+  // Caption defaults learned from a brand's chats go on that brand, once the list has loaded.
+  const memory = useMemory(brandsLoaded ? brands : null, saveBrand, setToast)
   const memoryRef = useRef(memory)
   memoryRef.current = memory
   /** A brand's never list, as of the last change to it. */
@@ -3215,7 +3219,7 @@ export function useCutalong() {
     }
     const n = currentVersion(d).n
     setDoc(restore(d, back))
-    remember({ kind: 'undo', doc: d.id, from: n, to: back })
+    remember({ kind: 'undo', doc: d.id, from: n, to: back, ...brandTag(currentCut(d)) })
     setPanel({ text: `v${n + 1} is v${back} again.` })
   }, [setDoc])
 

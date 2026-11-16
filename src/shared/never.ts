@@ -13,8 +13,9 @@ import { MOTION_KINDS, type MotionKind } from './motion/schema'
  * and black and white, each whole or, for the first two and graphics, by
  * kind ("zoom transitions", "lower thirds").
  *
- * The list lives in what Cutalong learns from chats (shared/memory), so a
- * rule said in a chat and one added on the Brand page are the same thing.
+ * The list is kept with what Cutalong learns from chats (shared/memory, in
+ * never.json of its own), so a rule said in a chat and one added on the
+ * Brand page are the same thing.
  * Every change respects it: /all leaves those things out and says so, a
  * command for one answers that the channel never uses it, the planner is
  * told, and whatever any change would add from the list is left out of the
