@@ -3,15 +3,21 @@ import {
   beatAt,
   beatLabel,
   beatWords,
+  CAMERA_INFO,
+  cameraClock,
+  cameraPlan,
+  cameraTransform,
   captionPages,
-  cutawayAt,
-  cutawayClock,
   currentCut,
   currentVersion,
+  cutawayAt,
+  cutawayClock,
   indexWords,
   openNotes,
   resolveCut,
   transitionInfo,
+  viewAt,
+  type Camera,
   type EditDoc,
   type Op,
   type Resolved,
@@ -227,6 +233,7 @@ function Preview({
                 resolved={resolved}
                 time={time}
                 playing={playing}
+                frameAspect={ratio}
               />
             ))}
           </div>
@@ -268,7 +275,9 @@ function playsAs(t: Treatment): string | null {
       : null,
     t.freeze ? `holds ${seconds(t.freeze.sec)} on a frame` : null,
     t.reverse ? 'backwards' : null,
-    t.broll?.reverse ? 'cutaway backwards' : null
+    t.broll?.reverse ? 'cutaway backwards' : null,
+    t.camera ? CAMERA_INFO[t.camera.kind].label : null,
+    t.broll?.camera ? `cutaway with ${CAMERA_INFO[t.broll.camera.kind].label}` : null
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : null
 }
@@ -284,7 +293,8 @@ function Deck({
   doc,
   resolved,
   time,
-  playing
+  playing,
+  frameAspect
 }: {
   videoRef: RefObject<HTMLVideoElement>
   view: DeckView
@@ -292,6 +302,8 @@ function Deck({
   resolved: Resolved
   time: number
   playing: boolean
+  /** The finished frame's width over its height. */
+  frameAspect: number
 }): JSX.Element {
   const cut = currentCut(doc)
   const piece = view.piece !== null ? resolved.pieces[view.piece] : undefined
@@ -301,6 +313,18 @@ function Deck({
   // The cutaway runs on its own clock: its speed, its direction, held by a freeze.
   const runs = rb && t?.broll ? cutawayClock(resolved, rb.id, time) : null
   const at = runs && t?.broll ? cutawayAt(t.broll, runs.length, runs.offset) : null
+  // The camera over the speaker, from the plan the export moves by.
+  const source = piece ? doc.sources.find((s) => s.id === piece.source) : undefined
+  let transform = t && t.zoom > 1.001 ? `scale(${t.zoom})` : undefined
+  if (rb && t?.camera && source && source.height > 0) {
+    const clock = cameraClock(resolved, rb.id, time, t.camera.word)
+    if (clock) {
+      const plan = cameraPlan(t.camera, clock.length, clock.wordAt, source.width / source.height, frameAspect)
+      transform = cameraTransform(viewAt(plan, clock.t), plan.fw, plan.fh, t.zoom)
+    }
+  }
+  const cutawayCamera =
+    rb && t?.broll?.camera && t.frame !== 'card' ? cameraClock(resolved, rb.id, time, t.broll.camera.word) : null
   return (
     <div className="cl-deck" style={style.wrapper} data-dip={style.dip} aria-hidden={!view.layer}>
       <div className="cl-deck-picture" style={style.picture}>
@@ -308,10 +332,7 @@ function Deck({
           ref={videoRef}
           playsInline
           preload="auto"
-          style={{
-            filter: t?.bw ? 'grayscale(1)' : undefined,
-            transform: t && t.zoom > 1.001 ? `scale(${t.zoom})` : undefined
-          }}
+          style={{ filter: t?.bw ? 'grayscale(1)' : undefined, transform }}
         />
         {view.layer && t?.broll && t.frame !== 'speaker' && at && (
           <Cutaway
@@ -322,6 +343,16 @@ function Deck({
             moving={!runs?.held && !t.broll.reverse}
             playing={playing}
             bw={t.bw}
+            camera={
+              t.broll.camera && cutawayCamera
+                ? {
+                    move: t.broll.camera,
+                    clock: cutawayCamera,
+                    // A split shows the cutaway over the top half.
+                    frameAspect: t.frame === 'split' ? frameAspect * 2 : frameAspect
+                  }
+                : null
+            }
           />
         )}
       </div>
@@ -343,7 +374,8 @@ function Cutaway({
   rate,
   moving,
   playing,
-  bw
+  bw,
+  camera
 }: {
   frame: string
   path: string
@@ -354,9 +386,17 @@ function Cutaway({
   moving: boolean
   playing: boolean
   bw: boolean
+  /** A camera move over it, where that move is, and the shape of the area it fills. */
+  camera: {
+    move: Camera
+    clock: { t: number; length: number; wordAt: number | null }
+    frameAspect: number
+  } | null
 }): JSX.Element {
   const ref = useRef<HTMLVideoElement>(null)
   const still = isImagePath(path) || path.startsWith('data:image')
+  // The footage's own shape, once it has loaded: the move is planned on it.
+  const [shape, setShape] = useState<number | null>(null)
   useEffect(() => {
     const v = ref.current
     if (!v) return
@@ -368,13 +408,31 @@ function Cutaway({
     if (!runs && !v.paused) v.pause()
   }, [srcSec, rate, moving, playing])
   const src = mediaUrlFor(path)
-  const style = bw ? { filter: 'grayscale(1)' } : undefined
+  let transform: string | undefined
+  if (camera && shape) {
+    const plan = cameraPlan(camera.move, camera.clock.length, camera.clock.wordAt, shape, camera.frameAspect)
+    transform = cameraTransform(viewAt(plan, camera.clock.t), plan.fw, plan.fh)
+  }
+  const style = { filter: bw ? 'grayscale(1)' : undefined, transform }
   return (
     <div className={`cl-cutaway ${frame}`}>
       {still ? (
-        <img src={src} alt="" style={style} />
+        <img
+          src={src}
+          alt=""
+          style={style}
+          onLoad={(e) => setShape(e.currentTarget.naturalWidth / Math.max(1, e.currentTarget.naturalHeight))}
+        />
       ) : (
-        <video ref={ref} src={src} muted playsInline preload="auto" style={style} />
+        <video
+          ref={ref}
+          src={src}
+          muted
+          playsInline
+          preload="auto"
+          style={style}
+          onLoadedMetadata={(e) => setShape(e.currentTarget.videoWidth / Math.max(1, e.currentTarget.videoHeight))}
+        />
       )}
     </div>
   )

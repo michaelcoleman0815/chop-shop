@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CameraSchema } from './camera'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
   FadeSchema,
@@ -54,7 +55,9 @@ export const BrollSchema = z.object({
   /** Easing into that speed and back. */
   ramp: RampSchema.nullable().optional(),
   /** Played backwards: a spin that turns the other way. */
-  reverse: z.boolean().optional()
+  reverse: z.boolean().optional(),
+  /** The frame moving over it: a Ken Burns drift across a product still. */
+  camera: CameraSchema.optional()
 })
 export type Broll = z.infer<typeof BrollSchema>
 
@@ -81,7 +84,9 @@ export const TreatmentSchema = z.object({
   /** A freeze frame: the picture holds where a word ends while the sound waits. */
   freeze: FreezeSchema.nullable().optional(),
   /** Played backwards, sound and picture. */
-  reverse: z.boolean().optional()
+  reverse: z.boolean().optional(),
+  /** The frame moving over the speaker: a push-in, a punch-in on a word, a pan. */
+  camera: CameraSchema.optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -218,6 +223,13 @@ export const OpSchema = z.discriminatedUnion('op', [
     op: z.literal('reverse'),
     beats: z.array(beatId).min(1),
     on: z.boolean(),
+    of: z.enum(['beat', 'cutaway']).optional()
+  }),
+  // A camera move over a beat, or over the cutaway it shows; null holds the frame still.
+  z.object({
+    op: z.literal('camera'),
+    beats: z.array(beatId).min(1),
+    move: CameraSchema.nullable(),
     of: z.enum(['beat', 'cutaway']).optional()
   })
 ])

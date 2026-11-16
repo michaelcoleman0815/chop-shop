@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+  CAMERA_KINDS,
   currentCut,
   currentVersion,
   indexWords,
@@ -8,7 +9,7 @@ import {
   type EditDoc,
   type Note
 } from '../shared/edit'
-import { clock, describeSpeed, seconds } from '../shared/presets'
+import { clock, describeCamera, describeSpeed, seconds } from '../shared/presets'
 
 /**
  * Everything the planner sends and expects back, kept apart from the API call
@@ -49,6 +50,10 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - {"op":"speed","beats":["b6"],"speed":0.5,"ramp":{"inSec":0.4,"outSec":0.4}}: a speed ramp, easing from full speed into 0.5 over 0.4 s and back to full speed over the last 0.4 s.
 - {"op":"freeze","beat":"b6","word":"w40","sec":1}: hold the picture where w40 ends for 1 s while the sound waits; everything after starts 1 s later. sec 0 removes it.
 - {"op":"reverse","beats":["b6"],"on":true}: play a beat backwards, or the cutaway it shows. A beat played backwards has no captions. on false plays it forwards again.
+- {"op":"camera","beats":["b4"],"move":{"kind":"push-in"}}: a camera move over a beat, or over the cutaway it shows (a card stays still). Kinds: push-in, pull-out, drift (a slow creep in over the whole beat), ken-burns (a slow zoom and drift across a still), pan-left, pan-right, pan-up, pan-down, punch-in, shake, focus. "zoom" sets how close it gets, from 1 to 3. "to" centres the move on a point, as fractions of the picture: {"x":0.5,"y":0.3}.
+- {"op":"camera","beats":["b4"],"move":{"kind":"punch-in","word":"w31","zoom":1.2}}: a quick eased punch-in landing on a word in the beat; a shake can land on a word the same way.
+- {"op":"camera","beats":["b4"],"move":{"kind":"focus","regions":[{"at":0,"x":0.1,"y":0.2,"w":0.3,"h":0.25}]}}: glide in on a region of a screen recording at "at" seconds into the beat; x, y, w and h are fractions of the recording.
+- {"op":"camera","beats":["b4"],"move":null}: hold the frame still again.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ## How to edit
@@ -59,6 +64,7 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 - If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs.
 - If nothing can be done, return no ops and say why in reply.
 - Hard cuts are the default. Add a transition only where it is asked for, or at a change of section when asked to "add transitions"; between a talking head and B-roll a dissolve or a short push reads cleanest. Never put one on every beat unless asked.
+- Camera moves keep stills and long held shots alive: a ken-burns or drift on a product still, a drift on a long talking beat. Put a move on fewer than half the beats unless asked, and never two kinds in a row on the same picture.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
 
 ## The creator's brand
@@ -129,6 +135,24 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     op: z.literal('reverse'),
     beats: z.array(z.string()),
     on: z.boolean(),
+    of: z.enum(['beat', 'cutaway']).optional()
+  }),
+  z.object({
+    op: z.literal('camera'),
+    beats: z.array(z.string()),
+    move: z
+      .object({
+        kind: z.enum(CAMERA_KINDS),
+        zoom: z.number().optional(),
+        from: z.object({ x: z.number(), y: z.number() }).optional(),
+        to: z.object({ x: z.number(), y: z.number() }).optional(),
+        word: z.string().optional(),
+        sec: z.number().optional(),
+        regions: z
+          .array(z.object({ at: z.number(), x: z.number(), y: z.number(), w: z.number(), h: z.number() }))
+          .optional()
+      })
+      .nullable(),
     of: z.enum(['beat', 'cutaway']).optional()
   })
 ])
@@ -219,7 +243,9 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
         : null,
       t.freeze ? `freezes on ${t.freeze.word} for ${seconds(t.freeze.sec)}` : null,
       t.reverse ? 'backwards' : null,
-      t.broll?.reverse ? 'cutaway backwards' : null
+      t.broll?.reverse ? 'cutaway backwards' : null,
+      t.camera ? `camera ${describeCamera(t.camera)}` : null,
+      t.broll?.camera ? `cutaway camera ${describeCamera(t.broll.camera)}` : null
     ]
       .filter(Boolean)
       .join(', ')

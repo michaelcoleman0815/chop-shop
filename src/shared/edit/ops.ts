@@ -10,6 +10,7 @@ import {
   type Cut,
   type Op,
   type Source,
+  type Treatment,
   type Word
 } from './schema'
 
@@ -113,17 +114,27 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         throw new OpError(`${op.at} is not inside ${beat.id}, or it is already its first word.`)
       }
       const bigAt = beat.treatment.bigWord === null ? undefined : ctx.index.pos.get(beat.treatment.bigWord)
-      // A freeze frame, like a big word, belongs to the half that holds its word.
+      // A freeze frame, like a big word, belongs to the half that holds its
+      // word; so does a camera move that lands on one. Other moves go on both.
       const freezeAt = beat.treatment.freeze ? ctx.index.pos.get(beat.treatment.freeze.word) : undefined
+      const cameraAt = beat.treatment.camera?.word ? ctx.index.pos.get(beat.treatment.camera.word) : undefined
+      const camera = (treatment: Treatment, inHead: boolean): Treatment => {
+        if (cameraAt === undefined || cameraAt < s === inHead) return treatment
+        const { camera: _c, ...rest } = treatment
+        return rest
+      }
       const head: Beat = {
         ...beat,
         to: ctx.index.words[s - 1].id,
         padOut: DEFAULT_PAD_OUT,
-        treatment: {
-          ...beat.treatment,
-          bigWord: bigAt !== undefined && bigAt < s ? beat.treatment.bigWord : null,
-          ...(freezeAt !== undefined ? { freeze: freezeAt < s ? beat.treatment.freeze : null } : {})
-        }
+        treatment: camera(
+          {
+            ...beat.treatment,
+            bigWord: bigAt !== undefined && bigAt < s ? beat.treatment.bigWord : null,
+            ...(freezeAt !== undefined ? { freeze: freezeAt < s ? beat.treatment.freeze : null } : {})
+          },
+          true
+        )
       }
       // The way the beat came in stays with its head; the tail carries straight on.
       const { transition: _in, splitEdit: _split, ...rest } = beat
@@ -132,11 +143,14 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         id: nextBeatId(cut),
         from: op.at,
         padIn: DEFAULT_PAD_IN,
-        treatment: {
-          ...beat.treatment,
-          bigWord: bigAt !== undefined && bigAt >= s ? beat.treatment.bigWord : null,
-          ...(freezeAt !== undefined ? { freeze: freezeAt >= s ? beat.treatment.freeze : null } : {})
-        }
+        treatment: camera(
+          {
+            ...beat.treatment,
+            bigWord: bigAt !== undefined && bigAt >= s ? beat.treatment.bigWord : null,
+            ...(freezeAt !== undefined ? { freeze: freezeAt >= s ? beat.treatment.freeze : null } : {})
+          },
+          false
+        )
       }
       const beats = [...cut.beats]
       beats.splice(at, 1, head, tail)
@@ -304,6 +318,34 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         } else {
           const { reverse: _r, ...rest } = t
           beats[i] = { ...beats[i], treatment: op.on ? { ...rest, reverse: true } : rest }
+        }
+      }
+      return { ...cut, beats }
+    }
+
+    case 'camera': {
+      const targets = op.beats.map((id) => findBeat(cut, id))
+      const beats = [...cut.beats]
+      for (const i of targets) {
+        const beat = beats[i]
+        const t = beat.treatment
+        if (op.move?.word) {
+          // A punch-in or a shake lands on a word the beat plays.
+          const p = ctx.index.pos.get(op.move.word)
+          const [a, b] = beat.from !== null && beat.to !== null ? beatRange(ctx, beat) : [-1, -2]
+          if (p === undefined || p < a || p > b) throw new OpError(`${op.move.word} is not a word in ${beat.id}.`)
+        }
+        // Like speed: a beat showing a cutaway moves over the cutaway.
+        const of = op.of ?? (t.broll && t.frame !== 'speaker' ? 'cutaway' : 'beat')
+        if (of === 'cutaway') {
+          if (!t.broll) throw new OpError(`${beat.id} shows no cutaway to move over.`)
+          if (t.frame === 'card' && op.move)
+            throw new OpError(`${beat.id} shows its picture on a card, which stays still.`)
+          const { camera: _c, ...broll } = t.broll
+          beats[i] = { ...beat, treatment: { ...t, broll: op.move ? { ...broll, camera: op.move } : broll } }
+        } else {
+          const { camera: _c, ...rest } = t
+          beats[i] = { ...beat, treatment: op.move ? { ...rest, camera: op.move } : rest }
         }
       }
       return { ...cut, beats }

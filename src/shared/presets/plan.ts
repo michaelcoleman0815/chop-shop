@@ -3,6 +3,7 @@ import { applyOps } from '../edit/ops'
 import { resolveCut, type Resolved, type ResolvedBeat } from '../edit/resolve'
 import { currentCut } from '../edit/doc'
 import type { Cut, EditDoc, Op } from '../edit/schema'
+import { CAMERA_INFO } from '../edit/camera'
 import { transitionInfo } from '../edit/transitions'
 import { clock, seconds, type StyleSpec } from './preset'
 
@@ -342,6 +343,16 @@ function describeReverse(o: Extract<Op, { op: 'reverse' }>, after: Resolved, cut
   return `${subject} play${one ? 's' : ''} ${o.on ? 'backwards' : 'forwards again'}`
 }
 
+/** "beat 3 gets a push-in", "beat 5's cutaway gets a Ken Burns move", "beat 3 holds still again". */
+function describeCameraOp(o: Extract<Op, { op: 'camera' }>, after: Resolved, cut: Cut | null): string {
+  const { who, one } = whoOf(o.beats, after)
+  const subject = onCutaway(o, cut) ? (one ? `${who}'s cutaway` : `the cutaways in ${who}`) : who
+  if (!o.move) return `${subject} ${one ? 'holds' : 'hold'} still again`
+  const id = o.move.word
+  const word = id ? after.words.find((w) => w.id === id)?.text.replace(/[^\p{L}\p{N}'’-]/gu, '') : undefined
+  return `${subject} ${one ? 'gets' : 'get'} ${CAMERA_INFO[o.move.kind].label}${word ? ` on “${word}”` : ''}`
+}
+
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 const count = (n: number, one: string, many = `${one}s`): string => `${NUMBER_WORDS[n] ?? n} ${n === 1 ? one : many}`
 
@@ -401,6 +412,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(describeFreeze(o, after))
     } else if (o.op === 'reverse') {
       said.push(describeReverse(o, after, cut))
+    } else if (o.op === 'camera') {
+      said.push(describeCameraOp(o, after, cut))
     } else if (o.op === 'fade') {
       const ins = (o.inSec ?? 0) > 0
       const outs = (o.outSec ?? 0) > 0

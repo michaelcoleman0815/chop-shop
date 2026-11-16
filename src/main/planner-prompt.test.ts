@@ -152,6 +152,32 @@ describe('the planner request', () => {
     expect(text).toContain('speed 0.5x, easing in over 0.4 s and out over 0.4 s, freezes on w7 for 1.0 s')
   })
 
+  it('teaches camera moves, and every one of them applies', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(PLANNER_SYSTEM).toContain('{"op":"camera"')
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'camera', beats: ['b1'], move: { kind: 'drift' } },
+        { op: 'camera', beats: ['b2'], move: { kind: 'punch-in', word: 'w7', zoom: 1.2 } },
+        {
+          op: 'camera',
+          beats: ['b2'],
+          move: { kind: 'focus', regions: [{ at: 0, x: 0.1, y: 0.2, w: 0.3, h: 0.25 }] }
+        },
+        { op: 'camera', beats: ['b1'], move: null }
+      ],
+      summary: 'Beat 2 moves in on the settings.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    expect(dry.cut.beats[0].treatment.camera).toBeUndefined()
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    expect(renderRequest(after, '', [])).toContain('camera focus on 1 region')
+  })
+
   it('accepts a plan shaped like the instructions say', () => {
     const plan = {
       ops: [

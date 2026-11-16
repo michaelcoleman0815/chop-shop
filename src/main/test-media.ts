@@ -200,3 +200,32 @@ export function onsets(ffmpeg: string, path: string, noiseDb = -30, minSilenceSe
   const log = decodeLog(ffmpeg, ['-i', path, '-map', '0:a:0', '-af', `silencedetect=n=${noiseDb}dB:d=${minSilenceSec}`])
   return [...log.matchAll(/silence_end: (\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]))
 }
+
+/** A gradient picture: red rising from left to right, green from top to bottom. */
+export const GRADIENT = `geq=r='255*X/W':g='255*Y/H':b=0`
+
+/**
+ * A still of the gradient, so the colour at any edge of a frame made from it
+ * says where in it that edge falls.
+ */
+export function makeGradientStill(ffmpeg: string, path: string, size = '1920x1080'): string {
+  ffmpegRun(ffmpeg, ['-f', 'lavfi', '-i', `color=black:s=${size},format=rgb24,${GRADIENT}`, '-frames:v', '1', path])
+  return path
+}
+
+/**
+ * Where a frame made from the gradient sits in it: its left, right, top and
+ * bottom edges as fractions of the picture, read from the edges' colour.
+ */
+export function gradientWindow(
+  ffmpeg: string,
+  path: string,
+  atSec: number
+): { left: number; right: number; top: number; bottom: number } {
+  const strip = 0.01
+  const left = frameColour(ffmpeg, path, atSec, { x: 0, y: 0.45, w: strip, h: 0.1 })[0] / 255
+  const right = frameColour(ffmpeg, path, atSec, { x: 1 - strip, y: 0.45, w: strip, h: 0.1 })[0] / 255
+  const top = frameColour(ffmpeg, path, atSec, { x: 0.45, y: 0, w: 0.1, h: strip })[1] / 255
+  const bottom = frameColour(ffmpeg, path, atSec, { x: 0.45, y: 1 - strip, w: 0.1, h: strip })[1] / 255
+  return { left, right, top, bottom }
+}

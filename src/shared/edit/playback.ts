@@ -151,6 +151,24 @@ export function cutawayAt(broll: Broll, length: number, offset: number): { srcSe
   return { srcSec: broll.inSec + Math.max(0, (steps ? srcLength(steps) : length) - along), rate }
 }
 
+/**
+ * Where a beat's camera move is at an output time: seconds into the beat's
+ * picture, how long that picture runs, and when the move's word starts in it
+ * (null when it has none, or the word is not heard). A move runs on through
+ * a freeze, which is part of the picture.
+ */
+export function cameraClock(
+  resolved: Resolved,
+  beat: string,
+  outSec: number,
+  word?: string
+): { t: number; length: number; wordAt: number | null } | null {
+  const span = beatPicture(resolved, beat)
+  if (!span) return null
+  const w = word ? resolved.words.find((x) => x.id === word && x.beat === beat) : undefined
+  return { t: outSec - span.start, length: span.end - span.start, wordAt: w ? w.outStart - span.start : null }
+}
+
 /** The piece that starts next after an output time: what the idle deck should be ready with. */
 export function nextPieceAfter(resolved: Resolved, outSec: number): number | null {
   const hit = sourceTimeAt(resolved, outSec)

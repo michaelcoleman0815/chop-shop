@@ -144,6 +144,18 @@ describe('saying how beats play', () => {
     expect(say([{ op: 'reverse', beats: ['b3'], on: true }], withCutaway)).toBe("Beat 3's cutaway plays backwards.")
     expect(say([{ op: 'reverse', beats: ['b2'], on: true }])).toBe('Beat 2 plays backwards.')
   })
+
+  it('reads camera moves', () => {
+    expect(say([{ op: 'camera', beats: ['b3'], move: { kind: 'ken-burns' } }], withCutaway)).toBe(
+      "Beat 3's cutaway gets a Ken Burns move."
+    )
+    expect(say([{ op: 'camera', beats: ['b2'], move: { kind: 'punch-in', word: 'w8' } }])).toBe(
+      'Beat 2 gets a punch-in on “end1”.'
+    )
+    expect(say([{ op: 'camera', beats: ['b1', 'b2'], move: { kind: 'drift' } }])).toBe('Two beats get a slow drift in.')
+    const moving = apply(doc, [{ op: 'camera', beats: ['b2'], move: { kind: 'push-in' } }])
+    expect(say([{ op: 'camera', beats: ['b2'], move: null }], moving)).toBe('Beat 2 holds still again.')
+  })
 })
 
 describe('the skill commands', () => {

@@ -40,11 +40,13 @@ import {
 import {
   DEFAULT_RAMP_SEC,
   DEFAULT_SPLIT_EDIT_SEC,
+  MAX_CAMERA_ZOOM,
   MAX_SPEED,
   MAX_SPLIT_EDIT_SEC,
   MIN_SPEED,
   parseTransition,
-  transitionInfo
+  transitionInfo,
+  type Camera
 } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
@@ -148,8 +150,33 @@ const ACTION_COMMANDS: Preset[] = [
     builtIn: true,
     style: {},
     inspiration: null
-  }
+  },
+  ...(
+    [
+      ['kenburns', 'Ken Burns', 'Drift slowly in and across a still: /kenburns'],
+      ['pushin', 'Push-in', 'Creep in on a beat or its cutaway: /pushin, /pushin slow, /pushin 1.3'],
+      ['pullout', 'Pull-out', 'Ease back out from close: /pullout'],
+      ['pan', 'Pan', 'Slide across a picture: /pan left, /pan right, /pan up'],
+      ['punchin', 'Punch-in', 'Punch in on the word under the playhead: /punchin, /punchin 1.2'],
+      ['shake', 'Shake', 'Jolt the frame on the word under the playhead: /shake'],
+      ['focus', 'Focus', 'Move in on part of a screen recording: /focus top left'],
+      ['still', 'Still', 'Hold the frame still again: /still']
+    ] as const
+  ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
+
+/** The camera commands, by name. */
+const CAMERA_COMMANDS = new Set(['kenburns', 'pushin', 'pullout', 'pan', 'punchin', 'shake', 'focus', 'still'])
+type CameraCommand = 'kenburns' | 'pushin' | 'pullout' | 'pan' | 'punchin' | 'shake' | 'focus' | 'still'
+
+/** A part of the picture, by name: a half of it in each direction, centred where named. */
+function namedRegion(words: string): { x: number; y: number; w: number; h: number } {
+  const top = /\btop\b/i.test(words)
+  const bottom = /\bbottom\b/i.test(words)
+  const left = /\bleft\b/i.test(words)
+  const right = /\bright\b/i.test(words)
+  return { x: left ? 0 : right ? 0.5 : 0.25, y: top ? 0 : bottom ? 0.5 : 0.25, w: 0.5, h: 0.5 }
+}
 const ACTION_NAMES = new Set(ACTION_COMMANDS.map((c) => c.command))
 
 /** An icon drawn into a PNG, as base64, at the size the renderer will scale from. */
@@ -797,6 +824,117 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /**
+   * /kenburns, /pushin, /pullout, /pan, /punchin, /shake, /focus and /still.
+   * In the editor they move the frame over the beat under the playhead, or
+   * over the cutaway it shows; /punchin and /shake land on the word there. In
+   * the thread, moves go on every product still (every cutaway when there are
+   * no stills), and /punchin punches in on every other section of the talk,
+   * changing at each new idea.
+   */
+  const cameraCommand = useCallback(
+    (command: CameraCommand, rest: string, where: 'thread' | 'panel', beat: string | null, at: number | null): void => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can move the frame over it.')
+        return
+      }
+      const cut = currentCut(d)
+      // "1.2" or "1.2x" is how close; "20%" is 20% in.
+      const n = /(\d+(?:\.\d+)?)\s*(%|x)?/i.exec(rest)
+      const asked = n ? (n[2] === '%' ? 1 + Number(n[1]) / 100 : Number(n[1])) : null
+      const zoom = asked !== null && asked > 1 ? { zoom: Math.min(MAX_CAMERA_ZOOM, asked) } : {}
+      const inPanel = where === 'panel' && beat !== null
+      // The word playing at the playhead, or the last one heard before it.
+      const wordHere = (): string | null => {
+        const words = resolveCut(cut, d.words, d.sources).words.filter((w) => w.beat === beat)
+        return ([...words].reverse().find((w) => w.outStart <= (at ?? 0) + 1e-6) ?? words[0])?.id ?? null
+      }
+
+      let ops: Op[]
+      if (command === 'punchin' && !inPanel) {
+        // Every other section of the talk, closer: the cut at each new idea hides the jump.
+        const starts = new Set(ideaStarts(d, cut))
+        let section = 0
+        const closer: string[] = []
+        cut.beats.forEach((b, i) => {
+          if (i > 0 && (starts.size === 0 || starts.has(b.id))) section++
+          if (section % 2 === 1 && b.treatment.frame === 'speaker') closer.push(b.id)
+        })
+        if (closer.length === 0) {
+          say(
+            'There is one stretch of talk, so nothing to alternate. Put the playhead on a word in the editor and run /punchin there.'
+          )
+          return
+        }
+        ops = [{ op: 'treat', beats: closer, set: { zoom: Math.min(2, (zoom as { zoom?: number }).zoom ?? 1.12) } }]
+      } else {
+        let targets: string[]
+        if (inPanel) targets = [beat as string]
+        else if (command === 'shake' || command === 'focus') {
+          say(
+            command === 'shake'
+              ? 'Put the playhead on the word to shake on in the editor and run /shake there.'
+              : 'Put the playhead on the screen recording in the editor and run /focus there.'
+          )
+          return
+        } else {
+          const cutaways = cutawayBeats(cut)
+          const stills = cutaways.filter((id) => {
+            const path = cut.beats.find((b) => b.id === id)?.treatment.broll?.path
+            return !!path && isImagePath(path)
+          })
+          targets = stills.length > 0 ? stills : cutaways
+          if (targets.length === 0) {
+            say(`There is no cutaway to move over. Put the playhead on a beat in the editor and run /${command} there.`)
+            return
+          }
+        }
+        let move: Camera | null
+        if (command === 'still') move = null
+        else if (command === 'pushin')
+          move = { kind: /\b(slow|slowly|drift|gentle)\b/i.test(rest) ? 'drift' : 'push-in', ...zoom }
+        else if (command === 'pullout') move = { kind: 'pull-out', ...zoom }
+        else if (command === 'kenburns') move = { kind: 'ken-burns', ...zoom }
+        else if (command === 'pan') {
+          const way = (/\b(left|right|up|down)\b/i.exec(rest)?.[1].toLowerCase() ?? 'right') as
+            | 'left'
+            | 'right'
+            | 'up'
+            | 'down'
+          move = { kind: `pan-${way}`, ...zoom }
+        } else if (command === 'focus') {
+          move = { kind: 'focus', regions: [{ at: 0, ...namedRegion(rest) }] }
+        } else {
+          const word = wordHere()
+          if (!word) {
+            say('That beat has no word to land on. Put the playhead on a beat with speech in it.')
+            return
+          }
+          move = { kind: command === 'punchin' ? 'punch-in' : 'shake', word, ...zoom }
+        }
+        ops = [{ op: 'camera', beats: targets, move }]
+      }
+      const done = applyAsVersion(ops, 'The frame moves.')
+      if (!done) {
+        const trial = applyOps(cut, ops, { words: d.words, sources: d.sources })
+        say(trial.rejected[0]?.reason ?? 'That is already how the frame moves.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   const runCommand = useCallback(
     async (
       command: string,
@@ -811,6 +949,10 @@ export function useCutalong() {
       }
       if (command === 'speed' || command === 'ramp' || command === 'freeze' || command === 'reverse') {
         timingCommand(command, rest, where, beat, at)
+        return
+      }
+      if (CAMERA_COMMANDS.has(command)) {
+        cameraCommand(command as CameraCommand, rest, where, beat, at)
         return
       }
       if (command === 'jcut' || command === 'lcut') {
@@ -855,7 +997,7 @@ export function useCutalong() {
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
-    [applyAsVersion, findBroll, findIcon, push, splitEditCommand, timingCommand, transitionCommand]
+    [applyAsVersion, cameraCommand, findBroll, findIcon, push, splitEditCommand, timingCommand, transitionCommand]
   )
 
   const studyLink = useCallback(

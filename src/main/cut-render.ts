@@ -2,6 +2,9 @@ import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import { basename, join } from 'path'
 import {
+  cameraClock,
+  cameraPlan,
+  maxZoom,
   cutawayAt,
   cutawayClock,
   cutawaySteps,
@@ -12,6 +15,7 @@ import {
   transitionInfo,
   type SpeedStep,
   type Aspect,
+  type Camera,
   type CaptionSpec,
   type Cut,
   type Fade,
@@ -23,6 +27,8 @@ import {
 import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
+import { probeMedia } from './inspiration/measure'
+import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
 
 /**
@@ -71,7 +77,14 @@ export interface Segment {
    * it read from startSec, with its own speed if it has one, played backwards
    * from the far end of that stretch, or held on its frame at startSec.
    */
-  broll: { path: string; startSec: number; steps?: SpeedStep[]; reverse?: boolean; hold?: boolean } | null
+  broll: {
+    path: string
+    startSec: number
+    steps?: SpeedStep[]
+    reverse?: boolean
+    hold?: boolean
+    camera?: SegmentCamera
+  } | null
   /** Where the segment starts on the output clock. Absent: straight after the one before, less any transition. */
   outStart?: number
   /** Comes in over the segment before: the two overlap by `sec`, picture and sound. */
@@ -90,6 +103,21 @@ export interface Segment {
   reverse?: boolean
   /** A freeze frame: the frame at startSec held for durationSec, silent. */
   hold?: boolean
+  /** A camera move over the speaker's picture. */
+  camera?: SegmentCamera
+}
+
+/**
+ * A camera move as one piece plays it: the move, how far into the beat's
+ * picture this piece's picture starts, how long that picture runs, when the
+ * move's word starts in it, and the size of the recording it moves over.
+ */
+export interface SegmentCamera {
+  move: Camera
+  offset: number
+  length: number
+  wordAt: number | null
+  size: { width: number; height: number }
 }
 
 export type Quality = 'preview' | 'final' | 'intermediate'
@@ -188,10 +216,26 @@ export function captionStyleFor(
   }
 }
 
-/** The inputs for each resolved piece, with its beat's look. */
-export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[]): Segment[] {
+/** A recording's size when nothing better is known: most cutaways are wide. */
+const WIDE = { width: 1920, height: 1080 }
+
+/**
+ * The inputs for each resolved piece, with its beat's look. `sizes` gives the
+ * size of cutaway footage, which a camera move over it needs.
+ */
+export function segmentsFor(
+  cut: Cut,
+  resolved: Resolved,
+  sources: RenderSource[],
+  sizes: Map<string, { width: number; height: number }> = new Map()
+): Segment[] {
   const beats = new Map(cut.beats.map((b) => [b.id, b]))
   const bySource = new Map(sources.map((s) => [s.id, s]))
+  /** A move as this piece's picture plays it, from when the picture starts. */
+  const moving = (move: Camera, beat: string, from: number, size: { width: number; height: number }): SegmentCamera => {
+    const clock = cameraClock(resolved, beat, from, move.word) ?? { t: 0, length: 1, wordAt: null }
+    return { move, offset: clock.t, length: clock.length, wordAt: clock.wordAt, size }
+  }
   return resolved.pieces.map((p) => {
     const beat = beats.get(p.beat)
     const source = bySource.get(p.source)
@@ -252,7 +296,12 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
         if (sliced) segment.broll.steps = sliced
         if (t.broll.reverse) segment.broll.reverse = true
       }
+      // A card stays still; anything else can move.
+      if (t.broll.camera && t.frame !== 'card') {
+        segment.broll.camera = moving(t.broll.camera, p.beat, picture.outStart, sizes.get(t.broll.path) ?? WIDE)
+      }
     }
+    if (t.camera) segment.camera = moving(t.camera, p.beat, picture.outStart, source)
     return segment
   })
 }
@@ -317,6 +366,19 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     if (zoom && z > 1.001) f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2,scale=${w}:${h}`
     if (t?.bw) f += ',hue=s=0'
     return f
+  }
+
+  /**
+   * A camera move over a picture that ends up `w` x `h`: the recording read at
+   * enough detail for the closest the move gets (never more than it has), its
+   * frame carried to the corners by perspective, then brought to size. The
+   * look that follows then has nothing left to scale or crop.
+   */
+  const moveOver = (cam: SegmentCamera | undefined, w: number, h: number): string => {
+    if (!cam) return ''
+    const plan = cameraPlan(cam.move, cam.length, cam.wordAt, cam.size.width / Math.max(1, cam.size.height), w / h)
+    const read = even(Math.min(cam.size.width, Math.ceil((w * maxZoom(plan)) / plan.fw)))
+    return `fps=${fps},scale=${read}:-2,${perspectiveFor(plan, cam.offset, fps, w / h)},scale=${w}:${h},setsar=1,`
   }
 
   // Frames are counted on the clock the segments share, then made relative to
@@ -441,8 +503,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       chains.push(`${speaker()}fps=${fps},setsar=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'split') {
       const half = even(H / 2)
-      chains.push(`${cutaway()}${look(W, half, t, false)}[${v}t]`)
-      chains.push(`${speaker()}${look(W, H - half, t, true)}[${v}b]`)
+      chains.push(`${cutaway()}${moveOver(s.broll.camera, W, half)}${look(W, half, t, false)}[${v}t]`)
+      chains.push(`${speaker()}${moveOver(s.camera, W, H - half)}${look(W, H - half, t, true)}[${v}b]`)
       chains.push(`[${v}t][${v}b]vstack,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'card') {
       // A card: the picture centred on Cutalong's ground, at most 60% of the
@@ -455,9 +517,9 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll) {
       // The cutaway fills the frame; the speaker's input is only heard.
-      chains.push(`${cutaway()}${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
+      chains.push(`${cutaway()}${moveOver(s.broll.camera, W, H)}${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
     } else {
-      chains.push(`${speaker()}${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
+      chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
     }
 
     // Every segment's audio is exactly as long as its piece: through its
@@ -771,7 +833,19 @@ export async function renderCut(
   if (!first) throw new Error('The edit has no recording to render.')
   const { width, height } = frameSize(cut.aspect, first, quality === 'preview')
   const fps = frameRate(first.fps)
-  const segments = segmentsFor(cut, resolved, sources)
+  // A camera move over a cutaway needs the cutaway's shape.
+  const sizes = new Map<string, { width: number; height: number }>()
+  for (const beat of cut.beats) {
+    const broll = beat.treatment.broll
+    if (!broll?.camera || sizes.has(broll.path)) continue
+    try {
+      const info = await probeMedia(opts.ffmpeg, broll.path, opts.signal)
+      sizes.set(broll.path, { width: info.width, height: info.height })
+    } catch {
+      // Missing: checkInputs says so in a sentence.
+    }
+  }
+  const segments = segmentsFor(cut, resolved, sources, sizes)
   await checkInputs(segments, opts.brand?.logo ?? null)
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)

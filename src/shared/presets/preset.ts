@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AspectSchema, CAPTION_POSITIONS, CaptionSpecSchema, TightenSpecSchema } from '../edit/schema'
+import { CAMERA_INFO, type Camera } from '../edit/camera'
 import { FadeSchema } from '../edit/transitions'
 
 /**
@@ -140,6 +141,16 @@ export function describeSpeed(speed: number, ramp?: { inSec: number; outSec: num
     ramp && ramp.outSec > 0 ? `out over ${seconds(ramp.outSec)}` : null
   ].filter(Boolean)
   return eases.length ? `${x}, easing ${eases.join(' and ')}` : x
+}
+
+/** A camera move in a few words, for the planner: "push-in to 1.15x", "punch-in to 1.2x on w31", "focus on 2 regions". */
+export function describeCamera(move: Camera): string {
+  if (move.kind === 'focus') {
+    const n = move.regions?.length ?? 0
+    return `focus on ${n} region${n === 1 ? '' : 's'}`
+  }
+  const zoom = `${Number((move.zoom ?? CAMERA_INFO[move.kind].zoom).toFixed(2))}x`
+  return `${move.kind} to ${zoom}${move.word ? ` on ${move.word}` : ''}`
 }
 
 /** A running time as m:ss: 0:52, 1:04, 12:30. */
