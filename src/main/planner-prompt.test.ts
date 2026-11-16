@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { addNote, commit, createDoc, currentCut, wordsFromTranscript, OpSchema } from '../shared/edit'
+import { addAsset, addNote, commit, createDoc, currentCut, wordsFromTranscript, OpSchema } from '../shared/edit'
+import { offerPlan } from './planner'
 import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript } from './planner-prompt'
 
 const source = { id: 's1', path: '/take.mov', durationSec: 12, width: 1080, height: 1920, fps: 30 }
@@ -29,7 +30,7 @@ describe('the planner request', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     expect(renderTranscript(doc)).toBe(
       [
-        '<source id="s1" length="0:12">',
+        '<source id="s1" file="take.mov" length="0:12">',
         "[0:00.5] w1 So | w2 here's | w3 the | w4 thing.",
         '[0:02.4] w5 Um | w6 most | w7 people | w8 never | w9 open | w10 the | w11 settings.',
         '</source>'
@@ -87,5 +88,80 @@ describe('the planner request', () => {
       needs: []
     }
     expect(PlanSchema.safeParse(plan).success).toBe(true)
+  })
+})
+
+describe('several recordings and material', () => {
+  const second = { id: 's2', path: '/Users/me/MVI_9294.MP4', durationSec: 8, width: 1920, height: 1080, fps: 30 }
+  const sound = { path: '/Users/me/2026-10-16 20-49-09.mp4', offsetSec: 3.42 }
+
+  it('names each recording, and the file its sound comes from', () => {
+    const doc = createDoc({
+      id: 'd',
+      title: 't',
+      sources: [{ ...source, audio: sound }, second],
+      words
+    })
+    const text = renderTranscript(doc)
+    expect(text).toContain('<source id="s1" file="take.mov" length="0:12" sound="2026-10-16 20-49-09.mp4">')
+    expect(text).toContain('<source id="s2" file="MVI_9294.MP4" length="0:08">')
+  })
+
+  it('lists the material, where it shows, and teaches a cutaway the document accepts', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    doc = addAsset(doc, {
+      kind: 'video',
+      path: '/Users/me/MVI_9294.MP4',
+      title: 'MVI_9294',
+      durationSec: 10,
+      width: 1920,
+      height: 1080,
+      origin: { type: 'file', url: null, author: null, license: null, range: null }
+    }).doc
+    expect(renderRequest(doc, 'place it', [])).toContain('a1 video 1920x1080, 10.0 s: MVI_9294 | not in the cut yet')
+    const plan = PlanSchema.parse({
+      ops: [{ op: 'treat', beats: ['b2'], set: { frame: 'broll', broll: { asset: 'a1', inSec: 1.5 } } }],
+      summary: 'MVI_9294 cuts in on b2.',
+      reply: 'I put MVI_9294 over b2, s1 still plays under it.',
+      notesHandled: [],
+      needs: ['a second angle for w6-w8'],
+      brollWanted: [{ beat: 'b2', search: 'settings menu on a phone' }]
+    })
+    const offered = offerPlan(doc, plan, [])
+    if (!offered.ok) throw new Error('expected a plan')
+    expect(offered.ops).toEqual([
+      {
+        op: 'treat',
+        beats: ['b2'],
+        set: { frame: 'broll', broll: { path: '/Users/me/MVI_9294.MP4', inSec: 1.5, muted: true } }
+      }
+    ])
+    // No ids reach the person.
+    expect(offered.summary).toBe('MVI_9294 cuts in on beat 2.')
+    expect(offered.reply).toBe('I put MVI_9294 over beat 2, take.mov still plays under it.')
+    expect(offered.needs).toEqual(['A second angle for “most … never”.'])
+    expect(offered.brollWanted).toEqual([{ beat: 'b2', search: 'settings menu on a phone' }])
+    const shown = commit(doc, offered.ops, offered.summary).doc
+    expect(renderRequest(shown, '', [])).toContain('cutaway a1 from 1.5 s')
+    expect(renderRequest(shown, '', [])).toContain('| shown on b2')
+  })
+
+  it('leaves out a cutaway to material that does not exist, in one plain sentence', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'treat', beats: ['b2'], set: { frame: 'broll', broll: { asset: 'a9', inSec: 0 } } },
+        { op: 'remove', beats: ['b7'] }
+      ],
+      summary: 's',
+      reply: 'r',
+      notesHandled: [],
+      needs: []
+    })
+    const offered = offerPlan(doc, plan, [])
+    if (!offered.ok) throw new Error('expected a plan')
+    expect(offered.ops).toEqual([])
+    expect(offered.rejected).toEqual(['2 changes did not fit the cut, so I left them out.'])
+    expect(offered.brollWanted).toEqual([])
   })
 })

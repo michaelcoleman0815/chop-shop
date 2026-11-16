@@ -146,13 +146,69 @@ export function createDoc(input: {
     createdAt: at,
     sources,
     words: [...words].sort((a, b) =>
-      a.source === b.source ? a.startSec - b.startSec : sources.findIndex((s) => s.id === a.source) - sources.findIndex((s) => s.id === b.source)
+      a.source === b.source
+        ? a.startSec - b.startSec
+        : sources.findIndex((s) => s.id === a.source) - sources.findIndex((s) => s.id === b.source)
     ),
     versions: [{ n: 1, at, summary: 'The recording as it was shot, split into beats.', ops: [], cut }],
     notes: [],
     assets: [],
     preset: null
   }
+}
+
+/** The next free recording id: s3 after s1 and s2. */
+export function nextSourceId(doc: EditDoc): string {
+  let max = 0
+  for (const s of doc.sources) {
+    const m = /^s(\d+)$/.exec(s.id)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return `s${max + 1}`
+}
+
+/**
+ * More footage for an edit already under way. The recordings and their words
+ * join the doc, and their beats go on the end of the cut as one new version,
+ * so nothing already cut moves and the step can be undone like any other.
+ */
+export function addSources(
+  doc: EditDoc,
+  sources: Source[],
+  words: Word[],
+  summary: string,
+  at = new Date().toISOString()
+): EditDoc {
+  const taken = new Set(doc.sources.map((s) => s.id))
+  const fresh = sources.filter((s) => !taken.has(s.id))
+  if (fresh.length === 0) return doc
+  const all = [...doc.sources, ...fresh]
+  const ids = new Set(fresh.map((s) => s.id))
+  const added = words.filter((w) => ids.has(w.source))
+  const order = new Map(all.map((s, i) => [s.id, i]))
+  const withSources: EditDoc = {
+    ...doc,
+    sources: all,
+    words: [...doc.words, ...added].sort((a, b) =>
+      a.source === b.source ? a.startSec - b.startSec : (order.get(a.source) ?? 0) - (order.get(b.source) ?? 0)
+    )
+  }
+  const end = currentCut(doc).beats.length
+  const ops: Op[] = []
+  for (const source of fresh) {
+    const own = added.filter((w) => w.source === source.id)
+    if (own.length > 0) {
+      for (const b of beatsFromWords(own, source.id))
+        ops.push({ op: 'insert', to: end + ops.length, beat: { source: source.id, from: b.from, to: b.to } })
+    } else {
+      ops.push({
+        op: 'insert',
+        to: end + ops.length,
+        beat: { source: source.id, inSec: 0, outSec: source.durationSec }
+      })
+    }
+  }
+  return commit(withSources, ops, summary, { at }).doc
 }
 
 export function currentVersion(doc: EditDoc): Version {

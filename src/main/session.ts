@@ -119,33 +119,45 @@ export function speechShare(db: ArrayLike<number>, hopSec: number, threshold: nu
 
 const shot = (f: FileFacts): string => `${f.createdAt ?? ''}|${f.name}`
 
-/** Sorting by measurement alone, for when Claude is not available. */
+/** Names screen and audio recorders give their files: OBS's date and time, QuickTime's, a recorder's. */
+const RECORDER_NAME =
+  /^\d{4}-\d{2}-\d{2}[ _]\d{2}[-.]\d{2}[-.]\d{2}|screen ?recording|recording|obs|zoom|riverside|audio|mic|^ZOOM\d|^TASCAM|^DR-?\d/i
+
+/** Whether the person said the sound should come from another recording. */
+const ASKS_FOR_OTHER_SOUND = /\b(computer|screen|obs|recorder|mic(rophone)?|lav|audio|sound)\b/i
+
+/**
+ * Sorting by measurement alone, for when Claude is not available. A clip is
+ * talking when much of it sounds like speech: a short clip has to be clearly
+ * talking, since B-roll with people in the background scores a little too.
+ */
 export function guessRoles(files: FileFacts[], request = ''): Roles {
   const videos = files.filter((f) => f.hasVideo)
   const soundOnly = files.filter((f) => !f.hasVideo && f.hasAudio)
   const talkingScore = (f: FileFacts): number => f.speech * f.durationSec
-  let talking = videos.filter((f) => f.speech >= 0.25 && f.durationSec >= 20)
+  let talking = videos.filter((f) => f.durationSec >= 2 && f.speech >= 0.25 && (f.durationSec >= 20 || f.speech >= 0.5))
   if (talking.length === 0 && videos.length > 0)
     talking = [videos.reduce((a, b) => (talkingScore(b) > talkingScore(a) ? b : a))]
-  if (talking.length === 0 && soundOnly.length > 0) talking = []
 
   // A screen or recorder file the person says is "the audio" is sound, not picture.
   const sound = [...soundOnly]
-  const asksForOtherSound = /\b(computer|screen|obs|recorder|mic(rophone)?|lav|audio)\b/i.test(request)
-  if (asksForOtherSound && talking.length > 1) {
-    const longest = Math.max(...talking.map((f) => f.durationSec))
-    const screen = talking.find(
-      (f) => /^\d{4}-\d{2}-\d{2}[ _]\d{2}-\d{2}-\d{2}|screen|recording|obs/i.test(f.name) && f.durationSec >= longest * 0.5
-    )
-    if (screen) {
-      talking = talking.filter((f) => f !== screen)
-      sound.push(screen)
+  if (ASKS_FOR_OTHER_SOUND.test(request) && talking.length > 1) {
+    const recorders = talking.filter((f) => RECORDER_NAME.test(f.name))
+    if (recorders.length > 0 && recorders.length < talking.length) {
+      talking = talking.filter((f) => !recorders.includes(f))
+      sound.push(...recorders)
     }
   }
   talking.sort((a, b) => shot(a).localeCompare(shot(b)))
   const used = new Set([...talking, ...sound].map((f) => f.path))
   const broll = videos.filter((f) => !used.has(f.path))
-  const names = (list: FileFacts[]): string => list.map((f) => f.name).join(', ')
+  const names = (list: FileFacts[]): string =>
+    list.length <= 1
+      ? (list[0]?.name ?? '')
+      : `${list
+          .slice(0, -1)
+          .map((f) => f.name)
+          .join(', ')} and ${list[list.length - 1].name}`
   const reply = [
     talking.length ? `${names(talking)} ${talking.length === 1 ? 'is' : 'are'} the talking.` : '',
     sound.length ? `The sound comes from ${names(sound)}.` : '',

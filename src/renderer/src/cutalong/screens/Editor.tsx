@@ -17,8 +17,9 @@ import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
+import { Working } from '../components/Working'
 import { clock } from '../format'
-import { collapse, grow } from '../motion'
+import { collapse } from '../motion'
 import { usePlayer } from '../usePlayer'
 import type { Cutalong, PanelStatus } from '../useCutalong'
 import { Header } from './Header'
@@ -298,12 +299,7 @@ function NotesPanel({
           <AssistantAvatar />
           <div className="cl-msg-body">
             {status.progress ? (
-              <div className="cl-progress">
-                <span>{status.progress.stage}</span>
-                <span className="cl-progress-bar" aria-hidden="true">
-                  <span style={grow(status.progress.percent)} />
-                </span>
-              </div>
+              <Working progress={status.progress} since={status.since} />
             ) : (
               <p className="cl-reply">{status.text}</p>
             )}

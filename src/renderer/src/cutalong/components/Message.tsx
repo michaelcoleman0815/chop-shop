@@ -1,7 +1,10 @@
 import { useState } from 'react'
-import { grow } from '../motion'
-import { AssistantAvatar, Button } from './ui'
+import { isImagePath } from '../../../../shared/assets'
 import type { ChatMessage } from '../../../../shared/types'
+import { isAudioFile } from '../format'
+import { Poster } from './Poster'
+import { AssistantAvatar, Button } from './ui'
+import { Working, type Progress } from './Working'
 
 /**
  * One turn in a thread. The user's words sit in an ink bubble on the right;
@@ -31,7 +34,42 @@ export interface Action {
 export interface Msg extends Omit<ChatMessage, 'actions'> {
   actions?: Action[]
   /** Set while the work behind a reply is still running. Never saved. */
-  progress?: { stage: string; percent: number } | null
+  progress?: Progress | null
+  /** When that work started, for the stopwatch beside it. Never saved. */
+  since?: number
+}
+
+/** Past this many, the rest of a drop folds into one tile until asked for. */
+const FILES_SHOWN = 8
+
+function kindOf(name: string): string {
+  if (isImagePath(name)) return 'Image'
+  if (isAudioFile(name)) return 'Audio'
+  return 'Footage'
+}
+
+/** Everything dropped in with a message, each file as a still of itself. */
+function Files({ files }: { files: { path: string; name: string }[] }): JSX.Element {
+  const [all, setAll] = useState(false)
+  const folded = !all && files.length > FILES_SHOWN
+  const shown = folded ? files.slice(0, FILES_SHOWN - 1) : files
+  return (
+    <div className="cl-files" role="list" aria-label={`${files.length} ${files.length === 1 ? 'file' : 'files'}`}>
+      {shown.map((a) => (
+        <div key={a.path} className="cl-file" role="listitem" title={a.name}>
+          <Poster path={a.path} name={a.name} />
+          <span className="cl-file-name">{a.name}</span>
+          <span className="sr-only">{kindOf(a.name)}</span>
+        </div>
+      ))}
+      {folded && (
+        <button type="button" className="cl-file cl-file-more" onClick={() => setAll(true)}>
+          <span className="cl-poster">+{files.length - shown.length}</span>
+          <span className="cl-file-name">Show all</span>
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function UserMessage({ msg }: { msg: Msg }): JSX.Element {
@@ -47,15 +85,7 @@ export function UserMessage({ msg }: { msg: Msg }): JSX.Element {
           </span>
         </div>
       )}
-      {(msg.attachments ?? []).map((a) => (
-        <div key={a.path} className="cl-linkcard">
-          <span className="cl-linkcard-thumb" aria-hidden="true" />
-          <span className="cl-linkcard-text">
-            <strong>{a.name}</strong>
-            <span>Footage</span>
-          </span>
-        </div>
-      ))}
+      {(msg.attachments?.length ?? 0) > 0 && <Files files={msg.attachments ?? []} />}
     </div>
   )
 }
@@ -67,12 +97,7 @@ export function AssistantMessage({ msg, onAction }: { msg: Msg; onAction: (a: Ac
       <AssistantAvatar />
       <div className="cl-msg-body">
         {msg.progress ? (
-          <div className="cl-progress">
-            <span>{msg.progress.stage}</span>
-            <span className="cl-progress-bar" aria-hidden="true">
-              <span style={grow(Math.max(4, Math.min(100, msg.progress.percent)))} />
-            </span>
-          </div>
+          <Working progress={msg.progress} since={msg.since} />
         ) : (
           msg.text && <p className="cl-reply">{msg.text}</p>
         )}

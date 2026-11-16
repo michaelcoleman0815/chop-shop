@@ -3,8 +3,9 @@ import { CORNERS, describeLearned, type Brand } from '../../../../shared/brand'
 import { describeStyle } from '../../../../shared/presets'
 import { api, mediaUrlFor } from '../api'
 import { Button, Icon } from '../components/ui'
+import { Working } from '../components/Working'
 import { clock, isVideoFile } from '../format'
-import { collapse, grow } from '../motion'
+import { collapse } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 
@@ -88,12 +89,7 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
               onDrop={onDrop}
             >
               {app.brandProgress ? (
-                <div className="cl-progress">
-                  <span>{app.brandProgress.stage}</span>
-                  <span className="cl-progress-bar" aria-hidden="true">
-                    <span style={grow(Math.max(4, app.brandProgress.percent))} />
-                  </span>
-                </div>
+                <Working progress={app.brandProgress} />
               ) : (
                 <>
                   <span>Drop videos you&apos;ve made, and I&apos;ll learn your look from them.</span>

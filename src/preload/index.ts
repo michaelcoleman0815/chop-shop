@@ -25,7 +25,7 @@ import type { Brand } from '../shared/brand'
 import type { Preset } from '../shared/presets'
 import type { KeyCheck, ServiceId } from '../shared/services'
 
-type Progress = { stage: string; percent: number }
+type Progress = { stage: string; percent: number | null }
 
 function listen<T>(channel: string, cb: (payload: T) => void): () => void {
   const handler = (_e: unknown, payload: T): void => cb(payload)
@@ -50,6 +50,20 @@ const api = {
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:prepare', input),
+  /** More footage for an edit under way: talking clips on the end, better sound under every clip. */
+  extendCut: (req: {
+    doc: EditDoc
+    paths: string[]
+    soundPaths?: string[]
+  }): Promise<
+    | {
+        ok: true
+        doc: EditDoc
+        warning: string | null
+        lined: { name: string; sound: string; offsetSec: number }[]
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:extend', req),
   /** Which dropped file is the talking, which has the better sound, and which is B-roll. */
   planSession: (req: {
     request: string
@@ -120,6 +134,7 @@ const api = {
         notesHandled: string[]
         needs: string[]
         rejected: string[]
+        brollWanted?: { beat: string; search: string }[]
       }
     | { ok: false; message: string; needsKey?: boolean }
   > => ipcRenderer.invoke('cut:plan', req),
@@ -295,6 +310,10 @@ const api = {
     ipcRenderer.invoke('timeline:probe', path),
 
   mediaPreviews: (path: string): Promise<MediaPreviews> => ipcRenderer.invoke('media:previews', path),
+  /** One still for a thumbnail, or null when the file has no picture. */
+  mediaPoster: (path: string): Promise<string | null> => ipcRenderer.invoke('media:poster', path),
+  /** Footage, sound and images, as many as the person picks. */
+  openMedia: (): Promise<{ path: string; name: string }[]> => ipcRenderer.invoke('dialog:openMedia'),
   renderTimeline: (req: {
     jobId: string
     timeline: Timeline

@@ -16,7 +16,7 @@ import { detectMusic, overlapsMusic } from './worship'
 import { detectShots, snapTrackAtCuts } from './shots'
 import { hasArtlist, setArtlist, searchArtlist, fetchArtlistSong, type ArtlistSong } from './artlist'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
-import { captionSample, clipPoster, mediaPreview, previewsDir } from './media-preview'
+import { captionSample, clipPoster, mediaPreview, posterFor, previewsDir } from './media-preview'
 import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
@@ -980,6 +980,71 @@ function registerIpc(): void {
     return mediaUrlFor(
       await captionSample(presetId, preset.style.positionFrac, (w, h) => buildAss(words, w, h, preset.style), motion)
     )
+  })
+
+  // Thumbnails for the chat, a few at a time: a shoot can be dozens of files.
+  const posters = new Map<string, Promise<string | null>>()
+  let posterSlots = 3
+  const posterQueue: (() => void)[] = []
+  ipcMain.handle('media:poster', (_e, path: string): Promise<string | null> => {
+    let job = posters.get(path)
+    if (!job) {
+      job = (async () => {
+        if (posterSlots === 0) await new Promise<void>((go) => posterQueue.push(go))
+        posterSlots--
+        try {
+          return mediaUrlFor(await posterFor(path))
+        } catch {
+          return null
+        } finally {
+          posterSlots++
+          posterQueue.shift()?.()
+        }
+      })()
+      posters.set(path, job)
+      // A failure may be a file still copying; let a later ask try again.
+      void job.then((url) => {
+        if (!url) posters.delete(path)
+      })
+    }
+    return job
+  })
+
+  /** Footage, sound and images, as many as the person picks. */
+  ipcMain.handle('dialog:openMedia', async (): Promise<{ path: string; name: string }[]> => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        {
+          name: 'Footage, audio and images',
+          extensions: [
+            'mp4',
+            'mov',
+            'm4v',
+            'mkv',
+            'webm',
+            'avi',
+            'mts',
+            'm2ts',
+            'wav',
+            'mp3',
+            'm4a',
+            'aac',
+            'flac',
+            'aif',
+            'aiff',
+            'png',
+            'jpg',
+            'jpeg',
+            'webp',
+            'gif',
+            'heic'
+          ]
+        }
+      ]
+    })
+    if (res.canceled) return []
+    return res.filePaths.map((path) => ({ path, name: basename(path) }))
   })
 
   ipcMain.handle('media:previews', async (_e, path: string): Promise<MediaPreviews> => {

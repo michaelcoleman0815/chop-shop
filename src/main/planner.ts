@@ -1,7 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { readApiKey } from './apikey'
-import { applyOps, currentCut, EditDocSchema, type EditDoc, type Note, type Op } from '../shared/edit'
+import {
+  applyOps,
+  currentCut,
+  EditDocSchema,
+  plainIds,
+  sentence,
+  type EditDoc,
+  type Note,
+  type Op
+} from '../shared/edit'
 import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, type Plan } from './planner-prompt'
 
 /**
@@ -23,6 +32,8 @@ export type PlanEditResult =
       notesHandled: string[]
       needs: string[]
       rejected: string[]
+      /** Moments that want B-roll the edit does not have yet, with a search for it. */
+      brollWanted: { beat: string; search: string }[]
     }
   | { ok: false; message: string; needsKey?: boolean }
 
@@ -82,19 +93,53 @@ export async function planEdit(input: {
 /**
  * A plan as it is offered, whichever model made it: a dry run on a copy of
  * the cut, so only ops that apply cleanly go back to the editor and the
- * rest come back as sentences.
+ * rest come back as sentences. Cutaways name material by id; here they become
+ * the file itself, muted under the speaker. Whatever the model wrote for the
+ * person is checked for ids, which mean nothing to them.
  */
 export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[]): PlanEditResult {
-  const result = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+  const unknown: string[] = []
+  const ops = plan.ops.flatMap((op): unknown[] => {
+    if (op.op !== 'treat' || !op.set.broll) return [op]
+    const asset = doc.assets.find((a) => a.id === op.set.broll?.asset)
+    if (!asset) {
+      unknown.push(op.set.broll.asset)
+      return []
+    }
+    const inSec = Math.max(0, Math.min(op.set.broll.inSec, Math.max(0, (asset.durationSec ?? 0) - 0.5)))
+    return [{ ...op, set: { ...op.set, broll: { path: asset.path, inSec, muted: true } } }]
+  })
+  const result = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources })
   const known = new Set(notes.map((n) => n.id))
+  const beats = new Set(result.cut.beats.map((b) => b.id))
+  const plain = (text: string): string => plainIds(doc, text.trim())
+  if (result.rejected.length > 0 || unknown.length > 0)
+    console.warn(
+      '[planner] left out:',
+      result.rejected.map((r) => r.reason),
+      unknown.length ? `unknown material ${unknown.join(', ')}` : ''
+    )
+  const skipped = result.rejected.length + unknown.length
   return {
     ok: true,
     ops: result.applied,
-    summary: plan.summary.trim(),
-    reply: plan.reply.trim(),
+    summary: plain(plan.summary),
+    reply: plain(plan.reply),
     notesHandled: plan.notesHandled.filter((id) => known.has(id)),
-    needs: plan.needs.map((n) => n.trim()).filter(Boolean),
-    rejected: result.rejected.map((r) => r.reason)
+    needs: plan.needs.map((n) => sentence(plain(n))).filter(Boolean),
+    // The reasons are for whoever reads the log; the person gets one sentence.
+    rejected:
+      skipped === 0
+        ? []
+        : [
+            skipped === 1
+              ? 'One change did not fit the cut, so I left it out.'
+              : `${skipped} changes did not fit the cut, so I left them out.`
+          ],
+    brollWanted: (plan.brollWanted ?? [])
+      .filter((w) => beats.has(w.beat) && w.search.trim())
+      .slice(0, 3)
+      .map((w) => ({ beat: w.beat, search: w.search.trim() }))
   }
 }
 

@@ -14,10 +14,19 @@ import { clock } from '../shared/presets'
 export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video editor people talk to. You receive a recording's transcript, the current cut, and a request (a typed message or a list of notes). You answer with edit operations that carry out the request, a one-sentence summary of what changed, and a short reply.
 
 ## The edit
-- The source transcript lists every spoken word with an id: w1, w2, ... Ids never change.
+- The source transcript lists every spoken word with an id: w1, w2, ... Words from a second or later recording carry its id too: s2w1, s2w2, ... Ids never change.
+- An edit can be cut from several recordings, in the order they were shot. Each <source> names its file. When it says sound="...", that recording's picture plays over the sound of a separate, better recording, already lined up; nothing more needs doing for it.
 - The cut is an ordered list of beats. A beat plays the words from its first id to its last id, inclusive, from one recording. Beats play in list order, so moving a beat moves that moment in the video.
 - Struck words are inside a beat but cut out of it. Words in no beat are not in the video.
-- A beat's treatment: frame (speaker, broll, split, card), bw (black and white), zoom (1 is the full frame; 1.08 to 1.2 is a punch-in), bigWord (the id of one word in that beat shown big on screen), broll (a cutaway; only set it if the request supplies a file).
+- A beat's treatment: frame (speaker, broll, split, card), bw (black and white), zoom (1 is the full frame; 1.08 to 1.2 is a punch-in), bigWord (the id of one word in that beat shown big on screen), broll (a cutaway from the material: {"asset":"a1","inSec":0} shows material a1 from that second, muted, over the beat's sound).
+
+## Material
+A <material> block, when present, lists what the person brought in to use: footage, images and clips, each with an id (a1, a2, ...), its length and where the cut already shows it.
+- To cut to material, treat a beat with frame broll (or split, to keep the speaker beside it) and broll {"asset":"a2","inSec":0}. A cutaway covers its whole beat, so split a long beat first and give the cutaway only the words it illustrates, about 2 to 5 seconds of them.
+- Put each piece where what is being said is what it shows. If nothing matches, put it where it best carries the line. Never cover the opening beat unless asked.
+- Material the person brought in with this request goes into the cut now. Choose the beats yourself, never ask where it goes, and place every piece unless it plainly fits nowhere.
+- Use inSec to skip a slow start in longer footage. A piece can be used more than once at different inSec values.
+- When the edit needs more B-roll than the material gives, or the person asks for B-roll to be found, list the moments in brollWanted: at most three, each the beat and a short stock footage search that would show it ("hands typing on a laptop at night").
 
 ## Operations
 - {"op":"remove","beats":["b3"]}: drop whole beats.
@@ -38,21 +47,24 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 - "This", "here" and "that bit" in a note mean the beat the note was left on.
 - To open on a stronger line, move the beat that holds it to position 0; if it sits inside a long beat, split it out first.
 - Keep sentences whole unless asked to cut inside one. Never strike the only words of a beat; remove the beat instead.
-- If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs.
+- If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs, one full sentence for each.
 - If nothing can be done, return no ops and say why in reply.
 
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
 
 ## How to write
-Write as a helpful editor sitting next to the person: first person, plain words, exact numbers. No exclamation marks, no emoji, no praise. Never call this cloning or copying anyone. The summary is one sentence about what changed in this version ("The hook line opens it now and the ending stays on you."). The reply is at most two sentences.`
+Write as a helpful editor sitting next to the person: first person, plain words, exact numbers. No exclamation marks, no emoji, no praise. Never call this cloning or copying anyone. The summary is one sentence about what changed in this version ("The hook line opens it now and the ending stays on you."). The reply is at most two sentences.
+Never write an id (w12, s2w4, b3, s1, a2) in the summary, the reply or needs; the person never sees them. Name a moment by what is said in it ("the line about the battery"), a recording by its file name, and material by its title.`
 
 /** What the planner returns. Lenient on purpose: every op is checked against the real op schema afterwards, one by one. */
 const TreatmentSet = z.object({
   frame: z.enum(['speaker', 'broll', 'split', 'card']).optional(),
   bw: z.boolean().optional(),
   zoom: z.number().optional(),
-  bigWord: z.string().nullable().optional()
+  bigWord: z.string().nullable().optional(),
+  /** Material by id; offerPlan turns it into the file and keeps it muted. */
+  broll: z.object({ asset: z.string(), inSec: z.number() }).nullable().optional()
 })
 
 export const PlannerOpSchema = z.discriminatedUnion('op', [
@@ -94,9 +106,16 @@ export const PlanSchema = z.object({
   /** Ids of the notes these ops carry out. */
   notesHandled: z.array(z.string()),
   /** What could not be done without more from the person. */
-  needs: z.array(z.string())
+  needs: z.array(z.string()),
+  /** Moments that want B-roll the material does not have, with a search that would find it. */
+  brollWanted: z.array(z.object({ beat: z.string(), search: z.string() })).optional()
 })
 export type Plan = z.infer<typeof PlanSchema>
+
+const fileName = (path: string): string => path.split(/[\\/]/).pop() ?? path
+
+/** Safe inside a double-quoted attribute. */
+const attr = (text: string): string => text.replace(/["<>]/g, '')
 
 const time = (sec: number): string => {
   const m = Math.floor(sec / 60)
@@ -108,7 +127,10 @@ const time = (sec: number): string => {
 export function renderTranscript(doc: EditDoc): string {
   const lines: string[] = []
   for (const source of doc.sources) {
-    lines.push(`<source id="${source.id}" length="${clock(source.durationSec)}">`)
+    const sound = source.audio ? ` sound="${attr(fileName(source.audio.path))}"` : ''
+    lines.push(
+      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}>`
+    )
     const words = doc.words.filter((w) => w.source === source.id)
     // One line per sentence keeps it readable without losing a single id.
     let line: string[] = []
@@ -135,6 +157,8 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
   const index = indexWords(doc.words)
   const struck = new Set(cut.removed)
   const text = (id: string): string => index.words[index.pos.get(id) ?? -1]?.text ?? id
+  const byPath = new Map(doc.assets.map((a) => [a.path, a.id]))
+  const assetFor = (path: string): string => byPath.get(path) ?? fileName(path)
 
   const settings = [
     `version ${currentVersion(doc).n}`,
@@ -155,7 +179,8 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
       t.frame,
       t.bw ? 'bw' : null,
       t.zoom > 1.001 ? `zoom ${t.zoom.toFixed(2)}` : null,
-      t.bigWord ? `big word ${t.bigWord}` : null
+      t.bigWord ? `big word ${t.bigWord}` : null,
+      t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null
     ]
       .filter(Boolean)
       .join(', ')
@@ -175,6 +200,24 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
   })
 
   const parts = [`<cut ${settings.join('; ')}>`, ...beats, '</cut>']
+  if (doc.assets.length > 0) {
+    // Where each piece already shows, so the planner neither repeats nor forgets one.
+    const shows = new Map<string, string[]>()
+    for (const beat of cut.beats) {
+      const id = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
+      if (id) shows.set(id, [...(shows.get(id) ?? []), beat.id])
+    }
+    parts.push('<material>')
+    for (const a of doc.assets) {
+      const size = a.width && a.height ? ` ${a.width}x${a.height}` : ''
+      const length = a.durationSec ? `, ${a.durationSec.toFixed(1)} s` : ''
+      const where = shows.get(a.id)
+      parts.push(
+        `${a.id} ${a.kind}${size}${length}: ${a.title}${where ? ` | shown on ${where.join(' ')}` : ' | not in the cut yet'}`
+      )
+    }
+    parts.push('</material>')
+  }
   if (notes.length > 0) {
     parts.push('<notes>')
     for (const note of notes) parts.push(`${note.id}${note.beat ? ` (left on ${note.beat})` : ''}: ${note.text}`)

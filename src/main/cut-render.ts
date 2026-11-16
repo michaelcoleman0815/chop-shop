@@ -264,7 +264,10 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   // otherwise fails with "Cannot select channel layout". The sample format is
   // left free, because intermediate passes write 16-bit PCM and finals AAC.
   const pin = 'aformat=channel_layouts=stereo:sample_rates=48000'
-  const loud = opts.loudness !== null ? `loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000,` : ''
+  // Loudness is only set when there is sound to set it on: loudnorm over pure
+  // silence asks for infinite gain, and the encoder then fails the export.
+  const sounds = segments.some((s) => !!s.audio || s.hasAudio)
+  const loud = opts.loudness !== null && sounds ? `loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000,` : ''
   chains.push(`[acat]${loud}${pin}[aout]`)
   const aOut = 'aout'
 
@@ -432,6 +435,9 @@ export async function renderCut(
   if (current.length > 0) chunks.push(current)
 
   const joined: Segment[] = []
+  // A chunk file always carries an audio track, silent or not; the join only
+  // sets loudness when some piece of the cut had sound.
+  const anySound = segments.some((s) => !!s.audio || s.hasAudio)
   let done = 0
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]
@@ -446,7 +452,7 @@ export async function renderCut(
     })
     await runRender(opts.ffmpeg, args, length, (f) => progress(((done + f * length) / total) * 0.8), opts.signal)
     done += length
-    joined.push({ path, startSec: 0, durationSec: length, hasAudio: true, treatment: null, broll: null })
+    joined.push({ path, startSec: 0, durationSec: length, hasAudio: anySound, treatment: null, broll: null })
   }
   const args = buildRenderArgs(joined, {
     ...base,

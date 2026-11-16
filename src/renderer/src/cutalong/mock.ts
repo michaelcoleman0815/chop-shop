@@ -1,4 +1,4 @@
-import { createDoc, wordsFromTranscript, type EditDoc } from '../../../shared/edit'
+import { addSources, createDoc, nextSourceId, wordsFromTranscript, type EditDoc } from '../../../shared/edit'
 import { BUILT_IN_PRESETS, describeStyle, suggestCommandName, type Preset } from '../../../shared/presets'
 import {
   factDetails,
@@ -157,7 +157,16 @@ export function createMockApi(): CutalongApi {
       ])
       const doc = fakeDoc(paths[0])
       const lined = sound.length
-        ? [{ name: paths[0].split('/').pop()!.replace(/\.[^.]+$/, ''), sound: sound[0].split('/').pop()!, offsetSec: 3.42 }]
+        ? [
+            {
+              name: paths[0]
+                .split('/')
+                .pop()!
+                .replace(/\.[^.]+$/, ''),
+              sound: sound[0].split('/').pop()!,
+              offsetSec: 3.42
+            }
+          ]
         : []
       if (sound.length) doc.sources[0] = { ...doc.sources[0], audio: { path: sound[0], offsetSec: 3.42 } }
       return { ok: true as const, doc, mediaUrl: '/sample.mp4', warning: null, lined }
@@ -285,6 +294,25 @@ export function createMockApi(): CutalongApi {
     },
     mediaPreviews: async () => {
       throw new Error('No previews in the browser.')
+    },
+    mediaPoster: async () => null,
+    openMedia: async () => [],
+    extendCut: async ({ doc, paths, soundPaths }) => {
+      await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Listening for the cuts'])
+      const sound = soundPaths ?? []
+      const next = paths.reduce((d, path) => {
+        const extra = fakeDoc(path)
+        const id = nextSourceId(d)
+        const words = extra.words.map((w) => ({ ...w, id: `${id}${w.id}`, source: id }))
+        return addSources(d, [{ ...extra.sources[0], id }], words, `${path.split('/').pop()} is on the end.`)
+      }, doc)
+      const withSound = sound.length
+        ? {
+            ...next,
+            sources: next.sources.map((s) => (s.audio ? s : { ...s, audio: { path: sound[0], offsetSec: 3.42 } }))
+          }
+        : next
+      return { ok: true as const, doc: withSound, warning: null, lined: [] }
     },
     reveal: async () => undefined,
 
