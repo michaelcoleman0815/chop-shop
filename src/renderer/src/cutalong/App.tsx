@@ -4,7 +4,7 @@ import { Sidebar, type Place } from './components/Sidebar'
 import { Button } from './components/ui'
 import { BrandPage } from './screens/Brand'
 import { Editor } from './screens/Editor'
-import { openClassic } from './screens/Header'
+import { BackToWork } from './screens/Header'
 import { PresetsPage, ProjectsPage } from './screens/Library'
 import { SettingsPage } from './screens/Settings'
 import { Start } from './screens/Start'
@@ -46,12 +46,15 @@ export default function App(): JSX.Element {
     const project = await api.openProject()
     if (!project) return
     if (project.mode !== 'cut') {
-      app.setToast({ text: `${project.name} was made with the classic tools. Open it from Classic tools.` })
+      app.setToast({
+        text: `${project.name} was made in Chop Shop, which Cutalong replaced. Start a new edit with its footage.`
+      })
       return
     }
     await app.openProject(project.path)
   }
 
+  const work = app.work()
   const place: Place | null =
     app.screen === 'start' ||
     app.screen === 'projects' ||
@@ -70,16 +73,17 @@ export default function App(): JSX.Element {
         onGo={(p) => (p === 'start' ? app.goStart() : app.setScreen(p))}
         recent={app.recent}
         onOpenProject={(path) => void app.openProject(path)}
-        onClassic={openClassic}
       />
       <div className="cl-main">
-        {app.screen === 'start' && <Start app={app} />}
-        {app.screen === 'thread' && <Thread app={app} />}
-        {app.screen === 'editor' && app.doc && <Editor app={app} />}
-        {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
-        {app.screen === 'brand' && <BrandPage app={app} />}
-        {app.screen === 'presets' && <PresetsPage app={app} />}
-        {app.screen === 'settings' && <SettingsPage />}
+        <BackToWork.Provider value={place && place !== 'start' && work ? { name: work.name, go: app.resume } : null}>
+          {app.screen === 'start' && <Start app={app} />}
+          {app.screen === 'thread' && <Thread app={app} />}
+          {app.screen === 'editor' && app.doc && <Editor app={app} />}
+          {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
+          {app.screen === 'brand' && <BrandPage app={app} />}
+          {app.screen === 'presets' && <PresetsPage app={app} />}
+          {app.screen === 'settings' && <SettingsPage />}
+        </BackToWork.Provider>
       </div>
       {app.toast && (
         <div className="cl-toast" role="status">

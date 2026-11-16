@@ -3,7 +3,7 @@ import { Mark } from './ui'
 
 /**
  * The rail down the left: a new edit, projects, your brand, presets, and at
- * the bottom settings and the classic tools. Collapsed it is icons; open it adds names and recent edits.
+ * the bottom settings. Collapsed it is icons; open it adds names and recent edits.
  */
 
 export type Place = 'start' | 'projects' | 'brand' | 'presets' | 'settings'
@@ -20,7 +20,7 @@ const stroke = {
   'aria-hidden': true
 }
 
-const ICONS: Record<Place | 'toggle' | 'classic', JSX.Element> = {
+const ICONS: Record<Place | 'toggle', JSX.Element> = {
   toggle: (
     <svg {...stroke}>
       <rect x="3.5" y="4.5" width="17" height="15" rx="4" />
@@ -58,14 +58,6 @@ const ICONS: Record<Place | 'toggle' | 'classic', JSX.Element> = {
       <path d="M10.5 16.5h9" />
       <circle cx="8.5" cy="16.5" r="2" />
     </svg>
-  ),
-  classic: (
-    <svg {...stroke}>
-      <rect x="4" y="4" width="6.5" height="6.5" rx="1.8" />
-      <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8" />
-      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8" />
-      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8" />
-    </svg>
   )
 }
 
@@ -82,8 +74,7 @@ export function Sidebar({
   current,
   onGo,
   recent,
-  onOpenProject,
-  onClassic
+  onOpenProject
 }: {
   open: boolean
   onToggle: () => void
@@ -91,7 +82,6 @@ export function Sidebar({
   onGo: (place: Place) => void
   recent: ProjectSummary[]
   onOpenProject: (path: string) => void
-  onClassic: () => void
 }): JSX.Element {
   return (
     <nav className={`cl-rail${open ? ' open' : ''}`} aria-label="Cutalong">
@@ -148,16 +138,6 @@ export function Sidebar({
       >
         {ICONS.settings}
         {open && <span className="label">Settings</span>}
-      </button>
-      <button
-        type="button"
-        className="cl-rail-item"
-        title={open ? undefined : 'Classic tools'}
-        aria-label={open ? undefined : 'Classic tools'}
-        onClick={onClassic}
-      >
-        {ICONS.classic}
-        {open && <span className="label">Classic tools</span>}
       </button>
     </nav>
   )

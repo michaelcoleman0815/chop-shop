@@ -244,7 +244,7 @@ export interface MusicTrack {
   duck: boolean
 }
 
-/** clip and edit are the classic tools; cut is a Cutalong edit document. */
+/** clip and edit are projects from Chop Shop, which Cutalong replaced; cut is a Cutalong edit. */
 export type ProjectMode = 'clip' | 'edit' | 'cut'
 
 /** Which guidance applies. The failure modes differ by kind of recording. */
@@ -292,7 +292,7 @@ export interface Project extends ProjectSummary {
   transcript: Transcript | null
   /** Editing-mode timeline. Null for clipping projects. */
   timeline: Timeline | null
-  /** The edit document of a Cutalong project. Absent from classic projects. */
+  /** The edit document of a Cutalong project. Absent from Chop Shop's old projects. */
   edit?: EditDoc | null
   /** The conversation that made the edit, so a chat can be picked up again. */
   chat?: ChatMessage[]

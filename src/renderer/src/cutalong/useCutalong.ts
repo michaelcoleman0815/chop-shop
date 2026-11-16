@@ -107,6 +107,33 @@ async function iconData(): Promise<{ tags: Record<string, string[]>; nodes: Reco
 let counter = 0
 const uid = (): string => `m${Date.now().toString(36)}${(counter++).toString(36)}`
 
+const LAST = 'cutalong:last'
+
+/**
+ * Where the person was, so reopening Cutalong lands back in that chat or edit.
+ * A convenience kept in this window's storage: without it, Cutalong starts on
+ * Start, and every chat is still under Chats.
+ */
+function remember(path: string | null, screen: 'thread' | 'editor'): void {
+  try {
+    if (path) localStorage.setItem(LAST, JSON.stringify({ path, screen }))
+    else localStorage.removeItem(LAST)
+  } catch {
+    // No storage; nothing to remember with.
+  }
+}
+
+function recalled(): { path: string; screen: 'thread' | 'editor' } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST) ?? 'null') as { path?: unknown; screen?: unknown } | null
+    return v && typeof v.path === 'string'
+      ? { path: v.path, screen: v.screen === 'editor' ? 'editor' : 'thread' }
+      : null
+  } catch {
+    return null
+  }
+}
+
 export function useCutalong() {
   const [screen, setScreen] = useState<Screen>('start')
   const [messages, setMessages] = useState<Msg[]>([])
@@ -116,6 +143,13 @@ export function useCutalong() {
   const [saved, setSaved] = useState<Preset[]>([])
   const [recent, setRecent] = useState<ProjectSummary[]>([])
   const [busy, setBusy] = useState(false)
+  // Read by goStart and openProject, which must not leave work half-finished.
+  const busyRef = useRef(false)
+  useEffect(() => {
+    busyRef.current = busy
+  }, [busy])
+  /** The chat or the editor, whichever the person was last in, for coming back to it. */
+  const lastScreen = useRef<'thread' | 'editor'>('thread')
   const [toast, setToast] = useState<Toast | null>(null)
   const [panel, setPanel] = useState<PanelStatus | null>(null)
   const [brand, setBrand] = useState<Brand>(EMPTY_BRAND)
@@ -166,6 +200,7 @@ export function useCutalong() {
       if (projectRef.current) return projectRef.current
       const project = await api.createProject(name.replace(/\s+/g, ' ').trim().slice(0, 60) || 'New edit', 'cut')
       projectRef.current = project
+      remember(project.path, lastScreen.current)
       refreshRecent()
       return project
     },
@@ -282,8 +317,17 @@ export function useCutalong() {
 
   /** Opens a saved chat: its thread when it has one, else straight into the editor. */
   const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
+    // Work still running belongs to the chat it started in; switching now would
+    // land its result in the wrong one.
+    if (busyRef.current && path !== projectRef.current?.path) {
+      setToast({ text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Open another once I'm done.` })
+      return
+    }
     const project = await api.openProject(path)
-    if (!project) return
+    if (!project) {
+      if (recalled()?.path === path) remember(null, 'thread')
+      return
+    }
     projectRef.current = project
     const edit = project.edit ?? null
     docRef.current = edit
@@ -294,20 +338,31 @@ export function useCutalong() {
     setMessages(chat)
     setStudy(null)
     setPanel(null)
-    setScreen(edit && (prefer === 'editor' || chat.length === 0) ? 'editor' : 'thread')
+    const next = edit && (prefer === 'editor' || chat.length === 0) ? 'editor' : 'thread'
+    remember(project.path, next)
+    setScreen(next)
   }, [])
 
-  // Opened from the classic tools: they hand over the path and reload.
+  // Reopening Cutalong lands back where the person was.
   useEffect(() => {
-    let path: string | null = null
-    try {
-      path = sessionStorage.getItem('cutalong:open')
-      sessionStorage.removeItem('cutalong:open')
-    } catch {
-      // No storage, nothing handed over.
-    }
-    if (path) void openProject(path)
+    const last = recalled()
+    if (last) void openProject(last.path, last.screen)
   }, [openProject])
+
+  // Keep track of the chat or editor the person is in, across the rail's other places and restarts.
+  useEffect(() => {
+    if (screen !== 'thread' && screen !== 'editor') return
+    lastScreen.current = screen
+    if (projectRef.current) remember(projectRef.current.path, screen)
+  }, [screen])
+
+  /** The chat being worked on, if there is one, for a way back to it. */
+  const work = (): { name: string } | null => (projectRef.current ? { name: projectRef.current.name } : null)
+
+  /** Back to the chat or editor the person left for another place on the rail. */
+  const resume = useCallback((): void => {
+    setScreen(docRef.current ? lastScreen.current : 'thread')
+  }, [])
 
   /** Applies ops as a version and says what changed. Returns the summary, or null when nothing applied. */
   const applyAsVersion = useCallback(
@@ -844,6 +899,13 @@ export function useCutalong() {
 
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
+    if (busyRef.current) {
+      setToast({
+        text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Start a new one once I'm done.`
+      })
+      return
+    }
+    remember(null, 'thread')
     projectRef.current = null
     docRef.current = null
     messagesRef.current = []
@@ -867,6 +929,8 @@ export function useCutalong() {
     screen,
     setScreen,
     goStart,
+    work,
+    resume,
     messages,
     doc,
     mediaUrl,

@@ -13,7 +13,7 @@ import type { Project, ProjectMode, ProjectSummary } from '../shared/types'
 const indexPath = (): string => join(app.getPath('userData'), 'projects.json')
 
 export function projectsDir(): string {
-  return join(app.getPath('videos'), 'Chop Shop', 'Projects')
+  return join(app.getPath('videos'), 'Cutalong', 'Projects')
 }
 
 async function readIndex(): Promise<ProjectSummary[]> {
@@ -102,8 +102,7 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
     media: [],
     clips: [],
     transcript: null,
-    timeline:
-      mode === 'edit' ? { clips: [], width: 1920, height: 1080, fps: 30 } : null
+    timeline: mode === 'edit' ? { clips: [], width: 1920, height: 1080, fps: 30 } : null
   }
 
   await saveProject(project)
