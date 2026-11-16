@@ -150,9 +150,10 @@ export async function transcribeAssemblyAI(
       opts.onStatus?.(polled.status)
     }
   } finally {
-    // Deleting the transcript deletes the uploaded audio with it. This goes
-    // through the gate too, so it is skipped once the switch is off.
-    await gate.send('assemblyai', url, { method: 'DELETE', timeoutMs: CHECK_TIMEOUT_MS }).catch(() => undefined)
+    // Deleting the transcript deletes the uploaded audio with it. It goes even
+    // if the switch was turned off meanwhile: deleting the person's own data
+    // is never a send, and the gate only lets this one DELETE through.
+    await gate.cleanUp('assemblyai', url)
   }
 }
 
