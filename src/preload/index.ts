@@ -116,7 +116,8 @@ const api = {
     doc: EditDoc
     quality: 'preview' | 'final'
   }): Promise<
-    { ok: true; outputPath: string; mediaUrl: string; creditsPath?: string | null } | { ok: false; message: string }
+    | { ok: true; outputPath: string; mediaUrl: string; creditsPath?: string | null; chaptersPath?: string | null }
+    | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:render', req),
   addAsset: (req: {
     docId: string

@@ -47,7 +47,7 @@ import {
   type Source,
   type Word
 } from '../shared/edit'
-import { BUILT_IN_PRESETS, describeStyle, suggestCommandName } from '../shared/presets'
+import { BUILT_IN_PRESETS, chaptersReply, describeStyle, suggestCommandName } from '../shared/presets'
 import {
   factDetails,
   factsReply,
@@ -256,7 +256,14 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         creditsPath = outputPath.replace(/\.mp4$/i, '') + ' credits.txt'
         await fs.writeFile(creditsPath, credits)
       }
-      return { ok: true as const, outputPath, mediaUrl: deps.mediaUrlFor(outputPath), creditsPath }
+      // Chapters for the YouTube description, the same ones the video file carries.
+      let chaptersPath: string | null = null
+      const chapters = final ? chaptersReply(cut, resolved) : null
+      if (chapters?.shows) {
+        chaptersPath = outputPath.replace(/\.mp4$/i, '') + ' chapters.txt'
+        await fs.writeFile(chaptersPath, `${chapters.lines}\n`)
+      }
+      return { ok: true as const, outputPath, mediaUrl: deps.mediaUrlFor(outputPath), creditsPath, chaptersPath }
     } catch (err) {
       console.error('[cut] render failed:', message(err))
       return { ok: false as const, message: message(err) }

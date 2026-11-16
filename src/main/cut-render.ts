@@ -5,6 +5,7 @@ import {
   cameraClock,
   cameraPlan,
   changesColour,
+  chaptersMetadata,
   maxZoom,
   cutawayAt,
   cutawayClock,
@@ -14,6 +15,7 @@ import {
   lookMatrix,
   outToSrc,
   pictureSpan,
+  placeChapters,
   sliceSteps,
   srcLength,
   transitionInfo,
@@ -171,6 +173,8 @@ export interface GraphOptions {
   look?: Look | null
   /** Whether the look's LUT is a 3D one (most are) or a 1D curve per channel. */
   lutKind?: LutKind
+  /** An ffmpeg metadata file of chapters to write into the video, which players show. */
+  chaptersPath?: string | null
   quality: Quality
   outputPath: string
 }
@@ -854,6 +858,13 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
             '+faststart'
           ]
 
+  // Chapters come from a metadata file, the last input, so no other input's number moves.
+  const chapters: string[] = []
+  if (opts.chaptersPath) {
+    inputs.push('-f', 'ffmetadata', '-i', opts.chaptersPath)
+    chapters.push('-map_chapters', String(next++))
+  }
+
   return [
     '-hide_banner',
     '-y',
@@ -864,6 +875,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     `[${vOut}]`,
     '-map',
     `[${aOut}]`,
+    ...chapters,
     '-r',
     String(fps),
     ...encode,
@@ -1001,6 +1013,25 @@ export function bedFor(music: Music, resolved: Resolved, loudness: number | null
   }
 }
 
+/**
+ * The cut's chapters as an ffmpeg metadata file in the work folder, when it
+ * has chapters YouTube would show; null otherwise. The same chapters go in the
+ * description, so the file and the text never disagree.
+ */
+async function writeChapters(cut: Cut, resolved: Resolved, workDir: string): Promise<string | null> {
+  if (!cut.chapters?.length) return null
+  const placed = placeChapters(
+    cut.chapters,
+    new Map(resolved.beats.map((b) => [b.id, b.outStart])),
+    resolved.durationSec
+  )
+  if (placed.problem) return null
+  await fs.mkdir(workDir, { recursive: true })
+  const path = join(workDir, 'chapters.ffmeta')
+  await fs.writeFile(path, chaptersMetadata(placed.chapters, resolved.durationSec))
+  return path
+}
+
 export type LutKind = '1d' | '3d'
 
 /**
@@ -1089,6 +1120,7 @@ export async function renderCut(
     music: cut.music ? bedFor(cut.music, resolved, cut.loudness) : null,
     look: cut.look ?? null,
     lutKind: cut.look?.lut ? await lutKindOf(cut.look.lut.path) : undefined,
+    chaptersPath: await writeChapters(cut, resolved, opts.workDir),
     quality,
     outputPath: opts.outputPath,
     logo: opts.brand?.logo ?? null

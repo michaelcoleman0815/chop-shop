@@ -13,6 +13,7 @@ import {
   restore,
   sentence,
   setNoteStatus,
+  stamp,
   type Asset,
   type EditDoc,
   type Op
@@ -34,6 +35,9 @@ import {
   cutawayEdges,
   describePlan,
   findPreset,
+  chaptersCommand,
+  chaptersOf,
+  chaptersReply,
   ideaStarts,
   LOOK_COMMANDS,
   lookCommand,
@@ -211,10 +215,21 @@ const ACTION_COMMANDS: Preset[] = [
       ['tint', 'Tint', 'Toward magenta or green: /tint 0.1, /tint -0.1'],
       ['grain', 'Grain', 'Film grain over the picture: /grain, /grain 0.5, /grain off'],
       ['vignette', 'Vignette', 'Darken the corners: /vignette, /vignette 0.6, /vignette off'],
-      ['sharpen', 'Sharpen', 'Crisper detail: /sharpen, /sharpen 0.6, /sharpen off']
+      ['sharpen', 'Sharpen', 'Crisper detail: /sharpen, /sharpen 0.6, /sharpen off'],
+      [
+        'chapters',
+        'Chapters',
+        'YouTube chapters where the ideas change: /chapters, /chapters 2 Battery life, /chapters off'
+      ]
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
+
+/** What an export left beside the video: ", with chapters and credits beside it". */
+function besideIt(chapters?: string | null, credits?: string | null): string {
+  const things = [chapters ? 'chapters' : null, credits ? 'credits' : null].filter(Boolean)
+  return things.length ? `, with ${things.join(' and ')} beside it` : ''
+}
 
 /** The colour commands, by name; the named looks are presets. */
 const COLOUR_COMMANDS = new Set(['look', 'lut', ...Object.keys(LOOK_COMMANDS)])
@@ -1426,6 +1441,59 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /**
+   * /chapters: makes the YouTube chapters, shows them, renames one or takes
+   * them out. In the thread they come with a button that copies them for the
+   * description; in the editor's panel they are listed in the reply.
+   */
+  const chaptersCommandRun = useCallback(
+    (rest: string, where: 'thread' | 'panel', beat: string | null): void => {
+      const say = (text: string): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can find its chapters.')
+        return
+      }
+      const read = chaptersCommand(d, rest, beat)
+      if ('say' in read) {
+        say(read.say)
+        return
+      }
+      let lead = ''
+      if ('ops' in read) {
+        const done = applyAsVersion(read.ops, 'The chapters have changed.')
+        if (!done) {
+          say('The chapters are already like that.')
+          return
+        }
+        lead = `v${done.n} is ready. ${'planned' in read ? 'I named each chapter from the words it opens with. ' : ''}`
+      }
+      const latest = docRef.current ?? d
+      const cut = currentCut(latest)
+      const resolved = resolveCut(cut, latest.words, latest.sources)
+      const reply = chaptersReply(cut, resolved)
+      if (where === 'panel') {
+        setPanel({ text: `${lead}${reply.text}${reply.lines ? ` ${reply.lines.split('\n').join(' · ')}` : ''}` })
+        return
+      }
+      push({
+        role: 'assistant',
+        text: `${lead}${reply.text}`,
+        details: chaptersOf(cut, resolved).chapters.map((c) => ({ label: stamp(c.atSec), value: c.title })),
+        actions: reply.lines
+          ? [
+              { kind: 'copy', label: 'Copy for YouTube', payload: reply.lines, primary: true },
+              { kind: 'open-editor', label: 'Open the editor' }
+            ]
+          : undefined
+      })
+    },
+    [applyAsVersion, push]
+  )
+
   const runCommand = useCallback(
     async (
       command: string,
@@ -1456,6 +1524,10 @@ export function useCutalong() {
       }
       if (command === 'jcut' || command === 'lcut') {
         splitEditCommand(command, rest, where, beat)
+        return
+      }
+      if (command === 'chapters') {
+        chaptersCommandRun(rest, where, beat)
         return
       }
       if (ACTION_NAMES.has(command)) {
@@ -1517,7 +1589,8 @@ export function useCutalong() {
       soundCommand,
       splitEditCommand,
       timingCommand,
-      transitionCommand
+      transitionCommand,
+      chaptersCommandRun
     ]
   )
 
@@ -1908,7 +1981,12 @@ export function useCutalong() {
       else if (a.kind === 'run-command' && a.payload) void runCommand(a.payload)
       else if (a.kind === 'save-style' && a.payload) void saveStyle(a.payload)
       else if (a.kind === 'reveal' && a.payload) void api.reveal(a.payload)
-      else if (a.kind === 'add-clip' && a.payload) {
+      else if (a.kind === 'copy' && a.payload) {
+        void navigator.clipboard.writeText(a.payload).then(
+          () => setToast({ text: 'Copied.' }),
+          () => setToast({ text: "I couldn't copy that. Select the text in Details instead.", error: true })
+        )
+      } else if (a.kind === 'add-clip' && a.payload) {
         const { url, hint, beat } = JSON.parse(a.payload) as { url: string; hint: string; beat?: string }
         void bringIn({ url }, hint, beat)
       } else if (a.kind === 'add-icon' && a.payload) {
@@ -2006,7 +2084,7 @@ export function useCutalong() {
     setToast(
       r.ok
         ? {
-            text: `Exported ${fileName(r.outputPath)}${r.creditsPath ? ', with credits beside it' : ''}`,
+            text: `Exported ${fileName(r.outputPath)}${besideIt(r.chaptersPath, r.creditsPath)}`,
             path: r.outputPath
           }
         : { text: r.message, error: true }

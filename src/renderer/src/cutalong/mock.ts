@@ -444,10 +444,12 @@ export function createMockApi(): CutalongApi {
     renderCut: async ({ doc, quality }) => {
       await progress(listeners.cut, [quality === 'final' ? 'Exporting' : 'Rendering a preview'])
       const n = doc.versions[doc.versions.length - 1].n
+      const chapters = (doc.versions[doc.versions.length - 1].cut.chapters ?? []).length > 0
       return {
         ok: true as const,
         outputPath: `/Users/you/Movies/Cutalong/${doc.title} v${n}.mp4`,
-        mediaUrl: '/sample.mp4'
+        mediaUrl: '/sample.mp4',
+        chaptersPath: chapters ? `/Users/you/Movies/Cutalong/${doc.title} v${n} chapters.txt` : null
       }
     },
     onCutProgress: (cb) => {

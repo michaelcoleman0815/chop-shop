@@ -7,6 +7,7 @@ import { beatsOnClock } from '../edit/audio'
 import { CAMERA_INFO } from '../edit/camera'
 import { transitionInfo } from '../edit/transitions'
 import { describeLook, mergeLook, NAMED_LOOKS } from '../edit/look'
+import { placeChapters } from '../edit/chapters'
 import { clock, seconds, type StyleSpec } from './preset'
 import { planTakes, type TakesPlan, type TakesPlanOptions } from '../raw/plan'
 
@@ -531,6 +532,12 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(...describeSound(o, cut))
     } else if (o.op === 'look') {
       said.push(describeLookOp(o, cut))
+    } else if (o.op === 'chapters') {
+      const placed = cut
+        ? placeChapters(cut.chapters ?? [], new Map(after.beats.map((b) => [b.id, b.outStart])), after.durationSec)
+            .chapters.length
+        : (o.set?.length ?? 0)
+      said.push(placed > 0 ? `the video has ${count(placed, 'chapter')} for YouTube` : 'the chapters are out')
     } else if (o.op === 'fade') {
       const ins = (o.inSec ?? 0) > 0
       const outs = (o.outSec ?? 0) > 0

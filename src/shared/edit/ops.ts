@@ -372,6 +372,17 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       return { ...cut, beats }
     }
 
+    case 'chapters': {
+      const { chapters: _was, ...rest } = cut
+      if (op.set === null || op.set.length === 0) return rest
+      const ids = new Set(cut.beats.map((b) => b.id))
+      const missing = op.set.find((c) => !ids.has(c.beat))
+      if (missing) throw new OpError(`${missing.beat} is not a beat in this cut.`)
+      // One chapter per beat, the later naming winning, in the cut's order.
+      const byBeat = new Map(op.set.map((c) => [c.beat, { beat: c.beat, title: c.title.trim() }]))
+      return { ...rest, chapters: cut.beats.filter((b) => byBeat.has(b.id)).map((b) => byBeat.get(b.id)!) }
+    }
+
     case 'look': {
       const { look: _was, ...rest } = cut
       const look = mergeLook(cut.look, op.set, op.replace)

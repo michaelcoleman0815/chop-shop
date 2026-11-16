@@ -233,6 +233,33 @@ describe('the planner request', () => {
     expect(text).toContain('music bright.mp3, 120 BPM at -15 dB under the voice, dipping 9 dB')
   })
 
+  it('teaches chapters, and a plan of them applies and shows in the request', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(PLANNER_SYSTEM).toContain('{"op":"chapters"')
+    const ids = currentCut(doc).beats.map((b) => b.id)
+    const plan = PlanSchema.parse({
+      ops: [
+        {
+          op: 'chapters',
+          set: [
+            { beat: ids[0], title: 'Hello' },
+            { beat: ids[ids.length - 1], title: 'Wrap up' }
+          ]
+        }
+      ],
+      summary: 'Two chapters.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    expect(dry.cut.chapters?.map((c) => c.title)).toEqual(['Hello', 'Wrap up'])
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    // Too close together for YouTube to show both, the request lists the one that would play.
+    expect(renderRequest(after, '', [])).toContain(`chapters ${ids[0]} "Hello"`)
+  })
+
   it('teaches looks, and every one of them applies', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     expect(PLANNER_SYSTEM).toContain('{"op":"look"')

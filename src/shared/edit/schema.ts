@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
+import { ChapterSchema } from './chapters'
 import { CameraSchema } from './camera'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
@@ -209,7 +210,9 @@ export const CutSchema = z.object({
   /** A music bed under the whole video, dipping whenever anyone speaks. */
   music: MusicSchema.nullable().optional(),
   /** A look over the whole picture: colour, a LUT, sharpening, a vignette, grain. */
-  look: LookSchema.nullable().optional()
+  look: LookSchema.nullable().optional(),
+  /** YouTube chapters, each starting at a beat (edit/chapters). */
+  chapters: z.array(ChapterSchema).optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -282,6 +285,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // The voice cleaned up; 0 leaves it as recorded.
   z.object({ op: z.literal('voice'), polish: z.number().min(0).max(1) }),
+  // YouTube chapters, each at a beat, in any order; null takes them out.
+  z.object({ op: z.literal('chapters'), set: z.array(ChapterSchema).max(100).nullable() }),
   // A look over the whole picture, or changes to it; replace starts it afresh, keeping the LUT; null takes it off.
   z.object({ op: z.literal('look'), set: LookPatchSchema.nullable(), replace: z.boolean().optional() }),
   // A music bed, or changes to it; null takes it out.

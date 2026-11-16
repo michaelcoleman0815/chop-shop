@@ -24,9 +24,10 @@ export interface Action {
     | 'sign-in'
     | 'open-settings'
     | 'run-command'
+    | 'copy'
   label: string
   primary?: boolean
-  /** A command name for save-style and run-command, a path for reveal, JSON for the asset actions. */
+  /** A command name for save-style and run-command, a path for reveal, the text for copy, JSON for the asset actions. */
   payload?: string
   /** A small picture shown in the button, as a data URL. */
   icon?: string
