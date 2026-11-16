@@ -37,7 +37,10 @@ describe('what a phone ffmpeg has', () => {
     expect(
       filterNames("[0:v]scale=w='min(1,2)':h=-2,crop=1:2[a];[a][b]xfade@x=transition=fade:offset=1,format=yuv420p[v]")
     ).toEqual(['scale', 'crop', 'xfade', 'format'])
-    expect(filterNames("perspective=x0='st(0,1);ld(0)':y0=0,subtitles='a\\:b.ass'")).toEqual(['perspective', 'subtitles'])
+    expect(filterNames("perspective=x0='st(0,1);ld(0)':y0=0,subtitles='a\\:b.ass'")).toEqual([
+      'perspective',
+      'subtitles'
+    ])
   })
 
   it('names what a phone lacks: GPL filters, and encoders it has none of', () => {
@@ -83,14 +86,20 @@ describe.skipIf(!FFMPEG)('rendering as a phone does', () => {
       ['Eight', 4.6, 4.9],
       ['nine', 5.0, 5.3],
       ['ten.', 5.4, 5.9]
-    ].map(([text, startSec, endSec]) => ({ text: text as string, startSec: startSec as number, endSec: endSec as number }))
+    ].map(([text, startSec, endSec]) => ({
+      text: text as string,
+      startSec: startSec as number,
+      endSec: endSec as number
+    }))
     doc = createDoc({ id: 'd', title: 'T', source, words: wordsFromTranscript(said, 's1') })
     before = platform()
     setPlatform({
       ...before,
       run: (bin, args, opts) => {
         if (args.includes('-filter_complex')) commands.push(args)
-        const runnable = args.map((a, i) => (args[i - 1] === '-c:v' && /_(mediacodec|videotoolbox)$/.test(a) ? 'libx264' : a))
+        const runnable = args.map((a, i) =>
+          args[i - 1] === '-c:v' && /_(mediacodec|videotoolbox)$/.test(a) ? 'libx264' : a
+        )
         return before.run(bin, runnable, opts)
       }
     })
@@ -140,7 +149,10 @@ describe.skipIf(!FFMPEG)('rendering as a phone does', () => {
     what: string
   ): void => {
     for (const side of ['left', 'right', 'top', 'bottom'] as const) {
-      expect(Math.abs(got[side] - want[side]), `${what}: ${side} ${got[side].toFixed(3)} for ${want[side].toFixed(3)}`).toBeLessThan(0.03)
+      expect(
+        Math.abs(got[side] - want[side]),
+        `${what}: ${side} ${got[side].toFixed(3)} for ${want[side].toFixed(3)}`
+      ).toBeLessThan(0.03)
     }
   }
 
@@ -166,7 +178,11 @@ describe.skipIf(!FFMPEG)('rendering as a phone does', () => {
     ] as const) {
       const b = resolved.beats.find((x) => x.id === beat)!
       for (const t of [b.outStart + 0.05, (b.outStart + b.outEnd) / 2, b.outEnd - 0.06]) {
-        expectWindow(gradientWindow(ffmpeg, out, t), expected(resolved, beat, t, move, 9 / 16), `${move.kind} at ${t.toFixed(2)} s`)
+        expectWindow(
+          gradientWindow(ffmpeg, out, t),
+          expected(resolved, beat, t, move, 9 / 16),
+          `${move.kind} at ${t.toFixed(2)} s`
+        )
       }
     }
   })
@@ -215,8 +231,26 @@ describe.skipIf(!FFMPEG)('rendering as a phone does', () => {
       { op: 'speed', beats: ['b3'], speed: 1.5 },
       { op: 'voice', polish: 0.7 },
       { op: 'sfx', beats: ['b2'], add: { kind: 'whoosh' } },
-      { op: 'chapters', set: [{ beat: 'b1', title: 'Start' }, { beat: 'b3', title: 'The end' }] },
-      { op: 'music', set: { path: tone, levelDb: -14, duckDb: 8, inSec: 0, fadeInSec: 0.5, fadeOutSec: 1, durationSec: 20, lufs: -18 } },
+      {
+        op: 'chapters',
+        set: [
+          { beat: 'b1', title: 'Start' },
+          { beat: 'b3', title: 'The end' }
+        ]
+      },
+      {
+        op: 'music',
+        set: {
+          path: tone,
+          levelDb: -14,
+          duckDb: 8,
+          inSec: 0,
+          fadeInSec: 0.5,
+          fadeOutSec: 1,
+          durationSec: 20,
+          lufs: -18
+        }
+      },
       { op: 'fade', inSec: 0.3, outSec: 0.5 }
     ])
     for (const encoder of [{ kind: 'mediacodec' }, { kind: 'videotoolbox' }] as Encoder[]) {
@@ -243,7 +277,10 @@ describe.skipIf(!FFMPEG)('rendering as a phone does', () => {
   })
 
   it('renders a long cut in passes on the phone encoder, chunks and join alike', async () => {
-    const cut = withOps([{ op: 'aspect', aspect: 'square' }, { op: 'camera', beats: ['b2'], move: { kind: 'push-in', zoom: 1.2 } }])
+    const cut = withOps([
+      { op: 'aspect', aspect: 'square' },
+      { op: 'camera', beats: ['b2'], move: { kind: 'push-in', zoom: 1.2 } }
+    ])
     commands.length = 0
     const { out, resolved } = await render(cut, 'passes', { kind: 'videotoolbox' }, { maxInputs: 1 })
     expect(commands.length).toBeGreaterThan(2)

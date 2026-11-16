@@ -94,6 +94,8 @@ export interface WorkHost {
   motion(input: CutMotionInput): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }>
   /** How video is encoded: the computer's x264 when absent. */
   encoder?: Encoder
+  /** False for an ffmpeg built without its GPL parts, as a phone's is: camera moves are drawn without perspective. */
+  perspective?: boolean
 }
 
 export type ProgressFn = (stage: string, percent: number) => void
@@ -230,7 +232,10 @@ export async function sortFootage(
       for (let job = queue.shift(); job; job = queue.shift()) {
         facts[job.i] = await factsFor(job.p)
         done++
-        progress(`Looking through your footage (${done} of ${req.paths.length})`, Math.round((done / req.paths.length) * 90))
+        progress(
+          `Looking through your footage (${done} of ${req.paths.length})`,
+          Math.round((done / req.paths.length) * 90)
+        )
       }
     }
     await Promise.all(Array.from({ length: Math.min(4, req.paths.length) }, worker))
@@ -272,7 +277,8 @@ export async function renderEdit(
   const doc = parsed.data
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
-  if (resolved.pieces.length === 0) return { ok: false as const, message: 'There is nothing left in the cut to render.' }
+  if (resolved.pieces.length === 0)
+    return { ok: false as const, message: 'There is nothing left in the cut to render.' }
 
   const files = platform().files
   const final = req.quality === 'final'
@@ -324,6 +330,7 @@ export async function renderEdit(
       captionWords: pass.resolved.words,
       sfxDir: host.sfxDir(),
       encoder: host.encoder,
+      perspective: host.perspective,
       onProgress: (f) => progress(share + f * (1 - share))
     })
     // Anything from outside the person's own files is credited beside the video.
@@ -504,9 +511,15 @@ export async function readFootage(
           }
         }
       } else {
-        const transcript = await transcriptFor(host, path, source.durationSec, (stage, pct) => step(stage, 10 + pct * 0.85), {
-          notice: (sentence) => notes.push(sentence)
-        })
+        const transcript = await transcriptFor(
+          host,
+          path,
+          source.durationSec,
+          (stage, pct) => step(stage, 10 + pct * 0.85),
+          {
+            notice: (sentence) => notes.push(sentence)
+          }
+        )
         clip = wordsFromTranscript(transcript.words, source.id, prefix)
         // Listen to the recording so every word's edges sit on its sound,
         // which is what lets cuts land tight without clipping a consonant.

@@ -114,7 +114,12 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    * export all use that sound.
    */
   ipcMain.handle('cut:prepare', (e, input: string | { paths: string[]; soundPaths?: string[] }) =>
-    prepareCut(macWork, input, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }), deps.mediaUrlFor)
+    prepareCut(
+      macWork,
+      input,
+      (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }),
+      deps.mediaUrlFor
+    )
   )
 
   // Where a screen recording changes, stretch by stretch, for a camera to follow.
@@ -273,7 +278,12 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
   // A clip from /clipping exports under its own title (name), with no version number on it.
   ipcMain.handle('cut:render', (e, req: { doc: unknown; quality: 'preview' | 'final'; name?: string }) =>
-    renderEdit(macWork, req, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }), deps.mediaUrlFor)
+    renderEdit(
+      macWork,
+      req,
+      (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }),
+      deps.mediaUrlFor
+    )
   )
 
   ipcMain.handle('inspiration:study', async (e, input: { url?: string; path?: string }) => {

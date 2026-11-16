@@ -1311,7 +1311,11 @@ export type LutKind = '1d' | '3d'
  * than left for ffmpeg to fail on.
  */
 export async function lutKindOf(path: string): Promise<LutKind> {
-  const head = (await platform().files.readText(path).catch(() => '')).slice(0, 4096)
+  const head = (
+    await platform()
+      .files.readText(path)
+      .catch(() => '')
+  ).slice(0, 4096)
   if (/^\s*LUT_3D_SIZE\s+\d+/m.test(head)) return '3d'
   if (/^\s*LUT_1D_SIZE\s+\d+/m.test(head)) return '1d'
   throw new Error(
@@ -1435,7 +1439,14 @@ export async function renderCut(
     )
   }
 
-  const base = { width, height, fps, fontsDir: opts.fontsDir ?? null, encoder: opts.encoder, perspective: opts.perspective }
+  const base = {
+    width,
+    height,
+    fps,
+    fontsDir: opts.fontsDir ?? null,
+    encoder: opts.encoder,
+    perspective: opts.perspective
+  }
   const finishing = {
     assPath,
     loudness: cut.loudness,

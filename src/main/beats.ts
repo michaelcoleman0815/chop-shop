@@ -47,7 +47,12 @@ export interface BeatGrid {
 }
 
 /** The music as mono samples at SAMPLE_RATE, read with ffmpeg. */
-export async function readMono(ffmpeg: string, path: string, maxSec = 900, signal?: AbortSignal): Promise<Float32Array> {
+export async function readMono(
+  ffmpeg: string,
+  path: string,
+  maxSec = 900,
+  signal?: AbortSignal
+): Promise<Float32Array> {
   const floats = new FloatReader()
   const parts: Float32Array[] = []
   let stderr = ''

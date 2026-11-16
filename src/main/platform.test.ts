@@ -60,9 +60,13 @@ describe('the computer platform', () => {
 
   it('streams what a program writes and keeps the end of its errors', async () => {
     const lines: string[] = []
-    const r = await runProgram(process.execPath, ['-e', 'console.log("one"); console.log("two"); console.error("x".repeat(70000) + "end"); process.exit(3)'], {
-      onStdout: (t) => lines.push(t)
-    })
+    const r = await runProgram(
+      process.execPath,
+      ['-e', 'console.log("one"); console.log("two"); console.error("x".repeat(70000) + "end"); process.exit(3)'],
+      {
+        onStdout: (t) => lines.push(t)
+      }
+    )
     expect(r.code).toBe(3)
     expect(lines.join('')).toBe('one\ntwo\n')
     expect(r.stdout).toBe('one\ntwo\n')
