@@ -8,7 +8,7 @@ import {
   type EditDoc,
   type Note
 } from '../shared/edit'
-import { clock, seconds } from '../shared/presets'
+import { clock, describeSpeed, seconds } from '../shared/presets'
 
 /**
  * Everything the planner sends and expects back, kept apart from the API call
@@ -45,6 +45,10 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - {"op":"jcut","beats":["b5"],"sec":0.3}: a J cut into b5. Its sound starts on time but the picture before stays 0.3 s longer, so the next line is heard before it is seen. Coming back from B-roll to the speaker, this reads naturally.
 - {"op":"lcut","beats":["b5"],"sec":0.3}: an L cut into b5. Its picture comes in 0.3 s early, under the end of the sound before. Going into B-roll, the cutaway leads the words it shows.
 - {"op":"lcut","beats":["b5"],"sec":0}: picture and sound cut together again (also for jcut). A beat has a transition or a J or L cut, not both; setting one replaces the other.
+- {"op":"speed","beats":["b6"],"speed":2}: play a beat faster or slower, from 0.25 to 4; a voice keeps its pitch. On a beat that shows a cutaway this changes the cutaway, and the voice under it plays as recorded; add "of":"beat" to change the beat itself. Speed 1 plays it as recorded again.
+- {"op":"speed","beats":["b6"],"speed":0.5,"ramp":{"inSec":0.4,"outSec":0.4}}: a speed ramp, easing from full speed into 0.5 over 0.4 s and back to full speed over the last 0.4 s.
+- {"op":"freeze","beat":"b6","word":"w40","sec":1}: hold the picture where w40 ends for 1 s while the sound waits; everything after starts 1 s later. sec 0 removes it.
+- {"op":"reverse","beats":["b6"],"on":true}: play a beat backwards, or the cutaway it shows. A beat played backwards has no captions. on false plays it forwards again.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ## How to edit
@@ -55,6 +59,7 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 - If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs.
 - If nothing can be done, return no ops and say why in reply.
 - Hard cuts are the default. Add a transition only where it is asked for, or at a change of section when asked to "add transitions"; between a talking head and B-roll a dissolve or a short push reads cleanest. Never put one on every beat unless asked.
+- Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
 
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
@@ -111,7 +116,21 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     color: z.enum(['black', 'white']).optional()
   }),
   z.object({ op: z.literal('jcut'), beats: z.array(z.string()), sec: z.number() }),
-  z.object({ op: z.literal('lcut'), beats: z.array(z.string()), sec: z.number() })
+  z.object({ op: z.literal('lcut'), beats: z.array(z.string()), sec: z.number() }),
+  z.object({
+    op: z.literal('speed'),
+    beats: z.array(z.string()),
+    speed: z.number(),
+    ramp: z.object({ inSec: z.number(), outSec: z.number() }).nullable().optional(),
+    of: z.enum(['beat', 'cutaway']).optional()
+  }),
+  z.object({ op: z.literal('freeze'), beat: z.string(), word: z.string(), sec: z.number() }),
+  z.object({
+    op: z.literal('reverse'),
+    beats: z.array(z.string()),
+    on: z.boolean(),
+    of: z.enum(['beat', 'cutaway']).optional()
+  })
 ])
 
 export const PlanSchema = z.object({
@@ -193,7 +212,14 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
       t.zoom > 1.001 ? `zoom ${t.zoom.toFixed(2)}` : null,
       t.bigWord ? `big word ${t.bigWord}` : null,
       beat.transition ? `comes in with ${beat.transition.kind} ${seconds(beat.transition.sec)}` : null,
-      beat.splitEdit ? `${beat.splitEdit.kind.toUpperCase()} cut in, ${seconds(beat.splitEdit.sec)}` : null
+      beat.splitEdit ? `${beat.splitEdit.kind.toUpperCase()} cut in, ${seconds(beat.splitEdit.sec)}` : null,
+      t.speed !== undefined || t.ramp ? `speed ${describeSpeed(t.speed ?? 1, t.ramp)}` : null,
+      t.broll && (t.broll.speed !== undefined || t.broll.ramp)
+        ? `cutaway speed ${describeSpeed(t.broll.speed ?? 1, t.broll.ramp)}`
+        : null,
+      t.freeze ? `freezes on ${t.freeze.word} for ${seconds(t.freeze.sec)}` : null,
+      t.reverse ? 'backwards' : null,
+      t.broll?.reverse ? 'cutaway backwards' : null
     ]
       .filter(Boolean)
       .join(', ')

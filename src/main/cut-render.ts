@@ -2,8 +2,15 @@ import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import { basename, join } from 'path'
 import {
+  cutawayAt,
+  cutawayClock,
+  cutawaySteps,
+  outToSrc,
   pictureSpan,
+  sliceSteps,
+  srcLength,
   transitionInfo,
+  type SpeedStep,
   type Aspect,
   type CaptionSpec,
   type Cut,
@@ -16,6 +23,7 @@ import {
 import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
+import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
 
 /**
  * Renders a resolved cut: the renderer of record for an edit document.
@@ -51,23 +59,37 @@ export interface RenderSource extends Source {
 /** One input stretch and how it should look. */
 export interface Segment {
   path: string
+  /** Where the sound starts in the source. */
   startSec: number
+  /** How long the segment plays on the output clock. */
   durationSec: number
   hasAudio: boolean
   /** Null plays the input as it is, already conformed (a chunk from an earlier pass). */
   treatment: Treatment | null
-  /** Cutaway footage for this stretch, when the beat shows one. */
-  broll: { path: string; startSec: number } | null
+  /**
+   * Cutaway footage for this stretch, when the beat shows one: the stretch of
+   * it read from startSec, with its own speed if it has one, played backwards
+   * from the far end of that stretch, or held on its frame at startSec.
+   */
+  broll: { path: string; startSec: number; steps?: SpeedStep[]; reverse?: boolean; hold?: boolean } | null
   /** Where the segment starts on the output clock. Absent: straight after the one before, less any transition. */
   outStart?: number
   /** Comes in over the segment before: the two overlap by `sec`, picture and sound. */
   transition?: { kind: TransitionKind; sec: number }
   /**
    * The picture's own stretch, when a J or L cut has moved it off the
-   * sound's: where it starts in the source, how long it runs, and where it
+   * sound's: where it starts in the source, how long it plays, and where it
    * starts on the output clock. The fields above are then the sound's.
    */
-  picture?: { startSec: number; durationSec: number; outStart: number }
+  picture?: { startSec: number; durationSec: number; outStart: number; srcSec?: number; steps?: SpeedStep[] }
+  /** Source seconds the sound reads, when speed makes it differ from durationSec. */
+  srcSec?: number
+  /** Speed, sound and picture, in playing order. Absent plays as recorded. */
+  steps?: SpeedStep[]
+  /** Played backwards. */
+  reverse?: boolean
+  /** A freeze frame: the frame at startSec held for durationSec, silent. */
+  hold?: boolean
 }
 
 export type Quality = 'preview' | 'final' | 'intermediate'
@@ -102,6 +124,9 @@ const even = (n: number): number => Math.max(2, Math.round(n / 2) * 2)
 
 /** Stills are looped rather than seeked. */
 const STILL = /\.(png|jpe?g|webp|gif|bmp)$/i
+
+/** How much is read to find the one frame a freeze holds. */
+const HOLD_READ_SEC = 0.5
 
 /** The ground a card sits on: Cutalong's own, so cards read as part of the edit. */
 const CARD_GROUND = 'F5F5F3'
@@ -166,8 +191,6 @@ export function captionStyleFor(
 /** The inputs for each resolved piece, with its beat's look. */
 export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[]): Segment[] {
   const beats = new Map(cut.beats.map((b) => [b.id, b]))
-  // A cutaway runs from when its beat's picture starts, which a J or L cut moves.
-  const starts = new Map(resolved.beats.map((b) => [b.id, b.pictureStart ?? b.outStart]))
   const bySource = new Map(sources.map((s) => [s.id, s]))
   return resolved.pieces.map((p) => {
     const beat = beats.get(p.beat)
@@ -176,22 +199,58 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
     const t = beat.treatment
     const showsCutaway = (t.frame === 'broll' || t.frame === 'split' || t.frame === 'card') && t.broll !== null
     const picture = pictureSpan(p)
-    const offset = picture.outStart - (starts.get(p.beat) ?? picture.outStart)
+    const srcSec = p.srcEnd - p.srcStart
     const segment: Segment = {
       path: source.path,
       startSec: p.srcStart,
-      durationSec: p.srcEnd - p.srcStart,
+      durationSec: p.outEnd - p.outStart,
       hasAudio: source.hasAudio,
       treatment: t,
-      broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null,
+      broll: null,
       outStart: p.outStart
+    }
+    if (Math.abs(srcSec - segment.durationSec) > 1e-9) segment.srcSec = srcSec
+    if (p.steps) segment.steps = p.steps
+    if (p.reverse) segment.reverse = true
+    if (p.hold !== undefined) {
+      segment.hold = true
+      // The frame showing at that moment, as a player shows it: the last to
+      // start at or before it. Seeking finds the first at or after, so the
+      // seek starts just under a frame earlier. Never past the last frame.
+      const frame = 1 / Math.max(1, source.fps)
+      let at = Math.max(0, p.srcStart - frame + 0.001)
+      if (source.durationSec > 0.2) at = Math.min(at, source.durationSec - 0.1)
+      segment.startSec = at
     }
     if (p.transition) segment.transition = p.transition
     if (p.picture) {
+      // The picture keeps its piece's clock past either end, at the end's speed.
+      const steps = p.steps ?? [{ srcSec, speed: 1 }]
       segment.picture = {
         startSec: p.picture.srcStart,
-        durationSec: p.picture.srcEnd - p.picture.srcStart,
-        outStart: p.picture.outStart
+        durationSec: p.picture.outEnd - p.picture.outStart,
+        outStart: p.picture.outStart,
+        srcSec: p.picture.srcEnd - p.picture.srcStart,
+        steps: p.steps ? sliceSteps(steps, p.picture.srcStart - p.srcStart, p.picture.srcEnd - p.srcStart) : undefined
+      }
+    }
+    if (showsCutaway && t.broll) {
+      // A cutaway runs on its own clock from when its beat's picture starts,
+      // at its own speed, held by a freeze like everything else on screen.
+      const shows = picture.outEnd - picture.outStart
+      const clock = cutawayClock(resolved, p.beat, picture.outStart) ?? { offset: 0, length: shows, held: false }
+      const at = cutawayAt(t.broll, clock.length, clock.offset)
+      const steps = cutawaySteps(t.broll, clock.length)
+      if (p.hold !== undefined) {
+        segment.broll = { path: t.broll.path, startSec: at.srcSec, hold: true }
+      } else {
+        const sliced = steps
+          ? sliceSteps(steps, outToSrc(steps, clock.offset), outToSrc(steps, clock.offset + shows))
+          : undefined
+        const reads = sliced ? srcLength(sliced) : shows
+        segment.broll = { path: t.broll.path, startSec: t.broll.reverse ? Math.max(0, at.srcSec - reads) : at.srcSec }
+        if (sliced) segment.broll.steps = sliced
+        if (t.broll.reverse) segment.broll.reverse = true
       }
     }
     return segment
@@ -268,59 +327,149 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const base = Math.round(spans[0].outStart * fps)
   const frameAt = (sec: number): number => Math.round(sec * fps) - base
   const framesOf = (k: number): number => Math.max(1, frameAt(pics[k].outEnd) - frameAt(pics[k].outStart))
-  /** A picture made exactly `frames` long: held on its last frame if it runs short, cut if it runs long. */
-  const exactly = (frames: number): string =>
-    `tpad=stop_mode=clone:stop_duration=1,trim=end_frame=${frames},setpts=PTS-STARTPTS,settb=1/${fps}`
+  /**
+   * A picture made exactly `frames` long: held on its last frame if it runs
+   * short, cut if it runs long. A freeze is one frame held for `padSec`.
+   */
+  const exactly = (frames: number, padSec = 1): string =>
+    `tpad=stop_mode=clone:stop_duration=${fixed(padSec)},trim=end_frame=${frames},setpts=PTS-STARTPTS,settb=1/${fps}`
+
+  /** Retimes a picture through its speed steps, on a clock that starts at zero. */
+  const retime = (steps: SpeedStep[] | undefined): string =>
+    changesSpeed(steps) ? `setpts=PTS-STARTPTS,${speedPts(steps)},` : ''
+
+  /** Labels n..1 down to 0: slices played backwards join latest first. */
+  const latestFirst = (n: number, prefix: string): string =>
+    Array.from({ length: n }, (_, i) => `[${prefix}${n - 1 - i}]`).join('')
+
+  /**
+   * A stretch of a recording played backwards. Its inputs open now, as the
+   * sound may need them; its picture is built only when something shows it,
+   * since a filter whose output goes nowhere stops the graph. Each slice is
+   * brought to the frame rate and frame size before the reverse filter holds
+   * it, which keeps what it holds small.
+   */
+  const backwards = (
+    path: string,
+    start: number,
+    len: number,
+    name: string
+  ): { inputs: number[]; slices: { start: number; len: number }[]; picture: () => string } => {
+    const slices = reverseSlices(start, len)
+    const inputs = slices.map((sl) => input(path, sl.start, sl.len))
+    let built = false
+    const picture = (): string => {
+      if (!built) {
+        built = true
+        inputs.forEach((n, i) =>
+          chains.push(
+            `${sourcePicture(n)}setpts=PTS-STARTPTS,fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=increase,reverse[${name}r${i}]`
+          )
+        )
+        chains.push(
+          `${latestFirst(inputs.length, `${name}r`)}concat=n=${inputs.length}:v=1:a=0,setpts=PTS-STARTPTS[${name}]`
+        )
+      }
+      return `[${name}]`
+    }
+    return { inputs, slices, picture }
+  }
 
   segments.forEach((s, k) => {
-    // One input covers both the sound and the picture; each is cut from it.
-    const pic = s.picture ?? { startSec: s.startSec, durationSec: s.durationSec }
-    const inStart = Math.min(s.startSec, pic.startSec)
-    const inEnd = Math.max(s.startSec + s.durationSec, pic.startSec + pic.durationSec)
-    const main = input(s.path, inStart, inEnd - inStart)
-    const split = inStart !== s.startSec || inEnd !== s.startSec + s.durationSec || pic.startSec !== s.startSec
-    const speaker = split
-      ? `${sourcePicture(main)}trim=start=${exact(pic.startSec - inStart)}:duration=${exact(pic.durationSec)},setpts=PTS-STARTPTS,`
-      : sourcePicture(main)
-    const showFor = pic.durationSec
     const v = `v${k}`
     const a = `a${k}`
     const t = s.treatment
-    const frames = exactly(framesOf(k))
+    const frames = exactly(framesOf(k), s.hold ? s.durationSec + 1 : 1)
+    // Source each side reads: as long as it plays, unless speed changes that.
+    const soundSrc = s.srcSec ?? s.durationSec
+    const pic = s.picture
+      ? { startSec: s.picture.startSec, srcSec: s.picture.srcSec ?? s.picture.durationSec, steps: s.picture.steps }
+      : { startSec: s.startSec, srcSec: soundSrc, steps: s.steps }
+    const showFor = s.picture ? s.picture.durationSec : s.durationSec
+
+    // The speaker: its picture ready for a look, built only if something
+    // shows it, and its sound cut from the same input, ready to be timed.
+    let speaker: () => string
+    let sound: string | null = null
+    if (s.hold) {
+      // A freeze: one frame, held. The sound waits, silent.
+      speaker = () => `${sourcePicture(input(s.path, s.startSec, HOLD_READ_SEC))}trim=end_frame=1,setpts=PTS-STARTPTS,`
+    } else if (s.reverse) {
+      const back = backwards(s.path, s.startSec, soundSrc, `${v}s`)
+      speaker = () => `${back.picture()}${retime(s.steps)}`
+      if (s.hasAudio) {
+        back.inputs.forEach((n, i) =>
+          chains.push(
+            `[${n}:a]asetpts=PTS-STARTPTS,apad,atrim=duration=${exact(back.slices[i].len)},areverse[${a}r${i}]`
+          )
+        )
+        chains.push(`${latestFirst(back.inputs.length, `${a}r`)}concat=n=${back.inputs.length}:v=0:a=1[${a}j]`)
+        sound = `[${a}j]`
+      }
+    } else {
+      // One input covers both the sound and the picture; each is cut from it.
+      const inStart = Math.min(s.startSec, pic.startSec)
+      const inEnd = Math.max(s.startSec + soundSrc, pic.startSec + pic.srcSec)
+      const main = input(s.path, inStart, inEnd - inStart)
+      const differs = (from: number, len: number): boolean =>
+        Math.abs(from - inStart) > 1e-9 || Math.abs(from + len - inEnd) > 1e-9
+      const cutPicture = differs(pic.startSec, pic.srcSec)
+        ? `trim=start=${exact(pic.startSec - inStart)}:duration=${exact(pic.srcSec)},setpts=PTS-STARTPTS,`
+        : ''
+      speaker = () => `${sourcePicture(main)}${cutPicture}${retime(pic.steps)}`
+      if (s.hasAudio) {
+        const cutSound = differs(s.startSec, soundSrc)
+          ? `atrim=start=${exact(s.startSec - inStart)}:duration=${exact(soundSrc)},asetpts=PTS-STARTPTS,`
+          : ''
+        sound = `[${main}:a]${cutSound}`
+      }
+    }
+
+    // The cutaway ready for a look: its stretch of footage, backwards or held
+    // as asked, through its own speed. A still simply shows for as long.
+    const cutaway = (): string => {
+      const b = s.broll as NonNullable<Segment['broll']>
+      if (STILL.test(b.path)) return sourcePicture(input(b.path, 0, showFor))
+      if (b.hold)
+        return `${sourcePicture(input(b.path, b.startSec, HOLD_READ_SEC))}trim=end_frame=1,setpts=PTS-STARTPTS,`
+      const reads = b.steps ? srcLength(b.steps) : showFor
+      if (b.reverse) return `${backwards(b.path, b.startSec, reads, `${v}c`).picture()}${retime(b.steps)}`
+      return `${sourcePicture(input(b.path, b.startSec, reads))}${retime(b.steps)}`
+    }
 
     if (t === null) {
-      chains.push(`${speaker}fps=${fps},setsar=1,format=yuv420p,${frames}[${v}]`)
+      chains.push(`${speaker()}fps=${fps},setsar=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'split') {
-      const b = input(s.broll.path, s.broll.startSec, showFor)
       const half = even(H / 2)
-      chains.push(`${sourcePicture(b)}${look(W, half, t, false)}[${v}t]`)
-      chains.push(`${speaker}${look(W, H - half, t, true)}[${v}b]`)
+      chains.push(`${cutaway()}${look(W, half, t, false)}[${v}t]`)
+      chains.push(`${speaker()}${look(W, H - half, t, true)}[${v}b]`)
       chains.push(`[${v}t][${v}b]vstack,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'card') {
       // A card: the picture centred on Cutalong's ground, at most 60% of the
       // frame, with the speaker's voice carrying on underneath.
-      const b = input(s.broll.path, s.broll.startSec, showFor)
       const box = even(Math.min(W, H) * 0.6)
       chains.push(`color=c=0x${CARD_GROUND}:s=${W}x${H}:r=${fps}:d=${fixed(showFor)}[${v}g]`)
       chains.push(
-        `${sourcePicture(b)}fps=${fps},scale=${box}:${box}:force_original_aspect_ratio=decrease,setsar=1${t.bw ? ',hue=s=0' : ''}[${v}i]`
+        `${cutaway()}fps=${fps},scale=${box}:${box}:force_original_aspect_ratio=decrease,setsar=1${t.bw ? ',hue=s=0' : ''}[${v}i]`
       )
       chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll) {
       // The cutaway fills the frame; the speaker's input is only heard.
-      const b = input(s.broll.path, s.broll.startSec, showFor)
-      chains.push(`${sourcePicture(b)}${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
+      chains.push(`${cutaway()}${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
     } else {
-      chains.push(`${speaker}${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
+      chains.push(`${speaker()}${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
     }
 
-    // Every segment's audio is exactly as long as its piece: padded with
-    // silence then trimmed, so the join never drifts out of sync.
-    const cutSound = split
-      ? `atrim=start=${exact(s.startSec - inStart)}:duration=${exact(s.durationSec)},asetpts=PTS-STARTPTS,`
-      : ''
+    // Every segment's audio is exactly as long as its piece: through its
+    // speed, which atempo changes without changing the pitch, then padded
+    // with silence and trimmed, so the join never drifts out of sync.
     const shape = `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${exact(s.durationSec)},asetpts=PTS-STARTPTS`
-    if (s.hasAudio) chains.push(`[${main}:a]${cutSound}${shape}[${a}]`)
+    if (sound !== null && changesSpeed(s.steps)) {
+      chains.push(`${sound}anull[${a}c]`)
+      chains.push(speedSound(s.steps, `${a}c`, `${a}t`, a))
+      sound = `[${a}t]`
+    }
+    if (sound !== null) chains.push(`${sound}${shape}[${a}]`)
     else chains.push(`anullsrc=r=48000:cl=stereo,${shape}[${a}]`)
   })
 
@@ -549,6 +698,14 @@ export interface RenderCutOptions {
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
 }
 
+/** How many inputs a segment opens: one per slice of anything played backwards, one for a cutaway. */
+export function inputsFor(s: Segment): number {
+  const speaker = s.reverse ? reverseSlices(s.startSec, s.srcSec ?? s.durationSec).length : 1
+  if (!s.broll) return speaker
+  const reads = s.broll.steps ? srcLength(s.broll.steps) : (s.picture?.durationSec ?? s.durationSec)
+  return speaker + (s.broll.reverse ? reverseSlices(s.broll.startSec, reads).length : 1)
+}
+
 /**
  * Splits segments into passes of at most maxInputs inputs. A pass only ever
  * ends before a hard cut: a transition needs both its sides in the same pass.
@@ -565,7 +722,7 @@ export function chunkSegments(segments: Segment[], maxInputs: number): Segment[]
   let current: Segment[] = []
   let used = 0
   for (const [k, s] of segments.entries()) {
-    const cost = s.broll ? 2 : 1
+    const cost = inputsFor(s)
     if (used + cost > maxInputs && current.length > 0 && clean(k)) {
       chunks.push(current)
       current = []
@@ -637,7 +794,7 @@ export async function renderCut(
     logo: opts.brand?.logo ?? null
   }
   const maxInputs = opts.maxInputs ?? 24
-  const inputsNeeded = segments.reduce((n, s) => n + (s.broll ? 2 : 1), 0)
+  const inputsNeeded = segments.reduce((n, s) => n + inputsFor(s), 0)
 
   if (inputsNeeded <= maxInputs) {
     await runRender(opts.ffmpeg, buildRenderArgs(segments, { ...base, ...finishing }), total, progress, opts.signal)

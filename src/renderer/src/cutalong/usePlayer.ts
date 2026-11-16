@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { continues, layersAt, nextPieceAfter, type Layer, type Resolved } from '../../../shared/edit'
+import {
+  continues,
+  layersAt,
+  nextPieceAfter,
+  pictureSpan,
+  pieceTime,
+  srcToOut,
+  type Layer,
+  type Resolved
+} from '../../../shared/edit'
 
 /**
  * Plays a cut straight off the source recordings, with no render.
@@ -10,6 +19,11 @@ import { continues, layersAt, nextPieceAfter, type Layer, type Resolved } from '
  * mixed the way layersAt says, which is how a dissolve or a whip can be
  * watched the moment it exists. A piece that carries straight on from the one
  * before in the same recording stays on the same element.
+ *
+ * A piece plays at its speed through playbackRate, which keeps the pitch the
+ * way the export's atempo does. A freeze frame is a paused element on its
+ * frame; a piece played backwards, which no video element can do, is stepped
+ * a frame at a time with its sound off.
  *
  * The clock follows the element that is loudest, so picture and sound never
  * part; while that element is seeking, or with no media at all (the browser
@@ -42,6 +56,11 @@ const IDLE: DeckView[] = [
 const DRIFT_SEC = 0.2
 /** A deck that has just taken a piece is moved only if it is further off than this; a cued one is not. */
 const TAKEOVER_SEC = 0.1
+/** Held or stepped backwards, a deck is moved whenever it is further off than this: under a frame. */
+const STEP_SEC = 0.02
+
+/** Browsers play from a sixteenth to sixteen times as fast. */
+const playbackRate = (rate: number): number => Math.min(16, Math.max(0.0625, rate))
 
 export function usePlayer(
   decks: RefObject<HTMLVideoElement>[],
@@ -136,10 +155,15 @@ export function usePlayer(
         if (!v) continue
         // Paused, every deck shows exactly its moment. Playing, a deck is only
         // moved when it has drifted, so a correction never stutters the picture.
-        place(d, r.pieces[l.piece].source, l.srcSec, run ? (fresh.has(d) ? TAKEOVER_SEC : DRIFT_SEC) : 0.01)
-        v.volume = Math.min(1, Math.max(0, l.volume))
-        if (run && v.paused) void v.play().catch(() => undefined)
-        if (!run && !v.paused) v.pause()
+        // A freeze and a piece played backwards are put on their frame each time.
+        const still = l.rate === 0 || !!l.reverse
+        const tolerance = still ? STEP_SEC : run ? (fresh.has(d) ? TAKEOVER_SEC : DRIFT_SEC) : 0.01
+        place(d, r.pieces[l.piece].source, l.srcSec, tolerance)
+        v.volume = still ? 0 : Math.min(1, Math.max(0, l.volume))
+        if (!still) v.playbackRate = playbackRate(l.rate ?? 1)
+        const runs = run && !still
+        if (runs && v.paused) void v.play().catch(() => undefined)
+        if (!runs && !v.paused) v.pause()
       }
 
       // The idle deck stops, falls silent, and waits on the next piece.
@@ -153,8 +177,10 @@ export function usePlayer(
         if (v && !v.paused) v.pause()
         if (v) v.volume = 0
         if (upcoming !== null && !carried) {
+          // Cued on the first frame it shows: backwards, that is its last.
+          const piece = r.pieces[upcoming]
           held.current[d] = upcoming
-          place(d, r.pieces[upcoming].source, r.pieces[upcoming].srcStart, 0.01)
+          place(d, piece.source, pieceTime(piece, pictureSpan(piece).outStart), 0.01)
         }
         next[d] = { piece: held.current[d], layer: null }
       }
@@ -198,9 +224,11 @@ export function usePlayer(
         for (const l of layersAt(r, now.current)) {
           const d = held.current.findIndex((p) => p === l.piece)
           const v = d >= 0 ? element(d) : null
-          if (!v || v.seeking || v.paused || v.readyState < 2) continue
+          if (!v || v.seeking || v.paused || v.readyState < 2 || l.rate === 0 || l.reverse) continue
+          // From where the recording is back to output time, through the piece's speed.
           const piece = r.pieces[l.piece]
-          const at = piece.outStart + (v.currentTime - piece.srcStart)
+          const along = v.currentTime - piece.srcStart
+          const at = piece.outStart + (piece.steps ? srcToOut(piece.steps, along) : along)
           if (!best || l.volume > best.volume) best = { t: at, volume: l.volume }
         }
         // Never backwards, and never far ahead of the wall clock.

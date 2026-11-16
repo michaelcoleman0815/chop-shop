@@ -1,5 +1,6 @@
 import { isFiller } from '../fillers'
 import type { Beat, Cut, Source, Word } from './schema'
+import { outLength, outToSrc, sliceSteps, srcToOut, stepsForSource, type SpeedStep } from './timing'
 import { MIN_TRANSITION_SEC, type TransitionKind } from './transitions'
 
 /**
@@ -52,6 +53,15 @@ export interface Piece {
    * wherever both play.
    */
   picture?: { srcStart: number; srcEnd: number; outStart: number; outEnd: number }
+  /**
+   * Its speed, as stretches of source each at one speed, in playing order.
+   * Absent plays as recorded, so outEnd - outStart is srcEnd - srcStart.
+   */
+  steps?: SpeedStep[]
+  /** Played backwards: the recording runs from srcEnd back to srcStart. */
+  reverse?: boolean
+  /** A freeze frame: the picture at srcStart (which equals srcEnd) holds this long, the sound silent. */
+  hold?: number
 }
 
 /** A J or L cut as it plays: the sound changes at `at`, the picture `sec` later (J) or earlier (L). */
@@ -174,17 +184,32 @@ interface Draft {
   words: number[]
   /** How this piece comes in over the one before, once boundaries are worked out. */
   transition?: { kind: TransitionKind; sec: number; asked: number }
+  /** Its speed, in playing order; absent plays as recorded. */
+  steps?: SpeedStep[]
+  /** Played backwards. */
+  reverse?: boolean
+  /** A freeze frame: the picture at srcStart held this long, the sound silent. */
+  hold?: number
 }
 
 /** Overlaps up to this long between neighbouring pieces are padding, not a deliberate repeat. */
 const MAX_SEAM_OVERLAP_SEC = 0.5
+
+const stepsOf = (d: { srcStart: number; srcEnd: number; steps?: SpeedStep[] }): SpeedStep[] =>
+  d.steps ?? [{ srcSec: d.srcEnd - d.srcStart, speed: 1 }]
+/** How long a draft plays for. */
+const playsFor = (d: Draft): number => d.hold ?? outLength(stepsOf(d))
+/** Whether a draft plays its recording forwards, so its words are heard and it has handles. */
+const forwards = (d: Draft): boolean => !d.reverse && d.hold === undefined
+const firstSpeed = (d: Draft): number => stepsOf(d)[0]?.speed ?? 1
+const lastSpeed = (d: Draft): number => stepsOf(d)[stepsOf(d).length - 1]?.speed ?? 1
 
 export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved {
   const index = indexWords(words)
   const bySource = new Map(sources.map((s) => [s.id, s]))
   const removed = new Set(cut.removed)
   const tighten = cut.tighten
-  const drafts: Draft[] = []
+  let drafts: Draft[] = []
 
   cut.beats.forEach((beat, beatIndex) => {
     const duration = bySource.get(beat.source)?.durationSec ?? Infinity
@@ -253,7 +278,11 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
     }
   }
 
-  const playing = drafts.filter((d) => d.srcEnd - d.srcStart >= MIN_PIECE_SEC)
+  drafts = freezeFrames(drafts, index)
+  drafts = playBackwards(drafts)
+  applySpeed(drafts)
+
+  const playing = drafts.filter((d) => d.hold !== undefined || d.srcEnd - d.srcStart >= MIN_PIECE_SEC)
   for (let i = 1; i < playing.length; i++) {
     const p = playing[i - 1]
     const q = playing[i]
@@ -275,8 +304,11 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
       srcStart: d.srcStart,
       srcEnd: d.srcEnd,
       outStart,
-      outEnd: outStart + (d.srcEnd - d.srcStart)
+      outEnd: outStart + playsFor(d)
     }
+    if (d.steps) piece.steps = d.steps
+    if (d.reverse) piece.reverse = true
+    if (d.hold !== undefined) piece.hold = d.hold
     if (d.transition) {
       piece.transition = { kind: d.transition.kind, sec: d.transition.sec }
       transitions.push({
@@ -299,10 +331,21 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
     }
     rb.outEnd = piece.outEnd
 
+    // Words are heard only where the recording plays forwards; backwards they
+    // are not words. A freeze has none of its own: the word it holds on stays
+    // on screen with the picture until it ends.
+    if (d.hold !== undefined) {
+      const held = out[out.length - 1]
+      if (held && held.beat === d.beat.id && Math.abs(held.outEnd - piece.outStart) < 0.05) held.outEnd = piece.outEnd
+      continue
+    }
+    if (!forwards(d)) continue
+    const steps = stepsOf(d)
     for (const i of d.words) {
       const w = index.words[i]
-      const outStart = clamp(piece.outStart + (w.startSec - piece.srcStart), piece.outStart, piece.outEnd)
-      const outEnd = clamp(piece.outStart + (w.endSec - piece.srcStart), outStart, piece.outEnd)
+      const at = (sec: number): number => piece.outStart + srcToOut(steps, sec - piece.srcStart)
+      const outStart = clamp(at(w.startSec), piece.outStart, piece.outEnd)
+      const outEnd = clamp(at(w.endSec), outStart, piece.outEnd)
       out.push({ id: w.id, text: w.text, beat: d.beat.id, outStart, outEnd })
       rb.words.push(w.id)
     }
@@ -336,25 +379,104 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
 }
 
 /**
- * Moves the picture's edit point between p and q by up to `sec`, and returns
- * how far it moved. A J cut runs p's picture on into q's sound; an L cut
- * starts q's picture under the end of p's. The picture can only show footage
- * the recording has, and each picture keeps a moment to itself.
+ * Splits a piece where a frozen word ends: the picture holds there for the
+ * freeze's length while the sound waits, then the beat carries on.
+ */
+function freezeFrames(drafts: Draft[], index: WordIndex): Draft[] {
+  const out: Draft[] = []
+  for (const d of drafts) {
+    const freeze = d.beat.treatment.freeze
+    const at = freeze ? index.pos.get(freeze.word) : undefined
+    const k = at === undefined ? -1 : d.words.indexOf(at)
+    if (!freeze || at === undefined || k < 0) {
+      out.push(d)
+      continue
+    }
+    const t = Math.min(d.srcEnd, Math.max(d.srcStart, index.words[at].endSec))
+    out.push({ ...d, srcEnd: t, words: d.words.slice(0, k + 1) })
+    out.push({ beat: d.beat, beatIndex: d.beatIndex, srcStart: t, srcEnd: t, words: [], hold: freeze.sec })
+    if (d.srcEnd - t >= MIN_PIECE_SEC) out.push({ ...d, srcStart: t, words: d.words.slice(k + 1) })
+  }
+  return out
+}
+
+/** A beat played backwards plays its pieces last to first, each one backwards. */
+function playBackwards(drafts: Draft[]): Draft[] {
+  const out: Draft[] = []
+  for (let i = 0; i < drafts.length; ) {
+    let j = i
+    while (j < drafts.length && drafts[j].beatIndex === drafts[i].beatIndex) j++
+    const group = drafts.slice(i, j)
+    if (group[0].beat.treatment.reverse) out.push(...group.reverse().map((d) => ({ ...d, reverse: true })))
+    else out.push(...group)
+    i = j
+  }
+  return out
+}
+
+/**
+ * Gives each piece of a sped-up beat its share of the beat's speed: one
+ * profile across everything the beat plays, so a ramp eases in at the beat's
+ * start and out at its end however many pieces strikes and tightening made.
+ */
+function applySpeed(drafts: Draft[]): void {
+  for (let i = 0; i < drafts.length; ) {
+    let j = i
+    while (j < drafts.length && drafts[j].beatIndex === drafts[i].beatIndex) j++
+    const t = drafts[i].beat.treatment
+    const speed = t.speed ?? 1
+    const ramped = !!t.ramp && (t.ramp.inSec > 0 || t.ramp.outSec > 0)
+    if (Math.abs(speed - 1) > 1e-6 || ramped) {
+      const group = drafts.slice(i, j).filter((d) => d.hold === undefined)
+      const total = group.reduce((n, d) => n + (d.srcEnd - d.srcStart), 0)
+      const profile = stepsForSource(total, speed, t.ramp)
+      let at = 0
+      for (const d of group) {
+        const len = d.srcEnd - d.srcStart
+        d.steps = sliceSteps(profile, at, at + len)
+        at += len
+      }
+    }
+    i = j
+  }
+}
+
+/** Lengthens a piece's first or last step by some source, as a handle does. */
+function extend(d: Draft, side: 'start' | 'end', srcSec: number): void {
+  if (!d.steps || srcSec <= 0) return
+  const steps = d.steps.map((s) => ({ ...s }))
+  const k = side === 'start' ? 0 : steps.length - 1
+  steps[k].srcSec += srcSec
+  d.steps = steps
+}
+
+/**
+ * Moves the picture's edit point between p and q by up to `sec` seconds of
+ * output, and returns how far it moved. A J cut runs p's picture on into q's
+ * sound; an L cut starts q's picture under the end of p's. The picture can
+ * only show footage the recording has, each picture keeps a moment to itself,
+ * and a piece played backwards or frozen keeps its edit point.
  */
 function moveEditPoint(p: Piece, q: Piece, kind: 'j' | 'l', sec: number, sources: Map<string, Source>): number {
+  if (p.reverse || q.reverse || p.hold !== undefined || q.hold !== undefined) return 0
   const pp = pictureSpan(p)
   const qq = pictureSpan(q)
+  const pSteps = stepsOf(p)
+  const qSteps = stepsOf(q)
   let move: number
   if (kind === 'j') {
     const footage = (sources.get(p.source)?.durationSec ?? pp.srcEnd) - pp.srcEnd
-    move = Math.min(sec, footage, qq.outEnd - qq.outStart - SOLO_SEC)
+    move = Math.min(sec, footage / (pSteps[pSteps.length - 1]?.speed ?? 1), qq.outEnd - qq.outStart - SOLO_SEC)
   } else {
-    move = Math.min(sec, qq.srcStart, pp.outEnd - pp.outStart - SOLO_SEC)
+    move = Math.min(sec, qq.srcStart / (qSteps[0]?.speed ?? 1), pp.outEnd - pp.outStart - SOLO_SEC)
   }
   if (!(move >= MIN_TRANSITION_SEC)) return 0
   const sign = kind === 'j' ? 1 : -1
-  p.picture = { ...pp, srcEnd: pp.srcEnd + sign * move, outEnd: pp.outEnd + sign * move }
-  q.picture = { ...qq, srcStart: qq.srcStart + sign * move, outStart: qq.outStart + sign * move }
+  const pEnd = pp.outEnd + sign * move
+  const qStart = qq.outStart + sign * move
+  // Both pictures keep to their own pieces' clocks, past the ends at the end speeds.
+  p.picture = { ...pp, outEnd: pEnd, srcEnd: p.srcStart + outToSrc(pSteps, pEnd - p.outStart) }
+  q.picture = { ...qq, outStart: qStart, srcStart: q.srcStart + outToSrc(qSteps, qStart - q.outStart) }
   return move
 }
 
@@ -366,27 +488,38 @@ function moveEditPoint(p: Piece, q: Piece, kind: 'j' | 'l', sec: number, sources
  * out. Handles never reach a word, kept or struck, so nothing cut comes back.
  * Where the handles run short, the overlap takes the silent margins of the two
  * pieces instead and the cut gets that much shorter; past those it would lay
- * words over each other, so the transition is shortened to fit.
+ * words over each other, so the transition is shortened to fit. Everything is
+ * measured in seconds of output, so a sped-up piece's handles count for what
+ * they play, not what they take from the recording.
  */
 function overlapAt(p: Draft, q: Draft, index: WordIndex, sources: Map<string, Source>): void {
   const asked = q.beat.transition?.sec ?? 0
   const kind = q.beat.transition?.kind
   if (!kind) return
-  const lenP = p.srcEnd - p.srcStart
-  const lenQ = q.srcEnd - q.srcStart
+  const lenP = playsFor(p)
+  const lenQ = playsFor(q)
+  const stepsP = stepsOf(p)
+  const stepsQ = stepsOf(q)
 
-  // Room past p's end: up to the next word in its recording, or the end of it.
+  // Room past p's end: up to the next word in its recording, or the end of
+  // it. A piece played backwards or frozen has no handle to give.
   const durationP = sources.get(p.beat.source)?.durationSec ?? p.srcEnd
   const lastP = p.words.length ? p.words[p.words.length - 1] : -1
-  const roomP = Math.max(0, (lastP >= 0 ? ceilingAfter(index, lastP, durationP) : durationP) - p.srcEnd)
+  const roomP = forwards(p)
+    ? Math.max(0, (lastP >= 0 ? ceilingAfter(index, lastP, durationP) : durationP) - p.srcEnd) / lastSpeed(p)
+    : 0
   // Room before q's start: back to the word before it, or the start.
   const firstQ = q.words.length ? q.words[0] : -1
-  const roomQ = Math.max(0, q.srcStart - (firstQ >= 0 ? floorBefore(index, firstQ) : 0))
+  const roomQ = forwards(q)
+    ? Math.max(0, q.srcStart - (firstQ >= 0 ? floorBefore(index, firstQ) : 0)) / firstSpeed(q)
+    : 0
 
   // The quiet inside each piece the overlap may cover: after p's last word,
-  // before q's first. A piece with no words is quiet all through.
-  const quietP = lastP >= 0 ? Math.max(0, p.srcEnd - index.words[lastP].endSec) : lenP
-  const quietQ = firstQ >= 0 ? Math.max(0, index.words[firstQ].startSec - q.srcStart) : lenQ
+  // before q's first. A piece with no words heard is quiet all through.
+  const quietP =
+    forwards(p) && lastP >= 0 ? Math.max(0, lenP - srcToOut(stepsP, index.words[lastP].endSec - p.srcStart)) : lenP
+  const quietQ =
+    forwards(q) && firstQ >= 0 ? Math.max(0, srcToOut(stepsQ, index.words[firstQ].startSec - q.srcStart)) : lenQ
   // p may already be overlapped at its head by the transition before it.
   const takenP = p.transition?.sec ?? 0
 
@@ -430,8 +563,13 @@ function overlapAt(p: Draft, q: Draft, index: WordIndex, sources: Map<string, So
   }
   const split = sec >= MIN_TRANSITION_SEC ? handles(sec) : null
   if (!split) return
-  p.srcEnd += split[0]
-  q.srcStart -= split[1]
+  // Handles are played at the speed of the ends they extend.
+  const srcP = split[0] * lastSpeed(p)
+  const srcQ = split[1] * firstSpeed(q)
+  p.srcEnd += srcP
+  extend(p, 'end', srcP)
+  q.srcStart -= srcQ
+  extend(q, 'start', srcQ)
   q.transition = { kind, sec, asked }
 }
 
@@ -456,7 +594,19 @@ export function sourceTimeAt(
     else hi = mid - 1
   }
   const piece = pieces[lo]
-  return { piece, index: lo, srcSec: piece.srcStart + (t - piece.outStart) }
+  return { piece, index: lo, srcSec: srcTimeAt(piece, t) }
+}
+
+/**
+ * Where a piece's recording is at an output time: through its speed, backwards
+ * if it plays backwards, still if it is a freeze. Before or after the piece,
+ * the speed at that end carries on, which is what a J or L cut shows.
+ */
+export function srcTimeAt(piece: Piece, outSec: number): number {
+  if (piece.hold !== undefined) return piece.srcStart
+  const steps = piece.steps ?? [{ srcSec: piece.srcEnd - piece.srcStart, speed: 1 }]
+  const along = outToSrc(steps, outSec - piece.outStart)
+  return piece.reverse ? piece.srcEnd - along : piece.srcStart + along
 }
 
 /** The beat playing at an output time. Inside a transition, the one coming in. */

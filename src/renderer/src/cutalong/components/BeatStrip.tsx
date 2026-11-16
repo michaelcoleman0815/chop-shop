@@ -18,6 +18,8 @@ export interface StripBeat {
   comesIn?: string | null
   /** A J or L cut into it, for the tooltip: "an L cut, 0.3 s". */
   splitEdit?: string | null
+  /** How it plays when not as recorded, for the tooltip: "at 2x", "cutaway backwards". */
+  plays?: string | null
 }
 
 export function BeatStrip({
@@ -76,7 +78,7 @@ export function BeatStrip({
             key={b.id}
             className={`cl-beat${b === now ? ' on' : ''}${b.bw ? ' bw' : ''}${b.comesIn ? ' joined' : ''}`}
             style={{ flexGrow: Math.max(0.05, b.end - b.start) }}
-            title={`${b.label} · ${clock(b.start)}${b.comesIn ? ` · comes in with ${b.comesIn}` : ''}${b.splitEdit ? ` · ${b.splitEdit}` : ''}`}
+            title={`${b.label} · ${clock(b.start)}${b.comesIn ? ` · comes in with ${b.comesIn}` : ''}${b.splitEdit ? ` · ${b.splitEdit}` : ''}${b.plays ? ` · ${b.plays}` : ''}`}
           >
             {b === now ? b.label : ''}
           </span>

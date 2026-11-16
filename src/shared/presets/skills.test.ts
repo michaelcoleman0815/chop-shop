@@ -108,6 +108,44 @@ describe('saying what a transition did', () => {
   })
 })
 
+describe('saying how beats play', () => {
+  const doc = talk([1, 1, 1, 1])
+  const broll = { path: '/broll/spin.mov', inSec: 0, muted: true }
+  const withCutaway = apply(doc, [{ op: 'treat', beats: ['b3'], set: { frame: 'broll', broll } }])
+  const say = (ops: unknown[], from: Cut = currentCut(doc)): string => {
+    const r = applyOps(from, ops, { words: doc.words, sources: doc.sources })
+    expect(r.rejected).toEqual([])
+    return describePlan(
+      r.applied,
+      resolveCut(from, doc.words, doc.sources),
+      resolveCut(r.cut, doc.words, doc.sources),
+      r.cut
+    )
+  }
+
+  it('reads speed on a beat and on its cutaway', () => {
+    expect(say([{ op: 'speed', beats: ['b2'], speed: 2 }])).toMatch(
+      /^Beat 2 plays at double speed\. It runs 0\.\d\d s shorter\.$/
+    )
+    expect(say([{ op: 'speed', beats: ['b2', 'b4'], speed: 1.5 }])).toBe(
+      'Two beats play at 1.5x. It runs 0:04, down from 0:05.'
+    )
+    expect(say([{ op: 'speed', beats: ['b3'], speed: 0.5, ramp: { inSec: 0.4, outSec: 0.4 } }], withCutaway)).toBe(
+      "Beat 3's cutaway eases into half speed and back."
+    )
+    const fast = apply(doc, [{ op: 'speed', beats: ['b2'], speed: 2 }])
+    expect(say([{ op: 'speed', beats: ['b2'], speed: 1 }], fast)).toMatch(/^Beat 2 plays as recorded again\./)
+  })
+
+  it('reads freeze frames and reverse', () => {
+    expect(say([{ op: 'freeze', beat: 'b2', word: 'w8', sec: 1.5 }])).toBe(
+      'Beat 2 holds on “end1” for 1.5 s. It runs 0:07, up from 0:05.'
+    )
+    expect(say([{ op: 'reverse', beats: ['b3'], on: true }], withCutaway)).toBe("Beat 3's cutaway plays backwards.")
+    expect(say([{ op: 'reverse', beats: ['b2'], on: true }])).toBe('Beat 2 plays backwards.')
+  })
+})
+
 describe('the skill commands', () => {
   it('are valid presets with names nothing else uses', () => {
     const names = new Set(BUILT_IN_PRESETS.map((p) => p.command))

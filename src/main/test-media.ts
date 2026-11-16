@@ -174,3 +174,29 @@ export function meanLevel(ffmpeg: string, path: string, startSec: number, durati
   const m = /mean_volume:\s*(-?\d+(?:\.\d+)?) dB/.exec(log)
   return m ? Number(m[1]) : -91
 }
+
+/**
+ * A recording of speech-like bursts: a 600 Hz tone during each word and
+ * silence between, over a plain picture, so every word's onset can be heard.
+ */
+export function makeBurstClip(
+  ffmpeg: string,
+  path: string,
+  words: { startSec: number; endSec: number }[],
+  durationSec: number,
+  size = '320x180'
+): string {
+  const gates = words.map((w) => `between(t,${w.startSec},${w.endSec})`).join('+')
+  return makeClip(
+    ffmpeg,
+    path,
+    `color=c=0x3a6ea5:s=${size}:r=30:d=${durationSec}`,
+    `aevalsrc=exprs='0.4*sin(2*PI*600*t)*(${gates})':s=48000:d=${durationSec}`
+  )
+}
+
+/** Where each sound starts after a silence, in seconds. */
+export function onsets(ffmpeg: string, path: string, noiseDb = -30, minSilenceSec = 0.08): number[] {
+  const log = decodeLog(ffmpeg, ['-i', path, '-map', '0:a:0', '-af', `silencedetect=n=${noiseDb}dB:d=${minSilenceSec}`])
+  return [...log.matchAll(/silence_end: (\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]))
+}

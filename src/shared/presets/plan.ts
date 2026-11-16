@@ -173,6 +173,11 @@ export function cutawayEdges(cut: Cut, way: 'into' | 'out' | 'both' = 'both'): s
     .map((b) => b.id)
 }
 
+/** Beats that show a cutaway: the product shots and screen recordings, where speed belongs. */
+export function cutawayBeats(cut: Cut): string[] {
+  return cut.beats.filter((b) => b.treatment.frame !== 'speaker' && b.treatment.broll).map((b) => b.id)
+}
+
 /**
  * Beats that start a new idea: after a sentence ends and the speaker paused
  * at least `pauseSec` in the recording, or anywhere a beat was moved out of
@@ -280,6 +285,63 @@ function describeSplitEdit(o: Extract<Op, { op: 'jcut' | 'lcut' }>, after: Resol
     : `${who}'s picture comes in ${seconds(sec)} early, under the sound before it${less}`
 }
 
+/** "beat 3" for one beat that plays, "three beats" for more. */
+function whoOf(ids: string[], after: Resolved): { who: string; one: boolean } {
+  const positions = ids
+    .map((id) => after.beats.find((b) => b.id === id)?.index)
+    .filter((i): i is number => i !== undefined)
+  const one = ids.length === 1 && positions.length === 1
+  return { who: one ? `beat ${positions[0] + 1}` : count(positions.length || ids.length, 'beat'), one }
+}
+
+/** Whether an op on a beat's speed or direction went to the cutaway it shows, by the op's own rule. */
+function onCutaway(o: { beats: string[]; of?: 'beat' | 'cutaway' }, cut: Cut | null): boolean {
+  if (o.of) return o.of === 'cutaway'
+  if (!cut) return false
+  return o.beats.every((id) => {
+    const t = cut.beats.find((b) => b.id === id)?.treatment
+    return !!t?.broll && t.frame !== 'speaker'
+  })
+}
+
+const SPEED_NAMES: [number, string][] = [
+  [2, 'double speed'],
+  [0.5, 'half speed'],
+  [0.25, 'quarter speed']
+]
+const speedName = (x: number): string =>
+  SPEED_NAMES.find(([v]) => Math.abs(v - x) < 1e-6)?.[1] ?? `${Number(x.toFixed(2))}x`
+
+/**
+ * "beat 3's cutaway eases into half speed and back", "two beats play at
+ * 1.5x", "beat 3 plays as recorded again".
+ */
+function describeSpeedOp(o: Extract<Op, { op: 'speed' }>, after: Resolved, cut: Cut | null): string {
+  const { who, one } = whoOf(o.beats, after)
+  const cutaway = onCutaway(o, cut)
+  const subject = cutaway ? (one ? `${who}'s cutaway` : `the cutaways in ${who}`) : who
+  const s = one ? 's' : ''
+  const eased = !!o.ramp && (o.ramp.inSec > 0 || o.ramp.outSec > 0)
+  if (Math.abs(o.speed - 1) < 1e-6 && !eased) return `${subject} play${s} as recorded again`
+  if (eased) return `${subject} ease${s} into ${speedName(o.speed)} and back`
+  return `${subject} play${s} at ${speedName(o.speed)}`
+}
+
+/** "beat 3 holds on “people” for 1.5 s". */
+function describeFreeze(o: Extract<Op, { op: 'freeze' }>, after: Resolved): string {
+  const { who } = whoOf([o.beat], after)
+  if (o.sec === 0) return `${who} no longer holds on a frame`
+  const word = after.words.find((w) => w.id === o.word)?.text.replace(/[^\p{L}\p{N}'’-]/gu, '')
+  return `${who} holds${word ? ` on “${word}”` : ''} for ${seconds(o.sec)}`
+}
+
+/** "beat 3's cutaway plays backwards", "beat 3 plays forwards again". */
+function describeReverse(o: Extract<Op, { op: 'reverse' }>, after: Resolved, cut: Cut | null): string {
+  const { who, one } = whoOf(o.beats, after)
+  const subject = onCutaway(o, cut) ? (one ? `${who}'s cutaway` : `the cutaways in ${who}`) : who
+  return `${subject} play${one ? 's' : ''} ${o.on ? 'backwards' : 'forwards again'}`
+}
+
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 const count = (n: number, one: string, many = `${one}s`): string => `${NUMBER_WORDS[n] ?? n} ${n === 1 ? one : many}`
 
@@ -294,7 +356,7 @@ function sentenceList(parts: string[]): string {
  * 0.4 s are cut, captions show two words at a time, and alternate shots punch
  * in. It runs 0:52, down from 1:04." Empty when nothing visible changed.
  */
-export function describePlan(ops: Op[], before: Resolved, after: Resolved): string {
+export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: Cut | null = null): string {
   const said: string[] = []
   const splits = ops.filter((o) => o.op === 'split').length
   const treat = ops.filter((o): o is Extract<Op, { op: 'treat' }> => o.op === 'treat')
@@ -333,6 +395,12 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved): stri
       said.push(describeTransition(o, after))
     } else if (o.op === 'jcut' || o.op === 'lcut') {
       said.push(describeSplitEdit(o, after))
+    } else if (o.op === 'speed') {
+      said.push(describeSpeedOp(o, after, cut))
+    } else if (o.op === 'freeze') {
+      said.push(describeFreeze(o, after))
+    } else if (o.op === 'reverse') {
+      said.push(describeReverse(o, after, cut))
     } else if (o.op === 'fade') {
       const ins = (o.inSec ?? 0) > 0
       const outs = (o.outSec ?? 0) > 0
@@ -357,7 +425,11 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved): stri
   text = text.charAt(0).toUpperCase() + text.slice(1)
   const delta = after.durationSec - before.durationSec
   if (Math.abs(delta) >= 0.5) {
-    const runs = `It runs ${clock(after.durationSec)}, ${delta < 0 ? 'down' : 'up'} from ${clock(before.durationSec)}.`
+    // Within the same second on the clock, the difference itself says more.
+    const same = clock(after.durationSec) === clock(before.durationSec)
+    const runs = same
+      ? `It runs ${seconds(Math.abs(delta))} ${delta < 0 ? 'shorter' : 'longer'}.`
+      : `It runs ${clock(after.durationSec)}, ${delta < 0 ? 'down' : 'up'} from ${clock(before.durationSec)}.`
     text = text ? `${text} ${runs}` : runs
   }
   return text

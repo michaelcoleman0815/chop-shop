@@ -113,11 +113,17 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         throw new OpError(`${op.at} is not inside ${beat.id}, or it is already its first word.`)
       }
       const bigAt = beat.treatment.bigWord === null ? undefined : ctx.index.pos.get(beat.treatment.bigWord)
+      // A freeze frame, like a big word, belongs to the half that holds its word.
+      const freezeAt = beat.treatment.freeze ? ctx.index.pos.get(beat.treatment.freeze.word) : undefined
       const head: Beat = {
         ...beat,
         to: ctx.index.words[s - 1].id,
         padOut: DEFAULT_PAD_OUT,
-        treatment: { ...beat.treatment, bigWord: bigAt !== undefined && bigAt < s ? beat.treatment.bigWord : null }
+        treatment: {
+          ...beat.treatment,
+          bigWord: bigAt !== undefined && bigAt < s ? beat.treatment.bigWord : null,
+          ...(freezeAt !== undefined ? { freeze: freezeAt < s ? beat.treatment.freeze : null } : {})
+        }
       }
       // The way the beat came in stays with its head; the tail carries straight on.
       const { transition: _in, splitEdit: _split, ...rest } = beat
@@ -126,7 +132,11 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         id: nextBeatId(cut),
         from: op.at,
         padIn: DEFAULT_PAD_IN,
-        treatment: { ...beat.treatment, bigWord: bigAt !== undefined && bigAt >= s ? beat.treatment.bigWord : null }
+        treatment: {
+          ...beat.treatment,
+          bigWord: bigAt !== undefined && bigAt >= s ? beat.treatment.bigWord : null,
+          ...(freezeAt !== undefined ? { freeze: freezeAt >= s ? beat.treatment.freeze : null } : {})
+        }
       }
       const beats = [...cut.beats]
       beats.splice(at, 1, head, tail)
@@ -232,6 +242,69 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
           op.kind === 'cut'
             ? { ...beat, ...(beats[i].splitEdit ? { splitEdit: beats[i].splitEdit } : {}) }
             : { ...beat, transition: { kind: op.kind, sec: op.sec ?? TRANSITION_INFO[op.kind].defaultSec } }
+      }
+      return { ...cut, beats }
+    }
+
+    case 'speed': {
+      const targets = op.beats.map((id) => findBeat(cut, id))
+      const beats = [...cut.beats]
+      const still = Math.abs(op.speed - 1) < 1e-6 && !(op.ramp && (op.ramp.inSec > 0 || op.ramp.outSec > 0))
+      for (const i of targets) {
+        const t = beats[i].treatment
+        // A beat showing a cutaway speeds the cutaway: the voice under it keeps its pace.
+        const of = op.of ?? (t.broll && t.frame !== 'speaker' ? 'cutaway' : 'beat')
+        if (of === 'cutaway') {
+          if (!t.broll) throw new OpError(`${beats[i].id} shows no cutaway to change the speed of.`)
+          const { speed: _s, ramp: _r, ...broll } = t.broll
+          beats[i] = {
+            ...beats[i],
+            treatment: { ...t, broll: still ? broll : { ...broll, speed: op.speed, ramp: op.ramp ?? null } }
+          }
+        } else {
+          const { speed: _s, ramp: _r, ...rest } = t
+          beats[i] = { ...beats[i], treatment: still ? rest : { ...rest, speed: op.speed, ramp: op.ramp ?? null } }
+        }
+      }
+      return { ...cut, beats }
+    }
+
+    case 'freeze': {
+      const i = findBeat(cut, op.beat)
+      const beat = cut.beats[i]
+      if (op.sec > 0) {
+        const p = ctx.index.pos.get(op.word)
+        if (beat.from === null || beat.to === null || p === undefined) {
+          throw new OpError(`${op.word} is not a word in ${beat.id}.`)
+        }
+        const [a, b] = beatRange(ctx, beat)
+        if (p < a || p > b) throw new OpError(`${op.word} is not a word in ${beat.id}.`)
+        if (cut.removed.includes(op.word)) throw new OpError(`${op.word} is struck, so there is nothing to freeze on.`)
+      }
+      const { freeze: _f, ...rest } = beat.treatment
+      const beats = [...cut.beats]
+      beats[i] = {
+        ...beat,
+        treatment: op.sec > 0 ? { ...rest, freeze: { word: op.word, sec: Math.max(0.1, op.sec) } } : rest
+      }
+      return { ...cut, beats }
+    }
+
+    case 'reverse': {
+      const targets = op.beats.map((id) => findBeat(cut, id))
+      const beats = [...cut.beats]
+      for (const i of targets) {
+        const t = beats[i].treatment
+        // Like speed: a beat showing a cutaway reverses the cutaway, not the voice under it.
+        const of = op.of ?? (t.broll && t.frame !== 'speaker' ? 'cutaway' : 'beat')
+        if (of === 'cutaway') {
+          if (!t.broll) throw new OpError(`${beats[i].id} shows no cutaway to play backwards.`)
+          const { reverse: _r, ...broll } = t.broll
+          beats[i] = { ...beats[i], treatment: { ...t, broll: op.on ? { ...broll, reverse: true } : broll } }
+        } else {
+          const { reverse: _r, ...rest } = t
+          beats[i] = { ...beats[i], treatment: op.on ? { ...rest, reverse: true } : rest }
+        }
       }
       return { ...cut, beats }
     }

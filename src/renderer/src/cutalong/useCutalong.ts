@@ -27,6 +27,7 @@ import {
 } from '../../../shared/assets'
 import {
   BUILT_IN_PRESETS,
+  cutawayBeats,
   cutawayEdges,
   describePlan,
   findPreset,
@@ -36,7 +37,15 @@ import {
   SKILL_PRESETS,
   type Preset
 } from '../../../shared/presets'
-import { DEFAULT_SPLIT_EDIT_SEC, MAX_SPLIT_EDIT_SEC, parseTransition, transitionInfo } from '../../../shared/edit'
+import {
+  DEFAULT_RAMP_SEC,
+  DEFAULT_SPLIT_EDIT_SEC,
+  MAX_SPEED,
+  MAX_SPLIT_EDIT_SEC,
+  MIN_SPEED,
+  parseTransition,
+  transitionInfo
+} from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
@@ -104,6 +113,38 @@ const ACTION_COMMANDS: Preset[] = [
     command: 'lcut',
     title: 'L cut',
     summary: 'Bring the next picture in under the last words: /lcut 0.3',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
+  {
+    command: 'speed',
+    title: 'Speed',
+    summary: 'Play a beat or its cutaway faster or slower: /speed 2, /speed 0.5 eased',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
+  {
+    command: 'ramp',
+    title: 'Speed ramp',
+    summary: 'Ease a cutaway into slow motion and back: /ramp, /ramp 0.3',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
+  {
+    command: 'freeze',
+    title: 'Freeze frame',
+    summary: 'Hold the picture on the word under the playhead: /freeze 1',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
+  {
+    command: 'reverse',
+    title: 'Reverse',
+    summary: 'Play a beat or its cutaway backwards: /reverse, /reverse off',
     builtIn: true,
     style: {},
     inspiration: null
@@ -346,8 +387,10 @@ export function useCutalong() {
       const before = resolveCut(currentCut(d), d.words, d.sources)
       const trial = applyOps(currentCut(d), ops, context)
       if (trial.applied.length === 0) return null
+      // Ops that leave the cut as it was make no version.
+      if (JSON.stringify(trial.cut) === JSON.stringify(currentCut(d))) return null
       const after = resolveCut(trial.cut, d.words, d.sources)
-      const summary = describePlan(trial.applied, before, after) || fallback
+      const summary = describePlan(trial.applied, before, after, trial.cut) || fallback
       const next = commit(d, trial.applied, summary, preset ? { preset } : {}).doc
       setDoc(next)
       return { summary, n: currentVersion(next).n }
@@ -672,15 +715,102 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /**
+   * /speed [x] [eased], /ramp [x], /reverse [off] and /freeze [seconds]. In
+   * the editor they act on the beat under the playhead, or on the cutaway it
+   * shows; /freeze holds on the word there. In the thread, speed and reverse
+   * go on every beat that shows a cutaway: the product, not the voice.
+   */
+  const timingCommand = useCallback(
+    (
+      command: 'speed' | 'ramp' | 'freeze' | 'reverse',
+      rest: string,
+      where: 'thread' | 'panel',
+      beat: string | null,
+      at: number | null
+    ): void => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can change how it plays.')
+        return
+      }
+      const cut = currentCut(d)
+      const off = /^(off|none|no|normal)$/i.test(rest.trim())
+      const n = /(\d+(?:\.\d+)?)/.exec(rest)
+      const speedOf = (fallback: number | null): number | null =>
+        off ? 1 : n ? Math.min(MAX_SPEED, Math.max(MIN_SPEED, Number(n[1]))) : fallback
+      let targets: string[]
+      if (where === 'panel' && beat) targets = [beat]
+      else if (command === 'freeze') {
+        say('Put the playhead on the word to hold in the editor and run /freeze there.')
+        return
+      } else {
+        targets = cutawayBeats(cut)
+        if (targets.length === 0) {
+          say(`There is no cutaway to change. Put the playhead on a beat in the editor and run /${command} there.`)
+          return
+        }
+      }
+
+      let ops: Op[]
+      if (command === 'speed' || command === 'ramp') {
+        const speed = speedOf(command === 'ramp' ? 0.5 : null)
+        if (speed === null) {
+          say('Say how fast: /speed 2 plays twice as fast, /speed 0.5 at half speed.')
+          return
+        }
+        const eased = command === 'ramp' || /\b(eased?|ramp(ed)?|smooth)\b/i.test(rest)
+        const ramp = eased && speed !== 1 ? { inSec: DEFAULT_RAMP_SEC, outSec: DEFAULT_RAMP_SEC } : null
+        ops = [{ op: 'speed', beats: targets, speed, ...(ramp ? { ramp } : {}) }]
+      } else if (command === 'reverse') {
+        ops = [{ op: 'reverse', beats: targets, on: !off }]
+      } else {
+        // The word playing at the playhead, or the last one heard before it.
+        const r = resolveCut(cut, d.words, d.sources)
+        const words = r.words.filter((w) => w.beat === beat)
+        const word = [...words].reverse().find((w) => w.outStart <= (at ?? 0) + 1e-6) ?? words[0]
+        if (!word) {
+          say('That beat has no word to hold on. Put the playhead on a beat with speech in it.')
+          return
+        }
+        const sec = off ? 0 : n ? Math.min(10, Math.max(0.1, Number(n[1]))) : 1
+        ops = [{ op: 'freeze', beat: targets[0], word: word.id, sec }]
+      }
+      const done = applyAsVersion(ops, 'It plays at a new speed.')
+      if (!done) {
+        // Nothing applied: say why, in the op's own words when it was refused.
+        const trial = applyOps(cut, ops, { words: d.words, sources: d.sources })
+        say(trial.rejected[0]?.reason ?? 'That is already how it plays.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   const runCommand = useCallback(
     async (
       command: string,
       where: 'thread' | 'panel' = 'thread',
       rest = '',
-      beat: string | null = null
+      beat: string | null = null,
+      at: number | null = null
     ): Promise<void> => {
       if (command === 'transition') {
         transitionCommand(rest, where, beat)
+        return
+      }
+      if (command === 'speed' || command === 'ramp' || command === 'freeze' || command === 'reverse') {
+        timingCommand(command, rest, where, beat, at)
         return
       }
       if (command === 'jcut' || command === 'lcut') {
@@ -725,7 +855,7 @@ export function useCutalong() {
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
-    [applyAsVersion, findBroll, findIcon, push, splitEditCommand, transitionCommand]
+    [applyAsVersion, findBroll, findIcon, push, splitEditCommand, timingCommand, transitionCommand]
   )
 
   const studyLink = useCallback(

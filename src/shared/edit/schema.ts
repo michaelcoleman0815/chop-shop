@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
   FadeSchema,
   MAX_SPLIT_EDIT_SEC,
@@ -47,7 +48,13 @@ export type Source = z.infer<typeof SourceSchema>
 export const BrollSchema = z.object({
   path: z.string().min(1),
   inSec: z.number().nonnegative(),
-  muted: z.boolean()
+  muted: z.boolean(),
+  /** The cutaway's own speed, under a voice that plays as recorded: a product spin slowed to 0.5. */
+  speed: z.number().min(MIN_SPEED).max(MAX_SPEED).optional(),
+  /** Easing into that speed and back. */
+  ramp: RampSchema.nullable().optional(),
+  /** Played backwards: a spin that turns the other way. */
+  reverse: z.boolean().optional()
 })
 export type Broll = z.infer<typeof BrollSchema>
 
@@ -63,7 +70,18 @@ export const TreatmentSchema = z.object({
   zoom: z.number().min(1).max(2),
   /** A word in this beat that lands big on screen, by id. */
   bigWord: z.string().nullable(),
-  broll: BrollSchema.nullable()
+  broll: BrollSchema.nullable(),
+  // Added later, so optional with no default: absent is the beat as recorded.
+  // (No defaults here: the treat op merges a partial of this schema, and zod
+  // would fill a default into every partial and reset the field.)
+  /** Playback speed of the whole beat, sound and picture: 2 is twice as fast. Pitch is kept. */
+  speed: z.number().min(MIN_SPEED).max(MAX_SPEED).optional(),
+  /** Easing from full speed into `speed` at the start, and back at the end. */
+  ramp: RampSchema.nullable().optional(),
+  /** A freeze frame: the picture holds where a word ends while the sound waits. */
+  freeze: FreezeSchema.nullable().optional(),
+  /** Played backwards, sound and picture. */
+  reverse: z.boolean().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -184,7 +202,24 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // Split edits into beats: sec 0 puts picture and sound back together.
   z.object({ op: z.literal('jcut'), beats: z.array(beatId).min(1), sec: z.number().min(0).max(MAX_SPLIT_EDIT_SEC) }),
-  z.object({ op: z.literal('lcut'), beats: z.array(beatId).min(1), sec: z.number().min(0).max(MAX_SPLIT_EDIT_SEC) })
+  z.object({ op: z.literal('lcut'), beats: z.array(beatId).min(1), sec: z.number().min(0).max(MAX_SPLIT_EDIT_SEC) }),
+  // Speed of a beat, or of the cutaway it shows; 1 with no ramp is as recorded.
+  z.object({
+    op: z.literal('speed'),
+    beats: z.array(beatId).min(1),
+    speed: z.number().min(MIN_SPEED).max(MAX_SPEED),
+    ramp: RampSchema.nullable().optional(),
+    of: z.enum(['beat', 'cutaway']).optional()
+  }),
+  // A freeze frame on a word; sec 0 removes it.
+  z.object({ op: z.literal('freeze'), beat: beatId, word: wordId, sec: z.number().min(0).max(10) }),
+  // Backwards, a beat or the cutaway it shows.
+  z.object({
+    op: z.literal('reverse'),
+    beats: z.array(beatId).min(1),
+    on: z.boolean(),
+    of: z.enum(['beat', 'cutaway']).optional()
+  })
 ])
 export type Op = z.infer<typeof OpSchema>
 export type OpName = Op['op']

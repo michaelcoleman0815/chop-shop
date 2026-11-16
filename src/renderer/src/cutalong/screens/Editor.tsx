@@ -4,6 +4,8 @@ import {
   beatLabel,
   beatWords,
   captionPages,
+  cutawayAt,
+  cutawayClock,
   currentCut,
   currentVersion,
   indexWords,
@@ -12,9 +14,17 @@ import {
   transitionInfo,
   type EditDoc,
   type Op,
-  type Resolved
+  type Resolved,
+  type Treatment
 } from '../../../../shared/edit'
-import { parseCommand, seconds, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
+import {
+  describeSpeed,
+  parseCommand,
+  seconds,
+  slashQuery,
+  suggestCommands,
+  type Preset
+} from '../../../../shared/presets'
 import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
@@ -67,7 +77,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         comesIn: kind ? transitionInfo(kind).label : null,
         splitEdit: splits.has(rb.id)
           ? `${splits.get(rb.id)!.kind === 'j' ? 'a J cut' : 'an L cut'}, ${seconds(splits.get(rb.id)!.sec)}`
-          : null
+          : null,
+        plays: playsAs(beat.treatment)
       }
     })
   }, [resolved, cut.beats, doc])
@@ -132,7 +143,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               onApply={app.applyOpsDirect}
             />
           ) : (
-            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} />
+            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} nowTime={player.time} presets={app.presets} />
           )}
         </div>
         <BeatStrip
@@ -248,6 +259,20 @@ function Preview({
   )
 }
 
+/** How a beat plays when not as recorded, in a few words: "at 2x", "cutaway backwards". */
+function playsAs(t: Treatment): string | null {
+  const parts = [
+    t.speed !== undefined || t.ramp ? `at ${describeSpeed(t.speed ?? 1, t.ramp)}` : null,
+    t.broll && (t.broll.speed !== undefined || t.broll.ramp)
+      ? `cutaway at ${describeSpeed(t.broll.speed ?? 1, t.broll.ramp)}`
+      : null,
+    t.freeze ? `holds ${seconds(t.freeze.sec)} on a frame` : null,
+    t.reverse ? 'backwards' : null,
+    t.broll?.reverse ? 'cutaway backwards' : null
+  ].filter(Boolean)
+  return parts.length ? parts.join(', ') : null
+}
+
 /**
  * One of the player's two video elements, drawn with the look of the beat it
  * holds and, inside a transition, its side of it. The element stays mounted
@@ -273,6 +298,9 @@ function Deck({
   const rb = piece ? resolved.beats.find((b) => b.id === piece.beat) : undefined
   const t = rb ? cut.beats[rb.index]?.treatment : undefined
   const style = deckStyle(view.layer)
+  // The cutaway runs on its own clock: its speed, its direction, held by a freeze.
+  const runs = rb && t?.broll ? cutawayClock(resolved, rb.id, time) : null
+  const at = runs && t?.broll ? cutawayAt(t.broll, runs.length, runs.offset) : null
   return (
     <div className="cl-deck" style={style.wrapper} data-dip={style.dip} aria-hidden={!view.layer}>
       <div className="cl-deck-picture" style={style.picture}>
@@ -285,11 +313,13 @@ function Deck({
             transform: t && t.zoom > 1.001 ? `scale(${t.zoom})` : undefined
           }}
         />
-        {view.layer && t?.broll && t.frame !== 'speaker' && (
+        {view.layer && t?.broll && t.frame !== 'speaker' && at && (
           <Cutaway
             frame={t.frame}
             path={t.broll.path}
-            offset={t.broll.inSec + (time - (rb?.pictureStart ?? rb?.outStart ?? 0))}
+            srcSec={at.srcSec}
+            rate={at.rate}
+            moving={!runs?.held && !t.broll.reverse}
             playing={playing}
             bw={t.bw}
           />
@@ -301,19 +331,27 @@ function Deck({
 
 /**
  * What a beat cuts to: B-roll over the whole frame, over the top half for a
- * split, or centred on a card. Video cutaways follow the playhead, correcting
- * only when they drift, so playback stays smooth.
+ * split, or centred on a card. A video cutaway plays at its own speed and
+ * follows the playhead, correcting only when it drifts, so playback stays
+ * smooth. Held by a freeze, or played backwards, which a video element
+ * cannot do, it is put on its frame each moment instead.
  */
 function Cutaway({
   frame,
   path,
-  offset,
+  srcSec,
+  rate,
+  moving,
   playing,
   bw
 }: {
   frame: string
   path: string
-  offset: number
+  /** Where the cutaway is in its footage now. */
+  srcSec: number
+  rate: number
+  /** False while it holds or plays backwards. */
+  moving: boolean
   playing: boolean
   bw: boolean
 }): JSX.Element {
@@ -322,10 +360,13 @@ function Cutaway({
   useEffect(() => {
     const v = ref.current
     if (!v) return
-    if (Math.abs(v.currentTime - offset) > 0.3) v.currentTime = Math.max(0, offset)
-    if (playing && v.paused) void v.play().catch(() => undefined)
-    if (!playing && !v.paused) v.pause()
-  }, [offset, playing])
+    const runs = playing && moving
+    // Browsers play from a sixteenth to sixteen times, and keep the pitch.
+    if (runs) v.playbackRate = Math.min(16, Math.max(0.0625, rate))
+    if (Math.abs(v.currentTime - srcSec) > (runs ? 0.3 : 0.02)) v.currentTime = Math.max(0, srcSec)
+    if (runs && v.paused) void v.play().catch(() => undefined)
+    if (!runs && !v.paused) v.pause()
+  }, [srcSec, rate, moving, playing])
   const src = mediaUrlFor(path)
   const style = bw ? { filter: 'grayscale(1)' } : undefined
   return (
@@ -343,11 +384,14 @@ function NotesPanel({
   app,
   doc,
   nowBeat,
+  nowTime,
   presets
 }: {
   app: Cutalong
   doc: EditDoc
   nowBeat: string | null
+  /** Where the playhead is, for commands that act on the word under it. */
+  nowTime: number
   presets: Preset[]
 }): JSX.Element {
   const version = currentVersion(doc)
@@ -408,7 +452,7 @@ function NotesPanel({
         presets={presets}
         onNote={(text) => {
           const command = parseCommand(text)
-          if (command) void app.runCommand(command.command, 'panel', command.rest, nowBeat)
+          if (command) void app.runCommand(command.command, 'panel', command.rest, nowBeat, nowTime)
           else app.addNote(text, nowBeat)
         }}
       />

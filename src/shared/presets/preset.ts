@@ -132,6 +132,16 @@ export function seconds(sec: number): string {
   return sec < 10 ? `${(Math.round(sec * 10) / 10).toFixed(1)} s` : `${Math.round(sec)} s`
 }
 
+/** A speed in words, with its ramp: "2x", "0.5x, easing in over 0.4 s and out over 0.4 s". */
+export function describeSpeed(speed: number, ramp?: { inSec: number; outSec: number } | null): string {
+  const x = `${Number(speed.toFixed(2))}x`
+  const eases = [
+    ramp && ramp.inSec > 0 ? `in over ${seconds(ramp.inSec)}` : null,
+    ramp && ramp.outSec > 0 ? `out over ${seconds(ramp.outSec)}` : null
+  ].filter(Boolean)
+  return eases.length ? `${x}, easing ${eases.join(' and ')}` : x
+}
+
 /** A running time as m:ss: 0:52, 1:04, 12:30. */
 export function clock(sec: number): string {
   const total = Math.max(0, Math.round(sec))

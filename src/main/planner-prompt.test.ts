@@ -129,6 +129,29 @@ describe('the planner request', () => {
     expect(renderRequest(after, '', [])).toContain('L cut in, 0.25 s')
   })
 
+  it('teaches speed, freeze frames and reverse, and every one of them applies', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    for (const op of ['speed', 'freeze', 'reverse']) expect(PLANNER_SYSTEM).toContain(`{"op":"${op}"`)
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'speed', beats: ['b1'], speed: 1.2 },
+        { op: 'speed', beats: ['b2'], speed: 0.5, ramp: { inSec: 0.4, outSec: 0.4 } },
+        { op: 'freeze', beat: 'b2', word: 'w7', sec: 1 },
+        { op: 'reverse', beats: ['b1'], on: true }
+      ],
+      summary: 'Beat 2 slows down.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    const text = renderRequest(after, '', [])
+    expect(text).toContain('speed 1.2x, backwards')
+    expect(text).toContain('speed 0.5x, easing in over 0.4 s and out over 0.4 s, freezes on w7 for 1.0 s')
+  })
+
   it('accepts a plan shaped like the instructions say', () => {
     const plan = {
       ops: [
