@@ -99,6 +99,7 @@ import { withHabits } from '../../../shared/learn/habits'
 import { clippingAsked, withDoc } from '../../../shared/clipping'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
+import { failureOf } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import {
   remember,
@@ -2823,8 +2824,10 @@ export function useCutalong() {
     try {
       const r = await during(() => api.renderCut({ doc: d, quality: 'final' }))
       if (!r.ok) {
-        patch(id, { progress: null, text: `I couldn't export v${n}. ${sentence(r.message)}`, error: true })
-        setToast({ text: r.message, error: true })
+        // ffmpeg's own lines go behind Details, never into the sentence or the toast.
+        const failed = failureOf(r.message)
+        patch(id, { progress: null, text: `I couldn't export v${n}. ${failed.text}`, details: failed.details, error: true })
+        setToast({ text: `I couldn't export v${n}. The chat says why.`, error: true })
         return
       }
       rememberKeep(d)

@@ -11,6 +11,7 @@ import {
   type ClipSet
 } from '../../../shared/clipping'
 import { sentence } from '../../../shared/edit'
+import { failureOf } from '../../../shared/failure'
 import type { Project, TranscriptWord } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
@@ -288,8 +289,10 @@ export function useClipping(deps: ClippingDeps) {
           off()
         }
         if (!r.ok) {
-          failed.push(`“${clip.title}”: ${sentence(r.message)}`)
-          setJobs((j) => ({ ...j, [clip.id]: { percent: null, error: r.ok ? undefined : r.message } }))
+          // A plain sentence, never ffmpeg's own lines (shared/failure).
+          const why = failureOf(r.message).text
+          failed.push(`“${clip.title}”: ${why}`)
+          setJobs((j) => ({ ...j, [clip.id]: { percent: null, error: why } }))
           continue
         }
         made.push(r.outputPath)
