@@ -106,6 +106,29 @@ describe('the planner request', () => {
     expect(text).toContain('fades in over 0.5 s and out over 1.0 s through black')
   })
 
+  it('teaches J and L cuts, and every one of them applies', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(PLANNER_SYSTEM).toContain('{"op":"jcut"')
+    expect(PLANNER_SYSTEM).toContain('{"op":"lcut"')
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'lcut', beats: ['b2'], sec: 0.3 },
+        { op: 'jcut', beats: ['b2'], sec: 0.4 },
+        { op: 'jcut', beats: ['b2'], sec: 0 },
+        { op: 'lcut', beats: ['b2'], sec: 0.25 }
+      ],
+      summary: 'Beat 2 comes in on an L cut.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    expect(dry.cut.beats[1].splitEdit).toEqual({ kind: 'l', sec: 0.25 })
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    expect(renderRequest(after, '', [])).toContain('L cut in, 0.25 s')
+  })
+
   it('accepts a plan shaped like the instructions say', () => {
     const plan = {
       ops: [

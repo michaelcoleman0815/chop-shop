@@ -86,6 +86,24 @@ export const TransitionSchema = z.object({
 })
 export type Transition = z.infer<typeof TransitionSchema>
 
+/** The longest a J or L cut moves the picture's edit point off the sound's. */
+export const MAX_SPLIT_EDIT_SEC = 3
+/** Seconds when nobody says how far: about nine frames, a beat a listener feels rather than notices. */
+export const DEFAULT_SPLIT_EDIT_SEC = 0.3
+
+/**
+ * A split edit, kept on the beat it brings in. The words stay where the cut
+ * puts them and only the picture's edit point moves: a J cut keeps the
+ * picture before running `sec` into this beat's sound (you hear the next line
+ * before you see it); an L cut brings this beat's picture in `sec` early,
+ * under the end of the sound before.
+ */
+export const SplitEditSchema = z.object({
+  kind: z.enum(['j', 'l']),
+  sec: z.number().min(MIN_TRANSITION_SEC).max(MAX_SPLIT_EDIT_SEC)
+})
+export type SplitEdit = z.infer<typeof SplitEditSchema>
+
 /** Fading the whole video in at the start and out at the end. */
 export const FadeSchema = z.object({
   inSec: z.number().min(0).max(5),

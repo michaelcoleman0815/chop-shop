@@ -2,6 +2,7 @@ import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import { basename, join } from 'path'
 import {
+  pictureSpan,
   transitionInfo,
   type Aspect,
   type CaptionSpec,
@@ -61,6 +62,12 @@ export interface Segment {
   outStart?: number
   /** Comes in over the segment before: the two overlap by `sec`, picture and sound. */
   transition?: { kind: TransitionKind; sec: number }
+  /**
+   * The picture's own stretch, when a J or L cut has moved it off the
+   * sound's: where it starts in the source, how long it runs, and where it
+   * starts on the output clock. The fields above are then the sound's.
+   */
+  picture?: { startSec: number; durationSec: number; outStart: number }
 }
 
 export type Quality = 'preview' | 'final' | 'intermediate'
@@ -159,7 +166,8 @@ export function captionStyleFor(
 /** The inputs for each resolved piece, with its beat's look. */
 export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[]): Segment[] {
   const beats = new Map(cut.beats.map((b) => [b.id, b]))
-  const starts = new Map(resolved.beats.map((b) => [b.id, b.outStart]))
+  // A cutaway runs from when its beat's picture starts, which a J or L cut moves.
+  const starts = new Map(resolved.beats.map((b) => [b.id, b.pictureStart ?? b.outStart]))
   const bySource = new Map(sources.map((s) => [s.id, s]))
   return resolved.pieces.map((p) => {
     const beat = beats.get(p.beat)
@@ -167,7 +175,8 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
     if (!beat || !source) throw new Error(`Piece of ${p.beat} has no beat or recording behind it.`)
     const t = beat.treatment
     const showsCutaway = (t.frame === 'broll' || t.frame === 'split' || t.frame === 'card') && t.broll !== null
-    const offset = p.outStart - (starts.get(p.beat) ?? p.outStart)
+    const picture = pictureSpan(p)
+    const offset = picture.outStart - (starts.get(p.beat) ?? picture.outStart)
     const segment: Segment = {
       path: source.path,
       startSec: p.srcStart,
@@ -178,6 +187,13 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
       outStart: p.outStart
     }
     if (p.transition) segment.transition = p.transition
+    if (p.picture) {
+      segment.picture = {
+        startSec: p.picture.srcStart,
+        durationSec: p.picture.srcEnd - p.picture.srcStart,
+        outStart: p.picture.outStart
+      }
+    }
     return segment
   })
 }
@@ -191,7 +207,7 @@ const fixed = (n: number): string => n.toFixed(3)
 /** Times that must land on a frame or a sample: microseconds, which ffmpeg reads exactly. */
 const exact = (n: number): string => n.toFixed(6)
 
-/** Where each segment sits on the output clock. */
+/** Where each segment's sound sits on the output clock. */
 export function segmentSpans(segments: Segment[]): { outStart: number; outEnd: number }[] {
   const spans: { outStart: number; outEnd: number }[] = []
   for (const s of segments) {
@@ -200,6 +216,25 @@ export function segmentSpans(segments: Segment[]): { outStart: number; outEnd: n
     spans.push({ outStart, outEnd: outStart + s.durationSec })
   }
   return spans
+}
+
+/** Where each segment's picture sits on the output clock: with its sound, unless a J or L cut moved it. */
+export function pictureSpans(
+  segments: Segment[],
+  spans = segmentSpans(segments)
+): { outStart: number; outEnd: number }[] {
+  return segments.map((s, k) =>
+    s.picture ? { outStart: s.picture.outStart, outEnd: s.picture.outStart + s.picture.durationSec } : spans[k]
+  )
+}
+
+/**
+ * An input's picture as it enters the graph, before anything else is done to
+ * it: the one place per-recording conversions belong, so every piece and
+ * cutaway gets them.
+ */
+function sourcePicture(input: number): string {
+  return `[${input}:v]`
 }
 
 /** The ffmpeg arguments for one pass over a list of segments. */
@@ -227,55 +262,70 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
 
   // Frames are counted on the clock the segments share, then made relative to
   // the first, so a chunk rounds exactly as the same stretch of the whole cut.
+  // Sound runs on its spans; picture on its own, which a J or L cut moves.
   const spans = segmentSpans(segments)
+  const pics = pictureSpans(segments, spans)
   const base = Math.round(spans[0].outStart * fps)
   const frameAt = (sec: number): number => Math.round(sec * fps) - base
-  const framesOf = (k: number): number => Math.max(1, frameAt(spans[k].outEnd) - frameAt(spans[k].outStart))
+  const framesOf = (k: number): number => Math.max(1, frameAt(pics[k].outEnd) - frameAt(pics[k].outStart))
   /** A picture made exactly `frames` long: held on its last frame if it runs short, cut if it runs long. */
   const exactly = (frames: number): string =>
     `tpad=stop_mode=clone:stop_duration=1,trim=end_frame=${frames},setpts=PTS-STARTPTS,settb=1/${fps}`
 
   segments.forEach((s, k) => {
-    const main = input(s.path, s.startSec, s.durationSec)
+    // One input covers both the sound and the picture; each is cut from it.
+    const pic = s.picture ?? { startSec: s.startSec, durationSec: s.durationSec }
+    const inStart = Math.min(s.startSec, pic.startSec)
+    const inEnd = Math.max(s.startSec + s.durationSec, pic.startSec + pic.durationSec)
+    const main = input(s.path, inStart, inEnd - inStart)
+    const split = inStart !== s.startSec || inEnd !== s.startSec + s.durationSec || pic.startSec !== s.startSec
+    const speaker = split
+      ? `${sourcePicture(main)}trim=start=${exact(pic.startSec - inStart)}:duration=${exact(pic.durationSec)},setpts=PTS-STARTPTS,`
+      : sourcePicture(main)
+    const showFor = pic.durationSec
     const v = `v${k}`
     const a = `a${k}`
     const t = s.treatment
     const frames = exactly(framesOf(k))
 
     if (t === null) {
-      chains.push(`[${main}:v]fps=${fps},setsar=1,format=yuv420p,${frames}[${v}]`)
+      chains.push(`${speaker}fps=${fps},setsar=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'split') {
-      const b = input(s.broll.path, s.broll.startSec, s.durationSec)
+      const b = input(s.broll.path, s.broll.startSec, showFor)
       const half = even(H / 2)
-      chains.push(`[${b}:v]${look(W, half, t, false)}[${v}t]`)
-      chains.push(`[${main}:v]${look(W, H - half, t, true)}[${v}b]`)
+      chains.push(`${sourcePicture(b)}${look(W, half, t, false)}[${v}t]`)
+      chains.push(`${speaker}${look(W, H - half, t, true)}[${v}b]`)
       chains.push(`[${v}t][${v}b]vstack,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'card') {
       // A card: the picture centred on Cutalong's ground, at most 60% of the
       // frame, with the speaker's voice carrying on underneath.
-      const b = input(s.broll.path, s.broll.startSec, s.durationSec)
+      const b = input(s.broll.path, s.broll.startSec, showFor)
       const box = even(Math.min(W, H) * 0.6)
-      chains.push(`color=c=0x${CARD_GROUND}:s=${W}x${H}:r=${fps}:d=${fixed(s.durationSec)}[${v}g]`)
+      chains.push(`color=c=0x${CARD_GROUND}:s=${W}x${H}:r=${fps}:d=${fixed(showFor)}[${v}g]`)
       chains.push(
-        `[${b}:v]fps=${fps},scale=${box}:${box}:force_original_aspect_ratio=decrease,setsar=1${t.bw ? ',hue=s=0' : ''}[${v}i]`
+        `${sourcePicture(b)}fps=${fps},scale=${box}:${box}:force_original_aspect_ratio=decrease,setsar=1${t.bw ? ',hue=s=0' : ''}[${v}i]`
       )
       chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll) {
-      const b = input(s.broll.path, s.broll.startSec, s.durationSec)
-      chains.push(`[${b}:v]${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
+      // The cutaway fills the frame; the speaker's input is only heard.
+      const b = input(s.broll.path, s.broll.startSec, showFor)
+      chains.push(`${sourcePicture(b)}${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
     } else {
-      chains.push(`[${main}:v]${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
+      chains.push(`${speaker}${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
     }
 
     // Every segment's audio is exactly as long as its piece: padded with
     // silence then trimmed, so the join never drifts out of sync.
+    const cutSound = split
+      ? `atrim=start=${exact(s.startSec - inStart)}:duration=${exact(s.durationSec)},asetpts=PTS-STARTPTS,`
+      : ''
     const shape = `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${exact(s.durationSec)},asetpts=PTS-STARTPTS`
-    if (s.hasAudio) chains.push(`[${main}:a]${shape}[${a}]`)
+    if (s.hasAudio) chains.push(`[${main}:a]${cutSound}${shape}[${a}]`)
     else chains.push(`anullsrc=r=48000:cl=stereo,${shape}[${a}]`)
   })
 
   // Runs of segments joined by hard cuts, and the transitions between runs.
-  const overlapFrames = (k: number): number => frameAt(spans[k - 1].outEnd) - frameAt(spans[k].outStart)
+  const overlapFrames = (k: number): number => frameAt(pics[k - 1].outEnd) - frameAt(pics[k].outStart)
   const runs: number[][] = []
   segments.forEach((s, k) => {
     if (runs.length === 0 || s.transition) runs.push([k])
@@ -350,7 +400,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     })
   }
 
-  const totalFrames = frameAt(spans[spans.length - 1].outEnd)
+  const totalFrames = frameAt(pics[pics.length - 1].outEnd)
   const totalSec = spans[spans.length - 1].outEnd - spans[0].outStart
 
   let vOut = 'vcat'
@@ -504,12 +554,19 @@ export interface RenderCutOptions {
  * ends before a hard cut: a transition needs both its sides in the same pass.
  */
 export function chunkSegments(segments: Segment[], maxInputs: number): Segment[][] {
+  const spans = segmentSpans(segments)
+  const pics = pictureSpans(segments, spans)
+  // A pass may end only where picture and sound cut at the same moment.
+  const clean = (k: number): boolean =>
+    !segments[k].transition &&
+    Math.abs(pics[k].outStart - spans[k].outStart) < 1e-6 &&
+    Math.abs(pics[k - 1].outEnd - spans[k - 1].outEnd) < 1e-6
   const chunks: Segment[][] = []
   let current: Segment[] = []
   let used = 0
-  for (const s of segments) {
+  for (const [k, s] of segments.entries()) {
     const cost = s.broll ? 2 : 1
-    if (used + cost > maxInputs && current.length > 0 && !s.transition) {
+    if (used + cost > maxInputs && current.length > 0 && clean(k)) {
       chunks.push(current)
       current = []
       used = 0

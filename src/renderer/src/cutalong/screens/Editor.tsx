@@ -14,7 +14,7 @@ import {
   type Op,
   type Resolved
 } from '../../../../shared/edit'
-import { parseCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
+import { parseCommand, seconds, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
 import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
@@ -54,6 +54,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const beats: StripBeat[] = useMemo(() => {
     const byId = new Map(cut.beats.map((b) => [b.id, b]))
     const into = new Map((resolved.transitions ?? []).map((t) => [t.beat, t.kind]))
+    const splits = new Map((resolved.splitEdits ?? []).map((s) => [s.beat, s]))
     return resolved.beats.map((rb) => {
       const beat = byId.get(rb.id)!
       const kind = into.get(rb.id)
@@ -63,7 +64,10 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         start: rb.outStart,
         end: rb.outEnd,
         bw: beat.treatment.bw,
-        comesIn: kind ? transitionInfo(kind).label : null
+        comesIn: kind ? transitionInfo(kind).label : null,
+        splitEdit: splits.has(rb.id)
+          ? `${splits.get(rb.id)!.kind === 'j' ? 'a J cut' : 'an L cut'}, ${seconds(splits.get(rb.id)!.sec)}`
+          : null
       }
     })
   }, [resolved, cut.beats, doc])
@@ -202,9 +206,19 @@ function Preview({
     <div className="cl-well" ref={well}>
       <div className="cl-frame" style={{ width: box.w, height: box.h }}>
         {mediaUrl ? (
-          views.map((view, d) => (
-            <Deck key={d} videoRef={decks[d]} view={view} doc={doc} resolved={resolved} time={time} playing={playing} />
-          ))
+          <div className="cl-decks">
+            {views.map((view, d) => (
+              <Deck
+                key={d}
+                videoRef={decks[d]}
+                view={view}
+                doc={doc}
+                resolved={resolved}
+                time={time}
+                playing={playing}
+              />
+            ))}
+          </div>
         ) : (
           <span className="cl-frame-empty" />
         )}
@@ -275,7 +289,7 @@ function Deck({
           <Cutaway
             frame={t.frame}
             path={t.broll.path}
-            offset={t.broll.inSec + (time - (rb?.outStart ?? 0))}
+            offset={t.broll.inSec + (time - (rb?.pictureStart ?? rb?.outStart ?? 0))}
             playing={playing}
             bw={t.bw}
           />

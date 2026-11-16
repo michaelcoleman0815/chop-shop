@@ -42,6 +42,9 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - {"op":"transition","beats":["b4"],"kind":"dissolve","sec":0.5}: how a beat comes in from the one before. Kinds: dissolve, dip-to-black, dip-to-white, flash, whip-left, whip-right, push-left, push-right, push-up, push-down, slide-left, slide-right, slide-up, slide-down, wipe-left, wipe-right, wipe-up, wipe-down, smooth-left, smooth-right, smooth-up, smooth-down, zoom, circle-open, circle-close, clock, doors-open, pixelate, blur, squeeze. sec is optional (0.04 to 3); leave it out for the usual length. The first beat has nothing before it, so it cannot have one.
 - {"op":"transition","beats":["b4","b7"],"kind":"cut"}: back to a hard cut.
 - {"op":"fade","inSec":0.5,"outSec":1,"color":"black"}: fade the whole video in from, and out to, black or white. 0 turns that end off.
+- {"op":"jcut","beats":["b5"],"sec":0.3}: a J cut into b5. Its sound starts on time but the picture before stays 0.3 s longer, so the next line is heard before it is seen. Coming back from B-roll to the speaker, this reads naturally.
+- {"op":"lcut","beats":["b5"],"sec":0.3}: an L cut into b5. Its picture comes in 0.3 s early, under the end of the sound before. Going into B-roll, the cutaway leads the words it shows.
+- {"op":"lcut","beats":["b5"],"sec":0}: picture and sound cut together again (also for jcut). A beat has a transition or a J or L cut, not both; setting one replaces the other.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ## How to edit
@@ -106,7 +109,9 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     inSec: z.number().optional(),
     outSec: z.number().optional(),
     color: z.enum(['black', 'white']).optional()
-  })
+  }),
+  z.object({ op: z.literal('jcut'), beats: z.array(z.string()), sec: z.number() }),
+  z.object({ op: z.literal('lcut'), beats: z.array(z.string()), sec: z.number() })
 ])
 
 export const PlanSchema = z.object({
@@ -187,7 +192,8 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
       t.bw ? 'bw' : null,
       t.zoom > 1.001 ? `zoom ${t.zoom.toFixed(2)}` : null,
       t.bigWord ? `big word ${t.bigWord}` : null,
-      beat.transition ? `comes in with ${beat.transition.kind} ${seconds(beat.transition.sec)}` : null
+      beat.transition ? `comes in with ${beat.transition.kind} ${seconds(beat.transition.sec)}` : null,
+      beat.splitEdit ? `${beat.splitEdit.kind.toUpperCase()} cut in, ${seconds(beat.splitEdit.sec)}` : null
     ]
       .filter(Boolean)
       .join(', ')

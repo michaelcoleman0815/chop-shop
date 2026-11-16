@@ -74,14 +74,20 @@ describe('what the preview plays', () => {
 
 describe('how a deck is drawn', () => {
   const at = (kind: TransitionKind, progress: number, side: 'in' | 'out'): ReturnType<typeof deckStyle> =>
-    deckStyle({ piece: 0, srcSec: 0, volume: 1, transition: { kind, side, progress } })
+    deckStyle({ piece: 0, srcSec: 0, volume: 1, visible: true, transition: { kind, side, progress } })
 
   it('hides an idle deck and leaves a playing one as it is', () => {
     expect(deckStyle(null).wrapper.visibility).toBe('hidden')
-    expect(deckStyle({ piece: 0, srcSec: 0, volume: 1, transition: null })).toEqual({
+    expect(deckStyle({ piece: 0, srcSec: 0, volume: 1, visible: true, transition: null })).toEqual({
       wrapper: { zIndex: 1 },
       picture: {}
     })
+  })
+
+  it('hides a deck whose sound plays under another picture', () => {
+    expect(deckStyle({ piece: 1, srcSec: 4, volume: 1, visible: false, transition: null }).wrapper.visibility).toBe(
+      'hidden'
+    )
   })
 
   it('fades a dissolve in on top', () => {

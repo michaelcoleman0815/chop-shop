@@ -775,12 +775,18 @@ button:disabled {
 }
 
 /* One recording's picture in the preview. Two take turns, and inside a
-   transition both show, styled per moment by deck-style.ts. */
+   transition both show, styled per moment by deck-style.ts. Their stacking
+   stays inside .cl-decks, so captions and big words always draw over them. */
+.cl-decks,
 .cl-deck,
 .cl-deck-picture {
   position: absolute;
   inset: 0;
   overflow: hidden;
+}
+
+.cl-decks {
+  isolation: isolate;
 }
 
 /* Inside a dip the outgoing picture fades through the dip's own colour. These

@@ -36,7 +36,7 @@ import {
   SKILL_PRESETS,
   type Preset
 } from '../../../shared/presets'
-import { parseTransition, transitionInfo } from '../../../shared/edit'
+import { DEFAULT_SPLIT_EDIT_SEC, MAX_SPLIT_EDIT_SEC, parseTransition, transitionInfo } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
@@ -88,6 +88,22 @@ const ACTION_COMMANDS: Preset[] = [
     command: 'transition',
     title: 'Transition',
     summary: 'Bring a beat in another way: /transition dissolve, /transition whip 0.3',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
+  {
+    command: 'jcut',
+    title: 'J cut',
+    summary: 'Hear the next line before you see it: /jcut 0.3',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
+  {
+    command: 'lcut',
+    title: 'L cut',
+    summary: 'Bring the next picture in under the last words: /lcut 0.3',
     builtIn: true,
     style: {},
     inspiration: null
@@ -599,6 +615,63 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /**
+   * /jcut and /lcut [seconds], or "off". In the editor they act on the beat
+   * under the playhead; in the thread, an L cut goes on every cut into B-roll,
+   * so the cutaway leads the words it shows, and a J cut on every cut back to
+   * the speaker, so their next line is heard before they are seen.
+   */
+  const splitEditCommand = useCallback(
+    (kind: 'jcut' | 'lcut', rest: string, where: 'thread' | 'panel', beat: string | null): void => {
+      const name = kind === 'jcut' ? 'J cut' : 'L cut'
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say(`Drop some footage first, then I can make a ${name} in it.`)
+        return
+      }
+      const off = /^(off|none|no|0+(\.0+)?)$/i.test(rest.trim())
+      const n = /(\d+(?:\.\d+)?)/.exec(rest)
+      const sec = off ? 0 : n ? Math.min(MAX_SPLIT_EDIT_SEC, Math.max(0.04, Number(n[1]))) : DEFAULT_SPLIT_EDIT_SEC
+      const cut = currentCut(d)
+      let targets: string[]
+      if (where === 'panel' && beat) {
+        if (cut.beats[0]?.id === beat) {
+          say('Beat 1 opens the video, so its sound and picture start together. Put the playhead on a later beat.')
+          return
+        }
+        targets = [beat]
+      } else {
+        targets = cutawayEdges(cut, kind === 'lcut' ? 'into' : 'out')
+        if (targets.length === 0) {
+          say(
+            kind === 'lcut'
+              ? 'There is no cut into B-roll to lead with the picture. Put the playhead on a beat in the editor and run /lcut there.'
+              : 'There is no cut back from B-roll to lead with the sound. Put the playhead on a beat in the editor and run /jcut there.'
+          )
+          return
+        }
+      }
+      const done = applyAsVersion([{ op: kind, beats: targets, sec }], `${name}s are in.`)
+      if (!done) {
+        say(
+          sec === 0 ? 'Those beats already cut picture and sound together.' : `That is already how those beats come in.`
+        )
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   const runCommand = useCallback(
     async (
       command: string,
@@ -608,6 +681,10 @@ export function useCutalong() {
     ): Promise<void> => {
       if (command === 'transition') {
         transitionCommand(rest, where, beat)
+        return
+      }
+      if (command === 'jcut' || command === 'lcut') {
+        splitEditCommand(command, rest, where, beat)
         return
       }
       if (ACTION_NAMES.has(command)) {
@@ -648,7 +725,7 @@ export function useCutalong() {
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
-    [applyAsVersion, findBroll, findIcon, push, transitionCommand]
+    [applyAsVersion, findBroll, findIcon, push, splitEditCommand, transitionCommand]
   )
 
   const studyLink = useCallback(

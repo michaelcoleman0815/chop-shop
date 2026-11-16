@@ -1,5 +1,13 @@
 import { z } from 'zod'
-import { FadeSchema, MAX_TRANSITION_SEC, MIN_TRANSITION_SEC, TRANSITION_KINDS, TransitionSchema } from './transitions'
+import {
+  FadeSchema,
+  MAX_SPLIT_EDIT_SEC,
+  MAX_TRANSITION_SEC,
+  MIN_TRANSITION_SEC,
+  SplitEditSchema,
+  TRANSITION_KINDS,
+  TransitionSchema
+} from './transitions'
 
 /**
  * The edit as data.
@@ -76,7 +84,9 @@ export const BeatSchema = z.object({
   padOut: z.number().min(0).max(1),
   treatment: TreatmentSchema,
   /** How this beat comes in from the one before. Absent is a hard cut. */
-  transition: TransitionSchema.optional()
+  transition: TransitionSchema.optional(),
+  /** A J or L cut into this beat: its picture and its sound change at different moments. */
+  splitEdit: SplitEditSchema.optional()
 })
 export type Beat = z.infer<typeof BeatSchema>
 
@@ -171,7 +181,10 @@ export const OpSchema = z.discriminatedUnion('op', [
     inSec: z.number().min(0).max(5).optional(),
     outSec: z.number().min(0).max(5).optional(),
     color: z.enum(['black', 'white']).optional()
-  })
+  }),
+  // Split edits into beats: sec 0 puts picture and sound back together.
+  z.object({ op: z.literal('jcut'), beats: z.array(beatId).min(1), sec: z.number().min(0).max(MAX_SPLIT_EDIT_SEC) }),
+  z.object({ op: z.literal('lcut'), beats: z.array(beatId).min(1), sec: z.number().min(0).max(MAX_SPLIT_EDIT_SEC) })
 ])
 export type Op = z.infer<typeof OpSchema>
 export type OpName = Op['op']

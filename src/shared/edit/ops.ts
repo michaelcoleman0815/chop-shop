@@ -1,5 +1,5 @@
 import { indexWords, type WordIndex } from './resolve'
-import { TRANSITION_INFO } from './transitions'
+import { MIN_TRANSITION_SEC, TRANSITION_INFO } from './transitions'
 import {
   DEFAULT_PAD_IN,
   DEFAULT_PAD_OUT,
@@ -120,7 +120,7 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         treatment: { ...beat.treatment, bigWord: bigAt !== undefined && bigAt < s ? beat.treatment.bigWord : null }
       }
       // The way the beat came in stays with its head; the tail carries straight on.
-      const { transition: _in, ...rest } = beat
+      const { transition: _in, splitEdit: _split, ...rest } = beat
       const tail: Beat = {
         ...rest,
         id: nextBeatId(cut),
@@ -226,11 +226,31 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       }
       const beats = [...cut.beats]
       for (const i of op.kind === 'cut' ? targets : into) {
-        const { transition: _old, ...beat } = beats[i]
+        // A beat comes in one way: a transition replaces a J or L cut.
+        const { transition: _old, splitEdit: _split, ...beat } = beats[i]
         beats[i] =
           op.kind === 'cut'
-            ? beat
+            ? { ...beat, ...(beats[i].splitEdit ? { splitEdit: beats[i].splitEdit } : {}) }
             : { ...beat, transition: { kind: op.kind, sec: op.sec ?? TRANSITION_INFO[op.kind].defaultSec } }
+      }
+      return { ...cut, beats }
+    }
+
+    case 'jcut':
+    case 'lcut': {
+      const targets = op.beats.map((id) => findBeat(cut, id))
+      const into = targets.filter((i) => i > 0)
+      if (op.sec > 0 && into.length === 0) {
+        throw new OpError(`Nothing comes before ${cut.beats[targets[0]].id}, so its sound and picture start together.`)
+      }
+      const beats = [...cut.beats]
+      for (const i of op.sec > 0 ? into : targets) {
+        // A J or L cut replaces a transition: the edit is one or the other.
+        const { transition: _old, splitEdit: _split, ...beat } = beats[i]
+        beats[i] =
+          op.sec > 0
+            ? { ...beat, splitEdit: { kind: op.op === 'jcut' ? 'j' : 'l', sec: Math.max(MIN_TRANSITION_SEC, op.sec) } }
+            : { ...beat, ...(beats[i].transition ? { transition: beats[i].transition } : {}) }
       }
       return { ...cut, beats }
     }

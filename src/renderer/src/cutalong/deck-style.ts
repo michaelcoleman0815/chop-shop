@@ -17,7 +17,8 @@ export interface DeckStyle {
 const pct = (n: number): string => `${Math.round(n * 1000) / 10}%`
 
 export function deckStyle(layer: Layer | null): DeckStyle {
-  if (!layer) return { wrapper: { visibility: 'hidden' }, picture: {} }
+  // An idle deck, or one whose sound plays under another's picture (a J or L cut).
+  if (!layer || !layer.visible) return { wrapper: { visibility: 'hidden' }, picture: {} }
   const t = layer.transition
   if (!t) return { wrapper: { zIndex: 1 }, picture: {} }
   const info = transitionInfo(t.kind)

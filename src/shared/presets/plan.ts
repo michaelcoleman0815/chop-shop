@@ -159,10 +159,18 @@ export function planStyle(doc: EditDoc, style: StyleSpec, from: Cut = currentCut
   return { ops, open }
 }
 
-/** The beats where the picture changes between the speaker and a cutaway, either way. */
-export function cutawayEdges(cut: Cut): string[] {
+/**
+ * The beats where the picture changes between the speaker and a cutaway:
+ * into a cutaway, back out of one, or either way.
+ */
+export function cutawayEdges(cut: Cut, way: 'into' | 'out' | 'both' = 'both'): string[] {
   const shows = (i: number): boolean => cut.beats[i].treatment.frame !== 'speaker'
-  return cut.beats.filter((_, i) => i > 0 && shows(i) !== shows(i - 1)).map((b) => b.id)
+  return cut.beats
+    .filter((_, i) => {
+      if (i === 0 || shows(i) === shows(i - 1)) return false
+      return way === 'both' || (way === 'into') === shows(i)
+    })
+    .map((b) => b.id)
 }
 
 /**
@@ -250,6 +258,28 @@ function describeTransition(o: Extract<Op, { op: 'transition' }>, after: Resolve
   return `${said}, ${seconds(sec)} long where more would lay words over each other`
 }
 
+/**
+ * "beat 5's sound comes in 0.3 s before its picture", "three beats come in on
+ * L cuts". Says so when there was less footage, or less beat, than asked.
+ */
+function describeSplitEdit(o: Extract<Op, { op: 'jcut' | 'lcut' }>, after: Resolved): string {
+  const positions = o.beats
+    .map((id) => after.beats.find((b) => b.id === id)?.index)
+    .filter((i): i is number => i !== undefined && i > 0)
+  const n = positions.length || o.beats.length
+  const one = n === 1 && positions.length === 1
+  const who = one ? `beat ${positions[0] + 1}` : count(n, 'beat')
+  if (o.sec === 0) return `${who}${one ? "'s" : ''} picture and sound cut together again`
+  const made = (after.splitEdits ?? []).filter((s) => o.beats.includes(s.beat))
+  const sec = made.length ? Math.min(...made.map((s) => s.sec)) : o.sec
+  const short = made.some((s) => s.sec < s.asked - 0.01)
+  const less = short ? ', as far as the footage and the beat allow' : ''
+  if (!one) return `${who} come in on ${o.op === 'jcut' ? 'J' : 'L'} cuts${less}`
+  return o.op === 'jcut'
+    ? `${who}'s sound comes in ${seconds(sec)} before its picture${less}`
+    : `${who}'s picture comes in ${seconds(sec)} early, under the sound before it${less}`
+}
+
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 const count = (n: number, one: string, many = `${one}s`): string => `${NUMBER_WORDS[n] ?? n} ${n === 1 ? one : many}`
 
@@ -301,6 +331,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved): stri
       said.push('a new line opens it')
     } else if (o.op === 'transition') {
       said.push(describeTransition(o, after))
+    } else if (o.op === 'jcut' || o.op === 'lcut') {
+      said.push(describeSplitEdit(o, after))
     } else if (o.op === 'fade') {
       const ins = (o.inSec ?? 0) > 0
       const outs = (o.outSec ?? 0) > 0

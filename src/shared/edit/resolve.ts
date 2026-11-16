@@ -45,6 +45,24 @@ export interface Piece {
    * than the previous piece's outEnd.
    */
   transition?: { kind: TransitionKind; sec: number }
+  /**
+   * Where the picture plays, when a J or L cut has moved its edit point off
+   * the sound's. The source and output spans above are the sound's; the
+   * picture runs on the same clock, so it stays in step with its own sound
+   * wherever both play.
+   */
+  picture?: { srcStart: number; srcEnd: number; outStart: number; outEnd: number }
+}
+
+/** A J or L cut as it plays: the sound changes at `at`, the picture `sec` later (J) or earlier (L). */
+export interface ResolvedSplitEdit {
+  beat: string
+  from: string
+  kind: 'j' | 'l'
+  sec: number
+  /** The length asked for. Longer than sec where there was not that much footage, or that much beat. */
+  asked: number
+  at: number
 }
 
 /** A transition as it plays: which beat comes in over which, and when. */
@@ -77,6 +95,8 @@ export interface ResolvedBeat {
   outEnd: number
   /** Kept words, by id. */
   words: string[]
+  /** When the beat's picture starts, if a J or L cut moved it off outStart. */
+  pictureStart?: number
 }
 
 export interface Resolved {
@@ -86,6 +106,13 @@ export interface Resolved {
   durationSec: number
   /** Every transition in playing order. Absent from results made before transitions existed. */
   transitions?: ResolvedTransition[]
+  /** Every J and L cut in playing order. */
+  splitEdits?: ResolvedSplitEdit[]
+}
+
+/** The span a piece's picture plays over: its own, unless a J or L cut moved it. */
+export function pictureSpan(piece: Piece): { srcStart: number; srcEnd: number; outStart: number; outEnd: number } {
+  return piece.picture ?? piece
 }
 
 /** Pieces shorter than this are dropped: a frame or two of nothing reads as a glitch. */
@@ -281,7 +308,54 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
     }
   }
 
-  return { pieces, beats, words: out, durationSec: clock, transitions }
+  // Split edits move the picture's edit point once the sound's is known.
+  const splitEdits: ResolvedSplitEdit[] = []
+  for (let i = 1; i < pieces.length; i++) {
+    const p = pieces[i - 1]
+    const q = pieces[i]
+    const beat = playing[i].beat
+    if (p.beat === q.beat || q.transition || !beat.splitEdit) continue
+    const done = moveEditPoint(p, q, beat.splitEdit.kind, beat.splitEdit.sec, bySource)
+    if (done > 0)
+      splitEdits.push({
+        beat: q.beat,
+        from: p.beat,
+        kind: beat.splitEdit.kind,
+        sec: done,
+        asked: beat.splitEdit.sec,
+        at: q.outStart
+      })
+  }
+  for (const rb of beats) {
+    const first = pieces.find((p) => p.beat === rb.id)
+    if (first?.picture && Math.abs(first.picture.outStart - first.outStart) > 1e-9)
+      rb.pictureStart = first.picture.outStart
+  }
+
+  return { pieces, beats, words: out, durationSec: clock, transitions, splitEdits }
+}
+
+/**
+ * Moves the picture's edit point between p and q by up to `sec`, and returns
+ * how far it moved. A J cut runs p's picture on into q's sound; an L cut
+ * starts q's picture under the end of p's. The picture can only show footage
+ * the recording has, and each picture keeps a moment to itself.
+ */
+function moveEditPoint(p: Piece, q: Piece, kind: 'j' | 'l', sec: number, sources: Map<string, Source>): number {
+  const pp = pictureSpan(p)
+  const qq = pictureSpan(q)
+  let move: number
+  if (kind === 'j') {
+    const footage = (sources.get(p.source)?.durationSec ?? pp.srcEnd) - pp.srcEnd
+    move = Math.min(sec, footage, qq.outEnd - qq.outStart - SOLO_SEC)
+  } else {
+    move = Math.min(sec, qq.srcStart, pp.outEnd - pp.outStart - SOLO_SEC)
+  }
+  if (!(move >= MIN_TRANSITION_SEC)) return 0
+  const sign = kind === 'j' ? 1 : -1
+  p.picture = { ...pp, srcEnd: pp.srcEnd + sign * move, outEnd: pp.outEnd + sign * move }
+  q.picture = { ...qq, srcStart: qq.srcStart + sign * move, outStart: qq.outStart + sign * move }
+  return move
 }
 
 /**

@@ -57,6 +57,8 @@ describe('where /transition goes', () => {
     const broll = { path: '/broll/spin.mov', inSec: 0, muted: true }
     const cut = apply(doc, [{ op: 'treat', beats: ['b2', 'b3'], set: { frame: 'broll', broll } }])
     expect(cutawayEdges(cut)).toEqual(['b2', 'b4'])
+    expect(cutawayEdges(cut, 'into')).toEqual(['b2'])
+    expect(cutawayEdges(cut, 'out')).toEqual(['b4'])
     expect(cutawayEdges(currentCut(doc))).toEqual([])
   })
 })
@@ -88,6 +90,16 @@ describe('saying what a transition did', () => {
     expect(say([{ op: 'transition', beats: ['b5'], kind: 'dissolve', sec: 1 }], split)).toMatch(
       /^Beat 3 comes in with a dissolve, 0\.\d+ s long where more would lay words over each other\.$/
     )
+  })
+
+  it('reads J and L cuts', () => {
+    expect(say([{ op: 'jcut', beats: ['b3'], sec: 0.3 }])).toBe("Beat 3's sound comes in 0.3 s before its picture.")
+    expect(say([{ op: 'lcut', beats: ['b2'], sec: 0.5 }])).toBe(
+      "Beat 2's picture comes in 0.5 s early, under the sound before it."
+    )
+    expect(say([{ op: 'lcut', beats: ['b2', 'b3', 'b4'], sec: 0.3 }])).toBe('Three beats come in on L cuts.')
+    const withOne = apply(doc, [{ op: 'jcut', beats: ['b2'], sec: 0.3 }])
+    expect(say([{ op: 'jcut', beats: ['b2'], sec: 0 }], withOne)).toBe("Beat 2's picture and sound cut together again.")
   })
 
   it('reads fades', () => {
