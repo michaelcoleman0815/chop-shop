@@ -774,6 +774,25 @@ button:disabled {
   background: linear-gradient(160deg, #2b2d34, #0d0e11);
 }
 
+/* One recording's picture in the preview. Two take turns, and inside a
+   transition both show, styled per moment by deck-style.ts. */
+.cl-deck,
+.cl-deck-picture {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Inside a dip the outgoing picture fades through the dip's own colour. These
+   are picture colours, as in the export, not interface colours. */
+.cl-deck[data-dip='black'] {
+  background: #000000;
+}
+
+.cl-deck[data-dip='white'] {
+  background: #ffffff;
+}
+
 .cl-caption {
   position: absolute;
   left: 8%;
@@ -1049,6 +1068,26 @@ button:disabled {
 
 .cl-beat.bw {
   background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgba(21, 22, 26, 0.07) 4px 5px);
+}
+
+/* A beat that comes in with a transition joins the one before it instead of
+   standing apart, so the strip reads a soft join where there is no cut. */
+.cl-beat.joined {
+  margin-left: -3px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background-image: linear-gradient(90deg, rgba(21, 22, 26, 0.14), transparent 12px);
+}
+
+.cl-beat.bw.joined {
+  background-image:
+    linear-gradient(90deg, rgba(21, 22, 26, 0.14), transparent 12px),
+    repeating-linear-gradient(135deg, transparent 0 4px, rgba(21, 22, 26, 0.07) 4px 5px);
+}
+
+.cl-beat:has(+ .cl-beat.joined) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .cl-playhead {

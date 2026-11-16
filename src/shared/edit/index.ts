@@ -1,4 +1,6 @@
 export * from './schema'
+export * from './transitions'
+export * from './playback'
 export * from './resolve'
 export * from './ops'
 export * from './doc'

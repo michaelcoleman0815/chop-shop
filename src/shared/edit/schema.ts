@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { FadeSchema, MAX_TRANSITION_SEC, MIN_TRANSITION_SEC, TRANSITION_KINDS, TransitionSchema } from './transitions'
 
 /**
  * The edit as data.
@@ -73,7 +74,9 @@ export const BeatSchema = z.object({
   /** Room kept before the first word and after the last, so cuts do not clip consonants. */
   padIn: z.number().min(0).max(1),
   padOut: z.number().min(0).max(1),
-  treatment: TreatmentSchema
+  treatment: TreatmentSchema,
+  /** How this beat comes in from the one before. Absent is a hard cut. */
+  transition: TransitionSchema.optional()
 })
 export type Beat = z.infer<typeof BeatSchema>
 
@@ -112,7 +115,13 @@ export const CutSchema = z.object({
   captions: CaptionSpecSchema,
   aspect: AspectSchema,
   /** Integrated loudness the master is set to, in LUFS. Null leaves the audio as recorded. */
-  loudness: z.number().min(-30).max(-6).nullable()
+  loudness: z.number().min(-30).max(-6).nullable(),
+
+  // What follows was added after the first docs were saved, so every field is
+  // optional: absent means the edit as it always was.
+
+  /** The whole video fading in at the start and out at the end. */
+  fade: FadeSchema.nullable().optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -149,7 +158,20 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('captions'), set: CaptionSpecSchema.partial() }),
   z.object({ op: z.literal('tighten'), set: TightenSpecSchema.nullable() }),
   z.object({ op: z.literal('aspect'), aspect: AspectSchema }),
-  z.object({ op: z.literal('loudness'), lufs: z.number().min(-30).max(-6).nullable() })
+  z.object({ op: z.literal('loudness'), lufs: z.number().min(-30).max(-6).nullable() }),
+  // How beats come in: a transition from the beat before, or 'cut' for a hard cut.
+  z.object({
+    op: z.literal('transition'),
+    beats: z.array(beatId).min(1),
+    kind: z.enum(['cut', ...TRANSITION_KINDS]),
+    sec: z.number().min(MIN_TRANSITION_SEC).max(MAX_TRANSITION_SEC).optional()
+  }),
+  z.object({
+    op: z.literal('fade'),
+    inSec: z.number().min(0).max(5).optional(),
+    outSec: z.number().min(0).max(5).optional(),
+    color: z.enum(['black', 'white']).optional()
+  })
 ])
 export type Op = z.infer<typeof OpSchema>
 export type OpName = Op['op']

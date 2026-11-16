@@ -14,6 +14,8 @@ export interface StripBeat {
   start: number
   end: number
   bw: boolean
+  /** How it comes in from the beat before, when that is not a hard cut: "a dissolve". */
+  comesIn?: string | null
 }
 
 export function BeatStrip({
@@ -32,8 +34,10 @@ export function BeatStrip({
   onSeek: (sec: number) => void
 }): JSX.Element {
   const track = useRef<HTMLDivElement>(null)
+  // Inside a transition two beats overlap; the one coming in is the one playing.
   const now =
-    beats.find((b) => time >= b.start && time < b.end) ?? (time >= duration ? beats[beats.length - 1] : undefined)
+    [...beats].reverse().find((b) => time >= b.start && time < b.end) ??
+    (time >= duration ? beats[beats.length - 1] : undefined)
 
   const seek = (e: MouseEvent): void => {
     const box = track.current?.getBoundingClientRect()
@@ -68,9 +72,9 @@ export function BeatStrip({
         {beats.map((b) => (
           <span
             key={b.id}
-            className={`cl-beat${b === now ? ' on' : ''}${b.bw ? ' bw' : ''}`}
+            className={`cl-beat${b === now ? ' on' : ''}${b.bw ? ' bw' : ''}${b.comesIn ? ' joined' : ''}`}
             style={{ flexGrow: Math.max(0.05, b.end - b.start) }}
-            title={`${b.label} · ${clock(b.start)}`}
+            title={`${b.label} · ${clock(b.start)}${b.comesIn ? ` · comes in with ${b.comesIn}` : ''}`}
           >
             {b === now ? b.label : ''}
           </span>

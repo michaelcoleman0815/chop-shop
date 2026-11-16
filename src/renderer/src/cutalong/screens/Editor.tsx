@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import {
+  beatAt,
   beatLabel,
   beatWords,
   captionPages,
@@ -8,6 +9,7 @@ import {
   indexWords,
   openNotes,
   resolveCut,
+  transitionInfo,
   type EditDoc,
   type Op,
   type Resolved
@@ -17,8 +19,9 @@ import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
 import { BeatStrip, type StripBeat } from '../components/BeatStrip'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
+import { deckStyle } from '../deck-style'
 import { clock } from '../format'
-import { usePlayer } from '../usePlayer'
+import { usePlayer, type DeckView } from '../usePlayer'
 import type { Cutalong, PanelStatus } from '../useCutalong'
 import { Header } from './Header'
 
@@ -32,21 +35,40 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const cut = currentCut(doc)
   const version = currentVersion(doc)
   const resolved = useMemo(() => resolveCut(cut, doc.words, doc.sources), [cut, doc.words, doc.sources])
-  const video = useRef<HTMLVideoElement>(null)
-  const player = usePlayer(video, resolved)
+  const deckA = useRef<HTMLVideoElement>(null)
+  const deckB = useRef<HTMLVideoElement>(null)
+  const decks = useMemo(() => [deckA, deckB], [])
+  // The first recording plays from the URL it was opened with; any other from its own path.
+  const urlFor = useCallback(
+    (id: string): string | null => {
+      if (!app.mediaUrl) return null
+      const source = doc.sources.find((s) => s.id === id)
+      if (!source) return null
+      return source.id === doc.sources[0].id ? app.mediaUrl : mediaUrlFor(source.path)
+    },
+    [app.mediaUrl, doc.sources]
+  )
+  const player = usePlayer(decks, resolved, urlFor)
   const [script, setScript] = useState(false)
 
   const beats: StripBeat[] = useMemo(() => {
     const byId = new Map(cut.beats.map((b) => [b.id, b]))
+    const into = new Map((resolved.transitions ?? []).map((t) => [t.beat, t.kind]))
     return resolved.beats.map((rb) => {
       const beat = byId.get(rb.id)!
-      return { id: rb.id, label: beatLabel(doc, beat), start: rb.outStart, end: rb.outEnd, bw: beat.treatment.bw }
+      const kind = into.get(rb.id)
+      return {
+        id: rb.id,
+        label: beatLabel(doc, beat),
+        start: rb.outStart,
+        end: rb.outEnd,
+        bw: beat.treatment.bw,
+        comesIn: kind ? transitionInfo(kind).label : null
+      }
     })
   }, [resolved, cut.beats, doc])
 
-  const nowBeat =
-    resolved.beats.find((b) => player.time >= b.outStart && player.time < b.outEnd) ??
-    resolved.beats[resolved.beats.length - 1]
+  const nowBeat = beatAt(resolved, player.time) ?? resolved.beats[resolved.beats.length - 1]
 
   // Space plays and pauses, unless someone is typing.
   useEffect(() => {
@@ -93,7 +115,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             resolved={resolved}
             time={player.time}
             playing={player.playing}
-            video={video}
+            decks={decks}
+            views={player.decks}
             mediaUrl={app.mediaUrl}
           />
           {script ? (
@@ -129,14 +152,16 @@ function Preview({
   resolved,
   time,
   playing,
-  video,
+  decks,
+  views,
   mediaUrl
 }: {
   doc: EditDoc
   resolved: Resolved
   time: number
   playing: boolean
-  video: React.RefObject<HTMLVideoElement>
+  decks: RefObject<HTMLVideoElement>[]
+  views: DeckView[]
   mediaUrl: string | null
 }): JSX.Element {
   const well = useRef<HTMLDivElement>(null)
@@ -161,7 +186,7 @@ function Preview({
     return () => ro.disconnect()
   }, [ratio])
 
-  const beat = resolved.beats.find((b) => time >= b.outStart && time < b.outEnd)
+  const beat = beatAt(resolved, time)
   const treatment = beat ? cut.beats[beat.index]?.treatment : undefined
   const pages = useMemo(
     () => captionPages(resolved, cut.captions.wordsPerScreen),
@@ -177,27 +202,11 @@ function Preview({
     <div className="cl-well" ref={well}>
       <div className="cl-frame" style={{ width: box.w, height: box.h }}>
         {mediaUrl ? (
-          <video
-            ref={video}
-            src={mediaUrl}
-            playsInline
-            preload="auto"
-            style={{
-              filter: treatment?.bw ? 'grayscale(1)' : undefined,
-              transform: treatment && treatment.zoom > 1.001 ? `scale(${treatment.zoom})` : undefined
-            }}
-          />
+          views.map((view, d) => (
+            <Deck key={d} videoRef={decks[d]} view={view} doc={doc} resolved={resolved} time={time} playing={playing} />
+          ))
         ) : (
           <span className="cl-frame-empty" />
-        )}
-        {treatment?.broll && treatment.frame !== 'speaker' && (
-          <Cutaway
-            frame={treatment.frame}
-            path={treatment.broll.path}
-            offset={treatment.broll.inSec + (time - (beat?.outStart ?? 0))}
-            playing={playing}
-            bw={treatment.bw}
-          />
         )}
         {showBig && big && (
           <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
@@ -219,6 +228,57 @@ function Preview({
               </span>
             ))}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One of the player's two video elements, drawn with the look of the beat it
+ * holds and, inside a transition, its side of it. The element stays mounted
+ * whichever piece it holds, so it never reloads between cuts.
+ */
+function Deck({
+  videoRef,
+  view,
+  doc,
+  resolved,
+  time,
+  playing
+}: {
+  videoRef: RefObject<HTMLVideoElement>
+  view: DeckView
+  doc: EditDoc
+  resolved: Resolved
+  time: number
+  playing: boolean
+}): JSX.Element {
+  const cut = currentCut(doc)
+  const piece = view.piece !== null ? resolved.pieces[view.piece] : undefined
+  const rb = piece ? resolved.beats.find((b) => b.id === piece.beat) : undefined
+  const t = rb ? cut.beats[rb.index]?.treatment : undefined
+  const style = deckStyle(view.layer)
+  return (
+    <div className="cl-deck" style={style.wrapper} data-dip={style.dip} aria-hidden={!view.layer}>
+      <div className="cl-deck-picture" style={style.picture}>
+        <video
+          ref={videoRef}
+          playsInline
+          preload="auto"
+          style={{
+            filter: t?.bw ? 'grayscale(1)' : undefined,
+            transform: t && t.zoom > 1.001 ? `scale(${t.zoom})` : undefined
+          }}
+        />
+        {view.layer && t?.broll && t.frame !== 'speaker' && (
+          <Cutaway
+            frame={t.frame}
+            path={t.broll.path}
+            offset={t.broll.inSec + (time - (rb?.outStart ?? 0))}
+            playing={playing}
+            bw={t.bw}
+          />
         )}
       </div>
     </div>
@@ -334,7 +394,7 @@ function NotesPanel({
         presets={presets}
         onNote={(text) => {
           const command = parseCommand(text)
-          if (command) void app.runCommand(command.command, 'panel', command.rest)
+          if (command) void app.runCommand(command.command, 'panel', command.rest, nowBeat)
           else app.addNote(text, nowBeat)
         }}
       />

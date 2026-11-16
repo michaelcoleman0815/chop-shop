@@ -1,7 +1,17 @@
 import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
-import { join } from 'path'
-import type { Aspect, CaptionSpec, Cut, Resolved, Source, Treatment } from '../shared/edit'
+import { basename, join } from 'path'
+import {
+  transitionInfo,
+  type Aspect,
+  type CaptionSpec,
+  type Cut,
+  type Fade,
+  type Resolved,
+  type Source,
+  type Treatment,
+  type TransitionKind
+} from '../shared/edit'
 import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
@@ -15,9 +25,19 @@ import { buildAss } from './captions'
  * black and white is hue=s=0, a punch-in is a centred crop scaled back up, a
  * cutaway swaps or stacks in the B-roll while the speaker's voice carries on.
  *
+ * Picture and sound are assembled as two tracks. Each piece's picture is cut
+ * to an exact number of frames, counted from where it lands on the output
+ * clock, so a long cut never drifts away from its captions; its sound is cut
+ * to the sample. Pieces joined by a hard cut are concatenated; a transition
+ * joins them with xfade and a matching acrossfade over exactly the overlap the
+ * resolver worked out. Every piece is conformed to one size, frame rate, pixel
+ * format, timebase, sample rate and layout first, which is what lets footage
+ * from different cameras and screen recorders join at all.
+ *
  * Opening a decoder per input costs memory, so a long cut renders in chunks
  * of at most maxInputs pieces to an intermediate file each, then joins them
  * in a last pass that adds captions and sets loudness once over the whole.
+ * Chunks only ever break at a hard cut, so no transition is split in two.
  *
  * No Electron imports: the binary and folders arrive as arguments, which is
  * what lets the tests render real files with the system ffmpeg.
@@ -37,6 +57,10 @@ export interface Segment {
   treatment: Treatment | null
   /** Cutaway footage for this stretch, when the beat shows one. */
   broll: { path: string; startSec: number } | null
+  /** Where the segment starts on the output clock. Absent: straight after the one before, less any transition. */
+  outStart?: number
+  /** Comes in over the segment before: the two overlap by `sec`, picture and sound. */
+  transition?: { kind: TransitionKind; sec: number }
 }
 
 export type Quality = 'preview' | 'final' | 'intermediate'
@@ -61,6 +85,8 @@ export interface GraphOptions {
   fontsDir: string | null
   /** Integrated loudness target in LUFS, or null to leave levels alone. */
   loudness: number | null
+  /** The whole video fading in and out, picture and sound. */
+  fade?: Fade | null
   quality: Quality
   outputPath: string
 }
@@ -142,14 +168,17 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
     const t = beat.treatment
     const showsCutaway = (t.frame === 'broll' || t.frame === 'split' || t.frame === 'card') && t.broll !== null
     const offset = p.outStart - (starts.get(p.beat) ?? p.outStart)
-    return {
+    const segment: Segment = {
       path: source.path,
       startSec: p.srcStart,
       durationSec: p.srcEnd - p.srcStart,
       hasAudio: source.hasAudio,
       treatment: t,
-      broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null
+      broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null,
+      outStart: p.outStart
     }
+    if (p.transition) segment.transition = p.transition
+    return segment
   })
 }
 
@@ -159,6 +188,19 @@ function filterPath(path: string): string {
 }
 
 const fixed = (n: number): string => n.toFixed(3)
+/** Times that must land on a frame or a sample: microseconds, which ffmpeg reads exactly. */
+const exact = (n: number): string => n.toFixed(6)
+
+/** Where each segment sits on the output clock. */
+export function segmentSpans(segments: Segment[]): { outStart: number; outEnd: number }[] {
+  const spans: { outStart: number; outEnd: number }[] = []
+  for (const s of segments) {
+    const prev = spans[spans.length - 1]
+    const outStart = s.outStart ?? (prev ? prev.outEnd - (s.transition?.sec ?? 0) : 0)
+    spans.push({ outStart, outEnd: outStart + s.durationSec })
+  }
+  return spans
+}
 
 /** The ffmpeg arguments for one pass over a list of segments. */
 export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string[] {
@@ -183,20 +225,31 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     return f
   }
 
+  // Frames are counted on the clock the segments share, then made relative to
+  // the first, so a chunk rounds exactly as the same stretch of the whole cut.
+  const spans = segmentSpans(segments)
+  const base = Math.round(spans[0].outStart * fps)
+  const frameAt = (sec: number): number => Math.round(sec * fps) - base
+  const framesOf = (k: number): number => Math.max(1, frameAt(spans[k].outEnd) - frameAt(spans[k].outStart))
+  /** A picture made exactly `frames` long: held on its last frame if it runs short, cut if it runs long. */
+  const exactly = (frames: number): string =>
+    `tpad=stop_mode=clone:stop_duration=1,trim=end_frame=${frames},setpts=PTS-STARTPTS,settb=1/${fps}`
+
   segments.forEach((s, k) => {
     const main = input(s.path, s.startSec, s.durationSec)
     const v = `v${k}`
     const a = `a${k}`
     const t = s.treatment
+    const frames = exactly(framesOf(k))
 
     if (t === null) {
-      chains.push(`[${main}:v]setsar=1,format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
+      chains.push(`[${main}:v]fps=${fps},setsar=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'split') {
       const b = input(s.broll.path, s.broll.startSec, s.durationSec)
       const half = even(H / 2)
       chains.push(`[${b}:v]${look(W, half, t, false)}[${v}t]`)
       chains.push(`[${main}:v]${look(W, H - half, t, true)}[${v}b]`)
-      chains.push(`[${v}t][${v}b]vstack,format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
+      chains.push(`[${v}t][${v}b]vstack,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll && t.frame === 'card') {
       // A card: the picture centred on Cutalong's ground, at most 60% of the
       // frame, with the speaker's voice carrying on underneath.
@@ -206,23 +259,99 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       chains.push(
         `[${b}:v]fps=${fps},scale=${box}:${box}:force_original_aspect_ratio=decrease,setsar=1${t.bw ? ',hue=s=0' : ''}[${v}i]`
       )
-      chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
+      chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll) {
       const b = input(s.broll.path, s.broll.startSec, s.durationSec)
-      chains.push(`[${b}:v]${look(W, H, t, false)},format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
+      chains.push(`[${b}:v]${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
     } else {
-      chains.push(`[${main}:v]${look(W, H, t, true)},format=yuv420p,setpts=PTS-STARTPTS[${v}]`)
+      chains.push(`[${main}:v]${look(W, H, t, true)},format=yuv420p,${frames}[${v}]`)
     }
 
     // Every segment's audio is exactly as long as its piece: padded with
     // silence then trimmed, so the join never drifts out of sync.
-    const shape = `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${fixed(s.durationSec)},asetpts=PTS-STARTPTS`
+    const shape = `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${exact(s.durationSec)},asetpts=PTS-STARTPTS`
     if (s.hasAudio) chains.push(`[${main}:a]${shape}[${a}]`)
     else chains.push(`anullsrc=r=48000:cl=stereo,${shape}[${a}]`)
   })
 
-  const pads = segments.map((_, k) => `[v${k}][a${k}]`).join('')
-  chains.push(`${pads}concat=n=${segments.length}:v=1:a=1[vcat][acat]`)
+  // Runs of segments joined by hard cuts, and the transitions between runs.
+  const overlapFrames = (k: number): number => frameAt(spans[k - 1].outEnd) - frameAt(spans[k].outStart)
+  const runs: number[][] = []
+  segments.forEach((s, k) => {
+    if (runs.length === 0 || s.transition) runs.push([k])
+    else runs[runs.length - 1].push(k)
+  })
+
+  // concat hands its output a microsecond timebase, and xfade refuses two
+  // pictures on different timebases, so every run is put back on frames.
+  const joinRun = (run: number[], name: { v: string; a: string }): void => {
+    if (run.length === 1) {
+      chains.push(`[v${run[0]}]null[${name.v}]`, `[a${run[0]}]anull[${name.a}]`)
+      return
+    }
+    chains.push(`${run.map((k) => `[v${k}]`).join('')}concat=n=${run.length}:v=1:a=0,settb=1/${fps}[${name.v}]`)
+    chains.push(`${run.map((k) => `[a${k}]`).join('')}concat=n=${run.length}:v=0:a=1[${name.a}]`)
+  }
+
+  if (runs.length === 1) {
+    joinRun(runs[0], { v: 'vcat', a: 'acat' })
+  } else {
+    let vAcc = ''
+    let aAcc = ''
+    runs.forEach((run, r) => {
+      const last = r === runs.length - 1
+      joinRun(run, { v: `vr${r}`, a: `ar${r}` })
+      if (r === 0) {
+        vAcc = `vr${r}`
+        aAcc = `ar${r}`
+        return
+      }
+      const k = run[0]
+      const kind = (segments[k].transition as { kind: TransitionKind }).kind
+      const info = transitionInfo(kind)
+      const offset = frameAt(spans[k].outStart) / fps
+      const duration = overlapFrames(k) / fps
+      const vOut = last ? 'vcat' : `vx${r}`
+      if (overlapFrames(k) < 1) {
+        // Shorter than a frame once both ends land on frames: the pictures
+        // simply cut, while the sound still crossfades below.
+        chains.push(`[${vAcc}][vr${r}]concat=n=2:v=1:a=0,settb=1/${fps}[${vOut}]`)
+      } else if (info.preview === 'dip') {
+        // A dip: the old picture is all the way to the colour by the middle,
+        // the new one comes up from it after, and a dissolve joins the two.
+        const half = exact(duration / 2)
+        const color = info.color ?? 'black'
+        chains.push(`[${vAcc}]fade=t=out:st=${exact(offset)}:d=${half}:color=${color}[vd${r}a]`)
+        chains.push(`[vr${r}]fade=t=in:st=${half}:d=${half}:color=${color}[vd${r}b]`)
+        chains.push(
+          `[vd${r}a][vd${r}b]xfade=transition=fade:duration=${exact(duration)}:offset=${exact(offset)}[${vOut}]`
+        )
+      } else if (info.preview === 'whip') {
+        // A whip pan is a fast push with motion blur across its middle.
+        chains.push(
+          `[${vAcc}][vr${r}]xfade=transition=${info.xfade}:duration=${exact(duration)}:offset=${exact(offset)}[vw${r}]`
+        )
+        const sigma = Math.max(4, Math.round(W / 40))
+        chains.push(
+          `[vw${r}]gblur=sigma=${sigma}:sigmaV=0:enable='between(t,${exact(offset + duration * 0.15)},${exact(offset + duration * 0.85)})'[${vOut}]`
+        )
+      } else {
+        chains.push(
+          `[${vAcc}][vr${r}]xfade=transition=${info.xfade}:duration=${exact(duration)}:offset=${exact(offset)}[${vOut}]`
+        )
+      }
+      // The sound crossfades over the same overlap, equal power so the room
+      // tone neither dips nor swells.
+      const aOut = last ? 'acat' : `ax${r}`
+      const overlap = spans[k - 1].outEnd - spans[k].outStart
+      chains.push(`[${aAcc}][ar${r}]acrossfade=d=${exact(overlap)}:c1=qsin:c2=qsin[${aOut}]`)
+      vAcc = vOut
+      aAcc = aOut
+    })
+  }
+
+  const totalFrames = frameAt(spans[spans.length - 1].outEnd)
+  const totalSec = spans[spans.length - 1].outEnd - spans[0].outStart
 
   let vOut = 'vcat'
   if (opts.assPath) {
@@ -233,8 +362,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   if (opts.logo) {
     // The logo is an image looped for the whole video, a seventh of the frame
     // wide, set in from its corner by about a twentieth.
-    const total = segments.reduce((n, s) => n + s.durationSec, 0)
-    const l = input(opts.logo.path, 0, total)
+    const l = input(opts.logo.path, 0, totalSec)
     const w = even(W * 0.14)
     const m = Math.round(W * 0.045)
     const x = opts.logo.corner.endsWith('right') ? `main_w-overlay_w-${m}` : String(m)
@@ -244,10 +372,34 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${vOut}][logo]overlay=x=${x}:y=${y}:shortest=1[vlogo]`)
     vOut = 'vlogo'
   }
+  const fade = opts.fade
+  if (fade && (fade.inSec > 0 || fade.outSec > 0)) {
+    // Last of all, so captions and the logo fade with the picture.
+    const parts: string[] = []
+    const videoSec = totalFrames / fps
+    if (fade.inSec > 0) parts.push(`fade=t=in:st=0:d=${exact(Math.min(fade.inSec, videoSec))}:color=${fade.color}`)
+    if (fade.outSec > 0) {
+      const d = Math.min(fade.outSec, videoSec)
+      parts.push(`fade=t=out:st=${exact(videoSec - d)}:d=${exact(d)}:color=${fade.color}`)
+    }
+    chains.push(`[${vOut}]${parts.join(',')}[vfade]`)
+    vOut = 'vfade'
+  }
+
   let aOut = 'acat'
   if (opts.loudness !== null) {
     chains.push(`[acat]loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000[aloud]`)
     aOut = 'aloud'
+  }
+  if (fade && (fade.inSec > 0 || fade.outSec > 0)) {
+    const parts: string[] = []
+    if (fade.inSec > 0) parts.push(`afade=t=in:st=0:d=${exact(Math.min(fade.inSec, totalSec))}`)
+    if (fade.outSec > 0) {
+      const d = Math.min(fade.outSec, totalSec)
+      parts.push(`afade=t=out:st=${exact(totalSec - d)}:d=${exact(d)}`)
+    }
+    chains.push(`[${aOut}]${parts.join(',')}[afade]`)
+    aOut = 'afade'
   }
 
   const encode =
@@ -347,6 +499,45 @@ export interface RenderCutOptions {
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
 }
 
+/**
+ * Splits segments into passes of at most maxInputs inputs. A pass only ever
+ * ends before a hard cut: a transition needs both its sides in the same pass.
+ */
+export function chunkSegments(segments: Segment[], maxInputs: number): Segment[][] {
+  const chunks: Segment[][] = []
+  let current: Segment[] = []
+  let used = 0
+  for (const s of segments) {
+    const cost = s.broll ? 2 : 1
+    if (used + cost > maxInputs && current.length > 0 && !s.transition) {
+      chunks.push(current)
+      current = []
+      used = 0
+    }
+    current.push(s)
+    used += cost
+  }
+  if (current.length > 0) chunks.push(current)
+  return chunks
+}
+
+/** Every file a render reads must be there; a missing one is named in a sentence before ffmpeg starts. */
+async function checkInputs(segments: Segment[], logo: LogoMark | null): Promise<void> {
+  const paths = new Set<string>()
+  for (const s of segments) {
+    paths.add(s.path)
+    if (s.broll) paths.add(s.broll.path)
+  }
+  if (logo) paths.add(logo.path)
+  for (const path of paths) {
+    try {
+      await fs.access(path)
+    } catch {
+      throw new Error(`I can't find ${basename(path)}. It was at ${path}.`)
+    }
+  }
+}
+
 /** Renders a cut to a file and returns its path. */
 export async function renderCut(
   cut: Cut,
@@ -360,6 +551,7 @@ export async function renderCut(
   const { width, height } = frameSize(cut.aspect, first, quality === 'preview')
   const fps = frameRate(first.fps)
   const segments = segmentsFor(cut, resolved, sources)
+  await checkInputs(segments, opts.brand?.logo ?? null)
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)
   await fs.mkdir(opts.workDir, { recursive: true })
@@ -379,45 +571,36 @@ export async function renderCut(
   }
 
   const base = { width, height, fps, fontsDir: opts.fontsDir ?? null }
+  const finishing = {
+    assPath,
+    loudness: cut.loudness,
+    fade: cut.fade ?? null,
+    quality,
+    outputPath: opts.outputPath,
+    logo: opts.brand?.logo ?? null
+  }
   const maxInputs = opts.maxInputs ?? 24
   const inputsNeeded = segments.reduce((n, s) => n + (s.broll ? 2 : 1), 0)
 
   if (inputsNeeded <= maxInputs) {
-    const args = buildRenderArgs(segments, {
-      ...base,
-      assPath,
-      loudness: cut.loudness,
-      quality,
-      outputPath: opts.outputPath,
-      logo: opts.brand?.logo ?? null
-    })
-    await runRender(opts.ffmpeg, args, total, progress, opts.signal)
+    await runRender(opts.ffmpeg, buildRenderArgs(segments, { ...base, ...finishing }), total, progress, opts.signal)
     return opts.outputPath
   }
 
   // Chunks first, each at most maxInputs inputs, then one join that adds the
   // captions and loudness across the whole thing. The chunks take most of the
   // time, so they get most of the progress bar.
-  const chunks: Segment[][] = []
-  let current: Segment[] = []
-  let used = 0
-  for (const s of segments) {
-    const cost = s.broll ? 2 : 1
-    if (used + cost > maxInputs && current.length > 0) {
-      chunks.push(current)
-      current = []
-      used = 0
-    }
-    current.push(s)
-    used += cost
-  }
-  if (current.length > 0) chunks.push(current)
-
+  const chunks = chunkSegments(segments, maxInputs)
+  const spans = segmentSpans(segments)
   const joined: Segment[] = []
   let done = 0
+  let at = 0
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]
-    const length = chunk.reduce((n, s) => n + s.durationSec, 0)
+    const from = spans[at]
+    const to = spans[at + chunk.length - 1]
+    at += chunk.length
+    const length = to.outEnd - from.outStart
     const path = join(opts.workDir, `chunk-${String(i).padStart(3, '0')}.mkv`)
     const args = buildRenderArgs(chunk, {
       ...base,
@@ -428,16 +611,17 @@ export async function renderCut(
     })
     await runRender(opts.ffmpeg, args, length, (f) => progress(((done + f * length) / total) * 0.8), opts.signal)
     done += length
-    joined.push({ path, startSec: 0, durationSec: length, hasAudio: true, treatment: null, broll: null })
+    joined.push({
+      path,
+      startSec: 0,
+      durationSec: length,
+      hasAudio: true,
+      treatment: null,
+      broll: null,
+      outStart: from.outStart
+    })
   }
-  const args = buildRenderArgs(joined, {
-    ...base,
-    assPath,
-    loudness: cut.loudness,
-    quality,
-    outputPath: opts.outputPath,
-    logo: opts.brand?.logo ?? null
-  })
+  const args = buildRenderArgs(joined, { ...base, ...finishing })
   await runRender(opts.ffmpeg, args, total, (f) => progress(0.8 + f * 0.2), opts.signal)
   return opts.outputPath
 }

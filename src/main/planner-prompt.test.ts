@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addNote, commit, createDoc, currentCut, wordsFromTranscript, OpSchema } from '../shared/edit'
+import { addNote, applyOps, commit, createDoc, currentCut, wordsFromTranscript, OpSchema } from '../shared/edit'
 import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript } from './planner-prompt'
 
 const source = { id: 's1', path: '/take.mov', durationSec: 12, width: 1080, height: 1920, fps: 30 }
@@ -73,6 +73,37 @@ describe('the planner request', () => {
       if (json.includes('...')) continue
       expect(OpSchema.safeParse(JSON.parse(json)).success, json).toBe(true)
     }
+  })
+
+  it('teaches transitions and fades, and every one of them applies', () => {
+    const doc = createDoc({
+      id: 'd',
+      title: 't',
+      source,
+      words: [...words, ...wordsFromTranscript([{ text: 'Done.', startSec: 6, endSec: 6.4 }], 's1', 'x')]
+    })
+    expect(PLANNER_SYSTEM).toContain('{"op":"transition"')
+    expect(PLANNER_SYSTEM).toContain('{"op":"fade"')
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'transition', beats: ['b2'], kind: 'dissolve', sec: 0.5 },
+        { op: 'transition', beats: ['b2'], kind: 'whip-left' },
+        { op: 'transition', beats: ['b2'], kind: 'cut' },
+        { op: 'transition', beats: ['b2'], kind: 'dip-to-white', sec: 0.8 },
+        { op: 'fade', inSec: 0.5, outSec: 1, color: 'black' }
+      ],
+      summary: 'Beat 2 dips through white and the video fades in and out.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const dry = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(dry.rejected).toEqual([])
+    expect(dry.applied).toHaveLength(5)
+    const after = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: dry.cut }] }
+    const text = renderRequest(after, '', [])
+    expect(text).toContain('comes in with dip-to-white 0.8 s')
+    expect(text).toContain('fades in over 0.5 s and out over 1.0 s through black')
   })
 
   it('accepts a plan shaped like the instructions say', () => {

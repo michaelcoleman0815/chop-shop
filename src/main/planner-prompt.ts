@@ -1,6 +1,14 @@
 import { z } from 'zod'
-import { currentCut, currentVersion, indexWords, resolveCut, type EditDoc, type Note } from '../shared/edit'
-import { clock } from '../shared/presets'
+import {
+  currentCut,
+  currentVersion,
+  indexWords,
+  resolveCut,
+  TRANSITION_KINDS,
+  type EditDoc,
+  type Note
+} from '../shared/edit'
+import { clock, seconds } from '../shared/presets'
 
 /**
  * Everything the planner sends and expects back, kept apart from the API call
@@ -31,6 +39,9 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
 - {"op":"aspect","aspect":"vertical"}: vertical, wide, square or original.
 - {"op":"loudness","lufs":-14}.
+- {"op":"transition","beats":["b4"],"kind":"dissolve","sec":0.5}: how a beat comes in from the one before. Kinds: dissolve, dip-to-black, dip-to-white, flash, whip-left, whip-right, push-left, push-right, push-up, push-down, slide-left, slide-right, slide-up, slide-down, wipe-left, wipe-right, wipe-up, wipe-down, smooth-left, smooth-right, smooth-up, smooth-down, zoom, circle-open, circle-close, clock, doors-open, pixelate, blur, squeeze. sec is optional (0.04 to 3); leave it out for the usual length. The first beat has nothing before it, so it cannot have one.
+- {"op":"transition","beats":["b4","b7"],"kind":"cut"}: back to a hard cut.
+- {"op":"fade","inSec":0.5,"outSec":1,"color":"black"}: fade the whole video in from, and out to, black or white. 0 turns that end off.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ## How to edit
@@ -40,6 +51,7 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 - Keep sentences whole unless asked to cut inside one. Never strike the only words of a beat; remove the beat instead.
 - If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs.
 - If nothing can be done, return no ops and say why in reply.
+- Hard cuts are the default. Add a transition only where it is asked for, or at a change of section when asked to "add transitions"; between a talking head and B-roll a dissolve or a short push reads cleanest. Never put one on every beat unless asked.
 
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
@@ -82,7 +94,19 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     set: z.object({ maxGapSec: z.number(), padSec: z.number(), fillers: z.boolean() }).nullable()
   }),
   z.object({ op: z.literal('aspect'), aspect: z.enum(['vertical', 'wide', 'square', 'original']) }),
-  z.object({ op: z.literal('loudness'), lufs: z.number().nullable() })
+  z.object({ op: z.literal('loudness'), lufs: z.number().nullable() }),
+  z.object({
+    op: z.literal('transition'),
+    beats: z.array(z.string()),
+    kind: z.enum(['cut', ...TRANSITION_KINDS]),
+    sec: z.number().optional()
+  }),
+  z.object({
+    op: z.literal('fade'),
+    inSec: z.number().optional(),
+    outSec: z.number().optional(),
+    color: z.enum(['black', 'white']).optional()
+  })
 ])
 
 export const PlanSchema = z.object({
@@ -148,6 +172,13 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
       : 'pauses as recorded',
     cut.loudness === null ? 'loudness as recorded' : `loudness ${cut.loudness} LUFS`
   ]
+  if (cut.fade && (cut.fade.inSec > 0 || cut.fade.outSec > 0)) {
+    const ends = [
+      cut.fade.inSec > 0 ? `in over ${seconds(cut.fade.inSec)}` : null,
+      cut.fade.outSec > 0 ? `out over ${seconds(cut.fade.outSec)}` : null
+    ].filter(Boolean)
+    settings.push(`fades ${ends.join(' and ')} through ${cut.fade.color}`)
+  }
 
   const beats = cut.beats.map((beat) => {
     const t = beat.treatment
@@ -155,7 +186,8 @@ export function renderRequest(doc: EditDoc, request: string, notes: Note[], voic
       t.frame,
       t.bw ? 'bw' : null,
       t.zoom > 1.001 ? `zoom ${t.zoom.toFixed(2)}` : null,
-      t.bigWord ? `big word ${t.bigWord}` : null
+      t.bigWord ? `big word ${t.bigWord}` : null,
+      beat.transition ? `comes in with ${beat.transition.kind} ${seconds(beat.transition.sec)}` : null
     ]
       .filter(Boolean)
       .join(', ')

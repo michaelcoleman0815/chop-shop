@@ -1,5 +1,6 @@
 import { isFiller } from '../fillers'
 import type { Beat, Cut, Source, Word } from './schema'
+import { MIN_TRANSITION_SEC, type TransitionKind } from './transitions'
 
 /**
  * Turns a cut into what actually plays: pieces of source in output order, and
@@ -8,6 +9,11 @@ import type { Beat, Cut, Source, Word } from './schema'
  * This is the one place timing is decided. The preview, the beat strip, the
  * captions and the export all read its result, so they cannot disagree about
  * where a word lands.
+ *
+ * Pieces are laid end to end, except where a transition brings a beat in: the
+ * two pieces either side overlap on the output clock for the transition's
+ * length, and everything after moves up to match. Words are placed from the
+ * same mapping, so captions stay on the speech across every overlap.
  */
 
 /** Words sorted by source then start, with each id's position. */
@@ -31,6 +37,27 @@ export interface Piece {
   source: string
   srcStart: number
   srcEnd: number
+  outStart: number
+  outEnd: number
+  /**
+   * Set when this piece comes in over the end of the one before: the two
+   * overlap by `sec` on the output clock, which is why outStart is earlier
+   * than the previous piece's outEnd.
+   */
+  transition?: { kind: TransitionKind; sec: number }
+}
+
+/** A transition as it plays: which beat comes in over which, and when. */
+export interface ResolvedTransition {
+  /** The beat coming in. */
+  beat: string
+  /** The beat it comes in over. */
+  from: string
+  kind: TransitionKind
+  /** How long the overlap runs. */
+  sec: number
+  /** The length asked for. Longer than sec where more would lay words over each other. */
+  asked: number
   outStart: number
   outEnd: number
 }
@@ -57,10 +84,15 @@ export interface Resolved {
   beats: ResolvedBeat[]
   words: ResolvedWord[]
   durationSec: number
+  /** Every transition in playing order. Absent from results made before transitions existed. */
+  transitions?: ResolvedTransition[]
 }
 
 /** Pieces shorter than this are dropped: a frame or two of nothing reads as a glitch. */
 const MIN_PIECE_SEC = 0.04
+
+/** Each piece keeps at least this long to itself between the transitions either side of it. */
+const SOLO_SEC = 0.04
 
 /** The source span of one beat, before tightening and strikes. */
 export function beatSpan(
@@ -113,6 +145,8 @@ interface Draft {
   srcStart: number
   srcEnd: number
   words: number[]
+  /** How this piece comes in over the one before, once boundaries are worked out. */
+  transition?: { kind: TransitionKind; sec: number; asked: number }
 }
 
 /** Overlaps up to this long between neighbouring pieces are padding, not a deliberate repeat. */
@@ -192,20 +226,41 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
     }
   }
 
+  const playing = drafts.filter((d) => d.srcEnd - d.srcStart >= MIN_PIECE_SEC)
+  for (let i = 1; i < playing.length; i++) {
+    const p = playing[i - 1]
+    const q = playing[i]
+    if (p.beatIndex !== q.beatIndex && q.beat.transition) overlapAt(p, q, index, bySource)
+  }
+
   const pieces: Piece[] = []
   const beats: ResolvedBeat[] = []
   const out: ResolvedWord[] = []
+  const transitions: ResolvedTransition[] = []
   let clock = 0
 
-  for (const d of drafts) {
-    if (d.srcEnd - d.srcStart < MIN_PIECE_SEC) continue
+  for (const d of playing) {
+    const overlap = d.transition?.sec ?? 0
+    const outStart = Math.max(0, clock - overlap)
     const piece: Piece = {
       beat: d.beat.id,
       source: d.beat.source,
       srcStart: d.srcStart,
       srcEnd: d.srcEnd,
-      outStart: clock,
-      outEnd: clock + (d.srcEnd - d.srcStart)
+      outStart,
+      outEnd: outStart + (d.srcEnd - d.srcStart)
+    }
+    if (d.transition) {
+      piece.transition = { kind: d.transition.kind, sec: d.transition.sec }
+      transitions.push({
+        beat: d.beat.id,
+        from: pieces[pieces.length - 1].beat,
+        kind: d.transition.kind,
+        sec: d.transition.sec,
+        asked: d.transition.asked,
+        outStart,
+        outEnd: clock
+      })
     }
     clock = piece.outEnd
     pieces.push(piece)
@@ -226,7 +281,84 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
     }
   }
 
-  return { pieces, beats, words: out, durationSec: clock }
+  return { pieces, beats, words: out, durationSec: clock, transitions }
+}
+
+/**
+ * Works out how a transition brings q in over p, and stretches both to make it.
+ *
+ * A transition is centred on the cut and plays from handles: the frames and
+ * room tone just past p's end and just before q's start, which the cut left
+ * out. Handles never reach a word, kept or struck, so nothing cut comes back.
+ * Where the handles run short, the overlap takes the silent margins of the two
+ * pieces instead and the cut gets that much shorter; past those it would lay
+ * words over each other, so the transition is shortened to fit.
+ */
+function overlapAt(p: Draft, q: Draft, index: WordIndex, sources: Map<string, Source>): void {
+  const asked = q.beat.transition?.sec ?? 0
+  const kind = q.beat.transition?.kind
+  if (!kind) return
+  const lenP = p.srcEnd - p.srcStart
+  const lenQ = q.srcEnd - q.srcStart
+
+  // Room past p's end: up to the next word in its recording, or the end of it.
+  const durationP = sources.get(p.beat.source)?.durationSec ?? p.srcEnd
+  const lastP = p.words.length ? p.words[p.words.length - 1] : -1
+  const roomP = Math.max(0, (lastP >= 0 ? ceilingAfter(index, lastP, durationP) : durationP) - p.srcEnd)
+  // Room before q's start: back to the word before it, or the start.
+  const firstQ = q.words.length ? q.words[0] : -1
+  const roomQ = Math.max(0, q.srcStart - (firstQ >= 0 ? floorBefore(index, firstQ) : 0))
+
+  // The quiet inside each piece the overlap may cover: after p's last word,
+  // before q's first. A piece with no words is quiet all through.
+  const quietP = lastP >= 0 ? Math.max(0, p.srcEnd - index.words[lastP].endSec) : lenP
+  const quietQ = firstQ >= 0 ? Math.max(0, index.words[firstQ].startSec - q.srcStart) : lenQ
+  // p may already be overlapped at its head by the transition before it.
+  const takenP = p.transition?.sec ?? 0
+
+  // How much of each piece's own footage an overlap may cover: all but the
+  // moment it keeps to itself, and for p, all but what its own way in took.
+  // (q's way out is checked when the next boundary is.)
+  const spareP = lenP - takenP - SOLO_SEC
+  const spareQ = lenQ - SOLO_SEC
+  const clampTo = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
+
+  /**
+   * The handles a transition of `sec` plays from, or null when none fit. Each
+   * side takes at least what keeps its piece whole, as much handle as there is
+   * up to the overlap so the cut stays as long as it was, and the two are
+   * balanced so the transition sits centred on the cut wherever it can.
+   */
+  const handles = (sec: number): [number, number] | null => {
+    const needP = Math.max(0, sec - spareP)
+    const needQ = Math.max(0, sec - spareQ)
+    if (needP > roomP + 1e-9 || needQ > roomQ + 1e-9 || needP + needQ > sec + 1e-9) return null
+    const total = Math.min(sec, roomP + roomQ)
+    let fromP = clampTo(sec / 2, needP, roomP)
+    const fromQ = clampTo(total - fromP, needQ, Math.min(roomQ, sec - needP))
+    fromP = clampTo(total - fromQ, needP, Math.min(roomP, sec - fromQ))
+    // Words never overlap: what the handles do not cover comes out of the quiet.
+    if (sec - fromP - fromQ > quietP + quietQ + 1e-9) return null
+    return [fromP, fromQ]
+  }
+
+  // Longer is never easier to fit, so the longest that fits is found by halving.
+  let sec = asked
+  if (!handles(sec)) {
+    let lo = 0
+    let hi = asked
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2
+      if (handles(mid)) lo = mid
+      else hi = mid
+    }
+    sec = lo
+  }
+  const split = sec >= MIN_TRANSITION_SEC ? handles(sec) : null
+  if (!split) return
+  p.srcEnd += split[0]
+  q.srcStart -= split[1]
+  q.transition = { kind, sec, asked }
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -253,12 +385,13 @@ export function sourceTimeAt(
   return { piece, index: lo, srcSec: piece.srcStart + (t - piece.outStart) }
 }
 
-/** The beat playing at an output time. */
+/** The beat playing at an output time. Inside a transition, the one coming in. */
 export function beatAt(resolved: Resolved, outSec: number): ResolvedBeat | null {
-  return (
-    resolved.beats.find((b) => outSec >= b.outStart && outSec < b.outEnd) ??
-    (outSec >= resolved.durationSec ? (resolved.beats[resolved.beats.length - 1] ?? null) : null)
-  )
+  for (let i = resolved.beats.length - 1; i >= 0; i--) {
+    const b = resolved.beats[i]
+    if (outSec >= b.outStart && outSec < b.outEnd) return b
+  }
+  return outSec >= resolved.durationSec ? (resolved.beats[resolved.beats.length - 1] ?? null) : null
 }
 
 /**

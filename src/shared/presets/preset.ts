@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AspectSchema, CAPTION_POSITIONS, CaptionSpecSchema, TightenSpecSchema } from '../edit/schema'
+import { FadeSchema } from '../edit/transitions'
 
 /**
  * Presets are slash commands. A built-in like /tighten and a style saved from
@@ -32,7 +33,9 @@ export const StyleSpecSchema = z.object({
   /** Room kept before and after each beat's words: small numbers make snappy cuts. */
   pad: z.object({ inSec: z.number().min(0).max(1), outSec: z.number().min(0).max(1) }).optional(),
   aspect: AspectSchema.optional(),
-  maxLengthSec: z.number().positive().optional()
+  maxLengthSec: z.number().positive().optional(),
+  /** The whole video fading in at the start and out at the end. */
+  fade: FadeSchema.optional()
 })
 export type StyleSpec = z.infer<typeof StyleSpecSchema>
 
@@ -159,6 +162,7 @@ export function describeStyle(style: StyleSpec): string[] {
   else if (style.aspect === 'wide') facts.push('Wide 16:9')
   if (style.maxLengthSec) facts.push(`Under ${seconds(style.maxLengthSec)}`)
   if (style.loudness) facts.push(`${style.loudness.lufs} LUFS`)
+  if (style.fade && (style.fade.inSec > 0 || style.fade.outSec > 0)) facts.push(`Fades through ${style.fade.color}`)
   if (style.captions?.position && style.captions.on !== false)
     facts.push(`Captions ${POSITION_WORDS[style.captions.position]}`)
   return facts

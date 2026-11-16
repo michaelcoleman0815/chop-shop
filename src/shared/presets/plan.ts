@@ -3,6 +3,7 @@ import { applyOps } from '../edit/ops'
 import { resolveCut, type Resolved, type ResolvedBeat } from '../edit/resolve'
 import { currentCut } from '../edit/doc'
 import type { Cut, EditDoc, Op } from '../edit/schema'
+import { transitionInfo } from '../edit/transitions'
 import { clock, seconds, type StyleSpec } from './preset'
 
 /**
@@ -58,6 +59,12 @@ export function planStyle(doc: EditDoc, style: StyleSpec, from: Cut = currentCut
   if (style.tighten) push({ op: 'tighten', set: style.tighten })
   if (style.captions) push({ op: 'captions', set: style.captions })
   if (style.loudness && style.loudness.lufs !== cut.loudness) push({ op: 'loudness', lufs: style.loudness.lufs })
+  if (style.fade) {
+    const was = cut.fade
+    const same =
+      was && was.inSec === style.fade.inSec && was.outSec === style.fade.outSec && was.color === style.fade.color
+    if (!same) push({ op: 'fade', ...style.fade })
+  }
   if (style.pad) {
     const { inSec, outSec } = style.pad
     for (const beat of cut.beats) {
@@ -152,6 +159,43 @@ export function planStyle(doc: EditDoc, style: StyleSpec, from: Cut = currentCut
   return { ops, open }
 }
 
+/** The beats where the picture changes between the speaker and a cutaway, either way. */
+export function cutawayEdges(cut: Cut): string[] {
+  const shows = (i: number): boolean => cut.beats[i].treatment.frame !== 'speaker'
+  return cut.beats.filter((_, i) => i > 0 && shows(i) !== shows(i - 1)).map((b) => b.id)
+}
+
+/**
+ * Beats that start a new idea: after a sentence ends and the speaker paused
+ * at least `pauseSec` in the recording, or anywhere a beat was moved out of
+ * recording order. Kept at least `spacingSec` of output apart, so a section
+ * change is a change and not a habit. Never the first beat.
+ */
+export function ideaStarts(doc: EditDoc, cut: Cut = currentCut(doc), pauseSec = 0.9, spacingSec = 6): string[] {
+  const resolved = resolveCut(cut, doc.words, doc.sources)
+  const at = new Map(resolved.beats.map((b) => [b.id, b.outStart]))
+  const words = new Map(doc.words.map((w) => [w.id, w]))
+  const starts: string[] = []
+  // The video's own start is the first idea.
+  let lastAt = 0
+  let prevEnd: { source: string; sec: number; text: string } | null = null
+  for (const beat of cut.beats) {
+    const first = beat.from ? words.get(beat.from) : undefined
+    const last = beat.to ? words.get(beat.to) : undefined
+    const when = at.get(beat.id)
+    if (first && prevEnd && when !== undefined) {
+      const moved = first.source !== prevEnd.source || first.startSec < prevEnd.sec
+      const paused = /[.!?]["')\]]*$/.test(prevEnd.text) && first.startSec - prevEnd.sec >= pauseSec
+      if ((moved || paused) && when - lastAt >= spacingSec) {
+        starts.push(beat.id)
+        lastAt = when
+      }
+    }
+    if (last) prevEnd = { source: last.source, sec: last.endSec, text: last.text }
+  }
+  return starts
+}
+
 /**
  * Split ops that cut `beat` at the kept words nearest each output time.
  * Splits run last to first, so each one acts on the original beat id, which
@@ -185,6 +229,25 @@ function bigWordFor(ids: string[], text: Map<string, string>): string | null {
     if (!best || word.length >= best.score) best = { id, score: word.length }
   }
   return best?.id ?? null
+}
+
+/**
+ * "beat 3 comes in with a dissolve", "four beats cut in hard again". Says so
+ * when a transition came out shorter than asked because a longer one would
+ * lay words over each other.
+ */
+function describeTransition(o: Extract<Op, { op: 'transition' }>, after: Resolved): string {
+  const positions = o.beats
+    .map((id) => after.beats.find((b) => b.id === id)?.index)
+    .filter((i): i is number => i !== undefined && i > 0)
+  const n = positions.length || o.beats.length
+  const who = n === 1 && positions.length === 1 ? `beat ${positions[0] + 1}` : count(n, 'beat')
+  if (o.kind === 'cut') return `${who} ${n === 1 ? 'cuts' : 'cut'} in hard again`
+  const said = `${who} ${n === 1 ? 'comes' : 'come'} in with ${transitionInfo(o.kind).label}`
+  const short = (after.transitions ?? []).filter((t) => o.beats.includes(t.beat) && t.sec < t.asked - 0.01)
+  if (short.length === 0) return said
+  const sec = Math.min(...short.map((t) => t.sec))
+  return `${said}, ${seconds(sec)} long where more would lay words over each other`
 }
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
@@ -236,6 +299,16 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved): stri
       said.push(o.lufs === null ? 'the sound is left as recorded' : `the sound is set to ${o.lufs} LUFS`)
     } else if (o.op === 'move' && o.to === 0) {
       said.push('a new line opens it')
+    } else if (o.op === 'transition') {
+      said.push(describeTransition(o, after))
+    } else if (o.op === 'fade') {
+      const ins = (o.inSec ?? 0) > 0
+      const outs = (o.outSec ?? 0) > 0
+      const color = o.color ?? 'black'
+      if (ins && outs) said.push(`it fades in and out through ${color}`)
+      else if (ins) said.push(`it fades in from ${color}`)
+      else if (outs) said.push(`it fades out to ${color}`)
+      else if (o.inSec === 0 && o.outSec === 0) said.push('it no longer fades in or out')
     }
   }
   if (ops.some((o) => o.op === 'pad')) said.push('every cut lands tight on the words')

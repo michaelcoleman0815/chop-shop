@@ -16,6 +16,7 @@ import {
 import {
   buildRenderArgs,
   captionStyleFor,
+  chunkSegments,
   frameRate,
   frameSize,
   renderCut,
@@ -67,8 +68,71 @@ describe('render arguments', () => {
     expect(args.filter((a) => a === '-i')).toHaveLength(2)
     expect(args.slice(args.indexOf('-ss'), args.indexOf('-ss') + 4)).toEqual(['-ss', '1.000', '-t', '2.000'])
     const graph = args[args.indexOf('-filter_complex') + 1]
-    expect(graph).toContain('[v0][a0][v1][a1]concat=n=2:v=1:a=1[vcat][acat]')
+    // Picture and sound are joined as two tracks, so either can be cut on its own.
+    expect(graph).toContain('[v0][v1]concat=n=2:v=1:a=0,settb=1/30[vcat]')
+    expect(graph).toContain('[a0][a1]concat=n=2:v=0:a=1[acat]')
+    // Each picture is cut to the frames it covers on the output clock: 2 s and 1 s at 30 fps.
+    expect(graph).toContain('trim=end_frame=60,')
+    expect(graph).toContain('trim=end_frame=30,')
     expect(graph).not.toContain('loudnorm')
+  })
+
+  it('counts frames on the shared clock, so short pieces never add up to drift', () => {
+    // Twelve pieces of 0.2345 s: 7.035 frames each. Rounded one by one they
+    // would make 84 frames; on the shared clock they make round(84.42) = 84
+    // with no piece more than half a frame off where it belongs.
+    const pieces = Array.from({ length: 12 }, () => seg({ durationSec: 0.2345 }))
+    const graph = buildRenderArgs(pieces, opts)[buildRenderArgs(pieces, opts).indexOf('-filter_complex') + 1]
+    const frames = [...graph.matchAll(/trim=end_frame=(\d+),/g)].map((m) => Number(m[1]))
+    expect(frames).toHaveLength(12)
+    expect(frames.reduce((a, b) => a + b, 0)).toBe(Math.round(12 * 0.2345 * 30))
+    let at = 0
+    frames.forEach((n, i) => {
+      at += n
+      expect(Math.abs(at - (i + 1) * 0.2345 * 30)).toBeLessThanOrEqual(0.5)
+    })
+  })
+
+  it('joins across a transition with xfade and a matching crossfade', () => {
+    const args = buildRenderArgs(
+      [
+        seg({ durationSec: 2, outStart: 0 }),
+        seg({ durationSec: 1.5, outStart: 1.6, transition: { kind: 'wipe-left', sec: 0.4 } }),
+        seg({ durationSec: 1, outStart: 3.1 })
+      ],
+      { ...opts, fade: { inSec: 0.5, outSec: 1, color: 'white' } }
+    )
+    const graph = args[args.indexOf('-filter_complex') + 1]
+    // The first run is one piece; the second is the wipe's piece and the hard cut after it.
+    expect(graph).toContain('[v1][v2]concat=n=2:v=1:a=0,settb=1/30[vr1]')
+    expect(graph).toContain('[vr0][vr1]xfade=transition=wipeleft:duration=0.400000:offset=1.600000[vcat]')
+    expect(graph).toContain('[ar0][ar1]acrossfade=d=0.400000:c1=qsin:c2=qsin[acat]')
+    expect(graph).toContain('fade=t=in:st=0:d=0.500000:color=white,fade=t=out:st=3.100000:d=1.000000:color=white')
+    expect(graph).toContain('afade=t=in:st=0:d=0.500000,afade=t=out:st=3.100000:d=1.000000')
+  })
+
+  it('puts motion blur across the middle of a whip pan', () => {
+    const args = buildRenderArgs(
+      [
+        seg({ durationSec: 2, outStart: 0 }),
+        seg({ durationSec: 2, outStart: 1.7, transition: { kind: 'whip-left', sec: 0.3 } })
+      ],
+      opts
+    )
+    const graph = args[args.indexOf('-filter_complex') + 1]
+    expect(graph).toContain('xfade=transition=slideleft:duration=0.300000:offset=1.700000[vw1]')
+    expect(graph).toMatch(/\[vw1\]gblur=sigma=14:sigmaV=0:enable='between\(t,1\.745000,1\.955000\)'\[vcat\]/)
+  })
+
+  it('only breaks a long cut into passes at a hard cut', () => {
+    const plain = (over: Partial<Segment> = {}): Segment => seg({ durationSec: 1, ...over })
+    const t = { kind: 'dissolve' as const, sec: 0.3 }
+    const chunks = chunkSegments(
+      [plain(), plain({ transition: t }), plain({ transition: t }), plain(), plain({ transition: t }), plain()],
+      2
+    )
+    expect(chunks.map((c) => c.length)).toEqual([3, 2, 1])
+    for (const c of chunks) expect(c[0].transition).toBeUndefined()
   })
 
   it('draws the look of each beat', () => {

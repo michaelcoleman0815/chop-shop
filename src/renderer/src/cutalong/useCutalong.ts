@@ -27,12 +27,16 @@ import {
 } from '../../../shared/assets'
 import {
   BUILT_IN_PRESETS,
+  cutawayEdges,
   describePlan,
   findPreset,
+  ideaStarts,
   parseCommand,
   planStyle,
+  SKILL_PRESETS,
   type Preset
 } from '../../../shared/presets'
+import { parseTransition, transitionInfo } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
@@ -76,6 +80,14 @@ const ACTION_COMMANDS: Preset[] = [
     command: 'icon',
     title: 'Icon',
     summary: 'Put an icon on a card: /icon camera',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
+  {
+    command: 'transition',
+    title: 'Transition',
+    summary: 'Bring a beat in another way: /transition dissolve, /transition whip 0.3',
     builtIn: true,
     style: {},
     inspiration: null
@@ -131,7 +143,7 @@ export function useCutalong() {
 
   const presets = useMemo(() => {
     const mine = brandPreset(brand)
-    return [...BUILT_IN_PRESETS, ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...saved]
+    return [...BUILT_IN_PRESETS, ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...SKILL_PRESETS, ...saved]
   }, [saved, brand])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
@@ -528,8 +540,76 @@ export function useCutalong() {
     [placeAsset, push]
   )
 
+  /**
+   * /transition [kind] [seconds]. In the editor it brings in the beat under
+   * the playhead, the one that has just come in; in the thread, every place
+   * the picture changes between the speaker and a cutaway, or failing that,
+   * every change of section.
+   */
+  const transitionCommand = useCallback(
+    (rest: string, where: 'thread' | 'panel', beat: string | null): void => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can put transitions in it.')
+        return
+      }
+      const secMatch = /(\d+(?:\.\d+)?)\s*(?:s|sec|secs|seconds)?\b/i.exec(rest)
+      const words = (secMatch ? rest.replace(secMatch[0], ' ') : rest).trim()
+      const kind = words ? parseTransition(words) : 'dissolve'
+      if (kind === null) {
+        say(`I don't know a “${words}” transition. Try dissolve, dip to black, flash, whip, push, slide, wipe or zoom.`)
+        return
+      }
+      const cut = currentCut(d)
+      let targets: string[]
+      if (where === 'panel' && beat) {
+        if (cut.beats[0]?.id === beat) {
+          say('Beat 1 opens the video, so nothing comes before it. Put the playhead on a later beat, or use /fade.')
+          return
+        }
+        targets = [beat]
+      } else {
+        const edges = cutawayEdges(cut)
+        targets = edges.length > 0 ? edges : ideaStarts(d, cut)
+      }
+      if (targets.length === 0) {
+        say('I found no change of section to put it on. Put the playhead on a beat in the editor and run it there.')
+        return
+      }
+      const sec = secMatch ? Math.min(3, Math.max(0.04, Number(secMatch[1]))) : undefined
+      const done = applyAsVersion(
+        [{ op: 'transition', beats: targets, kind, ...(sec !== undefined && kind !== 'cut' ? { sec } : {}) }],
+        kind === 'cut' ? 'Hard cuts again.' : `${transitionInfo(kind).label} brings beats in.`
+      )
+      if (!done) {
+        say(kind === 'cut' ? 'Those beats already cut in hard.' : 'That is already how those beats come in.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   const runCommand = useCallback(
-    async (command: string, where: 'thread' | 'panel' = 'thread', rest = ''): Promise<void> => {
+    async (
+      command: string,
+      where: 'thread' | 'panel' = 'thread',
+      rest = '',
+      beat: string | null = null
+    ): Promise<void> => {
+      if (command === 'transition') {
+        transitionCommand(rest, where, beat)
+        return
+      }
       if (ACTION_NAMES.has(command)) {
         // Their results are choices to pick from, which belong in the thread.
         if (where === 'panel') setScreen('thread')
@@ -568,7 +648,7 @@ export function useCutalong() {
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
-    [applyAsVersion, findBroll, findIcon, push]
+    [applyAsVersion, findBroll, findIcon, push, transitionCommand]
   )
 
   const studyLink = useCallback(

@@ -1,4 +1,5 @@
 import { indexWords, type WordIndex } from './resolve'
+import { TRANSITION_INFO } from './transitions'
 import {
   DEFAULT_PAD_IN,
   DEFAULT_PAD_OUT,
@@ -118,8 +119,10 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         padOut: DEFAULT_PAD_OUT,
         treatment: { ...beat.treatment, bigWord: bigAt !== undefined && bigAt < s ? beat.treatment.bigWord : null }
       }
+      // The way the beat came in stays with its head; the tail carries straight on.
+      const { transition: _in, ...rest } = beat
       const tail: Beat = {
-        ...beat,
+        ...rest,
         id: nextBeatId(cut),
         from: op.at,
         padIn: DEFAULT_PAD_IN,
@@ -212,6 +215,31 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
 
     case 'loudness':
       return { ...cut, loudness: op.lufs }
+
+    case 'transition': {
+      const targets = op.beats.map((id) => findBeat(cut, id))
+      // Nothing comes before the first beat, so nothing can transition into
+      // it; the whole video fades in instead.
+      const into = targets.filter((i) => i > 0)
+      if (op.kind !== 'cut' && into.length === 0) {
+        throw new OpError(`Nothing comes before ${cut.beats[targets[0]].id}, so it can only fade in. Use a fade.`)
+      }
+      const beats = [...cut.beats]
+      for (const i of op.kind === 'cut' ? targets : into) {
+        const { transition: _old, ...beat } = beats[i]
+        beats[i] =
+          op.kind === 'cut'
+            ? beat
+            : { ...beat, transition: { kind: op.kind, sec: op.sec ?? TRANSITION_INFO[op.kind].defaultSec } }
+      }
+      return { ...cut, beats }
+    }
+
+    case 'fade': {
+      const was = cut.fade ?? { inSec: 0, outSec: 0, color: 'black' as const }
+      const fade = { inSec: op.inSec ?? was.inSec, outSec: op.outSec ?? was.outSec, color: op.color ?? was.color }
+      return { ...cut, fade: fade.inSec > 0 || fade.outSec > 0 ? fade : null }
+    }
   }
 }
 
