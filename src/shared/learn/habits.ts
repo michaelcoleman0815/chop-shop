@@ -362,7 +362,7 @@ export function habitsSentence(h: Habits): string {
 export function habitFacts(h: Habits): string[] {
   const facts: string[] = []
   if (h.pauses) facts.push(`Pauses about ${seconds(h.pauses.medianSec)}`)
-  if (h.lastTake) facts.push(`Last take ${h.lastTake.n} of ${h.lastTake.of} times`)
+  if (h.lastTake) facts.push(`Last take kept ${h.lastTake.n} of ${h.lastTake.of} times`)
   if (h.pad) {
     facts.push(
       h.pad.heard
@@ -381,7 +381,7 @@ export function habitDetails(h: Habits): { label: string; value: string }[] {
   if (h.pauses) {
     rows.push({
       label: 'Pauses you leave',
-      value: `${seconds(h.pauses.medianSec)} typical, ${seconds(h.pauses.p90Sec)} at most (9 in 10)`
+      value: `${seconds(h.pauses.medianSec)} typically, ${seconds(h.pauses.p90Sec)} (9 in 10)`
     })
   }
   if (h.pauseCuts) {
@@ -398,7 +398,7 @@ export function habitDetails(h: Habits): { label: string; value: string }[] {
       label: 'Room at a cut',
       value: h.pad.heard
         ? `${seconds(h.pad.beforeSec)} before, ${seconds(h.pad.afterSec)} after (${h.pad.count} cuts)`
-        : `${seconds(h.pad.beforeSec + h.pad.afterSec)} in all (${h.pad.count} cuts); where in the pause you cut, I couldn't hear`
+        : `${seconds(h.pad.beforeSec + h.pad.afterSec)} in all, split not heard (${h.pad.count} cuts)`
     })
   if (h.fillers) rows.push({ label: 'Ums and uhs cut', value: `${h.fillers.n} of ${h.fillers.of}` })
   if (h.breaths) rows.push({ label: 'Breaths cut', value: `${h.breaths.n} of ${h.breaths.of}` })
@@ -407,24 +407,49 @@ export function habitDetails(h: Habits): { label: string; value: string }[] {
   return rows
 }
 
+/** The habits without when they were fitted: fitting the same edits twice gives the same key. */
+export function habitsKey(h: Habits): string {
+  const { videos, words, pauses, pauseCuts, maxPauseSec, pad, fillers, breaths, lastTake } = h
+  return JSON.stringify({ videos, words, pauses, pauseCuts, maxPauseSec, pad, fillers, breaths, lastTake })
+}
+
+/** What keeping the habits does, in a sentence. */
+export function habitsUseSentence(h: Habits): string {
+  const t = habitsStyle(h).tighten!
+  if (t.maxGapSec >= 5) {
+    return `With these, /tighten and /brand leave your pauses as they are${t.fillers ? ' and cut the ums' : ''}.`
+  }
+  const what = t.fillers
+    ? `the ums and any pause past ${seconds(t.maxGapSec)}`
+    : `any pause past ${seconds(t.maxGapSec)}`
+  const room = !h.pad
+    ? ''
+    : h.pad.heard
+      ? `, leaving ${seconds(h.pad.beforeSec)} before the words and ${seconds(h.pad.afterSec)} after`
+      : `, leaving ${seconds(h.pad.beforeSec + h.pad.afterSec)} at each cut`
+  return `With these, /tighten and /brand cut ${what}${room}.`
+}
+
 /** What would change if new habits replaced the ones in use, as short lines; empty when nothing would. */
 export function habitChanges(current: Habits | null, next: Habits): string[] {
   if (!current) return []
   const out: string[] = []
-  const sec = (v: number | null | undefined): string => (v === null || v === undefined ? 'none' : seconds(v))
-  const share = (c: { n: number; of: number } | null): string => (c ? `${c.n} of ${c.of}` : 'none')
-  const pair = (label: string, a: string, b: string): void => {
-    if (a !== b) out.push(`${label}: ${a} to ${b}`)
+  const sec = (v: number | null | undefined): string | null => (v === null || v === undefined ? null : seconds(v))
+  const how = (c: { n: number; of: number } | null): string | null => (c ? often(c.n, c.of) : null)
+  // Only what would cut differently or read differently, said as the new value and the old.
+  const clause = (what: string, now: string | null, was: string | null): void => {
+    if (now !== was)
+      out.push(now === null ? `no ${what} (was ${was})` : `${what} ${now}${was === null ? '' : ` (was ${was})`}`)
   }
-  pair('Pauses', sec(current.pauses?.medianSec), sec(next.pauses?.medianSec))
-  pair('Shortened from', sec(current.maxPauseSec), sec(next.maxPauseSec))
+  clause('pauses about', sec(next.pauses?.medianSec), sec(current.pauses?.medianSec))
+  clause('pauses cut past', sec(next.maxPauseSec), sec(current.maxPauseSec))
   const total = (h: Habits): number | null => (h.pad ? h.pad.beforeSec + h.pad.afterSec : null)
   if (current.pad?.heard && next.pad?.heard) {
-    pair('Room before a cut', sec(current.pad.beforeSec), sec(next.pad.beforeSec))
-    pair('Room after a cut', sec(current.pad.afterSec), sec(next.pad.afterSec))
-  } else pair('Room at a cut', sec(total(current)), sec(total(next)))
-  pair('Ums cut', share(current.fillers), share(next.fillers))
-  pair('Breaths cut', share(current.breaths), share(next.breaths))
-  pair('Last take kept', share(current.lastTake), share(next.lastTake))
+    clause('room before a cut', sec(next.pad.beforeSec), sec(current.pad.beforeSec))
+    clause('room after a cut', sec(next.pad.afterSec), sec(current.pad.afterSec))
+  } else clause('room at a cut', sec(total(next)), sec(total(current)))
+  clause('ums cut', how(next.fillers), how(current.fillers))
+  clause('breaths cut', how(next.breaths), how(current.breaths))
+  clause('last take kept', how(next.lastTake), how(current.lastTake))
   return out
 }

@@ -11,6 +11,9 @@ import {
 import type { Project, ProjectSummary, Settings } from '../../../shared/types'
 import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
 import { detectProvider } from '../../../shared/keys'
+import type { Word } from '../../../shared/edit'
+import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
+import { synthFinished, synthRecording } from '../../../shared/learn/synth'
 import type { CutalongApi } from './api'
 
 /**
@@ -58,6 +61,107 @@ function fakeDoc(path: string): EditDoc {
     source,
     words: wordsFromTranscript(words, 's1')
   })
+}
+
+/**
+ * A raw take for learning from edits: retakes with no cue, a restart that
+ * backs up, ums and long pauses. Each take has its own made-up sound, so
+ * the real alignment can tell them apart.
+ */
+const TAKE = [
+  { text: 'So today I want to show you the one setting I change on every camera.', pause: 0.9 },
+  { text: 'Um, most people never open the settings menu.', pause: 0.45 },
+  { text: "That's where the good stuff is.", pause: 1.4 },
+  { text: 'Here is the one I change before I shoot anything.', pause: 1.1 },
+  { text: 'Here is the one I change before I shoot anything.', pause: 0.6 },
+  { text: 'Turn off auto exposure, lock it, and your face', pause: 0.7 },
+  { text: 'lock it, and your face stops pulsing every time you move.', pause: 0.8 },
+  {
+    text: 'It sounds small, uh, but it is the difference between footage that looks cheap and footage that looks shot.',
+    pause: 1.2
+  },
+  { text: 'Do it today, and tell me what changed.', pause: 0.8 }
+]
+
+function takeWords(): { words: Word[]; line: number[]; durationSec: number } {
+  const words: Word[] = []
+  const line: number[] = []
+  let t = 0.6
+  TAKE.forEach((l, li) => {
+    for (const part of l.text.split(' ')) {
+      const len = 0.12 + 0.045 * part.length
+      words.push({ id: `s1w${words.length + 1}`, source: 's1', text: part, startSec: t, endSec: t + len })
+      line.push(li)
+      t += len + 0.06 + (/,$/.test(part) ? 0.18 : 0)
+    }
+    t += l.pause
+  })
+  return { words, line, durationSec: t + 1 }
+}
+
+/** Learns from a made-up edit with the real shared logic; the nth run keeps different takes. */
+function mockLearn(
+  n: number,
+  recording: string,
+  finished: string
+): { ok: true; pair: LabelledPair } | { ok: false; message: string } {
+  const name = finished.split('/').pop() ?? finished
+  if (/music|silence/i.test(name)) {
+    return { ok: false, message: `I couldn't hear any speech in ${name}, so there is nothing to line up.` }
+  }
+  const take = takeWords()
+  const first = (li: number, nth = 0): number => take.line.indexOf(li) + nth
+  const last = (li: number): number => take.line.lastIndexOf(li)
+  // Even runs keep the first take of line 3 rather than the second.
+  const keeps: [number, number][] = [
+    [first(0), last(0)],
+    [first(1, 1), last(2)],
+    n % 2 === 0 ? [first(3), last(3)] : [first(4), last(4)],
+    [first(5), first(5, 3)],
+    [first(6), last(6)],
+    [first(7), first(7, 2)],
+    [first(7, 4), last(7)],
+    [first(8), last(8)]
+  ]
+  const voice = (w: Pick<Word, 'id'>): string => {
+    const i = take.words.findIndex((x) => x.id === w.id)
+    return `line${take.line[i]}:${i}`
+  }
+  const raw = synthRecording(take.words, take.durationSec, voice)
+  const before = 0.04 + 0.01 * (n % 3)
+  const after = 0.08
+  const pieces = keeps.map(([a, b]) => ({
+    rec: 0,
+    rawStart: take.words[a].startSec - before,
+    rawEnd: take.words[b].endSec + after
+  }))
+  // A different video altogether sounds nothing like this take.
+  const source = /other/i.test(name) ? synthRecording(take.words, take.durationSec, (w) => `other:${w.id}`) : raw
+  const fin = synthFinished([source], pieces, { bedDb: -44, gainDb: 4, leadSec: 1.2, seed: n + 3 })
+  const finWords = keeps.flatMap(([a, b], i) =>
+    take.words.slice(a, b + 1).map((w) => {
+      const shift = fin.outStarts[i] - pieces[i].rawStart
+      return { text: w.text, startSec: w.startSec + shift, endSec: w.endSec + shift }
+    })
+  )
+  const recordings = [
+    { id: 's1', name: recording.split('/').pop(), durationSec: take.durationSec, words: take.words, features: raw }
+  ]
+  const durationSec = fin.features.frames * fin.features.hopSec
+  const alignment = alignPair(recordings, { name, durationSec, words: finWords, features: fin.features })
+  if (!alignment.ok) return { ok: false, message: alignment.issues[0]?.text ?? 'I could not line these up.' }
+  const pair = buildPair(
+    {
+      id: `mock-${n}-${Date.now()}`,
+      title: name.replace(/\.[^.]+$/, ''),
+      createdAt: new Date().toISOString(),
+      recordings: [{ id: 's1', path: recording, durationSec: take.durationSec, bytes: null, modifiedAt: null }],
+      finished: { path: finished, durationSec, bytes: null, modifiedAt: null }
+    },
+    recordings,
+    alignment
+  )
+  return { ok: true, pair }
 }
 
 export function createMockApi(): CutalongApi {
@@ -135,6 +239,9 @@ export function createMockApi(): CutalongApi {
     'medium.en': { mb: 1533, has: false }
   }
   const aiListeners = new Set<(p: { stage: string; percent: number }) => void>()
+  const learnListeners = new Set<(p: { stage: string; percent: number }) => void>()
+  let learned: LabelledPair[] = []
+  let runs = 0
 
   return {
     getVersion: async () => '0.2.13',
@@ -364,6 +471,35 @@ export function createMockApi(): CutalongApi {
     onBrandProgress: (cb) => {
       listeners.cut.add(cb)
       return () => listeners.cut.delete(cb)
+    },
+    learnChoose: async (kind) =>
+      kind === 'recordings' ? ['/Users/you/Movies/studio-take-03.mov'] : ['/Users/you/Movies/The $40 camera setup.mp4'],
+    learnRun: async ({ recordings, finished }) => {
+      const names = [...recordings, finished].map((p) => p.split('/').pop() ?? p)
+      const stages = names.flatMap((n) => [`Listening to ${n}`, `Transcribing ${n}`, `Transcribing ${n}`])
+      for (let i = 0; i < stages.length; i++) {
+        for (const cb of learnListeners) cb({ stage: stages[i], percent: Math.round((i / stages.length) * 92) })
+        await sleep(450)
+      }
+      for (const cb of learnListeners) cb({ stage: 'Lining them up', percent: 95 })
+      await sleep(400)
+      const r = mockLearn(++runs, recordings[0], finished)
+      if (!r.ok) return { ok: false as const, message: r.message, state: learnState(learned) }
+      learned = [...learned, r.pair]
+      return { ok: true as const, video: learnedVideo(r.pair), state: learnState(learned) }
+    },
+    learnState: async () => learnState(learned),
+    learnEvaluate: async () => {
+      await sleep(500)
+      return learnState(learned)
+    },
+    learnForget: async (id) => {
+      learned = learned.filter((p) => p.id !== id)
+      return learnState(learned)
+    },
+    onLearnProgress: (cb) => {
+      learnListeners.add(cb)
+      return () => learnListeners.delete(cb)
     },
     chooseMedia: async () => null,
     checkKey: async () =>

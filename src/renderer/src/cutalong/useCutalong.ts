@@ -35,6 +35,8 @@ import {
 } from '../../../shared/presets'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import { withHabits } from '../../../shared/learn/habits'
+import { useLearn } from './useLearn'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
@@ -129,9 +131,12 @@ export function useCutalong() {
   const pendingCommand = useRef<string | null>(null)
   studyRef.current = study
 
+  const learn = useLearn()
+
   const presets = useMemo(() => {
     const mine = brandPreset(brand)
-    return [...BUILT_IN_PRESETS, ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...saved]
+    // /tighten cuts the creator's way once they keep their habits; exactly as built otherwise.
+    return [...withHabits(BUILT_IN_PRESETS, brand.habits), ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...saved]
   }, [saved, brand])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
@@ -863,6 +868,7 @@ export function useCutalong() {
     saveBrand,
     learnFrom,
     forgetBrandVideo,
+    learn,
     setSaved,
     screen,
     setScreen,

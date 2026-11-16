@@ -676,7 +676,7 @@ export function alignPair(
     const names = recordings.map((r) => named(r.name, 'the recording')).join(' and ')
     issues.push({
       kind: 'not-from-recording',
-      text: `${capital(finName)} doesn't seem to come from ${names}: only ${matched} of its ${finToks.length} words match.`
+      text: `I don't think ${finName} comes from ${names}: only ${matched} of its ${finToks.length} words match.`
     })
     return { ok: false, pieces: [], issues, matched, words: finToks.length, unsure: [] }
   }
@@ -699,8 +699,6 @@ function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   if (list) list.push(value)
   else map.set(key, [value])
 }
-
-const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** The word starting nearest a time, by binary search. */
 function nearestWord(words: Word[], t: number): number {

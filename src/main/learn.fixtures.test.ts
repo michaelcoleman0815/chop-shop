@@ -409,7 +409,7 @@ describe.skipIf(!FFMPEG)('learning from an edit, end to end on speech with known
     expect(r.ok).toBe(false)
     if (r.ok) return
     report.push(`not from the recording: "${r.message}"`)
-    expect(r.message).toMatch(/^Eggs\.mp4 doesn't seem to come from talk\.m4a: only \d+ of its \d+ words match\.$/)
+    expect(r.message).toMatch(/^I don't think eggs\.mp4 comes from talk\.m4a: only \d+ of its \d+ words match\.$/)
   }, 120_000)
 
   it('follows a recording split over two files', async () => {

@@ -205,7 +205,7 @@ describe('lining a finished video up with its recording', () => {
     expect(alignment.pieces).toEqual([])
     expect(alignment.issues[0].kind).toBe('not-from-recording')
     expect(alignment.issues[0].text).toMatch(
-      /^Other\.mp4 doesn't seem to come from the recording: only \d+ of its \d+ words match\.$/
+      /^I don't think other\.mp4 comes from the recording: only \d+ of its \d+ words match\.$/
     )
   })
 

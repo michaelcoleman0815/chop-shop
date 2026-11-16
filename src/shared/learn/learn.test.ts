@@ -139,7 +139,7 @@ describe('the habits in an edit', () => {
     expect(habitsSentence(h)).toBe('You leave pauses of about 0.13 s and always keep your last take.')
     expect(habitFacts(h)).toEqual([
       'Pauses about 0.13 s',
-      'Last take 2 of 2 times',
+      'Last take kept 2 of 2 times',
       '0.05 s before a cut, 0.08 s after'
     ])
   })
@@ -247,7 +247,7 @@ describe('cutting with the habits', () => {
 
   it('says what would change before anything is replaced', () => {
     const next = { ...habits, pad: { ...habits.pad!, afterSec: 0.12 } }
-    expect(habitChanges(habits, next)).toEqual(['Room after a cut: 0.08 s to 0.12 s'])
+    expect(habitChanges(habits, next)).toEqual(['room after a cut 0.12 s (was 0.08 s)'])
     expect(habitChanges(habits, habits)).toEqual([])
     expect(habitChanges(null, habits)).toEqual([])
   })

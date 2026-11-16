@@ -46,8 +46,8 @@ export function summarizeLearning(report: CutterReport, habits: Habits | null, c
   }
   if (report.boundaryMs.median !== null) {
     details.push({
-      label: 'Where the same cut lands',
-      value: `${report.boundaryMs.median} ms apart typically, ${report.boundaryMs.p90} ms at most (9 in 10)`
+      label: 'Same cut, how far apart',
+      value: `${report.boundaryMs.median} ms typically, ${report.boundaryMs.p90} ms (9 in 10)`
     })
   }
   if (report.pauses.creatorSec !== null && report.pauses.cutterSec !== null) {
