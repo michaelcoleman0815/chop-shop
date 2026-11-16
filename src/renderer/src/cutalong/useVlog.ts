@@ -1,5 +1,14 @@
 import { useCallback, useMemo, useRef, type MutableRefObject } from 'react'
-import { currentVersion, type EditDoc, type Note, type Op } from '../../../shared/edit'
+import {
+  currentCut,
+  currentVersion,
+  filledIn,
+  fillMode,
+  fillNotice,
+  type EditDoc,
+  type Note,
+  type Op
+} from '../../../shared/edit'
 import { ontoLatest, toldIn } from '../../../shared/vlog/build'
 import { storyOnBeats } from '../../../shared/vlog/plan'
 import type { VlogReply } from '../../../shared/vlog/reply'
@@ -35,7 +44,7 @@ export interface VlogDeps {
     fallback: string,
     preset?: string,
     lead?: { text: string; ops: number }
-  ) => { summary: string; n: number } | null
+  ) => { summary: string; n: number; notice?: string | null } | null
   during: <T>(work: () => Promise<T>) => Promise<T>
   /** The kind of video the creator makes, from their brand. */
   niche: () => string
@@ -64,6 +73,10 @@ const OPEN: NonNullable<Msg['actions']> = [{ kind: 'open-editor', label: 'Open t
 const renumber = (text: string, n: number): string => text.replace(/^v\d+\b/, `v${n}`)
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+
+/** A reply with a sentence about the fill (edit/fill) after its own aside. */
+const withNotice = (m: Partial<Msg>, notice: string | null): Partial<Msg> =>
+  notice ? { ...m, aside: [m.aside, notice].filter(Boolean).join(' ') } : m
 
 /** A story's reply as the message that shows it: a sentence or two, three facts, the scenes behind Details. */
 const replyOf = (r: VlogReply, n: number): Partial<Msg> => ({
@@ -135,7 +148,9 @@ export function useVlog(deps: VlogDeps): Vlogs {
     const next = sent && latest ? ontoLatest(latest, sent, r.doc) : r.doc
     setDoc(next)
     setMediaUrl(r.mediaUrl)
-    patch(id, replyOf(r.reply, currentVersion(next).n))
+    // Clips of another shape than the frame, shown whole on a blurred copy, said the first time (edit/fill).
+    const filled = fillNotice(sent ? filledIn(sent) : [], filledIn(next), fillMode(currentCut(next)))
+    patch(id, withNotice(replyOf(r.reply, currentVersion(next).n), filled))
     return true
   }, [])
 
@@ -171,7 +186,7 @@ export function useVlog(deps: VlogDeps): Vlogs {
       }
       const latest = docRef.current
       if (latest) setDoc({ ...latest, vlog: toldIn(r.vlog, done.n) })
-      say(replyOf(r.reply, done.n))
+      say(withNotice(replyOf(r.reply, done.n), done.notice ?? null))
       return { handled: true, n: done.n }
     },
     []

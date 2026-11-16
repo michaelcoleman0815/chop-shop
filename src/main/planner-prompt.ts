@@ -4,6 +4,7 @@ import {
   currentCut,
   currentVersion,
   describeLook,
+  FILL_MODES,
   indexWords,
   ANGLE_LAYOUTS,
   LOOK_SETTINGS,
@@ -89,6 +90,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"sync","source":"s2","of":"s1","offsetSec":1.25}: lines a camera up with its recording: what s1 shows at t, s2 shows at t + offsetSec. Only when asked to move it; "of":"" takes the camera out of the edit.
 - {"op":"reframe","on":true}: cropped to a narrower frame (a wide recording made vertical), the picture follows the speaker instead of keeping the middle; false keeps the middle. It follows recordings the transcript marks speaker="found"; for any other, say /reframe finds the speaker.
 - {"op":"framing","beats":["b4"],"x":0.25}: frames beats by hand when cropped: 0 is the recording's left edge, 0.5 its middle, 1 its right; -1 follows the speaker again.
+- {"op":"fill","mode":"black"}: how a picture of another shape than the frame (an upright clip in a wide video, a wide clip or still in a vertical one) fills it: "blur" shows it whole on a blurred copy of itself, which is what an edit does unless asked, "black" between black bars, "crop" cropped to fill the frame. Someone talking whose recording is wider than the frame is always cropped to them.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ${graphicsGuide()}
@@ -232,6 +234,7 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('sync'), source: z.string(), of: z.string(), offsetSec: z.number() }),
   z.object({ op: z.literal('reframe'), on: z.boolean() }),
   z.object({ op: z.literal('framing'), beats: z.array(z.string()), x: z.number() }),
+  z.object({ op: z.literal('fill'), mode: z.enum(FILL_MODES) }),
   z.object({
     op: z.literal('look'),
     name: z.enum(['', ...Object.keys(NAMED_LOOKS)]),
@@ -452,6 +455,8 @@ export function renderRequest(
   if (cut.voice && cut.voice.polish > 0) settings.push(`voice polish ${cut.voice.polish}`)
   if (cut.look) settings.push(`look ${describeLook(cut.look)}`)
   if (cut.reframe) settings.push('follows the speaker')
+  if (cut.fill === 'black') settings.push('pictures of another shape between black bars')
+  else if (cut.fill === 'crop') settings.push('pictures of another shape cropped to fill')
   const chapters = chaptersOf(cut, resolved).chapters
   if (chapters.length) settings.push(`chapters ${chapters.map((c) => `${c.beat} "${c.title}"`).join(', ')}`)
   if (cut.music) {

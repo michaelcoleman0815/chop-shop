@@ -441,6 +441,12 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       return op.on ? { ...rest, reframe: true } : rest
     }
 
+    case 'fill': {
+      // Blur is what an edit does when it says nothing.
+      const { fill: _was, ...rest } = cut
+      return op.mode === 'blur' ? rest : { ...rest, fill: op.mode }
+    }
+
     case 'framing': {
       const beats = [...cut.beats]
       for (const i of op.beats.map((id) => findBeat(cut, id))) {

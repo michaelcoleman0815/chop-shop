@@ -9,6 +9,10 @@ import {
   commit,
   currentCut,
   currentVersion,
+  fillAsked,
+  filledIn,
+  fillMode,
+  fillNotice,
   mergeExtension,
   nextSourceId,
   openNotes,
@@ -279,6 +283,11 @@ const ACTION_COMMANDS: Preset[] = [
         'reframe',
         'Follow the speaker',
         'Keep you in the frame when it is narrower: /reframe, /reframe left, /reframe off'
+      ],
+      [
+        'fill',
+        'Fill',
+        'A picture of another shape, whole on a blurred copy, between black bars, or cropped: /fill blur, /fill black, /fill crop'
       ]
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
@@ -732,6 +741,9 @@ export function useCutalong() {
    * Applies ops as a version and says what changed. Returns the summary, or
    * null when nothing applied. A lead sentence speaks for the first ops (the
    * takes: "I kept the 4th take of the intro..."), and the rest are described.
+   * The first version in which a picture of another shape sits on a blurred
+   * copy of itself says so, in its summary and as `notice` for replies that
+   * are not the summary (edit/fill).
    */
   const applyAsVersion = useCallback(
     (
@@ -739,7 +751,7 @@ export function useCutalong() {
       fallback: string,
       preset?: string,
       lead?: { text: string; ops: number }
-    ): { summary: string; n: number } | null => {
+    ): { summary: string; n: number; notice: string | null } | null => {
       const d = docRef.current
       if (!d) return null
       const context = { words: d.words, sources: d.sources, assets: d.assets }
@@ -751,10 +763,11 @@ export function useCutalong() {
       const after = resolveCut(trial.cut, d.words, d.sources)
       const led = lead && lead.text ? lead : null
       const rest = describePlan(led ? trial.applied.slice(led.ops) : trial.applied, before, after, trial.cut)
-      const summary = [led?.text, rest].filter(Boolean).join(' ') || fallback
+      const notice = fillNotice(filledIn(d), filledIn(d, trial.cut), fillMode(trial.cut))
+      const summary = [[led?.text, rest].filter(Boolean).join(' ') || fallback, notice].filter(Boolean).join(' ')
       const next = commit(d, trial.applied, summary, preset ? { preset } : {}).doc
       setDoc(next)
-      return { summary, n: currentVersion(next).n }
+      return { summary, n: currentVersion(next).n, notice }
     },
     [setDoc]
   )
@@ -821,7 +834,9 @@ export function useCutalong() {
         r.intake?.sentence ?? '',
         suggested && suggested.profile.id !== DEFAULT_PROFILE.id
           ? `It sounds like a ${suggested.profile.name.toLowerCase()} video, so I'll cut it as one.`
-          : ''
+          : '',
+        // Clips of another shape than the frame, shown whole on a blurred copy (edit/fill).
+        fillNotice([], filledIn(r.doc), fillMode(currentCut(r.doc))) ?? ''
       ]
         .filter(Boolean)
         .join(' ')
@@ -862,7 +877,8 @@ export function useCutalong() {
           : r.lined.length > 0
             ? 'The better sound is under the footage now.'
             : 'Nothing changed.'
-      const aside = [describeLined(r.lined), r.notice, r.warning].filter(Boolean).join(' ') || null
+      const filled = fillNotice(filledIn(latest ?? d), filledIn(merged), fillMode(currentCut(merged)))
+      const aside = [describeLined(r.lined), r.notice, r.warning, filled].filter(Boolean).join(' ') || null
       patch(id, {
         progress: null,
         text,
@@ -1968,6 +1984,62 @@ export function useCutalong() {
     [applyAsVersion, push, setDoc]
   )
 
+  /**
+   * /fill, and "use black bars": how a picture of another shape than the
+   * frame fills it, for this edit (edit/fill). On its own it says what the
+   * edit does now and how many pictures that touches.
+   */
+  const fillCommand = useCallback(
+    (rest: string, where: 'thread' | 'panel'): void => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can fit pictures of another shape into it.')
+        return
+      }
+      const words = rest.trim().toLowerCase()
+      const mode = /^(black|bars|black bars|letterbox|pillarbox)$/.test(words)
+        ? 'black'
+        : /^(crop|cropped|fill|cover|zoom)$/.test(words)
+          ? 'crop'
+          : /^(blur|blurred|on|default)$/.test(words)
+            ? 'blur'
+            : fillAsked(words)
+      if (!mode) {
+        const now = fillMode(currentCut(d))
+        const n = new Set(filledIn(d).map((p) => p.key)).size
+        const how = { blur: 'on a blurred copy of itself', black: 'between black bars', crop: 'cropped to fill the frame' }[
+          now
+        ]
+        const touches =
+          now === 'crop'
+            ? 'Every picture fills the frame.'
+            : n === 0
+              ? 'No picture in this edit is far from the frame’s shape, so none is shown that way yet.'
+              : `${n === 1 ? 'One picture is' : `${n} pictures are`} shown that way.`
+        say(
+          `A picture of another shape than the frame is shown whole, ${how}. ${touches} /fill blur, /fill black and /fill crop change it.`
+        )
+        return
+      }
+      const done = applyAsVersion([{ op: 'fill', mode }], 'Pictures of another shape fill the frame another way.')
+      if (!done) {
+        say('That is already how pictures of another shape fill the frame.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   /** /premiere: this version as a Premiere project on the person's own files, opened there when it can be. */
   const premiereCommand = useCallback(
     async (where: 'thread' | 'panel'): Promise<void> => {
@@ -2117,6 +2189,10 @@ export function useCutalong() {
         await premiereCommand(where)
         return
       }
+      if (command === 'fill') {
+        fillCommand(rest, where)
+        return
+      }
       if (command === 'sfx') {
         await sfxCommandRun(rest, where, beat, at)
         return
@@ -2208,6 +2284,7 @@ export function useCutalong() {
       premiereCommand,
       sfxCommandRun,
       finishCommand,
+      fillCommand,
       vlog
     ]
   )
@@ -2328,6 +2405,13 @@ export function useCutalong() {
         say(set.reply, false)
         return true
       }
+      // "Use black bars", "blur the sides", "crop them to fill the frame" (edit/fill).
+      const fill = fillAsked(text)
+      if (fill) {
+        const done = applyAsVersion([{ op: 'fill', mode: fill }], 'Pictures of another shape fill the frame another way.')
+        say(done ? `v${done.n} is ready. ${done.summary}` : 'That is already how pictures of another shape fill the frame.', !!done)
+        return true
+      }
       const req = parseTakeRequest(text)
       if (!req) return false
       const answer = resolveTakeRequest(req, takesOf(d), currentCut(d))
@@ -2344,7 +2428,7 @@ export function useCutalong() {
       )
       return true
     },
-    [acceptOffers, setDoc, switchTake]
+    [acceptOffers, applyAsVersion, setDoc, switchTake]
   )
 
   /** A request in words: the planner turns it into ops. */
@@ -2372,7 +2456,7 @@ export function useCutalong() {
       const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
       rememberVersion(docRef.current, { request: text }, done?.n ?? null)
       const aside =
-        [...r.needs, ...r.rejected]
+        [...r.needs, ...r.rejected, done?.notice ?? '']
           .map((t) => sentence(t))
           .filter(Boolean)
           .join(' ') || null
@@ -2766,7 +2850,7 @@ export function useCutalong() {
     const latest = docRef.current
     if (latest && r.notesHandled.length) setDoc(setNoteStatus(latest, r.notesHandled, 'applied'))
     rememberNotes(docRef.current, r.notesHandled, 'applied', done?.n ?? null)
-    const extra = [...r.needs, ...r.rejected]
+    const extra = [...r.needs, ...r.rejected, done?.notice ?? '']
       .map((t) => sentence(t))
       .filter(Boolean)
       .join(' ')

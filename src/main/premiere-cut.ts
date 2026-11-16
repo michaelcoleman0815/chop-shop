@@ -156,6 +156,12 @@ function coverScale(frame: { width: number; height: number }, shape: { width: nu
   return Math.max(frame.width / shape.width, frame.height / shape.height) * 100
 }
 
+/** Percent that fits a picture whole inside the frame, as the export shows one of another shape (edit/fill). */
+function fitScale(frame: { width: number; height: number }, shape: { width: number; height: number }): number {
+  if (shape.width <= 0 || shape.height <= 0) return 100
+  return Math.min(frame.width / shape.width, frame.height / shape.height) * 100
+}
+
 /** What the music does in Cutalong that a level in Premiere does not: its rise between lines and its fades. */
 function musicLeftOut(bed: NonNullable<Cut['music']>): string | null {
   const fades = bed.fadeInSec > 0 || bed.fadeOutSec > 0
@@ -172,7 +178,7 @@ export function planPremiere(input: PremiereInput): PremierePlan {
   const cutaways: PremiereClip[] = []
   const voice: PremiereClip[] = []
   const markers: PremiereMarker[] = []
-  const counts = { speed: 0, reverse: 0, freeze: 0, split: 0, card: 0, bw: 0, camera: 0, pip: 0, side: 0 }
+  const counts = { speed: 0, reverse: 0, freeze: 0, split: 0, card: 0, bw: 0, camera: 0, pip: 0, side: 0, fill: 0 }
   const marked = new Set<string>()
   /** One marker per beat and kind of thing, where its picture starts, counted for the reply. */
   const mark = (beat: string, kind: keyof typeof counts, atSec: number, name: string, comment: string): void => {
@@ -198,7 +204,8 @@ export function planPremiere(input: PremiereInput): PremierePlan {
       start: pic.outStart,
       end: pic.outStart + pic.durationSec,
       inSec: from,
-      scale: coverScale(frame, shape) * zoom,
+      // Shown whole when the export shows it whole: Premiere's black bars are the export's when it has bars.
+      scale: (s.fill ? fitScale(frame, shape) : coverScale(frame, shape)) * zoom,
       group: i,
       origin: { outStart: pic.outStart, srcStart: from }
     })
@@ -220,7 +227,12 @@ export function planPremiere(input: PremiereInput): PremierePlan {
       const facts = input.media.get(b.path)
       const size = facts?.video ?? { width: frame.width, height: frame.height }
       const box = Math.min(frame.width, frame.height) * CARD_SHARE
-      const scale = t?.frame === 'card' ? Math.min(box / size.width, box / size.height) * 100 : coverScale(frame, size)
+      const scale =
+        t?.frame === 'card'
+          ? Math.min(box / size.width, box / size.height) * 100
+          : b.fill
+            ? fitScale(frame, size)
+            : coverScale(frame, size)
       const inSec = facts?.video?.still ? 0 : b.startSec
       cutaways.push({
         path: b.path,
@@ -253,6 +265,8 @@ export function planPremiere(input: PremiereInput): PremierePlan {
     }
     if (s.broll && t?.frame === 'card') mark(id, 'card', at, 'Card', 'Cutalong shows the picture on a plain ground.')
     if (t?.bw) mark(id, 'bw', at, 'Black and white', 'Cutalong shows this beat in black and white.')
+    if (s.fill === 'blur' || s.broll?.fill === 'blur')
+      mark(id, 'fill', at, 'Blurred fill', 'Cutalong fills around the picture with a blurred copy of it.')
     if (s.inset?.layout === 'pip')
       mark(id, 'pip', at, 'Camera in a box', 'Cutalong shows another camera in a box here.')
     if (s.inset?.layout === 'side')
@@ -332,6 +346,7 @@ export function planPremiere(input: PremiereInput): PremierePlan {
     counts.split ? plural(counts.split, 'split screen') : null,
     counts.card ? plural(counts.card, 'card') : null,
     counts.bw ? `black and white on ${plural(counts.bw, 'beat')}` : null,
+    counts.fill ? `the blurred fill on ${plural(counts.fill, 'beat')}` : null,
     counts.pip ? `another camera in a box on ${plural(counts.pip, 'beat')}` : null,
     counts.side ? `cameras side by side on ${plural(counts.side, 'beat')}` : null,
     cut.reframe ? 'the framing that follows you' : null,
@@ -741,12 +756,16 @@ export async function writePremiere(
     sources.push({ ...s, hasAudio: used ? (await read(s.path)).channels > 0 : false })
   }
   // Beats shown through another camera cut that camera's file; one beside or over them is marked.
-  const segments = cameraSegments(cut, resolved, sources)
-  for (const s of segments) {
+  for (const s of cameraSegments(cut, resolved, sources)) {
     await read(s.path)
     if (s.audio) await read(s.audio.path)
     if (s.broll) await read(s.broll.path)
   }
+  // Then again with the frame and the cutaways' shapes, so a picture the export shows whole is shown whole here.
+  const sizes = new Map(
+    [...media].flatMap(([path, m]) => (m.video ? [[path, { width: m.video.width, height: m.video.height }] as const] : []))
+  )
+  const segments = cameraSegments(cut, resolved, sources, sizes, true, frameSize(cut.aspect, first))
   if (cut.music) await read(cut.music.path)
   const sfxFiles = new Map<string, string>()
   for (const p of placeSfx(cut.beats, resolved)) {

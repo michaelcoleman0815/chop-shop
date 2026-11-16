@@ -6,6 +6,7 @@ import { SfxSchema } from './sfx'
 import { AngleSchema, ANGLE_LAYOUTS, BeatAngleSchema } from './angles'
 import { SubjectSchema } from './reframe'
 import { CameraSchema } from './camera'
+import { FillSchema } from './fill'
 import { FreezeSchema, MAX_SPEED, MIN_SPEED, RampSchema } from './timing'
 import {
   FadeSchema,
@@ -231,7 +232,13 @@ export const CutSchema = z.object({
   /** Other cameras of the same takes, each lined up with its recording (edit/angles). */
   angles: z.array(AngleSchema).max(16).optional(),
   /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
-  reframe: z.boolean().optional()
+  reframe: z.boolean().optional(),
+  /**
+   * How a picture of another shape fills the frame (edit/fill): whole on a
+   * blurred copy of itself, which is what absent means, between black bars,
+   * or cropped to fill it.
+   */
+  fill: FillSchema.optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -321,6 +328,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // Follow the speaker when the picture is cropped to a narrower frame, or keep it in the middle.
   z.object({ op: z.literal('reframe'), on: z.boolean() }),
+  // How pictures of another shape fill the frame: on a blurred copy, between black bars, or cropped.
+  z.object({ op: z.literal('fill'), mode: FillSchema }),
   // Where beats are centred when cropped, by hand; null follows the speaker or the middle again.
   z.object({ op: z.literal('framing'), beats: z.array(beatId).min(1), x: z.number().min(0).max(1).nullable() }),
   // Which camera beats show, and how; null shows their own recording again.

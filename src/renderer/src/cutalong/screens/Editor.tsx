@@ -14,6 +14,7 @@ import {
   undoTarget,
   cutawayAt,
   cutawayClock,
+  cutawayFit,
   duckingKeys,
   frameAt,
   grainSpread,
@@ -26,6 +27,7 @@ import {
   pieceFraming,
   pieceRate,
   pieceTime,
+  pictureFit,
   pipBox,
   placeSfx,
   RECORDED_VOICE_LUFS,
@@ -40,6 +42,7 @@ import {
   windowShare,
   type Camera,
   type EditDoc,
+  type Fit,
   type Look,
   type Music,
   type Op,
@@ -69,6 +72,7 @@ import {
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { isImagePath } from '../../../../shared/assets'
 import { api, mediaUrlFor } from '../api'
+import { Backdrop } from '../components/Backdrop'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
 import { GraphicPanel } from '../components/GraphicPanel'
 import { MotionCanvas } from '../components/MotionCanvas'
@@ -697,14 +701,35 @@ function Deck({
   }
   const cutawayCamera =
     rb && t?.broll?.camera && t.frame !== 'card' ? cameraClock(resolved, rb.id, time, t.broll.camera.word) : null
+  // A picture of another shape shows whole, on a blurred copy of itself or between bars, as the export has it (edit/fill).
+  const beat = rb ? cut.beats[rb.index] : undefined
+  const box = { width: frameAspect, height: 1 }
+  const fit = beat && source ? pictureFit(cut, beat, source, box) : 'cover'
+  const brollPath = t?.broll?.path
+  const brollAsset = brollPath ? doc.assets.find((a) => a.path === brollPath) : undefined
+  const cutawayFitFor = (size: { width: number; height: number } | null): Fit =>
+    beat
+      ? cutawayFit(
+          cut,
+          beat,
+          brollAsset?.width && brollAsset.height ? { width: brollAsset.width, height: brollAsset.height } : size,
+          box
+        )
+      : 'cover'
   return (
     <div className="cl-deck" style={style.wrapper} data-dip={style.dip} aria-hidden={!view.layer}>
-      <div className="cl-deck-picture" style={style.picture}>
+      <div className={`cl-deck-picture${fit === 'black' ? ' bars' : ''}`} style={style.picture}>
+        {fit === 'blur' && <Backdrop of={videoRef} aspect={frameAspect} bw={!!t?.bw} transform={transform} />}
         <video
           ref={videoRef}
           playsInline
           preload="auto"
-          style={{ filter: t?.bw ? 'grayscale(1)' : undefined, transform, objectPosition }}
+          style={{
+            filter: t?.bw ? 'grayscale(1)' : undefined,
+            transform,
+            objectPosition,
+            objectFit: fit === 'cover' ? undefined : 'contain'
+          }}
         />
         <audio ref={soundRef} preload="auto" aria-hidden="true" />
         {view.layer && t?.broll && t.frame !== 'speaker' && at && (
@@ -716,6 +741,8 @@ function Deck({
             moving={!runs?.held && !t.broll.reverse}
             playing={playing}
             bw={t.bw}
+            fitFor={cutawayFitFor}
+            aspect={frameAspect}
             camera={
               t.broll.camera && cutawayCamera
                 ? {
@@ -748,7 +775,9 @@ function Cutaway({
   moving,
   playing,
   bw,
-  camera
+  camera,
+  fitFor,
+  aspect
 }: {
   frame: string
   path: string
@@ -765,11 +794,17 @@ function Cutaway({
     clock: { t: number; length: number; wordAt: number | null }
     frameAspect: number
   } | null
+  /** How it fills the frame, from its size when the edit knows it, or else the size it loaded at (edit/fill). */
+  fitFor: (size: { width: number; height: number } | null) => Fit
+  /** The frame's width over its height. */
+  aspect: number
 }): JSX.Element {
   const ref = useRef<HTMLVideoElement>(null)
+  const image = useRef<HTMLImageElement>(null)
   const still = isImagePath(path) || path.startsWith('data:image')
   // The footage's own shape, once it has loaded: the move is planned on it.
   const [shape, setShape] = useState<number | null>(null)
+  const fit = fitFor(shape ? { width: shape, height: 1 } : null)
   useEffect(() => {
     const v = ref.current
     if (!v) return
@@ -786,11 +821,13 @@ function Cutaway({
     const plan = cameraPlan(camera.move, camera.clock.length, camera.clock.wordAt, shape, camera.frameAspect)
     transform = cameraTransform(viewAt(plan, camera.clock.t), plan.fw, plan.fh)
   }
-  const style = { filter: bw ? 'grayscale(1)' : undefined, transform }
+  const style = { filter: bw ? 'grayscale(1)' : undefined, transform, objectFit: fit === 'cover' ? undefined : 'contain' } as const
   return (
-    <div className={`cl-cutaway ${frame}`}>
+    <div className={`cl-cutaway ${frame}${fit === 'black' ? ' bars' : ''}`}>
+      {fit === 'blur' && <Backdrop of={still ? image : ref} aspect={aspect} bw={bw} />}
       {still ? (
         <img
+          ref={image}
           src={src}
           alt=""
           style={style}

@@ -1090,6 +1090,19 @@ button:disabled {
   background: #ffffff;
 }
 
+/* A picture of another shape shown whole (edit/fill): on its own blurred copy,
+   drawn small by Backdrop and scaled up behind it, or between black bars.
+   Picture colours, as in the export. */
+.cl-backdrop {
+  position: absolute;
+  pointer-events: none;
+}
+
+.cl-deck-picture.bars,
+.cl-cutaway.bars {
+  background: #000000;
+}
+
 /* A look over the picture, as the export grades it: the colour is an SVG
    filter on the decks, the vignette and grain lie over them, and captions
    draw over all three. Their colours are the picture's, not the interface's. */
@@ -1176,6 +1189,7 @@ button:disabled {
 
 .cl-cutaway img,
 .cl-cutaway video {
+  position: relative;
   display: block;
   width: 100%;
   height: 100%;
