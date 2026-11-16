@@ -266,6 +266,17 @@ describe('a story told again after edits in the editor', () => {
     expect(currentCut(restore(v3, 2)).chapters).toEqual(currentCut(edited).chapters)
   })
 
+  it('counts the edits that went, by what they are, and names the chapters', () => {
+    const more = commit(
+      edited,
+      [{ op: 'transition', beats: [beatOf(v1, 's10', true), beatOf(v1, 's10')], kind: 'dissolve' }],
+      'Two more dissolves.'
+    ).doc
+    expect(carriedNote(retold(more, 'make it 40 seconds'))).toBe(
+      '2 dissolves and the chapter “The quiet bit” were on moments the new story leaves out, so I took them out; Undo brings them back.'
+    )
+  })
+
   it('says what could not come along where its moment still plays', () => {
     // The shot with the dissolve told first: nothing comes before it to dissolve from.
     const story = (vlogShown(edited) as Vlog).story.beats

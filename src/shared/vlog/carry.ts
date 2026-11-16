@@ -82,6 +82,16 @@ export interface Named {
 
 const named = (one: string, many: string): Named => ({ one, many: (n) => `${n} ${many}` })
 
+/** A transition's name for more than one: "dissolves", "dips to black", "circles closing", "white flashes". */
+function pluralOf(noun: string): string {
+  const words = noun.split(' ')
+  const to = words.indexOf('to')
+  const head = to > 0 ? to - 1 : words[words.length - 1].endsWith('ing') ? 0 : words.length - 1
+  const word = words[head]
+  if (!word.endsWith('s')) words[head] = /(sh|ch|x|z)$/.test(word) ? `${word}es` : `${word}s`
+  return words.join(' ')
+}
+
 /** How a beat looks, in the parts a person changes one at a time, each with the word it lands on when it has one. */
 interface Look {
   name: Named
@@ -267,8 +277,8 @@ export function leftOut(before: Cut, after: Cut, words: Word[]): Lost[] {
   for (const old of before.beats) {
     const now = moments.get(old.id)
     if (old.transition) {
-      const label = TRANSITION_INFO[old.transition.kind].label.replace(/^an? /, 'the ')
-      if (!now || !same(now.transition, old.transition)) edit(named(label, 'transitions'), !now)
+      const label = TRANSITION_INFO[old.transition.kind].label.replace(/^an? /, '')
+      if (!now || !same(now.transition, old.transition)) edit(named(`the ${label}`, pluralOf(label)), !now)
     } else if (old.splitEdit && (!now || !same(now.splitEdit, old.splitEdit))) {
       const kind = old.splitEdit.kind === 'j' ? 'J' : 'L'
       edit(named(`the ${kind} cut`, `${kind} cuts`), !now)
