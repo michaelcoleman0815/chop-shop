@@ -62,6 +62,7 @@ fetch_all() {
   fetch_one zimg "$ZIMG_REPO" "$ZIMG_TAG" "$ZIMG_COMMIT"
   fetch_one libwebp "$LIBWEBP_REPO" "$LIBWEBP_TAG" "$LIBWEBP_COMMIT"
   fetch_one dav1d "$DAV1D_REPO" "$DAV1D_TAG" "$DAV1D_COMMIT"
+  fetch_one opus "$OPUS_REPO" "$OPUS_TAG" "$OPUS_COMMIT"
   fetch_one whisper "$WHISPER_REPO" "$WHISPER_TAG" "$WHISPER_COMMIT"
 }
 

@@ -79,6 +79,12 @@ build_deps() {
   meson_build dav1d "$SOURCES/dav1d" -Denable_tools=false -Denable_tests=false \
     -Denable_examples=false -Denable_asm=true
 
+  # Floating point, with the CPU's own vector code; the neural extras
+  # (DRED, OSCE) are left off, as they are by default.
+  log "$TARGET: opus"
+  cmake_build opus "$SOURCES/opus" -DOPUS_BUILD_TESTING=OFF -DOPUS_BUILD_PROGRAMS=OFF \
+    -DOPUS_INSTALL_CMAKE_CONFIG_MODULE=OFF -DOPUS_INSTALL_PKG_CONFIG_MODULE=ON
+
   stage_mark "$PREFIX" deps
 }
 
@@ -101,7 +107,7 @@ build_ffmpeg() {
     --disable-programs --disable-doc --disable-avdevice --disable-postproc --disable-debug \
     --disable-autodetect --enable-pthreads --enable-zlib \
     --enable-libass --enable-libfreetype --enable-libfribidi --enable-libzimg \
-    --enable-libwebp --enable-libdav1d \
+    --enable-libwebp --enable-libdav1d --enable-libopus \
     --pkg-config=pkg-config --pkg-config-flags=--static \
     --extra-cflags="-O2 $T_CFLAGS -I$PREFIX/include" \
     --extra-cxxflags="-O2 $T_CFLAGS -I$PREFIX/include" \
