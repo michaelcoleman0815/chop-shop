@@ -13,6 +13,8 @@ import { creditsText, isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
+import { renderCutMotion } from './motion-render'
+import { loadIcons } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
@@ -116,6 +118,23 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         ? await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.mp4')
         : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
       const brand = await readBrand()
+      const report = (f: number): void => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
+      // Graphics first: drawn frame by frame, then laid over the picture in the final pass.
+      const motion = await renderCutMotion({
+        cut,
+        resolved,
+        words: doc.words,
+        sources,
+        assets: doc.assets,
+        brand,
+        quality: req.quality,
+        ffmpeg: FFMPEG_PATH,
+        workDir: join(workDir, 'motion'),
+        fontsDir: FONTS_DIR(),
+        icons: loadIcons,
+        onProgress: (f) => report(f * 0.25)
+      })
+      const share = motion.overlays.length > 0 ? 0.25 : 0
       await renderCut(cut, resolved, sources, {
         ffmpeg: FFMPEG_PATH,
         outputPath,
@@ -123,7 +142,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         quality: req.quality,
         fontsDir: FONTS_DIR(),
         brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
-        onProgress: (f) => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
+        overlays: motion.overlays,
+        onProgress: (f) => report(share + f * (1 - share))
       })
       // Anything from outside the person's own files is credited beside the video.
       let creditsPath: string | null = null
