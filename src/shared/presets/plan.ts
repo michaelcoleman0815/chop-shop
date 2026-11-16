@@ -610,8 +610,20 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
   if (treat.some((o) => (o.set.zoom ?? 1) > 1)) said.push('alternate shots punch in')
   const bigWords = treat.filter((o) => o.set.bigWord).length
   if (bigWords > 0) said.push(bigWords === 1 ? 'one big word lands' : `a big word lands in ${count(bigWords, 'beat')}`)
-  const bw = treat.filter((o) => o.set.bw === true).reduce((n, o) => n + o.beats.length, 0)
-  if (bw > 0) said.push(`${count(bw, 'cutaway')} ${bw === 1 ? 'goes' : 'go'} black and white`)
+  const bw = treat.filter((o) => o.set.bw === true).flatMap((o) => o.beats)
+  // Cutaways, as a style makes them; beats of someone talking, as a note on a stretch can.
+  const bwCutaways =
+    !cut ||
+    bw.every((id) => {
+      const t = cut.beats.find((b) => b.id === id)?.treatment
+      return !!t?.broll && t.frame !== 'speaker'
+    })
+  if (bw.length > 0 && bwCutaways)
+    said.push(`${count(bw.length, 'cutaway')} ${bw.length === 1 ? 'goes' : 'go'} black and white`)
+  else if (bw.length > 0) {
+    const { who, one } = whoOf(bw, after)
+    said.push(`${who} ${one ? 'goes' : 'go'} black and white`)
+  }
   for (const on of [false, true]) {
     const beats = treat.filter((o) => o.set.captions === on).flatMap((o) => o.beats)
     if (beats.length === 0) continue

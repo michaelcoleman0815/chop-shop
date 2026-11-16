@@ -165,3 +165,17 @@ describe('captions off over some beats', () => {
     )
   })
 })
+
+describe('a stretch of someone talking made black and white', () => {
+  it('is said as beats, not as cutaways', () => {
+    const doc = makeDoc()
+    const before = currentCut(doc)
+    const ops = [{ op: 'treat', beats: ['b2', 'b3'], set: { bw: true } }] as Op[]
+    const done = applyOps(before, ops, ctx(doc))
+    const r0 = resolveCut(before, doc.words, doc.sources)
+    const r1 = resolveCut(done.cut, doc.words, doc.sources)
+    expect(describePlan(ops, r0, r1, done.cut)).toBe('Two beats go black and white.')
+    // Without the cut to look at, it is said as a style says it.
+    expect(describePlan(ops, r0, r1)).toBe('Two cutaways go black and white.')
+  })
+})

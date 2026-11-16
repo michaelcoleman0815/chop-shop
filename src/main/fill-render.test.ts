@@ -149,7 +149,6 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     // Beside it, the copy: the middle of the picture across its width, at 0.7 brightness.
     const left = frameColour(ffmpeg, out, 4.5, { x: 0, y: 0.4, w: 0.12, h: 0.2 })
     const right = frameColour(ffmpeg, out, 4.5, { x: 0.88, y: 0.4, w: 0.12, h: 0.2 })
-    console.log('upright in wide: top', top, 'bottom', bottom, 'left', left, 'right', right)
     expect(top[1]).toBeLessThan(30)
     expect(bottom[1]).toBeGreaterThan(220)
     expect(close(left, [Math.round(0.7 * 20), Math.round(0.7 * 128), Math.round(0.7 * 128)], 16)).toBe(true)
@@ -163,7 +162,6 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     const bars = uprightIn('black')
     const barred = await render(bars.doc, bars.cut, 'upright-black', bars.doc.sources)
     const side = frameColour(ffmpeg, barred, 4.5, { x: 0, y: 0.2, w: 0.15, h: 0.6 })
-    console.log('black bars beside it', side)
     expect(Math.max(...side)).toBeLessThan(6)
     expect(frameColour(ffmpeg, barred, 4.5, { x: 0.45, y: 0, w: 0.1, h: 0.06 })[1]).toBeLessThan(30)
 
@@ -172,7 +170,6 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     // Cropped to fill, the frame shows the middle band: green from about 87 to 168 top to bottom.
     const top = frameColour(ffmpeg, cropped, 4.5, { x: 0.45, y: 0, w: 0.1, h: 0.04 })
     const left = frameColour(ffmpeg, cropped, 4.5, { x: 0, y: 0.4, w: 0.04, h: 0.2 })
-    console.log('cropped to fill: top', top, 'left', left)
     expect(top[1]).toBeGreaterThan(70)
     expect(top[1]).toBeLessThan(110)
     expect(left[0]).toBeLessThan(20)
@@ -209,13 +206,11 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     const out = await render(doc, r.cut, 'vertical', doc.sources)
     // The speaker fills the frame, cropped to the middle: red near half at both edges' midpoints.
     const speaker = frameColour(ffmpeg, out, 0.6, { x: 0.4, y: 0, w: 0.2, h: 0.05 })
-    console.log('talking, cropped to the middle', speaker)
     expect(speaker[1]).toBeLessThan(40)
     // The cutaway: whole across the middle, its copy above and below.
     const at = resolved.beats[resolved.beats.length - 1].outStart + 0.5
     const above = frameColour(ffmpeg, out, at, { x: 0.3, y: 0, w: 0.4, h: 0.15 })
     const middleLeft = frameColour(ffmpeg, out, at, { x: 0, y: 0.45, w: 0.06, h: 0.1 })
-    console.log('wide cutaway in a tall frame: above', above, 'its left edge', middleLeft)
     expect(middleLeft[0]).toBeLessThan(25)
     expect(Math.max(...above)).toBeGreaterThan(50)
     expect(above[2]).toBeLessThan(0.7 * 128 + 12)
@@ -246,7 +241,6 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     ]) {
       const a = frameColour(ffmpeg, out, 4.5, region)
       const b = frameColour(ffmpeg, reference, 4.5, region)
-      console.log('turned', a, 'shot upright', b)
       expect(close(a, b, 8)).toBe(true)
     }
   })
@@ -267,7 +261,6 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     const out = await render(doc, cut, 'hlg', doc.sources)
     const picture = frameColour(ffmpeg, out, 4.5, { x: 0.4, y: 0.3, w: 0.2, h: 0.4 })
     const copy = frameColour(ffmpeg, out, 4.5, { x: 0, y: 0.3, w: 0.15, h: 0.4 })
-    console.log('HLG picture', picture, 'its copy beside it', copy)
     for (let i = 0; i < 3; i++) expect(Math.abs(copy[i] - 0.7 * picture[i])).toBeLessThan(10)
   })
 
@@ -288,7 +281,6 @@ describe.skipIf(!FFMPEG)('pictures of another shape, rendered', () => {
     const at = resolved.beats[2].outStart + 0.5
     const left = frameColour(ffmpeg, out, at, { x: 0, y: 0.4, w: 0.12, h: 0.2 })
     const top = frameColour(ffmpeg, out, at, { x: 0.45, y: 0, w: 0.1, h: 0.06 })
-    console.log('in passes: left', left, 'top', top)
     expect(close(left, [14, 90, 90], 16)).toBe(true)
     expect(top[1]).toBeLessThan(30)
     // The wide clip either side of it fills the frame as it always did.

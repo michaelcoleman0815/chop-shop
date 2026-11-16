@@ -257,7 +257,8 @@ export function findIntro(doc: EditDoc, cut: Cut = currentCut(doc)): IntroFound 
     sec: next.outStart,
     from: named(said(taken[0])),
     to: named(said(taken[taken.length - 1]), true),
-    startsOn: said(next).slice(0, 8).join(' ').replace(/[.,!?;:]+$/, '')
+    // The line it starts on, its first words, and an ellipsis when it runs on.
+    startsOn: `${said(next).slice(0, 8).join(' ').replace(/[.,!?;:]+$/, '')}${said(next).length > 8 ? '…' : ''}`
   }
 }
 
@@ -543,6 +544,7 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
   let dropped: Unit[] = []
   let weighed: Unit[] = []
   let restored = 0
+  let restoredNamed: string[] = []
   if (goal && !goal.within && !ask.keepAll) {
     const resolved = resolveCut(cut, doc.words, doc.sources)
     const units = weigh(doc, cut, resolved)
@@ -563,6 +565,7 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
     } else if (L < goal.target - goal.tol) {
       const back = restoreOps(doc, cut, goal.target - L, goal.tol)
       restored = back.lines
+      restoredNamed = back.named
       push(...back.ops)
     }
   }
@@ -595,7 +598,11 @@ export function planLength(doc: EditDoc, ask: LengthAsk, opts: LengthOptions = {
   const introNow = new Set(dropped.length ? (findIntro(doc, start)?.beats ?? []) : [])
   const cutParts = [...done, ...(dropped.length ? describeCut(dropped, weighed, introNow) : [])]
   if (cutParts.length) sentences.push(`I cut ${listOf(cutParts)}.`)
-  if (restored > 0) sentences.push(`I brought back ${restored === 1 ? 'one line' : `${count(restored, 'line')}`} that ${restored === 1 ? 'was' : 'were'} cut before.`)
+  // What came back is named when it has a name ("the tangent about the conference and two other lines").
+  if (restored > 0 && restoredNamed.some((p) => !/other lines?$/.test(p)))
+    sentences.push(`I brought back ${listOf(restoredNamed)}.`)
+  else if (restored > 0)
+    sentences.push(`I brought back ${restored === 1 ? 'one line' : `${count(restored, 'line')}`} that ${restored === 1 ? 'was' : 'were'} cut before.`)
   if (ask.keepAll) {
     sentences.push('Every line stays.')
     const asked = askedFor(ask)
@@ -656,23 +663,49 @@ function removeDrop(dropped: Unit[], under: number): Unit[] | null {
 
 /**
  * Lines the cut no longer has, brought back to add about `sec` seconds: the
- * beats of words that are in no beat now, in the order they were said, each
- * put before the first beat of its recording said after it. Struck words
- * stay struck: those were cut word by word, on purpose.
+ * beats of words that are in no beat now, the strongest first, each put
+ * before the first beat of its recording said after it. The cut keeps the
+ * opening it has: nothing said before its first kept word comes back, so an
+ * intro taken out stays out, and a tangent weighs least, so it comes back
+ * last. Struck words stay struck: those were cut word by word, on purpose.
  */
-function restoreOps(doc: EditDoc, cut: Cut, sec: number, tol: number): { ops: Op[]; lines: number } {
+function restoreOps(
+  doc: EditDoc,
+  cut: Cut,
+  sec: number,
+  tol: number
+): { ops: Op[]; lines: number; named: string[] } {
   const index = indexWords(doc.words)
-  const covered = new Set<string>()
-  for (const b of cut.beats) {
-    if (b.from === null || b.to === null) continue
-    const a = index.pos.get(b.from)
-    const z = index.pos.get(b.to)
-    if (a === undefined || z === undefined) continue
-    for (let i = a; i <= z; i++) covered.add(index.words[i].id)
+  const coveredBy = (c: Cut): Set<string> => {
+    const set = new Set<string>()
+    for (const b of c.beats) {
+      const a = b.from === null ? undefined : index.pos.get(b.from)
+      const z = b.to === null ? undefined : index.pos.get(b.to)
+      if (a === undefined || z === undefined) continue
+      for (let i = a; i <= z; i++) set.add(index.words[i].id)
+    }
+    return set
+  }
+  const covered = coveredBy(cut)
+  /** Each recording's first kept word, by its place in the words. */
+  const opens = new Map<string, number>()
+  for (const id of covered) {
+    const w = index.words[index.pos.get(id) as number]
+    opens.set(w.source, Math.min(opens.get(w.source) ?? Infinity, index.pos.get(id) as number))
+  }
+  // When each word last left the cut, by version: the most recent cut is undone first.
+  const leftAt = new Map<string, number>()
+  let was: Set<string> | null = null
+  for (const v of doc.versions) {
+    const now = coveredBy(v.cut)
+    if (was) for (const id of was) if (!now.has(id)) leftAt.set(id, v.n)
+    was = now
   }
   const struck = new Set(cut.removed)
-  const out = doc.words.filter((w) => !covered.has(w.id) && !struck.has(w.id))
-  if (out.length === 0) return { ops: [], lines: 0 }
+  const out = doc.words.filter(
+    (w) => !covered.has(w.id) && !struck.has(w.id) && (index.pos.get(w.id) ?? 0) > (opens.get(w.source) ?? -1)
+  )
+  if (out.length === 0) return { ops: [], lines: 0, named: [] }
   const candidates = doc.sources.flatMap((s) => beatsFromWords(out.filter((w) => w.source === s.id), s.id))
   const context = { words: doc.words, sources: doc.sources }
   const lengthOf = (c: Cut): number => resolveCut(c, doc.words, doc.sources).durationSec
@@ -686,33 +719,62 @@ function restoreOps(doc: EditDoc, cut: Cut, sec: number, tol: number): { ops: Op
   // What each line adds, measured: its words, its room either side, a tightening inside it.
   const base = lengthOf(cut)
   const adds = new Map(candidates.map((b) => [b, lengthOf(applyOps(cut, [insertOp(cut, b)], context).cut) - base]))
+  // Each weighed as it plays with every one of them back, as a cut weighs its lines.
+  const whole = candidates.reduce((running, b) => applyOps(running, [insertOp(running, b)], context).cut, cut)
+  const fromOf = new Map(whole.beats.map((b) => [b.id, b.from]))
+  const units = weigh(doc, whole, resolveCut(whole, doc.words, doc.sources))
+  const unitOf = new Map(units.map((u) => [fromOf.get(u.id), u]))
+  const when = (b: Beat): number => {
+    const a = index.pos.get(b.from as string) ?? 0
+    const z = index.pos.get(b.to as string) ?? a
+    let n = 0
+    for (let i = a; i <= z; i++) n = Math.max(n, leftAt.get(index.words[i].id) ?? 0)
+    return n
+  }
+  // What the latest versions took comes back first; among those, the strongest lines.
+  // What the latest versions took comes back first, a version at a time; among those, the strongest lines.
+  const tiers = [...new Set(candidates.map(when))]
+    .sort((a, b) => b - a)
+    .map((n) =>
+      candidates
+        .filter((b) => when(b) === n)
+        .sort((a, b) => (unitOf.get(b.from)?.value ?? 0) - (unitOf.get(a.from)?.value ?? 0))
+    )
   const picked: Beat[] = []
   let left = sec
-  for (const b of candidates) {
+  for (const tier of tiers) {
+    for (const b of tier) {
+      if (left <= tol) break
+      const len = adds.get(b) ?? 0
+      if (len <= 0 || len > left + tol) continue
+      picked.push(b)
+      left -= len
+    }
     if (left <= tol) break
-    const len = adds.get(b) ?? 0
-    if (len <= 0 || len > left + tol) continue
-    picked.push(b)
-    left -= len
-  }
-  // Short of it still: the line nearest in length to what is left, if it lands closer.
-  if (left > tol) {
-    const pick = candidates
+    // Short of it still: the line of these nearest in length to what is left, if it lands closer, before any older one.
+    const pick = tier
       .filter((b) => !picked.includes(b))
       .sort((a, b) => Math.abs(left - (adds.get(a) ?? 0)) - Math.abs(left - (adds.get(b) ?? 0)))[0]
-    if (pick && Math.abs(left - (adds.get(pick) ?? 0)) < left) picked.push(pick)
+    if (pick && Math.abs(left - (adds.get(pick) ?? 0)) < left) {
+      picked.push(pick)
+      break
+    }
   }
   // In the order they were said, so each lands before what follows it.
   picked.sort((a, b) => (index.pos.get(a.from as string) ?? 0) - (index.pos.get(b.from as string) ?? 0))
   let running = cut
   const ops: Op[] = []
+  const back: Unit[] = []
   for (const b of picked) {
     const op = insertOp(running, b)
     const r = applyOps(running, [op], context)
     if (r.applied.length) {
       running = r.cut
       ops.push(op)
+      const u = unitOf.get(b.from)
+      if (u) back.push(u)
     }
   }
-  return { ops, lines: ops.length }
+  // Named as a cut names what it takes, so a tangent that comes back says so.
+  return { ops, lines: ops.length, named: describeCut(back, units, new Set()) }
 }

@@ -118,7 +118,7 @@ describe('the intro', () => {
     expect(intro?.beats).toEqual(['b1', 'b2', 'b3'])
     expect(intro?.from).toBe('Hey everyone')
     expect(intro?.to).toBe("let's get into it")
-    expect(intro?.startsOn).toBe('The first light is the key light, and')
+    expect(intro?.startsOn).toBe('The first light is the key light, and…')
   })
 
   it('is not there when the video opens on its subject', () => {
@@ -132,7 +132,7 @@ describe('the intro', () => {
     const plan = planLength(doc, { intro: true, cut: [] })
     expect(plan.ops).toEqual([{ op: 'remove', beats: ['b1', 'b2', 'b3'] }])
     expect(plan.summary).toMatch(
-      /^I took out the first 0:\d\d, from “Hey everyone” to “let's get into it”\. It starts on “The first light is the key light, and” now\. It runs 1:\d\d now, down from 1:\d\d\.$/
+      /^I took out the first 0:\d\d, from “Hey everyone” to “let's get into it”\. It starts on “The first light is the key light, and…” now\. It runs 1:\d\d now, down from 1:\d\d\.$/
     )
   })
 })
@@ -144,7 +144,6 @@ describe('cutting toward a length', () => {
     expect(before).toBeGreaterThan(80)
     const plan = planLength(doc, { targetSec: 60, cut: [] })
     const after = commit(doc, plan.ops, plan.summary).doc
-    console.log(plan.summary, plan.note)
     expect(Math.abs(runs(after) - 60)).toBeLessThanOrEqual(toleranceFor(60))
     expect(plan.afterSec).toBeCloseTo(runs(after), 6)
     const left = said(after)
@@ -202,6 +201,29 @@ describe('cutting toward a length', () => {
       (w) => after.words.find((x) => x.id === w.id)!.startSec
     )
     expect(times).toEqual([...times].sort((a, b) => a - b))
+  })
+
+  it('keeps an intro taken out out, and brings a tangent taken out back last', () => {
+    let doc = lightingDoc()
+    const intro = planLength(doc, { intro: true, cut: [] })
+    doc = commit(doc, intro.ops, intro.summary).doc
+    // The tangent about the conference, taken out as a planner would.
+    const tangent = currentCut(doc).beats.filter((b) => /conference|buffet|umbrellas/.test(said({ ...doc, versions: [{ ...doc.versions[0], cut: { ...currentCut(doc), beats: [b] } }] })))
+    expect(tangent).toHaveLength(4)
+    doc = commit(doc, [{ op: 'remove', beats: tangent.map((b) => b.id) }], 'x').doc
+    const short = planLength(doc, { targetSec: 40, cut: [] })
+    doc = commit(doc, short.ops, short.summary).doc
+    // A little longer: lines the short cut took come back, not the intro or the tangent.
+    const longer = planLength(doc, { targetSec: Math.round(runs(doc) + 8), cut: [] })
+    const grown = commit(doc, longer.ops, longer.summary).doc
+    expect(longer.summary).toMatch(/I brought back /)
+    expect(said(grown)).not.toMatch(/Hey everyone|welcome back|get into it/)
+    expect(said(grown)).not.toMatch(/conference|buffet|umbrellas/)
+    expect(said(grown)).toMatch(/^The first light is the key light/)
+    // More than the rest holds: everything but the intro comes back, and the tangent is named.
+    const all = planLength(doc, { targetSec: Math.round(runs(lightingDoc()) - 3), cut: [] })
+    expect(all.summary).toMatch(/I brought back .*the tangent about the conference/)
+    expect(said(commit(doc, all.ops, all.summary).doc)).not.toMatch(/Hey everyone|welcome back|get into it/)
   })
 })
 
