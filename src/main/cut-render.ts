@@ -288,6 +288,32 @@ const HOLD_READ_SEC = 0.5
 /** The ground a card sits on: Cutalong's own, so cards read as part of the edit. */
 const CARD_GROUND = 'F5F5F3'
 
+/*
+ * Colour. HD video with no colour tags plays as BT.709 in QuickTime and in
+ * Chrome, and so in the editor's preview, and the export passes a
+ * recording's YUV through untouched, so it plays the same. What does not
+ * pass through untouched is anything made in RGB and laid over it, or graded
+ * in RGB: graphics, the logo, captions, a card's ground, stills, and a look.
+ * Left to itself ffmpeg converts those with BT.601 on 6.0 and 6.1 (and on
+ * 7.0 in some filters), which moves a brand colour by ten or more levels.
+ * So every step into or out of RGB says BT.709, limited range, outright; it
+ * goes through planar RGB at the picture's own size, the one path every
+ * version converts exactly (converting while resizing ignores the matrix on
+ * 6.0 and 6.1); and the export is tagged BT.709, so a player never guesses.
+ */
+/** YUV as BT.709 into planar RGB. */
+export const TO_RGB = 'scale=in_color_matrix=bt709:in_range=tv,format=gbrp'
+/** The frames tagged as what they are: BT.709, limited range. */
+export const AS_BT709 = 'setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv'
+/** RGB back to YUV as BT.709, tagged. */
+export const TO_YUV = `format=gbrp,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,${AS_BT709}`
+/** An RGB picture with alpha, to lay over the video: into YUV with alpha as BT.709. */
+export const TO_YUVA = `format=gbrap,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p,${AS_BT709}`
+/** A still or a GIF, decoded as its format says (JPEG as BT.601, full range), into YUV as BT.709, alpha kept for a card. */
+const STILL_TO_YUV = `format=gbrap,scale=out_color_matrix=bt709:out_range=tv,format=yuva444p,${AS_BT709}`
+/** What the encoder writes in the file, so a player reads it as BT.709 too. */
+const TAGS = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv']
+
 /** Output frame size for an aspect, halved for previews. */
 export function frameSize(
   aspect: Aspect,
@@ -807,7 +833,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // as asked, through its own speed. A still simply shows for as long.
     const cutaway = (): string => {
       const b = s.broll as NonNullable<Segment['broll']>
-      if (IMAGE_FILE.test(b.path)) return sourcePicture(input(b.path, 0, showFor))
+      if (IMAGE_FILE.test(b.path)) return `${sourcePicture(input(b.path, 0, showFor))}${STILL_TO_YUV},`
       if (b.hold)
         return `${sourcePicture(input(b.path, b.startSec, HOLD_READ_SEC), b.convert)}trim=end_frame=1,setpts=PTS-STARTPTS,`
       const reads = b.steps ? srcLength(b.steps) : showFor
@@ -816,26 +842,26 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     }
 
     if (t === null) {
-      chains.push(`${speaker()}fps=${fps},setsar=1,format=yuv420p,${frames}[${v}]`)
+      chains.push(`${speaker()}fps=${fps},setsar=1,format=yuv420p,${AS_BT709},${frames}[${v}]`)
     } else if (s.broll && t.frame === 'split') {
       const half = even(H / 2)
       chains.push(`${cutaway()}${moveOver(s.broll.camera, W, half)}${look(W, half, t, false)}[${v}t]`)
       chains.push(`${speaker()}${moveOver(s.camera, W, H - half)}${look(W, H - half, t, true, aim)}[${v}b]`)
-      chains.push(`[${v}t][${v}b]vstack,format=yuv420p,${frames}[${v}]`)
+      chains.push(`[${v}t][${v}b]vstack,format=yuv420p,${AS_BT709},${frames}[${v}]`)
     } else if (s.broll && t.frame === 'card') {
       // A card: the picture centred on Cutalong's ground, at most 60% of the
       // frame, with the speaker's voice carrying on underneath.
       const box = even(Math.min(W, H) * 0.6)
-      chains.push(`color=c=0x${CARD_GROUND}:s=${W}x${H}:r=${fps}:d=${fixed(showFor)}[${v}g]`)
+      chains.push(`color=c=0x${CARD_GROUND}:s=${W}x${H}:r=${fps}:d=${fixed(showFor)},${TO_YUV}[${v}g]`)
       chains.push(
         `${cutaway()}fps=${fps},scale=${box}:${box}:force_original_aspect_ratio=decrease,setsar=1${t.bw ? ',hue=s=0' : ''}[${v}i]`
       )
-      chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,${frames}[${v}]`)
+      chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,${AS_BT709},${frames}[${v}]`)
     } else if (s.broll) {
       // The cutaway fills the frame, or shows whole in it; the speaker's input is only heard.
       const fill = s.broll.fill ? { fit: s.broll.fill, name: `${v}fb` } : undefined
       chains.push(
-        `${cutaway()}${moveOver(s.broll.camera, W, H)}${look(W, H, t, false, undefined, fill)},format=yuv420p,${frames}[${v}]`
+        `${cutaway()}${moveOver(s.broll.camera, W, H)}${look(W, H, t, false, undefined, fill)},format=yuv420p,${AS_BT709},${frames}[${v}]`
       )
     } else if (s.inset) {
       // Another camera of the same moment, read as the picture is: held with
@@ -852,17 +878,17 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         const [bw, bh] = across ? [W - aw, H] : [W, H - ah]
         chains.push(`${speaker()}${moveOver(s.camera, aw, ah)}${look(aw, ah, t, true, aim)}[${v}a]`)
         chains.push(`${other()}${look(bw, bh, t, false)}[${v}b]`)
-        chains.push(`[${v}a][${v}b]${across ? 'hstack' : 'vstack'},format=yuv420p,${frames}[${v}]`)
+        chains.push(`[${v}a][${v}b]${across ? 'hstack' : 'vstack'},format=yuv420p,${AS_BT709},${frames}[${v}]`)
       } else {
         const box = pipBox({ width: W, height: H }, inset.size)
         chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim)}[${v}m]`)
         chains.push(`${other()}${look(box.width, box.height, t, false)}[${v}p]`)
-        chains.push(`[${v}m][${v}p]overlay=x=${box.x}:y=${box.y},format=yuv420p,${frames}[${v}]`)
+        chains.push(`[${v}m][${v}p]overlay=x=${box.x}:y=${box.y},format=yuv420p,${AS_BT709},${frames}[${v}]`)
       }
     } else {
       const fill = s.fill ? { fit: s.fill, name: `${v}fs` } : undefined
       chains.push(
-        `${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim, fill)},format=yuv420p,${frames}[${v}]`
+        `${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim, fill)},format=yuv420p,${AS_BT709},${frames}[${v}]`
       )
     }
 
@@ -1002,30 +1028,41 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
 
   let vOut = 'vcat'
   // The look goes over the whole picture, cutaways and cards included, and
-  // under the captions and the logo, which keep their own colours.
+  // under the captions and the logo, which keep their own colours. Its LUT,
+  // colour and vignette work in RGB as BT.709, the RGB the preview grades.
   const grade = opts.look
-  if (grade?.lut && grade.lut.strength > 0.005) {
-    // A LUT at less than full strength is mixed back with the picture it came from.
-    const lut =
-      opts.lutKind === '1d'
-        ? `lut1d=file=${filterPath(grade.lut.path)}:interp=linear`
-        : `lut3d=file=${filterPath(grade.lut.path)}:interp=tetrahedral`
-    const k = grade.lut.strength.toFixed(3)
-    if (grade.lut.strength >= 0.999) chains.push(`[vcat]${lut}[vlut]`)
-    else {
-      chains.push(`[vcat]split=2[vla][vlb]`, `[vlb]${lut}[vlc]`)
-      chains.push(`[vla][vlc]blend=all_expr='A*(1-${k})+B*${k}'[vlut]`)
+  const lutOn = !!grade?.lut && grade.lut.strength > 0.005
+  const inRgb = grade ? lookRgbFilters(grade) : []
+  if (lutOn || inRgb.length > 0) {
+    chains.push(`[vcat]${TO_RGB}[vrgb]`)
+    let rgb = 'vrgb'
+    if (grade?.lut && lutOn) {
+      // A LUT at less than full strength is mixed back with the picture it came from.
+      const lut =
+        opts.lutKind === '1d'
+          ? `lut1d=file=${filterPath(grade.lut.path)}:interp=linear`
+          : `lut3d=file=${filterPath(grade.lut.path)}:interp=tetrahedral`
+      const k = grade.lut.strength.toFixed(3)
+      if (grade.lut.strength >= 0.999) chains.push(`[vrgb]${lut}[vlut]`)
+      else {
+        chains.push(`[vrgb]split=2[vla][vlb]`, `[vlb]${lut}[vlc]`)
+        chains.push(`[vla][vlc]blend=all_expr='A*(1-${k})+B*${k}'[vlut]`)
+      }
+      rgb = 'vlut'
     }
-    vOut = 'vlut'
+    chains.push(`[${rgb}]${[...inRgb, TO_YUV].join(',')}[vgraded]`)
+    vOut = 'vgraded'
   }
-  const graded = grade ? lookFilters(grade) : []
-  if (graded.length > 0) {
-    chains.push(`[${vOut}]${graded.join(',')}[vlook]`)
+  const inYuv = grade ? lookYuvFilters(grade) : []
+  if (inYuv.length > 0) {
+    chains.push(`[${vOut}]${inYuv.join(',')}[vlook]`)
     vOut = 'vlook'
   }
   if (opts.assPath) {
+    // Burned in RGB, between conversions said outright: in YUV, libass's colours
+    // go through ffmpeg's BT.601 on 6.0 and 6.1, and a caption's colour moves.
     const fonts = opts.fontsDir ? `:fontsdir=${filterPath(opts.fontsDir)}` : ''
-    chains.push(`[${vOut}]subtitles=${filterPath(opts.assPath)}${fonts}[vsub]`)
+    chains.push(`[${vOut}]${TO_RGB},format=rgb24,subtitles=${filterPath(opts.assPath)}${fonts},${TO_YUV}[vsub]`)
     vOut = 'vsub'
   }
   // ---- Motion graphics (src/main/motion-render.ts) ----
@@ -1035,7 +1072,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   for (const [i, o] of (opts.overlays ?? []).entries()) {
     inputs.push('-i', o.path)
     const k = next++
-    chains.push(`[${k}:v]setpts=PTS-STARTPTS+${fixed(o.startSec)}/TB[mo${i}]`)
+    // Drawn in RGB; into YUV as BT.709 before it meets the picture, so a brand colour stays itself.
+    chains.push(`[${k}:v]${TO_YUVA},setpts=PTS-STARTPTS+${fixed(o.startSec)}/TB[mo${i}]`)
     chains.push(`[${vOut}][mo${i}]overlay=0:0:eof_action=pass[vmo${i}]`)
     vOut = `vmo${i}`
   }
@@ -1051,7 +1089,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     const x = opts.logo.corner.endsWith('right') ? `main_w-overlay_w-${m}` : String(m)
     const y = opts.logo.corner.startsWith('bottom') ? `main_h-overlay_h-${m}` : String(m)
     const alpha = Math.min(1, Math.max(0.1, opts.logo.opacity)).toFixed(2)
-    chains.push(`[${l}:v]scale=${w}:-1,format=rgba,colorchannelmixer=aa=${alpha}[logo]`)
+    chains.push(`[${l}:v]scale=${w}:-1,format=rgba,colorchannelmixer=aa=${alpha},${TO_YUVA}[logo]`)
     // The picture decides how long it runs: overlay otherwise carries on for as
     // long as the logo does, which ffmpeg 6.0 did by three frames.
     chains.push(`[${vOut}][logo]overlay=x=${x}:y=${y}:shortest=1[vlogo]`)
@@ -1070,6 +1108,9 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${vOut}]${parts.join(',')}[vfade]`)
     vOut = 'vfade'
   }
+  // What the picture is, said on its last frames as on the file (TAGS).
+  chains.push(`[${vOut}]${AS_BT709}[vout]`)
+  vOut = 'vout'
 
   // Loudness and polish are only set when there is sound to set them on:
   // loudnorm over pure silence asks for infinite gain, and the encoder then
@@ -1222,6 +1263,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     '-r',
     String(fps),
     ...encode,
+    ...TAGS,
     opts.outputPath
   ]
 }
@@ -1324,27 +1366,37 @@ export function chunkSegments(segments: Segment[], maxInputs: number): Segment[]
 }
 
 /**
- * A look's filters, after any LUT: the colour matrix, on RGB with an alpha
- * channel whose column carries the offsets; the vignette, darkening red, green
- * and blue alike as the preview's overlay does; then back to YUV for
- * sharpening the luma, and grain in the luma only, so it does not speckle the
- * colour.
+ * A look's filters in RGB, after any LUT, on a picture already in RGB as
+ * BT.709: the colour matrix, on RGB with an alpha channel whose column carries
+ * the offsets; the vignette, darkening red, green and blue alike as the
+ * preview's overlay does.
  */
-export function lookFilters(look: Look): string[] {
+export function lookRgbFilters(look: Look): string[] {
   const parts: string[] = []
   if (changesColour(look)) {
     const m = lookMatrix(look)
     const names = ['rr', 'rg', 'rb', 'ra', 'gr', 'gg', 'gb', 'ga', 'br', 'bg', 'bb', 'ba']
     parts.push('format=rgba', `colorchannelmixer=${names.map((k, i) => `${k}=${m[i].toFixed(5)}`).join(':')}`)
   }
-  const sharpen = look.sharpen ?? 0
   const vignette = look.vignette ?? 0
-  const grain = look.grain ?? 0
   if (vignette > 0) parts.push('format=rgb24', `vignette=angle=${vignetteAngle(vignette).toFixed(4)}`)
-  if (parts.length > 0 || sharpen > 0 || grain > 0) parts.push('format=yuv420p')
+  return parts
+}
+
+/** A look's filters in YUV, after its colour: sharpening the luma, and grain in the luma only, so it does not speckle the colour. */
+export function lookYuvFilters(look: Look): string[] {
+  const parts: string[] = []
+  const sharpen = look.sharpen ?? 0
+  const grain = look.grain ?? 0
   if (sharpen > 0) parts.push(`unsharp=5:5:${(1.2 * sharpen).toFixed(2)}:5:5:0`)
   if (grain > 0) parts.push(`noise=c0s=${grainStrength(grain)}:c0f=t+u`)
   return parts
+}
+
+/** A look's filters, in order, as the export runs them on a YUV picture: into RGB and back as BT.709 around its colour. */
+export function lookFilters(look: Look): string[] {
+  const rgb = lookRgbFilters(look)
+  return [...(rgb.length ? [TO_RGB, ...rgb, TO_YUV] : []), ...lookYuvFilters(look)]
 }
 
 /** A track mastered at an unknown loudness is taken to be as loud as most are. */

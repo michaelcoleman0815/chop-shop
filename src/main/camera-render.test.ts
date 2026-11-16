@@ -18,7 +18,7 @@ import {
   type Resolved
 } from '../shared/edit'
 import { renderCut, type RenderSource } from './cut-render'
-import { countFrames, ffmpegRun, findFfmpeg, gradientWindow, makeGradientStill } from './test-media'
+import { AS_SHOT, countFrames, ffmpegRun, findFfmpeg, gradientWindow, makeGradientStill } from './test-media'
 
 const FFMPEG = findFfmpeg()
 
@@ -53,6 +53,9 @@ describe.skipIf(!FFMPEG)('rendering camera moves', () => {
       'lavfi',
       '-i',
       'sine=frequency=440:sample_rate=48000:duration=8',
+      // Encoded as an HD camera encodes, so the edges' colours read back as the gradient's.
+      '-vf',
+      AS_SHOT,
       '-c:v',
       'libx264',
       '-preset',

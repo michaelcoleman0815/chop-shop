@@ -15,6 +15,7 @@ import {
   type EditDoc
 } from '../shared/edit'
 import {
+  AS_BT709,
   buildRenderArgs,
   captionStyleFor,
   chunkSegments,
@@ -22,7 +23,8 @@ import {
   frameSize,
   renderCut,
   type RenderSource,
-  type Segment
+  type Segment,
+  TO_YUVA
 } from './cut-render'
 import { greyShare, probeMedia, sampleColour } from './inspiration/measure'
 
@@ -185,9 +187,12 @@ describe('render arguments', () => {
       '/brand/logo.png'
     ])
     const graph = args[args.indexOf('-filter_complex') + 1]
-    expect(graph).toContain('scale=76:-1,format=rgba,colorchannelmixer=aa=0.80[logo]')
+    // Drawn in RGB, it meets the picture as BT.709, and the picture leaves tagged so.
+    expect(graph).toContain(`scale=76:-1,format=rgba,colorchannelmixer=aa=0.80,${TO_YUVA}[logo]`)
     expect(graph).toContain('overlay=x=main_w-overlay_w-24:y=main_h-overlay_h-24:shortest=1[vlogo]')
-    expect(args).toContain('[vlogo]')
+    expect(graph).toContain(`[vlogo]${AS_BT709}[vout]`)
+    expect(args).toContain('[vout]')
+    expect(args.join(' ')).toContain('-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv')
     const style = captionStyleFor({ ...DEFAULT_CAPTIONS }, 1080, { text: '#FAFAFA', accent: '#FF5A36' })
     expect([style.textColor, style.activeColor]).toEqual(['#FAFAFA', '#FF5A36'])
   })
