@@ -110,10 +110,14 @@ bitrate, since neither hardware encoder takes a CRF:
 a multiple of 16 (1080) and crops it back in the stream's headers; the
 self-test reads colours at the edges of a 1080x1920 export to catch a
 misaligned picture. `info().encoders` lists the hardware encoders this
-phone can actually start, not just the ones compiled in: an Android phone
-without an HEVC encoder has no `hevc_mediacodec` there. The self-test's
-mapping (`example/src/selftest.ts`, `useHardwareEncoder`) is CRF 14 or less
-→ 20M, 20 or less → 12M, more → 5M.
+phone can actually use, not just the ones compiled in: an Android phone
+without an HEVC encoder for 1080p has no `hevc_mediacodec` there (the
+emulator's stops at 512x512), and an iPhone before the 7 none for HEVC.
+MediaCodec gives an H.264 or HEVC stream's parameter sets only with its
+first frame; the engine's ffmpeg has them before the muxer writes its
+header (`patches/ffmpeg/0002-mediacodecenc-global-header.patch`), which
+Matroska needs. The self-test's mapping (`example/src/selftest.ts`,
+`useHardwareEncoder`) is CRF 14 or less → 20M, 20 or less → 12M, more → 5M.
 
 Besides those, everything ffmpeg has natively is built, so among what the
 app uses: the encoders `aac`, `pcm_s16le`, `pcm_f32le`, `flac`, `rawvideo`,
@@ -162,7 +166,9 @@ What else differs from the Mac's ffmpeg 6.0:
 | whisper.cpp, ggml | 1.8.2 | MIT | static, inside the engine library |
 
 Every source is pinned to a tag and checked against the commit it named
-(`scripts/versions.env`); `patches/ffmpeg` holds one upstream fix.
+(`scripts/versions.env`). `patches/ffmpeg` holds an upstream fix that came
+after 6.0 (x86 assembly) and the engine's own change to the MediaCodec
+encoder, each explained at its top.
 
 FFmpeg is configured LGPL-only (no `--enable-gpl`, no `--enable-nonfree`),
 shared, with `--disable-programs --disable-avdevice --disable-postproc

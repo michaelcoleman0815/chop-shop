@@ -123,7 +123,7 @@ public class CutalongEnginePlugin extends Plugin {
         JSArray encoders = new JSArray();
         for (String name : EngineNative.videoEncoders().split(",")) {
             if (name.isEmpty()) continue;
-            // A MediaCodec encoder is only there if the phone has one for its type.
+            // A MediaCodec encoder is only there if the phone has one for its type, at 1080p.
             if (name.equals("h264_mediacodec") && !mediaTypes.contains("video/avc")) continue;
             if (name.equals("hevc_mediacodec") && !mediaTypes.contains("video/hevc")) continue;
             encoders.put(name);
@@ -132,11 +132,25 @@ public class CutalongEnginePlugin extends Plugin {
         call.resolve(info);
     }
 
+    /**
+     * The video types this phone has an encoder for at 1080p, either way up.
+     * Some have one only for small pictures (the emulator's HEVC encoder
+     * stops at 512x512), which an export cannot use.
+     */
     private static Set<String> deviceEncoderTypes() {
         Set<String> types = new HashSet<>();
         for (MediaCodecInfo codec : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
             if (!codec.isEncoder()) continue;
-            for (String type : codec.getSupportedTypes()) types.add(type.toLowerCase(Locale.ROOT));
+            for (String type : codec.getSupportedTypes()) {
+                try {
+                    MediaCodecInfo.VideoCapabilities video = codec.getCapabilitiesForType(type).getVideoCapabilities();
+                    if (video != null && (video.isSizeSupported(1920, 1080) || video.isSizeSupported(1080, 1920))) {
+                        types.add(type.toLowerCase(Locale.ROOT));
+                    }
+                } catch (IllegalArgumentException e) {
+                    // A type it cannot describe: not one to offer.
+                }
+            }
         }
         return types;
     }
