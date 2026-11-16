@@ -1,6 +1,6 @@
 import { normWord } from '../raw/text'
 import type { Clip, Moment, Scene } from './schema'
-import { wallClock, zoneAt } from './describe'
+import { NIGHT_ENDS_HOUR, wallClock, zoneAt } from './describe'
 
 /**
  * What a person asks of a vlog, in their words: a length ("make it 10
@@ -157,6 +157,7 @@ const STOP = new Set(
 function partOfDay(at: number | null, zoneMin: number | null): string[] {
   if (at === null) return []
   const h = wallClock(at, zoneMin).getUTCHours()
+  if (h < NIGHT_ENDS_HOUR) return ['night']
   if (h < 12) return ['morning']
   if (h < 17) return ['afternoon', 'day']
   if (h < 21) return ['evening']

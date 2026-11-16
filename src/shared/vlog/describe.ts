@@ -91,14 +91,17 @@ export function timeOfDay(at: number | null, zoneMin: number | null = null): str
   return `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, '0')}`
 }
 
+/** The hours after midnight are the night before until this hour: a party at 0:50 is Saturday night, not Sunday morning. */
+export const NIGHT_ENDS_HOUR = 5
+
 function partOfDay(at: number, zoneMin: number | null): string {
   const h = wallClock(at, zoneMin).getUTCHours()
-  return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 21 ? 'Evening' : 'Night'
+  return h < NIGHT_ENDS_HOUR ? 'Night' : h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 21 ? 'Evening' : 'Night'
 }
 
-/** The day a time falls on where it was shot, counted in days. */
+/** The day a time belongs to where it was shot, counted in days: the small hours go with the night before. */
 function dayOf(at: number, zoneMin: number | null): number {
-  return Math.floor(wallClock(at, zoneMin).getTime() / 86400000)
+  return Math.floor((wallClock(at, zoneMin).getTime() / 1000 - NIGHT_ENDS_HOUR * 3600) / 86400)
 }
 
 /**
@@ -112,7 +115,8 @@ export function dayName(
   zone: ZoneAt = LOCAL
 ): string | null {
   if (at === null || firstAt === null || dayOf(at, zone(at)) === dayOf(firstAt, zone(firstAt))) return null
-  const d = wallClock(at, zone(at))
+  // Named by the day it belongs to: the small hours by the night before.
+  const d = new Date(dayOf(at, zone(at)) * 86400000)
   const long = lastAt !== null && dayOf(lastAt, zone(lastAt)) - dayOf(firstAt, zone(firstAt)) >= 6
   return long
     ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })

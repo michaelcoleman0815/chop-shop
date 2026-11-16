@@ -7,7 +7,7 @@ import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, storyOnBeats, st
 import { dayName, nameScene } from './describe'
 import { pretendVlog } from './pretend'
 import { sceneInSentence, storyReply } from './reply'
-import { parseVlogAsk, wantsVlog } from './request'
+import { parseVlogAsk, sceneNamed, wantsVlog } from './request'
 import type { Vlog } from './schema'
 
 /**
@@ -175,5 +175,30 @@ describe('a shoot of more than one day', () => {
     expect(name).toBe('Sunday morning, 8:30')
     expect(sceneInSentence(name)).toBe('Sunday morning at 8:30')
     expect(sceneInSentence(nameScene(scene(at(2, 21)), [], 0, span))).toBe('the night at 21:00')
+  })
+
+  it('counts the hours after midnight as the night before, not the next morning', () => {
+    const at = (day: number, h: number, m = 0): number => new Date(2026, 4, day, h, m).getTime() / 1000
+    const scene = (id: string, startAt: number) => ({ id, name: '', clips: [], startAt, endAt: startAt, place: null })
+    // A Saturday party that runs on past midnight.
+    const span = { firstAt: at(2, 19), lastAt: at(3, 0, 50) }
+    const scenes = [scene('sc1', at(2, 19)), scene('sc2', at(2, 23, 10)), scene('sc3', at(3, 0, 50))].map((s, k) => ({
+      ...s,
+      name: nameScene(s, [], k, span)
+    }))
+    expect(scenes.map((s) => sceneInSentence(s.name))).toEqual([
+      'the evening at 19:00',
+      'the night at 23:10',
+      'the night at 0:50'
+    ])
+    expect(sceneNamed('more of the one at 0:50', scenes, [], [])?.id).toBe('sc3')
+    // Two nights on, the small hours are named by the night they belong to.
+    expect(nameScene(scene('sc4', at(4, 1, 30)), [], 3, { firstAt: at(2, 19), lastAt: at(4, 1, 30) })).toBe(
+      'Sunday night, 1:30'
+    )
+    // And a second day still starts in its morning.
+    expect(nameScene(scene('sc5', at(3, 8, 30)), [], 1, { firstAt: at(2, 19), lastAt: at(3, 8, 30) })).toBe(
+      'Sunday morning, 8:30'
+    )
   })
 })
