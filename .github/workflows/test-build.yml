@@ -60,30 +60,17 @@ jobs:
           npm run typecheck
           npm test
 
-      # Signed and notarized when the release secrets exist, exactly as a
-      # release would be; unsigned otherwise. Never published.
+      # Signed ad hoc, not with the Developer ID: on GitHub's current Mac image
+      # electron-builder's temporary keychain will not unlock ("SecKeychainUnlock:
+      # The user name or passphrase you entered is not correct"), and a test build
+      # for the owner does not need notarizing. Never published.
       - name: Build the app without publishing it
-        timeout-minutes: 45
+        timeout-minutes: 30
         env:
-          CERT_B64: ${{ secrets.CSC_LINK }}
-          CERT_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
-          extra=""
-          if [ -n "$CERT_B64" ]; then
-            export CSC_LINK="$CERT_B64"
-            export CSC_KEY_PASSWORD="$CERT_PASSWORD"
-            if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
-              extra="-c.mac.notarize=true"
-            fi
-          else
-            echo "No certificate configured; building unsigned."
-            export CSC_IDENTITY_AUTO_DISCOVERY=false
-          fi
           npx electron-vite build
-          npx electron-builder --mac --publish never $extra
+          npx electron-builder --mac --publish never -c.mac.identity=-
 
       - uses: actions/upload-artifact@v4
         with:
