@@ -35,9 +35,31 @@ export type ParseCall = (params: Record<string, unknown>) => Promise<{
 
 export function parseWith(client: Anthropic): ParseCall {
   return async (params) => {
-    const r = await client.beta.messages.parse(params as never)
-    return { parsed_output: r.parsed_output, stop_reason: r.stop_reason, usage: r.usage }
+    // Streamed: a long shot list may take longer than the SDK lets one request wait, and the final
+    // message is parsed against the same schema as a single answer would be.
+    const r = await client.beta.messages.stream(params as never).finalMessage()
+    return { parsed_output: (r as { parsed_output?: unknown }).parsed_output ?? null, stop_reason: r.stop_reason, usage: r.usage }
   }
+}
+
+/** A Messages API answer as the server streams it: one text block, then the stop and the usage. For stand-ins and tests. */
+export function streamedAnswer(text: string, opts: { model?: string; input?: number; output?: number; stop?: string } = {}): Response {
+  const events: [string, unknown][] = [
+    [
+      'message_start',
+      {
+        type: 'message_start',
+        message: { id: 'msg_local', type: 'message', role: 'assistant', model: opts.model ?? '', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: opts.input ?? 1, output_tokens: 1 } }
+      }
+    ],
+    ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+    ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }],
+    ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+    ['message_delta', { type: 'message_delta', delta: { stop_reason: opts.stop ?? 'end_turn', stop_sequence: null }, usage: { output_tokens: opts.output ?? 1 } }],
+    ['message_stop', { type: 'message_stop' }]
+  ]
+  const body = events.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('')
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
 /** Dollars a call cost, from the tokens it used. */

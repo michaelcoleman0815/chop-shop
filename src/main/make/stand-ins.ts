@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { spawn } from 'child_process'
 import { createHash } from 'crypto'
 import { appendFileSync, readFileSync, writeFileSync } from 'fs'
-import { parseWith, type ParseCall } from './claude'
+import { parseWith, streamedAnswer, type ParseCall } from './claude'
 import type { LocalVoice } from './narrate'
 import type { MakeServices, Picture, TimedWord } from './services'
 
@@ -108,9 +108,36 @@ async function clipFrom(ffmpeg: string, first: Picture, seconds: number, aspect:
   )
 }
 
-/** Spoken words as a WAV file, by espeak-ng. */
-function speakWav(text: string, voice: string, rate = 155): Promise<Buffer> {
-  return run('espeak-ng', ['-v', voice, '-s', String(rate), '--stdout', text])
+/** A WAV file of a soft tone as long as the words would take to say: for a machine without espeak-ng. */
+function toneWav(text: string): Buffer {
+  const rate = 22050
+  const words = text.split(/\s+/).filter(Boolean).length
+  const n = Math.round(rate * Math.max(0.4, words * 0.36))
+  const data = Buffer.alloc(n * 2)
+  for (let i = 0; i < n; i++) data.writeInt16LE(Math.round(Math.sin((i / rate) * 2 * Math.PI * 180) * 6000 * (0.6 + 0.4 * Math.sin(i / 900))), i * 2)
+  const head = Buffer.alloc(44)
+  head.write('RIFF', 0)
+  head.writeUInt32LE(36 + data.length, 4)
+  head.write('WAVEfmt ', 8)
+  head.writeUInt32LE(16, 16)
+  head.writeUInt16LE(1, 20)
+  head.writeUInt16LE(1, 22)
+  head.writeUInt32LE(rate, 24)
+  head.writeUInt32LE(rate * 2, 28)
+  head.writeUInt16LE(2, 32)
+  head.writeUInt16LE(16, 34)
+  head.write('data', 36)
+  head.writeUInt32LE(data.length, 40)
+  return Buffer.concat([head, data])
+}
+
+/** Spoken words as a WAV file, by espeak-ng, or a tone of the same length where it is not installed. */
+async function speakWav(text: string, voice: string, rate = 155): Promise<Buffer> {
+  try {
+    return await run('espeak-ng', ['-v', voice, '-s', String(rate), '--stdout', text])
+  } catch {
+    return toneWav(text)
+  }
 }
 
 /** A WAV file's first channel as float samples, and its rate. */
@@ -260,8 +287,8 @@ function shotsFor(user: string, documentary: boolean): Record<string, unknown> {
   }
 }
 
-/** The answer to one request the SDK sends, as the Messages API would give it. */
-function answerFor(body: Record<string, unknown>, scripts: Scripts): Record<string, unknown> {
+/** The answer to one request the SDK sends: its text, and the tokens it would have used. */
+function answerFor(body: Record<string, unknown>, scripts: Scripts): { text: string; input: number; output: number } {
   const system = JSON.stringify(body.system ?? '')
   const messages = body.messages as { content: string }[]
   const user = typeof messages?.[0]?.content === 'string' ? messages[0].content : JSON.stringify(messages?.[0]?.content ?? '')
@@ -274,16 +301,7 @@ function answerFor(body: Record<string, unknown>, scripts: Scripts): Record<stri
     out = { prompt: `${asked.charAt(0).toUpperCase()}${asked.slice(1)}, in the same scene and light, a 1950s photograph.`, move: 'push-in' }
   } else out = {}
   const text = JSON.stringify(out)
-  return {
-    id: `msg_standin_${hash(text).toString(16)}`,
-    type: 'message',
-    role: 'assistant',
-    model: String(body.model ?? ''),
-    content: [{ type: 'text', text }],
-    stop_reason: 'end_turn',
-    stop_sequence: null,
-    usage: { input_tokens: Math.round(user.length / 4) + 1500, output_tokens: Math.round(text.length / 4) + 400 }
-  }
+  return { text, input: Math.round(user.length / 4) + 1500, output: Math.round(text.length / 4) + 400 }
 }
 
 /** Claude for the end-to-end run: the real SDK, answered here. Each request is logged. */
@@ -292,7 +310,8 @@ export function standInClaude(scriptsFile: string, log: string): ParseCall {
   const answer = async (_url: unknown, init?: { body?: unknown }): Promise<Response> => {
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
     appendFileSync(log, `${JSON.stringify({ at: new Date().toISOString(), service: 'claude', model: body.model, chars: String(init?.body ?? '').length })}\n`)
-    return new Response(JSON.stringify(answerFor(body, scripts)), { status: 200, headers: { 'content-type': 'application/json' } })
+    const a = answerFor(body, scripts)
+    return streamedAnswer(a.text, { model: String(body.model ?? ''), input: a.input, output: a.output })
   }
   return parseWith(new Anthropic({ apiKey: 'stand-in', fetch: answer as never, maxRetries: 0 }))
 }
