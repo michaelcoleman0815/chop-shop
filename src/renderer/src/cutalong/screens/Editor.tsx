@@ -7,8 +7,6 @@ import {
   cameraClock,
   cameraPlan,
   cameraTransform,
-  captionedWords,
-  captionPages,
   changesColour,
   currentCut,
   currentVersion,
@@ -76,6 +74,7 @@ import {
   type MotionScene
 } from '../../../../shared/motion'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
+import { captionStyleFor, subtitleAt, subtitleCues, subtitleWords } from '../../../../shared/subtitles'
 import { isImagePath } from '../../../../shared/assets'
 import { api, mediaUrlFor } from '../api'
 import { Backdrop } from '../components/Backdrop'
@@ -83,6 +82,7 @@ import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStr
 import { GraphicPanel } from '../components/GraphicPanel'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { RegionPicker } from '../components/RegionPicker'
+import { Subtitles } from '../components/Subtitles'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
@@ -114,6 +114,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
+  // Captions take the brand's colours where the export gives them those: when the brand applies itself.
+  const captionColors = useMemo(() => (app.brand.autoApply ? app.brand.colors : null), [app.brand])
   // The cut's graphics on the output clock, in the brand's look: what the export draws.
   const scene = useMemo(
     () =>
@@ -239,6 +241,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             mediaUrl={app.mediaUrl}
             selected={selected}
             onRegion={(box) => selected && app.updateGraphic(selected.id, { box })}
+            captionColors={captionColors}
           />
           {side === 'script' ? (
             <ScriptPanel
@@ -302,7 +305,6 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
 }
 
 const ASPECT: Record<string, number> = { vertical: 9 / 16, square: 1, wide: 16 / 9 }
-const CAPTION_TOP: Record<string, number> = { top: 0.22, middle: 0.52, chest: 0.66, bottom: 0.84 }
 
 function Preview({
   doc,
@@ -316,13 +318,16 @@ function Preview({
   views,
   mediaUrl,
   selected,
-  onRegion
+  onRegion,
+  captionColors
 }: {
   doc: EditDoc
   resolved: Resolved
   /** The cut as the decks play it, with beats shown through other cameras. */
   seen: { resolved: Resolved; sources: Source[] }
   scene: MotionScene
+  /** The brand's colours, which the export gives captions when the brand applies itself. */
+  captionColors: { text: string; accent: string } | null
   selected: MotionItem | null
   onRegion: (box: number[]) => void
   time: number
@@ -357,17 +362,22 @@ function Preview({
 
   const beat = beatAt(resolved, time)
   const treatment = beat ? cut.beats[beat.index]?.treatment : undefined
-  // Beats whose captions are off show none, as the export has it.
-  const pages = useMemo(
-    () => captionPages(captionedWords(cut, resolved), cut.captions.wordsPerScreen),
-    [cut, resolved]
+  // The captions the export burns in: its words (none from beats with captions off, or while a card
+  // is up), its cues, and its look at its own size, in the brand's colours when it has them.
+  const captionStyle = useMemo(
+    () => captionStyleFor(cut.captions, scene.size.width, captionColors),
+    [cut.captions, scene.size.width, captionColors]
   )
-  // Captions the graphics draw are on the canvas, not here; and captions wait while a card or title is up.
-  const carded = scene.items.some((i) => template(i.kind)?.covers === 'card' && time >= i.start && time < i.end)
-  const page =
-    cut.captions.on && !drawsCaptions(cut.captions) && !carded
-      ? pages.find((p) => time >= p[0].outStart - 0.05 && time <= p[p.length - 1].outEnd + 0.25)
-      : undefined
+  const cues = useMemo(() => {
+    // Captions the graphics draw are on the motion canvas instead.
+    if (!cut.captions.on || drawsCaptions(cut.captions)) return []
+    const words = subtitleWords(cut, resolved, scene).words
+    return subtitleCues(
+      words.map((w) => ({ text: w.text, startSec: w.outStart, endSec: w.outEnd })),
+      captionStyle.wordsPerGroup
+    )
+  }, [cut, resolved, scene, captionStyle])
+  const cue = subtitleAt(cues, time)
   const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined
   const showBig = big && time >= big.outStart - 0.1 && time <= big.outEnd + 0.7
   // The look's colour, through the same matrix the export uses; a LUT shows in the export only.
@@ -439,22 +449,14 @@ function Preview({
             {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}
           </div>
         )}
-        {page && !showBig && (
-          <div
-            className={`cl-caption${treatment?.frame === 'card' && treatment.broll ? ' on-card' : ''}`}
-            style={{
-              top: `${CAPTION_TOP[cut.captions.position] * 100}%`,
-              fontSize: Math.max(12, Math.round(box.h * 0.042))
-            }}
-          >
-            {page.map((w, i) => (
-              <span key={w.id} className={time >= w.outStart ? 'on' : 'off'}>
-                {i > 0 ? ' ' : ''}
-                {cut.captions.uppercase ? w.text.toUpperCase() : w.text}
-              </span>
-            ))}
-          </div>
-        )}
+        <Subtitles
+          cue={showBig ? null : cue}
+          style={captionStyle}
+          frame={scene.size}
+          time={time}
+          width={box.w}
+          height={box.h}
+        />
         <MotionCanvas scene={scene} assets={doc.assets} time={time} width={box.w} height={box.h} />
         {selected && template(selected.kind)?.fields.some((f) => f.slot === 'box') && (
           <RegionPicker item={selected} onPick={onRegion} />

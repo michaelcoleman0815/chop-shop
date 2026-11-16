@@ -1,6 +1,6 @@
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
-import { groupWords } from '../shared/words'
 import { CAPTION_PRESETS } from '../shared/caption-presets'
+import { subtitleCues } from '../shared/subtitles'
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = CAPTION_PRESETS[0].style
 
@@ -129,40 +129,31 @@ export function buildAss(
   const scalePct = Math.round(style.activeScale * 100)
   const events: string[] = []
 
-  for (const group of groupWords(words, style.wordsPerGroup)) {
-    for (let i = 0; i < group.length; i++) {
-      const word = group[i]
-      // Hold the last word of a group until the next group starts so captions
-      // do not flicker off between words.
-      const end = i === group.length - 1 ? word.endSec : group[i + 1].startSec
+  // One event per word (shared/subtitles, which the editor's preview draws from too).
+  for (const cue of subtitleCues(words, style.wordsPerGroup)) {
+    const word = cue.words[cue.active]
+    const from = assTime(cue.start)
+    const until = assTime(cue.end)
 
-      if (style.second) {
-        const big = escapeAss(style.uppercase ? word.text.toUpperCase() : word.text)
-        const restWords = group.filter((_, j) => j !== i).map((w) => w.text)
-        const rest = escapeAss(
-          style.second.uppercase ? restWords.join(' ').toUpperCase() : restWords.join(' ')
-        )
-        const until = assTime(Math.max(end, word.startSec + 0.05))
-        const from = assTime(word.startSec)
-        events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${big}`)
-        if (rest) events.push(`Dialogue: 0,${from},${until},Chop2,,0,0,0,,${rest}`)
-        continue
-      }
-
-      const line = group
-        .map((w, j) => {
-          const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
-          if (j !== i) return text
-          const scale =
-            style.activeScale === 1 ? '' : `\\fscx${scalePct}\\fscy${scalePct}`
-          return `{\\c${active}${scale}}${text}{\\r}`
-        })
-        .join(' ')
-
-      events.push(
-        `Dialogue: 0,${assTime(word.startSec)},${assTime(Math.max(end, word.startSec + 0.05))},Chop,,0,0,0,,${line}`
-      )
+    if (style.second) {
+      const big = escapeAss(style.uppercase ? word.text.toUpperCase() : word.text)
+      const restWords = cue.words.filter((_, j) => j !== cue.active).map((w) => w.text)
+      const rest = escapeAss(style.second.uppercase ? restWords.join(' ').toUpperCase() : restWords.join(' '))
+      events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${big}`)
+      if (rest) events.push(`Dialogue: 0,${from},${until},Chop2,,0,0,0,,${rest}`)
+      continue
     }
+
+    const line = cue.words
+      .map((w, j) => {
+        const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
+        if (j !== cue.active) return text
+        const scale = style.activeScale === 1 ? '' : `\\fscx${scalePct}\\fscy${scalePct}`
+        return `{\\c${active}${scale}}${text}{\\r}`
+      })
+      .join(' ')
+
+    events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${line}`)
   }
 
   return [...header, ...events].join('\n') + '\n'

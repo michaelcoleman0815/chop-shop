@@ -35,7 +35,6 @@ import {
   type SpeedStep,
   type Aspect,
   type Camera,
-  type CaptionSpec,
   type LevelKey,
   type Cut,
   type Fade,
@@ -46,8 +45,8 @@ import {
   type Treatment,
   type TransitionKind
 } from '../shared/edit'
-import { presetById } from '../shared/caption-presets'
-import type { CaptionStyle, TranscriptWord } from '../shared/types'
+import { captionStyleFor } from '../shared/subtitles'
+import type { TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
 import { makeSfx } from './sfx'
@@ -345,34 +344,8 @@ export function frameRate(fps: number): number {
   return options.reduce((best, f) => (Math.abs(f - fps) < Math.abs(best - fps) ? f : best), 30)
 }
 
-const POSITION_FRAC: Record<CaptionSpec['position'], number> = { top: 0.22, middle: 0.52, chest: 0.66, bottom: 0.84 }
-
-/** The caption look for a spec, sized for the frame being rendered, in the brand's colours when there is one. */
-export function captionStyleFor(
-  spec: CaptionSpec,
-  width: number,
-  colors: { text: string; accent: string } | null = null
-): CaptionStyle {
-  const base = presetById(spec.preset).style
-  const scale = width / 1080
-  return {
-    ...base,
-    ...(colors ? { textColor: colors.text, activeColor: colors.accent } : {}),
-    wordsPerGroup: spec.wordsPerScreen,
-    uppercase: spec.uppercase || base.uppercase,
-    positionFrac: POSITION_FRAC[spec.position],
-    fontSizePx: Math.max(8, Math.round(base.fontSizePx * scale)),
-    outlinePx: Math.max(1, Math.round(base.outlinePx * scale)),
-    shadowPx: Math.round(base.shadowPx * scale),
-    second: base.second
-      ? {
-          ...base.second,
-          fontSizePx: Math.max(8, Math.round(base.second.fontSizePx * scale)),
-          gapPx: Math.round(base.second.gapPx * scale)
-        }
-      : base.second
-  }
-}
+// The caption look is shared with the editor's preview, so both draw captions alike.
+export { captionStyleFor }
 
 /** A recording's size when nothing better is known: most cutaways are wide. */
 const WIDE = { width: 1920, height: 1080 }

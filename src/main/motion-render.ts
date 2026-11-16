@@ -2,14 +2,13 @@ import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
 import { spawn } from 'child_process'
 import { existsSync, promises as fs } from 'fs'
 import { join } from 'path'
-import { captionedWords, type Asset, type Cut, type Resolved, type Source, type Word } from '../shared/edit'
+import type { Asset, Cut, Resolved, Source, Word } from '../shared/edit'
 import {
   activeSpans,
   buildScene,
   drawsCaptions,
   MOTION_FONTS,
   renderFrame,
-  template,
   themeFrom,
   type BrandLook,
   type DrawResources,
@@ -20,6 +19,7 @@ import {
   type MotionScene,
   type Size
 } from '../shared/motion'
+import { subtitleWords } from '../shared/subtitles'
 import { frameRate, frameSize, type OverlaySpan } from './cut-render'
 
 /**
@@ -279,15 +279,8 @@ export function subtitleCut(cut: Cut): Cut {
  * Only the subtitles read the words, so the picture is unchanged.
  */
 export function subtitlePass(cut: Cut, resolved: Resolved, scene: MotionScene): { cut: Cut; resolved: Resolved } {
-  const cards = scene.items.filter((i) => template(i.kind)?.covers === 'card')
-  // Beats whose captions are off are left out too.
-  const words = captionedWords(cut, resolved).words.filter(
-    (w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end)
-  )
-  return {
-    cut: subtitleCut(cut),
-    resolved: words.length === resolved.words.length ? resolved : { ...resolved, words }
-  }
+  // Which words those are is shared with the editor's preview (shared/subtitles).
+  return { cut: subtitleCut(cut), resolved: subtitleWords(cut, resolved, scene) }
 }
 
 /** Renders a cut's graphics to overlay files for renderCut. Empty when the cut has none. */
