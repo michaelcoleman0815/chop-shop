@@ -21,7 +21,16 @@ import { srcToOut } from './timing'
 /** Where the speaker's face was, `hz` times a second from the start of the recording; null where none was found. */
 export const SubjectSchema = z.object({
   hz: z.number().positive().max(30),
-  x: z.array(z.number().min(0).max(1).nullable()).max(200000)
+  x: z.array(z.number().min(0).max(1).nullable()).max(200000),
+  // Added for clips cut from long recordings, so optional: absent is as before.
+  /** Where the first sample sits in the recording, in seconds, when only part of it was looked at. */
+  from: z.number().nonnegative().optional(),
+  /**
+   * The camera cuts of a switched feed, in seconds of the recording
+   * (main/shots): the window cuts with the camera instead of gliding
+   * through a shot it was never measuring.
+   */
+  cuts: z.array(z.number().nonnegative()).max(20000).optional()
 })
 export type Subject = z.infer<typeof SubjectSchema>
 
@@ -29,11 +38,14 @@ export type Subject = z.infer<typeof SubjectSchema>
  * The speaker across a recording from the faces found in it: at each sample
  * the largest face, except that staying with the face it was on is worth
  * something, so two people of a size do not trade places frame to frame.
+ * `from` is where the samples start in the recording, when only a stretch
+ * of it was looked at; their times are counted from there.
  */
 export function subjectFrom(
   samples: { t: number; faces: { x: number; y: number; w: number; h: number }[] }[],
   durationSec: number,
-  hz = 2
+  hz = 2,
+  from = 0
 ): Subject {
   const x: (number | null)[] = new Array(Math.max(1, Math.ceil(durationSec * hz))).fill(null)
   let previous: number | null = null
@@ -49,7 +61,7 @@ export function subjectFrom(
     previous = best.c
     x[i] = Math.min(1, Math.max(0, Math.round(best.c * 1e4) / 1e4))
   }
-  return { hz, x }
+  return from > 0 ? { hz, x, from } : { hz, x }
 }
 
 /** A point the window passes through: its centre at a moment of the recording. */
@@ -74,36 +86,64 @@ export const DEFAULT_REFRAME: ReframeOptions = { deadzone: 0.06, glideSec: 0.6, 
 /**
  * The window's path across a recording: keys it moves through in straight
  * lines, holding between them. Missing samples hold where it was; a recording
- * with no face at all stays in the middle.
+ * with no face at all stays in the middle. Where a switched feed cuts to
+ * another camera (`cuts`), the window cuts with it: it holds until the cut
+ * and then jumps to where the speaker is in the new shot, and no glide or
+ * smoothing ever reaches across a cut.
  */
 export function planReframe(subject: Subject, opts: ReframeOptions = DEFAULT_REFRAME): FrameKey[] {
   const xs = subject.x
   const step = 1 / subject.hz
-  // A median of the samples around each one: a moment's misdetection does not count.
+  const from = subject.from ?? 0
+  const cuts = [...(subject.cuts ?? [])].sort((a, b) => a - b)
+  // Which shot a moment is in: samples either side of a camera cut are never mixed.
+  const shotAt = (t: number): number => {
+    let n = 0
+    while (n < cuts.length && cuts[n] <= t) n++
+    return n
+  }
+  const shots = xs.map((_, i) => shotAt(from + i * step))
+  // A median of the samples around each one, in its own shot: a moment's misdetection does not count.
   const steady = xs.map((x, i) => {
     if (x === null) return null
+    const lo = Math.max(0, i - opts.smoothing)
     const near = xs
-      .slice(Math.max(0, i - opts.smoothing), i + opts.smoothing + 1)
-      .filter((v): v is number => v !== null)
+      .slice(lo, i + opts.smoothing + 1)
+      .filter((v, k): v is number => v !== null && shots[lo + k] === shots[i])
     const sorted = [...near].sort((a, b) => a - b)
     return sorted[Math.floor(sorted.length / 2)]
   })
-  const first = steady.find((x): x is number => x !== null)
-  if (first === undefined) return [{ t: 0, x: 0.5 }]
-  const keys: FrameKey[] = [{ t: 0, x: first }]
+  const firstAt = steady.findIndex((x) => x !== null)
+  if (firstAt < 0) return [{ t: from, x: 0.5 }]
+  const first = steady[firstAt] as number
+  const keys: FrameKey[] = [{ t: from, x: first }]
   let at = first
+  let shot = shots[firstAt]
   let busyUntil = 0
   for (let i = 0; i < steady.length; i++) {
     const x = steady[i]
-    const t = i * step
-    if (x === null || t < busyUntil || Math.abs(x - at) <= opts.deadzone) continue
-    if (Math.abs(x - at) >= opts.cutOver) {
+    const t = from + i * step
+    if (x === null) continue
+    // The first look at a new shot: the window cuts where the camera did.
+    if (shots[i] !== shot) {
+      const hold = Math.max(cuts[shots[i] - 1] - 1e-3, keys[keys.length - 1].t + 1e-6)
+      if (Math.abs(x - at) > 1e-6) keys.push({ t: hold, x: at }, { t: hold + 1e-3, x })
+      at = x
+      shot = shots[i]
+      busyUntil = t
+      continue
+    }
+    if (t < busyUntil || Math.abs(x - at) <= opts.deadzone) continue
+    // A glide never runs on past the next camera cut.
+    const nextCut = cuts[shots[i]] ?? Infinity
+    if (Math.abs(x - at) >= opts.cutOver || t + 2e-3 >= nextCut) {
       // Someone else, or a new shot: cut across rather than pan the room.
       keys.push({ t, x: at }, { t: t + 1e-3, x })
       busyUntil = t
     } else {
-      keys.push({ t, x: at }, { t: t + opts.glideSec, x })
-      busyUntil = t + opts.glideSec
+      const end = Math.min(t + opts.glideSec, nextCut - 2e-3)
+      keys.push({ t, x: at }, { t: end, x })
+      busyUntil = end
     }
     at = x
   }

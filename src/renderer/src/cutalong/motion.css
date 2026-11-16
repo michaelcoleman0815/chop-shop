@@ -216,6 +216,32 @@
   transition: transform var(--duration-gentle) var(--ease-standard);
 }
 
+/* A clip's export fills its card's bar the same way. */
+.cl-clip-bar > span {
+  transition: transform var(--duration-gentle) var(--ease-standard);
+}
+
+/* Dropping or keeping a clip eases its card in or out of the foreground. */
+.cl-clip .cl-clip-open,
+.cl-clip .cl-clip-text {
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+
+/* A set of clips arrives card by card, like any list. */
+@starting-style {
+  html:not([data-cl-entering]) .cl-clip {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+}
+
+.cl-clip {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+  transition-delay: calc(min(sibling-index() - 1, 8) * var(--duration-gentle) / 6);
+}
+
 /*
  * The loading signal: while Cutalong works, the mark's dashed bar marches
  * along, one dash and gap (7 + 6 of its 64 units) per loop, so the loop is
@@ -676,6 +702,10 @@ html[data-cl-move='version'] .cl-note {
   }
 
   .cl-progress-bar > span {
+    transition: none;
+  }
+
+  .cl-clip-bar > span {
     transition: none;
   }
 

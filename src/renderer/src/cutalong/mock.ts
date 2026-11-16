@@ -39,6 +39,15 @@ import {
   type Memory,
   type SignalInput
 } from '../../../shared/memory'
+import {
+  clipDoc,
+  clipsReply,
+  measureRecording,
+  planRecording,
+  readClipAsk,
+  type ClipsFound,
+  type FoundClip
+} from '../../../shared/clipping'
 import type { CutalongApi } from './api'
 
 /**
@@ -307,7 +316,8 @@ function seededMemory(): Memory {
 export function createMockApi(): CutalongApi {
   const listeners = {
     cut: new Set<(p: { stage: string; percent: number }) => void>(),
-    study: new Set<(p: { stage: string; percent: number }) => void>()
+    study: new Set<(p: { stage: string; percent: number }) => void>(),
+    clips: new Set<(p: { stage: string; percent: number }) => void>()
   }
   let saved: Preset[] = []
   let brand: Brand = { ...EMPTY_BRAND }
@@ -558,13 +568,13 @@ export function createMockApi(): CutalongApi {
         }
       }
     },
-    renderCut: async ({ doc, quality }) => {
+    renderCut: async ({ doc, quality, name }) => {
       await progress(listeners.cut, [quality === 'final' ? 'Exporting' : 'Rendering a preview'])
       const n = doc.versions[doc.versions.length - 1].n
       const chapters = (doc.versions[doc.versions.length - 1].cut.chapters ?? []).length > 0
       return {
         ok: true as const,
-        outputPath: `/Users/you/Movies/Cutalong/${doc.title} v${n}.mp4`,
+        outputPath: `/Users/you/Movies/Cutalong/${name ?? `${doc.title} v${n}`}.mp4`,
         mediaUrl: '/sample.mp4',
         chaptersPath: chapters ? `/Users/you/Movies/Cutalong/${doc.title} v${n} chapters.txt` : null,
         width: 1080,
@@ -576,6 +586,59 @@ export function createMockApi(): CutalongApi {
       listeners.cut.add(cb)
       return () => listeners.cut.delete(cb)
     },
+    // A long recording, as one of the planted ones (shared/clipping/fixtures), clipped by measuring.
+    findClips: async ({ paths, ask, avoid }) => {
+      await progress(listeners.clips, ['Transcribing', 'Listening', 'Finding the moments'])
+      // The planted recordings load only when the mock clips something.
+      const { PODCAST, SERVICE, STREAM } = await import('../../../shared/clipping/fixtures')
+      const { factsOf } = await import('../../../shared/clipping/testing')
+      const said = readClipAsk(ask)
+      const found: ClipsFound = {
+        by: 'measured',
+        model: null,
+        recordings: [],
+        clips: [],
+        notes: [],
+        timings: [],
+        had: 0
+      }
+      for (const path of paths) {
+        const planted = /service|sermon|church/i.test(path) ? SERVICE : /podcast|episode/i.test(path) ? PODCAST : STREAM
+        const facts = { ...factsOf(planted, path), path }
+        const plan = planRecording(facts, said, brand.niche || null)
+        const mine = (avoid ?? []).filter((a) => a.path === path)
+        found.had += mine.length
+        const picks = measureRecording(facts, plan, said, mine)
+        const clips: FoundClip[] = picks.map((p) => ({
+          source: path,
+          ...p,
+          doc: clipDoc({
+            id: `clip-${Date.now()}-${Math.round(p.startSec)}`,
+            title: p.title,
+            source: { path, durationSec: facts.durationSec, width: 1920, height: 1080, fps: 30, audio: null },
+            words: facts.words.filter((w) => w.startSec >= p.startSec - 0.01 && w.endSec <= p.endSec + 0.01),
+            profile: plan.profile,
+            laughter: (facts.sounds ?? []).filter((x) => x.kind === 'laughter'),
+            tailSec: 0
+          })
+        }))
+        found.clips.push(...clips)
+        found.recordings.push({
+          path,
+          durationSec: facts.durationSec,
+          profile: plan.profile.id,
+          left: plan.regions,
+          words: facts.words.length,
+          none: plan.none ?? (clips.length ? null : 'nothing')
+        })
+      }
+      return { ok: true as const, ...found, reply: clipsReply(found, false) }
+    },
+    onClipsProgress: (cb) => {
+      listeners.clips.add(cb)
+      return () => listeners.clips.delete(cb)
+    },
+    clipPoster: async () => '',
     planEdit: async () =>
       settings.localPlanner
         ? {

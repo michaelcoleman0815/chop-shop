@@ -276,7 +276,10 @@ function sharedFootage(from: string, to: string, app: Cutalong): { before: () =>
       if (prefersReducedMotion()) return
       if (toScreen === 'editor') {
         const recent = activated && performance.now() - activated.at < 4000 ? activated.el : null
-        const card = recent?.closest('.cl-project')?.querySelector<HTMLElement>('.cl-project-thumb')
+        // A project's card, or a clip's (components/ClipSet): its still grows into the preview.
+        const card = recent
+          ?.closest('.cl-project, .cl-clip')
+          ?.querySelector<HTMLElement>('.cl-project-thumb, .cl-clip-poster')
         const source = card && card.isConnected ? card : fromScreen === 'thread' ? footageCard(app) : null
         if (source) {
           footage(source, 'from')

@@ -96,6 +96,8 @@ import {
   type TakesOffer
 } from '../../../shared/raw'
 import { withHabits } from '../../../shared/learn/habits'
+import { clippingAsked, withDoc } from '../../../shared/clipping'
+import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import {
   remember,
@@ -140,6 +142,14 @@ export interface PanelStatus {
 
 /** Commands that do something rather than set a style. They sit in the slash menu with the presets. */
 const ACTION_COMMANDS: Preset[] = [
+  {
+    command: 'clipping',
+    title: 'Clipping',
+    summary: 'Many short clips from one long recording: /clipping, /clipping 10, /clipping the funny parts',
+    builtIn: true,
+    style: {},
+    inspiration: null
+  },
   {
     command: 'all',
     title: 'Everything',
@@ -521,12 +531,8 @@ export function useCutalong() {
         const chat: ChatMessage[] = messagesRef.current
           .filter((m) => !m.progress)
           .map(({ progress: _progress, since: _since, ...m }) => m)
-        const updated: Project = {
-          ...project,
-          media: next ? next.sources.map((s) => s.path) : project.media,
-          edit: next ?? project.edit ?? null,
-          chat
-        }
+        // A clip's edit goes back into its clip; any other is the chat's own (shared/clipping/set).
+        const updated: Project = withDoc({ ...project, chat }, next)
         projectRef.current = updated
         await api.saveProject(updated)
       } catch (err) {
@@ -555,6 +561,28 @@ export function useCutalong() {
     },
     [persist]
   )
+
+  // /clipping: clips from long recordings, each its own edit, kept in the project.
+  const clipping = useClipping({
+    projectRef,
+    docRef,
+    screen,
+    setDocState,
+    setMediaUrl,
+    setScreen,
+    push,
+    patch,
+    persist,
+    ensureProject,
+    setToast,
+    during,
+    clearEditor: () => {
+      setOffers([])
+      pendingCommand.current = null
+      setGraphic(null)
+      setPanel(null)
+    }
+  })
 
   useEffect(() => {
     void api
@@ -649,6 +677,7 @@ export function useCutalong() {
       return
     }
     projectRef.current = project
+    clipping.load(project)
     const edit = project.edit ?? null
     docRef.current = edit
     setDocState(edit)
@@ -2007,6 +2036,11 @@ export function useCutalong() {
         await finishCommand(where)
         return
       }
+      if (command === 'clipping') {
+        if (where === 'panel') setScreen('thread')
+        await clipping.run([], rest)
+        return
+      }
       if (command === 'transition') {
         transitionCommand(rest, where, beat)
         return
@@ -2456,6 +2490,18 @@ export function useCutalong() {
       })
       setBusy(true)
       try {
+        // /clipping, "find clips", "clip this stream": the recordings are long ones to cut clips from.
+        // Asked in words about a short, it is an edit after all, made below as it always was.
+        const inWords = command?.command !== 'clipping' && !!clippingAsked(words)
+        const clipAsk =
+          command?.command === 'clipping'
+            ? command.rest
+            : inWords
+              ? words
+              : recordingsIn.length > 0 && !text.trim()
+                ? clipping.takePending()
+                : null
+        if (clipAsk !== null && (await clipping.run(attachments, clipAsk, inWords))) return
         const recordings = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
         const stills = attachments.filter((a) => isImagePath(a.name))
         const materialBefore = docRef.current?.assets.length ?? 0
@@ -2721,7 +2767,7 @@ export function useCutalong() {
       const durationSec = r.durationSec ?? 0
       patch(id, {
         progress: null,
-        text: `v${n} is exported${besideIt(r.chaptersPath, r.creditsPath)}.`,
+        text: `${clipping.isClip(d) ? `“${d.title}” v${n}` : `v${n}`} is exported${besideIt(r.chaptersPath, r.creditsPath)}.`,
         video: { path: r.outputPath, name, width: r.width ?? 0, height: r.height ?? 0, durationSec },
         chips: [clock(durationSec), ...(r.width && r.height ? [`${r.width} × ${r.height}`] : [])],
         actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
@@ -2744,6 +2790,7 @@ export function useCutalong() {
     rememberPlace(null, 'thread')
     rememberKeep(docRef.current)
     projectRef.current = null
+    clipping.load(null)
     docRef.current = null
     messagesRef.current = []
     pendingCommand.current = null
@@ -2806,7 +2853,8 @@ export function useCutalong() {
     graphic,
     selectGraphic: setGraphic,
     updateGraphic,
-    removeGraphic
+    removeGraphic,
+    clipping
   }
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Composer } from '../components/Composer'
 import { AssistantMessage, UserMessage } from '../components/Message'
+import { ClipSet } from '../components/ClipSet'
 import { Button, Icon, IconButton } from '../components/ui'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
@@ -18,7 +19,7 @@ export function Thread({ app }: { app: Cutalong }): JSX.Element {
         <IconButton label="Back to start" onClick={app.goStart}>
           <Icon.back />
         </IconButton>
-        <span className="cl-heading">{app.doc?.title ?? 'New edit'}</span>
+        <span className="cl-heading">{app.doc?.title ?? app.work()?.name ?? 'New edit'}</span>
         <span className="spacer" />
         {app.doc && (
           <Button variant="text" onClick={() => app.setScreen('editor')}>
@@ -33,7 +34,9 @@ export function Thread({ app }: { app: Cutalong }): JSX.Element {
               m.role === 'user' ? (
                 <UserMessage key={m.id} msg={m} />
               ) : (
-                <AssistantMessage key={m.id} msg={m} onAction={app.onAction} />
+                <AssistantMessage key={m.id} msg={m} onAction={app.onAction}>
+                  {m.clipRun ? <ClipSet app={app} run={m.clipRun} /> : null}
+                </AssistantMessage>
               )
             )}
             <div ref={end} />

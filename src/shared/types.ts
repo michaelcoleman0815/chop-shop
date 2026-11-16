@@ -1,4 +1,5 @@
 import type { EditDoc } from './edit/schema'
+import type { ClipSet } from './clipping/schema'
 
 export type AspectPreset = 'original' | 'vertical' | 'square' | 'wide' | 'preset'
 
@@ -296,6 +297,8 @@ export interface Project extends ProjectSummary {
   edit?: EditDoc | null
   /** The conversation that made the edit, so a chat can be picked up again. */
   chat?: ChatMessage[]
+  /** Clips /clipping cut from long recordings, each its own edit (shared/clipping). Absent before clipping existed. */
+  clipping?: ClipSet | null
 }
 
 /** A button under a reply. The kinds are the renderer's to define. */
@@ -321,6 +324,8 @@ export interface ChatMessage {
   error?: boolean
   /** An exported video, played in the chat whole. Its size and length are the file's own. */
   video?: { path: string; name: string; width: number; height: number; durationSec: number }
+  /** The /clipping run whose clips this reply shows, as cards under it. */
+  clipRun?: number
 }
 
 export interface TimelineClip {
