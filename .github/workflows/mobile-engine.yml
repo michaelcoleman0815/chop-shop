@@ -307,17 +307,27 @@ jobs:
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo no | "$sdk/avdmanager" create avd --force -n selftest -k "$IMAGE" -d pixel_6
-          nohup "$ANDROID_HOME/emulator/emulator" -avd selftest -no-window -no-audio -no-boot-anim -no-snapshot \
+          nohup "$ANDROID_HOME/emulator/emulator" -avd selftest -no-window -noaudio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect -camera-back none -camera-front none -memory 4096 -cores 4 -partition-size 8192 \
             > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          adb wait-for-device
+          emulator=$!
+          # Ten minutes to boot; no open-ended wait for a device that may never come.
+          booted=""
           for _ in $(seq 1 120); do
-            [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break
+            if ! kill -0 "$emulator" 2>/dev/null; then
+              tail -n 80 "$RUNNER_TEMP/emulator.log"
+              echo "::error::the emulator stopped"
+              exit 1
+            fi
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
+              booted=yes
+              break
+            fi
             sleep 5
           done
-          if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != 1 ]; then
-            tail -n 50 "$RUNNER_TEMP/emulator.log"
-            echo "::error::the emulator did not boot"
+          if [ -z "$booted" ]; then
+            tail -n 80 "$RUNNER_TEMP/emulator.log"
+            echo "::error::the emulator did not boot in 10 minutes"
             exit 1
           fi
           adb shell settings put global window_animation_scale 0
