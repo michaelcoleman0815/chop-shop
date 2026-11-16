@@ -15,6 +15,7 @@ import {
   readClipSet,
   setKept,
   toExport,
+  vlogOfClip,
   withDoc
 } from './set'
 import type { ClipSet } from './schema'
@@ -142,6 +143,23 @@ describe('the clip set in a project', () => {
     const ownEdited = commit(own, [{ op: 'aspect', aspect: 'wide' }], 'Wide.').doc
     expect(withDoc(p, ownEdited).edit).toBe(ownEdited)
     expect(withDoc(p, null)).toEqual(p)
+  })
+
+  it('leaves a clip as it is when /vlog is typed in its editor, and says why', () => {
+    const { set } = run(null, [clip('a', 100), clip('b', 400)])
+    // Told as a story, the clip's whole two-hour recording took the clip's place.
+    expect(vlogOfClip(set, set.clips[0].doc)).toBe(
+      "“Clip a” is one moment of stream.mkv, not a day of clips, so I left it as it is. Drop the clips from your day into a new chat and I'll make them into a vlog."
+    )
+    const own = createDoc({
+      id: 'own',
+      title: 'Friday stream',
+      source: { ...SOURCE, id: 's1' },
+      words: wordsFromTranscript(words(10, 5), 's1')
+    })
+    expect(vlogOfClip(set, own)).toBeNull()
+    expect(vlogOfClip(null, set.clips[0].doc)).toBeNull()
+    expect(vlogOfClip(set, null)).toBeNull()
   })
 })
 

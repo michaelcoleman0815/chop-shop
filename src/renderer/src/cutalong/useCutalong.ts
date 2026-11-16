@@ -96,7 +96,7 @@ import {
   type TakesOffer
 } from '../../../shared/raw'
 import { withHabits } from '../../../shared/learn/habits'
-import { clippingAsked, withDoc } from '../../../shared/clipping'
+import { clippingAsked, vlogOfClip, withDoc } from '../../../shared/clipping'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
@@ -2067,6 +2067,13 @@ export function useCutalong() {
         return
       }
       if (command === 'vlog') {
+        // A clip from /clipping is one moment of a long recording: it stays a clip (shared/clipping/set).
+        const clip = vlogOfClip(projectRef.current?.clipping, docRef.current)
+        if (clip) {
+          if (where === 'panel') setPanel({ text: clip })
+          else push({ role: 'assistant', text: clip })
+          return
+        }
         await vlog.command(rest, where)
         return
       }
