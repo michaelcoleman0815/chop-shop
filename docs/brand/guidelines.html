@@ -5,7 +5,7 @@
 
     node docs/brand/print.cjs
 
-  Colours, type and spacing are copied from src/renderer/src/cutalong/tokens.json,
+  Colours, type, spacing and motion are copied from src/renderer/src/cutalong/tokens.json,
   and the mark is drawn exactly as components/ui.tsx draws it.
 -->
 <html lang="en">
@@ -433,6 +433,60 @@
         text-decoration: line-through;
         text-decoration-color: rgba(21, 22, 26, 0.35);
       }
+
+      /* Motion */
+      .durations {
+        display: grid;
+        gap: 10px;
+      }
+
+      .duration {
+        display: grid;
+        grid-template-columns: 1.4in 52px 1fr;
+        gap: 10px;
+        align-items: center;
+        font-size: 11.5px;
+        line-height: 16px;
+        color: var(--ink-soft);
+      }
+
+      .duration .bar {
+        height: 6px;
+        border-radius: 999px;
+        background: var(--ink);
+      }
+
+      .duration .mono {
+        font-size: 10.5px;
+        color: var(--ink);
+      }
+
+      .curves {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+
+      .curves svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        margin-bottom: 6px;
+      }
+
+      .march {
+        display: flex;
+        gap: 18px;
+        align-items: flex-end;
+        margin: 6px 0 12px;
+      }
+
+      .march div {
+        font-family: var(--mono);
+        font-size: 9.5px;
+        color: var(--muted);
+        text-align: center;
+      }
     </style>
   </head>
   <body>
@@ -467,8 +521,8 @@
       </div>
       <p class="aside">
         The app still installs as Chop Shop while the new name is cleared, so updates keep reaching everyone who already
-        has it. The Chop Shop guidelines are kept in docs/archive. Colours, type and spacing below are the same values
-        the app is built from (src/renderer/src/cutalong/tokens.json).
+        has it. The Chop Shop guidelines are kept in docs/archive. Colours, type, spacing and motion below are the same
+        values the app is built from (src/renderer/src/cutalong/tokens.json).
       </p>
       <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>1</span></div>
     </section>
@@ -843,6 +897,116 @@
         <div class="rule"><span class="k">6</span><p>When something fails, say what happened and the one thing to do next, in a sentence.</p></div>
       </div>
       <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>6</span></div>
+    </section>
+
+    <!-- 06 Motion -->
+    <section class="page">
+      <h2><span class="n">06</span>Motion</h2>
+      <p class="lede">
+        Cutalong moves the way a good editor works: quickly, without fuss, and only when something changes. Four
+        durations and three curves cover everything; what a hand moves springs.
+      </p>
+      <div class="grid two" style="grid-template-columns: 1.15fr 1fr; align-items: start; margin-bottom: 14px">
+        <div class="card">
+          <h3>Durations</h3>
+          <p class="note" style="margin-bottom: 14px">Nothing takes longer than 320 ms. Leaving is always quicker than arriving.</p>
+          <div class="durations">
+            <div class="duration"><span>Hover, press, focus</span><span class="mono">120 ms</span><span class="bar" style="width: 37.5%"></span></div>
+            <div class="duration"><span>Menus, things leaving</span><span class="mono">180 ms</span><span class="bar" style="width: 56.25%"></span></div>
+            <div class="duration"><span>Messages, notes, toasts</span><span class="mono">240 ms</span><span class="bar" style="width: 75%"></span></div>
+            <div class="duration"><span>Screens, the rail, a new version</span><span class="mono">320 ms</span><span class="bar" style="width: 100%"></span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Curves</h3>
+          <p class="note" style="margin-bottom: 12px">Over time, left to right; from where a thing starts, bottom, to where it ends.</p>
+          <div class="curves">
+            <div>
+              <svg viewBox="-4 4 108 62" aria-label="Enter: quick at first, then settling">
+                <path d="M0 10H100M0 60H100" stroke="#E8E7E4" stroke-width="1" fill="none" />
+                <path d="M0 60C25 10 50 10 100 10" stroke="#15161A" stroke-width="2.4" fill="none" stroke-linecap="round" />
+              </svg>
+              <h3 style="font-size: 12px">Enter</h3>
+              <p class="note" style="font-size: 10.5px; line-height: 15px">Arriving: quick, then settling.</p>
+            </div>
+            <div>
+              <svg viewBox="-4 4 108 62" aria-label="Exit: soft at first, then away">
+                <path d="M0 10H100M0 60H100" stroke="#E8E7E4" stroke-width="1" fill="none" />
+                <path d="M0 60C40 60 100 10 100 10" stroke="#15161A" stroke-width="2.4" fill="none" stroke-linecap="round" />
+              </svg>
+              <h3 style="font-size: 12px">Exit</h3>
+              <p class="note" style="font-size: 10.5px; line-height: 15px">Leaving: soft, then away.</p>
+            </div>
+            <div>
+              <svg viewBox="-4 4 108 62" aria-label="Standard: from one place to another">
+                <path d="M0 10H100M0 60H100" stroke="#E8E7E4" stroke-width="1" fill="none" />
+                <path d="M0 60C20 60 0 10 100 10" stroke="#15161A" stroke-width="2.4" fill="none" stroke-linecap="round" />
+              </svg>
+              <h3 style="font-size: 12px">Standard</h3>
+              <p class="note" style="font-size: 10.5px; line-height: 15px">Moving from place to place.</p>
+            </div>
+            <div>
+              <svg viewBox="-4 4 108 62" aria-label="Spring: overshoots by 4% and settles">
+                <path d="M0 10H100M0 60H100" stroke="#E8E7E4" stroke-width="1" fill="none" />
+                <polyline
+                  points="0,60 2.8,58.85 6.3,54.9 12,45.3 20.8,29.75 26.8,21.3 32.8,15.15 39.3,11.05 47,8.7 58.8,8.15 97.3,10 100,10"
+                  stroke="#15161A"
+                  stroke-width="2.4"
+                  fill="none"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <h3 style="font-size: 12px">Spring</h3>
+              <p class="note" style="font-size: 10.5px; line-height: 15px">What a hand moves: a switch.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid two" style="grid-template-columns: 1fr 1.15fr; align-items: start">
+        <div class="card">
+          <h3>The loading signal</h3>
+          <div class="march">
+            <div>
+              <svg width="64" height="52" viewBox="0 0 64 52">
+                <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+                <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" />
+              </svg>
+              0 s
+            </div>
+            <div>
+              <svg width="64" height="52" viewBox="0 0 64 52">
+                <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+                <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" stroke-dashoffset="-4.1" />
+              </svg>
+              0.4 s
+            </div>
+            <div>
+              <svg width="64" height="52" viewBox="0 0 64 52">
+                <rect x="2" y="4" width="44" height="18" rx="9" fill="#15161A" />
+                <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#FF5A36" stroke-width="5" stroke-dasharray="7 6" stroke-dashoffset="-8.6" />
+              </svg>
+              0.85 s
+            </div>
+          </div>
+          <p class="note">
+            While Cutalong works, the dashed bar marches along its line, one dash and gap every 1.28 s: on the assistant
+            beside its progress, and in the send button. It is the only thing that loops, and never a spinner. With reduced
+            motion it breathes instead.
+          </p>
+        </div>
+        <div class="card" style="padding-top: 6px; padding-bottom: 6px">
+          <div class="rule"><span class="k">1</span><p>Arrive with Enter, leave sooner with Exit, move between places with Standard. What a hand moves springs.</p></div>
+          <div class="rule"><span class="k">2</span><p>Only position and opacity change, plus a clip or a dash. Layout never animates, and text never reflows while it moves.</p></div>
+          <div class="rule">
+            <span class="k">3</span>
+            <p>Screens fade through with a slight rise. The composer carries over, and footage grows from its card into the preview.</p>
+          </div>
+          <div class="rule"><span class="k">4</span><p>Nothing moves when nothing is happening. The footage never moves for show, and motion never adds coral.</p></div>
+          <div class="rule"><span class="k">5</span><p>With reduced motion, opacity still changes and nothing travels.</p></div>
+        </div>
+      </div>
+      <div class="folio"><span>Cutalong · Brand guidelines v1.0</span><span>7</span></div>
     </section>
   </body>
 </html>
