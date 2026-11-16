@@ -10,3 +10,6 @@ build/icon.iconset/
 resources/bin/
 # Worktrees that background agents build in.
 .claude/worktrees/
+
+# The phone app run on this computer through the dev bridge keeps its files here.
+mobile/.bridge/
