@@ -154,8 +154,8 @@ export function planStory(
     len: u.sec,
     minLen: u.sec,
     maxLen: u.sec,
-    // The first sentence of a clip says what is going on; later ones matter a little less each.
-    value: u.index === 0 ? 0.9 : Math.max(0.35, 0.75 - 0.05 * u.index),
+    // The first sentence of a clip says what is going on, so it outweighs a shot; later ones matter a little less each.
+    value: u.index === 0 ? 1.2 : Math.max(0.35, 0.75 - 0.05 * u.index),
     protected: protect
   })
 
@@ -424,8 +424,9 @@ function toBeat(item: Item, clip: Clip | undefined): StoryBeat {
 
 /**
  * A length the footage supports: about a seventh of the usable footage that
- * is not talking, as editors keep 15% of a shoot, plus most of the talking,
- * between half a minute and twelve minutes.
+ * is not talking, as editors keep 15% of a shoot, plus nearly all of the
+ * talking, its retakes already struck, since what is said to camera carries
+ * a vlog's story; between half a minute and twelve minutes.
  */
 export function naturalLength(moments: Moment[], units: TalkUnit[], clips: Clip[]): number {
   const usable = new Set(clips.filter((c) => !c.left).map((c) => c.id))
@@ -434,6 +435,6 @@ export function naturalLength(moments: Moment[], units: TalkUnit[], clips: Clip[
     .filter((m) => usable.has(m.clip) && !(m.kind === 'talk' && heard.has(m.clip)))
     .reduce((s, m) => s + (m.outSec - m.inSec), 0)
   const talking = units.filter((u) => usable.has(u.clip)).reduce((s, u) => s + u.sec, 0)
-  const sec = 0.15 * visual + 0.7 * talking
+  const sec = 0.15 * visual + 0.9 * talking
   return Math.round(clamp(sec, 30, 720) / 5) * 5
 }

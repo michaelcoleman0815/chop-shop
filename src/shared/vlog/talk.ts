@@ -51,7 +51,9 @@ export function talkUnits(clips: Clip[], words: Word[], sources: Source[], remov
     if (own.length === 0) continue
     const beats = beatsFromWords(own, clip.id)
     const pos = new Map(own.map((w, i) => [w.id, i]))
-    beats.forEach((b, index) => {
+    // Sentences counted as they play: a retake struck whole is not one of them.
+    let index = 0
+    beats.forEach((b) => {
       const inBeat = own.slice(pos.get(b.from as string) ?? 0, (pos.get(b.to as string) ?? -1) + 1)
       const kept = inBeat.filter((w) => !struck.has(w.id))
       if (kept.length === 0) return
@@ -66,7 +68,7 @@ export function talkUnits(clips: Clip[], words: Word[], sources: Source[], remov
         endSec: inBeat[inBeat.length - 1].endSec,
         sec: Math.round(sec * 1000) / 1000,
         text: kept.map((w) => w.text).join(' '),
-        index
+        index: index++
       })
     })
   }

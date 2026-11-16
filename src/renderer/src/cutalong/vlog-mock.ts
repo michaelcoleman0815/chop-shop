@@ -1,8 +1,8 @@
-import { currentCut, currentVersion, resolveCut, type EditDoc } from '../../../shared/edit'
+import { currentCut, currentVersion, resolveCut, type EditDoc, type Op } from '../../../shared/edit'
 import { extendShoot } from '../../../shared/vlog/build'
-import { carryTold, opsFor, planLocally, vlogShown, withOps } from '../../../shared/vlog/plan'
+import { carryTold, opsFor, planLocally, reshapeOp, vlogShown, withOps } from '../../../shared/vlog/plan'
 import { pretendVlog } from '../../../shared/vlog/pretend'
-import { storyReply } from '../../../shared/vlog/reply'
+import { shapeSentence, storyReply } from '../../../shared/vlog/reply'
 import { parseVlogAsk } from '../../../shared/vlog/request'
 import type { CutalongApi } from './api'
 
@@ -46,15 +46,20 @@ export function mockVlogApi(progress: (stage: string) => Promise<void>): Pick<Cu
       const shown = vlogShown(doc)
       if (!shown)
         return { ok: false as const, message: 'This edit was not cut from a shoot, so it has no story to change.' }
-      const planned = planLocally(doc, shown, parseVlogAsk(request))
+      const ask = parseVlogAsk(request)
+      const planned = planLocally(doc, shown, ask)
       const vlog = { ...shown, story: planned.story }
-      const ops = opsFor(doc, planned.story.beats)
+      const reshape = reshapeOp(doc, ask)
+      const ops: Op[] = [...opsFor(doc, planned.story.beats), ...(reshape ? [reshape] : [])]
       const preview: EditDoc = withOps({ ...doc, vlog }, ops)
       const reply = storyReply(preview, vlog, {
         version: currentVersion(doc).n + 1,
         previousSec: resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
       })
-      return { ok: true as const, ops, vlog, reply, by: 'rules' as const }
+      const shape = reshape ? shapeSentence(reshape.aspect) : ''
+      const lead = shape ? `${reply.lead} ${shape}` : reply.lead
+      const told = { ...reply, lead, text: reply.story ? `${lead} ${reply.story}` : lead }
+      return { ok: true as const, ops, vlog, reply: told, by: 'rules' as const }
     }
   }
 }

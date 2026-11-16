@@ -24,6 +24,8 @@ export interface VlogAsk {
   less: string[]
   /** Parts of the day to leave out. */
   drop: string[]
+  /** The shape asked for: "make it vertical", "for Reels", "16:9". */
+  aspect?: 'vertical' | 'wide' | 'square'
 }
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -122,7 +124,12 @@ export function parseVlogAsk(text: string): VlogAsk | null {
   ask.drop.push(
     ...after(t, /\b(?:drop|cut out|leave out|lose|remove|skip|get rid of)\s+(?:all\s+)?(?:of\s+)?(?:the\s+)?/g)
   )
+  if (/\b(vertical|portrait|9[:x]16|for (tiktok|reels|shorts|instagram|stories))\b/.test(t)) ask.aspect = 'vertical'
+  else if (/\b(square|1[:x]1)\b/.test(t)) ask.aspect = 'square'
+  else if (/\b(widescreen|landscape|horizontal|16[:x]9|(make|turn|cut|export) it wide|go wide)\b/.test(t))
+    ask.aspect = 'wide'
   const any =
+    ask.aspect !== undefined ||
     ask.targetSec !== undefined ||
     ask.scale !== undefined ||
     ask.startWith !== undefined ||

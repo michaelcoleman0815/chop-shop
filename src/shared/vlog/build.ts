@@ -83,7 +83,7 @@ export interface ShootDocInput {
   vlog: Vlog
   /** Words struck as retakes. */
   removed: string[]
-  aspect: 'wide' | 'vertical'
+  aspect: 'wide' | 'vertical' | 'square'
   music?: Op | null
   at?: string
 }

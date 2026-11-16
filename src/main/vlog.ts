@@ -26,8 +26,8 @@ import {
 import type { AudioMap } from '../shared/audio/map'
 import { aspectFor, extendShoot, shootDoc, talkStrikes, vlogMusic, withStory } from '../shared/vlog/build'
 import { emptyStory, finishShoot, mergeTalk, type HeardClip } from '../shared/vlog/compose'
-import { carryAsked, carryTold, opsFor, planLocally, vlogShown, withOps } from '../shared/vlog/plan'
-import { storyReply, type VlogReply } from '../shared/vlog/reply'
+import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, vlogShown, withOps } from '../shared/vlog/plan'
+import { shapeSentence, storyReply, type VlogReply } from '../shared/vlog/reply'
 import { parseVlogAsk, type VlogAsk } from '../shared/vlog/request'
 import type { Moment, Story, Vlog } from '../shared/vlog/schema'
 import { assembleShoot, type ShootPart } from '../shared/vlog/shoot'
@@ -124,32 +124,39 @@ function failedSentence(paths: string[]): string {
     : `I couldn't open ${paths.length} of the files (${names.slice(0, 3).join(', ')}${paths.length > 3 ? ' and others' : ''}), so they are not in the story.`
 }
 
-/** An audio file dropped with the shoot: a music bed when it is music, not someone talking. */
+/**
+ * Audio files dropped with the shoot: the first that is music is the bed;
+ * someone talking, or another track, is said and left out.
+ */
 async function bedFrom(watched: WatchedClip[]): Promise<{ op: Op | null; notes: string[] }> {
   const notes: string[] = []
+  let op: Op | null = null
+  let chosen = ''
   for (const w of watched.filter((x) => !x.hasVideo && x.hasAudio)) {
     const talky = (w.heard?.speechSec ?? 0) > 0.3 * w.durationSec
     if (talky || w.durationSec < 15) {
       notes.push(`${w.name} is a sound recording, not music, so I left it out: each clip keeps its own sound.`)
       continue
     }
+    if (op) {
+      notes.push(`${w.name} is music too, and ${chosen} is the one under it.`)
+      continue
+    }
     try {
       const f = await analyzeTrack(FFMPEG_PATH, w.path)
-      return {
-        op: vlogMusic({
-          path: w.path,
-          durationSec: f.durationSec,
-          ...(f.lufs !== null ? { lufs: f.lufs } : {}),
-          ...(f.bpm !== null ? { bpm: f.bpm } : {}),
-          beats: f.beats
-        }),
-        notes
-      }
+      op = vlogMusic({
+        path: w.path,
+        durationSec: f.durationSec,
+        ...(f.lufs !== null ? { lufs: f.lufs } : {}),
+        ...(f.bpm !== null ? { bpm: f.bpm } : {}),
+        beats: f.beats
+      })
+      chosen = w.name
     } catch (err) {
       notes.push(`I couldn't read ${w.name} as music. ${message(err)}`)
     }
   }
-  return { op: null, notes }
+  return { op, notes }
 }
 
 /** Lines already said about a clip's moments, by whoever said them, kept beside its measurements. */
@@ -324,6 +331,7 @@ export async function makeVlog(
           `Listening to what you said (${k + 1} of ${toHear.length})`,
           55 + Math.round(((k + pct / 100) / toHear.length) * 20)
         )
+      at('', 0)
       try {
         const got = await deps.readTalking(clip.path, Number(clip.id.slice(1)), at)
         heard.set(clip.id, { source: { ...got.source, id: clip.id }, words: got.words, map: got.map })
@@ -365,7 +373,7 @@ export async function makeVlog(
           audio: merged.audio,
           vlog: planning,
           removed: strikes.removed,
-          aspect: aspectFor(merged.clips),
+          aspect: ask?.aspect ?? aspectFor(merged.clips),
           music: bed.op
         })
     const known = new Set(before?.sources.map((s) => s.id) ?? [])
@@ -445,19 +453,24 @@ export async function planVlog(req: { doc: unknown; request: string }): Promise<
     const planned = made ? null : planLocally(doc, shown, ask)
     const story = made?.story ?? (planned as NonNullable<typeof planned>).story
     const vlog: Vlog = { ...shown, scenes: made ? renamed(shown.scenes, made.names) : shown.scenes, story }
-    const ops = opsFor(doc, story.beats)
+    const reshape = reshapeOp(doc, ask)
+    const ops: Op[] = [...opsFor(doc, story.beats), ...(reshape ? [reshape] : [])]
     const preview = withOps({ ...doc, vlog }, ops)
     const now = resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
     const notes = planned?.unmatched.length ? [unmatchedSentence(planned.unmatched)] : []
     const reply = storyReply(preview, vlog, { version: currentVersion(doc).n + 1, previousSec: now, notes })
+    // A new shape is said first: "v4 is ready. It is vertical now, 9:16. It opens on ..."
+    const lead = reshape ? `${reply.lead} ${shapeSentence(reshape.aspect)}` : reply.lead
+    const told = made?.reply || reply.story
+    const summary = [reshape ? shapeSentence(reshape.aspect) : '', made?.summary || reply.summary]
+      .filter(Boolean)
+      .join(' ')
     return {
       ok: true,
       ops,
       vlog,
       by: story.by,
-      reply: made?.reply
-        ? { ...reply, text: `${reply.lead} ${made.reply}`, summary: made.summary || reply.summary }
-        : reply
+      reply: { ...reply, lead, story: told, text: told ? `${lead} ${told}` : lead, summary }
     }
   } catch (err) {
     return { ok: false, message: message(err) }

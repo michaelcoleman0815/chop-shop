@@ -3,7 +3,7 @@ import { beatsOnClock } from '../edit/audio'
 import { commit, currentCut, currentVersion, restore, type EditDoc } from '../edit'
 import { resolveCut } from '../edit/resolve'
 import { extendShoot, ontoLatest, toldIn, vlogMusic } from './build'
-import { carryAsked, carryTold, opsFor, planLocally, storyOnBeats, storyShown, vlogShown } from './plan'
+import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, storyOnBeats, storyShown, vlogShown } from './plan'
 import { pretendVlog } from './pretend'
 import { storyReply } from './reply'
 import { parseVlogAsk, wantsVlog } from './request'
@@ -41,6 +41,18 @@ describe('words that ask for a vlog', () => {
       expect(wantsVlog(yes)).toBe(true)
     for (const no of ['make it shorter', 'this is not a vlog, it is a tutorial', 'start with the airport', ''])
       expect(wantsVlog(no)).toBe(false)
+  })
+
+  it('read the shape asked for, and not a wide shot asked for', () => {
+    expect(parseVlogAsk('make it vertical for reels')?.aspect).toBe('vertical')
+    expect(parseVlogAsk('a 9:16 one for TikTok')?.aspect).toBe('vertical')
+    expect(parseVlogAsk('make it wide again')?.aspect).toBe('wide')
+    expect(parseVlogAsk('16:9 please')?.aspect).toBe('wide')
+    expect(parseVlogAsk('square, for the feed')?.aspect).toBe('square')
+    expect(parseVlogAsk('start with a wide shot of the beach')?.aspect).toBeUndefined()
+    const doc = made(paths(6)).doc
+    expect(reshapeOp(doc, parseVlogAsk('vertical'))).toEqual({ op: 'aspect', aspect: 'vertical' })
+    expect(reshapeOp(doc, parseVlogAsk('make it wide'))).toBeNull()
   })
 })
 

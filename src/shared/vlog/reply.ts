@@ -236,6 +236,11 @@ export function storyReply(
   return { text, lead, story, summary, aside: aside || null, chips, details }
 }
 
+/** "It is vertical now, 9:16." */
+export function shapeSentence(aspect: 'vertical' | 'wide' | 'square'): string {
+  return `It is ${aspect} now, ${aspect === 'vertical' ? '9:16' : aspect === 'wide' ? '16:9' : '1:1'}.`
+}
+
 /** The roles in order, for tests and the planner's view of a story. */
 export function rolesOf(beats: StoryBeat[]): Role[] {
   return beats.map((b) => b.role)

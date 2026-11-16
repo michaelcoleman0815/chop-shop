@@ -57,6 +57,8 @@ export interface PlannedClip {
   gps?: Gps
   shake?: 'start' | 'all' | 'lowered'
   blur?: boolean
+  /** Shot with too little light to show: dim, not black. */
+  dark?: boolean
   pocket?: boolean
   upright?: boolean
   /** The same framing as another clip, recorded moments later. */
@@ -346,10 +348,12 @@ function lookGraph(place: Look, variant: number, sec: number, tall: boolean): st
 /** The video of one planted clip, as a filter graph ending in [v]. */
 function videoGraph(c: PlannedClip, size: { w: number; h: number }): string {
   const tall = c.shake === 'lowered'
-  const look = lookGraph(c.place, c.variant, c.sec, tall)
+  // A later moment of the place, for framings past the first three: another view, not a repeat.
+  const shift = c.variant >= 3 ? 3 * c.variant : 0
+  const look = lookGraph(c.place, c.variant, c.sec + shift, tall)
   // Each framing of a place is a different crop of it.
-  const x0 = 40 + 50 * (c.variant % 3)
-  const y0 = tall ? 270 : 30 + 20 * (c.variant % 3)
+  const x0 = c.variant < 3 ? 40 + 50 * c.variant : 15 + 45 * ((c.variant - 3) % 4)
+  const y0 = tall ? 270 : c.variant < 3 ? 30 + 20 * c.variant : 10 + 25 * ((c.variant - 3) % 4)
   const amp = 150
   const jitterX =
     c.shake === 'all' ? `(random(1)-0.5)*${amp}` : c.shake === 'start' ? `lt(t,1.6)*(random(1)-0.5)*${amp}` : '0'
@@ -358,12 +362,15 @@ function videoGraph(c: PlannedClip, size: { w: number; h: number }): string {
   // Lowered: for the last 1.4 s the view sweeps down fast, as a phone does on its way to a pocket.
   const lower = c.shake === 'lowered' ? `+min(260,max(0,t-${(c.sec - 1.4).toFixed(2)})*260)` : ''
   const crop = `crop=640:360:x='max(0,min(160,${x0}+${jitterX}))':y='max(0,min(${tall ? 540 : 90},${y0}${lower}+${jitterY}))'`
-  const extra = [c.blur ? 'gblur=sigma=7' : null, c.pocket ? 'eq=brightness=-0.95,noise=alls=6:allf=t' : null].filter(
-    Boolean
-  )
+  const extra = [
+    c.blur ? 'gblur=sigma=7' : null,
+    c.dark ? 'eq=brightness=-0.38:contrast=0.3' : null,
+    c.pocket ? 'eq=brightness=-0.95,noise=alls=6:allf=t' : null
+  ].filter(Boolean)
   const out = c.upright ? `scale=${size.h}:${size.w},setsar=1` : `scale=${size.w}:${size.h},setsar=1`
   const chain = [crop, ...extra, out, 'format=yuv420p'].join(',')
-  return `${look}[raw];[raw]${chain}[v]`
+  const from = shift > 0 ? `trim=start=${shift},setpts=PTS-STARTPTS,` : ''
+  return `${look}[raw];[raw]${from}${chain}[v]`
 }
 
 /** The sound of one planted clip, as ffmpeg inputs and a filter ending in [a]; talking reads the espeak recording. */

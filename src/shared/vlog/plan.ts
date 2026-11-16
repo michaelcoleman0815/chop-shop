@@ -217,6 +217,14 @@ export function carryTold(before: Vlog, now: Pick<Vlog, 'scenes' | 'moments'>): 
   }))
 }
 
+/** The shape asked for, as an op, when the cut is not that shape already. */
+export function reshapeOp(
+  doc: EditDoc,
+  ask: VlogAsk | null
+): { op: 'aspect'; aspect: 'vertical' | 'wide' | 'square' } | null {
+  return ask?.aspect && ask.aspect !== currentCut(doc).aspect ? { op: 'aspect', aspect: ask.aspect } : null
+}
+
 /** The ops that make a doc's cut play a story, checked: only what applies is kept. */
 export function opsFor(doc: EditDoc, beats: StoryBeat[]): Op[] {
   const cut = currentCut(doc)
