@@ -185,6 +185,13 @@ jobs:
           done
           echo "engine library needs:"
           otool -L mobile/engine/ios/Frameworks/CutalongEngineCore.xcframework/ios-arm64/CutalongEngineCore.framework/CutalongEngineCore
+          # What ios/Sources/CutalongEnginePlugin/PrivacyInfo.xcprivacy must declare.
+          echo "required-reason APIs each framework calls:"
+          for fw in mobile/engine/ios/Frameworks/*.xcframework; do
+            name=$(basename "$fw" .xcframework)
+            calls=$(nm -u "$fw/ios-arm64/$name.framework/$name" | grep -oE '^_(stat|fstat|lstat|fstatat|getattrlist|fgetattrlist|getattrlistat|getattrlistbulk|statfs|fstatfs|statvfs|fstatvfs|mach_absolute_time)(\$INODE64)?$' | sort -u | tr '\n' ' ')
+            echo "  $name: ${calls:-none}"
+          done
 
       - name: Pack the frameworks
         run: tar -C mobile/engine/ios -czf ios-frameworks.tar.gz Frameworks

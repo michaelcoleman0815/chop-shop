@@ -36,6 +36,8 @@ let package = Package(
             name: "CutalongEnginePlugin",
             dependencies: pluginDependencies,
             path: "ios/Sources/CutalongEnginePlugin",
+            // What the engine does that Apple asks apps to say (see the file).
+            resources: [.copy("PrivacyInfo.xcprivacy")],
             linkerSettings: [
                 .linkedFramework("Photos"),
                 .linkedFramework("PhotosUI"),
