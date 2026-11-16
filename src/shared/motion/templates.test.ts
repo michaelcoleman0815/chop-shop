@@ -22,6 +22,7 @@ import {
   planMotionCommand,
   renderFrame,
   rowsToText,
+  sampleTransform,
   textToRows,
   wordAt,
   type IconNode,
@@ -639,6 +640,151 @@ describe('screenshot showcase', () => {
         resolved: resolveCut(currentCut(bare), bare.words, bare.sources)
       })
     ).toEqual({ problem: 'Give me a link to capture, like /screenshot https://example.com.' })
+  })
+})
+
+describe('phone with logos', () => {
+  // The screen's picture: one colour on top, another below, so the screen shows its top.
+  const screen = (() => {
+    const c = createCanvas(430, 1720)
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = '#1E88E5'
+    ctx.fillRect(0, 0, 430, 860)
+    ctx.fillStyle = '#E53935'
+    ctx.fillRect(0, 860, 430, 860)
+    return c
+  })()
+  const images = new Map<string, unknown>([['a1', screen]])
+  const ICONS_ROUND = ['wallet', 'zap', 'bell', 'shield-check']
+
+  function phoneDoc(aspect: 'vertical' | 'wide', call: Record<string, unknown>): EditDoc {
+    const { doc } = addAsset(docWith(aspect, []), {
+      kind: 'image' as const,
+      path: '/assets/app.png',
+      title: 'app',
+      durationSec: null,
+      width: 430,
+      height: 1720,
+      origin: { type: 'file' as const, url: null, author: null, license: null, range: null }
+    })
+    const r = commit(doc, [{ op: 'motion-add', kind: 'device', from: 'w3', to: '6s', ...call }], 'x')
+    expect(r.rejected).toEqual([])
+    return r.doc
+  }
+  const sceneWith = (doc: EditDoc): MotionScene => {
+    const cut = currentCut(doc)
+    return buildScene({
+      cut,
+      resolved: resolveCut(cut, doc.words, doc.sources),
+      words: doc.words,
+      size: designSize(cut.aspect, doc.sources[0]),
+      theme: DEFAULT_THEME,
+      assets: doc.assets
+    })
+  }
+  const accent = (px: number[]): boolean =>
+    px[3] > 250 && Math.abs(px[0] - 0xff) < 30 && Math.abs(px[1] - 0xd8) < 30 && Math.abs(px[2] - 0x4d) < 40
+
+  it('shows the picture from its top on a phone, with what goes round it passing behind and in front', () => {
+    for (const aspect of ['wide', 'vertical'] as const) {
+      const items = ICONS_ROUND.map((mark) => ({ label: '', mark }))
+      const scene = sceneWith(phoneDoc(aspect, { text: ['a1'], items }))
+      const { width: W, height: H } = scene.size
+      const item = scene.items[0]
+      expect(scene.hidden).toEqual([])
+      // Settled: the top of the picture on the screen, the dark around.
+      const settled = draw(scene, item.start + 1, images)
+      const top = settled.at(W / 2, H * (aspect === 'wide' ? 0.3 : 0.38))
+      expect(top[2]).toBeGreaterThan(180)
+      expect(top[0]).toBeLessThan(80)
+      expect(Math.max(...settled.at(4, 4).slice(0, 3))).toBeLessThan(16)
+      // Behind, under the phone, front, its icons: one copy of each is on at a time.
+      const n = items.length
+      const back = item.layers.slice(1, 1 + n)
+      const front = item.layers.slice(2 + n)
+      expect(front).toHaveLength(n)
+      let inFront = 0
+      let behind = 0
+      // The phone's width and height, as the template makes it.
+      const ph = H * (aspect === 'wide' ? 0.74 : 0.5)
+      const pw = ph * 0.47
+      for (let t = item.start + 1; t < item.end - 0.4; t += 0.05) {
+        for (let k = 0; k < n; k++) {
+          const local = t - item.start
+          const length = item.end - item.start
+          const b = sampleTransform(back[k].transform, local, length)
+          const f = sampleTransform(front[k].transform, local, length)
+          expect(b.opacity + f.opacity).toBeCloseTo(1)
+          // Well inside the phone: in front it shows; behind, the phone covers it.
+          if (Math.abs(f.x - W / 2) > pw * 0.25 || Math.abs(f.y - H / 2) > ph * 0.47) continue
+          // On the coin, clear of the icon at its middle.
+          const size = pw * (aspect === 'wide' ? 0.42 : 0.4)
+          const px = draw(scene, t, images).at(f.x + size * 0.36 * f.sx, f.y)
+          if (f.opacity > 0.5) {
+            expect(accent(px)).toBe(true)
+            inFront++
+          } else {
+            expect(accent(px)).toBe(false)
+            behind++
+          }
+        }
+      }
+      expect({ aspect, inFront: inFront > 0, behind: behind > 0 }).toEqual({ aspect, inFront: true, behind: true })
+      expect(draw(scene, item.end, images).lit(0, 0, W, H)).toBe(0)
+    }
+  })
+
+  it('goes round when it orbits and holds its place when it floats, inside the frame', () => {
+    const items = ['Bitcoin', 'Ethereum', 'Solana'].map((label) => ({ label }))
+    for (const style of ['orbit', 'float'] as const) {
+      const scene = sceneWith(phoneDoc('vertical', { text: ['a1'], items, style }))
+      const { width: W } = scene.size
+      const item = scene.items[0]
+      const length = item.end - item.start
+      const first = item.layers[1]
+      const xs = [1, 2, 3, 4].map((t) => sampleTransform(first.transform, t, length).x)
+      const travel = Math.max(...xs) - Math.min(...xs)
+      if (style === 'orbit') expect(travel).toBeGreaterThan(W * 0.2)
+      else expect(travel).toBeLessThan(1)
+      // Never past the frame's edges, coin and all.
+      for (const l of item.layers.slice(1, 4))
+        for (let t = 0; t < length; t += 0.2) {
+          const x = sampleTransform(l.transform, t, length).x
+          expect(x - 120).toBeGreaterThan(0)
+          expect(x + 120).toBeLessThan(W)
+        }
+    }
+  })
+
+  it('needs a picture the edit has or something to go round, and draws a plain screen without a picture', () => {
+    const doc = phoneDoc('wide', { items: [{ label: 'Bitcoin' }] })
+    const plain = sceneWith(doc)
+    expect(plain.hidden).toEqual([])
+    const cut = currentCut(doc)
+    const context = { words: doc.words, sources: doc.sources, assets: doc.assets }
+    const add = (call: Record<string, unknown>) =>
+      applyOps(cut, [{ op: 'motion-add', kind: 'device', from: 'w3', ...call }], context)
+    expect(add({ text: ['a9'] }).rejected[0].reason).toBe('There is no picture a9 in this edit.')
+    expect(add({}).rejected[0].reason).toBe(
+      'A phone with logos needs a picture for its screen, like ["a3"], or logos to go round it.'
+    )
+    expect(add({ style: 'spin', text: ['a1'] }).rejected[0].reason).toContain('orbit or float')
+  })
+
+  it('reads /phone: the logos, the picture named or the newest, and its style', () => {
+    const doc = phoneDoc('vertical', { text: ['a1'] })
+    const ctx = { doc, resolved: resolveCut(currentCut(doc), doc.words, doc.sources), time: null, brandName: '' }
+    expect(planMotionCommand('phone', 'float Bitcoin, Ethereum', ctx)).toMatchObject({
+      op: { kind: 'device', style: 'float', text: ['a1'], items: [{ label: 'Bitcoin' }, { label: 'Ethereum' }] }
+    })
+    expect(planMotionCommand('phone', 'a1, a16z, Solana', ctx)).toMatchObject({
+      op: { text: ['a1'], items: [{ label: 'a16z' }, { label: 'Solana' }] }
+    })
+    // As the app passes it after capturing a link: the picture first, then what was typed.
+    expect(planMotionCommand('phone', 'a1  float  Bitcoin, Tether', ctx)).toMatchObject({
+      op: { text: ['a1'], style: 'float', items: [{ label: 'Bitcoin' }, { label: 'Tether' }] }
+    })
+    expect(planMotionCommand('phone', 'a4 Bitcoin', ctx)).toEqual({ problem: 'There is no picture a4 in this edit.' })
   })
 })
 

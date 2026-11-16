@@ -38,7 +38,7 @@ export function logoBrands(call: Pick<MotionCall, 'items' | 'text'>): Brand[] {
 }
 
 /** Where a brand's picture comes from: the creator's own logo, a picture in the edit, or a Simple Icons mark. */
-function source(b: Brand, theme: MotionTheme): Pick<ImageLayer, 'logo' | 'file' | 'asset'> {
+export function logoSource(b: Brand, theme: MotionTheme): Pick<ImageLayer, 'logo' | 'file' | 'asset'> {
   if (b.value.startsWith('si:')) return { logo: b.value.slice(3) }
   const named = (b.value.startsWith('brand:') ? b.value.slice(6) : b.name).trim().toLowerCase()
   const own = theme.logos.find((l) => l.name.trim().toLowerCase() === named)
@@ -110,7 +110,7 @@ function logos(ctx: BuildContext): Layer[] {
       kind: 'image',
       start,
       end,
-      ...source(b, theme),
+      ...logoSource(b, theme),
       tile: style === 'bare' ? undefined : style === 'coin' ? 'round' : 'square',
       fallback: { text: initials(b.name), family: theme.body },
       w: size,

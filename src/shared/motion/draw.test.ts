@@ -346,6 +346,75 @@ describe('drawing frames', () => {
     // The shadow falls 40 design pixels down, 10 at quarter size.
     expect(px(small.ctx, 135, 150 + 25 + 8)[3]).toBeGreaterThan(60)
   })
+
+  it('blurs a picture or a shape on a canvas its own size, as a filter on the frame would', () => {
+    const size = { width: 900, height: 600 }
+    let made = 0
+    const scratch = {
+      ...resources,
+      createCanvas: (w: number, h: number) => {
+        made++
+        return createCanvas(w, h) as unknown as HTMLCanvasElement
+      }
+    }
+    /** Mean difference per channel between the two ways of blurring one layer, and the result. */
+    const compare = (layer: Layer): { mean: number; fast: C2D } => {
+      const fast = frame(900, 600)
+      renderFrame(fast.ctx, 1, [layer], size, size, scratch)
+      const plain = frame(900, 600)
+      renderFrame(plain.ctx, 1, [layer], size, size, resources)
+      const a = fast.ctx.getImageData(0, 0, 900, 600).data
+      const b = plain.ctx.getImageData(0, 0, 900, 600).data
+      let diff = 0
+      for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i])
+      return { mean: diff / a.length, fast: fast.ctx }
+    }
+    // A turned tile, a ring, and a square half off the frame, whose blur still reaches the frame's edge.
+    const tile = compare(
+      rect({
+        shape: { type: 'rect', w: 180, h: 120, radius: 24 },
+        transform: { x: 300, y: 260, rotation: 20 },
+        fill: '#2E7DFF',
+        effects: { blur: 9 }
+      })
+    )
+    expect(made).toBeGreaterThan(0)
+    expect(tile.mean).toBeLessThan(0.05)
+    expect(px(tile.fast, 300, 260)[3]).toBe(255)
+    const ring = compare(
+      rect({
+        shape: { type: 'ellipse', w: 160, h: 160 },
+        transform: { x: 700, y: 300 },
+        fill: undefined,
+        stroke: { color: '#FFD84D', width: 14 },
+        effects: { blur: 5 }
+      })
+    )
+    expect(ring.mean).toBeLessThan(0.05)
+    const edge = px(ring.fast, 700 + 80, 300)[3]
+    expect(edge).toBeGreaterThan(40)
+    expect(edge).toBeLessThan(250)
+    const half = compare(
+      rect({
+        shape: { type: 'rect', w: 200, h: 200 },
+        transform: { x: 20, y: 300 },
+        fill: '#FF4D4D',
+        effects: { blur: 6 }
+      })
+    )
+    expect(half.mean).toBeLessThan(0.05)
+    expect(px(half.fast, 0, 300)[3]).toBeGreaterThan(250)
+    // With a glow the two order the glow's blur and the layer's differently; the halo differs a little.
+    const glowing = compare(
+      rect({
+        shape: { type: 'rect', w: 180, h: 120, radius: 24 },
+        transform: { x: 300, y: 260 },
+        fill: '#2E7DFF',
+        effects: { blur: 9, glow: { color: 'rgba(255,255,255,0.5)', blur: 12 } }
+      })
+    )
+    expect(glowing.mean).toBeLessThan(2)
+  })
 })
 
 describe('text', () => {

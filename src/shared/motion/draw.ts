@@ -2,6 +2,7 @@ import { color as sampleColor, isKeyed, luminance, mixColor, num } from './anim'
 import { ease } from './ease'
 import { fontInfo, fontString } from './fonts'
 import {
+  bounds,
   flatten,
   iconElementCmds,
   morphPoints,
@@ -75,6 +76,8 @@ interface DrawState {
   measure: ReturnType<typeof measurer>
   /** Inside a motion-blurred layer's sub-frames, which are not blurred again. */
   smearing?: boolean
+  /** Drawing a blurred layer onto its own small canvas, where a blur inside it uses the filter. */
+  softening?: boolean
 }
 
 // One measuring cache per canvas, kept while the canvas lives.
@@ -162,8 +165,31 @@ function drawLayer(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st:
   applyTransform(ctx, tf)
   if (layer.mask) clipTo(ctx, layer.mask, local, length)
   const blur = num(layer.effects?.blur, local, length, 0)
-  if (blur > 0.01) ctx.filter = `blur(${(blur * pixelScale(ctx)).toFixed(2)}px)`
+  if (blur > 0.01) {
+    const px = blur * pixelScale(ctx)
+    const extent = st.softening ? null : localExtent(layer, local, length)
+    if (
+      extent &&
+      drawSoftened(ctx, extent, px, st, (c, inner) => drawKind(c, layer, t, local, length, opacity, inner))
+    ) {
+      ctx.restore()
+      return
+    }
+    ctx.filter = `blur(${px.toFixed(2)}px)`
+  }
+  drawKind(ctx, layer, t, local, length, opacity, st)
+  ctx.restore()
+}
 
+function drawKind(
+  ctx: Ctx,
+  layer: Layer,
+  t: number,
+  local: number,
+  length: number,
+  opacity: number,
+  st: DrawState
+): void {
   switch (layer.kind) {
     case 'text':
       drawText(ctx, layer, local, length, opacity, st)
@@ -178,7 +204,105 @@ function drawLayer(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st:
       drawGroup(ctx, layer, t, opacity, st)
       break
   }
+}
+
+// ---------- Blur ----------
+
+/**
+ * How far a picture or a shape reaches from its origin, in its own pixels,
+ * with room for its stroke, glow and shadow. Null for text and groups, whose
+ * reach is not known before they are laid out.
+ */
+function localExtent(layer: Layer, local: number, length: number): [number, number, number, number] | null {
+  let box: { x: number; y: number; w: number; h: number }
+  if (layer.kind === 'image') box = { x: -layer.w / 2, y: -layer.h / 2, w: layer.w, h: layer.h }
+  else if (layer.kind === 'shape') box = bounds(shapeCmds(layer.shape))
+  else return null
+  const fx = layer.effects
+  let pad = layer.kind === 'shape' && layer.stroke ? num(layer.stroke.width, local, length, 0) : 0
+  if (fx?.glow) pad += fx.glow.blur * 2
+  if (fx?.shadow) pad += fx.shadow.blur * 2 + Math.max(Math.abs(fx.shadow.x ?? 0), Math.abs(fx.shadow.y ?? 0))
+  return [box.x - pad, box.y - pad, box.x + box.w + pad, box.y + box.h + pad]
+}
+
+/** Two small canvases per frame canvas for blurred layers, sharp and soft, grown as needed and kept. */
+const softs = new WeakMap<object, { sharp: Pad; soft: Pad }>()
+type Pad = { canvas: { width: number; height: number }; ctx: Ctx }
+
+/**
+ * A blurred picture or shape: drawn sharp onto a small canvas just its size,
+ * blurred onto a second one, and that laid onto the frame. A blur filter on
+ * the frame's own canvas blurs a canvas-sized layer for every draw inside it,
+ * which on Skia costs a frame hundreds of milliseconds; on a canvas the size
+ * of the layer it costs about what the layer covers. False when there is no
+ * canvas to draw on, and the caller blurs in place.
+ */
+function drawSoftened(
+  ctx: Ctx,
+  [x0, y0, x1, y1]: [number, number, number, number],
+  px: number,
+  st: DrawState,
+  draw: (c: Ctx, inner: DrawState) => void
+): boolean {
+  const frame = (ctx as unknown as { canvas?: { width: number; height: number } }).canvas
+  if (!frame || !st.res.createCanvas) return false
+  const m = ctx.getTransform()
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const [x, y] of [
+    [x0, y0],
+    [x1, y0],
+    [x0, y1],
+    [x1, y1]
+  ]) {
+    xs.push(m.a * x + m.c * y + m.e)
+    ys.push(m.b * x + m.d * y + m.f)
+  }
+  // Where it lands, with room for the blur to spread: past the frame's edges by as much, since what is
+  // just outside the frame blurs into it.
+  const spread = Math.ceil(px * 3)
+  const bx = Math.max(-spread, Math.floor(Math.min(...xs)) - spread)
+  const by = Math.max(-spread, Math.floor(Math.min(...ys)) - spread)
+  const bw = Math.min(frame.width + spread, Math.ceil(Math.max(...xs)) + spread) - bx
+  const bh = Math.min(frame.height + spread, Math.ceil(Math.max(...ys)) + spread) - by
+  if (bw <= 0 || bh <= 0) return true
+  let pads = softs.get(frame)
+  if (!pads || pads.sharp.canvas.width < bw || pads.sharp.canvas.height < bh) {
+    const w = Math.max(bw, pads?.sharp.canvas.width ?? 0)
+    const h = Math.max(bh, pads?.sharp.canvas.height ?? 0)
+    const pad = (): Pad | null => {
+      const made = st.res.createCanvas?.(w, h)
+      const mctx = made?.getContext('2d')
+      return made && mctx ? { canvas: made as unknown as Pad['canvas'], ctx: mctx } : null
+    }
+    const sharp = pad()
+    const soft = pad()
+    if (!sharp || !soft) return false
+    pads = { sharp, soft }
+    softs.set(frame, pads)
+  }
+  const { sharp, soft } = pads
+  for (const p of [sharp.ctx, soft.ctx]) {
+    p.setTransform(1, 0, 0, 1, 0, 0)
+    p.globalCompositeOperation = 'source-over'
+    p.globalAlpha = 1
+    p.filter = 'none'
+    p.clearRect(0, 0, bw, bh)
+  }
+  sharp.ctx.setTransform(m.a, m.b, m.c, m.d, m.e - bx, m.f - by)
+  sharp.ctx.save()
+  draw(sharp.ctx, { ...st, softening: true, measure: measurerFor(sharp.ctx) })
+  sharp.ctx.restore()
+  sharp.ctx.setTransform(1, 0, 0, 1, 0, 0)
+  soft.ctx.filter = `blur(${px.toFixed(2)}px)`
+  soft.ctx.drawImage(sharp.canvas as unknown as CanvasImageSource, 0, 0, bw, bh, 0, 0, bw, bh)
+  soft.ctx.filter = 'none'
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.globalAlpha = 1
+  ctx.drawImage(soft.canvas as unknown as CanvasImageSource, 0, 0, bw, bh, bx, by, bw, bh)
   ctx.restore()
+  return true
 }
 
 function drawGroup(ctx: Ctx, layer: GroupLayer, t: number, opacity: number, st: DrawState): void {

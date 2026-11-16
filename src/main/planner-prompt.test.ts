@@ -296,6 +296,29 @@ describe('the planner request', () => {
     expect(offered.rejected).toEqual(['One change did not fit the cut, so I left it out.'])
     const shown = commit(doc, offered.ops, offered.summary).doc
     expect(renderRequest(shown, '', [])).toContain('a1 image 860x4300, a page: Example Domain | shown on m1')
+    // The same page on a phone, with coins going round it.
+    expect(PLANNER_SYSTEM).toContain('- device: A phone on dark')
+    const phone = PlanSchema.parse({
+      ops: [
+        {
+          op: 'motion-add',
+          kind: 'device',
+          from: 'w5',
+          text: ['a1'],
+          style: 'orbit',
+          ...slots,
+          items: ['Bitcoin', 'Ethereum'].map((label) => ({ label, value: '', note: '', mark: '', at: '' }))
+        }
+      ],
+      summary: 'The app comes up on a phone.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const onPhone = offerPlan(shown, phone, [])
+    if (!onPhone.ok) throw new Error('expected a plan')
+    expect(onPhone.rejected).toEqual([])
+    expect(onPhone.ops[0]).toMatchObject({ kind: 'device', text: ['a1'] })
   })
 
   it('shows the cut’s graphics in the request', () => {

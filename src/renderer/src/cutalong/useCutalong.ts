@@ -926,7 +926,8 @@ export function useCutalong() {
       rest = '',
       at: number | null = null
     ): Promise<void> => {
-      const link = command === 'screenshot' ? findLink(rest) : null
+      // A page to show, as a screenshot or on a phone's screen, is captured first.
+      const link = command === 'screenshot' || command === 'phone' ? findLink(rest) : null
       if (link) {
         const shot = await capturePage(link, where)
         // In the thread the capture's own message says what was captured; the panel has room for one line.
@@ -1276,7 +1277,9 @@ export function useCutalong() {
               url: link,
               title: null,
               meta:
-                command?.command === 'screenshot' || (docRef.current !== null && SHOW_PAGE.test(words))
+                command?.command === 'screenshot' ||
+                command?.command === 'phone' ||
+                (docRef.current !== null && SHOW_PAGE.test(words))
                   ? 'A page to show'
                   : null
             }
@@ -1294,7 +1297,7 @@ export function useCutalong() {
           else push({ role: 'assistant', text: 'Drop your footage too, and these go into the edit with it.' })
         }
         let asked = false
-        if (link && command?.command !== 'screenshot') {
+        if (link && command?.command !== 'screenshot' && command?.command !== 'phone') {
           // A link with a time, an image link, or one called B-roll is
           // material; any other video link is something to learn a style from.
           const range = parseRange(text)

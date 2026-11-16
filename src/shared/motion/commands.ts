@@ -164,6 +164,27 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       const style = tokens.find((t) => (template('screenshot')?.styles ?? []).includes(t)) ?? ''
       return { style, fx: tokens.includes('tilt') ? ['tilt'] : [], text: [id] }
     }
+  },
+  {
+    command: 'phone',
+    kind: 'device',
+    title: 'Phone with logos',
+    summary: 'Your app on a phone with logos going round it: /phone Bitcoin, Ethereum, Solana',
+    // A link is captured by the app first, as for /screenshot; what reaches here names the picture it became.
+    parse: (rest, ctx) => {
+      // A picture named anywhere in it, like "a3", is the screen; then a style may lead; the rest are logos.
+      const named = /(?:^|[\s,;|])(a\d+)(?=$|[\s,;|])/.exec(rest)?.[1]
+      const { style, rest: more } = takeStyle(
+        (named ? rest.replace(named, ' ') : rest).replace(/^[\s,;|]+/, ''),
+        'device'
+      )
+      const pictures = ctx.doc.assets.filter((a) => a.kind === 'image' && a.origin.type !== 'icon')
+      const id = named ?? pictures[pictures.length - 1]?.id ?? ''
+      if (id && !pictures.some((a) => a.id === id)) return { problem: `There is no picture ${id} in this edit.` }
+      const logos = parts(more).slice(0, 8)
+      if (!id && logos.length === 0) return { problem: 'Tell me what goes round it, like /phone Bitcoin, Ethereum.' }
+      return { style, text: id ? [id] : [], items: logos.map((label) => ({ label })) }
+    }
   }
 ]
 
