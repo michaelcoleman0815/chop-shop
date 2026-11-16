@@ -1,6 +1,7 @@
 import { createDoc, currentCut, applyOps, type EditDoc } from '../edit'
 import { build, FIXTURES, VARIANTS, type BuildOptions, type Fixture } from './fixtures'
 import { planTakes, type TakesPlanOptions } from './plan'
+import { normWord } from './text'
 
 /**
  * Scores the takes planner on the fixture set: which words it cuts against
@@ -119,4 +120,91 @@ export function evalTable(r: EvalResult): string {
     `precision ${(r.precision * 100).toFixed(1)}%, recall ${(r.recall * 100).toFixed(1)}%, recall counting offers ${(r.recallWithOffers * 100).toFixed(1)}%`
   )
   return rows.join('\n')
+}
+
+/** A piece of the lab session's splice log: what was planted, and when. */
+export interface LabPiece {
+  kind: string
+  text: string
+  start: number
+  end: number
+  id?: string
+  take?: number | string
+}
+
+interface Timed {
+  text: string
+  startSec: number
+  endSec: number
+}
+
+/**
+ * The planted piece a transcript word belongs to: the one it overlaps most.
+ * Whisper stretches words over the silence beside them, so a word's middle
+ * can sit in a gap; its overlap with the speech it stands for does not.
+ */
+function pieceOf(w: Timed, pieces: LabPiece[]): LabPiece | undefined {
+  let best: LabPiece | undefined
+  let top = 0
+  for (const p of pieces) {
+    const overlap = Math.min(w.endSec, p.end) - Math.max(w.startSec, p.start)
+    if (overlap > top) {
+      top = overlap
+      best = p
+    }
+  }
+  if (best) return best
+  const mid = (w.startSec + w.endSec) / 2
+  const near = pieces.map((p) => ({ p, d: Math.max(p.start - mid, mid - p.end, 0) })).sort((a, b) => a.d - b.d)[0]
+  return near && near.d <= 0.5 ? near.p : undefined
+}
+
+/** Whether a word of the lab session should be cut, from its piece and the words Whisper wrote after it there. */
+function labTruth(w: Timed, piece: LabPiece | undefined, laterInPiece: string[]): boolean {
+  if (!piece) return false
+  const { id, take, kind, start } = piece
+  const plain = normWord(w.text)
+  // The opening line was redone, reworded, at the end of the session.
+  if (kind === 'line' && start < 1) return true
+  if (id === 'L1') return take !== 3
+  if (id === 'L2' && take === 1) return !['ive', 'been', 'using', 'this', 'phone'].includes(plain)
+  if (id === 'L3' && take === 1) return plain !== 'so'
+  if (id === 'L4') return take !== 5
+  if (id === 'L5') return take === 1
+  // "The the the screen": every "the" but the last one Whisper wrote goes.
+  if (piece.text.startsWith('The the the')) return plain === 'the' && laterInPiece.includes('the')
+  return false
+}
+
+export interface LabScore {
+  precision: number
+  recall: number
+  wrong: string[]
+  missed: string[]
+}
+
+/** Scores struck words against the lab session's splice log, word by word. */
+export function scoreLab(words: (Timed & { id: string })[], struck: Set<string>, pieces: LabPiece[]): LabScore {
+  const placed = words.map((w) => ({ w, piece: pieceOf(w, pieces) }))
+  let tp = 0
+  let fp = 0
+  let fn = 0
+  const wrong: string[] = []
+  const missed: string[] = []
+  placed.forEach(({ w, piece }, k) => {
+    const later = placed
+      .slice(k + 1)
+      .filter((x) => x.piece === piece)
+      .map((x) => normWord(x.w.text))
+    const truth = labTruth(w, piece, later)
+    if (struck.has(w.id) && truth) tp++
+    else if (struck.has(w.id)) {
+      fp++
+      wrong.push(`${w.text}@${w.startSec.toFixed(1)}`)
+    } else if (truth) {
+      fn++
+      missed.push(`${w.text}@${w.startSec.toFixed(1)}`)
+    }
+  })
+  return { precision: tp / Math.max(1, tp + fp), recall: tp / Math.max(1, tp + fn), wrong, missed }
 }
