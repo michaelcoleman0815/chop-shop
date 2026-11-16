@@ -9,7 +9,16 @@ import type { ChatMessage } from '../../../../shared/types'
  */
 
 export interface Action {
-  kind: 'open-editor' | 'use-style' | 'save-style' | 'reveal' | 'retry' | 'add-clip' | 'add-icon' | 'sign-in'
+  kind:
+    | 'open-editor'
+    | 'use-style'
+    | 'save-style'
+    | 'reveal'
+    | 'retry'
+    | 'add-clip'
+    | 'add-icon'
+    | 'sign-in'
+    | 'open-settings'
   label: string
   primary?: boolean
   /** A command name for save-style, a path for reveal, JSON for the asset actions. */

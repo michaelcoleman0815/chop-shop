@@ -16,7 +16,7 @@ import { renderCut } from './cut-render'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
 import { removePreset, savedPresets, savePreset } from './preset-store'
-import { planEdit } from './planner'
+import { checkKey, planEdit } from './planner'
 import { readBrand, saveBrand } from './brand-store'
 import {
   createDoc,
@@ -295,6 +295,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     const allowed = ['chrome', 'safari', 'firefox', 'edge', 'brave', 'chromium', 'opera', 'vivaldi']
     return saveSettings({ videoSignIn: browser && allowed.includes(browser) ? browser : null }).videoSignIn ?? null
   })
+
+  ipcMain.handle('claude:check', () => checkKey())
 
   ipcMain.handle('presets:list', () => savedPresets())
   ipcMain.handle('presets:save', (_e, preset: unknown) => savePreset(preset))

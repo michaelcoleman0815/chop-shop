@@ -1443,3 +1443,24 @@ button:disabled {
   height: 18px;
   accent-color: var(--ink);
 }
+
+/* Settings */
+.cl-field .cl-row input:not([type='color']) {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.cl-path {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.cl-section .cl-row > .cl-aside,
+.cl-section .cl-row > .cl-reply {
+  flex: 1 1 260px;
+}

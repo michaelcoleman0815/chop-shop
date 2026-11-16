@@ -1,6 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
+import { detectProvider, type Provider } from '../shared/keys'
 
 /**
  * The Anthropic key is encrypted with the OS keychain via safeStorage, so it is
@@ -38,21 +39,6 @@ export function readApiKey(): string | null {
   } catch {
     return null
   }
-}
-
-export type Provider = 'anthropic' | 'openai' | 'google' | 'unknown'
-
-/**
- * Works out who a key belongs to from its prefix. Only Anthropic is wired up;
- * naming the others is still better than a confusing auth failure.
- */
-export function detectProvider(key: string | null): Provider {
-  if (!key) return 'unknown'
-  const k = key.trim()
-  if (k.startsWith('sk-ant-')) return 'anthropic'
-  if (k.startsWith('sk-')) return 'openai'
-  if (k.startsWith('AIza')) return 'google'
-  return 'unknown'
 }
 
 export function currentProvider(): Provider {

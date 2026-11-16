@@ -47,7 +47,7 @@ import { clock, fileName, findLink, isVideoFile } from './format'
  * commit(), so each one is a version the notes panel can name and undo.
  */
 
-export type Screen = 'start' | 'thread' | 'editor' | 'projects' | 'brand' | 'presets'
+export type Screen = 'start' | 'thread' | 'editor' | 'projects' | 'brand' | 'presets' | 'settings'
 
 export interface Toast {
   text: string
@@ -621,7 +621,12 @@ export function useCutalong() {
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Working it out', percent: 35 } })
       const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandRef.current.voice })
       if (!r.ok) {
-        patch(id, { progress: null, text: r.message, error: true })
+        patch(id, {
+          progress: null,
+          text: r.message,
+          error: true,
+          actions: r.needsKey ? [{ kind: 'open-settings', label: 'Open Settings', primary: true }] : undefined
+        })
         return
       }
       const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
@@ -738,6 +743,7 @@ export function useCutalong() {
   const onAction = useCallback(
     (a: Action): void => {
       if (a.kind === 'open-editor') setScreen('editor')
+      else if (a.kind === 'open-settings') setScreen('settings')
       else if (a.kind === 'use-style') useStyle()
       else if (a.kind === 'save-style' && a.payload) void saveStyle(a.payload)
       else if (a.kind === 'reveal' && a.payload) void api.reveal(a.payload)

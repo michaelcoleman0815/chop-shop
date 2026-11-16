@@ -6,6 +6,7 @@ import { BrandPage } from './screens/Brand'
 import { Editor } from './screens/Editor'
 import { openClassic } from './screens/Header'
 import { PresetsPage, ProjectsPage } from './screens/Library'
+import { SettingsPage } from './screens/Settings'
 import { Start } from './screens/Start'
 import { Thread } from './screens/Thread'
 import { useCutalong } from './useCutalong'
@@ -20,7 +21,7 @@ function remembered(): boolean {
   }
 }
 
-/** The rail and one screen: Start, the thread, the editor, projects, your brand or presets. */
+/** The rail and one screen: Start, the thread, the editor, projects, your brand, presets or settings. */
 export default function App(): JSX.Element {
   const app = useCutalong()
   const [open, setOpen] = useState(remembered)
@@ -52,7 +53,11 @@ export default function App(): JSX.Element {
   }
 
   const place: Place | null =
-    app.screen === 'start' || app.screen === 'projects' || app.screen === 'brand' || app.screen === 'presets'
+    app.screen === 'start' ||
+    app.screen === 'projects' ||
+    app.screen === 'brand' ||
+    app.screen === 'presets' ||
+    app.screen === 'settings'
       ? app.screen
       : null
 
@@ -74,6 +79,7 @@ export default function App(): JSX.Element {
         {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
         {app.screen === 'brand' && <BrandPage app={app} />}
         {app.screen === 'presets' && <PresetsPage app={app} />}
+        {app.screen === 'settings' && <SettingsPage />}
       </div>
       {app.toast && (
         <div className="cl-toast" role="status">

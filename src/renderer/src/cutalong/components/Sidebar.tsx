@@ -2,11 +2,11 @@ import type { ProjectSummary } from '../../../../shared/types'
 import { Mark } from './ui'
 
 /**
- * The rail down the left: a new edit, projects, your brand, presets, and the
- * classic tools. Collapsed it is icons; open it adds names and recent edits.
+ * The rail down the left: a new edit, projects, your brand, presets, and at
+ * the bottom settings and the classic tools. Collapsed it is icons; open it adds names and recent edits.
  */
 
-export type Place = 'start' | 'projects' | 'brand' | 'presets'
+export type Place = 'start' | 'projects' | 'brand' | 'presets' | 'settings'
 
 const stroke = {
   width: 20,
@@ -47,6 +47,16 @@ const ICONS: Record<Place | 'toggle' | 'classic', JSX.Element> = {
   presets: (
     <svg {...stroke}>
       <path d="M14.5 4.5 9.5 19.5" />
+    </svg>
+  ),
+  settings: (
+    <svg {...stroke}>
+      <path d="M4.5 7.5h9" />
+      <path d="M17.5 7.5h2" />
+      <circle cx="15.5" cy="7.5" r="2" />
+      <path d="M4.5 16.5h2" />
+      <path d="M10.5 16.5h9" />
+      <circle cx="8.5" cy="16.5" r="2" />
     </svg>
   ),
   classic: (
@@ -128,6 +138,17 @@ export function Sidebar({
         </div>
       )}
       <span className="spacer" />
+      <button
+        type="button"
+        className={`cl-rail-item${current === 'settings' ? ' on' : ''}`}
+        aria-current={current === 'settings' ? 'page' : undefined}
+        title={open ? undefined : 'Settings'}
+        aria-label={open ? undefined : 'Settings'}
+        onClick={() => onGo('settings')}
+      >
+        {ICONS.settings}
+        {open && <span className="label">Settings</span>}
+      </button>
       <button
         type="button"
         className="cl-rail-item"

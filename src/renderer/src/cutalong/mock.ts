@@ -8,8 +8,9 @@ import {
   summarize,
   type InspirationStudy
 } from '../../../shared/inspiration'
-import type { Project, ProjectSummary } from '../../../shared/types'
+import type { Project, ProjectSummary, Settings } from '../../../shared/types'
 import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
+import { detectProvider } from '../../../shared/keys'
 import type { CutalongApi } from './api'
 
 /**
@@ -105,11 +106,41 @@ export function createMockApi(): CutalongApi {
     }
   }
 
+  let key: string | null = null
+  let settings: Settings = {
+    outputDir: '/Users/you/Movies/Chop Shop',
+    bufferSeconds: 60,
+    grabShortcut: 'CommandOrControl+Shift+C',
+    captureSourceId: null,
+    captureAudio: false,
+    audioInputId: null,
+    defaultAspect: 'vertical',
+    bufferAspect: 'wide',
+    bufferFit: 'contain',
+    autoCheckUpdates: true,
+    whisperModel: 'small.en',
+    maxSuggestedClips: 8,
+    clipModel: 'claude-opus-5',
+    captionPreset: 'chop',
+    lutPath: null,
+    musicDir: null,
+    ccliLicense: null,
+    ccliStreaming: null,
+    exportPreset: null,
+    videoSignIn: null
+  }
+  const models: Record<string, { mb: number; has: boolean }> = {
+    'base.en': { mb: 148, has: true },
+    'small.en': { mb: 488, has: true },
+    'medium.en': { mb: 1533, has: false }
+  }
+  const aiListeners = new Set<(p: { stage: string; percent: number }) => void>()
+
   return {
-    getVersion: async () => 'browser preview',
+    getVersion: async () => '0.2.13',
     pathForFile: (file: File) => `/Users/you/Movies/${file.name}`,
     openVideo: async () => null,
-    hasApiKey: async () => false,
+    hasApiKey: async () => key !== null,
 
     prepareCut: async (path: string) => {
       await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Transcribing', 'Splitting into beats'])
@@ -128,10 +159,14 @@ export function createMockApi(): CutalongApi {
       listeners.cut.add(cb)
       return () => listeners.cut.delete(cb)
     },
-    planEdit: async () => ({
-      ok: false as const,
-      message: 'Notes go to Claude, and this browser preview has no connection to it.'
-    }),
+    planEdit: async () =>
+      key === null
+        ? {
+            ok: false as const,
+            message: 'Add your Anthropic API key in Settings and I can work on this.',
+            needsKey: true
+          }
+        : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' },
 
     studyInspiration: async ({ url, path }) => {
       await progress(listeners.study, ['Fetching the video', 'Measuring the cuts', 'Listening to the pacing'])
@@ -291,7 +326,10 @@ export function createMockApi(): CutalongApi {
         origin
       }
     }),
-    setVideoSignIn: async (browser) => browser,
+    setVideoSignIn: async (browser) => {
+      settings = { ...settings, videoSignIn: browser }
+      return browser
+    },
     getBrand: async () => brand,
     saveBrand: async (next) => {
       brand = { ...next, updatedAt: new Date().toISOString() }
@@ -327,6 +365,41 @@ export function createMockApi(): CutalongApi {
       listeners.cut.add(cb)
       return () => listeners.cut.delete(cb)
     },
-    chooseMedia: async () => null
+    chooseMedia: async () => null,
+    checkKey: async () =>
+      key === null
+        ? { ok: false as const, message: 'No key yet.', needsKey: true }
+        : detectProvider(key) === 'anthropic'
+          ? { ok: true as const }
+          : { ok: false as const, message: 'The API key was not accepted.', needsKey: true },
+    setApiKey: async (next) => {
+      key = next.trim() || null
+    },
+    clearApiKey: async () => {
+      key = null
+    },
+    provider: async () => detectProvider(key),
+    getSettings: async () => settings,
+    setSettings: async (patch) => (settings = { ...settings, ...patch }),
+    chooseOutputDir: async () => null,
+    hasModel: async (model) => models[model]?.has ?? false,
+    modelSizeMb: async (model) => models[model]?.mb ?? 0,
+    downloadModel: async (model) => {
+      for (const percent of [10, 35, 60, 85, 100]) {
+        await new Promise((r) => setTimeout(r, 150))
+        aiListeners.forEach((cb) => cb({ stage: 'Downloading model', percent }))
+      }
+      if (models[model]) models[model].has = true
+      return true
+    },
+    onAiProgress: (cb) => {
+      aiListeners.add(cb)
+      return () => aiListeners.delete(cb)
+    },
+    updateState: async () => ({ status: 'idle' as const }),
+    checkForUpdates: async () => ({ status: 'none' as const, version: '0.2.13' }),
+    onUpdateState: () => () => undefined,
+    downloadUpdate: async () => undefined,
+    installUpdate: async () => undefined
   }
 }

@@ -38,6 +38,22 @@ export type CutalongApi = Pick<
   | 'learnBrand'
   | 'onBrandProgress'
   | 'chooseMedia'
+  | 'checkKey'
+  | 'setApiKey'
+  | 'clearApiKey'
+  | 'provider'
+  | 'getSettings'
+  | 'setSettings'
+  | 'chooseOutputDir'
+  | 'hasModel'
+  | 'modelSizeMb'
+  | 'downloadModel'
+  | 'onAiProgress'
+  | 'updateState'
+  | 'checkForUpdates'
+  | 'onUpdateState'
+  | 'downloadUpdate'
+  | 'installUpdate'
 >
 
 const bridge = typeof window !== 'undefined' ? (window as { chop?: ChopApi }).chop : undefined

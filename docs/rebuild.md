@@ -27,7 +27,7 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 | `src/main/assets.ts`                         | Files, image links, video excerpts and search via yt-dlp, saved icons.                                                                                                                 |
 | `src/main/planner.ts`, `planner-prompt.ts`   | Requests and notes to ops with Claude (claude-opus-5-5, adaptive thinking, structured output, prompt caching, server-side refusal fallback). Every op is dry-run before it is offered. |
 | `src/main/preset-store.ts`, `brand-store.ts` | Saved commands and the brand, as JSON in userData.                                                                                                                                     |
-| `src/renderer/src/cutalong/`                 | The app: rail, Start, thread, editor, projects, brand, presets. `useCutalong` is the session; `usePlayer` plays a cut straight off the source.                                         |
+| `src/renderer/src/cutalong/`                 | The app: rail, Start, thread, editor, projects, brand, presets, settings. `useCutalong` is the session; `usePlayer` plays a cut straight off the source.                               |
 | `src/renderer/src/legacy/`                   | The classic tools (clip finder, timeline editor, Live Buffer, Settings), loaded only in their own document at `#classic`.                                                              |
 
 ## How an edit moves
@@ -45,9 +45,9 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 
 ## Status
 
-Built and tested: the edit document, presets and slash commands, inspiration measuring, the renderer of record, the planner, assets (files, image links, video excerpts, B-roll search, icons, credits), listening for snappy cuts, the brand with learning, chats saved with their projects, and the Cutalong shell with the classic tools one click away.
+Built and tested: the edit document, presets and slash commands, inspiration measuring, the renderer of record, the planner, assets (files, image links, video excerpts, B-roll search, icons, credits), listening for snappy cuts, the brand with learning, chats saved with their projects, Settings (the Claude key, checked as it is saved; the transcription model; the export folder; video sign-in; updates), and the Cutalong shell with the classic tools one click away.
 
-Not yet: a Settings page inside Cutalong (the classic one still holds the API key and model), more than one recording per edit, B-roll audio, a local model for the planner (the clip finder already supports Ollama), and a renamed app id. The window says Cutalong, but `appId`, `productName` and the update feed still say Chop Shop on purpose: renaming them breaks auto-update for existing installs, and the name needs a trademark and domain check first.
+Not yet: more than one recording per edit, B-roll audio, a local model for the planner (the clip finder already supports Ollama), and a renamed app id. The window says Cutalong, but `appId`, `productName` and the update feed still say Chop Shop on purpose: renaming them breaks auto-update for existing installs, and the name needs a trademark and domain check first.
 
 ## Next
 

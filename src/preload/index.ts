@@ -94,8 +94,10 @@ const api = {
         needs: string[]
         rejected: string[]
       }
-    | { ok: false; message: string }
+    | { ok: false; message: string; needsKey?: boolean }
   > => ipcRenderer.invoke('cut:plan', req),
+  checkKey: (): Promise<{ ok: true } | { ok: false; message: string; needsKey?: boolean }> =>
+    ipcRenderer.invoke('claude:check'),
   studyInspiration: (input: {
     url?: string
     path?: string

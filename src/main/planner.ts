@@ -24,7 +24,7 @@ export type PlanEditResult =
       needs: string[]
       rejected: string[]
     }
-  | { ok: false; message: string }
+  | { ok: false; message: string; needsKey?: boolean }
 
 export async function planEdit(input: {
   doc: unknown
@@ -37,7 +37,8 @@ export async function planEdit(input: {
   const doc = parsedDoc.data
 
   const apiKey = readApiKey()
-  if (!apiKey) return { ok: false, message: 'Add an Anthropic API key in Settings and I can work from your notes.' }
+  if (!apiKey)
+    return { ok: false, message: 'Add your Anthropic API key in Settings and I can work on this.', needsKey: true }
   const client = new Anthropic({ apiKey })
 
   try {
@@ -86,7 +87,22 @@ export async function planEdit(input: {
       rejected: result.rejected.map((r) => r.reason)
     }
   } catch (err) {
-    return { ok: false, message: describeError(err) }
+    return { ok: false, message: describeError(err), needsKey: err instanceof Anthropic.AuthenticationError }
+  }
+}
+
+/**
+ * Whether the saved key works with the model the planner uses: one small
+ * request, so a bad key shows up in Settings rather than at the first edit.
+ */
+export async function checkKey(): Promise<{ ok: true } | { ok: false; message: string; needsKey?: boolean }> {
+  const apiKey = readApiKey()
+  if (!apiKey) return { ok: false, message: 'No key yet.', needsKey: true }
+  try {
+    await new Anthropic({ apiKey }).models.retrieve(MODEL)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, message: describeError(err), needsKey: err instanceof Anthropic.AuthenticationError }
   }
 }
 

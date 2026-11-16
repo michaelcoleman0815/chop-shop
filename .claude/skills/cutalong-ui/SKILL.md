@@ -25,7 +25,7 @@ A helpful editor sitting next to you: first person, plain words, exact numbers. 
 
 - `App.tsx`: the rail and one screen at a time. `useCutalong.ts` holds the session; every change to the edit goes through `applyAsVersion` so it becomes a named version.
 - `components/`: `ui.tsx` (Mark, Button, IconButton, icons), `Composer`, `Message`, `BeatStrip`, `Sidebar`.
-- `screens/`: Start, Thread, Editor, Brand, Library (Projects and Presets).
+- `screens/`: Start, Thread, Editor, Brand, Library (Projects and Presets), Settings.
 - `api.ts`: the slice of the preload API Cutalong uses. Add a method there and to `mock.ts` together.
 - Shared logic belongs in `src/shared/` with tests, not in components.
 
