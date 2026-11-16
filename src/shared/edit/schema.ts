@@ -385,8 +385,12 @@ export const NoteSchema = z.object({
   text: z.string().min(1),
   /** The beat the note was left on, if any. */
   beat: z.string().nullable(),
-  /** The stretch picked on the beat strip when the note was left, by its first and last beat: the note is about those only. */
-  range: z.object({ from: z.string(), to: z.string() }).optional(),
+  /**
+   * The stretch picked on the beat strip when the note was left, by its first
+   * and last beat, and every beat it held then: the note is about those only,
+   * or what is left of them once an end is cut.
+   */
+  range: z.object({ from: z.string(), to: z.string(), beats: z.array(z.string()).optional() }).optional(),
   status: z.enum(['open', 'applied', 'dismissed']),
   /** The version the note was written against. */
   version: z.number().int().positive()

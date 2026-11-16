@@ -30,6 +30,7 @@ import {
   pieceRate,
   pieceTime,
   pictureFit,
+  noteBeats,
   pickedBeats,
   pipBox,
   placeSfx,
@@ -920,7 +921,7 @@ function NotesPanel({
   const resolved = useMemo(() => resolveCut(currentCut(doc), doc.words, doc.sources), [doc])
   const where = (n: (typeof notes)[number]): string => {
     if (!n.range) return position(n.beat)
-    const times = rangeTimes(resolved, pickedBeats(currentCut(doc), { anchor: n.range.from, focus: n.range.to }))
+    const times = rangeTimes(resolved, noteBeats(currentCut(doc), n.range))
     return times ? `${clock(times.start)} to ${clock(times.end)}` : position(n.beat)
   }
   const stretch = span ? `${clock(span.start)} to ${clock(span.end)}` : null
@@ -983,7 +984,12 @@ function NotesPanel({
           if (command) void app.runCommand(command.command, 'panel', command.rest, time, range)
           else if (range && cutsPicked(text)) app.cutBeats(range, 'panel')
           else if (!app.answerInPanel(text))
-            app.addNote(text, nowBeat, range ? { from: range[0], to: range[range.length - 1] } : null)
+            // A note on a stretch is left on one of its beats: the playhead's, when it is among them.
+            app.addNote(
+              text,
+              range ? (nowBeat && range.includes(nowBeat) ? nowBeat : range[0]) : nowBeat,
+              range ? { from: range[0], to: range[range.length - 1] } : null
+            )
         }}
       />
     </aside>

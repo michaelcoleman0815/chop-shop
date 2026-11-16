@@ -15,8 +15,8 @@ import {
   fillNotice,
   mergeExtension,
   onlyOn,
+  noteBeats,
   opsInside,
-  pickedBeats,
   rangeName,
   rangeTimes,
   nextSourceId,
@@ -3198,10 +3198,18 @@ export function useCutalong() {
       }
     }
     const now = docRef.current ?? d
-    // Notes all left on stretches picked on the strip: the plan is held to them (shared/edit/range).
-    const picks = notes.map((n) =>
-      n.range ? pickedBeats(currentCut(now), { anchor: n.range.from, focus: n.range.to }) : []
-    )
+    // A note on a stretch that is all cut out since is about nothing the cut plays: it stays as it is.
+    const gone = notes.filter((n) => n.range && noteBeats(currentCut(now), n.range).length === 0)
+    if (gone.length > 0) {
+      notes = notes.filter((n) => !gone.includes(n))
+      lead += `${gone.length === 1 ? 'One note is on a stretch that is no longer in the cut, so I left it as it is.' : `${gone.length} notes are on stretches no longer in the cut, so I left them as they are.`} `
+      if (notes.length === 0) {
+        setPanel({ text: lead.trim() })
+        return
+      }
+    }
+    // Notes all left on stretches picked on the strip: the plan is held to them, or what is left of them (shared/edit/range).
+    const picks = notes.map((n) => noteBeats(currentCut(now), n.range))
     const held = picks.every((p) => p.length > 0) ? [...new Set(picks.flat())] : null
     const heldSpan = held ? rangeTimes(resolveCut(currentCut(now), now.words, now.sources), held) : null
     setPanel({
@@ -3230,7 +3238,8 @@ export function useCutalong() {
     }
     const name = heldSpan ? rangeName(heldSpan) : null
     scope.current = held && name ? { beats: held, name, always: true } : null
-    const done = ops.length > 0 ? applyAsVersion(ops, r.summary) : null
+    // With some of the plan left out, the planner's summary says more than was done: the version says what was.
+    const done = ops.length > 0 ? applyAsVersion(ops, outside > 0 ? 'I made the changes that stay inside it.' : r.summary) : null
     scope.current = null
     // Every change reached outside the stretch: nothing is done, so the notes stay open and the reply says why.
     const allOutside = !!name && outside > 0 && ops.length === 0
@@ -3244,11 +3253,12 @@ export function useCutalong() {
           ? `I left out one change that reached outside ${name}.`
           : `I left out ${outside} changes that reached outside ${name}.`
         : ''
-    const extra = [leftOut, ...r.needs, ...r.rejected, done?.notice ?? '']
+    // The version's own summary already carries any notice.
+    const extra = [leftOut, ...r.needs, ...r.rejected, outside > 0 ? '' : (done?.notice ?? '')]
       .map((t) => sentence(t))
       .filter(Boolean)
       .join(' ')
-    const summary = name ? leadWith(name, r.summary) : r.summary
+    const summary = done && outside > 0 ? done.summary : name ? leadWith(name, r.summary) : r.summary
     const reply = allOutside ? `I left the edit as it was: what the plan changed reached outside ${name}.` : r.reply
     setPanel({
       text: done

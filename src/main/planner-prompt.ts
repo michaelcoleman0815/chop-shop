@@ -10,7 +10,7 @@ import {
   ANGLE_LAYOUTS,
   LOOK_SETTINGS,
   NAMED_LOOKS,
-  pickedBeats,
+  noteBeats,
   rangeTimes,
   resolveCut,
   SFX_KINDS,
@@ -559,12 +559,12 @@ export function renderRequest(
   if (notes.length > 0) {
     parts.push('<notes>')
     for (const note of notes) {
-      // A note on a stretch picked on the strip is about its beats only.
-      const picked = note.range ? pickedBeats(cut, { anchor: note.range.from, focus: note.range.to }) : []
+      // A note on a stretch picked on the strip is about its beats only, or what is left of them.
+      const picked = noteBeats(cut, note.range)
       const times = picked.length ? rangeTimes(resolved, picked) : null
       const where =
         picked.length && times
-          ? ` (on ${picked[0]} to ${picked[picked.length - 1]} only, ${clock(times.start)}-${clock(times.end)})`
+          ? ` (on ${picked.length === 1 ? picked[0] : `${picked[0]} to ${picked[picked.length - 1]}`} only, ${clock(times.start)}-${clock(times.end)})`
           : note.beat
             ? ` (left on ${note.beat})`
             : ''

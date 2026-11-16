@@ -1,5 +1,6 @@
 import { picturesIn } from '../motion/apply'
 import { applyOps, type OpsResult } from './ops'
+import { pickedBeats } from './range'
 import { sameValue } from './same'
 import {
   DEFAULT_CAPTIONS,
@@ -359,14 +360,22 @@ export function undoTarget(doc: EditDoc): number | null {
   return origin(doc, doc.versions[i - 1]).n
 }
 
+/**
+ * A note left on the edit, on the beat under the playhead or on a stretch
+ * picked on the strip. A note on a stretch keeps the beats it held, and is
+ * left on one of them: the playhead's, when it is among them, or the first.
+ */
 export function addNote(
   doc: EditDoc,
   text: string,
   beat: string | null = null,
-  range: { from: string; to: string } | null = null
+  stretch: { from: string; to: string } | null = null
 ): EditDoc {
   const trimmed = text.trim()
   if (!trimmed) return doc
+  const held = stretch ? pickedBeats(currentCut(doc), { anchor: stretch.from, focus: stretch.to }) : []
+  const range = stretch && held.length ? { from: stretch.from, to: stretch.to, beats: held } : null
+  if (range && !(beat && held.includes(beat))) beat = held[0]
   let max = 0
   for (const note of doc.notes) {
     const m = /^n(\d+)$/.exec(note.id)

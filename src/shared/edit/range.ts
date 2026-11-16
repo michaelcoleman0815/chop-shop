@@ -28,6 +28,25 @@ export function pickedBeats(cut: Pick<Cut, 'beats'>, pick: BeatPick | null): str
   return cut.beats.slice(Math.min(a, z), Math.max(a, z) + 1).map((b) => b.id)
 }
 
+/**
+ * The beats a note left on a stretch is about now: the stretch from its first
+ * beat to its last, or, once an end is cut, from the first to the last of the
+ * beats it held that are still in the cut. Empty when it was left on no
+ * stretch, or none of its beats is left.
+ */
+export function noteBeats(
+  cut: Pick<Cut, 'beats'>,
+  range: { from: string; to: string; beats?: string[] } | undefined
+): string[] {
+  if (!range) return []
+  const picked = pickedBeats(cut, { anchor: range.from, focus: range.to })
+  if (picked.length > 0) return picked
+  const held = new Set(range.beats ?? [])
+  const left = cut.beats.filter((b) => held.has(b.id))
+  if (left.length === 0) return []
+  return pickedBeats(cut, { anchor: left[0].id, focus: left[left.length - 1].id })
+}
+
 /** Where a set of beats plays: from the first one's start to the last one's end. */
 export function rangeTimes(resolved: Resolved, beats: string[]): { start: number; end: number } | null {
   const set = new Set(beats)

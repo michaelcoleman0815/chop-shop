@@ -6,6 +6,7 @@ import {
   createDoc,
   currentCut,
   cutsPicked,
+  noteBeats,
   onlyOn,
   opsInside,
   pickedBeats,
@@ -59,6 +60,16 @@ describe('a stretch picked on the beat strip', () => {
     // Once an end is cut out, there is no stretch any more.
     const without = applyOps(cut, [{ op: 'remove', beats: ['b4'] }], ctx(makeDoc())).cut
     expect(pickedBeats(without, { anchor: 'b2', focus: 'b4' })).toEqual([])
+  })
+
+  it('is, for a note left on it, what is left of it once an end is cut, and nothing once all of it is', () => {
+    const doc = makeDoc()
+    const cut = currentCut(doc)
+    const range = { from: 'b2', to: 'b4', beats: ['b2', 'b3', 'b4'] }
+    expect(noteBeats(cut, range)).toEqual(['b2', 'b3', 'b4'])
+    expect(noteBeats(applyOps(cut, [{ op: 'remove', beats: ['b4'] }], ctx(doc)).cut, range)).toEqual(['b2', 'b3'])
+    expect(noteBeats(applyOps(cut, [{ op: 'remove', beats: ['b2', 'b3', 'b4'] }], ctx(doc)).cut, range)).toEqual([])
+    expect(noteBeats(cut, undefined)).toEqual([])
   })
 
   it('is named by where it plays', () => {
