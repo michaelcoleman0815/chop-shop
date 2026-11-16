@@ -109,6 +109,21 @@ export function exportedNow(clip: Clip): boolean {
 }
 
 /**
+ * What a clip's card says of its export: Exported when it is out as it is
+ * now, whatever ran earlier in the session, so a clip changed since says
+ * nothing, as Export all counts it; Not exported after an export that
+ * failed; nothing while one runs.
+ */
+export function exportNote(
+  clip: Clip,
+  job: { percent: number | null; done?: string; error?: string } | undefined
+): 'Exported' | 'Not exported' | null {
+  if (job?.error) return 'Not exported'
+  const running = !!job && !job.done && job.percent !== null
+  return clip.kept && !running && exportedNow(clip) ? 'Exported' : null
+}
+
+/**
  * What Export all makes: the kept clips not exported as they are now, so a
  * second run's clips go out without copies of the first's. When every one
  * is out already, all of them again, as asked.

@@ -3,6 +3,7 @@ import { currentCut, resolveCut } from '../../../../shared/edit'
 import {
   clipsOfRun,
   exportedNow,
+  exportNote,
   keptClips,
   toExport,
   type Clip,
@@ -93,6 +94,8 @@ function ClipCard({
   // Its length now: as it was found, or as it was left in the editor.
   const length = resolveCut(currentCut(clip.doc), clip.doc.words, clip.doc.sources).durationSec
   const running = job && !job.done && !job.error && job.percent !== null
+  // Exported only while it is out as it is now: a clip changed since says nothing, as Export all counts it.
+  const note = exportNote(clip, job)
   return (
     <li className={`cl-clip${clip.kept ? '' : ' dropped'}`}>
       <button
@@ -115,8 +118,7 @@ function ClipCard({
         <span className="cl-clip-title">{clip.title}</span>
         <span className="cl-clip-meta">
           <span className="mono">{clock(length)}</span>
-          {(job?.done || (clip.kept && !job && exportedNow(clip))) && <span>Exported</span>}
-          {job?.error && <span>Not exported</span>}
+          {note && <span>{note}</span>}
           {!clip.kept && <span>Dropped</span>}
         </span>
         <span className="cl-clip-hook">“{clip.hook}”</span>

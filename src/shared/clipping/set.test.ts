@@ -10,6 +10,7 @@ import {
   clipOfDoc,
   clipsOfRun,
   exportedNow,
+  exportNote,
   keptClips,
   markDocExported,
   markExported,
@@ -124,6 +125,20 @@ describe('the clip set in a project', () => {
     expect(toExport(changed).map((c) => c.id)).toEqual(['c1', 'c2'])
     const both = markExported(one, 'c2', { path: '/out/Clip b.mp4', version: 2, at: 'now' })
     expect(toExport(both).map((c) => c.id)).toEqual(['c1', 'c2'])
+  })
+
+  it('says Exported on a card only while the clip is out as it is now', () => {
+    const { set } = run(null, [clip('a', 100)])
+    const out = markExported(set, 'c1', { path: '/out/Clip a.mp4', version: 2, at: 'then' }).clips[0]
+    const done = { percent: 100, done: '/out/Clip a.mp4' }
+    expect(exportNote(out, done)).toBe('Exported')
+    expect(exportNote(out, undefined)).toBe('Exported')
+    // Changed in the editor after Export all: the export it had is of v2, and Export all counts it again.
+    const changed = { ...out, doc: commit(out.doc, [{ op: 'aspect', aspect: 'square' }], 'Square now.').doc }
+    expect(exportNote(changed, done)).toBeNull()
+    expect(exportNote(changed, { percent: 40 })).toBeNull()
+    expect(exportNote(changed, { percent: null, error: 'The renderer stopped partway.' })).toBe('Not exported')
+    expect(exportNote({ ...out, kept: false }, done)).toBeNull()
   })
 
   it('keeps an export made in the editor on its clip, so Export all makes no copy of it', () => {
