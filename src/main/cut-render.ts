@@ -244,11 +244,15 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${vOut}][logo]overlay=x=${x}:y=${y}:shortest=1[vlogo]`)
     vOut = 'vlogo'
   }
-  let aOut = 'acat'
-  if (opts.loudness !== null) {
-    chains.push(`[acat]loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000[aloud]`)
-    aOut = 'aloud'
-  }
+  // The output is always stereo at 48 kHz. Pinning it here, at the end of the
+  // chain, lets ffmpeg rebuild the graph mid-stream when a decoder reports a
+  // different layout: the macOS ffmpeg-static build re-initialises on that and
+  // otherwise fails with "Cannot select channel layout". The sample format is
+  // left free, because intermediate passes write 16-bit PCM and finals AAC.
+  const pin = 'aformat=channel_layouts=stereo:sample_rates=48000'
+  const loud = opts.loudness !== null ? `loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000,` : ''
+  chains.push(`[acat]${loud}${pin}[aout]`)
+  const aOut = 'aout'
 
   const encode =
     opts.quality === 'intermediate'
