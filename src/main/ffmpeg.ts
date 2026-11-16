@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { buildReframeFilter } from './reframe'
-import { PROBE_ARGS, readProbe, type SourceFacts } from './intake'
+import { PROBE_ARGS, readDuration, readProbe, type SourceFacts } from './intake'
 import { buildAss, DEFAULT_CAPTION_STYLE } from './captions'
 import { buildGraphicsAss } from './graphics'
 import type { ClipGraphic } from '../shared/types'
@@ -116,7 +116,9 @@ export async function probe(path: string): Promise<ProbeResult> {
   const { stdout } = await run(FFPROBE_PATH, [...PROBE_ARGS, path])
   // Shown size and real frame rate: a portrait phone clip is stored
   // landscape, and a phone that dropped frames averages under its rate.
-  const facts = readProbe(JSON.parse(stdout))
+  const read = readProbe(JSON.parse(stdout))
+  // A browser's screen recording (WebM written live) has no length in its header.
+  const facts = read.durationSec > 0 ? read : { ...read, durationSec: await readDuration(FFPROBE_PATH, path) }
   return { durationSec: facts.durationSec, width: facts.width, height: facts.height, fps: facts.fps, facts }
 }
 

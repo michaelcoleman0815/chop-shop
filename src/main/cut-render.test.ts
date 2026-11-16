@@ -175,11 +175,12 @@ describe('render arguments', () => {
       ...opts,
       logo: { path: '/brand/logo.png', corner: 'bottom-right', opacity: 0.8 }
     })
+    // Read a second past the end, so the picture ends first.
     expect(args.slice(args.indexOf('/brand/logo.png') - 5, args.indexOf('/brand/logo.png') + 1)).toEqual([
       '-loop',
       '1',
       '-t',
-      '2.000',
+      '3.000',
       '-i',
       '/brand/logo.png'
     ])

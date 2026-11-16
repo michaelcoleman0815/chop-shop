@@ -66,7 +66,11 @@ interface ProbeStream {
   sample_fmt?: string
   sample_rate?: string
   side_data_list?: { side_data_type?: string; rotation?: number }[]
-  tags?: { rotate?: string }
+  /** Cover art in a sound file is a video stream too, marked as an attached picture. */
+  disposition?: { attached_pic?: number }
+  /** Matroska and WebM keep each stream's length in a tag, as 00:01:02.500000000. */
+  tags?: { rotate?: string; DURATION?: string }
+  duration?: string
 }
 
 const rate = (r: string | undefined): number => {
@@ -76,10 +80,33 @@ const rate = (r: string | undefined): number => {
   return n > 0 && d > 0 ? n / d : 0
 }
 
+/** Seconds from a Matroska length tag (00:01:02.500000000), or 0. */
+function tagSeconds(tag: string | undefined): number {
+  const m = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(tag ?? '')
+  return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 0
+}
+
+/**
+ * How long a file runs, from its header: the container's length, else the
+ * longest stream's, else the longest a Matroska tag gives. 0 when none says,
+ * as a browser's screen recording (WebM written live) does not.
+ */
+function headerDuration(json: { streams?: ProbeStream[]; format?: { duration?: string } }): number {
+  const format = Number(json.format?.duration)
+  if (Number.isFinite(format) && format > 0) return format
+  let longest = 0
+  for (const s of json.streams ?? []) {
+    const d = Number(s.duration)
+    longest = Math.max(longest, Number.isFinite(d) ? d : 0, tagSeconds(s.tags?.DURATION))
+  }
+  return longest
+}
+
 /** Facts from ffprobe's JSON. Pure, so it is tested on recorded output too. */
 export function readProbe(json: { streams?: ProbeStream[]; format?: { duration?: string } }): SourceFacts {
   const streams = json.streams ?? []
-  const v = streams.find((s) => s.codec_type === 'video') ?? {}
+  // Cover art is not footage: a voice memo with artwork is a sound recording.
+  const v = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic) ?? {}
   const audio = streams.filter((s) => s.codec_type === 'audio')
 
   // Rotation: the display matrix in newer files, the rotate tag in older ones.
@@ -115,7 +142,7 @@ export function readProbe(json: { streams?: ProbeStream[]; format?: { duration?:
     bitDepth: bits,
     color,
     dolbyVision: !!v.side_data_list?.some((d) => /dovi|dolby/i.test(d.side_data_type ?? '')),
-    durationSec: Number(json.format?.duration ?? 0),
+    durationSec: headerDuration(json),
     audio: a
       ? {
           codec: a.codec_name ?? '',
@@ -141,9 +168,79 @@ function run(bin: string, args: string[]): Promise<string> {
   })
 }
 
+/**
+ * How long a file runs, read packet by packet: for files whose header does
+ * not say, such as WebM written live by a browser. Reading packets decodes
+ * nothing, so an hour reads in a second or two. 0 when nothing could be read.
+ */
+export async function readDuration(ffprobe: string, path: string): Promise<number> {
+  const out = await run(ffprobe, [
+    '-v',
+    'error',
+    '-show_entries',
+    'packet=pts_time,duration_time',
+    '-of',
+    'csv=p=0',
+    path
+  ]).catch(() => '')
+  let end = 0
+  for (const line of out.split('\n')) {
+    const [pts, dur] = line.split(',').map(Number)
+    if (Number.isFinite(pts)) end = Math.max(end, pts + (Number.isFinite(dur) ? dur : 0))
+  }
+  return end
+}
+
 /** Reads a recording's facts with ffprobe. */
 export async function probeSource(ffprobe: string, path: string): Promise<SourceFacts> {
-  return readProbe(JSON.parse(await run(ffprobe, [...PROBE_ARGS, path])))
+  const facts = readProbe(JSON.parse(await run(ffprobe, [...PROBE_ARGS, path])))
+  if (facts.durationSec > 0) return facts
+  return { ...facts, durationSec: await readDuration(ffprobe, path) }
+}
+
+/**
+ * Which channel of a two-channel recording carries the sound when the other
+ * is empty, as a lavalier plugged into one input of a camera leaves it: 0 for
+ * the left, 1 for the right. Null when both carry sound (a second microphone,
+ * a safety track recorded quieter), when the sound is not two channels, or
+ * when nothing could be heard. Measured over the first ten minutes.
+ */
+export async function liveChannel(ffmpeg: string, path: string): Promise<0 | 1 | null> {
+  const out = await run(ffmpeg, [
+    '-hide_banner',
+    '-nostats',
+    '-t',
+    '600',
+    '-i',
+    path,
+    '-map',
+    '0:a:0',
+    '-af',
+    'astats=measure_perchannel=RMS_level:measure_overall=none',
+    '-f',
+    'null',
+    '-'
+  ]).catch(() => '')
+  const levels = [...out.matchAll(/RMS level dB:\s*(-?inf|-?[\d.]+)/g)].map((m) =>
+    /inf/.test(m[1]) ? -Infinity : Number(m[1])
+  )
+  return channelWithSound(levels)
+}
+
+/**
+ * The channel that carries the sound, from each channel's RMS level in dB:
+ * the other must be silent, or 40 dB quieter. A safety track is recorded 6 to
+ * 20 dB quieter and a second microphone carries its own voice; both are left
+ * as they are.
+ */
+export function channelWithSound(levels: number[]): 0 | 1 | null {
+  if (levels.length !== 2) return null
+  const [left, right] = levels
+  const loud = Math.max(left, right)
+  const quiet = Math.min(left, right)
+  if (!(loud > -60)) return null
+  if (quiet > -80 && loud - quiet < 40) return null
+  return left >= right ? 0 : 1
 }
 
 /**

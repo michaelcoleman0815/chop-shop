@@ -23,7 +23,7 @@ vi.mock('./ffmpeg', async () => {
 import { estimateOffset, trustworthy } from '../shared/audio/offset'
 import { loudnessEnvelope } from './audio-envelope'
 import { findFfmpeg } from './providers/testing'
-import { assignRoles, factsFor, guessRoles, speechShare, type FileFacts } from './session'
+import { assignRoles, factsFor, guessRoles, separateSameTakes, speechShare, type FileFacts } from './session'
 
 const FFMPEG = findFfmpeg()
 const ESPEAK = ['espeak-ng', 'espeak'].find((bin) => spawnSync(bin, ['--version']).status === 0) ?? null
@@ -90,6 +90,74 @@ describe('sorting a shoot by measurement', () => {
     const talk = Float32Array.from({ length: 1000 }, (_, i) => (i % 40 < 22 ? -18 + (i % 7) : -55))
     expect(speechShare(steady, 0.01, -40)).toBe(0)
     expect(speechShare(talk, 0.01, -40)).toBeGreaterThan(0.9)
+  })
+})
+
+describe('one take recorded twice', () => {
+  /** Speech-like loudness: syllables and pauses at uneven times, from a seed. */
+  const talk = (seed: number, sec: number): Float32Array => {
+    let x = seed
+    const next = (): number => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648)
+    const db = new Float32Array(Math.round(sec / 0.01))
+    let i = 0
+    while (i < db.length) {
+      const on = Math.round(8 + next() * 30)
+      const off = Math.round(4 + next() * (next() < 0.2 ? 80 : 15))
+      for (let k = 0; k < on && i < db.length; k++, i++) db[i] = -24 + next() * 8
+      for (let k = 0; k < off && i < db.length; k++, i++) db[i] = -62 + next() * 4
+    }
+    return db
+  }
+  /** The same sound heard later in a longer recording, as a recorder started first hears it. */
+  const within = (db: Float32Array, leadSec: number, tailSec: number): Float32Array => {
+    const out = new Float32Array(db.length + Math.round((leadSec + tailSec) / 0.01)).fill(-65)
+    out.set(Array.from(db, (v) => v - 3 + ((v * 7919) % 1)), Math.round(leadSec / 0.01))
+    return out
+  }
+  const take1 = talk(7, 40)
+  const take2 = talk(99, 40)
+  const sounds: Record<string, Float32Array> = {
+    '/shoot/MVI_0001.MP4': take1,
+    '/shoot/2026-10-16 20-49-09.mp4': within(take1, 3.42, 12),
+    '/shoot/MVI_0002.MP4': take2,
+    '/shoot/MVI_0003.MP4': take1
+  }
+  const envelopeOf = async (path: string) => ({ hopSec: 0.01, db: sounds[path] })
+  const files = [
+    facts({ name: 'MVI_0001.MP4', durationSec: 40 }),
+    facts({ name: '2026-10-16 20-49-09.mp4', durationSec: 55 }),
+    facts({ name: 'MVI_0002.MP4', durationSec: 40 })
+  ]
+
+  it('puts the recorder file under the camera that recorded the same take, and keeps a different take', async () => {
+    const guess = guessRoles(files, 'make a short from this')
+    expect(guess.talking).toHaveLength(3)
+    const roles = await separateSameTakes(guess, files, envelopeOf)
+    expect(roles.talking).toEqual(['/shoot/MVI_0001.MP4', '/shoot/MVI_0002.MP4'])
+    expect(roles.sound).toEqual(['/shoot/2026-10-16 20-49-09.mp4'])
+    expect(roles.reply).toBe(
+      'MVI_0001.MP4 and MVI_0002.MP4 are the talking. The sound comes from 2026-10-16 20-49-09.mp4.'
+    )
+  })
+
+  it('leaves a second camera of the same take out, and says /angle adds it', async () => {
+    const two = [facts({ name: 'MVI_0001.MP4', durationSec: 40 }), facts({ name: 'MVI_0003.MP4', durationSec: 40 })]
+    const roles = await separateSameTakes(guessRoles(two), two, envelopeOf)
+    expect(roles.talking).toEqual(['/shoot/MVI_0001.MP4'])
+    expect(roles.sound).toEqual([])
+    expect(roles.reply).toBe(
+      'MVI_0001.MP4 is the talking. MVI_0003.MP4 is the same take as MVI_0001.MP4 from another camera, so I left it out; /angle adds it as a second camera.'
+    )
+  })
+
+  it('changes nothing when every talking clip is its own take, or a file cannot be heard', async () => {
+    const apart = [facts({ name: 'MVI_0001.MP4', durationSec: 40 }), facts({ name: 'MVI_0002.MP4', durationSec: 40 })]
+    const guess = guessRoles(apart)
+    expect(await separateSameTakes(guess, apart, envelopeOf)).toBe(guess)
+    const deaf = async (): Promise<never> => {
+      throw new Error('No sound.')
+    }
+    expect(await separateSameTakes(guessRoles(files), files, deaf)).toEqual(guessRoles(files))
   })
 })
 
@@ -222,6 +290,19 @@ describe.skipIf(!FFMPEG || !ESPEAK)(
         await loudnessEnvelope(ffmpeg, computer.path)
       )
       expect(trustworthy(wrong)).toBe(false)
+    }, 60_000)
+
+    it('without being told, does not cut the computer recording in as a second talking clip', async () => {
+      const files = await Promise.all(
+        ['MVI_9294.MP4', 'MVI_9293.MP4', '2026-10-16 20-49-09.mp4'].map((n) => factsFor(at(n)))
+      )
+      const [broll, camera, computer] = files
+      const guess = guessRoles(files, 'make a short from this')
+      expect(guess.talking).toContain(computer.path)
+      const roles = await separateSameTakes(guess, files)
+      expect(roles.talking).toEqual([camera.path])
+      expect(roles.sound).toEqual([computer.path])
+      expect(roles.broll).toEqual([broll.path])
     }, 60_000)
   }
 )

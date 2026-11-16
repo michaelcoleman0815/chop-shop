@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join, basename } from 'path'
 import { randomUUID } from 'crypto'
+import { projectName } from '../shared/project-name'
 import { upgradeProject } from '../shared/project-upgrade'
 import type { Project, ProjectMode, ProjectSummary } from '../shared/types'
 
@@ -78,7 +79,7 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
   const dir = projectsDir()
   await fs.mkdir(dir, { recursive: true })
 
-  const safe = name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'Untitled'
+  const safe = projectName(name)
   let path = join(dir, `${safe}.cutalong`)
   let n = 2
   for (;;) {

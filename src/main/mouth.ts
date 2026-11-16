@@ -25,9 +25,17 @@ import { audioOffset, shiftMapSegments } from '../shared/vision/offset'
  * Nothing leaves the computer: ffmpeg reads the file and writes to a pipe.
  */
 
-/** Escapes a path for use inside a filter argument. */
+/**
+ * A path as a filter argument, quotes and all. ffmpeg reads a filter graph in
+ * two passes, the graph and then the filter's own options: each character
+ * special to the options is escaped for the second pass, and the whole is
+ * quoted for the first. A quote can't be escaped inside quotes, so it closes
+ * them, comes escaped, and opens them again. (A LUT in "Mike's LUTs" failed
+ * the export.)
+ */
 function filterPath(path: string): string {
-  return path.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
+  const inner = path.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
+  return `'${inner.replace(/'/g, "'\\''")}'`
 }
 
 /** The filter graph for a plan: one crop chain per slot, then the whole picture, stacked. */
@@ -35,7 +43,7 @@ export function mouthGraph(plan: CropPlan, cmdPath: string): string {
   const n = plan.slots.length
   const { tileW: TW, tileH: TH } = plan
   const labels = Array.from({ length: n + 1 }, (_, k) => `[s${k}]`).join('')
-  const chains = [`[0:v]format=gray,sendcmd=f='${filterPath(cmdPath)}',split=${n + 1}${labels}`]
+  const chains = [`[0:v]format=gray,sendcmd=f=${filterPath(cmdPath)},split=${n + 1}${labels}`]
   plan.slots.forEach((slot, k) => {
     const first = slot.windows[0] ?? { x: 0, y: 0 }
     chains.push(

@@ -44,6 +44,8 @@ export interface MediaInfo {
   width: number
   height: number
   hasAudio: boolean
+  /** How the picture is encoded: HLG and PQ are HDR, which renders converted. */
+  color: 'sdr' | 'hlg' | 'pq'
 }
 
 /** Reads duration, size and streams from ffmpeg's own banner, so no ffprobe is needed. */
@@ -61,7 +63,9 @@ export async function probeMedia(ffmpeg: string, path: string, signal?: AbortSig
     durationSec: d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : 0,
     width,
     height,
-    hasAudio: /Stream #\d+:\d+[^\n]*?: Audio:/.test(stderr)
+    hasAudio: /Stream #\d+:\d+[^\n]*?: Audio:/.test(stderr),
+    // The banner names the transfer with the pixel format: yuv420p10le(tv, bt2020nc/bt2020/arib-std-b67).
+    color: /arib-std-b67/.test(video[0]) ? 'hlg' : /smpte2084/.test(video[0]) ? 'pq' : 'sdr'
   }
 }
 

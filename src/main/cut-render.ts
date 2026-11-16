@@ -47,7 +47,7 @@ import { buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
 import { makeSfx } from './sfx'
 import { heardFrom } from '../shared/vision/offset'
-import { colorConversion, hasZscale } from './intake'
+import { colorConversion, hasZscale, liveChannel } from './intake'
 import { bedVolume, limiter, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
@@ -81,6 +81,12 @@ import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/spee
 
 export interface RenderSource extends Source {
   hasAudio: boolean
+  /**
+   * False for a recording with no picture of its own: a podcast, a voice memo,
+   * a sound file whose only picture is its cover art. It shows a plain frame.
+   * Absent: a 0 x 0 size says the same.
+   */
+  hasVideo?: boolean
 }
 
 /** One input stretch and how it should look. */
@@ -105,6 +111,8 @@ export interface Segment {
     reverse?: boolean
     hold?: boolean
     camera?: SegmentCamera
+    /** A conversion that goes first on the cutaway's picture: HDR to ordinary video. */
+    convert?: string | null
   } | null
   /**
    * Sound read apart from the picture: another recording of the same take, or
@@ -114,6 +122,13 @@ export interface Segment {
   audio?: { path: string; offsetSec: number } | null
   /** A conversion that goes first on the recording's picture: HDR to ordinary video (main/intake). */
   convert?: string | null
+  /** The recording has no picture of its own: a plain black frame shows for it. */
+  noPicture?: boolean
+  /**
+   * The one channel that carries the sound, when the other is empty (a
+   * lavalier on one input of the camera): heard in both ears.
+   */
+  soundChannel?: 0 | 1
   /** Where the segment starts on the output clock. Absent: straight after the one before, less any transition. */
   outStart?: number
   /** Comes in over the segment before: the two overlap by `sec`, picture and sound. */
@@ -138,7 +153,13 @@ export interface Segment {
    * Another camera of the same take, in a box over the picture or beside it
    * (edit/angles): its file, read from startSec as the picture is read.
    */
-  inset?: { path: string; startSec: number; layout: 'pip' | 'side'; size: { width: number; height: number } }
+  inset?: {
+    path: string
+    startSec: number
+    layout: 'pip' | 'side'
+    size: { width: number; height: number }
+    convert?: string | null
+  }
   /**
    * Where the speaker's picture looks when it is cropped to the frame: its
    * centre across the picture, 0 to 1, through keys on the segment's own
@@ -237,7 +258,16 @@ export interface BedOptions {
 const even = (n: number): number => Math.max(2, Math.round(n / 2) * 2)
 
 /** Stills are looped rather than seeked. */
-const STILL = /\.(png|jpe?g|webp|gif|bmp)$/i
+/**
+ * Pictures with no timeline: looped for as long as they show. AVIF, which
+ * assets take as an image, is read by the MP4 reader, which has no -loop: it
+ * comes in as one frame, held for its beat like any picture that runs short.
+ */
+const STILL = /\.(png|jpe?g|webp|bmp)$/i
+/** Every image an asset can be: shown from its start, whatever the beat's in point. */
+const IMAGE_FILE = /\.(png|jpe?g|webp|bmp|gif|avif)$/i
+/** A GIF, still or animated: its own reader has no -loop, so it is played round with -stream_loop. */
+const GIF = /\.gif$/i
 
 /** How much is read to find the one frame a freeze holds. */
 const HOLD_READ_SEC = 0.5
@@ -256,7 +286,10 @@ export function frameSize(
   if (aspect === 'vertical') [width, height] = [1080, 1920]
   else if (aspect === 'square') [width, height] = [1080, 1080]
   else if (aspect === 'wide') [width, height] = [1920, 1080]
-  else {
+  else if (source.width <= 0 || source.height <= 0) {
+    // A recording with no picture has no shape of its own: the usual wide frame.
+    ;[width, height] = [1920, 1080]
+  } else {
     // The recording's own shape, with the long side held to 1920.
     const long = Math.max(source.width, source.height, 2)
     const k = Math.min(1, 1920 / long)
@@ -305,6 +338,11 @@ export function captionStyleFor(
 /** A recording's size when nothing better is known: most cutaways are wide. */
 const WIDE = { width: 1920, height: 1080 }
 
+/** Whether a recording has a picture of its own to show. */
+function pictured(source: RenderSource): boolean {
+  return source.hasVideo !== false && source.width > 0 && source.height > 0
+}
+
 /**
  * The inputs for each resolved piece, with its beat's look. `sizes` gives the
  * size of cutaway footage, which a camera move over it needs; `zscale` says
@@ -343,6 +381,7 @@ export function segmentsFor(
       convert: colorConversion(source.color, zscale),
       outStart: p.outStart
     }
+    if (!pictured(source)) segment.noPicture = true
     if (Math.abs(srcSec - segment.durationSec) > 1e-9) segment.srcSec = srcSec
     if (p.steps) segment.steps = p.steps
     if (p.reverse) segment.reverse = true
@@ -391,7 +430,7 @@ export function segmentsFor(
         segment.broll.camera = moving(t.broll.camera, p.beat, picture.outStart, sizes.get(t.broll.path) ?? WIDE)
       }
     }
-    if (t.camera) segment.camera = moving(t.camera, p.beat, picture.outStart, source)
+    if (t.camera) segment.camera = moving(t.camera, p.beat, picture.outStart, pictured(source) ? source : WIDE)
     return segment
   })
 }
@@ -443,9 +482,17 @@ export function framingX(keys: FrameKey[], w: number): string {
   return `clip((if(lt(t,${n(keys[0].t)}),${n(keys[0].x)},${centre}))*iw-${w}/2,0,iw-${w})`
 }
 
-/** Escapes a path for use inside a filter argument. */
+/**
+ * A path as a filter argument, quotes and all. ffmpeg reads a filter graph in
+ * two passes, the graph and then the filter's own options: each character
+ * special to the options is escaped for the second pass, and the whole is
+ * quoted for the first. A quote can't be escaped inside quotes, so it closes
+ * them, comes escaped, and opens them again. (A LUT in "Mike's LUTs" failed
+ * the export.)
+ */
 function filterPath(path: string): string {
-  return path.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
+  const inner = path.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
+  return `'${inner.replace(/'/g, "'\\''")}'`
 }
 
 const fixed = (n: number): string => n.toFixed(3)
@@ -504,7 +551,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   let next = 0
   const input = (path: string, start: number, duration: number): number => {
     // A still has no timeline to seek: it is looped for as long as it shows.
-    if (STILL.test(path)) inputs.push('-loop', '1', '-t', fixed(duration), '-i', path)
+    if (GIF.test(path)) inputs.push('-stream_loop', '-1', '-t', fixed(duration), '-i', path)
+    else if (STILL.test(path)) inputs.push('-loop', '1', '-t', fixed(duration), '-i', path)
     else inputs.push('-ss', fixed(Math.max(0, start)), '-t', fixed(duration), '-i', path)
     return next++
   }
@@ -631,7 +679,10 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     const v = `v${k}`
     const a = `a${k}`
     const t = s.treatment
-    const frames = exactly(framesOf(k), s.hold ? s.durationSec + 1 : 1)
+    // Held on its last frame for as long as the beat needs: a cutaway shorter
+    // than its beat, or a recording whose picture stops before its sound, would
+    // otherwise come up short and pull every later picture ahead of its sound.
+    const frames = exactly(framesOf(k), (s.hold ? s.durationSec : (s.picture?.durationSec ?? s.durationSec)) + 1)
     // Source each side reads: as long as it plays, unless speed changes that.
     const soundSrc = s.srcSec ?? s.durationSec
     const pic = s.picture
@@ -683,16 +734,20 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       }
     }
 
+    // A recording with no picture (a podcast, a voice memo) shows a plain
+    // black frame for as long as it plays; cutaways and captions go over it.
+    if (s.noPicture) speaker = () => `color=c=black:s=${W}x${H}:r=${fps}:d=${fixed(showFor + 1)},`
+
     // The cutaway ready for a look: its stretch of footage, backwards or held
     // as asked, through its own speed. A still simply shows for as long.
     const cutaway = (): string => {
       const b = s.broll as NonNullable<Segment['broll']>
-      if (STILL.test(b.path)) return sourcePicture(input(b.path, 0, showFor))
+      if (IMAGE_FILE.test(b.path)) return sourcePicture(input(b.path, 0, showFor))
       if (b.hold)
-        return `${sourcePicture(input(b.path, b.startSec, HOLD_READ_SEC))}trim=end_frame=1,setpts=PTS-STARTPTS,`
+        return `${sourcePicture(input(b.path, b.startSec, HOLD_READ_SEC), b.convert)}trim=end_frame=1,setpts=PTS-STARTPTS,`
       const reads = b.steps ? srcLength(b.steps) : showFor
-      if (b.reverse) return `${backwards(b.path, b.startSec, reads, `${v}c`).picture()}${retime(b.steps)}`
-      return `${sourcePicture(input(b.path, b.startSec, reads))}${retime(b.steps)}`
+      if (b.reverse) return `${backwards(b.path, b.startSec, reads, `${v}c`, b.convert).picture()}${retime(b.steps)}`
+      return `${sourcePicture(input(b.path, b.startSec, reads), b.convert)}${retime(b.steps)}`
     }
 
     if (t === null) {
@@ -720,8 +775,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       const inset = s.inset
       const other = (): string =>
         s.hold
-          ? `${sourcePicture(input(inset.path, inset.startSec, HOLD_READ_SEC))}trim=end_frame=1,setpts=PTS-STARTPTS,`
-          : `${sourcePicture(input(inset.path, inset.startSec, pic.srcSec))}${retime(pic.steps)}`
+          ? `${sourcePicture(input(inset.path, inset.startSec, HOLD_READ_SEC), inset.convert)}trim=end_frame=1,setpts=PTS-STARTPTS,`
+          : `${sourcePicture(input(inset.path, inset.startSec, pic.srcSec), inset.convert)}${retime(pic.steps)}`
       if (inset.layout === 'side') {
         // Side by side across a wide frame, one above the other in a tall one; the recording first.
         const across = W > H
@@ -743,7 +798,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // Every segment's audio is exactly as long as its piece: through its
     // speed, which atempo changes without changing the pitch, then padded
     // with silence and trimmed, so the join never drifts out of sync.
-    const shape = `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${exact(s.durationSec)},asetpts=PTS-STARTPTS`
+    const both = s.soundChannel === undefined ? '' : `pan=stereo|c0=c${s.soundChannel}|c1=c${s.soundChannel},`
+    const shape = `${both}aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${exact(s.durationSec)},asetpts=PTS-STARTPTS`
     if (sound !== null && changesSpeed(s.steps)) {
       chains.push(`${sound}anull[${a}c]`)
       chains.push(speedSound(s.steps, `${a}c`, `${a}t`, a))
@@ -881,8 +937,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // A LUT at less than full strength is mixed back with the picture it came from.
     const lut =
       opts.lutKind === '1d'
-        ? `lut1d=file='${filterPath(grade.lut.path)}':interp=linear`
-        : `lut3d=file='${filterPath(grade.lut.path)}':interp=tetrahedral`
+        ? `lut1d=file=${filterPath(grade.lut.path)}:interp=linear`
+        : `lut3d=file=${filterPath(grade.lut.path)}:interp=tetrahedral`
     const k = grade.lut.strength.toFixed(3)
     if (grade.lut.strength >= 0.999) chains.push(`[vcat]${lut}[vlut]`)
     else {
@@ -897,8 +953,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     vOut = 'vlook'
   }
   if (opts.assPath) {
-    const fonts = opts.fontsDir ? `:fontsdir='${filterPath(opts.fontsDir)}'` : ''
-    chains.push(`[${vOut}]subtitles='${filterPath(opts.assPath)}'${fonts}[vsub]`)
+    const fonts = opts.fontsDir ? `:fontsdir=${filterPath(opts.fontsDir)}` : ''
+    chains.push(`[${vOut}]subtitles=${filterPath(opts.assPath)}${fonts}[vsub]`)
     vOut = 'vsub'
   }
   // ---- Motion graphics (src/main/motion-render.ts) ----
@@ -916,13 +972,17 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   if (opts.logo) {
     // The logo is an image looped for the whole video, a seventh of the frame
     // wide, set in from its corner by about a twentieth.
-    const l = input(opts.logo.path, 0, totalSec)
+    // Read a second past the end, so the picture always ends first: a looped
+    // GIF's frames rarely end exactly where the video does.
+    const l = input(opts.logo.path, 0, totalSec + 1)
     const w = even(W * 0.14)
     const m = Math.round(W * 0.045)
     const x = opts.logo.corner.endsWith('right') ? `main_w-overlay_w-${m}` : String(m)
     const y = opts.logo.corner.startsWith('bottom') ? `main_h-overlay_h-${m}` : String(m)
     const alpha = Math.min(1, Math.max(0.1, opts.logo.opacity)).toFixed(2)
     chains.push(`[${l}:v]scale=${w}:-1,format=rgba,colorchannelmixer=aa=${alpha}[logo]`)
+    // The picture decides how long it runs: overlay otherwise carries on for as
+    // long as the logo does, which ffmpeg 6.0 did by three frames.
     chains.push(`[${vOut}][logo]overlay=x=${x}:y=${y}:shortest=1[vlogo]`)
     vOut = 'vlogo'
   }
@@ -1282,6 +1342,24 @@ export async function lutKindOf(path: string): Promise<LutKind> {
   )
 }
 
+/**
+ * Which channel carries a file's sound when the other is empty, remembered
+ * while the app runs for as long as the file is unchanged: measuring reads
+ * up to ten minutes of sound.
+ */
+const channelMemo = new Map<string, Promise<0 | 1 | null>>()
+async function soundChannelOf(ffmpeg: string, path: string): Promise<0 | 1 | null> {
+  const stat = await fs.stat(path).catch(() => null)
+  if (!stat) return null
+  const key = `${path}\u0000${stat.size}\u0000${stat.mtimeMs}`
+  let found = channelMemo.get(key)
+  if (!found) {
+    found = liveChannel(ffmpeg, path)
+    channelMemo.set(key, found)
+  }
+  return found
+}
+
 /** Every file a render reads must be there; a missing one is named in a sentence before ffmpeg starts. */
 async function checkInputs(
   segments: Segment[],
@@ -1320,19 +1398,46 @@ export async function renderCut(
   if (!first) throw new Error('The edit has no recording to render.')
   const { width, height } = frameSize(cut.aspect, first, quality === 'preview')
   const fps = frameRate(first.fps)
-  // A camera move over a cutaway needs the cutaway's shape.
+  // Each cutaway's shape, which a camera move over it needs, and how its
+  // picture is encoded: an iPhone's HDR clip is converted as a recording is.
   const sizes = new Map<string, { width: number; height: number }>()
-  for (const beat of cut.beats) {
-    const broll = beat.treatment.broll
-    if (!broll?.camera || sizes.has(broll.path)) continue
-    try {
-      const info = await probeMedia(opts.ffmpeg, broll.path, opts.signal)
-      sizes.set(broll.path, { width: info.width, height: info.height })
-    } catch {
-      // Missing: checkInputs says so in a sentence.
+  const hdr = new Map<string, 'hlg' | 'pq'>()
+  const cutaways = [...new Set(cut.beats.flatMap((b) => (b.treatment.broll ? [b.treatment.broll.path] : [])))]
+  await Promise.all(
+    cutaways.map(async (path) => {
+      try {
+        const info = await probeMedia(opts.ffmpeg, path, opts.signal)
+        sizes.set(path, { width: info.width, height: info.height })
+        if (info.color !== 'sdr') hdr.set(path, info.color)
+      } catch {
+        // Missing: checkInputs says so in a sentence.
+      }
+    })
+  )
+  const zscale = await hasZscale(opts.ffmpeg)
+  const segments = cameraSegments(cut, resolved, sources, sizes, zscale)
+  const colorOf = new Map<string, Source['color']>(sources.map((s) => [s.path, s.color]))
+  // A lavalier on one input of the camera is heard in both ears.
+  const heard = (s: Segment): string | null => s.audio?.path ?? (s.hasAudio ? s.path : null)
+  const channels = new Map<string, 0 | 1 | null>()
+  await Promise.all(
+    [...new Set(segments.map(heard).filter((p): p is string => p !== null))].map(async (path) =>
+      channels.set(path, await soundChannelOf(opts.ffmpeg, path))
+    )
+  )
+  for (const s of segments) {
+    if (s.broll) {
+      const convert = colorConversion(hdr.get(s.broll.path), zscale)
+      if (convert) s.broll.convert = convert
     }
+    if (s.inset) {
+      const convert = colorConversion(colorOf.get(s.inset.path), zscale)
+      if (convert) s.inset.convert = convert
+    }
+    const path = heard(s)
+    const live = path ? channels.get(path) : null
+    if (live !== null && live !== undefined) s.soundChannel = live
   }
-  const segments = cameraSegments(cut, resolved, sources, sizes, await hasZscale(opts.ffmpeg))
   await checkInputs(segments, opts.brand?.logo ?? null, [cut.music?.path, cut.look?.lut?.path], cut)
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)

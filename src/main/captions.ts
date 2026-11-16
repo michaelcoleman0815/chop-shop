@@ -27,8 +27,14 @@ export function assTime(sec: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(whole + carry).padStart(2, '0')}.${String(cc).padStart(2, '0')}`
 }
 
+/**
+ * Text as ASS shows it, never as its codes. Braces are escaped. A backslash
+ * has no escape in ASS: libass reads the character after it as a code, so a
+ * caption word "\N" broke the line even with its backslash doubled. A word
+ * joiner after each backslash draws nothing and keeps "\N" two characters.
+ */
 export function escapeAss(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}')
+  return text.replace(/\\/g, '\\\u2060').replace(/\{/g, '\\{').replace(/\}/g, '\\}')
 }
 
 /**

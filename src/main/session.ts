@@ -4,10 +4,12 @@ import { execFile } from 'child_process'
 import { basename } from 'path'
 import { promisify } from 'util'
 import { z } from 'zod'
-import { levels } from '../shared/audio/snap'
+import { estimateOffset, trustworthy } from '../shared/audio/offset'
+import { levels, type Envelope } from '../shared/audio/snap'
 import { readApiKey } from './apikey'
 import { loudnessEnvelope } from './audio-envelope'
 import { FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
+import { PROBE_ARGS, readDuration, readProbe } from './intake'
 import { MODEL } from './planner'
 
 const run = promisify(execFile)
@@ -55,23 +57,16 @@ const SPEECH_WINDOW_SEC = 180
 
 /** What a file is, measured: streams, length, and how much of it is talking. */
 export async function factsFor(path: string): Promise<FileFacts> {
-  const { stdout } = await run(FFPROBE_PATH, [
-    '-v',
-    'error',
-    '-print_format',
-    'json',
-    '-show_entries',
-    'format=duration:format_tags=creation_time:stream=codec_type,width,height,disposition',
-    path
-  ])
-  const json = JSON.parse(stdout) as {
-    format?: { duration?: string; tags?: { creation_time?: string } }
-    streams?: { codec_type?: string; width?: number; height?: number; disposition?: { attached_pic?: number } }[]
-  }
-  const streams = json.streams ?? []
-  // Cover art is a video stream too; it is not footage.
-  const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic)
-  const hasAudio = streams.some((s) => s.codec_type === 'audio')
+  // Whole streams, as intake reads them: the entries a narrower call names
+  // differ between ffprobe versions, and the disposition that marks cover art
+  // is only shown whole.
+  const { stdout } = await run(FFPROBE_PATH, [...PROBE_ARGS, path])
+  const json = JSON.parse(stdout) as { format?: { tags?: { creation_time?: string } } }
+  // Cover art is a video stream too; readProbe leaves it out, as it is not footage.
+  const facts = readProbe(JSON.parse(stdout))
+  const durationSec = facts.durationSec > 0 ? facts.durationSec : await readDuration(FFPROBE_PATH, path)
+  const hasVideo = facts.width > 0 && facts.height > 0
+  const hasAudio = facts.audio !== null
   let speech = 0
   if (hasAudio) {
     try {
@@ -84,11 +79,11 @@ export async function factsFor(path: string): Promise<FileFacts> {
   return {
     path,
     name: basename(path),
-    durationSec: Number(json.format?.duration ?? 0),
-    hasVideo: !!video,
+    durationSec,
+    hasVideo,
     hasAudio,
-    width: Number(video?.width ?? 0),
-    height: Number(video?.height ?? 0),
+    width: facts.width,
+    height: facts.height,
     createdAt: json.format?.tags?.creation_time ?? null,
     speech
   }
@@ -151,28 +146,98 @@ export function guessRoles(files: FileFacts[], request = ''): Roles {
   talking.sort((a, b) => shot(a).localeCompare(shot(b)))
   const used = new Set([...talking, ...sound].map((f) => f.path))
   const broll = videos.filter((f) => !used.has(f.path))
-  const names = (list: FileFacts[]): string =>
-    list.length <= 1
-      ? (list[0]?.name ?? '')
-      : `${list
-          .slice(0, -1)
-          .map((f) => f.name)
-          .join(', ')} and ${list[list.length - 1].name}`
-  const reply = [
+  return {
+    talking: talking.map((f) => f.path),
+    sound: sound.map((f) => f.path),
+    broll: broll.map((f) => f.path),
+    ignored: [],
+    reply: describeRoles(talking, sound, broll),
+    by: 'measurement'
+  }
+}
+
+/** Names in a sentence: "a.mp4", "a.mp4 and b.mp4", "a.mp4, b.mp4 and c.mp4". */
+function names(list: { name: string }[]): string {
+  if (list.length <= 1) return list[0]?.name ?? ''
+  return `${list
+    .slice(0, -1)
+    .map((f) => f.name)
+    .join(', ')} and ${list[list.length - 1].name}`
+}
+
+/** Which file is which, in plain sentences. */
+function describeRoles(talking: FileFacts[], sound: FileFacts[], broll: FileFacts[]): string {
+  return [
     talking.length ? `${names(talking)} ${talking.length === 1 ? 'is' : 'are'} the talking.` : '',
     sound.length ? `The sound comes from ${names(sound)}.` : '',
     broll.length ? `${names(broll)} ${broll.length === 1 ? 'is' : 'are'} B-roll.` : ''
   ]
     .filter(Boolean)
     .join(' ')
-  return {
-    talking: talking.map((f) => f.path),
-    sound: sound.map((f) => f.path),
-    broll: broll.map((f) => f.path),
-    ignored: [],
-    reply,
-    by: 'measurement'
+}
+
+/**
+ * The same take recorded twice: a camera and a screen or computer recording
+ * of one talk, or two cameras. Sorted by measurement alone, both are talking,
+ * and the edit says everything twice. Two talking files whose sound lines up
+ * by ear, over nearly all of the shorter one and closely, are one take: a
+ * recorder file becomes the sound under the camera's picture, and a second
+ * camera is left out, with a sentence saying /angle adds it. Different takes
+ * of the same lines never line up that closely, as their timing differs.
+ */
+export async function separateSameTakes(
+  roles: Roles,
+  files: FileFacts[],
+  envelopeOf: (path: string) => Promise<Envelope> = (path) => loudnessEnvelope(FFMPEG_PATH, path)
+): Promise<Roles> {
+  if (roles.talking.length < 2) return roles
+  const byPath = new Map(files.map((f) => [f.path, f]))
+  const fact = (path: string): FileFacts | undefined => byPath.get(path)
+  const recorder = (path: string): boolean => RECORDER_NAME.test(fact(path)?.name ?? '')
+  const envelopes = new Map<string, Promise<Envelope | null>>()
+  const envelope = (path: string): Promise<Envelope | null> => {
+    let e = envelopes.get(path)
+    if (!e) {
+      e = envelopeOf(path).catch(() => null)
+      envelopes.set(path, e)
+    }
+    return e
   }
+  const sameTake = async (a: string, b: string): Promise<boolean> => {
+    const [ea, eb] = await Promise.all([envelope(a), envelope(b)])
+    if (!ea || !eb) return false
+    const o = estimateOffset(ea, eb)
+    const shorter = Math.min(ea.db.length * ea.hopSec, eb.db.length * eb.hopSec)
+    return trustworthy(o) && o.confidence >= 0.7 && o.overlapSec >= 0.8 * shorter
+  }
+  // Cameras first, so a recorder file is matched with the picture it goes under.
+  const order = [...roles.talking].sort((a, b) => Number(recorder(a)) - Number(recorder(b)))
+  const kept: string[] = []
+  const sound = [...roles.sound]
+  const repeats: { path: string; of: string }[] = []
+  for (const path of order) {
+    let twin: string | null = null
+    for (const k of kept) {
+      if (await sameTake(k, path)) {
+        twin = k
+        break
+      }
+    }
+    if (twin === null) kept.push(path)
+    else if (recorder(path)) sound.push(path)
+    else repeats.push({ path, of: twin })
+  }
+  if (kept.length === roles.talking.length) return roles
+  const talking = roles.talking.filter((p) => kept.includes(p))
+  const list = (paths: string[]): FileFacts[] => paths.map(fact).filter((f): f is FileFacts => !!f)
+  const reply = [
+    describeRoles(list(talking), list(sound), list(roles.broll)),
+    ...repeats.map(
+      (r) =>
+        `${fact(r.path)?.name} is the same take as ${fact(r.of)?.name} from another camera, so I left it out; /angle adds it as a second camera.`
+    )
+  ].join(' ')
+  return { ...roles, talking, sound, reply }
 }
 
 const RoleSchema = z.object({

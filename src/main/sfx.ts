@@ -18,8 +18,12 @@ import { SFX_INFO, type SfxKind } from '../shared/edit'
  * No Electron imports: the binary and folders arrive as arguments.
  */
 
-/** Bumped whenever a recipe changes, so files made from an older one are made again. */
-const RECIPE_VERSION = 1
+/**
+ * Bumped whenever a recipe changes, so files made from an older one are made
+ * again. 2: the whoosh's noise has a fixed seed, so it is the same sound on
+ * every computer, and in the preview and the export.
+ */
+const RECIPE_VERSION = 2
 
 /** The whoosh's filter sweep: up to its middle and back, as commands to a lowpass and a highpass. */
 function sweep(sec: number): string {
@@ -38,7 +42,7 @@ function sweep(sec: number): string {
 /** Each sound as an ffmpeg graph from nothing to [out], mono at 48 kHz. */
 const RECIPES: Record<SfxKind, (sec: number) => string> = {
   whoosh: (sec) =>
-    `anoisesrc=d=${sec}:c=pink:r=48000:a=0.9,asetnsamples=n=240,${sweep(sec)},` +
+    `anoisesrc=d=${sec}:c=pink:r=48000:a=0.9:seed=7,asetnsamples=n=240,${sweep(sec)},` +
     `lowpass@lp=f=500:p=2,highpass@hp=f=150:p=2,volume='pow(sin(PI*t/${sec}),2)':eval=frame[out]`,
   pop: (sec) =>
     `aevalsrc=exprs='0.9*sin(2*PI*(380*t+2600*t*t))*exp(-t/0.022)*(1-exp(-t/0.0015))':s=48000:d=${sec}[out]`,
@@ -77,6 +81,9 @@ async function peakDb(ffmpeg: string, path: string): Promise<number> {
   return m ? Number(m[1]) : 0
 }
 
+/** Sounds being made now, by path: a second render asking for one waits for the first. */
+const making = new Map<string, Promise<string>>()
+
 /** Makes a built-in sound in `dir`, once, and returns its path. */
 export async function makeSfx(ffmpeg: string, kind: SfxKind, dir: string): Promise<string> {
   const path = join(dir, `${kind}-v${RECIPE_VERSION}.wav`)
@@ -86,8 +93,19 @@ export async function makeSfx(ffmpeg: string, kind: SfxKind, dir: string): Promi
   } catch {
     // Not made yet.
   }
+  let made = making.get(path)
+  if (!made) {
+    made = makeSfxFile(ffmpeg, kind, dir, path).finally(() => making.delete(path))
+    making.set(path, made)
+  }
+  return made
+}
+
+async function makeSfxFile(ffmpeg: string, kind: SfxKind, dir: string, path: string): Promise<string> {
   await fs.mkdir(dir, { recursive: true })
-  const raw = join(dir, `${kind}-v${RECIPE_VERSION}.raw.wav`)
+  // Working files of this making alone, so two at once never read each other's.
+  const own = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const raw = join(dir, `${kind}-v${RECIPE_VERSION}.${own}.raw.wav`)
   const sec = SFX_INFO[kind].sec
   await run(ffmpeg, [
     '-y',
@@ -104,7 +122,7 @@ export async function makeSfx(ffmpeg: string, kind: SfxKind, dir: string): Promi
   const peak = await peakDb(ffmpeg, raw)
   // Stereo at 48 kHz, the same in both channels, its loudest sample at -1 dBFS. Written beside the final
   // name, then moved, so a half-made file is never used.
-  const part = `${path}.part.wav`
+  const part = `${path}.${own}.part.wav`
   await run(ffmpeg, [
     '-y',
     '-i',

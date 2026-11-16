@@ -5,7 +5,7 @@ import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createDoc, currentCut, resolveCut, wordsFromTranscript } from '../shared/edit'
 import { buildRenderArgs, renderCut, segmentsFor } from './cut-render'
-import { chapterGroups, colorConversion, intakeReply, probeSource, readProbe } from './intake'
+import { channelWithSound, chapterGroups, colorConversion, intakeReply, probeSource, readProbe } from './intake'
 
 /** The first binary of a list that runs: the env override, the bundled one, then the system's. */
 function find(env: string | undefined, bundled: () => string, name: string): string | null {
@@ -121,6 +121,39 @@ describe('reading what came in', () => {
     })
     expect(f.fps).toBe(30)
     expect(f.vfr).toBe(false)
+  })
+
+  it('takes cover art in a sound file for no picture at all', () => {
+    const f = readProbe({
+      streams: [
+        { codec_type: 'audio', codec_name: 'aac', channels: 2, sample_rate: '48000' },
+        { codec_type: 'video', codec_name: 'mjpeg', width: 600, height: 600, disposition: { attached_pic: 1 } }
+      ],
+      format: { duration: '1800.5' }
+    })
+    expect([f.width, f.height]).toEqual([0, 0])
+    expect(f.audio?.channels).toBe(2)
+    expect(f.durationSec).toBe(1800.5)
+  })
+
+  it('finds the length where the header has none: the longest stream, then a Matroska tag', () => {
+    const streams = (d: Record<string, unknown>[]) => readProbe({ streams: d as never, format: {} }).durationSec
+    expect(streams([{ codec_type: 'video', duration: '4.2' }, { codec_type: 'audio', duration: '4.5' }])).toBe(4.5)
+    expect(streams([{ codec_type: 'video', tags: { DURATION: '00:01:02.500000000' } }])).toBe(62.5)
+    expect(streams([{ codec_type: 'video' }])).toBe(0)
+  })
+
+  it('hears one live channel only when the other is silent or far quieter', () => {
+    // A lavalier on the left input, nothing on the right.
+    expect(channelWithSound([-22, -Infinity])).toBe(0)
+    expect(channelWithSound([-91, -24])).toBe(1)
+    // A hiss 45 dB under the voice is still an empty input.
+    expect(channelWithSound([-20, -65])).toBe(0)
+    // A safety track 20 dB quieter, two microphones, mono or nothing: left alone.
+    expect(channelWithSound([-18, -38])).toBeNull()
+    expect(channelWithSound([-22, -25])).toBeNull()
+    expect(channelWithSound([-22])).toBeNull()
+    expect(channelWithSound([-Infinity, -Infinity])).toBeNull()
   })
 
   it('groups GoPro chapters of one recording, in order', () => {

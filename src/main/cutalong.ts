@@ -2,7 +2,7 @@ import { app, dialog, ipcMain, type WebContents } from 'electron'
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
-import { FFMPEG_PATH, probe } from './ffmpeg'
+import { FFMPEG_PATH, FFPROBE_PATH, probe } from './ffmpeg'
 import { FONTS_DIR } from './resources'
 import { getSettings, saveSettings } from './store'
 import { downloadModel, hasModel, transcribe } from './transcribe'
@@ -10,7 +10,7 @@ import { fetchVideo, YTDLP_PATH } from './fetch-video'
 import { fetchExcerpt, fetchImage, importFile, saveImage, searchVideos, type AssetTools, type NewAsset } from './assets'
 import { creditsText, isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
-import { measureVideo, probeMedia } from './inspiration/measure'
+import { measureVideo } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
@@ -22,11 +22,12 @@ import { loadIcons, loadLogos } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
-import { assignRoles, factsFor, type FileFacts } from './session'
+import { assignRoles, factsFor, separateSameTakes, type FileFacts } from './session'
 import { listenFrames } from './audio-map'
 import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
 import { vocabulary } from '../shared/raw/prompt'
-import { intakeReply } from './intake'
+import { intakeReply, probeSource } from './intake'
+import { projectName } from '../shared/project-name'
 import { watchClip } from './mouth'
 import { detectFaces, VISION_PATH } from './track'
 import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
@@ -258,7 +259,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       await Promise.all(Array.from({ length: Math.min(4, req.paths.length) }, worker))
       // Claude reading the request has no percent to give, so the bar sweeps.
       deps.send(e.sender, 'cut:progress', { stage: 'Working out which file is which', percent: null })
-      const roles = await assignRoles(req.request, facts)
+      const assigned = await assignRoles(req.request, facts)
+      // Sorted without reading the request, one take recorded twice would be cut in twice.
+      const roles = assigned.by === 'measurement' ? await separateSameTakes(assigned, facts) : assigned
       return { ok: true as const, roles, facts }
     } catch (err) {
       return { ok: false as const, message: message(err) }
@@ -274,9 +277,10 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     const parsed = EditDocSchema.safeParse(req.doc)
     if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
     const doc = parsed.data
+    let xmlPath: string | null = null
     try {
       const n = currentVersion(doc).n
-      const xmlPath = await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.xml')
+      xmlPath = await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.xml')
       const written = await writePremiere(doc, { ffmpeg: FFMPEG_PATH, xmlPath, sfxDir: sfxDir() })
       const premiere = await findPremiere()
       if (premiere) openInPremiere(premiere, xmlPath)
@@ -287,6 +291,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
     } catch (err) {
       console.error('[premiere] failed:', message(err))
+      if (xmlPath) await fs.rm(xmlPath, { force: true }).catch(() => undefined)
       return { ok: false as const, message: message(err) }
     }
   })
@@ -365,12 +370,20 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     const final = req.quality === 'final'
     const stage = final ? 'Exporting' : 'Rendering a preview'
     const workDir = await fs.mkdtemp(join(app.getPath('temp'), 'cutalong-render-'))
+    let outputPath: string | null = null
     try {
+      // What each recording has now. One the cut no longer uses may be gone
+      // from the disk; nothing reads it, and one the cut does use is named in
+      // a sentence before anything renders. A podcast has sound and no picture.
       const sources = await Promise.all(
-        doc.sources.map(async (s) => ({ ...s, hasAudio: (await probeMedia(FFMPEG_PATH, s.path)).hasAudio }))
+        doc.sources.map(async (s) => {
+          const facts = await probeSource(FFPROBE_PATH, s.path).catch(() => null)
+          if (!facts) return { ...s, hasAudio: false }
+          return { ...s, hasAudio: facts.audio !== null, hasVideo: facts.width > 0 && facts.height > 0 }
+        })
       )
       const n = currentVersion(doc).n
-      const outputPath = final
+      outputPath = final
         ? await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.mp4')
         : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
       const brand = await readBrand()
@@ -434,6 +447,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
     } catch (err) {
       console.error('[cut] render failed:', message(err))
+      // Nothing half-made, and no empty file holding the name, is left in the export folder.
+      if (outputPath) await fs.rm(outputPath, { force: true }).catch(() => undefined)
       return { ok: false as const, message: message(err) }
     } finally {
       await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined)
@@ -894,18 +909,25 @@ async function transcriptFor(
   })
 }
 
+/** An export's name from the edit's title: what a project is named by, short enough for any file system. */
 function safeName(title: string): string {
-  return title.replace(/[/\\:*?"<>|]/g, '-').trim() || 'Untitled'
+  return projectName(title)
 }
 
+/**
+ * A name in `dir` no other file has, taken by making the file empty there and
+ * then: two exports started together, or two edits with the same title, each
+ * get their own file instead of writing over one another.
+ */
 async function freePath(dir: string, name: string, ext: string): Promise<string> {
   await fs.mkdir(dir, { recursive: true })
   for (let n = 1; ; n++) {
     const candidate = join(dir, n === 1 ? `${name}${ext}` : `${name} (${n})${ext}`)
     try {
-      await fs.access(candidate)
-    } catch {
+      await (await fs.open(candidate, 'wx')).close()
       return candidate
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
     }
   }
 }
