@@ -19,6 +19,9 @@
 #include <cstring>
 #include <exception>
 #include <vector>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 #include "whisper.h"
 
@@ -71,6 +74,11 @@ extern "C" void ce_tool_whisper_log_set(ggml_log_callback callback, void *)
 extern "C" struct whisper_context *ce_tool_whisper_init_from_file_with_params(
     const char *path, struct whisper_context_params params)
 {
+#if defined(__APPLE__) && TARGET_OS_SIMULATOR
+    /* The simulator's Metal cannot run ggml's kernels (whisper.cpp's own iOS
+     * example turns the GPU off there too): the CPU it is, as -ng asks. */
+    params.use_gpu = false;
+#endif
     whisper_context *ctx = whisper_init_from_file_with_params(path, params);
     if (ctx)
         t_contexts.push_back(ctx);
