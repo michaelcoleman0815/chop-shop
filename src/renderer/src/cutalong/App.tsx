@@ -46,6 +46,9 @@ export default function App(): JSX.Element {
     const t = setTimeout(() => setToast(null), 6000)
     return () => clearTimeout(t)
   }, [shown, setToast])
+  // What a tool said when it stopped stays behind Details until asked for, for each new toast.
+  const [toastDetails, setToastDetails] = useState(false)
+  useEffect(() => setToastDetails(false), [shown])
 
   const browse = async (): Promise<void> => {
     const project = await api.openProject()
@@ -98,7 +101,10 @@ export default function App(): JSX.Element {
         </ScreenGuard>
       </div>
       {toast.value && (
-        <div className={`cl-toast${toast.leaving ? ' leaving' : ''}`} role="status">
+        <div
+          className={`cl-toast${toast.leaving ? ' leaving' : ''}${toastDetails && toast.value.details?.length ? ' open' : ''}`}
+          role="status"
+        >
           {toast.value.text.endsWith('%') && (
             <span className="cl-toast-mark" aria-hidden="true">
               <Mark size={22} white />
@@ -121,9 +127,24 @@ export default function App(): JSX.Element {
               Show in Finder
             </Button>
           )}
+          {(toast.value.details?.length ?? 0) > 0 && (
+            <Button variant="text" aria-expanded={toastDetails} onClick={() => setToastDetails((o) => !o)}>
+              {toastDetails ? 'Hide details' : 'Details'}
+            </Button>
+          )}
           <Button variant="text" onClick={() => app.setToast(null)}>
             Close
           </Button>
+          {toastDetails && toast.value.details && (
+            <dl className="cl-details">
+              {toast.value.details.map((d) => (
+                <div key={d.label} style={{ display: 'contents' }}>
+                  <dt>{d.label}</dt>
+                  <dd>{d.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
       )}
     </div>

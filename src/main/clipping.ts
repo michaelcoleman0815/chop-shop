@@ -27,6 +27,7 @@ import {
   MIN_RECORDING_SEC,
   planRecording,
   readClipAsk,
+  recordingNames,
   shapePicks,
   wordsToRead,
   type ClipAsk,
@@ -40,6 +41,7 @@ import {
   type SoundStretch
 } from '../shared/clipping'
 import type { SuggestedClip, Transcript, TranscriptWord } from '../shared/types'
+import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 
 /**
  * /clipping, the main process's half: many short clips from long
@@ -65,7 +67,9 @@ export interface ClipFindRequest {
   avoid?: { path: string; startSec: number; endSec: number }[]
 }
 
-export type ClipFindResult = ({ ok: true; reply: ClipsReply } & ClipsFound) | { ok: false; message: string }
+export type ClipFindResult =
+  | ({ ok: true; reply: ClipsReply } & ClipsFound)
+  | { ok: false; message: string; details?: Detail[] }
 
 export interface ClipProgress {
   stage: string
@@ -396,6 +400,9 @@ export async function findClips(
   if (paths.length === 0)
     return { ok: false, message: 'Drop a long recording with /clipping, and I will find the clips in it.' }
   const ask = readClipAsk(req.ask)
+  // Two recordings with one file name are told apart by their folders.
+  const names = recordingNames(paths)
+  const nameOf = (path: string): string => names.get(path) ?? basename(path)
   const timings = new Map<string, number>()
   const time = async <T>(step: string, work: () => Promise<T>): Promise<T> => {
     const t0 = performance.now()
@@ -413,10 +420,10 @@ export async function findClips(
   const metas = await Promise.all(paths.map((p) => tools.probe(p).catch(() => null)))
   const unreadable = paths.filter((_, i) => !metas[i])
   if (unreadable.length === paths.length) {
-    return { ok: false, message: `I couldn't read ${unreadable.map((p) => basename(p)).join(' or ')} as a recording.` }
+    return { ok: false, message: `I couldn't read ${unreadable.map(nameOf).join(' or ')} as a recording.` }
   }
   if (unreadable.length)
-    notes.push(`I couldn't read ${unreadable.map((p) => basename(p)).join(' or ')} as a recording.`)
+    notes.push(`I couldn't read ${unreadable.map(nameOf).join(' or ')} as a recording.`)
   const total = metas.reduce((n, m) => n + (m?.durationSec ?? 0), 0) || 1
   let before = 0
 
@@ -429,7 +436,7 @@ export async function findClips(
   for (const [i, path] of paths.entries()) {
     const meta = metas[i]
     if (!meta) continue
-    const name = basename(path)
+    const name = nameOf(path)
     const of = paths.length > 1 ? ` (${i + 1} of ${paths.length})` : ''
     const share = meta.durationSec / total
     const at = (f: number): number => Math.round((before + share * f) * 0.95 * 100)
@@ -556,8 +563,8 @@ export async function findClips(
     if (engine.by === 'measured')
       found = await time('finding', async () => measureRecording(r.facts, r.plan, ask, avoid))
     if (ask.funny && found.length === 0 && !(r.facts.sounds ?? []).some((s) => s.kind === 'laughter'))
-      notes.push(`I heard no laughter in ${basename(r.facts.path)}.`)
-    if (ask.topic && found.length === 0) notes.push(`Nothing in ${basename(r.facts.path)} is about ${ask.topic}.`)
+      notes.push(`I heard no laughter in ${nameOf(r.facts.path)}.`)
+    if (ask.topic && found.length === 0) notes.push(`Nothing in ${nameOf(r.facts.path)} is about ${ask.topic}.`)
     picks.push(...found.map((f) => ({ ...f, path: r.facts.path })))
   }
   picks.sort((a, b) => b.score - a.score || a.startSec - b.startSec)
@@ -651,7 +658,9 @@ export function registerClippingIpc(deps: { send: Send }, tools: () => ClippingT
     } catch (err) {
       console.error('[clipping] failed:', message(err))
       deps.send(e.sender, 'clips:progress', { stage: 'Failed', percent: 0 })
-      return { ok: false, message: message(err) }
+      // A sentence; what whisper printed, when it stopped, behind Details.
+      const details = saidDetails(toolSaid(err))
+      return { ok: false, message: message(err), ...(details.length ? { details } : {}) }
     }
   })
 }

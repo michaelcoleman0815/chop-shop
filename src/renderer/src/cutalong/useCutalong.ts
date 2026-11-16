@@ -113,7 +113,7 @@ import {
   type TakesOffer
 } from '../../../shared/raw'
 import { withHabits } from '../../../shared/learn/habits'
-import { clippingAsked, withDoc } from '../../../shared/clipping'
+import { clippingAsked, vlogOfClip, withDoc } from '../../../shared/clipping'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
@@ -132,6 +132,7 @@ import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
+import { exportWait, type ExportJob } from './exporting'
 import { clock, fileName, findLink, isAudioFile, isVideoFile } from './format'
 
 /**
@@ -148,6 +149,8 @@ export interface Toast {
   error?: boolean
   /** The result is also in the chat: the toast offers to go and see it there. */
   chat?: boolean
+  /** What a tool printed when it stopped, behind Details. */
+  details?: { label: string; value: string }[]
 }
 
 /** What the notes panel says right now, when it is not just the version summary. */
@@ -483,6 +486,8 @@ export function useCutalong() {
    * name whatever its ops are (a plan already held to the stretch).
    */
   const scope = useRef<{ beats: string[]; name: string; always?: boolean } | null>(null)
+  /** The export running now, the editor's or Export all's: one at a time (exporting.ts). */
+  const exportingNow = useRef<ExportJob | null>(null)
   /** Cuts offered and not yet made: "Say 'cut it' and it goes." */
   const [offers, setOffers] = useState<TakesOffer[]>([])
   const offersRef = useRef<TakesOffer[]>([])
@@ -616,6 +621,7 @@ export function useCutalong() {
     ensureProject,
     setToast,
     during,
+    exportingNow,
     clearEditor: () => {
       setOffers([])
       pendingCommand.current = null
@@ -667,7 +673,8 @@ export function useCutalong() {
         const current = brandRef.current
         const videos = [...current.videos.filter((v) => !fresh.some((f) => f.path === v.path)), ...fresh]
         saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
-        if (r.failed.length) setToast({ text: `Couldn't watch ${r.failed.join('; ')}`, error: true })
+        if (r.failed.length)
+          setToast({ text: `Couldn't watch ${r.failed.join('; ')}`, error: true, details: r.details })
       } finally {
         off()
         setBrandProgress(null)
@@ -872,6 +879,7 @@ export function useCutalong() {
         text,
         aside: [noticed, r.warning ?? ''].filter(Boolean).join(' ') || null,
         chips: r.intake?.facts.length ? r.intake.facts : undefined,
+        details: r.details,
         actions
       })
       return true
@@ -910,6 +918,7 @@ export function useCutalong() {
         progress: null,
         text,
         aside,
+        details: r.details,
         actions: added > 0 ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
       })
       return true
@@ -2414,6 +2423,13 @@ export function useCutalong() {
         return
       }
       if (command === 'vlog') {
+        // A clip from /clipping is one moment of a long recording: it stays a clip (shared/clipping/set).
+        const clip = vlogOfClip(projectRef.current?.clipping, docRef.current)
+        if (clip) {
+          if (where === 'panel') setPanel({ text: clip })
+          else push({ role: 'assistant', text: clip })
+          return
+        }
         await vlog.command(rest, where)
         return
       }
@@ -3313,9 +3329,6 @@ export function useCutalong() {
     setPanel({ text: `v${n + 1} is v${back} again.` })
   }, [setDoc])
 
-  /** True while an export runs, so a second press waits for it. */
-  const exporting = useRef(false)
-
   /**
    * Exports the version on screen. Its progress shows in the toast and in the
    * chat, where the finished file then plays, the whole of it.
@@ -3324,11 +3337,14 @@ export function useCutalong() {
     const d = docRef.current
     if (!d) return
     const n = currentVersion(d).n
-    if (exporting.current) {
-      setToast({ text: `I'm still exporting. v${n} can go once that's done.` })
+    // A second export waits for the first, Export all's included: both report on one channel.
+    const wait = exportWait(exportingNow.current, { kind: 'version', n })
+    if (wait) {
+      // In the panel, where it stays: the toast is the running export's, and its next count would replace it.
+      setPanel({ text: wait })
       return
     }
-    exporting.current = true
+    exportingNow.current = { kind: 'version', n }
     const stage = `Exporting v${n}`
     setToast({ text: 'Exporting… 0%' })
     const id = push({ role: 'assistant', text: '', progress: { stage, percent: 0 } })
@@ -3346,6 +3362,8 @@ export function useCutalong() {
         return
       }
       rememberKeep(d)
+      // A clip's export is kept on its card, as Export all's are.
+      if (clipping.isClip(d)) clipping.exported(d.id, { path: r.outputPath, version: n, at: new Date().toISOString() })
       const name = fileName(r.outputPath)
       const durationSec = r.durationSec ?? 0
       patch(id, {
@@ -3358,7 +3376,7 @@ export function useCutalong() {
       setToast({ text: `Exported ${name}${besideIt(r.chaptersPath, r.creditsPath)}`, path: r.outputPath, chat: true })
     } finally {
       off()
-      exporting.current = false
+      exportingNow.current = null
     }
   }, [during, patch, push])
 

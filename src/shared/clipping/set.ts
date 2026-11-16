@@ -18,6 +18,19 @@ export function clipOfDoc(set: ClipSet | null | undefined, docId: string): Clip 
 }
 
 /**
+ * What /vlog says on a clip open in the editor: a clip is one moment of a
+ * long recording, not a day of clips, and telling its whole recording as a
+ * story would put a vlog of hours in place of the clip. Null for any other
+ * edit, which /vlog tells as a story as it always did.
+ */
+export function vlogOfClip(set: ClipSet | null | undefined, doc: EditDoc | null): string | null {
+  const clip = doc ? clipOfDoc(set, doc.id) : undefined
+  if (!clip) return null
+  const name = clip.source.split(/[\\/]/).pop() ?? clip.source
+  return `“${clip.title}” is one moment of ${name}, not a day of clips, so I left it as it is. Drop the clips from your day into a new chat and I'll make them into a vlog.`
+}
+
+/**
  * The project with an edit put where it belongs: back into its clip when it
  * is one of the set's, otherwise as the project's own edit, as always.
  */
@@ -70,6 +83,16 @@ export function markExported(set: ClipSet, id: string, exported: NonNullable<Cli
   return { ...set, clips: set.clips.map((c) => (c.id === id ? { ...c, exported } : c)) }
 }
 
+/**
+ * An export made in the editor, kept on the clip whose edit it is, the way
+ * Export all keeps its own: the clip is out as it is now, so Export all
+ * makes no copy of it. The set as it was for any other edit.
+ */
+export function markDocExported(set: ClipSet, docId: string, exported: NonNullable<Clip['exported']>): ClipSet {
+  const clip = clipOfDoc(set, docId)
+  return clip ? markExported(set, clip.id, exported) : set
+}
+
 /** A run's clips, in the order they were found. */
 export function clipsOfRun(set: ClipSet | null | undefined, run: number): Clip[] {
   return (set?.clips ?? []).filter((c) => c.run === run)
@@ -83,6 +106,24 @@ export function keptClips(set: ClipSet | null | undefined): Clip[] {
 /** Whether a clip's export is of the version it is at now. */
 export function exportedNow(clip: Clip): boolean {
   return !!clip.exported && clip.exported.version === currentVersion(clip.doc).n
+}
+
+/**
+ * What a clip's card says of its export: Exported when it is out as it is
+ * now and nothing runs, whatever ran earlier in the session, so a clip
+ * whose Export all failed and that went out from the editor since says
+ * Exported, as the button counts it, and one changed since says nothing.
+ * Not exported only when it is not out as it is now and its last export
+ * failed; nothing while one runs.
+ */
+export function exportNote(
+  clip: Clip,
+  job: { percent: number | null; done?: string; error?: string } | undefined
+): 'Exported' | 'Not exported' | null {
+  const running = !!job && !job.done && !job.error && job.percent !== null
+  if (running) return null
+  if (clip.kept && exportedNow(clip)) return 'Exported'
+  return job?.error ? 'Not exported' : null
 }
 
 /**

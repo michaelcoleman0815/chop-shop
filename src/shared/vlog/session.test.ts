@@ -3,12 +3,25 @@ import { beatsOnClock } from '../edit/audio'
 import { commit, currentCut, currentVersion, restore, type EditDoc } from '../edit'
 import { resolveCut } from '../edit/resolve'
 import { extendShoot, ontoLatest, toldIn, vlogMusic } from './build'
-import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, storyOnBeats, storyShown, vlogShown } from './plan'
+import {
+  carryAsked,
+  carryTold,
+  opsFor,
+  planLocally,
+  reshapeOp,
+  storyOnBeats,
+  storyShown,
+  vlogShown,
+  withOps
+} from './plan'
+import { composeVlog } from './compose'
 import { dayName, nameScene } from './describe'
-import { pretendVlog } from './pretend'
-import { sceneInSentence, storyReply } from './reply'
-import { parseVlogAsk, wantsVlog } from './request'
+import { pretendClip, pretendVlog } from './pretend'
+import { assembleShoot } from './shoot'
+import { carriedNote, sceneInSentence, scenesChanged, storyReply } from './reply'
+import { parseVlogAsk, sceneNamed, wantsVlog } from './request'
 import type { Vlog } from './schema'
+import { clock } from '../presets/preset'
 
 /**
  * What the session does with a vlog over time: the next ask starts from the
@@ -76,6 +89,46 @@ describe('a vlog over time', () => {
     // A version that only changed the look still tells the story before it.
     const look = commit(again, [{ op: 'look', set: { warmth: 0.2 } }], 'Warmer.').doc
     expect(storyShown(look)).toEqual(storyShown(again))
+  })
+
+  it('says what each part of the day ran as the cut played it, after a shot was taken out in the editor', () => {
+    const hooks = (first.vlog as Vlog).story.beats.filter((b) => b.role === 'hook').length
+    // In the editor: the first shot after the tease, out.
+    const out = currentCut(first).beats[hooks]
+    const edited = commit(first, [{ op: 'remove', beats: [out.id] }], 'One shot is out.').doc
+    /** Seconds each scene plays, by the clip of each beat, the tease left out. */
+    const played = (doc: EditDoc, tease: number): Map<string, number> => {
+      const cut = currentCut(doc)
+      const at = new Map(resolveCut(cut, doc.words, doc.sources).beats.map((b) => [b.id, b]))
+      const m = new Map<string, number>()
+      cut.beats.forEach((b, i) => {
+        const scene = (doc.vlog as Vlog).scenes.find((s) => s.clips.includes(b.source))
+        const r = at.get(b.id)
+        if (i >= tease && scene && r) m.set(scene.id, (m.get(scene.id) ?? 0) + r.outEnd - r.outStart)
+      })
+      return m
+    }
+    const was = played(edited, hooks)
+    const shown = vlogShown(edited) as Vlog
+    let checked = 0
+    for (let k = 1; k <= shown.scenes.length; k++) {
+      const planned = planLocally(edited, shown, parseVlogAsk(`more of scene ${k}`))
+      const vlog = { ...shown, story: planned.story }
+      const after = withOps({ ...edited, vlog }, opsFor(edited, planned.story.beats))
+      const said = scenesChanged(edited, shown.story.beats, after, vlog, 10)
+      for (const scene of shown.scenes) {
+        const name = sceneInSentence(scene.name).replace(/^./, (c) => c.toUpperCase())
+        const before = was.get(scene.id) ?? 0
+        // A part of the day that played is never said to be new, and its old length is what it ran.
+        if (before >= 0.5) expect(said, `${name} played ${before} s`).not.toContain(`${name} is in it now`)
+        const from = new RegExp(`${name} runs \\d+:\\d\\d now, (?:up|down) from (\\d+:\\d\\d)`).exec(said)
+        if (from) {
+          expect(from[1]).toBe(clock(before))
+          checked++
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
   })
 
   it('lands its shots on the beats of a bed put under it later, the shots and their order kept', () => {
@@ -163,6 +216,80 @@ describe('a vlog over time', () => {
   })
 })
 
+describe('a story told again after edits in the editor', () => {
+  // A day long enough that 40 seconds keeps some of its moments (clips s13 and s20) and leaves others out (s10).
+  const v1 = made(paths(30)).doc
+  const beatOf = (doc: EditDoc, clip: string, talking = false): string =>
+    currentCut(doc).beats.find((b) => b.source === clip && !!b.from === talking)?.id as string
+  const lunch = beatOf(v1, 's20')
+  const edited = commit(
+    v1,
+    [
+      { op: 'transition', beats: [beatOf(v1, 's13')], kind: 'dissolve', sec: 0.5 },
+      {
+        op: 'chapters',
+        set: [
+          { beat: lunch, title: 'Lunch' },
+          { beat: beatOf(v1, 's10', true), title: 'The quiet bit' }
+        ]
+      },
+      { op: 'motion-add', kind: 'lower-third', from: lunch, to: `${lunch}.end`, text: ['Sam Lee', 'Host'] }
+    ],
+    'Edits in the editor.'
+  ).doc
+
+  it('keeps a dissolve added in the editor on the moment it was on', () => {
+    const v3 = retold(edited, 'make it 40 seconds')
+    const beats = currentCut(v3).beats
+    expect(beats.find((b) => b.source === 's13')?.transition).toEqual({ kind: 'dissolve', sec: 0.5 })
+    expect(beats.filter((b) => b.transition)).toHaveLength(1)
+  })
+
+  it('keeps a chapter and a graphic on the beat that plays their moment now', () => {
+    const v3 = retold(edited, 'make it 40 seconds')
+    const now = beatOf(v3, 's20')
+    // The moment plays on another beat than it did, and what was on it went with it.
+    expect(now).not.toBe(lunch)
+    expect(currentCut(v3).chapters).toEqual([{ beat: now, title: 'Lunch' }])
+    expect(currentCut(v3).motion.map((m) => [m.from, m.to])).toEqual([[now, `${now}.end`]])
+  })
+
+  it('takes out a chapter whose moment the new story leaves out, and says so', () => {
+    const v3 = retold(edited, 'make it 40 seconds')
+    expect(currentCut(v3).beats.some((b) => b.source === 's10')).toBe(false)
+    expect((currentCut(v3).chapters ?? []).map((c) => c.title)).toEqual(['Lunch'])
+    const reply = storyReply(v3, vlogShown(v3) as Vlog, { version: 3, previousSec: runs(edited) })
+    expect(reply.aside).toContain(
+      'The chapter “The quiet bit” was on a moment the new story leaves out, so I took it out; Undo brings it back.'
+    )
+    // Undo brings back the chapters as they were.
+    expect(currentCut(restore(v3, 2)).chapters).toEqual(currentCut(edited).chapters)
+  })
+
+  it('counts the edits that went, by what they are, and names the chapters', () => {
+    const more = commit(
+      edited,
+      [{ op: 'transition', beats: [beatOf(v1, 's10', true), beatOf(v1, 's10')], kind: 'dissolve' }],
+      'Two more dissolves.'
+    ).doc
+    expect(carriedNote(retold(more, 'make it 40 seconds'))).toBe(
+      '2 dissolves and the chapter “The quiet bit” were on moments the new story leaves out, so I took them out; Undo brings them back.'
+    )
+  })
+
+  it('says what could not come along where its moment still plays', () => {
+    // The shot with the dissolve told first: nothing comes before it to dissolve from.
+    const story = (vlogShown(edited) as Vlog).story.beats
+    const opening = story.find((b) => b.clip === 's13') as Vlog['story']['beats'][number]
+    const v3 = commit(edited, opsFor(edited, [opening, ...story.filter((b) => b !== opening)]), 'Opens on s13.').doc
+    expect(currentCut(v3).beats[0].source).toBe('s13')
+    expect(currentCut(v3).beats[0].transition).toBeUndefined()
+    expect(carriedNote(v3)).toBe(
+      "I couldn't carry the dissolve over to the new story, so I took it out; Undo brings it back."
+    )
+  })
+})
+
 describe('a shoot of more than one day', () => {
   it('names the scenes after the first day by their day, and says them that way', () => {
     const at = (day: number, h: number, m = 0): number => new Date(2026, 4, day, h, m).getTime() / 1000
@@ -175,5 +302,78 @@ describe('a shoot of more than one day', () => {
     expect(name).toBe('Sunday morning, 8:30')
     expect(sceneInSentence(name)).toBe('Sunday morning at 8:30')
     expect(sceneInSentence(nameScene(scene(at(2, 21)), [], 0, span))).toBe('the night at 21:00')
+  })
+
+  it('counts the hours after midnight of a night filmed as the night before, not the next morning', () => {
+    const at = (day: number, h: number, m = 0): number => new Date(2026, 4, day, h, m).getTime() / 1000
+    const scene = (id: string, startAt: number) => ({ id, name: '', clips: [], startAt, endAt: startAt, place: null })
+    // A Saturday party that runs on past midnight.
+    const party = [scene('sc1', at(2, 19)), scene('sc2', at(2, 23, 10)), scene('sc3', at(3, 0, 50))]
+    const span = { firstAt: at(2, 19), lastAt: at(3, 0, 50), footage: party }
+    const scenes = party.map((s, k) => ({ ...s, name: nameScene(s, [], k, span) }))
+    expect(scenes.map((s) => sceneInSentence(s.name))).toEqual([
+      'the evening at 19:00',
+      'the night at 23:10',
+      'the night at 0:50'
+    ])
+    expect(sceneNamed('more of the one at 0:50', scenes, [], [])?.id).toBe('sc3')
+    // Two nights on, the small hours are named by the night they belong to, when it was filmed.
+    const sunday = scene('sc4', at(3, 23, 20))
+    const late = scene('sc5', at(4, 1, 30))
+    const longer = { firstAt: at(2, 19), lastAt: at(4, 1, 30), footage: [...party, sunday, late] }
+    expect(nameScene(late, [], 4, longer)).toBe('Sunday night, 1:30')
+    // With nothing filmed since the party, they are Monday's early morning.
+    expect(nameScene(late, [], 3, { ...longer, footage: [...party, late] })).toBe('Monday morning, 1:30')
+    // And a second day still starts in its morning.
+    expect(nameScene(scene('sc6', at(3, 8, 30)), [], 1, { firstAt: at(2, 19), lastAt: at(3, 8, 30) })).toBe(
+      'Sunday morning, 8:30'
+    )
+  })
+
+  it('names the small hours as the early morning of their own day when no night ran on to them', () => {
+    // Clips shot at these times on a phone an hour east of UTC, named as a made vlog names its scenes.
+    const shot = (times: [number, number, number][]): Vlog => {
+      const watched = times.map(([day, h, m], i) => ({
+        ...pretendClip(`/shoot/IMG_${2000 + i}.MOV`, i, times.length).watched,
+        recordedAt: new Date(Date.UTC(2026, 4, day, h, m) - 3600_000).toISOString(),
+        zoneMin: 60
+      }))
+      const shoot = assembleShoot(watched)
+      return composeVlog({ id: 'day', title: 'Vlog', shoot, watched, heard: new Map(), ask: null }).vlog
+    }
+    const named = (v: Vlog, words: string): number =>
+      v.scenes.findIndex((s) => s === sceneNamed(words, v.scenes, v.clips, v.moments))
+    // A routine that starts at 4:30 is one day, from its early morning.
+    const routine = shot([
+      [2, 4, 30],
+      [2, 9, 0],
+      [2, 14, 0]
+    ])
+    expect(routine.scenes.map((s) => s.name)).toEqual(['Morning, 4:30', 'Morning, 9:00', 'Afternoon, 14:00'])
+    // A bare 4:35 is read as the morning too when a scene is nearer it than the afternoon's.
+    expect(named(routine, 'more of the one at 4:35')).toBe(0)
+    expect(named(routine, 'drop the night')).toBe(-1)
+    // A Saturday party filmed on past midnight: its small hours are still Saturday night.
+    const party = shot([
+      [2, 19, 0],
+      [2, 23, 10],
+      [3, 0, 50]
+    ])
+    expect(party.scenes.map((s) => s.name)).toEqual(['Evening, 19:00', 'Night, 23:10', 'Night, 0:50'])
+    // A trip with nothing filmed from 22:00 to the flight at 4:10: the flight is Sunday's early morning.
+    const trip = shot([
+      [2, 10, 0],
+      [2, 22, 0],
+      [3, 4, 10],
+      [3, 12, 0]
+    ])
+    expect(trip.scenes.map((s) => s.name)).toEqual([
+      'Morning, 10:00',
+      'Night, 22:00',
+      'Sunday morning, 4:10',
+      'Sunday afternoon, 12:00'
+    ])
+    expect(named(trip, 'the one at 4:10')).toBe(2)
+    expect(named(trip, 'drop the night')).toBe(1)
   })
 })

@@ -10,11 +10,14 @@ import {
   clipOfDoc,
   clipsOfRun,
   exportedNow,
+  exportNote,
   keptClips,
+  markDocExported,
   markExported,
   readClipSet,
   setKept,
   toExport,
+  vlogOfClip,
   withDoc
 } from './set'
 import type { ClipSet } from './schema'
@@ -124,6 +127,57 @@ describe('the clip set in a project', () => {
     expect(toExport(both).map((c) => c.id)).toEqual(['c1', 'c2'])
   })
 
+  it('says Exported on a card only while the clip is out as it is now', () => {
+    const { set } = run(null, [clip('a', 100)])
+    const out = markExported(set, 'c1', { path: '/out/Clip a.mp4', version: 2, at: 'then' }).clips[0]
+    const done = { percent: 100, done: '/out/Clip a.mp4' }
+    expect(exportNote(out, done)).toBe('Exported')
+    expect(exportNote(out, undefined)).toBe('Exported')
+    // Changed in the editor after Export all: the export it had is of v2, and Export all counts it again.
+    const changed = { ...out, doc: commit(out.doc, [{ op: 'aspect', aspect: 'square' }], 'Square now.').doc }
+    expect(exportNote(changed, done)).toBeNull()
+    expect(exportNote(changed, { percent: 40 })).toBeNull()
+    expect(exportNote(changed, { percent: null, error: 'The renderer stopped partway.' })).toBe('Not exported')
+    expect(exportNote({ ...out, kept: false }, done)).toBeNull()
+  })
+
+  it('says Exported on a card whose Export all failed once the clip went out from the editor', () => {
+    const { set } = run(null, [clip('a', 100), clip('b', 400)])
+    const failed = { percent: null, error: 'The renderer stopped partway.' }
+    // Export all failed on clip b: it is not out, and its card says so.
+    expect(exportNote(set.clips[1], failed)).toBe('Not exported')
+    // Then it went out from the editor as it is now: the button counts it as exported, and so does its card.
+    const out = markDocExported(set, set.clips[1].doc.id, { path: '/out/Clip b v2.mp4', version: 2, at: 'now' })
+    expect(exportedNow(out.clips[1])).toBe(true)
+    expect(exportNote(out.clips[1], failed)).toBe('Exported')
+    // Changed again since: not out as it is now, and the failure is the last export it had.
+    const doc = commit(out.clips[1].doc, [{ op: 'aspect', aspect: 'square' }], 'Square now.').doc
+    expect(exportNote({ ...out.clips[1], doc }, failed)).toBe('Not exported')
+    // While an export of it runs, the card says nothing either way.
+    expect(exportNote(out.clips[1], { percent: 40 })).toBeNull()
+    expect(exportNote({ ...out.clips[1], doc }, { percent: 0 })).toBeNull()
+  })
+
+  it('keeps an export made in the editor on its clip, so Export all makes no copy of it', () => {
+    const { set } = run(null, [clip('a', 100), clip('b', 400)])
+    const all = markExported(markExported(set, 'c1', { path: '/out/Clip a.mp4', version: 2, at: 'then' }), 'c2', {
+      path: '/out/Clip b.mp4',
+      version: 2,
+      at: 'then'
+    })
+    // Clip b changed in the editor, then exported from there as v3.
+    const changed = commit(all.clips[1].doc, [{ op: 'aspect', aspect: 'square' }], 'Square now.').doc
+    const saved = { ...all, clips: all.clips.map((c) => (c.id === 'c2' ? { ...c, doc: changed } : c)) }
+    expect(toExport(saved).map((c) => c.id)).toEqual(['c2'])
+    const out = markDocExported(saved, changed.id, { path: '/out/Clip b v3.mp4', version: 3, at: 'now' })
+    expect(exportedNow(out.clips[1])).toBe(true)
+    // Every clip is out as it is now: Export all offers all of them again, and asks nothing new of b.
+    expect(toExport(out).map((c) => c.id)).toEqual(['c1', 'c2'])
+    expect(keptClips(out).every(exportedNow)).toBe(true)
+    // An edit that is no clip leaves the set as it was.
+    expect(markDocExported(saved, 'own', { path: '/out/Own v2.mp4', version: 2, at: 'now' })).toBe(saved)
+  })
+
   it('saves an edit made to a clip back into that clip, and leaves the chat’s own edit alone', () => {
     const { set } = run(null, [clip('a', 100), clip('b', 400)])
     const own = createDoc({
@@ -142,6 +196,23 @@ describe('the clip set in a project', () => {
     const ownEdited = commit(own, [{ op: 'aspect', aspect: 'wide' }], 'Wide.').doc
     expect(withDoc(p, ownEdited).edit).toBe(ownEdited)
     expect(withDoc(p, null)).toEqual(p)
+  })
+
+  it('leaves a clip as it is when /vlog is typed in its editor, and says why', () => {
+    const { set } = run(null, [clip('a', 100), clip('b', 400)])
+    // Told as a story, the clip's whole two-hour recording took the clip's place.
+    expect(vlogOfClip(set, set.clips[0].doc)).toBe(
+      "“Clip a” is one moment of stream.mkv, not a day of clips, so I left it as it is. Drop the clips from your day into a new chat and I'll make them into a vlog."
+    )
+    const own = createDoc({
+      id: 'own',
+      title: 'Friday stream',
+      source: { ...SOURCE, id: 's1' },
+      words: wordsFromTranscript(words(10, 5), 's1')
+    })
+    expect(vlogOfClip(set, own)).toBeNull()
+    expect(vlogOfClip(null, set.clips[0].doc)).toBeNull()
+    expect(vlogOfClip(set, null)).toBeNull()
   })
 })
 

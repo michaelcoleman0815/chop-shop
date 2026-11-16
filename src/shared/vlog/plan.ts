@@ -3,7 +3,7 @@ import { currentCut, currentVersion } from '../edit/doc'
 import { applyOps } from '../edit/ops'
 import { resolveCut } from '../edit/resolve'
 import type { Cut, EditDoc, Op } from '../edit/schema'
-import { storyOps } from './build'
+import { retellOps } from './build'
 import { fitStory } from './check'
 import { sceneNamed, type VlogAsk } from './request'
 import type { Story, StoryBeat, Vlog } from './schema'
@@ -225,12 +225,13 @@ export function reshapeOp(
   return ask?.aspect && ask.aspect !== currentCut(doc).aspect ? { op: 'aspect', aspect: ask.aspect } : null
 }
 
-/** The ops that make a doc's cut play a story, checked: only what applies is kept. */
+/**
+ * The ops that make a doc's cut play a story, checked: only what applies is
+ * kept. What was done to the beats goes to the beats that play the same
+ * moments; the reply says what could not (reply carriedNote).
+ */
 export function opsFor(doc: EditDoc, beats: StoryBeat[]): Op[] {
-  const cut = currentCut(doc)
-  const ops = storyOps(beats, cut)
-  const r = applyOps(cut, ops, { words: doc.words, sources: doc.sources })
-  return r.applied
+  return retellOps(currentCut(doc), beats, { words: doc.words, sources: doc.sources })
 }
 
 /** The doc as it would be with these ops as a new version: for the reply's times before it is committed. */

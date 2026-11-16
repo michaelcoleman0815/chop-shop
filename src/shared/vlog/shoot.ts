@@ -191,6 +191,7 @@ export function assembleShoot(watched: WatchedClip[], opts: AssembleOptions = {}
       recordedAt: w.recordedAt,
       at: atOf(w),
       ...(fix ? { clockFixSec: fix.offsetSec } : {}),
+      ...(typeof w.zoneMin === 'number' ? { zoneMin: w.zoneMin } : {}),
       camera: w.camera,
       gps: w.gps,
       width: w.width,
