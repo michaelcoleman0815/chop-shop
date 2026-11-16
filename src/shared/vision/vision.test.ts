@@ -380,6 +380,26 @@ describe('who is talking', () => {
     expect(Math.abs((result.estimate?.offsetSec ?? 1) - 0.04)).toBeLessThan(0.015)
   })
 
+  it('does not read a camera cut as talking', () => {
+    // A cut to another angle mid-pause: the face jumps and the light changes.
+    const base = take({ seed: 12, words: 10, nods: false })
+    const at = (base.words[4].settleSec + base.words[5].openSec) / 2
+    const face = base.scene.faces[0]
+    const cutTake: Take = {
+      ...base,
+      scene: {
+        ...base.scene,
+        light: (t) => (t < at ? 1 : 0.8),
+        faces: [{ ...face, pose: (t) => ({ ...face.pose(t), cx: face.pose(t).cx + (t < at ? 0 : 0.08) }) }]
+      }
+    }
+    const { result } = run('camera-cut', cutTake, 0)
+    const i = result.series.times.findIndex((t) => t >= at)
+    for (const k of [i, i + 1])
+      expect(Number.isFinite(result.series.talk[k]) ? result.series.talk[k] : 0).toBeLessThan(0.3)
+    expect(result.words.some((w) => w.offCamera)).toBe(false)
+  })
+
   it('picks up a face that enters mid-shot', () => {
     const { take: t, result } = run('enters', take({ seed: 8, words: 10, enterSec: 3 }), 0)
     const first = result.words.find((w) => w.text === 'w1') as Word

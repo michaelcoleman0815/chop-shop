@@ -40,7 +40,7 @@ export function mouthGraph(plan: CropPlan, cmdPath: string): string {
       `[s${k}]crop@m${k}=w=${slot.w}:h=${slot.h}:x=${first.x}:y=${first.y}:exact=1,scale=${TW}:${TH}:flags=area[t${k}]`
     )
   })
-  chains.push(`[s${n}]scale=${TW}:${TH}:flags=area[t${n}]`)
+  chains.push(`[s${n}]scale=${TW}:${TH}:flags=fast_bilinear[t${n}]`)
   const tiles = Array.from({ length: n + 1 }, (_, k) => `[t${k}]`).join('')
   chains.push(`${tiles}hstack=inputs=${n + 1},settb=AVTB,showinfo[out]`)
   return chains.join(';')
