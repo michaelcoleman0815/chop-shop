@@ -1,0 +1,91 @@
+name: Test build
+
+# A .dmg of the Cutalong work in progress, built on every push to its branch so
+# the owner can try it. It is uploaded as a workflow artifact and never
+# published as a release: every installed copy of Chop Shop updates itself from
+# GitHub Releases, so a release from here would hand unfinished work to
+# everyone who has the app.
+on:
+  push:
+    branches:
+      - claude/mcp-x1yvms
+  workflow_dispatch:
+
+# A newer push makes the build in progress pointless.
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The same helpers the release builds, for the same reason: resources/bin
+      # is gitignored, and anything not built here is missing from the app.
+      - name: Build whisper.cpp
+        run: ./scripts/build-whisper.sh
+
+      - name: Build the Vision helper
+        run: ./scripts/build-native.sh
+
+      - name: Fetch yt-dlp
+        run: ./scripts/fetch-ytdlp.sh
+
+      - name: Fetch caption fonts
+        run: ./scripts/fetch-fonts.sh
+
+      - name: Verify bundled binaries
+        run: |
+          test -x resources/bin/whisper-cli || { echo "::error::whisper-cli missing"; exit 1; }
+          test -x resources/bin/chopshop-vision || { echo "::error::chopshop-vision missing"; exit 1; }
+          test -x resources/bin/yt-dlp || { echo "::error::yt-dlp missing"; exit 1; }
+
+      # A test build is only made from work that passes every check.
+      - name: Typecheck and test
+        run: |
+          npm run typecheck
+          npm test
+
+      # Signed and notarized when the release secrets exist, exactly as a
+      # release would be; unsigned otherwise. Never published.
+      - name: Build the app without publishing it
+        timeout-minutes: 45
+        env:
+          CERT_B64: ${{ secrets.CSC_LINK }}
+          CERT_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          extra=""
+          if [ -n "$CERT_B64" ]; then
+            export CSC_LINK="$CERT_B64"
+            export CSC_KEY_PASSWORD="$CERT_PASSWORD"
+            if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+              extra="-c.mac.notarize=true"
+            fi
+          else
+            echo "No certificate configured; building unsigned."
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npx electron-vite build
+          npx electron-builder --mac --publish never $extra
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cutalong-test-${{ github.run_number }}
+          path: release/*.dmg
+          if-no-files-found: error
+          retention-days: 14
