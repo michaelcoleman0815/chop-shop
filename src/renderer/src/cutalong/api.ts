@@ -13,6 +13,7 @@ export type CutalongApi = Pick<
   | 'pathForFile'
   | 'openVideo'
   | 'prepareCut'
+  | 'planSession'
   | 'renderCut'
   | 'onCutProgress'
   | 'planEdit'

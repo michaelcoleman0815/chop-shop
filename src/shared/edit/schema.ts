@@ -30,7 +30,13 @@ export const SourceSchema = z.object({
   durationSec: z.number().nonnegative(),
   width: z.number().int().nonnegative(),
   height: z.number().int().nonnegative(),
-  fps: z.number().positive()
+  fps: z.number().positive(),
+  /**
+   * Sound from another recording of the same take, such as a computer or a
+   * recorder with the better microphone, lined up by ear: the moment at this
+   * source's time t is at t + offsetSec in that recording.
+   */
+  audio: z.object({ path: z.string().min(1), offsetSec: z.number() }).nullable().optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 

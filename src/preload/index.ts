@@ -39,9 +39,35 @@ const api = {
   // Cutalong: footage into an edit document, documents into video, videos
   // someone likes into a style, and the saved slash commands.
   prepareCut: (
-    path: string
-  ): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; warning: string | null } | { ok: false; message: string }> =>
-    ipcRenderer.invoke('cut:prepare', path),
+    input: string | { paths: string[]; soundPaths?: string[] }
+  ): Promise<
+    | {
+        ok: true
+        doc: EditDoc
+        mediaUrl: string
+        warning: string | null
+        lined?: { name: string; sound: string; offsetSec: number }[]
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:prepare', input),
+  /** Which dropped file is the talking, which has the better sound, and which is B-roll. */
+  planSession: (req: {
+    request: string
+    paths: string[]
+  }): Promise<
+    | {
+        ok: true
+        roles: {
+          talking: string[]
+          sound: string[]
+          broll: string[]
+          ignored: string[]
+          reply: string
+          by: 'claude' | 'measurement'
+        }
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('cut:session', req),
   renderCut: (req: {
     doc: EditDoc
     quality: 'preview' | 'final'

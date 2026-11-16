@@ -14,7 +14,9 @@ import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
 import { loudnessEnvelope } from './audio-envelope'
-import { snapWords } from '../shared/audio/snap'
+import { snapWords, type Envelope } from '../shared/audio/snap'
+import { estimateOffset, shiftEnvelope, trustworthy, type Offset } from '../shared/audio/offset'
+import { assignRoles, factsFor, type FileFacts } from './session'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
 import { planEditLocally } from './planner-local'
@@ -30,6 +32,7 @@ import {
   resolveCut,
   wordsFromTranscript,
   type Note,
+  type Source,
   type Word
 } from '../shared/edit'
 import { BUILT_IN_PRESETS, describeStyle, suggestCommandName } from '../shared/presets'
@@ -59,43 +62,152 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
 const SPEECH_SAMPLE_SEC = 180
 
 export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: string) => string }): void {
-  ipcMain.handle('cut:prepare', async (e, path: string) => {
+  /**
+   * Turns footage into an edit. Several talking clips become one edit in the
+   * order they were shot. When a separate recording has the better sound,
+   * each clip is lined up with it by ear, and the words, the preview and the
+   * export all use that sound.
+   */
+  ipcMain.handle('cut:prepare', async (e, input: string | { paths: string[]; soundPaths?: string[] }) => {
+    const paths = typeof input === 'string' ? [input] : input.paths
+    const soundPaths = typeof input === 'string' ? [] : (input.soundPaths ?? [])
     const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
     try {
-      progress('Reading the footage', 1)
-      const meta = await probe(path)
-      const source = {
-        id: 's1',
-        path,
-        durationSec: meta.durationSec,
-        width: meta.width,
-        height: meta.height,
-        fps: meta.fps > 0 ? meta.fps : 30
-      }
-      let words: Word[] = []
-      let warning: string | null = null
-      let heard: string | null = null
-      try {
-        const transcript = await transcriptFor(path, meta.durationSec, progress, (sentence) => (heard = sentence))
-        words = wordsFromTranscript(transcript.words, source.id)
-        // Listen to the recording so every word's edges sit on its sound,
-        // which is what lets cuts land tight without clipping a consonant.
-        if (words.length > 0) {
-          progress('Listening for the cuts', 97)
+      if (paths.length === 0) return { ok: false as const, message: 'There is no footage to cut.' }
+      const sources: Source[] = []
+      const words: Word[] = []
+      const notes: string[] = []
+      const lined: { name: string; sound: string; offsetSec: number }[] = []
+      const soundEnv = new Map<string, Envelope>()
+      const soundWords = new Map<string, Transcript['words']>()
+      const soundLength = new Map<string, number>()
+
+      for (const [i, path] of paths.entries()) {
+        const name = basename(path, extname(path))
+        const of = paths.length > 1 ? ` (${i + 1} of ${paths.length})` : ''
+        // Each clip's share of the bar.
+        const step = (stage: string, within: number): void =>
+          progress(`${stage}${of}`, Math.min(99, Math.round(((i + within / 100) / paths.length) * 100)))
+        step(`Reading ${name}`, 1)
+        const meta = await probe(path)
+        const source: Source = {
+          id: `s${i + 1}`,
+          path,
+          durationSec: meta.durationSec,
+          width: meta.width,
+          height: meta.height,
+          fps: meta.fps > 0 ? meta.fps : 30,
+          audio: null
+        }
+        let own: Envelope | null = null
+
+        if (soundPaths.length > 0) {
+          step(`Lining up ${name} with your audio`, 5)
           try {
-            words = snapWords(words, await loudnessEnvelope(FFMPEG_PATH, path))
+            own = await loudnessEnvelope(FFMPEG_PATH, path)
+            let best: { path: string; offset: Offset } | null = null
+            for (const sp of soundPaths) {
+              if (!soundEnv.has(sp)) soundEnv.set(sp, await loudnessEnvelope(FFMPEG_PATH, sp))
+              const offset = estimateOffset(own, soundEnv.get(sp) as Envelope)
+              if (trustworthy(offset) && (!best || offset.confidence > best.offset.confidence)) best = { path: sp, offset }
+            }
+            if (best) {
+              source.audio = { path: best.path, offsetSec: best.offset.offsetSec }
+              lined.push({ name, sound: basename(best.path), offsetSec: best.offset.offsetSec })
+            } else notes.push(`I couldn't line ${name} up with your audio, so it keeps its own sound.`)
           } catch (err) {
-            console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
+            notes.push(`I couldn't listen to ${name}, so it keeps its own sound. ${message(err)}`)
           }
         }
-      } catch (err) {
-        warning = `I couldn't transcribe it, so it is one long beat for now. ${message(err)}`
+
+        const prefix = i === 0 ? 'w' : `${source.id}w`
+        try {
+          if (source.audio) {
+            // The words come from the better sound, heard once for every clip it covers.
+            const sp = source.audio.path
+            if (!soundWords.has(sp)) {
+              if (!soundLength.has(sp)) soundLength.set(sp, (await probe(sp)).durationSec)
+              const heard = await transcriptFor(sp, soundLength.get(sp) as number, (stage, pct) =>
+                step(`${stage} ${basename(sp, extname(sp))}`, 10 + pct * 0.85)
+              )
+              soundWords.set(sp, heard.words)
+            }
+            const at = source.audio.offsetSec
+            const mine = (soundWords.get(sp) as Transcript['words'])
+              .filter((w) => w.startSec >= at - 0.05 && w.endSec <= at + source.durationSec + 0.05)
+              .map((w) => ({ ...w, startSec: w.startSec - at, endSec: w.endSec - at }))
+            let clip = wordsFromTranscript(mine, source.id, prefix)
+            if (clip.length > 0) {
+              step('Listening for the cuts', 97)
+              clip = snapWords(clip, shiftEnvelope(soundEnv.get(sp) as Envelope, at, source.durationSec))
+            }
+            words.push(...clip)
+          } else {
+            const transcript = await transcriptFor(
+              path,
+              source.durationSec,
+              (stage, pct) => step(stage, 10 + pct * 0.85),
+              (sentence) => notes.push(sentence)
+            )
+            let clip = wordsFromTranscript(transcript.words, source.id, prefix)
+            // Listen to the recording so every word's edges sit on its sound,
+            // which is what lets cuts land tight without clipping a consonant.
+            if (clip.length > 0) {
+              step('Listening for the cuts', 97)
+              try {
+                clip = snapWords(clip, own ?? (await loudnessEnvelope(FFMPEG_PATH, path)))
+              } catch (err) {
+                console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
+              }
+            }
+            words.push(...clip)
+          }
+        } catch (err) {
+          notes.push(`I couldn't transcribe ${name}, so it is one long beat for now. ${message(err)}`)
+        }
+        sources.push(source)
       }
-      const doc = createDoc({ id: randomUUID(), title: basename(path, extname(path)), source, words })
+
+      const doc = createDoc({
+        id: randomUUID(),
+        title: basename(paths[0], extname(paths[0])),
+        sources,
+        words
+      })
       progress('Ready', 100)
-      return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning: warning ?? heard }
+      return {
+        ok: true as const,
+        doc,
+        mediaUrl: deps.mediaUrlFor(paths[0]),
+        warning: notes.length ? notes.join(' ') : null,
+        lined
+      }
     } catch (err) {
       progress('Failed', 0)
+      return { ok: false as const, message: message(err) }
+    }
+  })
+
+  /** Which file is which: measured, then read against what the person said. */
+  ipcMain.handle('cut:session', async (e, req: { request: string; paths: string[] }) => {
+    const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
+    try {
+      const facts: FileFacts[] = new Array(req.paths.length)
+      let done = 0
+      // A few at a time: a shoot can be dozens of files.
+      const queue = req.paths.map((p, i) => ({ p, i }))
+      const worker = async (): Promise<void> => {
+        for (let job = queue.shift(); job; job = queue.shift()) {
+          facts[job.i] = await factsFor(job.p)
+          done++
+          progress(`Looking through your footage (${done} of ${req.paths.length})`, Math.round((done / req.paths.length) * 90))
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(4, req.paths.length) }, worker))
+      progress('Working out which file is which', 95)
+      const roles = await assignRoles(req.request, facts)
+      return { ok: true as const, roles, facts }
+    } catch (err) {
       return { ok: false as const, message: message(err) }
     }
   })
@@ -258,7 +370,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   const tools = (docId: string): AssetTools => ({
     ffmpeg: FFMPEG_PATH,
     ytdlp: YTDLP_PATH(),
-    dir: join(app.getPath('videos'), 'Chop Shop', 'Assets', docId.replace(/[^\w-]/g, '') || 'loose'),
+    dir: join(app.getPath('videos'), 'Cutalong', 'Assets', docId.replace(/[^\w-]/g, '') || 'loose'),
     signInFrom: getSettings().videoSignIn ?? null
   })
   const needsYtdlp = (): void => {

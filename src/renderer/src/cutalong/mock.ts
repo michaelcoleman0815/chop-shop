@@ -110,7 +110,7 @@ export function createMockApi(): CutalongApi {
   let key: string | null = null
   const serviceKeys: Partial<Record<ServiceId, string>> = {}
   let settings: Settings = {
-    outputDir: '/Users/you/Movies/Chop Shop',
+    outputDir: '/Users/you/Movies/Cutalong',
     bufferSeconds: 60,
     grabShortcut: 'CommandOrControl+Shift+C',
     captureSourceId: null,
@@ -145,9 +145,41 @@ export function createMockApi(): CutalongApi {
     openVideo: async () => null,
     hasApiKey: async () => key !== null,
 
-    prepareCut: async (path: string) => {
-      await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Transcribing', 'Splitting into beats'])
-      return { ok: true as const, doc: fakeDoc(path), mediaUrl: '/sample.mp4', warning: null }
+    prepareCut: async (input) => {
+      const paths = typeof input === 'string' ? [input] : input.paths
+      const sound = typeof input === 'string' ? [] : (input.soundPaths ?? [])
+      await progress(listeners.cut, [
+        'Reading the footage',
+        ...(sound.length ? ['Lining up your audio'] : []),
+        'Transcribing',
+        'Transcribing',
+        'Listening for the cuts'
+      ])
+      const doc = fakeDoc(paths[0])
+      const lined = sound.length
+        ? [{ name: paths[0].split('/').pop()!.replace(/\.[^.]+$/, ''), sound: sound[0].split('/').pop()!, offsetSec: 3.42 }]
+        : []
+      if (sound.length) doc.sources[0] = { ...doc.sources[0], audio: { path: sound[0], offsetSec: 3.42 } }
+      return { ok: true as const, doc, mediaUrl: '/sample.mp4', warning: null, lined }
+    },
+    planSession: async ({ request, paths }) => {
+      await progress(listeners.cut, ['Looking through your footage', 'Working out which file is which'])
+      const name = (p: string): string => p.split('/').pop() as string
+      const sound = paths.filter((p) => /^\d{4}-\d{2}-\d{2}/.test(name(p)) && /audio|computer|screen/i.test(request))
+      const rest = paths.filter((p) => !sound.includes(p))
+      const talking = rest.slice(0, 1)
+      const broll = rest.slice(1)
+      return {
+        ok: true as const,
+        roles: {
+          talking,
+          sound,
+          broll,
+          ignored: [],
+          reply: `${talking.map(name).join(', ')} is the talking.${sound.length ? ` The sound comes from ${sound.map(name).join(', ')}.` : ''}${broll.length ? ` ${broll.map(name).join(', ')} ${broll.length === 1 ? 'is' : 'are'} B-roll.` : ''}`,
+          by: 'measurement' as const
+        }
+      }
     },
     renderCut: async ({ doc, quality }) => {
       await progress(listeners.cut, [quality === 'final' ? 'Exporting' : 'Rendering a preview'])
@@ -280,7 +312,7 @@ export function createMockApi(): CutalongApi {
         ok: true as const,
         asset: {
           kind: 'video' as const,
-          path: `/Users/you/Movies/Chop Shop/Assets/clip-${Date.now()}.mp4`,
+          path: `/Users/you/Movies/Cutalong/Assets/clip-${Date.now()}.mp4`,
           title: 'City at night, 4K',
           durationSec: 8,
           width: 1920,

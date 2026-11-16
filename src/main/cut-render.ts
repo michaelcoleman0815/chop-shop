@@ -37,6 +37,8 @@ export interface Segment {
   treatment: Treatment | null
   /** Cutaway footage for this stretch, when the beat shows one. */
   broll: { path: string; startSec: number } | null
+  /** Sound from another recording of the same take, lined up: startSec here is startSec + offsetSec there. */
+  audio?: { path: string; offsetSec: number } | null
 }
 
 export type Quality = 'preview' | 'final' | 'intermediate'
@@ -147,6 +149,7 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
       startSec: p.srcStart,
       durationSec: p.srcEnd - p.srcStart,
       hasAudio: source.hasAudio,
+      audio: source.audio ?? null,
       treatment: t,
       broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null
     }
@@ -217,7 +220,18 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // Every segment's audio is exactly as long as its piece: padded with
     // silence then trimmed, so the join never drifts out of sync.
     const shape = `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${fixed(s.durationSec)},asetpts=PTS-STARTPTS`
-    if (s.hasAudio) chains.push(`[${main}:a]${shape}[${a}]`)
+    if (s.audio) {
+      // The better sound, from its own recording. Where that recording starts
+      // after this piece does, the gap is silence rather than a shifted voice.
+      const from = s.startSec + s.audio.offsetSec
+      const lead = Math.max(0, -from)
+      const length = s.durationSec - lead
+      if (length > 0.01) {
+        const ext = input(s.audio.path, Math.max(0, from), length)
+        const delay = lead > 0 ? `adelay=${Math.round(lead * 1000)}:all=1,` : ''
+        chains.push(`[${ext}:a]${delay}${shape}[${a}]`)
+      } else chains.push(`anullsrc=r=48000:cl=stereo,${shape}[${a}]`)
+    } else if (s.hasAudio) chains.push(`[${main}:a]${shape}[${a}]`)
     else chains.push(`anullsrc=r=48000:cl=stereo,${shape}[${a}]`)
   })
 

@@ -12,7 +12,7 @@ import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, type Plan 
  * the rest returned as sentences so the person can see what did not happen.
  */
 
-const MODEL = 'claude-opus-5-5'
+export const MODEL = 'claude-opus-5-5'
 
 export type PlanEditResult =
   | {
