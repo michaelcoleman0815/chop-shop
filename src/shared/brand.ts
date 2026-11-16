@@ -7,7 +7,8 @@ import { describeStyle, StyleSpecSchema, type Preset, type StyleSpec } from './p
 
 /**
  * Your brand: what keeps every video yours. A name, a logo and its corner,
- * caption colours, a caption look, notes on how edits should sound, and the
+ * caption colours, a caption look, your products' logos for logo pops,
+ * notes on how edits should sound, and the
  * look learned from videos you have already made. It is stored on this
  * computer, and it becomes /brand, which new edits get automatically.
  */
@@ -58,6 +59,11 @@ export const BrandSchema = z.object({
     })
     .nullable(),
   captions: CaptionSpecSchema.partial(),
+  /** Logos of the creator's own products and channel, by name, for logo pops. Brands saved before had none. */
+  logos: z
+    .array(z.object({ name: z.string().trim().min(1).max(60), path: z.string().min(1) }))
+    .max(24)
+    .default([]),
   /** How edits should sound, in the person's words. The planner reads it. */
   voice: z.string(),
   /**
@@ -88,6 +94,7 @@ export const EMPTY_BRAND: Brand = {
   colors: { text: '#FFFFFF', accent: '#FFD84D' },
   logo: null,
   captions: {},
+  logos: [],
   voice: '',
   niche: '',
   products: [],

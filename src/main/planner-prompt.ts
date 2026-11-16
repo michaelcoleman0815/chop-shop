@@ -5,6 +5,7 @@ import {
   currentVersion,
   describeLook,
   indexWords,
+  LOOK_SETTINGS,
   NAMED_LOOKS,
   resolveCut,
   SFX_KINDS,
@@ -14,6 +15,8 @@ import {
   type Note
 } from '../shared/edit'
 import { chaptersOf, clock, describeCamera, describeSpeed, seconds } from '../shared/presets'
+import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from '../shared/motion'
+import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { ordinal } from '../shared/raw/takes'
 import { renderSound } from '../shared/audio/map'
@@ -58,30 +61,32 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"join","beat":"b4"}: join a beat with the one after it. Only when they sit together in the recording.
 - {"op":"insert","to":2,"beat":{"source":"s1","from":"w40","to":"w52"}}: bring words back as a new beat.
 - {"op":"treat","beats":["b2","b5"],"set":{"bw":true}}: set treatment fields. A bigWord set names exactly one beat.
-- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom.
+- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest; "preset":"clean" goes back to plain subtitles.
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
 - {"op":"aspect","aspect":"vertical"}: vertical, wide, square or original.
 - {"op":"loudness","lufs":-14}.
-- {"op":"transition","beats":["b4"],"kind":"dissolve","sec":0.5}: how a beat comes in from the one before. Kinds: dissolve, dip-to-black, dip-to-white, flash, whip-left, whip-right, push-left, push-right, push-up, push-down, slide-left, slide-right, slide-up, slide-down, wipe-left, wipe-right, wipe-up, wipe-down, smooth-left, smooth-right, smooth-up, smooth-down, zoom, circle-open, circle-close, clock, doors-open, pixelate, blur, squeeze. sec is optional (0.04 to 3); leave it out for the usual length. The first beat has nothing before it, so it cannot have one.
-- {"op":"transition","beats":["b4","b7"],"kind":"cut"}: back to a hard cut.
-- {"op":"fade","inSec":0.5,"outSec":1,"color":"black"}: fade the whole video in from, and out to, black or white. 0 turns that end off.
+- {"op":"transition","beats":["b4"],"kind":"dissolve","sec":0.5}: how a beat comes in from the one before. Kinds: dissolve, dip-to-black, dip-to-white, flash, whip-left, whip-right, push-left, push-right, push-up, push-down, slide-left, slide-right, slide-up, slide-down, wipe-left, wipe-right, wipe-up, wipe-down, smooth-left, smooth-right, smooth-up, smooth-down, zoom, circle-open, circle-close, clock, doors-open, pixelate, blur, squeeze. sec is 0.04 to 3, or 0 for the usual length. The first beat has nothing before it, so it cannot have one.
+- {"op":"transition","beats":["b4","b7"],"kind":"cut","sec":0}: back to a hard cut.
+- {"op":"fade","inSec":0.5,"outSec":1,"color":"black"}: fade the whole video in from, and out to, black or white. 0 turns that end off, and an end you are not changing keeps the length the settings give it.
 - {"op":"jcut","beats":["b5"],"sec":0.3}: a J cut into b5. Its sound starts on time but the picture before stays 0.3 s longer, so the next line is heard before it is seen. Coming back from B-roll to the speaker, this reads naturally.
 - {"op":"lcut","beats":["b5"],"sec":0.3}: an L cut into b5. Its picture comes in 0.3 s early, under the end of the sound before. Going into B-roll, the cutaway leads the words it shows.
 - {"op":"lcut","beats":["b5"],"sec":0}: picture and sound cut together again (also for jcut). A beat has a transition or a J or L cut, not both; setting one replaces the other.
-- {"op":"speed","beats":["b6"],"speed":2}: play a beat faster or slower, from 0.25 to 4; a voice keeps its pitch. On a beat that shows a cutaway this changes the cutaway, and the voice under it plays as recorded; add "of":"beat" to change the beat itself. Speed 1 plays it as recorded again.
-- {"op":"speed","beats":["b6"],"speed":0.5,"ramp":{"inSec":0.4,"outSec":0.4}}: a speed ramp, easing from full speed into 0.5 over 0.4 s and back to full speed over the last 0.4 s.
+- {"op":"speed","beats":["b6"],"speed":2,"ramp":{"inSec":0,"outSec":0},"of":""}: play a beat faster or slower, from 0.25 to 4; a voice keeps its pitch. "of":"" changes what the beat shows: its cutaway when it has one, otherwise the beat itself; "of":"beat" always changes the beat, "of":"cutaway" only its cutaway (a cutaway changing on its own leaves the voice under it as recorded). Speed 1 plays it as recorded again.
+- {"op":"speed","beats":["b6"],"speed":0.5,"ramp":{"inSec":0.4,"outSec":0.4},"of":""}: a speed ramp, easing from full speed into 0.5 over 0.4 s and back to full speed over the last 0.4 s. A ramp of 0 and 0 changes the speed at once.
 - {"op":"freeze","beat":"b6","word":"w40","sec":1}: hold the picture where w40 ends for 1 s while the sound waits; everything after starts 1 s later. sec 0 removes it.
-- {"op":"reverse","beats":["b6"],"on":true}: play a beat backwards, or the cutaway it shows. A beat played backwards has no captions. on false plays it forwards again.
-- {"op":"camera","beats":["b4"],"move":{"kind":"push-in"}}: a camera move over a beat, or over the cutaway it shows (a card stays still). Kinds: push-in, pull-out, drift (a slow creep in over the whole beat), ken-burns (a slow zoom and drift across a still), pan-left, pan-right, pan-up, pan-down, punch-in, shake, focus. "zoom" sets how close it gets, from 1 to 3. "to" centres the move on a point, as fractions of the picture: {"x":0.5,"y":0.3}.
-- {"op":"camera","beats":["b4"],"move":{"kind":"punch-in","word":"w31","zoom":1.2}}: a quick eased punch-in landing on a word in the beat; a shake can land on a word the same way.
-- {"op":"camera","beats":["b4"],"move":{"kind":"focus","regions":[{"at":0,"x":0.1,"y":0.2,"w":0.3,"h":0.25}]}}: glide in on a region of a screen recording at "at" seconds into the beat; x, y, w and h are fractions of the recording.
-- {"op":"camera","beats":["b4"],"move":null}: hold the frame still again.
+- {"op":"reverse","beats":["b6"],"on":true,"of":""}: play a beat backwards, or the cutaway it shows, "of" as for speed. A beat played backwards has no captions. on false plays it forwards again.
+- {"op":"camera","beats":["b4"],"kind":"push-in","zoom":0,"to":[],"word":"","sec":0,"regions":[],"of":""}: a camera move over a beat, or over the cutaway it shows (a card stays still), "of" as for speed. Kinds: push-in, pull-out, drift (a slow creep in over the whole beat), ken-burns (a slow zoom and drift across a still), pan-left, pan-right, pan-up, pan-down, punch-in, shake, focus. "zoom" sets how close it gets, from 1 to 3, or 0 for the usual. "to" centres the move on a point, as fractions of the picture: [0.5,0.3], or [] for the middle. "sec" is how long a punch-in, shake or focus glide takes, or 0 for the usual.
+- {"op":"camera","beats":["b4"],"kind":"punch-in","zoom":1.2,"to":[],"word":"w31","sec":0,"regions":[],"of":""}: a quick eased punch-in landing on a word in the beat; a shake can land on a word the same way. "word":"" starts it with the beat.
+- {"op":"camera","beats":["b4"],"kind":"focus","zoom":0,"to":[],"word":"","sec":0,"regions":[{"at":0,"x":0.1,"y":0.2,"w":0.3,"h":0.25}],"of":""}: glide in on a region of a screen recording at "at" seconds into the beat; x, y, w and h are fractions of the recording.
+- {"op":"camera","beats":["b4"],"kind":"none","zoom":0,"to":[],"word":"","sec":0,"regions":[],"of":""}: hold the frame still again.
 - {"op":"voice","polish":0.6}: clean up the voice: rumble, hiss and harsh esses out, levels evened, presence lifted. 0 leaves it as recorded, 1 is the most.
-- {"op":"music","set":{"levelDb":-15,"duckDb":12}}: change the music bed: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. Set "path" only to a file the request names. {"op":"music","set":null} takes it out.
-- {"op":"look","set":{"name":"warm","temperature":0.4,"saturation":0.08,"contrast":0.05},"replace":true}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage; their settings: ${NAMED_LIST}. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1. Without "replace" the settings change the look already there; 0 takes one away. {"op":"look","set":null} takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
-- {"op":"sfx","beats":["b4"],"add":{"kind":"whoosh"}}: a sound effect, made here, on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12). {"op":"sfx","beats":["b4"],"add":null} takes a beat's sounds away. The person's own sound files are added with /sfx.
-- {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":null} takes them out.
+- {"op":"music","path":"","set":[{"key":"levelDb","value":-15},{"key":"duckDb","value":12}],"off":false}: change the music bed, naming only the settings that change: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. "path" stays "" unless the request names a file to use. "off":true takes the music out.
+- {"op":"look","name":"warm","set":[],"replace":true,"off":false}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage, with these settings: ${NAMED_LIST}. "name" starts from one of them, or stays "". "set" names only the settings that change: [{"key":"grain","value":0.2}]. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1; 0 takes one away. "replace":false changes the look already there, true starts afresh. "off":true takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
+- {"op":"sfx","beats":["b4"],"kind":"whoosh","word":"","gainDb":0}: a sound effect, made here, on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12), 0 for the usual. "kind":"none" takes a beat's sounds away. The person's own sound files are added with /sfx.
+- {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":[]} takes them out.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
+
+${graphicsGuide()}
 
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
@@ -105,6 +110,7 @@ A <sound> block, when present, lists stretches that are not speech (laughter, mu
 
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
+A <brand-logos> block names the creator's own logos: their products and channel. A logo pop shows one when a row's label is its name.
 
 ## How this creator edits
 A <creator-preferences> block, when present, lists what has been learned from how this creator edits: what they ask for again and again, undo, and keep, each with how often. Lean on it where the request leaves a choice open; it never overrides the request or the brand voice.
@@ -122,6 +128,31 @@ const TreatmentSet = z.object({
   /** Material by id; offerPlan turns it into the file and keeps it muted. */
   broll: z.object({ asset: z.string(), inSec: z.number() }).nullable().optional()
 })
+
+/** The graphics the planner can make: every built template but hand-built layers. */
+const GRAPHIC_KINDS = templates()
+  .map((t) => t.kind)
+  .filter((k) => k !== 'layers') as [string, ...string[]]
+
+// Made fresh for each op: shared schema objects come out as $refs in the JSON schema.
+const graphicSlots = () => ({
+  from: z.string(),
+  to: z.string(),
+  text: z.array(z.string()),
+  items: z.array(
+    z.object({ label: z.string(), value: z.string(), note: z.string(), mark: z.string(), at: z.string() })
+  ),
+  values: z.array(z.number()),
+  box: z.array(z.number()),
+  icon: z.string(),
+  style: z.string(),
+  place: z.string(),
+  color: z.string(),
+  fx: z.array(z.string())
+})
+
+/** The music bed's settings, as the planner names them. */
+const MUSIC_SETTINGS = ['levelDb', 'duckDb', 'inSec', 'fadeInSec', 'fadeOutSec'] as const
 
 export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('remove'), beats: z.array(z.string()) }),
@@ -142,7 +173,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
       on: z.boolean().optional(),
       wordsPerScreen: z.number().optional(),
       position: z.enum(['top', 'middle', 'chest', 'bottom']).optional(),
-      uppercase: z.boolean().optional()
+      uppercase: z.boolean().optional(),
+      preset: z.enum(['clean', 'hierarchy']).optional()
     })
   }),
   z.object({
@@ -151,99 +183,71 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   }),
   z.object({ op: z.literal('aspect'), aspect: z.enum(['vertical', 'wide', 'square', 'original']) }),
   z.object({ op: z.literal('loudness'), lufs: z.number().nullable() }),
+  // The editing ops fill every slot too, for the same limits: 0, '' or [] is
+  // the usual (fromPlannerOp turns them into the ops themselves), and settings
+  // that change one at a time are a list of the ones that change.
   z.object({
     op: z.literal('transition'),
     beats: z.array(z.string()),
     kind: z.enum(['cut', ...TRANSITION_KINDS]),
-    sec: z.number().optional()
+    sec: z.number()
   }),
-  z.object({
-    op: z.literal('fade'),
-    inSec: z.number().optional(),
-    outSec: z.number().optional(),
-    color: z.enum(['black', 'white']).optional()
-  }),
+  z.object({ op: z.literal('fade'), inSec: z.number(), outSec: z.number(), color: z.enum(['black', 'white']) }),
   z.object({ op: z.literal('jcut'), beats: z.array(z.string()), sec: z.number() }),
   z.object({ op: z.literal('lcut'), beats: z.array(z.string()), sec: z.number() }),
   z.object({
     op: z.literal('speed'),
     beats: z.array(z.string()),
     speed: z.number(),
-    ramp: z.object({ inSec: z.number(), outSec: z.number() }).nullable().optional(),
-    of: z.enum(['beat', 'cutaway']).optional()
+    ramp: z.object({ inSec: z.number(), outSec: z.number() }),
+    of: z.enum(['', 'beat', 'cutaway'])
   }),
   z.object({ op: z.literal('freeze'), beat: z.string(), word: z.string(), sec: z.number() }),
   z.object({
     op: z.literal('reverse'),
     beats: z.array(z.string()),
     on: z.boolean(),
-    of: z.enum(['beat', 'cutaway']).optional()
+    of: z.enum(['', 'beat', 'cutaway'])
   }),
   z.object({ op: z.literal('voice'), polish: z.number() }),
   z.object({
     op: z.literal('sfx'),
     beats: z.array(z.string()),
-    add: z
-      .object({
-        kind: z.enum(SFX_KINDS),
-        word: z.string().optional(),
-        gainDb: z.number().optional()
-      })
-      .nullable()
+    kind: z.enum([...SFX_KINDS, 'none']),
+    word: z.string(),
+    gainDb: z.number()
   }),
-  z.object({
-    op: z.literal('chapters'),
-    set: z.array(z.object({ beat: z.string(), title: z.string() })).nullable()
-  }),
+  z.object({ op: z.literal('chapters'), set: z.array(z.object({ beat: z.string(), title: z.string() })) }),
   z.object({
     op: z.literal('look'),
-    set: z
-      .object({
-        name: z.string().optional(),
-        exposure: z.number().optional(),
-        contrast: z.number().optional(),
-        saturation: z.number().optional(),
-        temperature: z.number().optional(),
-        tint: z.number().optional(),
-        lift: z.number().optional(),
-        sharpen: z.number().optional(),
-        vignette: z.number().optional(),
-        grain: z.number().optional()
-      })
-      .nullable(),
-    replace: z.boolean().optional()
+    name: z.enum(['', ...Object.keys(NAMED_LOOKS)]),
+    set: z.array(z.object({ key: z.enum(LOOK_SETTINGS), value: z.number() })),
+    replace: z.boolean(),
+    off: z.boolean()
   }),
   z.object({
     op: z.literal('music'),
-    set: z
-      .object({
-        path: z.string().optional(),
-        levelDb: z.number().optional(),
-        duckDb: z.number().optional(),
-        inSec: z.number().optional(),
-        fadeInSec: z.number().optional(),
-        fadeOutSec: z.number().optional()
-      })
-      .nullable()
+    path: z.string(),
+    set: z.array(z.object({ key: z.enum(MUSIC_SETTINGS), value: z.number() })),
+    off: z.boolean()
   }),
   z.object({
     op: z.literal('camera'),
     beats: z.array(z.string()),
-    move: z
-      .object({
-        kind: z.enum(CAMERA_KINDS),
-        zoom: z.number().optional(),
-        from: z.object({ x: z.number(), y: z.number() }).optional(),
-        to: z.object({ x: z.number(), y: z.number() }).optional(),
-        word: z.string().optional(),
-        sec: z.number().optional(),
-        regions: z
-          .array(z.object({ at: z.number(), x: z.number(), y: z.number(), w: z.number(), h: z.number() }))
-          .optional()
-      })
-      .nullable(),
-    of: z.enum(['beat', 'cutaway']).optional()
-  })
+    kind: z.enum([...CAMERA_KINDS, 'none']),
+    zoom: z.number(),
+    to: z.array(z.number()),
+    word: z.string(),
+    sec: z.number(),
+    regions: z.array(z.object({ at: z.number(), x: z.number(), y: z.number(), w: z.number(), h: z.number() })),
+    of: z.enum(['', 'beat', 'cutaway'])
+  }),
+  // Graphics. Every slot is required, so the schema spends nothing from the
+  // structured-output limits on optional or union-typed parameters; an empty
+  // slot means the template's default (or, in an update, no change).
+  z.object({ op: z.literal('motion-add'), kind: z.enum(GRAPHIC_KINDS), ...graphicSlots() }),
+  z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
+  z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) })
 ])
 
 export const PlanSchema = z.object({
@@ -260,6 +264,61 @@ export const PlanSchema = z.object({
   brollWanted: z.array(z.object({ beat: z.string(), search: z.string() })).optional()
 })
 export type Plan = z.infer<typeof PlanSchema>
+export type PlannerOp = z.infer<typeof PlannerOpSchema>
+
+/** Settings named one at a time, as the fields of a change. */
+const fieldsOf = (set: { key: string; value: number }[]): Record<string, number> =>
+  Object.fromEntries(set.map((s) => [s.key, s.value]))
+
+/**
+ * An op as the planner writes it, as the edit takes it: the usual 0, '' and []
+ * left out, settings named one at a time turned into fields, and "none" or
+ * off taking a thing away. Everything else is the op as it is, and applyOps
+ * checks each one against the real op schema.
+ */
+export function fromPlannerOp(op: PlannerOp): unknown {
+  const of = 'of' in op && op.of ? { of: op.of } : {}
+  switch (op.op) {
+    case 'transition':
+      return { op: op.op, beats: op.beats, kind: op.kind, ...(op.sec > 0 ? { sec: op.sec } : {}) }
+    case 'speed': {
+      const eased = op.ramp.inSec > 0 || op.ramp.outSec > 0
+      return { op: op.op, beats: op.beats, speed: op.speed, ramp: eased ? op.ramp : null, ...of }
+    }
+    case 'reverse':
+      return { op: op.op, beats: op.beats, on: op.on, ...of }
+    case 'sfx': {
+      if (op.kind === 'none') return { op: op.op, beats: op.beats, add: null }
+      const add = { kind: op.kind, ...(op.word ? { word: op.word } : {}), ...(op.gainDb ? { gainDb: op.gainDb } : {}) }
+      return { op: op.op, beats: op.beats, add }
+    }
+    case 'chapters':
+      return { op: op.op, set: op.set.length > 0 ? op.set : null }
+    case 'look': {
+      if (op.off) return { op: op.op, set: null }
+      // A named look comes with its own settings; what the planner names goes over them.
+      const named = op.name ? NAMED_LOOKS[op.name]?.look : undefined
+      return { op: op.op, set: { ...named, ...fieldsOf(op.set) }, ...(op.replace ? { replace: true } : {}) }
+    }
+    case 'music':
+      if (op.off) return { op: op.op, set: null }
+      return { op: op.op, set: { ...(op.path ? { path: op.path } : {}), ...fieldsOf(op.set) } }
+    case 'camera': {
+      if (op.kind === 'none') return { op: op.op, beats: op.beats, move: null, ...of }
+      const move = {
+        kind: op.kind,
+        ...(op.zoom > 0 ? { zoom: op.zoom } : {}),
+        ...(op.to.length >= 2 ? { to: { x: op.to[0], y: op.to[1] } } : {}),
+        ...(op.word ? { word: op.word } : {}),
+        ...(op.sec > 0 ? { sec: op.sec } : {}),
+        ...(op.regions.length > 0 ? { regions: op.regions } : {})
+      }
+      return { op: op.op, beats: op.beats, move, ...of }
+    }
+    default:
+      return op
+  }
+}
 
 const fileName = (path: string): string => path.split(/[\\/]/).pop() ?? path
 
@@ -342,7 +401,8 @@ export function renderRequest(
   request: string,
   notes: Note[],
   voice = '',
-  preferences: string[] = []
+  preferences: string[] = [],
+  logos: string[] = []
 ): string {
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
@@ -358,7 +418,7 @@ export function renderRequest(
     `runs ${clock(resolved.durationSec)}`,
     `aspect ${cut.aspect}`,
     cut.captions.on
-      ? `captions ${cut.captions.wordsPerScreen} at a time, ${cut.captions.position}${cut.captions.uppercase ? ', upper case' : ''}`
+      ? `captions ${cut.captions.wordsPerScreen} at a time, ${cut.captions.position}${cut.captions.uppercase ? ', upper case' : ''}${drawsCaptions(cut.captions) ? `, ${cut.captions.preset}` : ''}`
       : 'captions off',
     cut.tighten
       ? `pauses over ${cut.tighten.maxGapSec} s cut${cut.tighten.fillers ? ', fillers cut' : ''}`
@@ -423,6 +483,8 @@ export function renderRequest(
   })
 
   const parts = [`<cut ${settings.join('; ')}>`, ...beats, '</cut>']
+  const graphics = graphicsLines(cut, resolved, doc.words)
+  if (graphics.length > 0) parts.push('<graphics>', ...graphics, '</graphics>')
   if (doc.assets.length > 0) {
     // Where each piece already shows, so the planner neither repeats nor forgets one.
     const shows = new Map<string, string[]>()
@@ -430,13 +492,18 @@ export function renderRequest(
       const id = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
       if (id) shows.set(id, [...(shows.get(id) ?? []), beat.id])
     }
+    // A picture a graphic shows is shown by that graphic.
+    for (const m of cut.motion ?? [])
+      for (const id of template(m.kind)?.pictures?.(m) ?? []) shows.set(id, [...(shows.get(id) ?? []), m.id])
     parts.push('<material>')
     for (const a of doc.assets) {
       const size = a.width && a.height ? ` ${a.width}x${a.height}` : ''
       const length = a.durationSec ? `, ${a.durationSec.toFixed(1)} s` : ''
       const where = shows.get(a.id)
+      // A picture far taller than wide is a page: it goes in a screenshot graphic, not a cutaway.
+      const page = a.kind === 'image' && a.width && a.height && a.height > a.width * 1.6 ? ', a page' : ''
       parts.push(
-        `${a.id} ${a.kind}${size}${length}: ${a.title}${where ? ` | shown on ${where.join(' ')}` : ' | not in the cut yet'}`
+        `${a.id} ${a.kind}${size}${length}${page}: ${a.title}${where ? ` | shown on ${where.join(' ')}` : ' | not in the cut yet'}`
       )
     }
     parts.push('</material>')
@@ -455,6 +522,8 @@ export function renderRequest(
   }
   // The creator's own words about how their edits should feel.
   if (voice.trim()) parts.push(`<brand-voice>\n${voice.trim()}\n</brand-voice>`)
+  const own = logos.map((l) => l.trim()).filter(Boolean)
+  if (own.length) parts.push(`<brand-logos>\n${own.join('\n')}\n</brand-logos>`)
   // What has been learned from how they edit, strongest first, as short statements.
   const learned = preferences.map((p) => p.trim()).filter(Boolean)
   if (learned.length > 0)
@@ -464,4 +533,23 @@ export function renderRequest(
   if (request.trim()) parts.push(`<request>\n${request.trim()}\n</request>`)
   else parts.push('Carry out the notes.')
   return parts.join('\n')
+}
+
+/**
+ * Icons the model names that Lucide does not have become the closest one it
+ * does, or none, so a graphic never waits on an icon that cannot be drawn.
+ */
+export async function withRealIcons<T>(ops: T[]): Promise<T[]> {
+  const named = (o: T): string => {
+    const icon = (o as { icon?: unknown }).icon
+    return typeof icon === 'string' ? icon.trim() : ''
+  }
+  if (!ops.some((o) => named(o) && named(o) !== 'none')) return ops
+  const mod = await import('lucide-static/tags.json')
+  const tags = (mod.default ?? mod) as unknown as Record<string, string[]>
+  return ops.map((o) => {
+    const icon = named(o)
+    if (!icon || icon === 'none' || tags[icon]) return o
+    return { ...o, icon: searchIcons(icon, tags, 1)[0] ?? '' }
+  })
 }

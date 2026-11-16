@@ -155,12 +155,21 @@ export interface LogoMark {
   opacity: number
 }
 
+/** Motion graphics drawn by motion-render.ts: a file with alpha, placed at an output time. */
+export interface OverlaySpan {
+  path: string
+  startSec: number
+  durationSec: number
+}
+
 export interface GraphOptions {
   width: number
   height: number
   fps: number
   /** Drawn over everything, captions included. */
   logo?: LogoMark | null
+  /** Motion graphics, over the captions and under the logo. */
+  overlays?: OverlaySpan[] | null
   /** An ASS file to burn in over the joined picture. */
   assPath: string | null
   fontsDir: string | null
@@ -749,6 +758,18 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${vOut}]subtitles='${filterPath(opts.assPath)}'${fonts}[vsub]`)
     vOut = 'vsub'
   }
+  // ---- Motion graphics (src/main/motion-render.ts) ----
+  // Each overlay is a short file with alpha covering one stretch of output
+  // time. It is shifted to its start and laid over the picture; outside its
+  // stretch the picture passes through untouched.
+  for (const [i, o] of (opts.overlays ?? []).entries()) {
+    inputs.push('-i', o.path)
+    const k = next++
+    chains.push(`[${k}:v]setpts=PTS-STARTPTS+${fixed(o.startSec)}/TB[mo${i}]`)
+    chains.push(`[${vOut}][mo${i}]overlay=0:0:eof_action=pass[vmo${i}]`)
+    vOut = `vmo${i}`
+  }
+  // ---- end of motion graphics ----
   if (opts.logo) {
     // The logo is an image looped for the whole video, a seventh of the frame
     // wide, set in from its corner by about a twentieth.
@@ -969,8 +990,15 @@ export interface RenderCutOptions {
   signal?: AbortSignal
   /** The person's brand: caption colours and a logo in a corner. */
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
+  /** Motion graphics from renderCutMotion, laid over the joined picture in the last pass. */
+  overlays?: OverlaySpan[] | null
   /** Where the built-in sound effects are kept once made; the work folder when absent. */
   sfxDir?: string
+  /**
+   * The words the subtitles show, when graphics hold some back (subtitlePass);
+   * every word when absent. The music still dips and sounds still land on all of them.
+   */
+  captionWords?: Resolved['words']
 }
 
 /**
@@ -1162,8 +1190,9 @@ export async function renderCut(
   await fs.mkdir(opts.workDir, { recursive: true })
 
   let assPath: string | null = null
-  if (cut.captions.on && resolved.words.length > 0) {
-    const words: TranscriptWord[] = resolved.words.map((w) => ({
+  const shown = opts.captionWords ?? resolved.words
+  if (cut.captions.on && shown.length > 0) {
+    const words: TranscriptWord[] = shown.map((w) => ({
       text: w.text,
       startSec: w.outStart,
       endSec: w.outEnd
@@ -1188,7 +1217,8 @@ export async function renderCut(
     sfx: await sfxFor(cut, resolved, opts.ffmpeg, opts.sfxDir ?? join(opts.workDir, 'sfx')),
     quality,
     outputPath: opts.outputPath,
-    logo: opts.brand?.logo ?? null
+    logo: opts.brand?.logo ?? null,
+    overlays: opts.overlays ?? null
   }
   const maxInputs = opts.maxInputs ?? 24
   const inputsNeeded = segments.reduce((n, s) => n + inputsFor(s), 0)

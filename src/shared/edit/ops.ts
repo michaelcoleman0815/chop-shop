@@ -1,3 +1,4 @@
+import { addMotion, removeMotion, updateMotion, type MotionOpContext, type MotionResult } from '../motion/apply'
 import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
 import { mergeLook } from './look'
 import type { Sfx } from './sfx'
@@ -30,6 +31,8 @@ export class OpError extends Error {}
 export interface OpContext {
   words: Word[]
   sources: Source[]
+  /** The edit's material, so graphics that show a picture can check it is there. */
+  assets?: { id: string; kind: string }[]
 }
 
 export interface OpsResult {
@@ -41,10 +44,16 @@ export interface OpsResult {
 interface Ctx {
   index: WordIndex
   sources: Map<string, Source>
+  /** Picture asset ids, or null when the caller did not say. */
+  pictures: Set<string> | null
 }
 
 function makeCtx(ctx: OpContext): Ctx {
-  return { index: indexWords(ctx.words), sources: new Map(ctx.sources.map((s) => [s.id, s])) }
+  return {
+    index: indexWords(ctx.words),
+    sources: new Map(ctx.sources.map((s) => [s.id, s])),
+    pictures: ctx.assets ? new Set(ctx.assets.filter((a) => a.kind === 'image').map((a) => a.id)) : null
+  }
 }
 
 export function applyOps(cut: Cut, ops: unknown[], context: OpContext): OpsResult {
@@ -444,7 +453,33 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       const fade = { inSec: op.inSec ?? was.inSec, outSec: op.outSec ?? was.outSec, color: op.color ?? was.color }
       return { ...cut, fade: fade.inSec > 0 || fade.outSec > 0 ? fade : null }
     }
+
+    // Graphics over the picture. The checks and the merging live in shared/motion.
+    case 'motion-add': {
+      const { op: _op, ...call } = op
+      return motionCut(addMotion(cut, call, motionContext(cut, ctx)))
+    }
+    case 'motion-update': {
+      const { op: _op, id, ...change } = op
+      return motionCut(updateMotion(cut, id, change, motionContext(cut, ctx)))
+    }
+    case 'motion-remove':
+      return motionCut(removeMotion(cut, op.ids))
   }
+}
+
+function motionContext(cut: Cut, ctx: Ctx): MotionOpContext {
+  const pictures = ctx.pictures
+  return {
+    hasWord: (id) => ctx.index.pos.has(id),
+    hasBeat: (id) => cut.beats.some((b) => b.id === id),
+    ...(pictures ? { hasPicture: (id: string) => pictures.has(id) } : {})
+  }
+}
+
+function motionCut(result: MotionResult): Cut {
+  if (!result.ok) throw new OpError(result.reason)
+  return result.cut
 }
 
 /** How a bed was set to sit, kept when its track is swapped for another. */
@@ -551,6 +586,11 @@ export function checkCut(cut: Cut, context: OpContext): string[] {
     }
     const big = beat.treatment.bigWord
     if (big !== null && !ctx.index.pos.has(big)) problems.push(`${beat.id}'s big word ${big} does not exist.`)
+  }
+  const graphics = new Set<string>()
+  for (const m of cut.motion ?? []) {
+    if (graphics.has(m.id)) problems.push(`Graphic ${m.id} appears twice.`)
+    graphics.add(m.id)
   }
   return problems
 }

@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'child_process'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -178,6 +178,44 @@ describe.skipIf(!FFMPEG)('sound effects', () => {
       )?.[1]
     )
     expect(Math.abs(peak + 7)).toBeLessThan(0.8)
+  })
+
+  it('keeps a word’s sound where graphics hold the word out of the subtitles', async () => {
+    // As subtitlePass leaves it when a card covers the third sentence: its words out of the subtitles only.
+    const word = doc.words[9]
+    const r = applyOps(
+      currentCut(doc),
+      [
+        { op: 'aspect', aspect: 'original' },
+        { op: 'loudness', lufs: null },
+        { op: 'sfx', beats: ['b3'], add: { kind: 'pop', word: word.id } }
+      ],
+      { words: doc.words, sources: doc.sources }
+    )
+    expect(r.rejected).toEqual([])
+    const resolved = resolveCut(r.cut, doc.words, doc.sources)
+    const card = resolved.beats[2]
+    const shown = resolved.words.filter((w) => w.beat !== card.id)
+    const workDir = join(dir, 'work-held')
+    const out = await renderCut(r.cut, resolved, sources, {
+      ffmpeg,
+      outputPath: join(dir, 'held.mp4'),
+      workDir,
+      sfxDir: join(dir, 'sfx'),
+      quality: 'final',
+      captionWords: shown
+    })
+    const wordAt = resolved.words.find((w) => w.id === word.id)!.outStart
+    const found = onsets(ffmpeg, out, -25, 0.05)
+    expect(Math.min(...found.map((f) => Math.abs(f - wordAt)))).toBeLessThan(0.01)
+    // The subtitles run before and after the card, and none while it holds the screen.
+    const times = [
+      ...readFileSync(join(workDir, 'captions.ass'), 'utf8').matchAll(/^Dialogue: \d+,([\d:.]+),([\d:.]+)/gm)
+    ].map((m) => m.slice(1, 3).map((t) => t.split(':').reduce((sum, part) => sum * 60 + Number(part), 0)))
+    expect(times.length).toBeGreaterThan(0)
+    expect(times.some(([from]) => from < card.outStart)).toBe(true)
+    expect(times.some(([from]) => from >= card.outEnd)).toBe(true)
+    expect(times.filter(([from, until]) => until > card.outStart + 0.02 && from < card.outEnd - 0.02)).toEqual([])
   })
 
   it('names a missing sound file in a sentence', async () => {

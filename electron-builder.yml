@@ -11,10 +11,12 @@ files:
   - package.json
   - '!**/{.eslintrc,.editorconfig,.prettierrc,tsconfig*.json}'
 
-# The ffmpeg/ffprobe binaries cannot be executed from inside app.asar.
+# The ffmpeg/ffprobe binaries cannot be executed from inside app.asar, and
+# Skia's native module (motion graphics in the export) cannot load from it.
 asarUnpack:
   - '**/node_modules/ffmpeg-static/**'
   - '**/node_modules/@ffprobe-installer/**'
+  - '**/node_modules/@napi-rs/canvas*/**'
 
 extraResources:
   - from: resources/bin

@@ -72,6 +72,16 @@ jobs:
           npx electron-vite build
           npx electron-builder --mac --publish never -c.mac.identity=-
 
+      # Graphics are drawn in the export by a native module. It must be in the
+      # app, outside the asar, and load there, or every export with a graphic
+      # would fail on the owner's Mac rather than here.
+      - name: Check the graphics engine is in the app and loads
+        run: |
+          APP=$(ls -d release/mac-arm64/*.app | head -1)
+          UNPACKED="$APP/Contents/Resources/app.asar.unpacked/node_modules/@napi-rs"
+          find "$UNPACKED" -name '*.node' | grep -q . || { echo "::error::the graphics engine is missing from the app"; exit 1; }
+          node -e "const c = require(require('path').resolve(process.argv[1], 'canvas')); const v = c.createCanvas(16, 16); v.getContext('2d').fillRect(0, 0, 16, 16); console.log('graphics engine loads in the packaged app:', v.toBuffer('image/png').length, 'byte PNG')" "$UNPACKED"
+
       - uses: actions/upload-artifact@v4
         with:
           name: cutalong-test-${{ github.run_number }}

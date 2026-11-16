@@ -1,4 +1,6 @@
 import { isFiller } from '../fillers'
+import { motionCaptionLook } from '../motion/captions'
+import { motionPhrases } from '../motion/describe'
 import { applyOps } from '../edit/ops'
 import { pictureSpan, resolveCut, type Resolved, type ResolvedBeat } from '../edit/resolve'
 import { currentCut } from '../edit/doc'
@@ -497,7 +499,9 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
           : 'pauses are back as recorded'
       )
     } else if (o.op === 'captions') {
+      const look = o.set.on === false ? null : motionCaptionLook(o.set.preset)
       if (o.set.on === false) said.push('captions are off')
+      else if (look) said.push(look.phrase)
       else if (o.set.wordsPerScreen) {
         const n = o.set.wordsPerScreen
         said.push(
@@ -561,6 +565,7 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
   if (bw > 0) said.push(`${count(bw, 'cutaway')} ${bw === 1 ? 'goes' : 'go'} black and white`)
   if (removed > 0) said.push(`${count(removed, 'beat')} ${removed === 1 ? 'is' : 'are'} gone`)
   if (struck > 0) said.push(`${count(struck, 'stretch', 'stretches')} of words ${struck === 1 ? 'is' : 'are'} cut`)
+  said.push(...motionPhrases(ops))
 
   let text = said.length > 0 ? `${sentenceList(said)}.` : ''
   text = text.charAt(0).toUpperCase() + text.slice(1)

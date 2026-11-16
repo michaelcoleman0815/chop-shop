@@ -15,6 +15,7 @@ import {
   TransitionSchema
 } from './transitions'
 import { AudioMapSchema } from '../audio/map'
+import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 import { MouthModeSchema } from '../vision/mode'
 
 /**
@@ -173,7 +174,7 @@ export const CaptionSpecSchema = z.object({
   /** Words on screen at once. Two reads fastest on a phone. */
   wordsPerScreen: z.number().int().min(1).max(8),
   position: z.enum(CAPTION_POSITIONS),
-  /** A caption look from shared/caption-presets. */
+  /** A caption look from shared/caption-presets, or one the graphics draw (shared/motion/captions). */
   preset: z.string().min(1),
   uppercase: z.boolean()
 })
@@ -202,6 +203,8 @@ export const CutSchema = z.object({
   aspect: AspectSchema,
   /** Integrated loudness the master is set to, in LUFS. Null leaves the audio as recorded. */
   loudness: z.number().min(-30).max(-6).nullable(),
+  /** Motion graphics over the picture, drawn in order. Cuts saved before graphics existed have none. */
+  motion: z.array(MotionItemSchema).default([]),
 
   // What follows was added after the first docs were saved, so every field is
   // optional: absent means the edit as it always was.
@@ -302,7 +305,9 @@ export const OpSchema = z.discriminatedUnion('op', [
     beats: z.array(beatId).min(1),
     move: CameraSchema.nullable(),
     of: z.enum(['beat', 'cutaway']).optional()
-  })
+  }),
+  // motion-add, motion-update, motion-remove: graphics over the picture (shared/motion).
+  ...MotionOpSchemas
 ])
 export type Op = z.infer<typeof OpSchema>
 export type OpName = Op['op']

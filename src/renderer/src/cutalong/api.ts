@@ -45,6 +45,7 @@ export type CutalongApi = Pick<
   | 'onAssetProgress'
   | 'searchVideos'
   | 'saveImageAsset'
+  | 'capturePage'
   | 'setVideoSignIn'
   | 'getBrand'
   | 'saveBrand'
