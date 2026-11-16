@@ -1,6 +1,5 @@
-import { app } from 'electron'
-import { promises as fs } from 'fs'
 import { join } from 'path'
+import { platform } from './platform'
 import { BUILT_IN_PRESETS, CAPTION_STYLE_PRESETS, PresetSchema, SKILL_PRESETS, type Preset } from '../shared/presets'
 
 /**
@@ -9,11 +8,11 @@ import { BUILT_IN_PRESETS, CAPTION_STYLE_PRESETS, PresetSchema, SKILL_PRESETS, t
  * rather than breaking the slash menu.
  */
 
-const file = (): string => join(app.getPath('userData'), 'presets.json')
+const file = (): string => join(platform().paths.userData(), 'presets.json')
 
 export async function savedPresets(): Promise<Preset[]> {
   try {
-    const raw: unknown = JSON.parse(await fs.readFile(file(), 'utf8'))
+    const raw: unknown = JSON.parse(await platform().files.readText(file()))
     if (!Array.isArray(raw)) return []
     return raw.flatMap((p) => {
       const r = PresetSchema.safeParse(p)
@@ -28,8 +27,8 @@ async function write(presets: Preset[]): Promise<void> {
   // Written beside the real file and renamed over it, so a crash mid-write
   // leaves the old list rather than half of a new one.
   const tmp = `${file()}.tmp`
-  await fs.writeFile(tmp, JSON.stringify(presets, null, 2))
-  await fs.rename(tmp, file())
+  await platform().files.writeText(tmp, JSON.stringify(presets, null, 2))
+  await platform().files.rename(tmp, file())
 }
 
 export async function savePreset(

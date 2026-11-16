@@ -1,8 +1,8 @@
 import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
-import { clampExcerpt, defaultExcerpt, isImagePath, type Range } from '../shared/assets'
-import type { Asset } from '../shared/edit'
+import { clampExcerpt, defaultExcerpt, type Range } from '../shared/assets'
+import type { NewAsset } from './asset-file'
 import { probeMedia } from './inspiration/measure'
 
 /**
@@ -15,7 +15,7 @@ import { probeMedia } from './inspiration/measure'
  * it. The binaries arrive as arguments, so the tests run without Electron.
  */
 
-export type NewAsset = Omit<Asset, 'id'>
+export type { NewAsset } from './asset-file'
 
 export interface AssetTools {
   ffmpeg: string
@@ -27,11 +27,8 @@ export interface AssetTools {
   signal?: AbortSignal
 }
 
-const AUDIO = /\.(mp3|m4a|aac|wav|aiff|flac|ogg)$/i
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 const MAX_HEIGHT = 1080
-
-const own = (): NewAsset['origin'] => ({ type: 'file', url: null, author: null, license: null, range: null })
 
 function run(bin: string, args: string[], signal?: AbortSignal, onLine?: (line: string) => void): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -73,24 +70,7 @@ export function explain(stderr: string): string | null {
   return last.replace(/^ERROR:\s*(\[[^\]]+\]\s*)?/, '')
 }
 
-/** A file already on disk. It is used where it is, like footage. */
-export async function importFile(path: string, tools: Pick<AssetTools, 'ffmpeg'>): Promise<NewAsset> {
-  const title = basename(path, extname(path))
-  if (AUDIO.test(path)) {
-    return { kind: 'audio', path, title, durationSec: null, width: null, height: null, origin: own() }
-  }
-  const info = await probeMedia(tools.ffmpeg, path)
-  const image = isImagePath(path)
-  return {
-    kind: image ? 'image' : 'video',
-    path,
-    title,
-    durationSec: image ? null : info.durationSec,
-    width: info.width,
-    height: info.height,
-    origin: own()
-  }
-}
+export { importFile } from './asset-file'
 
 const IMAGE_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
