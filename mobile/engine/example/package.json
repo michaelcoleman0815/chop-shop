@@ -1,0 +1,21 @@
+{
+  "name": "cutalong-engine-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A minimal Capacitor app that runs the engine plugin's self-test on a phone, the Android emulator or the iPhone simulator.",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/ios": "8.6.2",
+    "cutalong-engine": "file:.."
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

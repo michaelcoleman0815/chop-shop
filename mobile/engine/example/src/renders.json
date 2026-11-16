@@ -1,0 +1,159 @@
+{
+  "about": "Renders the self-test runs on the phone, and make_media.py runs on the CI runner with its own ffmpeg (libx264 and libx265 for the hardware encoders) to record what each should come out as. {media}, {fonts}, {work} and {out} are folders; {h264} and {hevc} are the platform's hardware encoders. Samples are regions of the output, in its own pixels, whose mean colour is compared at time t.",
+  "renders": [
+    {
+      "name": "trim-scale-crop-pad",
+      "about": "A seek and trim on the input, scale, crop and pad, the hardware H.264 encoder at a bitrate with -pix_fmt, and aac",
+      "args": ["-hide_banner", "-y", "-ss", "2.2", "-t", "3", "-i", "{media}/h264_1080p.mp4", "-vf", "scale=1280:720,crop=1280:560:0:80,pad=1280:720:0:80:color=black", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "{out}/trim-scale-crop-pad.mp4"],
+      "output": "trim-scale-crop-pad.mp4",
+      "samples": [
+        { "t": 0.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 0.5, "x": 576, "y": 10, "w": 128, "h": 50 }
+      ]
+    },
+    {
+      "name": "xfade",
+      "about": "Two trimmed inputs joined with xfade and acrossfade",
+      "args": ["-hide_banner", "-y", "-ss", "0", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-ss", "4", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-filter_complex", "[0:v]settb=1/30,fps=30[a];[1:v]settb=1/30,fps=30[b];[a][b]xfade=transition=fade:duration=1:offset=1,format=yuv420p[v];[0:a][1:a]acrossfade=d=1[aud]", "-map", "[v]", "-map", "[aud]", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/xfade.mp4"],
+      "output": "xfade.mp4",
+      "samples": [
+        { "t": 0.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 2.6, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "zscale-hdr",
+      "about": "A 10-bit HLG recording to ordinary video through zscale and tonemap, the conversion src/main/intake.ts picks for HLG",
+      "args": ["-hide_banner", "-y", "-i", "{media}/hlg_10bit.mov", "-vf", "zscale=tin=arib-std-b67:pin=bt2020:min=bt2020nc:rin=tv:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p", "-c:v", "{h264}", "-b:v", "8M", "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-c:a", "aac", "{out}/zscale-hdr.mp4"],
+      "output": "zscale-hdr.mp4",
+      "tolerance": 24,
+      "samples": [
+        { "t": 0.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 2.5, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "lut3d",
+      "about": "A 3D LUT (.cube) that swaps red and blue",
+      "args": ["-hide_banner", "-y", "-ss", "0", "-t", "3", "-i", "{media}/h264_1080p.mp4", "-vf", "lut3d=file='{media}/grade.cube':interp=tetrahedral,format=yuv420p", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/lut3d.mp4"],
+      "output": "lut3d.mp4",
+      "samples": [
+        { "t": 0.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "captions",
+      "about": "The subtitles filter with fontsdir: the three caption faces bundled in resources/fonts, drawn by libass",
+      "args": ["-hide_banner", "-y", "-ss", "7", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-vf", "scale=1280:720,subtitles='{work}/three-fonts.ass':fontsdir='{fonts}'", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/captions.mp4"],
+      "output": "captions.mp4",
+      "files": { "three-fonts.ass": "[Script Info]\nScriptType: v4.00+\nWrapStyle: 0\nScaledBorderAndShadow: yes\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Chop,Archivo Black,120,&H00FFFFFF,&H0000FFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,6,0,2,100,100,80,1\nStyle: Big,Anton,140,&H0000FFFF,&H0000FFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,4,0,8,100,100,40,1\nStyle: Soft,Sora,90,&H00FF00FF,&H00FF00FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,4,0,5,100,100,40,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:00.00,0:00:05.00,Chop,,0,0,0,,HELLO WORLD\nDialogue: 0,0:00:00.00,0:00:05.00,Big,,0,0,0,,TOP LINE\nDialogue: 0,0:00:00.00,0:00:05.00,Soft,,0,0,0,,middle\n" },
+      "stderrIncludes": ["fontselect: (Archivo Black, 700, 0) -> ArchivoBlack-Regular", "fontselect: (Anton, 400, 0) -> Anton-Regular", "fontselect: (Sora, 400, 0) -> Sora-Regular"],
+      "samples": [
+        { "t": 0.5, "x": 280, "y": 545, "w": 720, "h": 80 },
+        { "t": 0.5, "x": 510, "y": 80, "w": 260, "h": 80 },
+        { "t": 0.5, "x": 540, "y": 340, "w": 200, "h": 40 },
+        { "t": 0.5, "x": 40, "y": 300, "w": 120, "h": 120 }
+      ]
+    },
+    {
+      "name": "overlay-png",
+      "about": "A PNG with alpha laid over the picture, as a logo is",
+      "args": ["-hide_banner", "-y", "-ss", "1", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-i", "{media}/logo.png", "-filter_complex", "[0:v][1:v]overlay=x=W-w-40:y=40,format=yuv420p[v]", "-map", "[v]", "-map", "0:a", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/overlay-png.mp4"],
+      "output": "overlay-png.mp4",
+      "samples": [
+        { "t": 0.5, "x": 1500, "y": 60, "w": 340, "h": 100 },
+        { "t": 0.5, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "audio-mix",
+      "about": "Speech over music: amix, sidechain ducking (sidechaincompress, as src/main/compose.ts ducks), atempo and loudnorm to -14 LUFS, to aac",
+      "args": ["-hide_banner", "-y", "-i", "{media}/speech.wav", "-stream_loop", "-1", "-i", "{media}/music.m4a", "-filter_complex", "[0:a]aresample=48000,asplit=2[sp][key];[1:a]aresample=48000,volume=-6dB[mus];[mus][key]sidechaincompress=threshold=0.02:ratio=12:attack=20:release=400[duck];[sp][duck]amix=inputs=2:duration=first:normalize=0,atempo=1.25,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[a]", "-map", "[a]", "-c:a", "aac", "-b:a", "160k", "{out}/audio-mix.m4a"],
+      "output": "audio-mix.m4a",
+      "loudness": true
+    },
+    {
+      "name": "encode-nv12",
+      "about": "The hardware H.264 encoder fed NV12 at 1080p, from filter sources",
+      "args": ["-hide_banner", "-y", "-filter_complex", "testsrc2=size=1920x1080:rate=30:duration=4[v];sine=frequency=440:duration=4:sample_rate=48000[a]", "-map", "[v]", "-map", "[a]", "-c:v", "{h264}", "-b:v", "10M", "-pix_fmt", "nv12", "-c:a", "aac", "{out}/encode-nv12.mp4"],
+      "output": "encode-nv12.mp4",
+      "tolerance": 30,
+      "samples": [
+        { "t": 2.0, "x": 0, "y": 0, "w": 1920, "h": 1080 }
+      ]
+    },
+    {
+      "name": "encode-hevc",
+      "about": "The hardware HEVC encoder, tagged hvc1 for Apple players",
+      "needs": "hevc",
+      "args": ["-hide_banner", "-y", "-ss", "0", "-t", "3", "-i", "{media}/h264_1080p.mp4", "-c:v", "{hevc}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-c:a", "aac", "{out}/encode-hevc.mp4"],
+      "output": "encode-hevc.mp4",
+      "samples": [
+        { "t": 1.5, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "portrait-rotation",
+      "about": "An iPhone-like HEVC portrait recording, turned upright by its rotation metadata",
+      "args": ["-hide_banner", "-y", "-i", "{media}/hevc_portrait.mov", "-vf", "scale=540:-2", "-c:v", "{h264}", "-b:v", "4M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/portrait-rotation.mp4"],
+      "output": "portrait-rotation.mp4",
+      "samples": [
+        { "t": 1.0, "x": 206, "y": 200, "w": 128, "h": 128 },
+        { "t": 1.0, "x": 206, "y": 640, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "still-webp",
+      "about": "A WebP picture decoded, scaled and written as PNG",
+      "args": ["-hide_banner", "-y", "-i", "{media}/still.webp", "-vf", "scale=320:-2", "-frames:v", "1", "-update", "1", "{out}/still-webp.png"],
+      "output": "still-webp.png",
+      "samples": [
+        { "t": 0, "x": 128, "y": 60, "w": 64, "h": 60 }
+      ]
+    },
+    {
+      "name": "still-avif",
+      "about": "An AVIF picture decoded by dav1d, written as PNG",
+      "args": ["-hide_banner", "-y", "-i", "{media}/still.avif", "-vf", "scale=320:-2", "-frames:v", "1", "-update", "1", "{out}/still-avif.png"],
+      "output": "still-avif.png",
+      "samples": [
+        { "t": 0, "x": 128, "y": 60, "w": 64, "h": 60 }
+      ]
+    },
+    {
+      "name": "still-png-to-webp",
+      "about": "A PNG picture written as WebP with libwebp",
+      "args": ["-hide_banner", "-y", "-i", "{media}/still.png", "-vf", "scale=640:-2", "-c:v", "libwebp", "-quality", "90", "-frames:v", "1", "{out}/still-png-to-webp.webp"],
+      "output": "still-png-to-webp.webp",
+      "samples": [
+        { "t": 0, "x": 256, "y": 120, "w": 128, "h": 120 }
+      ]
+    }
+  ],
+  "desktop": {
+    "desktop-cut": {
+      "samples": [
+        { "t": 0.05, "x": 440, "y": 700, "w": 200, "h": 200 },
+        { "t": 0.8, "x": 440, "y": 300, "w": 200, "h": 200 },
+        { "t": 2.7, "x": 440, "y": 300, "w": 200, "h": 200 },
+        { "t": 4.0, "x": 440, "y": 300, "w": 200, "h": 200 },
+        { "t": 2.0, "x": 890, "y": 60, "w": 120, "h": 40 },
+        { "t": 0.4, "x": 140, "y": 1150, "w": 800, "h": 160 }
+      ],
+      "loudness": true
+    },
+    "desktop-hdr-look": {
+      "tolerance": 24,
+      "samples": [
+        { "t": 0.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 2.4, "x": 576, "y": 296, "w": 128, "h": 128 }
+      ],
+      "loudness": true
+    }
+  }
+}

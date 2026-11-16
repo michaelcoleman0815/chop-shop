@@ -1,0 +1,7 @@
+# Made by build.mjs and native.mjs, never committed: the bundled web part
+# with its sample media, and the native projects (overlays in native/).
+/www/
+/android/
+/ios/
+/node_modules/
+__pycache__/

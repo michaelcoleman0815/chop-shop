@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Engine Test</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f5f2;
+        --fg: #1b1a1f;
+        --muted: #6b6870;
+        --line: #d9d6d0;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141317;
+          --fg: #ecebe8;
+          --muted: #9a97a0;
+          --line: #2c2a31;
+        }
+      }
+      body {
+        margin: 0;
+        padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.4 -apple-system, system-ui, sans-serif;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 16px 0 4px;
+      }
+      p {
+        margin: 0 0 12px;
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      button {
+        font: inherit;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--fg);
+      }
+      #log {
+        font: 12px/1.35 ui-monospace, Menlo, monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+        max-height: 60vh;
+        overflow: auto;
+      }
+      #stage video {
+        width: 160px;
+        margin-right: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Engine Test</h1>
+    <p>ffmpeg, ffprobe and whisper in-process. The self-test writes selftest.json to the app's documents.</p>
+    <div class="row">
+      <button id="run">Run the self-test</button>
+      <button id="pick-video">Pick videos</button>
+      <button id="pick-audio">Pick a sound</button>
+      <button id="save">Save to Photos</button>
+    </div>
+    <div id="stage"></div>
+    <pre id="log"></pre>
+    <script src="app.js"></script>
+  </body>
+</html>
