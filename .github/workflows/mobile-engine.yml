@@ -18,6 +18,11 @@ permissions:
 
 env:
   MESON_VERSION: 1.12.1
+  NODE_VERSION: 22
+  # The model the self-test transcribes with, as the desktop app downloads
+  # it (src/main/transcribe.ts), checked against whisper.cpp's models/README.md.
+  WHISPER_MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+  WHISPER_MODEL_SHA1: 137c40403d78fd54d454da0f9bd998f78703390c
 
 jobs:
   android:
@@ -106,7 +111,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: android-engine-${{ github.run_number }}
+          name: android-engine
           path: mobile/engine/android/src/main/jniLibs
           if-no-files-found: error
           retention-days: 14
@@ -190,7 +195,316 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ios-engine-${{ github.run_number }}
+          name: ios-engine
           path: ios-frameworks.tar.gz
           if-no-files-found: error
           retention-days: 14
+
+  # The self-test's sample media, made with the runner's ffmpeg (libx264,
+  # libx265, libwebp, an AV1 encoder, zscale), and what each test render
+  # should come out as, from running it here first. Nothing is committed.
+  media:
+    name: Sample media
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          ffmpeg -hide_banner -version | head -1
+
+      - name: Make the sample media and what each render should come out as
+        run: python3 mobile/engine/example/tools/make_media.py "$RUNNER_TEMP/media" .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: selftest-media
+          path: ${{ runner.temp }}/media
+          if-no-files-found: error
+          retention-days: 14
+
+  android-test:
+    name: Android self-test
+    needs: [android, media]
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      IMAGE: system-images;android-34;google_apis;x86_64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/engine/example/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-engine
+          path: mobile/engine/android/src/main/jniLibs
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: selftest-media
+          path: ${{ runner.temp }}/media
+
+      - name: Restore the whisper model
+        id: model
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/model
+          key: whisper-model-${{ runner.os }}-${{ env.WHISPER_MODEL_SHA1 }}
+
+      - name: Download the whisper model
+        if: steps.model.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/model"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/model/ggml-base.en.bin" "$WHISPER_MODEL_URL"
+
+      - name: Check the whisper model
+        run: echo "$WHISPER_MODEL_SHA1  $RUNNER_TEMP/model/ggml-base.en.bin" | sha1sum -c -
+
+      - name: Save the whisper model
+        if: steps.model.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/model
+          key: ${{ steps.model.outputs.cache-primary-key }}
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('mobile/engine/example/package-lock.json', 'mobile/engine/android/build.gradle') }}
+
+      - name: Build the test app
+        working-directory: mobile/engine/example
+        run: |
+          npm ci
+          node build.mjs "$RUNNER_TEMP/media"
+          node native.mjs android
+          cd android
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          ls -l app/build/outputs/apk/debug/
+
+      - name: Start the emulator
+        run: |
+          # The emulator needs KVM, which the runner has but does not open to it.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sdk="$ANDROID_HOME/cmdline-tools/latest/bin"
+          yes | "$sdk/sdkmanager" --install emulator platform-tools "$IMAGE" >/dev/null
+          echo no | "$sdk/avdmanager" create avd --force -n selftest -k "$IMAGE" -d pixel_6
+          nohup "$ANDROID_HOME/emulator/emulator" -avd selftest -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -camera-back none -camera-front none -memory 4096 -cores 4 -partition-size 8192 \
+            > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          adb wait-for-device
+          for _ in $(seq 1 120); do
+            [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break
+            sleep 5
+          done
+          if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != 1 ]; then
+            tail -n 50 "$RUNNER_TEMP/emulator.log"
+            echo "::error::the emulator did not boot"
+            exit 1
+          fi
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb shell settings put system screen_off_timeout 2147483647
+          adb shell svc power stayon true
+          adb shell input keyevent 82
+          echo "booted: $(adb shell getprop ro.build.fingerprint)"
+          echo "WebView: $(adb shell dumpsys webviewupdate | grep -m1 'Current WebView package')"
+          echo "CPU: $(adb shell grep -m1 -E '^flags' /proc/cpuinfo | tr ' ' '\n' | grep -xE 'sse4_2|avx|avx2|fma|f16c' | tr '\n' ' ')"
+
+      - name: Run the self-test on the emulator
+        run: |
+          status=0
+          SELFTEST_TIMEOUT=3600 mobile/engine/example/ci/android-selftest.sh \
+            mobile/engine/example/android/app/build/outputs/apk/debug/app-debug.apk \
+            "$RUNNER_TEMP/model/ggml-base.en.bin" "$RUNNER_TEMP/selftest" || status=$?
+          if [ -f "$RUNNER_TEMP/selftest/selftest.json" ]; then
+            python3 mobile/engine/example/tools/check_report.py "$RUNNER_TEMP/selftest/selftest.json" || status=1
+          fi
+          exit $status
+
+      - if: always()
+        run: cp "$RUNNER_TEMP/emulator.log" "$RUNNER_TEMP/selftest/" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-selftest
+          path: ${{ runner.temp }}/selftest
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-example-apk
+          path: mobile/engine/example/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  ios-test:
+    name: iOS self-test
+    needs: [ios, media]
+    runs-on: macos-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/engine/example/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ios-engine
+          path: ${{ runner.temp }}/engine
+
+      - name: Unpack the frameworks
+        run: tar -C mobile/engine/ios -xzf "$RUNNER_TEMP/engine/ios-frameworks.tar.gz"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: selftest-media
+          path: ${{ runner.temp }}/media
+
+      - name: Restore the whisper model
+        id: model
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/model
+          key: whisper-model-${{ runner.os }}-${{ env.WHISPER_MODEL_SHA1 }}
+
+      - name: Download the whisper model
+        if: steps.model.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/model"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/model/ggml-base.en.bin" "$WHISPER_MODEL_URL"
+
+      - name: Check the whisper model
+        run: echo "$WHISPER_MODEL_SHA1  $RUNNER_TEMP/model/ggml-base.en.bin" | shasum -a 1 -c -
+
+      - name: Save the whisper model
+        if: steps.model.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/model
+          key: ${{ steps.model.outputs.cache-primary-key }}
+
+      - name: Pick an iPhone simulator and boot it
+        id: sim
+        run: |
+          python3 mobile/engine/example/ci/pick-simulator.py > "$RUNNER_TEMP/sim.txt"
+          echo "udid=$(sed -n 1p "$RUNNER_TEMP/sim.txt")" >> "$GITHUB_OUTPUT"
+          echo "simulator: $(sed -n 2p "$RUNNER_TEMP/sim.txt")"
+          xcrun simctl boot "$(sed -n 1p "$RUNNER_TEMP/sim.txt")" || true
+
+      - name: Build the test app for the simulator
+        working-directory: mobile/engine/example
+        run: |
+          npm ci
+          node build.mjs "$RUNNER_TEMP/media"
+          node native.mjs ios
+          # Signed ad hoc, as Xcode signs for the simulator: no team, no profile.
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= -quiet build
+          app="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
+          ls "$app/Frameworks"
+          du -sh "$app"
+
+      - name: Run the self-test on the simulator
+        run: |
+          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+          status=0
+          SELFTEST_TIMEOUT=3600 mobile/engine/example/ci/ios-selftest.sh \
+            "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app" \
+            "$RUNNER_TEMP/model/ggml-base.en.bin" "$RUNNER_TEMP/selftest" "${{ steps.sim.outputs.udid }}" || status=$?
+          if [ -f "$RUNNER_TEMP/selftest/selftest.json" ]; then
+            python3 mobile/engine/example/tools/check_report.py "$RUNNER_TEMP/selftest/selftest.json" || status=1
+          fi
+          exit $status
+
+      - name: Pack the simulator app
+        if: always()
+        run: |
+          app="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
+          if [ -d "$app" ]; then ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Engine-Test-simulator.zip"; fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-selftest
+          path: ${{ runner.temp }}/selftest
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-example-app
+          path: ${{ runner.temp }}/Engine-Test-simulator.zip
+          retention-days: 14
+
+  # What each phone made, measured here with the same ffmpeg that made the
+  # expectations: length, sound, picture size and colours at known moments.
+  exports:
+    name: Exports measured on the runner
+    needs: [media, android-test, ios-test]
+    if: ${{ !cancelled() && needs.media.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: selftest-media
+          path: ${{ runner.temp }}/media
+
+      - uses: actions/download-artifact@v8
+        id: android
+        continue-on-error: true
+        with:
+          name: android-selftest
+          path: ${{ runner.temp }}/android
+
+      - uses: actions/download-artifact@v8
+        id: ios
+        continue-on-error: true
+        with:
+          name: ios-selftest
+          path: ${{ runner.temp }}/ios
+
+      - name: Android's exports
+        if: ${{ !cancelled() }}
+        run: |
+          [ "${{ steps.android.outcome }}" = success ] || { echo "::error::nothing came back from the Android self-test"; exit 1; }
+          python3 mobile/engine/example/tools/check_exports.py "$RUNNER_TEMP/android/selftest-out" "$RUNNER_TEMP/media" "$RUNNER_TEMP/android/selftest.json"
+
+      - name: iOS's exports
+        if: ${{ !cancelled() }}
+        run: |
+          [ "${{ steps.ios.outcome }}" = success ] || { echo "::error::nothing came back from the iOS self-test"; exit 1; }
+          python3 mobile/engine/example/tools/check_exports.py "$RUNNER_TEMP/ios/selftest-out" "$RUNNER_TEMP/media" "$RUNNER_TEMP/ios/selftest.json"
