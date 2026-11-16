@@ -53,8 +53,11 @@ the library module in `android/`. The app needs, beyond that:
   character none of the bundled fonts has is not drawn. iOS falls back to
   the system's fonts through Core Text. The caption faces are Archivo Black,
   Anton and Sora (`resources/fonts`).
-- **A privacy manifest** before TestFlight: FFmpeg reads file sizes and
-  times (`stat`, `fstat`), which Apple counts as a required-reason API.
+- **Privacy**: the plugin brings its own privacy manifest
+  (`ios/Sources/CutalongEnginePlugin/PrivacyInfo.xcprivacy`), which Xcode
+  folds into the app's: ffmpeg reads file sizes and times with `stat` and
+  `fstat`, a required-reason API, only inside the app's container. The iOS
+  CI build lists the required-reason APIs each framework calls.
 
 ### Folders
 
