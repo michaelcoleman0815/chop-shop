@@ -141,6 +141,23 @@ describe('the clip set in a project', () => {
     expect(exportNote({ ...out, kept: false }, done)).toBeNull()
   })
 
+  it('says Exported on a card whose Export all failed once the clip went out from the editor', () => {
+    const { set } = run(null, [clip('a', 100), clip('b', 400)])
+    const failed = { percent: null, error: 'The renderer stopped partway.' }
+    // Export all failed on clip b: it is not out, and its card says so.
+    expect(exportNote(set.clips[1], failed)).toBe('Not exported')
+    // Then it went out from the editor as it is now: the button counts it as exported, and so does its card.
+    const out = markDocExported(set, set.clips[1].doc.id, { path: '/out/Clip b v2.mp4', version: 2, at: 'now' })
+    expect(exportedNow(out.clips[1])).toBe(true)
+    expect(exportNote(out.clips[1], failed)).toBe('Exported')
+    // Changed again since: not out as it is now, and the failure is the last export it had.
+    const doc = commit(out.clips[1].doc, [{ op: 'aspect', aspect: 'square' }], 'Square now.').doc
+    expect(exportNote({ ...out.clips[1], doc }, failed)).toBe('Not exported')
+    // While an export of it runs, the card says nothing either way.
+    expect(exportNote(out.clips[1], { percent: 40 })).toBeNull()
+    expect(exportNote({ ...out.clips[1], doc }, { percent: 0 })).toBeNull()
+  })
+
   it('keeps an export made in the editor on its clip, so Export all makes no copy of it', () => {
     const { set } = run(null, [clip('a', 100), clip('b', 400)])
     const all = markExported(markExported(set, 'c1', { path: '/out/Clip a.mp4', version: 2, at: 'then' }), 'c2', {

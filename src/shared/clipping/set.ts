@@ -110,17 +110,20 @@ export function exportedNow(clip: Clip): boolean {
 
 /**
  * What a clip's card says of its export: Exported when it is out as it is
- * now, whatever ran earlier in the session, so a clip changed since says
- * nothing, as Export all counts it; Not exported after an export that
+ * now and nothing runs, whatever ran earlier in the session, so a clip
+ * whose Export all failed and that went out from the editor since says
+ * Exported, as the button counts it, and one changed since says nothing.
+ * Not exported only when it is not out as it is now and its last export
  * failed; nothing while one runs.
  */
 export function exportNote(
   clip: Clip,
   job: { percent: number | null; done?: string; error?: string } | undefined
 ): 'Exported' | 'Not exported' | null {
-  if (job?.error) return 'Not exported'
-  const running = !!job && !job.done && job.percent !== null
-  return clip.kept && !running && exportedNow(clip) ? 'Exported' : null
+  const running = !!job && !job.done && !job.error && job.percent !== null
+  if (running) return null
+  if (clip.kept && exportedNow(clip)) return 'Exported'
+  return job?.error ? 'Not exported' : null
 }
 
 /**
