@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MouthModeSchema } from '../vision/mode'
 
 /**
  * The edit as data.
@@ -19,7 +20,17 @@ export const WordSchema = z.object({
   source: z.string().min(1),
   text: z.string(),
   startSec: z.number().nonnegative(),
-  endSec: z.number().nonnegative()
+  endSec: z.number().nonnegative(),
+  /**
+   * From watching the mouth (shared/vision): the stillness just before this
+   * word's mouth starts to move, and just after it settles, as [from, to] in
+   * source seconds. A cut into the word lands inside the first, a cut out of
+   * it inside the second. Absent where no mouth could be read.
+   */
+  stillBefore: z.tuple([z.number(), z.number()]).optional(),
+  stillAfter: z.tuple([z.number(), z.number()]).optional(),
+  /** Said while the mouth on screen was still: someone off camera. */
+  offCamera: z.boolean().optional()
 })
 export type Word = z.infer<typeof WordSchema>
 
@@ -30,7 +41,24 @@ export const SourceSchema = z.object({
   durationSec: z.number().nonnegative(),
   width: z.number().int().nonnegative(),
   height: z.number().int().nonnegative(),
-  fps: z.number().positive()
+  fps: z.number().positive(),
+  /**
+   * How far the sound runs behind the picture, in seconds (negative: ahead).
+   * Render and preview read the sound from t + offset while showing picture
+   * t, and this source's words are on the picture's clock.
+   */
+  audioOffsetSec: z.number().min(-1).max(1).optional(),
+  /** What watching the speaker's mouth found, and what this edit uses it for. */
+  mouth: z
+    .object({
+      mode: MouthModeSchema,
+      /** The offset measured, applied or not. */
+      measuredOffsetSec: z.number().nullable(),
+      confidence: z.number().min(0).max(1),
+      /** Share of the speech during which a mouth could be read. */
+      seenShare: z.number().min(0).max(1)
+    })
+    .optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 

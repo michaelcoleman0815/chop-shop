@@ -37,7 +37,12 @@ export interface Segment {
   treatment: Treatment | null
   /** Cutaway footage for this stretch, when the beat shows one. */
   broll: { path: string; startSec: number } | null
+  /** The sound is read this much later than the picture (source.audioOffsetSec), lining it up with the mouth. */
+  audioOffsetSec?: number
 }
+
+/** Inputs a segment opens: its own, a cutaway's, and its sound's when that is read apart from the picture. */
+const inputsFor = (s: Segment): number => 1 + (s.broll ? 1 : 0) + (s.hasAudio && s.audioOffsetSec ? 1 : 0)
 
 export type Quality = 'preview' | 'final' | 'intermediate'
 
@@ -148,7 +153,8 @@ export function segmentsFor(cut: Cut, resolved: Resolved, sources: RenderSource[
       durationSec: p.srcEnd - p.srcStart,
       hasAudio: source.hasAudio,
       treatment: t,
-      broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null
+      broll: showsCutaway && t.broll ? { path: t.broll.path, startSec: t.broll.inSec + offset } : null,
+      ...(source.audioOffsetSec ? { audioOffsetSec: source.audioOffsetSec } : {})
     }
   })
 }
@@ -217,7 +223,15 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // Every segment's audio is exactly as long as its piece: padded with
     // silence then trimmed, so the join never drifts out of sync.
     const shape = `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${fixed(s.durationSec)},asetpts=PTS-STARTPTS`
-    if (s.hasAudio) chains.push(`[${main}:a]${shape}[${a}]`)
+    if (s.hasAudio && s.audioOffsetSec) {
+      // The sound lined up with the mouth: its own input, read offset from the
+      // picture, with silence in front where that reaches before the recording.
+      const from = s.startSec + s.audioOffsetSec
+      const lead = Math.max(0, -from)
+      const sound = input(s.path, Math.max(0, from), Math.max(0.001, s.durationSec - lead))
+      const delay = lead > 0 ? `adelay=${Math.round(lead * 1000)}:all=1,` : ''
+      chains.push(`[${sound}:a]${delay}${shape}[${a}]`)
+    } else if (s.hasAudio) chains.push(`[${main}:a]${shape}[${a}]`)
     else chains.push(`anullsrc=r=48000:cl=stereo,${shape}[${a}]`)
   })
 
@@ -380,7 +394,7 @@ export async function renderCut(
 
   const base = { width, height, fps, fontsDir: opts.fontsDir ?? null }
   const maxInputs = opts.maxInputs ?? 24
-  const inputsNeeded = segments.reduce((n, s) => n + (s.broll ? 2 : 1), 0)
+  const inputsNeeded = segments.reduce((n, s) => n + inputsFor(s), 0)
 
   if (inputsNeeded <= maxInputs) {
     const args = buildRenderArgs(segments, {
@@ -402,7 +416,7 @@ export async function renderCut(
   let current: Segment[] = []
   let used = 0
   for (const s of segments) {
-    const cost = s.broll ? 2 : 1
+    const cost = inputsFor(s)
     if (used + cost > maxInputs && current.length > 0) {
       chunks.push(current)
       current = []
