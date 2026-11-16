@@ -6,7 +6,6 @@ import { FFMPEG_PATH, probe } from './ffmpeg'
 import { FONTS_DIR } from './resources'
 import { getSettings, saveSettings } from './store'
 import { downloadModel, hasModel, transcribe } from './transcribe'
-import { readAnalysis } from './analysis-cache'
 import { fetchVideo, YTDLP_PATH } from './fetch-video'
 import { fetchExcerpt, fetchImage, importFile, saveImage, searchVideos, type AssetTools, type NewAsset } from './assets'
 import { creditsText, isImageUrl, type Range } from '../shared/assets'
@@ -16,18 +15,33 @@ import { renderCut } from './cut-render'
 import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
 import { loudnessEnvelope } from './audio-envelope'
-import { snapWords } from '../shared/audio/snap'
+import { snapWords, type Envelope } from '../shared/audio/snap'
+import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
+import { assignRoles, factsFor, type FileFacts } from './session'
+import { listenFrames } from './audio-map'
+import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
+import { vocabulary } from '../shared/raw/prompt'
+import { intakeReply } from './intake'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, planEdit } from './planner'
+import { planEditLocally } from './planner-local'
+import { isLocalUp, localModels } from './local-llm'
+import { OLLAMA_HOST } from './clips'
 import { readBrand, saveBrand } from './brand-store'
+import { hearInCloud, registerServicesIpc } from './providers'
+import { registerLearnIpc } from './learn'
+import { preferencesForPlanner, registerMemoryIpc } from './memory'
 import {
+  addSources,
   createDoc,
   currentCut,
+  nextSourceId,
   currentVersion,
   EditDocSchema,
   resolveCut,
   wordsFromTranscript,
   type Note,
+  type Source,
   type Word
 } from '../shared/edit'
 import { BUILT_IN_PRESETS, describeStyle, suggestCommandName } from '../shared/presets'
@@ -57,40 +71,36 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
 const SPEECH_SAMPLE_SEC = 180
 
 export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: string) => string }): void {
-  ipcMain.handle('cut:prepare', async (e, path: string) => {
+  /**
+   * Turns footage into an edit. Several talking clips become one edit in the
+   * order they were shot. When a separate recording has the better sound,
+   * each clip is lined up with it by ear, and the words, the preview and the
+   * export all use that sound.
+   */
+  ipcMain.handle('cut:prepare', async (e, input: string | { paths: string[]; soundPaths?: string[] }) => {
+    const paths = typeof input === 'string' ? [input] : input.paths
+    const soundPaths = typeof input === 'string' ? [] : (input.soundPaths ?? [])
     const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
     try {
-      progress('Reading the footage', 1)
-      const meta = await probe(path)
-      const source = {
-        id: 's1',
-        path,
-        durationSec: meta.durationSec,
-        width: meta.width,
-        height: meta.height,
-        fps: meta.fps > 0 ? meta.fps : 30
-      }
-      let words: Word[] = []
-      let warning: string | null = null
-      try {
-        const transcript = await transcriptFor(path, meta.durationSec, progress)
-        words = wordsFromTranscript(transcript.words, source.id)
-        // Listen to the recording so every word's edges sit on its sound,
-        // which is what lets cuts land tight without clipping a consonant.
-        if (words.length > 0) {
-          progress('Listening for the cuts', 97)
-          try {
-            words = snapWords(words, await loudnessEnvelope(FFMPEG_PATH, path))
-          } catch (err) {
-            console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
-          }
-        }
-      } catch (err) {
-        warning = `I couldn't transcribe it, so it is one long beat for now. ${message(err)}`
-      }
-      const doc = createDoc({ id: randomUUID(), title: basename(path, extname(path)), source, words })
+      if (paths.length === 0) return { ok: false as const, message: 'There is no footage to cut.' }
+      const read = await readFootage(paths, soundPaths, progress, 1)
+      const created = createDoc({
+        id: randomUUID(),
+        title: basename(paths[0], extname(paths[0])),
+        sources: read.sources,
+        words: read.words
+      })
+      // How each recording sounds, word by word: what takes and the planner read.
+      const doc = Object.keys(read.maps).length > 0 ? { ...created, audio: read.maps } : created
       progress('Ready', 100)
-      return { ok: true as const, doc, mediaUrl: deps.mediaUrlFor(path), warning }
+      return {
+        ok: true as const,
+        doc,
+        mediaUrl: deps.mediaUrlFor(paths[0]),
+        warning: read.notes.length ? read.notes.join(' ') : null,
+        lined: read.lined,
+        intake: read.intake
+      }
     } catch (err) {
       progress('Failed', 0)
       return { ok: false as const, message: message(err) }
@@ -126,6 +136,77 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
   // The person's own music, by name, from their Music folder.
   ipcMain.handle('music:find', async (_e, query: string) => findTracks(query, [app.getPath('music')]))
+  /**
+   * More footage for an edit already under way: new talking clips go on the
+   * end of the cut as a new version, and a new recording with better sound is
+   * lined up under every clip that does not have one yet.
+   */
+  ipcMain.handle('cut:extend', async (e, req: { doc: unknown; paths: string[]; soundPaths?: string[] }) => {
+    const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
+    try {
+      const parsed = EditDocSchema.safeParse(req.doc)
+      if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
+      let doc = parsed.data
+      const soundPaths = req.soundPaths ?? []
+      const notes: string[] = []
+      const lined: Lined[] = []
+      if (soundPaths.length > 0) {
+        const lonely = doc.sources.filter((s) => !s.audio)
+        const found = await lineUp(lonely, soundPaths, progress)
+        notes.push(...found.notes)
+        lined.push(...found.lined)
+        doc = { ...doc, sources: doc.sources.map((s) => found.audio.get(s.id) ?? s) }
+      }
+      const fresh = req.paths.filter((p) => !doc.sources.some((s) => s.path === p))
+      if (fresh.length > 0) {
+        const first = Number(nextSourceId(doc).slice(1))
+        const read = await readFootage(fresh, soundPaths, progress, first)
+        notes.push(...read.notes)
+        lined.push(...read.lined)
+        const names = fresh.map((p) => basename(p))
+        if (Object.keys(read.maps).length > 0) doc = { ...doc, audio: { ...(doc.audio ?? {}), ...read.maps } }
+        doc = addSources(
+          doc,
+          read.sources,
+          read.words,
+          names.length === 1 ? `${names[0]} is on the end.` : `${names.length} more clips are on the end.`
+        )
+      }
+      progress('Ready', 100)
+      return { ok: true as const, doc, warning: notes.length ? notes.join(' ') : null, lined }
+    } catch (err) {
+      progress('Failed', 0)
+      return { ok: false as const, message: message(err) }
+    }
+  })
+
+  /** Which file is which: measured, then read against what the person said. */
+  ipcMain.handle('cut:session', async (e, req: { request: string; paths: string[] }) => {
+    const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
+    try {
+      const facts: FileFacts[] = new Array(req.paths.length)
+      let done = 0
+      // A few at a time: a shoot can be dozens of files.
+      const queue = req.paths.map((p, i) => ({ p, i }))
+      const worker = async (): Promise<void> => {
+        for (let job = queue.shift(); job; job = queue.shift()) {
+          facts[job.i] = await factsFor(job.p)
+          done++
+          progress(
+            `Looking through your footage (${done} of ${req.paths.length})`,
+            Math.round((done / req.paths.length) * 90)
+          )
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(4, req.paths.length) }, worker))
+      // Claude reading the request has no percent to give, so the bar sweeps.
+      deps.send(e.sender, 'cut:progress', { stage: 'Working out which file is which', percent: null })
+      const roles = await assignRoles(req.request, facts)
+      return { ok: true as const, roles, facts }
+    } catch (err) {
+      return { ok: false as const, message: message(err) }
+    }
+  })
 
   ipcMain.handle('cut:render', async (e, req: { doc: unknown; quality: 'preview' | 'final' }) => {
     const parsed = EditDocSchema.safeParse(req.doc)
@@ -239,9 +320,22 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('cut:plan', (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) =>
-    planEdit(req)
-  )
+  // What has been learned about how the creator edits goes with each request,
+  // read fresh here so a statement they deleted never reaches the planner.
+  // Claude plans unless the person picked a model on this Mac in Settings.
+  ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
+    const preferences = await preferencesForPlanner().catch(() => [])
+    const local = getSettings().localPlanner
+    return local
+      ? planEditLocally({ ...req, preferences }, { host: OLLAMA_HOST, model: local })
+      : planEdit({ ...req, preferences })
+  })
+
+  // The models Ollama has on this Mac, for planning edits without Claude.
+  ipcMain.handle('planner:local', async () => {
+    if (!(await isLocalUp(OLLAMA_HOST))) return { up: false, models: [] }
+    return { up: true, models: await localModels(OLLAMA_HOST).catch(() => []) }
+  })
 
   // The brand: kept in userData, learned from the person's own videos, all
   // measured here on this computer.
@@ -277,7 +371,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   const tools = (docId: string): AssetTools => ({
     ffmpeg: FFMPEG_PATH,
     ytdlp: YTDLP_PATH(),
-    dir: join(app.getPath('videos'), 'Chop Shop', 'Assets', docId.replace(/[^\w-]/g, '') || 'loose'),
+    dir: join(app.getPath('videos'), 'Cutalong', 'Assets', docId.replace(/[^\w-]/g, '') || 'loose'),
     signInFrom: getSettings().videoSignIn ?? null
   })
   const needsYtdlp = (): void => {
@@ -330,34 +424,244 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
   ipcMain.handle('claude:check', () => checkKey())
 
+  // Other AI services: keys, the switch, and key checks (providers/index.ts).
+  registerServicesIpc()
+
   ipcMain.handle('presets:list', () => savedPresets())
   ipcMain.handle('presets:save', (_e, preset: unknown) => savePreset(preset))
   ipcMain.handle('presets:remove', (_e, command: string) => removePreset(command))
+
+  // Learning from the creator's own edits, transcribed the same local way,
+  // and without fetching a model: nothing in it leaves this computer.
+  registerLearnIpc({
+    send: deps.send,
+    transcribe: (path, durationSec, progress) =>
+      transcriptFor(path, durationSec, progress, { download: false, localOnly: true })
+  })
+  // And from how they edit here: small signals in, plain statements out, on this computer.
+  registerMemoryIpc()
+}
+
+interface Lined {
+  name: string
+  sound: string
+  offsetSec: number
+}
+
+type ProgressFn = (stage: string, percent: number) => void
+
+/**
+ * Finds where each clip sits in the recordings with the better sound, by
+ * matching their loudness. A clip keeps its own sound when no match is sure.
+ */
+async function lineUp(
+  sources: Source[],
+  soundPaths: string[],
+  progress: ProgressFn,
+  envelopes = new Map<string, Envelope>()
+): Promise<{ audio: Map<string, Source>; lined: Lined[]; notes: string[]; own: Map<string, Envelope> }> {
+  const audio = new Map<string, Source>()
+  const lined: Lined[] = []
+  const notes: string[] = []
+  const own = new Map<string, Envelope>()
+  for (const [i, source] of sources.entries()) {
+    const name = basename(source.path, extname(source.path))
+    progress(
+      `Lining up ${name} with your audio${sources.length > 1 ? ` (${i + 1} of ${sources.length})` : ''}`,
+      Math.round((i / Math.max(1, sources.length)) * 100)
+    )
+    try {
+      const mine = await loudnessEnvelope(FFMPEG_PATH, source.path)
+      own.set(source.id, mine)
+      let best: { path: string; offset: Offset } | null = null
+      for (const sp of soundPaths) {
+        if (!envelopes.has(sp)) envelopes.set(sp, await loudnessEnvelope(FFMPEG_PATH, sp))
+        const offset = estimateOffset(mine, envelopes.get(sp) as Envelope)
+        if (trustworthy(offset) && (!best || offset.confidence > best.offset.confidence)) best = { path: sp, offset }
+      }
+      if (best) {
+        audio.set(source.id, { ...source, audio: { path: best.path, offsetSec: best.offset.offsetSec } })
+        lined.push({ name: basename(source.path), sound: basename(best.path), offsetSec: best.offset.offsetSec })
+      } else notes.push(`I couldn't line ${name} up with your audio, so it keeps its own sound.`)
+    } catch (err) {
+      notes.push(`I couldn't listen to ${name}, so it keeps its own sound. ${message(err)}`)
+    }
+  }
+  return { audio, lined, notes, own }
 }
 
 /**
- * The transcript for a whole file: the clip finder's cached one when it
- * covers the same recording, otherwise a fresh run, fetching the model first
+ * Reads talking clips into recordings and words. With a better recording of
+ * the sound, each clip is lined up with it first, and the words are heard
+ * from that recording, once for every clip it covers.
+ */
+async function readFootage(
+  paths: string[],
+  soundPaths: string[],
+  progress: ProgressFn,
+  firstIndex: number
+): Promise<{
+  sources: Source[]
+  words: Word[]
+  notes: string[]
+  lined: Lined[]
+  maps: Record<string, AudioMap>
+  intake: { sentence: string; facts: string[] } | undefined
+}> {
+  const sources: Source[] = []
+  const words: Word[] = []
+  const notes: string[] = []
+  const lined: Lined[] = []
+  const maps: Record<string, AudioMap> = {}
+  const sentences: string[] = []
+  const facts: string[] = []
+  const soundEnv = new Map<string, Envelope>()
+  const soundWords = new Map<string, Transcript['words']>()
+  const soundFrames = new Map<string, Frames>()
+
+  for (const [i, path] of paths.entries()) {
+    const name = basename(path, extname(path))
+    const of = paths.length > 1 ? ` (${i + 1} of ${paths.length})` : ''
+    // Each clip's share of the bar.
+    const step = (stage: string, within: number): void =>
+      progress(`${stage}${of}`, Math.min(99, Math.round(((i + within / 100) / paths.length) * 100)))
+    step(`Reading ${name}`, 1)
+    const meta = await probe(path)
+    const color = meta.facts?.color
+    let source: Source = {
+      id: `s${firstIndex + i}`,
+      path,
+      durationSec: meta.durationSec,
+      width: meta.width,
+      height: meta.height,
+      fps: meta.fps > 0 ? meta.fps : 30,
+      audio: null,
+      ...(color && color !== 'sdr' ? { color } : {})
+    }
+    // What intake noticed and fixed about this recording, said once for the drop.
+    if (meta.facts) {
+      const said = intakeReply(basename(path), meta.facts)
+      if (said.sentence) sentences.push(said.sentence)
+      for (const f of said.facts) if (!facts.includes(f)) facts.push(f)
+    }
+    let own: Envelope | null = null
+    if (soundPaths.length > 0) {
+      const found = await lineUp([source], soundPaths, (stage) => step(stage, 5), soundEnv)
+      source = found.audio.get(source.id) ?? source
+      own = found.own.get(source.id) ?? null
+      notes.push(...found.notes)
+      lined.push(...found.lined)
+    }
+
+    // The first recording's words are w1, w2, ...; later ones carry their id.
+    const prefix = firstIndex + i === 1 ? 'w' : `${source.id}w`
+    try {
+      if (source.audio) {
+        const sp = source.audio.path
+        if (!soundWords.has(sp)) {
+          const length = (await probe(sp)).durationSec
+          const heard = await transcriptFor(sp, length, (stage, pct) =>
+            step(`${stage} ${basename(sp, extname(sp))}`, 10 + pct * 0.85)
+          )
+          soundWords.set(sp, heard.words)
+        }
+        const at = source.audio.offsetSec
+        const mine = (soundWords.get(sp) as Transcript['words'])
+          .filter((w) => w.startSec >= at - 0.05 && w.endSec <= at + source.durationSec + 0.05)
+          .map((w) => ({ ...w, startSec: w.startSec - at, endSec: w.endSec - at }))
+        let clip = wordsFromTranscript(mine, source.id, prefix)
+        if (clip.length > 0) {
+          step('Listening for the cuts', 97)
+          clip = snapWords(clip, shiftEnvelope(soundEnv.get(sp) as Envelope, at, source.durationSec))
+          // The pitch and kind of each sound come from the recording that is heard.
+          try {
+            if (!soundFrames.has(sp)) soundFrames.set(sp, await listenFrames(FFMPEG_PATH, sp))
+            maps[source.id] = buildAudioMap(shiftFrames(soundFrames.get(sp) as Frames, at, source.durationSec), clip)
+          } catch (err) {
+            console.warn('[cut] could not map the sound:', message(err))
+          }
+        }
+        words.push(...clip)
+      } else {
+        const transcript = await transcriptFor(path, source.durationSec, (stage, pct) => step(stage, 10 + pct * 0.85), {
+          notice: (sentence) => notes.push(sentence)
+        })
+        let clip = wordsFromTranscript(transcript.words, source.id, prefix)
+        // Listen to the recording so every word's edges sit on its sound,
+        // which is what lets cuts land tight without clipping a consonant.
+        // The same listen measures pitch and what kind of sound each stretch
+        // is, for the audio map that takes and the planner read.
+        if (clip.length > 0) {
+          step('Listening for the cuts', 97)
+          try {
+            const frames = await listenFrames(FFMPEG_PATH, path)
+            clip = snapWords(clip, { hopSec: frames.hopSec, db: frames.db })
+            maps[source.id] = buildAudioMap(frames, clip)
+          } catch (err) {
+            try {
+              clip = snapWords(clip, own ?? (await loudnessEnvelope(FFMPEG_PATH, path)))
+            } catch {
+              console.warn('[cut] could not listen to the audio, keeping recogniser timing:', message(err))
+            }
+          }
+        }
+        words.push(...clip)
+      }
+    } catch (err) {
+      notes.push(`I couldn't transcribe ${name}, so it is one long beat for now. ${message(err)}`)
+    }
+    sources.push(source)
+  }
+  const intake =
+    sentences.length || facts.length ? { sentence: sentences.join(' '), facts: facts.slice(0, 3) } : undefined
+  return { sources, words, notes, lined, maps, intake }
+}
+
+/**
+ * The transcript for a whole file, written verbatim: every filler, false
+ * start and retake, the names from the brand and the title listened for,
+ * and a second listen where words went missing. The model is fetched first
  * if it is missing rather than sending anyone to Settings.
+ *
+ * The clip finder's cached transcript is not reused: it is written the tidy
+ * way, which smooths retakes away, and finding retakes is the point here.
  */
 async function transcriptFor(
   path: string,
   durationSec: number,
-  progress: (stage: string, percent: number) => void
+  progress: (stage: string, percent: number) => void,
+  opts: {
+    /** Says, in one sentence, why another AI service could not hear it. */
+    notice?: (sentence: string) => void
+    /** False when nothing may be downloaded, not even the model: learning from edits. */
+    download?: boolean
+    /** True when the words must be heard on this Mac, never by another service. */
+    localOnly?: boolean
+  } = {}
 ): Promise<Transcript> {
-  const cached = await readAnalysis(path).catch(() => null)
-  const whole =
-    cached &&
-    cached.transcript.words.length > 0 &&
-    (cached.options?.startSec ?? 0) < 0.5 &&
-    Math.abs((cached.options?.endSec ?? durationSec) - durationSec) < 0.5
-  if (whole) return cached.transcript
+  // Another AI service hears the words when the person has added one. If it
+  // cannot, this computer does, and the one sentence saying why goes back.
+  if (!opts.localOnly) {
+    const cloud = await hearInCloud(path, durationSec, progress)
+    if (cloud.service) return cloud.transcript
+    if (cloud.note) opts.notice?.(cloud.note)
+  }
 
   const { whisperModel } = getSettings()
   if (!hasModel(whisperModel)) {
+    // Learning from edits never reaches the network, not even for the model.
+    if (opts.download === false) {
+      throw new Error(
+        `The ${whisperModel} transcription model isn't on this Mac yet. Download it in Settings, then try again.`
+      )
+    }
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))
   }
-  return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)))
+  const brand = await readBrand()
+  const names = vocabulary({ title: basename(path, extname(path)), voice: brand.voice, products: brand.products })
+  return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)), 0, {
+    names
+  })
 }
 
 function safeName(title: string): string {

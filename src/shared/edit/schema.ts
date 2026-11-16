@@ -11,6 +11,7 @@ import {
   TRANSITION_KINDS,
   TransitionSchema
 } from './transitions'
+import { AudioMapSchema } from '../audio/map'
 
 /**
  * The edit as data.
@@ -42,7 +43,18 @@ export const SourceSchema = z.object({
   durationSec: z.number().nonnegative(),
   width: z.number().int().nonnegative(),
   height: z.number().int().nonnegative(),
-  fps: z.number().positive()
+  fps: z.number().positive(),
+  /**
+   * Sound from another recording of the same take, such as a computer or a
+   * recorder with the better microphone, lined up by ear: the moment at this
+   * source's time t is at t + offsetSec in that recording.
+   */
+  audio: z
+    .object({ path: z.string().min(1), offsetSec: z.number() })
+    .nullable()
+    .optional(),
+  /** How its picture is encoded: HDR is converted first when it renders. Absent is ordinary video. */
+  color: z.enum(['sdr', 'hlg', 'pq']).optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 
@@ -308,7 +320,11 @@ export const EditDocSchema = z.object({
   /** Material brought in for the edit. Docs saved before assets existed have none. */
   assets: z.array(AssetSchema).default([]),
   /** The preset command last applied, without its slash. */
-  preset: z.string().nullable()
+  preset: z.string().nullable(),
+  /** What each recording sounds like, by source id (shared/audio/map). Absent until listened to. */
+  audio: z.record(z.string(), AudioMapSchema).optional(),
+  /** The cutting profile this edit asked for ("this one is a podcast"), over the brand's niche. */
+  profile: z.string().optional()
 })
 export type EditDoc = z.infer<typeof EditDocSchema>
 

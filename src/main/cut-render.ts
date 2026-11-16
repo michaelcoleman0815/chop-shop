@@ -31,6 +31,7 @@ import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
+import { colorConversion, hasZscale } from './intake'
 import { bedVolume, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
@@ -89,6 +90,10 @@ export interface Segment {
     hold?: boolean
     camera?: SegmentCamera
   } | null
+  /** Sound from another recording of the same take, lined up: startSec here is startSec + offsetSec there. */
+  audio?: { path: string; offsetSec: number } | null
+  /** A conversion that goes first on the recording's picture: HDR to ordinary video (main/intake). */
+  convert?: string | null
   /** Where the segment starts on the output clock. Absent: straight after the one before, less any transition. */
   outStart?: number
   /** Comes in over the segment before: the two overlap by `sec`, picture and sound. */
@@ -243,13 +248,15 @@ const WIDE = { width: 1920, height: 1080 }
 
 /**
  * The inputs for each resolved piece, with its beat's look. `sizes` gives the
- * size of cutaway footage, which a camera move over it needs.
+ * size of cutaway footage, which a camera move over it needs; `zscale` says
+ * whether this ffmpeg can convert HDR the better way (main/intake).
  */
 export function segmentsFor(
   cut: Cut,
   resolved: Resolved,
   sources: RenderSource[],
-  sizes: Map<string, { width: number; height: number }> = new Map()
+  sizes: Map<string, { width: number; height: number }> = new Map(),
+  zscale = true
 ): Segment[] {
   const beats = new Map(cut.beats.map((b) => [b.id, b]))
   const bySource = new Map(sources.map((s) => [s.id, s]))
@@ -271,8 +278,10 @@ export function segmentsFor(
       startSec: p.srcStart,
       durationSec: p.outEnd - p.outStart,
       hasAudio: source.hasAudio,
+      audio: source.audio ?? null,
       treatment: t,
       broll: null,
+      convert: colorConversion(source.color, zscale),
       outStart: p.outStart
     }
     if (Math.abs(srcSec - segment.durationSec) > 1e-9) segment.srcSec = srcSec
@@ -360,11 +369,11 @@ export function pictureSpans(
 
 /**
  * An input's picture as it enters the graph, before anything else is done to
- * it: the one place per-recording conversions belong, so every piece and
- * cutaway gets them.
+ * it: the one place per-recording conversions belong (HDR to ordinary video,
+ * from main/intake), so every stretch of a recording gets them.
  */
-function sourcePicture(input: number): string {
-  return `[${input}:v]`
+function sourcePicture(input: number, convert?: string | null): string {
+  return `[${input}:v]${convert ? `${convert},` : ''}`
 }
 
 /** The ffmpeg arguments for one pass over a list of segments. */
@@ -385,7 +394,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const look = (w: number, h: number, t: Treatment | null, zoom: boolean): string => {
     let f = `fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`
     const z = t?.zoom ?? 1
-    if (zoom && z > 1.001) f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2,scale=${w}:${h}`
+    // A punch-in rarely crops to exactly the frame's shape (1080/1.12 is 964.3), so
+    // scaling it back up stretches the pixels a hair; square them again, or the
+    // join refuses pieces whose pixel shapes differ and the export fails.
+    if (zoom && z > 1.001)
+      f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2,scale=${w}:${h},setsar=1`
     if (t?.bw) f += ',hue=s=0'
     return f
   }
@@ -437,7 +450,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     path: string,
     start: number,
     len: number,
-    name: string
+    name: string,
+    convert?: string | null
   ): { inputs: number[]; slices: { start: number; len: number }[]; picture: () => string } => {
     const slices = reverseSlices(start, len)
     const inputs = slices.map((sl) => input(path, sl.start, sl.len))
@@ -447,7 +461,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         built = true
         inputs.forEach((n, i) =>
           chains.push(
-            `${sourcePicture(n)}setpts=PTS-STARTPTS,fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=increase,reverse[${name}r${i}]`
+            `${sourcePicture(n, convert)}setpts=PTS-STARTPTS,fps=${fps},scale=${W}:${H}:force_original_aspect_ratio=increase,reverse[${name}r${i}]`
           )
         )
         chains.push(
@@ -457,6 +471,39 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       return `[${name}]`
     }
     return { inputs, slices, picture }
+  }
+
+  /**
+   * The better sound for `len` seconds of a recording from `start`, read from
+   * the other recording it is lined up with, where that moment is offsetSec
+   * later, and played backwards if asked. Where the other recording starts
+   * after the stretch does, the gap is silence rather than a shifted voice:
+   * at the front, or at the end when it plays backwards, where the padding
+   * that sizes every segment's sound puts it. Null when it has none of it.
+   */
+  const linedSound = (
+    lined: { path: string; offsetSec: number },
+    start: number,
+    len: number,
+    reverse: boolean,
+    name: string
+  ): string | null => {
+    const from = start + lined.offsetSec
+    const lead = Math.max(0, -from)
+    const length = len - lead
+    if (length <= 0.01) return null
+    if (!reverse) {
+      const ext = input(lined.path, Math.max(0, from), length)
+      // adelay leaves the timestamps where they were; counting samples puts them right.
+      return lead > 0 ? `[${ext}:a]adelay=${Math.round(lead * 1000)}:all=1,asetpts=N/SR/TB,` : `[${ext}:a]`
+    }
+    const slices = reverseSlices(Math.max(0, from), length)
+    const ins = slices.map((sl) => input(lined.path, sl.start, sl.len))
+    ins.forEach((n, i) =>
+      chains.push(`[${n}:a]asetpts=PTS-STARTPTS,apad,atrim=duration=${exact(slices[i].len)},areverse[${name}e${i}]`)
+    )
+    chains.push(`${latestFirst(ins.length, `${name}e`)}concat=n=${ins.length}:v=0:a=1[${name}x]`)
+    return `[${name}x]`
   }
 
   segments.forEach((s, k) => {
@@ -472,16 +519,19 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     const showFor = s.picture ? s.picture.durationSec : s.durationSec
 
     // The speaker: its picture ready for a look, built only if something
-    // shows it, and its sound cut from the same input, ready to be timed.
+    // shows it, and its sound cut from the same input, ready to be timed; or,
+    // when the better sound is another recording's, from that one.
     let speaker: () => string
     let sound: string | null = null
     if (s.hold) {
       // A freeze: one frame, held. The sound waits, silent.
-      speaker = () => `${sourcePicture(input(s.path, s.startSec, HOLD_READ_SEC))}trim=end_frame=1,setpts=PTS-STARTPTS,`
+      speaker = () =>
+        `${sourcePicture(input(s.path, s.startSec, HOLD_READ_SEC), s.convert)}trim=end_frame=1,setpts=PTS-STARTPTS,`
     } else if (s.reverse) {
-      const back = backwards(s.path, s.startSec, soundSrc, `${v}s`)
+      const back = backwards(s.path, s.startSec, soundSrc, `${v}s`, s.convert)
       speaker = () => `${back.picture()}${retime(s.steps)}`
-      if (s.hasAudio) {
+      if (s.audio) sound = linedSound(s.audio, s.startSec, soundSrc, true, a)
+      else if (s.hasAudio) {
         back.inputs.forEach((n, i) =>
           chains.push(
             `[${n}:a]asetpts=PTS-STARTPTS,apad,atrim=duration=${exact(back.slices[i].len)},areverse[${a}r${i}]`
@@ -500,8 +550,9 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       const cutPicture = differs(pic.startSec, pic.srcSec)
         ? `trim=start=${exact(pic.startSec - inStart)}:duration=${exact(pic.srcSec)},setpts=PTS-STARTPTS,`
         : ''
-      speaker = () => `${sourcePicture(main)}${cutPicture}${retime(pic.steps)}`
-      if (s.hasAudio) {
+      speaker = () => `${sourcePicture(main, s.convert)}${cutPicture}${retime(pic.steps)}`
+      if (s.audio) sound = linedSound(s.audio, s.startSec, soundSrc, false, a)
+      else if (s.hasAudio) {
         const cutSound = differs(s.startSec, soundSrc)
           ? `atrim=start=${exact(s.startSec - inStart)}:duration=${exact(soundSrc)},asetpts=PTS-STARTPTS,`
           : ''
@@ -669,13 +720,17 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     vOut = 'vfade'
   }
 
+  // Loudness and polish are only set when there is sound to set them on:
+  // loudnorm over pure silence asks for infinite gain, and the encoder then
+  // fails the export. A bed still plays over a silent cut.
+  const sounds = segments.some((s) => !!s.audio || s.hasAudio)
   let aOut = 'acat'
-  if (opts.voice && opts.voice > 0) {
+  if (sounds && opts.voice && opts.voice > 0) {
     // Polishing takes the delay it adds back off the front; padding keeps the length exact.
     chains.push(`[acat]${voicePolish(opts.voice)},apad,atrim=duration=${exact(totalSec)}[avoice]`)
     aOut = 'avoice'
   }
-  if (opts.loudness !== null) {
+  if (sounds && opts.loudness !== null) {
     // loudnorm works in 100 ms frames and looks 3 s ahead; at the end of sound
     // that is not a whole number of frames it puts those last seconds late by
     // the shortfall. Given more silence than it looks ahead, it never meets
@@ -718,6 +773,13 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${aOut}]${parts.join(',')}[afade]`)
     aOut = 'afade'
   }
+  // The output is always stereo at 48 kHz. Pinning it here, at the end of the
+  // chain, lets ffmpeg rebuild the graph mid-stream when a decoder reports a
+  // different layout: the macOS ffmpeg-static build re-initialises on that and
+  // otherwise fails with "Cannot select channel layout". The sample format is
+  // left free, because intermediate passes write 16-bit PCM and finals AAC.
+  chains.push(`[${aOut}]aformat=channel_layouts=stereo:sample_rates=48000[aout]`)
+  aOut = 'aout'
 
   const encode =
     opts.quality === 'intermediate'
@@ -819,9 +881,11 @@ export interface RenderCutOptions {
 /** How many inputs a segment opens: one per slice of anything played backwards, one for a cutaway. */
 export function inputsFor(s: Segment): number {
   const speaker = s.reverse ? reverseSlices(s.startSec, s.srcSec ?? s.durationSec).length : 1
-  if (!s.broll) return speaker
+  // The better sound reads its own file, in as many slices as the picture at most.
+  const sound = s.audio && !s.hold ? speaker : 0
+  if (!s.broll) return speaker + sound
   const reads = s.broll.steps ? srcLength(s.broll.steps) : (s.picture?.durationSec ?? s.durationSec)
-  return speaker + (s.broll.reverse ? reverseSlices(s.broll.startSec, reads).length : 1)
+  return speaker + sound + (s.broll.reverse ? reverseSlices(s.broll.startSec, reads).length : 1)
 }
 
 /**
@@ -879,6 +943,7 @@ async function checkInputs(segments: Segment[], logo: LogoMark | null, music: st
   for (const s of segments) {
     paths.add(s.path)
     if (s.broll) paths.add(s.broll.path)
+    if (s.audio) paths.add(s.audio.path)
   }
   if (logo) paths.add(logo.path)
   if (music) paths.add(music)
@@ -915,7 +980,7 @@ export async function renderCut(
       // Missing: checkInputs says so in a sentence.
     }
   }
-  const segments = segmentsFor(cut, resolved, sources, sizes)
+  const segments = segmentsFor(cut, resolved, sources, sizes, await hasZscale(opts.ffmpeg))
   await checkInputs(segments, opts.brand?.logo ?? null, cut.music?.path ?? null)
   const total = resolved.durationSec
   const progress = opts.onProgress ?? (() => undefined)
@@ -960,6 +1025,9 @@ export async function renderCut(
   const chunks = chunkSegments(segments, maxInputs)
   const spans = segmentSpans(segments)
   const joined: Segment[] = []
+  // A chunk file always carries an audio track, silent or not; the join only
+  // sets loudness when some piece of the cut had sound.
+  const anySound = segments.some((s) => !!s.audio || s.hasAudio)
   let done = 0
   let at = 0
   for (let i = 0; i < chunks.length; i++) {
@@ -982,7 +1050,7 @@ export async function renderCut(
       path,
       startSec: 0,
       durationSec: length,
-      hasAudio: true,
+      hasAudio: anySound,
       treatment: null,
       broll: null,
       outStart: from.outStart

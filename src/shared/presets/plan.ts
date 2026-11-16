@@ -7,6 +7,7 @@ import { beatsOnClock } from '../edit/audio'
 import { CAMERA_INFO } from '../edit/camera'
 import { transitionInfo } from '../edit/transitions'
 import { clock, seconds, type StyleSpec } from './preset'
+import { planTakes, type TakesPlan, type TakesPlanOptions } from '../raw/plan'
 
 /**
  * Turns a style into ops on a doc.
@@ -26,6 +27,11 @@ export interface StylePlan {
   ops: Op[]
   /** Judgment calls left for the planner, in the app's voice. */
   open: string[]
+  /**
+   * The takes, when the style asks for them: their ops come first in ops,
+   * their sentence leads the version, and their offers wait for a yes.
+   */
+  takes: (TakesPlan & { opCount: number }) | null
 }
 
 /** The punch-in used when a style sets a pace but no punch-in of its own. */
@@ -40,11 +46,17 @@ const STOPWORDS = new Set(
   ).split(' ')
 )
 
-export function planStyle(doc: EditDoc, style: StyleSpec, from: Cut = currentCut(doc)): StylePlan {
+export function planStyle(
+  doc: EditDoc,
+  style: StyleSpec,
+  from: Cut = currentCut(doc),
+  takesOpts: TakesPlanOptions = {}
+): StylePlan {
   const context = { words: doc.words, sources: doc.sources }
   let cut = from
   const ops: Op[] = []
   const open: string[] = []
+  let takes: StylePlan['takes'] = null
 
   const push = (...next: Op[]): void => {
     for (const op of next) {
@@ -56,6 +68,13 @@ export function planStyle(doc: EditDoc, style: StyleSpec, from: Cut = currentCut
     }
   }
   const resolve = (): Resolved => resolveCut(cut, doc.words, doc.sources)
+
+  // Takes first: tightening, pace and the rest then work on the kept takes.
+  if (style.takes) {
+    const t = planTakes(doc, takesOpts, cut)
+    push(...t.ops)
+    takes = { ...t, opCount: ops.length }
+  }
 
   if (style.aspect && style.aspect !== cut.aspect) push({ op: 'aspect', aspect: style.aspect })
   if (style.tighten) push({ op: 'tighten', set: style.tighten })
@@ -158,7 +177,7 @@ export function planStyle(doc: EditDoc, style: StyleSpec, from: Cut = currentCut
     }
   }
 
-  return { ops, open }
+  return { ops, open, takes }
 }
 
 /**

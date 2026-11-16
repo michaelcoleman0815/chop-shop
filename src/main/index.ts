@@ -1,18 +1,11 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, protocol, globalShortcut, desktopCapturer, systemPreferences } from 'electron'
+import './app-paths'
+import { app, shell, BrowserWindow, ipcMain, dialog, desktopCapturer, systemPreferences } from 'electron'
 import { join, basename, extname } from 'path'
 import { createHash } from 'crypto'
-import { createReadStream, existsSync, statSync, promises as fs } from 'fs'
-import { Readable } from 'stream'
+import { existsSync, statSync, promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import {
-  probe,
-  exportClip,
-  buildFromSegments,
-  runFfmpeg,
-  FFMPEG_PATH,
-  FFPROBE_PATH,
-  leadingQuiet
-} from './ffmpeg'
+import { mediaBase, mediaUrl, startMediaServer } from './media-server'
+import { probe, exportClip, buildFromSegments, runFfmpeg, FFMPEG_PATH, FFPROBE_PATH, leadingQuiet } from './ffmpeg'
 import { autoZooms } from './autozoom'
 import { buildTimelineRender } from './timeline'
 import { readEpr } from './epr'
@@ -23,26 +16,26 @@ import { detectMusic, overlapsMusic } from './worship'
 import { detectShots, snapTrackAtCuts } from './shots'
 import { hasArtlist, setArtlist, searchArtlist, fetchArtlistSong, type ArtlistSong } from './artlist'
 import { previewRange, clearPreviews, PREVIEW_WINDOW_SEC } from './preview'
-import { captionSample, clipPoster, mediaPreview, previewsDir } from './media-preview'
+import { captionSample, clipPoster, mediaPreview, posterFor, previewsDir } from './media-preview'
 import { detectFaces, buildTrack } from './track'
 import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
 import { presetById } from '../shared/caption-presets'
 import { buildAss } from './captions'
-import {
-  recentProjects,
-  createProject,
-  openProject,
-  saveProject,
-  removeFromRecent,
-  projectsDir
-} from './projects'
+import { recentProjects, createProject, openProject, saveProject, removeFromRecent, projectsDir } from './projects'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips, listModels, OLLAMA_HOST } from './clips'
 import { localModels, isLocalUp } from './local-llm'
 import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
 import { getSettings, saveSettings } from './store'
-import { initUpdater, checkForUpdates, downloadUpdate, installUpdate, openReleasesPage, getUpdateState } from './updater'
+import {
+  initUpdater,
+  checkForUpdates,
+  downloadUpdate,
+  installUpdate,
+  openReleasesPage,
+  getUpdateState
+} from './updater'
 import { registerCutalongIpc } from './cutalong'
 import type {
   AspectPreset,
@@ -68,77 +61,9 @@ let quitting = false
 /** Edit previews are kept briefly so the player is never reading a deleted file. */
 const previewDirs: string[] = []
 
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'media', privileges: { stream: true, supportFetchAPI: true, bypassCSP: true } }
-])
-
-/** Range responses are capped so huge sources stay seekable. */
-const CHUNK_SIZE = 8 * 1024 * 1024
-
-const MIME: Record<string, string> = {
-  '.mp4': 'video/mp4',
-  '.mov': 'video/quicktime',
-  '.m4v': 'video/mp4',
-  '.webm': 'video/webm',
-  '.mkv': 'video/x-matroska',
-  '.avi': 'video/x-msvideo',
-  // Preview filmstrips and waveforms come back down the same protocol.
-  '.png': 'image/png'
-}
-
+/** A local file as the window can load it, from the media server (main/media-server). */
 export function mediaUrlFor(path: string): string {
-  return `media://local/${encodeURIComponent(path)}`
-}
-
-/**
- * Serves local files to the renderer with byte-range support, which is what
- * makes scrubbing a two-hour source file feel instant.
- */
-function serveMedia(request: Request): Response {
-  const path = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''))
-  let size: number
-  try {
-    size = statSync(path).size
-  } catch {
-    console.error('[media] 404', path)
-    return new Response('Not found', { status: 404 })
-  }
-  const type = MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
-  const range = request.headers.get('Range')
-
-  if (range) {
-    const match = /bytes=(\d*)-(\d*)/.exec(range)
-    const start = match?.[1] ? Number(match[1]) : 0
-    // An open-ended range on a multi-gigabyte file would otherwise stream the
-    // whole thing. Chromium asks for bytes=0- first, and on a file whose moov
-    // atom sits at the end it cannot even read the duration until that request
-    // completes. Capping the chunk lets it seek instead of waiting.
-    const end = match?.[2] ? Number(match[2]) : Math.min(size - 1, start + CHUNK_SIZE - 1)
-    if (start >= size) {
-      console.error('[media] 416', start, 'of', size, path)
-      return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
-    }
-    const stream = createReadStream(path, { start, end })
-    stream.on('error', (err) => {
-      // Chromium aborts in-flight ranges whenever it seeks or swaps source,
-      // which is routine. Only genuine read failures are worth reporting.
-      if (!/abort/i.test(err.message)) console.error('[media] read error', err.message, path)
-    })
-    return new Response(Readable.toWeb(stream) as ReadableStream, {
-      status: 206,
-      headers: {
-        'Content-Type': type,
-        'Content-Length': String(end - start + 1),
-        'Content-Range': `bytes ${start}-${end}/${size}`,
-        'Accept-Ranges': 'bytes'
-      }
-    })
-  }
-
-  return new Response(Readable.toWeb(createReadStream(path)) as ReadableStream, {
-    status: 200,
-    headers: { 'Content-Type': type, 'Content-Length': String(size), 'Accept-Ranges': 'bytes' }
-  })
+  return mediaUrl(path)
 }
 
 function createWindow(): void {
@@ -181,18 +106,6 @@ function createWindow(): void {
   }
 }
 
-function registerGrabShortcut(accelerator: string): boolean {
-  globalShortcut.unregisterAll()
-  if (!accelerator) return false
-  try {
-    return globalShortcut.register(accelerator, () => {
-      mainWindow?.webContents.send('buffer:grab-requested')
-    })
-  } catch {
-    return false
-  }
-}
-
 function uniquePath(dir: string, name: string): string {
   const safe = name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'clip'
   let candidate = join(dir, `${safe}.mp4`)
@@ -228,7 +141,6 @@ function registerIpc(): void {
   ipcMain.handle('settings:get', (): Settings => getSettings())
   ipcMain.handle('settings:set', (_e, patch: Partial<Settings>): Settings => {
     const next = saveSettings(patch)
-    if (patch.grabShortcut) registerGrabShortcut(next.grabShortcut)
     return next
   })
 
@@ -334,19 +246,14 @@ function registerIpc(): void {
           const samples = await detectFaces(req.sourcePath, startSec, req.endSec - startSec)
           track = buildTrack(samples)
           // A tracked crop must not glide between two different camera angles.
-          const cuts = await detectShots(req.sourcePath, startSec, req.endSec - startSec).catch(
-            () => [] as number[]
-          )
+          const cuts = await detectShots(req.sourcePath, startSec, req.endSec - startSec).catch(() => [] as number[])
           if (cuts.length > 0 && track.length > 1) {
             track = snapTrackAtCuts(track, cuts)
             console.log('[track] snapped across', cuts.length, 'cuts')
           }
 
           const withFace = samples.filter((s) => s.faces.length > 0).length
-          const span =
-            track.length > 1
-              ? Math.max(...track.map((p) => p.cx)) - Math.min(...track.map((p) => p.cx))
-              : 0
+          const span = track.length > 1 ? Math.max(...track.map((p) => p.cx)) - Math.min(...track.map((p) => p.cx)) : 0
           console.log('[track]', samples.length, 'samples,', track.length, 'points')
           // Say what tracking did, not only when it failed. A silent success is
           // indistinguishable from never having run, which is exactly how this
@@ -397,11 +304,12 @@ function registerIpc(): void {
         overlays: req.overlays,
         music: req.music,
         graphics: req.graphics,
-        zooms: req.zooms && req.zooms.length > 0
-          ? req.zooms
-          : req.autoZoom
-            ? autoZooms(words, req.endSec - req.startSec)
-            : undefined,
+        zooms:
+          req.zooms && req.zooms.length > 0
+            ? req.zooms
+            : req.autoZoom
+              ? autoZooms(words, req.endSec - req.startSec)
+              : undefined,
         tighten: req.tighten === false ? false : undefined,
         onProgress: send
       })
@@ -433,9 +341,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('capture:openPermissionSettings', () => {
-    shell.openExternal(
-      'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
-    )
+    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
   })
 
   ipcMain.handle(
@@ -447,12 +353,7 @@ function registerIpc(): void {
       const settings = getSettings()
       await fs.mkdir(settings.outputDir, { recursive: true })
       const outputPath = uniquePath(settings.outputDir, payload.name)
-      console.log(
-        '[grab] received',
-        payload.segments.length,
-        'segments, tail',
-        payload.tailSec + 's'
-      )
+      console.log('[grab] received', payload.segments.length, 'segments, tail', payload.tailSec + 's')
       try {
         await buildFromSegments({
           segments: payload.segments,
@@ -512,17 +413,13 @@ function registerIpc(): void {
   ipcMain.handle('stt:hasModel', (_e, model: WhisperModel) => hasModel(model))
   ipcMain.handle('stt:modelSize', (_e, model: WhisperModel) => modelSizeMb(model))
   ipcMain.handle('stt:downloadModel', async (e, model: WhisperModel) => {
-    await downloadModel(model, (percent) =>
-      safeSend(e.sender, 'ai:progress', { stage: 'Downloading model', percent })
-    )
+    await downloadModel(model, (percent) => safeSend(e.sender, 'ai:progress', { stage: 'Downloading model', percent }))
     return true
   })
 
   // One call does the whole analysis: audio out, words back, then Claude picks
   // the moments. Progress is reported across both halves as a single bar.
-  ipcMain.handle(
-    'video:fromUrl',
-    async (e, url: string, range?: { startSec: number; endSec: number }) => {
+  ipcMain.handle('video:fromUrl', async (e, url: string, range?: { startSec: number; endSec: number }) => {
     try {
       const fetched = await fetchVideo(
         url,
@@ -542,9 +439,7 @@ function registerIpc(): void {
 
   ipcMain.handle('ai:cached', (_e, videoPath: string) => readAnalysis(videoPath))
 
-  ipcMain.handle(
-    'ai:analyze',
-    async (e, videoPath: string, force?: boolean, options?: AnalysisOptions) => {
+  ipcMain.handle('ai:analyze', async (e, videoPath: string, force?: boolean, options?: AnalysisOptions) => {
     const settings = getSettings()
     try {
       // Never spend minutes and an API call twice on the same question.
@@ -651,16 +546,12 @@ function registerIpc(): void {
       safeSend(e.sender, 'ai:progress', { stage: 'Failed', percent: 0, message })
       return { ok: false as const, message }
     }
-    }
-  )
+  })
 
-  ipcMain.handle(
-    'preview:range',
-    async (_e, sourcePath: string, startSec: number) => {
-      const { path, startSec: actual } = await previewRange(sourcePath, startSec)
-      return { mediaUrl: mediaUrlFor(path), startSec: actual, windowSec: PREVIEW_WINDOW_SEC }
-    }
-  )
+  ipcMain.handle('preview:range', async (_e, sourcePath: string, startSec: number) => {
+    const { path, startSec: actual } = await previewRange(sourcePath, startSec)
+    return { mediaUrl: mediaUrlFor(path), startSec: actual, windowSec: PREVIEW_WINDOW_SEC }
+  })
 
   /**
    * Writes a Premiere project beside the exports: one sequence per suggested
@@ -702,10 +593,7 @@ function registerIpc(): void {
             title: c.title,
             startSec: c.startSec,
             endSec: c.endSec,
-            segments:
-              req.tighten && within.length > 0
-                ? buildKeepSegments(within, c.endSec - c.startSec)
-                : undefined
+            segments: req.tighten && within.length > 0 ? buildKeepSegments(within, c.endSec - c.startSec) : undefined
           }
         })
 
@@ -727,13 +615,10 @@ function registerIpc(): void {
     }
   )
 
-  ipcMain.handle(
-    'clip:plan',
-    (_e, req: { words: TranscriptWord[]; durationSec: number }) => ({
-      segments: buildKeepSegments(req.words, req.durationSec),
-      zooms: autoZooms(req.words, req.durationSec)
-    })
-  )
+  ipcMain.handle('clip:plan', (_e, req: { words: TranscriptWord[]; durationSec: number }) => ({
+    segments: buildKeepSegments(req.words, req.durationSec),
+    zooms: autoZooms(req.words, req.durationSec)
+  }))
 
   ipcMain.handle('lut:list', async () => {
     // Premiere and Media Encoder ship a Lumetri LUT library; if it is installed
@@ -748,9 +633,7 @@ function registerIpc(): void {
       if (depth > 2) return
       let names: string[]
       try {
-        names = (await fs.readdir(dir, { withFileTypes: true })).map((e) =>
-          e.isDirectory() ? `${e.name}/` : e.name
-        )
+        names = (await fs.readdir(dir, { withFileTypes: true })).map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
       } catch {
         return
       }
@@ -794,9 +677,7 @@ function registerIpc(): void {
   ipcMain.handle('dialog:chooseMedia', async () => {
     const res = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: [
-        { name: 'B-roll', extensions: ['mp4', 'mov', 'm4v', 'webm', 'png', 'jpg', 'jpeg', 'gif'] }
-      ]
+      filters: [{ name: 'B-roll', extensions: ['mp4', 'mov', 'm4v', 'webm', 'png', 'jpg', 'jpeg', 'gif'] }]
     })
     if (res.canceled || !res.filePaths[0]) return null
     const path = res.filePaths[0]
@@ -830,8 +711,7 @@ function registerIpc(): void {
     const settings = getSettings()
     try {
       const meta = await probe(req.sourcePath)
-      const startSec =
-        req.startSec + (await leadingQuiet(req.sourcePath, req.startSec).catch(() => 0))
+      const startSec = req.startSec + (await leadingQuiet(req.sourcePath, req.startSec).catch(() => 0))
       const words = (req.captionWords ?? [])
         .filter((w) => w.endSec > startSec && w.startSec < req.endSec)
         .map((w) => ({
@@ -864,8 +744,7 @@ function registerIpc(): void {
         // preview leaves it out.
         outputScale: 0.5,
         previewQuality: true,
-        onProgress: (percent) =>
-          safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent, stage: 'running' })
+        onProgress: (percent) => safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent, stage: 'running' })
       })
 
       // Kept a few deep so the player is never reading a file just deleted.
@@ -977,8 +856,7 @@ function registerIpc(): void {
       if (done) return { ok: true as const, mediaUrl: mediaUrlFor(outputPath) }
 
       const meta = await probe(req.sourcePath)
-      const startSec =
-        req.startSec + (await leadingQuiet(req.sourcePath, req.startSec).catch(() => 0))
+      const startSec = req.startSec + (await leadingQuiet(req.sourcePath, req.startSec).catch(() => 0))
       const words = (req.captionWords ?? [])
         .filter((w) => w.endSec > startSec && w.startSec < req.endSec)
         .map((w) => ({
@@ -1007,8 +885,7 @@ function registerIpc(): void {
         graphics: req.graphics,
         outputScale: 0.5,
         previewQuality: true,
-        onProgress: (percent) =>
-          safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent, stage: 'running' })
+        onProgress: (percent) => safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent, stage: 'running' })
       })
       await fs.rename(tmp, outputPath)
       safeSend(e.sender, 'clip:progress', { jobId: req.jobId, percent: 100, stage: 'done' })
@@ -1021,9 +898,7 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle(
-    'captions:sample',
-    async (_e, presetId: string, motion = false): Promise<string> => {
+  ipcMain.handle('captions:sample', async (_e, presetId: string, motion = false): Promise<string> => {
     const preset = presetById(presetId)
     // Five words so a group-based preset has a group, with the third spoken so
     // the active-word treatment is visible rather than implied.
@@ -1035,15 +910,74 @@ function registerIpc(): void {
       endSec: 0.35 + i * 0.5 + 0.46
     }))
     return mediaUrlFor(
-      await captionSample(
-        presetId,
-        preset.style.positionFrac,
-        (w, h) => buildAss(words, w, h, preset.style),
-        motion
-      )
+      await captionSample(presetId, preset.style.positionFrac, (w, h) => buildAss(words, w, h, preset.style), motion)
     )
+  })
+
+  // Thumbnails for the chat, a few at a time: a shoot can be dozens of files.
+  const posters = new Map<string, Promise<string | null>>()
+  let posterSlots = 3
+  const posterQueue: (() => void)[] = []
+  ipcMain.handle('media:poster', (_e, path: string): Promise<string | null> => {
+    let job = posters.get(path)
+    if (!job) {
+      job = (async () => {
+        if (posterSlots === 0) await new Promise<void>((go) => posterQueue.push(go))
+        posterSlots--
+        try {
+          return mediaUrlFor(await posterFor(path))
+        } catch {
+          return null
+        } finally {
+          posterSlots++
+          posterQueue.shift()?.()
+        }
+      })()
+      posters.set(path, job)
+      // A failure may be a file still copying; let a later ask try again.
+      void job.then((url) => {
+        if (!url) posters.delete(path)
+      })
     }
-  )
+    return job
+  })
+
+  /** Footage, sound and images, as many as the person picks. */
+  ipcMain.handle('dialog:openMedia', async (): Promise<{ path: string; name: string }[]> => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        {
+          name: 'Footage, audio and images',
+          extensions: [
+            'mp4',
+            'mov',
+            'm4v',
+            'mkv',
+            'webm',
+            'avi',
+            'mts',
+            'm2ts',
+            'wav',
+            'mp3',
+            'm4a',
+            'aac',
+            'flac',
+            'aif',
+            'aiff',
+            'png',
+            'jpg',
+            'jpeg',
+            'webp',
+            'gif',
+            'heic'
+          ]
+        }
+      ]
+    })
+    if (res.canceled) return []
+    return res.filePaths.map((path) => ({ path, name: basename(path) }))
+  })
 
   ipcMain.handle('media:previews', async (_e, path: string): Promise<MediaPreviews> => {
     const preview = await mediaPreview(path)
@@ -1068,10 +1002,7 @@ function registerIpc(): void {
         if (!render) return { ok: false as const, message: 'The timeline is empty.' }
 
         const outputPath = req.preview
-          ? join(
-              await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-tl-')),
-              'preview.mp4'
-            )
+          ? join(await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-tl-')), 'preview.mp4')
           : uniquePath(settings.outputDir, req.name)
         if (!req.preview) await fs.mkdir(settings.outputDir, { recursive: true })
 
@@ -1124,9 +1055,7 @@ function registerIpc(): void {
   )
 
   ipcMain.handle('project:recent', () => recentProjects())
-  ipcMain.handle('project:create', (_e, name: string, mode: ProjectMode) =>
-    createProject(name, mode)
-  )
+  ipcMain.handle('project:create', (_e, name: string, mode: ProjectMode) => createProject(name, mode))
   ipcMain.handle('project:save', (_e, project: Project) => saveProject(project))
   ipcMain.handle('project:forget', (_e, path: string) => removeFromRecent(path))
 
@@ -1136,7 +1065,7 @@ function registerIpc(): void {
       const res = await dialog.showOpenDialog({
         properties: ['openFile'],
         defaultPath: projectsDir(),
-        filters: [{ name: 'Chop Shop project', extensions: ['chopshop'] }]
+        filters: [{ name: 'Cutalong project', extensions: ['cutalong', 'chopshop'] }]
       })
       if (res.canceled || !res.filePaths[0]) return null
       target = res.filePaths[0]
@@ -1187,10 +1116,14 @@ if (!app.requestSingleInstanceLock()) {
     }
   })
 
-  app.whenReady().then(() => {
-  void sweepTemp()
+  app.whenReady().then(async () => {
+    void sweepTemp()
     electronApp.setAppUserModelId('social.brewed.chopshop')
-    protocol.handle('media', serveMedia)
+    // Before the window: the page asks for the media address as it loads.
+    await startMediaServer()
+    ipcMain.on('media:base', (e) => {
+      e.returnValue = mediaBase()
+    })
 
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
@@ -1202,33 +1135,9 @@ if (!app.requestSingleInstanceLock()) {
 
     if (mainWindow) {
       initUpdater(mainWindow)
-      const session = mainWindow.webContents.session
-      session.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'))
-
-      // getDisplayMedia is the supported capture path; the renderer picks a
-      // source by writing it to settings, and this handler honours that choice
-      // instead of showing the system picker.
-      session.setDisplayMediaRequestHandler(
-        (_request, callback) => {
-          const settings = getSettings()
-          desktopCapturer
-            .getSources({ types: ['screen', 'window'] })
-            .then((sources) => {
-              const source =
-                sources.find((s) => s.id === settings.captureSourceId) ?? sources[0]
-              if (!source) {
-                callback({})
-                return
-              }
-              callback({ video: source, audio: settings.captureAudio ? 'loopback' : undefined })
-            })
-            .catch(() => callback({}))
-        },
-        { useSystemPicker: false }
-      )
+      // Cutalong records nothing: no camera, microphone or screen.
+      mainWindow.webContents.session.setPermissionRequestHandler((_wc, _permission, cb) => cb(false))
     }
-
-    registerGrabShortcut(getSettings().grabShortcut)
 
     if (getSettings().autoCheckUpdates) {
       setTimeout(() => checkForUpdates(true), 4000)
@@ -1247,7 +1156,6 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
-  globalShortcut.unregisterAll()
   void clearPreviews()
 })
 

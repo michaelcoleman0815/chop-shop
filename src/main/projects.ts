@@ -13,7 +13,7 @@ import type { Project, ProjectMode, ProjectSummary } from '../shared/types'
 const indexPath = (): string => join(app.getPath('userData'), 'projects.json')
 
 export function projectsDir(): string {
-  return join(app.getPath('videos'), 'Chop Shop', 'Projects')
+  return join(app.getPath('videos'), 'Cutalong', 'Projects')
 }
 
 async function readIndex(): Promise<ProjectSummary[]> {
@@ -78,12 +78,12 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
   await fs.mkdir(dir, { recursive: true })
 
   const safe = name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'Untitled'
-  let path = join(dir, `${safe}.chopshop`)
+  let path = join(dir, `${safe}.cutalong`)
   let n = 2
   for (;;) {
     try {
       await fs.access(path)
-      path = join(dir, `${safe} ${n++}.chopshop`)
+      path = join(dir, `${safe} ${n++}.cutalong`)
     } catch {
       break
     }
@@ -102,8 +102,7 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
     media: [],
     clips: [],
     transcript: null,
-    timeline:
-      mode === 'edit' ? { clips: [], width: 1920, height: 1080, fps: 30 } : null
+    timeline: mode === 'edit' ? { clips: [], width: 1920, height: 1080, fps: 30 } : null
   }
 
   await saveProject(project)
@@ -117,7 +116,8 @@ export async function openProject(path: string): Promise<Project> {
   const project: Project = {
     ...raw,
     path,
-    name: basename(path).replace(/\.chopshop$/i, ''),
+    // Projects made before Cutalong end in .chopshop; they open the same way.
+    name: basename(path).replace(/\.(cutalong|chopshop)$/i, ''),
     openedAt: new Date().toISOString()
   }
   await saveProject(project)

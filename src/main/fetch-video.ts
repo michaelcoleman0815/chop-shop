@@ -39,7 +39,7 @@ export async function fetchVideo(
     throw new Error('yt-dlp is missing from this build. Run scripts/fetch-ytdlp.sh.')
   }
 
-  const dir = join(app.getPath('videos'), 'Chop Shop', 'Downloads')
+  const dir = join(app.getPath('videos'), 'Cutalong', 'Downloads')
   await fs.mkdir(dir, { recursive: true })
 
   return new Promise<FetchedVideo>((resolve, reject) => {
@@ -92,8 +92,7 @@ export async function fetchVideo(
           // yt-dlp prints NA for a field the host does not have.
           const handle = text.slice(8).trim()
           channel = handle && handle !== 'NA' ? handle : null
-        }
-        else if (text.startsWith('/')) resolved = text
+        } else if (text.startsWith('/')) resolved = text
       }
     })
 

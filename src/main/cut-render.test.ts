@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { loudnessEnvelope } from './audio-envelope'
 import {
   commit,
   createDoc,
@@ -316,6 +317,100 @@ describe.skipIf(!FFMPEG)('rendering a cut', () => {
     expect(samples[0].luma).toBeGreaterThan(150)
     expect(samples[samples.length - 1].luma).toBeLessThan(110)
     expect(samples[samples.length - 1].sat).toBeGreaterThan(40)
+  })
+
+  it('punches in by amounts that do not divide the frame evenly, as /shorts does', async () => {
+    // 1.12 crops a 540x960 frame to 482x856, which is not quite 9:16; scaled back
+    // up, its pixels are a hair off square, and the join refused the mix.
+    const punched = commit(
+      createDoc({ id: 'p', title: 'Punch', source: doc.sources[0], words: [] }),
+      [
+        { op: 'remove', beats: ['b1'] },
+        { op: 'insert', to: 0, beat: { source: 's1', inSec: 0, outSec: 1 } },
+        { op: 'insert', to: 1, beat: { source: 's1', inSec: 1, outSec: 2, treatment: { zoom: 1.12 } } },
+        { op: 'insert', to: 2, beat: { source: 's1', inSec: 2, outSec: 3, treatment: { zoom: 1.08 } } },
+        { op: 'aspect', aspect: 'vertical' }
+      ],
+      'Punched.'
+    ).doc
+    const cut = currentCut(punched)
+    for (const quality of ['preview', 'final'] as const) {
+      const out = await renderCut(cut, resolveCut(cut, punched.words, punched.sources), sources, {
+        ffmpeg,
+        outputPath: join(dir, `punch-${quality}.mp4`),
+        workDir: join(dir, `work-punch-${quality}`),
+        quality
+      })
+      expect(Math.abs((await probeMedia(ffmpeg, out)).durationSec - 3)).toBeLessThan(0.15)
+    }
+  })
+
+  it('exports a recording with no sound at the usual loudness target, in one pass or in chunks', async () => {
+    const mute = [{ ...sources[0], hasAudio: false }]
+    const cut = currentCut(doc)
+    expect(cut.loudness).not.toBeNull()
+    for (const maxInputs of [undefined, 1]) {
+      const name = maxInputs ? 'chunked' : 'whole'
+      const out = await renderCut(cut, resolveCut(cut, doc.words, doc.sources), mute, {
+        ffmpeg,
+        outputPath: join(dir, `mute-${name}.mp4`),
+        workDir: join(dir, `work-mute-${name}`),
+        quality: 'final',
+        maxInputs
+      })
+      const info = await probeMedia(ffmpeg, out)
+      expect(Math.abs(info.durationSec - 3)).toBeLessThan(0.15)
+      expect(info.hasAudio).toBe(true)
+    }
+  })
+
+  it('plays the better sound from another recording, lined up under the picture', async () => {
+    // Two seconds of silence, then a tone. The picture starts one second into
+    // it, so the first second of the export is quiet and the second is not,
+    // where the camera's own sound is a tone all the way through.
+    const voice = join(dir, 'voice.wav')
+    execFileSync(ffmpeg, [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'anullsrc=r=48000:cl=mono:d=2',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=880:sample_rate=48000:duration=4',
+      '-filter_complex',
+      '[0:a][1:a]concat=n=2:v=0:a=1[a]',
+      '-map',
+      '[a]',
+      voice
+    ])
+    const lined = { ...doc.sources[0], audio: { path: voice, offsetSec: 1 } }
+    const two = commit(
+      createDoc({ id: 'x', title: 'Lined', source: lined, words: [] }),
+      [
+        { op: 'remove', beats: ['b1'] },
+        { op: 'insert', to: 0, beat: { source: 's1', inSec: 0, outSec: 2 } }
+      ],
+      'Two seconds.'
+    ).doc
+    const cut = currentCut(two)
+    const out = await renderCut(cut, resolveCut(cut, two.words, two.sources), [{ ...lined, hasAudio: true }], {
+      ffmpeg,
+      outputPath: join(dir, 'lined.mp4'),
+      workDir: join(dir, 'work-lined'),
+      quality: 'preview'
+    })
+    const env = await loudnessEnvelope(ffmpeg, out)
+    const mean = (from: number, to: number): number => {
+      const part = Array.from(env.db).slice(Math.round(from / env.hopSec), Math.round(to / env.hopSec))
+      return part.reduce((n, v) => n + v, 0) / part.length
+    }
+    expect(mean(0.1, 0.85)).toBeLessThan(-60)
+    expect(mean(1.15, 1.9)).toBeGreaterThan(-30)
   })
 
   it('burns in captions from the words', async () => {

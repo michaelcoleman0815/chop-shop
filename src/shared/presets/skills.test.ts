@@ -181,7 +181,9 @@ describe('the skill commands', () => {
 
   it('leave "/" showing the core commands first', () => {
     const all = [...BUILT_IN_PRESETS, ...SKILL_PRESETS]
-    expect(suggestCommands('', all, 5).map((p) => p.command)).toEqual(BUILT_IN_PRESETS.map((p) => p.command))
+    expect(suggestCommands('', all, BUILT_IN_PRESETS.length).map((p) => p.command)).toEqual(
+      BUILT_IN_PRESETS.map((p) => p.command)
+    )
     expect(suggestCommands('fa', all).map((p) => p.command)).toEqual(['fade'])
   })
 

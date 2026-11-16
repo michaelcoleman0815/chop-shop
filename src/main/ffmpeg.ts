@@ -3,6 +3,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { buildReframeFilter } from './reframe'
+import { PROBE_ARGS, readProbe, type SourceFacts } from './intake'
 import { buildAss, DEFAULT_CAPTION_STYLE } from './captions'
 import { buildGraphicsAss } from './graphics'
 import type { ClipGraphic } from '../shared/types'
@@ -87,9 +88,13 @@ export const FFPROBE_PATH = unpacked(
 
 export interface ProbeResult {
   durationSec: number
+  /** Shown size, after any rotation a phone recorded. */
   width: number
   height: number
+  /** The rate to render at; for a variable frame rate, the rate it was shot at. */
   fps: number
+  /** Everything intake reads: rotation, frame rate, colour encoding, sound. */
+  facts: SourceFacts
 }
 
 function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
@@ -108,26 +113,11 @@ function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: str
 }
 
 export async function probe(path: string): Promise<ProbeResult> {
-  const { stdout } = await run(FFPROBE_PATH, [
-    '-v',
-    'error',
-    '-select_streams',
-    'v:0',
-    '-show_entries',
-    'stream=width,height,avg_frame_rate:format=duration',
-    '-of',
-    'json',
-    path
-  ])
-  const json = JSON.parse(stdout)
-  const stream = json.streams?.[0] ?? {}
-  const [num, den] = String(stream.avg_frame_rate ?? '30/1').split('/').map(Number)
-  return {
-    durationSec: Number(json.format?.duration ?? 0),
-    width: Number(stream.width ?? 0),
-    height: Number(stream.height ?? 0),
-    fps: den ? Math.round((num / den) * 100) / 100 : 30
-  }
+  const { stdout } = await run(FFPROBE_PATH, [...PROBE_ARGS, path])
+  // Shown size and real frame rate: a portrait phone clip is stored
+  // landscape, and a phone that dropped frames averages under its rate.
+  const facts = readProbe(JSON.parse(stdout))
+  return { durationSec: facts.durationSec, width: facts.width, height: facts.height, fps: facts.fps, facts }
 }
 
 /**

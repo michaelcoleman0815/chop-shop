@@ -7,8 +7,10 @@ import {
   pieceTime,
   srcToOut,
   type Layer,
-  type Resolved
+  type Resolved,
+  type Source
 } from '../../../shared/edit'
+import { steady } from './motion'
 
 /**
  * Plays a cut straight off the source recordings, with no render.
@@ -18,12 +20,19 @@ import {
  * plays without a stall. Inside a transition both play at once, each drawn and
  * mixed the way layersAt says, which is how a dissolve or a whip can be
  * watched the moment it exists. A piece that carries straight on from the one
- * before in the same recording stays on the same element.
+ * before in the same recording stays on the same element. Each element loads
+ * the recording of the piece it holds, so a cut between recordings is a swap
+ * too.
  *
  * A piece plays at its speed through playbackRate, which keeps the pitch the
  * way the export's atempo does. A freeze frame is a paused element on its
  * frame; a piece played backwards, which no video element can do, is stepped
  * a frame at a time with its sound off.
+ *
+ * A recording whose sound comes from another file (a screen or recorder
+ * recording with the better microphone) plays muted, with that file in the
+ * element's own audio element kept on the same moment: corrected only when it
+ * drifts, so the sound stays smooth.
  *
  * The clock follows the element that is loudest, so picture and sound never
  * part; while that element is seeking, or with no media at all (the browser
@@ -47,6 +56,13 @@ export interface Player {
   decks: DeckView[]
 }
 
+export interface PlayerMedia {
+  sources: Source[]
+  urlFor: (path: string) => string
+  /** Each deck's better sound, for recordings whose own microphone is not the one heard. */
+  sounds?: RefObject<HTMLAudioElement>[]
+}
+
 const IDLE: DeckView[] = [
   { piece: null, layer: null },
   { piece: null, layer: null }
@@ -58,6 +74,10 @@ const DRIFT_SEC = 0.2
 const TAKEOVER_SEC = 0.1
 /** Held or stepped backwards, a deck is moved whenever it is further off than this: under a frame. */
 const STEP_SEC = 0.02
+/** Past this, the better sound jumps back onto the picture. */
+const JUMP_SEC = 0.25
+/** Within this, lips and sound read as together, so the sound is left alone. */
+const TOGETHER_SEC = 0.015
 
 /** Browsers play from a sixteenth to sixteen times as fast. */
 const playbackRate = (rate: number): number => Math.min(16, Math.max(0.0625, rate))
@@ -65,7 +85,7 @@ const playbackRate = (rate: number): number => Math.min(16, Math.max(0.0625, rat
 export function usePlayer(
   decks: RefObject<HTMLVideoElement>[],
   resolved: Resolved | null,
-  urlFor: (source: string) => string | null
+  media?: PlayerMedia
 ): Player {
   const [time, setTime] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -80,10 +100,15 @@ export function usePlayer(
   const want = useRef<(number | null)[]>([null, null])
   const cut = useRef(resolved)
   cut.current = resolved
-  const url = useRef(urlFor)
-  url.current = urlFor
+  const mediaRef = useRef(media)
+  mediaRef.current = media
 
   const element = useCallback((d: number): HTMLVideoElement | null => decks[d]?.current ?? null, [decks])
+
+  const sourceOf = useCallback(
+    (id: string): Source | undefined => mediaRef.current?.sources.find((s) => s.id === id),
+    []
+  )
 
   /** True when at least one deck has media it can show. */
   const hasMedia = useCallback((): boolean => {
@@ -97,22 +122,70 @@ export function usePlayer(
   /**
    * Loads a deck's recording when it changes and moves the deck to a moment
    * of it, if it is further off than `tolerance`. A deck still loading is
-   * moved when its metadata arrives.
+   * moved when its metadata arrives. True when the deck was moved or loads.
    */
   const place = useCallback(
-    (d: number, source: string, srcSec: number, tolerance: number): void => {
+    (d: number, source: string, srcSec: number, tolerance: number): boolean => {
       const v = element(d)
-      if (!v) return
+      if (!v) return false
       want.current[d] = srcSec
-      const src = url.current(source)
+      const s = sourceOf(source)
+      const src = s && mediaRef.current ? mediaRef.current.urlFor(s.path) : null
       if (src && v.getAttribute('src') !== src) {
         v.setAttribute('src', src)
+        return true
+      }
+      if (v.readyState < 1) return false
+      if (Math.abs(v.currentTime - srcSec) <= tolerance) return false
+      v.currentTime = srcSec
+      return true
+    },
+    [element, sourceOf]
+  )
+
+  /**
+   * Keeps a deck's better sound on its picture's moment, or the picture's own
+   * sound on. A jump (a seek, or the deck taking a new piece) moves the sound
+   * with the picture at once; between jumps a small drift is eased away by
+   * playing the sound a touch faster or slower, which is inaudible.
+   */
+  const hear = useCallback(
+    (d: number, source: string, volume: number, rate: number, runs: boolean, jump: boolean): void => {
+      const v = element(d)
+      if (!v) return
+      const a = mediaRef.current?.sounds?.[d]?.current ?? null
+      const lined = sourceOf(source)?.audio
+      if (!lined || !a || !mediaRef.current) {
+        v.muted = false
+        if (a && !a.paused) a.pause()
         return
       }
-      if (v.readyState < 1) return
-      if (Math.abs(v.currentTime - srcSec) > tolerance) v.currentTime = srcSec
+      v.muted = true
+      const url = mediaRef.current.urlFor(lined.path)
+      if (a.dataset.src !== url) {
+        a.dataset.src = url
+        a.src = url
+      }
+      a.volume = Math.min(1, Math.max(0, volume))
+      const at = v.currentTime + lined.offsetSec
+      // Before the better recording starts, or after it ends, there is no sound to hear.
+      const outside = at < 0 || (Number.isFinite(a.duration) && at > a.duration)
+      if (!runs || outside) {
+        if (!a.paused) a.pause()
+        // Waiting, it sits on the picture's moment, ready to play.
+        if (!outside && Math.abs(a.currentTime - at) > 0.005) a.currentTime = at
+        return
+      }
+      const drift = a.currentTime - at
+      if (jump || Math.abs(drift) > JUMP_SEC) {
+        if (Math.abs(drift) > 0.005) a.currentTime = at
+        a.playbackRate = rate
+      } else if (Math.abs(drift) > TOGETHER_SEC) {
+        a.playbackRate = playbackRate(rate * Math.max(0.9, Math.min(1.1, 1 - drift * 2)))
+      } else a.playbackRate = rate
+      if (a.paused) void a.play().catch(() => undefined)
     },
-    [element]
+    [element, sourceOf]
   )
 
   /**
@@ -158,12 +231,16 @@ export function usePlayer(
         // A freeze and a piece played backwards are put on their frame each time.
         const still = l.rate === 0 || !!l.reverse
         const tolerance = still ? STEP_SEC : run ? (fresh.has(d) ? TAKEOVER_SEC : DRIFT_SEC) : 0.01
-        place(d, r.pieces[l.piece].source, l.srcSec, tolerance)
-        v.volume = still ? 0 : Math.min(1, Math.max(0, l.volume))
-        if (!still) v.playbackRate = playbackRate(l.rate ?? 1)
+        const source = r.pieces[l.piece].source
+        const moved = place(d, source, l.srcSec, tolerance)
+        const volume = still ? 0 : Math.min(1, Math.max(0, l.volume))
+        const rate = playbackRate(l.rate ?? 1)
+        v.volume = volume
+        if (!still) v.playbackRate = rate
         const runs = run && !still
         if (runs && v.paused) void v.play().catch(() => undefined)
         if (!runs && !v.paused) v.pause()
+        hear(d, source, volume, rate, runs, moved || fresh.has(d))
       }
 
       // The idle deck stops, falls silent, and waits on the next piece.
@@ -181,12 +258,16 @@ export function usePlayer(
           const piece = r.pieces[upcoming]
           held.current[d] = upcoming
           place(d, piece.source, pieceTime(piece, pictureSpan(piece).outStart), 0.01)
+          hear(d, piece.source, 0, 1, false, true)
+        } else {
+          const a = mediaRef.current?.sounds?.[d]?.current
+          if (a && !a.paused) a.pause()
         }
         next[d] = { piece: held.current[d], layer: null }
       }
       setViews(next)
     },
-    [decks.length, element, place]
+    [decks.length, element, hear, place]
   )
 
   const seek = useCallback(
@@ -204,7 +285,10 @@ export function usePlayer(
   const pause = useCallback((): void => {
     cancelAnimationFrame(frame.current)
     playingRef.current = false
-    for (let d = 0; d < decks.length; d++) element(d)?.pause()
+    for (let d = 0; d < decks.length; d++) {
+      element(d)?.pause()
+      mediaRef.current?.sounds?.[d]?.current?.pause()
+    }
     setPlaying(false)
   }, [decks.length, element])
 
@@ -231,8 +315,8 @@ export function usePlayer(
           const at = piece.outStart + (piece.steps ? srcToOut(piece.steps, along) : along)
           if (!best || l.volume > best.volume) best = { t: at, volume: l.volume }
         }
-        // Never backwards, and never far ahead of the wall clock.
-        if (best) t = Math.max(now.current, Math.min(best.t, now.current + 0.25))
+        // Gliding evenly toward it; never backwards, and never far ahead of the wall clock.
+        if (best) t = Math.max(now.current, Math.min(steady(now.current, best.t, dt), now.current + 0.25))
       }
       if (t >= r.durationSec) {
         now.current = r.durationSec

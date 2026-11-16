@@ -8,3 +8,5 @@ dist/
 build/icon.iconset/
 .build/
 resources/bin/
+# Worktrees that background agents build in.
+.claude/worktrees/
