@@ -107,6 +107,10 @@ void ce_tool_fail_run(int code);
  * a model the run loaded is freed however it ends (core/src/whisper_main.cpp). */
 [[noreturn]] void ce_tool_whisper_exit(int code);
 #define exit(code) ce_tool_whisper_exit(code)
+/* common-whisper.cpp's text-to-speech helper shells out, which iOS forbids
+ * and no app can do; whisper-cli never calls it. */
+int ce_tool_system(const char *command);
+#define system(command) ce_tool_system(command)
 #define whisper_log_set ce_tool_whisper_log_set
 #define whisper_full_parallel ce_tool_whisper_full_parallel
 #define whisper_init_from_file_with_params ce_tool_whisper_init_from_file_with_params

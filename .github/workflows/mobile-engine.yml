@@ -62,8 +62,8 @@ jobs:
             mobile/engine/.build/android-x86_64/whisper
           key: android-whisper-${{ env.NDK_VERSION }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/whisper.sh') }}
 
-      - name: Build the engines
-        run: mobile/engine/scripts/build.sh android
+      - name: Build ffmpeg, its libraries and whisper.cpp
+        run: mobile/engine/scripts/build.sh android-libs
 
       - name: Save ffmpeg and its libraries
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
@@ -82,6 +82,9 @@ jobs:
             mobile/engine/.build/android-arm64-v8a/whisper
             mobile/engine/.build/android-x86_64/whisper
           key: ${{ steps.whisper-cache.outputs.cache-primary-key }}
+
+      - name: Build the engine library
+        run: mobile/engine/scripts/build.sh android
 
       - name: What was built
         run: |
@@ -143,8 +146,8 @@ jobs:
             mobile/engine/.build/ios-sim-arm64/whisper
           key: ios-whisper-${{ env.XCODE_ID }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/whisper.sh') }}
 
-      - name: Build the engines
-        run: mobile/engine/scripts/build.sh ios
+      - name: Build ffmpeg, its libraries and whisper.cpp
+        run: mobile/engine/scripts/build.sh ios-libs
 
       - name: Save ffmpeg and its libraries
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
@@ -163,6 +166,9 @@ jobs:
             mobile/engine/.build/ios-arm64/whisper
             mobile/engine/.build/ios-sim-arm64/whisper
           key: ${{ steps.whisper-cache.outputs.cache-primary-key }}
+
+      - name: Build the engine library
+        run: mobile/engine/scripts/build.sh ios
 
       - name: What was built
         run: |

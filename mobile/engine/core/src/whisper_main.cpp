@@ -11,6 +11,7 @@
  * - -np quiets only this run's log, not every run's
  * - a model the run loaded is freed even when it ends early, which the
  *   command-line tool leaves to the process exiting
+ * - system(), which only the examples' text-to-speech helper calls, fails
  *
  * It is compiled without tool_stdio.h, so the names here are whisper.cpp's own.
  */
@@ -54,6 +55,11 @@ void say(const char *text)
 [[noreturn]] void ce_tool_whisper_exit(int code)
 {
     throw whisper_exit{code};
+}
+
+int ce_tool_system(const char *)
+{
+    return -1;
 }
 
 extern "C" void ce_tool_whisper_log_set(ggml_log_callback callback, void *)

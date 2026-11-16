@@ -12,6 +12,8 @@
 #   scripts/build.sh android             both ABIs, into android/src/main/jniLibs
 #   scripts/build.sh ios                 device and simulator, as xcframeworks
 #                                        in ios/Frameworks
+#   scripts/build.sh android-libs        (and ios-libs) everything but the
+#                                        engine library, for the CI caches
 #
 # TARGET is android-arm64-v8a, android-x86_64, ios-arm64, ios-sim-arm64,
 # ios-sim-x86_64 or host (this machine, for working on the engine).
@@ -47,6 +49,22 @@ case $cmd in
     fetch_all
     build_target "$2"
     ;;
+  android-libs | ios-libs)
+    # Only what the CI caches: everything but the engine library itself.
+    fetch_all
+    if [ "$cmd" = android-libs ]; then
+      targets="android-arm64-v8a android-x86_64"
+    else
+      targets="ios-arm64"
+      for a in ${CE_IOS_SIM_ARCHS:-arm64}; do targets="$targets ios-sim-$a"; done
+    fi
+    for t in $targets; do
+      use_target "$t"
+      build_deps
+      build_ffmpeg
+      build_whisper
+    done
+    ;;
   android)
     fetch_all
     build_target android-arm64-v8a
@@ -62,7 +80,7 @@ case $cmd in
   package-android) package_android ;;
   package-ios) package_ios ;;
   *)
-    sed -n '2,23p' "$0" >&2
+    sed -n '2,25p' "$0" >&2
     exit 2
     ;;
 esac
