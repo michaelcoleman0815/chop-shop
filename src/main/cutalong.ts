@@ -741,8 +741,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   registerVlogIpc({
     send: deps.send,
     mediaUrlFor: deps.mediaUrlFor,
-    readTalking: async (path, n, progress) => {
-      const read = await readFootage([path], [], progress, n, { niche: 'vlog' })
+    // In the chat's brand: the names it listens for.
+    readTalking: async (path, n, progress, brand) => {
+      const read = await readFootage([path], [], progress, n, { niche: 'vlog', brand: await readBrandById(brand) })
       const source = read.sources[0]
       return { source, words: read.words, map: read.maps[source.id], notes: read.notes }
     }

@@ -261,6 +261,8 @@ const api = {
     paths: string[]
     request: string
     doc?: EditDoc | null
+    /** The chat's brand, by id: the names the talking is listened for with. */
+    brand?: string | null
   }): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; reply: VlogReply } | { ok: false; message: string }> =>
     ipcRenderer.invoke('vlog:make', req),
   /** A vlog's story told again for what was asked, as ops for a new version and the shoot with its new story. */

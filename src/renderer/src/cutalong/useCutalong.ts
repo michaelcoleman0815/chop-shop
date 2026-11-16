@@ -657,8 +657,8 @@ export function useCutalong() {
       setGraphic(null)
       setPanel(null)
     },
-    // Clips are made in the chat's brand.
-    brand: () => chatChoiceRef.current ?? brandsRef.current.default
+    // Clips are made in the chat's brand, as the chat shows it.
+    brand: () => brandNow().id
   })
 
   useEffect(() => {
@@ -907,7 +907,8 @@ export function useCutalong() {
     toThread: () => setScreen('thread'),
     applyAsVersion,
     during,
-    niche: () => brandNow().niche
+    niche: () => brandNow().niche,
+    brand: () => brandNow().id
   })
 
   /** Talking clips into a new edit, with the better sound, if any, lined up under them. */
