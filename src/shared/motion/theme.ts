@@ -1,0 +1,98 @@
+import { FONT_FAMILIES } from './fonts'
+import type { Size } from './types'
+
+/**
+ * The frame a graphic is laid out in, and the look it wears.
+ *
+ * Sizes are in units of the frame's short side over 1080, so a graphic is
+ * the same size on a 1080 x 1920 Short and a 1920 x 1080 video. Safe areas
+ * keep text out of what the platforms draw over the picture: the Shorts,
+ * Reels and TikTok buttons down the right and the caption block along the
+ * bottom of a vertical video, and the title-safe margin of a wide one.
+ */
+
+export interface Frame extends Size {
+  /** One design unit: the short side over 1080. */
+  u: number
+  shape: 'vertical' | 'wide' | 'square'
+  /** Insets from each edge, in design pixels. */
+  safe: { top: number; bottom: number; left: number; right: number }
+}
+
+/** Safe insets as fractions of the frame. */
+export const SAFE_AREAS: Record<Frame['shape'], { top: number; bottom: number; left: number; right: number }> = {
+  // Shorts, Reels and TikTok: status and search on top, the caption and
+  // channel block along the bottom, the like and share column on the right.
+  vertical: { top: 0.09, bottom: 0.2, left: 0.06, right: 0.15 },
+  // Title-safe for a wide video, with room for the player's controls below.
+  wide: { top: 0.06, bottom: 0.1, left: 0.05, right: 0.05 },
+  square: { top: 0.06, bottom: 0.08, left: 0.06, right: 0.06 }
+}
+
+export function frameFor(size: Size): Frame {
+  const ratio = size.width / Math.max(1, size.height)
+  const shape: Frame['shape'] = ratio < 0.85 ? 'vertical' : ratio > 1.2 ? 'wide' : 'square'
+  const s = SAFE_AREAS[shape]
+  return {
+    width: size.width,
+    height: size.height,
+    u: Math.min(size.width, size.height) / 1080,
+    shape,
+    safe: {
+      top: s.top * size.height,
+      bottom: s.bottom * size.height,
+      left: s.left * size.width,
+      right: s.right * size.width
+    }
+  }
+}
+
+/** The look graphics wear unless a call says otherwise. */
+export interface MotionTheme {
+  /** Text on the picture. */
+  text: string
+  /** The one accent: highlights, bars, the spoken word. */
+  accent: string
+  /** Dark text on light plates. */
+  ink: string
+  /** Light ground for cards. */
+  paper: string
+  /** Headings and big words. */
+  display: string
+  /** Everything smaller. */
+  body: string
+  /** The creator's name, for an end card or a lower third with nothing else to say. */
+  name: string
+}
+
+export const DEFAULT_THEME: MotionTheme = {
+  text: '#FFFFFF',
+  accent: '#FFD84D',
+  ink: '#15161A',
+  paper: '#F5F5F3',
+  display: 'Archivo Black',
+  body: 'Sora',
+  name: ''
+}
+
+/** The parts of a brand a theme reads, so this file does not depend on the brand schema. */
+export interface BrandLook {
+  name?: string
+  colors?: { text: string; accent: string }
+  fonts?: { display?: string; body?: string }
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/
+
+export function themeFrom(brand: BrandLook | null | undefined): MotionTheme {
+  if (!brand) return DEFAULT_THEME
+  const font = (f: string | undefined, d: string): string => (f && FONT_FAMILIES.includes(f) ? f : d)
+  return {
+    ...DEFAULT_THEME,
+    text: brand.colors && HEX.test(brand.colors.text) ? brand.colors.text : DEFAULT_THEME.text,
+    accent: brand.colors && HEX.test(brand.colors.accent) ? brand.colors.accent : DEFAULT_THEME.accent,
+    display: font(brand.fonts?.display, DEFAULT_THEME.display),
+    body: font(brand.fonts?.body, DEFAULT_THEME.body),
+    name: brand.name?.trim() ?? ''
+  }
+}
