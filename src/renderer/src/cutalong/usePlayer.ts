@@ -206,12 +206,15 @@ export function usePlayer(
       })
       const taken = new Set(owner.values())
       const fresh = new Set<number>()
+      /** Decks whose new piece carries straight on from the one they were playing: no jump at all. */
+      const carriedOn = new Set<number>()
       for (const l of layers) {
         if (owner.has(l.piece)) continue
         // A deck playing the piece this one carries straight on from keeps going.
         let d = held.current.findIndex(
           (p, i) => p !== null && !taken.has(i) && continues(r.pieces[p], r.pieces[l.piece])
         )
+        if (d >= 0) carriedOn.add(d)
         // Otherwise the deck cued for it, otherwise whichever is free.
         if (d < 0) d = held.current.findIndex((p, i) => p === l.piece && !taken.has(i))
         if (d < 0) d = [0, 1].find((i) => !taken.has(i)) ?? 0
@@ -244,7 +247,10 @@ export function usePlayer(
         const runs = run && !still
         if (runs && v.paused) void v.play().catch(() => undefined)
         if (!runs && !v.paused) v.pause()
-        hear(d, source, volume, rate, runs, moved || fresh.has(d))
+        // The better sound jumps only when the picture did. A piece that carries
+        // straight on is the same moment of the same recording: seeking the sound
+        // there would only stall it, at every beat, and leave it behind.
+        hear(d, source, volume, rate, runs, moved || (fresh.has(d) && !carriedOn.has(d)))
       }
 
       // The idle deck stops, falls silent, and waits on the next piece.
