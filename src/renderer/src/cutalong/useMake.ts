@@ -28,7 +28,12 @@ export interface MakeDeps {
   setMediaUrl: (url: string | null) => void
   push: (m: Omit<Msg, 'id'>) => string
   patch: (id: string, p: Partial<Msg>) => void
-  applyAsVersion: (ops: Op[], fallback: string, preset?: string, lead?: { text: string; ops: number }) => { summary: string; n: number } | null
+  applyAsVersion: (
+    ops: Op[],
+    fallback: string,
+    preset?: string,
+    lead?: { text: string; ops: number }
+  ) => { summary: string; n: number } | null
   during: <T>(work: () => Promise<T>) => Promise<T>
   /** The B-roll finder (useCutalong), for a shot swapped for real footage. */
   findBroll: (query: string, beat?: string) => Promise<void>
@@ -44,6 +49,8 @@ export interface Makes {
   draft: (id: string) => Draft | null
   /** The script edited under a quote: read again and quoted again. */
   editScript: (id: string, script: string) => Promise<void>
+  /** Whether a quote's script is open under it. */
+  scriptOpen: (id: string) => boolean
 }
 
 const OPEN: NonNullable<Msg['actions']> = [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
@@ -53,7 +60,13 @@ const errorText = (err: unknown): string => (err instanceof Error ? err.message 
 const MAKE_COMMANDS = new Set(['make', 'documentary', 'explainer'])
 
 /** A reply as the message that shows it. */
-const shown = (r: Reply): Partial<Msg> => ({ progress: null, text: r.text, aside: r.aside, chips: r.chips, details: r.details })
+const shown = (r: Reply): Partial<Msg> => ({
+  progress: null,
+  text: r.text,
+  aside: r.aside,
+  chips: r.chips,
+  details: r.details
+})
 
 /** The reply's version number made the one committed. */
 const renumber = (text: string, n: number): string => text.replace(/^v\d+\b/, `v${n}`)
@@ -67,6 +80,9 @@ export function useMake(deps: MakeDeps): Makes {
   const pending = useRef<{ id: string; msg: string } | null>(null)
   /** A voice-over asked for and not dropped yet. */
   const waitingRecording = useRef(false)
+  /** The quote whose script is open under it, and the message that shows it. */
+  const [openScript, setOpenScript] = useState<string | null>(null)
+  const scriptMsg = useRef<string | null>(null)
   const [, setVersion] = useState(0)
 
   const keep = useCallback((draft: Draft): void => {
@@ -76,29 +92,59 @@ export function useMake(deps: MakeDeps): Makes {
 
   const keyOf = (draft: Draft): string => draft.id + (draft.into ? ':into' : '')
 
-  /** The quote's message: its sentence, three facts, the lines behind Details, and the one button. */
-  const quoteMsg = useCallback((draft: Draft, reply: Reply): Partial<Msg> => {
+  /** The quote's message: its sentence, three facts, the lines behind Details, the one button, and the script behind another. */
+  const quoteMsg = useCallback((draft: Draft, reply: Reply, scriptShown = false): Partial<Msg> => {
     const q = draft.quote
+    const id = keyOf(draft)
     const actions: NonNullable<Msg['actions']> = q.missing.length
       ? [{ kind: 'open-settings', label: 'Open Settings', primary: true }]
-      : [{ kind: 'make', label: `Make it for ${dollars(q.total)}`, primary: true, payload: JSON.stringify({ do: 'go', id: keyOf(draft) }) }]
-    return { ...shown(reply), actions, make: keyOf(draft) }
+      : [
+          {
+            kind: 'make',
+            label: `Make it for ${dollars(q.total)}`,
+            primary: true,
+            payload: JSON.stringify({ do: 'go', id })
+          }
+        ]
+    if (draft.script.trim())
+      actions.push({
+        kind: 'make',
+        label: scriptShown ? 'Hide the script' : 'Edit the script',
+        payload: JSON.stringify({ do: 'script', id })
+      })
+    return { ...shown(reply), actions, make: id }
   }, [])
 
   /** A made video in the session: a new edit, or a new version of the one it was made from. */
   const land = useCallback(
-    (r: { doc: EditDoc; mediaUrl: string; reply: Reply; into: Draft['into'] | null }, msg: string): void => {
+    (
+      r: {
+        doc: EditDoc
+        mediaUrl: string
+        reply: Reply
+        into: Draft['into'] | null
+      },
+      msg: string
+    ): void => {
       const { docRef, setDoc, setMediaUrl, patch } = live.current
       const latest = docRef.current
       if (r.into) {
         if (!latest || latest.id !== r.into.docId) {
-          patch(msg, { progress: null, text: 'Another edit is open now, so I left it out of that one.', error: true })
+          patch(msg, {
+            progress: null,
+            text: 'Another edit is open now, so I left it out of that one.',
+            error: true
+          })
           return
         }
         const next = asNewVersion(latest, r.doc, r.into.summary, r.into.carry)
         setDoc(next)
         const n = currentVersion(next).n
-        patch(msg, { ...shown(r.reply), text: renumber(r.reply.text, n), actions: OPEN })
+        patch(msg, {
+          ...shown(r.reply),
+          text: renumber(r.reply.text, n),
+          actions: OPEN
+        })
         return
       }
       setDoc(r.doc)
@@ -114,14 +160,21 @@ export function useMake(deps: MakeDeps): Makes {
       const { push, patch, during } = live.current
       const draft = drafts.current.get(key)
       if (!draft) {
-        push({ role: 'assistant', text: 'That quote is from before Cutalong restarted. Ask again and I’ll quote it fresh.' })
+        push({
+          role: 'assistant',
+          text: 'That quote is from before Cutalong restarted. Ask again and I’ll quote it fresh.'
+        })
         return
       }
       if (pending.current?.id === key) {
         patch(pending.current.msg, { actions: [] })
         pending.current = null
       }
-      const msg = push({ role: 'assistant', text: '', progress: { stage: 'Starting', percent: null } })
+      const msg = push({
+        role: 'assistant',
+        text: '',
+        progress: { stage: 'Starting', percent: null }
+      })
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeGo>>
       try {
@@ -159,7 +212,11 @@ export function useMake(deps: MakeDeps): Makes {
   const start = useCallback(
     async (text: string, recording: string | null): Promise<void> => {
       const { push, patch, during } = live.current
-      const msg = push({ role: 'assistant', text: '', progress: { stage: 'Reading what you asked for', percent: null } })
+      const msg = push({
+        role: 'assistant',
+        text: '',
+        progress: { stage: 'Reading what you asked for', percent: null }
+      })
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeStart>>
       try {
@@ -188,11 +245,18 @@ export function useMake(deps: MakeDeps): Makes {
     const change = changes.current.get(key)
     const d = docRef.current
     if (!change || !d?.make) {
-      push({ role: 'assistant', text: 'That quote is from before Cutalong restarted. Ask again and I’ll quote it fresh.' })
+      push({
+        role: 'assistant',
+        text: 'That quote is from before Cutalong restarted. Ask again and I’ll quote it fresh.'
+      })
       return
     }
     if (quoted) patch(quoted, { actions: [] })
-    const msg = push({ role: 'assistant', text: '', progress: { stage: 'Making the shot again', percent: null } })
+    const msg = push({
+      role: 'assistant',
+      text: '',
+      progress: { stage: 'Making the shot again', percent: null }
+    })
     const off = api.onCutProgress((p) => patch(msg, { progress: p }))
     let r: Awaited<ReturnType<typeof api.makeShot>>
     try {
@@ -209,12 +273,19 @@ export function useMake(deps: MakeDeps): Makes {
     }
     const latest = docRef.current
     if (!latest || latest.id !== d.id) {
-      patch(msg, { progress: null, text: 'Another edit is open now, so I left the shot out of it.', error: true })
+      patch(msg, {
+        progress: null,
+        text: 'Another edit is open now, so I left the shot out of it.',
+        error: true
+      })
       return
     }
     // The new picture joins the material, the beat shows it as a new version, and the record says so.
     setDoc(addAsset(latest, r.asset).doc)
-    const done = applyAsVersion(r.ops, r.summary, undefined, { text: r.summary, ops: r.ops.length })
+    const done = applyAsVersion(r.ops, r.summary, undefined, {
+      text: r.summary,
+      ops: r.ops.length
+    })
     const after = docRef.current
     if (after) setDoc({ ...after, make: r.make })
     patch(msg, {
@@ -238,7 +309,10 @@ export function useMake(deps: MakeDeps): Makes {
         return
       }
       if (change.kind === 'broll') {
-        patch(msg, { progress: null, text: 'Real footage costs nothing to look for.' })
+        patch(msg, {
+          progress: null,
+          text: 'Real footage costs nothing to look for.'
+        })
         await findBroll(change.search, change.beat)
         return
       }
@@ -251,7 +325,14 @@ export function useMake(deps: MakeDeps): Makes {
       changes.current.set(key, change)
       const actions: NonNullable<Msg['actions']> = change.missing.length
         ? [{ kind: 'open-settings', label: 'Open Settings', primary: true }]
-        : [{ kind: 'make', label: `Make it again for ${dollars(change.total)}`, primary: true, payload: JSON.stringify({ do: 'shot', id: key }) }]
+        : [
+            {
+              kind: 'make',
+              label: `Make it again for ${dollars(change.total)}`,
+              primary: true,
+              payload: JSON.stringify({ do: 'shot', id: key })
+            }
+          ]
       patch(msg, { ...shown(change.reply), actions })
       if (change.auto) await reshoot(key, msg)
     },
@@ -266,9 +347,22 @@ export function useMake(deps: MakeDeps): Makes {
       // The voice-over a made video was waiting for.
       if (waitingRecording.current && docRef.current?.make && audio.length > 0 && !video) {
         waitingRecording.current = false
-        const msg = push({ role: 'assistant', text: '', progress: { stage: 'Reading your recording', percent: null } })
-        const r = await api.makeChange({ doc: docRef.current, text: 'use my own recording', recording: audio[0].path })
-        if (!r.ok || !r.change) patch(msg, { progress: null, text: r.ok ? 'I could not use that recording.' : r.message, error: true })
+        const msg = push({
+          role: 'assistant',
+          text: '',
+          progress: { stage: 'Reading your recording', percent: null }
+        })
+        const r = await api.makeChange({
+          doc: docRef.current,
+          text: 'use my own recording',
+          recording: audio[0].path
+        })
+        if (!r.ok || !r.change)
+          patch(msg, {
+            progress: null,
+            text: r.ok ? 'I could not use that recording.' : r.message,
+            error: true
+          })
         else await offer(r.change, msg)
         return true
       }
@@ -292,7 +386,11 @@ export function useMake(deps: MakeDeps): Makes {
       if (waiting && files.length === 0 && text.trim()) {
         const draft = drafts.current.get(waiting.id)
         if (!draft) return false
-        const msg = push({ role: 'assistant', text: '', progress: { stage: 'Quoting it again', percent: null } })
+        const msg = push({
+          role: 'assistant',
+          text: '',
+          progress: { stage: 'Quoting it again', percent: null }
+        })
         const r = await api.makeRevise({ draft, text })
         if (!r.ok) {
           patch(msg, { progress: null, text: r.message, error: true })
@@ -300,7 +398,10 @@ export function useMake(deps: MakeDeps): Makes {
         }
         if (!r.draft) {
           // Nothing about the quote: an ask of the edit, if there is one.
-          patch(msg, { progress: null, text: 'The quote stands as it was. Press its button to make it, or tell me what to change: its length, its voice, its look.' })
+          patch(msg, {
+            progress: null,
+            text: 'The quote stands as it was. Press its button to make it, or tell me what to change: its length, its voice, its look.'
+          })
           return true
         }
         patch(waiting.msg, { actions: [] })
@@ -323,21 +424,47 @@ export function useMake(deps: MakeDeps): Makes {
         return true
       }
       if (!r.change) return false
-      const msg = push({ role: 'assistant', text: '', progress: { stage: 'Pricing it', percent: null } })
+      const msg = push({
+        role: 'assistant',
+        text: '',
+        progress: { stage: 'Pricing it', percent: null }
+      })
       await offer(r.change, msg)
       return true
     },
     [offer]
   )
 
+  /** The script under a quote opened or closed, and the button that does it renamed to match. */
+  const toggleScript = useCallback(
+    (id: string): void => {
+      const draft = drafts.current.get(id)
+      const msg = pending.current?.id === id ? pending.current.msg : null
+      if (!draft || !msg) return
+      const opening = openScript !== id
+      setOpenScript(opening ? id : null)
+      scriptMsg.current = opening ? msg : null
+      live.current.patch(msg, {
+        actions: quoteMsg(draft, { text: '', aside: null, chips: [], details: [] }, opening).actions
+      })
+    },
+    [openScript, quoteMsg]
+  )
+
   const onAction = useCallback(
     async (a: Action): Promise<void> => {
       if (a.kind !== 'make' || !a.payload) return
-      const p = JSON.parse(a.payload) as { do: 'go' | 'shot'; id: string }
-      if (p.do === 'go') await go(p.id)
+      const p = JSON.parse(a.payload) as {
+        do: 'go' | 'shot' | 'script'
+        id: string
+      }
+      if (p.do === 'go') {
+        setOpenScript(null)
+        await go(p.id)
+      } else if (p.do === 'script') toggleScript(p.id)
       else await reshoot(p.id)
     },
-    [go, reshoot]
+    [go, reshoot, toggleScript]
   )
 
   const editScript = useCallback(
@@ -345,19 +472,28 @@ export function useMake(deps: MakeDeps): Makes {
       const { push, patch } = live.current
       const draft = drafts.current.get(id)
       if (!draft) return
-      const msg = push({ role: 'assistant', text: '', progress: { stage: 'Reading the script again', percent: null } })
+      const msg = push({
+        role: 'assistant',
+        text: '',
+        progress: { stage: 'Reading the script again', percent: null }
+      })
       const r = await api.makeScript({ draft, script })
       if (!r.ok) {
         patch(msg, { progress: null, text: r.message, error: true })
         return
       }
       if (pending.current) patch(pending.current.msg, { actions: [] })
+      setOpenScript(null)
       await quote(msg, r.draft, r.reply)
     },
     [quote]
   )
 
   const draft = useCallback((id: string): Draft | null => drafts.current.get(id) ?? null, [])
+  const scriptOpen = useCallback((id: string): boolean => openScript === id, [openScript])
 
-  return useMemo(() => ({ handle, asked, onAction, draft, editScript }), [handle, asked, onAction, draft, editScript])
+  return useMemo(
+    () => ({ handle, asked, onAction, draft, editScript, scriptOpen }),
+    [handle, asked, onAction, draft, editScript, scriptOpen]
+  )
 }

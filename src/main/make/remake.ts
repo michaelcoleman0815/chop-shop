@@ -33,6 +33,13 @@ import type { MakeServices, Picture } from './services'
 
 const IMAGE_NAME: Record<ImageService, string> = { google: 'Google', fal: 'fal.ai' }
 
+/** What a shot is asked to show, with its article back: "a close-up of his hands", "the derrick", "oil rising". */
+export function withArticle(want: string): string {
+  const w = want.trim().replace(/^(A|An|The)\b/, (m) => m.toLowerCase())
+  if (/^(a|an|the|his|her|their|its|my|our|your|this|that|some|two|three|four|five)\b/i.test(w) || /^\w+ing\b/i.test(w) || /^\w+s\b/.test(w)) return w
+  return `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`
+}
+
 const say = (text: string): { kind: 'say'; reply: Reply } => ({ kind: 'say', reply: { text, aside: null, chips: [], details: [] } })
 
 /** What rewriting a shot's prompt costs, about: a short ask and a short answer. */
@@ -84,7 +91,7 @@ export function quoteShot(
     clips ? `The new still goes back to ${IMAGE_NAME[clips]} as the clip's first frame.` : '',
     'Nothing of your own footage leaves this Mac.'
   ].filter(Boolean)
-  const what = ask.want ? `as ${ask.want.replace(/^(?:a|an)\s+/i, (m) => m.toLowerCase())}` : 'as a new take of the same picture'
+  const what = ask.want ? `as ${withArticle(ask.want)}` : 'as a new take of the same picture'
   const made = clips ? 'a still and a clip' : 'one still'
   const text = `I'll make shot ${n} again ${what}: ${made} from ${IMAGE_NAME[service]}, for ${dollars(total)}.`
   return {
@@ -268,7 +275,7 @@ export async function remakeShot(
     shots: make.shots.map((s) => (s.phrase === shot.phrase ? remade : s)),
     spent: Math.round((make.spent + spent) * 10000) / 10000
   }
-  const summary = change.want ? `Shot ${n} shows ${change.want.replace(/^(?:a|an)\s+/i, (m) => m.toLowerCase())}.` : `Shot ${n} is a new take.`
+  const summary = change.want ? `Shot ${n} shows ${withArticle(change.want)}.` : `Shot ${n} is a new take.`
   const asset: Omit<Asset, 'id'> = {
     kind: video ? 'video' : 'image',
     path: file,

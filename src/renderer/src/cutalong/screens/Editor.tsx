@@ -841,7 +841,9 @@ function NotesPanel({
   const status: PanelStatus = app.panel ?? {
     text:
       version.n === 1
-        ? `v1 is the recording in ${beats.length} beats. Leave notes as you watch, or type / for a preset.`
+        ? doc.make
+          ? `v1 is the ${doc.make.brief.format} in ${beats.length} shots. Ask for a shot again, or leave notes as you watch.`
+          : `v1 is the recording in ${beats.length} beats. Leave notes as you watch, or type / for a preset.`
         : `v${version.n} is ready. ${version.summary}`
   }
   const position = (id: string | null): string => {

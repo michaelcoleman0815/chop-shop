@@ -1,53 +1,43 @@
 import { useState } from 'react'
 import { KEY_STEPS } from '../../../../shared/make/key-steps'
+import { listOf } from '../../../../shared/make/quote'
 import type { Cutalong } from '../useCutalong'
 import { Button } from './ui'
 
+const COUNT = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
+
 /**
- * What a made video's quote shows under its sentence: the outline it will
- * follow, the script behind "Edit the script" (changed there, it is quoted
- * again), and, when a service's key is missing, how to get one. The cost
- * lines stay behind the reply's own Details.
+ * What a made video's quote shows under its sentence: the parts it will
+ * follow, in a sentence; the script, opened by the reply's "Edit the script"
+ * button and quoted again when changed; and, when a service's key is
+ * missing, how to get one. The cost lines stay behind the reply's Details.
  */
 export function MakeBrief({ app, id }: { app: Cutalong; id: string }): JSX.Element | null {
   const draft = app.make.draft(id)
-  const [editing, setEditing] = useState(false)
+  const open = app.make.scriptOpen(id)
   const [script, setScript] = useState<string | null>(null)
   if (!draft) return null
-  const keys = draft.quote.keys
+  const parts = draft.outline.filter(Boolean)
+  const changed = script !== null && script.trim() !== draft.script.trim()
   return (
     <div className="cl-make">
-      {draft.outline.length > 0 && (
-        <ol className="cl-make-outline" aria-label="Outline">
-          {draft.outline.map((h, i) => (
-            <li key={`${i}-${h}`}>{h}</li>
-          ))}
-        </ol>
+      {parts.length > 1 && (
+        <p className="cl-aside">
+          In {COUNT[parts.length] ?? parts.length} parts: {listOf(parts)}.
+        </p>
       )}
-      {draft.script && (
-        <button type="button" className="cl-link" aria-expanded={editing} onClick={() => setEditing((e) => !e)}>
-          {editing ? 'Hide the script' : 'Edit the script'}
-        </button>
-      )}
-      {editing && (
-        <label className="cl-field">
+      {open && (
+        <label className="cl-field cl-make-script">
           <span className="sr-only">Script</span>
-          <textarea rows={12} value={script ?? draft.script} onChange={(e) => setScript(e.target.value)} />
+          <textarea rows={12} value={script ?? draft.script} onChange={(e) => setScript(e.target.value)} spellCheck />
           <span className="cl-row">
-            <Button
-              disabled={script === null || script.trim() === draft.script.trim()}
-              onClick={() => {
-                if (script === null) return
-                setEditing(false)
-                void app.make.editScript(id, script)
-              }}
-            >
+            <Button disabled={!changed} onClick={() => script !== null && void app.make.editScript(id, script)}>
               Quote this script
             </Button>
           </span>
         </label>
       )}
-      {keys.map((k) => {
+      {draft.quote.keys.map((k) => {
         const s = KEY_STEPS[k]
         return (
           <div key={k} className="cl-make-key" role="note" aria-label={`Getting a ${s.name} key`}>

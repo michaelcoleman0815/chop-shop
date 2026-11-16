@@ -88,7 +88,7 @@ function label(
         from: { x: -side * 26 * u, opacity: 0 },
         clip: true
       },
-      { by: 'line' as const, duration: TIMING.exit, out: true, ease: 'ease-in' as const, from: { opacity: 0 } }
+      { by: 'line' as const, duration: TIMING.exit, out: true, ease: 'ease-out' as const, from: { opacity: 0 } }
     ]
   }
   const layers: TextLayer[] = []
@@ -137,7 +137,7 @@ function build(ctx: BuildContext): Layer[] {
   const r = regionOf(item.box, frame, style)
   const { start, end } = span
   const out = (fadeEnd = true) => ({
-    opacity: { keys: [{ t: 0, v: 1 }, ...tail([TIMING.exit, 1, 'ease-in'], [0, fadeEnd ? 0 : 1])] }
+    opacity: { keys: [{ t: 0, v: 1 }, ...tail([TIMING.exit, 1, 'ease-out'], [0, fadeEnd ? 0 : 1])] }
   })
   // Labels go toward whichever side of the safe area has more room, unless the call says.
   const roomRight = frame.width - frame.safe.right - r.px

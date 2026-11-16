@@ -199,6 +199,14 @@ export interface AskContext {
   voice?: VoiceChoice | null
 }
 
+/** What a chat that asks for a made video is called: its topic, capitalised ("The 1950s oil boom"); null for other asks. */
+export function makeName(text: string): string | null {
+  const brief = readAsk(text)
+  if (!brief || brief.from === 'recording') return null
+  const t = cleanTopic(brief.topic)
+  return t ? `${t.charAt(0).toUpperCase()}${t.slice(1)}`.slice(0, 80) : null
+}
+
 /** The topic, named for a reply: "the 1950s oil boom". */
 export function cleanTopic(topic: string): string {
   return topic

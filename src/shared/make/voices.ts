@@ -91,6 +91,13 @@ export function voicePhrase(voice: VoiceChoice): string {
   return `${voice.name}, ${where[voice.engine]}`
 }
 
+/** A voice in the quote's sentence: "Michael on this Mac", "George from ElevenLabs". */
+export function voiceShort(voice: VoiceChoice): string {
+  if (voice.engine === 'own') return 'your own recording'
+  const from: Record<Exclude<VoiceEngine, 'own'>, string> = { local: 'on this Mac', elevenlabs: 'from ElevenLabs', gemini: 'from Google', openai: 'from OpenAI' }
+  return `${voice.name} ${from[voice.engine]}`
+}
+
 /**
  * A voice asked for in words: "a British voice", "a woman's voice",
  * "ElevenLabs", "use George", "Charon". Null when nothing in the words

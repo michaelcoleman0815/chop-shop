@@ -311,7 +311,7 @@ async function narration(
   if (voice.engine === 'own') {
     const facts = await deps.probe(voice.id)
     deps.progress('Listening to your recording', 0)
-    const words = await deps.transcribe(voice.id, facts.durationSec, (stage, p) => deps.progress(stage, p))
+    const words = await deps.transcribe(voice.id, facts.durationSec, (_stage, p) => deps.progress('Listening to your recording', p))
     return { path: voice.id, durationSec: facts.durationSec, words, timing: 'whisper', voice, cost: 0 }
   }
   let reader = voice
@@ -350,7 +350,8 @@ async function narration(
   if (read.words && read.words.length > 0)
     return { path: read.path, durationSec: read.durationSec, words: read.words, timing: 'voice', voice: reader, cost }
   deps.progress('Listening to the narration for its timing', 0)
-  const words = await deps.transcribe(read.path, read.durationSec, (stage, p) => deps.progress(stage, p), {
+  // Whisper's own stages ("Done") would read as the whole video being done; this is one step of it.
+  const words = await deps.transcribe(read.path, read.durationSec, (_stage, p) => deps.progress('Timing the narration', p), {
     phrases: draft.phrases,
     spans: read.spans
   })

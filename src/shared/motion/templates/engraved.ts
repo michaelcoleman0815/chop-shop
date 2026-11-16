@@ -49,11 +49,11 @@ export function engravedTitle(ctx: BuildContext): Layer[] {
   const k = fitSize(safeWidth * 0.86, Math.max(longest, numeric ? 4 : 6), preferred, numeric ? 0.62 : 0.78)
   const smallSize = clamp(k * 0.2, 26 * u, 46 * u)
   const length = end - start
-  // Arrive over a second and a half; leave over the last 0.7 s, softening as it goes.
+  // Arrive over a second and a half; leave over the last 0.7 s, softening as it goes. Both ease out.
   const settle = Math.min(1.6, Math.max(0.6, length * 0.4))
   const leave = Math.min(0.7, Math.max(0.25, length * 0.15))
   const shadow = { shadow: { color: 'rgba(12, 8, 4, 0.6)', blur: 22 * u, y: 3 * u } }
-  const opacity = { keys: [...keys([0, 0, 'ease-out'], [settle * 0.6, 1]).keys, ...tail([leave, 1, 'ease-in'], [0, 0])] }
+  const opacity = { keys: [...keys([0, 0, 'ease-out'], [settle * 0.6, 1]).keys, ...tail([leave, 1, 'ease-out'], [0, 0])] }
   const layers: Layer[] = []
 
   const bigLayer: TextLayer = {
@@ -76,7 +76,7 @@ export function engravedTitle(ctx: BuildContext): Layer[] {
         ease: { bezier: [0.16, 1, 0.3, 1] },
         from: { scale: 1.07, blur: 9 * u, tracking: k * 0.1 }
       },
-      { by: 'line', out: true, duration: leave, ease: 'ease-in', from: { blur: 6 * u } }
+      { by: 'line', out: true, duration: leave, ease: 'ease-out', from: { blur: 6 * u } }
     ],
     transform: { x: cx, y: small ? cy - 6 * u : cy, opacity }
   }
@@ -98,7 +98,7 @@ export function engravedTitle(ctx: BuildContext): Layer[] {
       effects: shadow,
       animators: [
         { by: 'line', delay: settle * 0.35, duration: settle * 0.7, ease: 'ease-out', from: { opacity: 0, y: 10 * u } },
-        { by: 'line', out: true, duration: leave, ease: 'ease-in', from: { opacity: 0 } }
+        { by: 'line', out: true, duration: leave, ease: 'ease-out', from: { opacity: 0 } }
       ],
       transform: { x: cx, y: ruleY + 14 * u, opacity }
     })

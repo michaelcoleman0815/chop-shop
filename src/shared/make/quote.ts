@@ -2,7 +2,7 @@ import { clock } from '../presets/preset'
 import { CLAUDE_TOKENS, PRICES, PRICES_CHECKED, voiceRate } from './prices'
 import { countWords } from './script'
 import type { Brief, ImageService, Shot, Visual, VoiceChoice, VoiceEngine } from './schema'
-import { defaultVoice, voicePhrase } from './voices'
+import { defaultVoice, voicePhrase, voiceShort } from './voices'
 import type { KeyService } from './key-steps'
 
 /**
@@ -151,7 +151,8 @@ export function estimateCounts(brief: Brief, phrases: string[], script: string):
   // Every shot is counted as a still until it is planned: maps, cards and graphics made here only bring it down,
   // so what is quoted is the most it can cost.
   const own = scenes - clips
-  const sheets = doc ? 0 : 1
+  // One reference sheet, for the figure who recurs: an explainer's main character, a documentary's wildcatter.
+  const sheets = 1
   const words = countWords(script)
   return {
     scenes,
@@ -163,7 +164,7 @@ export function estimateCounts(brief: Brief, phrases: string[], script: string):
     graphics,
     broll: 0,
     sheets,
-    references: sheets > 0 ? Math.round((own + clips) * 0.6) : 0,
+    references: sheets > 0 ? Math.round((own + clips) * (doc ? 0.3 : 0.6)) : 0,
     titles,
     callouts,
     narrationSeconds: (words / (doc ? 140 : 158)) * 60,
@@ -452,9 +453,9 @@ export function quoteReply(
   opts: { title: string; scenes: number }
 ): { text: string; aside: string | null; chips: string[]; details: { label: string; value: string }[] } {
   const kind = brief.format === 'documentary' ? 'cinematic documentary' : 'animated explainer'
-  const reads = quote.voice.engine === 'own' ? 'over your own voice-over' : `read by ${voicePhrase(quote.voice)}`
+  const reads = quote.voice.engine === 'own' ? 'over your own voice-over' : `read by ${voiceShort(quote.voice)}`
   const shape = brief.aspect === 'vertical' ? ' vertical' : ''
-  const text = `I'll make a ${clock(brief.seconds)}${shape} ${kind} about ${brief.topic}, ${reads}: ${opts.scenes} shots, for ${dollars(quote.total)}, in ${aboutHowLong(quote.seconds)}.`
+  const text = `I'll make a ${clock(brief.seconds)}${shape} ${kind} about ${brief.topic}, ${reads}. It comes to ${dollars(quote.total)} and takes ${aboutHowLong(quote.seconds)}.`
   const chose = brief.inferred.length ? `You didn't say, so I chose ${listOf(brief.inferred)}.` : ''
   const aside = [chose, ...quote.notes, ...quote.missing].filter(Boolean).join(' ') || null
   const chips = [clock(brief.seconds), `${opts.scenes} shots`, dollars(quote.total)]

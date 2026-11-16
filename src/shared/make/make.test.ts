@@ -200,7 +200,7 @@ describe('the quote', () => {
 
   it('says what goes where, and that the footage stays', () => {
     const q = quoteFor(brief, estimateCounts(brief, phrases, SCRIPT), ALL, { today: '2026-11-16' })
-    expect(q.sends).toContain('Only the text prompts for the pictures go to Google.')
+    expect(q.sends.join(' ')).toMatch(/Only the text prompts for the pictures go to Google, with the character sheet it made for each shot the character is in\./)
     expect(q.sends).toContain('Nothing of your own footage leaves this Mac.')
     expect(q.sends.join(' ')).toMatch(/Michael reads the script on this Mac/)
   })

@@ -2065,15 +2065,33 @@ button:disabled {
   color: var(--ink);
 }
 
-.cl-toggle .cl-make-under {
-  width: 5.5em;
+/* A dollar amount in Settings: a small field with its sign in front (MadeVideos). */
+.cl-dollars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--ground);
-  padding: 4px 10px;
-  outline: none;
+  padding: 6px 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.cl-toggle .cl-make-under:focus-visible {
+.cl-dollars:focus-within {
   border-color: var(--ink);
+}
+
+.cl-dollars input {
+  width: 4.5em;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-make-limit,
+.cl-make-auto {
+  align-items: center;
+  gap: var(--space-3);
 }
