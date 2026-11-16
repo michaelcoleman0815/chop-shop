@@ -13,7 +13,7 @@ import { creditsText, isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
-import { renderCutMotion, subtitleCut } from './motion-render'
+import { renderCutMotion, subtitlePass } from './motion-render'
 import { loadIcons } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords } from '../shared/audio/snap'
@@ -135,7 +135,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         onProgress: (f) => report(f * 0.25)
       })
       const share = motion.overlays.length > 0 ? 0.25 : 0
-      await renderCut(subtitleCut(cut), resolved, sources, {
+      const pass = subtitlePass(cut, resolved, motion.scene)
+      await renderCut(pass.cut, pass.resolved, sources, {
         ffmpeg: FFMPEG_PATH,
         outputPath,
         workDir,

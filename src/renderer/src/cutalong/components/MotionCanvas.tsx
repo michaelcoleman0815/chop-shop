@@ -11,6 +11,14 @@ import { loadIconNodes, loadMotionFonts, loadPicture } from '../motion'
  * captions and never takes the pointer.
  */
 
+/** A scratch canvas for drawing that needs one, such as motion blur. */
+function makeCanvas(width: number, height: number): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = width
+  c.height = height
+  return c
+}
+
 function walk(layers: Layer[], visit: (l: Layer) => void): void {
   for (const l of layers) {
     visit(l)
@@ -91,7 +99,7 @@ export function MotionCanvas({
       scene.layers,
       scene.size,
       { width: pw, height: ph },
-      { icons: icons ?? undefined, images: pictures }
+      { icons: icons ?? undefined, images: pictures, createCanvas: makeCanvas }
     )
     // The moment drawn, for anyone checking the preview against the export.
     el.dataset.time = time.toFixed(4)

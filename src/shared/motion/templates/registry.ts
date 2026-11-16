@@ -44,8 +44,9 @@ export interface Template {
   /** Seconds the entrance starts before its anchor, so it finishes on the word. */
   lead: number
   /**
-   * When it fills the frame: a backdrop replaces the picture and drawn
-   * captions move over it; a card has words of its own and captions wait.
+   * How it meets the captions. A backdrop replaces the picture, so drawn
+   * captions move over it to the middle. A card has words of its own (an end
+   * card, a title that quotes the speech), so captions wait until it is gone.
    */
   covers?: 'backdrop' | 'card'
   fields: Field[]

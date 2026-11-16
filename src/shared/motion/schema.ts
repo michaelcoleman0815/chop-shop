@@ -191,7 +191,10 @@ const base = {
   transform: TransformSchema.optional(),
   effects: EffectsSchema.optional(),
   mask: MaskSchema.optional(),
-  behind: z.boolean().optional()
+  behind: z.boolean().optional(),
+  motionBlur: z
+    .object({ shutter: z.number().min(0).max(0.2), samples: z.number().int().min(2).max(24).optional() })
+    .optional()
 }
 const UnitStateSchema = z.object({
   opacity: n.optional(),

@@ -142,6 +142,13 @@ interface Base<T> {
   mask?: Mask
   /** Drawn under the person in the frame, once a person matte is available. */
   behind?: boolean
+  /**
+   * Real motion blur: while the layer moves, it is drawn at `samples` moments
+   * across `shutter` seconds centred on the frame and averaged, so a fast move
+   * streaks along its path. Needs DrawResources.createCanvas; without it the
+   * layer is drawn sharp.
+   */
+  motionBlur?: { shutter: number; samples?: number }
 }
 
 /** A run of text with its own look and, for speech, its own time. */

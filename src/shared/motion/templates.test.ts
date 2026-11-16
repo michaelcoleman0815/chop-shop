@@ -14,7 +14,8 @@ import {
   textToRows,
   wordAt,
   type IconNode,
-  type MotionScene
+  type MotionScene,
+  type TextLayer
 } from '.'
 
 /**
@@ -35,9 +36,9 @@ const SCRIPT =
   'Most people never open the settings. The main camera is 48 megapixels and it costs $999 with a 120 Hz screen. ' +
   'First lock the exposure, second set the white balance, third turn off stabilisation. That is all.'
 
-function docWith(aspect: 'vertical' | 'wide', ops: unknown[]): EditDoc {
+function docWith(aspect: 'vertical' | 'wide', ops: unknown[], script = SCRIPT): EditDoc {
   let t = 0.5
-  const words = SCRIPT.split(' ').map((text) => {
+  const words = script.split(' ').map((text) => {
     const w = { text, startSec: t, endSec: t + 0.3 }
     t += 0.4
     return w
@@ -76,7 +77,11 @@ function draw(
   const { width, height } = scene.size
   const canvas = createCanvas(width, height)
   const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D
-  renderFrame(ctx, t, scene.layers, scene.size, scene.size, { icons: (n) => ICONS[n] })
+  renderFrame(ctx, t, scene.layers, scene.size, scene.size, {
+    icons: (n) => ICONS[n],
+    // A scratch canvas, as the export has, for motion blur.
+    createCanvas: (w, h) => createCanvas(w, h) as unknown as HTMLCanvasElement
+  })
   const data = ctx.getImageData(0, 0, width, height).data
   return {
     at: (x, y) => {
@@ -289,6 +294,97 @@ describe('titles', () => {
       const noCard = { ...scene, layers: scene.items.filter((i) => i.kind !== 'end-card').flatMap((i) => i.layers) }
       expect(edgeInk(noCard, 1.5), aspect).toBe(0)
     }
+  })
+})
+
+describe('kinetic title', () => {
+  const QUOTE = 'So what is the FOMO and partnership? It is simple, and it is yours to keep for good.'
+  const title = (extra: Record<string, unknown> = {}) => ({
+    op: 'motion-add',
+    kind: 'title',
+    from: 'w1',
+    text: ['So what is the', 'FOMO & partnership?'],
+    ...extra
+  })
+
+  it('types the lead-in on the words as they are said, then lands the keyword line on its words', () => {
+    const doc = docWith('wide', [title()], QUOTE)
+    const scene = sceneOf(doc)
+    const item = scene.items[0]
+    const said = resolveCut(currentCut(doc), doc.words, doc.sources).words
+    const [lead, keyword] = item.layers as TextLayer[]
+    // Each word lands when it is said; "&" is said as "and".
+    lead.spans!.forEach((s, i) => expect(s.t! + item.start).toBeCloseTo(said[i].outStart, 5))
+    keyword.spans!.forEach((s, i) => expect(s.t! + item.start).toBeCloseTo(said[4 + i].outStart, 5))
+    // Before FOMO is said there is no keyword line; the lead-in is up.
+    const seam = 0.42 * 1080
+    const before = draw(scene, said[4].outStart - 0.25)
+    expect(before.lit(0, seam - 120, 1920, 115)).toBeGreaterThan(500)
+    expect(before.lit(0, seam, 1920, 400)).toBe(0)
+    // Settled: the keyword line is there in full, inside the frame.
+    const settled = draw(scene, said[6].outStart + 0.8)
+    expect(settled.lit(0, seam, 1920, 300)).toBeGreaterThan(20000)
+    expect(edgeInk(scene, said[6].outStart + 0.8)).toBe(0)
+    // Gone at the end.
+    expect(draw(scene, item.end).lit(0, 0, 1920, 1080)).toBe(0)
+  })
+
+  it('smears the keyword line along its slide with real motion blur', () => {
+    const scene = sceneOf(docWith('wide', [title()], QUOTE))
+    const keyword = scene.items[0].layers[1] as TextLayer
+    const t = scene.items[0].start + keyword.spans![0].t! - 0.12 + 0.05
+    const soft = (f: ReturnType<typeof draw>): number => {
+      let n = 0
+      for (let x = 0; x < 1920; x += 2) {
+        const a = f.at(x, 0.42 * 1080 + 75)[3]
+        if (a > 20 && a < 200) n++
+      }
+      return n
+    }
+    const blurred = draw(scene, t)
+    const sharp = draw({ ...scene, layers: scene.layers.map((l) => ({ ...l, motionBlur: undefined })) }, t)
+    // Along the line, part-covered pixels: many more where the move is smeared.
+    expect(soft(blurred)).toBeGreaterThan(soft(sharp) * 3)
+  })
+
+  it('keeps every style inside the frame, arriving and settled, in both shapes', () => {
+    const long = ['Here is what nobody tells you about', 'Electromagnetic interference shielding']
+    for (const aspect of ['vertical', 'wide'] as const) {
+      for (const style of ['slide', 'rise', 'punch', 'blur', 'track', 'type', 'wipe']) {
+        const scene = sceneOf(docWith(aspect, [title({ style, text: long })], QUOTE))
+        const item = scene.items[0]
+        for (const t of [item.start + 0.3, item.start + 0.9, item.end - 0.5])
+          expect(edgeInk(scene, t), `${aspect} ${style} ${t.toFixed(2)}`).toBe(0)
+        expect(
+          draw(scene, item.end - 0.5).lit(0, 0, scene.size.width, scene.size.height),
+          `${aspect} ${style}`
+        ).toBeGreaterThan(5000)
+      }
+    }
+  })
+
+  it('shows every word of a short title before it goes, quoted or not', () => {
+    const scene = sceneOf(
+      docWith('vertical', [title({ to: '1s', text: ['Words nobody says', 'in this video at all'] })], QUOTE)
+    )
+    const item = scene.items[0]
+    for (const layer of item.layers as TextLayer[])
+      for (const s of layer.spans!) expect(item.start + s.t!).toBeLessThanOrEqual(item.end - 0.5 + 1e-9)
+    expect(draw(scene, item.end - 0.25).lit(0, 0.36 * 1920, 1080, 400)).toBeGreaterThan(3000)
+  })
+
+  it('reads /title: a lead-in and a keyword line, a style only in lower case', () => {
+    const doc = docWith('wide', [], QUOTE)
+    const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+    const ctx = { doc, resolved, time: null, brandName: '' }
+    expect(planMotionCommand('title', 'So what is the | FOMO & partnership?', ctx)).toMatchObject({
+      op: { kind: 'title', style: '', text: ['So what is the', 'FOMO & partnership?'] }
+    })
+    expect(planMotionCommand('title', 'rise Ship it', ctx)).toMatchObject({ op: { style: 'rise', text: ['Ship it'] } })
+    expect(planMotionCommand('title', 'Type less', ctx)).toMatchObject({ op: { style: '', text: ['Type less'] } })
+    expect(planMotionCommand('title', '', ctx)).toEqual({
+      problem: 'Tell me the words, like /title So what is the | FOMO & partnership?'
+    })
   })
 })
 

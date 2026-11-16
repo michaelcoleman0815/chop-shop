@@ -8,7 +8,7 @@ import { commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type Ed
 import { buildRenderArgs, frameSize, renderCut, type RenderSource } from './cut-render'
 import { createCanvas } from '@napi-rs/canvas'
 import { designSize, renderFrame } from '../shared/motion'
-import { overlaySpans, renderCutMotion, sceneForCut, subtitleCut } from './motion-render'
+import { overlaySpans, renderCutMotion, sceneForCut, subtitleCut, subtitlePass } from './motion-render'
 import { probeMedia } from './inspiration/measure'
 
 /**
@@ -112,6 +112,45 @@ describe('the final pass with graphics', () => {
     expect(scene.layers.length).toBe(1)
   })
 
+  it('keeps words said under a card or a title out of the subtitles, and nothing else', () => {
+    const source = { id: 's1', path: '/x.mov', durationSec: 8, width: 1920, height: 1080, fps: 30 }
+    const said = 'So what is the FOMO and partnership? It is simple and it is yours to keep.'
+    let t = 0.3
+    const words = wordsFromTranscript(
+      said.split(' ').map((text) => {
+        const w = { text, startSec: t, endSec: t + 0.3 }
+        t += 0.4
+        return w
+      }),
+      's1'
+    )
+    const doc = commit(
+      createDoc({ id: 'd', title: 't', source, words }),
+      [{ op: 'motion-add', kind: 'title', from: 'w1', to: '2s', text: ['So what is the', 'FOMO & partnership?'] }],
+      'x'
+    ).doc
+    const cut = currentCut(doc)
+    const resolved = resolveCut(cut, words, [source])
+    const scene = sceneForCut({ cut, resolved, words, sources: [source], brand: null })
+    const title = scene.items[0]
+    const pass = subtitlePass(cut, resolved, scene)
+    expect(pass.cut).toBe(cut)
+    const under = (w: { outStart: number; outEnd: number }): boolean => w.outEnd > title.start && w.outStart < title.end
+    expect(resolved.words.some(under)).toBe(true)
+    expect(pass.resolved.words.some(under)).toBe(false)
+    expect(pass.resolved.words).toEqual(resolved.words.filter((w) => !under(w)))
+    expect(pass.resolved.pieces).toBe(resolved.pieces)
+    // With no card, the very same objects.
+    const plain = currentCut(createDoc({ id: 'p', title: 't', source, words }))
+    const r = resolveCut(plain, words, [source])
+    expect(
+      subtitlePass(plain, r, sceneForCut({ cut: plain, resolved: r, words, sources: [source], brand: null }))
+    ).toEqual({
+      cut: plain,
+      resolved: r
+    })
+  })
+
   it('merges stretches until there are few enough inputs', () => {
     const many = Array.from({ length: 30 }, (_, i) => ({
       kind: 'shape' as const,
@@ -189,7 +228,7 @@ describe.skipIf(!FFMPEG)('exporting graphics', () => {
     const cut = currentCut(doc)
     const resolved = resolveCut(cut, doc.words, doc.sources)
     const work = join(dir, `work-${name}`)
-    const { overlays } = await renderCutMotion({
+    const { overlays, scene } = await renderCutMotion({
       cut,
       resolved,
       words: doc.words,
@@ -203,7 +242,8 @@ describe.skipIf(!FFMPEG)('exporting graphics', () => {
     })
     expect(overlays.length).toBe(1)
     // As the app's export does.
-    return renderCut(subtitleCut(cut), resolved, sources, {
+    const pass = subtitlePass(cut, resolved, scene)
+    return renderCut(pass.cut, pass.resolved, sources, {
       ffmpeg,
       outputPath: join(dir, `${name}-export.mp4`),
       workDir: work,

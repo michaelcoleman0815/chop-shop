@@ -102,6 +102,24 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       if (!line) return { problem: 'Tell me the line to end on, like /endcard Subscribe for part two.' }
       return { style, text: [line, more.join(', ')].filter((t, i) => i === 0 || t), from: 'end-2', to: 'end' }
     }
+  },
+  {
+    command: 'title',
+    kind: 'title',
+    title: 'Kinetic title',
+    summary: 'A lead-in, then a big keyword line with motion blur: /title So what is the | FOMO & partnership?',
+    parse: (rest) => {
+      // A style only when it is written in lower case and more follows: "/title Type less" is a title.
+      const [first, ...others] = words(rest)
+      const styled = first !== undefined && others.length > 0 && (template('title')?.styles ?? []).includes(first)
+      const text = styled ? others.join(' ') : rest.trim()
+      const lines = text
+        .split(/\s*\|\s*/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+      if (lines.length === 0) return { problem: 'Tell me the words, like /title So what is the | FOMO & partnership?' }
+      return { style: styled ? first : '', text: lines.slice(0, 2) }
+    }
   }
 ]
 

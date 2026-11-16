@@ -63,6 +63,48 @@ const rect = (over: Partial<Extract<Layer, { kind: 'shape' }>> = {}): Layer => (
   ...over
 })
 
+describe('motion blur', () => {
+  const scratch = {
+    createCanvas: (w: number, h: number) => createCanvas(w, h) as unknown as HTMLCanvasElement
+  }
+  // A white square crossing the frame at 1000 design pixels a second, centre at 600 at 0.5 s.
+  const moving = (blur?: Layer['motionBlur']): Layer =>
+    rect({ fill: '#ffffff', transform: { x: keys([0, 100], [1, 1100]), y: 500 }, motionBlur: blur })
+
+  it('streaks a fast move along its path', () => {
+    const sharp = frame(1200, 1000)
+    drawFrame(sharp.ctx, 0.5, [moving()], { width: 1200, height: 1000 }, scratch)
+    const smeared = frame(1200, 1000)
+    drawFrame(smeared.ctx, 0.5, [moving({ shutter: 0.05, samples: 12 })], { width: 1200, height: 1000 }, scratch)
+    // The square runs from 550 to 650 now; across a 1/20 s shutter it spans 525 to 675.
+    expect(px(sharp.ctx, 600, 500)[3]).toBe(255)
+    expect(px(smeared.ctx, 600, 500)[3]).toBeGreaterThan(250)
+    for (const x of [535, 665]) {
+      expect(px(sharp.ctx, x, 500)[3], `sharp ${x}`).toBe(0)
+      const a = px(smeared.ctx, x, 500)[3]
+      expect(a, `smeared ${x}`).toBeGreaterThan(30)
+      expect(a, `smeared ${x}`).toBeLessThan(120)
+    }
+    expect(px(smeared.ctx, 690, 500)[3]).toBe(0)
+    // Up and down it is as sharp as ever.
+    expect(px(smeared.ctx, 600, 445)[3]).toBe(0)
+  })
+
+  it('leaves a still layer exactly as it was, and draws sharp without a scratch canvas', () => {
+    const still = rect({ fill: '#ffffff', motionBlur: { shutter: 0.05 } })
+    const a = frame(400, 400)
+    drawFrame(a.ctx, 1, [still], { width: 400, height: 400 }, scratch)
+    const b = frame(400, 400)
+    drawFrame(b.ctx, 1, [rect({ fill: '#ffffff' })], { width: 400, height: 400 })
+    expect(
+      Buffer.from(a.ctx.getImageData(0, 0, 400, 400).data).equals(Buffer.from(b.ctx.getImageData(0, 0, 400, 400).data))
+    ).toBe(true)
+    const c = frame(1200, 1000)
+    drawFrame(c.ctx, 0.5, [moving({ shutter: 0.05 })], { width: 1200, height: 1000 })
+    expect(px(c.ctx, 665, 500)[3]).toBe(0)
+  })
+})
+
 describe('easing', () => {
   it('matches After Effects and CSS curves at their ends and middles', () => {
     expect(ease('linear', 0.3)).toBeCloseTo(0.3)

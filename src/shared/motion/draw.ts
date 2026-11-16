@@ -71,6 +71,8 @@ interface DrawState {
   res: DrawResources
   size: Size
   measure: ReturnType<typeof measurer>
+  /** Inside a motion-blurred layer's sub-frames, which are not blurred again. */
+  smearing?: boolean
 }
 
 // One measuring cache per canvas, kept while the canvas lives.
@@ -142,6 +144,12 @@ function drawLayer(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st:
     drawBehind(ctx, layer, t, parentOpacity, st)
     return
   }
+  if (layer.motionBlur && layer.motionBlur.shutter > 0 && !st.smearing && st.res.createCanvas) {
+    if (moving(ctx, layer, t, layer.motionBlur.shutter, st)) {
+      drawSmeared(ctx, layer, t, parentOpacity, st)
+      return
+    }
+  }
 
   ctx.save()
   applyTransform(ctx, tf)
@@ -188,6 +196,91 @@ function drawBehind(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.drawImage(off as unknown as CanvasImageSource, 0, 0)
+  ctx.restore()
+}
+
+// ---------- Motion blur ----------
+
+/** A scratch canvas the size of the one being drawn on, kept for the next frame. */
+const scratches = new WeakMap<object, { canvas: object; ctx: Ctx }>()
+function scratchFor(ctx: Ctx, st: DrawState): { canvas: object; ctx: Ctx } | null {
+  const canvas = (ctx as unknown as { canvas: { width: number; height: number } }).canvas
+  if (!canvas || !st.res.createCanvas) return null
+  let s = scratches.get(canvas)
+  const sc = s?.canvas as { width: number; height: number } | undefined
+  if (!s || !sc || sc.width !== canvas.width || sc.height !== canvas.height) {
+    const made = st.res.createCanvas(canvas.width, canvas.height)
+    const mctx = made.getContext('2d')
+    if (!mctx) return null
+    s = { canvas: made, ctx: mctx }
+    scratches.set(canvas, s)
+  }
+  return s
+}
+
+const near = (a: number, b: number, eps: number): boolean => Math.abs(a - b) <= eps
+
+/** Whether anything about the layer's place changes across the shutter. */
+function moving(ctx: Ctx, layer: Layer, t: number, shutter: number, st: DrawState): boolean {
+  const length = layer.end - layer.start
+  const a = t - shutter / 2 - layer.start
+  const b = t + shutter / 2 - layer.start
+  const ta = sampleTransform(layer.transform, a, length)
+  const tb = sampleTransform(layer.transform, b, length)
+  const still =
+    near(ta.x, tb.x, 0.2) &&
+    near(ta.y, tb.y, 0.2) &&
+    near(ta.sx, tb.sx, 0.002) &&
+    near(ta.sy, tb.sy, 0.002) &&
+    near(ta.rot, tb.rot, 0.05)
+  if (!still) return true
+  if (layer.kind === 'group') return layer.children.some((c) => moving(ctx, c, t, shutter, st))
+  if (layer.kind !== 'text' || !(layer.animators ?? []).length) return false
+  const block = layoutFor(ctx, layer, st, layer.count ? countText(layer.count, a, length) : null)
+  const fa = textFrame(layer, block, a, length)
+  const fb = textFrame(layer, block, b, length)
+  const differ = (x: Unit[], y: Unit[]): boolean =>
+    x.some(
+      (u, i) =>
+        !near(u.x, y[i].x, 0.2) ||
+        !near(u.y, y[i].y, 0.2) ||
+        !near(u.scale, y[i].scale, 0.002) ||
+        !near(u.rotation, y[i].rotation, 0.05)
+    )
+  return differ(fa.lines, fb.lines) || differ(fa.words, fb.words) || differ(fa.chars, fb.chars)
+}
+
+/**
+ * The layer drawn at several moments across the shutter onto a scratch
+ * canvas, each at 1/n of its opacity and added together, which averages
+ * them; the average goes onto the frame. Where the copies overlap it is as
+ * solid as the layer, and along a fast move it streaks.
+ */
+function drawSmeared(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st: DrawState): void {
+  const pair = scratchFor(ctx, st)
+  const canvas = (ctx as unknown as { canvas: { width: number; height: number } }).canvas
+  const blur = layer.motionBlur
+  if (!pair || !blur) {
+    drawLayer(ctx, layer, t, parentOpacity, { ...st, smearing: true })
+    return
+  }
+  const scratch = pair.ctx
+  const n = Math.max(2, Math.min(24, Math.round(blur.samples ?? 10)))
+  scratch.setTransform(1, 0, 0, 1, 0, 0)
+  scratch.globalCompositeOperation = 'source-over'
+  scratch.clearRect(0, 0, canvas.width, canvas.height)
+  scratch.globalCompositeOperation = 'lighter'
+  const inner = { ...st, smearing: true, measure: measurerFor(scratch) }
+  for (let k = 0; k < n; k++) {
+    scratch.setTransform(ctx.getTransform())
+    drawLayer(scratch, layer, t + blur.shutter * (k / (n - 1) - 0.5), parentOpacity / n, inner)
+  }
+  scratch.setTransform(1, 0, 0, 1, 0, 0)
+  scratch.globalCompositeOperation = 'source-over'
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.globalAlpha = 1
+  ctx.drawImage(pair.canvas as unknown as CanvasImageSource, 0, 0)
   ctx.restore()
 }
 

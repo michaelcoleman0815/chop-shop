@@ -9,8 +9,10 @@ import {
   drawsCaptions,
   MOTION_FONTS,
   renderFrame,
+  template,
   themeFrom,
   type BrandLook,
+  type DrawResources,
   type FaceSample,
   type IconNode,
   type Layer,
@@ -108,7 +110,12 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
       console.warn(`[motion] could not load ${path}:`, err instanceof Error ? err.message : err)
     }
   }
-  const resources = { images, icons: opts.icons }
+  const resources: DrawResources = {
+    images,
+    icons: opts.icons,
+    // Scratch canvases, for motion blur.
+    createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>
+  }
 
   const { width, height, fps } = opts
   const frames = spans.map((s) => {
@@ -248,6 +255,21 @@ export function sceneForCut(
  */
 export function subtitleCut(cut: Cut): Cut {
   return drawsCaptions(cut.captions) ? { ...cut, captions: { ...cut.captions, on: false } } : cut
+}
+
+/**
+ * What the picture and subtitle pass renders: subtitleCut's cut, and the
+ * words said while a card holds the screen (an end card, a title quoting the
+ * speech) left out of the subtitles, as drawn captions wait for them too.
+ * Only the subtitles read the words, so the picture is unchanged.
+ */
+export function subtitlePass(cut: Cut, resolved: Resolved, scene: MotionScene): { cut: Cut; resolved: Resolved } {
+  const cards = scene.items.filter((i) => template(i.kind)?.covers === 'card')
+  const words = resolved.words.filter((w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end))
+  return {
+    cut: subtitleCut(cut),
+    resolved: words.length === resolved.words.length ? resolved : { ...resolved, words }
+  }
 }
 
 /** Renders a cut's graphics to overlay files for renderCut. Empty when the cut has none. */

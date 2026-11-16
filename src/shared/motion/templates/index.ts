@@ -1,6 +1,7 @@
 // Each module registers its templates when it loads.
 import './callout'
 import './titles'
+import './kinetic'
 import './layers'
 
 export * from './registry'

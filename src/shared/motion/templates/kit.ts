@@ -1,5 +1,6 @@
 import { keys, onColor, tail } from '../anim'
 import type { Frame, MotionTheme } from '../theme'
+import { wordsBetween, type Timeline } from '../timing'
 import type { Anim, Ease, Key, Layer, TextLayer } from '../types'
 
 /**
@@ -167,3 +168,34 @@ export function splitPair(s: string): [string, string] {
 }
 
 export const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))
+
+/** A word as it is compared with speech: lower case, no punctuation, "&" read as "and". */
+const token = (w: string): string => {
+  const t = w
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^\p{L}\p{N}'$%&+]/gu, '')
+  return t === '&' ? 'and' : t === '+' ? 'plus' : t
+}
+
+/**
+ * When each word of `words` is said, looking from `from` through the next
+ * few seconds of speech: matched in order, a word at a time, so a title
+ * that quotes the speaker lands on their words. Null for a word not found.
+ */
+export function spokenTimes(tl: Timeline, words: string[], from: number, ahead = 8): (number | null)[] {
+  const said = wordsBetween(tl, from - 0.05, from + ahead)
+  let next = 0
+  return words.map((w) => {
+    const want = token(w)
+    if (!want) return null
+    // A word may be skipped in speech, or said a little differently: look a few words on.
+    for (let i = next; i < Math.min(said.length, next + 4); i++) {
+      if (token(said[i].text) === want) {
+        next = i + 1
+        return said[i].outStart
+      }
+    }
+    return null
+  })
+}
