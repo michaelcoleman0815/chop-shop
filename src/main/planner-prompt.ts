@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { currentCut, currentVersion, indexWords, resolveCut, type EditDoc, type Note } from '../shared/edit'
 import { clock } from '../shared/presets'
+import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from '../shared/motion'
+import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { ordinal } from '../shared/raw/takes'
 import { renderSound } from '../shared/audio/map'
@@ -40,11 +42,13 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"join","beat":"b4"}: join a beat with the one after it. Only when they sit together in the recording.
 - {"op":"insert","to":2,"beat":{"source":"s1","from":"w40","to":"w52"}}: bring words back as a new beat.
 - {"op":"treat","beats":["b2","b5"],"set":{"bw":true}}: set treatment fields. A bigWord set names exactly one beat.
-- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom.
+- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest; "preset":"clean" goes back to plain subtitles.
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
 - {"op":"aspect","aspect":"vertical"}: vertical, wide, square or original.
 - {"op":"loudness","lufs":-14}.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
+
+${graphicsGuide()}
 
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
@@ -62,6 +66,7 @@ A <sound> block, when present, lists stretches that are not speech (laughter, mu
 
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
+A <brand-logos> block names the creator's own logos: their products and channel. A logo pop shows one when a row's label is its name.
 
 ## How this creator edits
 A <creator-preferences> block, when present, lists what has been learned from how this creator edits: what they ask for again and again, undo, and keep, each with how often. Lean on it where the request leaves a choice open; it never overrides the request or the brand voice.
@@ -78,6 +83,28 @@ const TreatmentSet = z.object({
   bigWord: z.string().nullable().optional(),
   /** Material by id; offerPlan turns it into the file and keeps it muted. */
   broll: z.object({ asset: z.string(), inSec: z.number() }).nullable().optional()
+})
+
+/** The graphics the planner can make: every built template but hand-built layers. */
+const GRAPHIC_KINDS = templates()
+  .map((t) => t.kind)
+  .filter((k) => k !== 'layers') as [string, ...string[]]
+
+// Made fresh for each op: shared schema objects come out as $refs in the JSON schema.
+const graphicSlots = () => ({
+  from: z.string(),
+  to: z.string(),
+  text: z.array(z.string()),
+  items: z.array(
+    z.object({ label: z.string(), value: z.string(), note: z.string(), mark: z.string(), at: z.string() })
+  ),
+  values: z.array(z.number()),
+  box: z.array(z.number()),
+  icon: z.string(),
+  style: z.string(),
+  place: z.string(),
+  color: z.string(),
+  fx: z.array(z.string())
 })
 
 export const PlannerOpSchema = z.discriminatedUnion('op', [
@@ -99,7 +126,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
       on: z.boolean().optional(),
       wordsPerScreen: z.number().optional(),
       position: z.enum(['top', 'middle', 'chest', 'bottom']).optional(),
-      uppercase: z.boolean().optional()
+      uppercase: z.boolean().optional(),
+      preset: z.enum(['clean', 'hierarchy']).optional()
     })
   }),
   z.object({
@@ -107,7 +135,13 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     set: z.object({ maxGapSec: z.number(), padSec: z.number(), fillers: z.boolean() }).nullable()
   }),
   z.object({ op: z.literal('aspect'), aspect: z.enum(['vertical', 'wide', 'square', 'original']) }),
-  z.object({ op: z.literal('loudness'), lufs: z.number().nullable() })
+  z.object({ op: z.literal('loudness'), lufs: z.number().nullable() }),
+  // Graphics. Every slot is required, so the schema spends nothing from the
+  // structured-output limits on optional or union-typed parameters; an empty
+  // slot means the template's default (or, in an update, no change).
+  z.object({ op: z.literal('motion-add'), kind: z.enum(GRAPHIC_KINDS), ...graphicSlots() }),
+  z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
+  z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) })
 ])
 
 export const PlanSchema = z.object({
@@ -206,7 +240,8 @@ export function renderRequest(
   request: string,
   notes: Note[],
   voice = '',
-  preferences: string[] = []
+  preferences: string[] = [],
+  logos: string[] = []
 ): string {
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
@@ -222,7 +257,7 @@ export function renderRequest(
     `runs ${clock(resolved.durationSec)}`,
     `aspect ${cut.aspect}`,
     cut.captions.on
-      ? `captions ${cut.captions.wordsPerScreen} at a time, ${cut.captions.position}${cut.captions.uppercase ? ', upper case' : ''}`
+      ? `captions ${cut.captions.wordsPerScreen} at a time, ${cut.captions.position}${cut.captions.uppercase ? ', upper case' : ''}${drawsCaptions(cut.captions) ? `, ${cut.captions.preset}` : ''}`
       : 'captions off',
     cut.tighten
       ? `pauses over ${cut.tighten.maxGapSec} s cut${cut.tighten.fillers ? ', fillers cut' : ''}`
@@ -257,6 +292,8 @@ export function renderRequest(
   })
 
   const parts = [`<cut ${settings.join('; ')}>`, ...beats, '</cut>']
+  const graphics = graphicsLines(cut, resolved, doc.words)
+  if (graphics.length > 0) parts.push('<graphics>', ...graphics, '</graphics>')
   if (doc.assets.length > 0) {
     // Where each piece already shows, so the planner neither repeats nor forgets one.
     const shows = new Map<string, string[]>()
@@ -264,13 +301,18 @@ export function renderRequest(
       const id = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
       if (id) shows.set(id, [...(shows.get(id) ?? []), beat.id])
     }
+    // A picture a graphic shows is shown by that graphic.
+    for (const m of cut.motion ?? [])
+      for (const id of template(m.kind)?.pictures?.(m) ?? []) shows.set(id, [...(shows.get(id) ?? []), m.id])
     parts.push('<material>')
     for (const a of doc.assets) {
       const size = a.width && a.height ? ` ${a.width}x${a.height}` : ''
       const length = a.durationSec ? `, ${a.durationSec.toFixed(1)} s` : ''
       const where = shows.get(a.id)
+      // A picture far taller than wide is a page: it goes in a screenshot graphic, not a cutaway.
+      const page = a.kind === 'image' && a.width && a.height && a.height > a.width * 1.6 ? ', a page' : ''
       parts.push(
-        `${a.id} ${a.kind}${size}${length}: ${a.title}${where ? ` | shown on ${where.join(' ')}` : ' | not in the cut yet'}`
+        `${a.id} ${a.kind}${size}${length}${page}: ${a.title}${where ? ` | shown on ${where.join(' ')}` : ' | not in the cut yet'}`
       )
     }
     parts.push('</material>')
@@ -289,6 +331,8 @@ export function renderRequest(
   }
   // The creator's own words about how their edits should feel.
   if (voice.trim()) parts.push(`<brand-voice>\n${voice.trim()}\n</brand-voice>`)
+  const own = logos.map((l) => l.trim()).filter(Boolean)
+  if (own.length) parts.push(`<brand-logos>\n${own.join('\n')}\n</brand-logos>`)
   // What has been learned from how they edit, strongest first, as short statements.
   const learned = preferences.map((p) => p.trim()).filter(Boolean)
   if (learned.length > 0)
@@ -298,4 +342,23 @@ export function renderRequest(
   if (request.trim()) parts.push(`<request>\n${request.trim()}\n</request>`)
   else parts.push('Carry out the notes.')
   return parts.join('\n')
+}
+
+/**
+ * Icons the model names that Lucide does not have become the closest one it
+ * does, or none, so a graphic never waits on an icon that cannot be drawn.
+ */
+export async function withRealIcons<T>(ops: T[]): Promise<T[]> {
+  const named = (o: T): string => {
+    const icon = (o as { icon?: unknown }).icon
+    return typeof icon === 'string' ? icon.trim() : ''
+  }
+  if (!ops.some((o) => named(o) && named(o) !== 'none')) return ops
+  const mod = await import('lucide-static/tags.json')
+  const tags = (mod.default ?? mod) as unknown as Record<string, string[]>
+  return ops.map((o) => {
+    const icon = named(o)
+    if (!icon || icon === 'none' || tags[icon]) return o
+    return { ...o, icon: searchIcons(icon, tags, 1)[0] ?? '' }
+  })
 }

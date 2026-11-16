@@ -11,7 +11,7 @@ import {
   type Note,
   type Op
 } from '../shared/edit'
-import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, type Plan } from './planner-prompt'
+import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIcons, type Plan } from './planner-prompt'
 
 /**
  * Turns a request or a set of notes into ops on an edit document, with Claude.
@@ -44,6 +44,8 @@ export async function planEdit(input: {
   voice?: string
   /** What has been learned from how the creator edits, strongest first. */
   preferences?: string[]
+  /** The names of the creator's own logos. */
+  logos?: string[]
 }): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
@@ -73,7 +75,7 @@ export async function planEdit(input: {
             { type: 'text', text: renderTranscript(doc), cache_control: { type: 'ephemeral' } },
             {
               type: 'text',
-              text: renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [])
+              text: renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos)
             }
           ]
         }
@@ -89,7 +91,8 @@ export async function planEdit(input: {
     }
     const plan = response.parsed_output
     if (!plan) return { ok: false, message: 'The plan came back in a shape I could not read. Try again.' }
-    return offerPlan(doc, plan, input.notes)
+    // Icons Lucide does not have become the closest one it does.
+    return offerPlan(doc, { ...plan, ops: await withRealIcons(plan.ops) }, input.notes)
   } catch (err) {
     return { ok: false, message: describeError(err), needsKey: err instanceof Anthropic.AuthenticationError }
   }
@@ -114,7 +117,7 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[]): PlanEditResu
     const inSec = Math.max(0, Math.min(op.set.broll.inSec, Math.max(0, (asset.durationSec ?? 0) - 0.5)))
     return [{ ...op, set: { ...op.set, broll: { path: asset.path, inSec, muted: true } } }]
   })
-  const result = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources })
+  const result = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources, assets: doc.assets })
   const known = new Set(notes.map((n) => n.id))
   const beats = new Set(result.cut.beats.map((b) => b.id))
   const plain = (text: string): string => plainIds(doc, text.trim())

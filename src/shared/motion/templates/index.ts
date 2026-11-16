@@ -1,0 +1,17 @@
+// Each module registers its templates when it loads.
+import './callout'
+import './titles'
+import './keyword'
+import './kinetic'
+import './logos'
+import './market'
+import './screenshot'
+import './device'
+import './layers'
+
+export * from './registry'
+export * from './kit'
+export { marketSeries } from './market'
+export { shotAsset } from './screenshot'
+export { orbiters } from './device'
+export { numberIn } from './keyword'

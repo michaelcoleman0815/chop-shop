@@ -1,5 +1,5 @@
 import { addSources, createDoc, nextSourceId, wordsFromTranscript, type EditDoc } from '../../../shared/edit'
-import { BUILT_IN_PRESETS, describeStyle, suggestCommandName, type Preset } from '../../../shared/presets'
+import { BUILT_IN_PRESETS, describeStyle, LOOK_PRESETS, suggestCommandName, type Preset } from '../../../shared/presets'
 import {
   factDetails,
   factsReply,
@@ -80,14 +80,45 @@ function rawWords(): { text: string; startSec: number; endSec: number }[] {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-function fakeDoc(path: string): EditDoc {
+/**
+ * A plain page drawn as SVG, 860 wide like a capture: a header, a name and a
+ * column of posts, in shapes only, so the export draws it exactly as the
+ * browser does. Its colours shift with the site's name.
+ */
+export function fakePage(host: string): { svg: string; width: number; height: number } {
+  const width = 860
+  let hue = 0
+  for (const ch of host) hue = (hue * 31 + ch.charCodeAt(0)) % 360
+  const parts: string[] = [
+    `<rect width="860" height="300" fill="hsl(${hue}, 62%, 52%)"/>`,
+    '<circle cx="130" cy="300" r="86" fill="#101114" stroke="#fff" stroke-width="10"/>',
+    '<rect x="60" y="414" width="360" height="40" rx="20" fill="#F2F3F5"/>',
+    '<rect x="60" y="474" width="520" height="24" rx="12" fill="#8A8F98"/>'
+  ]
+  let y = 560
+  for (let i = 0; i < 7; i++) {
+    parts.push(`<rect x="40" y="${y}" width="780" height="330" rx="28" fill="#17181C"/>`)
+    parts.push(`<rect x="80" y="${y + 40}" width="${420 - i * 20}" height="26" rx="13" fill="#D9DBE0"/>`)
+    parts.push(`<rect x="80" y="${y + 86}" width="640" height="18" rx="9" fill="#5C616B"/>`)
+    parts.push(`<rect x="80" y="${y + 120}" width="560" height="18" rx="9" fill="#5C616B"/>`)
+    parts.push(`<rect x="80" y="${y + 166}" width="700" height="130" rx="18" fill="hsl(${hue}, 45%, 28%)"/>`)
+    y += 370
+  }
+  const height = y + 40
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#0B0C0E"/>${parts.join('')}</svg>`
+  return { svg, width, height }
+}
+
+export function fakeDoc(path: string): EditDoc {
   const words = /\braw\b/i.test(path.split('/').pop() ?? '') ? rawWords() : fakeWords()
+  // Footage named as wide or landscape comes out 16:9; everything else is a vertical take.
+  const wide = /wide|landscape|16x9/i.test(path)
   const source = {
     id: 's1',
     path,
     durationSec: words[words.length - 1].endSec + 1.2,
-    width: 1080,
-    height: 1920,
+    width: wide ? 1920 : 1080,
+    height: wide ? 1080 : 1920,
     fps: 30
   }
   return createDoc({
@@ -455,7 +486,7 @@ export function createMockApi(): CutalongApi {
         reply: factsReply(facts),
         chips: describeStyle(style).slice(0, 3),
         details: factDetails(facts),
-        command: suggestCommandName('@fieldnotes', [...BUILT_IN_PRESETS, ...saved]),
+        command: suggestCommandName('@fieldnotes', [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...saved]),
         note: null
       }
       return { ok: true as const, study }
@@ -603,6 +634,24 @@ export function createMockApi(): CutalongApi {
         origin
       }
     }),
+    // A made-up page, as tall as a real capture, so the browser preview can show a screenshot.
+    capturePage: async ({ url }) => {
+      await sleep(900)
+      const host = /^https?:\/\/([^/]+)/i.exec(url)?.[1]?.replace(/^www\./, '') ?? 'example.com'
+      const page = fakePage(host)
+      return {
+        ok: true as const,
+        asset: {
+          kind: 'image' as const,
+          path: `data:image/svg+xml;utf8,${encodeURIComponent(page.svg)}`,
+          title: host,
+          durationSec: null,
+          width: page.width,
+          height: page.height,
+          origin: { type: 'link' as const, url, author: host, license: null, range: null }
+        }
+      }
+    },
     setVideoSignIn: async (browser) => {
       settings = { ...settings, videoSignIn: browser }
       return browser
@@ -679,7 +728,16 @@ export function createMockApi(): CutalongApi {
       memory = changeMemory(memory, change)
       return memoryView(memory)
     },
-    chooseMedia: async () => null,
+    // A made-up product logo, so the browser preview can pick a picture.
+    chooseMedia: async () => ({
+      kind: 'image' as const,
+      path:
+        'data:image/svg+xml;utf8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" rx="58" fill="#5B5BF0"/><circle cx="104" cy="128" r="40" fill="#fff"/><circle cx="160" cy="128" r="40" fill="#fff" fill-opacity="0.7"/></svg>'
+        ),
+      durationSec: 0
+    }),
     checkKey: async () =>
       key === null
         ? { ok: false as const, message: 'No key yet.', needsKey: true }

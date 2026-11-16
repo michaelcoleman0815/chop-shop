@@ -12,6 +12,9 @@ import { creditsText, isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo, probeMedia } from './inspiration/measure'
 import { renderCut } from './cut-render'
+import { renderCutMotion, subtitlePass } from './motion-render'
+import { captureLink } from './page-shot'
+import { loadIcons, loadLogos } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
@@ -45,7 +48,7 @@ import {
   type Source,
   type Word
 } from '../shared/edit'
-import { BUILT_IN_PRESETS, describeStyle, suggestCommandName } from '../shared/presets'
+import { BUILT_IN_PRESETS, describeStyle, LOOK_PRESETS, suggestCommandName } from '../shared/presets'
 import {
   factDetails,
   factsReply,
@@ -209,14 +212,34 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         ? await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.mp4')
         : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
       const brand = await readBrand()
-      await renderCut(cut, resolved, sources, {
+      const report = (f: number): void => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
+      // Graphics first: drawn frame by frame, then laid over the picture in the final pass.
+      const motion = await renderCutMotion({
+        cut,
+        resolved,
+        words: doc.words,
+        sources,
+        assets: doc.assets,
+        brand,
+        quality: req.quality,
+        ffmpeg: FFMPEG_PATH,
+        workDir: join(workDir, 'motion'),
+        fontsDir: FONTS_DIR(),
+        icons: loadIcons,
+        logos: loadLogos,
+        onProgress: (f) => report(f * 0.25)
+      })
+      const share = motion.overlays.length > 0 ? 0.25 : 0
+      const pass = subtitlePass(cut, resolved, motion.scene)
+      await renderCut(pass.cut, pass.resolved, sources, {
         ffmpeg: FFMPEG_PATH,
         outputPath,
         workDir,
         quality: req.quality,
         fontsDir: FONTS_DIR(),
         brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
-        onProgress: (f) => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
+        overlays: motion.overlays,
+        onProgress: (f) => report(share + f * (1 - share))
       })
       // Anything from outside the person's own files is credited beside the video.
       let creditsPath: string | null = null
@@ -281,7 +304,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
       const facts = summarize(measures, speech)
       const style = styleFromFacts(facts)
-      const taken = [...BUILT_IN_PRESETS, ...(await savedPresets())]
+      const taken = [...BUILT_IN_PRESETS, ...LOOK_PRESETS, ...(await savedPresets())]
       const study: InspirationStudy = {
         source: { url: input.url ?? null, path, title, durationSec: measures.durationSec },
         facts,
@@ -301,14 +324,16 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   })
 
   // What has been learned about how the creator edits goes with each request,
-  // read fresh here so a statement they deleted never reaches the planner.
+  // read fresh here so a statement they deleted never reaches the planner, and
+  // the brand's own logos by name, so a logo pop can show them.
   // Claude plans unless the person picked a model on this Mac in Settings.
   ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
     const preferences = await preferencesForPlanner().catch(() => [])
+    const logos = (await readBrand()).logos.map((l) => l.name)
     const local = getSettings().localPlanner
     return local
-      ? planEditLocally({ ...req, preferences }, { host: OLLAMA_HOST, model: local })
-      : planEdit({ ...req, preferences })
+      ? planEditLocally({ ...req, preferences, logos }, { host: OLLAMA_HOST, model: local })
+      : planEdit({ ...req, preferences, logos })
   })
 
   // The models Ollama has on this Mac, for planning edits without Claude.
@@ -396,6 +421,24 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
     }
   )
+
+  // A page at a link the person gave, captured here as one tall picture, as it
+  // shows to someone logged out, and kept with the link it came from.
+  ipcMain.handle('assets:capturePage', async (_e, req: { docId: string; url: string }) => {
+    const link = captureLink(req.url)
+    if (!link)
+      return { ok: false as const, message: 'That is not a link I can open. It needs to start with http or https.' }
+    try {
+      const { capturePage } = await import('./page-capture')
+      const shot = await capturePage(link.href)
+      const host = new URL(shot.url || link.href).hostname.replace(/^www\./, '')
+      const origin = { type: 'link' as const, url: link.href, author: host, license: null, range: null }
+      const asset = await saveImage(shot.png, shot.title || host, origin, tools(req.docId))
+      return { ok: true as const, asset }
+    } catch (err) {
+      return { ok: false as const, message: message(err) }
+    }
+  })
 
   ipcMain.handle('settings:videoSignIn', (_e, browser: string | null) => {
     const allowed = ['chrome', 'safari', 'firefox', 'edge', 'brave', 'chromium', 'opera', 'vivaldi']

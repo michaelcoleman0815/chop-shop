@@ -13,10 +13,23 @@ import {
   type Resolved
 } from '../../../../shared/edit'
 import { parseCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
+import {
+  buildScene,
+  designSize,
+  drawsCaptions,
+  graphicTitle,
+  template,
+  themeFrom,
+  type MotionItem,
+  type MotionScene
+} from '../../../../shared/motion'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { isImagePath } from '../../../../shared/assets'
 import { mediaUrlFor } from '../api'
-import { BeatStrip, type StripBeat } from '../components/BeatStrip'
+import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
+import { GraphicPanel } from '../components/GraphicPanel'
+import { MotionCanvas } from '../components/MotionCanvas'
+import { RegionPicker } from '../components/RegionPicker'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { clock } from '../format'
@@ -40,6 +53,19 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const player = usePlayer(video, resolved, { sources: doc.sources, urlFor: mediaUrlFor, audio: sound })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
+  // The cut's graphics on the output clock, in the brand's look: what the export draws.
+  const scene = useMemo(
+    () =>
+      buildScene({
+        cut,
+        resolved,
+        words: doc.words,
+        size: designSize(cut.aspect, doc.sources[0]),
+        theme: themeFrom(app.brand),
+        assets: doc.assets
+      }),
+    [cut, resolved, doc.words, doc.sources, doc.assets, app.brand]
+  )
 
   const beats: StripBeat[] = useMemo(() => {
     const byId = new Map(cut.beats.map((b) => [b.id, b]))
@@ -52,6 +78,22 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const nowBeat =
     resolved.beats.find((b) => player.time >= b.outStart && player.time < b.outEnd) ??
     resolved.beats[resolved.beats.length - 1]
+
+  // Graphics along the beat strip, stacked in rows where they overlap.
+  const marks: StripMark[] = useMemo(() => {
+    const rows: number[] = []
+    const byId = new Map(cut.motion.map((m) => [m.id, m]))
+    return [...scene.items]
+      .sort((a, b) => a.start - b.start)
+      .map((i) => {
+        let row = rows.findIndex((free) => free <= i.start)
+        if (row < 0) row = rows.length
+        rows[row] = i.end
+        const item = byId.get(i.id)
+        return { id: i.id, label: item ? graphicTitle(item) : 'Graphic', start: i.start, end: i.end, row }
+      })
+  }, [scene, cut.motion])
+  const selected: MotionItem | null = cut.motion.find((m) => m.id === app.graphic) ?? null
 
   // Space plays and pauses, unless someone is typing.
   useEffect(() => {
@@ -104,11 +146,14 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           <Preview
             doc={doc}
             resolved={resolved}
+            scene={scene}
             time={player.time}
             playing={player.playing}
             video={video}
             sound={sound}
             mediaUrl={player.src ?? app.mediaUrl}
+            selected={selected}
+            onRegion={(box) => selected && app.updateGraphic(selected.id, { box })}
           />
           {side === 'script' ? (
             <ScriptPanel
@@ -120,8 +165,16 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             />
           ) : side === 'takes' ? (
             <TakesPanel app={app} doc={doc} resolved={resolved} onSeek={player.seek} />
+          ) : selected ? (
+            <GraphicPanel
+              item={selected}
+              scene={scene}
+              onChange={(change) => app.updateGraphic(selected.id, change)}
+              onRemove={() => app.removeGraphic(selected.id)}
+              onClose={() => app.selectGraphic(null)}
+            />
           ) : (
-            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} />
+            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} time={player.time} />
           )}
         </div>
         <BeatStrip
@@ -131,6 +184,14 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           playing={player.playing}
           onToggle={player.toggle}
           onSeek={player.seek}
+          marks={marks}
+          selected={selected?.id ?? null}
+          onMark={(id) => {
+            setSide('notes')
+            app.selectGraphic(id === selected?.id ? null : id)
+            const at = scene.items.find((i) => i.id === id)
+            if (at && id !== selected?.id) player.seek(Math.min(at.end - 0.05, at.at + 0.4))
+          }}
         />
       </main>
     </>
@@ -143,14 +204,20 @@ const CAPTION_TOP: Record<string, number> = { top: 0.22, middle: 0.52, chest: 0.
 function Preview({
   doc,
   resolved,
+  scene,
   time,
   playing,
   video,
   sound,
-  mediaUrl
+  mediaUrl,
+  selected,
+  onRegion
 }: {
   doc: EditDoc
   resolved: Resolved
+  scene: MotionScene
+  selected: MotionItem | null
+  onRegion: (box: number[]) => void
   time: number
   playing: boolean
   video: React.RefObject<HTMLVideoElement>
@@ -186,9 +253,12 @@ function Preview({
     () => captionPages(resolved, cut.captions.wordsPerScreen),
     [resolved, cut.captions.wordsPerScreen]
   )
-  const page = cut.captions.on
-    ? pages.find((p) => time >= p[0].outStart - 0.05 && time <= p[p.length - 1].outEnd + 0.25)
-    : undefined
+  // Captions the graphics draw are on the canvas, not here; and captions wait while a card or title is up.
+  const carded = scene.items.some((i) => template(i.kind)?.covers === 'card' && time >= i.start && time < i.end)
+  const page =
+    cut.captions.on && !drawsCaptions(cut.captions) && !carded
+      ? pages.find((p) => time >= p[0].outStart - 0.05 && time <= p[p.length - 1].outEnd + 0.25)
+      : undefined
   const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined
   const showBig = big && time >= big.outStart - 0.1 && time <= big.outEnd + 0.7
 
@@ -240,6 +310,10 @@ function Preview({
             ))}
           </div>
         )}
+        <MotionCanvas scene={scene} assets={doc.assets} time={time} width={box.w} height={box.h} />
+        {selected && template(selected.kind)?.fields.some((f) => f.slot === 'box') && (
+          <RegionPicker item={selected} onPick={onRegion} />
+        )}
       </div>
     </div>
   )
@@ -289,12 +363,15 @@ function NotesPanel({
   app,
   doc,
   nowBeat,
-  presets
+  presets,
+  time
 }: {
   app: Cutalong
   doc: EditDoc
   nowBeat: string | null
   presets: Preset[]
+  /** The playhead, where a graphic typed here lands. */
+  time: number
 }): JSX.Element {
   const version = currentVersion(doc)
   const notes = openNotes(doc)
@@ -353,7 +430,7 @@ function NotesPanel({
         presets={presets}
         onNote={(text) => {
           const command = parseCommand(text)
-          if (command) void app.runCommand(command.command, 'panel', command.rest)
+          if (command) void app.runCommand(command.command, 'panel', command.rest, time)
           else if (!app.answerInPanel(text)) app.addNote(text, nowBeat)
         }}
       />

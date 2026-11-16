@@ -128,6 +128,21 @@ export const BUILT_IN_PRESETS: Preset[] = [
   }
 ]
 
+/**
+ * Built-in looks for captions the graphics draw. They are listed after your
+ * own /brand in the slash menu, and their names are taken like the built-ins.
+ */
+export const LOOK_PRESETS: Preset[] = [
+  {
+    command: 'hierarchy',
+    title: 'Hierarchy captions',
+    summary: 'Captions in two lines on your chest, the key words big, each word fading in as you say it.',
+    builtIn: true,
+    style: { captions: { on: true, preset: 'hierarchy', position: 'chest' } },
+    inspiration: null
+  }
+]
+
 const POSITION_WORDS: Record<(typeof CAPTION_POSITIONS)[number], string> = {
   top: 'at the top',
   middle: 'in the middle',

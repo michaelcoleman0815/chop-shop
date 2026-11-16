@@ -1,3 +1,4 @@
+import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { describe, expect, it } from 'vitest'
 import {
   addAsset,
@@ -10,11 +11,12 @@ import {
   wordsFromTranscript,
   OpSchema
 } from '../shared/edit'
+import { BUSY_EXAMPLE, buildScene, DEFAULT_THEME, designSize, fullCall, template, templates } from '../shared/motion'
 import { docFor } from '../shared/raw/eval'
 import { FIXTURES } from '../shared/raw/fixtures'
 import { planTakes, takesOf, switchTakeOps } from '../shared/raw/plan'
 import { offerPlan } from './planner'
-import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript } from './planner-prompt'
+import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
 
 const source = { id: 's1', path: '/take.mov', durationSec: 12, width: 1080, height: 1920, fps: 30 }
 const words = wordsFromTranscript(
@@ -167,6 +169,255 @@ describe('the planner request', () => {
       needs: []
     }
     expect(PlanSchema.safeParse(plan).success).toBe(true)
+  })
+
+  it('teaches every graphic there is, with an example that parses and applies', () => {
+    expect(PLANNER_SYSTEM).toContain('## Graphics')
+    // A longer recording, so every example's anchors exist.
+    const long = createDoc({
+      id: 'g',
+      title: 'g',
+      source: { ...source, durationSec: 40 },
+      words: wordsFromTranscript(
+        Array.from({ length: 40 }, (_, i) => ({
+          text: `word${i + 1}`,
+          startSec: 0.5 + i * 0.6,
+          endSec: 0.9 + i * 0.6
+        })),
+        's1'
+      )
+    })
+    const examples = [...PLANNER_SYSTEM.matchAll(/\{"op":"motion-add"[^\n]*?\}(?=: )/g)].map((m) => JSON.parse(m[0]))
+    const kinds = templates()
+      .map((t) => t.kind)
+      .filter((k) => k !== 'layers')
+    expect(examples.map((e) => e.kind).sort()).toEqual([...kinds].sort())
+    for (const kind of kinds) expect(PLANNER_SYSTEM).toContain(`\n- ${kind}: `)
+    const r = applyOps(currentCut(long), examples, { words: long.words, sources: long.sources })
+    expect(r.rejected).toEqual([])
+    expect(r.applied).toHaveLength(examples.length)
+  })
+
+  it('accepts graphics in a plan, and they pass the dry run', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const slots = { to: '', items: [], values: [], icon: '', place: '', color: '', fx: [] }
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], box: [], style: 'spec', ...slots },
+        { op: 'motion-update', id: 'm1', from: '', text: [], box: [0.5, 0.4], style: '', ...slots },
+        { op: 'motion-remove', ids: ['m1'] }
+      ],
+      summary: 'A callout points at the settings, then goes.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(r.rejected).toEqual([])
+    expect(r.applied.map((o) => o.op)).toEqual(['motion-add', 'motion-update', 'motion-remove'])
+  })
+
+  it('can turn on drawn hierarchy captions, and says so in the request', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(PLANNER_SYSTEM).toContain('"preset":"hierarchy"')
+    const plan = PlanSchema.parse({
+      ops: [{ op: 'captions', set: { on: true, preset: 'hierarchy', position: 'chest' } }],
+      summary: 'Captions come in word by word.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(r.rejected).toEqual([])
+    expect(r.cut.captions.preset).toBe('hierarchy')
+    doc = commit(doc, plan.ops, 'x').doc
+    expect(renderRequest(doc, 'Bigger', [])).toContain(', hierarchy')
+  })
+
+  it('names the brand’s own logos, and pops brands named in a plan', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    expect(renderRequest(doc, 'Pop my app logo', [], '', [], ['Field Notes App'])).toContain(
+      '<brand-logos>\nField Notes App\n</brand-logos>'
+    )
+    const slots = { to: '', text: [], values: [], icon: '', box: [], place: '', color: '', fx: [] }
+    const plan = PlanSchema.parse({
+      ops: [
+        {
+          op: 'motion-add',
+          kind: 'logo',
+          from: 'w3',
+          style: 'tile',
+          items: [
+            { label: 'Bitcoin', value: '', note: '', mark: '', at: 'w3' },
+            { label: 'Field Notes App', value: '', note: '', mark: '', at: 'w5' }
+          ],
+          ...slots
+        }
+      ],
+      summary: 'Two logos pop in.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
+    expect(r.rejected).toEqual([])
+  })
+
+  it('shows a captured page with a screenshot, and only a page the edit has', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    doc = addAsset(doc, {
+      kind: 'image',
+      path: '/Users/me/Assets/example-com.png',
+      title: 'Example Domain',
+      durationSec: null,
+      width: 860,
+      height: 4300,
+      origin: { type: 'link', url: 'https://example.com/', author: 'example.com', license: null, range: null }
+    }).doc
+    expect(PLANNER_SYSTEM).toContain('- screenshot: A tall screenshot of a page')
+    expect(renderRequest(doc, 'Show the page when I mention it', [])).toContain(
+      'a1 image 860x4300, a page: Example Domain | not in the cut yet'
+    )
+    const slots = { to: '', items: [], values: [], icon: '', box: [], place: '', color: '', fx: [] }
+    const plan = PlanSchema.parse({
+      ops: [
+        { op: 'motion-add', kind: 'screenshot', from: 'w3', text: ['a1'], style: 'rise', ...slots },
+        { op: 'motion-add', kind: 'screenshot', from: 'w6', text: ['a4'], style: '', ...slots }
+      ],
+      summary: 'The page comes up as you mention it.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const offered = offerPlan(doc, plan, [])
+    if (!offered.ok) throw new Error('expected a plan')
+    expect(offered.ops).toHaveLength(1)
+    expect(offered.ops[0]).toMatchObject({ op: 'motion-add', kind: 'screenshot', text: ['a1'], style: 'rise' })
+    expect(offered.rejected).toEqual(['One change did not fit the cut, so I left it out.'])
+    const shown = commit(doc, offered.ops, offered.summary).doc
+    expect(renderRequest(shown, '', [])).toContain('a1 image 860x4300, a page: Example Domain | shown on m1')
+    // The same page on a phone, with coins going round it.
+    expect(PLANNER_SYSTEM).toContain('- device: A phone on dark')
+    const phone = PlanSchema.parse({
+      ops: [
+        {
+          op: 'motion-add',
+          kind: 'device',
+          from: 'w5',
+          text: ['a1'],
+          style: 'orbit',
+          ...slots,
+          items: ['Bitcoin', 'Ethereum'].map((label) => ({ label, value: '', note: '', mark: '', at: '' }))
+        }
+      ],
+      summary: 'The app comes up on a phone.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: []
+    })
+    const onPhone = offerPlan(shown, phone, [])
+    if (!onPhone.ok) throw new Error('expected a plan')
+    expect(onPhone.rejected).toEqual([])
+    expect(onPhone.ops[0]).toMatchObject({ kind: 'device', text: ['a1'] })
+  })
+
+  it('shows the cut’s graphics in the request', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    doc = commit(doc, [{ op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], style: 'circle' }], 'x').doc
+    const text = renderRequest(doc, 'Make it an arrow', [])
+    expect(text).toContain('<graphics>\nm1 callout [0:02-0:04] from w9 | text "Settings" | style circle\n</graphics>')
+  })
+
+  it('makes icon names real before the dry run', async () => {
+    const [kept, fixed, none] = await withRealIcons([{ icon: 'camera' }, { icon: 'a camera' }, { icon: '' }])
+    expect(kept.icon).toBe('camera')
+    expect(fixed.icon).toBe('camera')
+    expect(none.icon).toBe('')
+  })
+
+  it('keeps the plan’s schema inside the limits of structured output', () => {
+    // Claude's structured output allows at most 24 optional and 16 union-typed
+    // parameters in all, and no recursion. Every slot of a graphic is required for this.
+    const schema = (betaZodOutputFormat(PlanSchema) as unknown as { schema: unknown }).schema
+    let optional = 0
+    let unions = 0
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return
+      const n = node as Record<string, unknown>
+      if (n.type === 'object' && n.properties && typeof n.properties === 'object') {
+        const required = new Set((n.required as string[] | undefined) ?? [])
+        for (const [k, v] of Object.entries(n.properties as Record<string, Record<string, unknown>>)) {
+          if (!required.has(k)) optional++
+          if (Array.isArray(v.anyOf) || Array.isArray(v.oneOf) || Array.isArray(v.type)) unions++
+        }
+      }
+      if (n.type === 'array' && n.items && Array.isArray((n.items as Record<string, unknown>).anyOf)) unions++
+      for (const v of Object.values(n)) {
+        if (Array.isArray(v)) v.forEach(walk)
+        else if (v && typeof v === 'object') walk(v)
+      }
+    }
+    walk(schema)
+    expect(optional).toBeLessThanOrEqual(24)
+    expect(unions).toBeLessThanOrEqual(16)
+    expect(JSON.stringify(schema)).not.toContain('$ref')
+  })
+})
+
+describe('a busy edit', () => {
+  it('teaches a graphic every few seconds on its words, the full-frame ones taking turns with the speaker', () => {
+    expect(PLANNER_SYSTEM).toContain('## Busy edits')
+    // The example's own script, at an even pace, with the captured profile as a1.
+    let t = 0.5
+    const said = wordsFromTranscript(
+      BUSY_EXAMPLE.said.split(' ').map((text) => {
+        const w = { text, startSec: t, endSec: t + 0.3 }
+        t += 0.4
+        return w
+      }),
+      's1'
+    )
+    const clip = { id: 's1', path: '/take.mov', durationSec: t + 1, width: 1080, height: 1920, fps: 30 }
+    const doc = addAsset(createDoc({ id: 'b', title: 'Busy', source: clip, words: said }), {
+      kind: 'image',
+      path: '/Users/me/Assets/profile.png',
+      title: 'My profile',
+      durationSec: null,
+      width: 860,
+      height: 3400,
+      origin: { type: 'link', url: 'https://example.com/me', author: 'example.com', license: null, range: null }
+    }).doc
+    // As the planner writes them: every slot of a graphic filled in.
+    const row = { label: '', value: '', note: '', mark: '', at: '' }
+    const ops = BUSY_EXAMPLE.ops.map((o) => {
+      if (o.op !== 'motion-add') return o
+      const call = fullCall(o)
+      return { op: o.op, kind: o.kind, ...call, items: (call.items as object[]).map((r) => ({ ...row, ...r })) }
+    })
+    const offered = offerPlan(doc, PlanSchema.parse({ ops, summary: 's', reply: 'r', notesHandled: [], needs: [] }), [])
+    if (!offered.ok) throw new Error('expected a plan')
+    expect(offered.rejected).toEqual([])
+    const done = commit(doc, offered.ops, 's').doc
+    const cut = currentCut(done)
+    const resolved = resolveCut(cut, done.words, done.sources)
+    const scene = buildScene({
+      cut,
+      resolved,
+      words: done.words,
+      size: designSize(cut.aspect, clip),
+      theme: DEFAULT_THEME,
+      assets: done.assets
+    })
+    expect(scene.hidden).toEqual([])
+    // A graphic every few seconds: five in a clip of about 22.
+    expect(scene.items).toHaveLength(5)
+    expect(resolved.durationSec / scene.items.length).toBeLessThan(5)
+    // Each on its word, and the full-frame ones never together, with the speaker back between them.
+    const full = scene.items.filter((i) => template(i.kind)?.covers === 'card').sort((a, b) => a.start - b.start)
+    expect(full.map((i) => i.kind)).toEqual(['title', 'market', 'screenshot', 'device'])
+    for (let k = 1; k < full.length; k++) expect(full[k].start - full[k - 1].end).toBeGreaterThan(1)
+    const at = (id: string): number => resolved.words.find((w) => w.id === id)!.outStart
+    expect(scene.items.find((i) => i.kind === 'device')!.at).toBeCloseTo(at('w44'))
   })
 })
 

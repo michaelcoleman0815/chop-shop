@@ -127,6 +127,12 @@ const api = {
     origin: Asset['origin']
   }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string }> =>
     ipcRenderer.invoke('assets:saveImage', req),
+  /** A page at a link, captured on this computer as it shows logged out, saved into the edit's material. */
+  capturePage: (req: {
+    docId: string
+    url: string
+  }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('assets:capturePage', req),
   setVideoSignIn: (browser: string | null): Promise<string | null> =>
     ipcRenderer.invoke('settings:videoSignIn', browser),
   getBrand: (): Promise<Brand> => ipcRenderer.invoke('brand:get'),

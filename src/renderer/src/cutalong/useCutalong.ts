@@ -30,6 +30,7 @@ import {
 } from '../../../shared/assets'
 import {
   BUILT_IN_PRESETS,
+  LOOK_PRESETS,
   describePlan,
   findPreset,
   parseCommand,
@@ -39,6 +40,7 @@ import {
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { mouthForNiche, readMouthMode, setMouthModeAll } from '../../../shared/vision'
 import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import { findMotionCommand, motionCommandEntries, planMotionCommand, type MotionChange } from '../../../shared/motion'
 import {
   acceptsOffer,
   DEFAULT_PROFILE,
@@ -115,7 +117,15 @@ const ACTION_COMMANDS: Preset[] = [
     inspiration: null
   }
 ]
-const ACTION_NAMES = new Set(ACTION_COMMANDS.map((c) => c.command))
+/** Graphics: each command puts one on the word under the playhead. */
+const MOTION_ENTRIES: Preset[] = motionCommandEntries().map((c) => ({
+  ...c,
+  builtIn: true,
+  style: {},
+  inspiration: null
+}))
+// Commands that act rather than set a style; what follows them is theirs, not the planner's.
+const ACTION_NAMES = new Set([...ACTION_COMMANDS, ...MOTION_ENTRIES].map((c) => c.command))
 
 /** An icon drawn into a PNG, as base64, at the size the renderer will scale from. */
 async function rasterize(svg: string, size = 1024): Promise<string> {
@@ -143,6 +153,10 @@ const uid = (): string => `m${Date.now().toString(36)}${(counter++).toString(36)
 
 /** What placing material asks the planner, when the person dropped it in without a word. */
 const PLACE_MATERIAL = 'Put the material I just brought in where it fits what I am saying.'
+
+/** Words that ask for the page at a link to be shown, rather than its video learned from. */
+const SHOW_PAGE =
+  /\b(screenshot|screen shot|capture|on screen|show (?:the|this|my|our|their|a) (?:page|post|tweet|profile|site|website|thread|article|listing|review))\b/i
 
 /** "a", "a and b", "a, b and c". */
 function listOf(names: string[]): string {
@@ -219,6 +233,8 @@ export function useCutalong() {
   const lastScreen = useRef<'thread' | 'editor'>('thread')
   const [toast, setToast] = useState<Toast | null>(null)
   const [panel, setPanel] = useState<PanelStatus | null>(null)
+  /** The graphic selected in the editor, by id. */
+  const [graphic, setGraphic] = useState<string | null>(null)
   const [brand, setBrand] = useState<Brand>(EMPTY_BRAND)
   const [brandProgress, setBrandProgress] = useState<Progress | null>(null)
   const brandRef = useRef<Brand>(EMPTY_BRAND)
@@ -239,7 +255,14 @@ export function useCutalong() {
   const presets = useMemo(() => {
     const mine = brandPreset(brand)
     // /tighten cuts the creator's way once they keep their habits; exactly as built otherwise.
-    return [...withHabits(BUILT_IN_PRESETS, brand.habits), ...(mine ? [mine] : []), ...ACTION_COMMANDS, ...saved]
+    return [
+      ...withHabits(BUILT_IN_PRESETS, brand.habits),
+      ...(mine ? [mine] : []),
+      ...LOOK_PRESETS,
+      ...ACTION_COMMANDS,
+      ...MOTION_ENTRIES,
+      ...saved
+    ]
   }, [saved, brand])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
@@ -464,7 +487,7 @@ export function useCutalong() {
     ): { summary: string; n: number } | null => {
       const d = docRef.current
       if (!d) return null
-      const context = { words: d.words, sources: d.sources }
+      const context = { words: d.words, sources: d.sources, assets: d.assets }
       const before = resolveCut(currentCut(d), d.words, d.sources)
       const trial = applyOps(currentCut(d), ops, context)
       if (trial.applied.length === 0) return null
@@ -802,8 +825,128 @@ export function useCutalong() {
     [placeAsset, push]
   )
 
+  /** A graphics command: one motion-add op, on the word under the playhead when there is one. */
+  const placeGraphic = useCallback(
+    (command: string, where: 'thread' | 'panel', rest: string, at: number | null, aside?: string): void => {
+      const say = (text: string, extra: Partial<Msg> = {}): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text, ...extra })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then a graphic can go on it.')
+        return
+      }
+      const cut = currentCut(d)
+      const resolved = resolveCut(cut, d.words, d.sources)
+      const plan = planMotionCommand(command, rest, {
+        doc: d,
+        resolved,
+        time: at,
+        brandName: brandRef.current.name
+      })
+      if ('problem' in plan) {
+        say(plan.problem)
+        return
+      }
+      const trial = applyOps(cut, [plan.op], { words: d.words, sources: d.sources, assets: d.assets })
+      if (trial.rejected.length > 0) {
+        say(trial.rejected[0].reason)
+        return
+      }
+      const added = trial.cut.motion[trial.cut.motion.length - 1]
+      const done = applyAsVersion(trial.applied, 'A graphic comes in.')
+      if (!done) return
+      setGraphic(added?.id ?? null)
+      const text = `v${done.n} is ready. ${done.summary}${plan.after ? ` ${plan.after}` : ''}`
+      if (where === 'panel') setPanel({ text: aside ? `${text} ${aside}` : text })
+      else
+        push({
+          role: 'assistant',
+          text,
+          aside: aside ?? null,
+          actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
+        })
+    },
+    [applyAsVersion, push]
+  )
+
+  /**
+   * A page at a link the person gave, captured on this computer and added to
+   * the edit's material. What comes out is the page as it shows to someone
+   * logged out, and the reply says so.
+   */
+  const capturePage = useCallback(
+    async (link: string, where: 'thread' | 'panel'): Promise<{ asset: Asset; note: string } | null> => {
+      const d = docRef.current
+      if (!d) {
+        if (where === 'panel') setPanel({ text: 'Drop some footage first, then a page can go on it.' })
+        else push({ role: 'assistant', text: 'Drop some footage first, then a page can go on it.' })
+        return null
+      }
+      const stage = { stage: 'Capturing the page', percent: null }
+      const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: stage }) : null
+      if (where === 'panel') setPanel({ text: '', progress: stage, since: Date.now() })
+      const r = await api.capturePage({ docId: d.id, url: link })
+      if (!r.ok) {
+        const text = `I couldn't capture that page. ${r.message}`
+        if (id) patch(id, { progress: null, text, error: true })
+        else setPanel({ text, error: true })
+        return null
+      }
+      const { doc: withAsset, asset } = addAssetTo(docRef.current ?? d, r.asset)
+      setDoc(withAsset)
+      const tall = r.asset.height ? `, ${r.asset.height.toLocaleString('en-US')} px tall` : ''
+      const note = `This is ${asset.title} as it shows to someone logged out, captured on this computer.`
+      if (id) patch(id, { progress: null, text: `I captured ${asset.title}${tall}.`, aside: note })
+      return { asset, note }
+    },
+    [patch, push, setDoc]
+  )
+
+  const updateGraphic = useCallback(
+    (id: string, change: MotionChange): void => {
+      const done = applyAsVersion([{ op: 'motion-update', id, ...change }], 'The graphic changes.')
+      setPanel(done ? null : { text: 'Nothing changed.' })
+    },
+    [applyAsVersion]
+  )
+
+  const removeGraphic = useCallback(
+    (id: string): void => {
+      const done = applyAsVersion([{ op: 'motion-remove', ids: [id] }], 'The graphic is gone.')
+      if (done) setGraphic(null)
+      setPanel(done ? { text: `v${done.n} is ready. ${done.summary}` } : null)
+    },
+    [applyAsVersion]
+  )
+
   const runCommand = useCallback(
-    async (command: string, where: 'thread' | 'panel' = 'thread', rest = ''): Promise<void> => {
+    async (
+      command: string,
+      where: 'thread' | 'panel' = 'thread',
+      rest = '',
+      at: number | null = null
+    ): Promise<void> => {
+      // A page to show, as a screenshot or on a phone's screen, is captured first.
+      const link = command === 'screenshot' || command === 'phone' ? findLink(rest) : null
+      if (link) {
+        const shot = await capturePage(link, where)
+        // In the thread the capture's own message says what was captured; the panel has room for one line.
+        if (shot)
+          placeGraphic(
+            command,
+            where,
+            `${shot.asset.id} ${rest.replace(link, ' ')}`,
+            at,
+            where === 'panel' ? shot.note : undefined
+          )
+        return
+      }
+      if (findMotionCommand(command)) {
+        placeGraphic(command, where, rest, at)
+        return
+      }
       if (ACTION_NAMES.has(command)) {
         // Their results are choices to pick from, which belong in the thread.
         if (where === 'panel') setScreen('thread')
@@ -853,7 +996,7 @@ export function useCutalong() {
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
-    [applyAsVersion, findBroll, findIcon, push]
+    [applyAsVersion, capturePage, findBroll, findIcon, placeGraphic, push]
   )
 
   const studyLink = useCallback(
@@ -1126,7 +1269,12 @@ export function useCutalong() {
     async (text: string, attachments: Attachment[]): Promise<void> => {
       const link = findLink(text)
       const command = parseCommand(text)
-      const words = link ? text.replace(link, '').trim() : text
+      const words = link
+        ? text
+            .replace(link, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim()
+        : text
       // What the person said about their files, without a leading /command.
       const said = command && !ACTION_NAMES.has(command.command) ? command.rest : words
       setScreen('thread')
@@ -1140,7 +1288,19 @@ export function useCutalong() {
         role: 'user',
         text: link ? words || 'Make it feel like this' : text,
         attachments,
-        link: link ? { url: link, title: null, meta: null } : undefined
+        // A page to capture is not a video to learn from, and its card says so.
+        link: link
+          ? {
+              url: link,
+              title: null,
+              meta:
+                command?.command === 'screenshot' ||
+                command?.command === 'phone' ||
+                (docRef.current !== null && SHOW_PAGE.test(words))
+                  ? 'A page to show'
+                  : null
+            }
+          : undefined
       })
       setBusy(true)
       try {
@@ -1153,7 +1313,8 @@ export function useCutalong() {
           if (docRef.current) await addMaterial(stills)
           else push({ role: 'assistant', text: 'Drop your footage too, and these go into the edit with it.' })
         }
-        if (link) {
+        let asked = false
+        if (link && command?.command !== 'screenshot' && command?.command !== 'phone') {
           // A link with a time, an image link, or one called B-roll is
           // material; any other video link is something to learn a style from.
           const range = parseRange(text)
@@ -1162,7 +1323,15 @@ export function useCutalong() {
             (range !== null ||
               isImageUrl(link) ||
               /\b(b-?roll|cutaway|clip|insert|overlay|use this|cut to)\b/i.test(words))
-          if (material) await bringIn({ url: link, range }, words)
+          // A page asked to be shown is captured, then placed on the words it goes with.
+          const page = docRef.current !== null && !material && SHOW_PAGE.test(words)
+          if (page) {
+            const shot = await capturePage(link, 'thread')
+            if (shot) {
+              await ask(`${words}\nThe page at that link is captured as ${shot.asset.id}.`)
+              asked = true
+            }
+          } else if (material) await bringIn({ url: link, range }, words)
           else await studyLink(link)
         }
         // Material from this message the cut does not show yet.
@@ -1190,14 +1359,14 @@ export function useCutalong() {
               })
             )
           if (!local) await ask(text)
-        } else if (unplaced()) {
+        } else if (unplaced() && !asked) {
           await ask(PLACE_MATERIAL)
         }
       } finally {
         setBusy(false)
       }
     },
-    [addMaterial, answerTakes, ask, bringIn, ensureProject, push, runCommand, studyLink, takeIn]
+    [addMaterial, answerTakes, ask, bringIn, capturePage, ensureProject, push, runCommand, studyLink, takeIn]
   )
 
   const useStyle = useCallback((): void => {
@@ -1367,6 +1536,7 @@ export function useCutalong() {
     setMessages([])
     setStudy(null)
     setPanel(null)
+    setGraphic(null)
     setScreen('start')
     refreshRecent()
   }, [refreshRecent])
@@ -1415,7 +1585,11 @@ export function useCutalong() {
     acceptOffers,
     answerInPanel,
     undo,
-    exportFinal
+    exportFinal,
+    graphic,
+    selectGraphic: setGraphic,
+    updateGraphic,
+    removeGraphic
   }
 }
 

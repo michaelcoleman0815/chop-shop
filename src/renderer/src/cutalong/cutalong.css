@@ -991,6 +991,59 @@ button:disabled {
   pointer-events: none;
 }
 
+/* Motion graphics: the export's own drawing, over the picture and the captions. */
+.cl-motion {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Placing a callout: the region it points at, drawn over the picture while it is selected. */
+.cl-region {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.cl-region-box {
+  position: absolute;
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.cl-region-point {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+/* A selected graphic's controls, in place of the notes. */
+.cl-graphic-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.cl-graphic-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cl-graphic > .cl-btn.text {
+  align-self: flex-start;
+}
+
 .cl-notes {
   min-height: 0;
   display: flex;
@@ -1211,6 +1264,29 @@ button:disabled {
 
 .cl-beat.bw {
   background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgba(21, 22, 26, 0.07) 4px 5px);
+}
+
+/* Graphics on the cut: thin bars over the beats they cover. */
+.cl-mark {
+  position: absolute;
+  height: 6px;
+  min-width: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ink-soft);
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.cl-mark:hover,
+.cl-mark:focus-visible {
+  opacity: 0.7;
+}
+
+.cl-mark.on {
+  background: var(--ink);
+  opacity: 1;
 }
 
 .cl-playhead {
@@ -1445,6 +1521,11 @@ button:disabled {
 .cl-field > span:first-child {
   font-size: 14px;
   font-weight: 600;
+}
+
+.cl-field-hint {
+  font-size: 13px;
+  margin-top: calc(var(--space-2) * -1);
 }
 
 .cl-field input:not([type='color']):not([type='checkbox']),
