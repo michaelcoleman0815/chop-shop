@@ -7,7 +7,7 @@ import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { addAsset, commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
-import { buildRenderArgs, frameSize, renderCut, type RenderSource } from './cut-render'
+import { buildRenderArgs, frameSize, renderCut, TO_YUVA, type RenderSource } from './cut-render'
 import { createCanvas } from '@napi-rs/canvas'
 import { designSize, renderFrame } from '../shared/motion'
 import { overlaySpans, renderCutMotion, sceneForCut, subtitleCut, subtitlePass } from './motion-render'
@@ -74,7 +74,8 @@ describe('the final pass with graphics', () => {
     )
     const graph = args[args.indexOf('-filter_complex') + 1]
     expect(args.slice(args.indexOf('/m0.mov') - 1, args.indexOf('/m0.mov') + 1)).toEqual(['-i', '/m0.mov'])
-    expect(graph).toContain('[1:v]setpts=PTS-STARTPTS+1.500/TB[mo0]')
+    expect(graph).toContain(`[1:v]${TO_YUVA},settb=1/30,setpts=N+45[mo0]`)
+    expect(graph).toContain(`[2:v]${TO_YUVA},settb=1/30,setpts=N+90[mo1]`)
     expect(graph).toContain('[vsub][mo0]overlay=0:0:eof_action=pass[vmo0]')
     expect(graph).toContain('[vmo0][mo1]overlay=0:0:eof_action=pass[vmo1]')
     expect(graph).toContain('[vmo1][logo]overlay')

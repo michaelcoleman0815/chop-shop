@@ -355,6 +355,15 @@ const CASES: Case[] = [
     reached: ['length']
   },
   {
+    // What a sentence asks around its length is part of the same plan, so none of it is lost.
+    name: 'a length with what is asked around it',
+    prompt: 'Make it 60 seconds with captions.',
+    plan: plan([length({ targetSec: 60 }), captions({})], 'It runs 60 seconds, with captions.'),
+    reached: ['length', 'ops'],
+    check: ({ offered }) =>
+      expect(offered.steps.map((s) => ('command' in s ? s.command.op : s.ops.map((o) => o.op).join(',')))).toEqual(['length', 'captions'])
+  },
+  {
     name: 'a look with grain and a vignette',
     prompt: 'Give it a cinematic look with a bit of film grain and a soft vignette, like the last video.',
     plan: plan([look('cinematic'), run('grain', '0.4'), run('vignette', '0.5')], 'A cinematic look with grain and a soft vignette.'),

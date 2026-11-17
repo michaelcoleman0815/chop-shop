@@ -438,6 +438,34 @@ Order a shoot's files by creation time; join chapters; sync a separate recorder 
 | ASMR | Everything | Sound | Offered only | None |
 | Cooking, DIY, vlog, fitness, beauty, music, comedy, sports, events, kids and pets, reaction | Profiles where the study is thin are listed as not built. | | | |
 
+## 7. The real footage lab
+
+The synthetic lab above tells whether the takes planner finds what was planted. The real footage lab tells whether Cutalong's first cut of a creator's own raw footage comes close to the edit they published. It runs the app's own code on the footage and scores the result against the published video. Nothing from the footage goes into the repository: no transcripts, quotes, titles, file names or ids. Only the method and aggregate numbers are written here.
+
+**Running the app's code outside the app.** `node scripts/lab.mjs <entry> [args]` bundles an entry in `tests/lab` against `src/`, with Electron stubbed (`tests/lab/electron-stub.cjs`), and runs it in plain node. The folders the app would use come from `LAB_USERDATA` (models, settings, the brand), `LAB_APP` (`resources/bin/whisper-cli`, `resources/fonts`), `LAB_TEMP` and `LAB_VIDEOS`. The entries:
+
+| Entry | What runs | Writes |
+|---|---|---|
+| `prepare` | `cut:session` (which file is the talking, which the better sound, which B-roll; measured, as with no key), then `cut:prepare` on the talking clips: the verbatim transcription with its second listen, words snapped to the sound, the audio map | The roles and the prepared doc (v1: the recording split into beats) |
+| `v1` | The first cut by the app's planners, as the chat runs them with the brand's niche: `takes`, `tighten`, `snappy`, `length:SEC`, `under:SEC` | Per policy, the doc with that version, and every beat that plays and every run of words cut, with the reason (which take, a false start, set-up talk, a filler, a line cut for length) |
+| `clip` | `/clipping`'s `findClips` with the app's own tools; whoever picks is whoever the app would choose (Claude with a key, Ollama when it runs, otherwise measuring) | The clips with their words, the plan, the reply and the clip-quality verdicts |
+| `hear` | `main/transcribe`, verbatim or tidy | The words, for the published video |
+| `render` | `cut:render`, final quality | The export |
+| `score` | `shared/raw/published` | The scores below |
+| `sync` | `shared/audio/offset`'s `estimateOffset` over the whole overlap of two recordings, then window by window, with a line fitted through the windows | The offset, how sure it is, and the drift in ms an hour (on a synthetic pair with a planted 3.217 s offset and -500 ppm, it found 3.21 s at the start and -533 ppm, spread 2.8 ms) |
+
+**Scoring against the published edit** (`src/shared/raw/published.ts`). The published video is transcribed the same way as the raw. Its words are aligned to the raw words with a path that may skip ahead (a cut, cheap), jump back (a line moved, dearer) or leave a word unmatched, matching words loosely (`3` and `three`, a plural, a letter off, a cut-off stem), so two transcripts of the same speech line up through Whisper's slips. Runs of words played straight through, on both clocks at once, are the stretches the editor kept. Where another stretch of the raw reads the same (a take with the same words), the sound decides when the published video is at hand (loudness compared at the two places), and otherwise the stretch is marked as one the words cannot settle and left out of take agreement. From that:
+
+- **kept words**: of the raw words the cut plays, the share the published edit plays (precision), and the reverse (recall), by count and by seconds said;
+- **takes**: for each line said more than once, the take each edit plays, and how often they agree where both play one;
+- **running time**: raw, the cut, and published;
+- **the opening**: whether both open on the same raw sentence, or on takes of the same line;
+- **pauses**: between neighbouring words as each plays: median, 90th percentile, and the share of time in pauses over 0.25 s.
+
+**What the words cannot tell**: picture-only material (screen recordings, B-roll, text on screen), music and sound effects, a voiceover recorded elsewhere (its words go unmatched, which `found` shows), and speed changes.
+
+**Tuning.** Decision logic is changed only with tests on synthetic fixtures, as in the lab above, and checked on some of the real projects while others are held out, so a change that only fits the footage it was tuned on shows.
+
 ## Sources
 
 Editing practice

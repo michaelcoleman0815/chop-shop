@@ -18,7 +18,7 @@ import {
 import { cameraSegments, renderCut, segmentsFor } from './cut-render'
 import { PLANNER_SYSTEM } from './planner-prompt'
 import { buildPremiereXml, captionsSrt, planPremiere, writePremiere, type PremiereMedia } from './premiere-cut'
-import { ffmpegRun, findFfmpeg, gradientWindow, makeClip, makeGradientStill, onsets } from './test-media'
+import { AS_PLAYED, ffmpegRun, findFfmpeg, gradientWindow, makeClip, makeGradientStill, onsets } from './test-media'
 
 const FFMPEG = findFfmpeg()
 
@@ -204,7 +204,7 @@ function frameColours(ffmpeg: string, path: string): [number, number, number][] 
       '-i',
       path,
       '-vf',
-      'scale=1:1:flags=area,format=rgb24',
+      `${AS_PLAYED},scale=1:1:flags=area,format=rgb24`,
       '-f',
       'rawvideo',
       '-'
