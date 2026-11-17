@@ -184,6 +184,12 @@ describe('a video made from one prompt', () => {
     expect(other.message).toMatch(/quote that has changed since/)
     const none = await call<Made>('make:go', { draft, confirmed: draft.quote.total })
     expect(none.ok).toBe(false)
+    // A quote confirmed for fal.ai (made when only fal.ai was open) is never made by Google instead: it is quoted again.
+    const onFal: Draft = { ...draft, quote: { ...draft.quote, images: 'fal' } }
+    const moved = await goWith<Made & { draft?: Draft }>(onFal)
+    expect(moved.ok).toBe(false)
+    expect(moved.message).toBe("The pictures would be made by Google now, not fal.ai as quoted. Confirm the new quote and I'll make it.")
+    expect(moved.draft?.quote.images).toBe('google')
     expect(pictures()).toBe(0)
   })
 
