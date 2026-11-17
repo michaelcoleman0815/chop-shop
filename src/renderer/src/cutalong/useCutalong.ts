@@ -133,6 +133,7 @@ import {
   styleForProfile,
   suggestProfile,
   type CuttingProfile,
+  planTakes,
   switchedSentence,
   takesOf,
   switchTakeOps,
@@ -542,6 +543,8 @@ export function useCutalong() {
   const [key, setKey] = useState<ClaudeKeyStatus>(keyStatus('checking'))
   const keyRef = useRef<ClaudeKeyStatus>(key)
   keyRef.current = key
+  // The message that said what the footage just read holds, until the words sent with it are planned.
+  const intakeId = useRef<string | null>(null)
   // Whether the launch check has answered, so Start shows neither screen before it does.
   const [keySettled, setKeySettled] = useState(false)
   // Whether a key is saved at all: one turned away before saving leaves the saved one as it was.
@@ -1119,6 +1122,7 @@ export function useCutalong() {
         details: r.details,
         actions
       })
+      intakeId.current = id
       return true
     },
     [patch, push, setDoc]
@@ -3335,7 +3339,17 @@ export function useCutalong() {
           if (!found) return say(`There is no brand called “${name}”. The Brand page lists yours.`)
           switchBrand(found.id)
         },
-        undo: () => undoRef.current()
+        undo: () => {
+          const before = docRef.current
+          undoRef.current()
+          // The version undo makes (v16 is v14 again) is this plan's version, said as any change is.
+          const g = gather.current
+          const now = docRef.current
+          if (g && now && now !== before) {
+            g.into = currentVersion(now).n
+            g.summaries.push(currentVersion(now).summary)
+          }
+        }
       }
     },
     [acceptOffers, answerNever, applyAsVersion, clipping, commandNow, lengthAsked, push, setDoc, switchBrand, switchTake, vlog]
@@ -3415,17 +3429,18 @@ export function useCutalong() {
    * reply. `first` is set for the words sent with the footage the edit was
    * just made from, which shape its first version.
    */
+  /** Claude plans what was said, and the plan is carried out; the version it made, or null. */
   const planWords = useCallback(
-    async (text: string, opts: { first?: boolean } = {}): Promise<void> => {
+    async (text: string, opts: { first?: boolean } = {}): Promise<number | null> => {
       const d = docRef.current
-      if (!d) return
+      if (!d) return null
       // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
       const thinking = { stage: 'Thinking', percent: null }
       const id = push({ role: 'assistant', text: '', progress: thinking })
       const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandNow().voice, ...planContext(text) })
       if (docRef.current?.id !== d.id) {
         patch(id, { progress: null, text: 'Another edit is open now, so I left this one as it was.' })
-        return
+        return null
       }
       if (!r.ok) {
         noteKey(r.keyState)
@@ -3435,7 +3450,7 @@ export function useCutalong() {
           error: true,
           actions: gateOpen(keyRef.current) ? undefined : [{ kind: 'setup-key', label: 'Set up the key', primary: true }]
         })
-        return
+        return null
       }
       const done = await carryPlan(r, 'thread', {
         said: text,
@@ -3458,6 +3473,7 @@ export function useCutalong() {
       // Moments that want B-roll the edit does not have yet: one search each, to pick from.
       const wanted = r.brollWanted ?? []
       if (wanted.length > 0) await Promise.all(wanted.map((w) => findBroll(w.search, w.beat)))
+      return done.n
     },
     [brandNow, carryPlan, findBroll, noteKey, patch, planContext, push]
   )
@@ -3738,7 +3754,25 @@ export function useCutalong() {
           // What was said with the shoot was for its story, or for the clips.
         } else if (words && !asked && docRef.current && (!link || route?.link === 'none' || !route?.link)) {
           // Whatever was said is the ask, a sentence or a whole prompt: Claude reads it, with the footage as sorted.
-          await planWords(words, { first: started })
+          const intake = started ? intakeId.current : null
+          const n = await planWords(words, { first: started })
+          const d = docRef.current
+          if (intake && n !== null && d) {
+            const takes = planTakes(d).ops
+            const left = takes.length > 0 && !sameValue(applyOps(currentCut(d), takes, { words: d.words, sources: d.sources }).cut, currentCut(d))
+            setMessages((ms) =>
+              ms.map((m) =>
+                m.id === intake
+                  ? {
+                      ...m,
+                      actions: (m.actions ?? []).filter(
+                        (a) => a.kind !== 'open-editor' && (left || !(a.kind === 'run-command' && a.payload === 'takes'))
+                      )
+                    }
+                  : m
+              )
+            )
+          }
         } else if (unplaced() && !asked) {
           await ask(PLACE_MATERIAL)
         }
@@ -4099,7 +4133,9 @@ export function useCutalong() {
       try {
         await api.setApiKey(pasted)
       } catch (err) {
-        const next: ClaudeKeyStatus = { ...keyStatus('unreadable'), message: err instanceof Error ? err.message : String(err) }
+        // What main said, without the wrapping IPC puts around it.
+        const said = (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, '')
+        const next: ClaudeKeyStatus = { ...keyStatus('unreadable'), message: said }
         keyRef.current = next
         setKey(next)
         return next
