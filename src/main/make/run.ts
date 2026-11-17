@@ -6,6 +6,7 @@ import type { Draft, Kept, Reply } from '../../shared/make/draft'
 import { readAsk, reviseBrief, cleanTopic } from '../../shared/make/brief'
 import { assembleDoc, type Carry, type MadeFile } from '../../shared/make/assemble'
 import type { MapShots } from '../../shared/make/map'
+import type { MotionCallInput } from '../../shared/motion/schema'
 import { PRICES } from '../../shared/make/prices'
 import {
   dollars,
@@ -169,6 +170,8 @@ interface ShotsMade {
   sheets: Sheet[]
   notes: string[]
   files: Map<string, MadeFile>
+  /** Map shots the map kind answered as a graphic over the ground, by phrase. */
+  mapGraphics: Map<number, Omit<MotionCallInput, 'from'>>
 }
 
 /**
@@ -186,6 +189,7 @@ export async function makeShots(
   const cache = new MadeCache(deps.dir)
   const notes: string[] = []
   const files = new Map<string, MadeFile>()
+  const mapGraphics = new Map<number, Omit<MotionCallInput, 'from'>>()
   const service = images === 'google' ? 'Google' : 'fal.ai'
   const record = async (path: string, video: boolean): Promise<void> => {
     if (files.has(path)) return
@@ -244,7 +248,8 @@ export async function makeShots(
             await record(map.path, false)
             return finish({ ...base, file: map.path, maker: 'local', model: 'Cutalong map' })
           }
-          // A map graphic over the ground (the map kind, when it lands).
+          // A map graphic over the ground (the map kind, when it lands): assembly puts it on the beat.
+          mapGraphics.set(shot.phrase, map.call)
           await record(deps.ground, false)
           return finish({ ...base, file: deps.ground, maker: 'local', model: 'map' })
         }
@@ -297,7 +302,7 @@ export async function makeShots(
     deps.signal
   )
   for (const s of made) if (s?.note) notes.push(s.note)
-  return { shots: made.filter(Boolean), sheets, notes, files }
+  return { shots: made.filter(Boolean), sheets, notes, files, mapGraphics }
 }
 
 /** The narration's words and file: read in the chosen voice, or the creator's own recording heard here. */
@@ -446,6 +451,7 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
     words: heard.words,
     ground,
     files: made.files,
+    mapGraphics: made.mapGraphics,
     music,
     sourceId: keptVoice?.sourceId ?? draft.into?.sourceId ?? 's1',
     ...(keptVoice ? { docWords: keptVoice.words } : {})
@@ -476,7 +482,7 @@ async function keptFiles(kept: NonNullable<Kept['shots']>, probe: MakeRunDeps['p
     const video = s.visual.kind === 'clip' || s.visual.kind === 'broll'
     files.set(s.file, { width: p.width, height: p.height, durationSec: video ? p.durationSec : null })
   }
-  return { shots: kept.shots.map((s) => ({ ...s, cost: 0 })), sheets: kept.sheets, notes: [], files }
+  return { shots: kept.shots.map((s) => ({ ...s, cost: 0 })), sheets: kept.sheets, notes: [], files, mapGraphics: new Map() }
 }
 
 /** What was made, in Cutalong's voice: a sentence, three facts, and the rest behind Details. */

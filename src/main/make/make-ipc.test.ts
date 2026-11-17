@@ -228,6 +228,7 @@ describe('a video made from one prompt', () => {
     expect(r.auto).toBe(true)
     expect(EditDocSchema.parse(r.doc).make?.brief.format).toBe('explainer')
     expect(r.reply?.text).toMatch(/It cost \$\d+\.\d\d of the \$\d+\.\d\d quoted\./)
+    expect(r.reply?.aside).toMatch(/^Settings says to go ahead without asking under \$25, so I did not wait for you\./)
     saveSettings({ makeAutoUnder: null })
   }, 240_000)
 })

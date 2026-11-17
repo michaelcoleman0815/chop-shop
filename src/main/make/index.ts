@@ -295,7 +295,11 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       const draft = drafted.draft
       if (draft.quote.auto) {
         const made = await go(e.sender, draft, draft.quote.total)
-        return made.ok ? { ...made, kind: 'made' as const, auto: true } : made
+        if (!made.ok) return made
+        // Why it did not wait, said every time, after the sentence that says what it cost.
+        const why = `Settings says to go ahead without asking under $${getSettings().makeAutoUnder ?? 0}, so I did not wait for you.`
+        const aside = [why, made.reply.aside].filter(Boolean).join(' ')
+        return { ...made, reply: { ...made.reply, aside }, kind: 'made' as const, auto: true }
       }
       return { ok: true as const, kind: 'quote' as const, draft, reply: quoteOf(draft) }
     } catch (err) {
