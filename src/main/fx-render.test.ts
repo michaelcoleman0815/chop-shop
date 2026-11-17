@@ -355,6 +355,19 @@ describe.skipIf(!FFMPEG)('scene effects, exported', () => {
     expect(diff(frameAt(out, 3.5), frameAt(plain, 3.5))).toBeLessThan(1)
   }, 120_000)
 
+  it('grades the picture an effect worked on, when a LUT is on too', async () => {
+    // A LUT that leaves every colour as it is: the frames must be the effect's own.
+    const lut = join(dir, 'same.cube')
+    writeFileSync(lut, ['LUT_1D_SIZE 2', '0 0 0', '1 1 1', ''].join('\n'))
+    const scan = [{ op: 'fx-add', kind: 'scan', from: 'w1', on: 'frame' }]
+    const { out } = await render('scan-lut', [...scan, { op: 'look', set: { lut: { path: lut, strength: 1 } } }], false)
+    const bare = (await render('scan-bare', scan, false)).out
+    const top = { x: 0, y: 0, w: 1, h: 0.2 }
+    // Still dark where the scan has not reached, as without the LUT.
+    expect(Math.abs(brightness(frameAt(out, 0.6), top) - brightness(frameAt(bare, 0.6), top))).toBeLessThan(3)
+    expect(brightness(frameAt(out, 0.6), top)).toBeLessThan(0.45 * brightness(frameAt(plain, 0.6), top))
+  }, 180_000)
+
   it('rushes speed lines past a clear middle', async () => {
     const { out } = await render('speedlines', [{ op: 'fx-add', kind: 'speedlines', from: 'w2', to: 'w5' }])
     const now = frameAt(out, 1.2)
