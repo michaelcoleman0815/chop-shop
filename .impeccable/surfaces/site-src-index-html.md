@@ -35,15 +35,16 @@ mark, the playhead and the assistant avatar. Product renderings stay the app's l
 STORY: In one screen a creator learns they can talk to an editor and sees a raw recording become v2. Then: footage stays
 on the Mac and the key is their own; drop, say, refine; their own job among five; straight answers; download.
 
-FIRST VIEWPORT: Slab nav, lockup left, a quiet Download pill right. Left six columns: the h1 "The video editor you talk
-to" at display size, one sentence, the ink "Download for Mac" pill, one requirement line. Right six columns, about 560 px
-tall: the demo slot, a thread where the creator's ink bubble asks for a cut, the reply lands as v2 and the beat strip
-under it closes from 31:40 to 9:58, looping with a pause control.
+FIRST VIEWPORT: Slab nav: lockup left, the page's beat strip in the middle, a quiet Download pill right. The h1 "The
+video editor you talk to" on one line across twelve columns at display size; under it the lede left and the ink
+"Download for Mac" pill right with one requirement line. Then a twelve-column plate (the hero-loop slot): the thread,
+where the creator's ink bubble asks for a cut and v2 lands, beside the script view, where the retakes and a pause are
+struck through as the beat strip closes from 31:40 to 9:58. It loops with a pause control.
 
 FORM: The cut-line spine, position 5 of 7 on the ranked list, seed:4540dfcca026596a. Signature interaction: the beat
 strip in the nav, one beat per section, the coral playhead tracking the scroll, a beat jumping to its section. Motion
-grammar: arrivals on the brand's ease-enter at 240 ms with an 8 px rise, the strip's beats on spring-gentle, nothing
-idle moves except the demo loop and the playhead.
+grammar: arrivals on the brand's ease-enter at 240 ms with a small rise, the nav playhead tracking the scroll one to one,
+the switcher's pill on spring-gentle, nothing idle moving except the demo loop and the playhead.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
@@ -55,3 +56,8 @@ The nav's beat strip filling in as you scroll, with the coral playhead on your p
 
 Cutalong's own price (a text slot in the FAQ). The email provider (the form posts nowhere until its action is set).
 Real captures of the redesigned app (slots: the hero loop, the three step screens, the five job screens).
+
+## Review
+
+Hero review (in-thread, no subagent available): fix, one finding, resolved (the empty preview frame became the script
+view with its struck lines). Finish review (in-thread): fix, one finding resolved (the job copy rows), then ship.

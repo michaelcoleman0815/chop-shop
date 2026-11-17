@@ -488,9 +488,9 @@ html:not(.js) .loop-toggle { display: none; }
   .jobs:has(#job-brand:checked) .job-brand, .jobs:has(#job-upload:checked) .job-upload { display: grid; }
   @starting-style { .jobs.is-ready .job { opacity: 0; transform: translateY(4px); } }
 }
-.job-copy { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: var(--space-3xl); row-gap: var(--space-md); align-content: start; }
+.job-copy { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: auto auto 1fr; column-gap: var(--space-3xl); row-gap: var(--space-md); align-content: start; }
 .job-copy > h3, .job-copy > p { grid-column: 1; }
-.job-copy > .job-list { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; }
+.job-copy > .job-list { grid-column: 2; grid-row: 1 / span 3; margin-top: 0; }
 .job-copy > p { color: var(--color-ink-2); max-width: 48ch; }
 .job-list { display: grid; gap: var(--space-sm); list-style: none; margin-top: var(--space-xs); }
 .job-list > li { position: relative; padding-left: var(--space-lg); max-width: 46ch; }
