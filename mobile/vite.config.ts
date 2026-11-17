@@ -97,21 +97,37 @@ function phoneWords(): Plugin {
   }
 }
 
+/**
+ * A grid's ground and labels are drawn on the Mac's Skia with Node's files
+ * (src/main/grid-render.ts), which src/main/cut-render.ts imports. On the
+ * phone, grids are on the Mac for now, and the render reaches a stand-in that
+ * says so (src/shims/grid-render.ts).
+ */
+function phoneGrids(): Plugin {
+  const computer = resolve(root, 'src/main/grid-render.ts')
+  const phone = resolve(here, 'src/shims/grid-render.ts')
+  return {
+    name: 'cutalong-phone-grids',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      if (!importer || !/(^|\/)grid-render(\.ts)?$/.test(source) || importer === phone) return null
+      const found = await this.resolve(source, importer, { ...options, skipSelf: true })
+      return found && found.id.split('?')[0] === computer ? phone : null
+    }
+  }
+}
+
 export default defineConfig({
   root: here,
   base: './',
-  plugins: [phoneWords(), react(), packageLicences()],
+  plugins: [phoneWords(), phoneGrids(), react(), packageLicences()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
     __APP_COMMIT__: JSON.stringify(commit()),
     __DRIVE__: JSON.stringify(process.env.CUTALONG_DRIVE === '1')
   },
   resolve: {
-    alias: [
-      { find: /^path$/, replacement: resolve(here, 'src/shims/path.ts') },
-      // The Mac's Skia, which the export's grids draw with: none on a phone (src/shims/canvas.ts).
-      { find: /^@napi-rs\/canvas$/, replacement: resolve(here, 'src/shims/canvas.ts') }
-    ],
+    alias: [{ find: /^path$/, replacement: resolve(here, 'src/shims/path.ts') }],
     // One React for the app and the phone's entry.
     dedupe: ['react', 'react-dom']
   },
