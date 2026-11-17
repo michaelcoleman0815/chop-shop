@@ -86,7 +86,39 @@ import {
 } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { mouthForNiche, readMouthMode, setMouthModeAll } from '../../../shared/vision'
-import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import { brandPreset, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import {
+  addBrand,
+  brandById,
+  brandInSentence,
+  brandName,
+  brandOfCut,
+  chatBrand as chatBrandOf,
+  EMPTY_BRANDS,
+  removeBrand as removeBrandFrom,
+  replaceBrand,
+  setDefaultBrand,
+  stampMade,
+  type Brands
+} from '../../../shared/brands'
+import {
+  commandThing,
+  covering,
+  listWords,
+  neverAddedReply,
+  neverAllowedReply,
+  neverBlockedReply,
+  neverFinishNote,
+  neverGuard,
+  neverLeftOut,
+  neverSaid,
+  neverStrip,
+  readNever,
+  stripDoc,
+  type NeverItem,
+  type NeverSaid
+} from '../../../shared/never'
+import { uploadReply } from './upload-reply'
 import { findMotionCommand, motionCommandEntries, planMotionCommand, type MotionChange } from '../../../shared/motion'
 import {
   acceptsOffer,
@@ -119,12 +151,14 @@ import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import {
+  brandTag,
   remember,
   rememberAdded,
   rememberKeep,
   rememberNotes,
   rememberVersion,
-  rememberVoice,
+  rememberVoices,
+  tagSignalsWith,
   useMemory
 } from './memory'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
@@ -320,6 +354,9 @@ function besideIt(chapters?: string | null, credits?: string | null): string {
 /** The colour commands, by name; the named looks are presets. */
 const COLOUR_COMMANDS = new Set(['look', 'lut', ...Object.keys(LOOK_COMMANDS)])
 
+/** The named looks (/warm, /cinematic): presets that put a look on, which a never list can rule out. */
+const NAMED_LOOK_COMMANDS = new Set(SKILL_PRESETS.filter((p) => p.style.look).map((p) => p.command))
+
 /** The camera commands, by name. */
 const CAMERA_COMMANDS = new Set(['kenburns', 'pushin', 'pullout', 'pan', 'punchin', 'shake', 'focus', 'still'])
 type CameraCommand = 'kenburns' | 'pushin' | 'pullout' | 'pan' | 'punchin' | 'shake' | 'focus' | 'still'
@@ -471,10 +508,22 @@ export function useCutalong() {
   const [panel, setPanel] = useState<PanelStatus | null>(null)
   /** The graphic selected in the editor, by id. */
   const [graphic, setGraphic] = useState<string | null>(null)
-  const [brand, setBrand] = useState<Brand>(EMPTY_BRAND)
+  // A brand per channel (shared/brands): the list, the one this chat is in, and the one the Brand page shows.
+  const [brands, setBrands] = useState<Brands>(EMPTY_BRANDS)
+  const [brandsLoaded, setBrandsLoaded] = useState(false)
+  const brandsRef = useRef<Brands>(EMPTY_BRANDS)
+  brandsRef.current = brands
+  /** The brand chosen for this chat (its project's), for while it has no edit; the edit names its own. */
+  const [chatChoice, setChatChoiceState] = useState<string | null>(null)
+  const chatChoiceRef = useRef<string | null>(null)
+  const setChatChoice = useCallback((id: string | null): void => {
+    chatChoiceRef.current = id
+    setChatChoiceState(id)
+  }, [])
+  const [pageBrandId, setPageBrandId] = useState<string | null>(null)
+  /** The brand on the Brand page. */
+  const brand = brandById(brands, pageBrandId)
   const [brandProgress, setBrandProgress] = useState<Progress | null>(null)
-  const brandRef = useRef<Brand>(EMPTY_BRAND)
-  brandRef.current = brand
 
   const docRef = useRef<EditDoc | null>(null)
   const projectRef = useRef<Project | null>(null)
@@ -494,13 +543,27 @@ export function useCutalong() {
   offersRef.current = offers
   studyRef.current = study
 
-  const learn = useLearn()
+  // Each brand learns from its own videos: the Brand page's.
+  const learn = useLearn(brand.id)
+
+  /** The brand this chat is in: its edit's (shared/brands brandOfCut, as main reads it), else the chat's choice, else the default. */
+  const inChat = useMemo(
+    () => chatBrandOf(brands, doc ? currentCut(doc) : null, chatChoice),
+    [brands, doc, chatChoice]
+  )
+  const chatBrandRef = useRef<Brand>(inChat)
+  chatBrandRef.current = inChat
+  /** The brand of the edit as it is right now, between two draws: read from the edit itself. */
+  const brandNow = useCallback((): Brand => {
+    const d = docRef.current
+    return chatBrandOf(brandsRef.current, d ? currentCut(d) : null, chatChoiceRef.current)
+  }, [])
 
   const presets = useMemo(() => {
-    const mine = brandPreset(brand)
+    const mine = brandPreset(inChat)
     // /tighten cuts the creator's way once they keep their habits; exactly as built otherwise.
     return [
-      ...withHabits(BUILT_IN_PRESETS, brand.habits),
+      ...withHabits(BUILT_IN_PRESETS, inChat.habits),
       ...(mine ? [mine] : []),
       ...CAPTION_STYLE_PRESETS,
       ...ACTION_COMMANDS,
@@ -508,7 +571,7 @@ export function useCutalong() {
       ...MOTION_ENTRIES,
       ...saved
     ]
-  }, [saved, brand])
+  }, [saved, inChat])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
 
@@ -577,7 +640,9 @@ export function useCutalong() {
           .filter((m) => !m.progress)
           .map(({ progress: _progress, since: _since, ...m }) => m)
         // A clip's edit goes back into its clip; any other is the chat's own (shared/clipping/set).
-        const updated: Project = withDoc({ ...project, chat }, next)
+        // The chat's brand goes with it once one was chosen; a chat never switched keeps none.
+        const chosen = chatChoiceRef.current
+        const updated: Project = withDoc({ ...project, chat, ...(chosen ? { brand: chosen } : {}) }, next)
         projectRef.current = updated
         await api.saveProject(updated)
       } catch (err) {
@@ -627,38 +692,91 @@ export function useCutalong() {
       pendingCommand.current = null
       setGraphic(null)
       setPanel(null)
-    }
+    },
+    // Clips are made in the chat's brand, as the chat shows it.
+    brand: () => brandNow().id
   })
 
   useEffect(() => {
+    // What is learned is noted with the brand of the edit it happened in.
+    tagSignalsWith((cut) => brandOfCut(brandsRef.current, cut).id)
     void api
-      .getBrand()
-      .then((b) => {
-        rememberVoice(b.voice)
-        brandRef.current = b
-        setBrand(b)
+      .getBrands()
+      .then((list) => {
+        rememberVoices(list)
+        brandsRef.current = list
+        setBrands(list)
+        setBrandsLoaded(true)
       })
       .catch(() => undefined)
   }, [])
 
   // Brand edits save as they are made, a moment after the last keystroke.
   const brandSave = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const saveBrand = useCallback((next: Brand): void => {
-    brandRef.current = next
-    setBrand(next)
+  const saveBrands = useCallback((next: Brands): void => {
+    brandsRef.current = next
+    setBrands(next)
     if (brandSave.current) clearTimeout(brandSave.current)
     brandSave.current = setTimeout(() => {
-      rememberVoice(next.voice)
-      void api.saveBrand(next).then((r) => {
-        if (!r.ok) setToast({ text: r.message, error: true })
+      // Each brand's voice notes are learned from as that brand's, when they changed.
+      rememberVoices(next)
+      void api.saveBrands(next).then((r) => {
+        // Refused whole, saying which field; the page keeps what was typed, to put right.
+        if (!r.ok) {
+          setToast({ text: r.message, error: true })
+          return
+        }
+        // The list as saved (each changed brand stamped), unless more was changed since.
+        if (brandsRef.current === next) {
+          brandsRef.current = r.brands
+          setBrands(r.brands)
+        }
       })
     }, 300)
   }, [])
+  /** One brand changed, by its id. */
+  const saveBrand = useCallback(
+    (next: Brand): void => saveBrands(replaceBrand(brandsRef.current, next)),
+    [saveBrands]
+  )
+
+  /** A new brand on the list, shown on the Brand page. */
+  const newBrand = useCallback((): void => {
+    const id = `brand-${Math.random().toString(36).slice(2, 10)}`
+    const made = addBrand(brandsRef.current, '', id)
+    if (!made) {
+      setToast({ text: 'That is as many brands as Cutalong keeps.', error: true })
+      return
+    }
+    saveBrands(made.list)
+    setPageBrandId(made.brand.id)
+  }, [saveBrands])
+
+  const deleteBrand = useCallback(
+    (id: string): void => {
+      saveBrands(removeBrandFrom(brandsRef.current, id))
+      setPageBrandId(null)
+    },
+    [saveBrands]
+  )
+
+  const makeDefaultBrand = useCallback(
+    (id: string): void => saveBrands(setDefaultBrand(brandsRef.current, id)),
+    [saveBrands]
+  )
+
   // What I learn from how you edit: noted as you go, listed on the brand page.
-  const memory = useMemory(brand, saveBrand, setToast)
+  // Caption defaults learned from a brand's chats go on that brand, once the list has loaded.
+  const memory = useMemory(brandsLoaded ? brands : null, saveBrand, setToast)
+  const memoryRef = useRef(memory)
+  memoryRef.current = memory
+  /** A brand's never list, as of the last change to it. */
+  const neverOf = useCallback((id: string): NeverItem[] => memoryRef.current.neverFor(id), [])
 
   const learnFrom = useCallback(
     async (paths: string[]): Promise<void> => {
+      // What is learned from a brand's own videos stays with that brand, even if the page moves on.
+      const forBrand = brand.id
       setBrandProgress({ stage: 'Watching your videos', percent: 0 })
       const off = api.onBrandProgress((p) => setBrandProgress(p))
       try {
@@ -670,7 +788,7 @@ export function useCutalong() {
           measuredAt: now,
           facts: l.facts
         }))
-        const current = brandRef.current
+        const current = brandById(brandsRef.current, forBrand)
         const videos = [...current.videos.filter((v) => !fresh.some((f) => f.path === v.path)), ...fresh]
         saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
         if (r.failed.length)
@@ -680,16 +798,16 @@ export function useCutalong() {
         setBrandProgress(null)
       }
     },
-    [saveBrand]
+    [saveBrand, brand.id]
   )
 
   const forgetBrandVideo = useCallback(
     (path: string): void => {
-      const current = brandRef.current
+      const current = brandById(brandsRef.current, brand.id)
       const videos = current.videos.filter((v) => v.path !== path)
       saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
     },
-    [saveBrand]
+    [saveBrand, brand.id]
   )
 
   useEffect(() => {
@@ -725,6 +843,8 @@ export function useCutalong() {
     }
     projectRef.current = project
     clipping.load(project)
+    // The brand chosen for the chat; its edit names its own on each version. Chats from before have none.
+    setChatChoice(project.brand ?? null)
     const edit = project.edit ?? null
     docRef.current = edit
     setDocState(edit)
@@ -775,15 +895,22 @@ export function useCutalong() {
    */
   const applyAsVersion = useCallback(
     (
-      ops: Op[],
+      proposed: Op[],
       fallback: string,
       preset?: string,
       /** A sentence for the first ops, said instead of describing them; timed when it already says how long the cut runs. */
       lead?: { text: string; ops: number; timed?: boolean }
-    ): { summary: string; n: number; notice: string | null } | null => {
+    ): { summary: string; n: number; left: NeverItem[]; notice: string | null } | null => {
       const d = docRef.current
+      leftOut.current = []
       if (!d) return null
       const context = { words: d.words, sources: d.sources, assets: d.assets }
+      // The brand's never list holds for every change: what it rules out is left out (shared/never).
+      const switched = [...proposed].reverse().find((o): o is Extract<Op, { op: 'brand' }> => o.op === 'brand')
+      const owner = switched ? brandById(brandsRef.current, switched.id) : brandNow()
+      const guarded = neverGuard(currentCut(d), proposed, neverOf(owner.id), context)
+      const ops = guarded.ops
+      leftOut.current = guarded.left
       const before = resolveCut(currentCut(d), d.words, d.sources)
       const trial = applyOps(currentCut(d), ops, context)
       if (trial.applied.length === 0) return null
@@ -801,16 +928,25 @@ export function useCutalong() {
         .join(' ')
       const next = commit(d, trial.applied, summary, preset ? { preset } : {}).doc
       setDoc(next)
-      return { summary, n: currentVersion(next).n, notice }
+      return { summary, n: currentVersion(next).n, left: guarded.left, notice }
     },
-    [setDoc]
+    [setDoc, brandNow, neverOf]
+  )
+  /** What the last change left out for the never list: for saying why when nothing else changed. */
+  const leftOut = useRef<NeverItem[]>([])
+
+  /** "I left out the punch-ins, as Field Notes never uses them." Empty when nothing was. */
+  const leftSentence = useCallback(
+    (left: NeverItem[] = leftOut.current): string => (left.length ? neverLeftOut(brandInSentence(brandNow()), left) : ''),
+    [brandNow]
   )
 
   // Vlogs: a day of clips told as a story (useVlog), called in from submit, ask, commandNow and applyNotes.
   const vlog = useVlog({
     docRef,
     pendingCommand,
-    setDoc,
+    // A new vlog is made in the chat's brand, every version it came with; one under way keeps its own.
+    setDoc: (next) => setDoc(docRef.current?.id === next.id ? next : stampMade(next, brandNow().id)),
     setMediaUrl,
     push,
     patch,
@@ -818,7 +954,8 @@ export function useCutalong() {
     toThread: () => setScreen('thread'),
     applyAsVersion,
     during,
-    niche: () => brandRef.current.niche
+    niche: () => brandNow().niche,
+    brand: () => brandNow().id
   })
 
   /** Talking clips into a new edit, with the better sound, if any, lined up under them. */
@@ -826,11 +963,12 @@ export function useCutalong() {
     async (talking: Attachment[], sound: Attachment[] = []): Promise<boolean> => {
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Reading the footage', percent: 0 } })
       const off = api.onCutProgress((p) => patch(id, { progress: p }))
-      const r = await api.prepareCut(
-        talking.length === 1 && sound.length === 0
-          ? talking[0].path
-          : { paths: talking.map((f) => f.path), soundPaths: sound.map((f) => f.path) }
-      )
+      // Made in the chat's brand: its kind of video and the names it listens for.
+      const r = await api.prepareCut({
+        paths: talking.map((f) => f.path),
+        soundPaths: sound.map((f) => f.path),
+        brand: brandNow().id
+      })
       off()
       if (!r.ok) {
         const what = talking.length === 1 ? talking[0].name : 'that footage'
@@ -844,7 +982,7 @@ export function useCutalong() {
       const one = talking.length === 1
       const what = one ? talking[0].name : `The ${talking.length} clips`
       const found = takesFound(r.doc)
-      const suggested = brandRef.current.niche ? null : suggestProfile(r.doc.words)
+      const suggested = brandNow().niche ? null : suggestProfile(r.doc.words)
       const text =
         r.doc.words.length > 0
           ? `Got it. ${what} ${one ? 'runs' : 'run'} ${clock(resolved.durationSec)}: ${r.doc.words.length} words in ${beats} beats.${found ? ` ${found}` : ''}`
@@ -1024,6 +1162,13 @@ export function useCutalong() {
         push({ role: 'assistant', text: 'Drop some footage first, then this can go into it.' })
         return
       }
+      // Material from a link is from outside; the person's own files are always theirs to use.
+      const target = brandNow()
+      const ruled = req.url ? covering(neverOf(target.id), 'broll') : null
+      if (ruled) {
+        push({ role: 'assistant', text: neverBlockedReply(brandInSentence(target), ruled) })
+        return
+      }
       const id = push({
         role: 'assistant',
         text: '',
@@ -1073,7 +1218,7 @@ export function useCutalong() {
         actions: placed.n ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
       })
     },
-    [during, patch, placeAsset, push]
+    [brandNow, during, neverOf, patch, placeAsset, push]
   )
 
   const findBroll = useCallback(
@@ -1086,16 +1231,47 @@ export function useCutalong() {
         push({ role: 'assistant', text: 'Drop some footage first, then I can find B-roll for it.' })
         return
       }
+      const target = brandNow()
+      const ruled = covering(neverOf(target.id), 'broll')
+      if (ruled) {
+        push({ role: 'assistant', text: neverBlockedReply(brandInSentence(target), ruled) })
+        return
+      }
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Looking for B-roll', percent: 30 } })
-      const r = await api.searchVideos(query)
+      // The brand's sources: its preferred channels are looked in first, its blocked ones never come back.
+      const r = await api.searchVideos(query, target.broll)
       if (!r.ok) {
         patch(id, { progress: null, text: `I couldn't search. ${r.message}`, error: true })
         return
       }
+      const blocked = r.blocked ?? 0
+      const left = blocked
+        ? `${blocked === 1 ? 'One result was' : `${blocked} results were`} from a source you blocked, so I left ${blocked === 1 ? 'it' : 'them'} out.`
+        : ''
       if (r.results.length === 0) {
-        patch(id, { progress: null, text: `Nothing came up for “${query}”. Try other words.` })
+        patch(id, { progress: null, text: `Nothing came up for “${query}”. Try other words.`, aside: left || null })
         return
       }
+      // The preferred channels that answered; when only some did, which share of them.
+      const looked = r.looked ?? 0
+      const tried = Math.max(looked, r.tried ?? looked)
+      const channels =
+        looked === tried
+          ? looked === 1
+            ? 'your preferred channel'
+            : `your ${looked} preferred channels`
+          : `${looked === 1 ? 'one' : looked} of your ${tried} preferred channels`
+      const preferred = r.results.slice(0, 3).filter((c) => c.preferred).length
+      const sources = [
+        looked
+          ? `I looked in ${channels} first${preferred ? `, and ${preferred === 1 ? 'one of these is' : `${preferred} of these are`} from them` : ''}.`
+          : preferred
+            ? `${preferred === 1 ? 'One of these is' : `${preferred} of these are`} from a source you prefer.`
+            : '',
+        left
+      ]
+        .filter(Boolean)
+        .join(' ')
       const d = docRef.current
       const first = Array.isArray(beat) ? beat[0] : beat
       const moment = d && first ? momentOf(d, first) : null
@@ -1104,8 +1280,12 @@ export function useCutalong() {
         text: moment
           ? `For “${moment}”, here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it there.`
           : `Here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it.`,
-        aside:
+        aside: [
           'Only that stretch is fetched, and it is credited in the export. To choose the stretch, paste the link with a time, like 1:02-1:10.',
+          sources
+        ]
+          .filter(Boolean)
+          .join(' '),
         actions: r.results.slice(0, 3).map(
           (c): Action => ({
             kind: 'add-clip',
@@ -1115,7 +1295,7 @@ export function useCutalong() {
         )
       })
     },
-    [patch, push]
+    [brandNow, neverOf, patch, push]
   )
 
   const findIcon = useCallback(
@@ -1801,7 +1981,7 @@ export function useCutalong() {
         doc: d,
         resolved,
         time: at,
-        brandName: brandRef.current.name
+        brandName: brandNow().name
       })
       if ('problem' in plan) {
         say(plan.problem)
@@ -1823,6 +2003,7 @@ export function useCutalong() {
           role: 'assistant',
           text,
           aside: aside ?? null,
+          details: plan.details.length ? plan.details : undefined,
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },
@@ -2139,12 +2320,13 @@ export function useCutalong() {
       }
       const done = applyAsVersion([{ op: 'fill', mode }], 'Pictures of another shape fill the frame another way.')
       if (!done) {
-        say('That is already how pictures of another shape fill the frame.')
+        // Left out for the brand's never list, which says so; else it already was.
+        say(leftSentence() || 'That is already how pictures of another shape fill the frame.')
         return
       }
       say(`v${done.n} is ready. ${done.summary}`, true)
     },
-    [applyAsVersion, push]
+    [applyAsVersion, leftSentence, push]
   )
 
   /** /premiere: this version as a Premiere project on the person's own files, opened there when it can be. */
@@ -2198,10 +2380,13 @@ export function useCutalong() {
         say("Drop some footage and I'll run /all on it.")
         return
       }
-      const profile = profileFor(d, brandRef.current.niche)
+      const target = brandNow()
+      const never = neverOf(target.id)
+      const profile = profileFor(d, target.niche)
       let music: Op | null = null
       let musicNote: string | null = null
-      if (finishFor(profile.id).music && !currentCut(d).music) {
+      // A brand that never uses a music bed is not asked for a track.
+      if (finishFor(profile.id).music && !currentCut(d).music && !covering(never, 'music')) {
         const path = await api.chooseAudio()
         if (path) {
           if (where === 'panel') setPanel({ text: '', progress: { stage: 'Finding the beat', percent: 40 } })
@@ -2213,8 +2398,10 @@ export function useCutalong() {
       // The edit as it is now: another project may have opened while the track was chosen.
       const latest = docRef.current
       if (!latest || latest.id !== d.id) return
-      const plan = finishOps(latest, profile.id, music)
-      const notes = [musicNote, ...plan.notes].filter(Boolean).join(' ') || null
+      const plan = finishOps(latest, profile.id, music, never)
+      // What the never list kept out, in one sentence (shared/never).
+      const ruled = neverFinishNote(brandInSentence(target), plan.left)
+      const notes = [musicNote, ...plan.notes, ruled].filter(Boolean).join(' ') || null
       const done = applyAsVersion(plan.ops, 'The finishing touches are on.', 'all')
       if (!done) {
         say('Everything /all does is already on this cut.', notes)
@@ -2222,7 +2409,215 @@ export function useCutalong() {
       }
       say(`v${done.n} is ready. ${done.summary}`, notes, true)
     },
-    [applyAsVersion, push]
+    [applyAsVersion, brandNow, neverOf, push]
+  )
+
+  /**
+   * What putting a brand on the edit changes, as ops for one version: the
+   * edit names the brand, gets its look (/brand) when `look` is set, and
+   * loses whatever is on that brand's never list.
+   */
+  const brandPlan = useCallback(
+    (d: EditDoc, target: Brand, look: boolean) => {
+      const ops: Op[] = [{ op: 'brand', id: target.id }]
+      const context = { words: d.words, sources: d.sources, assets: d.assets }
+      let cut = applyOps(currentCut(d), ops, context).cut
+      const preset = look ? brandPreset(target) : null
+      let open: string[] = []
+      let takes: ReturnType<typeof planStyle>['takes'] = null
+      if (preset) {
+        const profile = profileFor(d, target.niche)
+        const plan = planStyle(d, styleForProfile('brand', preset.style, profile), cut, {
+          thresholds: profile.takes ?? undefined
+        })
+        ops.push(...plan.ops)
+        cut = applyOps(cut, plan.ops, context).cut
+        open = plan.open
+        takes = plan.takes
+      }
+      const strip = neverStrip(cut, neverOf(target.id), { assets: d.assets, words: d.words, sources: d.sources })
+      ops.push(...strip.ops)
+      return { ops, open, takes, stripped: strip.items, preset }
+    },
+    [neverOf]
+  )
+
+  /** /brand: the chat's brand on the edit, as a version. `look` is false for a brand that keeps off new edits. */
+  const brandCommand = useCallback(
+    (where: 'thread' | 'panel', look = true): void => {
+      const say = (text: string, extra: Partial<Msg> = {}): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text, ...extra })
+      }
+      const d = docRef.current
+      if (!d) {
+        pendingCommand.current = 'brand'
+        say("Drop some footage and I'll run /brand on it.")
+        return
+      }
+      const target = brandNow()
+      const plan = brandPlan(d, target, look)
+      // The brand op and the takes lead the version; the takes speak for themselves.
+      const lead = plan.takes ? { text: plan.takes.summary, ops: 1 + plan.takes.opCount } : undefined
+      const name = brandInSentence(target)
+      const done = applyAsVersion(plan.ops, `${plan.preset?.title ?? brandName(target)} is on.`, 'brand', lead)
+      rememberVersion(docRef.current, { command: 'brand' }, done?.n ?? null)
+      if (plan.takes) setOffers(plan.takes.offers)
+      const open = [
+        plan.takes?.offerText ?? '',
+        ...plan.open,
+        plan.stripped.length ? neverFinishNote(name, plan.stripped) : ''
+      ]
+        .filter(Boolean)
+        .join(' ')
+      if (!done) {
+        say(`/brand is already how this cut looks.${open ? ` ${open}` : ''}`)
+        return
+      }
+      if (where === 'panel') setPanel(open ? { text: `v${done.n} is ready. ${done.summary} ${open}` } : null)
+      else
+        push({
+          role: 'assistant',
+          text: `v${done.n} is ready. ${done.summary}`,
+          aside: open || null,
+          actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
+        })
+    },
+    [applyAsVersion, brandNow, brandPlan, push]
+  )
+
+  /**
+   * Switches the chat to another brand. With an edit, its brand-dependent
+   * parts change as a version (the brand's look, its never list), so undo
+   * brings the old brand back; without one, the chat's edit starts in it.
+   */
+  const switchBrand = useCallback(
+    (id: string): void => {
+      if (isWorking()) {
+        setToast({ text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Switch brands once I'm done.` })
+        return
+      }
+      const target = brandById(brandsRef.current, id)
+      const d = docRef.current
+      const was = d ? brandNow().id : null
+      setChatChoice(target.id)
+      if (projectRef.current) projectRef.current = { ...projectRef.current, brand: target.id }
+      const name = brandName(target)
+      if (!d) {
+        push({ role: 'assistant', text: `This chat uses ${name} now. Drop your footage and I'll cut it in that brand.` })
+        void persist()
+        return
+      }
+      if (was === target.id) return
+      const plan = brandPlan(d, target, target.autoApply)
+      const lead = {
+        text: [`${name} is on this edit now.`, plan.takes?.summary ?? ''].filter(Boolean).join(' '),
+        ops: 1 + (plan.takes?.opCount ?? 0)
+      }
+      const done = applyAsVersion(plan.ops, `${name} is on this edit now.`, 'brand', lead)
+      rememberVersion(docRef.current, { command: 'brand' }, done?.n ?? null)
+      if (!done) {
+        void persist()
+        return
+      }
+      const aside = [
+        ...plan.open,
+        plan.stripped.length ? neverFinishNote(brandInSentence(target), plan.stripped) : '',
+        'Undo brings the brand it had back.'
+      ]
+        .filter(Boolean)
+        .join(' ')
+      push({
+        role: 'assistant',
+        text: `v${done.n} is ready. ${done.summary}`,
+        aside,
+        actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
+      })
+    },
+    [applyAsVersion, brandPlan, persist, push, setChatChoice]
+  )
+
+  /** Takes out of the edit what its brand's never list rules out, as a version: after a rule is said. */
+  const stripNever = useCallback(
+    (where: 'thread' | 'panel'): void => {
+      const d = docRef.current
+      if (!d) return
+      const target = brandNow()
+      const strip = stripDoc(d, neverOf(target.id))
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      if (strip.ops.length === 0) {
+        say('Nothing in this edit is on the never list.')
+        return
+      }
+      const out = listWords(strip.items.map(neverSaid))
+      const done = applyAsVersion(strip.ops, `The ${out} are out.`)
+      if (!done) {
+        say('Nothing changed.')
+        return
+      }
+      const took = neverFinishNote(brandInSentence(target), strip.items).replace('so I left', 'so I took')
+      say(`v${done.n} is ready. ${took}`, true)
+    },
+    [applyAsVersion, brandNow, neverOf, push]
+  )
+
+  /**
+   * A rule for the never list said in a chat or a note: "never use whooshes",
+   * "no transitions on this channel", "whooshes are fine again". It goes on
+   * the chat's brand's list in what Cutalong learns (shared/memory), with
+   * the words it was said in. True when the sentence was one of these.
+   */
+  const answerNever = useCallback(
+    async (rule: NeverSaid, said: string, reply: (text: string, extra?: Partial<Msg>) => void): Promise<boolean> => {
+      const target = brandNow()
+      const list = neverOf(target.id)
+      // "Fine again" counts only for what is on the list, or kinds of it.
+      const allowed = list.filter((entry) => rule.allow.some((a) => entry === a || entry.startsWith(`${a}:`)))
+      const wholes = allowed.length ? [] : rule.allow.filter((a) => covering(list, a))
+      if (rule.never.length === 0 && allowed.length === 0 && wholes.length === 0) return false
+      const name = brandInSentence(target)
+      const added = rule.never.filter((i) => !covering(list, i))
+      const already = rule.never.filter((i) => covering(list, i))
+      if (added.length) await memoryRef.current.setNever(target.id, added, true, said)
+      if (allowed.length) await memoryRef.current.setNever(target.id, allowed, false, said)
+      const whole = wholes.map((a) => neverSaid(covering(list, a) as string))
+      const parts = [
+        added.length || already.length ? neverAddedReply(name, added, already) : '',
+        allowed.length ? neverAllowedReply(name, allowed) : '',
+        wholes.length
+          ? `${name} never uses any ${listWords(whole)}. Take that off the never list on the Brand page to use ${listWords(wholes.map(neverSaid))}.`
+          : ''
+      ].filter(Boolean)
+      const d = docRef.current
+      const there = d && added.length ? stripDoc(d, neverOf(target.id)).items : []
+      reply(parts.join(' '), {
+        aside: there.length ? `This edit has ${listWords(there.map(neverSaid))} from before.` : null,
+        actions: there.length ? [{ kind: 'strip-never', label: 'Take them out', primary: true }] : undefined
+      })
+      return true
+    },
+    [brandNow, neverOf]
+  )
+
+  /** The entry on the chat's brand's never list that rules a command out, or null when none does. */
+  const ruledCommand = useCallback(
+    (command: string, rest: string): NeverItem | null => {
+      const thing = commandThing(command, rest, {
+        looks: NAMED_LOOK_COMMANDS,
+        graphic: findMotionCommand(command)?.kind ?? null,
+        captions: command === 'captions' || CAPTION_STYLE_PRESETS.some((p) => p.command === command)
+      })
+      return thing ? covering(neverOf(brandNow().id), thing) : null
+    },
+    [brandNow, neverOf]
   )
 
   /**
@@ -2263,7 +2658,7 @@ export function useCutalong() {
           .filter(Boolean)
           .join(' and ')
         const request = `${text}\nFor this one, only ${topics}, with remove and strike ops, and change nothing else: I cut it to any length asked for afterwards.`
-        const r = await during(() => api.planEdit({ doc: d, request, notes: [], voice: brandRef.current.voice }))
+        const r = await during(() => api.planEdit({ doc: d, request, notes: [], voice: brandNow().voice }))
         if (docRef.current?.id !== d.id) return { n: null, said: '', met: false }
         if (r.ok) {
           // A topic is taken out, never added to: only the planner's cuts are kept.
@@ -2295,7 +2690,7 @@ export function useCutalong() {
         }
       }
       const latest = docRef.current ?? d
-      const plan = planLength(latest, asked, { profile: profileFor(latest, brandRef.current.niche), first, firstSaid })
+      const plan = planLength(latest, asked, { profile: profileFor(latest, brandNow().niche), first, firstSaid })
       if (plan.ops.length === 0) {
         const said = say(plan.note ?? 'That is already how long it runs.', asides.map((t) => sentence(t)).join(' ') || null, false)
         return { n: null, said, met: plan.met }
@@ -2409,6 +2804,15 @@ export function useCutalong() {
       beat: string | null,
       picked: string[] | null
     ): Promise<void> => {
+      // A command for something the brand's never list rules out answers so, and makes no version.
+      const target = brandNow()
+      const rule = ruledCommand(command, rest)
+      if (rule) {
+        const text = neverBlockedReply(brandInSentence(target), rule)
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+        return
+      }
       if (command === 'cut') {
         cutBeats(picked ?? (beat ? [beat] : []), where)
         return
@@ -2420,6 +2824,10 @@ export function useCutalong() {
       if (command === 'all') {
         await finishCommand(where)
         vlog.onBeats(where)
+        return
+      }
+      if (command === 'brand') {
+        brandCommand(where)
         return
       }
       if (command === 'vlog') {
@@ -2538,7 +2946,7 @@ export function useCutalong() {
         return
       }
       // The edit's own profile, then the brand's niche, then what the words suggest.
-      const profile = profileFor(d, brandRef.current.niche)
+      const profile = profileFor(d, brandNow().niche)
       const plan = planStyle(d, styleForProfile(command, preset.style, profile), currentCut(d), {
         thresholds: profile.takes ?? undefined
       })
@@ -2546,12 +2954,16 @@ export function useCutalong() {
       const done = applyAsVersion(plan.ops, `${preset.title} is on.`, command, lead)
       rememberVersion(docRef.current, { command }, done?.n ?? null)
       if (plan.takes) setOffers(plan.takes.offers)
-      const open = [plan.takes?.offerText ?? '', ...plan.open].filter(Boolean).join(' ')
+      // What the brand's never list kept out of it, said with the rest.
+      const left = leftSentence(done?.left)
+      const open = [plan.takes?.offerText ?? '', ...plan.open, left].filter(Boolean).join(' ')
       if (!done) {
         say(
-          plan.takes && !open
-            ? 'Every line already plays its best take, and there are no false starts left.'
-            : `/${command} is already how this cut looks.${open ? ` ${open}` : ''}`
+          left
+            ? `/${command} had nothing left to change. ${left}`
+            : plan.takes && !open
+              ? 'Every line already plays its best take, and there are no false starts left.'
+              : `/${command} is already how this cut looks.${open ? ` ${open}` : ''}`
         )
         return
       }
@@ -2566,6 +2978,10 @@ export function useCutalong() {
     },
     [
       applyAsVersion,
+      brandCommand,
+      brandNow,
+      leftSentence,
+      ruledCommand,
       captionsOver,
       cutBeats,
       cameraCommand,
@@ -2762,7 +3178,12 @@ export function useCutalong() {
       const fill = fillAsked(text, fillMode(currentCut(d)))
       if (fill) {
         const done = applyAsVersion([{ op: 'fill', mode: fill }], 'Pictures of another shape fill the frame another way.')
-        say(done ? `v${done.n} is ready. ${done.summary}` : 'That is already how pictures of another shape fill the frame.', !!done)
+        say(
+          done
+            ? `v${done.n} is ready. ${done.summary}`
+            : leftSentence() || 'That is already how pictures of another shape fill the frame.',
+          !!done
+        )
         return true
       }
       // "Bring back the intro", "bring back the part about the conference": what was cut on request, by its name.
@@ -2792,7 +3213,7 @@ export function useCutalong() {
       )
       return true
     },
-    [acceptOffers, applyAsVersion, setDoc, switchTake]
+    [acceptOffers, applyAsVersion, leftSentence, setDoc, switchTake]
   )
 
   /** A request in words: the planner turns it into ops. */
@@ -2817,7 +3238,7 @@ export function useCutalong() {
       const now = docRef.current ?? d
       // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Thinking', percent: null } })
-      const r = await api.planEdit({ doc: now, request, notes: [], voice: brandRef.current.voice })
+      const r = await api.planEdit({ doc: now, request, notes: [], voice: brandNow().voice })
       if (!r.ok) {
         patch(id, {
           progress: null,
@@ -2881,8 +3302,12 @@ export function useCutalong() {
   const startEdit = useCallback(
     async (talking: Attachment[], sound: Attachment[]): Promise<boolean> => {
       if (!(await prepare(talking, sound))) return false
-      // Your brand first, so whatever was asked for lands on top of it.
-      if (brandRef.current.autoApply && brandPreset(brandRef.current)) await runCommand('brand')
+      // Your brand first, so whatever was asked for lands on top of it: its look when it goes on
+      // new edits, and nothing its never list rules out (captions it never uses come off).
+      const brand = brandNow()
+      const d = docRef.current
+      const look = brand.autoApply && !!brandPreset(brand)
+      if (d && (look || stripDoc(d, neverOf(brand.id)).ops.length > 0)) await during(async () => brandCommand('thread', look))
       if (pendingCommand.current) {
         const waiting = pendingCommand.current
         pendingCommand.current = null
@@ -2890,7 +3315,7 @@ export function useCutalong() {
       }
       return true
     },
-    [prepare, runCommand]
+    [brandCommand, brandNow, during, neverOf, prepare, runCommand]
   )
 
   /**
@@ -3006,7 +3431,11 @@ export function useCutalong() {
         const materialBefore = docRef.current?.assets.length ?? 0
         // A day of clips to tell as a story (useVlog): every clip is material with its own sound.
         const vlogged = vlog.wanted(said, command?.command ?? null, recordings)
-        if (vlogged) await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words)
+        if (vlogged && (await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words))) {
+          // Its story is made in main; whatever the brand never uses comes out as the next version.
+          const made = docRef.current
+          if (made && stripDoc(made, neverOf(brandNow().id)).ops.length > 0) stripNever('thread')
+        }
         else if (recordings.length > 0) await takeIn(recordings, said)
         if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
         if (stills.length > 0) {
@@ -3042,8 +3471,12 @@ export function useCutalong() {
           return d.assets.slice(materialBefore).some((a) => !shown.has(a.id))
         }
         if (command && !(vlogged && command.command === 'vlog')) {
+          // A command the brand never uses is answered as that; its words are not asked for another way.
+          const ruled = ruledCommand(command.command, command.rest)
           await runCommand(command.command, 'thread', command.rest)
-          if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
+          if (ruled) {
+            // Answered: the channel never uses it, and how to change that.
+          } else if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
           else if (unplaced()) await ask(PLACE_MATERIAL)
         } else if (vlogged) {
           // What was said with the shoot was for its story.
@@ -3052,17 +3485,26 @@ export function useCutalong() {
         } else if (text && !link && (docRef.current || attachments.length === 0)) {
           // Whatever was said with the files is the ask: the planner sees
           // the footage as sorted and places the material with it. A word
-          // about takes ("use the second take") is answered here, without it.
-          const local =
+          // about takes ("use the second take") is answered here, without it,
+          // and so is a rule for the brand's never list ("never use whooshes"),
+          // whose other words, if any, still go to the planner.
+          const rule = readNever(text)
+          const ruled =
             attachments.length === 0 &&
-            answerTakes(text, (reply, done) =>
-              push({
-                role: 'assistant',
-                text: reply,
-                actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
-              })
-            )
+            (await answerNever(rule, text, (reply, extra) => push({ role: 'assistant', text: reply, ...extra })))
+          const said = ruled ? rule.rest : text
+          const local =
+            ruled ||
+            (attachments.length === 0 &&
+              answerTakes(text, (reply, done) =>
+                push({
+                  role: 'assistant',
+                  text: reply,
+                  actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+                })
+              ))
           if (!local) await ask(text)
+          else if (ruled && said.trim() && docRef.current) await ask(said)
         } else if (unplaced() && !asked) {
           await ask(PLACE_MATERIAL)
         }
@@ -3072,14 +3514,19 @@ export function useCutalong() {
     },
     [
       addMaterial,
+      answerNever,
       answerTakes,
       ask,
+      brandNow,
       bringIn,
       capturePage,
       ensureProject,
+      neverOf,
       persist,
       push,
+      ruledCommand,
       runCommand,
+      stripNever,
       studyLink,
       takeIn,
       vlog
@@ -3152,6 +3599,7 @@ export function useCutalong() {
       else if (a.kind === 'run-command' && a.payload) void runCommand(a.payload)
       else if (a.kind === 'save-style' && a.payload) void saveStyle(a.payload)
       else if (a.kind === 'reveal' && a.payload) void api.reveal(a.payload)
+      else if (a.kind === 'strip-never') void during(async () => stripNever('thread'))
       else if (a.kind === 'copy' && a.payload) {
         void navigator.clipboard.writeText(a.payload).then(
           () => setToast({ text: 'Copied.' }),
@@ -3172,7 +3620,7 @@ export function useCutalong() {
         void api.setVideoSignIn('chrome').then(() => bringIn(req, hint, beat))
       }
     },
-    [addIcon, bringIn, runCommand, saveStyle, useStyle]
+    [addIcon, bringIn, during, runCommand, saveStyle, stripNever, useStyle]
   )
 
   // ---------- Editor ----------
@@ -3256,7 +3704,7 @@ export function useCutalong() {
       progress: { stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: null },
       since: Date.now()
     })
-    const r = await during(() => api.planEdit({ doc: now, request: '', notes, voice: brandRef.current.voice }))
+    const r = await during(() => api.planEdit({ doc: now, request: '', notes, voice: brandNow().voice }))
     // The answer is about this edit; should another be open by now, it is not applied to that one.
     if (docRef.current?.id !== d.id) return
     if (!r.ok) {
@@ -3325,7 +3773,7 @@ export function useCutalong() {
     }
     const n = currentVersion(d).n
     setDoc(restore(d, back))
-    remember({ kind: 'undo', doc: d.id, from: n, to: back })
+    remember({ kind: 'undo', doc: d.id, from: n, to: back, ...brandTag(currentCut(d)) })
     setPanel({ text: `v${n + 1} is v${back} again.` })
   }, [setDoc])
 
@@ -3373,6 +3821,8 @@ export function useCutalong() {
         chips: [clock(durationSec), ...(r.width && r.height ? [`${r.width} × ${r.height}`] : [])],
         actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
       })
+      // Under it, what the upload needs: captions, a description, titles and tags, beside the video.
+      if (r.upload) push(uploadReply(r.upload))
       setToast({ text: `Exported ${name}${besideIt(r.chaptersPath, r.creditsPath)}`, path: r.outputPath, chat: true })
     } finally {
       off()
@@ -3395,6 +3845,8 @@ export function useCutalong() {
     docRef.current = null
     messagesRef.current = []
     pendingCommand.current = null
+    // A new chat uses the default brand until it is switched.
+    setChatChoice(null)
     setOffers([])
     setDocState(null)
     setMediaUrl(null)
@@ -3404,16 +3856,48 @@ export function useCutalong() {
     setGraphic(null)
     setScreen('start')
     refreshRecent()
-  }, [refreshRecent])
+  }, [refreshRecent, setChatChoice])
 
-  /** For the notes panel: a takes sentence typed as a note is answered, not stored. */
+  /**
+   * For the notes panel: a takes sentence, or a rule for the brand's never
+   * list, typed as a note is answered, not stored. Whatever else the note
+   * asks for ("never use whooshes and keep the hook short") is kept as a
+   * note of its own.
+   */
   const answerInPanel = useCallback(
-    (text: string): boolean => answerTakes(text, (reply) => setPanel({ text: reply })),
-    [answerTakes]
+    (text: string, keep?: (rest: string) => void): boolean => {
+      const rule = readNever(text)
+      if (rule.never.length > 0 || rule.allow.length > 0) {
+        const target = brandNow()
+        const list = neverOf(target.id)
+        const allows = rule.allow.some((a) => covering(list, a) || list.some((e) => e.startsWith(`${a}:`)))
+        if (rule.never.length > 0 || allows) {
+          void answerNever(rule, text, (reply, extra) =>
+            setPanel({ text: [reply, extra?.aside ?? ''].filter(Boolean).join(' ') })
+          )
+          if (rule.rest.trim()) keep?.(rule.rest)
+          return true
+        }
+      }
+      return answerTakes(text, (reply) => setPanel({ text: reply }))
+    },
+    [answerNever, answerTakes, brandNow, neverOf]
   )
 
   return {
+    /** The brand on the Brand page. */
     brand,
+    brands,
+    /** The brand the open chat's edit is made in. */
+    chatBrand: inChat,
+    showBrand: setPageBrandId,
+    newBrand,
+    deleteBrand,
+    makeDefaultBrand,
+    switchBrand,
+    /** A brand's never list, and changing it from the Brand page. */
+    neverOf: (id: string) => memory.neverFor(id),
+    setNever: memory.setNever,
     brandProgress,
     saveBrand,
     learnFrom,

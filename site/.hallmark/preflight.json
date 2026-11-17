@@ -1,0 +1,12 @@
+{
+  "scanned": "2026-11-17",
+  "findings": {
+    "fonts": "Figtree (variable) and JetBrains Mono, from the app's @fontsource packages (package.json devDependencies; src/renderer/src/cutalong/tokens.css --font-sans, --font-mono)",
+    "palette": "Cutalong design system: ground #F5F5F3, card #FFFFFF, ink #15161A, ink-soft #4B4D55, muted #5E6068, coral #FF5A36 for the cut only (src/renderer/src/cutalong/tokens.json; https://claude.ai/artifact/AsZpkLeXa7pLaqMZkipqLh)",
+    "motion": "durations 120, 180, 240 and 320 ms; ease-standard, ease-enter, ease-exit; spring-gentle (tokens.css)",
+    "spacing": "4, 8, 12, 16, 24, 32 and 48 px (tokens.json spacing); the site uses Hallmark's scale",
+    "framework": "the app is Electron and React; the site is new: plain HTML, CSS and JavaScript with a zero-dependency Node build"
+  },
+  "preserve": ["fonts", "palette", "coral for the cut only", "radii", "motion tokens", "voice"],
+  "introduce": ["page shape", "display scale", "dark values for the site", "gates", "hero discipline", "slots"]
+}

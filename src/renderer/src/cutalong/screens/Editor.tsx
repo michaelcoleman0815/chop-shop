@@ -114,9 +114,13 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
-  // Captions take the brand's colours where the export gives them those: when the brand applies itself.
-  const captionColors = useMemo(() => (app.brand.autoApply ? app.brand.colors : null), [app.brand])
-  // The cut's graphics on the output clock, in the brand's look: what the export draws.
+  // Captions take the colours of the brand this version is made in, where the export gives them those:
+  // when that brand applies itself.
+  const captionColors = useMemo(
+    () => (app.chatBrand.autoApply ? app.chatBrand.colors : null),
+    [app.chatBrand]
+  )
+  // The cut's graphics on the output clock, in the look of the brand this version is made in: what the export draws.
   const scene = useMemo(
     () =>
       buildScene({
@@ -124,10 +128,10 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         resolved,
         words: doc.words,
         size: designSize(cut.aspect, doc.sources[0]),
-        theme: themeFrom(app.brand),
+        theme: themeFrom(app.chatBrand),
         assets: doc.assets
       }),
-    [cut, resolved, doc.words, doc.sources, doc.assets, app.brand]
+    [cut, resolved, doc.words, doc.sources, doc.assets, app.chatBrand]
   )
 
   const beats: StripBeat[] = useMemo(() => {
@@ -983,15 +987,17 @@ function NotesPanel({
         onNote={(text) => {
           const command = parseCommand(text)
           const range = picked.length ? picked : null
-          if (command) void app.runCommand(command.command, 'panel', command.rest, time, range)
-          else if (range && cutsPicked(text)) app.cutBeats(range, 'panel')
-          else if (!app.answerInPanel(text))
-            // A note on a stretch is left on one of its beats: the playhead's, when it is among them.
+          // A note on a stretch is left on one of its beats: the playhead's, when it is among them.
+          const note = (words: string): void =>
             app.addNote(
-              text,
+              words,
               range ? (nowBeat && range.includes(nowBeat) ? nowBeat : range[0]) : nowBeat,
               range ? { from: range[0], to: range[range.length - 1] } : null
             )
+          if (command) void app.runCommand(command.command, 'panel', command.rest, time, range)
+          else if (range && cutsPicked(text)) app.cutBeats(range, 'panel')
+          // A rule for the never list is taken; whatever else was said with it is a note.
+          else if (!app.answerInPanel(text, note)) note(text)
         }}
       />
     </aside>

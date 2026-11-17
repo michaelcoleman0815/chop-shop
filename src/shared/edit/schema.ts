@@ -236,6 +236,14 @@ export const CutSchema = z.object({
   /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
   reframe: z.boolean().optional(),
   /**
+   * Which of the person's brands this version is made in, by id (shared/brands):
+   * its captions, logo, graphics, never list and B-roll sources. Absent, as in
+   * an edit made before there could be more than one, the brand from then
+   * (shared/brands legacyBrandId). Only the cut says it: a version's ops
+   * never carry the brand op that sets it (edit/doc).
+   */
+  brand: z.string().min(1).max(80).optional(),
+  /**
    * How a picture of another shape fills the frame (edit/fill). A new edit
    * says auto: a picture taller than the frame, a still or a screen recording
    * sits whole on a blurred copy of itself, and other footage is cropped to
@@ -344,6 +352,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // Follow the speaker when the picture is cropped to a narrower frame, or keep it in the middle.
   z.object({ op: z.literal('reframe'), on: z.boolean() }),
+  // The brand the edit is made in, by id (shared/brands); what that brand changes comes as other ops beside it.
+  z.object({ op: z.literal('brand'), id: z.string().min(1).max(80) }),
   // How pictures of another shape fill the frame: as an edit does unless asked, on a blurred copy, between black bars, or cropped.
   z.object({ op: z.literal('fill'), mode: FillSchema }),
   // Where beats are centred when cropped, by hand; null follows the speaker or the middle again.

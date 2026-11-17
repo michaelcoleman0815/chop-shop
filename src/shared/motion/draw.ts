@@ -16,6 +16,7 @@ import {
   type Cmd
 } from './geometry'
 import { layoutText, measurer, type TextBlock, type WordBox } from './layout'
+import { drawMap } from '../maps/paint'
 import type {
   Anim,
   Animator,
@@ -202,6 +203,9 @@ function drawKind(
       break
     case 'group':
       drawGroup(ctx, layer, t, opacity, st)
+      break
+    case 'map':
+      drawMap(ctx, layer, local, length, opacity, st.res.map)
       break
   }
 }

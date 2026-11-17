@@ -17,7 +17,7 @@ import { BUSY_EXAMPLE, buildScene, DEFAULT_THEME, designSize, fullCall, template
 import { docFor } from '../shared/raw/eval'
 import { FIXTURES } from '../shared/raw/fixtures'
 import { planTakes, takesOf, switchTakeOps } from '../shared/raw/plan'
-import { offerPlan } from './planner'
+import { keepOffList, offerPlan } from './planner'
 import {
   fromPlannerOp,
   PLANNER_SYSTEM,
@@ -129,6 +129,40 @@ describe('the planner request', () => {
     expect(renderRequest(doc, 'tighten it', [], '', [])).not.toContain('creator-preferences')
     expect(renderRequest(doc, 'tighten it', [])).not.toContain('creator-preferences')
     expect(PLANNER_SYSTEM).toContain('<creator-preferences>')
+  })
+
+  it('tells the planner what the channel never uses, and the plan comes back without it', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const text = renderRequest(doc, 'make it pop', [], '', [], [], ['whooshes', 'zoom transitions'])
+    expect(text).toContain('<never-on-this-channel>\n- whooshes\n- zoom transitions\n</never-on-this-channel>')
+    expect(text.indexOf('<never-on-this-channel>')).toBeLessThan(text.indexOf('<request>'))
+    expect(renderRequest(doc, 'make it pop', [])).not.toContain('never-on-this-channel')
+    expect(PLANNER_SYSTEM).toContain('<never-on-this-channel>')
+    // Whatever model planned it, what the list rules out is left out and said in one sentence.
+    const offered = offerPlan(
+      doc,
+      {
+        ops: [
+          { op: 'sfx', beats: ['b2'], kind: 'whoosh', word: '', gainDb: 0 },
+          { op: 'transition', beats: ['b2'], kind: 'zoom', sec: 0 },
+          { op: 'treat', beats: ['b2'], set: { bw: true } }
+        ].map((o) => o as never),
+        summary: 's',
+        reply: 'r',
+        notesHandled: [],
+        needs: [],
+        brollWanted: [{ beat: 'b2', search: 'city at night' }]
+      },
+      []
+    )
+    expect(offered.ok && offered.ops.length).toBe(3)
+    const kept = keepOffList(offered, doc, ['sfx:whoosh', 'transition:zoom', 'broll'], 'Field Notes')
+    if (!kept.ok) throw new Error('not ok')
+    expect(kept.ops).toEqual([{ op: 'treat', beats: ['b2'], set: { bw: true } }])
+    expect(kept.rejected).toEqual(['I left out the whooshes and zoom transitions, as Field Notes never uses them.'])
+    expect(kept.brollWanted).toEqual([])
+    // An empty list changes nothing.
+    expect(keepOffList(offered, doc, [], 'Field Notes')).toBe(offered)
   })
 
   it('fences a typed request so it reads as a request', () => {

@@ -21,6 +21,8 @@ import {
 } from '../shared/motion'
 import { subtitleWords } from '../shared/subtitles'
 import { frameRate, frameSize, type OverlaySpan } from './cut-render'
+import { mapResourcesFor, usesMap } from './map-data'
+import type { MapResources } from '../shared/maps'
 
 /**
  * Motion graphics for the export: the same scene the editor draws, painted
@@ -68,6 +70,8 @@ export interface MotionRenderOptions {
   images?: Map<string, string>
   icons?: (name: string) => IconNode[] | undefined
   logos?: (slug: string) => LogoMark | undefined
+  /** Map data and satellite tiles, for map graphics. */
+  map?: MapResources
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
 }
@@ -123,6 +127,7 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
     images,
     icons: opts.icons,
     logos: opts.logos,
+    map: opts.map,
     // Scratch canvases, for motion blur.
     createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>
   }
@@ -302,6 +307,9 @@ export async function renderCutMotion(input: CutMotionInput): Promise<{ overlays
     images,
     icons: usesIcons(scene.layers) && input.icons ? await input.icons() : undefined,
     logos: usesLogos(scene.layers) && input.logos ? await input.logos() : undefined,
+    map: usesMap(scene.layers)
+      ? await mapResourcesFor(scene.layers, { design: scene.size, pixels: { width, height }, fps: frameRate(first.fps) })
+      : undefined,
     onProgress: input.onProgress,
     signal: input.signal
   })

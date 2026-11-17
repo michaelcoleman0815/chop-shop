@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { EditDocSchema, type Note } from '../shared/edit'
 import { chatLocally, isLocalUp } from './local-llm'
-import { offerPlan, type PlanEditResult } from './planner'
+import { offerPlan, planMapRequest, type PlanEditResult } from './planner'
 import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
 
 /**
@@ -19,12 +19,24 @@ import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIc
 export const PLAN_JSON_SCHEMA = z.toJSONSchema(PlanSchema)
 
 export async function planEditLocally(
-  input: { doc: unknown; request: string; notes: Note[]; voice?: string; preferences?: string[]; logos?: string[] },
+  input: {
+    doc: unknown
+    request: string
+    notes: Note[]
+    voice?: string
+    preferences?: string[]
+    logos?: string[]
+    never?: string[]
+  },
   local: { host: string; model: string }
 ): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
   const doc = parsedDoc.data
+
+  // A request for a map and nothing else needs no model.
+  const map = planMapRequest(doc, input.request, input.notes)
+  if (map) return map
 
   if (!(await isLocalUp(local.host))) {
     return {
@@ -41,7 +53,7 @@ export async function planEditLocally(
       PLANNER_SYSTEM,
       [
         renderTranscript(doc),
-        renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos),
+        renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos, input.never),
         // Ollama's guidance: the schema in the prompt as well grounds the answer.
         `Answer with JSON in this shape:\n${JSON.stringify(PLAN_JSON_SCHEMA)}`
       ].join('\n\n'),

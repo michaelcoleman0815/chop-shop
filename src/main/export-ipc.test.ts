@@ -114,7 +114,17 @@ describe.skipIf(!FFMPEG)('exporting through the app', () => {
     expect(a.ok && b.ok).toBe(true)
     if (!a.ok || !b.ok) return
     expect(a.outputPath).not.toBe(b.outputPath)
-    expect(readdirSync(outDir).sort()).toEqual(['My talk v1 (2).mp4', 'My talk v1.mp4'])
+    const files = readdirSync(outDir).sort()
+    expect(files.filter((f) => f.endsWith('.mp4'))).toEqual(['My talk v1 (2).mp4', 'My talk v1.mp4'])
+    // Each has what its upload needs beside it, under its own name (shared/upload).
+    expect(files.filter((f) => !f.endsWith('.mp4')).sort()).toEqual(
+      [
+        'My talk v1 (2) description.txt',
+        'My talk v1 (2) titles and tags.txt',
+        'My talk v1 description.txt',
+        'My talk v1 titles and tags.txt'
+      ].sort()
+    )
     expect(decodes(ffmpeg, a.outputPath)).toBe(true)
     expect(decodes(ffmpeg, b.outputPath)).toBe(true)
   }, 120000)

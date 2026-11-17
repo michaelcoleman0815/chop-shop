@@ -63,6 +63,18 @@ export const MOTION_FONTS: MotionFont[] = [
     winAscent: 1.22,
     winDescent: 0.32,
     label: 'Sora, a clean sans'
+  },
+  {
+    // Igino Marini's revival of the Fell types (SIL Open Font License): the vintage map's lettering.
+    family: 'IM Fell English',
+    file: 'IMFellEnglish-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.69,
+    ascent: 0.91,
+    descent: 0.36,
+    winAscent: 1854 / 2048,
+    winDescent: 744 / 2048,
+    label: 'IM Fell English, an old-style serif'
   }
 ]
 

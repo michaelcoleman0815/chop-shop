@@ -58,6 +58,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 import {
   chooseEngine,
+  clipsInBrand,
   findClips,
   frozenStretches,
   registerClippingIpc,
@@ -190,6 +191,24 @@ describe('clipping a long recording, start to finish', () => {
     if (!off.ok) throw new Error(off.message)
     for (const c of off.clips) expect(currentCut(c.doc).captions).toMatchObject({ on: true, preset: 'clean' })
     expect(off.reply.chips).toContain('Captions on')
+  })
+
+  it('makes every clip in the chat’s brand, without what its never list rules out', async () => {
+    const r = await findClips({ paths: ['/rec/Sunday service.mp4'], ask: '' }, tools(), quiet)
+    if (!r.ok) throw new Error(r.message)
+    const brand = { ...EMPTY_BRAND, id: 'brand-tc', name: 'Tech Corner' }
+    const made = clipsInBrand(r.clips, brand, ['captions', 'sfx:whoosh'])
+    expect(made.length).toBe(r.clips.length)
+    for (const [i, c] of made.entries()) {
+      expect(c.doc.versions.every((v) => v.cut.brand === 'brand-tc')).toBe(true)
+      expect(currentCut(r.clips[i].doc).captions.on).toBe(true)
+      expect(currentCut(c.doc).captions.on).toBe(false)
+      expect(c.doc.versions.length).toBe(r.clips[i].doc.versions.length + 1)
+      expect(c.doc.versions[c.doc.versions.length - 1].summary).toBe('Tech Corner never uses captions, so I left them out.')
+    }
+    // With nothing on the list that a clip has, no version more.
+    const plain = clipsInBrand(r.clips, brand, ['sfx:whoosh'])
+    expect(plain.map((c) => c.doc.versions.length)).toEqual(r.clips.map((c) => c.doc.versions.length))
   })
 
   it('keeps what it heard, so asking again takes no transcription and seconds at most', async () => {

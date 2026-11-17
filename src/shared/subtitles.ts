@@ -1,7 +1,7 @@
 import { presetById } from './caption-presets'
 import { captionedWords, type Resolved } from './edit/resolve'
 import type { CaptionSpec } from './edit/schema'
-import { fontInfo, fontString, template, type MotionScene } from './motion'
+import { fontInfo, fontString, type MotionScene } from './motion'
 import type { CaptionStyle, TranscriptWord } from './types'
 import { groupWords } from './words'
 
@@ -76,7 +76,8 @@ export function subtitleWords(
   resolved: Resolved,
   scene: Pick<MotionScene, 'items'>
 ): Resolved {
-  const cards = scene.items.filter((i) => template(i.kind)?.covers === 'card')
+  // What covers the screen is the graphic's own say: a full-frame map holds the captions, a map inset does not.
+  const cards = scene.items.filter((i) => i.covers === 'card')
   // Beats whose captions are off are left out too.
   const words = captionedWords(cut, resolved).words.filter(
     (w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end)

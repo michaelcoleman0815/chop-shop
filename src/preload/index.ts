@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { MapDownloadResult, MapStatus, PlatesFile } from '../shared/maps'
 import type {
   AnalysisOptions,
   CachedAnalysis,
@@ -22,6 +23,8 @@ import type {
 import type { Asset, EditDoc, Note, Op, Region, Source, Subject } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
+import type { Brands } from '../shared/brands'
+import type { UploadKit } from '../shared/upload'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { PremiereFacts, Preset } from '../shared/presets'
@@ -55,7 +58,8 @@ const api = {
   // Cutalong: footage into an edit document, documents into video, videos
   // someone likes into a style, and the saved slash commands.
   prepareCut: (
-    input: string | { paths: string[]; soundPaths?: string[] }
+    /** With `brand`, the chat's brand by id: its kind of video and the names it listens for. */
+    input: string | { paths: string[]; soundPaths?: string[]; brand?: string | null }
   ): Promise<
     | {
         ok: true
@@ -161,6 +165,8 @@ const api = {
         mediaUrl: string
         creditsPath?: string | null
         chaptersPath?: string | null
+        /** What an upload needs, written beside the export (shared/upload). */
+        upload?: UploadKit | null
         /** The exported file's own size and length. */
         width?: number
         height?: number
@@ -176,12 +182,28 @@ const api = {
   }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string; signIn: boolean }> =>
     ipcRenderer.invoke('assets:add', req),
   onAssetProgress: (cb: (p: Progress) => void): (() => void) => listen('assets:progress', cb),
+  /** B-roll to choose from; `sources` are the brand's channels and sites to look in first and to leave out. */
   searchVideos: (
-    query: string
+    query: string,
+    sources?: { prefer: string[]; block: string[] }
   ): Promise<
-    | { ok: true; results: { url: string; title: string; author: string | null; durationSec: number | null }[] }
+    | {
+        ok: true
+        results: {
+          url: string
+          title: string
+          author: string | null
+          durationSec: number | null
+          preferred?: boolean
+        }[]
+        /** Results left out because their channel or site is blocked. */
+        blocked?: number
+        /** Preferred channels looked in first: those that answered, of `tried` asked. */
+        looked?: number
+        tried?: number
+      }
     | { ok: false; message: string }
-  > => ipcRenderer.invoke('assets:search', query),
+  > => ipcRenderer.invoke('assets:search', query, sources),
   saveImageAsset: (req: {
     docId: string
     base64: string
@@ -200,6 +222,10 @@ const api = {
   getBrand: (): Promise<Brand> => ipcRenderer.invoke('brand:get'),
   saveBrand: (brand: Brand): Promise<{ ok: true; brand: Brand } | { ok: false; message: string }> =>
     ipcRenderer.invoke('brand:save', brand),
+  /** A brand per channel, and which one new chats use (shared/brands). */
+  getBrands: (): Promise<Brands> => ipcRenderer.invoke('brands:get'),
+  saveBrands: (brands: Brands): Promise<{ ok: true; brands: Brands } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('brands:save', brands),
   learnBrand: (
     paths: string[]
   ): Promise<{
@@ -211,11 +237,13 @@ const api = {
   onBrandProgress: (cb: (p: Progress) => void): (() => void) => listen('brand:progress', cb),
   // Learning from your edits: recordings and the video made from them, lined up on this computer.
   learnChoose: (kind: 'recordings' | 'finished'): Promise<string[]> => ipcRenderer.invoke('learn:choose', kind),
-  learnRun: (req: { recordings: string[]; finished: string }): Promise<LearnRunResult> =>
+  // Each brand learns from its own videos: `brand` is its id, the default brand's when absent.
+  learnRun: (req: { recordings: string[]; finished: string; brand?: string | null }): Promise<LearnRunResult> =>
     ipcRenderer.invoke('learn:run', req),
-  learnState: (): Promise<LearnState> => ipcRenderer.invoke('learn:state'),
-  learnEvaluate: (): Promise<LearnState> => ipcRenderer.invoke('learn:evaluate'),
-  learnForget: (id: string): Promise<LearnState> => ipcRenderer.invoke('learn:forget', id),
+  learnState: (brand?: string | null): Promise<LearnState> => ipcRenderer.invoke('learn:state', brand),
+  learnEvaluate: (brand?: string | null): Promise<LearnState> => ipcRenderer.invoke('learn:evaluate', brand),
+  learnForget: (id: string, brand?: string | null): Promise<LearnState> =>
+    ipcRenderer.invoke('learn:forget', id, brand),
   onLearnProgress: (cb: (p: Progress) => void): (() => void) => listen('learn:progress', cb),
   // What has been learned about how you edit, kept on this computer.
   memoryView: (): Promise<MemoryView> => ipcRenderer.invoke('memory:get'),
@@ -228,6 +256,8 @@ const api = {
     ask: string
     known?: Record<string, TranscriptWord[]>
     avoid?: { path: string; startSec: number; endSec: number }[]
+    /** The chat's brand, by id. */
+    brand?: string | null
   }): Promise<
     | ({ ok: true; reply: ClipsReply } & ClipsFound)
     | { ok: false; message: string; details?: { label: string; value: string }[] }
@@ -242,6 +272,8 @@ const api = {
     paths: string[]
     request: string
     doc?: EditDoc | null
+    /** The chat's brand, by id: the names the talking is listened for with. */
+    brand?: string | null
   }): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; reply: VlogReply } | { ok: false; message: string }> =>
     ipcRenderer.invoke('vlog:make', req),
   /** A vlog's story told again for what was asked, as ops for a new version and the shoot with its new story. */
@@ -331,6 +363,17 @@ const api = {
   hasModel: (model: string): Promise<boolean> => ipcRenderer.invoke('stt:hasModel', model),
   modelSizeMb: (model: string): Promise<number> => ipcRenderer.invoke('stt:modelSize', model),
   downloadModel: (model: string): Promise<boolean> => ipcRenderer.invoke('stt:downloadModel', model),
+
+  // Maps: what data is here, what the preview draws from, and the first-use download.
+  mapStatus: (): Promise<MapStatus> => ipcRenderer.invoke('maps:status'),
+  mapData: (): Promise<{ status: MapStatus; tilesDir: string | null; plates: PlatesFile | null }> =>
+    ipcRenderer.invoke('maps:data'),
+  downloadMaps: (): Promise<MapDownloadResult> => ipcRenderer.invoke('maps:download'),
+  onMapProgress: (cb: (p: { percent: number }) => void): (() => void) => {
+    const handler = (_e: unknown, p: { percent: number }): void => cb(p)
+    ipcRenderer.on('maps:progress', handler)
+    return () => ipcRenderer.removeListener('maps:progress', handler)
+  },
 
   analyze: (
     videoPath: string,

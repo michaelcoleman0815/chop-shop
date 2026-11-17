@@ -1,5 +1,7 @@
 import type { Resolved } from '../edit/resolve'
 import type { EditDoc } from '../edit/schema'
+import { mapProblem, readMapCommand } from '../maps/command'
+import { lookup } from '../maps/gazetteer'
 import type { MotionCallInput, MotionKind } from './schema'
 import { template } from './templates'
 
@@ -180,6 +182,28 @@ export const MOTION_COMMANDS: MotionCommand[] = [
     }
   },
   {
+    command: 'map',
+    kind: 'map',
+    title: 'Map',
+    summary: 'Fly in to a place on a dark satellite map: /map Iceland, /map from Lisbon to Rio, or /map vintage Iceland',
+    parse: (rest, ctx) => {
+      const read = readMapCommand(rest)
+      const problem = mapProblem(read.query)
+      if (problem) return { problem }
+      // On the word that names the place, when it is said; otherwise where the playhead is.
+      const first = read.query.replace(/^(?:from|show|where|the)\s+/i, '')
+      const named = lookup(first)[0]?.name ?? first
+      const at = wordFor(ctx.resolved, named, ctx.time)
+      return {
+        text: [read.query],
+        style: read.style,
+        place: read.place === 'full' ? '' : read.place,
+        fx: read.facts === null ? [] : read.facts.length ? read.facts : ['nofacts'],
+        ...(at ? { from: at } : {})
+      }
+    }
+  },
+  {
     command: 'phone',
     kind: 'device',
     title: 'Phone with logos',
@@ -245,7 +269,9 @@ export function planMotionCommand(
   command: string,
   rest: string,
   ctx: CommandContext
-): { op: { op: 'motion-add' } & MotionCallInput; after: string | null } | { problem: string } {
+):
+  | { op: { op: 'motion-add' } & MotionCallInput; after: string | null; details: { label: string; value: string }[] }
+  | { problem: string } {
   const spec = findMotionCommand(command)
   if (!spec) return { problem: `There is no /${command}.` }
   const parsed = spec.parse(rest, ctx)
@@ -255,7 +281,11 @@ export function planMotionCommand(
     (ctx.time !== null ? wordAt(ctx.resolved, ctx.time) : ctx.resolved.words[0]?.id) ??
     (ctx.time !== null ? `start+${Math.max(0, ctx.time).toFixed(2)}` : 'start')
   const op = { op: 'motion-add' as const, kind: spec.kind, ...parsed, from: anchor }
-  return { op, after: spec.after ?? null }
+  const tpl = template(spec.kind)
+  const details = tpl?.details
+    ? tpl.details({ ...op, to: op.to ?? '', text: op.text ?? [], items: [], values: [], box: [], icon: '', style: op.style ?? '', place: op.place ?? '', color: '', fx: op.fx ?? [], layers: [] })
+    : []
+  return { op, after: spec.after ?? null, details }
 }
 
 /** The commands as slash-menu entries, shaped like presets. */

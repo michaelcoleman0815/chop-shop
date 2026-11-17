@@ -124,6 +124,7 @@ A <sound> block, when present, lists stretches that are not speech (laughter, mu
 ## The creator's brand
 A <brand-voice> block, when present, is the creator's own description of how their edits should feel. Follow it wherever it applies to the request; it never overrides the request itself.
 A <brand-logos> block names the creator's own logos: their products and channel. A logo pop shows one when a row's label is its name.
+A <never-on-this-channel> block lists what this channel never uses. Make no op that adds any of it, even when asked; say in the reply, in one sentence, that the channel never uses it and that the never list on the Brand page changes that. Taking one of them out of the cut is fine. When B-roll from outside is on the list, leave brollWanted empty.
 
 ## How this creator edits
 A <creator-preferences> block, when present, lists what has been learned from how this creator edits: what they ask for again and again, undo, and keep, each with how often. Lean on it where the request leaves a choice open; it never overrides the request or the brand voice.
@@ -434,7 +435,8 @@ export function renderRequest(
   notes: Note[],
   voice = '',
   preferences: string[] = [],
-  logos: string[] = []
+  logos: string[] = [],
+  never: string[] = []
 ): string {
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
@@ -576,6 +578,9 @@ export function renderRequest(
   if (voice.trim()) parts.push(`<brand-voice>\n${voice.trim()}\n</brand-voice>`)
   const own = logos.map((l) => l.trim()).filter(Boolean)
   if (own.length) parts.push(`<brand-logos>\n${own.join('\n')}\n</brand-logos>`)
+  // What the channel never uses, from its brand's never list (shared/never).
+  const ruled = never.map((n) => n.trim()).filter(Boolean)
+  if (ruled.length) parts.push(`<never-on-this-channel>\n${ruled.map((n) => `- ${n}`).join('\n')}\n</never-on-this-channel>`)
   // What has been learned from how they edit, strongest first, as short statements.
   const learned = preferences.map((p) => p.trim()).filter(Boolean)
   if (learned.length > 0)

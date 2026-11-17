@@ -48,6 +48,8 @@ export interface VlogDeps {
   during: <T>(work: () => Promise<T>) => Promise<T>
   /** The kind of video the creator makes, from their brand. */
   niche: () => string
+  /** The chat's brand, by id: the names its talking is listened for with. */
+  brand: () => string
 }
 
 export interface Vlogs {
@@ -118,7 +120,7 @@ export function useVlog(deps: VlogDeps): Vlogs {
   }, [])
 
   const make = useCallback(async (files: Attachment[], said: string): Promise<boolean> => {
-    const { docRef, pendingCommand, push, patch, setDoc, setMediaUrl, during } = live.current
+    const { docRef, pendingCommand, push, patch, setDoc, setMediaUrl, during, brand } = live.current
     const sent = docRef.current
     // What /vlog was given before the clips came, and what was said with them.
     const request = [pendingCommand.current === 'vlog' ? waiting.current : '', said.trim()].filter(Boolean).join('. ')
@@ -128,7 +130,7 @@ export function useVlog(deps: VlogDeps): Vlogs {
     const off = api.onCutProgress((p) => patch(id, { progress: p }))
     let r: Awaited<ReturnType<typeof api.makeVlog>>
     try {
-      r = await during(() => api.makeVlog({ paths: files.map((f) => f.path), request, doc: sent }))
+      r = await during(() => api.makeVlog({ paths: files.map((f) => f.path), request, doc: sent, brand: brand() }))
     } catch (err) {
       r = { ok: false, message: errorText(err) }
     } finally {
