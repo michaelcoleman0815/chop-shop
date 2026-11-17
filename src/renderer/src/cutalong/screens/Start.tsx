@@ -22,7 +22,9 @@ export function Start({ app }: { app: Cutalong }): JSX.Element {
           <span className="cl-start-mark" aria-hidden="true">
             <Mark size={44} />
           </span>
-          <h1 className="cl-title">What are we making?</h1>
+          <h1 className="cl-title">
+            What are we <em>making</em>?
+          </h1>
           <Composer
             placeholder="Drop footage, paste a video you like, or type /"
             presets={app.presets}

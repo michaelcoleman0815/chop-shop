@@ -56,6 +56,7 @@ import {
   type Source,
   type Treatment
 } from '../../../../shared/edit'
+import { CREW, memberForNote } from '../crew'
 import { changedBeats, revisionOf } from '../revisions'
 import {
   describeSpeed,
@@ -84,6 +85,8 @@ import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStr
 import { GraphicPanel } from '../components/GraphicPanel'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { RegionPicker } from '../components/RegionPicker'
+import { CrewFace } from '../components/Crew'
+import { Sticker } from '../components/Shapes'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
@@ -926,15 +929,17 @@ function NotesPanel({
     return times ? `${clock(times.start)} to ${clock(times.end)}` : position(n.beat)
   }
   const stretch = span ? `${clock(span.start)} to ${clock(span.end)}` : null
+  // Applying notes: each goes to the member whose job it is, and those are the ones at work on it.
+  const noteCrew = [...new Set(notes.map((n) => memberForNote(n.text)))]
 
   return (
     <aside className="cl-notes" aria-label="Notes">
       <div className="cl-notes-scroll">
         <div className="cl-msg-assistant" aria-live="polite">
-          <AssistantAvatar />
+          <AssistantAvatar working={!!status.progress} />
           <div className="cl-msg-body">
             {status.progress ? (
-              <Working progress={status.progress} since={status.since} />
+              <Working progress={status.progress} since={status.since} big mark={44} helpers={noteCrew} />
             ) : (
               <p className="cl-reply">{status.text}</p>
             )}
@@ -942,22 +947,32 @@ function NotesPanel({
         </div>
         {notes.length > 0 && (
           <ol className="cl-note-list">
-            {notes.map((n, i) => (
-              <li key={n.id} className="cl-note">
-                <span className="cl-note-n">{i + 1}</span>
-                <span className="cl-note-text">
-                  {n.text}
-                  {(n.beat || n.range) && <span className="cl-project-meta">{where(n)}</span>}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Remove note ${i + 1}`}
-                  onClick={(e) => collapse(e.currentTarget, () => app.dropNote(n.id))}
-                >
-                  <Icon.close />
-                </button>
-              </li>
-            ))}
+            {notes.map((n, i) => {
+              const who = memberForNote(n.text)
+              return (
+                <li key={n.id} className="cl-note">
+                  <span className="cl-note-n">{i + 1}</span>
+                  <span className="cl-note-text">
+                    {n.text}
+                    <span className="cl-note-meta">
+                      {(n.beat || n.range) && <span className="cl-project-meta">{where(n)}</span>}
+                      {/* The member the note is handed to, by what it asks for. */}
+                      <span className="cl-note-crew" title={`${CREW[who].name} will take this note`}>
+                        <CrewFace id={who} size={16} />
+                        {CREW[who].name}
+                      </span>
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove note ${i + 1}`}
+                    onClick={(e) => collapse(e.currentTarget, () => app.dropNote(n.id))}
+                  >
+                    <Icon.close />
+                  </button>
+                </li>
+              )
+            })}
           </ol>
         )}
       </div>
@@ -1108,27 +1123,36 @@ function Revisions({ doc, onShow }: { doc: EditDoc; onShow: (n: number) => void 
   const current = currentVersion(doc).n
   const shown = doc.versions.slice(-5)
   const earlier = doc.versions.length - shown.length
+  // A version made while the editor is open wears a "new" sticker; those already here when it opened do not.
+  const [known] = useState(() => Math.max(0, ...doc.versions.map((v) => v.n)))
   return (
     <div className="cl-revisions" role="group" aria-label="Versions">
       {earlier > 0 && <span className="cl-rev-more">{earlier} earlier</span>}
       {shown.map((v) => {
         const rev = revisionOf(v.n)
         const on = v.n === current
+        const fresh = v.n > known
         return (
-          <button
-            key={v.n}
-            type="button"
-            className={`cl-rev-tab${on ? ' cl-version' : ''}`}
-            style={{ '--rev': rev.colour } as CSSProperties}
-            aria-current={on ? 'true' : undefined}
-            aria-label={`v${v.n}, the ${rev.name} pages${on ? ', on screen' : ''}. ${v.summary}`}
-            title={v.summary}
-            onClick={() => {
-              if (!on) onShow(v.n)
-            }}
-          >
-            v{v.n}
-          </button>
+          <span key={v.n} className="cl-rev">
+            <button
+              type="button"
+              className={`cl-rev-tab${on ? ' cl-version' : ''}`}
+              style={{ '--rev': rev.colour, '--block': rev.block } as CSSProperties}
+              aria-current={on ? 'true' : undefined}
+              aria-label={`v${v.n}, the ${rev.name} pages${fresh ? ', new' : ''}${on ? ', on screen' : ''}. ${v.summary}`}
+              title={v.summary}
+              onClick={() => {
+                if (!on) onShow(v.n)
+              }}
+            >
+              v{v.n}
+            </button>
+            {fresh && (
+              <Sticker shape="burst" colour="yellow" size={30} tilt={12} className="cl-rev-new">
+                new
+              </Sticker>
+            )}
+          </span>
         )
       })}
     </div>

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { brandName } from '../../../../shared/brands'
+import { avatarOf } from '../shapes'
 import type { Cutalong } from '../useCutalong'
+import { Blob } from './Shapes'
 import { Button, Icon } from './ui'
 
 /**
@@ -60,6 +62,7 @@ export function BrandSwitch({ app }: { app: Cutalong }): JSX.Element | null {
         // detail is 0 when Enter or Space pressed the button.
         onClick={(e) => setOpen((o) => (o ? null : e.detail === 0 ? 'key' : 'pointer'))}
       >
+        <Blob {...avatarOf(current)} size={16} />
         <span className="cl-btn-label">{brandName(current)}</span>
         <Icon.chevron />
       </Button>
@@ -84,6 +87,7 @@ export function BrandSwitch({ app }: { app: Cutalong }): JSX.Element | null {
                 if (b.id !== current.id) app.switchBrand(b.id)
               }}
             >
+              <Blob {...avatarOf(b)} size={18} className="cl-menu-blob" />
               {brandName(b)}
               <span className="meta">
                 {b.id === current.id

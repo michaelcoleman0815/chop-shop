@@ -1,14 +1,26 @@
-import { useEffect, useState, type DragEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react'
 import { CORNERS, describeLearned, LOGO_NAME_MAX, MAX_LOGOS, type Brand } from '../../../../shared/brand'
 import { brandName } from '../../../../shared/brands'
 import { MOTION_FONTS } from '../../../../shared/motion/fonts'
 import { describeStyle } from '../../../../shared/presets'
 import { PROFILES, profileById } from '../../../../shared/raw/profiles'
 import { api, mediaUrlFor } from '../api'
+import { Facts } from '../components/Message'
+import { Blob, BrandAvatar } from '../components/Shapes'
 import { Button, Icon } from '../components/ui'
 import { Working } from '../components/Working'
 import { clock, isVideoFile } from '../format'
 import { collapse } from '../motion'
+import {
+  avatarOf,
+  block,
+  bloom,
+  COLOUR_NAMES,
+  COLOURS,
+  SHAPE_NAMES,
+  SHAPES,
+  type Avatar
+} from '../shapes'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { LearnSection } from './Learn'
@@ -88,6 +100,7 @@ function BrandList({ app }: { app: Cutalong }): JSX.Element {
               className={b.id === shown.id ? 'on' : ''}
               onClick={() => app.showBrand(b.id)}
             >
+              <Blob {...avatarOf(b)} size={14} className="cl-seg-blob" />
               {brandName(b)}
             </button>
           ))}
@@ -113,19 +126,92 @@ function BrandList({ app }: { app: Cutalong }): JSX.Element {
   )
 }
 
+/** Arrows, Home and End move through a radio group, choosing as they go. */
+function radioKeys<T>(e: KeyboardEvent<HTMLElement>, items: readonly T[], at: number, pick: (item: T) => void): void {
+  const next =
+    e.key === 'ArrowRight' || e.key === 'ArrowDown'
+      ? at + 1
+      : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+        ? at - 1
+        : e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? items.length - 1
+            : null
+  if (next === null) return
+  e.preventDefault()
+  const i = (next + items.length) % items.length
+  pick(items[i])
+  // The radio for it is drawn again with tabIndex 0; focus follows it there.
+  const group = e.currentTarget.closest('[role="radiogroup"]')
+  requestAnimationFrame(() => group?.querySelectorAll<HTMLElement>('[role="radio"]')[i]?.focus())
+}
+
+/**
+ * A brand's shape and colour, picked like a sticker: every shape in the
+ * brand's colour, then the colours. The avatar above morphs as you choose.
+ */
+function AvatarPicker({ value, onPick }: { value: Avatar; onPick: (a: Avatar) => void }): JSX.Element {
+  const shapeAt = SHAPES.indexOf(value.shape)
+  const colourAt = COLOURS.indexOf(value.colour)
+  return (
+    <div className="cl-avatar-picker">
+      <div className="cl-pick-shapes" role="radiogroup" aria-label="Shape">
+        {SHAPES.map((shape) => (
+          <button
+            key={shape}
+            type="button"
+            role="radio"
+            aria-checked={shape === value.shape}
+            aria-label={SHAPE_NAMES[shape]}
+            title={SHAPE_NAMES[shape]}
+            tabIndex={shape === value.shape ? 0 : -1}
+            onClick={() => onPick({ ...value, shape })}
+            onKeyDown={(e) => radioKeys(e, SHAPES, shapeAt, (s) => onPick({ ...value, shape: s }))}
+          >
+            <Blob shape={shape} colour={value.colour} size={30} />
+          </button>
+        ))}
+      </div>
+      <div className="cl-pick-colours" role="radiogroup" aria-label="Colour">
+        {COLOURS.map((colour) => (
+          <button
+            key={colour}
+            type="button"
+            role="radio"
+            aria-checked={colour === value.colour}
+            aria-label={COLOUR_NAMES[colour]}
+            title={COLOUR_NAMES[colour]}
+            tabIndex={colour === value.colour ? 0 : -1}
+            style={{ '--bloom': bloom(colour) } as CSSProperties}
+            onClick={() => onPick({ ...value, colour })}
+            onKeyDown={(e) => radioKeys(e, COLOURS, colourAt, (c) => onPick({ ...value, colour: c }))}
+          >
+            <span className="cl-swatch" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
   const brand = app.brand
   const [dropping, setDropping] = useState(false)
   // Typed as one line and saved as a list when the field is left.
   const [products, setProducts] = useState(app.brand.products.join(', '))
   const [deleting, setDeleting] = useState(false)
+  // A brand just made opens with its shape and colour to pick, like a new sticker.
+  const [picking, setPicking] = useState(() => !brand.name && !brand.avatar)
   // Another brand shown: its own names to listen for, and no question left open.
   useEffect(() => {
     setProducts(brand.products.join(', '))
     setDeleting(false)
   }, [brand.id, brand.products])
+  useEffect(() => setPicking(!brand.name && !brand.avatar), [brand.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const avatar = avatarOf(brand)
   const set = (patch: Partial<Brand>): void => app.saveBrand({ ...brand, ...patch })
-  const facts = describeStyle(brand.style).slice(0, 4)
+  const facts = describeStyle(brand.style)
 
   const onDrop = (e: DragEvent): void => {
     e.preventDefault()
@@ -179,21 +265,30 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
         <div className="cl-page-inner">
           <BrandList app={app} />
 
-          <h1 className="cl-page-title">{brandName(brand)}</h1>
-          <p className="cl-lede">What keeps every video yours. New edits get it automatically.</p>
+          <section
+            className={`cl-brand-hero${picking ? ' picking' : ''}`}
+            style={{ '--block': block(avatar.colour) } as CSSProperties}
+            aria-labelledby="brand-name"
+          >
+            <BrandAvatar avatar={avatar} size={88} className="cl-brand-hero-avatar" />
+            <div className="cl-brand-hero-text">
+              <h1 className="cl-page-title" id="brand-name">
+                {brandName(brand)}
+              </h1>
+              <p className="cl-lede">
+                What keeps every video <em>yours</em>. New edits get it automatically.
+              </p>
+            </div>
+            <Button small aria-expanded={picking} onClick={() => setPicking((p) => !p)}>
+              {picking ? 'Done' : 'Shape and colour'}
+            </Button>
+            {picking && <AvatarPicker value={avatar} onPick={(a) => set({ avatar: a })} />}
+          </section>
 
           <section className="cl-section" aria-labelledby="brand-videos">
             <h2 id="brand-videos">Your videos</h2>
             <p className="cl-reply">{describeLearned(brand)}</p>
-            {facts.length > 0 && (
-              <div className="cl-chips">
-                {facts.map((f) => (
-                  <span key={f} className="cl-fact">
-                    {f}
-                  </span>
-                ))}
-              </div>
-            )}
+            <Facts facts={facts} seed={brand.id} />
             <div
               className={`cl-drop${dropping ? ' dropping' : ''}`}
               onDragOver={(e) => {

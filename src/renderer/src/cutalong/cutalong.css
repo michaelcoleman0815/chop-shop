@@ -316,17 +316,49 @@ button:disabled {
 }
 
 
+/* A fact is a pastel tile: a big number, a small label under it. Colour you can feel, never on footage. */
+.cl-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 196px));
+  gap: var(--space-2);
+}
+
 .cl-fact {
-  height: 30px;
-  padding: 0 12px;
-  border-radius: var(--radius-pill);
-  background: var(--card);
-  border: 1px solid var(--line);
-  color: var(--ink-soft);
-  font-size: 13.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 14px 16px 15px;
+  border-radius: 18px;
+  background: var(--block, var(--card));
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
-  display: inline-flex;
-  align-items: center;
+}
+
+.cl-fact-n {
+  font-size: 34px;
+  line-height: 38px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.cl-fact-label {
+  font-size: 13.5px;
+  line-height: 18px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* A fact with no number in it is a short phrase, set to fill the tile. */
+.cl-fact.phrase {
+  justify-content: flex-end;
+  min-height: 74px;
+  font-size: 16.5px;
+  line-height: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
 
 .cl-link {
@@ -347,8 +379,8 @@ button:disabled {
   position: relative;
   width: 100%;
   background: var(--card);
-  /* The edge of a field, at 3:1 on the paper, and a soft fall of light under it. */
-  border: 1px solid var(--line-strong);
+  /* A soft edge and a soft fall of light under it: the composer is lifted paper, not a box. */
+  border: 1px solid var(--line-mid);
   border-radius: var(--radius-composer);
   padding: 16px 12px 12px 22px;
   box-shadow: var(--shadow-composer);
@@ -357,9 +389,12 @@ button:disabled {
   gap: 12px;
 }
 
+/* Where you type is always ready, so its focus is soft: a firmer edge and a halo of blue pencil, never a heavy ring. */
 .cl-composer:focus-within {
-  outline: 2px solid var(--ink);
-  outline-offset: 3px;
+  border-color: var(--line-strong);
+  box-shadow:
+    0 0 0 4px color-mix(in oklch, var(--pick) 16%, transparent),
+    var(--shadow-composer);
 }
 
 .cl-composer.dropping {
@@ -391,50 +426,70 @@ button:disabled {
 }
 
 /* Files waiting to be sent: they wrap, and a big drop scrolls rather than pushing the text away. */
+/* Files waiting to be sent, as round stills: they wrap, and a big drop scrolls rather than pushing the text away. */
 .cl-composer-files {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  max-height: 112px;
+  gap: var(--space-3) var(--space-2);
+  max-height: 184px;
   overflow-y: auto;
-  padding: 2px 0;
+  padding: 6px 2px 2px;
 }
 
 .cl-attachment {
+  position: relative;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  height: 34px;
-  max-width: 260px;
-  padding: 0 6px 0 4px;
-  border-radius: var(--radius-pill);
-  background: var(--well);
-  font-size: 13.5px;
+  gap: 6px;
+  width: 76px;
+  font-size: 11.5px;
+  line-height: 15px;
+  color: var(--ink-soft);
 }
 
 .cl-attachment .cl-poster {
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
-  border-radius: var(--radius-pill);
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line), 0 10px 18px -10px var(--shadow-deep);
 }
 
-.cl-attachment span {
+/* The gloss: light caught at the top of a bubble and a little shade at its foot. */
+.cl-attachment .cl-poster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 55% at 32% 20%, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0) 70%),
+    radial-gradient(120% 80% at 50% 115%, rgb(0 0 0 / 0.18), rgb(0 0 0 / 0) 60%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3);
+}
+
+.cl-attachment-name {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cl-attachment button {
+  position: absolute;
+  top: -5px;
+  right: 2px;
   border: 0;
-  background: transparent;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-pill);
+  background: var(--card);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
   padding: 0;
-  color: var(--muted);
+  color: var(--ink-soft);
+  box-shadow: 0 0 0 1px var(--line-mid), var(--shadow-tab);
 }
 
 .cl-slash {
@@ -505,13 +560,24 @@ button:disabled {
 }
 
 .cl-title {
-  margin: 0 0 var(--space-4);
-  font-size: 48px;
-  line-height: 54px;
+  margin: 0 0 var(--space-3);
+  font-size: 58px;
+  line-height: 60px;
   font-weight: 800;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.045em;
   text-align: center;
   text-wrap: balance;
+}
+
+/* One word of a display heading in the serif's italic: the heading's voice. Lifted a hair to sit with the sans. */
+:is(.cl-title, .cl-page-title, .cl-lede, .cl-empty-title) em {
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.06em;
+  letter-spacing: -0.02em;
+  margin-right: 0.03em;
 }
 
 /* The mark greets you on Start, the screen's one coral thing; with the rail open, the rail's mark is enough. */
@@ -910,8 +976,8 @@ button:disabled {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: var(--space-6) var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--space-3);
 }
 
 .cl-clip {
@@ -919,6 +985,9 @@ button:disabled {
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
+  padding: 10px 10px 12px;
+  border-radius: 20px;
+  background: var(--block, var(--card));
 }
 
 .cl-clip-open {
@@ -940,11 +1009,12 @@ button:disabled {
 }
 
 /* A clip's still, framed the way the short is. */
+/* A clip's still, framed the way the short is: the colour stops at its edge. */
 .cl-clip-poster {
   width: 100%;
   aspect-ratio: 9 / 16;
-  border-radius: var(--radius-thumb);
-  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 .cl-clip-bar {
@@ -990,7 +1060,7 @@ button:disabled {
   gap: var(--space-2);
   font-size: 12.5px;
   line-height: 16px;
-  color: var(--muted);
+  color: var(--ink-soft);
 }
 
 .cl-clip-hook {
@@ -1457,7 +1527,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line-mid);
   border-radius: var(--radius-pill);
   background: var(--card);
   padding: 4px 4px 4px 18px;
@@ -1465,8 +1535,8 @@ button:disabled {
 }
 
 .cl-note-input:focus-within {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--pick) 16%, transparent);
 }
 
 .cl-note-input input {
@@ -1875,10 +1945,10 @@ button:disabled {
 
 .cl-page-title {
   margin: 0;
-  font-size: 34px;
-  line-height: 40px;
+  font-size: 40px;
+  line-height: 44px;
   font-weight: 800;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.04em;
   text-wrap: balance;
 }
 
@@ -2177,35 +2247,46 @@ button:disabled {
 /* Versions are revision pages: a tab for each, in the colour film scripts use for that revision. */
 .cl-revisions {
   display: flex;
-  align-items: flex-end;
-  align-self: stretch;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
   padding: 0 var(--space-1);
-  overflow-x: auto;
-  scrollbar-width: none;
+}
+
+.cl-rev {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
 }
 
 .cl-rev-tab {
   flex: 0 0 auto;
   height: 32px;
-  margin-top: auto;
-  margin-bottom: 18px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--rev, var(--card));
-  color: var(--ink-soft);
+  padding: 0 13px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--block, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 9%, transparent);
+  color: var(--ink);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 /* The revision on screen sits forward, like the top page of the stack. */
+/* The revision on screen sits forward, ringed in ink, like the top page of the stack. */
 .cl-rev-tab.cl-version {
-  color: var(--ink);
-  border-color: var(--line-strong);
-  box-shadow: var(--shadow-tab);
+  box-shadow:
+    inset 0 0 0 2px var(--ink),
+    var(--shadow-tab);
+}
+
+/* A version made while you watched wears a sticker on its tab's corner. */
+.cl-rev-new {
+  position: absolute;
+  top: -14px;
+  right: -13px;
+  z-index: 1;
 }
 
 .cl-rev-more {
@@ -2495,7 +2576,761 @@ button:disabled {
   }
 
   .cl-rev-tab:hover:not(.cl-version) {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 30%, transparent);
+  }
+
+  .cl-pick-shapes button:hover:not([aria-checked='true']),
+  .cl-pick-colours button:hover:not([aria-checked='true']) {
+    background: color-mix(in oklch, var(--card) 85%, transparent);
+  }
+
+  .cl-attachment button:hover {
     color: var(--ink);
-    border-color: var(--line-mid);
+  }
+}
+
+/* ---------- Heavenly and alive: shapes, the living mark, the crew ---------- */
+
+/* A shape in its bloom colour (components/Shapes.tsx). */
+.cl-blob {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+.cl-blob path {
+  fill: var(--bloom);
+}
+
+/* A sticker: a word or a number on a shape, pressed on at a slight angle. */
+.cl-sticker {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--size);
+  height: var(--size);
+  rotate: var(--tilt);
+  pointer-events: none;
+}
+
+.cl-sticker > .cl-blob {
+  grid-area: 1 / 1;
+  filter: drop-shadow(0 2px 3px var(--shadow-soft));
+}
+
+.cl-sticker-text {
+  grid-area: 1 / 1;
+  position: relative;
+  color: var(--on-bloom);
+  font-size: 10.5px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+/* A brand's avatar: two pictures stacked while one morphs into the other. */
+.cl-avatar-blob {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+}
+
+.cl-avatar-blob > .cl-blob {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+}
+
+.cl-seg-blob {
+  margin-right: 2px;
+}
+
+.cl-segments button:has(.cl-seg-blob) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cl-menu button:has(> .cl-menu-blob) {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+}
+
+.cl-menu button > .cl-menu-blob {
+  grid-row: span 2;
+}
+
+.cl-menu button:has(> .cl-menu-blob) .meta {
+  grid-column: 2;
+}
+
+/* The living mark: three soft shapes in the bloom colours over a warm core (motion.css breathes it). */
+.cl-living {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+}
+
+.cl-living-turn {
+  position: absolute;
+  inset: 4%;
+  display: block;
+}
+
+.cl-living-turn svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: blur(calc(var(--size) * 0.05));
+}
+
+.cl-living::before {
+  content: '';
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in oklch, var(--bloom-pink) 26%, transparent), transparent 74%);
+}
+
+.cl-living-turn.one {
+  inset: 8%;
+}
+
+.cl-living-turn.one path {
+  fill: var(--bloom-pink);
+}
+
+.cl-living-turn.two {
+  inset: 2% 2% 16% 16%;
+  opacity: 0.8;
+}
+
+.cl-living-turn.two path {
+  fill: var(--bloom-lavender);
+}
+
+.cl-living-turn.three {
+  inset: 30% 30% 0 0;
+  opacity: 0.6;
+}
+
+.cl-living-turn.three path {
+  fill: var(--bloom-blue);
+}
+
+.cl-living-core {
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 46% 40%,
+    oklch(99% 0.01 90 / 0.95),
+    color-mix(in oklch, var(--coral) 40%, transparent) 58%,
+    transparent 74%
+  );
+  filter: blur(calc(var(--size) * 0.04));
+}
+
+.cl-assistant-avatar.living {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Long work: the living mark leads, then the crew, then a thin line and the time. */
+.cl-progress.big {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.cl-progress.big > .cl-living {
+  margin-bottom: var(--space-2);
+}
+
+.cl-progress.big > .cl-progress-stage {
+  font-size: 20px;
+  line-height: 27px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.cl-progress-line {
+  max-width: 34em;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 25px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.cl-progress-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.cl-progress.big .cl-progress-bar {
+  width: 220px;
+}
+
+.cl-msg-assistant:has(> .cl-msg-body > .cl-progress.big) > .cl-assistant-avatar {
+  visibility: hidden;
+}
+
+/* ---------- The crew ---------- */
+
+/* A member: a shape in their colour, with two eyes (components/Crew.tsx). */
+.cl-crew-face {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+}
+
+.cl-crew-face svg {
+  display: block;
+  overflow: visible;
+}
+
+.cl-crew-eyes > span {
+  position: absolute;
+  top: var(--eye-y);
+  width: 9%;
+  height: 14%;
+  border-radius: 50%;
+  background: var(--on-bloom);
+}
+
+.cl-crew-eyes > span:first-child {
+  left: var(--eye-x);
+}
+
+.cl-crew-eyes > span:last-child {
+  right: var(--eye-x);
+}
+
+.cl-crew {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-crew-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
+  align-items: start;
+}
+
+.cl-crew-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 6px;
+}
+
+.cl-crew-line {
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.cl-crew-row.done .cl-crew-line {
+  color: var(--muted);
+}
+
+.cl-crew-plain {
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  line-height: 23px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.cl-crew-done {
+  padding-top: 9px;
+  color: var(--ok);
+}
+
+/* Who did the work, under a reply: quiet, like credits at the end of a film. */
+.cl-credits {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 40em;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cl-credits-faces {
+  display: inline-flex;
+  flex: none;
+}
+
+.cl-credits-faces > .cl-crew-face + .cl-crew-face {
+  margin-left: -5px;
+}
+
+.cl-credits-line {
+  min-width: 0;
+  padding-top: 1px;
+  text-wrap: pretty;
+}
+
+/* A note says who will take it. */
+.cl-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-3);
+}
+
+.cl-note-crew {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
+/* The Crew page: a call sheet, one row per member, each with their own pastel tile. */
+.cl-callsheet {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-8);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+}
+
+.cl-callsheet > li {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: var(--space-3) var(--space-6);
+  align-items: start;
+  padding: var(--space-6) 0;
+  border-top: 1px solid var(--line);
+}
+
+.cl-callsheet > li:first-child {
+  border-top: 0;
+}
+
+.cl-crew-tile {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 26px;
+  background: var(--block);
+}
+
+.cl-crew-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cl-crew-who h2 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.cl-crew-job {
+  font-size: 13.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cl-crew-does {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 25px;
+  text-wrap: pretty;
+}
+
+.cl-crew-knows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.cl-crew-knows h3 {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 18px;
+  font-weight: 700;
+}
+
+.cl-crew-learned {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cl-crew-learned li {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--block) 60%, var(--card));
+  font-size: 13.5px;
+  line-height: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-crew-none,
+.cl-crew-need p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.cl-crew-need {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-4);
+  border-radius: 16px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+}
+
+.cl-crew-need ol {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+@media (max-width: 1100px) {
+  .cl-callsheet > li {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .cl-crew-tile {
+    width: 72px;
+    height: 72px;
+    border-radius: 22px;
+  }
+
+  .cl-crew-knows {
+    grid-column: 2;
+  }
+}
+
+/* ---------- The Brand page: the brand's own block and avatar ---------- */
+
+.cl-brand-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5) var(--space-6);
+  padding: var(--space-6) var(--space-8) var(--space-6) var(--space-6);
+  border-radius: 28px;
+  background: var(--block);
+  color: var(--ink);
+}
+
+.cl-brand-hero-avatar {
+  filter: drop-shadow(0 10px 14px var(--shadow-soft));
+}
+
+.cl-brand-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cl-brand-hero .cl-page-title {
+  overflow-wrap: anywhere;
+}
+
+.cl-brand-hero .cl-lede {
+  margin: 0;
+  font-size: 16px;
+  line-height: 23px;
+  color: var(--ink-soft);
+}
+
+.cl-avatar-picker {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+}
+
+.cl-pick-shapes,
+.cl-pick-colours {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cl-pick-shapes {
+  max-width: 352px;
+}
+
+.cl-pick-shapes button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--card) 55%, transparent);
+  display: grid;
+  place-items: center;
+}
+
+.cl-pick-colours button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+
+.cl-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bloom);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 14%, transparent);
+}
+
+.cl-pick-shapes button[aria-checked='true'],
+.cl-pick-colours button[aria-checked='true'] {
+  background: var(--card);
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+/* ---------- Empty, in colour ---------- */
+
+.cl-empty-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 560px;
+  padding: var(--space-8);
+  border-radius: 28px;
+  background: var(--block);
+  color: var(--ink);
+}
+
+.cl-empty-shape {
+  margin-bottom: var(--space-3);
+}
+
+.cl-empty-title {
+  margin: 0;
+  font-size: 32px;
+  line-height: 36px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.cl-empty-line {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink-soft);
+}
+
+/* An older reply's tiles settle to a calmer tint: the newest reply is the one alive. */
+.cl-msg-assistant:has(~ .cl-msg-assistant) .cl-fact {
+  background: color-mix(in oklch, var(--block, var(--card)) 45%, var(--card-2));
+}
+
+/*
+ * A window the width of a phone: only a browser gets this narrow (the Mac
+ * window stops at 960 px, and the phone app, .cl-app.phone, has its own
+ * layout in phone.css). The rail becomes a bar of icons along the bottom,
+ * margins come in to the gutter, and everything else stacks.
+ */
+@media (max-width: 640px) {
+  .cl-app:not(.phone) {
+    flex-direction: column-reverse;
+  }
+
+  .cl-app:not(.phone) .cl-rail,
+  .cl-app:not(.phone) .cl-rail.open {
+    position: static;
+    flex: 0 0 auto;
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+    gap: 0;
+    padding: 6px var(--space-2) calc(6px + env(safe-area-inset-bottom, 0px));
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    background: var(--ground);
+    box-shadow: none;
+  }
+
+  .cl-app:not(.phone) .cl-rail :is(.cl-rail-top, .cl-rail-recent, .label, .spacer) {
+    display: none;
+  }
+
+  .cl-app:not(.phone) .cl-rail.open ~ .cl-main {
+    margin-left: 0;
+  }
+
+  /* The screen scrolls inside itself, so the bar stays put and nothing scrolls the page away. */
+  .cl-app:not(.phone) .cl-main {
+    min-height: 0;
+  }
+
+  .cl-header {
+    height: 56px;
+    padding: 0 var(--space-4);
+  }
+
+  .cl-start {
+    padding: 6vh var(--space-4) var(--space-8);
+  }
+
+  .cl-title {
+    font-size: 40px;
+    line-height: 44px;
+  }
+
+  .cl-continue-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cl-thread-scroll {
+    padding: var(--space-4) var(--space-4) var(--space-6);
+  }
+
+  .cl-thread-column {
+    gap: var(--space-8);
+  }
+
+  .cl-thread-foot {
+    padding: 0 var(--space-3) var(--space-3);
+  }
+
+  .cl-composer {
+    padding: 14px 10px 10px 16px;
+  }
+
+  .cl-msg-assistant {
+    gap: var(--space-3);
+  }
+
+  .cl-msg-user {
+    max-width: 85%;
+  }
+
+  .cl-reply {
+    font-size: 17px;
+    line-height: 27px;
+  }
+
+  .cl-facts {
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  }
+
+  .cl-fact-n {
+    font-size: 27px;
+    line-height: 32px;
+  }
+
+  .cl-clips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cl-page {
+    padding: var(--space-3) var(--space-4) var(--space-10);
+  }
+
+  .cl-page-title {
+    font-size: 32px;
+    line-height: 36px;
+  }
+
+  .cl-brand-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--space-5);
+  }
+
+  .cl-brand-hero > .cl-btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .cl-section {
+    padding: var(--space-5);
+  }
+
+  .cl-editor {
+    padding: 0 var(--space-3) var(--space-3);
+    overflow-y: auto;
+  }
+
+  .cl-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cl-callsheet {
+    padding: 0 var(--space-4);
+  }
+
+  .cl-callsheet > li {
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .cl-crew-tile {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+  }
+
+  .cl-crew-tile > .cl-crew-face {
+    scale: 0.72;
   }
 }

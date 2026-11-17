@@ -3,17 +3,19 @@ import { applyOps, commit, createDoc, currentCut, restore, wordsFromTranscript, 
 import { changedBeats, revisionOf } from './revisions'
 
 describe('revision pages', () => {
-  it('colours versions as film scripts do, and starts the colours again after goldenrod', () => {
-    expect([1, 2, 3, 4, 5, 6].map((n) => revisionOf(n).name)).toEqual([
+  it('colours versions as film scripts do, and starts the colours again after salmon', () => {
+    expect([1, 2, 3, 4, 5, 6, 7].map((n) => revisionOf(n).name)).toEqual([
       'white',
       'blue',
       'pink',
       'yellow',
       'green',
-      'goldenrod'
+      'goldenrod',
+      'salmon'
     ])
-    expect(revisionOf(7)).toEqual({ name: 'white', colour: 'var(--rev-1)' })
+    expect(revisionOf(8)).toEqual({ name: 'white', colour: 'var(--rev-1)', block: 'var(--card)' })
     expect(revisionOf(3).colour).toBe('var(--rev-3)')
+    expect(revisionOf(6).block).toBe('var(--block-gold)')
   })
 
   const base = createDoc({

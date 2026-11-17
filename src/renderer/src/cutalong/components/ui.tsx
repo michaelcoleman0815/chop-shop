@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { LivingMark } from './Shapes'
 
 /**
  * The small pieces every screen uses, drawn to the design system: pills for
@@ -36,12 +37,13 @@ export function Lockup({ onClick }: { onClick?: () => void }): JSX.Element {
 
 /**
  * The assistant's tile: the mark on a small sheet of paper. Only the newest
- * reply shows it (cutalong.css), so the mark's coral is on screen once.
+ * reply shows it (cutalong.css), so the mark's coral is on screen once. While
+ * the reply is still being thought out, the mark is the small living blob.
  */
-export function AssistantAvatar(): JSX.Element {
+export function AssistantAvatar({ working = false }: { working?: boolean }): JSX.Element {
   return (
-    <span className="cl-assistant-avatar" aria-hidden="true">
-      <Mark size={20} />
+    <span className={`cl-assistant-avatar${working ? ' living' : ''}`} aria-hidden="true">
+      {working ? <LivingMark size={30} /> : <Mark size={20} />}
     </span>
   )
 }
@@ -123,6 +125,12 @@ export const Icon = {
   chevron: (): JSX.Element => (
     <svg width="12" height="12" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2" aria-hidden="true">
       <path d="M6 9l6 6 6-6" />
+    </svg>
+  ),
+  /** Done. */
+  check: (): JSX.Element => (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} strokeWidth="2.4" aria-hidden="true">
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
     </svg>
   ),
   /** A recording that is sound only. */

@@ -166,6 +166,7 @@ import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
+import { logCrew } from './crew'
 import { exportWait, type ExportJob } from './exporting'
 import { clock, fileName, findLink, isAudioFile, isVideoFile } from './format'
 
@@ -175,7 +176,7 @@ import { clock, fileName, findLink, isAudioFile, isVideoFile } from './format'
  * commit(), so each one is a version the notes panel can name and undo.
  */
 
-export type Screen = 'start' | 'thread' | 'editor' | 'projects' | 'brand' | 'presets' | 'settings'
+export type Screen = 'start' | 'thread' | 'editor' | 'projects' | 'brand' | 'presets' | 'crew' | 'settings'
 
 export interface Toast {
   text: string
@@ -577,15 +578,29 @@ export function useCutalong() {
 
   const push = useCallback((m: Omit<Msg, 'id'>): string => {
     const id = uid()
-    // Work starts its stopwatch the moment it shows.
-    setMessages((ms) => [...ms, { ...m, id, since: m.progress ? (m.since ?? Date.now()) : undefined }])
+    // Work starts its stopwatch the moment it shows, and its crew with the first stage one of them owns.
+    setMessages((ms) => [
+      ...ms,
+      {
+        ...m,
+        id,
+        since: m.progress ? (m.since ?? Date.now()) : undefined,
+        crew: m.progress ? logCrew(m.crew, m.progress.stage) : m.crew
+      }
+    ])
     return id
   }, [])
   const patch = useCallback((id: string, p: Partial<Msg>): void => {
     setMessages((ms) =>
       ms.map((m) =>
         m.id === id
-          ? { ...m, ...p, since: p.progress ? (m.since ?? Date.now()) : p.progress === null ? undefined : m.since }
+          ? {
+              ...m,
+              ...p,
+              since: p.progress ? (m.since ?? Date.now()) : p.progress === null ? undefined : m.since,
+              // Each stage the work reports brings in the member whose job it is: the reply's credits.
+              crew: p.progress ? logCrew(m.crew, p.progress.stage) : (p.crew ?? m.crew)
+            }
           : m
       )
     )

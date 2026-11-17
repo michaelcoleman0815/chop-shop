@@ -120,7 +120,13 @@ export const BrandSchema = z.object({
     })
     .default({ prefer: [], block: [] }),
   /** Every export's description, with the brand's own lines around the parts made for each video. */
-  description: z.string().max(DESCRIPTION_TEMPLATE_MAX).default(DEFAULT_DESCRIPTION)
+  description: z.string().max(DESCRIPTION_TEMPLATE_MAX).default(DEFAULT_DESCRIPTION),
+  /**
+   * The brand's own avatar in the app: a shape and a colour, picked on the
+   * Brand page. Null until one is picked, and the app shows one chosen from
+   * the id. Plain names, so a shape a newer build adds still reads here.
+   */
+  avatar: z.object({ shape: z.string().max(24), colour: z.string().max(24) }).nullable().default(null)
 })
 export type Brand = z.infer<typeof BrandSchema>
 
@@ -142,7 +148,8 @@ export const EMPTY_BRAND: Brand = {
   habits: null,
   fonts: {},
   broll: { prefer: [], block: [] },
-  description: DEFAULT_DESCRIPTION
+  description: DEFAULT_DESCRIPTION,
+  avatar: null
 }
 
 function median(values: number[]): number | null {

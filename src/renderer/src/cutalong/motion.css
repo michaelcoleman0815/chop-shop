@@ -1,8 +1,11 @@
 /*
  * Cutalong in motion.
  *
- * Calm and quick. Things arrive with ease-enter, leave sooner with ease-exit,
- * move between places with ease-standard, and what a hand moves springs.
+ * Calm and quick, and alive. Things arrive with ease-enter, and what lands
+ * (a card, a tile, a sticker, footage dropped in) lands on a spring with a
+ * hair of overshoot; things leave sooner with ease-exit and never bounce;
+ * what moves between places uses ease-standard. Only work in progress moves
+ * on its own (the living mark, the crew at work); idle is still.
  * Only transform, opacity and paint-only properties (a clip, a dash offset)
  * animate, so nothing is laid out again while it moves. Every duration and
  * curve is a token; the rules are in the cutalong-ui skill under Motion, and
@@ -148,7 +151,7 @@
  * in; a reply's sentence, chips and buttons follow one another closely.
  */
 .cl-msg-user,
-.cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-actions) {
+.cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-actions, .cl-credits) {
   transition-property: opacity, translate;
   transition-duration: var(--duration-gentle);
   transition-timing-function: var(--ease-enter);
@@ -201,7 +204,7 @@
     filter: blur(calc(2px * var(--cl-travel)));
   }
 
-  html:not([data-cl-entering]) .cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-actions) {
+  html:not([data-cl-entering]) .cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-actions, .cl-credits) {
     opacity: 0;
     translate: 0 calc(var(--space-2) * var(--cl-travel));
   }
@@ -233,14 +236,15 @@
 @starting-style {
   html:not([data-cl-entering]) .cl-clip {
     opacity: 0;
-    translate: 0 calc(var(--space-2) * var(--cl-travel));
+    translate: 0 calc(var(--space-4) * var(--cl-travel));
+    scale: calc(1 - 0.04 * var(--cl-travel));
   }
 }
 
 .cl-clip {
-  transition-property: opacity, translate;
-  transition-duration: var(--duration-gentle);
-  transition-timing-function: var(--ease-enter);
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-settle), var(--spring-settle);
 }
 
 .cl-clip:nth-child(2) {
@@ -743,4 +747,295 @@ html[data-cl-move='version'] .cl-note {
 ::view-transition-new(cl-composer) {
   animation: var(--duration-base) var(--ease-enter) 90ms both cl-fade-in;
   mix-blend-mode: normal;
+}
+
+/* ---------- Heavenly and alive ---------- */
+
+/* A reply's facts settle in after its sentence, tile by tile. */
+.cl-facts > .cl-fact {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-settle), var(--spring-settle);
+  transition-delay: 60ms;
+}
+
+.cl-facts > .cl-fact:nth-child(2) {
+  transition-delay: 100ms;
+}
+
+.cl-facts > .cl-fact:nth-child(3) {
+  transition-delay: 140ms;
+}
+
+@starting-style {
+  html:not([data-cl-entering]) .cl-facts > .cl-fact {
+    opacity: 0;
+    translate: 0 calc(var(--space-3) * var(--cl-travel));
+    scale: calc(1 - 0.05 * var(--cl-travel));
+  }
+}
+
+/* Footage dropped in floats up into the composer, one still just after another (--i, from Composer.tsx). */
+.cl-attachment {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-settle), var(--spring-settle);
+  transition-delay: calc(var(--i, 0) * 40ms);
+}
+
+@starting-style {
+  .cl-attachment {
+    opacity: 0;
+    translate: 0 calc(var(--space-6) * var(--cl-travel));
+    scale: calc(1 - 0.3 * var(--cl-travel));
+  }
+}
+
+/* A sticker pops on, turning to its angle. */
+.cl-sticker {
+  transition-property: opacity, scale, rotate;
+  transition-duration: var(--duration-base), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-pop), var(--spring-pop);
+}
+
+@starting-style {
+  .cl-sticker {
+    opacity: 0;
+    scale: calc(1 - 0.6 * var(--cl-travel));
+    rotate: calc(var(--tilt) - 30deg * var(--cl-travel));
+  }
+}
+
+/* A brand's avatar morphs: the new shape pops in over the old, which softens and fades. */
+.cl-blob.arriving {
+  transition-property: opacity, scale, filter;
+  transition-duration: var(--duration-base), var(--duration-spring), var(--duration-gentle);
+  transition-timing-function: var(--ease-enter), var(--spring-pop), var(--ease-enter);
+}
+
+@starting-style {
+  .cl-blob.arriving {
+    opacity: 0;
+    scale: calc(1 - 0.22 * var(--cl-travel));
+    filter: blur(calc(6px * var(--cl-travel)));
+  }
+}
+
+.cl-blob.leaving {
+  opacity: 0;
+  scale: calc(1 - 0.08 * var(--cl-travel));
+  filter: blur(calc(4px * var(--cl-travel)));
+  transition-property: opacity, scale, filter;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-exit);
+}
+
+/*
+ * The living mark breathes and its colours slowly turn while the work runs.
+ * It only exists while something is working, so it never moves at rest.
+ */
+@keyframes cl-living-breathe {
+  from {
+    scale: 0.94;
+  }
+  to {
+    scale: 1.05;
+  }
+}
+
+@keyframes cl-living-turn {
+  to {
+    rotate: 1turn;
+  }
+}
+
+@keyframes cl-living-glow {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cl-living {
+  animation: cl-living-breathe calc(var(--duration-calm) * 10) var(--ease-breathe) infinite alternate;
+}
+
+.cl-living-turn.one {
+  animation: cl-living-turn calc(var(--duration-calm) * 48) linear infinite;
+}
+
+.cl-living-turn.two {
+  animation: cl-living-turn calc(var(--duration-calm) * 66) linear infinite reverse;
+}
+
+.cl-living-turn.three {
+  animation: cl-living-turn calc(var(--duration-calm) * 90) linear infinite;
+}
+
+.cl-living-core {
+  animation: cl-living-glow calc(var(--duration-calm) * 7) var(--ease-breathe) infinite alternate;
+}
+
+/* Long work arrives with its mark popping in to lead it. */
+.cl-progress.big > .cl-living {
+  transition-property: opacity, scale;
+  transition-duration: var(--duration-base), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-pop);
+}
+
+@starting-style {
+  .cl-progress.big > .cl-living {
+    opacity: 0;
+    scale: calc(1 - 0.4 * var(--cl-travel));
+  }
+}
+
+/*
+ * The crew. A member pops in on a spring as their stage starts, works in
+ * their own way while it runs, and gives one small hop when they finish.
+ * A face that is not at work is still.
+ */
+.cl-crew-row {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-base), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-pop), var(--spring-pop);
+}
+
+@starting-style {
+  .cl-crew-row {
+    opacity: 0;
+    translate: calc(-1 * var(--space-3) * var(--cl-travel)) 0;
+    scale: calc(1 - 0.08 * var(--cl-travel));
+  }
+}
+
+.cl-crew-row .cl-crew-line {
+  transition: color var(--duration-base) var(--ease-standard);
+}
+
+@keyframes cl-crew-breathe {
+  to {
+    scale: 1.07;
+  }
+}
+
+@keyframes cl-crew-bounce {
+  to {
+    translate: 0 -3px;
+  }
+}
+
+@keyframes cl-crew-sway {
+  from {
+    rotate: -7deg;
+  }
+  to {
+    rotate: 7deg;
+  }
+}
+
+@keyframes cl-crew-look {
+  from {
+    translate: -2px 0;
+    rotate: -4deg;
+  }
+  to {
+    translate: 2px 0;
+    rotate: 4deg;
+  }
+}
+
+@keyframes cl-crew-roll {
+  from {
+    rotate: -9deg;
+    translate: -1px 0;
+  }
+  to {
+    rotate: 9deg;
+    translate: 1px 0;
+  }
+}
+
+@keyframes cl-crew-blink {
+  0%,
+  92%,
+  100% {
+    scale: 1 1;
+  }
+  95% {
+    scale: 1 0.12;
+  }
+}
+
+@keyframes cl-crew-hop {
+  0% {
+    translate: 0 0;
+  }
+  40% {
+    translate: 0 -7px;
+    scale: 1.04;
+  }
+  72% {
+    translate: 0 0;
+    scale: 1.03 0.96;
+  }
+  100% {
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+.cl-crew-face.working[data-crew='echo'] {
+  animation: cl-crew-breathe calc(var(--duration-calm) * 3) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='snip'] {
+  animation: cl-crew-bounce calc(var(--duration-calm) * 1) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='quill'] {
+  animation: cl-crew-sway calc(var(--duration-calm) * 2.4) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='scout'] {
+  animation: cl-crew-look calc(var(--duration-calm) * 2.6) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='tint'] {
+  animation: cl-crew-breathe calc(var(--duration-calm) * 4) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='reel'] {
+  animation: cl-crew-roll calc(var(--duration-calm) * 2) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working .cl-crew-eyes > span {
+  animation: cl-crew-blink calc(var(--duration-calm) * 11) linear infinite;
+}
+
+.cl-crew-face.working[data-crew='snip'] .cl-crew-eyes > span {
+  animation-delay: 1.3s;
+}
+
+.cl-crew-face.hop {
+  animation: cl-crew-hop calc(var(--duration-calm) + var(--duration-base)) var(--ease-enter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The living mark only breathes, in opacity; the crew only fades in and out. */
+  .cl-living {
+    animation: cl-living-glow calc(var(--duration-calm) * 9) var(--ease-breathe) infinite alternate;
+  }
+
+  .cl-living-turn,
+  .cl-living-core {
+    animation: none;
+  }
+
+  .cl-crew-face,
+  .cl-crew-face .cl-crew-eyes > span {
+    animation: none !important;
+  }
 }

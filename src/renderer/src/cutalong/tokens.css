@@ -12,7 +12,11 @@
 :root {
   color-scheme: light;
 
-  /* Colour. Paper, ink and soft greys; coral is now (the playhead) and the mark; blue pencil picks. */
+  /*
+   * Colour. Paper, ink and soft greys; coral is now (the playhead) and the mark;
+   * blue pencil picks. The revision colours come three ways: a gentle page tint
+   * (rev), a confident pastel block (block), and a deeper tone for shapes (bloom).
+   */
   --ground: oklch(96.9% 0.006 85);
   --glow: oklch(99.4% 0.012 90);
   --card: oklch(99.6% 0.003 90);
@@ -40,6 +44,22 @@
   --rev-4: oklch(95.8% 0.045 98);
   --rev-5: oklch(94.4% 0.034 152);
   --rev-6: oklch(92.8% 0.05 82);
+  --rev-7: oklch(94.2% 0.03 50);
+  --block-blue: oklch(85% 0.075 255);
+  --block-pink: oklch(86% 0.08 350);
+  --block-yellow: oklch(92% 0.11 100);
+  --block-green: oklch(88% 0.09 148);
+  --block-gold: oklch(86% 0.1 78);
+  --block-salmon: oklch(86% 0.075 52);
+  --block-lavender: oklch(86% 0.06 300);
+  --bloom-blue: oklch(68% 0.14 258);
+  --bloom-pink: oklch(70% 0.15 352);
+  --bloom-yellow: oklch(83% 0.16 95);
+  --bloom-green: oklch(74% 0.15 150);
+  --bloom-gold: oklch(74% 0.15 72);
+  --bloom-salmon: oklch(74% 0.13 50);
+  --bloom-lavender: oklch(70% 0.12 300);
+  --on-bloom: oklch(25% 0.014 272);
 
   /* Spacing */
   --space-1: 4px;
@@ -68,8 +88,8 @@
   --shadow-float: 0 1px 2px var(--shadow-soft), 0 22px 48px -18px var(--shadow-deep);
 
   /*
-   * Motion. Things arrive softly and settle; they leave sooner, easing out too.
-   * Nothing overshoots unless a hand threw it.
+   * Motion. Things arrive softly and settle, landing on a gentle spring with a
+   * hair of overshoot; they leave sooner, easing out, and never bounce.
    */
   --duration-fast: 120ms;
   --duration-base: 180ms;
@@ -79,6 +99,10 @@
   --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-exit: cubic-bezier(0.33, 1, 0.68, 1);
   --spring-gentle: linear(0, 0.08 4%, 0.28 10%, 0.53 18%, 0.74 27%, 0.87 36%, 0.94 46%, 0.98 58%, 0.995 72%, 1);
+  --duration-spring: 460ms;
+  --spring-settle: linear(0, 0.054 4.8%, 0.116 7.3%, 0.178 9.5%, 0.241 11.5%, 0.304 13.4%, 0.366 15.2%, 0.430 17.1%, 0.492 19%, 0.554 21%, 0.617 23.1%, 0.679 25.3%, 0.741 27.8%, 0.803 30.5%, 0.863 33.7%, 0.922 37.5%, 0.977 42.6%, 1.021 49.9%, 1.038 59.7%, 1.032 69.8%, 1.019 79.8%, 1.008 89.8%, 1);
+  --ease-breathe: cubic-bezier(0.37, 0, 0.63, 1);
+  --spring-pop: linear(0, 0.056 3.7%, 0.117 5.6%, 0.179 7.2%, 0.241 8.6%, 0.302 10%, 0.363 11.3%, 0.426 12.7%, 0.487 14.1%, 0.549 15.4%, 0.611 16.9%, 0.672 18.4%, 0.733 20.1%, 0.795 21.9%, 0.856 24%, 0.916 26.4%, 0.975 29.5%, 1.030 34%, 1.063 42%, 1.048 51.6%, 1.022 60.7%, 1.004 70.2%, 0.997 80.1%, 0.996 90%, 1);
 
   /* Type. The faces ship inside the app (fonts.css); nothing loads from the web. */
   --font-sans: 'Figtree Variable', 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -116,6 +140,22 @@
     --rev-4: oklch(33% 0.04 95);
     --rev-5: oklch(32% 0.038 155);
     --rev-6: oklch(34% 0.05 78);
+    --rev-7: oklch(33% 0.04 45);
+    --block-blue: oklch(34% 0.06 258);
+    --block-pink: oklch(34% 0.06 350);
+    --block-yellow: oklch(37% 0.06 95);
+    --block-green: oklch(35% 0.055 152);
+    --block-gold: oklch(37% 0.065 75);
+    --block-salmon: oklch(35% 0.06 48);
+    --block-lavender: oklch(34% 0.06 300);
+    --bloom-blue: oklch(74% 0.12 258);
+    --bloom-pink: oklch(76% 0.12 352);
+    --bloom-yellow: oklch(86% 0.13 95);
+    --bloom-green: oklch(80% 0.12 150);
+    --bloom-gold: oklch(80% 0.12 72);
+    --bloom-salmon: oklch(80% 0.1 50);
+    --bloom-lavender: oklch(78% 0.1 300);
+    --on-bloom: oklch(25% 0.014 272);
   }
 }
 
@@ -148,4 +188,20 @@
   --rev-4: oklch(33% 0.04 95);
   --rev-5: oklch(32% 0.038 155);
   --rev-6: oklch(34% 0.05 78);
+  --rev-7: oklch(33% 0.04 45);
+  --block-blue: oklch(34% 0.06 258);
+  --block-pink: oklch(34% 0.06 350);
+  --block-yellow: oklch(37% 0.06 95);
+  --block-green: oklch(35% 0.055 152);
+  --block-gold: oklch(37% 0.065 75);
+  --block-salmon: oklch(35% 0.06 48);
+  --block-lavender: oklch(34% 0.06 300);
+  --bloom-blue: oklch(74% 0.12 258);
+  --bloom-pink: oklch(76% 0.12 352);
+  --bloom-yellow: oklch(86% 0.13 95);
+  --bloom-green: oklch(80% 0.12 150);
+  --bloom-gold: oklch(80% 0.12 72);
+  --bloom-salmon: oklch(80% 0.1 50);
+  --bloom-lavender: oklch(78% 0.1 300);
+  --on-bloom: oklch(25% 0.014 272);
 }

@@ -24,6 +24,16 @@ The phone app shares the desktop components and `cutalong.css`, and lays itself 
 12. **Dark mode** works through tokens alone: check every phone screen with the system in dark mode, and remove any fill that stays light.
 13. **Fields** have a 3:1 edge (`--line-strong`) and inputs keep 16 px text so the page never zooms. The phone's `textarea` and note input sizes already follow that; keep them.
 
+## Heavenly and alive (the round after Lined Script)
+
+14. **A phone-width layer for browsers.** `cutalong.css` now ends with `@media (max-width: 640px)` rules scoped to `.cl-app:not(.phone)`: the rail becomes a bar of icons along the bottom, the gutters come in to 16 px, the Start title drops to 40 px, fact tiles and clip cards fit two or three across, and the editor stacks. They never touch `.cl-app.phone`; use them as a reference for what reads well at 390 px, and keep the `phone` class so they stay out of the phone's way.
+15. **Pastel blocks.** Fact tiles (`.cl-facts > .cl-fact`), clip cards (`.cl-clip`), version tabs (`.cl-rev-tab`), the brand hero (`.cl-brand-hero`), crew cards (`.cl-crew-card`) and the empty Projects page (`.cl-empty-block`) are filled with `--block-*` through a `--block` variable set inline. Do not give them a background in `phone.css`; at most tighten their padding. Text on them is ink and `--ink-soft`, never `--muted`.
+16. **The crew and the living mark.** Long work in a thread (`.cl-progress.big`) is the living mark (`.cl-living`, 60 px) over the crew's rows (`.cl-crew-row`: a 34 px face, a live line, the plain line in the serif) and a thin progress line. On a phone, keep the same order and let the rows take the column; if the header is tight, `.cl-app.phone .cl-progress.big > .cl-living { --size: 48px; }` is enough. The credits under a reply (`.cl-credits`) are one line that ellipsizes; leave them as they are. The Crew page (`.cl-crew-cards`) is one column at phone width without any change.
+17. **The accent.** Display headings may hold one `<em>` in the serif's italic (`What are we <em>making</em>?`). If `phone.css` sets `.cl-title` or `.cl-page-title` sizes, the accent follows at 1.06 em; don't restyle `em`.
+18. **Composer files** are round 58 px stills with their name under them (`.cl-attachment`, `.cl-attachment-name`), and the remove button is a 24 px circle on the still's corner. On a phone, make the remove button 32 px (`.cl-app.phone .cl-attachment button { width: 32px; height: 32px; }`) so it is easy to tap.
+19. **The composer's edge** is now `--line-mid` with its soft shadow; if `phone.css` sets a border on `.cl-composer`, use `--line-mid` too.
+20. **Motion** for the crew, stickers and dropped stills is in `motion.css` and is composite-only, with reduced motion handled there. Nothing to add in `phone.css`.
+
 ## Check
 
-Build, open the phone layout at 390 x 844, light and dark, and compare with `docs/design/prototype/index.html` (Lined Script, Phone). Then run Hallmark's lint and Impeccable's detector on the phone screens, as the skill says.
+Build, open the phone layout at 390 x 844, light and dark, and compare with `docs/design/prototype/index.html` (Lined Script, Phone) and with the browser's phone-width screenshots of this round (a job with three of the crew at work, a reply's credits, the Crew page). Then run Hallmark's lint and Impeccable's detector on the phone screens, as the skill says.
