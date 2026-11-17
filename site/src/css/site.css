@@ -183,6 +183,20 @@ html:not(.js) .strip-playhead { display: none; }
   background: var(--app-coral);
 }
 
+/* The script view: the words, with what was cut struck through. */
+.app-script {
+  display: grid; align-content: center; gap: var(--space-xs); padding: var(--space-lg); border-radius: var(--radius-card);
+  background: var(--app-card); border: var(--rule-hair) solid var(--app-line); font-size: 1rem; line-height: 1.45;
+}
+.app-script-head { display: flex; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-2xs); color: var(--app-muted); font-size: 0.8125rem; font-weight: 600; }
+.app-line.cut { color: var(--app-muted); }
+.strike { position: relative; }
+.strike::after {
+  content: ""; position: absolute; left: -2px; right: -2px; top: 54%; height: 2px; border-radius: 2px;
+  background: var(--app-ink-soft); transform-origin: left center;
+}
+.app-pause { display: inline-block; padding: 0 var(--space-xs); border-radius: var(--radius-pill); background: var(--app-well); font-family: var(--font-outlier); font-size: 0.8125rem; }
+
 /* ---------- The hero's plate: the thread beside the editor ---------- */
 
 .demo { --demo-start: -9.6s; margin: 0; }
@@ -243,7 +257,9 @@ html:not(.js) .loop-toggle { display: none; }
 .demo.is-live .demo-reply { animation: demo-reply 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-facts { animation: demo-facts 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-actions { animation: demo-actions 12s var(--demo-start) infinite both; }
-.demo.is-live .demo-strip, .demo.is-live .app-frame { animation: demo-dip 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-strip, .demo.is-live .app-script { animation: demo-dip 12s var(--demo-start) infinite both; }
+.demo.is-live .app-line.cut { animation: demo-struck 12s var(--demo-start) infinite both; }
+.demo.is-live .strike::after { animation: demo-strike 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-beats > i.keep { animation: demo-close 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-beats > i.cut { animation: demo-cut 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-time-before { animation: demo-time-before 12s var(--demo-start) infinite both; }
@@ -314,6 +330,15 @@ html:not(.js) .loop-toggle { display: none; }
   89% { transform: translateX(30cqw); animation-timing-function: steps(1, end); }
   92%, 100% { transform: translateX(5cqw); }
 }
+@keyframes demo-struck {
+  0%, 24% { color: var(--app-ink); }
+  26.5%, 100% { color: var(--app-muted); }
+}
+@keyframes demo-strike {
+  0%, 24% { transform: scaleX(0); animation-timing-function: var(--ease-standard); }
+  26.67%, 92% { transform: scaleX(1); animation-timing-function: steps(1, end); }
+  92.01%, 100% { transform: scaleX(0); }
+}
 @keyframes demo-caption {
   0%, 31% { opacity: 0; transform: translateY(6px); animation-timing-function: var(--ease-enter); }
   33%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
@@ -348,12 +373,12 @@ html:not(.js) .loop-toggle { display: none; }
 .facts dd { margin: 0; max-width: 46ch; color: var(--color-ink-2); }
 
 .system { display: grid; gap: 0; margin: 0; align-self: center; }
-.system-mac { padding: var(--space-xl); border-radius: var(--radius-card); background: var(--color-paper); border: var(--rule-hair) solid var(--color-rule); }
+.system-mac { padding: var(--space-xl); border-radius: var(--radius-card); border: var(--rule-hair) dashed var(--color-muted); }
 .system-name { margin-bottom: var(--space-md); font-size: var(--text-title); font-weight: 700; letter-spacing: -0.02em; }
 .system-parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xs); list-style: none; }
 .system-parts > li {
   display: flex; align-items: center; min-height: 56px; padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-thumb); background: var(--color-card); border: var(--rule-hair) solid var(--color-rule);
+  border-radius: var(--radius-thumb); background: var(--color-paper-2);
   font-size: var(--text-sm); line-height: 1.35;
 }
 .system-parts .mono { margin-right: 0.35em; }
