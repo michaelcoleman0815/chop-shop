@@ -119,7 +119,8 @@ npm run dev
 
 Native helpers are not checked in (`resources/bin` is ignored). Build or fetch them once with
 `scripts/build-whisper.sh`, `scripts/build-native.sh` (the Vision helper used for face tracking),
-`scripts/fetch-ytdlp.sh` and `scripts/fetch-fonts.sh`.
+`scripts/fetch-ytdlp.sh` and `scripts/fetch-fonts.sh`. On Windows their Node twins do the same
+(see [Windows](#windows)).
 
 ### Tests
 
@@ -147,6 +148,60 @@ npm run dist
 The DMG and ZIP land in `release/`. Without an Apple Developer ID the build is unsigned: macOS will
 warn on first open (right-click → Open once), and auto-update falls back to opening the releases page
 instead of installing silently. See "Signing" below.
+
+## Windows
+
+Cutalong also builds for Windows 10 and 11 on x64. Each push to the Cutalong branch makes a test installer beside the
+Mac's DMG, `cutalong-windows-test-<run>` in the workflow's artifacts: unsigned, never published, and never offered to
+anyone's app as an update.
+
+**Opening it the first time.** The installer is not signed yet, so SmartScreen stops it with "Windows protected your
+PC" and "Unknown publisher". Choose **More info**, then **Run anyway**. It installs for the person who runs it, with no
+administrator, and Cutalong is then in the Start menu.
+
+**What is different on a PC.**
+
+- Faces are found by YuNet, OpenCV's small face detector (MIT, `resources/faces`), in onnxruntime, where a Mac uses
+  Vision. Following the speaker, `/reframe` and the mouth check give the same answers.
+- whisper.cpp runs on the processor, built for AVX2 (Intel and AMD processors from about 2013 on); an older processor
+  is told so in a sentence.
+- Exports Cutalong does outside the edit (a clip, the timeline) encode with libx264 where a Mac uses VideoToolbox. The
+  edit's own export is the same ffmpeg 6.1.1 on both.
+- The API keys are encrypted for your Windows account (DPAPI) where a Mac keeps them in the keychain.
+- A link that needs a sign-in can borrow Firefox's. Chrome, Edge and Brave lock theirs on Windows, and Safari is a
+  Mac's alone.
+- There is no Windows release to update to yet, and Settings says so.
+
+**Building it on a PC.** Node 20, Git, and Visual Studio 2022 or its Build Tools with "Desktop development with C++"
+(MSVC, CMake and the Windows SDK). Then, in Git Bash or PowerShell:
+
+```bash
+npm ci
+node scripts/build-whisper.mjs        # whisper-cli.exe: CPU with AVX2, the C runtime linked in
+node scripts/fetch-ytdlp.mjs          # yt-dlp.exe, checked against the SHA-256 pinned in the script
+node scripts/fetch-fonts.mjs
+node scripts/bundle-msvc-runtime.mjs  # the C++ runtime onnxruntime needs, put beside it
+npx electron-vite build
+npx electron-builder --win nsis --x64 --publish never
+```
+
+The installer lands in `release/` and the app, unpacked, in `release/win-unpacked`. Two checks say whether it works:
+`node scripts/check-windows-binaries.mjs` says whether every helper needs only what Windows has, and
+`node scripts/self-check-app.mjs release/win-unpacked/Cutalong.exe` opens the app in its self-check
+(`src/main/self-check.ts`), which runs each helper, Skia and the face finder inside it and says what works.
+
+**Tests.** `npm test` is the same suite as on a Mac. The programs tests stand in for (ffmpeg, whisper, yt-dlp) are small
+scripts with a `#!` line, which `src/main/test-setup.ts` hands to Node on Windows; `CUTALONG_STAND_INS=node npm test`
+does the same on a Mac or Linux. On Windows two tests of how a render killed by a signal is described are skipped,
+since Windows ends a program with a code and has no signals to tell apart.
+
+**Signing, later.** SmartScreen stops an unsigned installer that came from the internet, and stops a signed one less
+often as its signature earns a reputation. Either route works with electron-builder: Azure Trusted Signing (a monthly
+subscription; `win.azureSignOptions` in `electron-builder.yml`, with an app registration's `AZURE_TENANT_ID`,
+`AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET` as secrets), or a certificate from a certificate authority, whose key now
+has to live on a hardware token or in a cloud key store (`win.signtoolOptions`, with its own `sign` step for the cloud).
+Updating on Windows also needs a release that carries the installer and `latest.yml`, which `release.yml` does not
+make yet.
 
 ## Shipping an update
 

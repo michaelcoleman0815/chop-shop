@@ -44,6 +44,16 @@ export function findFfprobe(): string | null {
   return null
 }
 
+/**
+ * A path as a filter argument, as the export writes one (cut-render.ts):
+ * quoted, with a Windows drive's colon and any quote escaped, so C:\... reads
+ * whole.
+ */
+export function filterArg(path: string): string {
+  const inner = path.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
+  return `'${inner.replace(/'/g, "'\\''")}'`
+}
+
 /** Runs ffmpeg quietly and throws with its last words when it fails. */
 export function ffmpegRun(ffmpeg: string, args: string[]): void {
   execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: ['ignore', 'ignore', 'pipe'] })

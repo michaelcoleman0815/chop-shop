@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'child_process'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -198,8 +198,8 @@ describe.skipIf(!FFMPEG)('exporting through the app', () => {
     const b = await invoke<Rendered>('cut:render', { doc: clip, quality: 'final', name: clip.title })
     expect(a.ok && b.ok).toBe(true)
     if (!a.ok || !b.ok) return
-    expect(a.outputPath.split('/').pop()).toBe('The red part.mp4')
-    expect(b.outputPath.split('/').pop()).toBe('The red part (2).mp4')
+    expect(basename(a.outputPath)).toBe('The red part.mp4')
+    expect(basename(b.outputPath)).toBe('The red part (2).mp4')
     // The file's own picture size (probe is faked in this test, so read it from ffmpeg itself).
     const shown = /Video:.*?(\d{3,4})x(\d{3,4})/.exec(
       spawnSync(ffmpeg, ['-hide_banner', '-i', a.outputPath], { encoding: 'utf8' }).stderr

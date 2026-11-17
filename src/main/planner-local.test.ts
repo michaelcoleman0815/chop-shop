@@ -6,6 +6,7 @@ import { createDoc, wordsFromTranscript, type Note } from '../shared/edit'
 import { offerPlan } from './planner'
 import { PLAN_JSON_SCHEMA, planEditLocally } from './planner-local'
 import { PLANNER_SYSTEM, renderTranscript, type Plan } from './planner-prompt'
+import { thisComputer } from '../shared/platform'
 
 const HOST = 'http://127.0.0.1:11434'
 const LOCAL = { host: HOST, model: 'local-8b' }
@@ -110,7 +111,7 @@ describe('planning edits on a model on this Mac', () => {
     expect(await planEditLocally({ doc, request: 'x', notes: [] }, LOCAL)).toEqual({
       ok: false,
       message:
-        'Ollama is not running on this Mac, so local-8b cannot plan this. Start Ollama, or plan with Claude in Settings.'
+        `Ollama is not running on ${thisComputer}, so local-8b cannot plan this. Start Ollama, or plan with Claude in Settings.`
     })
     expect(calls.map((c) => c.url)).toEqual([`${HOST}/api/version`])
     ollama(() => new Response('model not found', { status: 404 }))

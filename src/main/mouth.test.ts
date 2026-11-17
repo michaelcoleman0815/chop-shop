@@ -34,6 +34,7 @@ import { loudnessEnvelope } from './audio-envelope'
 import { renderCut } from './cut-render'
 import { displaySize, measureMouth, watchClip, watchMouth, type FaceDetector } from './mouth'
 import { makeClip } from './test-media'
+import { standIn } from './test-bin'
 
 function findFfmpeg(): string | null {
   const candidates = [process.env.FFMPEG_PATH, 'ffmpeg']
@@ -442,10 +443,9 @@ describe.skipIf(!FFMPEG)('watching the mouth in real footage', () => {
     await expect(measureMouth(ffmpeg, join(dir, 'missing.mp4'), plan, { fps: 30, durationSec: 2 })).rejects.toThrow()
   })
 
-  it.skipIf(process.platform === 'win32')('gives up when the picture stops coming', async () => {
+  it('gives up when the picture stops coming', async () => {
     // A stand-in for an ffmpeg that hangs: it never sends a frame.
-    const stuck = join(dir, 'stuck.sh')
-    writeFileSync(stuck, '#!/bin/sh\nsleep 5\n', { mode: 0o755 })
+    const stuck = standIn(join(dir, 'stuck'), 'setTimeout(() => undefined, 5000)\n')
     await expect(
       measureMouth(stuck, join(dir, 'offset-0.12.mp4'), plan, { fps: 30, durationSec: 2, stallSec: 0.3 })
     ).rejects.toThrow('The picture stopped coming after 0 frames.')

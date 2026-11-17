@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { detectProvider, wrongKeyMessage } from '../../../../shared/keys'
+import { onWindows } from '../../../../shared/platform'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api } from '../api'
 import { Button } from '../components/ui'
@@ -27,7 +28,8 @@ const MODELS: { id: Model; label: string }[] = [
 const BROWSERS: { id: string | null; label: string }[] = [
   { id: null, label: 'Off' },
   { id: 'chrome', label: 'Chrome' },
-  { id: 'safari', label: 'Safari' },
+  // Safari is a Mac's alone.
+  ...(onWindows ? [] : [{ id: 'safari', label: 'Safari' }]),
   { id: 'firefox', label: 'Firefox' },
   { id: 'edge', label: 'Edge' },
   { id: 'brave', label: 'Brave' }
@@ -195,8 +197,8 @@ export function SettingsPage(): JSX.Element {
               </div>
             </div>
             <p className="cl-aside">
-              The key is locked in this computer&apos;s keychain and only ever sent to Anthropic. You can make one at
-              console.anthropic.com.
+              The key is {onWindows ? 'locked to your Windows account on this PC' : "locked in this computer's keychain"}{' '}
+              and only ever sent to Anthropic. You can make one at console.anthropic.com.
             </p>
             <ClaudeFrames settings={settings} hasKey={saved} onSettings={setSettings} />
             <ClaudeWrites settings={settings} hasKey={saved} onSettings={setSettings} />

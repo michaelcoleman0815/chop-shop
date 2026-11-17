@@ -1,3 +1,4 @@
+import { thisComputer } from '../../../../shared/platform'
 import type { Settings } from '../../../../shared/types'
 import { api } from '../api'
 
@@ -17,7 +18,7 @@ export function ClaudeFrames({
 }): JSX.Element {
   const on = settings?.claudeSeesFrames !== false
   const line = !on
-    ? 'Claude sees no frames. I say what is in each moment from what I measure, or with a model on this Mac that can see pictures.'
+    ? `Claude sees no frames. I say what is in each moment from what I measure, or with a model on ${thisComputer} that can see pictures.`
     : hasKey
       ? 'When I make a vlog, Claude sees three small stills from each moment to say what is in it. The footage stays on this computer.'
       : 'With a key, Claude sees three small stills from each moment of a vlog to say what is in it. The footage stays on this computer.'

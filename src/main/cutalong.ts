@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { FFMPEG_PATH, FFPROBE_PATH, probe } from './ffmpeg'
-import { FONTS_DIR } from './resources'
+import { FONTS_DIR, helperScript } from './resources'
 import { getSettings, saveSettings } from './store'
 import { downloadModel, hasModel, transcribe } from './transcribe'
 import { fetchVideo, YTDLP_PATH } from './fetch-video'
@@ -33,7 +33,8 @@ import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply, probeSource } from './intake'
 import { projectName } from '../shared/project-name'
 import { watchClip } from './mouth'
-import { detectFaces, VISION_PATH } from './track'
+import { detectFaces, hasFaceFinder } from './track'
+import { thisComputer } from '../shared/platform'
 import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
 import { removePreset, savedPresets, savePreset } from './preset-store'
 import { checkKey, keepOffList, planEdit } from './planner'
@@ -333,9 +334,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    */
   /**
    * Where the speaker is through each recording, for following them into a
-   * narrower frame: the faces the Mac's Vision helper finds, twice a second.
-   * Without that helper (it is a Mac one), the reply says so and framing by
-   * hand still works.
+   * narrower frame: the faces the face finder sees (the Mac's Vision helper,
+   * YuNet on Windows), twice a second. Without one, the reply says so and
+   * framing by hand still works.
    */
   ipcMain.handle('reframe:find', async (_e, req: { sources: { id: string; path: string; durationSec: number }[] }) => {
     const subjects: Record<string, Subject> = {}
@@ -346,7 +347,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
       return { ok: true as const, subjects }
     } catch (err) {
-      return { ok: false as const, finder: existsSync(VISION_PATH()), message: message(err) }
+      return { ok: false as const, finder: hasFaceFinder(), message: message(err) }
     }
   })
 
@@ -669,7 +670,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     signInFrom: getSettings().videoSignIn ?? null
   })
   const needsYtdlp = (): void => {
-    if (!existsSync(YTDLP_PATH())) throw new Error('yt-dlp is missing from this build. Run scripts/fetch-ytdlp.sh.')
+    if (!existsSync(YTDLP_PATH()))
+      throw new Error(`yt-dlp is missing from this build. Run ${helperScript('fetch-ytdlp')}.`)
   }
 
   ipcMain.handle('assets:add', async (e, req: { docId: string; path?: string; url?: string; range?: Range | null }) => {
@@ -1019,7 +1021,7 @@ async function transcriptFor(
     // Learning from edits never reaches the network, not even for the model.
     if (opts.download === false) {
       throw new Error(
-        `The ${whisperModel} transcription model isn't on this Mac yet. Download it in Settings, then try again.`
+        `The ${whisperModel} transcription model isn't on ${thisComputer} yet. Download it in Settings, then try again.`
       )
     }
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))

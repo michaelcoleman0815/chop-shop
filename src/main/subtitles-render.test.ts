@@ -9,7 +9,7 @@ import { DEFAULT_CAPTIONS, type CaptionSpec } from '../shared/edit'
 import { MOTION_FONTS } from '../shared/motion'
 import { captionStyleFor, drawSubtitle, layoutSubtitle, subtitleCues, type TextMeasurer } from '../shared/subtitles'
 import { buildAss } from './captions'
-import { findFfmpeg } from './test-media'
+import { filterArg, findFfmpeg } from './test-media'
 
 /**
  * The editor's preview draws captions with shared/subtitles; the export has
@@ -138,7 +138,7 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
           '-i',
           `color=c=0x3a6ea5:s=${w}x${h}:d=4:r=10,format=rgb24`,
           '-vf',
-          `subtitles=${ass}:fontsdir=${FONTS}`,
+          `subtitles=${filterArg(ass)}:fontsdir=${filterArg(FONTS)}`,
           '-ss',
           (cue.start + 0.2).toFixed(2),
           '-frames:v',

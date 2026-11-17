@@ -1839,6 +1839,15 @@ button:disabled {
   padding-top: 52px;
 }
 
+/*
+ * On Windows the window's own minimise, maximise and close sit over its top
+ * right corner (main/index.ts windowFrame); the header keeps clear of them.
+ * The titlebar-area values say where they are, and their width without them.
+ */
+.cl-app.windows .cl-header {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + var(--space-3));
+}
+
 .cl-rail.open {
   flex-basis: 248px;
   width: 248px;

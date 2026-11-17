@@ -7,6 +7,7 @@ const base = { model: 'small.en' as const, modelFile: '/m/ggml-small.en.bin', wa
 
 /** Flags whisper-cli v1.8.2 accepts, from examples/cli/cli.cpp. */
 const KNOWN = new Set([
+  '-t',
   '-m',
   '-f',
   '-of',
@@ -63,6 +64,11 @@ describe('whisper-cli arguments', () => {
         whisperArgs({ ...base, model: m, verbatim: { names: [] } })[args.indexOf('--dtw') + 1]
       )
     }
+  })
+
+  it('gives whisper its threads first where it runs on the CPU, and nothing else changes', () => {
+    expect(whisperArgs({ ...base, threads: 6 })).toEqual(['-t', '6', ...whisperArgs(base)])
+    expect(whisperArgs({ ...base, threads: undefined })).toEqual(whisperArgs(base))
   })
 
   // When the whisper.cpp source the app is built from is checked out

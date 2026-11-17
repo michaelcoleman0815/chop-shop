@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { EditDocSchema, type Note } from '../shared/edit'
+import { thisComputer } from '../shared/platform'
 import { chatLocally, isLocalUp } from './local-llm'
 import { offerPlan, planMapRequest, type PlanEditResult } from './planner'
 import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
@@ -41,7 +42,7 @@ export async function planEditLocally(
   if (!(await isLocalUp(local.host))) {
     return {
       ok: false,
-      message: `Ollama is not running on this Mac, so ${local.model} cannot plan this. Start Ollama, or plan with Claude in Settings.`
+      message: `Ollama is not running on ${thisComputer}, so ${local.model} cannot plan this. Start Ollama, or plan with Claude in Settings.`
     }
   }
 

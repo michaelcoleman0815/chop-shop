@@ -40,6 +40,7 @@ import { applyOps } from '../shared/edit/ops'
 import { currentCut, currentVersion, resolveCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
 import { FIXTURES } from './learn-fixtures'
 import { saveSettings } from './store'
+import { thisComputer } from '../shared/platform'
 
 const ffmpeg = findFfmpeg()
 const ffprobe = findFfprobe()
@@ -234,7 +235,7 @@ describe.skipIf(!ffmpeg || !ffprobe)('a vlog made the way the app makes it', () 
       const r = await planVlog({ doc: v1, request: 'make it 20 seconds' })
       if (!r.ok) throw new Error(r.message)
       expect(r.by).toBe('rules')
-      expect(r.reply.aside).toContain('local-8b is not running on this Mac, so I told the story by its rules.')
+      expect(r.reply.aside).toContain(`local-8b is not running on ${thisComputer}, so I told the story by its rules.`)
     } finally {
       saveSettings({ localPlanner: null })
     }

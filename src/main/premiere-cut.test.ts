@@ -105,7 +105,9 @@ function readSequence(xml: string): {
     if (f.children.length === 0) continue
     fileBodies.set(f.attrs.id, (fileBodies.get(f.attrs.id) ?? 0) + 1)
     const url = kid(f, 'pathurl').text.trim().replace('file://localhost', '')
-    paths.set(f.attrs.id, url.split('/').map(decodeURIComponent).join('/'))
+    const path = url.split('/').map(decodeURIComponent).join('/')
+    // A Windows file reads as /C:/..., which Premiere there opens as C:\...
+    paths.set(f.attrs.id, /^\/[A-Za-z]:\//.test(path) ? path.slice(1).replace(/\//g, '\\') : path)
   }
   const clipsOf = (track: El): Clip[] =>
     kids(track, 'clipitem').map((c) => {

@@ -32,6 +32,7 @@ import { leftOutSentence, scenesChanged, shapeSentence, storyReply, type VlogRep
 import { parseVlogAsk, type VlogAsk } from '../shared/vlog/request'
 import type { Moment, Story, Vlog } from '../shared/vlog/schema'
 import { assembleShoot, type ShootPart } from '../shared/vlog/shoot'
+import { thisComputer } from '../shared/platform'
 import type { WatchedClip } from '../shared/vlog/watched'
 
 /**
@@ -274,7 +275,7 @@ async function storyByModel(
   try {
     if (local) {
       if (!(await isLocalUp(OLLAMA_HOST)))
-        return { made: null, note: `${local} is not running on this Mac, so I told the story by its rules.` }
+        return { made: null, note: `${local} is not running on ${thisComputer}, so I told the story by its rules.` }
       const made = await storyLocally(doc, vlog, request, ask, { host: OLLAMA_HOST, model: local })
       return { made, note: made ? null : failed }
     }

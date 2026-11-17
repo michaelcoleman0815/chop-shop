@@ -1,10 +1,11 @@
 import { execFileSync, spawnSync } from 'child_process'
-import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
+import { mkdtempSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { cutExcerpt, extractSpeech } from './media'
 import { findFfmpeg, hasEncoder, NO_FFMPEG } from './testing'
+import { HAND_OVER, standIn } from '../test-bin'
 
 const FFMPEG = findFfmpeg()
 const hasOpus = hasEncoder(FFMPEG, 'libopus')
@@ -76,12 +77,16 @@ describe.skipIf(!FFMPEG)(`what leaves the Mac${FFMPEG ? '' : ` (${NO_FFMPEG})`}`
   )
 
   it('falls back to lossless FLAC when ffmpeg has no Opus encoder', async () => {
-    const fake = join(dir, 'ffmpeg-without-opus')
-    writeFileSync(
-      fake,
-      `#!/bin/sh\nfor a in "$@"; do if [ "$a" = "libopus" ]; then echo "Unknown encoder 'libopus'" >&2; exit 1; fi; done\nexec "${FFMPEG}" "$@"\n`
+    const fake = standIn(
+      join(dir, 'ffmpeg-without-opus'),
+      `${HAND_OVER}
+const args = process.argv.slice(2)
+if (args.includes('libopus')) {
+  process.stderr.write("Unknown encoder 'libopus'\\n")
+  process.exitCode = 1
+} else handOver(${JSON.stringify(FFMPEG)}, args)
+`
     )
-    chmodSync(fake, 0o755)
     const sub = mkdtempSync(join(dir, 'flac-'))
     const audio = await extractSpeech(fake, wide, sub, 3)
     expect(audio.contentType).toBe('audio/flac')

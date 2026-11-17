@@ -1,7 +1,7 @@
 import { app, ipcMain, type WebContents } from 'electron'
 import { spawn } from 'child_process'
 import { createHash, randomUUID } from 'crypto'
-import { existsSync, promises as fs } from 'fs'
+import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { FFMPEG_PATH, probe } from './ffmpeg'
 import { getSettings } from './store'
@@ -17,7 +17,8 @@ import { readApiKey } from './apikey'
 import { suggestClips, OLLAMA_HOST } from './clips'
 import { isLocalUp, localModels } from './local-llm'
 import { MODEL } from './planner'
-import { detectFaces, VISION_PATH, type VisionSample } from './track'
+import { detectFaces, hasFaceFinder, type VisionSample } from './track'
+import { NO_FACE_FINDER, thisComputer } from '../shared/platform'
 import { detectShots } from './shots'
 import { buildAudioMap, type Frames } from '../shared/audio/map'
 import { snapWords, type Envelope } from '../shared/audio/snap'
@@ -258,7 +259,7 @@ export function defaultTools(): ClippingTools {
     listen: async (path, words) => soundsOf(await listenFrames(FFMPEG_PATH, path), words),
     frozen: (path, durationSec) => frozenStretches(FFMPEG_PATH, path, durationSec),
     envelope: (path, startSec, durationSec) => loudnessEnvelope(FFMPEG_PATH, path, { startSec, durationSec }),
-    faces: existsSync(VISION_PATH())
+    faces: hasFaceFinder()
       ? (path, startSec, durationSec) => detectFaces(path, startSec, durationSec, 2)
       : null,
     shots: (path, startSec, durationSec) => detectShots(path, startSec, durationSec).catch(() => []),
@@ -559,7 +560,7 @@ export async function findClips(
           pickWithModel(tools, engine as { by: 'claude' | 'local'; model: string | null }, r.facts, r.plan, ask, avoid)
         )
       } catch (err) {
-        const who = engine.by === 'claude' ? 'Claude' : (engine.model ?? 'The model on this Mac')
+        const who = engine.by === 'claude' ? 'Claude' : (engine.model ?? `The model on ${thisComputer}`)
         notes.push(`${who} couldn't pick them (${message(err).replace(/\.$/, '')}), so I sorted them by measuring.`)
         engine = { by: 'measured', model: null }
         fellBack = true
@@ -627,7 +628,7 @@ export async function findClips(
     notes.push(
       tools.faces
         ? `I couldn't find a face in ${clips.length - followed === 1 ? 'one clip' : `${clips.length - followed} clips`}, so ${clips.length - followed === 1 ? 'it keeps' : 'they keep'} the middle of the picture.`
-        : 'The clips keep the middle of the picture: following the speaker needs the face finder Cutalong has on a Mac.'
+        : `The clips keep the middle of the picture: ${NO_FACE_FINDER}.`
     )
   }
 

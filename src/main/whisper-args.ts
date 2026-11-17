@@ -22,8 +22,11 @@ export function whisperArgs(o: {
   wav: string
   prefix: string
   verbatim?: VerbatimOptions
+  /** Threads, where whisper runs on the CPU (Windows); whisper-cli's own four when absent. */
+  threads?: number
 }): string[] {
   const args = [
+    ...(o.threads ? ['-t', String(o.threads)] : []),
     '-m',
     o.modelFile,
     '-f',

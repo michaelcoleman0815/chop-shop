@@ -38,6 +38,30 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # A Mac finds faces with Vision, so the Mac app leaves out onnxruntime-node
+  # (the runtime of Windows' face finder) and the packages only it brings,
+  # and is the app it was. Should the Mac app come to run onnxruntime itself,
+  # lines that keep its darwin arm64 binary take the place of these.
+  #
+  # A platform's files list must hold something besides exclusions:
+  # electron-builder 26 reads a list of nothing but '!' lines as everything
+  # else, and packs the whole project (src, docs, .build) into the app. So
+  # each names package.json, which the app holds anyway.
+  files:
+    - filter:
+        - package.json
+        - '!**/node_modules/onnxruntime-node/**'
+        - '!**/node_modules/onnxruntime-common/**'
+        - '!**/node_modules/adm-zip/**'
+        - '!**/node_modules/globalthis/**'
+        - '!**/node_modules/define-properties/**'
+        - '!**/node_modules/define-data-property/**'
+        - '!**/node_modules/es-define-property/**'
+        - '!**/node_modules/es-errors/**'
+        - '!**/node_modules/gopd/**'
+        - '!**/node_modules/has-property-descriptors/**'
+        - '!**/node_modules/object-keys/**'
+        - '!**/node_modules/escape-string-regexp/**'
   target:
     - target: dmg
       arch: [arm64]
@@ -46,6 +70,42 @@ mac:
 
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
+
+# Windows 10 and 11 on x64, for now a test build only: unsigned, so
+# SmartScreen asks before the first run (see README).
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  # The face finder's runtime (main/face-finder.ts) loads from beside
+  # app.asar, as Skia's does.
+  asarUnpack:
+    - '**/node_modules/onnxruntime-node/**'
+  # onnxruntime-node carries every platform's binaries (about 295 MB). Windows
+  # keeps x64's, with the Microsoft C++ runtime CI puts beside them
+  # (scripts/bundle-msvc-runtime.mjs), and leaves out DirectML and its shader
+  # compiler, which only the GPU runtime loads: faces are found on the CPU.
+  # With package.json first, as the Mac's (see there).
+  files:
+    - filter:
+        - package.json
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/x64/DirectML.dll'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/x64/dxcompiler.dll'
+  extraResources:
+    # YuNet, the face finder where there is no Vision (resources/faces/LICENSE).
+    - from: resources/faces
+      to: faces
+
+# Installs for the person who runs it, with no administrator, into their own
+# programs folder, and keeps their projects and settings when it is removed.
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
 
 publish:
   provider: github

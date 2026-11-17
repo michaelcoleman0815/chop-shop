@@ -7,7 +7,11 @@ import { mediaBase, mediaUrl, parseRange, startMediaServer, type MediaServer } f
 describe('before the media server starts', () => {
   it('still gives a file a playable address, by path', () => {
     expect(mediaBase()).toBe('')
-    expect(mediaUrl('/Users/me/Movies/MVI 9293.MP4')).toBe('file:///Users/me/Movies/MVI%209293.MP4')
+    if (process.platform === 'win32') {
+      expect(mediaUrl('C:\\Users\\me\\Videos\\MVI 9293.MP4')).toBe('file:///C:/Users/me/Videos/MVI%209293.MP4')
+    } else {
+      expect(mediaUrl('/Users/me/Movies/MVI 9293.MP4')).toBe('file:///Users/me/Movies/MVI%209293.MP4')
+    }
   })
 })
 
