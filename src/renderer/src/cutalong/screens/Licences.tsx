@@ -23,6 +23,24 @@ interface Package {
   text: string | null
 }
 
+/**
+ * A licence as it reads at a phone's width: its paragraphs, each with its
+ * lines joined, the words as they are.
+ */
+function LicenceText({ text }: { text: string }): JSX.Element {
+  const paragraphs = text
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+  return (
+    <div className="cl-licence">
+      {paragraphs.map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+    </div>
+  )
+}
+
 /** A text from inside the app, next to the page. */
 async function read<T>(url: string, as: 'json' | 'text'): Promise<T> {
   const res = await fetch(url)
@@ -126,7 +144,7 @@ export function Licences({ where, version }: { where: NonNullable<Device['licenc
               open={open === c.name}
               onToggle={() => toggle(c.name, c.text)}
             >
-              <pre className="cl-licence">{texts[c.text] ?? 'Opening…'}</pre>
+              <LicenceText text={texts[c.text] ?? 'Opening…'} />
             </Row>
           ))}
           {packages && packages.length > 0 && (
@@ -145,7 +163,7 @@ export function Licences({ where, version }: { where: NonNullable<Device['licenc
                     open={open === `npm:${p.name}@${p.version}`}
                     onToggle={() => toggle(`npm:${p.name}@${p.version}`)}
                   >
-                    <pre className="cl-licence">{p.text ?? `${p.licence}. The package has no licence file.`}</pre>
+                    <LicenceText text={p.text ?? `${p.licence}. The package has no licence file.`} />
                   </Row>
                 ))}
               </ul>
