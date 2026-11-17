@@ -27,7 +27,9 @@ import { register, type BuildContext } from './registry'
 
 const STYLES = ['pill', 'flip'] as const
 type Style = (typeof STYLES)[number]
+// The first, empty, is where it goes by itself: clear of the face for a pill, beside a page for a calendar.
 const PLACES = [
+  '',
   'top',
   'middle',
   'bottom',
@@ -151,7 +153,7 @@ const shadow = (u: number, strong = 1): Shadow => ({
 /** Where a block w by h is centred for a place, inside the safe area. */
 function centreFor(frame: Frame, place: string, w: number, h: number, fallback: string): { x: number; y: number } {
   const { width: W, height: H, safe } = frame
-  const name = (PLACES as readonly string[]).includes(place) ? place : fallback
+  const name = place && (PLACES as readonly string[]).includes(place) ? place : fallback
   const m = 0.02 * Math.min(W, H)
   const left = safe.left + w / 2 + m
   const right = W - safe.right - w / 2 - m
@@ -264,7 +266,7 @@ function pill(ctx: BuildContext, f: CounterFigures): Layer[] {
   const h = size + padY * 2
   const fill = accentOf(item.color, theme)
   const ink = inkOn(fill, theme)
-  const centre = (PLACES as readonly string[]).includes(item.place)
+  const centre = item.place && (PLACES as readonly string[]).includes(item.place)
     ? centreFor(frame, item.place, est + padX * 2, h, 'top')
     : clearOfFace(frame, ctx.faces, est + padX * 2, h, 'top')
   // The digits end on one edge, so a figure that grows a digit grows into the pill, not out of it.
@@ -527,7 +529,7 @@ register({
     if (call.style && !(STYLES as readonly string[]).includes(call.style))
       return `A counter is ${STYLES.join(' or ')}; ${call.style} is not one of them.`
     if (call.place && !(PLACES as readonly string[]).includes(call.place))
-      return `A counter goes ${PLACES.join(', ')}; ${call.place} is not one of them.`
+      return `A counter goes ${PLACES.filter(Boolean).join(', ')}; ${call.place} is not one of them.`
     return null
   },
   build,
