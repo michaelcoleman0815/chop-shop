@@ -16,15 +16,13 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
 <header class="slab">
   <div class="container slab-row">
     {{> lockup}}
-    <nav class="strip" aria-label="On this page" data-strip>
-      <ol class="strip-beats">
-        <li><a class="strip-beat" href="#mac"><span>Your Mac</span></a></li>
-        <li><a class="strip-beat" href="#how"><span>How it works</span></a></li>
-        <li><a class="strip-beat" href="#makes"><span>What it makes</span></a></li>
-        <li><a class="strip-beat" href="#questions"><span>Questions</span></a></li>
-        <li><a class="strip-beat" href="#soon"><span>Coming soon</span></a></li>
-      </ol>
-      <span class="strip-playhead" aria-hidden="true" data-playhead></span>
+    <nav class="nav" aria-label="On this page">
+      <a href="#crew">Your crew</a>
+      <a href="#proof">A real run</a>
+      <a href="#how">How it works</a>
+      <a href="#makes">What you get</a>
+      <a href="#mac">Your Mac</a>
+      <a href="#questions">Questions</a>
     </nav>
     {{#downloadReady}}<a class="btn btn-quiet slab-action" href="{{downloadUrl}}">Download</a>{{/downloadReady}}
     {{^downloadReady}}<a class="btn btn-quiet slab-action" href="#signup" data-notify="header">Get notified</a>{{/downloadReady}}
@@ -33,157 +31,201 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
 
 <main id="main">
   <section class="hero" aria-labelledby="hero-title">
-    <div class="container hero-grid">
-      <h1 id="hero-title">The video editor you talk&nbsp;to</h1>
-      <div class="hero-line">
-        <p class="lead">Drop in your footage, say what you want, and it edits.</p>
-        <div class="hero-actions">
-          {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
-          {{^downloadReady}}<a class="btn btn-primary" href="#signup" data-notify="hero">Get notified when it’s ready</a>{{/downloadReady}}
-          <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or later</p>
-        </div>
+    <div class="container intro">
+      <div class="living keep-motion" data-living aria-hidden="true"><span class="living-a"></span><span class="living-b"></span></div>
+      <h1 id="hero-title">The video editor you <em>talk&nbsp;to</em></h1>
+      <p class="lead">Drop in your footage, say what you want, and it&nbsp;edits.</p>
+      <div class="hero-actions">
+        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
+        {{^downloadReady}}<a class="btn btn-primary" href="#signup" data-notify="hero">Get notified when it’s ready</a>{{/downloadReady}}
+        <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>
       </div>
+    </div>
+  </section>
 
-      <figure class="demo" data-loop aria-label="An example in Cutalong: you drop in two takes and a separate microphone recording and ask it to cut the retakes and make it 10 minutes. It replies that v2 is ready, 9:58 long, down from 31:40, and the beat strip closes up to show it.">
-        <div class="plate demo-slot" data-slot="hero-loop" data-kind="product"
-          data-alt="A 10 to 20 second loop of the redesigned app at 2400 by 1000: footage dropped in, a request typed, the new version arriving in the editor">
-          <div class="app demo-thread" aria-hidden="true">
-            <div class="demo-user">
-              <ul class="app-files">
-                <li class="app-file"><span class="app-poster"></span><span class="app-file-name">talking-01.mov</span></li>
-                <li class="app-file"><span class="app-poster"></span><span class="app-file-name">talking-02.mov</span></li>
-                <li class="app-file"><span class="app-poster app-poster-audio">{{> icon-wave}}</span><span class="app-file-name">rode-mic.wav</span></li>
-              </ul>
-              <p class="app-bubble">Cut the retakes and make it 10 minutes</p>
+  <div class="stage">
+    <div class="container hero-stage">
+      <figure class="demo" data-loop>
+        <div class="window demo-slot" data-slot="hero-loop" data-kind="product" role="img"
+          aria-label="Cutalong’s editor. You type: cut it to 60 seconds. Echo finds the pauses and Snip cuts it to length. It answers: v2 is ready, it runs 0:59 now, down from 1:39; I cut pauses over 0.35 seconds, part of the intro, the tangent about the conference, a point made twice and one other line. In the script those lines are struck through, the beat strip closes up, and v2 arrives on blue pages."
+          data-alt="A 10 to 20 second loop of the redesigned app at 2400 by 1240: an ask typed beside the script, the lines struck, the strip closing up, v2 on blue pages">
+          <div class="app app-window" aria-hidden="true">
+            <div class="app-bar">
+              <span class="app-title">Three lights for a talking head</span>
+              <span class="app-versions"><span class="app-ver app-ver-1">v1</span><span class="app-ver app-ver-2">v2</span></span>
+              <span class="app-bar-end"><span class="app-text-btn">Undo</span><span class="app-pill">Export</span></span>
             </div>
-            <div class="app-turn">
-              <span class="app-avatar">{{> mark-white}}</span>
-              <div class="app-turn-body">
-                <p class="app-working demo-working">Finding the retakes</p>
-                <p class="app-reply demo-reply">v2 is ready. It runs 9:58, down from 31:40.</p>
-                <p class="app-facts demo-facts"><span class="app-fact">14 retakes cut</span><span class="app-fact">Sound from <span class="app-mono">rode-mic.wav</span></span></p>
-                <p class="app-actions demo-actions"><span class="app-btn app-btn-primary">Open the editor</span><span class="app-btn">Undo</span></p>
+            <div class="app-body">
+              <div class="app-well">
+                <div class="app-frame">
+                  <span class="footage"><span class="footage-key"></span><span class="footage-person"></span><span class="footage-desk"></span></span>
+                  <span class="app-burn"><span class="burn-1">the key light</span><span class="burn-2">the fill light</span></span>
+                </div>
+              </div>
+              <div class="app-side">
+                <div class="app-status">
+                  <span class="app-tile">{{> mark-tile}}<span class="app-tile-living"></span></span>
+                  <div class="app-status-body">
+                    <div class="app-working">
+                      <p class="app-crew-row app-crew-echo"><span class="app-crew-who">{{> crew-echo}}</span><span class="app-crew-say"><span class="say-busy">{{echoName}} is finding the pauses</span><span class="say-done">{{echoName}} found the pauses</span></span></p>
+                      <p class="app-crew-row app-crew-snip"><span class="app-crew-who">{{> crew-snip}}</span><span class="app-crew-say"><span class="say-busy">{{snipName}} is cutting it to length</span><span class="say-done">{{snipName}} cut it to 0:59</span></span></p>
+                    </div>
+                    <div class="app-said">
+                      <p class="app-reply">v2 is ready. It runs 0:59 now, down from 1:39. I cut pauses over 0.35&nbsp;s, part of the intro, the tangent about the conference, a point made twice and one other line.</p>
+                      <p class="app-credit"><span class="app-credit-face">{{> crew-echo}}</span>{{echoName}} found the pauses, and <span class="app-credit-face">{{> crew-snip}}</span>{{snipName}} cut the&nbsp;rest.</p>
+                      <p class="app-rev-chip"><i></i>v2, on blue pages</p>
+                    </div>
+                  </div>
+                </div>
+                <p class="app-script-head">The script</p>
+                <ol class="app-script">
+                  <li><span class="n">5</span><span class="w">A big soft key light makes skin look smooth and even.</span></li>
+                  <li><span class="n">6</span><span class="w">Put the key light about an arm away from your face.</span></li>
+                  <li><span class="n">7</span><span class="w">Turn the key light down until your face is just bright enough.</span></li>
+                  <li class="cut s1"><span class="n">8</span><span class="w" data-text="Funny story, last spring I flew to a conference in Berlin.">Funny story, last spring I flew to a conference in Berlin.</span></li>
+                  <li class="cut s2"><span class="n">9</span><span class="w" data-text="The conference hotel had a terrible breakfast buffet.">The conference hotel had a terrible breakfast buffet.</span></li>
+                  <li class="cut s3"><span class="n">10</span><span class="w" data-text="At the conference I met a man who sold umbrellas at airports.">At the conference I met a man who sold umbrellas at airports.</span></li>
+                  <li class="cut s4"><span class="n">11</span><span class="w" data-text="Anyway, the conference was fine, I suppose.">Anyway, the conference was fine, I suppose.</span></li>
+                  <li><span class="n">12</span><span class="w">The second light is the fill light, which lifts the shadows on the other side.</span></li>
+                  <li><span class="n">13</span><span class="w">The fill light should be softer than the key light.</span></li>
+                  <li><span class="n">14</span><span class="w">A white wall can work as a fill light if you have no second light.</span></li>
+                  <li class="cut s5"><span class="n">15</span><span class="w" data-text="Like I said, a big soft key light makes skin look smooth and even.">Like I said, a big soft key light makes skin look smooth and even.</span></li>
+                  <li class="cut s6"><span class="n">16</span><span class="w" data-text="So keep the key light big and soft and close to your face.">So keep the key light big and soft and close to your face.</span></li>
+                </ol>
+                <div class="app-composer">
+                  <span class="app-composer-text"><span class="app-typed">Cut it to 60 seconds</span><span class="app-placeholder">Add a note, or type /</span></span>
+                  <span class="app-send">{{> icon-up}}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="app demo-editor" aria-hidden="true">
-            <div class="app-script">
-              <p class="app-script-head"><span>Script</span><span class="app-mono">talking-01.mov</span></p>
-              <p class="app-line">This whole setup cost me forty dollars.</p>
-              <p class="app-line cut"><span class="strike">So the, so the camera is</span></p>
-              <p class="app-line">The camera is a used webcam, and it is fine.</p>
-              <p class="app-line cut"><span class="strike app-pause">2.4 s pause</span></p>
-              <p class="app-line cut"><span class="strike">Wait, let me start that again.</span></p>
-              <p class="app-line">The light is a desk lamp behind a sheet of paper.</p>
-            </div>
-            <div class="app-strip demo-strip">
+            <div class="app-strip">
               <span class="app-play">{{> icon-play}}</span>
-              <span class="app-time"><span class="demo-time-before">31:40</span><span class="demo-time-after">9:58</span></span>
-              <span class="app-beats demo-beats">
-                <i class="cut"></i><i class="keep on"></i><i class="cut"></i><i class="keep"></i><i class="cut"></i><i class="keep"></i><i class="cut"></i>
-                <i class="cut"></i><i class="keep"></i><i class="cut"></i><i class="keep"></i><i class="cut"></i><i class="keep"></i><i class="cut"></i>
-                <b class="app-playhead demo-playhead"></b>
+              <span class="app-tc"><span>0:24</span><span class="app-tc-of"> / <span class="app-tc-total"><span class="tc-1">1:39</span><span class="tc-2">0:59</span></span></span></span>
+              <span class="app-beats">
+                <i></i><i class="cut"></i><i class="cut"></i><i></i><i></i><i></i><i></i><i class="cut"></i><i class="cut"></i><i class="cut"></i><i class="cut"></i>
+                <i></i><i></i><i></i><i class="cut"></i><i class="cut"></i><i></i><i></i><i class="cut"></i><i></i><i></i>
+                <b class="app-playhead"></b>
               </span>
+              <span class="strip-snip">{{> crew-snip}}</span>
             </div>
           </div>
-          <button class="loop-toggle" type="button" data-loop-toggle data-keep aria-label="Pause the example">{{> icon-pause}}</button>
         </div>
+        <span class="sticker sticker-blue demo-sticker" aria-hidden="true"><span>v2</span></span>
+        <span class="badge demo-badge" aria-hidden="true"><b>0:59</b>was 1:39</span>
+        <figcaption class="demo-foot">
+          <span class="demo-note">A real run. The reply and the struck lines are Cutalong’s own, on a scripted talk about lighting; the picture is&nbsp;drawn.</span>
+          <button class="loop-toggle" type="button" data-loop-toggle aria-label="Pause the example">{{> icon-pause}}</button>
+        </figcaption>
       </figure>
+    </div>
+  </div>
+
+  <section class="crew-section" id="crew" aria-labelledby="crew-title">
+    <div class="container">
+      <div class="crew-head reveal">
+        <h2 id="crew-title">Meet your <em>crew</em></h2>
+        <p class="lead">You talk to Cutalong. Behind it, each job has someone on it, and only the ones a job needs get to&nbsp;work.</p>
+      </div>
+      <ul class="crew-grid">
+        <li class="crew-card reveal"><span class="crew-face keep-motion">{{> crew-echo}}</span><h3>{{echoName}}</h3><p>{{echoLine}}</p></li>
+        <li class="crew-card reveal"><span class="crew-face keep-motion">{{> crew-snip}}</span><h3>{{snipName}}</h3><p>{{snipLine}}</p></li>
+        <li class="crew-card reveal"><span class="crew-face keep-motion">{{> crew-quill}}</span><h3>{{quillName}}</h3><p>{{quillLine}}</p></li>
+        <li class="crew-card reveal"><span class="crew-face keep-motion">{{> crew-scout}}</span><h3>{{scoutName}}</h3><p>{{scoutLine}}</p></li>
+        <li class="crew-card reveal"><span class="crew-face keep-motion">{{> crew-tint}}</span><h3>{{tintName}}</h3><p>{{tintLine}}</p></li>
+        <li class="crew-card reveal"><span class="crew-face keep-motion">{{> crew-reel}}</span><h3>{{reelName}}</h3><p>{{reelLine}}</p></li>
+      </ul>
     </div>
   </section>
 
-  <section class="mac" id="mac" aria-labelledby="mac-title">
-    <div class="container mac-grid">
-      <div class="mac-copy">
-        <h2 id="mac-title">Your footage never leaves your&nbsp;Mac</h2>
-        <dl class="facts">
-          <div>
-            <dt>The work happens here</dt>
-            <dd><span class="mono">whisper.cpp</span> hears the words and <span class="mono">ffmpeg</span> renders, both on your&nbsp;Mac.</dd>
-          </div>
-          <div>
-            <dt>Your own key</dt>
-            <dd>You pay Anthropic directly, only for what you&nbsp;use.</dd>
-          </div>
-          <div>
-            <dt>What Claude sees</dt>
-            <dd>Your words and the edit, plus vlog stills unless you switch them&nbsp;off.</dd>
-          </div>
-        </dl>
+  <section class="proof" id="proof" aria-labelledby="proof-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="proof-title">It cuts the retakes and keeps what you <em>meant</em></h2>
+        <p class="lead">On a test recording with retakes planted the way creators make them, the retake cut struck every planted take and nothing that was meant to&nbsp;stay.</p>
       </div>
-      <figure class="system" aria-label="What runs where: footage, transcription and rendering stay on your Mac. Anthropic gets the words and the edit, GitHub answers the update check, and other services get nothing unless you add their keys.">
-        <div class="system-mac">
-          <p class="system-name">Your Mac</p>
-          <ul class="system-parts">
-            <li>Your footage</li>
-            <li><span class="mono">whisper.cpp</span>: the words</li>
-            <li><span class="mono">ffmpeg</span>: the cut</li>
-            <li>Your projects and brand</li>
-          </ul>
+      <ul class="tiles">
+        <li class="tile block-blue reveal"><p class="tile-label">Running time</p><p class="tile-number num">0:39</p><p class="tile-note">down from <span class="num">1:13</span></p></li>
+        <li class="tile block-pink reveal"><p class="tile-label">Struck</p><p class="tile-number num">10</p><p class="tile-note">7 other takes and 3 false&nbsp;starts</p></li>
+        <li class="tile block-green reveal"><p class="tile-label">Cut by mistake</p><p class="tile-number num">0</p><p class="tile-note">“Never, never” and “again and again” both&nbsp;stayed</p></li>
+      </ul>
+      <div class="proof-grid">
+        <figure class="proof-page reveal" aria-label="The script after the cut, with the retakes struck through and pencilled notes in the margin: the false starts and earlier takes are struck; the take that plays and the lines said twice on purpose stay.">
+          <p class="page-head"><span>The script, v2</span><span class="page-rev">Blue pages</span></p>
+          <ol class="script" aria-hidden="true">
+            <li><span class="n">4</span><span class="w">Let’s start with the camera.</span></li>
+            <li><span class="n">5</span><span class="w">I’ve been using this phone <s>for three ye…</s></span><span class="note">a false start</span></li>
+            <li><span class="n">6</span><span class="w">for three years now, and the battery still lasts all day.</span></li>
+            <li class="cut"><span class="n">9</span><span class="w"><s>The RTX 5090 is the fastest graphics ca…</s></span><span class="note">three false starts</span></li>
+            <li class="cut"><span class="n">10</span><span class="w"><s>The RTX 5090 is the fa…</s></span></li>
+            <li class="cut"><span class="n">11</span><span class="w"><s>ugh.</s></span></li>
+            <li class="cut"><span class="n">12</span><span class="w"><s>The RTX 5090 is the fastest graphics card you can b…</s></span></li>
+            <li class="cut"><span class="n">13</span><span class="w"><s>The RTX 5090 is the fastest graphics card you can buy right now.</s></span><span class="note">an earlier take</span></li>
+            <li class="keep"><span class="n">14</span><span class="w">The RTX 5090 is the fastest graphics card you can buy right now.</span><span class="note">the take that plays</span></li>
+            <li class="cut"><span class="n">15</span><span class="w"><s>This laptop has the best battery I’ve tested this year.</s></span></li>
+            <li><span class="n">16</span><span class="w">This laptop has the best battery life I’ve tested all year.</span></li>
+            <li class="keep"><span class="n">17</span><span class="w">Never, never buy a laptop with eight gigabytes of memory.</span><span class="note">said twice on purpose</span></li>
+            <li><span class="n">18</span><span class="w">I tested it again and again and again.</span></li>
+          </ol>
+        </figure>
+        <div class="proof-aside reveal">
+          <p class="proof-reply"><span class="proof-mark">{{> mark-tile}}</span>“v2 is ready. I kept the best take of 4 lines and removed 7 other takes, 3 false starts and 2.0&nbsp;s of dead air. It runs 0:39, down from&nbsp;1:13.”</p>
+          <details class="method">
+            <summary>How this was measured</summary>
+            <p>An 85&#8209;second test recording made for Cutalong’s own checks. A speech synthesiser read a tech review with the intro redone at the end, one line said five times, sentences broken off, a groan and a laugh. Cutalong’s transcription wrote it down with the app’s own prompt settings, <span class="mono">/takes</span> cut it, and the cut was scored word by word against the log of what was planted. The lines are shown as they were said. It is one recording, not an average, and real speech is&nbsp;messier.</p>
+          </details>
         </div>
-        <ol class="system-out">
-          <li><span class="system-wire">The words and the edit</span><span class="system-node">Anthropic</span></li>
-          <li><span class="system-wire">Updates</span><span class="system-node">GitHub</span></li>
-          <li><span class="system-wire">Only with your keys</span><span class="system-node system-node-off">Other services</span></li>
-        </ol>
-      </figure>
+      </div>
     </div>
   </section>
+
 
   <section class="how" id="how" aria-labelledby="how-title">
     <div class="container">
-      <h2 id="how-title">Drop it, say it, refine&nbsp;it</h2>
+      <div class="section-head reveal">
+        <h2 id="how-title">Drop it, say it, refine&nbsp;it</h2>
+      </div>
       <ol class="steps">
-        <li class="step">
+        <li class="step reveal">
+          <span class="sticker sticker-yellow step-sticker" aria-hidden="true"><span>1</span></span>
           <h3>Drop every file from the shoot</h3>
-          <p>It sorts the talking, the better sound and the&nbsp;B&#8209;roll.</p>
-          <div class="plate step-plate" data-slot="step-drop" data-kind="product" data-alt="The redesigned app sorting a dropped shoot into talking, better sound and B-roll, 1200 by 900">
-            <div class="app step-drop" aria-hidden="true">
+          <p>Talking takes, the better microphone and the B&#8209;roll. It sorts them, lines the better sound up with the picture, and writes down every word, on your&nbsp;Mac.</p>
+          <div class="step-sheet" data-slot="step-drop" data-kind="product" data-alt="The redesigned app sorting a dropped shoot into talking, better sound and B-roll, 1200 by 900">
+            <div class="app app-drop" aria-hidden="true">
               <p class="app-group">Talking</p>
-              <ul class="app-files app-files-start">
-                <li class="app-file"><span class="app-poster"></span><span class="app-file-name">talking-01.mov</span></li>
-                <li class="app-file"><span class="app-poster"></span><span class="app-file-name">talking-02.mov</span></li>
-              </ul>
+              <p class="app-file"><span class="app-poster"></span><span class="app-name mono">key-light-a.mov</span><span class="app-len mono">1:39</span></p>
               <p class="app-group">Better sound</p>
-              <ul class="app-files app-files-start">
-                <li class="app-file"><span class="app-poster app-poster-audio">{{> icon-wave}}</span><span class="app-file-name">rode-mic.wav</span></li>
-              </ul>
-              <p class="app-group">B-roll</p>
-              <ul class="app-files app-files-start">
-                <li class="app-file"><span class="app-poster app-poster-light"></span><span class="app-file-name">desk-close.mov</span></li>
-                <li class="app-file"><span class="app-poster app-poster-light"></span><span class="app-file-name">street-03.mov</span></li>
-              </ul>
+              <p class="app-file"><span class="app-poster app-poster-sound">{{> icon-wave}}</span><span class="app-name mono">lav-mic.wav</span><span class="app-len mono">in sync</span></p>
+              <p class="app-group">B&#8209;roll</p>
+              <p class="app-file"><span class="app-poster app-poster-light"></span><span class="app-name mono">softbox-close.mov</span><span class="app-len mono">0:12</span></p>
             </div>
           </div>
         </li>
-        <li class="step">
+        <li class="step reveal">
+          <span class="sticker sticker-pink step-sticker" aria-hidden="true"><span>2</span></span>
           <h3>Say what you want</h3>
-          <p>Plain English or a slash command, each change a&nbsp;version.</p>
-          <div class="plate step-plate" data-slot="step-say" data-kind="product" data-alt="The redesigned app's composer with a request typed and the slash menu open, 1200 by 900">
-            <div class="app step-say" aria-hidden="true">
-              <p class="app-bubble">Make the hook punchier</p>
-              <p class="app-bubble">Keep the calendar shot in colour</p>
-              <div class="app-composer">
-                <p class="app-menu"><span class="app-mono">/shorts</span><span class="app-mono">/captions</span><span class="app-mono">/hook</span><span class="app-mono">/tighten</span></p>
-                <p class="app-composer-text"><span class="app-mono">/sh</span><span class="app-caret"></span></p>
-              </div>
+          <p>In your own words, or with a slash command. Every answer is a new version, on the next colour of page, so nothing is&nbsp;lost.</p>
+          <div class="step-sheet" data-slot="step-say" data-kind="product" data-alt="The redesigned app's composer with the slash menu open, 1200 by 900">
+            <div class="app app-say" aria-hidden="true">
+              <ul class="app-menu">
+                <li class="on"><span class="mono">/takes</span><span>The best take of each line</span></li>
+                <li><span class="mono">/tighten</span><span>Pauses and ums out</span></li>
+                <li><span class="mono">/shorts</span><span>Vertical, with captions</span></li>
+                <li><span class="mono">/length</span><span>To the length you say</span></li>
+              </ul>
+              <p class="app-composer-say"><span class="mono">/t</span><span class="app-send">{{> icon-up}}</span></p>
             </div>
           </div>
         </li>
-        <li class="step">
-          <h3>Refine it, then export</h3>
-          <p>Pick a stretch on the beat strip and leave notes on&nbsp;it.</p>
-          <div class="plate step-plate" data-slot="step-refine" data-kind="product" data-alt="The redesigned editor with a stretch picked on the beat strip and a note on it, 1200 by 900">
-            <div class="app step-refine" aria-hidden="true">
-              <div class="app-note"><span class="app-note-n">1</span><span>Four beats come in with a dissolve</span></div>
-              <p class="app-versions"><span class="app-mono">v3</span> Picked stretch, 0:12 to 0:31</p>
-              <div class="app-strip">
-                <span class="app-time">0:12</span>
-                <span class="app-beats pick-beats">
-                  <i></i><i class="picked"></i><i class="picked on"></i><i class="picked"></i><i class="picked"></i><i></i><i></i>
-                  <b class="app-pick"></b><b class="app-playhead"></b>
-                </span>
-              </div>
+        <li class="step reveal">
+          <span class="sticker sticker-green step-sticker" aria-hidden="true"><span>3</span></span>
+          <h3>Refine it on the script</h3>
+          <p>Pick a stretch on the strip or the script, pencil a note in the margin, and apply your notes as the next&nbsp;version.</p>
+          <div class="step-sheet step-sheet-pink" data-slot="step-refine" data-kind="product" data-alt="The redesigned app's script with a note pencilled in the margin and the notes applied as v3, 1200 by 900">
+            <div class="app app-refine" aria-hidden="true">
+              <p class="app-line picked"><span class="n">12</span>The second light is the fill light.</p>
+              <p class="app-margin"><b>1</b>Hold on the reflector a beat longer</p>
+              <p class="app-line"><span class="n">13</span>The fill light should be softer than the key light.</p>
+              <p class="app-apply"><span class="app-ver app-ver-3">v3</span>Apply 2 notes as v3</p>
             </div>
           </div>
         </li>
@@ -193,216 +235,171 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
 
   <section class="makes" id="makes" aria-labelledby="makes-title">
     <div class="container">
-      <h2 id="makes-title">From any recording to the&nbsp;upload</h2>
-      <div class="jobs">
-        <fieldset class="seg" aria-label="What Cutalong makes, by where you start">
-          <input type="radio" name="job" id="job-raw" value="raw" checked><label for="job-raw">Raw footage</label>
-          <input type="radio" name="job" id="job-clips" value="clips"><label for="job-clips">Long recordings</label>
-          <input type="radio" name="job" id="job-vlog" value="vlog"><label for="job-vlog">A day of clips</label>
-          <input type="radio" name="job" id="job-brand" value="brand"><label for="job-brand">Your brand</label>
-          <input type="radio" name="job" id="job-upload" value="upload"><label for="job-upload">Ready to upload</label>
-          <span class="seg-pill" aria-hidden="true"></span>
-        </fieldset>
-
-        <div class="job job-raw">
+      <div class="section-head reveal">
+        <h2 id="makes-title">From any recording to the&nbsp;upload</h2>
+      </div>
+      <div class="bento">
+        <article class="job job-raw block-blue reveal" aria-labelledby="job-raw">
           <div class="job-copy">
-            <h3>Raw footage to a finished video</h3>
-            <p>Retakes and pauses go, and the better sound lines&nbsp;up.</p>
-            <ul class="job-list">
-              <li>Shorts, captions, hooks, looks, music on the beat, sound effects, transitions, punch&#8209;ins, camera moves, chapters</li>
-              <li>Lower thirds, charts, counters, screenshots and device&nbsp;frames</li>
-              <li>“Remove my intro”, blurred fill, and export to&nbsp;Premiere</li>
-            </ul>
+            <h3 id="job-raw">Raw footage to a finished video</h3>
+            <p>Retakes and pauses go, the better sound lines up, and it cuts to the length you ask for, within 1.5&nbsp;seconds of a minute or 4 of&nbsp;ten.</p>
           </div>
-          <div class="plate job-plate" data-slot="job-raw" data-kind="product" data-alt="The redesigned editor with a command run on a picked stretch, 1400 by 1000">
-            <div class="app job-raw-app" aria-hidden="true">
-              <p class="app-chips"><span>/shorts</span><span>/captions</span><span>/hook</span><span>/music</span><span>/transition</span><span>/punchin</span><span>/lowerthird</span><span>/chapters</span><span>/premiere</span></p>
-              <div class="app-well app-well-tall">
-                <div class="app-frame app-frame-tall"><span class="app-third"><b>The $40 camera</b><span>Chapter 1</span></span><span class="app-caption">it fits in a pocket</span></div>
-              </div>
+          <div class="job-art" data-slot="job-raw" data-kind="product" data-alt="The redesigned editor with a command applied, 2400 by 1500">
+            <div class="app app-raw" aria-hidden="true">
+              <p class="app-bubble">Make it vertical and add captions</p>
+              <p class="app-reply">v3 is ready. It is vertical now, 9:16, and captions show three words at a time.</p>
+              <span class="app-short"><span class="app-short-cap">softer than the key</span></span>
             </div>
           </div>
-        </div>
+        </article>
 
-        <div class="job job-clips">
+        <article class="job job-clips block-pink reveal" aria-labelledby="job-clips">
           <div class="job-copy">
-            <h3>Long recordings to clips</h3>
-            <p><span class="mono">/clipping</span> finds the moments that stand on their own in a stream, a Sunday service or a&nbsp;podcast.</p>
+            <h3 id="job-clips">Long recordings to clips</h3>
+            <p><span class="mono">/clipping</span> finds the moments that stand on their own in a stream, a service or a podcast, and makes each a vertical, captioned&nbsp;edit.</p>
             <ul class="job-list">
-              <li>Leaves out the worship set, the announcements, the BRB screen and the sponsor&nbsp;read</li>
-              <li>Each clip is vertical, captioned and its own&nbsp;edit</li>
-              <li><span class="mono">/clipping 10</span> or <span class="mono">/clipping the funny parts</span></li>
+              <li>It leaves out the worship set, the announcements and the sponsor&nbsp;read</li>
             </ul>
           </div>
-          <div class="plate job-plate" data-slot="job-clips" data-kind="product" data-alt="The redesigned app showing the clips /clipping found in a long recording, 1400 by 1000">
-            <div class="app job-clips-app" aria-hidden="true">
-              <div class="app-turn">
-                <span class="app-avatar">{{> mark-white}}</span>
-                <p class="app-reply">I found 8 clips in <span class="app-mono">sunday-service.mp4</span>.</p>
-              </div>
-              <ul class="app-shorts">
-                <li><span class="app-short"><span class="app-caption">grace is not earned</span></span><span class="app-mono">0:41</span></li>
-                <li><span class="app-short"><span class="app-caption">he left the ninety-nine</span></span><span class="app-mono">0:58</span></li>
-                <li><span class="app-short"><span class="app-caption">start where you are</span></span><span class="app-mono">0:33</span></li>
-                <li><span class="app-short"><span class="app-caption">the table is long</span></span><span class="app-mono">0:52</span></li>
-              </ul>
-              <p class="app-actions"><span class="app-btn app-btn-primary">Export all 8</span><span class="app-btn">Open the first</span></p>
-            </div>
-          </div>
-        </div>
+          <ul class="bubbles" data-slot="job-clips" data-kind="product" data-alt="The clips /clipping found, as round thumbnails with their lengths, 2400 by 1500" aria-hidden="true">
+            <li class="bubble bubble-1"><span class="mono">0:41</span></li>
+            <li class="bubble bubble-2"><span class="mono">0:58</span></li>
+            <li class="bubble bubble-3"><span class="mono">0:33</span></li>
+            <li class="bubble bubble-4"><span class="mono">0:52</span></li>
+            <li class="bubble-plus">{{> icon-plus}}</li>
+          </ul>
+        </article>
 
-        <div class="job job-vlog">
+        <article class="job job-vlog block-yellow reveal" aria-labelledby="job-vlog">
           <div class="job-copy">
-            <h3>A day of clips to a vlog</h3>
-            <p>Drop the day and say “make a vlog”. It watches every clip and tells the day as a&nbsp;story.</p>
-            <ul class="job-list">
-              <li>Leaves out the shaky, dark, pocket and repeated&nbsp;clips</li>
-              <li>A tease, the day in order, the payoff and a&nbsp;close</li>
-              <li><span class="mono">/vlog 8 min</span>, and the next day’s clips join&nbsp;it</li>
+            <h3 id="job-vlog">A day of clips to a vlog</h3>
+            <p>Drop the day and say “make a vlog”. It reads the clock each clip was shot on, leaves out the shaky, dark and repeated ones, and tells the day as a&nbsp;story.</p>
+          </div>
+          <ol class="app app-story" data-slot="job-vlog" data-kind="product" data-alt="The redesigned app's vlog: the day told as tease, scenes in order and close, 2400 by 1500" aria-hidden="true">
+            <li><span class="mono">Tease</span><span>The laughter at 13:40</span></li>
+            <li><span class="mono">8:40</span><span>The café</span></li>
+            <li><span class="mono">12:15</span><span>Up the ridge</span></li>
+            <li><span class="mono">19:30</span><span>The estuary at dusk</span></li>
+            <li><span class="mono">Close</span><span>You, saying it was the best day</span></li>
+          </ol>
+        </article>
+
+        <article class="job job-brand block-green reveal" aria-labelledby="job-brand">
+          <div class="job-copy">
+            <h3 id="job-brand">Your channel’s brand</h3>
+            <p>One brand per channel: your logo, your caption style and how you talk, learned from videos you have already made. A never list keeps out what you never&nbsp;use.</p>
+          </div>
+          <div class="app app-brand" data-slot="job-brand" data-kind="product" data-alt="The redesigned app's Brand page, 2400 by 1500" aria-hidden="true">
+            <span class="avatar"><span class="avatar-shape avatar-soft"></span><span class="avatar-shape avatar-blob"></span><span class="avatar-shape avatar-flower"></span></span>
+            <p class="app-brand-name">Lighting at home</p>
+            <p class="app-never"><span>Never</span>whooshes on this channel</p>
+          </div>
+        </article>
+
+        <article class="job job-upload block-gold reveal" aria-labelledby="job-upload">
+          <div class="job-copy">
+            <h3 id="job-upload">Ready to upload</h3>
+            <p>Beside every export: captions as <span class="mono">.srt</span> and <span class="mono">.vtt</span>, a description with chapters, three titles and 10 to 15 tags, written from your&nbsp;words.</p>
+          </div>
+          <ul class="app app-files" data-slot="job-upload" data-kind="product" data-alt="The files beside an export, 2400 by 1500" aria-hidden="true">
+            <li><span class="mono">three-lights.mp4</span><span>0:59</span></li>
+            <li><span class="mono">three-lights.srt</span><span>captions</span></li>
+            <li><span class="mono">description.txt</span><span>with chapters</span></li>
+            <li><span class="mono">titles-and-tags.txt</span><span>3 titles, 12 tags</span></li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="mac" id="mac" aria-labelledby="mac-title">
+    <div class="container">
+      <div class="mac-block block-green">
+        <div class="mac-copy reveal">
+          <h2 id="mac-title">Your footage never leaves your&nbsp;Mac</h2>
+          <dl class="facts">
+            <div><dt>The work happens here</dt><dd><span class="mono">whisper.cpp</span> writes down the words and <span class="mono">ffmpeg</span> renders, both on your&nbsp;Mac.</dd></div>
+            <div><dt>Your own key</dt><dd>You pay Anthropic directly, only for what you&nbsp;use.</dd></div>
+            <div><dt>What Claude sees</dt><dd>Your words and the edit, plus three small stills from each vlog moment unless you switch them&nbsp;off.</dd></div>
+          </dl>
+        </div>
+        <figure class="system reveal" aria-label="What runs where: footage, transcription and rendering stay on your Mac. Anthropic gets the words and the edit, GitHub answers the update check, and other services get nothing unless you add their keys.">
+          <div class="system-mac">
+            <p class="system-name">Your Mac</p>
+            <ul class="system-parts">
+              <li>Your footage</li>
+              <li><span class="mono">whisper.cpp</span>, the words</li>
+              <li><span class="mono">ffmpeg</span>, the cut</li>
+              <li>Your projects and brands</li>
             </ul>
           </div>
-          <div class="plate job-plate" data-slot="job-vlog" data-kind="product" data-alt="The redesigned app's vlog: the day told as tease, scenes in order and close, 1400 by 1000">
-            <div class="app job-vlog-app" aria-hidden="true">
-              <ol class="app-story">
-                <li><span class="app-mono">Tease</span><span>The laughter at 13:40</span></li>
-                <li><span class="app-mono">8:40</span><span>The café</span></li>
-                <li><span class="app-mono">12:15</span><span>Up the ridge</span></li>
-                <li><span class="app-mono">13:40</span><span>Lunch at the top</span></li>
-                <li><span class="app-mono">19:30</span><span>The estuary at dusk</span></li>
-                <li><span class="app-mono">Close</span><span>You, saying it was the best day</span></li>
-              </ol>
-              <p class="app-aside">I left out 11 clips: 6 shaky, 3 from a pocket and 2 repeats.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="job job-brand">
-          <div class="job-copy">
-            <h3>Your channel’s brand</h3>
-            <p>One brand per channel: your logo, caption style and how you talk, learned from videos you have&nbsp;made.</p>
-            <ul class="job-list">
-              <li>A never list: “never use whooshes on this channel”</li>
-              <li>B&#8209;roll sources: channels to look in first, and ones never to&nbsp;use</li>
-              <li>New edits pick up your default brand by&nbsp;themselves</li>
-            </ul>
-          </div>
-          <div class="plate job-plate" data-slot="job-brand" data-kind="product" data-alt="The redesigned Brand page with a never list and B-roll sources, 1400 by 1000">
-            <div class="app job-brand-app" aria-hidden="true">
-              <p class="app-brand-name"><span class="app-logo">ES</span>Example Studio<span class="app-muted">Default brand</span></p>
-              <div class="app-card">
-                <p class="app-card-title">Never</p>
-                <p class="app-row"><span>Whooshes</span><span class="app-muted">said in a chat</span></p>
-                <p class="app-row"><span>Transitions</span><span class="app-muted">set here</span></p>
-              </div>
-              <div class="app-card">
-                <p class="app-card-title">B-roll sources</p>
-                <p class="app-row"><span>Look in first</span><span class="app-mono">2 channels</span></p>
-                <p class="app-row"><span>Never use</span><span class="app-mono">1 channel</span></p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="job job-upload">
-          <div class="job-copy">
-            <h3>Ready to upload</h3>
-            <p>Beside every export: captions, a description with chapters, three titles and 10 to 15&nbsp;tags.</p>
-            <ul class="job-list">
-              <li>Captions as <span class="mono">.srt</span> and <span class="mono">.vtt</span>, word for word</li>
-              <li>Chapters from where your sections&nbsp;change</li>
-              <li>Claude writes the titles and tags with your key, or your Mac makes them from your&nbsp;words</li>
-            </ul>
-          </div>
-          <div class="plate job-plate" data-slot="job-upload" data-kind="product" data-alt="The files the redesigned app writes beside an export, 1400 by 1000">
-            <div class="app job-upload-app" aria-hidden="true">
-              <ul class="app-folder">
-                <li><span class="app-mono">the-40-dollar-camera.mp4</span><span class="app-muted">9:58</span></li>
-                <li><span class="app-mono">the-40-dollar-camera.srt</span><span class="app-muted">captions</span></li>
-                <li><span class="app-mono">the-40-dollar-camera.vtt</span><span class="app-muted">captions</span></li>
-                <li><span class="app-mono">description.txt</span><span class="app-muted">with chapters</span></li>
-                <li><span class="app-mono">titles-and-tags.txt</span><span class="app-muted">3 titles, 12 tags</span></li>
-              </ul>
-              <div class="app-card app-desc">
-                <p class="app-mono">0:00 Why $40</p>
-                <p class="app-mono">1:12 The light</p>
-                <p class="app-mono">3:05 The sound</p>
-                <p class="app-mono">7:40 What I would change</p>
-              </div>
-            </div>
-          </div>
-        </div>
+          <ol class="system-out">
+            <li><span class="system-wire">The words and the edit</span><span class="system-node">Anthropic</span></li>
+            <li><span class="system-wire">The update check</span><span class="system-node">GitHub</span></li>
+            <li><span class="system-wire">Only with your keys</span><span class="system-node system-node-off">Other services</span></li>
+          </ol>
+        </figure>
       </div>
     </div>
   </section>
 
   <section class="questions" id="questions" aria-labelledby="questions-title">
     <div class="container questions-grid">
-      <h2 id="questions-title">Before you download</h2>
-      <div class="qa">
+      <h2 id="questions-title" class="reveal">Questions</h2>
+      <div class="qa reveal">
         <details>
-          <summary>Do I need an API key?</summary>
+          <summary>Do I need an API key?<span class="qa-plus" aria-hidden="true"></span></summary>
           <p>Yes, an Anthropic API key, for turning what you say into edits. Cutalong walks you through making one. Slash commands, length cuts and exports work without&nbsp;it.</p>
         </details>
         <details>
-          <summary>What does it cost?</summary>
+          <summary>What does it cost?<span class="qa-plus" aria-hidden="true"></span></summary>
           <p>What Claude does is billed to your own Anthropic account, at Anthropic’s prices, so you pay for what you use. Cutalong’s own price: <span class="fill" data-fill="price">to be set by the owner</span>.</p>
         </details>
         <details>
-          <summary>What does Claude see?</summary>
+          <summary>What does Claude see?<span class="qa-plus" aria-hidden="true"></span></summary>
           <p>The words of your recording and the edit, never the footage. For a vlog it also sees three small stills from each moment, unless you turn off “Let Claude see frames from my footage” in&nbsp;Settings.</p>
         </details>
         <details>
-          <summary>Does it work offline?</summary>
+          <summary>Does it work offline?<span class="qa-plus" aria-hidden="true"></span></summary>
           <p>Mostly. Once the transcription model has downloaded, transcription, slash commands, length cuts, the editor and export run with no connection. Turning a sentence into an edit needs Claude, or a model on your Mac through Ollama, which works offline though not as&nbsp;well.</p>
+        </details>
+        <details>
+          <summary>Which Macs does it run on?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Macs with Apple silicon on macOS 14 Sonoma or later. The transcription and vision helpers are built for macOS&nbsp;14.</p>
         </details>
       </div>
     </div>
   </section>
 
-  <section class="soon" id="soon" aria-labelledby="soon-title">
-    <div class="container soon-grid">
-      <div class="soon-copy">
-        <h2 id="soon-title">Being built now</h2>
-        <form class="signup" action="{{signupAction}}" method="post" data-signup="{{signupState}}" novalidate>
-          <label for="signup">{{^downloadReady}}Hear when Cutalong is ready{{/downloadReady}}{{#downloadReady}}Hear when these ship{{/downloadReady}}</label>
-          <div class="signup-row">
-            <input id="signup" name="{{signupField}}" type="email" autocomplete="email" inputmode="email" enterkeyhint="send" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="254" required aria-describedby="signup-help">
-            <button class="btn btn-quiet" type="submit" {{signupDisabled}}>Tell me</button>
-          </div>
-          <p class="signup-help" id="signup-help" data-signup-help aria-live="polite">{{^downloadReady}}One email when it’s ready, and nothing&nbsp;else.{{/downloadReady}}{{#downloadReady}}One email for each of these, and nothing&nbsp;else.{{/downloadReady}}</p>
-          <input type="hidden" name="source" value="soon" data-signup-source>
-          <p class="signup-trap" aria-hidden="true"><label>Leave this empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label></p>
-        </form>
-      </div>
-      <ul class="soon-list">
-        <li><h3>Phone apps</h3><p>Cutalong on iPhone and&nbsp;Android.</p><span class="soon-state">Coming soon</span></li>
-        <li><h3>Documentaries from a prompt</h3><p>Cinematic documentaries and animated explainers, made from what you&nbsp;describe.</p><span class="soon-state">Coming soon</span></li>
-        <li><h3>Map documentaries</h3><p>A story told across a map, place by&nbsp;place.</p><span class="soon-state">Coming soon</span></li>
-        <li><h3>Talking-head graphics</h3><p>Graphics beside you as you talk, and a 2×2 grid of&nbsp;speakers.</p><span class="soon-state">Coming soon</span></li>
-      </ul>
-    </div>
-  </section>
-
-  <section class="close" id="download" aria-labelledby="close-title">
-    <div class="container close-grid">
-      <div class="close-copy">
-        <h2 id="close-title">Start with the footage you&nbsp;have</h2>
-        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
-        {{^downloadReady}}<a class="btn btn-primary" href="#signup" data-notify="close">Get notified when it’s ready</a>{{/downloadReady}}
-        <dl class="needs-list">
-          <div><dt>Mac</dt><dd>Apple silicon</dd></div>
-          <div><dt>macOS</dt><dd>14 Sonoma or later</dd></div>
-          <div><dt>Claude</dt><dd>Your own Anthropic API key</dd></div>
-        </dl>
-      </div>
-      <div class="plate close-plate" data-slot="start" data-kind="product" data-alt="The redesigned app's first screen, 1400 by 1000">
-        <div class="app start-app" aria-hidden="true">
-          <p class="app-title">What are we making?</p>
-          <div class="app-composer app-composer-start">
-            <p class="app-composer-text app-placeholder">Drop footage, paste a video you like, or type /</p>
-            <span class="app-send">{{> icon-up}}</span>
-          </div>
-          <p class="app-presets"><span>/tighten</span><span>/shorts</span><span>/captions</span><span>/hook</span></p>
+  <section class="close" id="soon" aria-labelledby="signup-title">
+    <div class="container">
+      <div class="close-block block-pink">
+        <div class="close-copy reveal">
+          {{^downloadReady}}<span class="sticker sticker-yellow close-sticker" aria-hidden="true"><span>1<small>email</small></span></span>
+          <h2 id="signup-title">Hear when it’s <em>ready</em></h2>
+          <p class="lead">Cutalong is being finished now. Leave your address for one email, the day you can download&nbsp;it.</p>{{/downloadReady}}
+          {{#downloadReady}}<h2 id="signup-title">Start with the footage you&nbsp;<em>have</em></h2>
+          <a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>
+          <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>{{/downloadReady}}
+          <form class="signup" action="{{signupAction}}" method="post" data-signup="{{signupState}}" novalidate>
+            <label for="signup">{{^downloadReady}}Your email address{{/downloadReady}}{{#downloadReady}}Hear when these ship{{/downloadReady}}</label>
+            <div class="signup-row">
+              <input id="signup" name="{{signupField}}" type="email" autocomplete="email" inputmode="email" enterkeyhint="send" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="254" required aria-describedby="signup-help">
+              <button class="btn btn-primary" type="submit" {{signupDisabled}}>Tell me</button>
+            </div>
+            <p class="signup-help" id="signup-help" data-signup-help aria-live="polite">{{^downloadReady}}One email when it’s ready, and nothing&nbsp;else.{{/downloadReady}}{{#downloadReady}}One email for each of these, and nothing&nbsp;else.{{/downloadReady}}</p>
+            <input type="hidden" name="source" value="soon" data-signup-source>
+            <p class="signup-trap" aria-hidden="true"><label>Leave this empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label></p>
+          </form>
+        </div>
+        <div class="soon reveal" aria-labelledby="soon-title">
+          <h3 id="soon-title">Also being built</h3>
+          <ul class="soon-list">
+            <li><span>Phone apps for iPhone and Android</span><span class="soon-state">Coming soon</span></li>
+            <li><span>Documentaries and animated explainers from a prompt</span><span class="soon-state">Coming soon</span></li>
+            <li><span>Map documentaries, told place by place</span><span class="soon-state">Coming soon</span></li>
+            <li><span>Talking-head graphics, and a 2×2 grid of speakers</span><span class="soon-state">Coming soon</span></li>
+          </ul>
         </div>
       </div>
     </div>
@@ -411,7 +408,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
 
 <footer class="footer">
   <div class="container">
-    <p class="footer-line">Cut along with any edit you&nbsp;love.</p>
+    <p class="footer-line">Cut along with any edit you&nbsp;<em>love</em>.</p>
     <div class="footer-row">
       {{> lockup}}
       <ul class="footer-links">

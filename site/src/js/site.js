@@ -46,52 +46,36 @@ document.querySelectorAll('[data-loop]').forEach((el) => {
   for (const type of ['scroll', 'pointermove', 'touchstart', 'keydown']) addEventListener(type, engage, { once: true, passive: true })
 })
 
-// ---- The page's beat strip: the section you are reading is the beat in ink, and the playhead sits on your place.
-const strip = document.querySelector('[data-strip]')
-if (strip) {
-  const links = [...strip.querySelectorAll('a[href^="#"]')]
-  const sections = links.map((a) => document.getElementById(a.hash.slice(1))).filter(Boolean)
-  const playhead = strip.querySelector('[data-playhead]')
-  const beats = strip.querySelector('.strip-beats')
-  let queued = false
-  let current = -1
-
-  const place = () => {
-    queued = false
-    if (!strip.offsetParent) return
-    const line = innerHeight * 0.4
-    let index = -1
-    let progress = 0
-    sections.forEach((section, i) => {
-      const box = section.getBoundingClientRect()
-      if (box.top <= line) {
-        index = i
-        progress = Math.min(1, Math.max(0, (line - box.top) / Math.max(1, box.height)))
-      }
-    })
-    // At the end of the page the last beat is reached even when the last section is short.
-    if (innerHeight + scrollY >= document.documentElement.scrollHeight - 2) {
-      index = sections.length - 1
-      progress = 1
-    }
-    if (index !== current) {
-      links.forEach((a, i) => (i === index ? a.setAttribute('aria-current', 'true') : a.removeAttribute('aria-current')))
-      current = index
-    }
-    const width = beats.getBoundingClientRect().width
-    const x = index < 0 ? 0 : ((index + progress) / sections.length) * width
-    playhead.style.transform = `translateX(${x.toFixed(1)}px)`
-  }
-  const queue = () => {
-    if (!queued) {
-      queued = true
-      requestAnimationFrame(place)
-    }
-  }
-  addEventListener('scroll', queue, { passive: true })
-  addEventListener('resize', queue)
-  place()
+// ---- The header takes a hairline once the page has moved under it.
+const slab = document.querySelector('.slab')
+if (slab) {
+  const mark = () => slab.classList.toggle('is-scrolled', scrollY > 8)
+  addEventListener('scroll', mark, { passive: true })
+  mark()
 }
+
+// ---- The living mark breathes only while it can be seen.
+if ('IntersectionObserver' in window) {
+  document.querySelectorAll('[data-living]').forEach((el) =>
+    new IntersectionObserver(([entry]) => el.classList.toggle('is-asleep', !entry.isIntersecting)).observe(el)
+  )
+}
+
+// ---- Arrivals: each part floats up and settles once, as it comes into view. With less motion the CSS shows it as it is.
+const reveals = document.querySelectorAll('.reveal')
+if (reveals.length && 'IntersectionObserver' in window) {
+  const seen = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        entry.target.classList.add('is-in')
+        seen.unobserve(entry.target)
+      }
+    },
+    { rootMargin: '0px 0px -8% 0px', threshold: 0.12 }
+  )
+  reveals.forEach((el) => seen.observe(el))
+} else reveals.forEach((el) => el.classList.add('is-in'))
 
 // ---- The email list. Wired to the list's Function (functions/api/signup.js), it posts there and shows the reply;
 // without script it posts the ordinary way and the Function answers with a page. Unwired, it sends nothing and says so.
@@ -182,6 +166,3 @@ document.querySelectorAll('[data-slot] img').forEach((img) => {
   if (img.complete && !img.naturalWidth) img.remove()
   else img.addEventListener('error', () => img.remove(), { once: true })
 })
-
-// ---- The switcher: its panels fade in when you change them, never on the first paint.
-document.querySelectorAll('.jobs').forEach((jobs) => requestAnimationFrame(() => jobs.classList.add('is-ready')))

@@ -27,6 +27,7 @@ check(typeof config.downloadReady === 'boolean', 'downloadReady should be true o
 check(/^https:\/\//.test(config.downloadUrl), 'downloadUrl should be an https:// address')
 check(!config.signupAction || /^(https:\/\/|\/[a-z])/.test(config.signupAction), 'signupAction should be empty, a path like /api/signup, or https://')
 check(/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(config.contactEmail), 'contactEmail should be an address')
+check(['echo', 'snip', 'quill', 'scout', 'tint', 'reel'].every((id) => config.crew?.[id]?.name && config.crew[id].line), 'crew needs echo, snip, quill, scout, tint and reel, each with a name and a line')
 
 const ORIGIN = `https://${config.domain}`
 // A path such as /api/signup is a Pages Function, which a preview copy does not have: there the form stays unwired.
@@ -96,7 +97,9 @@ for (const page of PAGES) {
     robots: preview || page.name === '404' ? 'noindex' : 'index, follow',
     signupAction,
     signupDisabled: signupAction ? '' : 'disabled',
-    signupState: signupAction ? 'ready' : 'unwired'
+    signupState: signupAction ? 'ready' : 'unwired',
+    // The crew's names and lines as {{echoName}}, {{echoLine}} and so on, from the one place they live.
+    ...Object.fromEntries(Object.entries(config.crew).flatMap(([id, c]) => [[`${id}Name`, c.name], [`${id}Line`, c.line]]))
   }
   let html = render(template.replace(/^<!--page[\s\S]*?-->\s*/, ''), ctx, rootAbsolute)
   check(!/\{\{/.test(html), `${page.file} has a tag the build did not fill`)
@@ -127,8 +130,8 @@ writeFileSync(
       description: 'A video editor you talk to, for YouTube creators.',
       start_url: '/',
       display: 'browser',
-      background_color: '#F5F5F3',
-      theme_color: '#FFFFFF',
+      background_color: '#F7F4F0',
+      theme_color: '#F7F4F0',
       icons: [
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
         { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }

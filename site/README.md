@@ -12,7 +12,8 @@ npm run serve        # builds into dist/ and serves it at http://localhost:4321
 ```
 
 `serve` behaves like Cloudflare Pages closely enough to test against: clean URLs, the rules in `_headers` (including
-the content security policy) and `_redirects`, the 404 page, and the list's Function at `/api/signup`. The addresses
+the content security policy) and `_redirects`, the 404 page, compressed text (so a local Lighthouse run measures what
+ships), and the list's Function at `/api/signup`. The addresses
 you send it are kept in memory and gone when it stops. For Cloudflare's own runtime, with a local store that persists:
 
 ```bash
@@ -44,6 +45,7 @@ Everything you might change is in [`site.config.mjs`](site.config.mjs):
 | `contactEmail` | The address in the footer, the legal drafts and the list's replies. | `hello@cutalong.io` |
 | `owner` | The name in the footer and the legal drafts. | from `electron-builder.yml` |
 | `requires` | What the current release needs, for the structured data. | macOS 14 or later, Apple silicon |
+| `crew` | The crew's names and the one line each says for itself under “Meet your crew”. The hero's working rows and credit line use the names too. They are proposals: rename one here and every page follows. Keep each line to work the app really does. | Echo, Snip, Quill, Scout, Tint, Reel |
 
 The form's `action` also feeds the content security policy's `form-action`, so a provider's address works without
 editing headers.
@@ -153,17 +155,32 @@ first scroll, pointer move, touch or key, so a page left alone (and Lighthouse) 
 
 | Slot | What belongs there | Size |
 | --- | --- | --- |
-| `hero-loop` | A 10 to 20 second loop: footage dropped in, a request, the new version in the editor | 2400 × 1000 |
+| `hero-loop` | A 10 to 20 second loop of the redesigned editor: a request typed, the crew at work, the new version on its coloured pages | 2400 × 1240 |
 | `step-drop`, `step-say`, `step-refine` | The three steps: a drop being sorted, the composer with the slash menu, a picked stretch with a note | 1200 × 900 |
-| `job-raw`, `job-clips`, `job-vlog`, `job-brand`, `job-upload` | The editor with a command, the clips `/clipping` found, a vlog's story, the Brand page, the files beside an export | 2400 × 1000 |
-| `start` | The app's first screen | 1400 × 1000 |
+| `job-raw`, `job-clips`, `job-vlog`, `job-brand`, `job-upload` | The editor with a command, the clips `/clipping` found, a vlog's story, the Brand page, the files beside an export | 2400 × 1500 |
 
-Keep a loop under 2 MB (H.264 MP4, or WebM), muted, with a poster frame.
+Keep a loop under 2 MB (H.264 MP4, or WebM), muted, with a poster frame. The hero's stickers, its time badge and
+Snip on the strip sit outside the slot, so they stay over a capture; take them out of `src/index.html` if the capture
+shows the same thing.
+
+## Shapes, the crew and the fonts
+
+`npm run shapes` redraws everything on the page that is drawn by code rather than kept as a picture: the living mark
+(`src/img/living-a.svg` and `living-b.svg`, a soft blob in two layers that turn against each other), the scalloped
+sticker edge, the three brand-avatar shapes, and the crew, one SVG partial each in `src/partials/crew-*.html`. The crew
+take their colours from the page (`--crew-*` in `src/css/tokens.css`): the revision pastels, with coral for Snip alone,
+because coral is the cut. Their names come from `crew` in the config, never from the partials.
+
+The faces are Figtree (headings and everything you read on the page), Source Serif 4 (what you read in the product,
+and one italic accent in a heading) and JetBrains Mono (timecode and file names), all self-hosted. Source Serif 4 is
+three subsets of the variable font, cut to Latin with fonttools at fixed optical sizes: text roman and italic, and the
+display italic at weight 440 for the accents. `src/fonts/SourceSerif4-OFL.txt` is its licence.
 
 ## Images, checks and tests
 
 ```bash
 npm run images       # redraws the favicons, app icons and social cards from the mark (needs Playwright)
+npm run shapes       # redraws the living mark, the sticker edge, the avatar shapes and the crew
 npm run check        # screenshots at 1440, 1024, 768 and 390, light and dark, and a keyboard pass (needs Playwright)
 npm test             # the list's Function: valid, invalid, missing, honeypot, a KV failure, with a fake KV
 npm run test:e2e     # the form against the real Function under wrangler pages dev (needs Playwright; runs Wrangler with npx)

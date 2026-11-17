@@ -1,5 +1,5 @@
 // Looks at the built site the way a visitor would: full-page screenshots at 1440, 1024, 768 and 390, light and dark,
-// and checks that fail loudly: sideways scroll, console errors, focus you cannot see, and the switcher and questions by keyboard.
+// and checks that fail loudly: sideways scroll, console errors, focus you cannot see, and the email field and questions by keyboard.
 //
 //   npm run serve   (in another terminal), then
 //   npm run check [-- --url http://localhost:4321 --out .checks]
@@ -43,6 +43,15 @@ for (const scheme of ['light', 'dark']) {
       const wide = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
       if (wide > 0) problems.push(`${scheme} ${width} ${path}: scrolls sideways by ${wide}px`)
       if (path === '/' || width === 390) {
+        // Scroll through once, as a reader would, so every arrival has happened before the shot.
+        await page.evaluate(async () => {
+          for (let y = 0; y < document.documentElement.scrollHeight; y += 300) {
+            scrollTo(0, y)
+            await new Promise((r) => setTimeout(r, 30))
+          }
+          scrollTo(0, 0)
+        })
+        await page.waitForTimeout(600)
         const name = `${path === '/' ? 'home' : path.slice(1)}-${width}-${scheme}.png`
         await page.screenshot({ path: join(OUT, name), fullPage: true })
       }
@@ -51,7 +60,7 @@ for (const scheme of ['light', 'dark']) {
   }
 }
 
-// Keyboard: every stop shows a focus ring, the switcher moves with the arrows, a question opens with Enter.
+// Keyboard: every stop shows a focus ring, "Get notified" reaches the email field, a question opens with Enter.
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 await page.goto(BASE + '/', { waitUntil: 'networkidle' })
 const stops = []
@@ -70,10 +79,14 @@ for (let i = 0; i < 40; i++) {
   stops.push(stop)
   if (!stop.ring) problems.push(`keyboard: no visible focus on "${stop.name}"`)
 }
-await page.focus('#job-raw')
-await page.keyboard.press('ArrowRight')
-const job = await page.evaluate(() => [...document.querySelectorAll('.job')].find((j) => getComputedStyle(j).display !== 'none')?.className)
-if (!/job-clips/.test(job || '')) problems.push(`keyboard: the arrow key did not move the switcher (showing ${job})`)
+// The hero's "Get notified" leads to the email field (once there is a release, the download is there instead).
+const notify = page.locator('a[data-notify="hero"]')
+if (await notify.count()) {
+  await notify.focus()
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(200)
+  if ((await page.evaluate(() => document.activeElement?.id)) !== 'signup') problems.push('keyboard: Enter on "Get notified" did not reach the email field')
+}
 await page.focus('.qa summary')
 await page.keyboard.press('Enter')
 if (!(await page.evaluate(() => document.querySelector('.qa details').open))) problems.push('keyboard: Enter did not open the first question')

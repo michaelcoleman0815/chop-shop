@@ -77,7 +77,7 @@ try {
   await step('no download is offered before there is a release', async () => {
     assert.equal(await page.getByText('Download for Mac').count(), 0)
     assert.equal(await page.locator('a[href*="github.com"]').count(), 0)
-    assert.equal(await page.getByRole('link', { name: 'Get notified when it’s ready' }).count(), 2)
+    assert.equal(await page.getByRole('link', { name: 'Get notified when it’s ready' }).count(), 1)
   })
 
   await step('the hero’s button leads to the email field and notes where it came from', async () => {
@@ -87,7 +87,7 @@ try {
     // The jump scrolls smoothly; it lands with the heading and the label in view above the field, below the header.
     await page.waitForFunction(() => {
       const field = document.querySelector('#signup').getBoundingClientRect()
-      const heading = document.querySelector('#soon-title').getBoundingClientRect()
+      const heading = document.querySelector('#signup-title').getBoundingClientRect()
       const header = document.querySelector('.slab').getBoundingClientRect()
       return heading.top >= header.bottom && field.bottom <= innerHeight
     }, null, { timeout: 5000 })

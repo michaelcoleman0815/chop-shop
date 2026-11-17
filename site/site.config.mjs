@@ -34,5 +34,17 @@ export default {
 
   // What the current release needs. electron-builder builds arm64 only; the shipped whisper-cli and
   // Vision helper are built for macOS 14, so transcription cannot start on anything older.
-  requires: 'macOS 14 Sonoma or later, on a Mac with Apple silicon'
+  requires: 'macOS 14 Sonoma or later, on a Mac with Apple silicon',
+
+  // The crew: one small character per real job, with the names and colours the app uses (the owner's crew notes).
+  // The names are proposals the owner can change here; the page reads them from nowhere else.
+  // `line` is what each says for itself in "Meet your crew"; keep it to work the app really does.
+  crew: {
+    echo: { name: 'Echo', line: 'I write down every word, and hear the pauses and the beat.' },
+    snip: { name: 'Snip', line: 'I cut the retakes and the slack, to the length you ask for.' },
+    quill: { name: 'Quill', line: 'I write the captions, the titles, the chapters and the description.' },
+    scout: { name: 'Scout', line: 'I find the B-roll, the music and the sound effects.' },
+    tint: { name: 'Tint', line: 'I set the look: colour, effects, graphics and motion.' },
+    reel: { name: 'Reel', line: 'I get it out: Shorts, clips, vertical crops and the upload kit.' }
+  }
 }
