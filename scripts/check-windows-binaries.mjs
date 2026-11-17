@@ -6,7 +6,8 @@
  * Each binary's imports are read from its PE header. Every DLL it loads at
  * start must be beside it, or part of Windows (in System32, and not the
  * Visual C++ runtime, which PCs have only when some program installed it).
- * A DLL loaded only when used (a delay-load) is listed, not required.
+ * A DLL loaded only when used (a delay-load) is listed, not required. DLLs
+ * and native modules must be x64; a program may also be 32-bit.
  *
  *   check-windows-binaries.mjs           what the app ships, before packaging
  *   check-windows-binaries.mjs <dir>...  every .exe, .dll and .node in them
@@ -142,8 +143,11 @@ for (const file of files.sort()) {
   const line = `${basename(file)} (${arch}, ${kb} KB)${own.length ? `, with ${own.join(', ')} beside it` : ''}${
     info.delayed.length ? `; loads when used: ${info.delayed.join(', ')}` : ''
   }`
-  if (arch !== 'x64') {
-    console.log(`::error::${file} is ${arch}, not x64`)
+  // A DLL or native module loads into the 64-bit app, so it must be x64. A program runs on its own, and x64
+  // Windows runs a 32-bit one too: electron-builder's elevate.exe, for installing with an administrator's rights.
+  const loaded = /\.(dll|node)$/i.test(file)
+  if (arch !== 'x64' && (loaded || arch !== 'x86')) {
+    console.log(`::error::${file} is ${arch}: ${loaded ? 'the 64-bit app cannot load it' : 'x64 Windows cannot run it'}`)
     fail = true
   } else if (missing.length) {
     const level = windows ? 'error' : 'warning'
