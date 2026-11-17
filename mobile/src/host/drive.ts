@@ -5,10 +5,11 @@ import { Engine } from './engine'
 /**
  * The app's own flow, run by the app itself on an emulator or a simulator
  * in CI (mobile/ci): pick footage, sort and transcribe it, make v1, apply a
- * command, open the editor and export. Built in only when CUTALONG_DRIVE=1
- * at build time (vite.config.ts), and it runs only when the app finds
- * drive.json in its documents, which only the runner can put there (adb
- * run-as on a debuggable build, or the simulator's container).
+ * command, open the editor and export, then open Settings' Licences. Built
+ * in only when CUTALONG_DRIVE=1 at build time (vite.config.ts), and it runs
+ * only when the app finds drive.json in its documents, which only the runner
+ * can put there (adb run-as on a debuggable build, or the simulator's
+ * container).
  *
  * drive.json: { "files": ["Talking.mp4"], "request": "…", "command": "/shorts" }.
  * The files are already in documents/Imported, where the engine's importer
@@ -52,7 +53,7 @@ export function withPlannedPicks(engine: EnginePlugin): EnginePlugin {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-const text = (el: Element | null | undefined): string => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
+const text = (node: Node | null | undefined): string => (node?.textContent ?? '').replace(/\s+/g, ' ').trim()
 
 type Maybe<T> = T | null | undefined | false
 
@@ -267,8 +268,26 @@ export async function drive(): Promise<void> {
     document.querySelector('.cl-export')?.scrollIntoView({ block: 'start' })
     report.exportReply = replies().filter((r) => /exported/i.test(r))
     await step('export-in-chat')
-
     report.exports = (await files.list(platform().paths.exports())).filter((e) => e.file).map((e) => e.name)
+
+    // Settings' Licences: what the app is built with, with FFmpeg's licence open.
+    ;(await until('the menu', () => button('Menu'), 10)).click()
+    const settings = (): HTMLButtonElement | undefined =>
+      [...document.querySelectorAll<HTMLButtonElement>('.cl-rail.open button')].find((b) => text(b) === 'Settings')
+    ;(await until('Settings in the menu', settings, 10)).click()
+    const licences = await until('the licences', () => document.querySelector('#set-licences')?.closest('section'), 30)
+    ;(await until('FFmpeg in the licences', () => button('Read the licence of FFmpeg'), 30)).click()
+    await until(
+      "FFmpeg's licence",
+      () => /LESSER GENERAL PUBLIC LICENSE/i.test(text(licences.querySelector('.cl-licence'))),
+      30
+    )
+    licences.scrollIntoView({ block: 'start' })
+    report.licences = {
+      listed: [...licences.querySelectorAll('.cl-list > li .cl-list-main')].map((e) => text(e.firstChild)),
+      sourceOffer: text(licences.querySelector('.cl-aside'))
+    }
+    await step('licences')
     report.ok = true
   } catch (err) {
     report.failed = err instanceof Error ? err.message : String(err)

@@ -27,6 +27,8 @@ import { loadSettings } from './settings'
  */
 
 declare const __APP_VERSION__: string
+/** The commit the app was built from (vite.config.ts), for the source offer in Settings' Licences. */
+declare const __APP_COMMIT__: string
 
 /** The faces captions are drawn with, from resources/fonts, bundled into the app. */
 const FONTS: Record<string, string> = {
@@ -162,6 +164,8 @@ export async function startPhone(options: StartOptions = {}): Promise<CutalongHo
       reveal: null,
       savesTo: 'Photos',
       models: ['base.en', 'small.en'],
+      // public/licences, fetched by scripts/licences.mjs, and the page's own packages, listed when it is built.
+      licences: { notices: './licences/notices.json', packages: './licences/packages.json', commit: __APP_COMMIT__ },
       away: {
         ...commandsOnTheMac(),
         'feature:vlog': ON_THE_MAC.vlog,

@@ -21,6 +21,13 @@ export interface Device {
   away: Record<string, string>
   /** The transcription models offered here, smallest first; all of them when absent. */
   models?: ('base.en' | 'small.en' | 'medium.en')[]
+  /**
+   * Where the licences of what the app is built with are, on a device that
+   * carries them inside the app (a phone, mobile/public/licences), and the
+   * commit it was built from, which the source offer names. Settings shows
+   * them; absent on a computer.
+   */
+  licences?: { notices: string; packages: string; commit: string }
 }
 
 export const COMPUTER: Device = {

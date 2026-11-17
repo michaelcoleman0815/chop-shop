@@ -17,7 +17,8 @@ import sys
 
 OUT = sys.argv[1]
 FOOTAGE = sys.argv[2]
-STEPS = ["start", "composer", "transcribing", "v1", "command", "editor", "exporting", "exported", "export-in-chat"]
+STEPS = ["start", "composer", "transcribing", "v1", "command", "editor", "exporting", "exported", "export-in-chat",
+         "licences"]
 
 problems = []
 
@@ -71,6 +72,9 @@ for r in report.get("repliesAfterFootage", []):
 print(f"  versions: {report.get('versionsAfterCommand') or report.get('versionsAfterFootage')}")
 print(f"  {plan['command']}: {report.get('replyToCommand')}")
 print(f"  toast: {report.get('toast')}")
+licences = report.get("licences") or {}
+print(f"  licences: {', '.join(licences.get('listed', [])) or 'none'}")
+print(f"  source offer: {licences.get('sourceOffer')}")
 before = report.get("versionsAfterFootage") or []
 after = report.get("versionsAfterCommand") or []
 if report.get("ok") and len(after) <= len(before):

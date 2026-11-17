@@ -6,13 +6,15 @@ import { Button } from '../components/ui'
 import { ClaudeFrames, ClaudeWrites } from './ClaudeFrames'
 import { grow } from '../motion'
 import { Header } from './Header'
+import { Licences } from './Licences'
 import { OtherServices } from './OtherServices'
 import { Planning } from './Planning'
 
 /**
  * The few things that belong to this computer rather than to an edit: the
  * Claude key, the transcription model, where exports go, whose sign-in video
- * links may borrow, and updates. Each change saves as it is made.
+ * links may borrow, and updates. Each change saves as it is made. On a phone,
+ * also the licences of what the app is built with (Licences.tsx).
  */
 
 type Model = Settings['whisperModel']
@@ -332,6 +334,8 @@ export function SettingsPage(): JSX.Element {
               </div>
             </section>
           )}
+
+          {device.licences && <Licences where={device.licences} version={version} />}
         </div>
       </main>
     </>

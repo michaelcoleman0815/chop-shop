@@ -1,8 +1,9 @@
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
+import { execFileSync } from 'child_process'
+import { readdirSync, readFileSync } from 'fs'
+import { join, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 
 /**
  * The phone app's page: the Mac's React app (src/renderer/src/cutalong) on
@@ -18,12 +19,71 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 const root = resolve(here, '..')
 const version = (JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { version: string }).version
 
+/** The commit the app is built from, which the source offer in Settings' Licences names. */
+function commit(): string {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: here, encoding: 'utf8' }).trim()
+  } catch {
+    return ''
+  }
+}
+
+interface PackageJson {
+  name: string
+  version: string
+  license?: string | { type?: string }
+  licenses?: { type?: string }[]
+}
+
+/**
+ * The npm packages the page is built from, each with its licence, written
+ * as licences/packages.json beside what scripts/licences.mjs fetched for
+ * the engine, the fonts and the models.
+ */
+function packageLicences(): Plugin {
+  return {
+    name: 'cutalong-package-licences',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const dirs = new Set<string>()
+      for (const file of Object.values(bundle)) {
+        if (file.type !== 'chunk') continue
+        for (const id of Object.keys(file.modules)) {
+          const path = id.replace(/^\0/, '').split('?')[0]
+          const at = path.lastIndexOf('/node_modules/')
+          if (at < 0) continue
+          const [scope, name] = path.slice(at + '/node_modules/'.length).split('/')
+          dirs.add(join(path.slice(0, at), 'node_modules', scope.startsWith('@') ? `${scope}/${name}` : scope))
+        }
+      }
+      const packages = new Map<string, { name: string; version: string; licence: string; text: string | null }>()
+      for (const dir of dirs) {
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as PackageJson
+        const licence =
+          typeof pkg.license === 'string'
+            ? pkg.license
+            : (pkg.license?.type ?? pkg.licenses?.map((l) => l.type).join(' or ') ?? 'see the package')
+        const file = readdirSync(dir).find((f) => /^(licen[cs]e|copying)(\.|-|$)/i.test(f))
+        const text = file ? readFileSync(join(dir, file), 'utf8').replace(/\r\n?/g, '\n').trim() : null
+        packages.set(`${pkg.name}@${pkg.version}`, { name: pkg.name, version: pkg.version, licence, text })
+      }
+      this.emitFile({
+        type: 'asset',
+        fileName: 'licences/packages.json',
+        source: JSON.stringify([...packages.values()].sort((a, b) => a.name.localeCompare(b.name)))
+      })
+    }
+  }
+}
+
 export default defineConfig({
   root: here,
   base: './',
-  plugins: [react()],
+  plugins: [react(), packageLicences()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
+    __APP_COMMIT__: JSON.stringify(commit()),
     __DRIVE__: JSON.stringify(process.env.CUTALONG_DRIVE === '1')
   },
   resolve: {

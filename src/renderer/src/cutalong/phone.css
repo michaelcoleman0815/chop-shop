@@ -407,6 +407,34 @@
   min-width: 0;
 }
 
+/* ---------- Licences, at the end of Settings ---------- */
+
+/* A licence opens under its name, the whole width of the row. */
+.cl-app.phone .cl-licences .cl-list li {
+  flex-wrap: wrap;
+}
+
+.cl-app.phone .cl-licence,
+.cl-app.phone .cl-licence-packages {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.cl-app.phone .cl-licence {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: var(--space-4);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Motion ---------- */
 
 /* The menu's shade fades in under it, as menus appear. */
