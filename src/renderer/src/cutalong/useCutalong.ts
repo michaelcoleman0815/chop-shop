@@ -148,7 +148,7 @@ import { withHabits } from '../../../shared/learn/habits'
 import { clippingAsked, vlogOfClip, withDoc } from '../../../shared/clipping'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
-import { failureOf } from '../../../shared/failure'
+import { renderFailure } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import {
   brandTag,
@@ -3591,9 +3591,13 @@ export function useCutalong() {
     [push, studyGone]
   )
 
+  /** An export tried again from its reply: the version on screen, or the clips that did not go out. Set below, with exportFinal. */
+  const retry = useRef<(payload: string) => void>(() => undefined)
+
   const onAction = useCallback(
     (a: Action): void => {
       if (a.kind === 'open-editor') setScreen('editor')
+      else if (a.kind === 'retry' && a.payload) retry.current(a.payload)
       else if (a.kind === 'open-settings') setScreen('settings')
       else if (a.kind === 'use-style') useStyle()
       else if (a.kind === 'run-command' && a.payload) void runCommand(a.payload)
@@ -3803,9 +3807,15 @@ export function useCutalong() {
     try {
       const r = await during(() => api.renderCut({ doc: d, quality: 'final' }))
       if (!r.ok) {
-        // ffmpeg's own lines go behind Details, never into the sentence or the toast.
-        const failed = failureOf(r.message)
-        patch(id, { progress: null, text: `I couldn't export v${n}. ${failed.text}`, details: failed.details, error: true })
+        // ffmpeg's own lines go behind Details, never into the sentence or the toast; when it stopped, it can go again.
+        const failed = renderFailure(r)
+        patch(id, {
+          progress: null,
+          text: `I couldn't export v${n}. ${failed.text}`,
+          details: failed.details,
+          error: true,
+          actions: failed.details ? [{ kind: 'retry', label: 'Try again', payload: 'export' }] : undefined
+        })
         setToast({ text: `I couldn't export v${n}. The chat says why.`, error: true })
         return
       }
@@ -3829,6 +3839,10 @@ export function useCutalong() {
       exportingNow.current = null
     }
   }, [during, patch, push])
+  retry.current = (payload: string): void => {
+    if (payload === 'export') void exportFinal()
+    else if (payload.startsWith('clips:')) void clipping.exportAll(payload.slice('clips:'.length).split(','))
+  }
 
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {

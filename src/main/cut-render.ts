@@ -48,6 +48,7 @@ import {
 } from '../shared/edit'
 import { presetById } from '../shared/caption-presets'
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
+import type { ToolSaid } from '../shared/failure'
 import { buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
 import { makeSfx } from './sfx'
@@ -1245,13 +1246,40 @@ export function runRender(
     })
     child.stderr.on('data', (d) => (stderr = (stderr + d.toString()).slice(-8000)))
     child.on('error', reject)
-    child.on('close', (code) => {
+    child.on('close', (code, killed) => {
       if (code === 0) {
         onProgress(1)
         resolve()
-      } else reject(new Error(stderr.trim().split('\n').slice(-6).join('\n') || `ffmpeg exited with ${code}`))
+        return
+      }
+      // Its last lines, and how it stopped when a signal stopped it: that leaves no line of its own.
+      const said = stderr.trim().split('\n').slice(-6)
+      said.push(killed ? `ffmpeg was stopped by ${killed}.` : `ffmpeg exited with code ${code}.`)
+      reject(new RenderStopped(said.filter((l) => l.trim()).join('\n'), killed))
     })
   })
+}
+
+/**
+ * ffmpeg stopped before the file was whole: with an error of its own, or
+ * killed by a signal. The message is the sentence the person reads; what
+ * ffmpeg printed, and how it stopped, wait in `said` for Details
+ * (shared/failure). SIGKILL is what the system sends when it runs short of
+ * memory, and ffmpeg prints nothing about it, so that is said as a maybe.
+ */
+export class RenderStopped extends Error implements ToolSaid {
+  readonly tool = 'ffmpeg'
+  constructor(
+    readonly said: string,
+    readonly signal: NodeJS.Signals | null = null
+  ) {
+    super(
+      signal === 'SIGKILL'
+        ? 'The renderer was stopped before it finished, perhaps because the Mac ran short of memory, so nothing was saved.'
+        : 'The renderer stopped partway, so nothing was saved.'
+    )
+    this.name = 'RenderStopped'
+  }
 }
 
 export interface RenderCutOptions {

@@ -25,6 +25,17 @@ export function failureOf(message: string): { text: string; details?: Detail[] }
 }
 
 /**
+ * A failed render as the chat says it: the main process's sentence, with
+ * what ffmpeg said behind Details when it sent that along (main/cut-render's
+ * RenderStopped), else as failureOf reads the message.
+ */
+export function renderFailure(r: { message: string; details?: Detail[] }): { text: string; details?: Detail[] } {
+  const said = failureOf(r.message)
+  const details = r.details?.length ? r.details : said.details
+  return details?.length ? { text: said.text, details } : { text: said.text }
+}
+
+/**
  * What a tool printed before it stopped, kept on the error that says so in a
  * sentence (main/transcribe's WhisperFailed): the person reads the sentence,
  * and the lines wait behind Details.
