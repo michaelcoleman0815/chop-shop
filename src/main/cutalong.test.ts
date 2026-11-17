@@ -74,6 +74,7 @@ vi.mock('./audio-envelope', () => ({ loudnessEnvelope: async () => ({ hopSec: 0.
 import { registerCutalongIpc } from './cutalong'
 import { saveSettings } from './store'
 import { createDoc, wordsFromTranscript } from '../shared/edit'
+import { keyMessage } from '../shared/setup'
 import { findFfmpeg, NO_FFMPEG } from './providers/testing'
 
 const FOUND = findFfmpeg()
@@ -290,7 +291,8 @@ describe('planning edits', () => {
     summary: 'The um is gone.',
     reply: 'Done.',
     notesHandled: [],
-    needs: []
+    needs: [],
+    question: { text: '', options: [] }
   }
   const env = process.env.ANTHROPIC_API_KEY
 
@@ -310,8 +312,9 @@ describe('planning edits', () => {
     vi.stubGlobal('fetch', local)
     expect(await invoke('cut:plan', { doc, request: 'Cut the um.', notes: [] })).toEqual({
       ok: false,
-      message: 'Add your Anthropic API key in Settings and I can work on this.',
-      needsKey: true
+      message: keyMessage('none'),
+      needsKey: true,
+      keyState: 'none'
     })
     expect(local).not.toHaveBeenCalled()
   })

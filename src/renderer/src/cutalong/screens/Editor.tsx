@@ -7,12 +7,9 @@ import {
   cameraClock,
   cameraPlan,
   cameraTransform,
-  captionedWords,
-  captionPages,
   changesColour,
   currentCut,
   currentVersion,
-  cutsPicked,
   undoTarget,
   cutawayAt,
   cutawayClock,
@@ -78,13 +75,16 @@ import {
   type MotionScene
 } from '../../../../shared/motion'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
+import { captionStyleFor, subtitleAt, subtitleCues, subtitleWords } from '../../../../shared/subtitles'
 import { isImagePath } from '../../../../shared/assets'
 import { api, mediaUrlFor } from '../api'
 import { Backdrop } from '../components/Backdrop'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
+import { fitHeight } from '../components/Composer'
 import { GraphicPanel } from '../components/GraphicPanel'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { RegionPicker } from '../components/RegionPicker'
+import { Subtitles } from '../components/Subtitles'
 import { CrewFace } from '../components/Crew'
 import { Sticker } from '../components/Shapes'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
@@ -120,6 +120,12 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
+  // Captions take the colours of the brand this version is made in, where the export gives them those:
+  // when that brand applies itself.
+  const captionColors = useMemo(
+    () => (app.chatBrand.autoApply ? app.chatBrand.colors : null),
+    [app.chatBrand]
+  )
   // The cut's graphics on the output clock, in the look of the brand this version is made in: what the export draws.
   const scene = useMemo(
     () =>
@@ -251,6 +257,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             mediaUrl={app.mediaUrl}
             selected={selected}
             onRegion={(box) => selected && app.updateGraphic(selected.id, { box })}
+            captionColors={captionColors}
           />
           {side === 'script' ? (
             <ScriptPanel
@@ -314,7 +321,6 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
 }
 
 const ASPECT: Record<string, number> = { vertical: 9 / 16, square: 1, wide: 16 / 9 }
-const CAPTION_TOP: Record<string, number> = { top: 0.22, middle: 0.52, chest: 0.66, bottom: 0.84 }
 
 function Preview({
   doc,
@@ -328,13 +334,16 @@ function Preview({
   views,
   mediaUrl,
   selected,
-  onRegion
+  onRegion,
+  captionColors
 }: {
   doc: EditDoc
   resolved: Resolved
   /** The cut as the decks play it, with beats shown through other cameras. */
   seen: { resolved: Resolved; sources: Source[] }
   scene: MotionScene
+  /** The brand's colours, which the export gives captions when the brand applies itself. */
+  captionColors: { text: string; accent: string } | null
   selected: MotionItem | null
   onRegion: (box: number[]) => void
   time: number
@@ -369,17 +378,22 @@ function Preview({
 
   const beat = beatAt(resolved, time)
   const treatment = beat ? cut.beats[beat.index]?.treatment : undefined
-  // Beats whose captions are off show none, as the export has it.
-  const pages = useMemo(
-    () => captionPages(captionedWords(cut, resolved), cut.captions.wordsPerScreen),
-    [cut, resolved]
+  // The captions the export burns in: its words (none from beats with captions off, or while a card
+  // is up), its cues, and its look at its own size, in the brand's colours when it has them.
+  const captionStyle = useMemo(
+    () => captionStyleFor(cut.captions, scene.size.width, captionColors),
+    [cut.captions, scene.size.width, captionColors]
   )
-  // Captions the graphics draw are on the canvas, not here; and captions wait while a card or title is up.
-  const carded = scene.items.some((i) => i.covers === 'card' && time >= i.start && time < i.end)
-  const page =
-    cut.captions.on && !drawsCaptions(cut.captions) && !carded
-      ? pages.find((p) => time >= p[0].outStart - 0.05 && time <= p[p.length - 1].outEnd + 0.25)
-      : undefined
+  const cues = useMemo(() => {
+    // Captions the graphics draw are on the motion canvas instead.
+    if (!cut.captions.on || drawsCaptions(cut.captions)) return []
+    const words = subtitleWords(cut, resolved, scene).words
+    return subtitleCues(
+      words.map((w) => ({ text: w.text, startSec: w.outStart, endSec: w.outEnd })),
+      captionStyle.wordsPerGroup
+    )
+  }, [cut, resolved, scene, captionStyle])
+  const cue = subtitleAt(cues, time)
   const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined
   const showBig = big && time >= big.outStart - 0.1 && time <= big.outEnd + 0.7
   // The look's colour, through the same matrix the export uses; a LUT shows in the export only.
@@ -459,22 +473,14 @@ function Preview({
             {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}
           </div>
         )}
-        {page && !showBig && (
-          <div
-            className={`cl-caption${treatment?.frame === 'card' && treatment.broll ? ' on-card' : ''}`}
-            style={{
-              top: `${CAPTION_TOP[cut.captions.position] * 100}%`,
-              fontSize: Math.max(12, Math.round(box.h * 0.042))
-            }}
-          >
-            {page.map((w, i) => (
-              <span key={w.id} className={time >= w.outStart ? 'on' : 'off'}>
-                {i > 0 ? ' ' : ''}
-                {cut.captions.uppercase ? w.text.toUpperCase() : w.text}
-              </span>
-            ))}
-          </div>
-        )}
+        <Subtitles
+          cue={showBig ? null : cue}
+          style={captionStyle}
+          frame={scene.size}
+          time={time}
+          width={box.w}
+          height={box.h}
+        />
         <MotionCanvas scene={scene} assets={doc.assets} time={time} width={box.w} height={box.h} />
         {selected && template(selected.kind)?.fields.some((f) => f.slot === 'box') && (
           <RegionPicker item={selected} onPick={onRegion} />
@@ -927,13 +933,14 @@ function NotesPanel({
   const version = currentVersion(doc)
   const notes = openNotes(doc)
   const beats = currentCut(doc).beats
+  // A v1 shaped by the words sent with the footage is not the recording as shot: it says what it is.
   const status: PanelStatus = app.panel ?? {
     text:
-      version.n === 1
-        ? doc.make
-          ? `v1 is the ${doc.make.brief.format} in ${beats.length} shots. Ask for a shot again, or leave notes as you watch.`
-          : `v1 is the recording in ${beats.length} beats. Leave notes as you watch, or type / for a preset.`
-        : `v${version.n} is ready. ${version.summary}`
+      version.n === 1 && doc.make
+        ? `v1 is the ${doc.make.brief.format} in ${beats.length} shots. Ask for a shot again, or leave notes as you watch.`
+        : version.n === 1 && version.ops.length === 0
+          ? `v1 is the recording in ${beats.length} beats. Leave notes as you watch, or type / for a preset.`
+          : `v${version.n} is ready. ${version.summary}`
   }
   const position = (id: string | null): string => {
     const i = beats.findIndex((b) => b.id === id)
@@ -960,6 +967,15 @@ function NotesPanel({
               <Working progress={status.progress} since={status.since} big mark={44} helpers={noteCrew} />
             ) : (
               <p className="cl-reply">{status.text}</p>
+            )}
+            {!status.progress && (status.actions?.length ?? 0) > 0 && (
+              <div className="cl-actions">
+                {status.actions!.map((a) => (
+                  <Button key={a.kind + a.label} variant="secondary" small onClick={() => app.onAction(a)}>
+                    {a.label}
+                  </Button>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -1022,10 +1038,9 @@ function NotesPanel({
               range ? (nowBeat && range.includes(nowBeat) ? nowBeat : range[0]) : nowBeat,
               range ? { from: range[0], to: range[range.length - 1] } : null
             )
+          // A slash command runs now; anything else is a note, which Claude reads when the notes are applied.
           if (command) void app.runCommand(command.command, 'panel', command.rest, time, range)
-          else if (range && cutsPicked(text)) app.cutBeats(range, 'panel')
-          // A rule for the never list is taken; whatever else was said with it is a note.
-          else if (!app.answerInPanel(text, note)) note(text)
+          else note(text)
         }}
       />
     </aside>
@@ -1048,10 +1063,12 @@ function NoteInput({
 }): JSX.Element {
   const [text, setText] = useState('')
   const [pick, setPick] = useState(0)
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   const query = slashQuery(text)
   const matches = query === null ? [] : suggestCommands(query, presets, 5)
   useEffect(() => setPick(0), [query])
+  // One thin line, growing with a longer note as the chat's box does.
+  useEffect(() => fitHeight(input.current), [text])
   const send = (): void => {
     const value = text.trim()
     if (!value) return
@@ -1088,9 +1105,10 @@ function NoteInput({
       <label className="sr-only" htmlFor="cl-note">
         {placeholder}
       </label>
-      <input
+      <textarea
         id="cl-note"
         ref={input}
+        rows={1}
         value={text}
         placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}
@@ -1104,7 +1122,7 @@ function NoteInput({
             }
             // Enter runs a command typed in full; it completes one typed in part.
             const runs = e.key === 'Enter' && namesCommand(query, matches)
-            if (!runs && (e.key === 'Tab' || e.key === 'Enter')) {
+            if (!runs && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey))) {
               e.preventDefault()
               choose(matches[Math.min(pick, matches.length - 1)].command)
               return
@@ -1115,7 +1133,8 @@ function NoteInput({
               return
             }
           }
-          if (e.key === 'Enter') {
+          // Enter adds the note; Shift+Enter starts a new line in it.
+          if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
             send()
           }

@@ -30,10 +30,14 @@ export interface Action {
     | 'run-command'
     | 'copy'
     | 'make'
+    /** Sends its words as the person's next message: an answer to a question Claude asked. */
+    | 'say'
+    /** Opens the steps for the Anthropic key, on Start. */
+    | 'setup-key'
     | 'strip-never'
   label: string
   primary?: boolean
-  /** A command name for save-style and run-command, a path for reveal, the text for copy, JSON for the asset actions. */
+  /** A command name for save-style and run-command, a path for reveal, the text for copy or say, JSON for the asset actions. */
   payload?: string
   /** A small picture shown in the button, as a data URL. */
   icon?: string

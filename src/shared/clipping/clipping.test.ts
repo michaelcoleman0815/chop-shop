@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { currentCut, currentVersion, resolveCut, undoTarget } from '../edit'
 import { PLANTED, PODCAST, SERVICE, STREAM, type Planted } from './fixtures'
 import { factsOf, momentSpan } from './testing'
-import { clippingAsked, readClipAsk } from './ask'
+import { readClipAsk } from './ask'
 import { measureRecording, planRecording } from './plan'
 import { fitPick, shapePicks } from './shape'
 import { clipDoc } from './doc'
@@ -370,28 +370,6 @@ describe('reading what is asked', () => {
     expect(readClipAsk('the sermon').profile).toBe('church')
     // "as" is not "a second", and the recording is not a topic.
     expect(readClipAsk('clips of this stream as shorts')).toMatchObject({ length: null, topic: null })
-  })
-
-  it('hears a request for clips without the command, and nothing else', () => {
-    for (const t of [
-      'find clips',
-      'Find the best moments',
-      'clip this stream',
-      'make 5 clips from this',
-      'turn this into clips'
-    ]) {
-      expect(clippingAsked(t), t).not.toBeNull()
-    }
-    for (const t of [
-      'make the intro shorter',
-      'add this clip as b-roll',
-      'cut the clip at 0:20',
-      '/clipping',
-      'clip it at the end'
-    ]) {
-      expect(clippingAsked(t), t).toBeNull()
-    }
-    expect(clippingAsked('clip this stream, the funny parts')).toMatchObject({ funny: true, profile: 'livestream' })
   })
 })
 

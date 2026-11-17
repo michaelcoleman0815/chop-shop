@@ -1,11 +1,20 @@
 import './app-paths'
-import { app, shell, BrowserWindow, ipcMain, dialog, desktopCapturer, systemPreferences } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, desktopCapturer, nativeTheme, systemPreferences } from 'electron'
 import { join, basename, extname } from 'path'
 import { createHash } from 'crypto'
 import { existsSync, statSync, promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { mediaBase, mediaUrl, startMediaServer } from './media-server'
-import { probe, exportClip, buildFromSegments, runFfmpeg, FFMPEG_PATH, FFPROBE_PATH, leadingQuiet } from './ffmpeg'
+import {
+  probe,
+  exportClip,
+  buildFromSegments,
+  runFfmpeg,
+  FFMPEG_PATH,
+  FFPROBE_PATH,
+  H264_ENCODER,
+  leadingQuiet
+} from './ffmpeg'
 import { autoZooms } from './autozoom'
 import { buildTimelineRender } from './timeline'
 import { readEpr } from './epr'
@@ -38,6 +47,9 @@ import {
 } from './updater'
 import { registerCutalongIpc } from './cutalong'
 import { registerMapIpc } from './maps-ipc'
+import { selfCheck } from './self-check'
+import { patchRenames } from './windows-rename'
+import { thisComputer } from '../shared/platform'
 import type {
   AspectPreset,
   Transcript,
@@ -54,6 +66,9 @@ import type {
   AnalysisOptions
 } from '../shared/types'
 
+// On Windows a save renamed over a file something is reading waits for it, rather than failing.
+patchRenames()
+
 const SIX_HOURS = 6 * 60 * 60 * 1000
 
 let mainWindow: BrowserWindow | null = null
@@ -67,6 +82,28 @@ export function mediaUrlFor(path: string): string {
   return mediaUrl(path)
 }
 
+/**
+ * Windows' minimise, maximise and close, in the page's own colours: its
+ * ground and its ink, by day and by night (tokens.css).
+ */
+function windowButtons(): Electron.TitleBarOverlayOptions {
+  return nativeTheme.shouldUseDarkColors
+    ? { color: '#11151D', symbolColor: '#EFECE7', height: 40 }
+    : { color: '#F7F4F0', symbolColor: '#1F2129', height: 40 }
+}
+
+/**
+ * The window has no title bar. On a Mac the traffic lights sit in the rail's
+ * top corner; on Windows its own three buttons sit over the page's top right
+ * corner, and the header keeps clear of them (.cl-app.windows in
+ * cutalong.css). The menu stays out of sight on both, its shortcuts working.
+ */
+function windowFrame(): Electron.BrowserWindowConstructorOptions {
+  if (process.platform === 'darwin') return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 } }
+  if (process.platform === 'win32') return { titleBarStyle: 'hidden', titleBarOverlay: windowButtons() }
+  return {}
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -76,8 +113,7 @@ function createWindow(): void {
     show: false,
     // Cutalong's ground, so the window never flashes dark before the page paints.
     backgroundColor: '#F5F5F3',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 18 },
+    ...windowFrame(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -105,6 +141,17 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+/** Lumetri's LUTs in every Premiere Pro and Media Encoder installed on Windows. */
+async function adobeLutFolders(): Promise<string[]> {
+  const adobe = join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Adobe')
+  const apps = await fs.readdir(adobe).catch(() => [] as string[])
+  return apps
+    .filter((name) => /^Adobe (Premiere Pro|Media Encoder)/.test(name))
+    .sort()
+    .reverse()
+    .map((name) => join(adobe, name, 'Lumetri', 'LUTs'))
 }
 
 function uniquePath(dir: string, name: string): string {
@@ -397,7 +444,7 @@ function registerIpc(): void {
         .then((models) =>
           models.map((m) => ({
             id: `ollama:${m.name}`,
-            name: `${m.name} — on this Mac (${Math.round(m.sizeBytes / 1e9)} GB)`
+            name: `${m.name} — on ${thisComputer} (${Math.round(m.sizeBytes / 1e9)} GB)`
           }))
         )
         .catch(() => [])
@@ -625,11 +672,14 @@ function registerIpc(): void {
   ipcMain.handle('lut:list', async () => {
     // Premiere and Media Encoder ship a Lumetri LUT library; if it is installed
     // there is no reason to make anyone hunt for files.
-    const roots = [
-      '/Applications/Adobe Media Encoder 2026/Adobe Media Encoder 2026.app/Contents/Lumetri/LUTs',
-      '/Applications/Adobe Premiere Pro 2026/Adobe Premiere Pro 2026.app/Contents/Lumetri/LUTs',
-      join(app.getPath('userData'), 'luts')
-    ]
+    const roots =
+      process.platform === 'win32'
+        ? [...(await adobeLutFolders()), join(app.getPath('userData'), 'luts')]
+        : [
+            '/Applications/Adobe Media Encoder 2026/Adobe Media Encoder 2026.app/Contents/Lumetri/LUTs',
+            '/Applications/Adobe Premiere Pro 2026/Adobe Premiere Pro 2026.app/Contents/Lumetri/LUTs',
+            join(app.getPath('userData'), 'luts')
+          ]
     const found: { name: string; path: string }[] = []
     const walk = async (dir: string, depth: number): Promise<void> => {
       if (depth > 2) return
@@ -655,7 +705,8 @@ function registerIpc(): void {
   ipcMain.handle('preset:importEpr', async () => {
     const res = await dialog.showOpenDialog({
       properties: ['openFile'],
-      defaultPath: '/Applications',
+      // Media Encoder keeps a person's presets in Documents on Windows.
+      defaultPath: process.platform === 'win32' ? join(app.getPath('documents'), 'Adobe') : '/Applications',
       filters: [{ name: 'Adobe encoder preset', extensions: ['epr'] }]
     })
     if (res.canceled || !res.filePaths[0]) return null
@@ -1023,8 +1074,7 @@ function registerIpc(): void {
                 `scale=${Math.round((req.timeline.width * scale) / 2) * 2}:${Math.round((req.timeline.height * scale) / 2) * 2}`
               ]
             : []),
-          '-c:v',
-          'h264_videotoolbox',
+          ...H264_ENCODER,
           '-b:v',
           req.preview ? '4M' : '12M',
           '-pix_fmt',
@@ -1108,7 +1158,20 @@ async function describeVideo(path: string): Promise<VideoMeta> {
   }
 }
 
-if (!app.requestSingleInstanceLock()) {
+const selfCheckReport = process.env.CUTALONG_SELF_CHECK
+if (selfCheckReport) {
+  // The build checking the app it made (main/self-check.ts): no window, then quit.
+  app
+    .whenReady()
+    .then(() => selfCheck(selfCheckReport))
+    .then(
+      (code) => app.exit(code),
+      (err) => {
+        console.error('[self-check] failed:', err)
+        app.exit(2)
+      }
+    )
+} else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
@@ -1137,6 +1200,12 @@ if (!app.requestSingleInstanceLock()) {
 
     registerIpc()
     createWindow()
+    // Windows' own buttons follow the page into the night and back.
+    if (process.platform === 'win32') {
+      nativeTheme.on('updated', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setTitleBarOverlay(windowButtons())
+      })
+    }
 
     if (mainWindow) {
       initUpdater(mainWindow)

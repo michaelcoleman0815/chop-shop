@@ -136,16 +136,23 @@ export function viewTransition(
     delete root.dataset.clArriving
     unname()
   }
+  const run = (): void => {
+    // The old screen has been captured; from here the live new one rises in beneath it.
+    if (kind === 'screen') root.dataset.clArriving = ''
+    keepFocus(update)()
+    shared.after?.()
+  }
   try {
-    const t = document.startViewTransition({
-      update: () => {
-        // The old screen has been captured; from here the live new one rises in beneath it.
-        if (kind === 'screen') root.dataset.clArriving = ''
-        keepFocus(update)()
-        shared.after?.()
-      },
-      types: [kind]
-    })
+    let t: ViewTransition
+    try {
+      t = document.startViewTransition({ update: run, types: [kind] })
+    } catch (err) {
+      // A web view from before transition types (Chromium 111 to 124, Safari 18.0 and 18.1, as on a
+      // phone whose web view is not updated) takes the update alone: motion.css reads the kind from
+      // data-cl-move, not from the types.
+      if (!(err instanceof TypeError)) throw err
+      t = document.startViewTransition(run)
+    }
     // A transition skipped by a newer one still updates the DOM; only its animation is dropped.
     t.ready.catch(() => undefined)
     t.finished.then(done, done)
@@ -215,7 +222,9 @@ export function moveRail(update: () => void): void {
 function sceneOf(app: Cutalong): string {
   const chat = app.messages[0]?.id ?? app.doc?.id ?? ''
   const version = app.screen === 'editor' && app.doc ? currentVersion(app.doc).n : 0
-  return `${app.screen}|${chat}|${version}`
+  // Start's setup steps and its question are two screens: the key working moves from one to the other.
+  const screen = app.screen === 'start' && app.keySettled && !app.gateOpen ? 'setup' : app.screen
+  return `${screen}|${chat}|${version}`
 }
 
 function moveBetween(from: string, to: string): Move | null {

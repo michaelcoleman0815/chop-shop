@@ -42,7 +42,10 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # onnxruntime-node ships its native binaries for every platform (about 295 MB); the Mac app keeps darwin arm64 only.
+  # onnxruntime-node ships its native binaries for every platform (about 295 MB). The Mac app
+  # keeps darwin arm64's only, for Kokoro, the voice that reads on this Mac (a Mac finds faces
+  # with Vision, not with the runtime).
+  #
   # A platform's files list must hold something besides exclusions:
   # electron-builder 26 reads a list of nothing but '!' lines as everything
   # else, and packs the whole project (src, docs, .build) into the app. So
@@ -61,8 +64,24 @@ mac:
     - target: zip
       arch: [arm64]
 
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+# Windows 10 and 11 on x64, for now a test build only: unsigned, so
+# SmartScreen asks before the first run (see README).
 win:
-  # The Windows app keeps onnxruntime-node's win32 x64 binaries (Kokoro's voice runs on them) and none of the others.
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  # The face finder's runtime (main/face-finder.ts) loads from beside
+  # app.asar, as Skia's does.
+  asarUnpack:
+    - '**/node_modules/onnxruntime-node/**'
+  # onnxruntime-node carries every platform's binaries (about 295 MB). Windows
+  # keeps x64's, with the Microsoft C++ runtime CI puts beside them
+  # (scripts/bundle-msvc-runtime.mjs), and leaves out DirectML and its shader
+  # compiler, which only the GPU runtime loads: faces are found on the CPU.
   # With package.json first, as the Mac's (see there).
   files:
     - filter:
@@ -70,9 +89,19 @@ win:
         - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
         - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/**'
         - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/x64/DirectML.dll'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/x64/dxcompiler.dll'
+  extraResources:
+    # YuNet, the face finder where there is no Vision (resources/faces/LICENSE).
+    - from: resources/faces
+      to: faces
 
-dmg:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+# Installs for the person who runs it, with no administrator, into their own
+# programs folder, and keeps their projects and settings when it is removed.
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
 
 publish:
   provider: github

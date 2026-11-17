@@ -41,6 +41,8 @@ import { chaptersOf, chaptersReply } from '../../../shared/presets'
 import { fillDescription, isShort, writeLocally, type UploadKit } from '../../../shared/upload'
 import { groupWords } from '../../../shared/words'
 import { detectProvider } from '../../../shared/keys'
+import { thisComputer } from '../../../shared/platform'
+import { keyMessage, type ClaudeKeyState } from '../../../shared/setup'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
 import { mockVlogApi } from './vlog-mock'
@@ -120,6 +122,9 @@ function rawWords(): { text: string; startSec: number; endSec: number }[] {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/** The answers a pretend key can ask for by its ending. */
+const MOCK_KEY_STATES: ClaudeKeyState[] = ['refused', 'no-credit', 'no-access', 'busy', 'down', 'offline']
 
 /**
  * A still for a file in the browser, where there is no footage to read: a
@@ -763,16 +768,24 @@ export function createMockApi(): CutalongApi {
       return settings.localPlanner
         ? {
             ok: false as const,
-            message: `Plans come from ${settings.localPlanner} on this Mac, and this browser preview cannot reach it.`
+            message: `Plans come from ${settings.localPlanner} on ${thisComputer}, and this browser preview cannot reach it.`
           }
         : key === null
-          ? {
-              ok: false as const,
-              message: 'Add your Anthropic API key in Settings and I can work on this.',
-              needsKey: true
-            }
-          : { ok: false as const, message: 'Notes go to Claude, and this browser preview has no connection to it.' }
+          ? { ok: false as const, message: keyMessage('none'), needsKey: true, keyState: 'none' as const }
+          : { ok: false as const, message: 'Claude reads what you ask, and this browser preview has no connection to it.' }
     },
+    // The preview cannot reach Claude: footage starts an edit, a link is a style to learn, words wait for footage.
+    triage: async ({ files, link, hasEdit }) =>
+      key === null
+        ? { ok: false as const, message: keyMessage('none'), keyState: 'none' as const }
+        : {
+            ok: true as const,
+            route: files.length > 0 || hasEdit ? ('edit' as const) : link ? ('edit' as const) : ('wait' as const),
+            reply: files.length > 0 || hasEdit || link ? '' : "Drop your footage and I'll start on it.",
+            link: link ? ('study' as const) : ('none' as const),
+            clip: { said: '', count: null, length: null, funny: false, topic: null, single: false, profile: null },
+            question: null
+          },
 
     studyInspiration: async ({ url, path }) => {
       await progress(listeners.study, ['Fetching the video', 'Measuring the cuts', 'Listening to the pacing'])
@@ -1078,12 +1091,22 @@ export function createMockApi(): CutalongApi {
         ),
       durationSec: 0
     }),
-    checkKey: async () =>
-      key === null
-        ? { ok: false as const, message: 'No key yet.', needsKey: true }
-        : detectProvider(key) === 'anthropic'
-          ? { ok: true as const }
-          : { ok: false as const, message: 'The API key was not accepted.', needsKey: true },
+    // A pretend check, as long as a real one takes. An Anthropic-looking key works unless it ends with
+    // one of the gate's states ("sk-ant-test-no-credit"), so every answer can be seen in the browser.
+    checkKey: async (opts) => {
+      const fail = (state: ClaudeKeyState): Awaited<ReturnType<CutalongApi['checkKey']>> => ({
+        ok: false as const,
+        state,
+        message: keyMessage(state, key),
+        confirmed: false,
+        needsKey: state === 'none' || state === 'refused'
+      })
+      if (key === null) return fail('none')
+      if (!opts?.quick) await sleep(700)
+      if (detectProvider(key) !== 'anthropic') return fail(detectProvider(key) ? 'wrong' : 'refused')
+      const said = MOCK_KEY_STATES.find((s) => key?.endsWith(`-${s}`))
+      return said ? fail(said) : { ok: true as const, state: 'ok' as const, confirmed: true as const }
+    },
     serviceKeys: async () =>
       Object.fromEntries(SERVICES.map((s) => [s.id, Boolean(serviceKeys[s.id])])) as Record<ServiceId, boolean>,
     setServiceKey: async (id, next) => {

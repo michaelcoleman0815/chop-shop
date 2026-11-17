@@ -19,6 +19,13 @@ export interface MotionFont {
   cap: number
   ascent: number
   descent: number
+  /**
+   * The face's Windows ascent and descent (OS/2 usWinAscent and usWinDescent)
+   * as fractions of the size. libass sizes burned-in captions by them: a
+   * caption's font size is their sum (shared/subtitles).
+   */
+  winAscent: number
+  winDescent: number
   /** For the brand page. */
   label: string
 }
@@ -31,6 +38,8 @@ export const MOTION_FONTS: MotionFont[] = [
     cap: 0.69,
     ascent: 0.88,
     descent: 0.21,
+    winAscent: 1.035,
+    winDescent: 0.312,
     label: 'Archivo Black, heavy and wide'
   },
   {
@@ -40,6 +49,8 @@ export const MOTION_FONTS: MotionFont[] = [
     cap: 0.86,
     ascent: 1.18,
     descent: 0.33,
+    winAscent: 2876 / 2048,
+    winDescent: 674 / 2048,
     label: 'Anton, tall and condensed'
   },
   {
@@ -49,6 +60,8 @@ export const MOTION_FONTS: MotionFont[] = [
     cap: 0.73,
     ascent: 0.97,
     descent: 0.29,
+    winAscent: 1.22,
+    winDescent: 0.32,
     label: 'Sora, a clean sans'
   },
   {
@@ -69,6 +82,8 @@ export const MOTION_FONTS: MotionFont[] = [
     cap: 0.69,
     ascent: 0.91,
     descent: 0.36,
+    winAscent: 1854 / 2048,
+    winDescent: 744 / 2048,
     label: 'IM Fell English, an old-style serif'
   }
 ]

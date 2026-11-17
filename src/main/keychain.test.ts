@@ -36,7 +36,8 @@ describe('a sealed key file', () => {
     expect(file.read()).toBeNull()
     file.set('  abc  ')
     expect(readFileSync(join(dir, 'x.key')).toString()).not.toContain('abc')
-    expect(statSync(join(dir, 'x.key')).mode & 0o777).toBe(0o600)
+    // Windows has no owner-only mode: the file sits in the person's own profile, sealed by DPAPI.
+    if (process.platform !== 'win32') expect(statSync(join(dir, 'x.key')).mode & 0o777).toBe(0o600)
     expect(file.read()).toBe('abc')
     file.set('')
     expect(file.has()).toBe(false)

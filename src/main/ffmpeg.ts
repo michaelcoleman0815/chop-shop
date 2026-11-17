@@ -77,6 +77,24 @@ export function outputSize(
  * executed. electron-builder unpacks them (see asarUnpack in electron-builder.yml),
  * so the path just needs rewriting to the unpacked twin.
  */
+/**
+ * The H.264 encoder of the older exports (a clip, a timeline) and the moving
+ * caption samples: the Mac's hardware encoder, and x264 on Windows, which has
+ * no VideoToolbox. Both take the bitrate asked for.
+ */
+export const H264_ENCODER: string[] =
+  process.platform === 'darwin' ? ['-c:v', 'h264_videotoolbox'] : ['-c:v', 'libx264', '-preset', 'veryfast']
+
+/**
+ * A path as a filter argument, as cut-render.ts writes one: quoted, with the
+ * colon of a Windows drive (C:) and any quote escaped for ffmpeg's second
+ * reading.
+ */
+export function filterPath(path: string): string {
+  const inner = path.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
+  return `'${inner.replace(/'/g, "'\\''")}'`
+}
+
 function unpacked(p: string): string {
   return p.includes('app.asar') ? p.replace('app.asar', 'app.asar.unpacked') : p
 }
@@ -358,7 +376,7 @@ export async function exportClip(opts: {
     )
     // ffmpeg filter syntax treats these as separators, so they need escaping.
     const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    subtitles = `subtitles='${escaped}':fontsdir='${FONTS_DIR()}'`
+    subtitles = `subtitles='${escaped}':fontsdir=${filterPath(FONTS_DIR())}`
   }
 
   // Titles and bars ride a second subtitle track rather than sharing the
@@ -374,7 +392,7 @@ export async function exportClip(opts: {
       buildGraphicsAss(scaleGraphics(graphics, scale), out.w, out.h, outDuration)
     )
     const gEscaped = gPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    graphicsFilter = `subtitles='${gEscaped}':fontsdir='${FONTS_DIR()}'`
+    graphicsFilter = `subtitles='${gEscaped}':fontsdir=${filterPath(FONTS_DIR())}`
   }
 
   const overlays = opts.overlays ?? []
@@ -427,8 +445,7 @@ export async function exportClip(opts: {
         '-t',
         duration.toFixed(3),
         ...filterArgs,
-        '-c:v',
-        'h264_videotoolbox',
+        ...H264_ENCODER,
         '-b:v',
         opts.previewQuality
           ? '3M'

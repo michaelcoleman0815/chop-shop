@@ -17,6 +17,17 @@ export function fileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path
 }
 
+/**
+ * A file's address by its path: /Users/me/take.mov on a Mac, and on Windows
+ * C:\Users\me\take.mov or a shared folder's \\server\share\take.mov.
+ */
+export function fileUrl(path: string): string {
+  const parts = (p: string): string => p.split(/[\\/]/).map(encodeURIComponent).join('/')
+  if (/^[A-Za-z]:[\\/]/.test(path)) return `file:///${path.slice(0, 2)}${parts(path.slice(2))}`
+  if (path.startsWith('\\\\')) return `file:${parts(path)}`
+  return `file://${path.split('/').map(encodeURIComponent).join('/')}`
+}
+
 /** The first http(s) link in some text. */
 export function findLink(text: string): string | null {
   const m = /https?:\/\/[^\s<>"']+/i.exec(text)

@@ -66,6 +66,19 @@ describe('fetching from video sites', () => {
     expect(explain('ERROR: [youtube] abc: Private video')).toBe('That video is private or gone.')
     expect(explain('ERROR: Unsupported URL: https://x.y')).toBe('I can’t fetch from that site.')
   })
+
+  it('says plainly that Chrome’s sign-in cannot be borrowed on Windows, and whose can', () => {
+    const locked =
+      'That browser keeps its sign-in locked on Windows, so it can’t be borrowed. Firefox’s can: choose it in Settings.'
+    expect(
+      explain(
+        'ERROR: Could not copy Chrome cookie database. See  https://github.com/yt-dlp/yt-dlp/issues/7271  for more info'
+      )
+    ).toBe(locked)
+    expect(explain('ERROR: Failed to decrypt with DPAPI. See  https://github.com/yt-dlp/yt-dlp/issues/10927')).toBe(
+      locked
+    )
+  })
 })
 
 describe.skipIf(!FFMPEG)('bringing in images', () => {

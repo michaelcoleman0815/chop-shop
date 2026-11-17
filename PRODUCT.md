@@ -48,8 +48,9 @@ retakes and pauses. Plain-English asks and slash commands (`/shorts`, `/captions
 - Runs on macOS 14 Sonoma or later, Apple silicon only. Evidence: `electron-builder.yml` builds arm64 only; the v0.2.13
   release's Info.plist says 13.0, but its whisper-cli and Vision helper are built for 14.0, so transcription cannot
   start on 13.
-- An Anthropic API key is required for plain-English asks; the app walks people through getting one. Slash commands,
-  length cuts, transcription and rendering run on the Mac. A local model through Ollama can plan edits offline.
+- An Anthropic API key is required for everything; the app walks people through getting one before anything else.
+  Once a key has been accepted, slash commands, length cuts, transcription and rendering run on the Mac, offline too;
+  plain-English asks need Claude, which reads every message first.
 - Network use: Claude (the words and the edit; three small stills per vlog moment while "Let Claude see frames from my
   footage" is on, which it is by default), links the creator pastes and `/broll` searches (yt-dlp), the update check
   against GitHub Releases, the one-time transcription model download from Hugging Face, and optional services that only

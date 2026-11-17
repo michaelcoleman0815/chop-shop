@@ -5,10 +5,10 @@ import { MAP_PLACES, specFromQuery, type MapPlace } from './spec'
 import type { MapStyle } from './types'
 
 /**
- * Reading /map and a map request in words into a graphic's slots: the place
- * in words, a style ("vintage"), a place in the frame ("in the corner"), and
- * which facts to show. Pure, so the slash command, the planner's quick path
- * and the tests read a request the same way.
+ * Reading /map into a graphic's slots: the place in words, a style
+ * ("vintage"), a place in the frame ("in the corner"), and which facts to
+ * show. Pure, so the slash command and the tests read it the same way. A map
+ * asked for in words goes to Claude, which plans the map graphic itself.
  */
 
 export interface MapCommand {

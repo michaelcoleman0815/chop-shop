@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { onWindows, SHOW_FILE } from '../../../shared/platform'
 import { api } from './api'
 import { ScreenGuard } from './components/ScreenGuard'
 import { Sidebar, type Place } from './components/Sidebar'
@@ -75,7 +76,7 @@ export default function App(): JSX.Element {
       : null
 
   return (
-    <div className={`cl-app${mac ? ' mac' : ''}`}>
+    <div className={`cl-app${mac ? ' mac' : ''}${onWindows ? ' windows' : ''}`}>
       <Sidebar
         open={open}
         onToggle={() => moveRail(() => setOpen((o) => !o))}
@@ -99,7 +100,7 @@ export default function App(): JSX.Element {
             {app.screen === 'brand' && <BrandPage app={app} />}
             {app.screen === 'presets' && <PresetsPage app={app} />}
             {app.screen === 'crew' && <CrewPage app={app} />}
-            {app.screen === 'settings' && <SettingsPage />}
+            {app.screen === 'settings' && <SettingsPage app={app} />}
           </BackToWork.Provider>
         </ScreenGuard>
       </div>
@@ -127,7 +128,7 @@ export default function App(): JSX.Element {
           )}
           {toast.value.path && (
             <Button variant="text" onClick={() => void api.reveal(toast.value!.path!)}>
-              Show in Finder
+              {SHOW_FILE}
             </Button>
           )}
           {(toast.value.details?.length ?? 0) > 0 && (

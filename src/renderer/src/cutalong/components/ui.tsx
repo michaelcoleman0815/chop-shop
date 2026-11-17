@@ -127,6 +127,19 @@ export const Icon = {
       <path d="M6 9l6 6 6-6" />
     </svg>
   ),
+  /** A page that opens in the browser, outside Cutalong. */
+  external: (): JSX.Element => (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} strokeWidth="2" aria-hidden="true">
+      <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </svg>
+  ),
+  /** Something went wrong, beside the words that say what. */
+  alert: (): JSX.Element => (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5M12 16.25v.25" />
+    </svg>
+  ),
   /** Done. */
   check: (): JSX.Element => (
     <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} strokeWidth="2.4" aria-hidden="true">

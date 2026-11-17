@@ -17,6 +17,7 @@ import { BUSY_EXAMPLE, buildScene, DEFAULT_THEME, designSize, fullCall, template
 import { docFor } from '../shared/raw/eval'
 import { FIXTURES } from '../shared/raw/fixtures'
 import { planTakes, takesOf, switchTakeOps } from '../shared/raw/plan'
+import { isPlanCommand, readPlanCommand } from '../shared/plan/commands'
 import { keepOffList, offerPlan } from './planner'
 import {
   fromPlannerOp,
@@ -27,6 +28,9 @@ import {
   renderTranscript,
   withRealIcons
 } from './planner-prompt'
+
+/** A plan that asks nothing. */
+const NO_QUESTION = { text: '', options: [] }
 
 const source = { id: 's1', path: '/take.mov', durationSec: 12, width: 1080, height: 1920, fps: 30 }
 const words = wordsFromTranscript(
@@ -151,7 +155,8 @@ describe('the planner request', () => {
         reply: 'r',
         notesHandled: [],
         needs: [],
-        brollWanted: [{ beat: 'b2', search: 'city at night' }]
+        brollWanted: [{ beat: 'b2', search: 'city at night' }],
+        question: { text: '', options: [] }
       },
       []
     )
@@ -176,17 +181,26 @@ describe('the planner request', () => {
     // Every example op in the instructions must be a valid op, or the model
     // is being taught something the document will reject: as the planner
     // writes it, and once it is turned into the op the edit takes. A graphic's
-    // example may leave a row's slots out, as the op schema allows.
-    const examples = [...PLANNER_SYSTEM.matchAll(/\{"op":[^\n]*?\}(?=: |\. | or |\.$|$)/gm)].map((m) => m[0])
+    // example may leave a row's slots out, as the op schema allows. One of
+    // Cutalong's commands is a step of its own, checked against its slots.
+    const examples = [...PLANNER_SYSTEM.matchAll(/\{"op":[^\n]*?\}(?=: |\. | or |, |\.$|$)/gm)].map((m) => m[0])
     expect(examples.length).toBeGreaterThanOrEqual(10)
+    let commands = 0
     for (const json of examples) {
       if (json.includes('...')) continue
       const raw = JSON.parse(json)
       const planned = PlannerOpSchema.safeParse(raw)
       if (!String(raw.op).startsWith('motion-')) expect(planned.success, json).toBe(true)
+      if (isPlanCommand(raw)) {
+        expect(readPlanCommand(raw), json).toEqual(raw)
+        commands++
+        continue
+      }
       const op = planned.success ? fromPlannerOp(planned.data) : raw
       expect(OpSchema.safeParse(op).success, json).toBe(true)
     }
+    // Every command there is, with at least one example.
+    expect(commands).toBeGreaterThanOrEqual(14)
   })
 
   it('turns the slots the planner fills into the ops the edit takes', () => {
@@ -260,7 +274,8 @@ describe('the planner request', () => {
       summary: 'Beat 2 dips through white and the video fades in and out.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -285,7 +300,8 @@ describe('the planner request', () => {
       summary: 'Beat 2 comes in on an L cut.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -307,7 +323,8 @@ describe('the planner request', () => {
       summary: 'Beat 2 slows down.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -331,7 +348,8 @@ describe('the planner request', () => {
       summary: 'Beat 2 moves in on the settings.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -364,7 +382,8 @@ describe('the planner request', () => {
       summary: 'The voice is cleaner and the music sits lower.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(withMusic, plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -387,7 +406,8 @@ describe('the planner request', () => {
       summary: 'A hit and a pop.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -414,7 +434,8 @@ describe('the planner request', () => {
       summary: 'Two chapters.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -446,7 +467,8 @@ describe('the planner request', () => {
       summary: 'It looks cinematic, a little brighter and without grain.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -477,7 +499,8 @@ describe('the planner request', () => {
       summary: 'Camera 2 shows in a box on beat 2.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -506,7 +529,8 @@ describe('the planner request', () => {
       summary: 'It follows you.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const dry = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp), { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -527,13 +551,29 @@ describe('the planner request', () => {
     const block = /<takes>\n([\s\S]*?)\n<\/takes>/.exec(text)?.[1] ?? ''
     expect(block).toMatch(/^g1 the intro, 2 takes: 1 w1-w\d+ struck \| 2 w\d+-w\d+ plays$/)
     expect(text.indexOf('<takes>')).toBeGreaterThan(text.indexOf('</cut>'))
-    expect(PLANNER_SYSTEM).toContain('unstrike that take')
+    expect(PLANNER_SYSTEM).toContain('use the take command')
 
-    // The plan a planner should return for the request.
+    // The plan a planner should return for the request: one take step, by the line and the take.
     const group = takesOf(doc)[0].groups[0]
+    const plan = PlanSchema.parse({
+      ops: [{ op: 'take', line: group.id, take: 1 }],
+      summary: 'The first take of the intro plays now.',
+      reply: 'Done.',
+      notesHandled: [],
+      needs: [],
+      question: NO_QUESTION
+    })
+    const offered = offerPlan(doc, plan, [])
+    if (!offered.ok) throw new Error('expected a plan')
+    expect(offered.steps).toEqual([{ command: { op: 'take', line: group.id, take: 1 } }])
+    expect(offered.rejected).toEqual([])
+    // A take there is not is left out, in one sentence.
+    const wrong = offerPlan(doc, { ...plan, ops: [{ op: 'take' as const, line: group.id, take: 3 }] }, [])
+    expect(wrong.ok && wrong.steps).toEqual([])
+    expect(wrong.ok && wrong.rejected.length).toBe(1)
+
+    // What the step runs (useCutalong's take runner): the takes' own swap, which the document accepts.
     const ops = switchTakeOps(doc, group, 0)
-    const plan = { ops, summary: 'The first take of the intro plays now.', reply: 'Done.', notesHandled: [], needs: [] }
-    expect(PlanSchema.safeParse(plan).success).toBe(true)
     for (const op of ops) expect(OpSchema.safeParse(op).success, JSON.stringify(op)).toBe(true)
     const dry = applyOps(currentCut(doc), ops, { words: doc.words, sources: doc.sources })
     expect(dry.rejected).toEqual([])
@@ -578,7 +618,8 @@ describe('the planner request', () => {
       summary: 'The settings line opens it now.',
       reply: 'Moved it to the front and punched in.',
       notesHandled: ['n1'],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     }
     expect(PlanSchema.safeParse(plan).success).toBe(true)
   })
@@ -622,7 +663,8 @@ describe('the planner request', () => {
       summary: 'A callout points at the settings, then goes.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
     expect(r.rejected).toEqual([])
@@ -637,7 +679,8 @@ describe('the planner request', () => {
       summary: 'Captions come in word by word.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
     expect(r.rejected).toEqual([])
@@ -669,7 +712,8 @@ describe('the planner request', () => {
       summary: 'Two logos pop in.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const r = applyOps(currentCut(doc), plan.ops, { words: doc.words, sources: doc.sources })
     expect(r.rejected).toEqual([])
@@ -699,7 +743,8 @@ describe('the planner request', () => {
       summary: 'The page comes up as you mention it.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const offered = offerPlan(doc, plan, [])
     if (!offered.ok) throw new Error('expected a plan')
@@ -725,7 +770,8 @@ describe('the planner request', () => {
       summary: 'The app comes up on a phone.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const onPhone = offerPlan(shown, phone, [])
     if (!onPhone.ok) throw new Error('expected a plan')
@@ -806,7 +852,7 @@ describe('a busy edit', () => {
       const call = fullCall(o)
       return { op: o.op, kind: o.kind, ...call, items: (call.items as object[]).map((r) => ({ ...row, ...r })) }
     })
-    const offered = offerPlan(doc, PlanSchema.parse({ ops, summary: 's', reply: 'r', notesHandled: [], needs: [] }), [])
+    const offered = offerPlan(doc, PlanSchema.parse({ ops, summary: 's', reply: 'r', notesHandled: [], needs: [], question: NO_QUESTION }), [])
     if (!offered.ok) throw new Error('expected a plan')
     expect(offered.rejected).toEqual([])
     const done = commit(doc, offered.ops, 's').doc
@@ -867,7 +913,8 @@ describe('several recordings and material', () => {
       reply: 'I put MVI_9294 over b2, s1 still plays under it.',
       notesHandled: [],
       needs: ['a second angle for w6-w8'],
-      brollWanted: [{ beat: 'b2', search: 'settings menu on a phone' }]
+      brollWanted: [{ beat: 'b2', search: 'settings menu on a phone' }],
+      question: NO_QUESTION
     })
     const offered = offerPlan(doc, plan, [])
     if (!offered.ok) throw new Error('expected a plan')
@@ -893,12 +940,13 @@ describe('several recordings and material', () => {
     const plan = PlanSchema.parse({
       ops: [
         { op: 'treat', beats: ['b2'], set: { frame: 'broll', broll: { asset: 'a9', inSec: 0 } } },
-        { op: 'remove', beats: ['b7'] }
+        { op: 'remove', beats: ['b7'], why: '' }
       ],
       summary: 's',
       reply: 'r',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: NO_QUESTION
     })
     const offered = offerPlan(doc, plan, [])
     if (!offered.ok) throw new Error('expected a plan')

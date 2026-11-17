@@ -22,8 +22,6 @@ export interface Service {
   id: ServiceId
   name: string
   job: ServiceJob
-  /** Where a key comes from, said plainly. */
-  keyFrom: string
   /** One sentence shown under the key: what happens to what is sent there. */
   note?: string
 }
@@ -33,16 +31,14 @@ export const SERVICES: readonly Service[] = [
     id: 'deepgram',
     name: 'Deepgram',
     job: 'transcribe',
-    keyFrom: 'console.deepgram.com',
     // Every transcription request carries mip_opt_out=true (providers/deepgram.ts).
     note: 'I ask Deepgram not to use your audio to improve its models, so it keeps neither the audio nor the words once it has answered.'
   },
-  { id: 'assemblyai', name: 'AssemblyAI', job: 'transcribe', keyFrom: 'assemblyai.com/dashboard' },
+  { id: 'assemblyai', name: 'AssemblyAI', job: 'transcribe' },
   {
     id: 'gemini',
     name: 'Google Gemini',
     job: 'judge',
-    keyFrom: 'aistudio.google.com',
     // From the Gemini API Additional Terms of Service, effective March 23, 2026
     // (aistudio.google.com/docs/terms): the API is unpaid unless reached through
     // a Cloud project with an active billing account; on unpaid use Google uses
@@ -56,21 +52,18 @@ export const SERVICES: readonly Service[] = [
     id: 'fal',
     name: 'fal.ai',
     job: 'make',
-    keyFrom: 'fal.ai/dashboard/keys',
     note: 'For a video made from nothing, only the text prompts for its pictures go to fal.ai, with a character sheet it made for the shots that character is in, and a still it made when it turns one into a clip. Your own footage never goes.'
   },
   {
     id: 'elevenlabs',
     name: 'ElevenLabs',
     job: 'voice',
-    keyFrom: 'elevenlabs.io/app/settings/api-keys',
     note: 'For a video made from nothing, the script goes to ElevenLabs to be read aloud, and nothing else.'
   },
   {
     id: 'openai',
     name: 'OpenAI',
     job: 'voice',
-    keyFrom: 'platform.openai.com/api-keys',
     note: 'For a video made from nothing, the script goes to OpenAI to be read aloud, and nothing else. OpenAI stops this voice on January 6, 2027.'
   }
 ]

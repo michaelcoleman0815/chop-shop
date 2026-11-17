@@ -15,6 +15,7 @@ import {
   type EditDoc
 } from '../shared/edit'
 import {
+  AS_BT709,
   buildRenderArgs,
   captionStyleFor,
   chunkSegments,
@@ -22,7 +23,10 @@ import {
   frameSize,
   renderCut,
   type RenderSource,
-  type Segment
+  type Segment,
+  TO_RGB,
+  TO_YUV,
+  TO_YUVA
 } from './cut-render'
 import { greyShare, probeMedia, sampleColour } from './inspiration/measure'
 import { makeColourClip } from './test-media'
@@ -64,6 +68,17 @@ describe('render arguments', () => {
     quality: 'preview' as const,
     outputPath: '/out.mp4'
   }
+
+  it('burns captions straight onto the picture tagged BT.709, or in RGB for a colour that needs it', () => {
+    const direct = buildRenderArgs([seg()], { ...opts, assPath: '/w/captions.ass' })
+    const graph = direct[direct.indexOf('-filter_complex') + 1]
+    expect(graph).toContain(`[vcat]${AS_BT709},subtitles='/w/captions.ass'[vsub]`)
+    expect(graph).not.toContain(TO_RGB)
+    const rgb = buildRenderArgs([seg()], { ...opts, assPath: '/w/captions.ass', captionsInRgb: true })
+    expect(rgb[rgb.indexOf('-filter_complex') + 1]).toContain(
+      `[vcat]${TO_RGB},format=rgb24,subtitles='/w/captions.ass',${TO_YUV}[vsub]`
+    )
+  })
 
   it('seeks each piece as its own input and joins them in order', () => {
     const args = buildRenderArgs([seg(), seg({ startSec: 0.5, durationSec: 1 })], opts)
@@ -186,9 +201,12 @@ describe('render arguments', () => {
       '/brand/logo.png'
     ])
     const graph = args[args.indexOf('-filter_complex') + 1]
-    expect(graph).toContain('scale=76:-1,format=rgba,colorchannelmixer=aa=0.80[logo]')
+    // Drawn in RGB, it meets the picture as BT.709, and the picture leaves tagged so.
+    expect(graph).toContain(`scale=76:-1,format=rgba,colorchannelmixer=aa=0.80,${TO_YUVA}[logo]`)
     expect(graph).toContain('overlay=x=main_w-overlay_w-24:y=main_h-overlay_h-24:shortest=1[vlogo]')
-    expect(args).toContain('[vlogo]')
+    expect(graph).toContain(`[vlogo]${AS_BT709}[vout]`)
+    expect(args).toContain('[vout]')
+    expect(args.join(' ')).toContain('-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv')
     const style = captionStyleFor({ ...DEFAULT_CAPTIONS }, 1080, { text: '#FAFAFA', accent: '#FF5A36' })
     expect([style.textColor, style.activeColor]).toEqual(['#FAFAFA', '#FF5A36'])
   })

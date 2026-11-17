@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { learnedFor, PLANNER_PREFERENCES, seenFor } from '../../../../shared/memory'
+import { thisComputer } from '../../../../shared/platform'
 import { Button, Icon } from '../components/ui'
 import type { Cutalong } from '../useCutalong'
 
@@ -41,7 +42,7 @@ function Statement({ text }: { text: string }): JSX.Element {
 function where(items: number): string {
   const which =
     items > PLANNER_PREFERENCES ? `The first ${PLANNER_PREFERENCES} go` : items === 1 ? 'This goes' : 'These go'
-  return `${which} to Claude with every request and note you send. Nothing else I note leaves this Mac.`
+  return `${which} to Claude with every request and note you send. Nothing else I note leaves ${thisComputer}.`
 }
 
 export function MemorySection({ app }: { app: Cutalong }): JSX.Element {

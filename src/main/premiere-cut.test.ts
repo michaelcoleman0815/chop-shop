@@ -18,7 +18,7 @@ import {
 import { cameraSegments, renderCut, segmentsFor } from './cut-render'
 import { PLANNER_SYSTEM } from './planner-prompt'
 import { buildPremiereXml, captionsSrt, planPremiere, writePremiere, type PremiereMedia } from './premiere-cut'
-import { ffmpegRun, findFfmpeg, gradientWindow, makeClip, makeGradientStill, onsets } from './test-media'
+import { AS_PLAYED, ffmpegRun, findFfmpeg, gradientWindow, makeClip, makeGradientStill, onsets } from './test-media'
 
 const FFMPEG = findFfmpeg()
 
@@ -105,7 +105,9 @@ function readSequence(xml: string): {
     if (f.children.length === 0) continue
     fileBodies.set(f.attrs.id, (fileBodies.get(f.attrs.id) ?? 0) + 1)
     const url = kid(f, 'pathurl').text.trim().replace('file://localhost', '')
-    paths.set(f.attrs.id, url.split('/').map(decodeURIComponent).join('/'))
+    const path = url.split('/').map(decodeURIComponent).join('/')
+    // A Windows file reads as /C:/..., which Premiere there opens as C:\...
+    paths.set(f.attrs.id, /^\/[A-Za-z]:\//.test(path) ? path.slice(1).replace(/\//g, '\\') : path)
   }
   const clipsOf = (track: El): Clip[] =>
     kids(track, 'clipitem').map((c) => {
@@ -204,7 +206,7 @@ function frameColours(ffmpeg: string, path: string): [number, number, number][] 
       '-i',
       path,
       '-vf',
-      'scale=1:1:flags=area,format=rgb24',
+      `${AS_PLAYED},scale=1:1:flags=area,format=rgb24`,
       '-f',
       'rawvideo',
       '-'
@@ -460,7 +462,7 @@ describe('a Premiere project from an edit, read back', () => {
     )
     expect(xml).toContain('<pathurl>file://localhost/C%3A/Users/you/My%20Talk%20%26%20Co.mp4</pathurl>')
     expect(xml).toContain('<name>My Talk &amp; Co.mp4</name>')
-    expect(PLANNER_SYSTEM).toContain('/premiere')
+    expect(PLANNER_SYSTEM).toContain('{"op":"run","command":"premiere"')
   })
 
   it('writes the captions as SRT, a page at a time, as the export shows them', () => {

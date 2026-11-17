@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { PROJECT_NAME_CHARS, projectName } from './project-name'
+import { notADevice, PROJECT_NAME_CHARS, projectName } from './project-name'
+import { onWindows } from './platform'
 
 describe('naming a project', () => {
   it('keeps a file name as it is, less the characters a file name cannot have', () => {
@@ -25,5 +26,13 @@ describe('naming a project', () => {
   it('does not hide the file or leave it nameless', () => {
     expect(projectName('.env notes')).toBe('env notes')
     expect(projectName('   \n ')).toBe('Untitled')
+  })
+
+  it('never takes a name Windows keeps for a device, there', () => {
+    for (const device of ['Con', 'aux', 'NUL', 'com1', 'LPT9', 'nul.backup'])
+      expect(notADevice(device)).toBe(device.replace(/^[^.]*/, (first) => `${first}_`))
+    for (const fine of ['Conference', 'Aux cables', 'com10', 'Nullify', 'My con'])
+      expect(notADevice(fine)).toBe(fine)
+    expect(projectName('Con')).toBe(onWindows ? 'Con_' : 'Con')
   })
 })

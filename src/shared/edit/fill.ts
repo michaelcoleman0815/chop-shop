@@ -302,57 +302,6 @@ export function fillNotice(before: FilledPicture[], after: FilledPicture[], mode
   return `${subject} ${be} ${why}, so I showed ${them} whole on ${copy} instead of cropping ${them}. Say “crop ${them} to fill” to have ${them} cropped, or “use black bars” for plain bars.`
 }
 
-/** The pictures a fill ask can name: “crop them to fill”, “put the clips between black bars”. */
-const PICTURES = String.raw`(?:it|them|this|these|everything|all of them|the (?:pictures?|clips?|photos?|stills?|images?|footage|videos?|phone clips?|screen ?recordings?))`
-/** What a sentence may open and close with and still be only a fill ask: “please”, “can you”, “instead”. */
-const OPENERS = /^(?:(?:please|ok(?:ay)?|now|and|also|so|just|then|can you|could you|would you|can we|let's|lets)[, ]+)+/
-const CLOSERS = /(?:[, ]+(?:please|instead|again|then|now|too|for (?:these|them|it|this edit|this video)))+$/
-const WANT = String.raw`(?:i want|i'd like|i would like|give me|let's have|use|add|show|go with|switch to|try|put|have)`
-
-/** Black bars wanted: “use black bars”, “put them between black bars”, “letterbox it”. */
-const BLACK = new RegExp(
-  String.raw`^(?:(?:${WANT}\s+)?(?:${PICTURES}\s+)?(?:(?:in|on|with|between|inside)\s+)?(?:plain\s+)?black bars?(?:\s+(?:on the sides|above and below|around (?:it|them)))?|(?:letter|pillar)-?box(?:ed)?(?:\s+${PICTURES})?)$`
-)
-/** Black bars not wanted: “remove the black bars”, “no black bars”, “I hate the black bars”. */
-const NO_BLACK =
-  /^(?:remove|get rid of|lose|drop|delete|ditch|kill|hide|take (?:away|out|off)|no(?: more)?|without|i (?:hate|don't like|do not like|don't want|do not want)|hate|don't use|do not use|stop using)(?: the| this| these| those| all the| any)? black bars?$/
-/** The crop wanted: “crop them to fill”, “fill the frame”, “no bars”. */
-const CROP = new RegExp(
-  String.raw`^(?:(?:crop|zoom|scale|blow up)(?:\s+${PICTURES})?(?:\s+in)?\s+to (?:fill|fit)(?:\s+the (?:whole |entire )?(?:frame|screen))?|crop everything|(?:make\s+${PICTURES}\s+)?fill the (?:whole |entire )?(?:frame|screen)|(?:no|without|remove|get rid of|lose)(?: the| any)? bars)$`
-)
-/** The blurred fill wanted: “blur the sides”, “use a blurred background”, never “blur the background behind me”. */
-const BLUR = new RegExp(
-  String.raw`^(?:(?:${WANT}\s+)?(?:${PICTURES}\s+)?(?:(?:on|over|with|in front of)\s+)?(?:an?\s+)?(?:blur(?:red|ry)?\s+(?:fill|sides|bars|edges|copy|copies|backdrop|background fill)|blurred background)|blur (?:the )?(?:sides|bars|black bars|edges|empty space|space (?:around|beside) (?:it|them))|fill the (?:sides|bars|edges|space) with (?:an? )?(?:blur|blurred copy))$`
-)
-
-/**
- * What a sentence asks of the fill, when that is all it is about: “use black
- * bars”, “blur the sides”, “crop them to fill the frame”. “Remove the black
- * bars” goes back to what a new edit does, when this one has them. Null for
- * anything more, anything said with a no or a not that is not about the
- * bars, and anything that may be about something else (“blur the background
- * behind me”, “make the logo fill the frame”): the planner reads those.
- */
-export function fillAsked(text: string, now: FillMode = 'auto'): FillMode | null {
-  const t = text
-    .toLowerCase()
-    .replace(/[’]/g, "'")
-    .replace(/[.!?]+$/, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(OPENERS, '')
-    .replace(CLOSERS, '')
-    .trim()
-  if (!t || t.split(' ').length > 10) return null
-  if (NO_BLACK.test(t)) return now === 'black' ? 'auto' : null
-  // Said with a no or a not, it says what is not wanted rather than what is: only “no bars” is plain.
-  if (/\b(no|not|don't|do not|never|without|stop|hate)\b/.test(t) && !CROP.test(t)) return null
-  if (BLACK.test(t)) return 'black'
-  if (CROP.test(t)) return 'crop'
-  if (BLUR.test(t)) return 'blur'
-  return null
-}
-
 /** What a fill op did, in the app's voice. */
 export function describeFill(mode: FillMode): string {
   if (mode === 'black') return 'pictures of another shape sit between black bars'

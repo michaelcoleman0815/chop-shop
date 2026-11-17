@@ -1,0 +1,29 @@
+# Text keeps LF line endings on every computer, Windows included: tests
+# compare text byte for byte, and scripts must not grow carriage returns.
+* text=auto eol=lf
+
+# Never text, whatever their first bytes look like.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.m4a binary
+*.wav binary
+*.mp3 binary
+*.mp4 binary
+*.mov binary
+*.gz binary
+*.onnx binary
+*.bin binary
+
+# Windows command files keep the CRLF they were written with.
+*.cmd -text
+*.bat -text

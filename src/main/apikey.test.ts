@@ -50,7 +50,8 @@ describe('the Anthropic key', () => {
     expect(existsSync(file)).toBe(true)
     expect(readFileSync(file).toString()).toBe(`sealed:${Buffer.from('sk-ant-api03-abc').toString('base64')}`)
     expect(readFileSync(file).toString()).not.toContain('sk-ant')
-    expect(statSync(file).mode & 0o777).toBe(0o600)
+    // Windows has no owner-only mode: the file sits in the person's own profile, sealed by DPAPI.
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
     expect(hasApiKey()).toBe(true)
     expect(readApiKey()).toBe('sk-ant-api03-abc')
     expect(currentProvider()).toBe('anthropic')

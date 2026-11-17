@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { DEFAULT_DESCRIPTION } from './brand'
 import { clock } from './presets/preset'
+import { thisComputer } from './platform'
 
 /**
  * What an upload needs, written beside every export: the captions as .srt and
@@ -563,10 +564,10 @@ export function uploadMessage(kit: UploadKit): {
   if (kit.by === 'local') {
     asides.push(
       kit.why === 'off'
-        ? 'I made these on this Mac without Claude, as Settings asks.'
+        ? `I made these on ${thisComputer} without Claude, as Settings asks.`
         : kit.why === 'failed'
-          ? "Claude couldn't write them this time, so I made them from your words on this Mac."
-          : 'I made these on this Mac without Claude. With your Anthropic key in Settings, Claude writes them.'
+          ? `Claude couldn't write them this time, so I made them from your words on ${thisComputer}.`
+          : `I made these on ${thisComputer} without Claude. With your Anthropic key in Settings, Claude writes them.`
     )
   }
   if (kit.short) asides.push("It's a Short, so the description has no chapters.")
@@ -601,13 +602,13 @@ export function uploadSetMessage(kits: { name: string; kit: UploadKit }[]): {
       ? 'Claude wrote the titles, the openings and the tags from what you say.'
       : local.length < n
         ? local.length === 1
-          ? "Claude couldn't write one of them, so I made that one from your words on this Mac."
-          : `Claude couldn't write ${local.length} of them, so I made those from your words on this Mac.`
+          ? `Claude couldn't write one of them, so I made that one from your words on ${thisComputer}.`
+          : `Claude couldn't write ${local.length} of them, so I made those from your words on ${thisComputer}.`
         : why === 'off'
-          ? 'I made these on this Mac without Claude, as Settings asks.'
+          ? `I made these on ${thisComputer} without Claude, as Settings asks.`
           : why === 'failed'
-            ? "Claude couldn't write them this time, so I made them from your words on this Mac."
-            : 'I made these on this Mac without Claude. With your Anthropic key in Settings, Claude writes them.'
+            ? `Claude couldn't write them this time, so I made them from your words on ${thisComputer}.`
+            : `I made these on ${thisComputer} without Claude. With your Anthropic key in Settings, Claude writes them.`
   return { text, details, aside }
 }
 

@@ -149,6 +149,17 @@ export function covering(never: NeverItem[], item: NeverItem): NeverItem | null 
   return thing !== item && never.includes(thing) ? thing : null
 }
 
+/**
+ * The list as a rule leaves it: what the rule adds, and without what it says
+ * is fine again, an entry or the kinds of it ("whooshes are fine again" lifts
+ * sfx:whoosh; it does not lift every sound effect).
+ */
+export function neverAfter(list: NeverItem[], rule: { never: NeverItem[]; allow: NeverItem[] }): NeverItem[] {
+  const lifted = (entry: NeverItem): boolean => rule.allow.some((a) => entry === a || entry.startsWith(`${a}:`))
+  const kept = list.filter((entry) => !lifted(entry))
+  return [...kept, ...rule.never.filter((item) => !covering(kept, item))]
+}
+
 /** "a and b", "a, b or c". */
 export function listWords(words: string[], last: 'and' | 'or' = 'and'): string {
   if (words.length <= 1) return words[0] ?? ''
