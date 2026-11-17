@@ -39,8 +39,39 @@ From the repository's root: `npx vitest run mobile/` runs the phone host's tests
 
 ## On a phone
 
-Nothing native can be built on Linux. `npm run sync` builds the app and copies it into `ios/` (Swift Package Manager, no CocoaPods) and `android/`; open them in Xcode or Android Studio.
+`npm run sync` builds the app and copies it into `ios/` (Swift Package Manager, no CocoaPods) and `android/`; open them in Xcode or Android Studio. The engine (`engine/`, its README says how) is a plugin like the others: its libraries are built by `engine/scripts/build.sh ios` and `engine/scripts/build.sh android` on a Mac or Linux with the NDK, or come from CI, into `engine/ios/Frameworks` and `engine/android/src/main/jniLibs`, and `npx cap sync` adds it to both projects.
 
-The engine's native code goes in `engine/ios` and `engine/android`, with a `Package.swift` at `engine/` for Swift Package Manager; then `npx cap sync` adds it to both projects. Until then Android refers to `engine/android` without it, and iOS leaves the engine out.
+## In CI
+
+`.github/workflows/mobile-engine.yml` runs on every push to `claude/mobile`. After the engines' own self-test it builds the app on them and keeps:
+
+- `cutalong-android-debug-apk`: `Cutalong-debug.apk`, signed with the debug key, for arm64 phones and x86_64 emulators. To install it, open it on the phone (or `adb install Cutalong-debug.apk`) and let the app that opens it install unknown apps.
+- `cutalong-ios-simulator-app`: the app for an Apple-silicon Mac's simulator. Unzip it and drag `App.app` onto the simulator.
+- `android-app-drive` and `ios-app-drive`: what the app's own flow did on the emulator and the simulator. `screens/` has a screenshot at each step, `drive-report.json` what the app saw, `Exports/` the export and what went beside it, and the app's log.
+
+The flow is the app's own (`src/host/drive.ts`), in builds made with `CUTALONG_DRIVE=1` (the APK and the simulator build; never a store build). It runs only when the app finds `drive.json` in its documents, which only the runner can put there: `ci/android-drive.sh` and `ci/ios-drive.sh` put the whisper model where the app keeps it, the clips `ci/make-footage.py` made where the engine's importer copies what a person picks, and the plan. The app then picks them with + (the picker's own screens are the one thing left out), sorts and transcribes them, makes v1, applies /shorts, opens the editor and exports; at each step it waits for the runner's screenshot. `ci/check-drive.py` then measures the export on the runner with ffprobe and ffmpeg.
+
+## Store builds
+
+When the flow has passed on both phones, the same workflow builds for TestFlight and for Google Play's internal testing track, each only when its secrets are set in the repository (Settings, Secrets and variables, Actions). Without them those jobs are skipped, and the Store secrets job says which are missing. The app id is `social.brewed.cutalong`; the version is the one in the root `package.json` and the build number is the workflow's run number.
+
+TestFlight:
+
+- `APP_STORE_CONNECT_ISSUER_ID`: the issuer ID on App Store Connect's Users and Access, Integrations, App Store Connect API.
+- `APP_STORE_CONNECT_KEY_ID`: the key's ID there.
+- `APP_STORE_CONNECT_KEY_P8`: the whole of the key's `.p8` file, as text. The key's role must let Xcode manage certificates and profiles (Admin does).
+- `APPLE_TEAM_ID`: the team's ID, on the developer account's Membership page.
+
+The app's record is made in App Store Connect first, for the bundle ID `social.brewed.cutalong`. Xcode signs the archive with those keys and uploads it; App Store Connect processes it before testers see it, and asks about export compliance for each build unless the app's Info.plist answers it.
+
+Google Play:
+
+- `PLAY_UPLOAD_KEYSTORE_BASE64`: the upload keystore (`.jks` or `.keystore`), base64-encoded (`base64 -i upload.jks`).
+- `PLAY_UPLOAD_KEYSTORE_PASSWORD`: the keystore's password.
+- `PLAY_UPLOAD_KEY_ALIAS`: the upload key's alias in it.
+- `PLAY_UPLOAD_KEY_PASSWORD`: the upload key's password.
+- `PLAY_SERVICE_ACCOUNT_JSON`: the JSON key of a Google Cloud service account that has release access to the app in the Play Console (Users and permissions).
+
+The app is made in the Play Console first, with Play App Signing, and its first bundle is uploaded there by hand: the job keeps each signed bundle as the `cutalong-play-bundle` artifact. After that each run releases its bundle on the internal track (`ci/play-upload.py`).
 
 Pinned exactly: Capacitor 8.6.2 (`@capacitor/core`, `cli`, `ios`, `android`), `@capacitor/filesystem` 8.1.5, `@capacitor/preferences` 8.0.1, `@capacitor/keyboard` 8.0.6, `@capacitor/file-transfer` 2.0.6, `@capacitor-community/keep-awake` 8.0.1 and `capacitor-secure-storage-plugin` 0.13.0.

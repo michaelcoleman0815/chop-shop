@@ -6,6 +6,10 @@ name: Mobile
 # engines (mobile/): a debug APK anyone can sideload and a simulator build,
 # and runs the app's own flow on the emulator and the simulator, from the
 # footage to the export, with a screenshot at every step.
+#
+# Once that flow has passed, the store builds go to TestFlight and to Google
+# Play's internal track, each only when its secrets are set (mobile/README.md
+# lists them); without them those jobs are skipped and say what is missing.
 on:
   push:
     branches:
@@ -809,3 +813,176 @@ jobs:
           [ "${{ steps.ios.outcome }}" = success ] || { echo "::error::nothing came back from the iOS app"; exit 1; }
           python3 mobile/ci/check-drive.py "$RUNNER_TEMP/ios" "$RUNNER_TEMP/footage"
 
+  # Which store builds can be made: each needs its secrets (mobile/README.md
+  # says what each one is). Without them the store's job is skipped, and
+  # this says which are missing.
+  store-secrets:
+    name: Store secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      testflight: ${{ steps.check.outputs.testflight }}
+      play: ${{ steps.check.outputs.play }}
+    steps:
+      - id: check
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PLAY_UPLOAD_KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          PLAY_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          missing() { for name in "$@"; do [ -n "${!name}" ] || printf '%s ' "$name"; done; }
+          ios=$(missing APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_KEY_P8 APPLE_TEAM_ID)
+          play=$(missing PLAY_UPLOAD_KEYSTORE_BASE64 PLAY_UPLOAD_KEYSTORE_PASSWORD PLAY_UPLOAD_KEY_ALIAS PLAY_UPLOAD_KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON)
+          if [ -z "$ios" ]; then
+            echo "testflight=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=TestFlight is skipped::These secrets are not set: $ios"
+          fi
+          if [ -z "$play" ]; then
+            echo "play=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Google Play is skipped::These secrets are not set: $play"
+          fi
+
+  # The App Store build, signed by Xcode with the App Store Connect API key
+  # (automatic signing; the key's role must let it manage certificates and
+  # profiles) and uploaded to App Store Connect for TestFlight. The app's
+  # record, for social.brewed.cutalong, is made in App Store Connect first.
+  testflight:
+    name: TestFlight
+    needs: [ios, app-web, app-exports, store-secrets]
+    if: ${{ !cancelled() && needs.store-secrets.outputs.testflight == 'true' && needs.app-exports.result == 'success' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ios-engine
+          path: ${{ runner.temp }}/engine
+
+      - name: Unpack the frameworks
+        run: tar -C mobile/engine/ios -xzf "$RUNNER_TEMP/engine/ios-frameworks.tar.gz"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-web-store
+          path: mobile/dist
+
+      - name: Archive, sign and upload
+        working-directory: mobile
+        env:
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync ios
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          version=$(node -p "require('../package.json').version")
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Cutalong.xcarchive" "${auth[@]}" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" -quiet archive
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Cutalong.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
+          echo "::notice title=TestFlight::Cutalong $version ($BUILD_NUMBER) is uploaded; App Store Connect processes it before testers see it."
+
+      - if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+
+  # The Play build: an App Bundle signed with the upload key, released on
+  # the internal testing track by a service account with access to the app
+  # in the Play Console. The app is made there first, with its first bundle
+  # uploaded by hand (this job keeps each bundle as an artifact for that).
+  play-internal:
+    name: Google Play internal testing
+    needs: [android, app-web, app-exports, store-secrets]
+    if: ${{ !cancelled() && needs.store-secrets.outputs.play == 'true' && needs.app-exports.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-engine
+          path: mobile/engine/android/src/main/jniLibs
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-web-store
+          path: mobile/dist
+
+      - name: Build the signed bundle
+        working-directory: mobile
+        env:
+          PLAY_UPLOAD_KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          CUTALONG_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          CUTALONG_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          CUTALONG_UPLOAD_KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync android
+          export CUTALONG_UPLOAD_KEYSTORE="$RUNNER_TEMP/upload.keystore"
+          printf '%s' "$PLAY_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$CUTALONG_UPLOAD_KEYSTORE"
+          cd android
+          ./gradlew --no-daemon --stacktrace bundleRelease -PcutalongVersionCode=${{ github.run_number }}
+          cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/Cutalong-${{ github.run_number }}.aab"
+          rm -f "$CUTALONG_UPLOAD_KEYSTORE"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cutalong-play-bundle
+          path: ${{ runner.temp }}/Cutalong-${{ github.run_number }}.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Release on the internal track
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/play"
+          "$RUNNER_TEMP/play/bin/pip" install --quiet google-api-python-client==2.190.0 google-auth==2.55.0
+          "$RUNNER_TEMP/play/bin/python" mobile/ci/play-upload.py "$RUNNER_TEMP/Cutalong-${{ github.run_number }}.aab" social.brewed.cutalong internal
