@@ -41,6 +41,8 @@ jobs:
           test -x resources/bin/whisper-cli || { echo "::error::whisper-cli missing"; exit 1; }
           test -x resources/bin/chopshop-vision || { echo "::error::chopshop-vision missing"; exit 1; }
           test -x resources/bin/yt-dlp || { echo "::error::yt-dlp missing"; exit 1; }
+          # Each helper must run on the oldest macOS the app opens on.
+          ./scripts/check-macos-min.sh
           # A preset naming a font that is absent does not fail the render:
           # libass substitutes silently and the style comes out wrong.
           for font in ArchivoBlack-Regular Sora Anton-Regular; do
