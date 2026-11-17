@@ -46,10 +46,11 @@ export function Working({
   const secs = since !== undefined ? (now - since) / 1000 : 0
   const known = typeof progress.percent === 'number'
   const own = useCrewLog(progress.stage)
+  // The stopwatch is for eyes; a screen reader hears the stage change instead. It holds its
+  // place from the start, hidden for the first second, so nothing moves when it begins to count.
   const time =
-    secs >= 1 ? (
-      // The stopwatch is for eyes; a screen reader hears the stage change instead.
-      <span className="cl-progress-time" aria-hidden="true">
+    since !== undefined ? (
+      <span className={`cl-progress-time${secs < 1 ? ' waiting' : ''}`} aria-hidden="true">
         {elapsed(secs)}
       </span>
     ) : null

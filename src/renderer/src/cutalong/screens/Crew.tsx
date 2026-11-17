@@ -3,7 +3,7 @@ import { brandName } from '../../../../shared/brands'
 import { api } from '../api'
 import { CrewFace } from '../components/Crew'
 import { Button } from '../components/ui'
-import { CREW, CREW_ORDER, crewBlock, crewLearned, type CrewId } from '../crew'
+import { CREW, CREW_ORDER, crewBlock, crewLearned, willLearn, type CrewId } from '../crew'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 
@@ -11,7 +11,9 @@ import { Header } from './Header'
  * The crew as a call sheet, one row each: what they do, what they have learned about how
  * you like it (from the brand: the style learned from your videos, the habits
  * learned from your edits, your B-roll sources), and anything they need to do
- * more, with the steps. Everything on it is what is really there.
+ * more, with the steps. Everything on it is what is really there. Before a
+ * member has learned anything, their row says what they will learn; when no
+ * one has yet, the page says so once, under its lede.
  */
 
 interface Need {
@@ -56,6 +58,7 @@ function useNeeds(): Partial<Record<CrewId, Need>> {
 
 export function CrewPage({ app }: { app: Cutalong }): JSX.Element {
   const learned = crewLearned(app.brand)
+  const nothingYet = CREW_ORDER.every((id) => learned[id].length === 0)
   const needs = useNeeds()
   const several = app.brands.brands.length > 1
   return (
@@ -71,6 +74,12 @@ export function CrewPage({ app }: { app: Cutalong }): JSX.Element {
           <p className="cl-lede">
             They do the work while I talk with you, and each learns how you like it
             {several ? `, here from ${brandName(app.brand)}` : ''}.
+            {nothingYet && (
+              <span className="cl-lede-line">
+                {' '}
+                Nothing learned yet: they learn from the videos on your Brand page and from how you edit.
+              </span>
+            )}
           </p>
           {/* A call sheet: who is on the crew, what each does, what each knows of you and what each needs. */}
           <ul className="cl-callsheet">
@@ -88,17 +97,17 @@ export function CrewPage({ app }: { app: Cutalong }): JSX.Element {
                     <p className="cl-crew-does">{m.does}</p>
                   </div>
                   <div className="cl-crew-knows">
-                    <h3>Learned</h3>
                     {learned[id].length > 0 ? (
-                      <ul className="cl-crew-learned">
-                        {learned[id].map((l) => (
-                          <li key={l}>{l}</li>
-                        ))}
-                      </ul>
+                      <>
+                        <h3>Learned</h3>
+                        <ul className="cl-crew-learned">
+                          {learned[id].map((l) => (
+                            <li key={l}>{l}</li>
+                          ))}
+                        </ul>
+                      </>
                     ) : (
-                      <p className="cl-crew-none">
-                        Nothing yet. {m.name} learns from the videos on your Brand page and from how you edit.
-                      </p>
+                      <p className="cl-crew-none">{willLearn(id)}</p>
                     )}
                     {need && (
                       <div className="cl-crew-need">

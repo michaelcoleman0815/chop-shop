@@ -95,6 +95,7 @@ import {
   brandOfCut,
   chatBrand as chatBrandOf,
   EMPTY_BRANDS,
+  nextBrandName,
   removeBrand as removeBrandFrom,
   replaceBrand,
   setDefaultBrand,
@@ -522,6 +523,8 @@ export function useCutalong() {
     setChatChoiceState(id)
   }, [])
   const [pageBrandId, setPageBrandId] = useState<string | null>(null)
+  /** The brand made last in this session, which opens with its shape and colour to pick. */
+  const [madeBrandId, setMadeBrandId] = useState<string | null>(null)
   /** The brand on the Brand page. */
   const brand = brandById(brands, pageBrandId)
   const [brandProgress, setBrandProgress] = useState<Progress | null>(null)
@@ -755,15 +758,16 @@ export function useCutalong() {
     [saveBrands]
   )
 
-  /** A new brand on the list, shown on the Brand page. */
+  /** A new brand on the list, numbered so it never reads like another, shown on the Brand page. */
   const newBrand = useCallback((): void => {
     const id = `brand-${Math.random().toString(36).slice(2, 10)}`
-    const made = addBrand(brandsRef.current, '', id)
+    const made = addBrand(brandsRef.current, nextBrandName(brandsRef.current), id)
     if (!made) {
       setToast({ text: 'That is as many brands as Cutalong keeps.', error: true })
       return
     }
     saveBrands(made.list)
+    setMadeBrandId(made.brand.id)
     setPageBrandId(made.brand.id)
   }, [saveBrands])
 
@@ -3935,6 +3939,8 @@ export function useCutalong() {
     chatBrand: inChat,
     showBrand: setPageBrandId,
     newBrand,
+    /** The brand made last in this session. */
+    madeBrandId,
     deleteBrand,
     makeDefaultBrand,
     switchBrand,

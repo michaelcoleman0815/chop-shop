@@ -23,8 +23,13 @@ export interface CrewMember {
   job: string
   /** What they do, in one sentence. */
   does: string
+  /** What they will learn about how you like it, finishing "Snip will learn …", for before they have. */
+  watches: string
   shape: ShapeName
-  /** A bloom colour; coral for Snip alone, because coral is the cut. */
+  /**
+   * A bloom colour; coral for Snip alone, because coral is the cut, and only
+   * while Snip is cutting. At rest Snip wears salmon, coral's soft cousin.
+   */
   colour: 'blue' | 'coral' | 'yellow' | 'green' | 'pink' | 'lavender'
 }
 
@@ -33,6 +38,7 @@ export const CREW: Record<CrewId, CrewMember> = {
     name: 'Echo',
     job: 'Sound',
     does: 'Writes down every word, hears the pauses and the beat, and levels the sound.',
+    watches: 'how loud you like it',
     shape: 'wave',
     colour: 'blue'
   },
@@ -40,6 +46,7 @@ export const CREW: Record<CrewId, CrewMember> = {
     name: 'Snip',
     job: 'The cut',
     does: 'Reads the footage, picks the takes, sets the pace and shapes the story.',
+    watches: 'your pause length and your pace',
     shape: 'spark',
     colour: 'coral'
   },
@@ -47,6 +54,7 @@ export const CREW: Record<CrewId, CrewMember> = {
     name: 'Quill',
     job: 'Words on screen',
     does: 'Captions, titles, chapters and descriptions.',
+    watches: 'how you like your captions',
     shape: 'leaf',
     colour: 'yellow'
   },
@@ -54,6 +62,7 @@ export const CREW: Record<CrewId, CrewMember> = {
     name: 'Scout',
     job: 'Finding things',
     does: 'Brings your footage in, and finds B-roll, pages and sounds, from your folders to the web.',
+    watches: 'where you like your B-roll from',
     shape: 'circle',
     colour: 'green'
   },
@@ -61,6 +70,7 @@ export const CREW: Record<CrewId, CrewMember> = {
     name: 'Tint',
     job: 'The look',
     does: 'Colour, effects, graphics and motion.',
+    watches: 'your look: colour, black and white, and fades',
     shape: 'scallop',
     colour: 'pink'
   },
@@ -68,6 +78,7 @@ export const CREW: Record<CrewId, CrewMember> = {
     name: 'Reel',
     job: 'Getting it out',
     does: 'Shorts and clips, vertical reframes, exports and the upload kit.',
+    watches: 'the shape and length you post',
     shape: 'pill',
     colour: 'lavender'
   }
@@ -75,9 +86,16 @@ export const CREW: Record<CrewId, CrewMember> = {
 
 export const CREW_ORDER: CrewId[] = ['echo', 'snip', 'quill', 'scout', 'tint', 'reel']
 
-/** A member's own colour, as CSS. */
-export const crewColour = (id: CrewId): string =>
-  CREW[id].colour === 'coral' ? 'var(--coral)' : `var(--bloom-${CREW[id].colour})`
+/**
+ * A member's own colour, as CSS. Coral is the cut, so Snip wears it only
+ * while cutting; a face at rest (in the credits, on a note, on the Crew page,
+ * done with its part) is salmon.
+ */
+export const crewColour = (id: CrewId, resting = false): string =>
+  CREW[id].colour === 'coral' ? (resting ? 'var(--bloom-salmon)' : 'var(--coral)') : `var(--bloom-${CREW[id].colour})`
+
+/** What a member will learn, before they have: "Snip will learn your pause length and your pace." */
+export const willLearn = (id: CrewId): string => `${CREW[id].name} will learn ${CREW[id].watches}.`
 
 /** The pastel around a member, on their card. Snip's is salmon: coral is never a fill. */
 export const crewBlock = (id: CrewId): string =>

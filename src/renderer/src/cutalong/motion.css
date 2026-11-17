@@ -705,6 +705,80 @@ html[data-cl-move='version'] .cl-note {
   animation: var(--duration-base) var(--ease-exit) both cl-slide-out;
 }
 
+/*
+ * Footage dropped in: the composer opens to hold it as one box, never a jump
+ * ("attach"), and closes the same way when the last file is taken out
+ * ("detach"). The box is drawn on the moving group (edge, shadow and the
+ * focus halo), so it stays crisp at every size, and it clips what is inside.
+ * Inside is one picture, kept to the box's bottom edge, which is where the
+ * words and buttons are: opening, the new one, so the row of stills is
+ * uncovered from the top while they float up inside it as always; closing,
+ * the old one, so the row goes under the top edge. In a chat the thread keeps
+ * its last picture while the box rises over it, and is uncovered live as the
+ * box goes down; on Start what sits below glides with the box. Under reduced
+ * motion it simply changes (Composer).
+ */
+html:is([data-cl-move='attach'], [data-cl-move='detach']) .cl-composer {
+  view-transition-name: cl-composer;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach']) .cl-thread-scroll {
+  view-transition-name: cl-behind;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach']) :is(.cl-start .cl-chips, .cl-continue) {
+  view-transition-name: match-element;
+  view-transition-class: cl-slide;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-group(*) {
+  animation-duration: var(--duration-gentle);
+  animation-timing-function: var(--ease-enter);
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-group(cl-composer) {
+  box-sizing: border-box;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-composer);
+  background: var(--card);
+  box-shadow: var(--shadow-composer);
+  overflow: clip;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach']):has(.cl-composer:focus-within)::view-transition-group(cl-composer) {
+  border-color: var(--ink-soft);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+}
+
+/* The picture sits on the box's own edge, under the one drawn on it, at its natural size. */
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-image-pair(cl-composer) {
+  inset: -1px;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-old(cl-composer),
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-new(cl-composer) {
+  inset-block: auto 0;
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html[data-cl-move='attach']::view-transition-old(cl-composer),
+html[data-cl-move='detach']::view-transition-new(cl-composer) {
+  display: none;
+}
+
+/* Behind the box, the thread as the box will leave it: opening, its last picture until covered; closing, the live one, uncovered as the box goes down. */
+html[data-cl-move='attach']::view-transition-old(cl-behind),
+html[data-cl-move='detach']::view-transition-new(cl-behind) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html[data-cl-move='attach']::view-transition-new(cl-behind),
+html[data-cl-move='detach']::view-transition-old(cl-behind) {
+  display: none;
+}
+
 /* ---------- Reduced motion: opacity still changes; nothing travels ---------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -767,7 +841,11 @@ html[data-cl-move='version'] .cl-note {
   }
 }
 
-/* Footage dropped in floats up into the composer, one still just after another (--i, from Composer.tsx). */
+/*
+ * Footage dropped in floats up into the composer, one still just after another (--i, from
+ * Composer.tsx). With reduced motion the composer makes room at once, so the stills start
+ * already part there (40%) rather than leaving an empty row for a moment.
+ */
 .cl-attachment {
   transition-property: opacity, translate, scale;
   transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
@@ -777,7 +855,7 @@ html[data-cl-move='version'] .cl-note {
 
 @starting-style {
   .cl-attachment {
-    opacity: 0;
+    opacity: calc(0.4 * (1 - var(--cl-travel)));
     translate: 0 calc(var(--space-6) * var(--cl-travel));
     scale: calc(1 - 0.3 * var(--cl-travel));
   }
@@ -798,7 +876,12 @@ html[data-cl-move='version'] .cl-note {
   }
 }
 
-/* A brand's avatar morphs: the new shape pops in over the old, which softens and fades. */
+/*
+ * A brand's avatar morphs: the new shape pops in over the old, which holds
+ * its shape under the pop for a moment (90 ms), then softens and fades. Both
+ * stay shapes the whole way: the new one is only a touch soft as it lands, and
+ * the old one is gone (350 ms) well before the pop settles (460 ms).
+ */
 .cl-blob.arriving {
   transition-property: opacity, scale, filter;
   transition-duration: var(--duration-base), var(--duration-spring), var(--duration-gentle);
@@ -809,7 +892,7 @@ html[data-cl-move='version'] .cl-note {
   .cl-blob.arriving {
     opacity: 0;
     scale: calc(1 - 0.22 * var(--cl-travel));
-    filter: blur(calc(6px * var(--cl-travel)));
+    filter: blur(calc(2px * var(--cl-travel)));
   }
 }
 
@@ -818,8 +901,9 @@ html[data-cl-move='version'] .cl-note {
   scale: calc(1 - 0.08 * var(--cl-travel));
   filter: blur(calc(4px * var(--cl-travel)));
   transition-property: opacity, scale, filter;
-  transition-duration: var(--duration-base);
-  transition-timing-function: var(--ease-exit);
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-standard);
+  transition-delay: 90ms;
 }
 
 /*
@@ -980,27 +1064,28 @@ html[data-cl-move='version'] .cl-note {
   }
 }
 
-.cl-crew-face.working[data-crew='echo'] {
+.cl-crew-face.working[data-crew='echo'] > .cl-crew-body {
   animation: cl-crew-breathe calc(var(--duration-calm) * 3) var(--ease-breathe) infinite alternate;
 }
 
-.cl-crew-face.working[data-crew='snip'] {
-  animation: cl-crew-bounce calc(var(--duration-calm) * 1) var(--ease-breathe) infinite alternate;
+/* Snip's bounce is a steady, unhurried beat (748 ms each way), not a twitch. */
+.cl-crew-face.working[data-crew='snip'] > .cl-crew-body {
+  animation: cl-crew-bounce calc(var(--duration-calm) * 2.2) var(--ease-breathe) infinite alternate;
 }
 
-.cl-crew-face.working[data-crew='quill'] {
+.cl-crew-face.working[data-crew='quill'] > .cl-crew-body {
   animation: cl-crew-sway calc(var(--duration-calm) * 2.4) var(--ease-breathe) infinite alternate;
 }
 
-.cl-crew-face.working[data-crew='scout'] {
+.cl-crew-face.working[data-crew='scout'] > .cl-crew-body {
   animation: cl-crew-look calc(var(--duration-calm) * 2.6) var(--ease-breathe) infinite alternate;
 }
 
-.cl-crew-face.working[data-crew='tint'] {
+.cl-crew-face.working[data-crew='tint'] > .cl-crew-body {
   animation: cl-crew-breathe calc(var(--duration-calm) * 4) var(--ease-breathe) infinite alternate;
 }
 
-.cl-crew-face.working[data-crew='reel'] {
+.cl-crew-face.working[data-crew='reel'] > .cl-crew-body {
   animation: cl-crew-roll calc(var(--duration-calm) * 2) var(--ease-breathe) infinite alternate;
 }
 
@@ -1028,6 +1113,7 @@ html[data-cl-move='version'] .cl-note {
   }
 
   .cl-crew-face,
+  .cl-crew-body,
   .cl-crew-face .cl-crew-eyes > span {
     animation: none !important;
   }

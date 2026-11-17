@@ -224,7 +224,13 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         >
           Script
         </Button>
-        <Button variant="primary" small onClick={() => void app.exportFinal()}>
+        {/* One filled button a view: while notes wait to be applied, applying them is it. */}
+        <Button
+          variant={openNotes(doc).length > 0 ? 'secondary' : 'primary'}
+          small
+          className="cl-export"
+          onClick={() => void app.exportFinal()}
+        >
           Export
         </Button>
       </Header>

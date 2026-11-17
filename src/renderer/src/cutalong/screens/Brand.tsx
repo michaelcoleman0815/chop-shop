@@ -201,14 +201,15 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
   // Typed as one line and saved as a list when the field is left.
   const [products, setProducts] = useState(app.brand.products.join(', '))
   const [deleting, setDeleting] = useState(false)
-  // A brand just made opens with its shape and colour to pick, like a new sticker.
-  const [picking, setPicking] = useState(() => !brand.name && !brand.avatar)
+  // A brand just made, or one never named, opens with its shape and colour to pick, like a new sticker.
+  const fresh = !brand.avatar && (brand.id === app.madeBrandId || !brand.name)
+  const [picking, setPicking] = useState(fresh)
   // Another brand shown: its own names to listen for, and no question left open.
   useEffect(() => {
     setProducts(brand.products.join(', '))
     setDeleting(false)
   }, [brand.id, brand.products])
-  useEffect(() => setPicking(!brand.name && !brand.avatar), [brand.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setPicking(fresh), [brand.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const avatar = avatarOf(brand)
   const set = (patch: Partial<Brand>): void => app.saveBrand({ ...brand, ...patch })
   const facts = describeStyle(brand.style)

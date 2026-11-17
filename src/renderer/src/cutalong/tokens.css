@@ -146,10 +146,10 @@
     --rev-6: oklch(34% 0.05 78);
     --rev-7: oklch(33% 0.04 45);
     --block-blue: oklch(34% 0.06 258);
-    --block-pink: oklch(34% 0.06 350);
-    --block-yellow: oklch(37% 0.06 95);
+    --block-pink: oklch(34.5% 0.04 350);
+    --block-yellow: oklch(39% 0.038 80);
     --block-green: oklch(35% 0.055 152);
-    --block-gold: oklch(37% 0.065 75);
+    --block-gold: oklch(35% 0.042 75);
     --block-salmon: oklch(35% 0.06 48);
     --block-lavender: oklch(34% 0.06 300);
     --bloom-blue: oklch(74% 0.12 258);
@@ -198,10 +198,10 @@
   --rev-6: oklch(34% 0.05 78);
   --rev-7: oklch(33% 0.04 45);
   --block-blue: oklch(34% 0.06 258);
-  --block-pink: oklch(34% 0.06 350);
-  --block-yellow: oklch(37% 0.06 95);
+  --block-pink: oklch(34.5% 0.04 350);
+  --block-yellow: oklch(39% 0.038 80);
   --block-green: oklch(35% 0.055 152);
-  --block-gold: oklch(37% 0.065 75);
+  --block-gold: oklch(35% 0.042 75);
   --block-salmon: oklch(35% 0.06 48);
   --block-lavender: oklch(34% 0.06 300);
   --bloom-blue: oklch(74% 0.12 258);
