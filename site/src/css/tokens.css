@@ -78,6 +78,7 @@
   --app-frame-2: oklch(29.8% 0.013 272.9);       /* #2B2D34 */
   --app-hatch: oklch(20.1% 0.0081 274.5 / 0.07);
   --app-outline: oklch(20.1% 0.0081 274.5 / 0.08);
+  --app-glow: oklch(68.4% 0.2069 33.9 / 0.045);  /* the composer's glow, the one soft coral */
   --app-frame-shadow: 0 24px 50px oklch(20.1% 0.0081 274.5 / 0.16);
   --app-caption: oklch(100% 0 0);
   --app-scrim: oklch(16.4% 0.0065 271 / 0.55);

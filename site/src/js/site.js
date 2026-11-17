@@ -19,7 +19,7 @@ document.querySelectorAll('[data-loop]').forEach((el) => {
     el.querySelectorAll('video').forEach((v) => (run ? v.play().catch(() => {}) : v.pause()))
     if (button) {
       button.toggleAttribute('data-held', state.held)
-      label.textContent = state.held ? 'Play' : 'Pause'
+      if (label) label.textContent = state.held ? 'Play' : 'Pause'
       button.setAttribute('aria-label', state.held ? 'Play the example' : 'Pause the example')
     }
   }
