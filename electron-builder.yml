@@ -43,6 +43,8 @@ mac:
     - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
     - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/**'
     - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/x64/**'
+    # The binding loads @rpath/libonnxruntime.1.dylib; the package also carries a second, identical copy under its full version.
+    - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/arm64/libonnxruntime.1.*.*.dylib'
   target:
     - target: dmg
       arch: [arm64]
