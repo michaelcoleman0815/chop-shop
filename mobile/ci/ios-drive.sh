@@ -115,6 +115,10 @@ follow() {
 
 # The first pass in light, moving as it moves for a person.
 xcrun simctl ui "$DEV" appearance light || echo "::warning::could not turn the simulator light"
+# The keyboard's first-time card on sliding to type is taken as read, so the screens show its keys.
+for seen in DidShowContinuousPathIntroduction DidShowGestureKeyboardIntroduction; do
+  xcrun simctl spawn "$DEV" defaults write com.apple.Preferences "$seen" -bool true || true
+done
 launch light
 follow light
 flow_status=$status
