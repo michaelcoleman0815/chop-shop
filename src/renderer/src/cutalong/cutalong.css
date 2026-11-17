@@ -1,7 +1,10 @@
 /*
  * Cutalong.
  *
- * One thing per screen. The interface is ink, card, ground and greys, so the
+ * Lined Script. The transcript is the edit, so it reads like a script: paper
+ * on a luminous desk, replies in a serif at an easy measure, versions as
+ * revision pages in gentle tints, coral only for now (the playhead) and the
+ * mark. One thing per screen. The interface is ink, card, ground and greys, so the
  * video is the only colour on the page; coral marks the cut (the playhead, the
  * mark, the assistant) and nothing else. Every value comes from tokens.css.
  */
@@ -20,13 +23,25 @@ body,
 }
 
 body {
-  background: var(--ground);
+  /* A soft light falls on the desk from above; the night page keeps a little moonlight. */
+  background:
+    radial-gradient(130% 70% at 50% -18%, var(--glow), transparent 64%),
+    var(--ground);
   color: var(--ink);
+  caret-color: var(--ink);
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 22px;
+  font-kerning: normal;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  scrollbar-color: var(--line-mid) transparent;
   overflow: hidden;
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--ink);
 }
 
 button,
@@ -115,8 +130,8 @@ button:disabled {
 }
 
 .cl-heading {
-  font-size: 17px;
-  line-height: 24px;
+  font-size: 19px;
+  line-height: 26px;
   font-weight: 700;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -124,12 +139,6 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
-.cl-version {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--muted);
-}
 
 /* ---------- Buttons ---------- */
 
@@ -162,19 +171,13 @@ button:disabled {
   color: var(--card);
 }
 
-.cl-btn.primary:hover:not(:disabled) {
-  background: #2a2c33;
-}
 
 .cl-btn.secondary {
   background: var(--card);
-  border-color: var(--line);
+  border-color: var(--line-mid);
   color: var(--ink);
 }
 
-.cl-btn.secondary:hover:not(:disabled) {
-  border-color: #d6d5d1;
-}
 
 .cl-btn.text {
   height: 40px;
@@ -182,17 +185,24 @@ button:disabled {
   background: transparent;
 }
 
-.cl-btn.text:hover:not(:disabled) {
-  background: rgba(21, 22, 26, 0.05);
-}
 
 .cl-btn.text.on {
   background: var(--card);
   box-shadow: var(--shadow-tab);
 }
 
-.cl-btn:disabled {
-  opacity: 0.4;
+/* Disabled says so three ways: a paler fill, muted words and the cursor. */
+.cl-btn:disabled,
+.cl-btn.primary:disabled {
+  background: var(--card-2);
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.cl-btn.text:disabled {
+  background: transparent;
+  border-color: transparent;
 }
 
 .cl-btn img {
@@ -212,15 +222,12 @@ button:disabled {
   display: grid;
   place-items: center;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-mid);
   background: var(--card);
   color: var(--ink);
   padding: 0;
 }
 
-.cl-icon-btn:hover:not(:disabled) {
-  border-color: #d6d5d1;
-}
 
 .cl-icon-btn.filled {
   border: 0;
@@ -229,7 +236,9 @@ button:disabled {
 }
 
 .cl-icon-btn.filled:disabled {
-  opacity: 0.25;
+  background: var(--well);
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 .cl-avatar {
@@ -256,11 +265,12 @@ button:disabled {
   top: calc(100% + 8px);
   z-index: 20;
   min-width: 240px;
+  max-width: min(360px, calc(100vw - 48px));
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: var(--radius-card);
   padding: 6px;
-  box-shadow: 0 18px 40px rgba(21, 22, 26, 0.1);
+  box-shadow: var(--shadow-float);
 }
 
 .cl-menu button {
@@ -273,9 +283,9 @@ button:disabled {
   padding: 10px 12px;
 }
 
-.cl-menu button:hover,
 .cl-menu button:focus-visible {
-  background: var(--ground);
+  background: var(--card-2);
+  outline-offset: -2px;
 }
 
 .cl-menu .meta {
@@ -297,7 +307,7 @@ button:disabled {
   height: 34px;
   padding: 0 14px;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-mid);
   background: transparent;
   font-family: var(--font-mono);
   font-size: 13px;
@@ -305,18 +315,16 @@ button:disabled {
   color: var(--ink-soft);
 }
 
-.cl-chip:hover {
-  border-color: #d6d5d1;
-  color: var(--ink);
-}
 
 .cl-fact {
-  height: 32px;
-  padding: 0 13px;
+  height: 30px;
+  padding: 0 12px;
   border-radius: var(--radius-pill);
   background: var(--card);
   border: 1px solid var(--line);
+  color: var(--ink-soft);
   font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
 }
@@ -339,18 +347,25 @@ button:disabled {
   position: relative;
   width: 100%;
   background: var(--card);
-  border: 1px solid var(--line);
+  /* The edge of a field, at 3:1 on the paper, and a soft fall of light under it. */
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-composer);
-  padding: 18px 14px 14px 24px;
+  padding: 16px 12px 12px 22px;
   box-shadow: var(--shadow-composer);
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  transition: border-color 120ms ease;
+  gap: 12px;
+}
+
+.cl-composer:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
 }
 
 .cl-composer.dropping {
-  border-color: var(--ink);
+  border-color: var(--pick);
+  outline: 2px dashed var(--pick);
+  outline-offset: 3px;
 }
 
 .cl-composer textarea {
@@ -393,7 +408,7 @@ button:disabled {
   max-width: 260px;
   padding: 0 6px 0 4px;
   border-radius: var(--radius-pill);
-  background: var(--ground);
+  background: var(--well);
   font-size: 13.5px;
 }
 
@@ -430,9 +445,9 @@ button:disabled {
   z-index: 10;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--radius-card);
   padding: 6px;
-  box-shadow: 0 18px 40px rgba(21, 22, 26, 0.08);
+  box-shadow: var(--shadow-float);
 }
 
 .cl-slash.below {
@@ -453,7 +468,7 @@ button:disabled {
 }
 
 .cl-slash-item.on {
-  background: var(--ground);
+  background: var(--card-2);
 }
 
 .cl-slash-item .mono {
@@ -477,7 +492,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12vh var(--space-8) var(--space-12);
+  padding: 15vh var(--space-8) var(--space-16);
 }
 
 .cl-start-inner {
@@ -491,11 +506,12 @@ button:disabled {
 
 .cl-title {
   margin: 0 0 var(--space-4);
-  font-size: 52px;
-  line-height: 56px;
-  font-weight: 700;
-  letter-spacing: -0.045em;
+  font-size: 48px;
+  line-height: 54px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
   text-align: center;
+  text-wrap: balance;
 }
 
 .cl-start .cl-chips {
@@ -540,9 +556,6 @@ button:disabled {
   border: 1px solid var(--line);
 }
 
-.cl-project:hover .cl-project-thumb {
-  border-color: #d6d5d1;
-}
 
 .cl-project-meta {
   font-size: 12.5px;
@@ -566,11 +579,11 @@ button:disabled {
 }
 
 .cl-thread-column {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: var(--space-10);
 }
 
 .cl-thread-foot {
@@ -579,7 +592,7 @@ button:disabled {
 }
 
 .cl-thread-foot .cl-composer {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
 }
 
@@ -592,10 +605,11 @@ button:disabled {
   max-width: 460px;
 }
 
+/* Your words: the interface face on a soft tint, so the replies' serif is what reads as the page. */
 .cl-bubble {
-  background: var(--ink);
-  color: var(--card);
-  border-radius: 22px 22px 6px 22px;
+  background: var(--well);
+  color: var(--ink);
+  border-radius: 20px 20px 6px 20px;
   padding: 11px 18px;
   font-size: 16px;
   line-height: 24px;
@@ -652,9 +666,6 @@ button:disabled {
   color: var(--ink);
 }
 
-.cl-file-more:hover .cl-poster {
-  background: var(--beat);
-}
 
 /* A file's still: grey until the frame is ready, then the frame fades in. */
 .cl-poster {
@@ -696,7 +707,7 @@ button:disabled {
   height: 60px;
   flex: 0 0 34px;
   border-radius: 9px;
-  background: var(--ink-soft);
+  background: var(--well);
 }
 
 .cl-linkcard-text {
@@ -724,17 +735,19 @@ button:disabled {
 
 .cl-msg-assistant {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   align-items: flex-start;
   max-width: 680px;
 }
 
+/* The assistant's tile: the mark on a small sheet of paper, beside the newest reply only. */
 .cl-assistant-avatar {
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
   border-radius: var(--radius-tile);
-  background: var(--coral);
+  background: var(--card);
+  box-shadow: var(--shadow-tab), inset 0 0 0 1px var(--line);
   display: grid;
   place-items: center;
 }
@@ -747,23 +760,34 @@ button:disabled {
   min-width: 0;
 }
 
+/* What the assistant says is set to be read: a serif at an easy measure, wrapped with care. */
 .cl-reply {
   margin: 0;
-  font-size: 17px;
-  line-height: 26px;
+  max-width: 36em;
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: 18px;
+  line-height: 29px;
+  letter-spacing: -0.003em;
+  text-wrap: pretty;
+  hanging-punctuation: first;
+  font-variant-numeric: proportional-nums;
 }
 
 .cl-aside {
   margin: 0;
-  font-size: 15px;
+  max-width: 40em;
+  font-size: 14.5px;
   line-height: 22px;
   color: var(--muted);
+  text-wrap: pretty;
 }
 
 .cl-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .cl-progress {
@@ -786,16 +810,13 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
-.cl-progress-time::before {
-  content: '·';
-  margin-right: var(--space-3);
-}
 
+/* Progress is a pencil line: thin, ink on a faint rule. */
 .cl-progress-bar {
   width: 160px;
-  height: 4px;
+  height: 2px;
   border-radius: var(--radius-pill);
-  background: var(--beat);
+  background: var(--line);
   overflow: hidden;
 }
 
@@ -845,11 +866,12 @@ button:disabled {
   column-gap: var(--space-6);
   row-gap: 6px;
   margin: 0;
-  padding: var(--space-4) var(--space-6);
-  background: var(--card);
+  padding: var(--space-4) var(--space-5);
+  background: var(--card-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-thumb);
   font-size: 14px;
+  line-height: 21px;
 }
 
 .cl-details dt {
@@ -858,8 +880,7 @@ button:disabled {
 
 .cl-details dd {
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
   /* A value of several lines (a description, the files beside an export, a tool's output) keeps its lines. */
   white-space: pre-wrap;
@@ -962,8 +983,9 @@ button:disabled {
 }
 
 .cl-clip-hook {
-  font-size: 13.5px;
-  line-height: 19px;
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  line-height: 21px;
   color: var(--ink-soft);
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -1005,7 +1027,8 @@ button:disabled {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  /* The video keeps the room: the notes take a fair share and no more. */
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 28vw, 400px);
   gap: var(--space-6);
 }
 
@@ -1024,7 +1047,7 @@ button:disabled {
   position: relative;
   overflow: hidden;
   border-radius: 18px;
-  background: #0d0e11;
+  background: var(--frame);
   box-shadow: var(--shadow-frame);
   max-height: 100%;
   max-width: 100%;
@@ -1064,7 +1087,7 @@ button:disabled {
 .cl-frame-empty {
   position: absolute;
   inset: 0;
-  background: linear-gradient(160deg, #2b2d34, #0d0e11);
+  background: linear-gradient(160deg, var(--frame-2), var(--frame));
 }
 
 /* One recording's picture in the preview. Two take turns, and inside a
@@ -1282,6 +1305,7 @@ button:disabled {
   align-self: flex-start;
 }
 
+/* The notes and the script are a sheet of paper resting on the desk. */
 .cl-notes {
   min-height: 0;
   display: flex;
@@ -1289,7 +1313,8 @@ button:disabled {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  padding: var(--space-6);
+  box-shadow: var(--shadow-page);
+  padding: var(--space-5) var(--space-6);
   gap: var(--space-4);
 }
 
@@ -1310,8 +1335,8 @@ button:disabled {
 }
 
 .cl-notes .cl-msg-assistant .cl-reply {
-  font-size: 15px;
-  line-height: 22px;
+  font-size: 15.5px;
+  line-height: 24px;
 }
 
 .cl-note-list {
@@ -1323,23 +1348,26 @@ button:disabled {
   gap: var(--space-2);
 }
 
+/* A note is pencilled: no box, a hairline above, the words in the serif's italic. */
 .cl-note {
   display: flex;
   gap: var(--space-3);
   align-items: flex-start;
-  padding: 12px 14px;
-  border-radius: var(--radius-thumb);
-  background: var(--ground);
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--line);
 }
 
 .cl-note-n {
-  flex: 0 0 22px;
+  flex: 0 0 auto;
+  min-width: 22px;
   height: 22px;
-  border-radius: var(--radius-pill);
-  background: var(--card);
-  border: 1px solid var(--line);
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--rev, var(--rev-4));
+  color: var(--ink);
   font-size: 12px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   display: grid;
   place-items: center;
 }
@@ -1347,6 +1375,16 @@ button:disabled {
 .cl-note-text {
   flex: 1 1 auto;
   min-width: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15.5px;
+  line-height: 23px;
+  color: var(--ink);
+}
+
+.cl-note-text .cl-project-meta {
+  font-family: var(--font-sans);
+  font-style: normal;
 }
 
 .cl-note-text .cl-project-meta {
@@ -1405,10 +1443,16 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
+  background: var(--card);
   padding: 4px 4px 4px 18px;
   position: relative;
+}
+
+.cl-note-input:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 .cl-note-input input {
@@ -1424,8 +1468,10 @@ button:disabled {
 }
 
 .cl-script {
-  font-size: 16px;
-  line-height: 28px;
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: 16.5px;
+  line-height: 27px;
 }
 
 .cl-script p {
@@ -1441,17 +1487,16 @@ button:disabled {
   line-height: inherit;
 }
 
-.cl-word:hover {
-  background: var(--ground);
-}
 
 .cl-word.struck {
   color: var(--muted);
   text-decoration: line-through;
+  text-decoration-color: var(--ink-soft);
+  text-decoration-thickness: 1.5px;
 }
 
 .cl-word.pending {
-  background: var(--well);
+  background: var(--selection);
 }
 
 .cl-word.now {
@@ -1465,6 +1510,7 @@ button:disabled {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
   padding: 12px 16px;
   display: flex;
   align-items: center;
@@ -1494,32 +1540,35 @@ button:disabled {
   cursor: pointer;
 }
 
+/* A beat wears the colour of the revision on screen; the one playing is ink. */
 .cl-beat {
   flex: 1 1 0;
   min-width: 3px;
   border: 0;
-  padding: 0;
-  border-radius: 8px;
-  background: var(--beat);
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--rev, var(--beat));
   color: var(--card);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
   display: grid;
   place-items: center;
 }
 
-.cl-beat:hover {
-  background: #dddcd7;
-}
 
 .cl-beat.on {
   background: var(--ink);
 }
 
 .cl-beat.bw {
-  background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgba(21, 22, 26, 0.07) 4px 5px);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 4px,
+    color-mix(in oklch, var(--ink) 8%, transparent) 4px 5px
+  );
 }
 
 /* A beat that comes in with a transition joins the one before it instead of
@@ -1528,13 +1577,13 @@ button:disabled {
   margin-left: -3px;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  background-image: linear-gradient(90deg, rgba(21, 22, 26, 0.14), transparent 12px);
+  background-image: linear-gradient(90deg, color-mix(in oklch, var(--ink) 14%, transparent), transparent 12px);
 }
 
 .cl-beat.bw.joined {
   background-image:
-    linear-gradient(90deg, rgba(21, 22, 26, 0.14), transparent 12px),
-    repeating-linear-gradient(135deg, transparent 0 4px, rgba(21, 22, 26, 0.07) 4px 5px);
+    linear-gradient(90deg, color-mix(in oklch, var(--ink) 14%, transparent), transparent 12px),
+    repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in oklch, var(--ink) 8%, transparent) 4px 5px);
 }
 
 .cl-beat:has(+ .cl-beat.joined) {
@@ -1545,19 +1594,20 @@ button:disabled {
 /* A stretch picked for a note or a command: a quiet ring on each beat and a
    bar under them, in ink-soft. Coral stays the playhead's. */
 .cl-beat.picked {
-  box-shadow: inset 0 0 0 2px var(--ink-soft);
+  box-shadow: inset 0 0 0 1.5px var(--pick);
 }
 
 .cl-beat.on.picked {
-  box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--card);
+  box-shadow: inset 0 0 0 2px var(--pick), inset 0 0 0 3px var(--card);
 }
 
+/* The stretch picked for a note: blue pencil under the beats. Coral stays the playhead's. */
 .cl-pick {
   position: absolute;
   bottom: -8px;
   height: 3px;
   border-radius: var(--radius-pill);
-  background: var(--ink-soft);
+  background: var(--pick);
   pointer-events: none;
 }
 
@@ -1574,7 +1624,6 @@ button:disabled {
   cursor: pointer;
 }
 
-.cl-mark:hover,
 .cl-mark:focus-visible {
   opacity: 0.7;
 }
@@ -1599,33 +1648,35 @@ button:disabled {
 
 .cl-toast {
   position: fixed;
-  left: 50%;
-  bottom: 28px;
-  transform: translateX(-50%);
+  top: 84px;
+  right: 24px;
   z-index: 30;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  background: var(--ink);
-  color: var(--card);
-  border-radius: var(--radius-pill);
-  padding: 8px 8px 8px 20px;
+  max-width: min(460px, calc(100vw - 48px));
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 8px 8px 8px 18px;
   font-size: 14px;
-  box-shadow: 0 18px 40px rgba(21, 22, 26, 0.2);
+  box-shadow: var(--shadow-float);
 }
 
 .cl-toast .cl-btn {
   height: 34px;
   padding: 0 14px;
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--card);
+  background: var(--card-2);
+  border-color: var(--line-mid);
+  color: var(--ink);
 }
 
 /* What a tool said when it stopped, opened from the toast: its lines under the sentence. */
 .cl-toast.open {
   flex-wrap: wrap;
-  width: min(760px, calc(100vw - 48px));
-  border-radius: var(--radius-card);
+  width: min(560px, calc(100vw - 48px));
+  max-width: none;
   padding-bottom: 12px;
 }
 
@@ -1638,14 +1689,8 @@ button:disabled {
 .cl-toast .cl-details {
   flex-basis: 100%;
   margin-right: 12px;
-  background: rgba(255, 255, 255, 0.12);
-  border: none;
 }
 
-.cl-toast .cl-details dt {
-  color: inherit;
-  opacity: 0.7;
-}
 
 .cl-empty {
   margin: auto;
@@ -1688,10 +1733,8 @@ button:disabled {
   gap: 6px;
   padding: 16px 0;
   border-right: 1px solid var(--line);
-  background: var(--ground);
-  transition:
-    flex-basis 160ms ease,
-    width 160ms ease;
+  /* The desk's light shows through the rail; open over a narrow window it becomes a sheet. */
+  background: transparent;
   overflow: hidden;
 }
 
@@ -1759,10 +1802,6 @@ button:disabled {
   padding: 0 12px;
 }
 
-.cl-rail-item:hover {
-  background: rgba(21, 22, 26, 0.05);
-  color: var(--ink);
-}
 
 .cl-rail-item.on {
   background: var(--card);
@@ -1799,10 +1838,6 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
-.cl-rail-project:hover {
-  background: rgba(21, 22, 26, 0.05);
-  color: var(--ink);
-}
 
 /* ---------- Pages: projects, brand, presets ---------- */
 
@@ -1828,8 +1863,9 @@ button:disabled {
   margin: 0;
   font-size: 34px;
   line-height: 40px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -0.035em;
+  text-wrap: balance;
 }
 
 .cl-lede {
@@ -1842,6 +1878,7 @@ button:disabled {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
   padding: var(--space-6);
   display: flex;
   flex-direction: column;
@@ -1850,9 +1887,10 @@ button:disabled {
 
 .cl-section h2 {
   margin: 0;
-  font-size: 17px;
-  line-height: 24px;
+  font-size: 18px;
+  line-height: 26px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .cl-field {
@@ -1879,9 +1917,9 @@ button:disabled {
 
 .cl-field input:not([type='color']):not([type='checkbox']),
 .cl-field textarea {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--ground);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
   padding: 10px 14px;
   outline: none;
   resize: vertical;
@@ -1905,7 +1943,7 @@ button:disabled {
   gap: 4px;
   padding: 4px;
   border-radius: var(--radius-pill);
-  background: var(--ground);
+  background: var(--well);
   align-self: flex-start;
 }
 
@@ -1946,7 +1984,7 @@ button:disabled {
 .cl-caption-sample {
   padding: 8px 16px;
   border-radius: 12px;
-  background: #1d1f25;
+  background: var(--frame);
   font-weight: 800;
   font-size: 15px;
 }
@@ -1966,7 +2004,7 @@ button:disabled {
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-4) var(--space-4) var(--space-6);
-  border: 1px dashed #d6d5d1;
+  border: 1px dashed var(--line-strong);
   border-radius: var(--radius-thumb);
   color: var(--muted);
 }
@@ -2078,4 +2116,344 @@ button:disabled {
 .cl-inset {
   position: absolute;
   overflow: hidden;
+}
+
+/* ---------- Lined Script ---------- */
+
+/* Only the newest reply carries the assistant's tile, so the mark is on screen once. */
+.cl-msg-assistant:has(~ .cl-msg-assistant) > .cl-assistant-avatar {
+  visibility: hidden;
+}
+
+/* One filled button per view: when a newer reply arrives, an older reply's primary steps down. */
+.cl-msg-assistant:has(~ .cl-msg-assistant) .cl-btn.primary:not(:disabled) {
+  background: var(--card);
+  border-color: var(--line-mid);
+  color: var(--ink);
+}
+
+.cl-section .cl-reply {
+  font-size: 16.5px;
+  line-height: 26px;
+}
+
+/* Versions are revision pages: a tab for each, in the colour film scripts use for that revision. */
+.cl-revisions {
+  display: flex;
+  align-items: flex-end;
+  align-self: stretch;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 var(--space-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cl-rev-tab {
+  flex: 0 0 auto;
+  height: 32px;
+  margin-top: auto;
+  margin-bottom: 18px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--rev, var(--card));
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The revision on screen sits forward, like the top page of the stack. */
+.cl-rev-tab.cl-version {
+  color: var(--ink);
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-tab);
+}
+
+.cl-rev-more {
+  align-self: center;
+  margin-right: var(--space-1);
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* The script: a number and a coverage line in the margin, the words, and an asterisk where the revision changed them. */
+.cl-sline {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 14px;
+  column-gap: var(--space-3);
+  padding: 3px 0;
+}
+
+.cl-sline-n {
+  position: relative;
+  padding-right: 10px;
+  text-align: right;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  line-height: 27px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-sline-n::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 7px;
+  bottom: -7px;
+  width: 1.5px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+
+.cl-sline.now .cl-sline-n::after {
+  background: var(--ink);
+}
+
+.cl-sline.picked .cl-sline-n::after {
+  width: 3px;
+  right: -1px;
+  background: var(--pick);
+}
+
+.cl-sline p {
+  margin: 0;
+}
+
+.cl-sline-star {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 27px;
+  color: var(--ink-soft);
+}
+
+/* A note in the margin: pencilled in the serif's italic beside the line it is about. */
+.cl-margin-note {
+  grid-column: 2 / 4;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 2px 0 8px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink-soft);
+}
+
+.cl-margin-note b {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--rev-4);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: inline-grid;
+  place-items: center;
+}
+
+.cl-script-key {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+/* A brand's page says whose brand it is, and the switch between brands stays in reach while you scroll. */
+.cl-brand-bar {
+  position: sticky;
+  top: calc(-1 * var(--space-4));
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 calc(-1 * var(--space-2));
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-card);
+  background: color-mix(in oklch, var(--ground) 88%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.cl-brand-bar .cl-brand-note {
+  flex-basis: 100%;
+}
+
+/* Fields say what is wrong beside them, with an icon as well as the colour (for key setup and the rest). */
+.cl-field.error input,
+.cl-field.error textarea,
+.cl-field input[aria-invalid='true'],
+.cl-field textarea[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.cl-field-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+}
+
+.cl-field-msg.error {
+  color: var(--error);
+}
+
+.cl-field-msg.ok {
+  color: var(--ok);
+}
+
+.cl-field-msg svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+/* Numbered steps, each a sheet, for anything done in order (getting an Anthropic key). */
+.cl-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  counter-reset: cl-step;
+}
+
+.cl-steps > li {
+  counter-increment: cl-step;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+}
+
+.cl-steps > li::before {
+  content: counter(cl-step);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1.5px var(--ink-soft);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-steps > li.now {
+  border-color: var(--ink);
+}
+
+.cl-steps > li.done::before {
+  background: var(--ok);
+  color: var(--card);
+  box-shadow: none;
+}
+
+.cl-steps h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+.cl-steps p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* Narrow windows keep the video big: the open rail floats over the screen, and the notes give way first. */
+@media (max-width: 1180px) {
+  .cl-rail.open {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    background: var(--ground);
+    box-shadow: var(--shadow-float);
+  }
+
+  .cl-rail.open ~ .cl-main {
+    margin-left: 72px;
+  }
+
+  .cl-header {
+    padding: 0 var(--space-5);
+  }
+
+  .cl-editor {
+    padding: 0 var(--space-5) var(--space-5);
+  }
+
+  .cl-editor-body {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: var(--space-4);
+  }
+}
+
+/* Hover belongs to a pointer: on touch it would stick after a tap. */
+@media (hover: hover) and (pointer: fine) {
+  .cl-btn.primary:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--ink) 86%, var(--card));
+  }
+
+  .cl-btn.secondary:hover:not(:disabled),
+  .cl-icon-btn:hover:not(:disabled) {
+    border-color: var(--line-strong);
+  }
+
+  .cl-btn.text:hover:not(:disabled),
+  .cl-rail-item:hover,
+  .cl-rail-project:hover {
+    background: color-mix(in oklch, var(--ink) 5%, transparent);
+    color: var(--ink);
+  }
+
+  .cl-menu button:hover,
+  .cl-word:hover {
+    background: var(--card-2);
+  }
+
+  .cl-chip:hover {
+    border-color: var(--line-strong);
+    color: var(--ink);
+  }
+
+  .cl-project:hover .cl-project-thumb {
+    border-color: var(--line-mid);
+  }
+
+  .cl-file-more:hover .cl-poster {
+    background: var(--beat);
+  }
+
+  .cl-beat:hover:not(.on) {
+    background-color: color-mix(in oklch, var(--rev, var(--beat)) 86%, var(--ink));
+  }
+
+  .cl-mark:hover {
+    opacity: 0.7;
+  }
+
+  .cl-rev-tab:hover:not(.cl-version) {
+    color: var(--ink);
+    border-color: var(--line-mid);
+  }
 }

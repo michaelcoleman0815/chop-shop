@@ -8,7 +8,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 export function Mark({ size = 30, white = false }: { size?: number; white?: boolean }): JSX.Element {
   return (
     <svg width={size} height={(size * 52) / 64} viewBox="0 0 64 52" aria-hidden="true">
-      <rect x="2" y="4" width="44" height="18" rx="9" fill={white ? '#FFFFFF' : 'var(--ink)'} />
+      <rect x="2" y="4" width="44" height="18" rx="9" fill={white ? 'currentColor' : 'var(--ink)'} />
       <rect
         className="cl-cut"
         x="18"
@@ -17,7 +17,7 @@ export function Mark({ size = 30, white = false }: { size?: number; white?: bool
         height="16"
         rx="8"
         fill="none"
-        stroke={white ? '#FFFFFF' : 'var(--coral)'}
+        stroke={white ? 'currentColor' : 'var(--coral)'}
         strokeWidth="5"
         strokeDasharray="7 6"
       />
@@ -34,11 +34,14 @@ export function Lockup({ onClick }: { onClick?: () => void }): JSX.Element {
   )
 }
 
-/** The assistant's avatar: the mark in white on a coral tile. */
+/**
+ * The assistant's tile: the mark on a small sheet of paper. Only the newest
+ * reply shows it (cutalong.css), so the mark's coral is on screen once.
+ */
 export function AssistantAvatar(): JSX.Element {
   return (
     <span className="cl-assistant-avatar" aria-hidden="true">
-      <Mark size={20} white />
+      <Mark size={20} />
     </span>
   )
 }

@@ -76,7 +76,7 @@ function BrandList({ app }: { app: Cutalong }): JSX.Element {
   const isDefault = shown.id === brands.default
   const defaultName = brandName(brands.brands.find((b) => b.id === brands.default) ?? shown)
   return (
-    <div className="cl-field">
+    <div className="cl-brand-bar">
       {several && (
         <div className="cl-segments" role="radiogroup" aria-label="Brand">
           {brands.brands.map((b) => (
@@ -93,23 +93,22 @@ function BrandList({ app }: { app: Cutalong }): JSX.Element {
           ))}
         </div>
       )}
-      <div className="cl-row">
-        <p className="cl-aside">
+      <span className="spacer" />
+      {several && !isDefault && (
+        <Button variant="text" onClick={() => app.makeDefaultBrand(shown.id)}>
+          Make it the default
+        </Button>
+      )}
+      <Button small onClick={app.newBrand}>
+        Add a brand
+      </Button>
+      <p className="cl-aside cl-brand-note">
           {several
             ? isDefault
               ? `${defaultName} is your default: new chats use it. Switch a chat's brand from its header.`
               : `New chats use ${defaultName}. Switch a chat to ${brandName(shown)} from its header.`
             : 'One brand per channel. Add another for a second channel.'}
-        </p>
-        {several && !isDefault && (
-          <Button variant="text" onClick={() => app.makeDefaultBrand(shown.id)}>
-            Make it the default
-          </Button>
-        )}
-        <Button small onClick={app.newBrand}>
-          Add a brand
-        </Button>
-      </div>
+      </p>
     </div>
   )
 }
@@ -178,10 +177,10 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
       </Header>
       <main className="cl-page">
         <div className="cl-page-inner">
-          <h1 className="cl-page-title">{app.brands.brands.length > 1 ? 'Your brands' : 'Your brand'}</h1>
-          <p className="cl-lede">What keeps every video yours. New edits get it automatically.</p>
-
           <BrandList app={app} />
+
+          <h1 className="cl-page-title">{brandName(brand)}</h1>
+          <p className="cl-lede">What keeps every video yours. New edits get it automatically.</p>
 
           <section className="cl-section" aria-labelledby="brand-videos">
             <h2 id="brand-videos">Your videos</h2>

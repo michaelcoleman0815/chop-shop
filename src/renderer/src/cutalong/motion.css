@@ -64,25 +64,14 @@
 /* ---------- Composer ---------- */
 
 .cl-composer {
-  transition: border-color var(--duration-fast) var(--ease-standard);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    outline-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-gentle) var(--ease-enter);
 }
 
 /* The coral glow eases in on focus, and when footage is dragged over. */
-.cl-composer::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  box-shadow: 0 0 0 6px var(--coral-glow);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--duration-gentle) var(--ease-standard);
-}
 
-.cl-composer:focus-within::after,
-.cl-composer.dropping::after {
-  opacity: 1;
-}
 
 /* While Cutalong works, the send arrow lifts away and the mark takes its place, marching. */
 .cl-composer .cl-icon-btn.filled {
@@ -122,32 +111,25 @@
 }
 
 /* Menus scale and fade in from the edge they open on. */
-.cl-slash,
-.cl-menu {
+.cl-menu:not([data-by-key]) {
   transition-property: opacity, scale, translate;
   transition-duration: var(--duration-base);
   transition-timing-function: var(--ease-enter);
-  transform-origin: 50% 100%;
 }
 
-.cl-slash.below {
-  transform-origin: 50% 0;
-}
 
 .cl-menu {
   transform-origin: 100% 0;
 }
 
 @starting-style {
-  .cl-slash,
-  .cl-menu {
+  .cl-menu:not([data-by-key]) {
     opacity: 0;
     scale: calc(1 - 0.04 * var(--cl-travel));
     translate: 0 calc(var(--space-1) * var(--cl-travel));
   }
 
-  .cl-slash.below,
-  .cl-menu {
+  .cl-menu:not([data-by-key]) {
     translate: 0 calc(-1 * var(--space-1) * var(--cl-travel));
   }
 }
@@ -172,12 +154,28 @@
   transition-timing-function: var(--ease-enter);
 }
 
-.cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-actions) {
-  transition-delay: calc((sibling-index() - 1) * var(--duration-gentle) / 6);
+.cl-msg-body > .cl-reply {
+  transition-property: opacity, translate, filter;
+}
+
+.cl-msg-body > :nth-child(2) {
+  transition-delay: 50ms;
+}
+
+.cl-msg-body > :nth-child(3) {
+  transition-delay: 90ms;
+}
+
+.cl-msg-body > :nth-child(4) {
+  transition-delay: 120ms;
+}
+
+.cl-msg-body > :nth-child(n + 5) {
+  transition-delay: 140ms;
 }
 
 .cl-msg-assistant > .cl-assistant-avatar {
-  transition-property: opacity, scale;
+  transition-property: opacity;
   transition-duration: var(--duration-gentle);
   transition-timing-function: var(--ease-enter);
 }
@@ -196,7 +194,11 @@
 
   html:not([data-cl-entering]) .cl-msg-assistant > .cl-assistant-avatar {
     opacity: 0;
-    scale: calc(1 - 0.2 * var(--cl-travel));
+  }
+
+  /* The sentence comes into focus as it rises: soft, never a jolt. */
+  html:not([data-cl-entering]) .cl-msg-body > .cl-reply {
+    filter: blur(calc(2px * var(--cl-travel)));
   }
 
   html:not([data-cl-entering]) .cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-actions) {
@@ -239,7 +241,18 @@
   transition-property: opacity, translate;
   transition-duration: var(--duration-gentle);
   transition-timing-function: var(--ease-enter);
-  transition-delay: calc(min(sibling-index() - 1, 8) * var(--duration-gentle) / 6);
+}
+
+.cl-clip:nth-child(2) {
+  transition-delay: 45ms;
+}
+
+.cl-clip:nth-child(3) {
+  transition-delay: 80ms;
+}
+
+.cl-clip:nth-child(n + 4) {
+  transition-delay: 100ms;
 }
 
 /*
@@ -273,14 +286,11 @@
 }
 
 .cl-beat {
-  transition-property: background-color, box-shadow, translate;
+  transition-property: background-color, box-shadow;
   transition-duration: var(--duration-fast);
   transition-timing-function: var(--ease-standard);
 }
 
-.cl-beat:hover {
-  translate: 0 calc(var(--space-1) / -2 * var(--cl-travel));
-}
 
 /* The bar under a picked stretch fades in; it follows a drag at once. */
 .cl-pick {
@@ -321,15 +331,9 @@
   transition-timing-function: var(--ease-enter), var(--ease-enter), var(--ease-standard);
 }
 
-html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
-  transition-delay:
-    calc(min(sibling-index() - 1, 8) * var(--duration-gentle) / 8),
-    calc(min(sibling-index() - 1, 8) * var(--duration-gentle) / 8), 0s;
-}
 
 @starting-style {
-  .cl-continue-row > .cl-project,
-  .cl-list > li {
+  html:not([data-cl-entering]) :is(.cl-continue-row > .cl-project, .cl-list > li) {
     opacity: 0;
     translate: 0 calc(var(--space-2) * var(--cl-travel));
   }
@@ -400,8 +404,8 @@ html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
   background-color: var(--ink-soft);
   scale: 0.75;
   transition:
-    translate var(--duration-calm) var(--spring-gentle),
-    scale var(--duration-calm) var(--spring-gentle),
+    translate var(--duration-gentle) var(--ease-enter),
+    scale var(--duration-gentle) var(--ease-enter),
     background-color var(--duration-fast) var(--ease-standard);
 }
 
@@ -427,15 +431,15 @@ html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
 @starting-style {
   .cl-toast {
     opacity: 0;
-    translate: 0 calc(var(--space-3) * var(--cl-travel));
+    translate: 0 calc(-1 * var(--space-2) * var(--cl-travel));
   }
 }
 
 .cl-toast.leaving {
   opacity: 0;
-  translate: 0 calc(var(--space-2) * var(--cl-travel));
+  translate: 0 calc(-1 * var(--space-1) * var(--cl-travel));
   pointer-events: none;
-  transition-duration: var(--duration-base);
+  transition-duration: var(--duration-fast);
   transition-timing-function: var(--ease-exit);
 }
 
@@ -460,18 +464,16 @@ html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
 /* Names and chats fade and slide in at their final size, so no text reflows as the rail opens. */
 .cl-rail :is(.label, .cl-rail-brand, .cl-rail-heading) {
   transition-property: opacity, translate;
-  transition-duration: var(--duration-calm);
+  transition-duration: var(--duration-gentle);
   transition-timing-function: var(--ease-enter);
-  transition-delay: calc(var(--duration-calm) / 8);
+  transition-delay: 40ms;
 }
 
 .cl-rail-project {
   transition-property: background-color, color, opacity, translate;
-  transition-duration: var(--duration-fast), var(--duration-fast), var(--duration-calm), var(--duration-calm);
+  transition-duration: var(--duration-fast), var(--duration-fast), var(--duration-gentle), var(--duration-gentle);
   transition-timing-function: var(--ease-standard), var(--ease-standard), var(--ease-enter), var(--ease-enter);
-  transition-delay:
-    0s, 0s, calc(min(sibling-index(), 12) * var(--duration-calm) / 16),
-    calc(min(sibling-index(), 12) * var(--duration-calm) / 16);
+  transition-delay: 0s, 0s, 60ms, 60ms;
 }
 
 @starting-style {
@@ -553,7 +555,9 @@ html[data-cl-move] {
  */
 html[data-cl-move='screen']:not([data-cl-arriving]) .cl-main {
   view-transition-name: cl-screen;
-  background: var(--ground);
+  background:
+    radial-gradient(130% 70% at 50% -18%, var(--glow), transparent 64%) fixed,
+    var(--ground);
 }
 
 html[data-cl-arriving] .cl-main {
@@ -729,4 +733,14 @@ html[data-cl-move='version'] .cl-note {
   .cl-toast-mark .cl-cut {
     animation: cl-breathe calc(var(--duration-calm) * 3) var(--ease-standard) infinite alternate;
   }
+}
+
+::view-transition-old(cl-composer) {
+  animation: 90ms var(--ease-exit) both cl-fade-out;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(cl-composer) {
+  animation: var(--duration-base) var(--ease-enter) 90ms both cl-fade-in;
+  mix-blend-mode: normal;
 }

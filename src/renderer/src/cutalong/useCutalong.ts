@@ -3776,6 +3776,20 @@ export function useCutalong() {
     setPanel({ text: `v${n + 1} is v${back} again.` })
   }, [setDoc])
 
+  /** Brings an earlier revision back as the newest, as Undo does, from its tab above the preview. */
+  const showVersion = useCallback(
+    (target: number): void => {
+      const d = docRef.current
+      if (!d) return
+      const n = currentVersion(d).n
+      if (target === n || !d.versions.some((v) => v.n === target)) return
+      setDoc(restore(d, target))
+      remember({ kind: 'undo', doc: d.id, from: n, to: target, ...brandTag(currentCut(d)) })
+      setPanel({ text: `v${n + 1} is v${target} again.` })
+    },
+    [setDoc]
+  )
+
   /**
    * Exports the version on screen. Its progress shows in the toast and in the
    * chat, where the finished file then plays, the whole of it.
@@ -3934,6 +3948,7 @@ export function useCutalong() {
     acceptOffers,
     answerInPanel,
     undo,
+    showVersion,
     exportFinal,
     graphic,
     selectGraphic: setGraphic,

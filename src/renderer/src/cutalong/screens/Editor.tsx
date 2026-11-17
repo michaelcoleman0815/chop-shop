@@ -56,6 +56,7 @@ import {
   type Source,
   type Treatment
 } from '../../../../shared/edit'
+import { changedBeats, revisionOf } from '../revisions'
 import {
   describeSpeed,
   parseCommand,
@@ -197,7 +198,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           <Icon.back />
         </IconButton>
         <span className="cl-heading">{doc.title}</span>
-        <span className="cl-version">v{version.n}</span>
+        <Revisions doc={doc} onShow={app.showVersion} />
         <span className="spacer" />
         {undoTarget(doc) !== null && (
           <Button variant="text" onClick={app.undo}>
@@ -224,7 +225,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           Export
         </Button>
       </Header>
-      <main className="cl-editor">
+      <main className="cl-editor" style={{ '--rev': revisionOf(version.n).colour } as CSSProperties}>
         <div className="cl-editor-body">
           <Preview
             doc={doc}
@@ -1098,6 +1099,42 @@ function NoteInput({
  * The words of the cut, beat by beat. Clicking words marks them; the button
  * cuts the marked words, or brings back struck ones, as one new version.
  */
+/**
+ * The revision pages: the newest versions as tabs, each in its revision's
+ * colour. The one on screen sits forward and keeps the cl-version class; an
+ * earlier one comes back as the newest version, the way Undo brings one back.
+ */
+function Revisions({ doc, onShow }: { doc: EditDoc; onShow: (n: number) => void }): JSX.Element {
+  const current = currentVersion(doc).n
+  const shown = doc.versions.slice(-5)
+  const earlier = doc.versions.length - shown.length
+  return (
+    <div className="cl-revisions" role="group" aria-label="Versions">
+      {earlier > 0 && <span className="cl-rev-more">{earlier} earlier</span>}
+      {shown.map((v) => {
+        const rev = revisionOf(v.n)
+        const on = v.n === current
+        return (
+          <button
+            key={v.n}
+            type="button"
+            className={`cl-rev-tab${on ? ' cl-version' : ''}`}
+            style={{ '--rev': rev.colour } as CSSProperties}
+            aria-current={on ? 'true' : undefined}
+            aria-label={`v${v.n}, the ${rev.name} pages${on ? ', on screen' : ''}. ${v.summary}`}
+            title={v.summary}
+            onClick={() => {
+              if (!on) onShow(v.n)
+            }}
+          >
+            v{v.n}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function ScriptPanel({
   doc,
   time,
@@ -1116,6 +1153,20 @@ function ScriptPanel({
   const [marked, setMarked] = useState<Set<string>>(new Set())
   const timing = useMemo(() => new Map(resolved.words.map((w) => [w.id, w])), [resolved])
   const nowWord = resolved.words.find((w) => time >= w.outStart && time < w.outEnd)?.id
+  const nowLine = beatAt(resolved, time)?.id
+  const revision = currentVersion(doc).n
+  const changed = useMemo(() => changedBeats(doc), [doc])
+  // Open notes, numbered as the notes list numbers them, pencilled beside the line they are on.
+  const margin = useMemo(() => {
+    const byBeat = new Map<string, { n: number; text: string; id: string }[]>()
+    doc.notes
+      .filter((note) => note.status === 'open')
+      .forEach((note, i) => {
+        if (!note.beat) return
+        byBeat.set(note.beat, [...(byBeat.get(note.beat) ?? []), { n: i + 1, text: note.text, id: note.id }])
+      })
+    return byBeat
+  }, [doc.notes])
 
   useEffect(() => setMarked(new Set()), [cut])
 
@@ -1159,9 +1210,16 @@ function ScriptPanel({
 
   return (
     <aside className="cl-notes" aria-label="Script">
+      <p className="cl-script-key">
+        v{revision}, the {revisionOf(revision).name} pages.{changed.size > 0 ? ' An asterisk marks a line this revision changed.' : ''}
+      </p>
       <div className="cl-notes-scroll cl-script">
-        {cut.beats.map((beat) => (
-          <p key={beat.id}>
+        {cut.beats.map((beat, line) => (
+          <div key={beat.id} className={`cl-sline${beat.id === nowLine ? ' now' : ''}`}>
+            <span className="cl-sline-n" aria-hidden="true">
+              {line + 1}
+            </span>
+            <p>
             {beatWords(doc, beat).map((w, i) => (
               <span key={w.id}>
                 {i > 0 && ' '}
@@ -1178,7 +1236,22 @@ function ScriptPanel({
                 </button>
               </span>
             ))}
-          </p>
+            </p>
+            <span className="cl-sline-star">
+              {changed.has(beat.id) && (
+                <>
+                  <span aria-hidden="true">*</span>
+                  <span className="sr-only">Changed in v{revision}</span>
+                </>
+              )}
+            </span>
+            {(margin.get(beat.id) ?? []).map((note) => (
+              <p key={note.id} className="cl-margin-note">
+                <b aria-label={`Note ${note.n}`}>{note.n}</b>
+                {note.text}
+              </p>
+            ))}
+          </div>
         ))}
         {cut.beats.every((b) => b.from === null) && <p className="muted">No words in this edit yet.</p>}
       </div>
