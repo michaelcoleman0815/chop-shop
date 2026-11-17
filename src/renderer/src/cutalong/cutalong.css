@@ -3353,7 +3353,8 @@ button:disabled {
   place-items: center;
 }
 
-.cl-swatch {
+/* The avatar's colour, a dot in its picker button; the Brand page's colour fields use .cl-swatch as a label. */
+.cl-pick-colours .cl-swatch {
   width: 28px;
   height: 28px;
   border-radius: 50%;
