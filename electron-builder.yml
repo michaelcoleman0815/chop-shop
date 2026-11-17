@@ -55,6 +55,13 @@ mac:
     - target: zip
       arch: [arm64]
 
+win:
+  # The Windows app keeps onnxruntime-node's win32 x64 binaries (Kokoro's voice runs on them) and none of the others.
+  files:
+    - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
+    - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/**'
+    - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**'
+
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 
