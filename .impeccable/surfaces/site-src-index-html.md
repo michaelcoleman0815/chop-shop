@@ -1,0 +1,57 @@
+---
+version: 1
+slug: "site-src-index-html"
+primary_target: "site/src/index.html"
+related_targets: ["site/src/privacy.html","site/src/terms.html"]
+---
+
+## Scope
+
+The Cutalong marketing site in `site/`: the landing page (`site/src/index.html`), Privacy and Terms drafts, and a 404.
+Visitor mode: Persuade.
+
+## Audience, job, action
+
+YouTube creators on Apple silicon Macs who record talking heads, streams, services, podcasts and vlogs. The job is
+"try": download the Mac app. Proof is the product shown working (HTML stand-ins until real captures of the redesigned
+app arrive) and plain facts about what runs where. No testimonials, counts, logos or ratings exist; none are invented.
+
+## Constraints
+
+Brand pinned by the Cutalong design system: coral for the cut only, ink primary, Figtree and JetBrains Mono, the voice
+rules (I and you, never we; no exclamation marks, emoji or praise). "Coming soon" items never read as shipped.
+Cloudflare Pages: root `site`, `npm run build`, output `dist`. Domain, download link and form action are config values.
+
+## Direction contract
+
+THESIS: The page is one edit, played top to bottom. The editor's own beat strip rides in the slab nav as the page's
+navigation, the coral playhead marking where you are, and every section is a beat that shows Cutalong cutting. It
+refuses the category default: a split hero over icon tiles, three numbered cards and a closing email band.
+
+OWN-WORLD: Cutalong's system unchanged: warm grey ground, white cards on one hairline, ink type and ink pill buttons,
+Figtree set bold and tight for display, JetBrains Mono only for commands, timecode and file names, coral only on the
+mark, the playhead and the assistant avatar. Product renderings stay the app's light palette in both page modes.
+
+STORY: In one screen a creator learns they can talk to an editor and sees a raw recording become v2. Then: footage stays
+on the Mac and the key is their own; drop, say, refine; their own job among five; straight answers; download.
+
+FIRST VIEWPORT: Slab nav, lockup left, a quiet Download pill right. Left six columns: the h1 "The video editor you talk
+to" at display size, one sentence, the ink "Download for Mac" pill, one requirement line. Right six columns, about 560 px
+tall: the demo slot, a thread where the creator's ink bubble asks for a cut, the reply lands as v2 and the beat strip
+under it closes from 31:40 to 9:58, looping with a pause control.
+
+FORM: The cut-line spine, position 5 of 7 on the ranked list, seed:4540dfcca026596a. Signature interaction: the beat
+strip in the nav, one beat per section, the coral playhead tracking the scroll, a beat jumping to its section. Motion
+grammar: arrivals on the brand's ease-enter at 240 ms with an 8 px rise, the strip's beats on spring-gentle, nothing
+idle moves except the demo loop and the playhead.
+
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+## Memorable moment
+
+The nav's beat strip filling in as you scroll, with the coral playhead on your place.
+
+## Unresolved
+
+Cutalong's own price (a text slot in the FAQ). The email provider (the form posts nowhere until its action is set).
+Real captures of the redesigned app (slots: the hero loop, the three step screens, the five job screens).

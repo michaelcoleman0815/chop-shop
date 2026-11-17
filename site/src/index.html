@@ -1,0 +1,95 @@
+<!--page
+title: Cutalong, the video editor you talk to
+description: Cutalong is a Mac video editor for YouTube creators. Drop in your footage, say what you want, and it edits, on your own Mac.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+{{> head}}
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Cutalong","applicationCategory":"MultimediaApplication","operatingSystem":"{{requires}}","description":"{{description}}","url":"{{url index}}","downloadUrl":"{{downloadUrl}}","publisher":{"@type":"Person","name":"{{owner}}"}}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="slab">
+  <div class="container slab-row">
+    {{> lockup}}
+    <nav class="strip" aria-label="On this page" data-strip>
+      <ol class="strip-beats">
+        <li><a class="strip-beat" href="#mac"><span>Your Mac</span></a></li>
+        <li><a class="strip-beat" href="#how"><span>How it works</span></a></li>
+        <li><a class="strip-beat" href="#makes"><span>What it makes</span></a></li>
+        <li><a class="strip-beat" href="#questions"><span>Questions</span></a></li>
+        <li><a class="strip-beat" href="#soon"><span>Coming soon</span></a></li>
+        <li><a class="strip-beat" href="#download"><span>Download</span></a></li>
+      </ol>
+      <span class="strip-playhead" aria-hidden="true" data-playhead></span>
+    </nav>
+    <a class="btn btn-quiet slab-action" href="{{downloadUrl}}">Download</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="container hero-grid">
+      <h1 id="hero-title">The video editor you talk&nbsp;to</h1>
+      <div class="hero-line">
+        <p class="lead">Drop in your footage, say what you want, and it edits.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>
+          <p class="hero-note">{{requires}}</p>
+        </div>
+      </div>
+
+      <figure class="demo" data-loop>
+        <div class="plate demo-slot" data-slot="hero-loop" data-kind="product"
+          data-alt="A 10 to 20 second loop of the redesigned app at 2400 by 1000: footage dropped in, a request typed, the new version arriving in the editor">
+          <div class="app demo-thread" aria-hidden="true">
+            <div class="demo-user">
+              <ul class="app-files">
+                <li class="app-file"><span class="app-poster"></span><span class="app-file-name">talking-01.mov</span></li>
+                <li class="app-file"><span class="app-poster"></span><span class="app-file-name">talking-02.mov</span></li>
+                <li class="app-file"><span class="app-poster app-poster-audio">{{> icon-wave}}</span><span class="app-file-name">rode-mic.wav</span></li>
+              </ul>
+              <p class="app-bubble">Cut the retakes and make it 10 minutes</p>
+            </div>
+
+            <div class="app-turn">
+              <span class="app-avatar">{{> mark-white}}</span>
+              <div class="app-turn-body">
+                <p class="app-working demo-working">{{> mark-march}}<span>Finding the retakes</span></p>
+                <p class="app-reply demo-reply">v2 is ready. It runs 9:58, down from 31:40, and opens on the hook.</p>
+                <p class="app-facts demo-facts"><span class="app-fact">14 retakes cut</span><span class="app-fact">Sound from <span class="app-mono">rode-mic.wav</span></span></p>
+                <p class="app-actions demo-actions"><span class="app-btn app-btn-primary">Open the editor</span><span class="app-btn">Undo</span></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="app demo-editor" aria-hidden="true">
+            <div class="app-well">
+              <div class="app-frame"><span class="app-caption">the $40 camera setup</span></div>
+            </div>
+            <div class="app-strip demo-strip">
+              <span class="app-play">{{> icon-play}}</span>
+              <span class="app-time"><span class="demo-time-before">31:40</span><span class="demo-time-after">9:58</span></span>
+              <span class="app-beats demo-beats">
+                <i class="cut"></i><i class="keep on"></i><i class="cut"></i><i class="keep"></i><i class="cut"></i><i class="keep"></i><i class="cut"></i>
+                <i class="cut"></i><i class="keep"></i><i class="cut"></i><i class="keep"></i><i class="cut"></i><i class="keep"></i><i class="cut"></i>
+                <b class="app-playhead demo-playhead"></b>
+              </span>
+            </div>
+          </div>
+        </div>
+        <figcaption class="demo-caption">
+          <span class="visually-hidden">An example in Cutalong: you drop in two takes and a separate microphone recording, ask it to cut the retakes and make it 10 minutes, and it replies that v2 is ready, 9:58 long, down from 31:40.</span>
+          <button class="loop-toggle" type="button" data-loop-toggle>{{> icon-pause}}<span data-loop-label>Pause</span></button>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+</main>
+
+</body>
+</html>

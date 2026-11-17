@@ -1,0 +1,324 @@
+/* Hallmark · shape: Edit Strip (custom; the draw's Marquee Hero swapped: the brief puts a demo in the fold) · genre: modern-minimal · theme: brand (Cutalong design system) · draw: 6d8424 · job: try · modes: light+dark
+ * paper: oklch(97% 0.0026 106.4) · accent: oklch(68.4% 0.2069 33.9) · display: Figtree · body: Figtree · hero: headline line over a twelve-column product plate (the draw's Settled swapped: the head sets on one line only across twelve) · nav: slab carrying the page's beat strip · footer: statement · signature: the editor's beat strip as the page's navigation, the coral playhead on your place
+ * axes: light/geometric-sans/warm · posture: Restrained · contrast: pass · fold: pass · imagery: product built in slots, no photographs · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V4 · weakest: H, a chat and an editor side by side are busy at hero size; the thread keeps one sentence, two facts and two buttons, and the strip alone carries the before and after */
+@import url("./tokens.css");
+@import url("./base.css");
+
+/* ---------- Chrome ---------- */
+
+.skip {
+  position: absolute; left: var(--space-md); top: calc(-1 * var(--space-3xl)); z-index: var(--z-toast);
+  padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill);
+  background: var(--color-ink); color: var(--color-paper); font-weight: 600; text-decoration: none;
+}
+.skip:focus-visible { top: var(--space-md); }
+
+.slab {
+  position: sticky; top: 0; z-index: var(--z-sticky-nav);
+  background: var(--color-card); border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+.slab-row { display: flex; align-items: center; gap: var(--space-xl); height: var(--nav-height); }
+
+.lockup {
+  display: inline-flex; align-items: center; gap: var(--space-sm); flex: 0 0 auto;
+  color: var(--color-ink); text-decoration: none;
+  font-size: 1.3125rem; line-height: 1; font-weight: 800; letter-spacing: -0.045em;
+  border-radius: var(--radius-tile);
+}
+.lockup .wordmark { padding-bottom: var(--space-3xs); }
+.mark { flex: 0 0 auto; overflow: visible; }
+.mark-take { fill: var(--color-ink); }
+.mark-cut { fill: none; stroke: var(--color-accent); stroke-width: 5; stroke-dasharray: 7 6; }
+
+.slab-action { margin-left: auto; }
+
+/* The page's beat strip: one beat per section, the one you are reading in ink, the coral playhead on your place. */
+.strip { position: relative; flex: 1 1 auto; max-width: 46rem; margin-inline: auto; }
+.strip-beats { display: flex; gap: var(--space-2xs); list-style: none; height: 36px; }
+.strip-beats > li { flex: 1 1 0; min-width: 0; }
+.strip-beat {
+  display: grid; place-items: center; height: 100%; padding-inline: var(--space-xs);
+  border-radius: var(--space-xs); background: var(--color-paper-3); color: var(--color-ink-2);
+  font-size: var(--text-xs); font-weight: 600; line-height: 1; text-decoration: none; white-space: nowrap;
+  transition: background-color var(--duration-base) var(--ease-standard), color var(--duration-base) var(--ease-standard);
+}
+.strip-beat > span { overflow: hidden; text-overflow: clip; max-width: 100%; }
+.strip-beat[aria-current="true"] { background: var(--color-ink); color: var(--color-paper); }
+.strip-playhead {
+  position: absolute; top: calc(-1 * var(--space-xs)); bottom: calc(-1 * var(--space-xs)); left: 0;
+  width: 2px; margin-left: -1px; border-radius: 2px; background: var(--color-accent);
+  pointer-events: none; will-change: transform;
+}
+html:not(.js) .strip-playhead { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .strip-beat:not([aria-current="true"]):hover { background: var(--color-rule-strong); color: var(--color-ink); }
+}
+@media (max-width: 75rem) {
+  .strip-beat:not([aria-current="true"]) > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@media (max-width: 60rem) { .strip { display: none; } }
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-xs);
+  min-height: 48px; padding: 0 var(--space-lg); border: var(--rule-hair) solid transparent;
+  border-radius: var(--radius-pill); font-size: 1rem; font-weight: 600; line-height: 1;
+  text-decoration: none; white-space: nowrap; cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+.btn:active { transform: scale(0.96); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; transform: none; }
+.btn-primary { min-height: 52px; padding-inline: var(--space-xl); background: var(--color-ink); color: var(--color-paper); }
+.btn-quiet { min-height: 44px; background: var(--color-card); border-color: var(--color-rule); color: var(--color-ink); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover { background: var(--color-ink-hover); }
+  .btn-quiet:hover { border-color: var(--color-rule-strong); }
+}
+
+/* ---------- Hero ---------- */
+
+.hero { padding-block: var(--space-2xl) var(--space-3xl); }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: var(--space-xl); }
+.hero h1 { max-width: none; font-size: var(--text-display); line-height: 1; }
+.hero-line { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xl); flex-wrap: wrap; }
+.hero-line .lead { color: var(--color-ink-2); }
+.hero-actions { display: flex; align-items: center; gap: var(--space-lg); flex-wrap: wrap; }
+.hero-note { max-width: 24ch; color: var(--color-muted); font-size: var(--text-sm); line-height: 1.4; }
+
+/* ---------- The product, built: the app's own palette, fixed in both modes ---------- */
+
+.plate {
+  position: relative; margin: 0; border-radius: var(--radius-composer); background: var(--app-ground);
+  outline: var(--rule-hair) solid var(--app-outline); outline-offset: calc(-1 * var(--rule-hair));
+  box-shadow: var(--shadow-frame);
+}
+.plate[data-slot] { background: var(--app-ground); }
+
+.app { color: var(--app-ink); font-size: 0.9375rem; line-height: 1.45; font-weight: 400; }
+.app-mono { font-family: var(--font-outlier); font-size: 0.8125rem; }
+
+.app-files { display: flex; justify-content: flex-end; gap: var(--space-xs); list-style: none; }
+.app-file { display: grid; gap: var(--space-2xs); width: 7.25rem; min-width: 0; }
+.app-poster {
+  display: grid; place-items: center; aspect-ratio: 16 / 9; border-radius: var(--space-sm);
+  background: linear-gradient(160deg, var(--app-frame-2), var(--app-frame)); color: var(--app-caption);
+}
+.app-poster-audio { background: var(--app-well); color: var(--app-ink-soft); }
+.app-file-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-outlier); font-size: 0.75rem; color: var(--app-muted);
+}
+.app-bubble {
+  align-self: flex-end; max-width: 24rem; padding: var(--space-sm) var(--space-md);
+  border-radius: 22px 22px 6px 22px; background: var(--app-ink); color: var(--app-card);
+  font-size: 1rem; line-height: 1.45;
+}
+.app-turn { display: flex; align-items: flex-start; gap: var(--space-sm); }
+.app-avatar {
+  display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px;
+  border-radius: var(--radius-tile); background: var(--app-coral);
+}
+.mark-white .mark-take { fill: var(--app-card); }
+.mark-white .mark-cut { stroke: var(--app-card); }
+.app-turn-body { display: grid; gap: var(--space-sm); min-width: 0; padding-top: var(--space-3xs); }
+.app-working { display: flex; align-items: center; gap: var(--space-xs); color: var(--app-muted); }
+.app-working .mark-take { fill: var(--app-ink); }
+.app-working .mark-cut { stroke: var(--app-coral); }
+.app-reply { font-size: 1.0625rem; line-height: 1.5; max-width: 30rem; }
+.app-facts, .app-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.app-fact {
+  display: inline-flex; align-items: center; gap: var(--space-2xs); min-height: 32px; padding: 0 var(--space-sm);
+  border-radius: var(--radius-pill); background: var(--app-card); border: var(--rule-hair) solid var(--app-line);
+  font-size: 0.8125rem;
+}
+.app-btn {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 0 var(--space-md);
+  border-radius: var(--radius-pill); background: var(--app-card); border: var(--rule-hair) solid var(--app-line);
+  font-size: 0.875rem; font-weight: 600;
+}
+.app-btn-primary { background: var(--app-ink); border-color: var(--app-ink); color: var(--app-card); }
+
+/* The editor: the preview well and its frame, and the beat strip. */
+.app-well {
+  display: grid; place-items: center; padding: var(--space-lg); border-radius: var(--radius-composer);
+  background: var(--app-well);
+}
+.app-frame {
+  position: relative; display: grid; align-content: end; justify-items: center; overflow: hidden;
+  width: 100%; aspect-ratio: 16 / 9; border-radius: 18px; padding: var(--space-md);
+  background: linear-gradient(160deg, var(--app-frame-2), var(--app-frame)); box-shadow: var(--app-frame-shadow);
+}
+.app-caption {
+  padding: var(--space-2xs) var(--space-xs); border-radius: var(--space-xs); background: var(--app-scrim);
+  color: var(--app-caption); font-size: 1.125rem; font-weight: 800; line-height: 1.1; letter-spacing: -0.01em;
+}
+.app-strip {
+  display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-card); background: var(--app-card); border: var(--rule-hair) solid var(--app-line);
+}
+.app-play {
+  display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px;
+  border-radius: var(--radius-pill); background: var(--app-ink); color: var(--app-card);
+}
+.app-time { position: relative; flex: 0 0 auto; font-family: var(--font-outlier); font-size: 0.8125rem; }
+.app-beats { position: relative; flex: 1 1 auto; height: 34px; container-type: inline-size; }
+.app-beats > i {
+  position: absolute; top: 0; bottom: 0; left: calc(var(--x) * 1%); width: calc(var(--w) * 1% - 3px);
+  border-radius: var(--space-xs); background: var(--app-beat);
+}
+.app-beats > i.on { background: var(--app-ink); }
+.app-beats > i.cut { background-color: var(--app-well); background-image: repeating-linear-gradient(135deg, transparent 0 4px, var(--app-hatch) 4px 5px); }
+.app-playhead {
+  position: absolute; top: -6px; bottom: -6px; left: 0; width: 2px; margin-left: -1px; border-radius: 2px;
+  background: var(--app-coral);
+}
+
+/* ---------- The hero's plate: the thread beside the editor ---------- */
+
+.demo { --demo-start: -9.6s; margin: 0; }
+.demo-slot { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-lg); padding: var(--space-xl); }
+.demo-thread { display: flex; flex-direction: column; justify-content: center; gap: var(--space-lg); min-width: 0; }
+.demo-user { display: flex; flex-direction: column; gap: var(--space-xs); }
+.demo-editor { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--space-sm); min-width: 0; }
+.demo-editor .app-frame { max-width: 30rem; }
+.demo-caption { display: flex; justify-content: flex-end; margin-top: var(--space-sm); }
+
+/* The edit the hero shows: a 31:40 recording, retakes and pauses hatched, cut to 9:58. Widths are shares of 31:40. */
+.demo-beats > i:nth-child(1) { --x: 0; --w: 3; }
+.demo-beats > i:nth-child(2) { --x: 3; --w: 5; --dx: -3; }
+.demo-beats > i:nth-child(3) { --x: 8; --w: 6; }
+.demo-beats > i:nth-child(4) { --x: 14; --w: 6; --dx: -9; }
+.demo-beats > i:nth-child(5) { --x: 20; --w: 10; }
+.demo-beats > i:nth-child(6) { --x: 30; --w: 7; --dx: -19; }
+.demo-beats > i:nth-child(7) { --x: 37; --w: 8; }
+.demo-beats > i:nth-child(8) { --x: 45; --w: 15; }
+.demo-beats > i:nth-child(9) { --x: 60; --w: 6; --dx: -42; }
+.demo-beats > i:nth-child(10) { --x: 66; --w: 8; }
+.demo-beats > i:nth-child(11) { --x: 74; --w: 4.5; --dx: -50; }
+.demo-beats > i:nth-child(12) { --x: 78.5; --w: 13.5; }
+.demo-beats > i:nth-child(13) { --x: 92; --w: 3; --dx: -63.5; }
+.demo-beats > i:nth-child(14) { --x: 95; --w: 5; }
+.demo-beats::before {
+  content: ""; position: absolute; inset: 0; border-radius: var(--space-xs);
+  border: var(--rule-hair) dashed var(--app-line);
+}
+.demo-time-before { position: absolute; inset: 0; opacity: 0; }
+
+/* At rest, with no script or with reduced motion, the plate shows the end of the edit. */
+.demo-beats > i.keep { transform: translateX(calc(var(--dx) * 1cqw)); }
+.demo-beats > i.cut { opacity: 0; }
+.demo-working { display: none; }
+.demo-playhead { transform: translateX(6cqw); }
+
+.loop-toggle {
+  display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-md);
+  border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--color-ink-2);
+  font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.loop-toggle .icon-play { display: none; }
+.loop-toggle[data-held] .icon-play { display: block; }
+.loop-toggle[data-held] .icon-pause { display: none; }
+html:not(.js) .loop-toggle { display: none; }
+@media (hover: hover) and (pointer: fine) { .loop-toggle:hover { background: var(--color-wash); color: var(--color-ink); } }
+@media (prefers-reduced-motion: reduce) { .loop-toggle { display: none; } }
+
+/* The loop, 12 s: the ask arrives, Cutalong works, the strip closes up, the reply lands, v2 plays, and the plate dips to start again. */
+.demo.is-live .demo-user { animation: demo-user 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-working { display: flex; animation: demo-working 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-reply { animation: demo-reply 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-facts { animation: demo-facts 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-actions { animation: demo-actions 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-strip, .demo.is-live .app-frame { animation: demo-dip 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-beats > i.keep { animation: demo-close 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-beats > i.cut { animation: demo-cut 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-time-before { animation: demo-time-before 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-time-after { animation: demo-time-after 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-playhead { animation: demo-play 12s var(--demo-start) infinite both; }
+.demo.is-live .app-caption { animation: demo-caption 12s var(--demo-start) infinite both; }
+.demo.is-live .mark-march .mark-cut { animation: march 1.28s linear infinite; }
+.demo:not(.is-running), .demo:not(.is-running) * { animation-play-state: paused !important; }
+
+@keyframes demo-user {
+  0% { opacity: 0; transform: translateY(8px); animation-timing-function: var(--ease-enter); }
+  2%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
+  91.5%, 100% { opacity: 0; transform: none; }
+}
+@keyframes demo-working {
+  0%, 6% { opacity: 0; transform: translateY(4px); animation-timing-function: var(--ease-enter); }
+  8%, 30% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
+  31.5%, 100% { opacity: 0; transform: none; }
+}
+@keyframes demo-reply {
+  0%, 31% { opacity: 0; transform: translateY(4px); animation-timing-function: var(--ease-enter); }
+  33%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
+  91.5%, 100% { opacity: 0; transform: none; }
+}
+@keyframes demo-facts {
+  0%, 31.33% { opacity: 0; transform: translateY(4px); animation-timing-function: var(--ease-enter); }
+  33.33%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
+  91.5%, 100% { opacity: 0; transform: none; }
+}
+@keyframes demo-actions {
+  0%, 31.67% { opacity: 0; transform: translateY(4px); animation-timing-function: var(--ease-enter); }
+  33.67%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
+  91.5%, 100% { opacity: 0; transform: none; }
+}
+@keyframes demo-dip {
+  0%, 89% { opacity: 1; animation-timing-function: var(--ease-exit); }
+  91.5%, 96.5% { opacity: 0; animation-timing-function: var(--ease-enter); }
+  98.5%, 100% { opacity: 1; }
+}
+@keyframes demo-close {
+  0%, 24% { transform: none; animation-timing-function: var(--ease-standard); }
+  26.67%, 94% { transform: translateX(calc(var(--dx) * 1cqw)); animation-timing-function: steps(1, end); }
+  94.01%, 100% { transform: none; }
+}
+@keyframes demo-cut {
+  0%, 24% { opacity: 1; animation-timing-function: var(--ease-exit); }
+  25.5%, 94% { opacity: 0; animation-timing-function: steps(1, end); }
+  94.01%, 100% { opacity: 1; }
+}
+@keyframes demo-time-before {
+  0%, 24.5% { opacity: 1; animation-timing-function: var(--ease-exit); }
+  26%, 94% { opacity: 0; animation-timing-function: steps(1, end); }
+  94.01%, 100% { opacity: 1; }
+}
+@keyframes demo-time-after {
+  0%, 24.5% { opacity: 0; animation-timing-function: var(--ease-enter); }
+  26.5%, 94% { opacity: 1; animation-timing-function: steps(1, end); }
+  94.01%, 100% { opacity: 0; }
+}
+@keyframes demo-play {
+  0%, 24% { transform: translateX(5cqw); animation-timing-function: var(--ease-standard); }
+  26.67%, 33% { transform: translateX(2cqw); animation-timing-function: linear; }
+  89% { transform: translateX(30cqw); animation-timing-function: steps(1, end); }
+  94%, 100% { transform: translateX(5cqw); }
+}
+@keyframes demo-caption {
+  0%, 31% { opacity: 0; transform: translateY(6px); animation-timing-function: var(--ease-enter); }
+  33%, 100% { opacity: 1; transform: none; }
+}
+@keyframes march { to { stroke-dashoffset: -13; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .demo.is-live * { animation: none !important; }
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 60rem) {
+  .demo-slot { grid-template-columns: minmax(0, 1fr); padding: var(--space-lg); }
+  .demo-editor .app-frame { max-width: none; }
+}
+@media (max-width: 40rem) {
+  .hero { padding-block: var(--space-xl) var(--space-2xl); }
+  .hero-line { flex-direction: column; align-items: flex-start; }
+  .demo-slot { padding: var(--space-md); gap: var(--space-md); }
+  .app-files { justify-content: flex-start; }
+  .app-file { width: 5.75rem; }
+  .demo-user { align-items: flex-end; }
+}
