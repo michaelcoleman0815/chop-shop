@@ -56,7 +56,7 @@ launch() {
 # Follows one pass of the flow from launch to its last step, with a
 # screenshot at each step. Sets status and why.
 follow() {
-  local label=$1 start=$SECONDS seen="" gone=0 progress services n step
+  local label=$1 start=$SECONDS seen="" gone=0 last=0 again="" sampled=0 progress services n step pid app_kb web_kb
   status=1
   why="$label: no report in $TIMEOUT s"
   while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
@@ -71,8 +71,14 @@ follow() {
       n=${progress%% *}
       step=${progress#* }
       echo "$label $((SECONDS - start)) s: $n $step"
+      # A lower step than the last: the page started its flow again, as it does when its web view is restarted.
+      if [ "$n" -lt "$last" ] 2>/dev/null; then
+        again="the app's page started again after step $last: its web view was restarted"
+        echo "::warning::$label: $again"
+      fi
+      last=$n
       if [ "$step" = done ]; then
-        status=0
+        if [ -z "$again" ]; then status=0; else why="$label: $again"; fi
         return
       fi
       xcrun simctl io "$DEV" screenshot "$OUT/screens/$label-$(printf %02d "$n")-$step.png" >/dev/null 2>&1 ||
@@ -84,6 +90,16 @@ follow() {
     # pipefail counts as the app gone. Gone only when the listing leaves it out five times in a
     # row; no listing at all is no news either way.
     services=$(xcrun simctl spawn "$DEV" launchctl list 2>/dev/null || true)
+    # The app's memory every 15 s, and its web views', for when the page is restarted. Each runs as a
+    # process of this Mac; nothing here stops reading early, which pipefail would count as a failure.
+    if [ $((SECONDS - sampled)) -ge 15 ]; then
+      sampled=$SECONDS
+      pid=$(awk -v app="UIKitApplication:$BUNDLE" 'index($3, app) == 1 { print $1; exit }' <<<"$services")
+      app_kb=""
+      if [ -n "$pid" ] && [ "$pid" != "-" ]; then app_kb=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d ' ' || true); fi
+      web_kb=$(ps -axo rss=,command= 2>/dev/null | awk '/WebKit\.WebContent/ && /CoreSimulator/ { s += $1 } END { print s + 0 }' || true)
+      echo "$label $((SECONDS - start)) s ${seen:-starting}: app ${app_kb:-?} kB, web views ${web_kb:-?} kB" >> "$OUT/memory.txt"
+    fi
     if grep -q "UIKitApplication:$BUNDLE" <<<"$services"; then
       gone=0
     elif [ -n "$services" ]; then
@@ -132,9 +148,18 @@ fi
 cp -R "$docs/Exports" "$OUT/" 2>/dev/null || echo "::warning::no exports to copy"
 for label in light dark; do
   [ -f "$OUT/app-stdout-$label.txt" ] || continue
-  echo "--- the app's lines, $label"
-  grep -E "\[drive\]|ERROR|Error" "$OUT/app-stdout-$label.txt" | tail -n 120 || true
+  echo "--- the app's lines, $label (without the plugins' turned-down reads)"
+  grep -E "\[drive\]|ERROR|Error|WebView|terminat|crash" "$OUT/app-stdout-$label.txt" | grep -v "does not exist\|given key" |
+    tail -n 120 || true
 done
+# What WebKit says of the page's process: why it ended, when it did (its memory limit, or a crash).
+xcrun simctl spawn "$DEV" log show --style compact --last 90m \
+  --predicate 'eventMessage CONTAINS[c] "WebProcessProxy" OR eventMessage CONTAINS[c] "WebContent" OR eventMessage CONTAINS[c] "memory limit"' \
+  > "$OUT/webkit-log.txt" 2>/dev/null || true
+echo "--- the app's memory"
+cat "$OUT/memory.txt" 2>/dev/null || true
+echo "--- WebKit on the page's process"
+grep -iE "terminat|crash|exceed|memory|jetsam" "$OUT/webkit-log.txt" | tail -n 40 || true
 if [ "$flow_status" != 0 ] || [ "$tour_status" != 0 ]; then
   for label in light dark; do
     [ -f "$OUT/app-stderr-$label.txt" ] || continue

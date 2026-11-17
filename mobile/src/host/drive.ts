@@ -136,6 +136,9 @@ export async function drive(): Promise<void> {
     return // No plan: the app as a person uses it.
   }
   const tour = plan.tour === 'dark'
+  // The runner clears the progress before each pass, so progress from before means the page started
+  // again partway through, as it does when its web view is restarted: the pass ends there, saying so.
+  const earlier = (await files.readText(at('drive-progress.txt')).catch(() => '')).trim()
 
   const t0 = Date.now()
   const steps: Step[] = []
@@ -325,6 +328,10 @@ export async function drive(): Promise<void> {
 
     await until('the app', () => document.querySelector('#cl-ask'), 60)
     report.looks = looks()
+    if (earlier && !/ done$/.test(earlier)) {
+      report.restartedAfter = earlier
+      throw new Error(`The app's page started again after step "${earlier}": its web view was restarted.`)
+    }
     if (tour) {
       await darkTour()
     } else {

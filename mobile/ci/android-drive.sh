@@ -54,7 +54,7 @@ put() {
 # Follows one pass of the flow from launch to its last step: a screenshot at
 # each step, the app's memory every 15 s. Sets status and why.
 follow() {
-  local label=$1 start=$SECONDS seen="" gone=0 sampled=0 progress alive n step pss free
+  local label=$1 start=$SECONDS seen="" gone=0 sampled=0 last=0 again="" progress alive n step pss free
   status=1
   why="$label: no report in $TIMEOUT s"
   while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
@@ -71,8 +71,14 @@ follow() {
       n=${progress%% *}
       step=${progress#* }
       echo "$label $((SECONDS - start)) s: $n $step"
+      # A lower step than the last: the page started its flow again, as it does when its web view is restarted.
+      if [ "$n" -lt "$last" ] 2>/dev/null; then
+        again="the app's page started again after step $last: its web view was restarted"
+        echo "::warning::$label: $again"
+      fi
+      last=$n
       if [ "$step" = done ]; then
-        status=0
+        if [ -z "$again" ]; then status=0; else why="$label: $again"; fi
         return
       fi
       adb exec-out screencap -p > "$OUT/screens/$label-$(printf %02d "$n")-$step.png" ||
