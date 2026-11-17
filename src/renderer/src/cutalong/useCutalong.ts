@@ -4151,6 +4151,8 @@ export function useCutalong() {
     keyRef.current = next
     setKey(next)
     setKeySaved(false)
+    // A toast still saying the key works would contradict the steps now shown.
+    setToast((t) => (t?.text === keyMessage('ok') ? null : t))
   }, [])
 
   exportRef.current = exportFinal
