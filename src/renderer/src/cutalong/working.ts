@@ -16,12 +16,18 @@ const LINES: [RegExp, string][] = [
   [/^finding clips\b/i, 'Reading the whole recording for moments that stand on their own.'],
   [/^watching your (videos|clips)\b/i, 'Learning your pace, your cuts and your sound.'],
   [/^looking for b-roll\b/i, 'Looking through your sources for shots that fit what is said.'],
-  [/^finding you in the picture\b/i, 'Finding where you are in each frame, so a crop keeps you in it.'],
-  [/^downloading model\b/i, 'Once only: after this, words are written down on this computer.']
+  [/^finding you in the picture\b/i, 'Finding where you are in each frame, so a crop keeps you in it.']
 ]
 
-/** The plain line under a stage: what it is doing, or else how far along it is. */
-export function workingLine(stage: string, percent: number | null): string {
+/** The transcription model's download, as "Downloading model" or by its name ("Downloading base.en"). */
+const DOWNLOAD = /^downloading (model|(tiny|base|small|medium|large)\S*)\b/i
+
+/**
+ * The plain line under a stage: what it is doing, or else how far along it
+ * is. `here` names the device, as a sentence would: "this computer", "this phone".
+ */
+export function workingLine(stage: string, percent: number | null, here = 'this computer'): string {
+  if (DOWNLOAD.test(stage.trim())) return `Once only: after this, words are written down on ${here}.`
   const said = LINES.find(([re]) => re.test(stage.trim()))
   if (said) return said[1]
   if (percent === null) return 'This can take a minute.'

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { device } from '../api'
 import { logCrew, memberFor, type CrewEntry, type CrewId } from '../crew'
 import { elapsed } from '../format'
 import { grow } from '../motion'
@@ -74,7 +75,11 @@ export function Working({
     return (
       <div className="cl-progress big crewed">
         <LivingMark size={mark} />
-        <CrewAtWork log={log} working={working} line={progress.line ?? workingLine(progress.stage, progress.percent)} />
+        <CrewAtWork
+          log={log}
+          working={working}
+          line={progress.line ?? workingLine(progress.stage, progress.percent, device.here)}
+        />
         {/* A stage no one owns (Cutalong thinking between their turns) is said plainly. */}
         {working.size === 0 && <span className="cl-progress-stage">{progress.stage}</span>}
         <span className="cl-progress-foot">
@@ -89,7 +94,9 @@ export function Working({
       <div className="cl-progress big">
         <LivingMark size={mark} />
         <span className="cl-progress-stage">{progress.stage}</span>
-        <span className="cl-progress-line">{progress.line ?? workingLine(progress.stage, progress.percent)}</span>
+        <span className="cl-progress-line">
+          {progress.line ?? workingLine(progress.stage, progress.percent, device.here)}
+        </span>
         <span className="cl-progress-foot">
           {bar}
           {time}

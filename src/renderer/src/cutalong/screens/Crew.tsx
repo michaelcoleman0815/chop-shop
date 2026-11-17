@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { brandName } from '../../../../shared/brands'
-import { api } from '../api'
+import { api, device } from '../api'
 import { CrewFace } from '../components/Crew'
 import { Button } from '../components/ui'
 import { CREW, CREW_ORDER, crewBlock, crewLearned, willLearn, type CrewId } from '../crew'
@@ -27,7 +27,7 @@ const MODEL_NAMES: Record<string, string> = {
   'medium.en': 'Most accurate'
 }
 
-/** What the crew needs, from this computer as it is: the transcription model, and the Claude key. */
+/** What the crew needs, from the device as it is: the transcription model, and the Claude key. */
 function useNeeds(): Partial<Record<CrewId, Need>> {
   const [needs, setNeeds] = useState<Partial<Record<CrewId, Need>>>({})
   useEffect(() => {
@@ -39,13 +39,13 @@ function useNeeds(): Partial<Record<CrewId, Need>> {
       const next: Partial<Record<CrewId, Need>> = {}
       if (!hasModel)
         next.echo = {
-          text: `The ${MODEL_NAMES[model] ?? model} transcription model, to write words down on this computer. It downloads once.`,
-          steps: ['Open Settings.', 'Under Transcription, choose Download.']
+          text: `The ${MODEL_NAMES[model] ?? model} transcription model, to write words down on ${device.here}. It downloads once.`,
+          steps: ['Open Settings.', 'Under Transcription, choose Download now.']
         }
       if (!key)
         next.quill = {
-          text: 'Your Anthropic key, so Claude writes your titles, descriptions and chapters. Without it, I write them on this computer.',
-          steps: ['Open Settings.', 'Paste your key under Claude and save it. It stays in this computer’s keychain.']
+          text: `Your Anthropic key, so Claude writes your titles, descriptions and chapters. Without it, I write them on ${device.here}.`,
+          steps: ['Open Settings.', `Paste your key under Claude and save it. It stays in ${device.keychain}.`]
         }
       if (live) setNeeds(next)
     })().catch(() => undefined)
@@ -61,6 +61,8 @@ export function CrewPage({ app }: { app: Cutalong }): JSX.Element {
   const nothingYet = CREW_ORDER.every((id) => learned[id].length === 0)
   const needs = useNeeds()
   const several = app.brands.brands.length > 1
+  // On a phone, learning from videos and edits is on the Mac for now (device.ts), and the page says so.
+  const learnAway = device.away['feature:learn']
   return (
     <>
       <Header>
@@ -77,7 +79,9 @@ export function CrewPage({ app }: { app: Cutalong }): JSX.Element {
             {nothingYet && (
               <span className="cl-lede-line">
                 {' '}
-                Nothing learned yet: they learn from the videos on your Brand page and from how you edit.
+                {learnAway
+                  ? `Nothing learned yet. ${learnAway}`
+                  : 'Nothing learned yet: they learn from the videos on your Brand page and from how you edit.'}
               </span>
             )}
           </p>

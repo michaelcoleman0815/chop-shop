@@ -63,5 +63,10 @@ describe('working', () => {
     expect(workingLine('Transcribing take-3.mov', 40)).toMatch(/every word/)
     expect(workingLine('Writing the Premiere project', 90)).toBe('Nearly done.')
     expect(workingLine('Something new', null)).toBe('This can take a minute.')
+    // The model's download, by either name, on the device it is on.
+    expect(workingLine('Downloading model', 20)).toBe('Once only: after this, words are written down on this computer.')
+    expect(workingLine('Downloading base.en', 20, 'this phone')).toBe(
+      'Once only: after this, words are written down on this phone.'
+    )
   })
 })
