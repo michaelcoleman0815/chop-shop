@@ -4,3 +4,6 @@ node_modules/
 .hallmark/shots/
 .hallmark/before/
 src/.hallmark/
+.wrangler/
+signups.json
+signups.csv
