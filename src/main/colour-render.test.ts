@@ -1,3 +1,4 @@
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
@@ -15,7 +16,10 @@ import {
   type EditDoc,
   type Source
 } from '../shared/edit'
+import { MOTION_FONTS } from '../shared/motion'
+import { captionStyleFor, layoutSubtitle, subtitleCues, type TextMeasurer } from '../shared/subtitles'
 import { renderCut, type RenderSource } from './cut-render'
+import { captionMatrix } from './intake'
 import { renderCutMotion, subtitlePass } from './motion-render'
 import { AS_PLAYED, ffmpegRun, findFfmpeg, findFfprobe, type Rgb } from './test-media'
 
@@ -135,12 +139,16 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
     ],
     's1'
   )
-  const docWith = (ops: unknown[], sources: Source[] = [source]): { doc: EditDoc; cut: Cut } => {
-    const doc = createDoc({ id: 'd', title: 'Colour', sources, words })
-    const r = applyOps(currentCut(doc), [{ op: 'loudness', lufs: null }, { op: 'captions', set: { on: false } }, ...ops], {
-      words: doc.words,
-      sources: doc.sources
-    })
+  const docWith = (ops: unknown[], sources: Source[] = [source], said = words): { doc: EditDoc; cut: Cut } => {
+    const doc = createDoc({ id: 'd', title: 'Colour', sources, words: said })
+    const r = applyOps(
+      currentCut(doc),
+      [{ op: 'loudness', lufs: null }, { op: 'captions', set: { on: false } }, ...ops],
+      {
+        words: doc.words,
+        sources: doc.sources
+      }
+    )
     expect(r.rejected).toEqual([])
     return { doc, cut: r.cut }
   }
@@ -148,7 +156,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
     name: string,
     doc: EditDoc,
     cut: Cut,
-    extra: { logo?: string; motion?: boolean } = {}
+    extra: { logo?: string; motion?: boolean; colors?: { text: string; accent: string } } = {}
   ): Promise<string> => {
     const resolved = resolveCut(cut, doc.words, doc.sources)
     const rs: RenderSource[] = doc.sources.map((s) => ({ ...s, hasAudio: true }))
@@ -179,8 +187,15 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
       fontsDir: FONTS,
       overlays,
       ...(extra.logo
-        ? { brand: { colors: { text: '#FFFFFF', accent: BRAND }, logo: { path: extra.logo, corner: 'top-right', opacity: 1 } } }
-        : {})
+        ? {
+            brand: {
+              colors: { text: '#FFFFFF', accent: BRAND },
+              logo: { path: extra.logo, corner: 'top-right', opacity: 1 }
+            }
+          }
+        : extra.colors
+          ? { brand: { colors: extra.colors, logo: null } }
+          : {})
     })
   }
 
@@ -219,20 +234,85 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
     // The marker captions: one word at a time on a lime block.
     const { doc, cut } = docWith([block, { op: 'captions', set: { on: true, preset: 'marker', position: 'top' } }])
     const logo = join(dir, 'logo.png')
-    ffmpegRun(ffmpeg, ['-f', 'lavfi', '-i', `color=c=0x${BRAND.slice(1)}:s=400x400:d=1`, '-frames:v', '1', '-pix_fmt', 'rgba', logo])
+    ffmpegRun(ffmpeg, [
+      '-f',
+      'lavfi',
+      '-i',
+      `color=c=0x${BRAND.slice(1)}:s=400x400:d=1`,
+      '-frames:v',
+      '1',
+      '-pix_fmt',
+      'rgba',
+      logo
+    ])
     const out = await exportOf('over', doc, cut, { logo, motion: true })
     const graphic = seen(ffmpeg, out, 1.5, { x: 1480, y: 640, w: 160, h: 120 })
     // The logo: a seventh of the frame wide, a twentieth in from the top right corner.
-    const logoAt = seen(ffmpeg, out, 1.5, { x: W - Math.round(W * 0.045) - 220, y: Math.round(W * 0.045) + 40, w: 180, h: 180 })
+    const logoAt = seen(ffmpeg, out, 1.5, {
+      x: W - Math.round(W * 0.045) - 220,
+      y: Math.round(W * 0.045) + 40,
+      w: 180,
+      h: 180
+    })
     // The caption's block: its padding above the word, which no letter reaches.
     const marker = { fontSizePx: Math.round((78 * W) / 1080), outlinePx: Math.round((12 * W) / 1080) }
     const lineTop = Math.round(H * 0.22) - marker.fontSizePx
-    const caption = seen(ffmpeg, out, 1.5, { x: W / 2 - 20, y: lineTop - Math.round(marker.outlinePx * 0.8), w: 40, h: Math.round(marker.outlinePx * 0.6) })
+    const caption = seen(ffmpeg, out, 1.5, {
+      x: W / 2 - 20,
+      y: lineTop - Math.round(marker.outlinePx * 0.8),
+      w: 40,
+      h: Math.round(marker.outlinePx * 0.6)
+    })
     console.log('over', { graphic, logo: logoAt, caption })
     expect(off(graphic, hex(BRAND))).toBeLessThanOrEqual(3)
     expect(off(logoAt, hex(BRAND))).toBeLessThanOrEqual(3)
     expect(off(caption, hex('#c8f04a'))).toBeLessThanOrEqual(4)
   }, 180_000)
+
+  it('knows which matrix this ffmpeg colours captions with, so captions can skip RGB', async () => {
+    // 7.0 follows the picture's BT.709 tag; 6.0 and 6.1 use BT.601 whatever the picture says.
+    const major = Number(/version n?(\d+)\./.exec(execFileSync(ffmpeg, ['-version']).toString())?.[1] ?? NaN)
+    const matrix = await captionMatrix(ffmpeg)
+    expect(matrix).not.toBeNull()
+    if (Number.isFinite(major)) expect(matrix).toBe(major >= 7 ? 'bt709' : 'bt601')
+  })
+
+  it('burns a caption colour BT.601 cannot name in its exact colour too', async () => {
+    // Pure red words on the marker's lime plate. On 6.0 and 6.1 red has no stand-in, so the captions are
+    // burned in RGB; on 7.0 they go straight onto the picture.
+    const said = wordsFromTranscript([{ text: 'IIII', startSec: 0.3, endSec: 2.6 }], 's1')
+    const { doc, cut } = docWith(
+      [{ op: 'captions', set: { on: true, preset: 'marker', position: 'top' } }],
+      [source],
+      said
+    )
+    const red = { text: '#FF0000', accent: '#FF0000' }
+    const out = await exportOf('red', doc, cut, { colors: red })
+    // Where the first I stands, laid out as libass lays it out (shared/subtitles).
+    for (const f of MOTION_FONTS) GlobalFonts.registerFromPath(FONTS + f.file, f.family)
+    const style = captionStyleFor(cut.captions, W, red)
+    const cue = subtitleCues([{ text: 'IIII', startSec: 0.3, endSec: 2.6 }], style.wordsPerGroup)[0]
+    const ctx = createCanvas(8, 8).getContext('2d') as unknown as TextMeasurer
+    const line = layoutSubtitle(cue, style, { width: W, height: H }, ctx).blocks[0].lines[0]
+    const run = line.runs[0]
+    ctx.font = run.font
+    const em = style.fontSizePx / 1.347
+    const letter = seen(ffmpeg, out, 1.5, {
+      x: Math.round(run.x + ctx.measureText('I').width / 2 - 4),
+      y: Math.round(line.baseline - 0.69 * em * 0.5 - 8),
+      w: 8,
+      h: 16
+    })
+    const plate = seen(ffmpeg, out, 1.5, {
+      x: W / 2 - 20,
+      y: Math.round(line.baseline - run.ascent - style.outlinePx * 0.8),
+      w: 40,
+      h: 8
+    })
+    console.log('red caption', { letter, plate })
+    expect(off(letter, hex('#FF0000'))).toBeLessThanOrEqual(4)
+    expect(off(plate, hex('#c8f04a'))).toBeLessThanOrEqual(4)
+  }, 120_000)
 
   it('grades a look on the RGB the preview grades', async () => {
     const look = { warmth: 0.6, saturation: 0.3, contrast: 0.2 }
@@ -257,7 +337,17 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
     const png = join(dir, 'still.png')
     const jpg = join(dir, 'still.jpg')
     ffmpegRun(ffmpeg, ['-f', 'lavfi', '-i', `color=c=0x${BRAND.slice(1)}:s=1920x1080:d=1`, '-frames:v', '1', png])
-    ffmpegRun(ffmpeg, ['-f', 'lavfi', '-i', `color=c=0x${BRAND.slice(1)}:s=1920x1080:d=1`, '-frames:v', '1', '-q:v', '1', jpg])
+    ffmpegRun(ffmpeg, [
+      '-f',
+      'lavfi',
+      '-i',
+      `color=c=0x${BRAND.slice(1)}:s=1920x1080:d=1`,
+      '-frames:v',
+      '1',
+      '-q:v',
+      '1',
+      jpg
+    ])
     for (const [name, path] of [
       ['png', png],
       ['jpeg', jpg]

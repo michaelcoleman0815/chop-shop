@@ -24,6 +24,8 @@ import {
   renderCut,
   type RenderSource,
   type Segment,
+  TO_RGB,
+  TO_YUV,
   TO_YUVA
 } from './cut-render'
 import { greyShare, probeMedia, sampleColour } from './inspiration/measure'
@@ -65,6 +67,17 @@ describe('render arguments', () => {
     quality: 'preview' as const,
     outputPath: '/out.mp4'
   }
+
+  it('burns captions straight onto the picture tagged BT.709, or in RGB for a colour that needs it', () => {
+    const direct = buildRenderArgs([seg()], { ...opts, assPath: '/w/captions.ass' })
+    const graph = direct[direct.indexOf('-filter_complex') + 1]
+    expect(graph).toContain(`[vcat]${AS_BT709},subtitles='/w/captions.ass'[vsub]`)
+    expect(graph).not.toContain(TO_RGB)
+    const rgb = buildRenderArgs([seg()], { ...opts, assPath: '/w/captions.ass', captionsInRgb: true })
+    expect(rgb[rgb.indexOf('-filter_complex') + 1]).toContain(
+      `[vcat]${TO_RGB},format=rgb24,subtitles='/w/captions.ass',${TO_YUV}[vsub]`
+    )
+  })
 
   it('seeks each piece as its own input and joins them in order', () => {
     const args = buildRenderArgs([seg(), seg({ startSec: 0.5, durationSec: 1 })], opts)

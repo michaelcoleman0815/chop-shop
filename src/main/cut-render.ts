@@ -47,11 +47,11 @@ import {
 } from '../shared/edit'
 import { captionStyleFor } from '../shared/subtitles'
 import type { TranscriptWord } from '../shared/types'
-import { buildAss } from './captions'
+import { bt601Style, buildAss } from './captions'
 import { probeMedia } from './inspiration/measure'
 import { makeSfx } from './sfx'
 import { heardFrom } from '../shared/vision/offset'
-import { colorConversion, hasZscale, liveChannel } from './intake'
+import { captionMatrix, colorConversion, hasZscale, liveChannel } from './intake'
 import { bedVolume, limiter, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
@@ -221,6 +221,12 @@ export interface GraphOptions {
   overlays?: OverlaySpan[] | null
   /** An ASS file to burn in over the joined picture. */
   assPath: string | null
+  /**
+   * Burn it in RGB, between conversions said outright, rather than straight
+   * onto the picture: for a caption colour this ffmpeg cannot draw in BT.709
+   * on YUV (renderCut). It costs four conversions of every frame.
+   */
+  captionsInRgb?: boolean
   fontsDir: string | null
   /** Integrated loudness target in LUFS, or null to leave levels alone. */
   loudness: number | null
@@ -1032,10 +1038,16 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     vOut = 'vlook'
   }
   if (opts.assPath) {
-    // Burned in RGB, between conversions said outright: in YUV, libass's colours
-    // go through ffmpeg's BT.601 on 6.0 and 6.1, and a caption's colour moves.
+    // Straight onto the picture, tagged BT.709: 7.0 colours captions by the tag, and on 6.0 and 6.1, which
+    // colour them with BT.601, the file's colours were moved to land on BT.709 (main/captions). A colour no
+    // move can reach is burned in RGB instead.
     const fonts = opts.fontsDir ? `:fontsdir=${filterPath(opts.fontsDir)}` : ''
-    chains.push(`[${vOut}]${TO_RGB},format=rgb24,subtitles=${filterPath(opts.assPath)}${fonts},${TO_YUV}[vsub]`)
+    const subtitles = `subtitles=${filterPath(opts.assPath)}${fonts}`
+    chains.push(
+      opts.captionsInRgb
+        ? `[${vOut}]${TO_RGB},format=rgb24,${subtitles},${TO_YUV}[vsub]`
+        : `[${vOut}]${AS_BT709},${subtitles}[vsub]`
+    )
     vOut = 'vsub'
   }
   // ---- Motion graphics (src/main/motion-render.ts) ----
@@ -1342,14 +1354,16 @@ export function chunkSegments(segments: Segment[], maxInputs: number): Segment[]
  * A look's filters in RGB, after any LUT, on a picture already in RGB as
  * BT.709: the colour matrix, on RGB with an alpha channel whose column carries
  * the offsets; the vignette, darkening red, green and blue alike as the
- * preview's overlay does.
+ * preview's overlay does. The matrix runs on planar RGB with alpha: the same
+ * pixels as packed RGBA on 6.0, 6.1 and 7.0, without packing and unpacking
+ * every frame on the way.
  */
 export function lookRgbFilters(look: Look): string[] {
   const parts: string[] = []
   if (changesColour(look)) {
     const m = lookMatrix(look)
     const names = ['rr', 'rg', 'rb', 'ra', 'gr', 'gg', 'gb', 'ga', 'br', 'bg', 'bb', 'ba']
-    parts.push('format=rgba', `colorchannelmixer=${names.map((k, i) => `${k}=${m[i].toFixed(5)}`).join(':')}`)
+    parts.push('format=gbrap', `colorchannelmixer=${names.map((k, i) => `${k}=${m[i].toFixed(5)}`).join(':')}`)
   }
   const vignette = look.vignette ?? 0
   if (vignette > 0) parts.push('format=rgb24', `vignette=angle=${vignetteAngle(vignette).toFixed(4)}`)
@@ -1544,6 +1558,7 @@ export async function renderCut(
   await fs.mkdir(opts.workDir, { recursive: true })
 
   let assPath: string | null = null
+  let captionsInRgb = false
   const shown = opts.captionWords ?? resolved.words
   if (cut.captions.on && shown.length > 0) {
     const words: TranscriptWord[] = shown.map((w) => ({
@@ -1551,16 +1566,21 @@ export async function renderCut(
       startSec: w.outStart,
       endSec: w.outEnd
     }))
+    const style = captionStyleFor(cut.captions, width, opts.brand?.colors ?? null)
+    // libass colours captions in YUV, with BT.709 on 7.0 and BT.601 on 6.0 and 6.1, where the colours are
+    // moved to the ones BT.601 turns into BT.709's values. Going through RGB instead is exact everywhere
+    // but four times the work, so it is kept for a colour that cannot be moved, or an ffmpeg that says neither.
+    const matrix = await captionMatrix(opts.ffmpeg)
+    const moved = matrix === 'bt601' ? bt601Style(style) : matrix === 'bt709' ? style : null
+    captionsInRgb = moved === null
     assPath = join(opts.workDir, 'captions.ass')
-    await fs.writeFile(
-      assPath,
-      buildAss(words, width, height, captionStyleFor(cut.captions, width, opts.brand?.colors ?? null))
-    )
+    await fs.writeFile(assPath, buildAss(words, width, height, moved ?? style))
   }
 
   const base = { width, height, fps, fontsDir: opts.fontsDir ?? null }
   const finishing = {
     assPath,
+    captionsInRgb,
     loudness: cut.loudness,
     fade: cut.fade ?? null,
     voice: cut.voice?.polish ?? 0,
