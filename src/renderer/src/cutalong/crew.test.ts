@@ -1,13 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import { EMPTY_BRAND } from '../../../shared/brand'
-import { CREW, CREW_ORDER, crewLearned, doneLine, liveLine, logCrew, memberFor, memberForNote } from './crew'
+import {
+  CREW,
+  CREW_ORDER,
+  crewColour,
+  crewLearned,
+  doneLine,
+  liveLine,
+  logCrew,
+  memberFor,
+  memberForNote,
+  willLearn
+} from './crew'
 
 describe('the crew', () => {
   it('has six members, each named once', () => {
     expect(CREW_ORDER).toHaveLength(6)
     expect(new Set(CREW_ORDER.map((id) => CREW[id].name)).size).toBe(6)
-    // Coral is the cut: Snip wears it and no one else does.
+    // Coral is the cut: Snip wears it and no one else does, and only while cutting.
     expect(CREW_ORDER.filter((id) => CREW[id].colour === 'coral')).toEqual(['snip'])
+    expect(CREW_ORDER.filter((id) => crewColour(id).includes('coral'))).toEqual(['snip'])
+    expect(CREW_ORDER.filter((id) => crewColour(id, true).includes('coral'))).toEqual([])
+    expect(crewColour('snip', true)).toBe('var(--bloom-salmon)')
   })
 
   it('gives each stage the app reports to the member whose job it is', () => {
@@ -68,5 +82,10 @@ describe('the crew', () => {
     expect(some.echo).toEqual(['-14 LUFS'])
     expect(some.reel).toEqual(['Vertical 9:16'])
     expect(some.scout).toEqual(['Looks in @nasa first'])
+  })
+
+  it('says what each will learn before they have, each in their own words', () => {
+    expect(willLearn('snip')).toBe('Snip will learn your pause length and your pace.')
+    expect(new Set(CREW_ORDER.map(willLearn)).size).toBe(6)
   })
 })

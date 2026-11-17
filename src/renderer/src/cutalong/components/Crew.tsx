@@ -7,7 +7,10 @@ import { Icon } from './ui'
  * The crew, drawn: each member a simple shape in their colour with two eyes.
  * The shape is SVG; the eyes are their own small boxes, so a blink is a
  * transform. A face is still unless it is at work (motion.css): then each
- * moves in their own way, and gives one small hop when they finish.
+ * moves in their own way, and gives one small hop when they finish. The hop
+ * is the face's and the work its body's, so a member who starts again
+ * mid-hop finishes the hop while getting back to work. A face at rest wears
+ * its resting colour, so coral shows only while Snip cuts.
  */
 
 /** Where the eyes sit on each shape, as a share of its box. */
@@ -24,44 +27,58 @@ export function CrewFace({
   id,
   size,
   state = 'still',
+  hop = false,
+  resting = state !== 'working',
   className = ''
 }: {
   id: CrewId
   size: number
-  state?: 'still' | 'working' | 'done' | 'hop'
+  state?: 'still' | 'working' | 'done'
+  /** The one small hop of a member who has just finished a part. */
+  hop?: boolean
+  /** Not at work: in the credits, on a note, on the Crew page, or done. Snip is salmon then, not coral. */
+  resting?: boolean
   className?: string
 }): JSX.Element {
   const member = CREW[id]
   const eyes = EYES[id]
   return (
     <span
-      className={`cl-crew-face ${state} ${className}`}
+      className={`cl-crew-face ${state}${hop ? ' hop' : ''} ${className}`}
       data-crew={id}
       style={
         {
           '--size': `${size}px`,
-          '--crew': crewColour(id),
+          '--crew': crewColour(id, resting),
           '--eye-y': `${eyes.y}%`,
           '--eye-x': `${eyes.x}%`
         } as CSSProperties
       }
       aria-hidden="true"
     >
-      <svg viewBox="0 0 100 100" width={size} height={size}>
-        {id === 'scout' ? (
-          <>
-            {/* Round, with a nub of an antenna: it is always listening out for something. */}
-            <path d="M50 17C50 11 53 7 59 5" fill="none" stroke="var(--crew)" strokeWidth="5" strokeLinecap="round" />
-            <circle cx="60" cy="5" r="5" fill="var(--crew)" />
-            <path d={shapePath('circle')} transform="translate(8 14) scale(0.84)" fill="var(--crew)" />
-          </>
-        ) : (
-          <path d={shapePath(member.shape)} fill="var(--crew)" />
-        )}
-      </svg>
-      <span className="cl-crew-eyes">
-        <span />
-        <span />
+      <span className="cl-crew-body">
+        <svg viewBox="0 0 100 100" width={size} height={size}>
+          {id === 'scout' ? (
+            <>
+              {/* Round, with a nub of an antenna: it is always listening out for something. */}
+              <path
+                d="M50 17C50 11 53 7 59 5"
+                fill="none"
+                stroke="var(--crew)"
+                strokeWidth="5"
+                strokeLinecap="round"
+              />
+              <circle cx="60" cy="5" r="5" fill="var(--crew)" />
+              <path d={shapePath('circle')} transform="translate(8 14) scale(0.84)" fill="var(--crew)" />
+            </>
+          ) : (
+            <path d={shapePath(member.shape)} fill="var(--crew)" />
+          )}
+        </svg>
+        <span className="cl-crew-eyes">
+          <span />
+          <span />
+        </span>
       </span>
     </span>
   )
@@ -69,9 +86,10 @@ export function CrewFace({
 
 /**
  * The crew at work on a job: each member who has joined it, in the order
- * they did, saying what they are doing now or what they did. The one at work
- * carries the plain line about it. Members join only for stages the app
- * really reports, so the line-up grows as the work does.
+ * they did, saying what they are doing now or what they did. The plain line
+ * about the work is said once, under the last member at it (several can be at
+ * the same notes). Members join only for stages the app really reports, so
+ * the line-up grows as the work does.
  */
 export function CrewAtWork({
   log,
@@ -90,21 +108,23 @@ export function CrewAtWork({
   const now = Date.now()
   for (const id of was.current) if (!working.has(id)) finished.current.set(id, now)
   was.current = new Set(working)
+  const lastAtWork = log.filter((e) => working.has(e.id)).pop()?.id
   return (
     <ol className="cl-crew" aria-label="The crew on this">
       {log.map((e) => {
         const at = working.has(e.id)
         const done = finished.current.get(e.id)
-        const hop = !at && done !== undefined && now - done < 700
+        // A stage that changes mid-hop never cuts it short, even when it puts this member back to work.
+        const hop = done !== undefined && now - done < 700
         return (
           <li key={e.id} className={`cl-crew-row${at ? ' working' : ' done'}`}>
-            <CrewFace id={e.id} size={34} state={at ? 'working' : hop ? 'hop' : 'done'} />
+            <CrewFace id={e.id} size={34} state={at ? 'working' : 'done'} hop={hop} />
             <span className="cl-crew-text">
               <span className="cl-crew-line">
                 <b>{CREW[e.id].name}</b>
                 {(at ? liveLine(e) : doneLine(e)).slice(CREW[e.id].name.length)}
               </span>
-              {at && line && <span className="cl-crew-plain">{line}</span>}
+              {e.id === lastAtWork && line && <span className="cl-crew-plain">{line}</span>}
             </span>
             {!at && (
               <span className="cl-crew-done" aria-label="done">
@@ -129,7 +149,7 @@ export function Credits({ crew }: { crew: CrewEntry[] | undefined }): JSX.Elemen
     <div className="cl-credits">
       <span className="cl-credits-faces" aria-hidden="true">
         {crew.map((e) => (
-          <CrewFace key={e.id} id={e.id} size={20} />
+          <CrewFace key={e.id} id={e.id} size={20} resting />
         ))}
       </span>
       <span className="cl-credits-line">{sentence(crew.map(doneLine))}</span>

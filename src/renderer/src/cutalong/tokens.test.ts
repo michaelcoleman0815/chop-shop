@@ -63,6 +63,32 @@ describe('design tokens', () => {
     }
   })
 
+  it('keep the pastel blocks clear after dark: quiet night tints, the warm ones amber and dusty', () => {
+    const dark = (name: string): { l: number; c: number; h: number } => {
+      const t = (tokens.color.tokens as { name: string; value: { dark: string } }[]).find((x) => x.name === name)
+      const m = t?.value.dark.match(/oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)\)/)
+      if (!m) throw new Error(`${name} has no dark oklch value`)
+      return { l: Number(m[1]), c: Number(m[2]), h: Number(m[3]) }
+    }
+    for (const name of ['blue', 'pink', 'yellow', 'green', 'gold', 'salmon', 'lavender']) {
+      const { l, c } = dark(`block-${name}`)
+      expect(l, name).toBeGreaterThanOrEqual(33)
+      expect(l, name).toBeLessThanOrEqual(40)
+      expect(c, name).toBeLessThanOrEqual(0.06)
+    }
+    // A dark yellow reads khaki and a dark gold olive unless both lean amber and stay soft;
+    // a dark pink reads maroon unless it stays dusty.
+    for (const name of ['yellow', 'gold']) {
+      const { h, c } = dark(`block-${name}`)
+      expect(h, name).toBeGreaterThanOrEqual(74)
+      expect(h, name).toBeLessThanOrEqual(82)
+      expect(c, name).toBeLessThanOrEqual(0.045)
+    }
+    expect(dark('block-pink').c).toBeLessThanOrEqual(0.045)
+    // Yellow stays the lighter of the two, as it is by day.
+    expect(dark('block-yellow').l).toBeGreaterThan(dark('block-gold').l)
+  })
+
   it('keep the type families', () => {
     for (const [key, stack] of Object.entries(tokens.type.families as Record<string, string>)) {
       expect(norm(light.get(`font-${key}`) ?? 'missing'), key).toContain(norm(stack))

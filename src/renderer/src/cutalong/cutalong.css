@@ -11,6 +11,7 @@
  */
 
 /* Hallmark · dropped setOpen(false) if (b.id · the brand switch's items close the menu with close(), which also gives focus back to its button */
+/* Hallmark · dropped setAttachments((prev) => prev.fi · a file's remove button goes through changeFiles(), so taking out the last one closes the composer as one box */
 
 *,
 *::before,
@@ -130,6 +131,18 @@ button:disabled {
   line-height: 24px;
   font-weight: 800;
   letter-spacing: -0.045em;
+}
+
+/* Back to the chat being worked on, from a page: a long name ends in an ellipsis rather than off the edge. */
+.cl-back-to-work {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cl-back-to-work > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cl-heading {
@@ -884,9 +897,14 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-/* The stopwatch: tabular, so the row does not shuffle as seconds tick. */
+/* The stopwatch: tabular, so the row does not shuffle as seconds tick. It keeps its room while it waits for its first second. */
 .cl-progress-time {
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cl-progress-time.waiting {
+  visibility: hidden;
 }
 
 
@@ -1639,10 +1657,23 @@ button:disabled {
   font-size: 11.5px;
   font-weight: 600;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   display: grid;
   place-items: center;
+  /* Its label shows only where a few letters of it fit (below): a sliver of a word ("Mc") says nothing. */
+  container-type: inline-size;
+}
+
+.cl-beat-label {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@container (max-width: 40px) {
+  .cl-beat-label {
+    display: none;
+  }
 }
 
 
@@ -1959,6 +1990,12 @@ button:disabled {
   margin: -12px 0 0;
   color: var(--muted);
   font-size: 15px;
+}
+
+/* A second line of a lede, said once for the whole page. */
+.cl-lede-line {
+  display: block;
+  margin-top: var(--space-1);
 }
 
 .cl-section {
@@ -2805,6 +2842,12 @@ button:disabled {
   height: var(--size);
 }
 
+/* What works (motion.css): the shape and its eyes, filling the face, which itself only hops. */
+.cl-crew-body {
+  position: absolute;
+  inset: 0;
+}
+
 .cl-crew-face svg {
   display: block;
   overflow: visible;
@@ -2836,9 +2879,11 @@ button:disabled {
   gap: var(--space-2);
 }
 
+/* Each row sized to its own words, so a done mark sits beside its line and stays put when another line changes. */
 .cl-crew-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 34px auto auto;
+  justify-content: start;
   column-gap: var(--space-3);
   align-items: start;
 }
@@ -2887,13 +2932,11 @@ button:disabled {
   line-height: 18px;
 }
 
+/* Each face whole, a little apart: a credit is one name each. */
 .cl-credits-faces {
   display: inline-flex;
   flex: none;
-}
-
-.cl-credits-faces > .cl-crew-face + .cl-crew-face {
-  margin-left: -5px;
+  gap: var(--space-1);
 }
 
 .cl-credits-line {
@@ -3232,6 +3275,79 @@ button:disabled {
     padding: 0 var(--space-4);
   }
 
+  /*
+   * The editor's header in two rows: back, the title and Export, then the
+   * revision tabs and the tools. Focus follows the rows as they read.
+   */
+  .cl-header:has(> .cl-revisions) {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding-block: var(--space-1);
+    reading-flow: flex-visual;
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-icon-btn {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-heading {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-export {
+    order: 1;
+  }
+
+  /* The break between the rows, and the little room between them. */
+  .cl-header:has(> .cl-revisions)::after {
+    content: '';
+    order: 2;
+    flex-basis: 100%;
+    height: var(--space-1);
+  }
+
+  .cl-header > .cl-revisions {
+    order: 3;
+    /* It takes what the tools leave, so they never wrap to a third row. */
+    flex: 1 1 0;
+    min-width: 0;
+    /* More tabs than fit scroll sideways; the sticker sits inside its tab, so nothing is cut off. */
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: var(--space-1);
+    margin: calc(-1 * var(--space-1));
+  }
+
+  /* The tabs take the room the tools leave. */
+  .cl-header:has(> .cl-revisions) > .spacer {
+    display: none;
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-btn.text {
+    order: 5;
+    height: 34px;
+    padding: 0 var(--space-3);
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-btn.small {
+    height: 36px;
+    padding: 0 var(--space-4);
+  }
+
+  .cl-rev:has(> .cl-rev-new) > .cl-rev-tab {
+    padding-right: var(--space-10);
+  }
+
+  .cl-rev > .cl-rev-new {
+    position: absolute;
+    top: 1px;
+    right: var(--space-1);
+  }
+
   .cl-start {
     padding: 6vh var(--space-4) var(--space-8);
   }
@@ -3311,12 +3427,19 @@ button:disabled {
   }
 
   .cl-editor {
+    gap: var(--space-3);
     padding: 0 var(--space-3) var(--space-3);
     overflow-y: auto;
   }
 
+  /*
+   * The picture above, the notes below, each with a set share of the height:
+   * the preview sizes itself to its well, so the well's height must not hang
+   * on what is in the notes.
+   */
   .cl-editor-body {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
   }
 
   .cl-callsheet {

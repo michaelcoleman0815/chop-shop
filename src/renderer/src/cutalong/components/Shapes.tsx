@@ -74,7 +74,9 @@ interface Layer extends Avatar {
 /**
  * A brand's own avatar. When its shape or colour changes, the new one pops
  * in over the old, which softens and fades: a morph made of two pictures, so
- * it stays on the compositor. Changed again mid-way, it simply moves on.
+ * it stays on the compositor. Changed again mid-way, it moves on from where
+ * it is: the one popping in starts to leave from there, and the one already
+ * leaving keeps fading rather than vanishing.
  */
 export function BrandAvatar({
   avatar,
@@ -92,7 +94,9 @@ export function BrandAvatar({
     setLayers((now) => {
       const top = now[now.length - 1]
       if (top.shape === avatar.shape && top.colour === avatar.colour) return now
-      return [{ ...top, leaving: true }, { ...avatar, key: top.key + 1, leaving: false }]
+      // Picked again mid-morph: the shape still fading keeps fading under the two new layers.
+      const fading = now.slice(0, -1).filter((l) => l.leaving).slice(-1)
+      return [...fading, { ...top, leaving: true }, { ...avatar, key: top.key + 1, leaving: false }]
     })
   }, [avatar.shape, avatar.colour])
 
