@@ -10,19 +10,22 @@
  *
  * Size: a plan request for a 10-minute talking head (1,500 words in 125
  * beats) with a long prompt, measured in characters on 2026-11-16: the
- * planner's instructions, the slash commands, the transcript and the cut with
- * the ask (src/main/plan-cost.test.ts measures them again and fails when the
- * instructions grow past these by a quarter). Tokens are reckoned at about 3
- * characters each for the instructions and commands, and about 2.3 for the
- * transcript and the cut, whose word ids take tokens of their own; the
- * tokenizer of current Claude models makes about 30% more tokens than the
- * older one's 4 characters.
+ * planner's instructions with the schema its answer follows, the slash
+ * commands, the transcript, the cut with the ask, and the shorter request
+ * that reads a message before its footage (main/triage.ts).
+ * src/main/plan-cost.test.ts measures them again and fails when any of them
+ * grows or shrinks by a quarter. Tokens are reckoned at about 3 characters
+ * each for the instructions and commands, and about 2.3 for the transcript
+ * and the cut, whose word ids take tokens of their own; the tokenizer of
+ * current Claude models makes about 30% more tokens than the older one's 4
+ * characters.
  *
  * What it cannot know is how long Claude thinks: a short note is answered in
  * about 1,500 tokens, plan and thinking together, and a long prompt can take
  * 7,000. The low end is a follow-up within five minutes, when the
  * instructions, commands and transcript are read from the prompt cache; the
- * high end is the first plan on new footage, when they are written to it.
+ * high end is the first plan on new footage, when they are written to it,
+ * with the message read first.
  */
 
 export const PLANNER_PRICE = {
@@ -38,17 +41,24 @@ export const PLANNER_PRICE = {
 export const TYPICAL_PLAN = {
   minutes: 10,
   measured: '2026-11-16',
-  chars: { instructions: 31684, commands: 4440, transcript: 20147, request: 8952 },
+  chars: { instructions: 49089, commands: 4440, transcript: 20147, request: 8952, triage: 7794 },
   /** Characters per token, as reckoned above. */
-  perToken: { instructions: 3, commands: 3, transcript: 2.3, request: 2.3 },
+  perToken: { instructions: 3, commands: 3, transcript: 2.3, request: 2.3, triage: 3 },
   /** The plan and Claude's thinking, from a short note to a long prompt. */
-  outputTokens: { low: 1500, high: 7000 }
+  outputTokens: { low: 1500, high: 7000 },
+  /** Reading a message before its footage: a route, a sentence and a little thinking. */
+  triageOutputTokens: 600
 } as const
 
 const tokens = (chars: number, perToken: number): number => Math.round(chars / perToken)
 
-/** The tokens of a typical plan request, by part. */
-export function typicalTokens(): { cached: number; request: number; output: { low: number; high: number } } {
+/** The tokens of a typical plan request, by part, and of reading its message first. */
+export function typicalTokens(): {
+  cached: number
+  request: number
+  output: { low: number; high: number }
+  triage: { input: number; output: number }
+} {
   const { chars, perToken } = TYPICAL_PLAN
   return {
     cached:
@@ -56,7 +66,8 @@ export function typicalTokens(): { cached: number; request: number; output: { lo
       tokens(chars.commands, perToken.commands) +
       tokens(chars.transcript, perToken.transcript),
     request: tokens(chars.request, perToken.request),
-    output: TYPICAL_PLAN.outputTokens
+    output: TYPICAL_PLAN.outputTokens,
+    triage: { input: tokens(chars.triage, perToken.triage), output: TYPICAL_PLAN.triageOutputTokens }
   }
 }
 
@@ -67,7 +78,12 @@ export function planCost(): { low: number; high: number } {
   const per = (n: number, price: number): number => (n * price) / 1_000_000
   return {
     low: per(t.cached, p.cacheRead) + per(t.request, p.input) + per(t.output.low, p.output),
-    high: per(t.cached, p.cacheWrite) + per(t.request, p.input) + per(t.output.high, p.output)
+    high:
+      per(t.cached, p.cacheWrite) +
+      per(t.request, p.input) +
+      per(t.output.high, p.output) +
+      per(t.triage.input, p.cacheWrite) +
+      per(t.triage.output, p.output)
   }
 }
 

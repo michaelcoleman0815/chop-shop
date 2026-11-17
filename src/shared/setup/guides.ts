@@ -84,7 +84,7 @@ export const KEY_GUIDES: Record<KeyServiceId, KeyGuide> = {
   fal: {
     id: 'fal',
     name: 'fal.ai',
-    why: 'fal runs the models that make pictures and video from words.',
+    why: 'With fal, Cutalong makes pictures and video from words.',
     steps: [
       {
         text: 'Open fal and sign in, or sign up.',

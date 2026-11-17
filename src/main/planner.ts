@@ -7,6 +7,7 @@ import {
   commandThing,
   covering,
   isNeverItem,
+  neverAfter,
   neverEmptiedReply,
   neverGuard,
   neverLeftOut,
@@ -203,6 +204,8 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[], commands?: Co
   const reasons: string[] = []
   let run: Op[] = []
   let strays = 0
+  /** A command has come before: what it does is only known when it runs. */
+  let commanded = false
   const flush = (): void => {
     if (run.length) steps.push({ ops: run })
     run = []
@@ -218,12 +221,18 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[], commands?: Co
       }
       flush()
       steps.push({ command })
+      commanded = true
       continue
     }
     const op = editOpOf(doc, raw, unknown)
     if (!op) continue
     const r = applyOps(cut, [op], context)
     if (r.applied.length === 0) {
+      // After a command ("a track, then its level"), the editor tries the op again once the command has run.
+      if (commanded) {
+        run.push(op as Op)
+        continue
+      }
       reasons.push(r.rejected[0]?.reason ?? 'did not apply')
       continue
     }
@@ -338,16 +347,20 @@ const OTHERS_DONE = 'I made the other changes you asked for.'
  * note when nothing was left to do, is not marked done.
  */
 export function keepOffList(result: PlanEditResult, doc: EditDoc, never: string[], brand: string): PlanEditResult {
-  if (!result.ok || never.length === 0) return result
+  if (!result.ok) return result
+  const rules = result.steps.some((s) => 'command' in s && s.command.op === 'never')
+  if (never.length === 0 && !rules) return result
   const context = { words: doc.words, sources: doc.sources, assets: doc.assets }
-  // Step by step, as the editor runs them: each run of ops on the cut the runs before it left.
+  // Step by step, as the editor runs them: each run of ops on the cut the runs before it left, under the
+  // list as the plan's own rules leave it ("whooshes are fine again, put one on the cut").
   let cut = currentCut(doc)
+  let list = never
   const left = new Set<string>()
   const steps: PlanStep[] = []
   const ops: Op[] = []
   for (const step of result.steps) {
     if ('ops' in step) {
-      const kept = neverGuard(cut, step.ops as Op[], never, context)
+      const kept = neverGuard(cut, step.ops as Op[], list, context)
       kept.left.forEach((item) => left.add(item))
       if (kept.ops.length === 0) continue
       steps.push({ ops: kept.ops })
@@ -355,16 +368,21 @@ export function keepOffList(result: PlanEditResult, doc: EditDoc, never: string[
       cut = applyOps(cut, kept.ops, context).cut
       continue
     }
+    if (step.command.op === 'never') {
+      list = neverAfter(list, step.command)
+      steps.push(step)
+      continue
+    }
     // A command that would add something on the list is left out, as typing it would be.
     const thing = plannedThing(step.command)
-    const ruled = thing ? covering(never, thing) : null
+    const ruled = thing ? covering(list, thing) : null
     if (ruled) {
       left.add(ruled)
       continue
     }
     steps.push(step)
   }
-  const brollWanted = covering(never, 'broll') !== null ? [] : result.brollWanted
+  const brollWanted = covering(list, 'broll') !== null ? [] : result.brollWanted
   if (left.size === 0) return { ...result, ops, steps, brollWanted }
   const out = [...left]
   const emptied = steps.length === 0
