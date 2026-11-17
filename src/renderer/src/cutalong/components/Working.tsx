@@ -21,6 +21,8 @@ export interface Progress {
   stage: string
   /** 0 to 100, or null while there is no way to know. */
   percent: number | null
+  /** The plain line under long work, when the work says its own (a phone keeping its screen on). */
+  line?: string
 }
 
 export function Working({
@@ -72,7 +74,7 @@ export function Working({
     return (
       <div className="cl-progress big crewed">
         <LivingMark size={mark} />
-        <CrewAtWork log={log} working={working} line={workingLine(progress.stage, progress.percent)} />
+        <CrewAtWork log={log} working={working} line={progress.line ?? workingLine(progress.stage, progress.percent)} />
         {/* A stage no one owns (Cutalong thinking between their turns) is said plainly. */}
         {working.size === 0 && <span className="cl-progress-stage">{progress.stage}</span>}
         <span className="cl-progress-foot">
@@ -87,7 +89,7 @@ export function Working({
       <div className="cl-progress big">
         <LivingMark size={mark} />
         <span className="cl-progress-stage">{progress.stage}</span>
-        <span className="cl-progress-line">{workingLine(progress.stage, progress.percent)}</span>
+        <span className="cl-progress-line">{progress.line ?? workingLine(progress.stage, progress.percent)}</span>
         <span className="cl-progress-foot">
           {bar}
           {time}

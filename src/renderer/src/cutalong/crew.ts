@@ -103,7 +103,11 @@ export const crewBlock = (id: CrewId): string =>
 
 /** Which member does a stage, by the words the app reports it with. */
 const JOBS: [RegExp, CrewId][] = [
-  [/^(listening|transcribing|reusing transcript|finding the beat|lining|downloading model|extracting audio)\b/i, 'echo'],
+  [
+    // The model's download says its name ("Downloading base.en") when it starts a job's transcription.
+    /^(listening|transcribing|reusing transcript|finding the beat|lining|downloading (model|(tiny|base|small|medium|large)\S*)|extracting audio)\b/i,
+    'echo'
+  ],
   [
     /^(reading the|measuring the cuts|cutting|putting the story|telling the story|looking at your moments|watching your|watching$)/i,
     'snip'

@@ -3864,16 +3864,16 @@ export function useCutalong() {
       return
     }
     exportingNow.current = { kind: 'version', n }
-    // On a phone the screen is kept on while the export runs, and the person is told so.
-    const stage =
-      device.kind === 'phone' ? `Exporting v${n}. I'm keeping the screen on until it's done` : `Exporting v${n}`
-    // On a phone the toast says so too: it is what shows while the editor is open.
+    const stage = `Exporting v${n}`
+    // On a phone the screen is kept on while the export runs, and the person is told so: under Reel's
+    // line, in Cutalong's own words, and in the toast, which is what shows while the editor is open.
+    const said = device.kind === 'phone' ? { line: "I'm keeping the screen on until it's done." } : {}
     const awake = device.kind === 'phone' ? "I'm keeping the screen on. " : ''
     setToast({ text: `${awake}Exporting… 0%` })
-    const id = push({ role: 'assistant', text: '', progress: { stage, percent: 0 } })
+    const id = push({ role: 'assistant', text: '', progress: { stage, percent: 0, ...said } })
     const off = api.onCutProgress((p) => {
       setToast({ text: `${awake}Exporting… ${p.percent ?? 0}%` })
-      patch(id, { progress: { stage, percent: p.percent } })
+      patch(id, { progress: { stage, percent: p.percent, ...said } })
     })
     try {
       const r = await during(() => api.renderCut({ doc: d, quality: 'final' }))
