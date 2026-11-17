@@ -57,7 +57,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
             <div class="app-turn">
               <span class="app-avatar">{{> mark-white}}</span>
               <div class="app-turn-body">
-                <p class="app-working demo-working">{{> mark-march}}<span>Finding the retakes</span></p>
+                <p class="app-working demo-working">Finding the retakes</p>
                 <p class="app-reply demo-reply">v2 is ready. It runs 9:58, down from 31:40.</p>
                 <p class="app-facts demo-facts"><span class="app-fact">14 retakes cut</span><span class="app-fact">Sound from <span class="app-mono">rode-mic.wav</span></span></p>
                 <p class="app-actions demo-actions"><span class="app-btn app-btn-primary">Open the editor</span><span class="app-btn">Undo</span></p>
@@ -358,7 +358,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
         <form class="signup" action="{{signupAction}}" method="post" data-signup="{{signupState}}" novalidate>
           <label for="signup-email">Hear when these ship</label>
           <div class="signup-row">
-            <input id="signup-email" name="{{signupField}}" type="email" autocomplete="email" inputmode="email" required aria-describedby="signup-help">
+            <input id="signup-email" name="{{signupField}}" type="email" autocomplete="email" inputmode="email" enterkeyhint="send" autocapitalize="none" autocorrect="off" spellcheck="false" required aria-describedby="signup-help">
             <button class="btn btn-quiet" type="submit" {{signupDisabled}}>Tell me</button>
           </div>
           <p class="signup-help" id="signup-help" data-signup-help aria-live="polite">One email for each of these, and nothing&nbsp;else.</p>

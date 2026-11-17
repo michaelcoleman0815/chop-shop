@@ -123,7 +123,7 @@ writeFileSync(
       start_url: '/',
       display: 'browser',
       background_color: '#F5F5F3',
-      theme_color: '#F5F5F3',
+      theme_color: '#FFFFFF',
       icons: [
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
         { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }

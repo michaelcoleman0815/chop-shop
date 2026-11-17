@@ -133,3 +133,6 @@ document.querySelectorAll('[data-slot] img').forEach((img) => {
   if (img.complete && !img.naturalWidth) img.remove()
   else img.addEventListener('error', () => img.remove(), { once: true })
 })
+
+// ---- The switcher: its panels fade in when you change them, never on the first paint.
+document.querySelectorAll('.jobs').forEach((jobs) => requestAnimationFrame(() => jobs.classList.add('is-ready')))

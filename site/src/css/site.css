@@ -20,13 +20,14 @@
 .skip:focus-visible { top: var(--space-md); }
 
 .slab {
+  padding-top: env(safe-area-inset-top, 0px);
   position: sticky; top: 0; z-index: var(--z-sticky-nav);
   background: var(--color-card); border-bottom: var(--rule-hair) solid var(--color-rule);
 }
 .slab-row { display: flex; align-items: center; gap: var(--space-xl); height: var(--nav-height); }
 
 .lockup {
-  display: inline-flex; align-items: center; gap: var(--space-sm); flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: var(--space-sm); flex: 0 0 auto; min-height: 44px;
   color: var(--color-ink); text-decoration: none;
   font-size: 1.3125rem; line-height: 1; font-weight: 800; letter-spacing: -0.045em;
   border-radius: var(--radius-tile);
@@ -40,12 +41,12 @@
 
 /* The page's beat strip: one beat per section, the one you are reading in ink, the coral playhead on your place. */
 .strip { position: relative; flex: 1 1 auto; max-width: 46rem; margin-inline: auto; }
-.strip-beats { display: flex; gap: var(--space-2xs); list-style: none; height: 36px; }
+.strip-beats { display: flex; gap: var(--space-2xs); list-style: none; height: 40px; }
 .strip-beats > li { flex: 1 1 0; min-width: 0; }
 .strip-beat {
   display: grid; place-items: center; height: 100%; padding-inline: var(--space-xs);
   border-radius: var(--space-xs); background: var(--color-paper-3); color: var(--color-ink-2);
-  font-size: var(--text-xs); font-weight: 600; line-height: 1; text-decoration: none; white-space: nowrap;
+  font-size: var(--text-xs); font-weight: 600; line-height: 1; letter-spacing: 0.01em; text-decoration: none; white-space: nowrap;
   transition: background-color var(--duration-base) var(--ease-standard), color var(--duration-base) var(--ease-standard);
 }
 .strip-beat > span { overflow: hidden; text-overflow: clip; max-width: 100%; }
@@ -97,7 +98,7 @@ html:not(.js) .strip-playhead { display: none; }
 
 .plate {
   position: relative; margin: 0; border-radius: var(--radius-composer); background: var(--app-ground);
-  outline: var(--rule-hair) solid var(--app-outline); outline-offset: calc(-1 * var(--rule-hair));
+  outline: var(--rule-hair) solid var(--plate-outline); outline-offset: calc(-1 * var(--rule-hair));
   box-shadow: var(--shadow-frame);
 }
 .plate[data-slot] { background: var(--app-ground); }
@@ -228,9 +229,9 @@ html:not(.js) .strip-playhead { display: none; }
   transition: border-color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
 }
 .loop-toggle:active { transform: scale(0.96); }
-.loop-toggle .icon-play { display: none; }
-.loop-toggle[data-held] .icon-play { display: block; }
-.loop-toggle[data-held] .icon-pause { display: none; }
+.loop-toggle > svg { grid-area: 1 / 1; transition: opacity var(--duration-base) var(--ease-standard), scale var(--duration-base) var(--ease-standard), filter var(--duration-base) var(--ease-standard); }
+.loop-toggle .icon-play, .loop-toggle[data-held] .icon-pause { opacity: 0; scale: 0.25; filter: blur(4px); }
+.loop-toggle[data-held] .icon-play { opacity: 1; scale: 1; filter: none; }
 html:not(.js) .loop-toggle { display: none; }
 @media (hover: hover) and (pointer: fine) { .loop-toggle:hover { border-color: var(--app-ink-soft); } }
 @media (prefers-reduced-motion: reduce) { .loop-toggle { display: none; } }
@@ -238,6 +239,7 @@ html:not(.js) .loop-toggle { display: none; }
 /* The loop, 12 s: the ask arrives, Cutalong works, the strip closes up, the reply lands, v2 plays, and the plate dips to start again. */
 .demo.is-live .demo-user { animation: demo-user 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-working { display: flex; animation: demo-working 12s var(--demo-start) infinite both; }
+.demo.is-live .demo-thread .app-avatar { animation: demo-avatar 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-reply { animation: demo-reply 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-facts { animation: demo-facts 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-actions { animation: demo-actions 12s var(--demo-start) infinite both; }
@@ -248,7 +250,7 @@ html:not(.js) .loop-toggle { display: none; }
 .demo.is-live .demo-time-after { animation: demo-time-after 12s var(--demo-start) infinite both; }
 .demo.is-live .demo-playhead { animation: demo-play 12s var(--demo-start) infinite both; }
 .demo.is-live .app-caption { animation: demo-caption 12s var(--demo-start) infinite both; }
-.demo.is-live .mark-march .mark-cut { animation: march 1.28s linear infinite; }
+.demo.is-live .demo-thread .app-avatar .mark-cut { animation: demo-march 12s var(--demo-start) infinite both; }
 .demo:not(.is-running), .demo:not(.is-running) * { animation-play-state: paused !important; }
 
 @keyframes demo-user {
@@ -258,11 +260,16 @@ html:not(.js) .loop-toggle { display: none; }
 }
 @keyframes demo-working {
   0%, 6% { opacity: 0; transform: translateY(4px); animation-timing-function: var(--ease-enter); }
-  8%, 30% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
-  31.5%, 100% { opacity: 0; transform: none; }
+  8%, 30% { opacity: 1; transform: none; filter: none; animation-timing-function: var(--ease-exit); }
+  31.5%, 100% { opacity: 0; transform: none; filter: blur(2px); }
+}
+@keyframes demo-avatar {
+  0%, 6% { opacity: 0; animation-timing-function: var(--ease-enter); }
+  8%, 89% { opacity: 1; animation-timing-function: var(--ease-exit); }
+  91%, 100% { opacity: 0; }
 }
 @keyframes demo-reply {
-  0%, 31% { opacity: 0; transform: translateY(4px); animation-timing-function: var(--ease-enter); }
+  0%, 31% { opacity: 0; transform: translateY(6px); animation-timing-function: var(--ease-enter); }
   33%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
   91%, 100% { opacity: 0; transform: none; }
 }
@@ -272,8 +279,8 @@ html:not(.js) .loop-toggle { display: none; }
   91%, 100% { opacity: 0; transform: none; }
 }
 @keyframes demo-actions {
-  0%, 31.67% { opacity: 0; transform: translateY(4px); animation-timing-function: var(--ease-enter); }
-  33.67%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
+  0%, 31.58% { opacity: 0; transform: translateY(2px); animation-timing-function: var(--ease-enter); }
+  33.58%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
   91%, 100% { opacity: 0; transform: none; }
 }
 @keyframes demo-dip {
@@ -309,9 +316,14 @@ html:not(.js) .loop-toggle { display: none; }
 }
 @keyframes demo-caption {
   0%, 31% { opacity: 0; transform: translateY(6px); animation-timing-function: var(--ease-enter); }
-  33%, 100% { opacity: 1; transform: none; }
+  33%, 89% { opacity: 1; transform: none; animation-timing-function: var(--ease-exit); }
+  91%, 100% { opacity: 0; transform: none; }
 }
-@keyframes march { to { stroke-dashoffset: -13; } }
+/* The loading signal: the avatar's cut line marches, one dash and gap every 1.28 s, while Cutalong works. */
+@keyframes demo-march {
+  0%, 6% { stroke-dashoffset: 0; animation-timing-function: linear; }
+  31%, 100% { stroke-dashoffset: -26; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .demo.is-live * { animation: none !important; }
@@ -419,7 +431,7 @@ html:not(.js) .loop-toggle { display: none; }
 .seg {
   position: relative; display: grid; grid-template-columns: repeat(5, minmax(max-content, 1fr)); width: max-content; max-width: 100%;
   min-inline-size: 0; margin: 0 0 var(--space-2xl); padding: var(--space-2xs); border: 0; border-radius: var(--radius-pill);
-  background: var(--color-paper-2); overflow-x: auto; scrollbar-width: none;
+  background: var(--color-paper-2); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
 }
 .seg::-webkit-scrollbar { display: none; }
 .seg input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -444,11 +456,12 @@ html:not(.js) .loop-toggle { display: none; }
 .job { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: var(--space-xl); }
 .job + .job { margin-top: var(--space-3xl); }
 @supports selector(:has(*)) {
-  .job { display: none; opacity: 1; transition: opacity var(--duration-gentle) var(--ease-enter); }
+  .job { display: none; }
+  .jobs.is-ready .job { opacity: 1; transform: none; transition: opacity var(--duration-gentle) var(--ease-enter), transform var(--duration-gentle) var(--ease-enter); }
   .job + .job { margin-top: 0; }
   .jobs:has(#job-raw:checked) .job-raw, .jobs:has(#job-clips:checked) .job-clips, .jobs:has(#job-vlog:checked) .job-vlog,
   .jobs:has(#job-brand:checked) .job-brand, .jobs:has(#job-upload:checked) .job-upload { display: grid; }
-  @starting-style { .job { opacity: 0; } }
+  @starting-style { .jobs.is-ready .job { opacity: 0; transform: translateY(4px); } }
 }
 .job-copy { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: var(--space-3xl); row-gap: var(--space-md); align-content: start; }
 .job-copy > h3, .job-copy > p { grid-column: 1; }

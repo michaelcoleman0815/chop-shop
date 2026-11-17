@@ -79,6 +79,7 @@
   --app-frame-2: oklch(29.8% 0.013 272.9);       /* #2B2D34 */
   --app-hatch: oklch(20.1% 0.0081 274.5 / 0.07);
   --app-outline: oklch(20.1% 0.0081 274.5 / 0.08);
+  --plate-outline: oklch(0% 0 0 / 0.1);           /* the edge of a product picture: pure black, never tinted */
   --app-glow: oklch(68.4% 0.2069 33.9 / 0.045);  /* the composer's glow, the one soft coral */
   --app-frame-shadow: 0 24px 50px oklch(20.1% 0.0081 274.5 / 0.16);
   --app-caption: oklch(100% 0 0);
@@ -93,6 +94,7 @@
     --color-paper-3: oklch(24% 0.0045 106.7);
     --color-card: oklch(21.7% 0.0057 106.9);
     --color-pill: oklch(32% 0.0057 106.9);
+    --plate-outline: oklch(100% 0 0 / 0.1);
     --color-ink: oklch(95.5% 0.0041 271.4);
     --color-ink-2: oklch(83% 0.0086 271.3);
     --color-muted: oklch(73.5% 0.0089 271.3);
@@ -116,6 +118,7 @@
   --color-paper-3: oklch(24% 0.0045 106.7);
   --color-card: oklch(21.7% 0.0057 106.9);
   --color-pill: oklch(32% 0.0057 106.9);
+  --plate-outline: oklch(100% 0 0 / 0.1);
   --color-ink: oklch(95.5% 0.0041 271.4);
   --color-ink-2: oklch(83% 0.0086 271.3);
   --color-muted: oklch(73.5% 0.0089 271.3);
