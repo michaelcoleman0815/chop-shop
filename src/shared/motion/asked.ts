@@ -68,8 +68,11 @@ export function graphicAsked(text: string): GraphicAsk | null {
       return { command: 'count', rest }
   }
 
+  // A map's request ("tag the cities on the map", "circle where the site is") is the planner's quick path's, not a chip or a page.
+  const mapped = /\b(?:maps?|where)\b/i.test(t)
+
   // Chips: "list the tools around me as chips".
-  if (/\b(?:chips?|pills?|bubbles?|tags?)\b/i.test(t)) {
+  if (!mapped && /\b(?:chips?|pills?|bubbles?|tags?)\b/i.test(t)) {
     const names = namesIn(t)
     if (names.length >= 2) return { command: 'chips', rest: names.join(', ') }
     if (/\b(?:list|lists|tools?|apps?|names?|around me|each|everything|things)\b/i.test(t))
@@ -80,7 +83,7 @@ export function graphicAsked(text: string): GraphicAsk | null {
   if (/\bvideo\s+cards?\b|\bcards?\s+for\s+(?:these|those|my|the)\s+videos\b/i.test(t)) return { command: 'videos', rest: '' }
 
   // A page shown with a ring round one part of it.
-  if (/\b(?:ring|circle|highlight)\b/i.test(t) && /\b(?:page|screenshot|channel|site|website|profile|post)\b/i.test(t))
+  if (!mapped && /\b(?:ring|circle|highlight)\b/i.test(t) && /\b(?:page|screenshot|channel|site|website|profile|post)\b/i.test(t))
     return { command: 'screenshot', rest: 'slide ring' }
 
   return null

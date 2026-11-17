@@ -627,6 +627,9 @@ describe('commands and plain words', () => {
     expect(graphicAsked('turn these into video cards')).toEqual({ command: 'videos', rest: '' })
     for (const other of ['count the beats in the music', 'make it faster', 'add a title here', '/chips Notion', 'cut the pauses'])
       expect(graphicAsked(other), other).toBeNull()
+    // Maps asked for in words go on to the planner's quick path, which knows places.
+    for (const map of ['tag Reykjavik and Oslo on the map', 'highlight the crash site on the map', 'circle where the site is'])
+      expect(graphicAsked(map), map).toBeNull()
   })
 
   it('moves the way the house does: nothing from nothing, out quicker than in and eased out', () => {
