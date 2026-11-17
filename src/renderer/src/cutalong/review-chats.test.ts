@@ -387,6 +387,36 @@ describe('a new chat, or another one opened', () => {
   })
 })
 
+describe('another edit open in the same chat', () => {
+  const OTHER_EDIT = 'That quote is for another edit than the one open now, so nothing was made or spent. Open that edit and ask again.'
+
+  it('a change of a made video, quoted on it, is never made into another edit, nor one of its shots', async () => {
+    const w = window({ cap: null, autoUnder: null })
+    w.setDoc(madeDoc)
+    await w.type('make it 3 minutes')
+    const go = w.buttons().find((a) => (a.payload ?? '').includes('"go"'))
+    expect(go).toBeTruthy()
+    w.setDoc({ ...madeDoc, id: 'doc2' } as EditDoc)
+    await w.tap(go)
+    expect(w.last()?.text).toBe(OTHER_EDIT)
+    expect(w.spend).toEqual([])
+    // Back on the edit it was quoted on, its button makes it.
+    w.setDoc(madeDoc)
+    await w.tap(go)
+    expect(w.spend.map((c) => `${c.what}/${c.consent}`)).toEqual(['go/tap'])
+
+    const v = window({ cap: null, autoUnder: null })
+    v.setDoc(madeDoc)
+    await v.type('make shot 3 a sunset over the derricks')
+    const again = v.buttons().find((a) => (a.payload ?? '').includes('"shot"'))
+    expect(again).toBeTruthy()
+    v.setDoc({ ...madeDoc, id: 'doc2' } as EditDoc)
+    await v.tap(again)
+    expect(v.last()?.text).toBe(OTHER_EDIT)
+    expect(v.spend).toEqual([])
+  })
+})
+
 describe('work in flight when another chat opens', () => {
   /** The fake api's `name`, held once called (`started`) until `release` is called. */
   const hold = (name: string): { started: Promise<void>; release: () => void } => {

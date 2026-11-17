@@ -143,6 +143,9 @@ const EXPIRED = {
   back: 'This has expired. Say it again and I’ll read it back fresh.'
 }
 
+/** A quote of a made video's change, pressed with another edit open. */
+const OTHER_EDIT = 'That quote is for another edit than the one open now, so nothing was made or spent. Open that edit and ask again.'
+
 /** An edit's words, with no edit open and a quote waiting. */
 const NO_EDIT_QUOTE = 'There’s no video open to edit yet, only this quote. Press its button to make it, or tell me what to change.'
 
@@ -205,7 +208,8 @@ export function useMake(deps: MakeDeps): Makes {
   live.current = deps
   /** Every quote shown, by its own key: its draft, the price its button showed, and its fingerprint. */
   const drafts = useRef(new Map<string, { draft: Draft; total: number; fingerprint: string }>())
-  const changes = useRef(new Map<string, ShotChange>())
+  /** Shot changes quoted, each with the edit it was quoted on: it is made only while that edit is open. */
+  const changes = useRef(new Map<string, { change: ShotChange; doc: string }>())
   /** The newest quote, the only one with a button, and the message that shows it. */
   const pending = useRef<{ id: string; msg: string } | null>(null)
   /** A voice-over asked for and not dropped yet. */
@@ -348,6 +352,12 @@ export function useMake(deps: MakeDeps): Makes {
       // Being quoted again: its button waits for the new quote, which may be another price.
       if (requoting.current === key) {
         push({ role: 'assistant', text: 'That quote is being worked out again. Press the new quote’s button when it shows, or stop it first.' })
+        return
+      }
+      // A change of a made video is made only into that video: with another edit open, nothing is spent on it.
+      const into = entry.draft.into
+      if (into && live.current.docRef.current?.id !== into.docId) {
+        push({ role: 'assistant', text: OTHER_EDIT })
         return
       }
       // What was read back and not confirmed goes: the quote is made as it was quoted.
@@ -638,15 +648,21 @@ export function useMake(deps: MakeDeps): Makes {
   /** One shot made again for its confirmed quote, as a new version. */
   const reshoot = useCallback(async (key: string): Promise<void> => {
     const { docRef, push, patch, setDoc, applyAsVersion, during } = live.current
-    const change = changes.current.get(key)
+    const kept = changes.current.get(key)
     const d = docRef.current
-    if (!change || !d?.make) {
+    if (!kept || !d?.make) {
       push({
         role: 'assistant',
-        text: 'That quote is from before Cutalong restarted, or a newer one replaced it. Ask again and I’ll quote it fresh.'
+        text: 'That quote is from another chat, or from before Cutalong restarted, or a newer one replaced it. Ask again and I’ll quote it fresh.'
       })
       return
     }
+    // Quoted on another edit than the one open: its shot is that edit's, so nothing is spent on it here.
+    if (kept.doc !== d.id) {
+      push({ role: 'assistant', text: OTHER_EDIT })
+      return
+    }
+    const change = kept.change
     if (pending.current?.id === key) {
       patch(pending.current.msg, { actions: [] })
       pending.current = null
@@ -722,7 +738,7 @@ export function useMake(deps: MakeDeps): Makes {
         return
       }
       const key = newKey(`shot-${docRef.current?.id ?? ''}-${change.phrase}`)
-      changes.current.set(key, change)
+      changes.current.set(key, { change, doc: docRef.current?.id ?? '' })
       showing(key, msg)
       const actions: NonNullable<Msg['actions']> = change.missing.length
         ? [{ kind: 'open-settings', label: 'Open Settings', primary: true }]
