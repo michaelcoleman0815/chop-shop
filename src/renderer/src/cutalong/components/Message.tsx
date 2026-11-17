@@ -202,8 +202,9 @@ export function AssistantMessage({
           </dl>
         )}
         {!msg.progress && msg.aside && <p className="cl-aside">{msg.aside}</p>}
-        {!msg.progress && children}
+        {/* Who did the work, then what it made: a clip set reads as what Reel found. */}
         {!msg.progress && <Credits crew={msg.crew} />}
+        {!msg.progress && children}
         {!msg.progress && (msg.actions?.length ?? 0) > 0 && (
           <div className="cl-actions">
             {msg.actions!.map((a) => (
