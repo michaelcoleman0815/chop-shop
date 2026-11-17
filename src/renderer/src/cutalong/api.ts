@@ -36,6 +36,7 @@ export type CutalongApi = Pick<
   | 'onClipsProgress'
   | 'clipPoster'
   | 'planEdit'
+  | 'triage'
   | 'studyInspiration'
   | 'onInspirationProgress'
   | 'listPresets'

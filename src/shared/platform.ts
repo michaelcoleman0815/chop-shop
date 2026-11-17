@@ -23,6 +23,18 @@ export const ThisComputer = onWindows ? 'This PC' : 'This Mac'
 /** The button that shows a file where it is kept. */
 export const SHOW_FILE = onWindows ? 'Show in File Explorer' : 'Show in Finder'
 
+/**
+ * Where a saved key is kept, after "The key is": the Mac's keychain, or on
+ * Windows its own encryption for the person's account (DPAPI, through
+ * Electron's safeStorage).
+ */
+export const KEY_PLACE = onWindows ? 'locked to your Windows account on this PC' : 'locked in this computer’s keychain'
+
+/** What is said when the saved key cannot be opened. */
+export const KEY_UNREADABLE = onWindows
+  ? 'I could not open the saved key, which is locked to your Windows account. Paste it again.'
+  : 'I could not open the saved key from this computer’s keychain. Paste it again.'
+
 /** Why a picture keeps its middle rather than following the speaker, on a computer with no face finder. */
 export const NO_FACE_FINDER = onWindows
   ? 'following the speaker needs the face finder, which is missing from this copy of Cutalong'

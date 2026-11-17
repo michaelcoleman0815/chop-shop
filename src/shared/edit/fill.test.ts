@@ -6,7 +6,6 @@ import { resolveCut } from './resolve'
 import {
   backdropSize,
   cutawayFit,
-  fillAsked,
   filledIn,
   filledPictures,
   fillMode,
@@ -191,9 +190,6 @@ describe('the fill as an op, a reply and a sentence', () => {
     expect(fillNotice([], filled, 'auto')).toBe(
       'IMG_1030.MOV is upright, so I showed it whole on a blurred copy of itself instead of cropping it. Say “crop it to fill” to have it cropped, or “use black bars” for plain bars.'
     )
-    // What the notice offers is heard.
-    expect(fillAsked('crop it to fill')).toBe('crop')
-    expect(fillAsked('crop them to fill')).toBe('crop')
     // Once is enough: a version that keeps it says nothing more, and bars or a crop say nothing.
     expect(fillNotice(filled, filled, 'auto')).toBeNull()
     expect(fillNotice([], filled, 'black')).toBeNull()
@@ -226,40 +222,6 @@ describe('the fill as an op, a reply and a sentence', () => {
     expect(fillNotice([], stills, 'auto')).toMatch(
       /^Two stills are a different shape from the frame, so I showed them whole on blurred copies of themselves instead of cropping them\./
     )
-  })
-
-  it('hears asks about bars and blur, and nothing else', () => {
-    expect(fillAsked('use black bars')).toBe('black')
-    expect(fillAsked('Use black bars instead.')).toBe('black')
-    expect(fillAsked('put them between black bars, please')).toBe('black')
-    expect(fillAsked('letterbox it')).toBe('black')
-    expect(fillAsked('blur the sides again')).toBe('blur')
-    expect(fillAsked('use a blurred background')).toBe('blur')
-    expect(fillAsked('crop them to fill the frame')).toBe('crop')
-    expect(fillAsked('fill the frame')).toBe('crop')
-    expect(fillAsked('no bars')).toBe('crop')
-    expect(fillAsked('make the hook punchier')).toBeNull()
-    expect(fillAsked('put the black bars line from the intro on a card after the part about the camera')).toBeNull()
-  })
-
-  it('never hears black bars in asking them away, nor the fill in a blur or a frame that is about something else', () => {
-    // Away with the bars: back to what a new edit does when this one has them, and the planner's to read otherwise.
-    for (const text of ['remove the black bars', 'get rid of the black bars', 'no black bars please', 'I hate the black bars']) {
-      expect(fillAsked(text), text).toBeNull()
-      expect(fillAsked(text, 'black'), text).toBe('auto')
-    }
-    expect(fillAsked("don't use black bars", 'black')).toBe('auto')
-    // A no or a not that is not the bars says what is not wanted, not what is.
-    expect(fillAsked('no blur')).toBeNull()
-    expect(fillAsked("don't blur the sides")).toBeNull()
-    expect(fillAsked('not black bars, crop them')).toBeNull()
-    // Blurring what is behind the speaker, a logo filling the frame: not the fill.
-    expect(fillAsked('blur the background behind me')).toBeNull()
-    expect(fillAsked('blur the background')).toBeNull()
-    expect(fillAsked('make the logo fill the frame')).toBeNull()
-    expect(fillAsked('crop the logo to fill')).toBeNull()
-    // More besides the fill is the planner's too.
-    expect(fillAsked('use black bars and add captions')).toBeNull()
   })
 })
 

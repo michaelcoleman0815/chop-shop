@@ -5,7 +5,6 @@ import {
   captionedWords,
   createDoc,
   currentCut,
-  cutsPicked,
   noteBeats,
   onlyOn,
   opsInside,
@@ -140,15 +139,6 @@ describe('a stretch picked on the beat strip', () => {
     expect(onlyOn([...on, { op: 'look', set: { name: 'warm' } }] as Op[], ['b2', 'b3', 'b4'])).toBe(false)
     expect(onlyOn(on, ['b3'])).toBe(false)
     expect(onlyOn([], ['b3'])).toBe(false)
-  })
-
-  it('hears "cut this" as the stretch out, and nothing longer', () => {
-    for (const said of ['cut this', 'Cut that part out.', 'remove these beats', 'take it out', 'please delete this bit', 'get rid of that']) {
-      expect(cutsPicked(said), said).toBe(true)
-    }
-    for (const said of ['cut the intro', 'remove the ums', 'cut it to 60 seconds', 'make this shorter', 'cut this down a bit']) {
-      expect(cutsPicked(said), said).toBe(false)
-    }
   })
 })
 

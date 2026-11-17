@@ -120,57 +120,6 @@ export function profileById(id: string | null | undefined): CuttingProfile | nul
   return PROFILES.find((p) => p.id === id) ?? null
 }
 
-/** Words that name each kind of video, for "this one is a podcast". */
-const NAMES: Record<string, RegExp> = {
-  tech: /\b(tech|review|unboxing|gadget|phone|laptop|camera review|hardware)\b/,
-  podcast: /\b(podcast|interview|conversation|chat show)\b/,
-  gaming: /\b(gaming|game|gameplay|let'?s play|playthrough)\b/,
-  livestream: /\b(stream|livestream|live stream|vod|just chatting)\b/,
-  church: /\b(church|sermon|service|worship|homily)\b/,
-  asmr: /\b(asmr)\b/,
-  vlog: /\b(vlog|travel vlog|day in the life)\b/,
-  'talking-head': /\b(talking head|commentary|explainer|education|essay)\b/
-}
-
-/** Kinds the study names but Cutalong has not built yet, for an honest reply. */
-const NOT_BUILT =
-  /\b(cooking|recipe|diy|travel|fitness|workout|beauty|makeup|music video|cover|comedy|sketch|sports|wedding|event|kids|pets|reaction)\b/
-
-/**
- * "This one is a cooking video", "it's a podcast", "treat this as gaming":
- * the profile asked for, a kind not built yet, or null when the sentence
- * is not about that.
- */
-export function profileAskedFor(text: string): { profile: CuttingProfile } | { notBuilt: string } | null {
-  const t = text.toLowerCase().replace(/[’]/g, "'")
-  const m =
-    /\b(?:this|it)\s*(?:one\s+)?(?:is|'s)\s+(?:an?\s+)?|\b(?:treat|cut)\s+(?:this|it)\s+(?:as|like)\s+(?:an?\s+)?/.exec(
-      t
-    )
-  if (!m) return null
-  const rest = t
-    .slice(m.index + m[0].length)
-    .replace(/[.!?]+$/, '')
-    .trim()
-  if (rest.split(/\s+/).length > 5) return null
-  // The kind ends the sentence or names the video: "a podcast", "a cooking
-  // video", never "a game changer".
-  const names = (re: RegExp): string | null => {
-    const k = re.exec(rest)
-    if (!k) return null
-    const after = rest.slice(k.index + k[0].length).trim()
-    return after === '' ||
-      /^(video|vlog|stream|episode|recording|edit|clip|short|one|service|review|unboxing|channel)\b/.test(after)
-      ? k[1]
-      : null
-  }
-  for (const [id, re] of Object.entries(NAMES)) {
-    if (names(re)) return { profile: profileById(id) as CuttingProfile }
-  }
-  const other = names(NOT_BUILT)
-  return other ? { notBuilt: other } : null
-}
-
 /** Spec words a tech video uses; model numbers count too ("M4", "RTX 5090"). */
 const TECH = new Set(
   (

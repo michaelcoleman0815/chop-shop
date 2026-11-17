@@ -100,7 +100,7 @@ export default function App(): JSX.Element {
             {app.screen === 'brand' && <BrandPage app={app} />}
             {app.screen === 'presets' && <PresetsPage app={app} />}
             {app.screen === 'crew' && <CrewPage app={app} />}
-            {app.screen === 'settings' && <SettingsPage />}
+            {app.screen === 'settings' && <SettingsPage app={app} />}
           </BackToWork.Provider>
         </ScreenGuard>
       </div>

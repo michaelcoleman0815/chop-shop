@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { EditDocSchema, type Note } from '../shared/edit'
+import { EditDocSchema } from '../shared/edit'
 import { thisComputer } from '../shared/platform'
 import { chatLocally, isLocalUp } from './local-llm'
-import { offerPlan, planMapRequest, type PlanEditResult } from './planner'
-import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
+import { offerPlan, type PlanEditResult, type PlanInput } from './planner'
+import { PLANNER_SYSTEM, PlanSchema, renderCommands, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
 
 /**
  * The edit planner on a model on this Mac, through Ollama: free, offline,
@@ -19,25 +19,10 @@ import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIc
 /** The plan's shape as JSON Schema, which Ollama holds the model's answer to. */
 export const PLAN_JSON_SCHEMA = z.toJSONSchema(PlanSchema)
 
-export async function planEditLocally(
-  input: {
-    doc: unknown
-    request: string
-    notes: Note[]
-    voice?: string
-    preferences?: string[]
-    logos?: string[]
-    never?: string[]
-  },
-  local: { host: string; model: string }
-): Promise<PlanEditResult> {
+export async function planEditLocally(input: PlanInput, local: { host: string; model: string }): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
   const doc = parsedDoc.data
-
-  // A request for a map and nothing else needs no model.
-  const map = planMapRequest(doc, input.request, input.notes)
-  if (map) return map
 
   if (!(await isLocalUp(local.host))) {
     return {
@@ -53,8 +38,13 @@ export async function planEditLocally(
       local.model,
       PLANNER_SYSTEM,
       [
+        renderCommands(input.commands ?? []),
         renderTranscript(doc),
-        renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos, input.never),
+        renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos, input.never, {
+          offers: input.offers,
+          chat: input.chat,
+          brands: input.brands
+        }),
         // Ollama's guidance: the schema in the prompt as well grounds the answer.
         `Answer with JSON in this shape:\n${JSON.stringify(PLAN_JSON_SCHEMA)}`
       ].join('\n\n'),
@@ -71,5 +61,5 @@ export async function planEditLocally(
       message: `${local.model} sent back a plan in a shape I could not read. Try again, or plan with Claude.`
     }
   }
-  return offerPlan(doc, { ...plan.data, ops: await withRealIcons(plan.data.ops) }, input.notes)
+  return offerPlan(doc, { ...plan.data, ops: await withRealIcons(plan.data.ops) }, input.notes, input.commands)
 }

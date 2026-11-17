@@ -10,7 +10,6 @@ import {
   changesColour,
   currentCut,
   currentVersion,
-  cutsPicked,
   undoTarget,
   cutawayAt,
   cutawayClock,
@@ -923,9 +922,10 @@ function NotesPanel({
   const version = currentVersion(doc)
   const notes = openNotes(doc)
   const beats = currentCut(doc).beats
+  // A v1 shaped by the words sent with the footage is not the recording as shot: it says what it is.
   const status: PanelStatus = app.panel ?? {
     text:
-      version.n === 1
+      version.n === 1 && version.ops.length === 0
         ? `v1 is the recording in ${beats.length} beats. Leave notes as you watch, or type / for a preset.`
         : `v${version.n} is ready. ${version.summary}`
   }
@@ -954,6 +954,15 @@ function NotesPanel({
               <Working progress={status.progress} since={status.since} big mark={44} helpers={noteCrew} />
             ) : (
               <p className="cl-reply">{status.text}</p>
+            )}
+            {!status.progress && (status.actions?.length ?? 0) > 0 && (
+              <div className="cl-actions">
+                {status.actions!.map((a) => (
+                  <Button key={a.kind + a.label} variant="secondary" small onClick={() => app.onAction(a)}>
+                    {a.label}
+                  </Button>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -1016,10 +1025,9 @@ function NotesPanel({
               range ? (nowBeat && range.includes(nowBeat) ? nowBeat : range[0]) : nowBeat,
               range ? { from: range[0], to: range[range.length - 1] } : null
             )
+          // A slash command runs now; anything else is a note, which Claude reads when the notes are applied.
           if (command) void app.runCommand(command.command, 'panel', command.rest, time, range)
-          else if (range && cutsPicked(text)) app.cutBeats(range, 'panel')
-          // A rule for the never list is taken; whatever else was said with it is a note.
-          else if (!app.answerInPanel(text, note)) note(text)
+          else note(text)
         }}
       />
     </aside>

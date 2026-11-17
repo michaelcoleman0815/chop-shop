@@ -462,7 +462,7 @@ describe('a Premiere project from an edit, read back', () => {
     )
     expect(xml).toContain('<pathurl>file://localhost/C%3A/Users/you/My%20Talk%20%26%20Co.mp4</pathurl>')
     expect(xml).toContain('<name>My Talk &amp; Co.mp4</name>')
-    expect(PLANNER_SYSTEM).toContain('/premiere')
+    expect(PLANNER_SYSTEM).toContain('{"op":"run","command":"premiere"')
   })
 
   it('writes the captions as SRT, a page at a time, as the export shows them', () => {

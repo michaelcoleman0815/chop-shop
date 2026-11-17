@@ -33,12 +33,13 @@ const PLAN: Plan = {
   ops: [
     { op: 'strike', from: 'w2', to: 'w2' },
     // A beat that does not exist: the dry run turns it away, as it would Claude's.
-    { op: 'remove', beats: ['b9'] }
+    { op: 'remove', beats: ['b9'], why: 'It says the opening again.' }
   ],
   summary: 'The um is gone. ',
   reply: 'I cut the um.',
   notesHandled: ['n1', 'n7'],
-  needs: ['  ']
+  needs: ['  '],
+  question: { text: '', options: [] }
 }
 
 type Call = { url: string; init?: RequestInit }

@@ -37,7 +37,9 @@ import { detectFaces, hasFaceFinder } from './track'
 import { thisComputer } from '../shared/platform'
 import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
 import { removePreset, savedPresets, savePreset } from './preset-store'
-import { checkKey, keepOffList, planEdit } from './planner'
+import { checkKey, keepOffList, keyDeps, planEdit } from './planner'
+import type { CommandLine, RequestExtra } from './planner-prompt'
+import { triage } from './triage'
 import { planEditLocally } from './planner-local'
 import { isLocalUp, localModels } from './local-llm'
 import { OLLAMA_HOST } from './clips'
@@ -606,20 +608,52 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   // the brand's own logos by name, so a logo pop can show them.
   // Claude plans unless the person picked a model on this Mac in Settings.
   // The edit's own brand gives the logos and the never list, which the plan is checked against too.
-  ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
-    const parsed = EditDocSchema.safeParse(req.doc)
-    const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
-    // What this brand has learned from its own chats.
-    const preferences = await preferencesForPlanner(brand.id).catch(() => [])
-    const logos = brand.logos.map((l) => l.name)
-    const never = await neverForBrand(brand.id).catch(() => [])
-    const said = neverForPlanner(never)
-    const local = getSettings().localPlanner
-    const result = local
-      ? await planEditLocally({ ...req, preferences, logos, never: said }, { host: OLLAMA_HOST, model: local })
-      : await planEdit({ ...req, preferences, logos, never: said })
-    return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
-  })
+  ipcMain.handle(
+    'cut:plan',
+    async (
+      _e,
+      req: { doc: unknown; request: string; notes: Note[]; voice?: string; commands?: CommandLine[] } & RequestExtra
+    ) => {
+      const parsed = EditDocSchema.safeParse(req.doc)
+      const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
+      // What this brand has learned from its own chats.
+      const preferences = await preferencesForPlanner(brand.id).catch(() => [])
+      const logos = brand.logos.map((l) => l.name)
+      const never = await neverForBrand(brand.id).catch(() => [])
+      const said = neverForPlanner(never)
+      const local = getSettings().localPlanner
+      const result = local
+        ? await planEditLocally({ ...req, preferences, logos, never: said }, { host: OLLAMA_HOST, model: local })
+        : await planEdit({ ...req, preferences, logos, never: said })
+      return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
+    }
+  )
+
+  // Claude reads a message before any footage is read: one edit, a vlog,
+  // clips from a long recording, words kept for footage still to come, or a
+  // question to answer; and what a link with it is for. Each file goes as
+  // its name, its length and whether it has a picture, never what is in it.
+  ipcMain.handle(
+    'cut:triage',
+    async (
+      _e,
+      req: {
+        request: string
+        files: { path: string; name: string }[]
+        link: string | null
+        hasEdit: boolean
+        commands?: CommandLine[]
+      }
+    ) => {
+      const files = await Promise.all(
+        req.files.map(async (f) => {
+          const p = await probe(f.path).catch(() => null)
+          return { name: f.name, durationSec: p ? p.durationSec : null, video: !!p && p.width > 0, audio: !!p?.facts.audio }
+        })
+      )
+      return triage({ request: req.request, files, link: req.link, hasEdit: req.hasEdit, commands: req.commands })
+    }
+  )
 
   // The models Ollama has on this Mac, for planning edits without Claude.
   ipcMain.handle('planner:local', async () => {
@@ -743,7 +777,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     return saveSettings({ videoSignIn: browser && allowed.includes(browser) ? browser : null }).videoSignIn ?? null
   })
 
-  ipcMain.handle('claude:check', () => checkKey())
+  ipcMain.handle('claude:check', (_e, opts?: { quick?: boolean }) => checkKey(keyDeps(), opts ?? {}))
 
   // Other AI services: keys, the switch, and key checks (providers/index.ts).
   registerServicesIpc()
