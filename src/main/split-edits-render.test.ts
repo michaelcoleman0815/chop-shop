@@ -107,7 +107,7 @@ describe.skipIf(!FFMPEG)('rendering J and L cuts', () => {
       { op: 'jcut', beats: ['b2'], sec: 0.4 },
       { op: 'lcut', beats: ['b4'], sec: 0.4 }
     ])
-    const one = await render(cut, 'split-whole')
+    const one = await render(cut, 'split-whole', Infinity)
     const passes = await render(cut, 'split-passes', 1)
     expect(countFrames(ffmpeg, passes)).toBe(countFrames(ffmpeg, one))
     for (const t of [2.2, 4.0, 4.8, 5.5]) {

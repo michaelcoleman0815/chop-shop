@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { failureOf } from './failure'
+import { failureOf, renderFailure } from './failure'
 
 describe('a failure as the chat says it', () => {
   it('keeps a sentence the app wrote', () => {
@@ -24,5 +24,19 @@ describe('a failure as the chat says it', () => {
 
   it('says something when there is nothing to say', () => {
     expect(failureOf('  ').text).toBe('Something stopped it partway.')
+  })
+
+  it('takes a render failure as the main process said it, with what ffmpeg said behind Details', () => {
+    const details = [{ label: 'What ffmpeg said', value: 'encoder : Lavc61.3.100 aac\nffmpeg was stopped by SIGKILL.' }]
+    const stopped = 'The renderer was stopped before it finished, perhaps because the Mac ran short of memory, so nothing was saved.'
+    expect(renderFailure({ message: stopped, details })).toEqual({ text: stopped, details })
+    // From an app that sends only the lines, as before.
+    expect(renderFailure({ message: 'Error while filtering\nConversion failed!' })).toEqual({
+      text: 'The renderer stopped partway, so nothing was saved.',
+      details: [{ label: 'What ffmpeg said', value: 'Error while filtering\nConversion failed!' }]
+    })
+    expect(renderFailure({ message: 'There is nothing left in the cut to render.' })).toEqual({
+      text: 'There is nothing left in the cut to render.'
+    })
   })
 })

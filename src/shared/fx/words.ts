@@ -52,9 +52,10 @@ interface OpLike {
 /** Clauses for describePlan: "a pixel scan brings the objects in", "one effect is gone". */
 export function fxPhrases(ops: OpLike[]): string[] {
   const said: string[] = []
-  const added = ops.filter((o): o is OpLike & FxItem => o.op === 'fx-add')
+  // An op may leave out where it works and its point; the edit fills them in as auto and none.
+  const added = ops.filter((o) => o.op === 'fx-add') as (OpLike & Partial<FxItem> & Pick<FxItem, 'kind'>)[]
   if (added.length > 0 && added.length <= 3)
-    for (const o of added) said.push(fxClause({ on: 'auto', at: [], ...o } as FxItem))
+    for (const o of added) said.push(fxClause({ ...o, on: o.on ?? 'auto', at: o.at ?? [] } as FxItem))
   else if (added.length > 3) said.push(`${count(added.length, 'effect', 'effects')} come in`)
   const changed = ops.filter((o) => o.op === 'fx-update').length
   if (changed > 0) said.push(`${count(changed, 'effect', 'effects')} ${changed === 1 ? 'changes' : 'change'}`)

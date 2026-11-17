@@ -65,7 +65,7 @@ describe('the planner and scene effects', () => {
   })
 
   it('asks for every slot of an effect op, so the structured output allows it', () => {
-    const schema = z.toJSONSchema(PlanSchema) as {
+    const schema = z.toJSONSchema(PlanSchema) as unknown as {
       properties: { ops: { items: { anyOf?: Record<string, unknown>[]; oneOf?: Record<string, unknown>[] } } }
     }
     const options = schema.properties.ops.items.anyOf ?? schema.properties.ops.items.oneOf ?? []

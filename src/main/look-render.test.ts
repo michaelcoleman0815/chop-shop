@@ -203,7 +203,7 @@ describe.skipIf(!FFMPEG)('rendering looks', () => {
 
   it('grades once over a cut rendered in passes, the same as in one', async () => {
     const cut = withLook(NAMED_LOOKS.warm.look)
-    const one = colours(await render(cut, 'one'))
+    const one = colours(await render(cut, 'one', Infinity))
     const passes = colours(await render(cut, 'passes', 1))
     passes.forEach((c, i) => c.forEach((v, ch) => expect(Math.abs(v - one[i][ch])).toBeLessThan(3)))
   })

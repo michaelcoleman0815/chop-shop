@@ -1,5 +1,8 @@
 // Serves dist/ the way Cloudflare Pages does, closely enough to test against: clean URLs (/privacy serves
-// privacy.html, /privacy.html redirects to /privacy), the rules in _headers and _redirects, and 404.html.
+// privacy.html, /privacy.html redirects to /privacy), the rules in _headers and _redirects, 404.html, and
+// the email list's Function at /api/signup, with a KV store that lives in memory until the server stops.
+// Text is sent compressed when the browser asks, as Cloudflare does, so local Lighthouse runs measure what ships.
+// For the real runtime and a store that persists, use `npx wrangler pages dev dist --kv SIGNUPS` (README.md).
 //
 //   node scripts/serve.mjs [--port 4321] [--dir dist]
 
@@ -7,6 +10,8 @@ import { createServer } from 'node:http'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { brotliCompressSync, gzipSync } from 'node:zlib'
+import { onRequest as signup } from '../functions/api/signup.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -41,9 +46,25 @@ function rules(file) {
 const matches = (pattern, path) =>
   !/^https?:/.test(pattern) && new RegExp('^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$').test(path)
 
-createServer((req, res) => {
+const memory = new Map()
+const SIGNUPS = {
+  get: async (key) => memory.get(key)?.value ?? null,
+  put: async (key, value, options = {}) => void memory.set(key, { value, metadata: options.metadata })
+}
+
+createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
   const path = decodeURIComponent(url.pathname)
+  if (path === '/api/signup' || path === '/api/signup/') {
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const headers = Object.fromEntries(['accept', 'content-type', 'origin'].filter((h) => req.headers[h]).map((h) => [h, req.headers[h]]))
+    const hasBody = !['GET', 'HEAD'].includes(req.method)
+    const request = new Request(`http://${req.headers.host}${req.url}`, { method: req.method, headers, body: hasBody ? Buffer.concat(chunks) : undefined })
+    const response = await signup({ request, env: { SIGNUPS } })
+    res.writeHead(response.status, Object.fromEntries(response.headers))
+    return res.end(Buffer.from(await response.arrayBuffer()))
+  }
   for (const line of existsSync(join(DIR, '_redirects')) ? readFileSync(join(DIR, '_redirects'), 'utf8').split('\n') : []) {
     const [from, to, code] = line.trim().split(/\s+/)
     if (from && !from.startsWith('#') && from === path) {
@@ -66,6 +87,13 @@ createServer((req, res) => {
   }
   const headers = { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'public, max-age=0, must-revalidate' }
   for (const rule of rules(join(DIR, '_headers'))) if (matches(rule.pattern, path)) for (const [k, v] of rule.headers) headers[k] = v
+  let body = readFileSync(file)
+  const accepts = String(req.headers['accept-encoding'] || '')
+  if (/^(text\/|image\/svg|application\/(json|xml|manifest))/.test(headers['Content-Type'])) {
+    headers.Vary = 'Accept-Encoding'
+    if (/\bbr\b/.test(accepts)) [body, headers['Content-Encoding']] = [brotliCompressSync(body), 'br']
+    else if (/\bgzip\b/.test(accepts)) [body, headers['Content-Encoding']] = [gzipSync(body), 'gzip']
+  }
   res.writeHead(status, headers)
-  res.end(readFileSync(file))
+  res.end(body)
 }).listen(PORT, () => console.log(`serving ${DIR} at http://localhost:${PORT}`))

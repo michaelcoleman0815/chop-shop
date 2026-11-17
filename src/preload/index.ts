@@ -173,7 +173,8 @@ const api = {
         height?: number
         durationSec?: number
       }
-    | { ok: false; message: string }
+    /** A sentence, and what ffmpeg said behind Details when it was ffmpeg that stopped. */
+    | { ok: false; message: string; details?: { label: string; value: string }[] }
   > => ipcRenderer.invoke('cut:render', req),
   addAsset: (req: {
     docId: string

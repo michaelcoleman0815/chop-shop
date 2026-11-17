@@ -1,6 +1,7 @@
 import { useState, type DragEvent } from 'react'
 import { habitChanges, habitsKey, habitsUseSentence } from '../../../../shared/learn/habits'
 import { api } from '../api'
+import { Facts } from '../components/Message'
 import { Button, Icon } from '../components/ui'
 import { Working } from '../components/Working'
 import { fileName, isVideoFile } from '../format'
@@ -118,18 +119,16 @@ export function LearnSection({ app }: { app: Cutalong }): JSX.Element {
       )}
 
       {!running && !learn.error && summary && (summary.facts.length > 0 || summary.details.length > 0) && (
-        <div className="cl-chips" style={{ alignItems: 'center' }}>
-          {summary.facts.map((f) => (
-            <span key={f} className="cl-fact">
-              {f}
-            </span>
-          ))}
+        <>
+          <Facts facts={summary.facts} seed="learn" />
           {summary.details.length > 0 && (
-            <button type="button" className="cl-link" aria-expanded={details} onClick={() => setDetails((d) => !d)}>
-              {details ? 'Hide details' : 'Details'}
-            </button>
+            <div className="cl-chips">
+              <button type="button" className="cl-link" aria-expanded={details} onClick={() => setDetails((d) => !d)}>
+                {details ? 'Hide details' : 'Details'}
+              </button>
+            </div>
           )}
-        </div>
+        </>
       )}
       {details && summary && !running && !learn.error && (
         <dl className="cl-details">
