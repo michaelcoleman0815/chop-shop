@@ -734,6 +734,8 @@ jobs:
           python3 mobile/engine/example/ci/pick-simulator.py > "$RUNNER_TEMP/sim.txt"
           echo "udid=$(sed -n 1p "$RUNNER_TEMP/sim.txt")" >> "$GITHUB_OUTPUT"
           echo "simulator: $(sed -n 2p "$RUNNER_TEMP/sim.txt")"
+          # The keyboard on screen, as on a phone, for the drive's text boxes.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
           xcrun simctl boot "$(sed -n 1p "$RUNNER_TEMP/sim.txt")" || true
 
       - name: Build the app for the simulator

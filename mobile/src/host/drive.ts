@@ -1,3 +1,4 @@
+import { Keyboard } from '@capacitor/keyboard'
 import type { EnginePlugin, PickedFile } from 'cutalong-engine'
 import { platform } from '../../../src/main/platform'
 import { Engine } from './engine'
@@ -20,6 +21,10 @@ import { anthropicStandIn, type StandIn } from './standin'
  * the thread (the gate stays open for a key accepted before), then opens the
  * same project from Start's card: the editor, the crew at another export in
  * the thread, the thread with it in, the Crew page and Brand.
+ *
+ * On Start, in the thread and in the editor's note box the drive types with
+ * the keyboard up, as the box is at rest and grown past six lines, and in the
+ * editor it goes Back with the keyboard still up.
  *
  * Anthropic is stood in for while a drive runs (standin.ts): the shared
  * work's requests to it go through the page's fetch, which withStandIn
@@ -138,6 +143,27 @@ function type(field: HTMLTextAreaElement | HTMLInputElement, value: string): voi
 }
 
 const busy = (): boolean => !!document.querySelector('.cl-progress, .cl-composer.busy')
+
+/** Words that take seven lines, one more than the box grows to before it scrolls. */
+const SEVEN_LINES = [
+  'Open on the laugh',
+  'then the line about the bridge',
+  'keep the second take',
+  'cut the long pause',
+  'bigger captions',
+  'end on the wave',
+  'and a seventh line'
+].join('\n')
+
+/** How wide a field's hint is, in its own font, so it can be said whether the hint fits on its one line. */
+function hintWidth(field: HTMLTextAreaElement): number {
+  const style = getComputedStyle(field)
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (!ctx) return 0
+  ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+  return ctx.measureText(field.placeholder).width
+}
+
 const replies = (): string[] =>
   [...document.querySelectorAll('.cl-msg-assistant')].map((m) => (m as HTMLElement).innerText.replace(/\n+/g, ' | '))
 
@@ -255,10 +281,11 @@ export async function drive(): Promise<void> {
   // Each step, said and screenshotted once the screen has settled.
   const step = async (name: string): Promise<void> => {
     await sleep(1200)
-    // The drive's clicks are not a person's taps, so a button the app moves focus to shows the
-    // keyboard's ring, which a tap never leaves; a field keeps its focus, as it would.
+    // The drive's clicks are not a person's taps, so a button or a link the app moves focus to shows
+    // the keyboard's ring, which a tap never leaves; a field keeps its focus, as it would.
     const focused = document.activeElement
-    if (focused instanceof HTMLButtonElement && focused.matches(':focus-visible')) focused.blur()
+    if ((focused instanceof HTMLButtonElement || focused instanceof HTMLAnchorElement) && focused.matches(':focus-visible'))
+      focused.blur()
     const screen = [shown('.cl-main'), shown('.cl-toast')].filter(Boolean).join(' || ').slice(0, 700)
     const s: Step = { n: steps.length + 1, name, atSec: seconds(), acknowledged: false, screen }
     steps.push(s)
@@ -294,6 +321,67 @@ export async function drive(): Promise<void> {
       },
       stepSec
     )
+  }
+
+  // The keyboard as the phone says it: its height while it is up, 0 when it is down.
+  let keyboard = 0
+  void Keyboard.addListener('keyboardDidShow', (info) => (keyboard = info.keyboardHeight)).catch(() => undefined)
+  void Keyboard.addListener('keyboardDidHide', () => (keyboard = 0)).catch(() => undefined)
+
+  /** Where a text box and its buttons are, against the room above the keyboard. */
+  const measure = (field: HTMLTextAreaElement): Record<string, unknown> => {
+    const box = field.closest<HTMLElement>('.cl-composer, .cl-note-input') ?? field
+    const r = box.getBoundingClientRect()
+    const buttons = [...box.querySelectorAll('button')].map((b) => b.getBoundingClientRect())
+    const room = visualViewport ? visualViewport.offsetTop + visualViewport.height : innerHeight
+    const lowest = Math.max(r.bottom, ...buttons.map((b) => b.bottom))
+    return {
+      keyboard,
+      room: Math.round(room),
+      boxHeight: Math.round(r.height),
+      boxBottom: Math.round(r.bottom),
+      fieldHeight: field.clientHeight,
+      scrolls: field.scrollHeight > field.clientHeight + 1,
+      hintFits: !field.value && hintWidth(field) <= field.clientWidth,
+      above: lowest <= room + 1 && r.top >= 0
+    }
+  }
+
+  /**
+   * Types into a text box with the keyboard up: the box at rest, one thin line, then with seven
+   * lines of words, which it grows to six of and scrolls. A screenshot of each. Leaves the box
+   * holding the words, focused, with the keyboard up.
+   */
+  const typeInto = async (
+    selector: string,
+    name: string
+  ): Promise<{ field: HTMLTextAreaElement; seen: Record<string, unknown> }> => {
+    const field = await until(name, () => document.querySelector<HTMLTextAreaElement>(selector), 20)
+    field.scrollIntoView({ block: 'nearest' })
+    field.focus()
+    // An iPhone raises the keyboard for the page's focus; Android, for a tap or when asked.
+    await Keyboard.show().catch(() => undefined)
+    await until(`the keyboard for ${name}`, () => keyboard > 0, 10).catch(() =>
+      keep(`the keyboard did not come up for ${name}`)
+    )
+    await sleep(800)
+    const empty = measure(field)
+    await step(`${name}-typing`)
+    type(field, SEVEN_LINES)
+    await sleep(600)
+    field.scrollTop = field.scrollHeight
+    const grown = measure(field)
+    await step(`${name}-typing-grown`)
+    return { field, seen: { empty, grown } }
+  }
+
+  /** The words gone again and the keyboard down, as before the box was tried. */
+  const putAway = async (field: HTMLTextAreaElement): Promise<void> => {
+    type(field, '')
+    field.blur()
+    await Keyboard.hide().catch(() => undefined)
+    await until('the keyboard to go down', () => keyboard === 0, 10).catch(() => undefined)
+    await sleep(500)
   }
 
   const send = async (words: string): Promise<void> => {
@@ -462,6 +550,9 @@ export async function drive(): Promise<void> {
   async function flow(): Promise<void> {
     await keySetup()
     await step('start')
+    const start = await typeInto('#cl-ask', 'start')
+    await putAway(start.field)
+    report.typingStart = start.seen
     ;(await until('+', () => button('Add footage, audio or images'), 10)).click()
     await until('the picked files', () => document.querySelectorAll('.cl-attachment').length === planned?.length, 30)
     type(document.querySelector<HTMLTextAreaElement>('#cl-ask')!, plan.request)
@@ -491,6 +582,9 @@ export async function drive(): Promise<void> {
     report.versionsAfterFootage = before
     await until('Open the editor', () => button('Open the editor'), 30)
     await step('v1')
+    const thread = await typeInto('#cl-ask', 'thread')
+    await putAway(thread.field)
+    report.typingThread = thread.seen
 
     await send(plan.command)
     await settle(plan.command)
@@ -508,6 +602,25 @@ export async function drive(): Promise<void> {
     ;(await until('Open the editor', () => button('Open the editor'), 30)).click()
     await editor()
     await step('editor')
+
+    // The note box, then Back while it holds words and the keyboard is up: the chat, with the keyboard down.
+    const note = await typeInto('#cl-note', 'note')
+    ;(await until('Back', () => button('Back'), 10)).click()
+    await until('the chat, back from the editor', () => document.querySelector('.cl-thread-scroll'), 20)
+    await until('the keyboard to go down', () => keyboard === 0, 10).catch(() => undefined)
+    await sleep(800)
+    const focused = document.activeElement
+    report.typingNote = {
+      ...note.seen,
+      back: {
+        thread: !!document.querySelector('.cl-thread-scroll'),
+        keyboard,
+        focus: focused ? `${focused.tagName.toLowerCase()}${focused.id ? `#${focused.id}` : ''}` : null
+      }
+    }
+    await step('back-from-note')
+    ;(await until('Open the editor', () => button('Open the editor'), 30)).click()
+    await editor()
 
     report.toast = await exportFromEditor()
     // The export in the chat, in view: the reply about the upload under it scrolls the chat past it.

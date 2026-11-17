@@ -3,7 +3,10 @@ runner, with its ffprobe and ffmpeg: every step of the flow and of the dark
 tour reached, the key gate both ways (Start without a key is the steps to
 get one, a key Anthropic turns down marks the step that fixes it, one it
 takes opens Start, and in the tour a key accepted before keeps the gate open
-while Anthropic is down), the editor's preview with a picture whether it was
+while Anthropic is down), the text box on Start, in the thread and in the
+editor's note box with the keyboard up (one thin line at rest, its hint on
+that line, six lines when it grows, then it scrolls, and it and its buttons
+above the keyboard), Back from the note box with the keyboard up, the editor's preview with a picture whether it was
 opened from the chat or from Start's card, a new version from the command,
 the crew at the export, and each export itself, a vertical H.264 video with
 AAC sound the length of the talking less what was cut, speech in it, and a
@@ -23,8 +26,9 @@ import sys
 
 OUT = sys.argv[1]
 FOOTAGE = sys.argv[2]
-FLOW = ["key", "key-refused", "start", "composer", "transcribing", "v1", "command", "editor", "exporting",
-        "thread-exporting", "export-in-chat", "crew", "brand", "licences"]
+FLOW = ["key", "key-refused", "start", "start-typing", "start-typing-grown", "composer", "transcribing", "v1",
+        "thread-typing", "thread-typing-grown", "command", "editor", "note-typing", "note-typing-grown",
+        "back-from-note", "exporting", "thread-exporting", "export-in-chat", "crew", "brand", "licences"]
 TOUR = ["thread-down", "start", "editor", "exporting", "thread-exporting", "thread", "crew", "brand"]
 
 problems = []
@@ -172,6 +176,28 @@ if flow.get("ok"):
         problem("a key turned down marked no step to fix it")
     if not any(r.get("kind") == "triage" for r in asked) or not any(r.get("kind") == "plan" for r in asked):
         problem("the words sent with the footage did not go to Claude, to read and then to plan")
+for where, key in (("Start", "typingStart"), ("the thread", "typingThread"), ("the note box", "typingNote")):
+    seen = flow.get(key) or {}
+    empty, grown = seen.get("empty") or {}, seen.get("grown") or {}
+    print(f"  typing on {where}: at rest {empty}")
+    print(f"    grown {grown}")
+    if not flow.get("ok"):
+        continue
+    if not (empty.get("keyboard") or 0) > 0:
+        problem(f"the keyboard did not come up for {where}'s box")
+    if not 44 <= (empty.get("boxHeight") or 0) <= 52:
+        problem(f"{where}'s box is {empty.get('boxHeight')} px at rest, not one 48 px line")
+    if where == "Start" and not empty.get("hintFits"):
+        problem("Start's hint does not fit on its one line")
+    if (grown.get("fieldHeight") or 0) < 150 or not grown.get("scrolls"):
+        problem(f"{where}'s box did not grow to six lines and scroll: {grown.get('fieldHeight')} px")
+    for state, seen_now in (("at rest", empty), ("grown", grown)):
+        if not seen_now.get("above"):
+            problem(f"{where}'s box or its buttons went under the keyboard {state}")
+back = (flow.get("typingNote") or {}).get("back") or {}
+print(f"  Back from the note box with the keyboard up: {back}")
+if flow.get("ok") and not (back.get("thread") and back.get("keyboard") == 0 and back.get("focus") not in ("textarea#cl-ask", "textarea#cl-note")):
+    problem(f"Back from the note box with the keyboard up did not land on the chat with the keyboard down: {back}")
 before = flow.get("versionsAfterFootage") or []
 after = flow.get("versionsAfterCommand") or []
 if flow.get("ok") and len(after) <= len(before):

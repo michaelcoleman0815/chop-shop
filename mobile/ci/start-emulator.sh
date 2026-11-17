@@ -40,6 +40,8 @@ for _ in $(seq 1 120); do
     adb shell settings put global animator_duration_scale 0
     adb shell settings put system screen_off_timeout 2147483647
     adb shell svc power stayon true
+    # The keyboard on screen, as on a phone, for the drive's text boxes.
+    adb shell settings put secure show_ime_with_hard_keyboard 1
     adb shell input keyevent 82
     echo "booted: $(adb shell getprop ro.build.fingerprint)"
     echo "WebView: $(adb shell dumpsys webviewupdate | grep -m1 'Current WebView package')"

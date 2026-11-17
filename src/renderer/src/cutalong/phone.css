@@ -235,8 +235,22 @@
 
 /* ---------- The composer ---------- */
 
-.cl-app.phone .cl-composer textarea {
-  max-height: 30vh;
+/*
+ * The text boxes are one thin 48 px line that grows to six (cutalong.css), their 40 px buttons
+ * 4 px inside the round ends. The phone's 44 px buttons would make the line taller and part
+ * those circles from the ends, so here they are 40 px and reach 44 px to a finger, inside the box.
+ */
+.cl-app.phone :is(.cl-composer, .cl-note-input) .cl-icon-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
+}
+
+.cl-app.phone :is(.cl-composer, .cl-note-input) .cl-icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
 }
 
 .cl-app.phone .cl-slash {
@@ -351,17 +365,28 @@
   }
 }
 
+/*
+ * Writing a note, the keyboard takes half the screen: the note box keeps all its lines above it,
+ * the notes step aside while it is written, and the preview takes the room that is left.
+ */
+.cl-app.phone .cl-editor:has(.cl-note-input textarea:focus) .cl-well {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+
+.cl-app.phone .cl-editor:has(.cl-note-input textarea:focus) .cl-notes {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.cl-app.phone .cl-editor:has(.cl-note-input textarea:focus) .cl-notes-scroll {
+  display: none;
+}
+
 .cl-app.phone .cl-sline {
   grid-template-columns: 22px minmax(0, 1fr) 12px;
   column-gap: 8px;
-}
-
-.cl-app.phone .cl-note-input {
-  padding-left: 16px;
-}
-
-.cl-app.phone .cl-note-input input {
-  height: 44px;
 }
 
 /* ---------- Pages: projects, presets, settings ---------- */
