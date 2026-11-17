@@ -1,2 +1,6 @@
 dist/
 node_modules/
+.preview/
+.hallmark/shots/
+.hallmark/before/
+src/.hallmark/
