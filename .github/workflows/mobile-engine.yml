@@ -673,6 +673,10 @@ jobs:
       - name: Run the app's own flow on the emulator
         run: DRIVE_TIMEOUT=2400 mobile/ci/android-drive.sh "$RUNNER_TEMP/Cutalong-debug.apk" "$RUNNER_TEMP/models" "$RUNNER_TEMP/footage" "$RUNNER_TEMP/drive"
 
+      - name: The emulator's last lines
+        if: failure()
+        run: tail -n 80 "$RUNNER_TEMP/emulator.log" || true
+
       - if: always()
         run: cp "$RUNNER_TEMP/emulator.log" "$RUNNER_TEMP/drive/" 2>/dev/null || true
 

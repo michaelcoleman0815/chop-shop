@@ -130,8 +130,12 @@ flow_status=$status
 flow_why=$why
 adb exec-out run-as "$PKG" cat files/drive-report.json > "$OUT/drive-report.json" 2>/dev/null || rm -f "$OUT/drive-report.json"
 
-# The tour runs after a flow that stopped too, to show the project as far as it got.
-if [ -s "$OUT/drive-report.json" ]; then
+# The tour runs after a flow that stopped too, to show the project as far as it got, on an emulator
+# that is still there: one that has gone away leaves adb with nothing to talk to.
+if [ "$(timeout 30 adb get-state 2>/dev/null)" != device ]; then
+  tour_status=1
+  tour_why="dark: not started, as the emulator went away"
+elif [ -s "$OUT/drive-report.json" ]; then
   # The dark tour: the system dark and animations off, the app started again on the same project.
   adb shell cmd uimode night yes
   animations 0
@@ -153,8 +157,10 @@ fi
 [ "$flow_status" = 0 ] || echo "::error::$flow_why"
 [ "$tour_status" = 0 ] || echo "::error::$tour_why"
 
-adb exec-out run-as "$PKG" tar -C files -cf - Exports | tar -xf - -C "$OUT" || echo "::warning::no exports to pull"
-adb logcat -d -b all > "$OUT/logcat.txt" || adb logcat -d > "$OUT/logcat.txt" || true
+# Each bounded: without a device, logcat waits for one for ever.
+timeout 300 adb exec-out run-as "$PKG" tar -C files -cf - Exports | tar -xf - -C "$OUT" || echo "::warning::no exports to pull"
+timeout 120 adb logcat -d -b all > "$OUT/logcat.txt" || timeout 120 adb logcat -d > "$OUT/logcat.txt" || true
+[ "$(timeout 30 adb get-state 2>/dev/null)" = device ] || echo "::error::the emulator went away during the run"
 # The app's own lines, without the engine's progress, which its debug build logs as it arrives.
 grep -E "\[drive\]|Capacitor/Console" "$OUT/logcat.txt" | grep -v '"stream":"stdout"' | tail -n 60 || true
 echo "--- the app's memory"
