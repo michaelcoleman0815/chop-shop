@@ -1,4 +1,4 @@
-import { Capacitor, CapacitorHttp } from '@capacitor/core'
+import { Capacitor, CapacitorHttp, WebView } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import { FileTransfer } from '@capacitor/file-transfer'
 import { KeepAwake } from '@capacitor-community/keep-awake'
@@ -175,6 +175,17 @@ export async function startPhone(options: StartOptions = {}): Promise<CutalongHo
   return {
     api,
     mediaUrlFor,
+    // An iPhone's web view reads a recording the app loads with no touch behind it only as far as its
+    // length. Script that takes a plugin's answer runs as a touch's would (the answer comes through
+    // the web view's evaluateJavaScript), so an element loaded again once one has come loads in full.
+    loadAsTouch:
+      native && info.platform === 'ios'
+        ? (media) =>
+            void WebView.getServerBasePath().then(
+              () => media.load(),
+              () => media.load()
+            )
+        : undefined,
     device: {
       kind: 'phone',
       here: 'this phone',

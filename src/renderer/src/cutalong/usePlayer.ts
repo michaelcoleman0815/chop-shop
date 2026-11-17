@@ -11,6 +11,7 @@ import {
   type Source
 } from '../../../shared/edit'
 import { heardFrom } from '../../../shared/vision/offset'
+import { loadAsTouch } from './api'
 import { steady } from './motion'
 
 /**
@@ -97,35 +98,40 @@ export const needsFrame = (v: HTMLMediaElement): boolean => v.paused && !v.seeki
  * Whether a paused element read its recording's length and stopped loading
  * there for good. An iPhone's web view does that with a recording the app
  * loads by itself rather than for a touch, as when a project opens from Start:
- * a moment asked of it then never arrives, and its picture stays dark until it
- * plays.
+ * a moment asked of it then never arrives, and holds up its playing too, so
+ * its picture stays dark.
  */
 const stalled = (v: HTMLMediaElement): boolean =>
   v.paused && v.readyState === v.HAVE_METADATA && v.networkState === v.NETWORK_IDLE
 
 /** Elements playing silently to load their frames. */
 const waking = new WeakSet<HTMLMediaElement>()
-/** Frames that load have done so by then. */
-const SETTLE_MS = 500
 /** A wake that has not started playing by then gives up. */
 const WAKE_MS = 4000
+/** The recording each element was last loaded again for, as a touch would. */
+const reloaded = new WeakMap<HTMLMediaElement, string>()
 
 /**
  * Shows a paused element's frame at `at()`. Asking for the moment is enough
- * where the frames load; an element still stalled a moment later plays
- * silently until they have, then stops on the moment again. While `running()`
- * the player has taken the element over, and it is left playing. A play that
- * is refused, or never starts, leaves the element as it was.
+ * where the frames load. A stalled element is not asked: it plays silently
+ * until they have loaded, then stops on the moment. Where it cannot play, or
+ * its play never starts, it is loaded again as a touch would load it, where
+ * the host can do that (an iPhone's), and then asked. While `running()` the
+ * player has taken the element over, and it is left playing.
  */
 export function showFrame(v: HTMLVideoElement, at: () => number | null, running: () => boolean): void {
+  if (waking.has(v)) return
+  if (stalled(v)) {
+    if (!running()) wake(v, at, running)
+    return
+  }
   const t = at()
   if (t !== null && (Math.abs(v.currentTime - t) > 0.01 || needsFrame(v))) v.currentTime = t
-  if (stalled(v) && !running()) setTimeout(() => wake(v, at, running), SETTLE_MS)
 }
 
 /** Plays a stalled element silently until its frames load, then stops it on its moment again. */
 function wake(v: HTMLVideoElement, at: () => number | null, running: () => boolean): void {
-  if (!v.isConnected || !stalled(v) || running() || waking.has(v)) return
+  if (!v.isConnected || waking.has(v)) return
   waking.add(v)
   const muted = v.muted
   let late = false
@@ -149,9 +155,19 @@ function wake(v: HTMLVideoElement, at: () => number | null, running: () => boole
       clearTimeout(wait)
       waking.delete(v)
       // Paused or given another recording meanwhile, the player has set its sound since.
-      if (late || !(err instanceof DOMException && err.name === 'AbortError')) v.muted = muted
+      if (!late && err instanceof DOMException && err.name === 'AbortError') return
+      v.muted = muted
+      reload(v)
     }
   )
+}
+
+/** Loads a paused element with no frame again as a touch would, where the host can: once for each recording. */
+function reload(v: HTMLVideoElement): void {
+  const src = v.getAttribute('src')
+  if (!loadAsTouch || !src || reloaded.get(v) === src || !v.paused || v.readyState >= v.HAVE_CURRENT_DATA) return
+  reloaded.set(v, src)
+  loadAsTouch(v)
 }
 
 export function usePlayer(
@@ -208,6 +224,15 @@ export function usePlayer(
         return true
       }
       if (v.readyState < 1) return false
+      // A stalled deck is woken rather than moved, and goes to its moment once it can (showFrame).
+      if (stalled(v)) {
+        showFrame(
+          v,
+          () => want.current[d],
+          () => playingRef.current
+        )
+        return false
+      }
       if (Math.abs(v.currentTime - srcSec) <= tolerance && !needsFrame(v)) return false
       v.currentTime = srcSec
       return true

@@ -113,6 +113,12 @@ export interface CutalongHost {
   /** A file in the app's storage as the player can load it. */
   mediaUrlFor: (path: string) => string
   device: Device
+  /**
+   * Loads a media element again as a touch would, where the web view reads a
+   * recording the app loads by itself only as far as its length (an
+   * iPhone's). Absent where media loads in full anyway.
+   */
+  loadAsTouch?: (media: HTMLMediaElement) => void
 }
 
 const hosted = typeof window !== 'undefined' ? (window as { cutalongHost?: CutalongHost }).cutalongHost : undefined
@@ -123,6 +129,9 @@ export const isMock = !bridge && !hosted
 
 /** The device the app runs on: the computer, or the phone that hosts it. */
 export const device: Device = hosted?.device ?? COMPUTER
+
+/** How the host loads a media element as a touch would, where it needs to (CutalongHost.loadAsTouch). */
+export const loadAsTouch = hosted?.loadAsTouch
 
 /**
  * The real bridge inside Electron; the phone's host on a phone; a mock in a
