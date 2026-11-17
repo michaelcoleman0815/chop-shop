@@ -4,7 +4,8 @@ import type { Music } from '../../shared/edit/audio'
 import type { EditDoc } from '../../shared/edit/schema'
 import { wordsFromTranscript } from '../../shared/edit/doc'
 import type { Draft, Kept, Reply } from '../../shared/make/draft'
-import { readAsk, reviseBrief, cleanTopic } from '../../shared/make/brief'
+import { readAsk, reviseSteps, cleanTopic } from '../../shared/make/brief'
+import { quoteWords } from '../../shared/make/questions'
 import { assembleDoc, type Carry, type MadeFile } from '../../shared/make/assemble'
 import type { MapShots } from '../../shared/make/map'
 import type { MotionCallInput } from '../../shared/motion/schema'
@@ -19,6 +20,7 @@ import {
   quoteFor,
   scriptCost,
   shotListCost,
+  shotListParts,
   stillCost,
   clipCost,
   videoCap,
@@ -539,10 +541,26 @@ export class Stopped extends Error {
     readonly kept: KeptSoFar,
     readonly resume: Draft,
     /** Why, when a service stopped it rather than the person: "Google Gemini says the account has no credit left." */
-    readonly reason: string | null = null
+    readonly reason: string | null = null,
+    /** The whole sentence, when it is not the usual one. */
+    said: string | null = null
   ) {
-    super(stoppedSentence(spent, quoted, kept, reason))
+    super(said ?? stoppedSentence(spent, quoted, kept, reason))
     this.name = 'Stopped'
+  }
+}
+
+/**
+ * A script written at make time with more lines than its quote counted: more shots than quoted, and a
+ * longer shot list. Stopped before any of the shot list is asked for, to be quoted again at its real length.
+ */
+class Longer extends Error {
+  constructor(
+    readonly lines: number,
+    readonly quoted: number
+  ) {
+    super(`The script has ${lines} lines, more than the ${quoted} the quote counted`)
+    this.name = 'Longer'
   }
 }
 
@@ -651,6 +669,18 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
   try {
     return await makeVideoWith(draft, deps, budget, claude, state)
   } catch (err) {
+    // A script longer than quoted: only it was paid for, and it is kept, to be quoted again at its real length.
+    if (err instanceof Longer && !deps.signal?.aborted) {
+      const resume = resumeOf(state, spent())
+      throw new Stopped(
+        spent(),
+        draft.quote.total,
+        { plan: false, narration: false, pictures: 0 },
+        resume,
+        null,
+        `Claude wrote the script with ${err.lines} lines, more than the ${err.quoted} the quote counted, so the shots would cost more than quoted. I stopped before planning them: only the script was paid for (${dollars(spent())} of the ${dollars(draft.quote.total)} quoted), and it is kept. This quote is for the rest, at its real length.`
+      )
+    }
     // Stopped by the person, or by a picture service every later picture would hear from too: what was
     // spent, what is kept, and a draft to go on from once the person has seen to it.
     if (deps.signal?.aborted || err instanceof Halted) {
@@ -692,6 +722,9 @@ async function makeVideoWith(
     const { unwritten: _written, ...rest } = draft
     draft = { ...rest, title, script, phrases: parts.phrases, sections: parts.sections, outline: parts.headings.filter(Boolean) }
     state.draft = draft
+    // Counted as the shot list counts them, one shot a line: more than the quote assumed is quoted again
+    // before any part of the shot list runs.
+    if (parts.phrases.length > draft.quote.counts.scenes) throw new Longer(parts.phrases.length, draft.quote.counts.scenes)
   }
   const { brief, quote } = draft
   const images = quote.images
@@ -730,7 +763,16 @@ async function makeVideoWith(
     const r = await planShots(
       brief,
       draft.phrases,
-      { sections: draft.sections, outline: draft.outline, maxClips, signal: deps.signal, budget: claude, narrationSeconds: quote.counts.narrationSeconds },
+      {
+        sections: draft.sections,
+        outline: draft.outline,
+        maxClips,
+        signal: deps.signal,
+        budget: claude,
+        narrationSeconds: quote.counts.narrationSeconds,
+        // Each part held to no more than its own line of the quote.
+        quotedParts: shotListParts(quote.counts.scenes, quote.counts.narrationSeconds)
+      },
       deps.parse
     )
     if (r.ok) return { ...r.value, cost: r.cost, note: null }
@@ -887,9 +929,17 @@ export function madeReply(doc: EditDoc, make: Make, quote: Quote, notes: string[
 
 // ---------- Asked again: the brief before it is made ----------
 
-/** A pending brief changed by what was said next, re-quoted; null when the words change nothing. */
-export function revise(draft: Draft, text: string, deps: Pick<DraftDeps, 'can' | 'settings' | 'today'>): { draft: Draft; changed: string[] } | null {
-  const r = reviseBrief(draft.brief, text)
+/**
+ * A pending brief changed by what was said next, re-quoted: one change, or several said in turn and
+ * read back as one (the last winning), each read as its read-back read it, so nothing turned down
+ * ("not 10 minutes") is picked; null when, in the end, they change nothing.
+ */
+export function revise(
+  draft: Draft,
+  said: string | string[],
+  deps: Pick<DraftDeps, 'can' | 'settings' | 'today'>
+): { draft: Draft; changed: string[] } | null {
+  const r = reviseSteps(draft.brief, (typeof said === 'string' ? [said] : said).map(quoteWords))
   if (!r) return null
   const next = { ...draft, brief: r.brief }
   return { draft: { ...next, quote: quoteDraft(next, deps) }, changed: r.changed }

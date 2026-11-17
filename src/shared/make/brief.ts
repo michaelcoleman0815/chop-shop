@@ -296,14 +296,44 @@ export function readAsk(text: string, ctx: AskContext = {}): Brief | null {
   }
 }
 
-/**
- * Changes to a brief not yet made, from what was said next: "make it 3
- * minutes", "use ElevenLabs", "black and white", "no maps", "make it an
- * explainer instead". Null when nothing said changes it.
- */
-export function reviseBrief(brief: Brief, text: string): { brief: Brief; changed: string[] } | null {
+/** What a change says, one thing each: the format, the length, the voice, the look, maps, clips, the picture service, a limit, the shape. */
+type Said = 'format' | 'seconds' | 'voice' | 'look' | 'maps' | 'clips' | 'images' | 'cap' | 'aspect'
+const SAID_ORDER: Said[] = ['format', 'seconds', 'voice', 'look', 'maps', 'clips', 'images', 'cap', 'aspect']
+
+/** How a change is said back, from the brief it made: "an animated explainer", "3:00 long", "no maps". */
+function saidOf(key: Said, b: Brief): string {
+  switch (key) {
+    case 'format':
+      return b.format === 'documentary' ? 'a cinematic documentary' : 'an animated explainer'
+    case 'seconds':
+      return `${clock(b.seconds)} long`
+    case 'voice':
+      return voiceChosen(b.voice)
+    case 'look':
+      return `the ${b.look.replace(/-/g, ' ')} look`
+    case 'maps':
+      return b.maps === 'none' ? 'no maps' : 'maps where they help'
+    case 'clips':
+      return b.clips === 'none' ? 'stills only' : 'more moving shots'
+    case 'images':
+      return b.images === 'fal' ? 'pictures from fal.ai' : 'pictures from Google'
+    case 'cap':
+      return `no more than $${(b.cap ?? 0).toFixed(2)}`
+    case 'aspect':
+      return b.aspect === 'vertical' ? 'vertical, for Shorts' : 'wide'
+  }
+}
+
+/** Whether two briefs say the same about one thing. */
+function sameAbout(key: Said, a: Brief, b: Brief): boolean {
+  if (key === 'voice') return a.voice.id === b.voice.id && a.voice.engine === b.voice.engine
+  return a[key] === b[key]
+}
+
+/** One change read against a brief: the brief it makes, and what it changed. */
+function revised(brief: Brief, text: string): { brief: Brief; said: Said[] } | null {
   const t = text.trim()
-  const changed: string[] = []
+  const said: Said[] = []
   let next: Brief = { ...brief }
   const format = /\b(?:as an?|make it an?|instead|an?)\s+(?:animated\s+)?explainer\b/i.test(t)
     ? 'explainer'
@@ -313,49 +343,49 @@ export function reviseBrief(brief: Brief, text: string): { brief: Brief; changed
   if (format && format !== brief.format) {
     next = { ...next, format, look: format === 'documentary' ? 'archival' : 'bright' }
     if (brief.voice.engine === 'local') next.voice = defaultVoice(format)
-    changed.push(format === 'documentary' ? 'a cinematic documentary' : 'an animated explainer')
+    said.push('format')
   }
   const seconds = lengthIn(t)
   if (seconds && seconds !== brief.seconds && brief.from !== 'script' && brief.from !== 'recording') {
     next.seconds = seconds
-    changed.push(`${clock(seconds)} long`)
+    said.push('seconds')
   }
   const voice = voiceFromWords(t, next.format, brief.voice)
   if (voice && (voice.id !== brief.voice.id || voice.engine !== brief.voice.engine)) {
     next.voice = voice
-    changed.push(voiceChosen(voice))
+    said.push('voice')
   }
   const look = lookIn(t, next.format)
   if (look && look !== next.look) {
     next.look = look
-    changed.push(`the ${look.replace(/-/g, ' ')} look`)
+    said.push('look')
   }
   const maps = mapsIn(t)
   if (maps && maps !== brief.maps) {
     next.maps = maps
-    changed.push(maps === 'none' ? 'no maps' : 'maps where they help')
+    said.push('maps')
   }
   const clips = clipsIn(t)
   if (clips && clips !== brief.clips) {
     next.clips = clips
-    changed.push(clips === 'none' ? 'stills only' : 'more moving shots')
+    said.push('clips')
   }
   const images = imagesIn(t)
   if (images && images !== brief.images) {
     next.images = images
-    changed.push(images === 'fal' ? 'pictures from fal.ai' : 'pictures from Google')
+    said.push('images')
   }
   const cap = capIn(t)
   if (cap && cap !== brief.cap) {
     next.cap = cap
-    changed.push(`no more than $${cap.toFixed(2)}`)
+    said.push('cap')
   }
   const aspect = aspectIn(t)
   if (aspect && aspect !== brief.aspect) {
     next.aspect = aspect
-    changed.push(aspect === 'vertical' ? 'vertical, for Shorts' : 'wide')
+    said.push('aspect')
   }
-  if (changed.length === 0) return null
+  if (said.length === 0) return null
   // What is now said no longer needs saying as a guess.
   next.inferred = brief.inferred.filter(
     (i) =>
@@ -364,5 +394,44 @@ export function reviseBrief(brief: Brief, text: string): { brief: Brief; changed
       !(look && /look/.test(i)) &&
       !(format && /documentary|explainer/.test(i))
   )
-  return { brief: next, changed }
+  return { brief: next, said }
+}
+
+/**
+ * Changes to a brief not yet made, from what was said next: "make it 3
+ * minutes", "use ElevenLabs", "black and white", "no maps", "make it an
+ * explainer instead". Null when nothing said changes it.
+ */
+export function reviseBrief(brief: Brief, text: string): { brief: Brief; changed: string[] } | null {
+  const r = revised(brief, text)
+  return r ? { brief: r.brief, changed: r.said.map((key) => saidOf(key, r.brief)) } : null
+}
+
+/**
+ * Changes said one after another, read as one: each against the brief the
+ * ones before it made, so what was said last wins ("3 minutes", then "5
+ * minutes", is 5), and something put back as it was is no change. What
+ * changed is said back from the brief they make, so a read-back of them
+ * names exactly what will be quoted. Null when, in the end, nothing changes.
+ */
+export function reviseSteps(brief: Brief, steps: string[]): { brief: Brief; changed: string[] } | null {
+  let next = brief
+  const said = new Set<Said>()
+  for (const step of steps) {
+    const r = revised(next, step)
+    if (!r) continue
+    next = r.brief
+    for (const key of r.said) said.add(key)
+  }
+  // A new format brings its own look, and its own voice for one on this Mac: said with the format, not apart.
+  const newFormat = next.format !== brief.format
+  const changed = SAID_ORDER.filter(
+    (key) => !sameAbout(key, brief, next) && (said.has(key) || !(newFormat && (key === 'look' || key === 'voice')))
+  ).map((key) => saidOf(key, next))
+  return changed.length ? { brief: next, changed } : null
+}
+
+/** Whether a change means Claude writes the script again: a new length or format for a script it wrote, before anything is made. */
+export function rewritesScript(was: Brief, now: Brief, into: boolean): boolean {
+  return was.from === 'topic' && !into && (now.seconds !== was.seconds || now.format !== was.format)
 }

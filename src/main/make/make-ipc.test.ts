@@ -49,6 +49,7 @@ import { EditDocSchema, type EditDoc } from '../../shared/edit/schema'
 import { asNewVersion } from '../../shared/make/assemble'
 import type { Draft } from '../../shared/make/draft'
 import { draftFingerprint } from '../../shared/make/fingerprint'
+import { readAsk } from '../../shared/make/brief'
 import { scriptCost } from '../../shared/make/quote'
 import { saveSettings } from '../store'
 import { registerMakeIpc } from './index'
@@ -288,7 +289,60 @@ describe('a video made from one prompt', () => {
     })
     saveSettings({ makeAutoUnder: null })
     expect(r.kind).toBe('quote')
-    expect(r.reply?.aside).toMatch(/^It comes in under the \$25\.00 Settings goes ahead at, but you typed your answers, so it waits for you to check I read them right\./)
+    expect(r.reply?.aside).toMatch(/^It comes in under the \$25\.00 Settings goes ahead at, but your answers were typed, so it waits for you to press its button\./)
+  })
+
+  it('says what a Stop while Claude writes the first script may have cost', async () => {
+    process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '400'
+    const starting = call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    await new Promise((r) => setTimeout(r, 150))
+    expect(await call('make:cancel')).toBe(true)
+    const r = await starting
+    process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '0'
+    expect(r.ok).toBe(false)
+    expect(r.message).toBe(`Stopped while Claude wrote the script. That may have cost up to $${scriptCost(60).toFixed(2)}; nothing else was spent.`)
+    expect(r.draft).toBeUndefined()
+  })
+
+  it('reads typed answers confirmed on their read-back as they were read back, and gives Claude all of them', async () => {
+    const said = 'make a video about my trip, the 10 minute walk to the lake, as a cinematic documentary, 1 minute long.'
+    // Read alone, what it should say would be its length: "10 minute".
+    expect(readAsk(said)?.seconds).toBe(600)
+    const r = await call<Start>('make:start', {
+      text: said,
+      reading: 'make a video about my trip, as a cinematic documentary, 1 minute long.',
+      answered: true,
+      quoteFirst: true
+    })
+    expect(r.kind).toBe('quote')
+    expect(r.draft?.brief.seconds).toBe(60)
+    expect(r.draft?.brief.format).toBe('documentary')
+    expect(r.draft?.brief.ask).toBe(said)
+  })
+
+  it('quotes the changes read back and confirmed, each in turn, the last winning', async () => {
+    const r = await call<{ ok: boolean; draft: Draft; changed: string[] }>('make:revise', {
+      draft,
+      steps: ['make it 3 minutes', 'not black and white, sepia', 'make it 2 minutes']
+    })
+    expect(r.ok).toBe(true)
+    expect(r.draft.brief.seconds).toBe(120)
+    expect(r.draft.brief.look).toBe('sepia')
+    expect(r.changed).toEqual(['2:00 long', 'the sepia look'])
+  })
+
+  it('tells the old quote’s button that its quote is being worked out again, not that a video is being made', async () => {
+    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const d = start.draft as Draft
+    process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '400'
+    const revising = call<{ ok: boolean }>('make:revise', { draft: d, steps: ['make it 3 minutes'] })
+    await new Promise((r) => setTimeout(r, 100))
+    const pressed = await goWith<Made>(d)
+    expect(pressed.ok).toBe(false)
+    expect(pressed.message).toBe('That quote is being worked out again. Press the new quote’s button when it shows, or stop it first.')
+    expect(await call('make:cancel')).toBe(true)
+    await revising
+    process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '0'
   })
 
   it('keeps a Stop pressed the moment a video is asked for: nothing is written or made', async () => {

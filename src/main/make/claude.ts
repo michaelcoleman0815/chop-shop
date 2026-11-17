@@ -339,12 +339,19 @@ export async function planShots(
     budget?: Budget
     /** How long the narration runs, as the quote counted it; the brief's length when not given. */
     narrationSeconds?: number
+    /** Each part's line as the quote priced it (shotListParts of the shots it counted): no part is held to more. */
+    quotedParts?: number[]
   },
   parse: ParseCall
 ): Promise<ClaudeResult<CheckedShots>> {
   // Each part is held to its own hold, as the quote priced it (shotListParts), and never to money a later
   // part needs: when less is left than the quote allowed, the first part is the one asked to do with less.
-  const holds = shotListParts(phrases.length, opts.narrationSeconds ?? brief.seconds)
+  const own = shotListParts(phrases.length, opts.narrationSeconds ?? brief.seconds)
+  const quoted = opts.quotedParts
+  // More parts than the quote priced: none of it is asked for, since a part with no line of its own would take another's.
+  if (quoted && own.length > quoted.length)
+    return { ok: false, message: 'The script has more lines than the quote counted, so the shot list was not asked for.', cost: 0 }
+  const holds = quoted ? own.map((h, i) => Math.min(h, quoted[i] ?? 0)) : own
   const share = (part: number): number => {
     if (!opts.budget) return Number.POSITIVE_INFINITY
     const later = holds.slice(part + 1).reduce((t, h) => t + h, 0)

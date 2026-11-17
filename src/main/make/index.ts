@@ -12,7 +12,7 @@ import { readBrand, readBrandById } from '../brand-store'
 import { makeServices } from '../providers'
 import { EditDocSchema, type EditDoc } from '../../shared/edit/schema'
 import { DEFAULT_MUSIC, type Music } from '../../shared/edit/audio'
-import { readAsk } from '../../shared/make/brief'
+import { readAsk, rewritesScript } from '../../shared/make/brief'
 import { draftFingerprint } from '../../shared/make/fingerprint'
 import { questionsFor } from '../../shared/make/questions'
 import { dollars, quoteReply, type Availability } from '../../shared/make/quote'
@@ -198,6 +198,22 @@ const DraftSchema = z.object({
 })
 
 let running: AbortController | null = null
+/** What `running` is doing, so a second ask is told what it waits for. */
+let runningFor: 'script' | 'requote' | 'make' | 'shot' = 'make'
+
+/** Why something else cannot start yet, by what is running. */
+function busy(): string {
+  switch (runningFor) {
+    case 'requote':
+      return 'That quote is being worked out again. Press the new quote’s button when it shows, or stop it first.'
+    case 'script':
+      return 'A script is being written already. Wait for its quote, or stop it first.'
+    case 'shot':
+      return 'A shot is being made again already. Wait for it, or stop it first.'
+    default:
+      return 'A video is being made already. Wait for it, or stop it first.'
+  }
+}
 
 export function registerMakeIpc(deps: MakeIpcDeps): void {
   const t = tools()
@@ -255,8 +271,9 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     | { ok: true; doc: EditDoc; mediaUrl: string; reply: Reply; spent: number; into: Draft['into'] | null }
     | { ok: false; message: string; draft?: Draft; reply?: Reply }
   > => {
-    if (running && running !== controller) return { ok: false, message: 'A video is being made already. Wait for it, or stop it first.' }
+    if (running && running !== controller) return { ok: false, message: busy() }
     running = controller
+    runningFor = 'make'
     try {
       return await goWith(sender, draft, confirmed, controller)
     } finally {
@@ -347,15 +364,25 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   // A prompt read and quoted; with "Go ahead without asking" on and the video under it, made straight away.
   ipcMain.handle(
     'make:start',
-    async (e, req: { text: string; recording?: string | null; brand?: string | null; answered?: boolean; quoteFirst?: boolean }) => {
+    async (
+      e,
+      req: { text: string; recording?: string | null; brand?: string | null; answered?: boolean; quoteFirst?: boolean; reading?: string }
+    ) => {
     // The script is written (or the recording heard) under a Stop of its own, held from the moment the
     // prompt arrives: its Stop button shows from then, and one pressed while Settings is read is never lost.
     const controller = new AbortController()
     const claimed = !running
-    if (claimed) running = controller
+    if (claimed) {
+      running = controller
+      runningFor = 'script'
+    }
     try {
       const brand = req.brand ? await readBrandById(req.brand) : await readBrand()
-      const brief = readAsk(String(req.text ?? ''), { niche: brand.niche ?? null, recording: req.recording ?? null })
+      // Typed answers confirmed on their read-back: the brief is read from the words it was read back from, so
+      // what it should say ("the 10 minute drive") is never read as its length; Claude reads all of what was said.
+      const reading = typeof req.reading === 'string' && req.reading.trim() ? req.reading : null
+      const read = readAsk(reading ?? String(req.text ?? ''), { niche: brand.niche ?? null, recording: req.recording ?? null })
+      const brief = read && reading ? { ...read, ask: String(req.text ?? '').trim().slice(0, 40_000) || read.ask } : read
       if (!brief)
         return {
           ok: false as const,
@@ -364,7 +391,7 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       // What cannot be guessed is asked first, before a word is written or a token spent, whatever Settings says.
       const questions = req.answered ? [] : questionsFor(brief)
       if (questions.length) return { ok: true as const, kind: 'ask' as const, questions }
-      if (!claimed) return { ok: false as const, message: 'A video is being made already. Wait for it, or stop it first.' }
+      if (!claimed) return { ok: false as const, message: busy() }
       const d = await draftDeps(req.brand)
       if (controller.signal.aborted) return { ok: false as const, message: 'Stopped before anything was written, so nothing was spent.' }
       if (!d.can.claude)
@@ -384,15 +411,32 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
           return { durationSec: facts.durationSec, words: heard.words.map((w) => ({ text: w.text, startSec: w.startSec, endSec: w.endSec })) }
         }
       })
-      if (controller.signal.aborted)
-        return { ok: false as const, message: brief.from === 'topic' ? 'Stopped while Claude wrote the script.' : 'Stopped before anything was made.' }
+      if (controller.signal.aborted) {
+        if (brief.from !== 'topic') return { ok: false as const, message: 'Stopped before anything was made.' }
+        // Cut off while Claude wrote: it may have been billed for what it wrote by then.
+        if (!drafted.ok)
+          return {
+            ok: false as const,
+            message:
+              drafted.cost > 0
+                ? `Stopped while Claude wrote the script. That may have cost up to ${dollars(drafted.cost)}; nothing else was spent.`
+                : 'Stopped before anything was written, so nothing was spent.'
+          }
+        // Written just as Stop was pressed: it was paid for, so it is quoted, and nothing more is spent without its button.
+        return {
+          ok: false as const,
+          message: `Stopped just as Claude finished the script, which cost ${dollars(drafted.draft.scriptCost)}. Nothing more is spent unless you press its quote’s button.`,
+          draft: drafted.draft,
+          reply: quoteOf(drafted.draft)
+        }
+      }
       if (!drafted.ok) return { ok: false as const, message: drafted.message }
       // Typed answers to its questions are read from words, so their video is quoted, whatever Settings says,
       // and the reply says so when Settings would have gone ahead.
       if (!drafted.draft.quote.auto || req.quoteFirst) {
         const reply = quoteOf(drafted.draft)
         const typed = drafted.draft.quote.auto
-          ? `It comes in under the ${dollars(getSettings().makeAutoUnder ?? 0)} Settings goes ahead at, but you typed your answers, so it waits for you to check I read them right.`
+          ? `It comes in under the ${dollars(getSettings().makeAutoUnder ?? 0)} Settings goes ahead at, but your answers were typed, so it waits for you to press its button.`
           : null
         return {
           ok: true as const,
@@ -427,28 +471,29 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   })
 
   // What was said next about a quote not yet made: the brief changed and quoted again.
-  ipcMain.handle('make:revise', async (_e, req: { draft: unknown; text: string }) => {
+  ipcMain.handle('make:revise', async (_e, req: { draft: unknown; steps?: unknown; text?: string }) => {
     const parsed = DraftSchema.safeParse(req.draft)
     if (!parsed.success) return { ok: false as const, message: 'That quote could not be read.' }
+    // The changes read back and confirmed, each in turn; one said on its own reads the same.
+    const steps = Array.isArray(req.steps) ? req.steps.map((x) => String(x)).slice(0, 50) : [String(req.text ?? '')]
     // A script written again is paid for, so its Stop holds from the moment this is asked, as a new video's does.
     const controller = new AbortController()
     const claimed = !running
-    if (claimed) running = controller
+    if (claimed) {
+      running = controller
+      runningFor = 'requote'
+    }
     try {
       const d = await draftDeps()
       if (controller.signal.aborted)
         return { ok: false as const, message: 'Stopped before anything was written, so nothing was spent. The quote stands as it was.' }
       const was = parsed.data as unknown as Draft
       const draft = { ...was, quote: quoteDraft(was, d) }
-      const r = revise(draft, String(req.text ?? ''), d)
+      const r = revise(draft, steps, d)
       if (!r) return { ok: true as const, draft: null }
       // A new length or format for a written script means a new script, and a new quote.
-      if (
-        draft.brief.from === 'topic' &&
-        !draft.into &&
-        (r.draft.brief.seconds !== draft.brief.seconds || r.draft.brief.format !== draft.brief.format)
-      ) {
-        if (!claimed) return { ok: false as const, message: 'A video is being made already. Wait for it, or stop it first.' }
+      if (rewritesScript(draft.brief, r.draft.brief, !!draft.into)) {
+        if (!claimed) return { ok: false as const, message: busy() }
         // What the video has cost already counts against the cap: the script it replaces, and any before it.
         const before = Math.round(((draft.spentBefore ?? 0) + draft.scriptCost) * 10000) / 10000
         const again = await draftFor(r.draft.brief, draft.id, { ...d, signal: controller.signal, spentBefore: before })
@@ -511,11 +556,11 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     const parsed = EditDocSchema.safeParse(req.doc)
     if (!parsed.success || !parsed.data.make)
       return { ok: false as const, message: 'This edit was not made from nothing.' }
-    if (running)
-      return { ok: false as const, message: 'Something is being made already. Wait for it, or stop it first.' }
+    if (running) return { ok: false as const, message: busy() }
     // Its Stop holds from the moment it is asked, so one pressed while the price is checked again is never lost.
     const controller = new AbortController()
     running = controller
+    runningFor = 'shot'
     try {
       const d = await draftDeps()
       if (controller.signal.aborted)

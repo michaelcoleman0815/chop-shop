@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAsk } from './brief'
-import { answered, questionsFor, readAnswer, topicAsked, vagueTopic, waitReply, yesOrNot } from './questions'
+import { answered, isYes, questionsFor, readAnswer, vagueTopic, waitReply } from './questions'
 import type { Brief } from './schema'
 
 const ask = (text: string): Brief => readAsk(text) as Brief
@@ -35,39 +35,35 @@ describe('asking before writing', () => {
     expect(questionsFor(ask(script))).toEqual([])
   })
 
-  it('takes typed words as answers only when they read as answers, and reads words of its own back first', () => {
+  it('reads typed words for their answers, to be read back, and never answers on its own', () => {
     const qs = questionsFor(ask('make a video about my trip'))
-    // The options' own words, a style or a length said plainly answer; what is left, as what it should say, is read back.
+    // The options' own words, a style or a length said plainly, and what is left as what it should say: all read back.
     expect(readAnswer('the lakes up north, a map documentary, 5 minutes', qs)).toEqual({
-      kind: 'confirm',
+      kind: 'read',
       answers: ['the lakes up north', 'as a cinematic documentary with maps wherever they help', '5 minutes long'],
-      topic: 'the lakes up north'
+      ruled: []
     })
     expect(readAnswer('The best moments, explainer, about 1 min', qs)).toEqual({
-      kind: 'answer',
-      answers: ['about the best moments', 'as an animated explainer', '1 minute long']
+      kind: 'read',
+      answers: ['about the best moments', 'as an animated explainer', '1 minute long'],
+      ruled: []
     })
-    // A no lets the questions go; so does an edit's ask or a command, which are not answers at all.
-    for (const no of ['never mind', 'no', 'stop', 'forget it', 'cancel that']) expect(readAnswer(no, qs).kind).toBe('no')
-    for (const other of ['cut the first 10 seconds', '/export', 'trim the intro', 'cut the first 10 seconds?']) expect(readAnswer(other, qs).kind).toBe('other')
-    // With an edit open, loose words alone may be meant for it: only a style or a length answers.
-    expect(readAnswer('the music is too loud', qs, { editOpen: true }).kind).toBe('other')
-    expect(readAnswer('10 minutes', qs, { editOpen: true })).toEqual({ kind: 'answer', answers: ['', '', '10 minutes long'] })
-    expect(readAnswer('the lakes up north, 5 minutes', qs, { editOpen: true }).kind).toBe('confirm')
-    expect(readAnswer('a minute', qs)).toEqual({ kind: 'answer', answers: ['', '', 'a minute long'] })
-    // Words of its own, however plain, are read back: Claude writes nothing on them until a yes.
-    expect(readAnswer('Lisbon', qs)).toEqual({ kind: 'confirm', answers: ['Lisbon', '', ''], topic: 'Lisbon' })
-    expect(readAnswer('make it about the food we ate', qs)).toEqual({ kind: 'confirm', answers: ['the food we ate', '', ''], topic: 'the food we ate' })
-    expect(topicAsked('the lakes up north', ['the lakes up north', 'as a cinematic documentary', '5 minutes long'], qs)).toBe(
-      'Make it about “the lakes up north”, as a cinematic documentary, 5 minutes long?'
-    )
-    expect(topicAsked('Lisbon', ['Lisbon', '', ''], qs)).toBe('Make it about “Lisbon”?')
-    // A second or two is a moment, not a length.
-    expect(readAnswer('5 seconds', qs).kind).toBe('other')
+    // A no lets the questions go.
+    for (const no of ['never mind', 'no', 'stop', 'forget it', 'cancel that']) expect(readAnswer(no, qs).kind, no).toBe('no')
+    // An edit's ask, with an edit open, is for the edit; with none open it is only read back, and costs nothing.
+    for (const edit of ['cut the first 10 seconds', '/export', 'trim the intro', 'cut the first 10 seconds?'])
+      expect(readAnswer(edit, qs, { editOpen: true }).kind, edit).toBe('edit')
+    expect(readAnswer('trim the intro', qs).kind).toBe('read')
+    expect(readAnswer('10 minutes', qs, { editOpen: true })).toEqual({ kind: 'read', answers: ['', '', '10 minutes long'], ruled: [] })
+    expect(readAnswer('a minute', qs)).toEqual({ kind: 'read', answers: ['', '', '1 minute long'], ruled: [] })
+    expect(readAnswer('Lisbon', qs)).toEqual({ kind: 'read', answers: ['Lisbon', '', ''], ruled: [] })
+    expect(readAnswer('make it about the food we ate', qs)).toEqual({ kind: 'read', answers: ['the food we ate', '', ''], ruled: [] })
+    // A second or two is a moment, not a length; with nothing else said, nothing is read.
+    expect(readAnswer('5 seconds', qs).kind).toBe('unread')
     expect(readAnswer('gimme a sec', qs)).toEqual({ kind: 'wait', asked: false })
   })
 
-  it('reads a no, or a not yet, in other words and anywhere in the reply, so no script is written for it', () => {
+  it('reads a no, or a not yet, only when it is the whole reply', () => {
     const qs = questionsFor(ask('make a video about my trip'))
     const noes = [
       'I changed my mind',
@@ -83,7 +79,9 @@ describe('asking before writing', () => {
       'do not',
       "let's not",
       'I don’t want it anymore',
-      'never mind'
+      'I really don’t want it anymore, honestly',
+      'never mind',
+      'nope, never mind'
     ]
     const notYet = ['maybe another time', 'hmm let me see', 'I’m not sure yet', 'busy right now', 'gimme a sec', 'one moment please', 'idk yet']
     // "no" then a hedge is a hedge, not a no: the questions stay.
@@ -92,10 +90,23 @@ describe('asking before writing', () => {
       for (const p of noes) expect(readAnswer(p, qs, { editOpen: open }).kind, `${p}${open ? ', an edit open' : ''}`).toBe('no')
       for (const p of [...notYet, ...hedges]) expect(readAnswer(p, qs, { editOpen: open }).kind, `${p}${open ? ', an edit open' : ''}`).toBe('wait')
     }
-    // A topic read back takes a yes, a no or a not yet; anything else is read afresh.
-    for (const y of ['yes', 'yes please', 'sure', 'do it', 'go ahead', 'ok']) expect(yesOrNot(y), y).toBe('yes')
-    for (const n of ['no', 'not now', 'hold on', 'I changed my mind', 'no idea']) expect(yesOrNot(n), n).toBe('not')
-    for (const other of ['Lisbon instead', 'what?', 'the lakes, 5 minutes']) expect(yesOrNot(other), other).toBeNull()
+    // A topic that uses those words names something more: it is read back, never taken as a no or a wait.
+    for (const topic of [
+      'how I changed my mind about veganism',
+      'a love story from another time',
+      'my road trip, no rush, lots of stops',
+      'the busy streets of Lisbon',
+      'why not knowing is fine',
+      'the day I said no',
+      'the year I said never mind to my old job'
+    ])
+      expect(readAnswer(topic, qs), topic).toEqual({ kind: 'read', answers: [topic, '', ''], ruled: [] })
+    // A yes alone answers nothing (a read-back is confirmed by its button); isYes tells it apart.
+    for (const y of ['yes', 'yes please', 'sure', 'do it', 'go ahead', 'ok']) {
+      expect(readAnswer(y, qs), y).toEqual({ kind: 'wait', asked: false })
+      expect(isYes(y), y).toBe(true)
+    }
+    for (const other of ['yes, 5 minutes', 'Lisbon instead', 'what?', 'no']) expect(isYes(other), other).toBe(false)
   })
 
   it('keeps the questions open for a pause, a question back or a word that answers nothing, with or without an edit open', () => {

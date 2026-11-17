@@ -299,6 +299,11 @@ const api = {
     answered?: boolean
     /** Answered by typing: show the quote, whatever Settings says about going ahead without asking. */
     quoteFirst?: boolean
+    /**
+     * Typed answers confirmed on their read-back: the words the brief is read from (the ask with only
+     * its style and length answers), as it was read back. `text`, with what it should say, is what Claude reads.
+     */
+    reading?: string
   }): Promise<
     | { ok: true; kind: 'ask'; questions: MakeQuestion[] }
     | { ok: true; kind: 'quote'; draft: Draft; reply: MakeReply }
@@ -320,10 +325,13 @@ const api = {
     | { ok: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
     | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
   > => ipcRenderer.invoke('make:go', req),
-  /** What was said next about a quote: the brief changed and quoted again; draft null when nothing changed. */
+  /**
+   * Changes said about a quote, read back and confirmed: each in turn, the last winning, the brief
+   * changed and quoted again; draft null when, in the end, nothing changed.
+   */
   makeRevise: (req: {
     draft: Draft
-    text: string
+    steps: string[]
   }): Promise<
     | { ok: true; draft: Draft; reply: MakeReply; changed: string[] }
     | { ok: true; draft: null }

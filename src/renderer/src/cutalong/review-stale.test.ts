@@ -115,18 +115,21 @@ function harness(settings: DraftDeps['settings'], parse: ParseCall, opts: { open
     return { ok: false, message: 'review: stopped before anything is made' }
   }
   fake.api.makeCancel = async () => true
-  // make:start as main runs it: questions first unless answered, then Claude writes the script.
-  const starts: { text: string; answered: boolean; quoteFirst: boolean; stop: boolean }[] = []
+  // make:start as main runs it: questions first unless answered, then Claude writes the script. Typed answers
+  // confirmed on their read-back have their brief read from `reading`, and Claude reads all of `text`.
+  const starts: { text: string; reading: string | null; answered: boolean; quoteFirst: boolean; stop: boolean }[] = []
   const madeUnasked: Draft[] = []
-  fake.api.makeStart = async (req: { text: string; recording?: string | null; answered?: boolean; quoteFirst?: boolean }) => {
+  fake.api.makeStart = async (req: { text: string; recording?: string | null; answered?: boolean; quoteFirst?: boolean; reading?: string }) => {
     const shown = msgs.get(`m${n}`)
     starts.push({
       text: req.text,
+      reading: req.reading ?? null,
       answered: !!req.answered,
       quoteFirst: !!req.quoteFirst,
       stop: !!shown?.actions?.some((a) => (a.payload ?? '').includes('"stop"'))
     })
-    const brief = readAsk(String(req.text ?? ''), { niche: null, recording: req.recording ?? null })
+    const read = readAsk(String(req.reading ?? req.text ?? ''), { niche: null, recording: req.recording ?? null })
+    const brief = read && req.reading ? { ...read, ask: req.text } : read
     if (!brief) return { ok: false, message: 'Tell me what the video is about.' }
     const questions = req.answered ? [] : questionsFor(brief)
     if (questions.length) return { ok: true, kind: 'ask', questions }
@@ -269,19 +272,19 @@ describe('questions waiting before a script is written', () => {
     const h = harness({ cap: null, autoUnder: null }, counting(count), { open: null })
     await h.say('make a video about my trip')
     await h.say('the lakes up north, a map documentary, 5 minutes')
-    // What it should say, in words of its own, is read back first: nothing is written until the yes.
+    // Typed, it is read back first, with what will be asked for: nothing is written until Yes is tapped.
     const back = [...h.msgs.values()].find((m) => /^Make it about “/.test(m.text ?? ''))
-    expect(back?.text).toBe('Make it about “the lakes up north”, as a cinematic documentary with maps wherever they help, 5 minutes long?')
+    expect(back?.text).toBe('Make it about “the lakes up north”: a cinematic documentary with maps, 5:00 long?')
     expect(back?.actions?.map((a) => a.label)).toEqual(['Yes', 'Not now'])
     expect(h.starts).toHaveLength(1)
     expect(count.n).toBe(0)
     await h.makes.onAction(back!.actions!.find((a) => a.label === 'Yes')!)
     expect(h.starts).toHaveLength(2)
     expect(h.starts[1].answered).toBe(true)
+    expect(h.starts[1].quoteFirst).toBe(true)
     expect(h.starts[1].stop).toBe(true)
-    expect(h.starts[1].text).toMatch(/the lakes up north/)
-    expect(h.starts[1].text).toMatch(/as a cinematic documentary with maps wherever they help/)
-    expect(h.starts[1].text).toMatch(/5 minutes long/)
+    expect(h.starts[1].text).toBe('make a video about my trip, the lakes up north, as a cinematic documentary with maps wherever they help, 5 minutes long.')
+    expect(h.starts[1].reading).toBe('make a video about my trip, as a cinematic documentary with maps wherever they help, 5 minutes long.')
     expect(count.n).toBe(1)
   })
 
@@ -314,7 +317,7 @@ describe('questions waiting before a script is written', () => {
     await h.say('make a video about my trip')
     const card = [...h.msgs.entries()].find(([, m]) => m.makeAsk)!
     await h.say('Lisbon')
-    const back = [...h.msgs.entries()].find(([, m]) => m.text === 'Make it about “Lisbon”?')!
+    const back = [...h.msgs.entries()].find(([, m]) => m.text === 'Make it about “Lisbon”: a cinematic documentary, 2:00 long?')!
     await h.makes.onAction(back[1].actions!.find((a) => a.label === 'Not now')!)
     expect(h.msgs.get(back[0])?.actions ?? []).toHaveLength(0)
     expect(count.n).toBe(0)
@@ -340,11 +343,15 @@ describe('questions waiting before a script is written', () => {
     expect(h.makes.questions(card[1].makeAsk!)).not.toBeNull()
     expect(h.msgs.get(card[0])?.makeAsk).toBe(card[1].makeAsk)
     expect([...h.msgs.values()].filter((m) => /Nothing is written or spent until then\./.test(m.text ?? ''))).toHaveLength(6)
-    // Answered by typing at last, read back, and a typed yes: written once, and quoted with its button, though
-    // Settings would go ahead under $2.
+    // Answered by typing at last and read back. A typed yes is pointed at the button: only a tap sends it.
     await h.say('the lakes up north, a documentary, 1 minute')
     expect(count.n).toBe(0)
-    await h.say('yes')
+    expect(await h.say('yes')).toBe(true)
+    expect([...h.msgs.values()].pop()?.text).toBe('Tap Yes above if that’s right, or tell me what to change.')
+    expect(count.n).toBe(0)
+    const back = [...h.msgs.values()].filter((m) => /^Make it about/.test(m.text ?? '')).pop()!
+    await h.makes.onAction(back.actions!.find((a) => a.label === 'Yes')!)
+    // Written once, and quoted with its button, though Settings would go ahead under $2.
     expect(count.n).toBe(1)
     expect(h.starts[1].quoteFirst).toBe(true)
     expect(h.madeUnasked).toHaveLength(0)
