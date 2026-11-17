@@ -3537,7 +3537,7 @@ export function useCutalong() {
           [
             ignored.length ? `I'm leaving ${listOf(ignored)} out, as you said.` : '',
             r.roles.by === 'measurement'
-              ? 'I sorted these by measuring them. With your Anthropic key in Settings, I also read what you say about them.'
+              ? 'I sorted these by measuring them: Claude could not read what you said about them this time.'
               : ''
           ]
             .filter(Boolean)
