@@ -16,7 +16,8 @@ echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sud
 sudo udevadm control --reload-rules
 sudo udevadm trigger --name-match=kvm
 sdk="$ANDROID_HOME/cmdline-tools/latest/bin"
-yes | "$sdk/sdkmanager" --install emulator platform-tools "$IMAGE" >/dev/null
+# yes stops on a broken pipe once sdkmanager has its answers, which pipefail would count as a failure.
+{ yes || true; } | "$sdk/sdkmanager" --install emulator platform-tools "$IMAGE" >/dev/null
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
 # avdmanager writes under XDG_CONFIG_HOME on the runner, where the emulator
 # does not look: one place for both.
