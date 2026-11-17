@@ -109,14 +109,15 @@ describe.skipIf(!FFMPEG)('exporting map shots', () => {
       const source = { id: 's1', path, durationSec: 9, width: 640, height: 360, fps: 30 }
       const doc = commit(
         createDoc({ id: 'm', title: 'Map', source, words: words() }),
-        [{ op: 'aspect', aspect: 'wide' }, { op: 'motion-add', kind: 'map', from: 'w7', to: '5s', text: [query], style }],
+        // Early in the cut, so the clip runs on after the map is gone.
+        [{ op: 'aspect', aspect: 'wide' }, { op: 'motion-add', kind: 'map', from: 'w3', to: '5s', text: [query], style }],
         'Map.'
       ).doc
       const out = await exportWith(doc, [{ ...source, hasAudio: true }], style)
       const [ow, oh] = [960, 540]
       const cut = currentCut(doc)
       const resolved = resolveCut(cut, doc.words, doc.sources)
-      const start = resolved.words.find((w) => w.id === 'w7')!.outStart - 0.1
+      const start = resolved.words.find((w) => w.id === 'w3')!.outStart - 0.1
 
       // Before and after: the clip, grey.
       for (const t of [start - 0.4, start + 5.3]) {
