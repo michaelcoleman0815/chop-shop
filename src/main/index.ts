@@ -37,6 +37,7 @@ import {
   getUpdateState
 } from './updater'
 import { registerCutalongIpc } from './cutalong'
+import { registerMapIpc } from './maps-ipc'
 import type {
   AspectPreset,
   Transcript,
@@ -136,6 +137,7 @@ function safeSend(sender: Electron.WebContents, channel: string, payload: unknow
 
 function registerIpc(): void {
   registerCutalongIpc({ send: safeSend, mediaUrlFor })
+  registerMapIpc(safeSend)
   ipcMain.handle('app:version', () => app.getVersion())
 
   ipcMain.handle('settings:get', (): Settings => getSettings())
