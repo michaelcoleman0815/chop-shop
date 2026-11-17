@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAsk, reviseBrief, reviseSteps, rewritesScript } from './brief'
-import { isAcceptance, mergeReads, questionsFor, quoteWords, readAnswer, readBack, readCard } from './questions'
+import { isAcceptance, mergeReads, namesEditPart, questionsFor, quoteWords, readAnswer, readBack, readCard } from './questions'
 import { dollars, scriptCost } from './quote'
 import type { Brief } from './schema'
 
@@ -163,6 +163,20 @@ describe('a reply to a quote', () => {
     expect(reviseBrief(oil, quoteWords('not black and white'))?.changed ?? []).not.toContain('the black and white look')
     // What reviseBrief reads as turned down itself stays.
     expect(reviseBrief(oil, quoteWords('no maps'))?.changed).toEqual(['no maps'])
+  })
+
+  it('reads a point in the video ("at 1:20", "0:10 to 0:20") as no length, and a length said in M:SS as one', () => {
+    for (const t of ['the music is too loud at 1:20', 'from 0:10 to 0:20 is too slow', 'cut 0:10-0:20', 'after 2:05 it drags', 'near 0:45 it drags'])
+      expect(reviseBrief(oil, quoteWords(t)), t).toBeNull()
+    for (const [t, said] of [['1:30', '1:30 long'], ['make it 4:30', '4:30 long'], ['more like 2:00', '2:00 long'], ['make it around 1:30', '1:30 long'], ['cut it to 0:45', '0:45 long']])
+      expect(reviseBrief(oil, quoteWords(t))?.changed, t).toEqual([said])
+  })
+
+  it('knows a part only an edit has, and finds none in a go-ahead or a change of the quote', () => {
+    for (const t of ['make the captions bigger', 'the music is too loud', 'shot 3 should hold longer', 'at 1:20 the cut is late', 'can you make the subtitles yellow', 'trim the last two seconds', 'the intro drags'])
+      expect(namesEditPart(t), t).toBe(true)
+    for (const t of ['ship it', 'make it so', 'go on then', 'make it happen', 'that works', 'looks right to me', 'fine by me', 'yes', 'sounds good', 'make it 3 minutes', 'black and white', 'use Ava’s voice', 'no maps', 'make it an explainer'])
+      expect(namesEditPart(t), t).toBe(false)
   })
 
   it('folds changes said in turn into one, the last winning, and says back what they make', () => {

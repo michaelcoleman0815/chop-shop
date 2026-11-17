@@ -248,6 +248,18 @@ const EDIT_ONLY =
 const EDIT =
   /^\s*(?:\/|(?:cut|trim|remove|delete|drop|move|add|put|insert|export|undo|redo|caption|subtitle|mute|unmute|speed|slow|crop|zoom|split|swap|replace|open|close|hide|colou?r|grade|fix|tighten|shorten|lengthen|play|pause|show me|find|search|use|turn|select|reframe|upload|save)\b)/i
 
+/**
+ * A part of an edit that a reply would change ("the captions", "the music", "at 1:20", "shot 3", "the last
+ * two seconds"): only an edit has these, so with one open the reply is for it. A quote has none of them.
+ */
+const EDIT_PART =
+  /\b(?:captions?|subtitles?|music|soundtrack|audio|volume|intro|outro|lower thirds?|fonts?|colou?rs?|colou?r grade|grading|brightness|contrast|saturation|transitions?|b-?roll|clips?|zoom(?:s|ed|ing)?|speed|pace|pauses?|silences?|filler words?|logo|watermark|crop|aspect ratio|(?:shot|scene|beat)\s*#?\d{1,3})\b|\b\d{1,2}:\d{2}\b|\b(?:first|last|opening|closing|final)\s+(?:\d+|few|couple of|two|three|four|five|ten)\s+(?:seconds?|secs?|words?|lines?|shots?|scenes?)\b/i
+
+/** Whether a reply names a part of an edit to change, so that with an edit open it is for the edit. */
+export function namesEditPart(text: string): boolean {
+  return EDIT_PART.test(text.trim().replace(/[‘’]/g, "'"))
+}
+
 /** Each style the words can say, what it adds to the prompt, and the style that is left when it is turned down. */
 const STYLES: { adds: string; says: RegExp; other: string }[] = [
   {
@@ -278,7 +290,11 @@ const WORD_NUMBERS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4
  */
 function plainLengths(t: string, bareMinutes: boolean): string {
   let s = t
-    .replace(/\b(\d{1,2}):([0-5]\d)\b/g, (_m, m: string, sec: string) => `${Number(m) * 60 + Number(sec)} seconds`)
+    // "1:30" is a length; "at 1:20", "from 0:10" or "0:10 to 0:20" is a point in the video, and stays one.
+    .replace(
+      /(?<!\b(?:at|from|after|before|until|till|between|by|near)\s+|\d:[0-5]\d\s*(?:-|–|to|and)\s*)\b(\d{1,2}):([0-5]\d)\b(?!\s*(?:-|–|to|and)\s*\d{1,2}:[0-5]\d)/gi,
+      (_m, m: string, sec: string) => `${Number(m) * 60 + Number(sec)} seconds`
+    )
     .replace(/\bhalf a minute\b/gi, '30 seconds')
     .replace(/\b(?:a )?couple (?:of )?min(?:ute)?s\b/gi, '2 minutes')
     .replace(/\b(?:a )?few min(?:ute)?s\b/gi, '3 minutes')

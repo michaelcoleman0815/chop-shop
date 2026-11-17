@@ -324,6 +324,15 @@ describe('a video made from one prompt', () => {
     expect(fresh.ok).toBe(false)
     const shot = await call<{ ok: boolean; message?: string }>('make:shot', { doc: {}, change: {}, confirmed: 1 })
     expect(shot).toEqual({ ok: false, message: 'Nothing was made: a shot is made again only when you press its quote’s button.' })
+    // Only the two words themselves, exactly: anything else that looks like them, or like a yes, is none.
+    for (const consent of [null, '', 'TAP', ' tap', 'taps', 'Command', true, 1, {}, ['tap'], 'typed', 'yes'] as unknown[]) {
+      const r = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom', consent })
+      expect(r.ok, JSON.stringify(consent)).toBe(false)
+      const go = await call<Made>('make:go', { consent, draft, confirmed: draft.quote.total, fingerprint: draftFingerprint(draft) })
+      const rv = await call<{ ok: boolean }>('make:revise', { consent, draft, steps: ['make it 3 minutes'] })
+      const sh = await call<{ ok: boolean }>('make:shot', { consent, doc: {}, change: {}, confirmed: 1 })
+      expect([go.ok, rv.ok, sh.ok], JSON.stringify(consent)).toEqual([false, false, false])
+    }
     saveSettings({ makeAutoUnder: null })
     // Not a call to Claude, nor a picture, for any of it.
     expect(claude()).toBe(before.claude)

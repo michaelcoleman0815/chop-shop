@@ -60,6 +60,8 @@ const made: Make = {
 }
 const madeDoc = { id: 'doc1', sources: [{ id: 's1', path: '/made/narration.wav' }], words: [], assets: [], make: made, versions: [] } as unknown as EditDoc
 const PHOTO = [{ name: 'lisbon.jpg', path: '/tmp/lisbon.jpg' }]
+/** What any reply to a waiting quote that neither changes it nor is plainly an edit is answered with. */
+const QUOTE_WAITS = 'Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it; say “not now” to set it aside.'
 
 function harness(settings: DraftDeps['settings'] = { cap: null, autoUnder: 2 }, opts: { open?: EditDoc | null; sentences?: (call: number) => number } = {}) {
   const msgs = new Map<string, Partial<Msg>>()
@@ -638,7 +640,7 @@ describe('round 6: a quote waiting', () => {
         expect(h.waitingQuote(), r).toBeTruthy()
         const before = h.spent()
         await h.type(r)
-        expect(h.lastText(), r).toBe(TAP_TO_GO)
+        expect(h.lastText(), r).toBe(QUOTE_WAITS)
         expect(h.spent() - before, `${r}${open ? ', an edit open' : ''}`).toBe(0)
         expect(h.changes, r).toHaveLength(open ? 1 : 0)
       }
@@ -685,7 +687,7 @@ describe('round 6: the table, replies typed while a quote waits', () => {
             expect(h.starts.length - before.starts, where).toBe(0)
             expect(h.refused, where).toEqual([])
             // A go-ahead is pointed at the button; a new ask is read back with its own taps; neither goes on to the edit or Claude.
-            if (kind === 'go') expect(h.lastText(), where).toBe(TAP_TO_GO)
+            if (kind === 'go') expect(h.lastText(), where).toBe(files.length ? 'The quote above is still waiting. Press its button, or tell me what to change. Then send that again.' : QUOTE_WAITS)
             if (kind === 'new' && (said.startsWith('/') || !open)) expect(h.button('Start a new video'), where).toBeTruthy()
             if (kind !== 'other') expect(h.letGo, where).toEqual([])
             // Let go only to an edit that is open.

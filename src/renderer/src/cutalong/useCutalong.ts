@@ -161,7 +161,7 @@ import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { renderFailure } from '../../../shared/failure'
 import { useVlog } from './useVlog'
-import { useMake } from './useMake'
+import { useMake, type Makes } from './useMake'
 import { makeName } from '../../../shared/make/brief'
 import { SHOWCASE_ENTRIES, useShowcase, type Showcase } from './useShowcase'
 import {
@@ -593,6 +593,13 @@ export function useCutalong() {
 
   const docRef = useRef<EditDoc | null>(null)
   const projectRef = useRef<Project | null>(null)
+  /**
+   * Which chat is open, counted up each time another is opened or a new one started: what a made video
+   * left waiting (questions, a read-back, a quote) belongs to the chat it was asked in (useMake).
+   */
+  const chatKey = useRef(0)
+  /** useMake, for the chat changes made above it. */
+  const makeRef = useRef<Makes | null>(null)
   const studyRef = useRef<InspirationStudy | null>(null)
   const pendingCommand = useRef<string | null>(null)
   /**
@@ -969,7 +976,11 @@ export function useCutalong() {
     docRef.current = edit
     setDocState(edit)
     setMediaUrl(edit?.sources[0] ? mediaUrlFor(edit.sources[0].path) : null)
-    const chat = (project.chat ?? []) as Msg[]
+    // Another chat: what the last one left waiting stays with it, and this one's make buttons expire, since
+    // nothing behind them is here any more. Any left waiting make it count as waiting (useMake.restore).
+    chatKey.current += 1
+    const saved = (project.chat ?? []) as Msg[]
+    const chat = makeRef.current ? makeRef.current.restore(saved) : saved
     messagesRef.current = chat
     setMessages(chat)
     // Nothing of the chat left behind comes along: its offers, a command
@@ -1454,8 +1465,10 @@ export function useCutalong() {
     applyAsVersion,
     during,
     findBroll,
-    brand: () => brandNow().id
+    brand: () => brandNow().id,
+    chat: () => String(chatKey.current)
   })
+  makeRef.current = make
 
   const findIcon = useCallback(
     async (query: string, beat?: string[]): Promise<void> => {
@@ -4346,6 +4359,9 @@ export function useCutalong() {
     rememberPlace(null, 'thread')
     rememberKeep(docRef.current)
     projectRef.current = null
+    // A new chat: nothing a made video left waiting in the last one comes along.
+    chatKey.current += 1
+    makeRef.current?.restore([])
     clipping.load(null)
     docRef.current = null
     messagesRef.current = []
