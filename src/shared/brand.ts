@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { MAX_SOURCE_LENGTH, MAX_SOURCES } from './broll-sources'
+import { VideoRunSchema } from './channel-habits'
 import { CaptionSpecSchema } from './edit/schema'
 import { styleFromFacts, type InspirationFacts } from './inspiration/facts'
 import { habitsStyle } from './learn/habits'
@@ -40,10 +41,18 @@ const FactsSchema = z.object({
 })
 
 export const BrandVideoSchema = z.object({
+  /** The file, or the link it was read from. */
   path: z.string(),
   title: z.string(),
   measuredAt: z.string(),
-  facts: FactsSchema
+  /** What its picture and sound measure as. A link has none: only its length and captions are read. */
+  facts: FactsSchema.nullable(),
+  /**
+   * How it runs: its length and shape, its pace, its first sentence, the
+   * fillers left in and how it ends (shared/channel-habits). Videos learned
+   * before this was have none, and give their length and pace from facts.
+   */
+  run: VideoRunSchema.nullable().optional()
 })
 export type BrandVideo = z.infer<typeof BrandVideoSchema>
 
@@ -199,6 +208,11 @@ export function learnStyle(facts: InspirationFacts[]): StyleSpec {
   return styleFromFacts(merged)
 }
 
+/** The look across the brand's videos that have one: a link gives no picture to learn it from. */
+export function styleOfVideos(videos: BrandVideo[]): StyleSpec {
+  return learnStyle(videos.flatMap((v) => (v.facts ? [v.facts] : [])))
+}
+
 /**
  * The brand's whole style: the learned look, the creator's own cutting
  * habits over its pacing when they chose to use them, and the chosen
@@ -227,8 +241,10 @@ export function brandPreset(brand: Brand): Preset | null {
 
 /** One sentence about what was learned, for the brand page. */
 export function describeLearned(brand: Brand): string {
-  const n = brand.videos.length
-  if (n === 0) return "Drop in videos you've made and I'll learn your look from them."
+  if (brand.videos.length === 0) return "Drop in videos you've made and I'll learn your look from them."
+  // A link is read for its length and captions, never its picture.
+  const n = brand.videos.filter((v) => v.facts).length
+  if (n === 0) return "A link gives me its length and captions, not its look. Drop in one of your video files and I'll learn your look from it."
   const facts = describeStyle(brand.style)
   const across = n === 1 ? 'From your video' : `Across your ${n} videos`
   return facts.length

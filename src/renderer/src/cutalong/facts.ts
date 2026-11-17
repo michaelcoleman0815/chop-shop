@@ -21,6 +21,9 @@ export function factParts(fact: string): FactParts {
   const text = fact.trim()
   const clock = /^(\d{1,3}:\d{2}(?::\d{2})?)$/.exec(text)
   if (clock) return { big: clock[1], label: 'run time' }
+  // A running time with what it is: "6:45 per long video".
+  const timed = /^(\d{1,3}:\d{2}(?::\d{2})?)\s+([a-z].*)$/.exec(text)
+  if (timed) return { big: timed[1], label: timed[2] }
   const size = /^(\d{2,5})\s*[x×]\s*(\d{2,5})\s*(.*)$/.exec(text)
   if (size) return { big: `${size[1]}×${size[2]}`, label: size[3] || 'pixels' }
   const unit = /^([-−]?\d[\d,.]*)\s?(LUFS|dB)$/.exec(text)

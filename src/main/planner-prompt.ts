@@ -146,6 +146,7 @@ A <never-on-this-channel> block lists what this channel never uses. Make no op t
 
 ## How this creator edits
 A <creator-preferences> block, when present, lists what has been learned from how this creator edits: what they ask for again and again, undo, and keep, each with how often. Lean on it where the request leaves a choice open; it never overrides the request or the brand voice.
+A <channel-habits> block, when present, says how this channel's finished videos usually run, measured from their own videos: how long each format is, how fast they talk, how long their first sentence takes, which fillers they cut and keep, and how their long videos end. When the person asks for a format without saying how long ("turn this into a short"), aim for that format's usual length: run its preset, then a length step with targetSec at the "about" length the block gives for it. A length the person asks for always wins, as does anything else in the request. Where the request leaves the rest open, keep to these habits.
 
 ## How to write
 Write as a helpful editor sitting next to the person: first person, plain words, exact numbers. No exclamation marks, no emoji, no praise. Never call this cloning or copying anyone. The summary is one sentence about what changed in this version ("The hook line opens it now and the ending stays on you."). The reply is at most two sentences.
@@ -491,6 +492,8 @@ export interface RequestExtra {
   chat?: { role: 'user' | 'assistant'; text: string }[]
   /** The person's brands by name, and whether this chat is in each: a plan can switch to another. */
   brands?: { name: string; current: boolean }[]
+  /** How the brand's own videos usually run, in a line or two (shared/channel-habits); none until some are learned. */
+  habits?: string[]
 }
 
 /** The cut as it stands, the notes and the ask: the part that changes every time. */
@@ -667,6 +670,9 @@ export function renderRequest(
   const learned = preferences.map((p) => p.trim()).filter(Boolean)
   if (learned.length > 0)
     parts.push(`<creator-preferences>\n${learned.map((p) => `- ${p}`).join('\n')}\n</creator-preferences>`)
+  // How their own videos usually run, learned on the Brand page: nothing at all until something is.
+  const runs = (extra.habits ?? []).map((h) => h.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  if (runs.length > 0) parts.push(`<channel-habits>\n${runs.join('\n')}\n</channel-habits>`)
   // The turns just before, so "yes", "the other one" or a button's words read in context.
   const chat = (extra.chat ?? []).filter((t) => t.text.trim()).slice(-6)
   if (chat.length)

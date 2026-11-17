@@ -78,6 +78,7 @@ import {
   suggestCommandName
 } from '../shared/presets'
 import {
+  aspectOf,
   factDetails,
   factsReply,
   measureSpeech,
@@ -89,6 +90,9 @@ import {
 import type { Transcript } from '../shared/types'
 import type { Brand } from '../shared/brand'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
+import { ENDING_SEC, habitLines, measureRun, OPENING_SEC, type VideoRun } from '../shared/channel-habits'
+import { isFiller } from '../shared/fillers'
+import { isLink, linkName, readLink } from './link-learn'
 
 /**
  * The main-process side of Cutalong: turning footage into an edit document,
@@ -623,7 +627,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
   // What has been learned about how the creator edits goes with each request,
   // read fresh here so a statement they deleted never reaches the planner, and
-  // the brand's own logos by name, so a logo pop can show them.
+  // the brand's own logos by name, so a logo pop can show them, and how the
+  // brand's videos usually run (shared/channel-habits).
   // Claude plans unless the person picked a model on this Mac in Settings.
   // The edit's own brand gives the logos and the never list, which the plan is checked against too.
   ipcMain.handle(
@@ -639,10 +644,15 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       const logos = brand.logos.map((l) => l.name)
       const never = await neverForBrand(brand.id).catch(() => [])
       const said = neverForPlanner(never)
+      // How the brand's own videos run, when any were learned: a Short asked for aims at their usual length.
+      const habits = habitLines(brand.videos)
       const local = getSettings().localPlanner
       const result = local
-        ? await planEditLocally({ ...req, preferences, logos, never: said }, { host: OLLAMA_HOST, model: local })
-        : await planEdit({ ...req, preferences, logos, never: said })
+        ? await planEditLocally(
+            { ...req, preferences, logos, never: said, habits },
+            { host: OLLAMA_HOST, model: local }
+          )
+        : await planEdit({ ...req, preferences, logos, never: said, habits })
       return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
     }
   )
@@ -686,26 +696,82 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   // A brand per channel: the list, and which one new chats use (shared/brands).
   ipcMain.handle('brands:get', () => readBrands())
   ipcMain.handle('brands:save', (_e, brands: unknown) => saveBrands(brands))
+  // A file gives its picture, its sound and its words, heard word for word
+  // at its start and its end so the fillers left in show; a link gives its
+  // length and its captions (main/link-learn). Both give how the channel's
+  // videos run (shared/channel-habits).
   ipcMain.handle('brand:learn', async (e, paths: string[]) => {
-    const learned: { path: string; title: string; facts: ReturnType<typeof summarize> }[] = []
+    const learned: {
+      path: string
+      title: string
+      facts: ReturnType<typeof summarize> | null
+      run: VideoRun
+    }[] = []
     const failed: string[] = []
     const details: Detail[] = []
     const settings = getSettings()
     for (const [i, path] of paths.entries()) {
       const at = (f: number): number => Math.round(((i + f) / paths.length) * 100)
-      deps.send(e.sender, 'brand:progress', { stage: `Watching ${basename(path)}`, percent: at(0) })
+      const name = isLink(path) ? linkName(path) : basename(path)
       try {
-        const measures = await measureVideo(path, { ffmpeg: FFMPEG_PATH, maxSec: 600 })
-        let speech: SpeechMeasures | null = null
-        if (measures.hasAudio && hasModel(settings.whisperModel)) {
-          deps.send(e.sender, 'brand:progress', { stage: `Listening to ${basename(path)}`, percent: at(0.5) })
-          const t = await transcribe(path, settings.whisperModel, Math.min(measures.measuredSec, 120), () => undefined)
-          speech = measureSpeech(t.words)
+        if (isLink(path)) {
+          needsYtdlp()
+          deps.send(e.sender, 'brand:progress', { stage: `Fetching the captions of ${name}`, percent: at(0) })
+          const dir = await fs.mkdtemp(join(app.getPath('temp'), 'cutalong-link-'))
+          try {
+            const read = await readLink(path, {
+              ytdlp: YTDLP_PATH(),
+              dir,
+              signInFrom: settings.videoSignIn ?? null,
+              signal: AbortSignal.timeout(180_000)
+            })
+            const run = measureRun({
+              from: 'link',
+              durationSec: read.durationSec,
+              aspect: read.aspect,
+              heard: read.captions ? { by: 'captions', stretches: [read.captions.words] } : { unheard: 'no-captions' }
+            })
+            learned.push({ path, title: read.title, facts: null, run })
+          } finally {
+            await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+          }
+          continue
         }
-        learned.push({ path, title: basename(path, extname(path)), facts: summarize(measures, speech) })
+        deps.send(e.sender, 'brand:progress', { stage: `Watching ${name}`, percent: at(0) })
+        const measures = await measureVideo(path, { ffmpeg: FFMPEG_PATH, maxSec: 600 })
+        const aspect = aspectOf(measures.width, measures.height)
+        let speech: SpeechMeasures | null = null
+        let run: VideoRun
+        if (!measures.hasAudio) {
+          run = measureRun({ from: 'file', durationSec: measures.durationSec, aspect, heard: { unheard: 'no-sound' } })
+        } else if (!hasModel(settings.whisperModel)) {
+          run = measureRun({ from: 'file', durationSec: measures.durationSec, aspect, heard: { unheard: 'no-model' } })
+        } else {
+          deps.send(e.sender, 'brand:progress', { stage: `Listening to ${name}`, percent: at(0.4) })
+          const verbatim = {
+            names: vocabulary({ title: basename(path, extname(path)), voice: '', products: [] }),
+            again: false
+          }
+          const opening = Math.min(measures.durationSec, OPENING_SEC)
+          const start = await transcribe(path, settings.whisperModel, opening, () => undefined, 0, verbatim)
+          const stretches = [start.words]
+          // A longer video's end too: whether it closes on a call to action.
+          if (measures.durationSec > opening + 5) {
+            deps.send(e.sender, 'brand:progress', { stage: `Listening to the end of ${name}`, percent: at(0.7) })
+            const from = Math.max(opening, measures.durationSec - ENDING_SEC)
+            const tail = measures.durationSec - from
+            const end = await transcribe(path, settings.whisperModel, tail, () => undefined, from, verbatim)
+            stretches.push(end.words)
+          }
+          // The look's pace and pauses as before, from the opening without its fillers.
+          speech = measureSpeech(start.words.filter((w) => !isFiller(w.text)))
+          const heard = { by: 'whisper' as const, stretches }
+          run = measureRun({ from: 'file', durationSec: measures.durationSec, aspect, heard })
+        }
+        learned.push({ path, title: basename(path, extname(path)), facts: summarize(measures, speech), run })
       } catch (err) {
-        failed.push(`${basename(path)}: ${message(err)}`)
-        details.push(...saidDetails(toolSaid(err), paths.length > 1 ? basename(path) : undefined))
+        failed.push(`${name}: ${message(err)}`)
+        details.push(...saidDetails(toolSaid(err), paths.length > 1 ? name : undefined))
       }
     }
     deps.send(e.sender, 'brand:progress', { stage: 'Done', percent: 100 })
