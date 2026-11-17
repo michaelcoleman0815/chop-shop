@@ -223,13 +223,13 @@ describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' 
 
   it('tells the renderer whether each key exists, never what it is', async () => {
     const keys = await invoke<Record<string, unknown>>('services:keys')
-    expect(keys).toEqual({ deepgram: true, assemblyai: false, gemini: true })
+    expect(keys).toEqual({ deepgram: true, assemblyai: false, gemini: true, fal: false, elevenlabs: false, openai: false })
     expect(JSON.stringify(keys)).not.toContain('dg-0123')
     // The keys sit sealed in their own files, beside where the Anthropic key would be.
     expect(readFileSync(join(fake.userData, 'deepgram.key')).toString()).not.toContain('dg-0123')
     expect(existsSync(join(fake.userData, 'anthropic.key'))).toBe(false)
     await invoke('services:clearKey', 'deepgram')
-    expect(await invoke('services:keys')).toEqual({ deepgram: false, assemblyai: false, gemini: true })
+    expect(await invoke('services:keys')).toEqual({ deepgram: false, assemblyai: false, gemini: true, fal: false, elevenlabs: false, openai: false })
   })
 
   it('switch turned off mid-job: only the DELETE that removes AssemblyAI’s copy goes out after it', async () => {
@@ -267,7 +267,7 @@ describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' 
   })
 
   it('turns away a key for a service it does not know', async () => {
-    await expect(invoke('services:setKey', 'openai', 'sk-abc')).rejects.toThrow('That is not a service Cutalong knows.')
+    await expect(invoke('services:setKey', 'midjourney', 'mj-abc')).rejects.toThrow('That is not a service Cutalong knows.')
   })
 })
 
