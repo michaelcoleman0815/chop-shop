@@ -27,6 +27,17 @@ Nothing in `src/` was changed.
 
 **Recommendation: build Pattern**, borrowing Night Shift's proof strip (already in the Pattern thread) and Lined Script's script panel as the editor's Script tab. Pattern extends the identity Cutalong already has instead of replacing it, fixes coral by giving it one meaning, keeps the light theme current users know, and is mostly a token and component change. The full change list is at the end.
 
+## What was built: Lined Script, heavenly and alive
+
+The owner chose **Lined Script**, and asked for it to look heavenly and then to feel alive, "like agents working for you". It is built across the app (`src/renderer/src/cutalong`); `.claude/skills/cutalong-ui/SKILL.md` is the working guide and the design system page holds the tokens.
+
+- **Lined Script.** Luminous paper and a soft light from above, a calm night page after dark; replies and the script in Source Serif 4 (bundled); versions as revision pages with a tab each and an asterisk on every changed line; notes pencilled in the script's margin.
+- **Colour you can feel.** The revision colours come three ways: gentle page tints behind the script and the strip, confident pastel blocks (a version's tab, fact tiles, clip cards, the brand's hero, crew cards, an empty page) and a deeper bloom for shapes. Colour sits around the footage, never on it, and coral stays the cut.
+- **Type with a voice.** Big, tight display headings with one word in the serif's italic: "What are we *making*?"
+- **Shapes with character.** Thirteen shapes drawn by code (`shapes.ts`): stickers ("new" on a version made while you watched) and each brand's own avatar, picked as a shape and a colour on the Brand page, with a morph as you choose.
+- **A living mark and a crew.** While long work runs, the mark becomes a soft, iridescent blob that breathes, and the crew who do the work line up under it: Echo (sound), Snip (the cut, in coral), Quill (words on screen), Scout (finding things), Tint (the look) and Reel (getting it out), each joining only for a stage the app really reports, saying what they are doing and hopping once when done. A reply credits them in one quiet line; notes say who picks them up; the Crew page shows what each has learned from your brand and what each needs.
+- **Motion that lands.** Arrivals settle on a spring with a hair of overshoot; dropped footage floats up into the composer as round stills; leaving never bounces; only work in progress moves on its own. Reduced motion keeps the fades and nothing else.
+
 ## How the audit was done
 
 - **Capture.** I built the renderer (`npx electron-vite build`), served `out/renderer` with stubbed services and a generated 40 second clip (gradients and a moving square), and drove it with Playwright at 1440 by 900, 1280 by 840 and 960 by 640: 115 screenshots across Start, the slash menu, a dropped file, working, replies with chips, buttons and Details, the inspiration reply, the clip set, the editor playing, a picked stretch, notes, script and takes, export toasts, the upload kit, Projects, Presets, Brand (two brands, a long name, never list and B-roll sources), the brand switch menu, Settings and a wrong key, with the rail open and closed, long file names, and dark mode requested. I also reviewed the phone build's screenshots and the real-app end-to-end screenshots (those contain the owner's footage, so none are reproduced here).

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react'
 import { namesCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
 import { api } from '../api'
 import { Poster } from './Poster'
@@ -158,9 +158,15 @@ export function Composer({
           aria-label={`${attachments.length} ${attachments.length === 1 ? 'file' : 'files'} to send`}
         >
           {attachments.map((a, i) => (
-            <span key={`${a.path}-${i}`} className="cl-attachment" title={a.name}>
+            // Each file floats up into the composer as a round still of itself, one just after another.
+            <span
+              key={`${a.path}-${i}`}
+              className="cl-attachment"
+              title={a.name}
+              style={{ '--i': Math.min(i, 5) } as CSSProperties}
+            >
               <Poster path={a.path} name={a.name} />
-              <span>{a.name}</span>
+              <span className="cl-attachment-name">{a.name}</span>
               <button
                 type="button"
                 aria-label={`Remove ${a.name}`}

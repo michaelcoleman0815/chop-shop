@@ -6,7 +6,7 @@ import { Mark } from './ui'
  * the bottom settings. Collapsed it is icons; open it adds names and recent edits.
  */
 
-export type Place = 'start' | 'projects' | 'brand' | 'presets' | 'settings'
+export type Place = 'start' | 'projects' | 'brand' | 'presets' | 'crew' | 'settings'
 
 const stroke = {
   width: 20,
@@ -49,6 +49,12 @@ const ICONS: Record<Place | 'toggle', JSX.Element> = {
       <path d="M14.5 4.5 9.5 19.5" />
     </svg>
   ),
+  crew: (
+    <svg {...stroke}>
+      <path d="M12 4.5c4.4 0 7.5 3.1 7.5 7.3 0 4.3-3.2 7.7-7.5 7.7s-7.5-3.4-7.5-7.7c0-4.2 3.1-7.3 7.5-7.3Z" />
+      <path d="M10 10.5v1.6M14 10.5v1.6" />
+    </svg>
+  ),
   settings: (
     <svg {...stroke}>
       <path d="M4.5 7.5h9" />
@@ -65,7 +71,8 @@ const PLACES: { place: Place; label: string }[] = [
   { place: 'start', label: 'New edit' },
   { place: 'projects', label: 'Projects' },
   { place: 'brand', label: 'Brand' },
-  { place: 'presets', label: 'Presets' }
+  { place: 'presets', label: 'Presets' },
+  { place: 'crew', label: 'Crew' }
 ]
 
 export function Sidebar({
