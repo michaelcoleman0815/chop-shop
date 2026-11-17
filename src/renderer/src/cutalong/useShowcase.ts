@@ -133,11 +133,10 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
           say(where, 'Drop some footage first, then the videos’ cards can go on it.')
           return true
         }
-        const id =
-          where === 'thread'
-            ? push({ role: 'assistant', text: '', progress: { stage: 'Reading the videos’ pages', percent: null } })
-            : null
-        if (where === 'panel') live.current.setPanel({ text: '', progress: { stage: 'Reading the videos’ pages', percent: null } })
+        // Scout's job (crew.ts): fetching pages, as a captured page is.
+        const stage = { stage: 'Fetching the videos’ pages', percent: null }
+        const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: stage }) : null
+        if (where === 'panel') live.current.setPanel({ text: '', progress: stage })
         const lines: string[] = []
         const failed: string[] = []
         let doc = docRef.current ?? d
@@ -204,7 +203,8 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
     if (pictures.length > 4) say('thread', `A grid holds four at most, so I used the first four of ${pictures.length}.`)
     const d = docRef.current
     if (!d) {
-      const id = push({ role: 'assistant', text: '', progress: { stage: 'Laying out the grid', percent: null } })
+      // Scout's job (crew.ts): the files are read and brought into a new edit.
+      const id = push({ role: 'assistant', text: '', progress: { stage: 'Bringing the videos in', percent: null } })
       const r = await api.makeGrid({ paths: pictures.slice(0, 4).map((f) => f.path), labels: given })
       if (!r.ok) {
         patch(id, { progress: null, text: r.message, error: true })
