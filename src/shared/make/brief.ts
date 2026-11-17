@@ -1,6 +1,6 @@
 import { countWords, sentencesOf } from './script'
 import type { Amount, Brief, ImageService, MakeFormat, MakeLook, VoiceChoice } from './schema'
-import { defaultVoice, voiceFromWords, voicePhrase } from './voices'
+import { defaultVoice, voiceChosen, voiceFromWords } from './voices'
 import { clock } from '../presets/preset'
 
 /**
@@ -267,7 +267,7 @@ export function readAsk(text: string, ctx: AskContext = {}): Brief | null {
     if (said) voice = said
     else {
       voice = ctx.voice ?? defaultVoice(format)
-      inferred.push(`read by ${voicePhrase(voice)}`)
+      inferred.push(voiceChosen(voice))
     }
   }
 
@@ -321,7 +321,7 @@ export function reviseBrief(brief: Brief, text: string): { brief: Brief; changed
   const voice = voiceFromWords(t, next.format, brief.voice)
   if (voice && (voice.id !== brief.voice.id || voice.engine !== brief.voice.engine)) {
     next.voice = voice
-    changed.push(`read by ${voicePhrase(voice)}`)
+    changed.push(voiceChosen(voice))
   }
   const look = lookIn(t, next.format)
   if (look && look !== next.look) {
@@ -358,7 +358,7 @@ export function reviseBrief(brief: Brief, text: string): { brief: Brief; changed
   next.inferred = brief.inferred.filter(
     (i) =>
       !(seconds && /long$/.test(i)) &&
-      !(voice && /^read by/.test(i)) &&
+      !(voice && /voice| recording$/.test(i)) &&
       !(look && /look/.test(i)) &&
       !(format && /documentary|explainer/.test(i))
   )

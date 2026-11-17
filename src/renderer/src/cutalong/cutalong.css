@@ -2152,3 +2152,67 @@ button:disabled {
   align-items: center;
   gap: var(--space-3);
 }
+
+/*
+ * A made video's script, read as the pages of a shooting script (MakeBrief):
+ * the editor's own .cl-script type, each part's heading set as a scene
+ * heading, and each line numbered in the margin as the shot it becomes,
+ * beside a coverage rule. Tokens only, so it follows the editor's script panel.
+ */
+.cl-make-script {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.cl-make-page {
+  align-self: stretch;
+  padding: var(--space-4) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  max-height: 22rem;
+  overflow-y: auto;
+  text-wrap: pretty;
+}
+
+.cl-make-slug {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cl-make-page section:first-child .cl-make-slug {
+  margin-top: 0;
+}
+
+.cl-make-line {
+  position: relative;
+  padding-left: var(--space-8);
+}
+
+/* The shot number in the margin, and the coverage rule beside the line. */
+.cl-make-line::before {
+  content: attr(data-shot);
+  position: absolute;
+  left: 0;
+  width: var(--space-4);
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-make-line::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--space-6) - 1px);
+  top: var(--space-1);
+  bottom: var(--space-1);
+  border-left: 1px solid var(--line);
+}

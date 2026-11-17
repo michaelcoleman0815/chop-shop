@@ -111,7 +111,7 @@ export function useMake(deps: MakeDeps): Makes {
     if (draft.script.trim())
       actions.push({
         kind: 'make',
-        label: scriptShown ? 'Hide the script' : 'Edit the script',
+        label: scriptShown ? 'Hide the script' : 'Read the script',
         payload: JSON.stringify({ do: 'script', id })
       })
     return { ...shown(reply), actions, make: id }

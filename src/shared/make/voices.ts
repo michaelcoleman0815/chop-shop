@@ -98,6 +98,13 @@ export function voiceShort(voice: VoiceChoice): string {
   return `${voice.name} ${from[voice.engine]}`
 }
 
+/** A voice as a choice in a list of them: "Michael's free voice on this Mac", "George's voice from ElevenLabs". */
+export function voiceChosen(voice: VoiceChoice): string {
+  if (voice.engine === 'own') return 'your own recording'
+  if (voice.engine === 'local') return `${voice.name}'s free voice on this Mac`
+  return `${voice.name}'s voice ${voiceShort(voice).slice(voice.name.length + 1)}`
+}
+
 /**
  * A voice asked for in words: "a British voice", "a woman's voice",
  * "ElevenLabs", "use George", "Charon". Null when nothing in the words

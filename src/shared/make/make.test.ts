@@ -113,7 +113,7 @@ describe('one prompt carries the whole brief', () => {
     expect(brief.inferred).toEqual([
       'a cinematic documentary, since it is a story from the past',
       '2:00 long',
-      'read by Michael, a voice that runs on this Mac, free',
+      "Michael's free voice on this Mac",
       'a warm sepia archival look with grain'
     ])
   })
@@ -125,7 +125,7 @@ describe('one prompt carries the whole brief', () => {
     const man = readAsk('make a documentary about the man who sold the world') as Brief
     expect(man.topic).toBe('the man who sold the world')
     expect(man.voice.id).toBe('am_michael')
-    expect(man.inferred).toContain('read by Michael, a voice that runs on this Mac, free')
+    expect(man.inferred).toContain("Michael's free voice on this Mac")
   })
 
   it('never reads a decade as a length, and reads lengths said in words', () => {
@@ -169,7 +169,7 @@ describe('one prompt carries the whole brief', () => {
   it('takes changes to a brief not yet made, and stops calling them guesses', () => {
     const brief = readAsk('make a video about the 1950s oil boom') as Brief
     const next = reviseBrief(brief, 'make it 3 minutes, black and white, with a woman reading it')
-    expect(next?.changed).toEqual(['3:00 long', 'read by Heart, a voice that runs on this Mac, free', 'the black and white look'])
+    expect(next?.changed).toEqual(['3:00 long', "Heart's free voice on this Mac", 'the black and white look'])
     expect(next?.brief.seconds).toBe(180)
     expect(next?.brief.inferred).toEqual(['a cinematic documentary, since it is a story from the past'])
     expect(reviseBrief(brief, 'sounds good')).toBeNull()
