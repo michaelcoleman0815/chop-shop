@@ -33,6 +33,7 @@ import type { ClipsFound, ClipsReply } from '../shared/clipping'
 import type { Vlog } from '../shared/vlog/schema'
 import type { VlogReply } from '../shared/vlog/reply'
 import type { Change, Draft, Reply as MakeReply, ShotChange } from '../shared/make/draft'
+import type { MakeQuestion } from '../shared/make/questions'
 import type { Make } from '../shared/make/schema'
 
 type Progress = { stage: string; percent: number | null }
@@ -288,7 +289,10 @@ const api = {
     recording?: string | null
     /** The chat's brand, by id: its voice writes the script. The default brand's when absent. */
     brand?: string | null
+    /** The questions were answered (or answered by typing): ask nothing again. */
+    answered?: boolean
   }): Promise<
+    | { ok: true; kind: 'ask'; questions: MakeQuestion[] }
     | { ok: true; kind: 'quote'; draft: Draft; reply: MakeReply }
     | { ok: true; kind: 'made'; auto: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
     | { ok: false; message: string; draft?: Draft; reply?: MakeReply }

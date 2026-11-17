@@ -13,6 +13,7 @@ import { makeServices } from '../providers'
 import { EditDocSchema, type EditDoc } from '../../shared/edit/schema'
 import { DEFAULT_MUSIC, type Music } from '../../shared/edit/audio'
 import { readAsk } from '../../shared/make/brief'
+import { questionsFor } from '../../shared/make/questions'
 import { quoteReply, type Availability } from '../../shared/make/quote'
 import {
   BriefSchema,
@@ -271,7 +272,7 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   }
 
   // A prompt read and quoted; with "Go ahead without asking" on and the video under it, made straight away.
-  ipcMain.handle('make:start', async (e, req: { text: string; recording?: string | null; brand?: string | null }) => {
+  ipcMain.handle('make:start', async (e, req: { text: string; recording?: string | null; brand?: string | null; answered?: boolean }) => {
     try {
       const brand = req.brand ? await readBrandById(req.brand) : await readBrand()
       const brief = readAsk(String(req.text ?? ''), { niche: brand.niche ?? null, recording: req.recording ?? null })
@@ -280,6 +281,9 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
           ok: false as const,
           message: 'Tell me what the video is about, like “make a 2 minute documentary about the 1950s oil boom”.'
         }
+      // What cannot be guessed is asked first, before a word is written or a token spent, whatever Settings says.
+      const questions = req.answered ? [] : questionsFor(brief)
+      if (questions.length) return { ok: true as const, kind: 'ask' as const, questions }
       const d = await draftDeps(req.brand)
       if (!d.can.claude)
         return {

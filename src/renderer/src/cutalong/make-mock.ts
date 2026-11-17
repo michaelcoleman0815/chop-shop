@@ -1,5 +1,6 @@
 import { readAsk, reviseBrief } from '../../../shared/make/brief'
 import type { Draft } from '../../../shared/make/draft'
+import { questionsFor } from '../../../shared/make/questions'
 import { estimateCounts, quoteFor, quoteReply, type Availability } from '../../../shared/make/quote'
 import { phrasesAndSections } from '../../../shared/make/script'
 import type { Brief } from '../../../shared/make/schema'
@@ -35,9 +36,11 @@ export function mockMakeApi(): Pick<
 > {
   const nothing = 'This preview makes no videos. Open Cutalong to make one.'
   return {
-    makeStart: async ({ text }) => {
+    makeStart: async ({ text, answered }) => {
       const brief = readAsk(text)
       if (!brief) return { ok: false as const, message: 'Tell me what the video is about.' }
+      const questions = answered ? [] : questionsFor(brief)
+      if (questions.length) return { ok: true as const, kind: 'ask' as const, questions }
       const d = draftOf(brief, SCRIPT(brief))
       return { ok: true as const, kind: 'quote' as const, draft: d, reply: reply(d) }
     },

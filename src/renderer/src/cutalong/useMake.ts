@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'r
 import { addAsset, currentVersion, type EditDoc, type Op } from '../../../shared/edit'
 import { asNewVersion } from '../../../shared/make/assemble'
 import { reviseBrief, wantsMake } from '../../../shared/make/brief'
+import { answered as answeredPrompt, type MakeQuestion } from '../../../shared/make/questions'
 import type { Change, Draft, Reply, ShotChange } from '../../../shared/make/draft'
 import { dollars } from '../../../shared/make/quote'
 import { api } from './api'
@@ -53,6 +54,10 @@ export interface Makes {
   editScript: (id: string, script: string) => Promise<void>
   /** Whether a quote's script is open under it. */
   scriptOpen: (id: string) => boolean
+  /** The questions waiting under a reply, if they are still waiting. */
+  questions: (id: string) => MakeQuestion[] | null
+  /** Answers to them, one for each question in order: a tap's words or what was typed. */
+  answer: (id: string, answers: string[]) => Promise<void>
 }
 
 const OPEN: NonNullable<Msg['actions']> = [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
@@ -85,6 +90,8 @@ export function useMake(deps: MakeDeps): Makes {
   const pending = useRef<{ id: string; msg: string } | null>(null)
   /** A voice-over asked for and not dropped yet. */
   const waitingRecording = useRef(false)
+  /** Questions waiting to be answered before anything is written. */
+  const asking = useRef<{ id: string; msg: string; text: string; recording: string | null; questions: MakeQuestion[] } | null>(null)
   /** The quote whose script is open under it, and the message that shows it. */
   const [openScript, setOpenScript] = useState<string | null>(null)
   const scriptMsg = useRef<string | null>(null)
@@ -214,9 +221,9 @@ export function useMake(deps: MakeDeps): Makes {
     [keep, quoteMsg]
   )
 
-  /** A prompt read and quoted, or made straight away under the amount in Settings. */
+  /** A prompt read and quoted, or made straight away under the amount in Settings; asked about first when it must be. */
   const start = useCallback(
-    async (text: string, recording: string | null): Promise<void> => {
+    async (text: string, recording: string | null, answered = false): Promise<void> => {
       const { push, patch, during } = live.current
       const msg = push({
         role: 'assistant',
@@ -226,7 +233,7 @@ export function useMake(deps: MakeDeps): Makes {
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeStart>>
       try {
-        r = await during(() => api.makeStart({ text, recording, brand: live.current.brand() }))
+        r = await during(() => api.makeStart({ text, recording, brand: live.current.brand(), answered }))
       } catch (err) {
         r = { ok: false, message: errorText(err) }
       } finally {
@@ -236,6 +243,21 @@ export function useMake(deps: MakeDeps): Makes {
         patch(msg, { progress: null, text: r.message, error: true })
         return
       }
+      if (r.kind === 'ask') {
+        // Nothing is written yet: the questions wait under this reply, and so does what was asked.
+        const id = `ask-${Date.now()}`
+        asking.current = { id, msg, text, recording, questions: r.questions }
+        setVersion((n) => n + 1)
+        patch(msg, {
+          progress: null,
+          text:
+            r.questions.length === 1
+              ? 'One thing first, so I write the right video.'
+              : `${r.questions.length === 2 ? 'Two' : 'Three'} things first, so I write the right video.`,
+          makeAsk: id
+        })
+        return
+      }
       if (r.kind === 'quote') {
         await quote(msg, r.draft, r.reply)
         return
@@ -243,6 +265,19 @@ export function useMake(deps: MakeDeps): Makes {
       land(r, msg)
     },
     [land, quote]
+  )
+
+  /** The questions answered, by taps or typing: the prompt with its answers is read again, and asked nothing more. */
+  const answer = useCallback(
+    async (id: string, answers: string[]): Promise<void> => {
+      const a = asking.current
+      if (!a || a.id !== id) return
+      asking.current = null
+      setVersion((n) => n + 1)
+      live.current.patch(a.msg, { makeAsk: undefined, aside: answers.filter(Boolean).join(', ') })
+      await start(answeredPrompt(a.text, answers), a.recording, true)
+    },
+    [start]
   )
 
   /** One shot made again for its confirmed quote, as a new version. */
@@ -389,6 +424,12 @@ export function useMake(deps: MakeDeps): Makes {
         await start(words, audio[0]?.path ?? null)
         return true
       }
+      // Questions waiting: what is typed answers them.
+      const open = asking.current
+      if (open && files.length === 0 && text.trim()) {
+        await answer(open.id, [text.trim()])
+        return true
+      }
       // A quote waiting: what is said next changes it.
       const waiting = pending.current
       if (waiting && files.length === 0 && text.trim()) {
@@ -415,7 +456,7 @@ export function useMake(deps: MakeDeps): Makes {
       }
       return false
     },
-    [offer, quote, start]
+    [answer, offer, quote, start]
   )
 
   const asked = useCallback(
@@ -501,9 +542,10 @@ export function useMake(deps: MakeDeps): Makes {
 
   const draft = useCallback((id: string): Draft | null => drafts.current.get(id) ?? null, [])
   const scriptOpen = useCallback((id: string): boolean => openScript === id, [openScript])
+  const questions = useCallback((id: string): MakeQuestion[] | null => (asking.current?.id === id ? asking.current.questions : null), [])
 
   return useMemo(
-    () => ({ handle, asked, onAction, draft, editScript, scriptOpen }),
-    [handle, asked, onAction, draft, editScript, scriptOpen]
+    () => ({ handle, asked, onAction, draft, editScript, scriptOpen, questions, answer }),
+    [handle, asked, onAction, draft, editScript, scriptOpen, questions, answer]
   )
 }

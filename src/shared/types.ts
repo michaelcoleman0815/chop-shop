@@ -357,6 +357,8 @@ export interface ChatMessage {
   clipRun?: number
   /** The quote for a video made from nothing whose outline and script show under this reply (useMake). */
   make?: string
+  /** Questions asked before a made video's script is written, answered under this reply (useMake). */
+  makeAsk?: string
 }
 
 export interface TimelineClip {

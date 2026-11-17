@@ -125,7 +125,9 @@ async function loadOrt(): Promise<Ort> {
   try {
     // A runtime dependency with a native binary: loaded only when a voice on this Mac first reads.
     const name = 'onnxruntime-node'
-    return (await import(/* @vite-ignore */ name)) as unknown as Ort
+    const m = (await import(/* @vite-ignore */ name)) as { default?: unknown; InferenceSession?: unknown }
+    // A CommonJS package imported: its exports are named when Node can see them, else under default.
+    return (m.InferenceSession ? m : m.default) as unknown as Ort
   } catch {
     throw new Error('The voice on this Mac needs onnxruntime-node, which is missing from this build.')
   }

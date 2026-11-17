@@ -146,6 +146,29 @@ describe('a video made from one prompt', () => {
     expect(requests().map((q) => q.service)).toEqual(['claude'])
   })
 
+  it('asks first what a vague prompt leaves out, spending nothing, even with Go ahead without asking on', async () => {
+    saveSettings({ makeAutoUnder: 25 })
+    const before = requests().length
+    const r = await call<{ ok: boolean; kind: string; questions: { id: string; options: unknown[] }[] }>('make:start', {
+      text: 'make a video about my trip'
+    })
+    expect(r.kind).toBe('ask')
+    expect(r.questions.map((q) => q.id)).toEqual(['topic', 'style', 'length'])
+    // Nothing went to Claude or anywhere else: the questions are read from the prompt here.
+    expect(requests().length).toBe(before)
+    // A half-said prompt is asked only what it leaves out.
+    const half = await call<{ kind: string; questions: { id: string }[] }>('make:start', { text: 'make a documentary about the gold rush' })
+    expect(half.questions.map((q) => q.id)).toEqual(['length'])
+    saveSettings({ makeAutoUnder: null })
+    // Answered, it is written and quoted.
+    const answeredStart = await call<Start>('make:start', {
+      text: 'make a documentary about the gold rush, 1 minute long.',
+      answered: true
+    })
+    expect(answeredStart.kind).toBe('quote')
+    expect(answeredStart.draft?.brief.seconds).toBe(60)
+  })
+
   it('refuses a confirmation for less than the quote, and spends nothing', async () => {
     const r = await call<Made>('make:go', { draft, confirmed: draft.quote.total - 0.5 })
     expect(r.ok).toBe(false)

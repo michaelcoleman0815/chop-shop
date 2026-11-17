@@ -2216,3 +2216,56 @@ button:disabled {
   bottom: var(--space-1);
   border-left: 1px solid var(--line);
 }
+
+/* The questions asked before a made video is written (MakeQuestions): options as pills, your own words beside them. */
+.cl-make-ask {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.cl-make-question {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-make-question legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cl-make-question .cl-row {
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.cl-pill[aria-checked='true'] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.cl-make-own {
+  min-width: 12rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.cl-make-own:focus-visible {
+  border-color: var(--ink);
+}
+
+.cl-make-own::placeholder {
+  color: var(--muted);
+}

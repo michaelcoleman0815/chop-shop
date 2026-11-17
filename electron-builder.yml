@@ -38,6 +38,11 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # onnxruntime-node ships its native binaries for every platform (about 295 MB); the Mac app keeps darwin arm64 only.
+  files:
+    - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
+    - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/**'
+    - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/x64/**'
   target:
     - target: dmg
       arch: [arm64]
