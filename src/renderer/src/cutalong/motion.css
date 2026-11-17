@@ -273,13 +273,24 @@
 }
 
 .cl-beat {
-  transition-property: background-color, translate;
+  transition-property: background-color, box-shadow, translate;
   transition-duration: var(--duration-fast);
   transition-timing-function: var(--ease-standard);
 }
 
 .cl-beat:hover {
   translate: 0 calc(var(--space-1) / -2 * var(--cl-travel));
+}
+
+/* The bar under a picked stretch fades in; it follows a drag at once. */
+.cl-pick {
+  transition: opacity var(--duration-gentle) var(--ease-enter);
+}
+
+@starting-style {
+  .cl-pick {
+    opacity: 0;
+  }
 }
 
 /* Notes slide in; collapse() in motion.tsx slides them out. */

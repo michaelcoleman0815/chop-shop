@@ -627,6 +627,20 @@ export function beatAt(resolved: Resolved, outSec: number): ResolvedBeat | null 
 }
 
 /**
+ * The cut as captions read it: every kept word but those of beats whose
+ * captions are off. The same object when no beat hides them, so the preview,
+ * the subtitles and drawn captions leave out the same words.
+ */
+export function captionedWords(
+  cut: { beats: { id: string; treatment: { captions?: boolean } }[] },
+  resolved: Resolved
+): Resolved {
+  const hidden = new Set(cut.beats.filter((b) => b.treatment.captions === false).map((b) => b.id))
+  if (hidden.size === 0) return resolved
+  return { ...resolved, words: resolved.words.filter((w) => !hidden.has(w.beat)) }
+}
+
+/**
  * Caption pages in output time: groups of at most `perScreen` words, broken at
  * sentence ends and at the seams between pieces, so a caption never hangs
  * across a cut or into a pause.

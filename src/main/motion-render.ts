@@ -2,7 +2,7 @@ import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
 import { spawn } from 'child_process'
 import { existsSync, promises as fs } from 'fs'
 import { join } from 'path'
-import type { Asset, Cut, Resolved, Source, Word } from '../shared/edit'
+import { captionedWords, type Asset, type Cut, type Resolved, type Source, type Word } from '../shared/edit'
 import {
   activeSpans,
   buildScene,
@@ -280,7 +280,10 @@ export function subtitleCut(cut: Cut): Cut {
  */
 export function subtitlePass(cut: Cut, resolved: Resolved, scene: MotionScene): { cut: Cut; resolved: Resolved } {
   const cards = scene.items.filter((i) => template(i.kind)?.covers === 'card')
-  const words = resolved.words.filter((w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end))
+  // Beats whose captions are off are left out too.
+  const words = captionedWords(cut, resolved).words.filter(
+    (w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end)
+  )
   return {
     cut: subtitleCut(cut),
     resolved: words.length === resolved.words.length ? resolved : { ...resolved, words }

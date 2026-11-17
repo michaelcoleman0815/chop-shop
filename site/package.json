@@ -1,0 +1,8 @@
+{
+  "name": "cutalong-site",
+  "private": true,
+  "description": "cutalong.io. Build with `npm run build`; the site is written to dist/.",
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist && cp index.html favicon.svg dist/"
+  }
+}

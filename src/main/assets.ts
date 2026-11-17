@@ -5,6 +5,7 @@ import { clampExcerpt, defaultExcerpt, isImagePath, type Range } from '../shared
 import type { Asset } from '../shared/edit'
 import { uploadedOn } from '../shared/motion/figures'
 import { probeMedia } from './inspiration/measure'
+import { channelSearchUrl, orderFound, readSources, type FoundClip } from '../shared/broll-sources'
 
 /**
  * Brings material into an edit: files already on disk, images from links,
@@ -307,34 +308,88 @@ export async function fetchVideoCard(
   return { card, thumbnail }
 }
 
-export interface Candidate {
-  url: string
-  title: string
-  author: string | null
-  durationSec: number | null
-}
+export type Candidate = FoundClip
 
-/** Search results from yt-dlp's flat playlist JSON. */
+/**
+ * Search results from yt-dlp's flat playlist JSON, with the channel each is
+ * from. A channel's own search lists its videos with the channel said once,
+ * at the top, so that fills in what an entry leaves out.
+ */
 export function parseSearch(json: string): Candidate[] {
-  const d = JSON.parse(json) as { entries?: Record<string, unknown>[] }
+  const d = JSON.parse(json) as { entries?: Record<string, unknown>[] } & Record<string, unknown>
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
   return (d.entries ?? []).flatMap((e) => {
     const url =
       typeof e.url === 'string' ? e.url : typeof e.id === 'string' ? `https://www.youtube.com/watch?v=${e.id}` : null
     if (!url || typeof e.title !== 'string') return []
-    const author = typeof e.channel === 'string' ? e.channel : typeof e.uploader === 'string' ? e.uploader : null
-    return [{ url, title: e.title, author, durationSec: typeof e.duration === 'number' ? e.duration : null }]
+    const author = str(e.channel) ?? str(e.uploader) ?? str(d.channel) ?? str(d.uploader)
+    const handle = [e.uploader_id, d.uploader_id].map(str).find((h) => h?.startsWith('@')) ?? null
+    const channelId = str(e.channel_id) ?? str(d.channel_id)
+    const channelUrl = str(e.channel_url) ?? str(e.uploader_url) ?? str(d.channel_url) ?? str(d.uploader_url)
+    return [
+      {
+        url,
+        title: e.title,
+        author,
+        durationSec: typeof e.duration === 'number' ? e.duration : null,
+        // The channel, as far as yt-dlp says it.
+        ...(channelId ? { channelId } : {}),
+        ...(channelUrl ? { channelUrl } : {}),
+        ...(handle ? { handle } : {})
+      }
+    ]
   })
 }
 
-/** Videos to choose B-roll from, without downloading any of them. */
-export async function searchVideos(query: string, tools: AssetTools, count = 5): Promise<Candidate[]> {
+/** Preferred channels searched for one query: each is a call to YouTube, so a few, in the order listed. */
+export const PREFERRED_SEARCHES = 4
+
+/**
+ * Videos to choose B-roll from, without downloading any of them. The
+ * brand's preferred channels are searched first and what they have comes
+ * first; nothing from a blocked channel or website comes back.
+ */
+export async function searchVideos(
+  query: string,
+  tools: AssetTools,
+  count = 5,
+  lists: { prefer: string[]; block: string[] } = { prefer: [], block: [] }
+): Promise<{
+  results: (Candidate & { preferred: boolean })[]
+  blocked: number
+  /** Preferred channels that answered the search with something; `tried` of them were asked. */
+  looked: number
+  tried: number
+}> {
   const q = query.replace(/[\r\n]+/g, ' ').trim()
-  if (!q) return []
+  if (!q) return { results: [], blocked: 0, looked: 0, tried: 0 }
+  const prefer = readSources(lists.prefer).sources
+  const block = readSources(lists.block).sources
+  const channels = prefer
+    .map((s) => channelSearchUrl(s, q))
+    .filter((u): u is string => !!u)
+    .slice(0, PREFERRED_SEARCHES)
+  // Long videos are rarely good B-roll and slow to scrub; prefer short ones.
+  const shortest = (list: Candidate[]): Candidate[] =>
+    [...list].sort((a, b) => (a.durationSec ?? 600) - (b.durationSec ?? 600))
+  const preferredRuns: Candidate[][] = []
+  for (const url of channels) {
+    const json = await run(
+      tools.ytdlp,
+      ['--flat-playlist', '-J', '--playlist-end', '3', ...signIn(tools.signInFrom), url],
+      tools.signal
+    ).catch(() => null)
+    preferredRuns.push(json ? shortest(parseSearch(json)) : [])
+  }
+  // More from the general search when some are going to be left out.
+  const wanted = count + (block.length ? 5 : 0)
   const json = await run(
     tools.ytdlp,
-    ['--flat-playlist', '-J', ...signIn(tools.signInFrom), `ytsearch${count}:${q}`],
+    ['--flat-playlist', '-J', ...signIn(tools.signInFrom), `ytsearch${wanted}:${q}`],
     tools.signal
   )
-  // Long videos are rarely good B-roll and slow to scrub; prefer short ones.
-  return parseSearch(json).sort((a, b) => (a.durationSec ?? 600) - (b.durationSec ?? 600))
+  const ordered = orderFound(preferredRuns, shortest(parseSearch(json)), { prefer, block })
+  // A channel was looked in only when it answered: one yt-dlp could not search, or that had nothing, was not.
+  const looked = preferredRuns.filter((found) => found.length > 0).length
+  return { results: ordered.results.slice(0, count), blocked: ordered.blocked, looked, tried: channels.length }
 }

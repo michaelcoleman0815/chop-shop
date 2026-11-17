@@ -18,7 +18,8 @@ import { parseAnchor, parseLength, type MotionItem } from '../motion/schema'
  * story puts new beats in place of the old ones, so each old beat's edits
  * (how it comes in, a J or L cut, its speed, a camera move, its sounds, its
  * padding, how it looks) go to the new beat that plays the same moment: the
- * same clip, over a stretch that overlaps. Chapters and graphics on a beat go
+ * same clip, over a stretch that overlaps; so do captions turned off over it.
+ * Chapters and graphics on a beat go
  * to the beat that plays their moment now. What has no moment in the new
  * story, or no longer fits where its moment plays, is taken out rather than
  * left on a beat that plays another moment, and `leftOut` says what.
@@ -115,6 +116,8 @@ function looksOf(t: Treatment): Look[] {
   if (t.angle) looks.push({ name: named('the other camera', 'other cameras'), keys: ['angle'] })
   if (t.framing !== undefined && t.framing !== null)
     looks.push({ name: named('the framing', 'framings'), keys: ['framing'] })
+  if (t.captions === false)
+    looks.push({ name: named('the stretch without captions', 'stretches without captions'), keys: ['captions'] })
   return looks
 }
 

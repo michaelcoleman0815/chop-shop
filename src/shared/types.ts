@@ -109,6 +109,13 @@ export interface Settings {
    * services are; nothing is sent without an Anthropic key either way.
    */
   claudeSeesFrames?: boolean
+  /**
+   * Whether Claude writes each export's three titles, the description's
+   * opening and its tags from the words. On unless turned off; nothing is
+   * sent without an Anthropic key either way, and without Claude they are
+   * made on this computer (main/upload-kit).
+   */
+  claudeWritesUpload?: boolean
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string
@@ -305,6 +312,12 @@ export interface Project extends ProjectSummary {
   chat?: ChatMessage[]
   /** Clips /clipping cut from long recordings, each its own edit (shared/clipping). Absent before clipping existed. */
   clipping?: ClipSet | null
+  /**
+   * The brand chosen for this chat, by id (shared/brands), for while it has
+   * no edit and for clips; an edit names its own on each version. Absent,
+   * the default brand, as chats were before there could be more than one.
+   */
+  brand?: string | null
 }
 
 /** A button under a reply. The kinds are the renderer's to define. */

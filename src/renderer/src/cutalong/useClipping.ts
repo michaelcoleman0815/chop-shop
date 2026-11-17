@@ -14,12 +14,14 @@ import {
 import { sentence } from '../../../shared/edit'
 import { failureOf } from '../../../shared/failure'
 import type { Project, TranscriptWord } from '../../../shared/types'
+import type { UploadKit } from '../../../shared/upload'
 import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Msg } from './components/Message'
 import type { Progress } from './components/Working'
 import { exportWait, type ExportJob } from './exporting'
 import { clock, fileName, isAudioFile, isVideoFile } from './format'
+import { uploadSetReply } from './upload-reply'
 
 /**
  * /clipping in the session: finding clips in long recordings, the set they
@@ -56,6 +58,8 @@ export interface ClippingDeps {
   exportingNow: MutableRefObject<ExportJob | null>
   /** Clears what belongs to the edit on screen: offers, a waiting command, a picked graphic, the panel. */
   clearEditor: () => void
+  /** The chat's brand, by id, for its kind of video and caption look. */
+  brand?: () => string | null
 }
 
 /** The recordings a drop holds: footage and sound, not stills. */
@@ -196,7 +200,9 @@ export function useClipping(deps: ClippingDeps) {
       }
       let r: Awaited<ReturnType<typeof api.findClips>>
       try {
-        r = await d.current.during(() => api.findClips({ paths, ask, known, avoid: avoidRanges(current()) }))
+        r = await d.current.during(() =>
+          api.findClips({ paths, ask, known, avoid: avoidRanges(current()), brand: d.current.brand?.() ?? null })
+        )
       } finally {
         off()
       }
@@ -286,6 +292,8 @@ export function useClipping(deps: ClippingDeps) {
     const since = Date.now()
     const made: string[] = []
     const failed: string[] = []
+    // What each clip's upload needs, said once for them all after the last one.
+    const kits: { name: string; kit: UploadKit }[] = []
     setJobs(Object.fromEntries(clips.map((c) => [c.id, { percent: null }])))
     try {
       for (const [i, clip] of clips.entries()) {
@@ -339,6 +347,8 @@ export function useClipping(deps: ClippingDeps) {
           chips: [clock(durationSec), ...(r.width && r.height ? [`${r.width} × ${r.height}`] : [])],
           actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
         })
+        // What its upload needs, beside it: captions, a description, titles and tags.
+        if (r.upload) kits.push({ name: clip.title, kit: r.upload })
       }
     } finally {
       exportingNow.current = null
@@ -358,6 +368,8 @@ export function useClipping(deps: ClippingDeps) {
       error: !all,
       actions: made.length ? [{ kind: 'reveal', label: 'Show in Finder', payload: made[0] }] : undefined
     })
+    // One reply for what every clip's upload needs, not one a clip.
+    if (kits.length > 0) push(uploadSetReply(kits))
     setToast(
       all
         ? { text: `Exported ${clips.length === 1 ? 'the clip' : `${clips.length} clips`}`, path: made[0], chat: true }

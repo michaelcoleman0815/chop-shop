@@ -445,3 +445,71 @@ describe('the memory file', () => {
     expect(distill(m.signals).map((p) => p.text)).toEqual(['You like a slower pace (2 times)'])
   })
 })
+
+describe('a brand’s never list', () => {
+  const rule = (brand: string, item: string, on: boolean, text?: string): SignalInput => ({
+    kind: 'never',
+    brand,
+    item,
+    on,
+    ...(text ? { text } : {})
+  })
+
+  it('holds the latest word on each thing, per brand', () => {
+    const m = remember(
+      history([
+        rule('brand-1', 'sfx:whoosh', true, 'never use whooshes'),
+        rule('brand-2', 'transition', true),
+        rule('brand-1', 'music', true),
+        rule('brand-1', 'sfx:whoosh', false)
+      ])
+    )
+    const view = memoryView(m)
+    expect(view.never?.map((e) => [e.brand, e.item])).toEqual([
+      ['brand-2', 'transition'],
+      ['brand-1', 'music']
+    ])
+    // One signal per thing and brand: the last word replaces the one before.
+    expect(m.signals.filter((s) => s.kind === 'never')).toHaveLength(3)
+  })
+
+  it('keeps a rule while learning is paused, and never trims one away', () => {
+    let m = changeMemory(EMPTY_MEMORY, { paused: true })
+    m = recordSignal(m, history([rule('brand-1', 'captions', true)])[0])
+    m = recordSignal(m, history([ask('a', 'keep the laugh')])[0])
+    expect(m.signals.map((s) => s.kind)).toEqual(['never'])
+    let busy = remember(history([rule('brand-1', 'bw', true)]))
+    busy = remember(history(Array.from({ length: MAX_SIGNALS + 5 }, (_, i) => ask('a', `ask ${i}`))), busy)
+    expect(busy.signals).toHaveLength(MAX_SIGNALS)
+    expect(memoryView(busy).never?.map((e) => e.item)).toEqual(['bw'])
+  })
+
+  it('changes from the Brand page, many at once', () => {
+    const m = changeMemory(
+      EMPTY_MEMORY,
+      {
+        never: [
+          { brand: 'brand-1', item: 'look', on: true },
+          { brand: 'brand-1', item: 'camera', on: true }
+        ]
+      },
+      '2026-11-16T10:00:00.000Z'
+    )
+    expect(memoryView(m).never).toEqual([
+      { brand: 'brand-1', item: 'look', at: '2026-11-16T10:00:00.000Z', said: null },
+      { brand: 'brand-1', item: 'camera', at: '2026-11-16T10:00:00.000Z', said: null }
+    ])
+  })
+
+  it('reads a rule said in a chat as the list’s, never also as a correction', () => {
+    expect(classify('never zoom in on me')).toEqual([])
+    expect(classify('never use whooshes. no more punch-ins')).toEqual([{ topic: 'zoom', value: 'less' }])
+    const m = remember(history([ask('a', 'never zoom in, ever'), ask('b', 'never zoom in, ever')]))
+    expect(learned(m)).toEqual([])
+  })
+
+  it('leaves out of the view anything this version does not know', () => {
+    const m = remember(history([rule('brand-1', 'holograms', true)]))
+    expect(memoryView(m).never).toEqual([])
+  })
+})

@@ -1,4 +1,4 @@
-import type { Resolved } from '../edit/resolve'
+import { captionedWords, type Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
 import { captionLayers, facesNear, type CaptionCover, type FaceSample } from './captions'
 import type { MotionItem, MotionKind } from './schema'
@@ -67,7 +67,8 @@ export function buildScene(input: SceneInput): MotionScene {
   })
   const captions = captionLayers({
     spec: input.cut.captions,
-    resolved: input.resolved,
+    // Beats whose captions are off are left out of drawn captions as of subtitles.
+    resolved: captionedWords(input.cut, input.resolved),
     frame,
     theme: input.theme,
     duration: tl.duration,
