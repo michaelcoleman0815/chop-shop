@@ -996,10 +996,12 @@ export function drawOverlay(
     sctx.putImageData(img, 0, 0)
     const s = part.scale ?? 1
     ctx.save()
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    // In the caller's transform: the export draws at the frame's own size, the preview scales to its box.
     // Scaled up between pixels, the same way on both canvases.
-    ctx.imageSmoothingEnabled = s !== 1
-    if (s !== 1) ctx.imageSmoothingQuality = 'low'
+    const m = ctx.getTransform()
+    const smooth = s !== 1 || m.a !== 1 || m.d !== 1
+    ctx.imageSmoothingEnabled = smooth
+    if (smooth) ctx.imageSmoothingQuality = 'low'
     ctx.drawImage(scratch as unknown as CanvasImageSource, 0, 0, width * s, height * s)
     ctx.restore()
   }

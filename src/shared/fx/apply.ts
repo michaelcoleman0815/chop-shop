@@ -129,3 +129,9 @@ export function removeFx(cut: Cut, ids: string[]): FxResult {
   if (missing) return { ok: false, reason: `There is no effect ${missing}.` }
   return { ok: true, cut: { ...cut, fx: fx.filter((e) => !ids.includes(e.id)) } }
 }
+
+/** The frame rate an export of footage at `fps` is made at, the nearest of the usual ones; the preview plans effects at it too. */
+export function outputRate(fps: number): number {
+  const options = [24, 25, 30, 50, 60]
+  return options.reduce((best, f) => (Math.abs(f - fps) < Math.abs(best - fps) ? f : best), 30)
+}

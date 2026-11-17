@@ -77,7 +77,7 @@ import {
 } from '../../../../shared/motion'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { isImagePath } from '../../../../shared/assets'
-import { api, mediaUrlFor } from '../api'
+import { api, MEDIA_CORS, mediaUrlFor } from '../api'
 import { Backdrop } from '../components/Backdrop'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
 import { GraphicPanel } from '../components/GraphicPanel'
@@ -86,6 +86,7 @@ import { RegionPicker } from '../components/RegionPicker'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
+import { useFxRender, useFxScene } from '../fx-preview'
 import { grainTile } from '../grain'
 import { clock } from '../format'
 import { collapse } from '../motion'
@@ -336,6 +337,12 @@ function Preview({
   const well = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
   const cut = currentCut(doc)
+  // Scene effects, drawn as the export draws them (fx-preview): the picture's inside the decks, the rest over the look.
+  const decksBox = useRef<HTMLDivElement>(null)
+  const fxPicture = useRef<HTMLCanvasElement>(null)
+  const fxOverlay = useRef<HTMLCanvasElement>(null)
+  const fx = useFxScene(doc, resolved)
+  useFxRender({ ...fx, time, playing, box, decks: decksBox, picture: fxPicture, overlay: fxOverlay })
   const source = doc.sources[0]
   const ratio = ASPECT[cut.aspect] ?? (source.width > 0 && source.height > 0 ? source.width / source.height : 16 / 9)
 
@@ -393,7 +400,7 @@ function Preview({
           </svg>
         )}
         {mediaUrl ? (
-          <div className="cl-decks" style={grade ? { filter: 'url(#cl-look)' } : undefined}>
+          <div className="cl-decks" ref={decksBox} style={grade ? { filter: 'url(#cl-look)' } : undefined}>
             <div className="cl-decks-main" style={mainBox}>
               {views.map((view, d) => (
                 <Deck
@@ -429,11 +436,13 @@ function Preview({
                 }
               />
             )}
+            {fx.scene && <canvas ref={fxPicture} className="cl-fx-picture" aria-hidden="true" />}
           </div>
         ) : (
           <span className="cl-frame-empty" />
         )}
         {look && <LookOver look={look} playing={playing} />}
+        {fx.scene && <canvas ref={fxOverlay} className="cl-fx-overlay" aria-hidden="true" />}
         {showBig && big && (
           <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
             {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}
@@ -509,7 +518,7 @@ function CameraInset({
   }, [at, rate, playing])
   return (
     <div className="cl-inset" style={box}>
-      <video ref={ref} src={url} muted playsInline preload="auto" />
+      <video ref={ref} src={url} crossOrigin={MEDIA_CORS} muted playsInline preload="auto" />
     </div>
   )
 }
@@ -757,6 +766,7 @@ function Deck({
         {fit === 'blur' && <Backdrop of={videoRef} aspect={frameAspect} bw={!!t?.bw} transform={transform} />}
         <video
           ref={videoRef}
+          crossOrigin={MEDIA_CORS}
           playsInline
           preload="auto"
           style={{
@@ -864,6 +874,7 @@ function Cutaway({
         <img
           ref={image}
           src={src}
+          crossOrigin={src.startsWith('data:') ? undefined : MEDIA_CORS}
           alt=""
           style={style}
           onLoad={(e) => setShape(e.currentTarget.naturalWidth / Math.max(1, e.currentTarget.naturalHeight))}
@@ -872,6 +883,7 @@ function Cutaway({
         <video
           ref={ref}
           src={src}
+          crossOrigin={MEDIA_CORS}
           muted
           playsInline
           preload="auto"

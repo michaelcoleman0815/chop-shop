@@ -3,7 +3,7 @@ import { createHash } from 'crypto'
 import { existsSync, promises as fs } from 'fs'
 import { join } from 'path'
 import { pictureSpan, type Cut, type Resolved, type Source } from '../shared/edit'
-import { effectsOf, FX_INFO, followObjects, type CutoutKind, type CutoutSample, type CutoutTrack, type FxItem } from '../shared/fx'
+import { cutoutFor, effectsOf, followObjects, type CutoutKind, type CutoutSample, type CutoutTrack } from '../shared/fx'
 
 /**
  * Cut-outs of a recording, for the effects that use them: the person, or
@@ -205,21 +205,6 @@ export interface CutoutNeed {
   kind: CutoutKind
   from: number
   to: number
-}
-
-/** The cut-out an effect works from, if any: a scan brings in objects or the person; a hit lands on the person unless it is put somewhere; a blur goes behind them. */
-export function cutoutFor(item: FxItem): CutoutKind | null {
-  const on = item.on === 'auto' ? FX_INFO[item.kind].target : item.on
-  switch (item.kind) {
-    case 'scan':
-      return on === 'objects' ? 'objects' : on === 'subject' ? 'person' : null
-    case 'impact':
-      return item.at.length === 2 ? null : 'person'
-    case 'bgblur':
-      return on === 'frame' ? null : 'person'
-    default:
-      return null
-  }
 }
 
 /**

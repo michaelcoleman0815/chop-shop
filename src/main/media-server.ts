@@ -148,6 +148,8 @@ async function answer(req: IncomingMessage, res: ServerResponse, token: string):
     'Accept-Ranges': 'bytes',
     'Content-Length': String(size === 0 ? 0 : end - start + 1),
     'Cache-Control': 'no-cache',
+    // The editor's preview reads the picture for its scene effects; the token in the path is what guards the files.
+    'Access-Control-Allow-Origin': '*',
     ...(range ? { 'Content-Range': `bytes ${start}-${end}/${size}` } : {})
   })
   if (req.method === 'HEAD' || size === 0) {
