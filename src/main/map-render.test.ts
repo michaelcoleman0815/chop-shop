@@ -165,7 +165,9 @@ describe.skipIf(!FFMPEG)('exporting map shots', () => {
       // The name is up, in big type on the left.
       const title = countBright(frame, ow, oh, { x: 40, y: oh * 0.42, w: ow * 0.32, h: oh * 0.16 }, style === 'vintage')
       expect(title).toBeGreaterThan(400)
-    }, 120_000)
+    // An export through the real pipeline: under a busy machine the vintage one takes over a minute (its gradients
+    // encode slowly as an overlay), so this allows five.
+    }, 300_000)
   }
 })
 
