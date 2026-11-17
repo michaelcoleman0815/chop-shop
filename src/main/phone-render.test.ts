@@ -22,7 +22,15 @@ import { renderCut, type RenderSource } from './cut-render'
 import { platform, setPlatform, type Platform } from './platform'
 import { missingOnPhone, filterNames } from './render/lgpl'
 import { videoCodec, type Encoder } from './render/encoder'
-import { ffmpegRun, findFfmpeg, findFfprobe, frameColour, gradientWindow, makeGradientStill } from './test-media'
+import {
+  AS_SHOT,
+  ffmpegRun,
+  findFfmpeg,
+  findFfprobe,
+  frameColour,
+  gradientWindow,
+  makeGradientStill
+} from './test-media'
 
 const FFMPEG = findFfmpeg()
 
@@ -71,6 +79,8 @@ describe.skipIf(!FFMPEG)('rendering as a phone does', () => {
     ffmpegRun(ffmpeg, [
       ...['-loop', '1', '-framerate', '30', '-t', '8', '-i', still],
       ...['-f', 'lavfi', '-i', 'sine=frequency=330:sample_rate=48000:duration=8'],
+      // Encoded as an HD camera encodes, so the edges' colours read back as the gradient's.
+      ...['-vf', AS_SHOT],
       ...['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', take]
     ])
     const source = { id: 's1', path: take, durationSec: 8, width: 1920, height: 1080, fps: 30 }
