@@ -18,7 +18,7 @@
  *   LAB_VIDEOS    the output folder for exports
  */
 import { execFileSync, spawnSync } from 'child_process'
-import { existsSync, mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -36,6 +36,11 @@ if (missing.length) {
   process.exit(2)
 }
 
+// The app's own dependencies stay outside the bundle, as electron-vite keeps them
+// (externalizeDepsPlugin): some carry native binaries a bundle cannot hold.
+const { dependencies = {} } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+const externals = Object.keys(dependencies).map((name) => `--external:${name}`)
+
 const dir = mkdtempSync(join(tmpdir(), 'cutalong-lab-'))
 const bundle = join(dir, `${entry}.cjs`)
 try {
@@ -47,10 +52,7 @@ try {
       '--platform=node',
       '--target=node20',
       `--alias:electron=${join(root, 'tests/lab/electron-stub.cjs')}`,
-      '--external:ffmpeg-static',
-      '--external:@ffprobe-installer/ffprobe',
-      '--external:@napi-rs/canvas',
-      '--external:electron-updater',
+      ...externals,
       `--outfile=${bundle}`,
       '--log-level=warning'
     ],
