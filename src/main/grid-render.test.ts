@@ -54,13 +54,15 @@ describe('the grid in the filter graph', () => {
     expect(graph).toContain('scale=420:236:force_original_aspect_ratio=increase,crop=420:236')
     expect(graph).toContain('overlay=x=48:y=30:eof_action=repeat')
     expect(graph).toContain('fade=t=in:st=0:d=0.240000:alpha=1')
+    // The ground and the labels, drawn in RGB, go into YUV as BT.709 before they are laid on, as graphics do.
+    expect(graph.match(/format=gbrap,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p/g)?.length).toBe(2)
     const filters = new Set(
       graph
         .split(/[;,]/)
         .map((f) => f.replace(/\[[^\]]*\]/g, '').split('=')[0].trim())
         .filter(Boolean)
     )
-    const lgpl = ['color', 'fps', 'scale', 'crop', 'setsar', 'overlay', 'format', 'fade', 'tpad', 'trim', 'setpts', 'settb', 'aresample', 'aformat', 'apad', 'atrim', 'asetpts', 'anull', 'null', 'concat']
+    const lgpl = ['color', 'fps', 'scale', 'crop', 'setsar', 'setparams', 'overlay', 'format', 'fade', 'tpad', 'trim', 'setpts', 'settb', 'aresample', 'aformat', 'apad', 'atrim', 'asetpts', 'anull', 'null', 'concat']
     for (const f of filters) expect(lgpl, f).toContain(f)
   })
 })
@@ -179,8 +181,9 @@ describe.skipIf(!FFMPEG)('exporting a grid', () => {
     expect(near(frameColour(ffmpeg, out.path, 0.5, at(a.x + r * 1.5, a.y + a.h * 0.9)), [255, 0, 0])).toBe(true)
     // The label: a white pill in the top-left corner once it has come in, the picture before.
     // In the pill's padding before its words, clear of the edge, where colour is shared with the picture.
+    // Its colour, a few pixels from the red picture, shares 4:2:0 chroma with it, so what counts is that it is light.
     const label = at(layout.labels[0].x + layout.labels[0].size * 0.48, layout.labels[0].y, 2)
-    expect(near(frameColour(ffmpeg, out.path, 1.0, label), [255, 255, 255], 30)).toBe(true)
+    expect(Math.min(...frameColour(ffmpeg, out.path, 1.0, label))).toBeGreaterThan(200)
     expect(near(frameColour(ffmpeg, out.path, 0, label), [255, 0, 0], 60)).toBe(true)
     // The sound is the grid's own recording's: its tone, and none of the others'.
     expect(toneLevel(ffmpeg, out.path, 0.5, 2, 440)).toBeGreaterThan(-30)

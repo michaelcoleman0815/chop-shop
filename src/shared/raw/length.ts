@@ -137,34 +137,68 @@ function clausesOf(t: string): { at: number; end: number }[] {
   return out.filter((c) => t.slice(c.at, c.end).trim())
 }
 
+/** Words after a length that are still the length phrase: "60 seconds long", "10 minutes tops". */
+const AFTER_LENGTH = /^(?:\s+(?:long|max|tops|or less|or under|total|in total|overall|at most))*/
+
+/** Words around a length phrase that ask nothing more: "can you", "please", "for me". */
+const IDLE = new Set(
+  "a an the and but so then now just please thanks thank you can could would will i i'd we me us it this to of for in on at if ok okay hey hi also too maybe possible right away really".split(
+    ' '
+  )
+)
+
+/** Whether words ask for something: any word but the ones that only carry a request. */
+const asksSomething = (words: string): boolean =>
+  words
+    .toLowerCase()
+    .split(/[^a-z0-9']+/)
+    .some((w) => w !== '' && !IDLE.has(w))
+
 /**
  * The length a clause asks the whole video to be: said of the video ("make
  * the video 10 minutes", "the edit should be under a minute"), of "it" when
  * `itIsTheVideo`, as "a 3 minute version", or a length and nothing else.
+ * `phrase` is where the clause says it, first word to last, so what the
+ * clause asks besides ("with captions") can go on to the planner.
  */
-function lengthOf(clause: string, itIsTheVideo: boolean, command: boolean): Pick<LengthAsk, 'targetSec' | 'range' | 'under'> | null {
+function lengthOf(
+  clause: string,
+  itIsTheVideo: boolean,
+  command: boolean
+): (Pick<LengthAsk, 'targetSec' | 'range' | 'under'> & { phrase: [number, number] }) | null {
   const bare = command || BARE.test(clause)
-  const said = (at: number, end: number): boolean => {
+  /** Where the phrase that says the length starts and ends, or null when it is not said of the whole video. */
+  const said = (at: number, end: number): [number, number] | null => {
     const before = clause.slice(0, at)
     const after = clause.slice(end)
-    if (RELATIVE.test(after)) return false
-    if (bare) return true
-    if (SAID_OF_WHOLE.test(before) || (VERSION_BEFORE.test(before) && VERSION_AFTER.test(after))) return true
-    return itIsTheVideo && SAID_OF_IT.test(before)
+    if (RELATIVE.test(after)) return null
+    if (bare) return [0, clause.length]
+    const tail = end + (AFTER_LENGTH.exec(after)?.[0].length ?? 0)
+    const whole = SAID_OF_WHOLE.exec(before)
+    if (whole) return [whole.index, tail]
+    const version = VERSION_BEFORE.exec(before)
+    const named = VERSION_AFTER.exec(after)
+    if (version && named) return [version.index, end + named[0].length]
+    const it = itIsTheVideo ? SAID_OF_IT.exec(before) : null
+    return it ? [it.index, tail] : null
   }
   const range = RANGE.exec(clause)
-  if (range && said(range.index, range.index + range[0].length)) {
+  const ranged = range ? said(range.index, range.index + range[0].length) : null
+  if (range && ranged) {
     const k = /^m/.test(range[4]) ? 60 : 1
     const first = range[2] ? (/^m/.test(range[2]) ? 60 : 1) : k
     const a = Number(range[1]) * first
     const b = Number(range[3]) * k
-    if (a > 0 && b > 0) return { range: a <= b ? [a, b] : [b, a] }
+    if (a > 0 && b > 0) return { range: a <= b ? [a, b] : [b, a], phrase: ranged }
   }
-  const asked = lengthsIn(clause).find((l) => said(l.at, l.end))
-  if (!asked) return null
-  // "Under a minute": anything up to it will do, and a cut that runs longer is taken to just under it.
-  if (UNDER.test(clause)) return { range: [Math.max(1, asked.sec * 0.9), asked.sec], under: true }
-  return { targetSec: asked.sec }
+  for (const l of lengthsIn(clause)) {
+    const phrase = said(l.at, l.end)
+    if (!phrase) continue
+    // "Under a minute": anything up to it will do, and a cut that runs longer is taken to just under it.
+    if (UNDER.test(clause)) return { range: [Math.max(1, l.sec * 0.9), l.sec], under: true, phrase }
+    return { targetSec: l.sec, phrase }
+  }
+  return null
 }
 
 /**
@@ -201,8 +235,22 @@ export function parseLengthAsk(text: string, opts: { command?: boolean } = {}): 
       // "It" is the video unless something else was asked before it: "add a fade and make it 2 seconds".
       const length = lengthOf(clause, !otherBefore, command)
       if (length) {
-        Object.assign(ask, length)
+        const { phrase, ...asked } = length
+        Object.assign(ask, asked)
         mine = true
+        // What the clause asks besides its length ("with captions", "while keeping the jokes") goes on,
+        // unless it is the intro, every line kept or a topic, which this ask has heard already.
+        const offset = c.at + (c.end - c.at - t.slice(c.at, c.end).trimStart().length)
+        for (const [from, to] of [
+          [0, phrase[0]],
+          [phrase[1], clause.length]
+        ]) {
+          const left = clause.slice(from, to).replace(/^[\s,;]+|[\s,;]+$/g, '')
+          if (!asksSomething(left) || INTRO.test(left) || KEEP_ALL.test(left) || [...left.matchAll(TOPIC_CUT)].length > 0)
+            continue
+          const at = offset + from + clause.slice(from, to).indexOf(left)
+          rest.push(own.slice(at, at + left.length))
+        }
       }
     }
     if (INTRO.test(clause)) mine = ask.intro = true

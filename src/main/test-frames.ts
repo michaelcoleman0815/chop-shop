@@ -1,6 +1,7 @@
 import { createCanvas } from '@napi-rs/canvas'
 import { execFileSync } from 'child_process'
 import { writeFileSync } from 'fs'
+import { AS_PLAYED } from './test-media'
 
 /**
  * Comparing frames in tests: frame n of a video read back as RGB, a drawn
@@ -11,11 +12,11 @@ import { writeFileSync } from 'fs'
 
 export type Rgb = [number, number, number]
 
-/** Frame n of a video's first stream, counted from 0, as packed RGB bytes. */
+/** Frame n of a video's first stream, counted from 0, as packed RGB bytes, read as a player shows HD (BT.709). */
 export function frameRgb(ffmpeg: string, path: string, n: number, width: number, height: number): Uint8Array {
   const raw = execFileSync(
     ffmpeg,
-    ['-hide_banner', '-loglevel', 'error', '-i', path, '-vf', `select=eq(n\\,${n})`, '-frames:v', '1'].concat([
+    ['-hide_banner', '-loglevel', 'error', '-i', path, '-vf', `select=eq(n\\,${n}),${AS_PLAYED},format=rgb24`, '-frames:v', '1'].concat([
       '-f',
       'rawvideo',
       '-pix_fmt',
