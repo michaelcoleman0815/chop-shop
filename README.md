@@ -246,7 +246,7 @@ rules for building interface live in [.claude/skills/cutalong-ui/SKILL.md](.clau
 
 - **Colour.** A warm grey ground (`#F5F5F3`), white cards and ink (`#15161A`). Coral (`#FF5A36`) marks the cut and
   nothing else: the playhead, the mark, the assistant's avatar. Never text, never a button fill.
-- **Type.** Figtree for everything people read; JetBrains Mono for commands, timecode and file names.
+- **Type.** Figtree for the interface, Source Serif 4 for what people read (replies, the script, notes), JetBrains Mono for commands, timecode and file names. All three ship inside the app as Latin subsets under the SIL Open Font License: Figtree and JetBrains Mono from their `@fontsource` packages, Source Serif 4 in `src/renderer/src/cutalong/fonts/` with its licence (`SourceSerif4-OFL.txt`).
 - **Voice.** First person, plain words, exact numbers. No exclamation marks, no emoji, no praise, never "clone".
 
 The app icon is the Cutalong mark in white on a coral tile, drawn from the same geometry as the mark in the app by

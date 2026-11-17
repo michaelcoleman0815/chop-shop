@@ -29,6 +29,7 @@ import {
   TO_YUVA
 } from './cut-render'
 import { greyShare, probeMedia, sampleColour } from './inspiration/measure'
+import { makeColourClip } from './test-media'
 
 function findFfmpeg(): string | null {
   const candidates = [process.env.FFMPEG_PATH, 'ffmpeg']
@@ -313,8 +314,68 @@ describe.skipIf(!FFMPEG)('rendering a cut', () => {
     await check(out)
   })
 
+  it('puts each pass on the frames the cut’s clock gives it, one that starts a hair from half a frame too', async () => {
+    // Six colours, a beat of each, every cut within a thousandth of a frame of
+    // half a frame, where a pass's millisecond timestamps could round either
+    // way. In passes of one, every frame shows the beat the clock puts there.
+    const hues: [string, number[]][] = [
+      ['red', [255, 0, 0]],
+      ['blue', [0, 0, 255]],
+      ['lime', [0, 255, 0]],
+      ['yellow', [255, 255, 0]],
+      ['magenta', [255, 0, 255]],
+      ['cyan', [0, 255, 255]]
+    ]
+    const path = makeColourClip(
+      ffmpeg,
+      join(dir, 'hues.mp4'),
+      hues.map(([color], k) => ({ color, hz: 300 + 150 * k, sec: 1.5 }))
+    )
+    const source = { id: 's1', path, durationSec: 9, width: 320, height: 180, fps: 30 }
+    const lengths = [1.01665, 1.03336, 0.93332, 1.03335, 1.00002, 1.1833]
+    const hued = commit(
+      createDoc({ id: 'h', title: 'Hues', source, words: [] }),
+      [
+        { op: 'remove', beats: ['b1'] },
+        ...lengths.map((l, k) => ({
+          op: 'insert' as const,
+          to: k,
+          beat: { source: 's1', inSec: 1.5 * k + 0.2, outSec: 1.5 * k + 0.2 + l }
+        })),
+        { op: 'aspect', aspect: 'original' },
+        { op: 'loudness', lufs: null }
+      ],
+      'Hues.'
+    ).doc
+    const cut = currentCut(hued)
+    const resolved = resolveCut(cut, hued.words, hued.sources)
+    const halves = resolved.pieces.slice(1).map((p) => Math.abs(((p.outStart * 30) % 1) - 0.5))
+    expect(Math.max(...halves)).toBeLessThan(0.002)
+    const out = await renderCut(cut, resolved, [{ ...source, hasAudio: true }], {
+      ffmpeg,
+      outputPath: join(dir, 'hues-passes.mp4'),
+      workDir: join(dir, 'work-hues'),
+      quality: 'preview',
+      maxInputs: 1
+    })
+    // Every frame as one pixel, in the order it plays.
+    const frames = ['-vf', 'scale=1:1:flags=area,format=rgb24', '-fps_mode', 'passthrough', '-f', 'rawvideo', '-']
+    const px = execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', out, ...frames], {
+      maxBuffer: 1 << 20
+    })
+    const nearest = (i: number): number => {
+      const d = hues.map(([, c]) => Math.abs(c[0] - px[i]) + Math.abs(c[1] - px[i + 1]) + Math.abs(c[2] - px[i + 2]))
+      return d.indexOf(Math.min(...d))
+    }
+    const shown = Array.from({ length: px.length / 3 }, (_, i) => nearest(i * 3))
+    const meant = Array.from({ length: Math.round(resolved.durationSec * 30) }, (_, i) =>
+      resolved.pieces.findIndex((p) => i >= Math.round(p.outStart * 30) && i < Math.round(p.outEnd * 30))
+    )
+    expect(shown).toEqual(meant)
+  })
+
   it('renders shots of many different files, as a vlog has, in passes of a few', async () => {
-    // Nine clips of a day, a second of each: more files than one pass holds.
+    // Nine clips of a day, a second of each.
     const clips = Array.from({ length: 9 }, (_, k) => {
       const path = join(dir, `clip-${k}.mp4`)
       execFileSync(ffmpeg, [
@@ -364,7 +425,8 @@ describe.skipIf(!FFMPEG)('rendering a cut', () => {
     )
     const info = await probeMedia(ffmpeg, out)
     expect(Math.abs(info.durationSec - 9)).toBeLessThan(0.15)
-    expect(readdirSync(workDir).filter((f) => f.startsWith('chunk-'))).toHaveLength(2)
+    // Two clips a pass, and the last pass reads the five back as one.
+    expect(readdirSync(workDir).filter((f) => f.startsWith('chunk-'))).toHaveLength(5)
   })
 
   it('renders an image as a card and as a full-frame cutaway', async () => {
@@ -438,8 +500,8 @@ describe.skipIf(!FFMPEG)('rendering a cut', () => {
     const mute = [{ ...sources[0], hasAudio: false }]
     const cut = currentCut(doc)
     expect(cut.loudness).not.toBeNull()
-    for (const maxInputs of [undefined, 1]) {
-      const name = maxInputs ? 'chunked' : 'whole'
+    for (const maxInputs of [Infinity, 1]) {
+      const name = maxInputs === 1 ? 'chunked' : 'whole'
       const out = await renderCut(cut, resolveCut(cut, doc.words, doc.sources), mute, {
         ffmpeg,
         outputPath: join(dir, `mute-${name}.mp4`),

@@ -225,7 +225,7 @@ export function BeatStrip({
             style={{ flexGrow: Math.max(0.05, b.end - b.start) }}
             title={`${b.label} · ${clock(b.start)}${b.comesIn ? ` · comes in with ${b.comesIn}` : ''}${b.splitEdit ? ` · ${b.splitEdit}` : ''}${b.plays ? ` · ${b.plays}` : ''}`}
           >
-            {b === now ? b.label : ''}
+            {b === now && <span className="cl-beat-label">{b.label}</span>}
           </span>
         ))}
         {bar && <span className="cl-pick" style={{ left: bar.left, width: bar.width }} aria-hidden="true" />}

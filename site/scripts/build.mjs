@@ -5,8 +5,9 @@
 //   node scripts/build.mjs --out <dir>     somewhere other than dist/
 //
 // Templates in src/ use a few tags: {{> partial}}, {{name}} (escaped), {{{name}}} (raw),
-// {{asset path}} (a hashed file under assets/), {{page name}} (a link to another page) and
-// {{url name}} (that page's absolute address on the primary domain).
+// {{asset path}} (a hashed file under assets/), {{page name}} (a link to another page),
+// {{url name}} (that page's absolute address on the primary domain), and two kinds of section:
+// {{#name}}...{{/name}} is kept when the config value is true, {{^name}}...{{/name}} when it is false.
 
 import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,11 +23,15 @@ const OUT = resolve(ROOT, outArg >= 0 ? args[outArg + 1] : 'dist')
 
 const config = (await import(pathToFileURL(join(ROOT, 'site.config.mjs')).href)).default
 check(/^[a-z0-9.-]+\.[a-z]{2,}$/.test(config.domain), `domain "${config.domain}" should look like cutalong.io`)
+check(typeof config.downloadReady === 'boolean', 'downloadReady should be true or false')
 check(/^https:\/\//.test(config.downloadUrl), 'downloadUrl should be an https:// address')
-check(!config.signupAction || /^https:\/\//.test(config.signupAction), 'signupAction should be empty or https://')
+check(!config.signupAction || /^(https:\/\/|\/[a-z])/.test(config.signupAction), 'signupAction should be empty, a path like /api/signup, or https://')
 check(/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(config.contactEmail), 'contactEmail should be an address')
+check(['echo', 'snip', 'quill', 'scout', 'tint', 'reel'].every((id) => config.crew?.[id]?.name && config.crew[id].line), 'crew needs echo, snip, quill, scout, tint and reel, each with a name and a line')
 
 const ORIGIN = `https://${config.domain}`
+// A path such as /api/signup is a Pages Function, which a preview copy does not have: there the form stays unwired.
+const signupAction = preview && config.signupAction.startsWith('/') ? '' : config.signupAction
 const PAGES = [
   { name: 'index', file: 'index.html', path: '/', sitemap: true },
   { name: 'privacy', file: 'privacy.html', path: '/privacy', sitemap: true },
@@ -90,8 +95,11 @@ for (const page of PAGES) {
     css: assetUrl(cssName, rootAbsolute),
     js: assetUrl(jsName, rootAbsolute),
     robots: preview || page.name === '404' ? 'noindex' : 'index, follow',
-    signupDisabled: config.signupAction ? '' : 'disabled',
-    signupState: config.signupAction ? 'ready' : 'unwired'
+    signupAction,
+    signupDisabled: signupAction ? '' : 'disabled',
+    signupState: signupAction ? 'ready' : 'unwired',
+    // The crew's names and lines as {{echoName}}, {{echoLine}} and so on, from the one place they live.
+    ...Object.fromEntries(Object.entries(config.crew).flatMap(([id, c]) => [[`${id}Name`, c.name], [`${id}Line`, c.line]]))
   }
   let html = render(template.replace(/^<!--page[\s\S]*?-->\s*/, ''), ctx, rootAbsolute)
   check(!/\{\{/.test(html), `${page.file} has a tag the build did not fill`)
@@ -122,8 +130,8 @@ writeFileSync(
       description: 'A video editor you talk to, for YouTube creators.',
       start_url: '/',
       display: 'browser',
-      background_color: '#F5F5F3',
-      theme_color: '#FFFFFF',
+      background_color: '#F7F4F0',
+      theme_color: '#F7F4F0',
       icons: [
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
         { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
@@ -136,7 +144,7 @@ writeFileSync(
 
 if (!preview) {
   const scriptHashes = [...inlineScripts].map((s) => `'sha256-${createHash('sha256').update(s).digest('base64')}'`)
-  const formAction = ["'self'", config.signupAction ? new URL(config.signupAction).origin : ''].filter(Boolean).join(' ')
+  const formAction = ["'self'", /^https:/.test(config.signupAction) ? new URL(config.signupAction).origin : ''].filter(Boolean).join(' ')
   const csp = [
     "default-src 'self'",
     `script-src 'self' ${scriptHashes.join(' ')}`.trim(),
@@ -178,7 +186,8 @@ if (!preview) {
     [
       '# Written by scripts/build.mjs from site.config.mjs. Path redirects only: cutalong.net and cutalong.org',
       '# reach cutalong.io through Cloudflare redirect rules on their own zones (README.md).',
-      `/download ${config.downloadUrl} 302`,
+      config.downloadReady ? '# /download goes to the latest release.' : '# downloadReady is false, so /download goes to the email field until there is a release.',
+      `/download ${config.downloadReady ? config.downloadUrl : '/#signup'} 302`,
       ''
     ].join('\n')
   )
@@ -191,6 +200,10 @@ console.log(`built ${relative(ROOT, OUT) || '.'}${preview ? ' (preview)' : ''}: 
 function render(template, ctx, rootAbsolute, depth = 0) {
   check(depth < 5, 'partials nest too deep')
   return template
+    .replace(/\{\{([#^])(\w+)\}\}([\s\S]*?)\{\{\/\2\}\}/g, (_, kind, key, body) => {
+      check(typeof ctx[key] === 'boolean', `the section {{${kind}${key}}} needs a true or false value`)
+      return ctx[key] === (kind === '#') ? body : ''
+    })
     .replace(/\{\{>\s*([\w-]+)\s*\}\}/g, (_, name) => {
       check(name in partials, `no partial named ${name}`)
       return render(partials[name], ctx, rootAbsolute, depth + 1)

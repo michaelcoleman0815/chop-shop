@@ -199,7 +199,7 @@ describe.skipIf(!FFMPEG)('rendering camera moves', () => {
       { op: 'camera', beats: ['b2'], move },
       { op: 'aspect', aspect: 'wide' }
     ])
-    const { out, resolved } = await render(cut, 'punch')
+    const { out, resolved } = await render(cut, 'punch', Infinity)
     const word = resolved.words.find((w) => w.id === 'w6')!
     const before = gradientWindow(ffmpeg, out, word.outStart - 0.1)
     const after = gradientWindow(ffmpeg, out, word.outStart + 0.4)

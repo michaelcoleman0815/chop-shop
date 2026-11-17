@@ -78,6 +78,10 @@ describe.skipIf(!FFMPEG)('sound effects', () => {
     const w = made.whoosh
     expect(meanLevel(ffmpeg, w, 0.3, 0.1)).toBeGreaterThan(meanLevel(ffmpeg, w, 0, 0.06) + 10)
     expect(meanLevel(ffmpeg, w, 0.3, 0.1)).toBeGreaterThan(meanLevel(ffmpeg, w, 0.63, 0.06) + 10)
+    // Its filters sweep up to its middle and back, so it is far brighter there than near its start.
+    const bright = (at: number, sec: number): number =>
+      meanLevel(ffmpeg, w, at, sec, 'highpass=f=3000,highpass=f=3000') - meanLevel(ffmpeg, w, at, sec)
+    expect(bright(0.3, 0.1)).toBeGreaterThan(bright(0.06, 0.06) + 8)
     // A riser ends far louder than it starts, and higher.
     const r = made.riser
     expect(meanLevel(ffmpeg, r, 1.65, 0.3)).toBeGreaterThan(meanLevel(ffmpeg, r, 0.05, 0.3) + 15)

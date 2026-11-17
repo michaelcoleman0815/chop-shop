@@ -93,7 +93,8 @@ describe.skipIf(!FFMPEG)('graphics in an export, frame by frame', () => {
         clip
       ])
       const source = { id: 's1', path: clip, durationSec: SEC, width: W, height: H, fps }
-      // Sentences with pauses between, so the cut has pieces enough to be exported in passes too.
+      // Sentences with pauses between, so the cut is in several pieces: exported in passes, as such a cut is,
+      // and in one pass when told to.
       const said = Array.from({ length: 7 }, (_, i) => ({
         text: `w${i}.`,
         startSec: 0.1 + i * 1.1,
@@ -150,9 +151,9 @@ describe.skipIf(!FFMPEG)('graphics in an export, frame by frame', () => {
       const canvas = createCanvas(W, H)
       const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D
       for (const [name, overlays, maxInputs] of [
-        ['in one pass', made, undefined],
-        ['in passes', made, 2],
-        ['from files that count in frames', counted, undefined]
+        ['in one pass', made, Infinity],
+        ['in passes', made, undefined],
+        ['from files that count in frames', counted, Infinity]
       ] as const) {
         const out = await renderCut(cut, resolved, [{ ...source, hasAudio: true }], {
           ffmpeg,
@@ -160,7 +161,7 @@ describe.skipIf(!FFMPEG)('graphics in an export, frame by frame', () => {
           workDir: join(work, name.replace(/ /g, '-')),
           quality: 'final',
           overlays,
-          ...(maxInputs ? { maxInputs } : {})
+          ...(maxInputs === undefined ? {} : { maxInputs })
         })
         // Every frame of the export, decoded in order, in the squares' band.
         const raw = execFileSync(
