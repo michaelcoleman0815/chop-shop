@@ -1,4 +1,5 @@
 import { COMPUTER, type Device } from './device'
+import { fileUrl } from './format'
 import { createMockApi } from './mock'
 
 type ChopApi = Window['chop']
@@ -36,6 +37,7 @@ export type CutalongApi = Pick<
   | 'onClipsProgress'
   | 'clipPoster'
   | 'planEdit'
+  | 'triage'
   | 'studyInspiration'
   | 'onInspirationProgress'
   | 'listPresets'
@@ -134,6 +136,6 @@ export function mediaUrlFor(path: string): string {
   if (hosted) return hosted.mediaUrlFor(path)
   if (isMock || !bridge) return '/sample.mp4'
   // Without the server (it could not start), the packaged page plays files by path.
-  if (!bridge.mediaBase) return `file://${path.split('/').map(encodeURIComponent).join('/')}`
+  if (!bridge.mediaBase) return fileUrl(path)
   return `${bridge.mediaBase}/${encodeURIComponent(path)}`
 }

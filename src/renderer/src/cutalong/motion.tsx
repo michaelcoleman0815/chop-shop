@@ -229,7 +229,9 @@ export function moveRail(update: () => void): void {
 function sceneOf(app: Cutalong): string {
   const chat = app.messages[0]?.id ?? app.doc?.id ?? ''
   const version = app.screen === 'editor' && app.doc ? currentVersion(app.doc).n : 0
-  return `${app.screen}|${chat}|${version}`
+  // Start's setup steps and its question are two screens: the key working moves from one to the other.
+  const screen = app.screen === 'start' && app.keySettled && !app.gateOpen ? 'setup' : app.screen
+  return `${screen}|${chat}|${version}`
 }
 
 function moveBetween(from: string, to: string): Move | null {

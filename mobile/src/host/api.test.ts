@@ -6,6 +6,7 @@ import { platform, setPlatform, type Platform } from '../../../src/main/platform
 import { findFfmpeg, findFfprobe } from '../../../src/main/test-media'
 import { missingOnPhone } from '../../../src/main/render/lgpl'
 import { applyOps, currentCut, type EditDoc, type Op } from '../../../src/shared/edit'
+import { keyMessage } from '../../../src/shared/setup'
 import { createPhoneApi } from './api'
 import { commandsOnTheMac, ON_THE_MAC } from './limits'
 import { phonePlatform } from './platform'
@@ -189,11 +190,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
   it('answers Claude with the key only, and says how to add one when there is none', async () => {
     sent.length = 0
     const none = await api.planEdit({ doc, request: 'make the hook punchier', notes: [] })
-    expect(none).toEqual({
-      ok: false,
-      message: 'Add your Anthropic API key in Settings and I can work on this.',
-      needsKey: true
-    })
+    expect(none).toEqual({ ok: false, message: keyMessage('none'), needsKey: true, keyState: 'none' })
     expect(sent).toEqual([])
     await api.setApiKey('sk-ant-api03-phone-test-0123456789')
     expect(await api.hasApiKey()).toBe(true)
@@ -206,7 +203,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
         }
       )
     const refused = await api.planEdit({ doc, request: 'make the hook punchier', notes: [] })
-    expect(refused).toMatchObject({ ok: false, needsKey: true })
+    expect(refused).toMatchObject({ ok: false, needsKey: true, keyState: 'refused' })
     expect(sent.length).toBeGreaterThan(0)
     for (const s of sent) {
       expect(new URL(s.url).host).toBe('api.anthropic.com')

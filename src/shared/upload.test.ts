@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_DESCRIPTION } from './brand'
+import { thisComputer } from './platform'
 import {
   checkWriting,
   fillDescription,
@@ -191,15 +192,15 @@ describe('in the chat', () => {
 
   it('says when they were made without Claude, and why', () => {
     expect(uploadMessage({ ...kit, by: 'local', why: 'no-key' }).aside).toBe(
-      'I made these on this Mac without Claude. With your Anthropic key in Settings, Claude writes them.'
+      `I made these on ${thisComputer} without Claude. With your Anthropic key in Settings, Claude writes them.`
     )
     expect(uploadMessage({ ...kit, by: 'local', why: 'off' }).aside).toBe(
-      'I made these on this Mac without Claude, as Settings asks.'
+      `I made these on ${thisComputer} without Claude, as Settings asks.`
     )
     const short = uploadMessage({ ...kit, by: 'local', why: 'failed', short: true, chapters: 0 })
     expect(short.text.startsWith('Ready to upload. I wrote three titles')).toBe(true)
     expect(short.aside).toBe(
-      "Claude couldn't write them this time, so I made them from your words on this Mac. It's a Short, so the description has no chapters."
+      `Claude couldn't write them this time, so I made them from your words on ${thisComputer}. It's a Short, so the description has no chapters.`
     )
     for (const m of [uploadMessage(kit), short]) expect(`${m.text} ${m.aside}`).not.toMatch(/!/)
   })
@@ -237,10 +238,10 @@ describe('in the chat', () => {
     expect(mixed.text).toBe(
       'The 3 clips are ready to upload: a description, titles and tags beside each, and captions beside the 2 with words.'
     )
-    expect(mixed.aside).toBe("Claude couldn't write one of them, so I made that one from your words on this Mac.")
+    expect(mixed.aside).toBe(`Claude couldn't write one of them, so I made that one from your words on ${thisComputer}.`)
     const local = uploadSetMessage([clip('A', { by: 'local', why: 'no-key' }), clip('B', { by: 'local', why: 'no-key' })])
     expect(local.aside).toBe(
-      'I made these on this Mac without Claude. With your Anthropic key in Settings, Claude writes them.'
+      `I made these on ${thisComputer} without Claude. With your Anthropic key in Settings, Claude writes them.`
     )
     for (const r of [m, mixed, local]) expect(`${r.text} ${r.aside}`).not.toMatch(/!/)
   })

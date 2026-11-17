@@ -106,11 +106,21 @@ export interface PlatformSecrets {
   get(name: string): Promise<string | null>
   set(name: string, value: string): Promise<void>
   remove(name: string): Promise<void>
+  /**
+   * Whether a key is saved at all, even one that cannot be opened now: the
+   * key gate says so rather than asking for a new one. Without it, a key
+   * that cannot be read counts as none.
+   */
+  has?(name: string): Promise<boolean>
 }
 
 export interface Platform {
   /** A computer runs the tools as programs; a phone runs them inside the app. */
   kind: 'computer' | 'phone'
+  /** The system, as Node names it on a computer (darwin, win32, linux), or the phone's (ios, android). */
+  os: string
+  /** How many processors the work can use. */
+  processors: number
   /** Where a tool is: its program's path on a computer, its name on a phone. */
   tool(name: ToolName): string
   /** Runs a tool with arguments as its command line takes them, without the program's name. */

@@ -75,6 +75,7 @@ import { factsOf, momentSpan } from '../shared/clipping/testing'
 import { EMPTY_BRAND } from '../shared/brand'
 import { currentCut, resolveCut } from '../shared/edit'
 import { overlapWith } from '../shared/clipping'
+import { NO_FACE_FINDER, thisComputer } from '../shared/platform'
 
 const PATHS: Record<string, Planted> = {
   '/rec/Sunday service.mp4': SERVICE,
@@ -296,7 +297,7 @@ describe('clipping a long recording, start to finish', () => {
     expect(r.notes.join(' ')).not.toMatch(/face finder/)
     // Without the finder, the reply says why the clips keep the middle.
     const plain = await findClips({ paths: ['/rec/Sunday service.mp4'], ask: '' }, tools(), quiet)
-    expect(plain.ok && plain.reply.aside).toMatch(/following the speaker needs the face finder Cutalong has on a Mac/)
+    expect(plain.ok && plain.reply.aside).toContain(NO_FACE_FINDER)
   })
 })
 
@@ -438,7 +439,7 @@ describe('the clips a model on this Mac picks', () => {
     if (!r.ok) throw new Error(r.message)
     expect(r.by).toBe('local')
     expect(r.model).toBe('llama3.1:8b')
-    expect(r.reply.aside).toMatch(/llama3\.1:8b picked them, on this Mac\./)
+    expect(r.reply.aside).toContain(`llama3.1:8b picked them, on ${thisComputer}.`)
     expect(r.clips).toHaveLength(1)
     expect(r.clips[0].startSec).toBe(qa.startSec)
     expect(r.clips[0].endSec).toBe(qa.endSec)

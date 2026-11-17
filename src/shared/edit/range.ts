@@ -284,15 +284,6 @@ export function opsInside(
   return { inside, outside }
 }
 
-/** "Cut this", "cut it out", "remove these", "delete that part": the picked stretch out, said in words. */
-export function cutsPicked(text: string): boolean {
-  const it = String.raw`(this|that|these|those|it|them)(\s+(part|bit|stretch|section|beats?))?`
-  return new RegExp(
-    String.raw`^(please\s+)?((cut|remove|delete|drop|lose|get rid of)\s+${it}(\s+out)?|take\s+${it}\s+out)(\s+please)?[.!]*$`,
-    'i'
-  ).test(text.trim())
-}
-
 /**
  * Whether every op acts only on these beats: a version made of them can be
  * named by the stretch ("Between 0:12 and 0:31, four beats come in with a

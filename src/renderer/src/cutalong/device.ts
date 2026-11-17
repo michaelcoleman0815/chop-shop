@@ -1,3 +1,5 @@
+import { SHOW_FILE } from '../../../shared/platform'
+
 /**
  * The device Cutalong runs on, as the screens need to know it: a computer
  * (the Mac app, or a browser on the mock) or a phone (mobile/, which installs
@@ -34,7 +36,7 @@ export const COMPUTER: Device = {
   kind: 'computer',
   here: 'this computer',
   keychain: "this computer's keychain",
-  reveal: 'Show in Finder',
+  reveal: SHOW_FILE,
   savesTo: null,
   away: {}
 }

@@ -31,9 +31,18 @@ export interface AssetTools {
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 const MAX_HEIGHT = 1080
 
+/**
+ * yt-dlp's surroundings. On Windows its Python writes to a pipe in the
+ * system's old code page, where a title or a path in another script comes
+ * out as question marks and the file it names cannot be found: there it is
+ * told to write UTF-8.
+ */
+export const YTDLP_ENV: NodeJS.ProcessEnv | undefined =
+  process.platform === 'win32' ? { ...process.env, PYTHONIOENCODING: 'utf-8' } : undefined
+
 function run(bin: string, args: string[], signal?: AbortSignal, onLine?: (line: string) => void): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { signal })
+    const child = spawn(bin, args, { signal, env: YTDLP_ENV })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (d) => {
@@ -63,6 +72,10 @@ export function explain(stderr: string): string | null {
       .reverse()
       .find((l) => /ERROR/.test(l)) ?? stderr.trim().split('\n').pop()
   if (!last) return null
+  // Chrome and the browsers built on it lock their sign-in away from other programs on Windows.
+  if (/could not copy .*cookie database|failed to decrypt with dpapi|app-bound encryption/i.test(stderr)) {
+    return 'That browser keeps its sign-in locked on Windows, so it can’t be borrowed. Firefox’s can: choose it in Settings.'
+  }
   if (/sign in to confirm|not a bot|login required|cookies/i.test(stderr)) {
     return 'The site wants a signed-in browser before it will hand this over.'
   }

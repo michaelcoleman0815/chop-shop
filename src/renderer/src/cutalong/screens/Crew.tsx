@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { brandName } from '../../../../shared/brands'
+import { onWindows } from '../../../../shared/platform'
 import { api, device } from '../api'
 import { CrewFace } from '../components/Crew'
 import { Button } from '../components/ui'
@@ -42,11 +43,18 @@ function useNeeds(): Partial<Record<CrewId, Need>> {
           text: `The ${MODEL_NAMES[model] ?? model} transcription model, to write words down on ${device.here}. It downloads once.`,
           steps: ['Open Settings.', 'Under Transcription, choose Download now.']
         }
-      if (!key)
+      if (!key) {
+        const kept =
+          device.kind === 'phone'
+            ? `in ${device.keychain}`
+            : onWindows
+              ? 'locked to your Windows account'
+              : 'in this computer’s keychain'
         next.quill = {
           text: `Your Anthropic key, so Claude writes your titles, descriptions and chapters. Without it, I write them on ${device.here}.`,
-          steps: ['Open Settings.', `Paste your key under Claude and save it. It stays in ${device.keychain}.`]
+          steps: ['Open Settings.', `Paste your key under Claude and save it. It stays ${kept}.`]
         }
+      }
       if (live) setNeeds(next)
     })().catch(() => undefined)
     return () => {

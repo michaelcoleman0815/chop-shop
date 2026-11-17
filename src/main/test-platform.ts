@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { platform, setPlatform } from './platform'
+import { platform, setPlatform, type PlatformSecrets } from './platform'
 import { nodePlatform, type NodePlatformOptions } from './platform-node'
 import { findFfmpeg, findFfprobe } from './test-media'
 
@@ -21,7 +21,40 @@ function once(find: () => string | null, fallback: string): () => string {
   return () => (found ??= find() ?? fallback)
 }
 
+/**
+ * Keys kept in memory, and the Anthropic key as the Mac's key file gives it
+ * when none is set here: a test that stands in for './apikey' gives the
+ * planner and the key gate its key that way, as the app's keychain would.
+ */
+function testSecrets(): PlatformSecrets {
+  const kept = new Map<string, string>()
+  const keyFile = async (): Promise<typeof import('./apikey') | null> => {
+    try {
+      return await import('./apikey')
+    } catch {
+      return null
+    }
+  }
+  const fromFile = async <T>(ask: (m: typeof import('./apikey')) => T, otherwise: T): Promise<T> => {
+    const m = await keyFile()
+    try {
+      return m ? ask(m) : otherwise
+    } catch {
+      // The real key file needs Electron, which a test without its stand-in does not have.
+      return otherwise
+    }
+  }
+  return {
+    get: async (name) =>
+      kept.get(name) ?? (name === 'anthropic' ? fromFile((m) => m.readApiKey(), null as string | null) : null),
+    set: async (name, value) => void kept.set(name, value),
+    remove: async (name) => void kept.delete(name),
+    has: async (name) => kept.has(name) || (name === 'anthropic' && (await fromFile((m) => m.hasApiKey(), false)))
+  }
+}
+
 const options: NodePlatformOptions = {
+  secrets: testSecrets(),
   tools: {
     ffmpeg: once(findFfmpeg, 'ffmpeg'),
     ffprobe: once(findFfprobe, 'ffprobe'),

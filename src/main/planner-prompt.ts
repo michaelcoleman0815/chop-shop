@@ -26,6 +26,8 @@ import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { ordinal } from '../shared/raw/takes'
 import { renderSound } from '../shared/audio/map'
 import { offCameraLine } from '../shared/vision/speakers'
+import { cutOnRequest } from '../shared/raw/length'
+import { planCommandSchemas, teachCommands } from '../shared/plan/commands'
 
 /**
  * Everything the planner sends and expects back, kept apart from the API call
@@ -59,7 +61,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - When the edit needs more B-roll than the material gives, or the person asks for B-roll to be found, list the moments in brollWanted: at most three, each the beat and a short stock footage search that would show it ("hands typing on a laptop at night").
 
 ## Operations
-- {"op":"remove","beats":["b3"]}: drop whole beats.
+- {"op":"remove","beats":["b3"],"why":""}: drop whole beats. When the person asked for a part to be cut by what it is ("cut the tangent about the conference", "lose the intro"), "why" names it as they would ("the part about the conference"), so it stays out until they ask for it back; otherwise "".
 - {"op":"strike","from":"w12","to":"w15"} and {"op":"unstrike",...}: cut or restore words inside beats. Use this for filler, false starts and repeated takes.
 - {"op":"move","beat":"b7","to":0}: move a beat to a position (0 is first).
 - {"op":"split","beat":"b4","at":"w31"}: split before a word, which must be inside the beat and not its first word. The second half gets the next free id.
@@ -100,6 +102,7 @@ ${graphicsGuide()}
 
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
+- A <chat> block, when present, is what was said just before the request: read a short answer ("yes", "the second one", a button's words) in its light.
 - "This", "here" and "that bit" in a note mean the beat the note was left on.
 - A note left on a stretch ("on b3 to b6 only") is about those beats alone, and "this" means all of them: change nothing outside them, nothing that changes the whole video (a look, music, captions, the shape), and when it cannot be done inside them, make no op for it and say why in reply.
 - To open on a stronger line, move the beat that holds it to position 0; if it sits inside a long beat, split it out first.
@@ -109,14 +112,22 @@ ${graphicsGuide()}
 - Hard cuts are the default. Add a transition only where it is asked for, or at a change of section when asked to "add transitions"; between a talking head and B-roll a dissolve or a short push reads cleanest. Never put one on every beat unless asked.
 - Camera moves keep stills and long held shots alive: a ken-burns or drift on a product still, a drift on a long talking beat. Put a move on fewer than half the beats unless asked, and never two kinds in a row on the same picture.
 - Add sound effects only when asked, sparingly: a whoosh through a whip or push transition, a hit on a hard cut to something new, a riser into a new section, a pop on a big word. Never one on every cut.
-- Opening the edit in Premiere is /premiere, which the person types: for that, make no op and say so in the reply.
 - Switch to another camera only when asked, or when asked for variety: at a change of thought, never mid-sentence, and back to the recording often enough that it stays the main view. "pip" and "side" suit a reaction or a second person.
 - Make chapters only when asked. Start one where the subject changes, and name it in two to five words for what that part is about, never a whole sentence.
 - Leave the colour alone unless asked. For tech and product videos, "clean" keeps colour true; save warm, cool, cinematic and vintage for when someone asks for a mood.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
 
+## Cutalong's commands
+Besides edit ops, a plan can run Cutalong's own commands: the ones the person can type after a slash, and a few with arguments of their own. They go in "ops" with the edit ops, and every step runs in the order listed, so put an op that names beats or words before a command that reshapes the cut (a preset with takes or pacing, a length, a take), and settings for the whole video after it.
+${teachCommands()}
+A preset (tighten, snappy, shorts, captions, hook, fade, the looks, the person's saved styles, their brand) applies its whole style, so use it when the request is what it does, and change what it sets with ops after it ("a Short with captions at the top": run shorts, then a captions op). A command that acts on the beat under the playhead acts on the whole video in a plan, or for a note on the beat or stretch the note was left on; to change one moment, use the ops.
+Cut a part by what it is yourself, with remove or strike and its "why", and leave the length of the whole video to the length command, after those cuts. When the cut says it is a vlog told as a story, asks of the story (a length, what it opens on, more or less of a place or a part of the day) are the vlog command's, with the person's words. Opening the edit in Premiere is {"op":"run","command":"premiere","rest":"","note":""}, and every finishing touch at once is {"op":"run","command":"all","rest":"","note":""}.
+
+## When to ask
+Read the whole request and do every part of it you can, in one plan. When a part could mean two different things and the wrong one would cost the person (an export, footage fetched, a lot of cutting, their time), ask about that part instead: one short question in "question" with two to four options, each a complete ask in the person's words, because an option is sent as their next message ("Make the picture warmer", "Make the music warmer"). Make no step for that part, do the parts that are clear, and leave "question" with an empty text and no options when there is nothing to ask. Never ask about something cheap to undo, and never ask twice about the same thing.
+
 ## Takes
-A <takes> block, when present, lists lines said more than once in the raw footage: each take with its word ids, whether it plays or is struck, and what went wrong in it. Cutalong keeps the last complete take unless an earlier one is clearly cleaner. To use another take ("use the second take of the intro"), unstrike that take's words and strike the take that plays now, in the same plan. If the take you bring back was recorded somewhere else, split it into a beat of its own and move that beat to where the line plays. Never strike the take that plays without bringing another one back. False starts listed there are struck already; unstrike one only when asked.
+A <takes> block, when present, lists lines said more than once in the raw footage: each take with its word ids, whether it plays or is struck, and what went wrong in it. Cutalong keeps the last complete take unless an earlier one is clearly cleaner. To use another take ("use the second take of the intro"), use the take command with the line's id and the take's number: it plays that take where the line plays. Never strike the take that plays without bringing another one back. False starts listed there are struck already; unstrike one only when asked.
 
 ## Sound
 A <sound> block, when present, lists stretches that are not speech (laughter, music, applause, noise) with their times in the recording, and words said with stress. A laugh or a noise between takes is a break, music under speech is not yours to cut, and a stressed word is a good big word.
@@ -173,7 +184,7 @@ const ANGLE_WORDS = { full: 'instead', pip: 'in a box', side: 'beside it' } as c
 const MUSIC_SETTINGS = ['levelDb', 'duckDb', 'inSec', 'fadeInSec', 'fadeOutSec'] as const
 
 export const PlannerOpSchema = z.discriminatedUnion('op', [
-  z.object({ op: z.literal('remove'), beats: z.array(z.string()) }),
+  z.object({ op: z.literal('remove'), beats: z.array(z.string()), why: z.string() }),
   z.object({ op: z.literal('strike'), from: z.string(), to: z.string() }),
   z.object({ op: z.literal('unstrike'), from: z.string(), to: z.string() }),
   z.object({ op: z.literal('move'), beat: z.string(), to: z.number() }),
@@ -270,7 +281,9 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   // slot means the template's default (or, in an update, no change).
   z.object({ op: z.literal('motion-add'), kind: z.enum(GRAPHIC_KINDS), ...graphicSlots() }),
   z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
-  z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) })
+  z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) }),
+  // Cutalong's own commands (shared/plan/commands.ts), run by the editor in the order given.
+  ...planCommandSchemas()
 ])
 
 export const PlanSchema = z.object({
@@ -284,7 +297,9 @@ export const PlanSchema = z.object({
   /** What could not be done without more from the person. */
   needs: z.array(z.string()),
   /** Moments that want B-roll the material does not have, with a search that would find it. */
-  brollWanted: z.array(z.object({ beat: z.string(), search: z.string() })).optional()
+  brollWanted: z.array(z.object({ beat: z.string(), search: z.string() })).optional(),
+  /** One short question instead of guessing at a costly part, with answers that are sent as words; an empty text asks nothing. */
+  question: z.object({ text: z.string(), options: z.array(z.string()) })
 })
 export type Plan = z.infer<typeof PlanSchema>
 export type PlannerOp = z.infer<typeof PlannerOpSchema>
@@ -302,6 +317,8 @@ const fieldsOf = (set: { key: string; value: number }[]): Record<string, number>
 export function fromPlannerOp(op: PlannerOp): unknown {
   const of = 'of' in op && op.of ? { of: op.of } : {}
   switch (op.op) {
+    case 'remove':
+      return { op: op.op, beats: op.beats, ...(op.why.trim() ? { why: op.why.trim() } : {}) }
     case 'transition':
       return { op: op.op, beats: op.beats, kind: op.kind, ...(op.sec > 0 ? { sec: op.sec } : {}) }
     case 'speed': {
@@ -428,6 +445,33 @@ export function takeName(n: number): string {
   return `the ${ordinal(n)} take`
 }
 
+/** A slash command as the planner sees it in <commands>: its name and the summary the slash menu shows. */
+export interface CommandLine {
+  command: string
+  summary: string
+}
+
+/**
+ * The slash commands there are, the person's saved styles and brand among
+ * them, with what each does: a plan runs any of them by name. It changes
+ * only when a style is saved, so it is cached before the transcript.
+ */
+export function renderCommands(commands: CommandLine[]): string {
+  if (commands.length === 0) return ''
+  const lines = commands.map((c) => `${c.command}: ${c.summary.replace(/\s+/g, ' ').trim()}`)
+  return `<commands>\n${lines.join('\n')}\n</commands>`
+}
+
+/** What the request carries besides the cut: the cuts offered, and what was said just before. */
+export interface RequestExtra {
+  /** Cuts Cutalong offered and the person has not answered, in plain words. */
+  offers?: string[]
+  /** The last few turns of the chat, oldest first, so a short answer reads in context. */
+  chat?: { role: 'user' | 'assistant'; text: string }[]
+  /** The person's brands by name, and whether this chat is in each: a plan can switch to another. */
+  brands?: { name: string; current: boolean }[]
+}
+
 /** The cut as it stands, the notes and the ask: the part that changes every time. */
 export function renderRequest(
   doc: EditDoc,
@@ -436,7 +480,8 @@ export function renderRequest(
   voice = '',
   preferences: string[] = [],
   logos: string[] = [],
-  never: string[] = []
+  never: string[] = [],
+  extra: RequestExtra = {}
 ): string {
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
@@ -459,6 +504,8 @@ export function renderRequest(
       : 'pauses as recorded',
     cut.loudness === null ? 'loudness as recorded' : `loudness ${cut.loudness} LUFS`
   ]
+  // A vlog is told as a story, and asks of its story go to the vlog command.
+  if (doc.vlog) settings.push('a vlog told as a story')
   if (cut.voice && cut.voice.polish > 0) settings.push(`voice polish ${cut.voice.polish}`)
   if (cut.look) settings.push(`look ${describeLook(cut.look)}`)
   if (cut.reframe) settings.push('follows the speaker')
@@ -553,6 +600,15 @@ export function renderRequest(
   }
   const takes = renderTakes(doc)
   if (takes) parts.push(takes)
+  // What was cut on request and is still out, by the name it went under, for "bring back …".
+  const held = cutOnRequest(doc)
+  if (held.length) parts.push(`<cut-on-request>\n${held.join('\n')}\n</cut-on-request>`)
+  const offers = (extra.offers ?? []).map((o) => o.trim()).filter(Boolean)
+  if (offers.length) parts.push(`<offers>\n${offers.join('\n')}\n</offers>`)
+  // Another brand only when there is one to switch to.
+  const brands = (extra.brands ?? []).filter((b) => b.name.trim())
+  if (brands.length > 1)
+    parts.push(`<brands>\n${brands.map((b) => `${b.name.trim()}${b.current ? ' (this chat)' : ''}`).join('\n')}\n</brands>`)
   for (const source of doc.sources) {
     const map = doc.audio?.[source.id]
     const sound = map ? renderSound(map, text) : ''
@@ -585,6 +641,12 @@ export function renderRequest(
   const learned = preferences.map((p) => p.trim()).filter(Boolean)
   if (learned.length > 0)
     parts.push(`<creator-preferences>\n${learned.map((p) => `- ${p}`).join('\n')}\n</creator-preferences>`)
+  // The turns just before, so "yes", "the other one" or a button's words read in context.
+  const chat = (extra.chat ?? []).filter((t) => t.text.trim()).slice(-6)
+  if (chat.length)
+    parts.push(
+      `<chat>\n${chat.map((t) => `${t.role === 'user' ? 'Person' : 'Cutalong'}: ${t.text.replace(/\s+/g, ' ').trim().slice(0, 400)}`).join('\n')}\n</chat>`
+    )
   // Tagged so that words in the request are read as the request, never as
   // instructions that override the ones above.
   if (request.trim()) parts.push(`<request>\n${request.trim()}\n</request>`)

@@ -1,6 +1,6 @@
 import { spawn } from 'child_process'
 import { createWriteStream, promises as fs } from 'fs'
-import { tmpdir } from 'os'
+import { availableParallelism, tmpdir } from 'os'
 import { join } from 'path'
 import type { Platform, PlatformSecrets, PlatformSettings, RunOptions, RunResult, ToolName } from './platform'
 
@@ -114,7 +114,8 @@ function memorySecrets(): PlatformSecrets {
   return {
     get: async (name) => kept.get(name) ?? null,
     set: async (name, value) => void kept.set(name, value),
-    remove: async (name) => void kept.delete(name)
+    remove: async (name) => void kept.delete(name),
+    has: async (name) => kept.has(name)
   }
 }
 
@@ -124,6 +125,8 @@ export function nodePlatform(o: NodePlatformOptions): Platform {
   const net: typeof fetch = o.fetch ?? ((input, init) => fetch(input, init))
   return {
     kind: 'computer',
+    os: process.platform,
+    processors: availableParallelism(),
     tool: (name) => o.tools[name](),
     run: runProgram,
     files: {

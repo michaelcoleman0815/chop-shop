@@ -106,13 +106,30 @@ async function extractAudio(
   if (r.code !== 0) throw new Error(stderr.trim() || `ffmpeg exit ${r.code}`)
 }
 
+/**
+ * Threads for whisper where it runs on the CPU, as on Windows: about one a
+ * core (half the processors Windows counts, which counts each core twice),
+ * no fewer than whisper-cli's own four where there are four, and at most
+ * eight. Its default of four leaves most of a newer PC idle. A Mac's
+ * whisper runs on its GPU and keeps the default, and a phone's is built in
+ * with its own. `os` is the platform's, as Node names it.
+ */
+export function whisperThreads(os: string, processors: number): number | undefined {
+  if (os !== 'win32') return undefined
+  return Math.max(Math.min(4, processors), Math.min(8, Math.floor(processors / 2)))
+}
+
+/** How Windows reports a program that ran an instruction the processor does not have. */
+const ILLEGAL_INSTRUCTION = 0xc000001d
+
 /** Runs whisper to the end, reporting its progress from 0 to 100. */
 async function runWhisper(bin: string, args: string[], onProgress: (percent: number) => void): Promise<void> {
   let stderr = ''
   // whisper prints a line per segment, and with -ml 1 that is one per word.
   // Everything it writes is read as it comes: a pipe nobody reads fills, and
   // the process blocks forever at 0% CPU, which looks exactly like a hang.
-  const r = await platform().run(bin, args, {
+  const host = platform()
+  const r = await host.run(bin, args, {
     onStdout: (text) => {
       const match = /progress\s*=\s*(\d+)%/.exec(text)
       if (match) onProgress(Number(match[1]))
@@ -132,6 +149,12 @@ async function runWhisper(bin: string, args: string[], onProgress: (percent: num
       .filter((l) => l.trim() && !/progress\s*=\s*\d+%/.test(l))
     const said = lines.slice(-12).join('\n') || `whisper-cli exited with code ${r.code}.`
     console.warn(`[stt] whisper stopped with code ${r.code}:\n${said}`)
+    // whisper-cli for Windows is built for processors with AVX2, from about 2013 on.
+    if (host.os === 'win32' && r.code !== null && r.code >>> 0 === ILLEGAL_INSTRUCTION) {
+      const why =
+        'This PC’s processor is too old for the transcription model: it needs AVX2, which processors from before about 2013 lack.'
+      throw new WhisperFailed(said, why)
+    }
     throw new WhisperFailed(said)
   }
 }
@@ -143,8 +166,11 @@ async function runWhisper(bin: string, args: string[], onProgress: (percent: num
  */
 export class WhisperFailed extends Error implements ToolSaid {
   readonly tool = 'whisper'
-  constructor(readonly said: string) {
-    super('The transcription model stopped before it finished.')
+  constructor(
+    readonly said: string,
+    message = 'The transcription model stopped before it finished.'
+  ) {
+    super(message)
     this.name = 'WhisperFailed'
   }
 }
@@ -166,7 +192,9 @@ export async function transcribe(
   const bin = host.tool('whisper')
   // A computer runs whisper-cli from the app's resources; a phone has it built in.
   if (host.kind === 'computer' && !(await host.files.stat(bin))) {
-    throw new Error('whisper-cli is missing. Run scripts/build-whisper.sh.')
+    // What builds it, as helperScript in resources.ts says: its script on a Mac, its Node twin on Windows.
+    const script = host.os === 'win32' ? 'node scripts/build-whisper.mjs' : 'scripts/build-whisper.sh'
+    throw new Error(`whisper-cli is missing. Run ${script}.`)
   }
   const modelFile = modelPath(model)
   if (!(await host.files.stat(modelFile))) {
@@ -193,7 +221,8 @@ export async function transcribe(
     onProgress(12, 'Transcribing')
     const prefix = join(dir, 'out')
     const until = verbatim ? 86 : 98
-    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim }), (p) =>
+    const threads = whisperThreads(host.os, host.processors)
+    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads }), (p) =>
       onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
     )
     const json = parseWhisperJson(await host.files.readText(`${prefix}.json`))
@@ -212,7 +241,7 @@ export async function transcribe(
           const partPrefix = join(dir, `again-${n}`)
           await runWhisper(
             bin,
-            whisperArgs({ model, modelFile, wav: part, prefix: partPrefix, verbatim }),
+            whisperArgs({ model, modelFile, wav: part, prefix: partPrefix, verbatim, threads }),
             () => undefined
           )
           const again = tokensToWords(parseWhisperJson(await host.files.readText(`${partPrefix}.json`)).transcription)

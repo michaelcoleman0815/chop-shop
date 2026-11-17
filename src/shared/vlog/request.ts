@@ -87,16 +87,6 @@ function after(text: string, re: RegExp): string[] {
   return out
 }
 
-/**
- * Whether words ask for a vlog: "make a vlog", "vlog this", "cut my day into
- * a vlog", "a day in the life". Not when they say it is not one.
- */
-export function wantsVlog(text: string): boolean {
-  const t = text.toLowerCase().replace(/[’]/g, "'")
-  if (/\b(not|isn't|is not|no|without)\s+(an?\s+)?(v-?log|day in the life)/.test(t)) return false
-  return /\b(v-?logs?|vlogging|day in the life|day-in-the-life)\b/.test(t)
-}
-
 /** Reads a request. Null when it asks nothing a vlog's story answers. */
 export function parseVlogAsk(text: string): VlogAsk | null {
   const t = text.toLowerCase().replace(/[’]/g, "'").trim()

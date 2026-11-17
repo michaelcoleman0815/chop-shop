@@ -18,6 +18,7 @@ import { commandsOnTheMac, ON_THE_MAC } from './limits'
 import { phonePlatform } from './platform'
 import { phoneServices } from './services'
 import { loadSettings } from './settings'
+import { KEYCHAIN, phoneIs } from '../shims/platform'
 
 /**
  * Starts the phone's host: asks the engine where the app's storage is,
@@ -122,6 +123,8 @@ export interface StartOptions {
 export async function startPhone(options: StartOptions = {}): Promise<CutalongHost> {
   const native = Capacitor.isNativePlatform()
   const info: EngineInfo = await Engine.info()
+  // The words that name the device are the phone's own: its Keychain or Keystore, Photos or Files.
+  phoneIs(info.platform)
   const files = native ? capacitorFiles(info.cache) : bridgeFiles(BRIDGE)
   // A preview plays files straight from the app's storage; through the bridge, from its media server.
   const mediaUrlFor = (path: string): string =>
@@ -160,7 +163,7 @@ export async function startPhone(options: StartOptions = {}): Promise<CutalongHo
     device: {
       kind: 'phone',
       here: 'this phone',
-      keychain: info.platform === 'ios' ? "this iPhone's Keychain" : "this phone's Android Keystore",
+      keychain: KEYCHAIN,
       reveal: null,
       savesTo: 'Photos',
       models: ['base.en', 'small.en'],

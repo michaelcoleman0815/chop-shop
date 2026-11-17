@@ -3,7 +3,8 @@ import type { CutalongApi } from '../../../src/renderer/src/cutalong/api'
 import { platform } from '../../../src/main/platform'
 import { probeFile } from '../../../src/main/intake'
 import { extendCut, prepareCut, renderEdit, sortFootage, type WorkHost } from '../../../src/main/cut-work'
-import { checkKey, planEdit } from '../../../src/main/planner'
+import { checkKey, keyDeps, planEdit } from '../../../src/main/planner'
+import { triage } from '../../../src/main/triage'
 import { downloadModel, hasModel, modelSizeMb, type WhisperModel } from '../../../src/main/transcribe'
 import { analyzeTrack } from '../../../src/main/music'
 import { makeAllSfx, readSound } from '../../../src/main/sfx'
@@ -19,7 +20,6 @@ import { isServiceId, type ServiceId } from '../../../src/shared/services'
 import { EMPTY_MEMORY, memoryView } from '../../../src/shared/memory'
 import { EditDocSchema } from '../../../src/shared/edit'
 import type { MapStatus } from '../../../src/shared/maps'
-import { mapRequest } from '../../../src/shared/maps/request'
 import { learnState } from '../../../src/shared/learn'
 import { ON_THE_MAC } from './limits'
 import type { PhoneServices } from './services'
@@ -222,14 +222,23 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     onClipsProgress: quiet,
     clipPoster: async () => '',
     // In the edit's own brand, as on the Mac. What a brand learns from chats, and its never
-    // list, are kept on the Mac for now, so a phone's plans have neither.
+    // list, are kept on the Mac for now, so a phone's plans have neither. A map asked for in
+    // words goes to Claude as on the Mac; /map, which a plan may run, says it is on the Mac.
     planEdit: async (req) => {
       const parsed = EditDocSchema.safeParse(req.doc)
-      // A map asked for in words, which the Mac places without a model, is on the Mac for now.
-      if (parsed.success && req.notes.length === 0 && mapRequest(parsed.data, req.request))
-        return { ok: false as const, message: ON_THE_MAC.maps }
       const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
-      return planEdit({ ...req, preferences: [], logos: brand.logos.map((l) => l.name), apiKey: await key() })
+      return planEdit({ ...req, preferences: [], logos: brand.logos.map((l) => l.name) })
+    },
+    // What a message asks for, read by Claude before any footage is: each file goes as its name,
+    // its length and whether it has a picture and sound, never what is in it.
+    triage: async (req) => {
+      const files = await Promise.all(
+        req.files.map(async (f) => {
+          const p = await probeFile('ffprobe', f.path).catch(() => null)
+          return { name: f.name, durationSec: p ? p.durationSec : null, video: !!p && p.width > 0, audio: !!p?.facts.audio }
+        })
+      )
+      return triage({ request: req.request, files, link: req.link, hasEdit: req.hasEdit, commands: req.commands })
     },
     studyInspiration: async () => ({ ok: false as const, message: ON_THE_MAC.study }),
     onInspirationProgress: quiet,
@@ -297,7 +306,8 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
       const [file] = await pick(['image'], false)
       return file ? { path: file.path, kind: 'image' as const, durationSec: 0 } : null
     },
-    checkKey: async () => checkKey(await key()),
+    // The desktop's rules: a key Anthropic accepted before passes while it is busy, down or out of reach.
+    checkKey: (opts) => checkKey(keyDeps(), opts ?? {}),
     // The app learns whether each service has a key, never what it is.
     serviceKeys: async () => parts.services.keys(),
     setServiceKey: (id, next) => parts.services.setKey(asService(id), typeof next === 'string' ? next : ''),

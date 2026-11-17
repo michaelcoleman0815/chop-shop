@@ -9,7 +9,8 @@ import { defineConfig, type Plugin } from 'vite'
  * The phone app's page: the Mac's React app (src/renderer/src/cutalong) on
  * the phone's host (src/host), built into dist for Capacitor. The shared
  * main-process modules it runs import Node's 'path', which is POSIX on a
- * phone and comes from src/shims/path.ts.
+ * phone and comes from src/shims/path.ts, and name the computer they run
+ * on, which is the phone (src/shims/platform.ts).
  *
  * CUTALONG_DRIVE=1 builds in the app's own flow for CI (src/host/drive.ts),
  * which runs only when the runner has put drive.json in the app's documents.
@@ -77,10 +78,29 @@ function packageLicences(): Plugin {
   }
 }
 
+/**
+ * The words that name the computer (src/shared/platform.ts: "this Mac",
+ * "Show in Finder", the keychain) are the phone's in the phone's page
+ * (src/shims/platform.ts): "this phone", its Keychain or Keystore.
+ */
+function phoneWords(): Plugin {
+  const computer = resolve(root, 'src/shared/platform.ts')
+  const phone = resolve(here, 'src/shims/platform.ts')
+  return {
+    name: 'cutalong-phone-words',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      if (!importer || !/(^|\/)platform(\.ts)?$/.test(source)) return null
+      const found = await this.resolve(source, importer, { ...options, skipSelf: true })
+      return found && found.id.split('?')[0] === computer ? phone : null
+    }
+  }
+}
+
 export default defineConfig({
   root: here,
   base: './',
-  plugins: [react(), packageLicences()],
+  plugins: [phoneWords(), react(), packageLicences()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
     __APP_COMMIT__: JSON.stringify(commit()),

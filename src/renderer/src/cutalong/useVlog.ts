@@ -6,13 +6,11 @@ import {
   fillMode,
   fillNotice,
   type EditDoc,
-  type Note,
   type Op
 } from '../../../shared/edit'
 import { ontoLatest, toldIn } from '../../../shared/vlog/build'
 import { storyOnBeats } from '../../../shared/vlog/plan'
 import { carriedNote, type VlogReply } from '../../../shared/vlog/reply'
-import { parseVlogAsk, wantsVlog } from '../../../shared/vlog/request'
 import { api } from './api'
 import type { Attachment } from './components/Composer'
 import type { Msg } from './components/Message'
@@ -53,20 +51,16 @@ export interface VlogDeps {
 }
 
 export interface Vlogs {
-  /** Whether recordings dropped with these words are a shoot for a story. */
-  wanted: (said: string, command: string | null, files: Attachment[]) => boolean
+  /** Whether recordings dropped are a shoot for a story: asked for (by /vlog, or as Claude read the words), or by the edit or the brand. */
+  wanted: (command: string | null, files: Attachment[], asked?: boolean) => boolean
   /** The vlog of these files, or these files added to the vlog or edit under way. False when it failed. */
   make: (files: Attachment[], said: string) => Promise<boolean>
-  /** Words that ask for a vlog with no files: an edit becomes one, a vlog is told again, or the clips are waited for. */
-  asked: (text: string) => Promise<boolean>
-  /** The story told again for what was asked. Not handled when the words ask nothing a story answers. */
-  retell: (text: string, where: Where, always?: boolean) => Promise<{ handled: boolean; n: number | null }>
+  /** The story told again for what was asked; not handled when the edit is not a vlog. */
+  retell: (text: string, where: Where) => Promise<{ handled: boolean; n: number | null }>
   /** /vlog: a length or a fresh telling on a vlog, a vlog of another edit's footage, or a wait for clips. */
   command: (rest: string, where: Where) => Promise<void>
   /** A vlog's shots landed on the beats of the music under it. Asked: says why not, when it cannot. */
   onBeats: (where: Where, asked?: boolean) => void
-  /** Editor notes that all ask of the story, told as one new version. The ids applied, or null when not theirs. */
-  fromNotes: (notes: Note[]) => Promise<string[] | null>
 }
 
 const OPEN: NonNullable<Msg['actions']> = [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
@@ -106,7 +100,7 @@ export function useVlog(deps: VlogDeps): Vlogs {
     else push({ role: 'assistant', text })
   }, [])
 
-  const wanted = useCallback((said: string, command: string | null, files: Attachment[]): boolean => {
+  const wanted = useCallback((command: string | null, files: Attachment[], asked = false): boolean => {
     const { docRef, pendingCommand, niche } = live.current
     const recordings = files.filter((f) => isVideoFile(f.name) || isAudioFile(f.name))
     if (recordings.length === 0) return false
@@ -114,7 +108,7 @@ export function useVlog(deps: VlogDeps): Vlogs {
     if (docRef.current?.vlog) return true
     const videos = recordings.filter((f) => isVideoFile(f.name)).length
     if (videos === 0) return false
-    if (command === 'vlog' || pendingCommand.current === 'vlog' || wantsVlog(said)) return true
+    if (command === 'vlog' || pendingCommand.current === 'vlog' || asked) return true
     // Someone who makes vlogs dropping a day of clips into a new chat.
     return !docRef.current && niche() === 'vlog' && videos >= 3
   }, [])
@@ -157,10 +151,11 @@ export function useVlog(deps: VlogDeps): Vlogs {
   }, [])
 
   const retell = useCallback(
-    async (text: string, where: Where, always = false): Promise<{ handled: boolean; n: number | null }> => {
+    async (text: string, where: Where): Promise<{ handled: boolean; n: number | null }> => {
       const { docRef, push, patch, setPanel, setDoc, applyAsVersion, during } = live.current
       const d = docRef.current
-      if (!d?.vlog || (!always && !parseVlogAsk(text))) return { handled: false, n: null }
+      // Claude has read the words and chosen the story: only an edit that is a vlog has one to tell again.
+      if (!d?.vlog) return { handled: false, n: null }
       const stage = { stage: 'Telling the story again', percent: null }
       const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: stage }) : null
       if (where === 'panel') setPanel({ text: '', progress: stage, since: Date.now() })
@@ -194,21 +189,6 @@ export function useVlog(deps: VlogDeps): Vlogs {
     []
   )
 
-  const asked = useCallback(
-    async (text: string): Promise<boolean> => {
-      if (!wantsVlog(text)) return false
-      const d = live.current.docRef.current
-      if (!d) {
-        wait(text, 'thread')
-        return true
-      }
-      if (d.vlog) return (await retell(text, 'thread', true)).handled
-      await make([], text)
-      return true
-    },
-    [make, retell, wait]
-  )
-
   const command = useCallback(
     async (rest: string, where: Where): Promise<void> => {
       const d = live.current.docRef.current
@@ -217,7 +197,7 @@ export function useVlog(deps: VlogDeps): Vlogs {
         return
       }
       if (d.vlog) {
-        await retell(rest, where, true)
+        await retell(rest, where)
         return
       }
       // Another edit's footage told as a story: its recordings and the footage brought into it.
@@ -253,19 +233,9 @@ export function useVlog(deps: VlogDeps): Vlogs {
     say([`v${done.n} is ready. ${summary}`, lost].filter(Boolean).join(' '), true)
   }, [])
 
-  const fromNotes = useCallback(
-    async (notes: Note[]): Promise<string[] | null> => {
-      const d = live.current.docRef.current
-      if (!d?.vlog || notes.length === 0 || !notes.every((n) => parseVlogAsk(n.text))) return null
-      const told = await retell(notes.map((n) => n.text.trim().replace(/[.!?]+$/, '')).join('. '), 'panel')
-      return told.n !== null ? notes.map((n) => n.id) : told.handled ? [] : null
-    },
-    [retell]
-  )
-
   // One object for the life of the session, so the callbacks that use it keep theirs.
   return useMemo(
-    () => ({ wanted, make, asked, retell, command, onBeats, fromNotes }),
-    [wanted, make, asked, retell, command, onBeats, fromNotes]
+    () => ({ wanted, make, retell, command, onBeats }),
+    [wanted, make, retell, command, onBeats]
   )
 }

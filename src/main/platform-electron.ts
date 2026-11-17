@@ -1,6 +1,6 @@
 import { app, net, safeStorage } from 'electron'
 import { join } from 'path'
-import { clearApiKey, readApiKey, setApiKey } from './apikey'
+import { clearApiKey, hasApiKey, readApiKey, setApiKey } from './apikey'
 import { FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
 import { setPlatform } from './platform'
 import { nodePlatform } from './platform-node'
@@ -41,7 +41,10 @@ setPlatform(
       remove: async (name) => {
         if (name === 'anthropic') clearApiKey()
         else if (isService(name)) services.clear(name)
-      }
+      },
+      // An environment key stands in for a saved one, as readApiKey says.
+      has: async (name) =>
+        name === 'anthropic' ? hasApiKey() || !!process.env.ANTHROPIC_API_KEY : isService(name) && services.has(name)
     },
     fetch: (input, init) => net.fetch(input as string, init)
   })

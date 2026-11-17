@@ -1,5 +1,6 @@
 import { basename, extname, join } from 'path'
 import { platform } from './platform'
+import { thisComputer } from '../shared/platform'
 import { downloadModel, hasModel, transcribe, type WhisperModel } from './transcribe'
 import { creditsText } from '../shared/assets'
 import { brandOfDoc, readBrand, readBrandById } from './brand-store'
@@ -673,7 +674,7 @@ export async function transcriptFor(
     notice?: (sentence: string) => void
     /** False when nothing may be downloaded, not even the model: learning from edits. */
     download?: boolean
-    /** True when the words must be heard on this Mac, never by another service. */
+    /** True when the words must be heard on this device, never by another service. */
     localOnly?: boolean
     /** The brand whose names are listened for; the default brand's when absent. */
     brand?: Brand
@@ -692,7 +693,7 @@ export async function transcriptFor(
     // Learning from edits never reaches the network, not even for the model.
     if (opts.download === false) {
       throw new Error(
-        `The ${whisperModel} transcription model isn't on this Mac yet. Download it in Settings, then try again.`
+        `The ${whisperModel} transcription model isn't on ${thisComputer} yet. Download it in Settings, then try again.`
       )
     }
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))

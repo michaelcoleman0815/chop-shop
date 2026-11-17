@@ -135,6 +135,8 @@ export function phonePlatform(p: PhoneParts): Platform {
 
   return {
     kind: 'phone',
+    os: p.info.platform,
+    processors: typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0 ? navigator.hardwareConcurrency : 4,
     // Built into the app: the tool's name is all the engine needs.
     tool: (name) => name,
     run,

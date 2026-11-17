@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { DEFAULT_DESCRIPTION } from './brand'
 import { clock } from './presets/preset'
+import { thisComputer } from './platform'
 
 /**
  * What an upload needs, written beside every export: the captions as .srt and
@@ -532,7 +533,7 @@ const NUMBER = ['no', 'one', 'two', 'three']
  * The reply under an export: a sentence, three facts, the rest behind
  * Details. `here` is the device it was made on: "this Mac", "this phone".
  */
-export function uploadMessage(kit: UploadKit, here = 'this Mac'): {
+export function uploadMessage(kit: UploadKit, here = thisComputer): {
   text: string
   chips: string[]
   details: { label: string; value: string }[]
@@ -582,7 +583,7 @@ export function uploadMessage(kit: UploadKit, here = 'this Mac'): {
  * clips are ready to upload: captions, a description, titles and tags beside
  * each."
  */
-export function uploadSetMessage(kits: { name: string; kit: UploadKit }[], here = 'this Mac'): {
+export function uploadSetMessage(kits: { name: string; kit: UploadKit }[], here = thisComputer): {
   text: string
   details: { label: string; value: string }[]
   aside: string | null

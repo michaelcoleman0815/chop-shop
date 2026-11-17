@@ -1,4 +1,4 @@
-import { captionedWords, type Asset, type Cut, type Resolved, type Source, type Word } from '../shared/edit'
+import type { Asset, Cut, Resolved, Source, Word } from '../shared/edit'
 import {
   buildScene,
   drawsCaptions,
@@ -9,6 +9,7 @@ import {
   type LogoMark,
   type MotionScene
 } from '../shared/motion'
+import { subtitleWords } from '../shared/subtitles'
 import { frameSize } from './cut-render'
 
 /**
@@ -74,14 +75,6 @@ export function subtitleCut(cut: Cut): Cut {
  * Only the subtitles read the words, so the picture is unchanged.
  */
 export function subtitlePass(cut: Cut, resolved: Resolved, scene: MotionScene): { cut: Cut; resolved: Resolved } {
-  // What covers the screen is the graphic's own say: a full-frame map holds the captions, a map inset does not.
-  const cards = scene.items.filter((i) => i.covers === 'card')
-  // Beats whose captions are off are left out too.
-  const words = captionedWords(cut, resolved).words.filter(
-    (w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end)
-  )
-  return {
-    cut: subtitleCut(cut),
-    resolved: words.length === resolved.words.length ? resolved : { ...resolved, words }
-  }
+  // Which words those are is shared with the editor's preview (shared/subtitles).
+  return { cut: subtitleCut(cut), resolved: subtitleWords(cut, resolved, scene) }
 }

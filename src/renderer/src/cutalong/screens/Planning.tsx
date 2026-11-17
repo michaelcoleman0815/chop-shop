@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { thisComputer } from '../../../../shared/platform'
 import type { Settings } from '../../../../shared/types'
 import { api } from '../api'
 import { Button } from '../components/ui'
@@ -30,8 +31,8 @@ export function Planning({
       <h2 id="set-planning">Planning edits</h2>
       <p className="cl-reply">
         {chosen
-          ? `I plan the edits with ${chosen} on this Mac, for free and offline. Claude plans them better.`
-          : 'Claude plans the edits. A model on this Mac can plan them for free and offline, though not as well.'}
+          ? `I plan the edits with ${chosen} on ${thisComputer}, for free and offline. Claude plans them better.`
+          : `Claude plans the edits. A model on ${thisComputer} can plan them for free and offline, though not as well.`}
       </p>
       {names.length > 0 ? (
         <div className="cl-segments" role="radiogroup" aria-label="Plan edits with">
@@ -56,8 +57,8 @@ export function Planning({
         <div className="cl-row">
           <p className="cl-aside">
             {local.up
-              ? 'Ollama is running on this Mac with no models pulled yet.'
-              : 'Ollama is not running on this Mac. Start it, and the models it has show up here.'}
+              ? `Ollama is running on ${thisComputer} with no models pulled yet.`
+              : `Ollama is not running on ${thisComputer}. Start it, and the models it has show up here.`}
           </p>
           {chosen && (
             <Button small onClick={() => void pick(null)}>

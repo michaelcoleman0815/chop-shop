@@ -6,11 +6,22 @@ import { Mark } from '../components/ui'
 import { when } from '../format'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
+import { KeySetup } from './KeySetup'
 
 const CHIPS = ['tighten', 'shorts', 'captions', 'hook']
 
-/** One question, one composer, four presets, three projects. Nothing else. */
+/**
+ * One question, one composer, four presets, three projects. Nothing else.
+ * Until an Anthropic key works, the setup steps stand in for all of it.
+ */
 export function Start({ app }: { app: Cutalong }): JSX.Element {
+  // The launch check takes a moment: nothing is drawn until it answers, so neither screen flashes.
+  if (!app.keySettled) return <main className="cl-start" aria-busy="true" />
+  if (!app.gateOpen) return <KeySetup app={app} />
+  return <Ask app={app} />
+}
+
+function Ask({ app }: { app: Cutalong }): JSX.Element {
   const [seed, setSeed] = useState<{ text: string; nonce: number } | null>(null)
   return (
     <>
