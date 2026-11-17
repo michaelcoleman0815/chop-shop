@@ -56,6 +56,7 @@ import { colorConversion, hasZscale, liveChannel } from './intake'
 import { bedVolume, limiter, voicePolish } from './render/audio'
 import { perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
+import { overlayChains, pictureFxChains, type FxOverlayFile, type FxPass } from '../shared/fx/ffmpeg'
 
 /**
  * Renders a resolved cut: the renderer of record for an edit document.
@@ -220,6 +221,12 @@ export interface GraphOptions {
   logo?: LogoMark | null
   /** Motion graphics, over the captions and under the logo. */
   overlays?: OverlaySpan[] | null
+  /**
+   * Scene effects (main/fx-render): their picture work on the joined picture
+   * before the look, and what they draw over it after the look and under the
+   * captions.
+   */
+  fx?: { passes: FxPass[]; overlays: FxOverlayFile[] } | null
   /** An ASS file to burn in over the joined picture. */
   assPath: string | null
   fontsDir: string | null
@@ -1001,6 +1008,16 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const totalSec = spans[spans.length - 1].outEnd - spans[0].outStart
 
   let vOut = 'vcat'
+  const addInput = (path: string): number => {
+    inputs.push('-i', path)
+    return next++
+  }
+  // ---- Scene effects on the picture (shared/fx): before the look, as the preview draws them under it ----
+  if (opts.fx?.passes.length) {
+    const fx = pictureFxChains(opts.fx.passes, vOut, addInput, fps, totalFrames)
+    chains.push(...fx.chains)
+    vOut = fx.out
+  }
   // The look goes over the whole picture, cutaways and cards included, and
   // under the captions and the logo, which keep their own colours.
   const grade = opts.look
@@ -1022,6 +1039,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   if (graded.length > 0) {
     chains.push(`[${vOut}]${graded.join(',')}[vlook]`)
     vOut = 'vlook'
+  }
+  // What the effects draw (rings, speed lines, a scan's glow): over the look, under the captions.
+  if (opts.fx?.overlays.length) {
+    const drawn = overlayChains(opts.fx.overlays, vOut, addInput, fps)
+    chains.push(...drawn.chains)
+    vOut = drawn.out
   }
   if (opts.assPath) {
     const fonts = opts.fontsDir ? `:fontsdir=${filterPath(opts.fontsDir)}` : ''
@@ -1269,6 +1292,8 @@ export interface RenderCutOptions {
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
   /** Motion graphics from renderCutMotion, laid over the joined picture in the last pass. */
   overlays?: OverlaySpan[] | null
+  /** Scene effects from renderCutFx (main/fx-render), worked into the joined picture in the last pass. */
+  fx?: GraphOptions['fx']
   /** Where the built-in sound effects are kept once made; the work folder when absent. */
   sfxDir?: string
   /**
@@ -1547,7 +1572,8 @@ export async function renderCut(
     quality,
     outputPath: opts.outputPath,
     logo: opts.brand?.logo ?? null,
-    overlays: opts.overlays ?? null
+    overlays: opts.overlays ?? null,
+    fx: opts.fx ?? null
   }
   // Pieces of many different files (a vlog's clips) go in passes of a few: in
   // one pass, the loudness filter reads ahead into files the picture has not
