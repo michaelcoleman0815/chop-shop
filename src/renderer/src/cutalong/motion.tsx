@@ -82,10 +82,15 @@ function unname(): void {
   }
 }
 
+/** A screen with touch and no pointer, a phone's: a field that takes focus there raises the keyboard. */
+const TOUCH_ONLY = '(hover: none) and (pointer: coarse)'
+
 /**
  * Keeps focus where a person can find it. The composer hands focus to the
  * next screen's composer; focus on something that went away moves to the new
- * screen's composer, or its first control, never to the page itself.
+ * screen's composer, or its first control, never to the page itself. On a
+ * touch screen it moves to the first control that is not a field, so a tap
+ * on Back does not bring the keyboard up over the chat.
  */
 function keepFocus(update: () => void): () => void {
   const before = document.activeElement
@@ -95,10 +100,12 @@ function keepFocus(update: () => void): () => void {
     const now = document.activeElement
     const lost = !now || now === document.body || !now.isConnected
     if (!lost && !(inComposer && now !== document.getElementById('cl-ask'))) return
+    // A field may take focus where it raises no keyboard, or where the person was typing already.
+    const fields = inComposer || typeof matchMedia !== 'function' || !matchMedia(TOUCH_ONLY).matches
     const target =
-      document.getElementById('cl-ask') ??
+      (fields ? document.getElementById('cl-ask') : null) ??
       document.querySelector<HTMLElement>(
-        '.cl-main :is(button, [href], input, textarea, select, [tabindex]):not([disabled]):not([tabindex="-1"])'
+        `.cl-main :is(button, [href], ${fields ? 'input, textarea, ' : ''}select, [tabindex]):not([disabled]):not([tabindex="-1"])`
       )
     target?.focus({ preventScroll: true })
   }
