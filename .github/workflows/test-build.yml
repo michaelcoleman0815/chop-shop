@@ -9,6 +9,14 @@ on:
   push:
     branches:
       - claude/mcp-x1yvms
+    # The website and the design notes are not part of the app: a push that
+    # only changes them builds nothing.
+    paths-ignore:
+      - 'site/**'
+      - 'docs/design/**'
+      - '.claude/**'
+      - '.impeccable/**'
+      - 'PRODUCT.md'
   workflow_dispatch:
 
 # A newer push makes the build in progress pointless.
