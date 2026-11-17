@@ -47,12 +47,15 @@ done
 put "$FOOTAGE/drive.json" drive.json
 app rm -f files/drive-progress.txt files/drive-ack.txt files/drive-report.json
 
+# Room for the whole flow: the debug build logs every line the engine prints.
+adb logcat -G 16M || true
 adb logcat -c || true
 adb shell am start -W -n "$PKG/.MainActivity"
 
 start=$SECONDS
 seen=""
 gone=0
+sampled=0
 status=1
 why="no report in $TIMEOUT s"
 while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
@@ -77,6 +80,13 @@ while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
   fi
   # Gone only when three looks in a row find no process: a busy emulator's adb can answer nothing once.
   pid=$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r' || true)
+  # The app's memory every 15 s, and the device's, for when it is stopped.
+  if [ -n "$pid" ] && [ $((SECONDS - sampled)) -ge 15 ]; then
+    sampled=$SECONDS
+    pss=$(adb shell dumpsys meminfo "$PKG" 2>/dev/null | tr -d '\r' | awk '/TOTAL PSS:/ { print $3; exit } /^ *TOTAL / { print $2; exit }')
+    free=$(adb shell cat /proc/meminfo 2>/dev/null | tr -d '\r' | awk '/MemAvailable/ { print $2 }')
+    echo "$((SECONDS - start)) s ${seen:-starting}: app ${pss:-?} kB, device available ${free:-?} kB" >> "$OUT/memory.txt"
+  fi
   if [ -n "$pid" ]; then gone=0; else gone=$((gone + 1)); fi
   if [ "$gone" -ge 3 ]; then
     why="the app stopped (last step: ${seen:-none})"
@@ -89,6 +99,14 @@ done
 adb exec-out run-as "$PKG" cat files/drive-report.json > "$OUT/drive-report.json" 2>/dev/null || rm -f "$OUT/drive-report.json"
 adb exec-out run-as "$PKG" tar -C files -cf - Exports | tar -xf - -C "$OUT" || echo "::warning::no exports to pull"
 adb logcat -d > "$OUT/logcat.txt" || true
-grep -E "\[drive\]|Capacitor/Console|AndroidRuntime|FATAL" "$OUT/logcat.txt" | tail -n 120 || true
+# The app's own lines, without the engine's progress, which its debug build logs as it arrives.
+grep -E "\[drive\]|Capacitor/Console" "$OUT/logcat.txt" | grep -v '"stream":"stdout"' | tail -n 60 || true
+echo "--- the app's memory"
+tail -n 12 "$OUT/memory.txt" 2>/dev/null || true
+if [ $status != 0 ]; then
+  # Why it stopped: a crash, or the system ending it for memory.
+  echo "--- crashes and kills"
+  grep -E "AndroidRuntime|Fatal signal|DEBUG +:|lowmemorykiller|lmkd|am_kill|has died|Killing [0-9]+:$PKG|SIGKILL|OutOfMemory" "$OUT/logcat.txt" | tail -n 80 || true
+fi
 [ -s "$OUT/drive-report.json" ] || { echo "::error::the app wrote no report"; exit 1; }
 exit $status
