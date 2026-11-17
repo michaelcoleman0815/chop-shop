@@ -66,6 +66,13 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
 - **Motion graphics the way After Effects does.** Lower thirds, callouts, keyword pops, kinetic titles, hook banners,
   end cards, logos, market charts, screenshots of a page and a phone with logos going round it, each a slash command
   (`/lowerthird`, `/callout`, `/pop`, `/title`, …) that lands on the word you are watching.
+- **Scene effects for gaming and commentary.** A blocky pixel scan that brings the items in one by one, or you, or the
+  whole picture (`/scan`); a shockwave that bends the picture and shakes it on a hit or a landing (`/impact`); speed
+  lines rushing past a clear middle (`/speedlines`); the background blurring behind you while you stay sharp
+  (`/bgblur`); and 3D chrome or gold lettering for a title or a number counting up (`/chrome 1,000,000`). Ask in plain
+  words ("add speed lines and an impact when he lands") or by command; `/hype` cuts the whole video fast with
+  punch-ins, big captions, a scan to open and impacts on the big moments. On a Mac, Vision cuts the person and the
+  objects out for them; elsewhere each effect works on the whole frame or a region and the reply says so.
 - **Vlogs.** Drop a day of clips with "make a vlog" or `/vlog 8 min`. Cutalong watches every clip, leaves out the
   shaky, dark, pocket and repeated ones, works out the day from when and where each was shot, and tells it as a
   story: a tease of the best moment, the day in order, what you said to camera cut on the words, the payoff and a
