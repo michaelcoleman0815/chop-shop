@@ -49,6 +49,7 @@ xcrun simctl launch --terminate-running-process --stdout="$OUT/app-stdout.txt" -
 
 start=$SECONDS
 seen=""
+gone=0
 status=1
 why="no report in $TIMEOUT s"
 while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
@@ -72,7 +73,11 @@ while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
     echo "$n" > "$docs/drive-ack.txt"
     continue
   fi
-  if ! xcrun simctl spawn "$DEV" launchctl list 2>/dev/null | grep -q "UIKitApplication:$BUNDLE"; then
+  # Read whole before it is searched: grep -q leaving early would break launchctl's pipe, which
+  # pipefail counts as the app gone. Gone only when three looks in a row do not find it.
+  services=$(xcrun simctl spawn "$DEV" launchctl list 2>/dev/null || true)
+  if grep -q "UIKitApplication:$BUNDLE" <<<"$services"; then gone=0; else gone=$((gone + 1)); fi
+  if [ "$gone" -ge 3 ]; then
     why="the app stopped (last step: ${seen:-none})"
     break
   fi

@@ -52,6 +52,7 @@ adb shell am start -W -n "$PKG/.MainActivity"
 
 start=$SECONDS
 seen=""
+gone=0
 status=1
 why="no report in $TIMEOUT s"
 while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
@@ -74,7 +75,10 @@ while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
     adb shell "run-as $PKG sh -c 'echo $n > files/drive-ack.txt'" || true
     continue
   fi
-  if [ -z "$(adb shell pidof "$PKG" | tr -d '\r')" ]; then
+  # Gone only when three looks in a row find no process: a busy emulator's adb can answer nothing once.
+  pid=$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r' || true)
+  if [ -n "$pid" ]; then gone=0; else gone=$((gone + 1)); fi
+  if [ "$gone" -ge 3 ]; then
     why="the app stopped (last step: ${seen:-none})"
     break
   fi
