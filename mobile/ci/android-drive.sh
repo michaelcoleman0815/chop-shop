@@ -160,7 +160,11 @@ fi
 # Each bounded: without a device, logcat waits for one for ever.
 timeout 300 adb exec-out run-as "$PKG" tar -C files -cf - Exports | tar -xf - -C "$OUT" || echo "::warning::no exports to pull"
 timeout 120 adb logcat -d -b all > "$OUT/logcat.txt" || timeout 120 adb logcat -d > "$OUT/logcat.txt" || true
-[ "$(timeout 30 adb get-state 2>/dev/null)" = device ] || echo "::error::the emulator went away during the run"
+if [ "$(timeout 30 adb get-state 2>/dev/null)" != device ]; then
+  echo "::error::the emulator went away during the run"
+  # What the runner's kernel saw of it: a crash, or the emulator ended for memory.
+  sudo dmesg 2>/dev/null | grep -iE 'qemu|emulator|out of memory|killed process|segfault|traps:' | tail -n 20 || true
+fi
 # The app's own lines, without the engine's progress, which its debug build logs as it arrives.
 grep -E "\[drive\]|Capacitor/Console" "$OUT/logcat.txt" | grep -v '"stream":"stdout"' | tail -n 60 || true
 echo "--- the app's memory"

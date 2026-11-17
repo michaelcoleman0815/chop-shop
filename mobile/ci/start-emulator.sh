@@ -24,9 +24,12 @@ export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
 export ANDROID_AVD_HOME="$HOME/.android/avd"
 mkdir -p "$ANDROID_AVD_HOME"
 echo no | "$sdk/avdmanager" create avd --force -n drive -k "$IMAGE" -d pixel_6
+# Video is decoded inside the emulated phone, as a phone decodes it itself, rather than by the
+# emulator's own decoder, which runs in the emulator's process on the runner: twice the emulator
+# went away, with no word in its log, while the chat showed an export.
 nohup "$ANDROID_HOME/emulator/emulator" -avd drive -no-window -noaudio -no-boot-anim -no-snapshot \
   -gpu swiftshader_indirect -camera-back none -camera-front none -memory 4096 -cores 4 -partition-size 8192 \
-  > "$LOG" 2>&1 &
+  -feature -HardwareDecoder > "$LOG" 2>&1 &
 emulator=$!
 for _ in $(seq 1 120); do
   if ! kill -0 "$emulator" 2>/dev/null; then
@@ -44,6 +47,7 @@ for _ in $(seq 1 120); do
     adb shell settings put secure show_ime_with_hard_keyboard 1
     adb shell input keyevent 82
     echo "booted: $(adb shell getprop ro.build.fingerprint)"
+    echo "decoders the emulator offers: $(adb shell getprop | grep -i hwcodec | tr -d '\r' | tr '\n' ' ')"
     echo "WebView: $(adb shell dumpsys webviewupdate | grep -m1 'Current WebView package')"
     exit 0
   fi
