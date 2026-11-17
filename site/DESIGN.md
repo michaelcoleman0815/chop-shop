@@ -50,7 +50,8 @@ and chips. Product plates carry the brand's `--shadow-frame` and a 1 px outline,
 
 ## Motion
 
-The brand's durations (120, 180, 240, 320 ms) and curves. One authored moment: the hero's 12 s loop, which runs only in
+The brand’s durations (120, 180, 240, 320 ms) and curves. One authored moment: the hero’s 12 s loop, which starts at the
+visitor’s first scroll, pointer move, touch or key, runs only in
 view, pauses on hover, focus or its button, and never runs under reduced motion (the page shows its last frame). The
 nav playhead follows the scroll one to one. Nothing else moves unless it is pressed, hovered or switched.
 

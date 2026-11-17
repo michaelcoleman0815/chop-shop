@@ -7,14 +7,15 @@ const reduce = matchMedia('(prefers-reduced-motion: reduce)')
 document.querySelectorAll('[data-loop]').forEach((el) => {
   const button = el.querySelector('[data-loop-toggle]')
   const label = el.querySelector('[data-loop-label]')
-  const state = { seen: false, hover: false, focus: false, held: false }
+  // It waits for the visitor's first scroll, pointer move, touch or key, so a page left alone stays still and readable.
+  const state = { seen: false, engaged: false, hover: false, focus: false, held: false }
   const sync = () => {
     if (reduce.matches) {
       el.classList.remove('is-live', 'is-running')
       return
     }
-    if (state.seen) el.classList.add('is-live')
-    const run = state.seen && !state.hover && !state.focus && !state.held
+    if (state.seen && state.engaged) el.classList.add('is-live')
+    const run = state.seen && state.engaged && !state.hover && !state.focus && !state.held
     el.classList.toggle('is-running', run)
     el.querySelectorAll('video').forEach((v) => (run ? v.play().catch(() => {}) : v.pause()))
     if (button) {
@@ -37,6 +38,12 @@ document.querySelectorAll('[data-loop]').forEach((el) => {
     sync()
   }, { threshold: 0.35 }).observe(el)
   reduce.addEventListener('change', sync)
+  const engage = () => {
+    if (state.engaged) return
+    state.engaged = true
+    sync()
+  }
+  for (const type of ['scroll', 'pointermove', 'touchstart', 'keydown']) addEventListener(type, engage, { once: true, passive: true })
 })
 
 // ---- The page's beat strip: the section you are reading is the beat in ink, and the playhead sits on your place.

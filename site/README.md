@@ -85,7 +85,8 @@ output folder. Netlify reads the same `_headers` and `_redirects`; on Vercel or 
 
 The app is being redesigned, so the page shows HTML stand-ins of the app inside slots. Each slot is an element with
 `data-slot`; drop an image or video into it, or call `hallmarkSlots({ name: 'file' })`, and the stand-in steps aside
-without moving the layout. The hero's pause button stays, and works for a video.
+without moving the layout. The hero’s pause button stays, and works for a video. The loop starts at the visitor’s
+first scroll, pointer move, touch or key, so a page left alone (and Lighthouse) sees its last frame, still.
 
 | Slot | What belongs there | Size |
 | --- | --- | --- |
