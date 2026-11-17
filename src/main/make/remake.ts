@@ -454,7 +454,14 @@ export async function changeFor(
   }
   // A new length: a new script, so a new narration and new shots. Quoted first, from the length;
   // Claude writes it only once that quote is confirmed, held to it like the rest.
-  const brief: Brief = { ...make.brief, seconds: ask.seconds, from: 'topic', inferred: [] }
+  // The script is written to what was first asked, and to what was asked of it since, which wins.
+  const brief: Brief = {
+    ...make.brief,
+    seconds: ask.seconds,
+    from: 'topic',
+    inferred: [],
+    ask: `${make.brief.ask}\n\nAsked of it since: ${text.trim()}`.slice(0, 40_000)
+  }
   const draft: Draft = {
     ...base,
     brief,
