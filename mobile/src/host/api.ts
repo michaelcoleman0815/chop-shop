@@ -275,7 +275,7 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     setVideoSignIn: async () => null,
     getBrand: () => readBrand(),
     saveBrand: (brand) => saveBrand(brand),
-    // Brands are set up on the Mac for now; the phone makes edits in the default one.
+    // Brands are kept on the phone as on the Mac; learning a look from videos is on the Mac for now.
     getBrands: () => readBrands(),
     saveBrands: (brands) => saveBrands(brands),
     learnBrand: async (paths) => ({

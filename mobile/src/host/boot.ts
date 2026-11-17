@@ -171,7 +171,7 @@ export async function startPhone(options: StartOptions = {}): Promise<CutalongHo
         'feature:vlog': ON_THE_MAC.vlog,
         'feature:clipping': ON_THE_MAC.clipping,
         'feature:link': ON_THE_MAC.link,
-        'feature:brand': ON_THE_MAC.brand,
+        'feature:learn': ON_THE_MAC.brand,
         'feature:maps': ON_THE_MAC.maps
       }
     }

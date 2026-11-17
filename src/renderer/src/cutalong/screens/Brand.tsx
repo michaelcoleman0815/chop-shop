@@ -4,7 +4,7 @@ import { brandName } from '../../../../shared/brands'
 import { MOTION_FONTS } from '../../../../shared/motion/fonts'
 import { describeStyle } from '../../../../shared/presets'
 import { PROFILES, profileById } from '../../../../shared/raw/profiles'
-import { api, mediaUrlFor } from '../api'
+import { api, device, mediaUrlFor } from '../api'
 import { Facts } from '../components/Message'
 import { Blob, BrandAvatar } from '../components/Shapes'
 import { Button, Icon } from '../components/ui'
@@ -211,6 +211,8 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
   }, [brand.id, brand.products])
   useEffect(() => setPicking(fresh), [brand.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const avatar = avatarOf(brand)
+  // On a phone, learning a look from videos and edits is on the Mac for now (device.ts).
+  const learnAway = device.away['feature:learn']
   const set = (patch: Partial<Brand>): void => app.saveBrand({ ...brand, ...patch })
   const facts = describeStyle(brand.style)
 
@@ -288,28 +290,30 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
 
           <section className="cl-section" aria-labelledby="brand-videos">
             <h2 id="brand-videos">Your videos</h2>
-            <p className="cl-reply">{describeLearned(brand)}</p>
+            <p className="cl-reply">{learnAway && brand.videos.length === 0 ? learnAway : describeLearned(brand)}</p>
             <Facts facts={facts} seed={brand.id} />
-            <div
-              className={`cl-drop${dropping ? ' dropping' : ''}`}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDropping(true)
-              }}
-              onDragLeave={() => setDropping(false)}
-              onDrop={onDrop}
-            >
-              {app.brandProgress ? (
-                <Working progress={app.brandProgress} />
-              ) : (
-                <>
-                  <span>Drop videos you&apos;ve made, and I&apos;ll learn your look from them.</span>
-                  <Button small onClick={() => void addVideo()}>
-                    Add a video
-                  </Button>
-                </>
-              )}
-            </div>
+            {!learnAway && (
+              <div
+                className={`cl-drop${dropping ? ' dropping' : ''}`}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDropping(true)
+                }}
+                onDragLeave={() => setDropping(false)}
+                onDrop={onDrop}
+              >
+                {app.brandProgress ? (
+                  <Working progress={app.brandProgress} />
+                ) : (
+                  <>
+                    <span>Drop videos you&apos;ve made, and I&apos;ll learn your look from them.</span>
+                    <Button small onClick={() => void addVideo()}>
+                      Add a video
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
             {brand.videos.length > 0 && (
               <ul className="cl-list">
                 {brand.videos.map((v) => (
@@ -333,7 +337,7 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
             )}
           </section>
 
-          <LearnSection app={app} />
+          {!learnAway && <LearnSection app={app} />}
 
           <MemorySection app={app} />
 

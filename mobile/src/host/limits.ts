@@ -19,7 +19,7 @@ export const ON_THE_MAC = {
   reframe: 'Following the speaker is on the Mac for now.',
   angle: 'A second camera is added on the Mac for now.',
   lut: 'LUT files are on the Mac for now. The looks work here: try /look warm.',
-  brand: 'Your brand is set up on the Mac for now.',
+  brand: 'Learning your look from your videos and edits is on the Mac for now.',
   learn: 'Learning from your edits is on the Mac for now.',
   study: 'Learning a style from a video is on the Mac for now.'
 } as const
@@ -37,7 +37,6 @@ export function commandsOnTheMac(): Record<string, string> {
     reframe: ON_THE_MAC.reframe,
     angle: ON_THE_MAC.angle,
     lut: ON_THE_MAC.lut,
-    brand: ON_THE_MAC.brand,
     map: ON_THE_MAC.maps
   }
   for (const entry of motionCommandEntries()) away[entry.command] ??= ON_THE_MAC.graphics
