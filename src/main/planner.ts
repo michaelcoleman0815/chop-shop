@@ -432,10 +432,23 @@ export async function checkKey(
   return { ok: false, needsKey: status.state === 'none' || status.state === 'refused', ...status }
 }
 
+/**
+ * What Claude's answer said was wrong, without the status code and the JSON
+ * the SDK wraps it in ("400 {"type":"error",...}"), so it can stand in a sentence.
+ */
+export function claudeErrorText(err: unknown): string {
+  if (err instanceof Anthropic.APIError) {
+    const said = (err.error as { error?: { message?: unknown } } | undefined)?.error?.message
+    if (typeof said === 'string' && said.trim()) return said.trim().replace(/\.$/, '')
+    if (err.status) return `it answered ${err.status}`
+  }
+  return (err instanceof Error ? err.message : String(err)).replace(/\.$/, '')
+}
+
 /** A failed request in plain words: what it says about the key, or what Claude could not take. */
 export function describeError(err: unknown): string {
   const state = stateOfError(err)
   if (state) return keyMessage(state)
-  if (err instanceof Anthropic.APIError) return `Claude could not take that request: ${err.message}`
+  if (err instanceof Anthropic.APIError) return `Claude could not take that request: ${claudeErrorText(err)}.`
   return err instanceof Error ? err.message : String(err)
 }
