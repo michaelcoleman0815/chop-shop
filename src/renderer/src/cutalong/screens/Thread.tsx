@@ -11,10 +11,29 @@ import { Header } from './Header'
 /** The conversation: what was given, what was understood, what happens next. */
 export function Thread({ app }: { app: Cutalong }): JSX.Element {
   const end = useRef<HTMLDivElement>(null)
+  const scroller = useRef<HTMLDivElement>(null)
   // New turns glide into view; with reduced motion they are simply there.
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'end' })
   }, [app.messages])
+  // The reply box grows with a longer reply. If the end of the conversation was in view, it stays in view.
+  useEffect(() => {
+    const el = scroller.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let atEnd = true
+    const onScroll = (): void => {
+      atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 24
+    }
+    const watch = new ResizeObserver(() => {
+      if (atEnd) el.scrollTop = el.scrollHeight
+    })
+    el.addEventListener('scroll', onScroll, { passive: true })
+    watch.observe(el)
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      watch.disconnect()
+    }
+  }, [])
 
   return (
     <>
@@ -32,7 +51,7 @@ export function Thread({ app }: { app: Cutalong }): JSX.Element {
         )}
       </Header>
       <main className="cl-thread">
-        <div className="cl-thread-scroll">
+        <div className="cl-thread-scroll" ref={scroller}>
           <div className="cl-thread-column">
             {app.messages.map((m) =>
               m.role === 'user' ? (

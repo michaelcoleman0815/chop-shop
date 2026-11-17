@@ -2,6 +2,7 @@ import { closeSync, openSync, readSync } from 'fs'
 import { createRequire } from 'module'
 import { isAbsolute } from 'path'
 import { promisify } from 'util'
+import { patchRenames } from './windows-rename'
 
 /**
  * Stand-in programs on Windows. Tests stand in for ffmpeg, whisper or yt-dlp
@@ -55,3 +56,10 @@ if (process.platform === 'win32' || process.env.CUTALONG_STAND_INS === 'node') {
     ;(require('module') as { syncBuiltinESMExports: () => void }).syncBuiltinESMExports()
   }
 }
+
+/**
+ * Renames as the app makes them on Windows (main/windows-rename.ts, which the
+ * main process installs as it starts): one over a file something is reading
+ * waits for it. CUTALONG_STAND_INS=node installs them elsewhere too, to try.
+ */
+if (process.platform === 'win32' || process.env.CUTALONG_STAND_INS === 'node') patchRenames('win32')

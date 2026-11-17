@@ -16,7 +16,7 @@ import { neverForBrand } from './memory'
 import { readApiKey } from './apikey'
 import { suggestClips, OLLAMA_HOST } from './clips'
 import { isLocalUp, localModels } from './local-llm'
-import { MODEL } from './planner'
+import { claudeErrorText, MODEL } from './planner'
 import { detectFaces, hasFaceFinder, type VisionSample } from './track'
 import { NO_FACE_FINDER, thisComputer } from '../shared/platform'
 import { detectShots } from './shots'
@@ -564,7 +564,8 @@ export async function findClips(
         )
       } catch (err) {
         const who = engine.by === 'claude' ? 'Claude' : (engine.model ?? `The model on ${thisComputer}`)
-        notes.push(`${who} couldn't pick them (${message(err).replace(/\.$/, '')}), so I sorted them by measuring.`)
+        const why = engine.by === 'claude' ? claudeErrorText(err) : message(err).replace(/\.$/, '')
+        notes.push(`${who} couldn't pick them (${why}), so I sorted them by measuring.`)
         engine = { by: 'measured', model: null }
         fellBack = true
       }

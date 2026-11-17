@@ -79,11 +79,14 @@ beforeAll(() => {
   // A trailer as Steam serves it: fragmented MP4 in two-second segments.
   const hls = join(media, 'hls')
   mkdirSync(hls)
+  // ffmpeg's HLS writer finds the playlist's folder by its last '/', so on Windows the paths it gets use '/':
+  // with C:\...\video.m3u8 it would write init.mp4 into the working directory instead.
+  const slashed = (path: string): string => path.replace(/\\/g, '/')
   ffmpegRun(FFMPEG, [
     '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=30', '-t', '12',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '30', '-keyint_min', '30', '-sc_threshold', '0', '-pix_fmt', 'yuv420p',
     '-f', 'hls', '-hls_time', '2', '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-hls_playlist_type', 'vod',
-    '-hls_segment_filename', join(hls, 'seg_%03d.m4s'), join(hls, 'video.m3u8')
+    '-hls_segment_filename', slashed(join(hls, 'seg_%03d.m4s')), slashed(join(hls, 'video.m3u8'))
   ])
   writeFileSync(
     join(hls, 'master.m3u8'),

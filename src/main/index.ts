@@ -49,6 +49,7 @@ import {
 import { registerCutalongIpc } from './cutalong'
 import { registerMapIpc } from './maps-ipc'
 import { selfCheck } from './self-check'
+import { patchRenames } from './windows-rename'
 import { thisComputer } from '../shared/platform'
 import type {
   AspectPreset,
@@ -65,6 +66,9 @@ import type {
   VideoMeta,
   AnalysisOptions
 } from '../shared/types'
+
+// On Windows a save renamed over a file something is reading waits for it, rather than failing.
+patchRenames()
 
 const SIX_HOURS = 6 * 60 * 60 * 1000
 

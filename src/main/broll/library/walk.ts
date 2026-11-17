@@ -61,6 +61,13 @@ export interface DirDone {
 
 const STAT_BATCH = 32
 
+const WINDOWS = process.platform === 'win32'
+const isLink = (path: string): Promise<boolean> =>
+  fs.lstat(path).then(
+    (s) => s.isSymbolicLink(),
+    () => false
+  )
+
 export async function* walk(
   root: string,
   opts: { report: WalkReport; signal?: AbortSignal; maxDepth?: number }
@@ -104,6 +111,11 @@ export async function* walk(
           if (PACKAGE_DIRS.test(name)) {
             const ext = extOf(name)
             if (UNSUPPORTED[ext]) opts.report.packages.push({ path: join(dir, name), ext })
+            continue
+          }
+          // Windows lists a link to a folder (a symbolic link or a junction) as a folder; only lstat tells.
+          if (WINDOWS && (await isLink(join(dir, name)))) {
+            wanted.push({ name, link: true, cls: { is: 'json' } })
             continue
           }
           subdirs.push(name)
