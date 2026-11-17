@@ -53,6 +53,11 @@ status=1
 why="no report in $TIMEOUT s"
 while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
   progress=$(head -n1 "$docs/drive-progress.txt" 2>/dev/null || true)
+  # The flow says its first step within a minute or two of the app starting; nothing by then is a stop.
+  if [ -z "$seen" ] && [ -z "$progress" ] && [ $((SECONDS - start)) -gt 240 ]; then
+    why="the app showed no step of its flow in 240 s: it did not find drive.json, or could not start"
+    break
+  fi
   if [ -n "$progress" ] && [ "$progress" != "$seen" ]; then
     seen=$progress
     n=${progress%% *}

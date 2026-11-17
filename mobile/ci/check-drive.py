@@ -55,8 +55,11 @@ for s in report.get("steps", []):
     print(f"  step {s['n']} {s['name']} at {s['atSec']} s{'' if s.get('acknowledged') else ' (no screenshot taken)'}")
 for p in report.get("progress", []):
     print(f"  {p['atSec']:>7} s  {p['stage']}")
-for e in report.get("errors", []):
-    print(f"  console: {e}")
+# A phone's plugins log each call they turn down (a file that is not there yet), so these are many and mostly that.
+errors = report.get("errors", [])
+print(f"console errors: {len(errors)}{' (the first 15)' if len(errors) > 15 else ''}")
+for e in errors[:15]:
+    print(f"  {e}")
 
 if not report.get("ok"):
     problem(f"the flow stopped: {report.get('failed')}")

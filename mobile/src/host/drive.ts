@@ -109,11 +109,22 @@ export async function drive(): Promise<void> {
     progress,
     errors
   }
+  // Long enough for an emulator with no GPU to transcribe and export; a step that takes longer has stopped.
+  const stepSec = plan.stepSec ?? 1200
   const seconds = (): number => Math.round((Date.now() - t0) / 100) / 10
   const keep = (line: string): void => void (errors.length < 60 && errors.push(`${seconds()} s: ${line}`))
   const error = console.error.bind(console)
+  const said = (a: unknown): string => {
+    if (a instanceof Error) return a.message
+    if (typeof a !== 'object' || a === null) return String(a)
+    try {
+      return JSON.stringify(a)
+    } catch {
+      return String(a)
+    }
+  }
   console.error = (...args: unknown[]) => {
-    keep(args.map((a) => (a instanceof Error ? a.message : String(a))).join(' '))
+    keep(args.map(said).join(' ').slice(0, 400))
     error(...args)
   }
   addEventListener('error', (e) => keep(`error: ${e.message}`))
@@ -138,7 +149,6 @@ export async function drive(): Promise<void> {
   // Until the work in hand is done: no progress row and the composer free, for a second.
   // Work that is over before it shows a row (a command can be) is waited for only briefly.
   const settle = async (what: string): Promise<void> => {
-    const stepSec = plan.stepSec ?? 1800
     await until(`${what} to start`, () => busy(), 5).catch(() => undefined)
     let quiet = 0
     let last = ''
@@ -203,7 +213,7 @@ export async function drive(): Promise<void> {
     const working = until(
       'transcribing',
       () => firstCut || /Transcrib/.test(text(document.querySelector('.cl-progress-stage'))),
-      plan.stepSec ?? 1800
+      stepSec
     ).then(() => (firstCut ? keep('transcribing never showed') : step('transcribing')))
     await settle('the first cut')
     firstCut = true
@@ -251,7 +261,7 @@ export async function drive(): Promise<void> {
         const said = (document.querySelector('.cl-toast') as HTMLElement | null)?.innerText.replace(/\n+/g, ' | ') ?? ''
         return /Exported|couldn.t export/i.test(said) && said
       },
-      plan.stepSec ?? 1800
+      stepSec
     )
     report.toast = toast
     report.secondsToExport = Math.round((Date.now() - exporting) / 100) / 10

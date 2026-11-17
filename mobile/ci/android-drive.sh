@@ -56,6 +56,11 @@ status=1
 why="no report in $TIMEOUT s"
 while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
   progress=$(app cat files/drive-progress.txt 2>/dev/null | head -n1 || true)
+  # The flow says its first step within a minute or two of the app starting; nothing by then is a stop.
+  if [ -z "$seen" ] && [ -z "$progress" ] && [ $((SECONDS - start)) -gt 240 ]; then
+    why="the app showed no step of its flow in 240 s: it did not find drive.json, or could not start"
+    break
+  fi
   if [ -n "$progress" ] && [ "$progress" != "$seen" ]; then
     seen=$progress
     n=${progress%% *}
@@ -65,8 +70,8 @@ while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
       status=0
       break
     fi
-    adb exec-out screencap -p > "$OUT/screens/$(printf %02d "$n")-$step.png"
-    adb shell "run-as $PKG sh -c 'echo $n > files/drive-ack.txt'"
+    adb exec-out screencap -p > "$OUT/screens/$(printf %02d "$n")-$step.png" || echo "::warning::no screenshot at $step"
+    adb shell "run-as $PKG sh -c 'echo $n > files/drive-ack.txt'" || true
     continue
   fi
   if [ -z "$(adb shell pidof "$PKG" | tr -d '\r')" ]; then
