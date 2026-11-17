@@ -74,7 +74,9 @@ TestFlight:
 - `APP_STORE_CONNECT_KEY_P8`: the whole of the key's `.p8` file, as text. The key's role must let Xcode manage certificates and profiles (Admin does).
 - `APPLE_TEAM_ID`: the team's ID, on the developer account's Membership page.
 
-The app's record is made in App Store Connect first, for the bundle ID `social.brewed.cutalong`. Xcode signs the archive with those keys and uploads it; App Store Connect processes it before testers see it, and asks about export compliance for each build unless the app's Info.plist answers it.
+The app's record is made in App Store Connect first, for the bundle ID `social.brewed.cutalong`. Xcode signs the archive with those keys and uploads it; App Store Connect processes it before testers see it. The app's `Info.plist` answers export compliance (`ITSAppUsesNonExemptEncryption` is false: the app's only encryption is the system's, HTTPS through the web view and URLSession, and the Keychain; the engine's ffmpeg has no TLS library and reads only files on the phone), so it does not ask for each build.
+
+The app's privacy manifest (`ios/App/App/PrivacyInfo.xcprivacy`) declares the APIs Apple asks a reason for that the app uses: file timestamps (the Filesystem plugin's stat and the engine's ffmpeg, on files in the app's container) and user defaults (the Preferences plugin, for the app's own settings). The engine's plugin carries its own. In CI, `ci/privacy-apis.py` reads every binary in the built app for the functions, constants and selectors on Apple's list and fails when one is used and not declared, or declared and not used.
 
 The icons are drawn from the Mac app's mark by `scripts/make-icons.py`, at the sizes each store and launcher asks for: one 1024 px opaque square for iOS, which Xcode makes the rest from; Android's adaptive icon (the coral behind the mark, which also serves as Android 13's themed icon) and the 48 dp icons for Android 7, square and round. `python3 scripts/make-icons.py --play icon.png` writes the 512 px icon the Play Console's listing asks for.
 

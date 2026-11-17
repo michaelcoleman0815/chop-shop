@@ -737,6 +737,7 @@ jobs:
           xcrun simctl boot "$(sed -n 1p "$RUNNER_TEMP/sim.txt")" || true
 
       - name: Build the app for the simulator
+        id: build
         working-directory: mobile
         run: |
           npm ci --no-audit --no-fund
@@ -771,6 +772,12 @@ jobs:
           name: ios-app-drive
           path: ${{ runner.temp }}/drive
           retention-days: 14
+
+      # The APIs Apple asks a reason for, as the built app's binaries use them, against the
+      # privacy manifests in it (ios/App/App/PrivacyInfo.xcprivacy and the frameworks' own).
+      - name: The APIs Apple asks a reason for
+        if: always() && steps.build.outcome == 'success'
+        run: python3 mobile/ci/privacy-apis.py "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
 
   # What the app made on each phone, measured here: the steps of the flow and
   # of the dark tour, a new version from the command, the crew at the export,

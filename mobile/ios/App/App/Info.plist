@@ -24,6 +24,14 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!--
+	  Export compliance, answered here so App Store Connect does not ask for each
+	  build: the app's only encryption is the system's, HTTPS through the web
+	  view and URLSession and the Keychain. The engine's ffmpeg is built with no
+	  TLS library and reads only files on the phone.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Cutalong saves each export you make to Photos.</string>
 	<key>UIApplicationSceneManifest</key>
