@@ -1,6 +1,7 @@
 import antonUrl from '../../../../resources/fonts/Anton-Regular.ttf?url'
 import archivoUrl from '../../../../resources/fonts/ArchivoBlack-Regular.ttf?url'
 import soraUrl from '../../../../resources/fonts/Sora.ttf?url'
+import fellUrl from '../../../../resources/fonts/IMFellEnglish-Regular.ttf?url'
 import {
   logoLookup,
   marksFrom,
@@ -20,7 +21,8 @@ import {
 const URLS: Record<string, string> = {
   'Anton-Regular.ttf': antonUrl,
   'ArchivoBlack-Regular.ttf': archivoUrl,
-  'Sora.ttf': soraUrl
+  'Sora.ttf': soraUrl,
+  'IMFellEnglish-Regular.ttf': fellUrl
 }
 
 let fonts: Promise<void> | null = null

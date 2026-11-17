@@ -2,7 +2,6 @@ import { captionedWords, type Asset, type Cut, type Resolved, type Source, type 
 import {
   buildScene,
   drawsCaptions,
-  template,
   themeFrom,
   type BrandLook,
   type FaceSample,
@@ -75,7 +74,8 @@ export function subtitleCut(cut: Cut): Cut {
  * Only the subtitles read the words, so the picture is unchanged.
  */
 export function subtitlePass(cut: Cut, resolved: Resolved, scene: MotionScene): { cut: Cut; resolved: Resolved } {
-  const cards = scene.items.filter((i) => template(i.kind)?.covers === 'card')
+  // What covers the screen is the graphic's own say: a full-frame map holds the captions, a map inset does not.
+  const cards = scene.items.filter((i) => i.covers === 'card')
   // Beats whose captions are off are left out too.
   const words = captionedWords(cut, resolved).words.filter(
     (w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end)

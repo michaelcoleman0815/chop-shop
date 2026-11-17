@@ -11,6 +11,9 @@
  * seconds; times on keyframes are seconds from the layer's start.
  */
 
+import type { MapResources } from '../maps/paint'
+import type { MapPaint } from '../maps/types'
+
 /** After Effects-style curves, CSS-style curves, and physical ones. */
 export const EASE_NAMES = [
   'linear',
@@ -349,7 +352,13 @@ export interface GroupLayer<T = number> extends Base<T> {
   children: Layer<T>[]
 }
 
-export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | GroupLayer<T>
+/** A map shot: its camera, the places it lights up, its lines, pins and labels (src/shared/maps). */
+export interface MapLayer<T = number> extends Base<T> {
+  kind: 'map'
+  map: MapPaint
+}
+
+export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | GroupLayer<T> | MapLayer<T>
 
 /** A Lucide icon: element name and attributes, as lucide-static ships them. */
 export type IconNode = [string, Record<string, string | number>]
@@ -371,6 +380,8 @@ export interface DrawResources {
   matte?: CanvasImageSource | null
   /** Makes an offscreen canvas, for layers drawn behind the person. */
   createCanvas?: (width: number, height: number) => { getContext(kind: '2d'): CanvasRenderingContext2D | null }
+  /** The map data and the satellite tiles loaded so far, for map layers. */
+  map?: MapResources
 }
 
 export interface Size {

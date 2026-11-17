@@ -23,6 +23,9 @@ extraResources:
     to: bin
   - from: resources/fonts
     to: fonts
+  # The small satellite pictures every map starts from; the export reads them here.
+  - from: resources/maps
+    to: maps
 
 mac:
   category: public.app-category.video

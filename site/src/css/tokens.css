@@ -1,0 +1,152 @@
+/*
+ * Cutalong site tokens. Colour, type, radius, shadow and motion come from the Cutalong design system
+ * (src/renderer/src/cutalong/tokens.json and the published system); each colour is that hex in OKLCH.
+ * The scale (space, text sizes, container) is Hallmark's. Dark values are derived for the site only:
+ * the app has no dark mode, so the product renderings keep the app's light palette (--app-*) in both.
+ */
+:root {
+  color-scheme: light dark;
+
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px;
+  --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+
+  --text-xs: 0.8125rem; --text-sm: 0.875rem; --text-md: 1.0625rem; --text-lg: 1.25rem; --text-xl: 1.5625rem;
+  --text-2xl: 1.953rem; --text-3xl: 2.441rem;
+  --text-display-s: clamp(2.25rem, 4vw + 0.5rem, 3.75rem); --text-display: clamp(2.75rem, 5vw + 1rem, 5.25rem);
+  --text-section: clamp(2.125rem, 2.5vw + 1rem, 3.5rem); --text-title: clamp(1.25rem, 0.75vw + 0.875rem, 1.625rem);
+  --text-lead: clamp(1.125rem, 0.35vw + 1rem, 1.375rem);
+
+  --container: 1440px; --gutter: 64px; --gap-columns: 32px;
+  --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
+  --nav-height: 72px;
+
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400;
+  --z-toast: 500; --z-tooltip: 600;
+
+  /* Colour. The page is ground, card, ink and greys; coral marks the cut and nothing else. */
+  --color-paper: oklch(97% 0.0026 106.4);        /* ground #F5F5F3 */
+  --color-paper-2: oklch(94% 0.0042 91.4);       /* well #ECEBE8 */
+  --color-paper-3: oklch(92.5% 0.0055 95.1);     /* beat #E7E6E2 */
+  --color-card: oklch(100% 0 0);                 /* card #FFFFFF */
+  --color-pill: var(--color-card);              /* the selected segment */
+  --color-ink: oklch(20.1% 0.0081 274.5);        /* ink #15161A */
+  --color-ink-2: oklch(42.1% 0.0135 274.6);      /* ink-soft #4B4D55 */
+  --color-muted: oklch(49% 0.013 274.7);         /* muted #5E6068 */
+  --color-rule: oklch(92.8% 0.0042 91.4);        /* line #E8E7E4 */
+  --color-rule-strong: oklch(87.3% 0.0056 95.1); /* the hover hairline, #D6D5D1 */
+  --color-ink-hover: oklch(29.4% 0.013 272.9);   /* the primary button's hover, #2A2C33 */
+  --color-accent: oklch(68.4% 0.2069 33.9);      /* coral #FF5A36: the mark, the playhead, the avatar */
+  --color-accent-ink: var(--color-card);
+  --color-focus: var(--color-ink);
+  --color-error: oklch(52% 0.19 27);
+  --color-wash: oklch(20.1% 0.0081 274.5 / 0.05); /* the text button's hover */
+
+  --font-body: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-body);
+  --font-outlier: "JetBrains Mono", ui-monospace, Menlo, monospace; /* commands, timecode, file names */
+  --weight-body: 400;
+
+  --radius-tile: 10px; --radius-thumb: 16px; --radius-card: 24px; --radius-composer: 28px; --radius-pill: 999px;
+  --rule-hair: 1px;
+
+  --shadow-composer: 0 0 0 6px oklch(68.4% 0.2069 33.9 / 0.045), 0 24px 50px oklch(20.1% 0.0081 274.5 / 0.07);
+  --shadow-frame: 0 24px 50px oklch(20.1% 0.0081 274.5 / 0.16);
+  --shadow-tab: 0 1px 3px oklch(20.1% 0.0081 274.5 / 0.12);
+  --shadow-float: 0 18px 40px oklch(20.1% 0.0081 274.5 / 0.2);
+  --shadow-plate: 0 1px 2px oklch(20.1% 0.0081 274.5 / 0.05);
+
+  /* Motion, from the design system. Hallmark's names point at the brand's values. */
+  --duration-fast: 120ms; --duration-base: 180ms; --duration-gentle: 240ms; --duration-calm: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --spring-gentle: linear(0, 0.023 2.8%, 0.102 6.3%, 0.294 12%, 0.605 20.8%, 0.774 26.8%, 0.897 32.8%, 0.979 39.3%, 1.026 47%, 1.037 58.8%, 1 97.3%, 1);
+  --ease-out: var(--ease-enter); --ease-in: var(--ease-exit); --ease-in-out: var(--ease-standard);
+  --dur-micro: var(--duration-fast); --dur-short: var(--duration-base); --dur-long: var(--duration-calm);
+  --tracking-display: -0.04em;
+
+  /* The app as it looks today, for the product renderings: fixed, whatever the page's mode. */
+  --app-ground: oklch(97% 0.0026 106.4);
+  --app-card: oklch(100% 0 0);
+  --app-well: oklch(94% 0.0042 91.4);
+  --app-line: oklch(92.8% 0.0042 91.4);
+  --app-beat: oklch(92.5% 0.0055 95.1);
+  --app-ink: oklch(20.1% 0.0081 274.5);
+  --app-ink-soft: oklch(42.1% 0.0135 274.6);
+  --app-muted: oklch(49% 0.013 274.7);
+  --app-coral: oklch(68.4% 0.2069 33.9);
+  --app-frame: oklch(16.4% 0.0065 271);          /* the video frame, #0D0E11 */
+  --app-frame-2: oklch(29.8% 0.013 272.9);       /* #2B2D34 */
+  --app-hatch: oklch(20.1% 0.0081 274.5 / 0.07);
+  --app-outline: oklch(20.1% 0.0081 274.5 / 0.08);
+  --plate-outline: oklch(0% 0 0 / 0.1);           /* the edge of a product picture: pure black, never tinted */
+  --app-glow: oklch(68.4% 0.2069 33.9 / 0.045);  /* the composer's glow, the one soft coral */
+  --app-frame-shadow: 0 24px 50px oklch(20.1% 0.0081 274.5 / 0.16);
+  --app-caption: oklch(100% 0 0);
+  --app-scrim: oklch(16.4% 0.0065 271 / 0.55);
+}
+
+/* Dark: re-derived per token, hue held, never inverted. Coral stays the brand's: the mark is never recoloured. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-paper: oklch(17.7% 0.004 106.8);
+    --color-paper-2: oklch(19.9% 0.0039 106.7);
+    --color-paper-3: oklch(24% 0.0045 106.7);
+    --color-card: oklch(21.7% 0.0057 106.9);
+    --color-pill: oklch(32% 0.0057 106.9);
+    --plate-outline: oklch(100% 0 0 / 0.1);
+    --color-ink: oklch(95.5% 0.0041 271.4);
+    --color-ink-2: oklch(83% 0.0086 271.3);
+    --color-muted: oklch(73.5% 0.0089 271.3);
+    --color-rule: oklch(32% 0.0052 106.7);
+    --color-rule-strong: oklch(40% 0.0055 106.7);
+    --color-ink-hover: oklch(86% 0.006 271.4);
+    --color-accent-ink: oklch(100% 0 0);
+    --color-wash: oklch(95.5% 0.0041 271.4 / 0.07);
+    --weight-body: 360;
+    --shadow-composer: 0 0 0 1px oklch(32% 0.0052 106.7);
+    --shadow-frame: 0 0 0 1px oklch(32% 0.0052 106.7);
+    --shadow-tab: 0 0 0 1px oklch(40% 0.0055 106.7);
+    --shadow-float: 0 0 0 1px oklch(40% 0.0055 106.7);
+    --shadow-plate: 0 0 0 1px oklch(32% 0.0052 106.7);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: oklch(17.7% 0.004 106.8);
+  --color-paper-2: oklch(19.9% 0.0039 106.7);
+  --color-paper-3: oklch(24% 0.0045 106.7);
+  --color-card: oklch(21.7% 0.0057 106.9);
+  --color-pill: oklch(32% 0.0057 106.9);
+  --plate-outline: oklch(100% 0 0 / 0.1);
+  --color-ink: oklch(95.5% 0.0041 271.4);
+  --color-ink-2: oklch(83% 0.0086 271.3);
+  --color-muted: oklch(73.5% 0.0089 271.3);
+  --color-rule: oklch(32% 0.0052 106.7);
+  --color-rule-strong: oklch(40% 0.0055 106.7);
+  --color-ink-hover: oklch(86% 0.006 271.4);
+  --color-accent-ink: oklch(100% 0 0);
+  --color-wash: oklch(95.5% 0.0041 271.4 / 0.07);
+  --weight-body: 360;
+  --shadow-composer: 0 0 0 1px oklch(32% 0.0052 106.7);
+  --shadow-frame: 0 0 0 1px oklch(32% 0.0052 106.7);
+  --shadow-tab: 0 0 0 1px oklch(40% 0.0055 106.7);
+  --shadow-float: 0 0 0 1px oklch(40% 0.0055 106.7);
+  --shadow-plate: 0 0 0 1px oklch(32% 0.0052 106.7);
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+@font-face {
+  font-family: "Figtree";
+  src: url("../fonts/figtree.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jetbrains-mono.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

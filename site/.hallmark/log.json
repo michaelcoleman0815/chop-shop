@@ -1,0 +1,32 @@
+[
+ {
+  "date": "2026-11-17",
+  "shape": "Edit Strip (custom; draw Marquee Hero swapped)",
+  "theme": "brand (Cutalong design system)",
+  "genre": "modern-minimal",
+  "axes": "light/geometric-sans/warm",
+  "hero": "headline line over a twelve-column product plate (draw Settled swapped)",
+  "nav": "slab carrying the page beat strip",
+  "footer": "statement",
+  "imagery": "product built in 10 slots, no photographs",
+  "photos": [],
+  "entry": "none (static), hero loop with pause",
+  "fingerprint": "Hanging|Asymmetric spans|Bleed-colour block|Solid|Tightly cropped|None",
+  "sections": [
+   "hero: thread beside the script view and strip",
+   "split: facts beside a system diagram (card band)",
+   "steps: three screens over captions",
+   "switcher: five jobs, screen over two-column copy",
+   "rows: questions as disclosures",
+   "split: rows marked coming soon beside an email field",
+   "band: download beside the app first screen",
+   "footer: statement"
+  ],
+  "signature": "the editor beat strip as the page navigation, the coral playhead on your place",
+  "waived": [],
+  "draw": "6d8424",
+  "job": "try",
+  "prompt": "Cutalong landing page: a desktop video editor for YouTube creators that you talk to; local-first; own Anthropic key",
+  "mode": "build"
+ }
+]

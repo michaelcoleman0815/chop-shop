@@ -7,6 +7,7 @@ import { ClaudeFrames, ClaudeWrites } from './ClaudeFrames'
 import { grow } from '../motion'
 import { Header } from './Header'
 import { Licences } from './Licences'
+import { MapsSection } from './Maps'
 import { OtherServices } from './OtherServices'
 import { Planning } from './Planning'
 
@@ -255,6 +256,8 @@ export function SettingsPage(): JSX.Element {
               </div>
             )}
           </section>
+
+          {!device.away['feature:maps'] && <MapsSection />}
 
           <section className="cl-section" aria-labelledby="set-exports">
             <h2 id="set-exports">Exports</h2>

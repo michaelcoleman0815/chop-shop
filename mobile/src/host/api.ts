@@ -18,6 +18,8 @@ import { detectProvider } from '../../../src/shared/keys'
 import { isServiceId, type ServiceId } from '../../../src/shared/services'
 import { EMPTY_MEMORY, memoryView } from '../../../src/shared/memory'
 import { EditDocSchema } from '../../../src/shared/edit'
+import type { MapStatus } from '../../../src/shared/maps'
+import { mapRequest } from '../../../src/shared/maps/request'
 import { learnState } from '../../../src/shared/learn'
 import { ON_THE_MAC } from './limits'
 import type { PhoneServices } from './services'
@@ -28,6 +30,9 @@ import type { PhoneSettings } from './settings'
  * work the Mac's main process does (src/main), on the phone's platform.
  * What is on the Mac for now answers with one sentence saying so.
  */
+
+/** Maps are drawn on the Mac's canvas for now, like the other graphics: nothing of them is kept here. */
+const NO_MAPS: MapStatus = { level: 0, plates: false, complete: false, downloadMb: 0 }
 
 type Progress = { stage: string; percent: number | null }
 type Listener = (p: Progress) => void
@@ -220,6 +225,9 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     // list, are kept on the Mac for now, so a phone's plans have neither.
     planEdit: async (req) => {
       const parsed = EditDocSchema.safeParse(req.doc)
+      // A map asked for in words, which the Mac places without a model, is on the Mac for now.
+      if (parsed.success && req.notes.length === 0 && mapRequest(parsed.data, req.request))
+        return { ok: false as const, message: ON_THE_MAC.maps }
       const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
       return planEdit({ ...req, preferences: [], logos: brand.logos.map((l) => l.name), apiKey: await key() })
     },
@@ -307,6 +315,10 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     getSettings: async () => parts.settings.current(),
     setSettings: (patch) => parts.settings.set(patch),
     chooseOutputDir: async () => null,
+    mapStatus: async () => NO_MAPS,
+    mapData: async () => ({ status: NO_MAPS, tilesDir: null, plates: null }),
+    downloadMaps: async () => ({ ok: false as const, message: ON_THE_MAC.maps, status: NO_MAPS }),
+    onMapProgress: quiet,
     hasModel: (model) => hasModel(model as WhisperModel),
     modelSizeMb: async (model) => modelSizeMb(model as WhisperModel),
     downloadModel: async (model) => {

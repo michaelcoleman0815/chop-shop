@@ -14,6 +14,7 @@ export const ON_THE_MAC = {
   link: 'Videos and pictures from links are on the Mac for now. Add your own with +.',
   broll: 'Finding B-roll online is on the Mac for now. Add your own clips with +.',
   graphics: 'Motion graphics are on the Mac for now.',
+  maps: 'Maps are on the Mac for now.',
   icon: 'Icons are on the Mac for now.',
   reframe: 'Following the speaker is on the Mac for now.',
   angle: 'A second camera is added on the Mac for now.',
@@ -36,7 +37,8 @@ export function commandsOnTheMac(): Record<string, string> {
     reframe: ON_THE_MAC.reframe,
     angle: ON_THE_MAC.angle,
     lut: ON_THE_MAC.lut,
-    brand: ON_THE_MAC.brand
+    brand: ON_THE_MAC.brand,
+    map: ON_THE_MAC.maps
   }
   for (const entry of motionCommandEntries()) away[entry.command] ??= ON_THE_MAC.graphics
   return away

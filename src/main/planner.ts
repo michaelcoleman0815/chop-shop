@@ -12,6 +12,7 @@ import {
   type Note,
   type Op
 } from '../shared/edit'
+import { mapRequest } from '../shared/maps/request'
 import {
   fromPlannerOp,
   PLANNER_SYSTEM,
@@ -75,6 +76,10 @@ export async function planEdit(input: {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
   const doc = parsedDoc.data
+
+  // A request for a map and nothing else needs no model.
+  const map = planMapRequest(doc, input.request, input.notes)
+  if (map) return map
 
   const apiKey = input.apiKey
   if (!apiKey)
@@ -225,6 +230,51 @@ export function keepOffList(result: PlanEditResult, doc: EditDoc, never: string[
     notesHandled: emptied ? [] : result.notesHandled.filter((id) => !askedFor(id)),
     brollWanted
   }
+}
+
+/**
+ * A request that asks for a map and nothing else ("show where Iceland is"),
+ * placed here without a model: on the word that names the place, or at the
+ * start when it is never said. Null for any other request, which the model
+ * plans. Shared by Claude and the model on this Mac.
+ */
+export function planMapRequest(doc: EditDoc, request: string, notes: Note[]): PlanEditResult | null {
+  if (notes.length > 0) return null
+  const found = mapRequest(doc, request)
+  if (!found) return null
+  if (found.kind === 'problem') {
+    return { ok: true, ops: [], summary: '', reply: found.problem, notesHandled: [], needs: [], rejected: [], brollWanted: [] }
+  }
+  const { call } = found
+  const op = {
+    op: 'motion-add' as const,
+    kind: call.kind,
+    from: call.from,
+    to: '',
+    text: call.text,
+    items: [],
+    values: [],
+    box: [],
+    icon: '',
+    style: call.style,
+    place: call.place,
+    color: '',
+    fx: call.fx
+  }
+  const name = found.name.charAt(0).toUpperCase() + found.name.slice(1)
+  return offerPlan(
+    doc,
+    {
+      ops: [op],
+      summary: `${name} comes in.`,
+      reply: found.said
+        ? `${name} comes in as the place is named.`
+        : `${name} comes in at the start, since the place is never said. Move it in the editor.`,
+      notesHandled: [],
+      needs: []
+    },
+    notes
+  )
 }
 
 /**

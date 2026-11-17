@@ -40,6 +40,9 @@ export function GraphicPanel({
   const styles = tpl?.styles.filter(Boolean) ?? []
   const places = tpl?.places ?? []
   const style = item.style || styles[0]
+  // Where what it shows comes from: a map's facts and data, behind Details.
+  const details = tpl?.details?.(item) ?? []
+  const [open, setOpen] = useState(false)
 
   return (
     <aside className="cl-notes cl-graphic" aria-label="Graphic">
@@ -53,6 +56,21 @@ export function GraphicPanel({
         <p className="cl-reply">
           {graphicTitle(item)}. {when}
         </p>
+        {details.length > 0 && (
+          <button type="button" className="cl-link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            {open ? 'Hide details' : 'Details'}
+          </button>
+        )}
+        {open && details.length > 0 && (
+          <dl className="cl-details">
+            {details.map((d) => (
+              <div key={d.label} style={{ display: 'contents' }}>
+                <dt>{d.label}</dt>
+                <dd>{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
         {tpl?.fields.map((f) => {
           if (f.slot === 'text') {
             return (
