@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync } from 'fs'
 import { currentCut, resolveCut, type EditDoc } from '../../src/shared/edit'
 import { takesOf } from '../../src/shared/raw'
-import { scoreCut, type RawWord, type TimedText } from '../../src/shared/raw/published'
+import { scoreCut, untimedWords, type RawWord, type TimedText } from '../../src/shared/raw/published'
 import { loudnessEnvelope } from '../../src/main/audio-envelope'
 import { FFMPEG_PATH } from '../../src/main/ffmpeg'
 import type { Envelope } from '../../src/shared/audio/snap'
@@ -60,11 +60,18 @@ function alike(a: Envelope, aFrom: number, aTo: number, b: Envelope, bFrom: numb
 }
 
 async function main(): Promise<void> {
-  const [out, preparedPath, cutPath, publishedPath, media] = process.argv.slice(2)
-  if (!out || !preparedPath || !cutPath || !publishedPath) throw new Error('usage: score <out.json> <prepared.json> <cut.doc.json> <published.words.json> [published media]')
+  const [out, preparedPath, cutPath, publishedPath, last] = process.argv.slice(2)
+  if (!out || !preparedPath || !cutPath || !publishedPath)
+    throw new Error('usage: score <out.json> <prepared.json> <cut.doc.json> <published.words.json|published.txt> [published media|published seconds]')
   const doc = (JSON.parse(readFileSync(preparedPath, 'utf8')) as { prepared: { doc: EditDoc } }).prepared.doc
   const made = JSON.parse(readFileSync(cutPath, 'utf8')) as EditDoc
-  const pub = JSON.parse(readFileSync(publishedPath, 'utf8')) as { words: TimedText[]; mediaSec?: number; durationSec: number }
+  // Words read as text (a caption track off a page) carry no times; their running time comes as a number.
+  const seconds = last !== undefined && /^\d+(\.\d+)?$/.test(last) ? Number(last) : null
+  const media = seconds === null ? last : undefined
+  const pub: { words: TimedText[]; mediaSec?: number; durationSec: number } = publishedPath.endsWith('.txt')
+    ? { words: untimedWords(readFileSync(publishedPath, 'utf8')), durationSec: seconds ?? Number.NaN }
+    : (JSON.parse(readFileSync(publishedPath, 'utf8')) as { words: TimedText[]; mediaSec?: number; durationSec: number })
+  if (!Number.isFinite(pub.mediaSec ?? pub.durationSec)) throw new Error('published words read as text need the published running time, in seconds')
   const raw: RawWord[] = doc.words.map((w) => ({ id: w.id, source: w.source, text: w.text, startSec: w.startSec, endSec: w.endSec }))
   const resolved = resolveCut(currentCut(made), made.words, made.sources)
   const text = new Map(made.words.map((w) => [w.id, w.text]))
@@ -105,6 +112,7 @@ async function main(): Promise<void> {
   process.stderr.write(
     `kept words: precision ${(rest.precision * 100).toFixed(1)}%, recall ${(rest.recall * 100).toFixed(1)}%; takes ${rest.takesSame}/${rest.takesBoth} the same; ` +
       `runs ${rest.runningSec.cut.toFixed(0)} s against ${rest.runningSec.published.toFixed(0)} s (raw ${rest.runningSec.raw.toFixed(0)} s); ` +
+      `${rest.wpm.cut.toFixed(0)} against ${rest.wpm.published.toFixed(0)} words a minute; ` +
       `opens on the same line: ${rest.opening.same ? 'yes' : 'no'}\n`
   )
 }

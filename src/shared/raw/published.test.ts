@@ -7,6 +7,8 @@ import {
   recoverEdit,
   scoreCut,
   takePlayed,
+  timed,
+  untimedWords,
   type RawWord,
   type TimedText
 } from './published'
@@ -120,6 +122,24 @@ describe('recovering a published edit from its words', () => {
     for (const id of [...ids(...intro), ...ids(at('The battery lasts for three ye-'), at('ye-'))]) expect(kept.has(id)).toBe(false)
   })
 
+  it('recovers the kept stretches from words read as text, with no times', () => {
+    // Auto-captions read off a page: the words in playing order, no timings, a [music] mark.
+    const pub = publish([camera, today, battery2, buy])
+    const text = `${pub.words.slice(0, 5).map((w) => w.text).join(' ')} [music] ${pub.words.slice(5).map((w) => w.text).join(' ')}`
+    const words = untimedWords(text)
+    expect(timed(words)).toBe(false)
+    expect(words.length).toBe(pub.words.length)
+    const edit = recoverEdit(words, raw)
+    const right = [...edit.kept].filter((id) => pub.truth.has(id)).length
+    expect(right / edit.kept.size).toBeGreaterThanOrEqual(0.97)
+    expect(right / pub.truth.size).toBeGreaterThanOrEqual(0.97)
+    expect(edit.spans[0].from).toBe(camera[0])
+    const s = scoreCut({ raw, rawSec: 40, cut: { words: [], durationSec: 1 }, published: { words, durationSec: 30 }, groups: [] })
+    // No times, no published pauses; the pace still reads from the count.
+    expect(s.pauses.published).toBeNull()
+    expect(s.wpm.published).toBeCloseTo((words.length / 30) * 60, 1)
+  })
+
   it('marks takes with the same words as unsettled when nothing can hear them', () => {
     const session = 'The phone is fast. |1.0| The phone is fast. |1.0| It has a big screen.'
     const r = build(session).words.map((w) => ({ id: w.id, source: w.source, text: w.text, startSec: w.startSec, endSec: w.endSec }))
@@ -127,6 +147,12 @@ describe('recovering a published edit from its words', () => {
     const words: TimedText[] = r.slice(second[0], second[1] + 1).map((w) => ({ text: w.text, startSec: w.startSec - 2, endSec: w.endSec - 2 }))
     const edit = recoverEdit(words, r)
     expect(edit.spans[0].ambiguous).toBe(true)
+    // A cut playing either take is not marked down for it.
+    for (const take of [0, 4]) {
+      const cutWords = r.slice(take, take + 4).map((w) => ({ ...w }))
+      const s = scoreCut({ raw: r, rawSec: 8, cut: { words: cutWords, durationSec: 2 }, published: { words, durationSec: 2 }, groups: [] })
+      expect([s.precision, s.recall]).toEqual([1, 1])
+    }
     // Heard, the take that sounds like the published one is the one played.
     const heard = recoverEdit(words, r, { hear: (_p, x) => (Math.abs(x.startSec - r[4].startSec) < 0.01 ? 0.9 : 0.4) })
     expect(heard.spans[0].ambiguous).toBe(false)
