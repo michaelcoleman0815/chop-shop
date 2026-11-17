@@ -395,9 +395,8 @@ button:disabled {
 /* Where you type is always ready, so its focus is soft: a firmer edge and a halo of blue pencil, never a heavy ring. */
 .cl-composer:focus-within {
   border-color: var(--ink-soft);
-  box-shadow:
-    0 0 0 4px color-mix(in oklch, var(--pick) 16%, transparent),
-    var(--shadow-composer);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
 }
 
 .cl-composer.dropping {
@@ -1539,7 +1538,8 @@ button:disabled {
 
 .cl-note-input:focus-within {
   border-color: var(--ink-soft);
-  box-shadow: 0 0 0 4px color-mix(in oklch, var(--pick) 16%, transparent);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
 }
 
 .cl-note-input input {
@@ -2013,9 +2013,12 @@ button:disabled {
   resize: vertical;
 }
 
-.cl-field input:focus-visible,
+/* The same soft halo as the composer, drawn as an outline so it shows at once. */
+.cl-field input:not([type='color']):not([type='checkbox']):focus-visible,
 .cl-field textarea:focus-visible {
   border-color: var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
 }
 
 .cl-row {
