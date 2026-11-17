@@ -3760,8 +3760,10 @@ export function useCutalong() {
         } else if (gridded) {
           // The grid's own reply says what it made.
         } else if (recordings.length > 0) await takeIn(recordings, said)
-        // The edit began with this message: its words shape the version it was made with (a grid's labels too).
-        const started = !before && docRef.current !== null && !vlogged
+        // The edit began with this message: its words shape the version it was made with. A grid made from the
+        // files is already a version of its own, with its own summary, so what Claude does with the words
+        // (labels, whose sound) is the next one rather than added onto it.
+        const started = !before && docRef.current !== null && !vlogged && !gridded
         if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
         if (stills.length > 0 && !gridded) {
           if (docRef.current) await addMaterial(stills)
@@ -3806,7 +3808,7 @@ export function useCutalong() {
         }
         if (gridded && command) {
           // Made from the files with /grid: nothing more to run. A grid Claude read from the words goes on
-          // below, so the same words (labels, whose sound) shape the version it was made with.
+          // below, where the same words (labels, whose sound) go to Claude for the next version.
         } else if (command && !(vlogged && command.command === 'vlog')) {
           // A command the brand never uses is answered as that; its words are not asked for another way.
           const ruled = ruledCommand(command.command, command.rest)
@@ -3819,8 +3821,7 @@ export function useCutalong() {
           // What was said with the shoot was for its story, or for the clips.
         } else if (words && !asked && docRef.current && (!link || route?.link === 'none' || !route?.link)) {
           // Whatever was said is the ask, a sentence or a whole prompt: Claude reads it, with the footage as sorted.
-          // A grid made from the files has no intake message of its own.
-          const intake = started && !gridded ? intakeId.current : null
+          const intake = started ? intakeId.current : null
           const n = await planWords(words, { first: started })
           const d = docRef.current
           if (intake && n !== null && d) {
