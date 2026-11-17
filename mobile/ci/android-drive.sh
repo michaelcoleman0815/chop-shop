@@ -130,7 +130,8 @@ flow_status=$status
 flow_why=$why
 adb exec-out run-as "$PKG" cat files/drive-report.json > "$OUT/drive-report.json" 2>/dev/null || rm -f "$OUT/drive-report.json"
 
-if [ "$flow_status" = 0 ]; then
+# The tour runs after a flow that stopped too, to show the project as far as it got.
+if [ -s "$OUT/drive-report.json" ]; then
   # The dark tour: the system dark and animations off, the app started again on the same project.
   adb shell cmd uimode night yes
   animations 0
@@ -147,7 +148,7 @@ if [ "$flow_status" = 0 ]; then
   adb shell cmd uimode night no || true
 else
   tour_status=1
-  tour_why="dark: not started, as the flow did not finish"
+  tour_why="dark: not started, as the app wrote no report"
 fi
 [ "$flow_status" = 0 ] || echo "::error::$flow_why"
 [ "$tour_status" = 0 ] || echo "::error::$tour_why"

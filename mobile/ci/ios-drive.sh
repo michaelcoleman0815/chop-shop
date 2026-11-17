@@ -121,7 +121,8 @@ flow_status=$status
 flow_why=$why
 cp "$docs/drive-report.json" "$OUT/" 2>/dev/null || true
 
-if [ "$flow_status" = 0 ]; then
+# The tour runs after a flow that stopped too, to show the project as far as it got.
+if [ -s "$OUT/drive-report.json" ]; then
   # The dark tour: the simulator dark, reduced motion asked for, and the app launched again on the same project.
   xcrun simctl ui "$DEV" appearance dark
   # As Settings does: the preference, then the news of it. The tour's report says whether the web view heard.
@@ -140,7 +141,7 @@ if [ "$flow_status" = 0 ]; then
   xcrun simctl spawn "$DEV" defaults write com.apple.Accessibility ReduceMotionEnabled -bool false || true
 else
   tour_status=1
-  tour_why="dark: not started, as the flow did not finish"
+  tour_why="dark: not started, as the app wrote no report"
 fi
 [ "$flow_status" = 0 ] || echo "::error::$flow_why"
 [ "$tour_status" = 0 ] || echo "::error::$tour_why"
@@ -166,7 +167,15 @@ if [ "$flow_status" != 0 ] || [ "$tour_status" != 0 ]; then
     echo "--- the app's stderr, $label, last lines"
     tail -n 60 "$OUT/app-stderr-$label.txt" || true
   done
-  find "$HOME/Library/Logs/DiagnosticReports" -name 'App*' -newer "$OUT/app-stdout-light.txt" -exec cp {} "$OUT/" \; 2>/dev/null || true
 fi
+# Crash reports from the run, the app's and its web views', and where each crashed.
+sleep 5
+find "$HOME/Library/Logs/DiagnosticReports" \( -name 'App*' -o -name '*WebContent*' -o -name '*WebKit*' \) \
+  -newer "$OUT/app-stdout-light.txt" -exec cp {} "$OUT/" \; 2>/dev/null || true
+for report in "$OUT"/*.ips; do
+  [ -f "$report" ] || continue
+  echo "--- $(basename "$report"): the thread that crashed"
+  python3 "$(dirname "$0")/crashed-thread.py" "$report" || true
+done
 [ -s "$OUT/drive-report.json" ] || { echo "::error::the app wrote no report"; exit 1; }
 [ "$flow_status" = 0 ] && [ "$tour_status" = 0 ]

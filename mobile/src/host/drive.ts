@@ -216,7 +216,7 @@ export async function drive(): Promise<void> {
     const screen = [shown('.cl-main'), shown('.cl-toast')].filter(Boolean).join(' || ').slice(0, 700)
     const s: Step = { n: steps.length + 1, name, atSec: seconds(), acknowledged: false, screen }
     steps.push(s)
-    console.log(`[drive] ${s.n} ${name} at ${s.atSec} s`)
+    console.log(`[drive] ${s.n} ${name} at ${s.atSec} s, ${new Date().toISOString()}`)
     await files.writeText(at('drive-progress.txt'), `${s.n} ${name}\n`)
     for (const end = Date.now() + 30_000; Date.now() < end; await sleep(300)) {
       const ack = await files.readText(at('drive-ack.txt')).catch(() => '')
@@ -279,6 +279,16 @@ export async function drive(): Promise<void> {
     return until(place, () => document.querySelector<HTMLElement>(ready), 30)
   }
 
+  // The editor with its preview ready to play, as a person sees it before they export.
+  const editor = async (): Promise<void> => {
+    await until('the editor', () => document.querySelector('.cl-editor'), 30)
+    report.previewReady = await until(
+      'the preview',
+      () => ((document.querySelector('.cl-editor .cl-frame video') as HTMLVideoElement | null)?.readyState ?? 0) >= 2,
+      60
+    ).catch(() => false)
+  }
+
   // An export's toast stays until it is closed: the screens after it are shown without it.
   const closeToast = (): void => {
     const toast = document.querySelector('.cl-toast')
@@ -293,7 +303,9 @@ export async function drive(): Promise<void> {
     )
     await step('exporting')
     // Back to the chat, where the export's reply shows the crew at work.
-    ;(await until('Back', () => button('Back'), 10)).click()
+    const back = await until('Back', () => button('Back'), 10)
+    console.log(`[drive] back to the chat at ${seconds()} s, ${new Date().toISOString()}`)
+    back.click()
     await until('the crew at the export', () => document.querySelector('.cl-progress'), 60)
     await sleep(2500)
     record()
@@ -397,12 +409,7 @@ export async function drive(): Promise<void> {
     )
     await step('command')
     ;(await until('Open the editor', () => button('Open the editor'), 30)).click()
-    await until('the editor', () => document.querySelector('.cl-editor'), 30)
-    report.previewReady = await until(
-      'the preview',
-      () => ((document.querySelector('.cl-editor .cl-frame video') as HTMLVideoElement | null)?.readyState ?? 0) >= 2,
-      60
-    ).catch(() => false)
+    await editor()
     await step('editor')
 
     report.toast = await exportFromEditor()
@@ -458,7 +465,7 @@ export async function drive(): Promise<void> {
     const card = await until('the project on Start', () => document.querySelector<HTMLButtonElement>('.cl-project'), 30)
     await step('start')
     card.click()
-    await until('the editor', () => document.querySelector('.cl-editor'), 30)
+    await editor()
     await step('editor')
     report.toast = await exportFromEditor()
     // The thread with the new export in it, and the crew credited under it.
