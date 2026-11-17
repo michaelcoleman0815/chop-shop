@@ -666,7 +666,7 @@ export function useCutalong() {
   const stopped = useCallback(
     (what: Blocked, where: 'thread' | 'panel' | 'toast' = 'thread'): void => {
       const text = blockedSentence(what, keyRef.current)
-      if (where === 'panel') setPanel({ text, error: true })
+      if (where === 'panel') setPanel({ text, error: true, actions: [{ kind: 'setup-key', label: 'Set up the key' }] })
       else if (where === 'toast') setToast({ text, error: true })
       else push({ role: 'assistant', text, actions: [{ kind: 'setup-key', label: 'Set up the key', primary: true }] })
     },
