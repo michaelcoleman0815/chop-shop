@@ -76,10 +76,11 @@ import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/spee
  * format, timebase, sample rate and layout first, which is what lets footage
  * from different cameras and screen recorders join at all.
  *
- * Opening a decoder per input costs memory, so a long cut renders in chunks
- * of at most maxInputs pieces to an intermediate file each, then joins them
- * in a last pass that adds captions and sets loudness once over the whole.
- * Chunks only ever break at a hard cut, so no transition is split in two.
+ * One pass over many pieces holds the pictures of pieces it has not reached,
+ * so a cut of more than one piece renders in chunks of a few inputs to an
+ * intermediate file each, then a last pass reads them back as one input and
+ * adds captions and sets loudness once over the whole. Chunks only ever break
+ * at a hard cut, so no transition is split in two.
  *
  * No Electron imports: the binary and folders arrive as arguments, which is
  * what lets the tests render real files with the system ffmpeg.
@@ -1289,7 +1290,10 @@ export interface RenderCutOptions {
   workDir: string
   quality?: 'preview' | 'final'
   fontsDir?: string | null
-  /** Pieces per pass before a cut is rendered in chunks. */
+  /**
+   * Inputs per pass, and a cut renders in passes only when it needs more than
+   * this. Absent: a cut of more than one piece renders in passes of PASS_INPUTS.
+   */
   maxInputs?: number
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
@@ -1485,9 +1489,25 @@ async function checkInputs(
   }
 }
 
-/** More different files than this in a cut, and it renders in passes of MANY_FILES_INPUTS inputs. */
-const MANY_FILES = 6
-const MANY_FILES_INPUTS = 8
+/**
+ * Inputs a pass reads when a cut renders in passes. Each input a pass joins
+ * adds the first pictures it decodes, waiting at the join at full size: 50 to
+ * 140 MB each for a vertical frame from a wide recording, on ffmpeg 6.0 to
+ * 7.0 on four cores. At two, every pass holds less than the last one does.
+ */
+const PASS_INPUTS = 2
+
+/**
+ * A concat demuxer list of the chunks, each given the length the next one
+ * starts after (lengths[i]): ffmpeg moves every chunk's timestamps by the sum
+ * of the lengths before it. Names are relative, so the list is read beside
+ * the chunks.
+ */
+function chunkList(names: string[], lengths: number[]): string {
+  return ['ffconcat version 1.0', ...names.flatMap((n, i) => [`file '${n}'`, `duration ${exact(lengths[i])}`]), ''].join(
+    '\n'
+  )
+}
 
 /** Renders a cut to a file and returns its path. */
 export async function renderCut(
@@ -1577,28 +1597,35 @@ export async function renderCut(
     logo: opts.brand?.logo ?? null,
     overlays: opts.overlays ?? null
   }
-  // Pieces of many different files (a vlog's clips) go in passes of a few: in
-  // one pass, the loudness filter reads ahead into files the picture has not
-  // reached, and their frames wait at full size. 18 clips of a vlog took more
-  // than 12 GB in one pass, and 1.5 GB in passes of 8.
-  const files = new Set(segments.map((s) => s.path)).size
-  const maxInputs = opts.maxInputs ?? (files > MANY_FILES ? MANY_FILES_INPUTS : 24)
+  // One pass over several pieces holds pictures it has not reached yet: the
+  // loudness filter looks 3 s ahead, the sound opens the next pieces' inputs
+  // for it, and their pictures, scaled for the frame, wait at the join. Nine
+  // pieces of one service, a /clipping clip, took more than 7 GB in one pass;
+  // 18 clips of a vlog more than 12 GB. So a cut of more than one piece renders
+  // in passes of a few inputs (PASS_INPUTS), with nothing over the whole, to
+  // intermediate files, and a last pass reads them back as one input and sets
+  // the captions, loudness and the rest over the whole. However many pieces
+  // a cut has, no pass then holds much more than a one-piece export does.
+  // maxInputs, given, renders in passes of it only past that many inputs.
   const inputsNeeded = segments.reduce((n, s) => n + inputsFor(s), 0)
+  const inPasses = opts.maxInputs !== undefined ? inputsNeeded > opts.maxInputs : segments.length > 1
 
-  if (inputsNeeded <= maxInputs) {
+  if (!inPasses) {
     await runRender(opts.ffmpeg, buildRenderArgs(segments, { ...base, ...finishing }), total, progress, opts.signal)
     return opts.outputPath
   }
 
-  // Chunks first, each at most maxInputs inputs, then one join that adds the
-  // captions and loudness across the whole thing. The chunks take most of the
-  // time, so they get most of the progress bar.
-  const chunks = chunkSegments(segments, maxInputs)
+  // Chunks first, each of at most PASS_INPUTS inputs (or maxInputs), then one
+  // join that adds the captions and loudness across the whole thing. The
+  // chunks take most of the time, so they get most of the progress bar.
+  const chunks = chunkSegments(segments, opts.maxInputs ?? PASS_INPUTS)
   const spans = segmentSpans(segments)
-  const joined: Segment[] = []
   // A chunk file always carries an audio track, silent or not; the join only
   // sets loudness when some piece of the cut had sound.
   const anySound = segments.some((s) => !!s.audio || s.hasAudio)
+  const names: string[] = []
+  const pictureLengths: number[] = []
+  const soundLengths: number[] = []
   let done = 0
   let at = 0
   for (let i = 0; i < chunks.length; i++) {
@@ -1607,27 +1634,43 @@ export async function renderCut(
     const to = spans[at + chunk.length - 1]
     at += chunk.length
     const length = to.outEnd - from.outStart
-    const path = join(opts.workDir, `chunk-${String(i).padStart(3, '0')}.mkv`)
+    const name = `chunk-${String(i).padStart(3, '0')}.mkv`
     const args = buildRenderArgs(chunk, {
       ...base,
       assPath: null,
       loudness: null,
       quality: 'intermediate',
-      outputPath: path
+      outputPath: join(opts.workDir, name)
     })
     await runRender(opts.ffmpeg, args, length, (f) => progress(((done + f * length) / total) * 0.8), opts.signal)
     done += length
-    joined.push({
-      path,
-      startSec: 0,
-      durationSec: length,
-      hasAudio: anySound,
-      treatment: null,
-      broll: null,
-      outStart: from.outStart
-    })
+    names.push(name)
+    // A chunk's picture is its frames on the cut's clock; its sound is cut to the sample.
+    pictureLengths.push((Math.round(to.outEnd * fps) - Math.round(from.outStart * fps)) / fps)
+    soundLengths.push(length)
   }
-  const args = buildRenderArgs(joined, { ...base, ...finishing })
+  // The chunks, read as one input through the concat demuxer, which moves a
+  // chunk's picture and sound by the same amount: the sum of the lengths in
+  // its list before it. So the picture is read through a list of whole frames
+  // and the sound, read apart as another recording's would be, through a list
+  // of the chunks' exact lengths. One list for both put a chunk that starts
+  // within a hair of half a frame a frame late. One input per list, however
+  // many chunks: an input per chunk held pictures waiting again.
+  const pictureList = join(opts.workDir, 'chunks-picture.ffconcat')
+  const soundList = join(opts.workDir, 'chunks-sound.ffconcat')
+  await fs.writeFile(pictureList, chunkList(names, pictureLengths))
+  await fs.writeFile(soundList, chunkList(names, soundLengths))
+  const whole: Segment = {
+    path: pictureList,
+    startSec: 0,
+    durationSec: spans[spans.length - 1].outEnd - spans[0].outStart,
+    hasAudio: anySound,
+    audio: anySound ? { path: soundList, offsetSec: 0 } : null,
+    treatment: null,
+    broll: null,
+    outStart: spans[0].outStart
+  }
+  const args = buildRenderArgs([whole], { ...base, ...finishing })
   await runRender(opts.ffmpeg, args, total, (f) => progress(0.8 + f * 0.2), opts.signal)
   return opts.outputPath
 }
