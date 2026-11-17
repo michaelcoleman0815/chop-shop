@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { addAsset, applyOps, commit, createDoc, currentCut, layersAt, resolveCut, wordsFromTranscript } from '.'
 import { gridLine, plannedGrid, silenceGrids } from './grid'
 import { gridDoc, gridOps, labelFor, readGridAsk, type GridFile } from './grid-doc'
+import { cutoutsDuring, pictureWindow } from '../fx'
 
 /**
  * Grids in words: an edit of several finished videos at once, made from the
@@ -184,6 +185,30 @@ describe('/grid in words', () => {
     expect(gridOps(doc, null, '')).toEqual({
       problem: 'Bring in the videos to put in the grid first: drop them here, then /grid.'
     })
+  })
+
+  it('gives scene effects no cut-out of the speaker on a grid, where the recording sits in a panel', () => {
+    let doc = talking()
+    const beat = currentCut(doc).beats[0].id
+    const frame = { width: 1920, height: 1080 }
+    const track = {
+      path: '/take.mov',
+      kind: 'person' as const,
+      width: 192,
+      height: 108,
+      samples: [{ t: 0, masks: [{ id: 1, file: '/m/0.png', box: [0.3, 0.1, 0.4, 0.9] as [number, number, number, number] }] }]
+    }
+    const before = resolveCut(currentCut(doc), doc.words, doc.sources)
+    // Across the frame, the speaker's cut-out lines up with the picture.
+    expect(pictureWindow(currentCut(doc), before, doc.sources, 0.5, frame)).not.toBeNull()
+    expect(cutoutsDuring(currentCut(doc), before, doc.sources, [track], 0, 2).person).toBe(true)
+    const made = gridOps(doc, beat, '')
+    if ('problem' in made) throw new Error(made.problem)
+    doc = commit(doc, made.ops, made.summary).doc
+    const after = resolveCut(currentCut(doc), doc.words, doc.sources)
+    // In a grid the recording is one panel among four: no cut-out of the whole frame would line up with it.
+    expect(pictureWindow(currentCut(doc), after, doc.sources, 0.5, frame)).toBeNull()
+    expect(cutoutsDuring(currentCut(doc), after, doc.sources, [track], 0, 2).person).toBe(false)
   })
 
   it('is heard in the preview from the panel it names: the beat’s own deck goes quiet', () => {

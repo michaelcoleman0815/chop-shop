@@ -3,6 +3,7 @@ import { AspectSchema, CAPTION_POSITIONS, CaptionSpecSchema, TightenSpecSchema }
 import { CAMERA_INFO, type Camera } from '../edit/camera'
 import { FadeSchema } from '../edit/transitions'
 import { LookSchema, NAMED_LOOKS } from '../edit/look'
+import { FxStyleSchema } from '../fx/style'
 
 /**
  * Presets are slash commands. A built-in like /tighten and a style saved from
@@ -45,7 +46,9 @@ export const StyleSpecSchema = z.object({
   /** The whole video fading in at the start and out at the end. */
   fade: FadeSchema.optional(),
   /** A look over the whole picture; null takes any look off. A LUT stays when a look is set. */
-  look: LookSchema.nullable().optional()
+  look: LookSchema.nullable().optional(),
+  /** Scene effects (shared/fx/style): a pixel scan to open, and speed lines into impacts on a few big cuts. */
+  fx: FxStyleSchema.optional()
 })
 export type StyleSpec = z.infer<typeof StyleSpecSchema>
 
@@ -233,5 +236,7 @@ export function describeStyle(style: StyleSpec): string[] {
   else if (style.look === null) facts.push('Colour as recorded')
   if (style.captions?.position && style.captions.on !== false)
     facts.push(`Captions ${POSITION_WORDS[style.captions.position]}`)
+  if (style.fx?.moments) facts.push('Impacts on the big moments')
+  else if (style.fx?.open) facts.push('A pixel scan to open')
   return facts
 }

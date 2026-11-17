@@ -1,6 +1,8 @@
 import { isFiller } from '../fillers'
 import { motionCaptionLook } from '../motion/captions'
 import { motionPhrases } from '../motion/describe'
+import { fxPhrases } from '../fx/words'
+import { fxStyleOps } from '../fx/style'
 import { applyOps } from '../edit/ops'
 import { pictureSpan, resolveCut, type Resolved, type ResolvedBeat } from '../edit/resolve'
 import { currentCut } from '../edit/doc'
@@ -165,6 +167,9 @@ export function planStyle(
       if (pick) push({ op: 'treat', beats: [beat.id], set: { bigWord: pick } })
     }
   }
+
+  // Scene effects last, on the cut as paced: a scan to open, and speed lines into impacts on a few big cuts.
+  if (style.fx) push(...fxStyleOps(cut, resolve(), style.fx))
 
   if (style.bw) {
     const cutaways = cut.beats.filter((b) => b.treatment.frame === 'broll' || b.treatment.frame === 'split')
@@ -634,7 +639,7 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
   }
   if (removed > 0) said.push(`${count(removed, 'beat')} ${removed === 1 ? 'is' : 'are'} gone`)
   if (struck > 0) said.push(`${count(struck, 'stretch', 'stretches')} of words ${struck === 1 ? 'is' : 'are'} cut`)
-  said.push(...motionPhrases(ops))
+  said.push(...motionPhrases(ops), ...fxPhrases(ops))
 
   let text = said.length > 0 ? `${sentenceList(said)}.` : ''
   text = text.charAt(0).toUpperCase() + text.slice(1)

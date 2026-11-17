@@ -23,6 +23,7 @@ import {
 } from '../shared/edit'
 import { chaptersOf, clock, describeCamera, describeSpeed, seconds } from '../shared/presets'
 import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from '../shared/motion'
+import { FX_PLANNER_OPS, fromFxPlannerOp, fxGuide, fxLines } from '../shared/fx/planner'
 import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { ordinal } from '../shared/raw/takes'
@@ -102,6 +103,8 @@ A <material> block, when present, lists what the person brought in to use: foota
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
 ${graphicsGuide()}
+
+${fxGuide()}
 
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
@@ -292,6 +295,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('motion-add'), kind: z.enum(GRAPHIC_KINDS), ...graphicSlots() }),
   z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
   z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) }),
+  // Scene effects (shared/fx/planner), every slot required in the same way.
+  ...FX_PLANNER_OPS,
   // Cutalong's own commands (shared/plan/commands.ts), run by the editor in the order given.
   ...planCommandSchemas()
 ])
@@ -373,6 +378,10 @@ export function fromPlannerOp(op: PlannerOp): unknown {
       }
       return { op: op.op, beats: op.beats, move, ...of }
     }
+    case 'fx-add':
+    case 'fx-update':
+    case 'fx-remove':
+      return fromFxPlannerOp(op)
     default:
       return op
   }
@@ -588,6 +597,8 @@ export function renderRequest(
   const parts = [`<cut ${settings.join('; ')}>`, ...beats, '</cut>']
   const graphics = graphicsLines(cut, resolved, doc.words)
   if (graphics.length > 0) parts.push('<graphics>', ...graphics, '</graphics>')
+  const effects = fxLines(cut, resolved, doc.words)
+  if (effects.length > 0) parts.push('<effects>', ...effects, '</effects>')
   if (doc.assets.length > 0) {
     // Where each piece already shows, so the planner neither repeats nor forgets one.
     const shows = new Map<string, string[]>()

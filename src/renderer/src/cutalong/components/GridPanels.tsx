@@ -9,7 +9,7 @@ import {
   type GridPicture
 } from '../../../../shared/edit'
 import { gridGround, gridLabels, LABEL_FADE, renderFrame, type MotionTheme } from '../../../../shared/motion'
-import { mediaUrlFor } from '../api'
+import { MEDIA_CORS, mediaUrlFor } from '../api'
 import { loadMotionFonts } from '../graphics'
 
 /**
@@ -129,9 +129,15 @@ function Panel({
     if (!runs && !v.paused) v.pause()
   }, [at, playing])
   const src = mediaUrlFor(path)
+  // Loaded as the decks are, with leave to read them, so scene effects on a grid read the panels too (fx-preview).
+  const cors = src.startsWith('data:') ? undefined : MEDIA_CORS
   return (
     <div className="cl-grid-panel" style={style}>
-      {still ? <img src={src} alt="" /> : <video ref={ref} src={src} muted={muted} playsInline preload="auto" />}
+      {still ? (
+        <img src={src} alt="" crossOrigin={cors} />
+      ) : (
+        <video ref={ref} src={src} crossOrigin={cors} muted={muted} playsInline preload="auto" />
+      )}
     </div>
   )
 }

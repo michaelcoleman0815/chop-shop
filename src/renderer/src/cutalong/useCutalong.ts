@@ -122,6 +122,7 @@ import {
 } from '../../../shared/never'
 import { uploadReply } from './upload-reply'
 import { findMotionCommand, motionCommandEntries, planMotionCommand, type MotionChange } from '../../../shared/motion'
+import { findFxCommand, fxCommandEntries, fxNotice, planFxCommand } from '../../../shared/fx'
 import {
   bringBack,
   DEFAULT_PROFILE,
@@ -391,8 +392,10 @@ const MOTION_ENTRIES: Preset[] = motionCommandEntries().map((c) => ({
   style: {},
   inspiration: null
 }))
+/** Scene effects (shared/fx): each command puts one on the word under the playhead. */
+const FX_ENTRIES: Preset[] = fxCommandEntries().map((c) => ({ ...c, builtIn: true, style: {}, inspiration: null }))
 // Commands that act rather than set a style; what follows them is theirs, not the planner's.
-const ACTION_NAMES = new Set([...ACTION_COMMANDS, ...MOTION_ENTRIES, ...SHOWCASE_ENTRIES].map((c) => c.command))
+const ACTION_NAMES = new Set([...ACTION_COMMANDS, ...MOTION_ENTRIES, ...FX_ENTRIES, ...SHOWCASE_ENTRIES].map((c) => c.command))
 
 /** An icon drawn into a PNG, as base64, at the size the renderer will scale from. */
 async function rasterize(svg: string, size = 1024): Promise<string> {
@@ -630,6 +633,7 @@ export function useCutalong() {
       ...ACTION_COMMANDS,
       ...SKILL_PRESETS,
       ...MOTION_ENTRIES,
+      ...FX_ENTRIES,
       ...SHOWCASE_ENTRIES,
       ...saved
     ]
@@ -1007,6 +1011,15 @@ export function useCutalong() {
    * copy of itself says so, in its summary and as `notice` for replies that
    * are not the summary (edit/fill).
    */
+  /** What this computer can cut out for the scene effects: nothing until it says. */
+  const cutouts = useRef({ person: false, objects: false })
+  useEffect(() => {
+    void api.fxCan().then(
+      (can) => (cutouts.current = can),
+      () => undefined
+    )
+  }, [])
+
   const applyAsVersion = useCallback(
     (
       proposed: Op[],
@@ -1034,10 +1047,12 @@ export function useCutalong() {
       const led = lead && lead.text ? lead : null
       const rest = describePlan(led ? trial.applied.slice(led.ops) : trial.applied, led?.timed ? after : before, after, trial.cut)
       const notice = fillNotice(filledIn(d), filledIn(d, trial.cut), fillMode(trial.cut))
+      // An effect that wants a cut-out this computer cannot make says what it does instead (shared/fx).
+      const effects = fxNotice(currentCut(d), trial.cut, cutouts.current)
       const said = [led?.text, rest].filter(Boolean).join(' ') || fallback
       // Made on a stretch picked on the strip, the version is named by it.
       const on = scope.current
-      const summary = [on && (on.always || onlyOn(trial.applied, on.beats)) ? leadWith(on.name, said) : said, notice]
+      const summary = [on && (on.always || onlyOn(trial.applied, on.beats)) ? leadWith(on.name, said) : said, notice, effects]
         .filter(Boolean)
         .join(' ')
       // A plan's steps all go into the version the first of them made, or the one its words shape.
@@ -2138,6 +2153,41 @@ export function useCutalong() {
     [applyAsVersion, push]
   )
 
+  /** A scene effect command: one fx-add op, on the word under the playhead or the word it names. */
+  const placeEffect = useCallback(
+    (command: string, where: 'thread' | 'panel', rest: string, at: number | null): void => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then an effect can go on it.')
+        return
+      }
+      const cut = currentCut(d)
+      const plan = planFxCommand(command, rest, { resolved: resolveCut(cut, d.words, d.sources), time: at })
+      if ('problem' in plan) {
+        say(plan.problem)
+        return
+      }
+      const trial = applyOps(cut, [plan.op], { words: d.words, sources: d.sources, assets: d.assets })
+      if (trial.rejected.length > 0) {
+        say(trial.rejected[0].reason)
+        return
+      }
+      const done = applyAsVersion(trial.applied, `${plan.title} is in.`)
+      if (!done) return
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
   /**
    * /sfx: a built-in sound on the cut or the word under the playhead, one of
    * the person's own found by name or chosen by hand, louder, quieter, off, or
@@ -3054,6 +3104,10 @@ export function useCutalong() {
         placeGraphic(command, where, rest, at)
         return
       }
+      if (findFxCommand(command)) {
+        placeEffect(command, where, rest, at)
+        return
+      }
       if (ACTION_NAMES.has(command)) {
         // Their results are choices to pick from, which belong in the thread.
         if (where === 'panel') setScreen('thread')
@@ -3121,6 +3175,7 @@ export function useCutalong() {
       findBroll,
       findIcon,
       placeGraphic,
+      placeEffect,
       push,
       soundCommand,
       splitEditCommand,

@@ -21,6 +21,7 @@ import { analyzeTrack, findTracks } from './music'
 import { findSounds, makeAllSfx, readSound } from './sfx'
 import { findPremiere, openInPremiere, writePremiere } from './premiere-cut'
 import { renderCutMotion, subtitlePass } from './motion-render'
+import { renderEditFx } from './fx-ipc'
 import { captureLink } from './page-shot'
 import { loadIcons, loadLogos } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
@@ -444,6 +445,17 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         onProgress: (f) => report(f * 0.25)
       })
       const share = motion.overlays.length > 0 ? 0.25 : 0
+      // Scene effects next: their masks, maps and overlays, from the cut-outs this computer can make (main/fx-ipc).
+      const fx = await renderEditFx({
+        cut,
+        resolved,
+        words: doc.words,
+        sources,
+        quality: req.quality,
+        workDir: join(workDir, 'fx'),
+        onProgress: (f) => report(share + f * 0.15)
+      })
+      const before = share + (fx ? 0.15 : 0)
       const pass = subtitlePass(cut, resolved, motion.scene)
       // The subtitles leave out what a card holds back; the music and the sounds still follow every word.
       await renderCut(pass.cut, resolved, sources, {
@@ -454,12 +466,13 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         fontsDir: FONTS_DIR(),
         brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
         overlays: motion.overlays,
+        fx,
         captionWords: pass.resolved.words,
         // A grid's panels show material, on a ground in the brand's look.
         assets: doc.assets,
         theme: themeFrom(brand),
         sfxDir: sfxDir(),
-        onProgress: (f) => report(share + f * (1 - share))
+        onProgress: (f) => report(before + f * (1 - before))
       })
       // An export's name is free only when nothing that goes beside it is there either.
       outputPath = final

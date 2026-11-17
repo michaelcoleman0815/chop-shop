@@ -1,4 +1,6 @@
 import { parseAnchor } from '../motion/schema'
+import { effectsOf } from '../fx/apply'
+import { FX_INFO } from '../fx/schema'
 import { template } from '../motion/templates'
 import { spanFor, timelineFor } from '../motion/timing'
 import { clock } from '../presets/preset'
@@ -114,7 +116,7 @@ const anchorBeat = (ref: string | undefined, made: Set<string>): string | null =
 /** Every beat id an op names, its graphics' anchors too. */
 function idsIn(op: Op, made: Set<string>): string[] {
   const named = beatsOf(op) ?? []
-  if (op.op === 'motion-add' || op.op === 'motion-update') {
+  if (op.op === 'motion-add' || op.op === 'motion-update' || op.op === 'fx-add' || op.op === 'fx-update') {
     for (const ref of [op.from, op.to]) {
       const id = anchorBeat(ref, made)
       if (id) named.push(id)
@@ -133,8 +135,9 @@ function renamed(op: Op, rename: Map<string, string>): Op {
   }
   if ('beats' in op && Array.isArray(op.beats)) return { ...op, beats: op.beats.map(to) } as Op
   if ('beat' in op && typeof op.beat === 'string') return { ...op, beat: to(op.beat) } as Op
-  if (op.op === 'motion-add') return { ...op, from: anchor(op.from) as string, to: anchor(op.to) as string }
-  if (op.op === 'motion-update') return { ...op, from: anchor(op.from), to: anchor(op.to) }
+  if (op.op === 'motion-add' || op.op === 'fx-add')
+    return { ...op, from: anchor(op.from) as string, to: anchor(op.to) as string }
+  if (op.op === 'motion-update' || op.op === 'fx-update') return { ...op, from: anchor(op.from), to: anchor(op.to) }
   return op
 }
 
@@ -203,11 +206,14 @@ export function opsInside(
   }
   /** Whether a graphic plays on the stretch in this cut: it starts there, and ends there when its end is said. */
   const onStretch = (c: Cut, id: string): boolean => {
-    const item = (c.motion ?? []).find((m) => m.id === id)
+    // A graphic, or a scene effect (fx), by its id; each starts on its anchor and runs its own length.
+    const graphic = (c.motion ?? []).find((m) => m.id === id)
+    const effect = graphic ? undefined : effectsOf(c).find((x) => x.id === id)
+    const item = graphic ?? effect
     if (!item) return false
     const resolved = resolveCut(c, context.words, context.sources)
     const times = rangeTimes(resolved, [...inRange])
-    const tpl = template(item.kind)
+    const tpl = graphic ? template(graphic.kind) : effect ? FX_INFO[effect.kind] : undefined
     const at = spanFor(timelineFor(c, resolved, context.words), item.from, item.to, tpl?.length ?? 3, tpl?.lead ?? 0)
     if (!times || !at) return false
     if (at.at < times.start - EDGE || at.at > times.end - EDGE) return false
@@ -244,6 +250,10 @@ export function opsInside(
       const ids = op.op === 'motion-update' ? [op.id] : op.ids
       for (const id of ids) if (!onStretch(running, id)) return 'It changes a graphic outside the stretch.'
     }
+    if (op.op === 'fx-update' || op.op === 'fx-remove') {
+      const ids = op.op === 'fx-update' ? [op.id] : op.ids
+      for (const id of ids) if (!onStretch(running, id)) return 'It changes an effect outside the stretch.'
+    }
     return null
   }
   /** What the op did, checked once it is done: a graphic put on the stretch, or moved, stays on it. */
@@ -254,6 +264,12 @@ export function opsInside(
       if (!added.every((m) => onStretch(next, m.id))) return 'It puts a graphic outside the stretch.'
     }
     if (op.op === 'motion-update' && !onStretch(next, op.id)) return 'It moves a graphic outside the stretch.'
+    if (op.op === 'fx-add') {
+      const known = new Set(effectsOf(before).map((x) => x.id))
+      const added = effectsOf(next).filter((x) => !known.has(x.id))
+      if (!added.every((x) => onStretch(next, x.id))) return 'It puts an effect outside the stretch.'
+    }
+    if (op.op === 'fx-update' && !onStretch(next, op.id)) return 'It moves an effect outside the stretch.'
     return null
   }
   ops.forEach((asked, k) => {

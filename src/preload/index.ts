@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { MapDownloadResult, MapStatus, PlatesFile } from '../shared/maps'
+import type { CutoutKind, CutoutTrack } from '../shared/fx/masks'
 import type {
   AnalysisOptions,
   CachedAnalysis,
@@ -437,6 +438,11 @@ const api = {
     ipcRenderer.on('maps:progress', handler)
     return () => ipcRenderer.removeListener('maps:progress', handler)
   },
+
+  // Scene effects: what this computer can cut out, and the cut-outs the preview draws an edit's effects from.
+  fxCan: (): Promise<{ person: boolean; objects: boolean }> => ipcRenderer.invoke('fx:can'),
+  fxCutouts: (doc: unknown): Promise<{ tracks: CutoutTrack[]; missing: CutoutKind[] }> =>
+    ipcRenderer.invoke('fx:cutouts', { doc }),
 
   analyze: (
     videoPath: string,

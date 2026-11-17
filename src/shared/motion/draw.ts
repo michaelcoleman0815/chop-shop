@@ -1,4 +1,5 @@
 import { color as sampleColor, isKeyed, luminance, mixColor, num } from './anim'
+import { drawChrome } from './chrome'
 import { ease } from './ease'
 import { fontInfo, fontString } from './fonts'
 import {
@@ -1068,6 +1069,11 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
   const text = layer.count ? countText(layer.count, local, length) : null
   const block = layoutFor(ctx, layer, st, text)
   if (block.words.length === 0) return
+  // Chrome lettering draws the whole block its own way (motion/chrome).
+  if (layer.chrome) {
+    drawChrome(ctx, layer.chrome, block, local, length, opacity, st.res.createCanvas)
+    return
+  }
   const frame = textFrame(layer, block, local, length)
   const box: Box = { x: block.left, y: block.top, w: block.w, h: block.h }
   const baseFill = paint(ctx, layer.fill, local, length, box, '#ffffff')

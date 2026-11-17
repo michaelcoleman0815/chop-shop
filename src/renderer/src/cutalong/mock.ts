@@ -1211,6 +1211,9 @@ export function createMockApi(): CutalongApi {
     // Maps: only the small pictures the app ships, until a pretend download.
     mapStatus: async () => ({ ...maps, downloading: false }),
     mapData: async () => ({ status: maps, tilesDir: null, plates: null }),
+    // No Vision in a browser: every effect does its version without a cut-out.
+    fxCan: async () => ({ person: false, objects: false }),
+    fxCutouts: async () => ({ tracks: [], missing: [] }),
     downloadMaps: async () => {
       for (const percent of [8, 30, 55, 80, 100]) {
         await new Promise((r) => setTimeout(r, 150))

@@ -1,4 +1,5 @@
 import { addMotion, removeMotion, updateMotion, type MotionOpContext, type MotionResult } from '../motion/apply'
+import { addFx, removeFx, updateFx, type FxResult } from '../fx/apply'
 import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
 import { fillMode } from './fill'
 import { mergeLook } from './look'
@@ -538,7 +539,23 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
     }
     case 'motion-remove':
       return motionCut(removeMotion(cut, op.ids))
+    // Scene effects on the picture. The checks live in shared/fx.
+    case 'fx-add': {
+      const { op: _op, ...call } = op
+      return fxCut(addFx(cut, call, motionContext(cut, ctx)))
+    }
+    case 'fx-update': {
+      const { op: _op, id, ...change } = op
+      return fxCut(updateFx(cut, id, change, motionContext(cut, ctx)))
+    }
+    case 'fx-remove':
+      return fxCut(removeFx(cut, op.ids))
   }
+}
+
+function fxCut(result: FxResult): Cut {
+  if (!result.ok) throw new OpError(result.reason)
+  return result.cut
 }
 
 function motionContext(cut: Cut, ctx: Ctx): MotionOpContext {

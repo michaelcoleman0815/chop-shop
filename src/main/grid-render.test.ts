@@ -4,9 +4,10 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { addAsset, commit, createDoc, currentCut, evenRect, gridLayout, resolveCut, type EditDoc } from '../shared/edit'
+import { addAsset, commit, createDoc, currentCut, evenRect, gridLayout, resolveCut, type EditDoc, type Op } from '../shared/edit'
 import { DEFAULT_THEME, gridGround, gridLabels, MOTION_FONTS, renderFrame } from '../shared/motion'
 import { buildRenderArgs, renderCut, type RenderSource } from './cut-render'
+import { renderCutFx } from './fx-render'
 import { audioSeconds, countFrames, findFfmpeg, frameColour, makeColourClip, toneLevel, type Rgb } from './test-media'
 import { frameDiff, frameRgb, rgbOf, savePng } from './test-frames'
 
@@ -109,7 +110,7 @@ describe.skipIf(!FFMPEG)('exporting a grid', () => {
     return { doc, sources: [{ ...source, hasAudio: true }] }
   }
 
-  async function exportGrid(doc: EditDoc, sources: RenderSource[], name: string, sound?: 'own' | 'none' | number) {
+  async function exportGrid(doc: EditDoc, sources: RenderSource[], name: string, sound?: 'own' | 'none' | number, more: unknown[] = []) {
     const beat = currentCut(doc).beats[0].id
     const grid = {
       panels: [
@@ -120,21 +121,32 @@ describe.skipIf(!FFMPEG)('exporting a grid', () => {
       ],
       ...(sound !== undefined ? { sound } : {})
     }
-    const withGrid = commit(doc, [{ op: 'aspect', aspect: 'wide' }, { op: 'treat', beats: [beat], set: { grid } }], 'Grid.')
+    const withGrid = commit(doc, [{ op: 'aspect', aspect: 'wide' }, { op: 'treat', beats: [beat], set: { grid } }, ...more] as Op[], 'Grid.')
     expect(withGrid.rejected).toEqual([])
     const cut = currentCut(withGrid.doc)
     const resolved = resolveCut(cut, withGrid.doc.words, withGrid.doc.sources)
     const outputPath = join(dir, `${name}.mp4`)
     const t0 = Date.now()
+    // Scene effects, when the edit has any, as the export makes them (main/fx-render).
+    const fx = await renderCutFx({
+      cut,
+      resolved,
+      words: withGrid.doc.words,
+      sources: withGrid.doc.sources,
+      quality: 'preview',
+      ffmpeg,
+      workDir: join(dir, `fx-${name}`)
+    })
     await renderCut(cut, resolved, sources, {
       ffmpeg,
       outputPath,
       workDir: join(dir, `work-${name}`),
       quality: 'preview',
       fontsDir: FONTS,
-      assets: withGrid.doc.assets
+      assets: withGrid.doc.assets,
+      fx
     })
-    return { path: outputPath, ms: Date.now() - t0, resolved }
+    return { path: outputPath, ms: Date.now() - t0, resolved, fx }
   }
 
   // The panels as the export places them, in the full-size frame; the preview export is half that.
@@ -241,6 +253,31 @@ describe.skipIf(!FFMPEG)('exporting a grid', () => {
     expect(toneLevel(ffmpeg, silent.path, 0.5, 2, 440)).toBeLessThan(-60)
     expect(countFrames(ffmpeg, silent.path)).toBe(90)
   }, 120_000)
+
+  it('takes a scene effect over the whole grid, and leaves the grid as it was once the effect is done', async () => {
+    const { doc, sources } = fourEdits()
+    const plain = await exportGrid(doc, sources, 'no-fx')
+    // A scan bringing the whole picture in from dark, upward, over the first 1.6 s (shared/fx).
+    const scanned = await exportGrid(doc, sources, 'fx', undefined, [{ op: 'fx-add', kind: 'scan', from: 'start', on: 'frame' }])
+    expect(scanned.fx.passes.length).toBeGreaterThan(0)
+    expect(countFrames(ffmpeg, scanned.path)).toBe(90)
+    const W = 960
+    const H = 540
+    // Half a second in, the top row of panels is still dark; the bottom row is coming in.
+    const topOf = (path: string, t: number): number => {
+      const rgb = frameRgb(ffmpeg, path, Math.round(t * 30), W, H)
+      let sum = 0
+      for (let y = 0; y < H * 0.4; y++) for (let x = 0; x < W; x++) for (let c = 0; c < 3; c++) sum += rgb[(y * W + x) * 3 + c]
+      return sum / (W * H * 0.4 * 3)
+    }
+    expect(topOf(scanned.path, 0.5)).toBeLessThan(0.5 * topOf(plain.path, 0.5))
+    // Once it is done, the grid is the grid: the panels' colours, the ground and the labels, through the
+    // effect's own way into RGB and back (BT.709), within a level or two of the grid with no effect.
+    const done = frameDiff(frameRgb(ffmpeg, scanned.path, 75, W, H), frameRgb(ffmpeg, plain.path, 75, W, H), W, H, null)
+    expect(done.mean).toBeLessThan(2)
+    expect(done.visible).toBeLessThan(0.005)
+    expect(near(frameColour(ffmpeg, scanned.path, 2.5, inPanel(0, 0.5, 0.6)), [255, 0, 0])).toBe(true)
+  }, 180_000)
 
   it('scales each panel to an even box a little past its cut-out, so no seam shows', () => {
     for (const p of layout.panels) {
