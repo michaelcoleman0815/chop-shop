@@ -60,7 +60,7 @@ export function BrandSwitch({ app }: { app: Cutalong }): JSX.Element | null {
         // detail is 0 when Enter or Space pressed the button.
         onClick={(e) => setOpen((o) => (o ? null : e.detail === 0 ? 'key' : 'pointer'))}
       >
-        {brandName(current)}
+        <span className="cl-btn-label">{brandName(current)}</span>
         <Icon.chevron />
       </Button>
       {open && (

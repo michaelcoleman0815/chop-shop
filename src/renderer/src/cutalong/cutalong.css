@@ -1862,7 +1862,7 @@ button:disabled {
 }
 
 .cl-page-inner {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -2134,6 +2134,22 @@ button:disabled {
 
 /* ---------- Lined Script ---------- */
 
+/* A long brand name gives way before the header does. */
+.cl-menu-anchor > .cl-btn {
+  max-width: 260px;
+}
+
+.cl-btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* With the rail open, its list of chats already offers the rest; Start keeps the newest card. */
+.cl-rail.open ~ .cl-main .cl-start .cl-continue-row > :nth-child(n + 2) {
+  visibility: hidden;
+}
+
 /* While Cutalong works, the send button stays ink and its mark marches: busy, not disabled. */
 .cl-composer.busy .cl-icon-btn.filled:disabled {
   background: var(--ink);
@@ -2244,6 +2260,10 @@ button:disabled {
   margin: 0;
 }
 
+.cl-sline .cl-margin-note {
+  margin: 2px 0 8px;
+}
+
 .cl-sline-star {
   font-family: var(--font-sans);
   font-weight: 700;
@@ -2293,7 +2313,7 @@ button:disabled {
 /* A brand's page says whose brand it is, and the switch between brands stays in reach while you scroll. */
 .cl-brand-bar {
   position: sticky;
-  top: calc(-1 * var(--space-4));
+  top: 0;
   z-index: 5;
   display: flex;
   flex-wrap: wrap;
