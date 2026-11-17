@@ -1052,13 +1052,18 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   }
   // ---- Motion graphics (src/main/motion-render.ts) ----
   // Each overlay is a short file with alpha covering one stretch of output
-  // time. It is shifted to its start and laid over the picture; outside its
-  // stretch the picture passes through untouched.
+  // time, one frame for each frame of the output from its first. Its frames
+  // are put on the output's frames by count, so frame k lands on the frame
+  // the preview draws that moment on. Placed by its start in seconds instead,
+  // rounded to the millisecond and divided by the file's own time base, it
+  // landed a frame early wherever the file counts time in frames and the
+  // start rounded down. Outside its stretch the picture passes through.
   for (const [i, o] of (opts.overlays ?? []).entries()) {
     inputs.push('-i', o.path)
     const k = next++
+    const first = Math.round(o.startSec * fps)
     // Drawn in RGB; into YUV as BT.709 before it meets the picture, so a brand colour stays itself.
-    chains.push(`[${k}:v]${TO_YUVA},setpts=PTS-STARTPTS+${fixed(o.startSec)}/TB[mo${i}]`)
+    chains.push(`[${k}:v]${TO_YUVA},settb=1/${fps},setpts=N+${first}[mo${i}]`)
     chains.push(`[${vOut}][mo${i}]overlay=0:0:eof_action=pass[vmo${i}]`)
     vOut = `vmo${i}`
   }
