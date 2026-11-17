@@ -167,7 +167,7 @@ export const NAMED_LOOKS: Record<string, { title: string; summary: string; look:
   explainer: {
     title: 'Explainer',
     summary: 'Clean and bright: a lift in colour and contrast, crisp edges, nothing on top.',
-    look: { name: 'explainer', saturation: 0.12, contrast: 0.06, exposure: 0.05, sharpen: 0.2 }
+    look: { name: 'explainer', saturation: 0.12, contrast: 0.06, exposure: 0.05 }
   }
 }
 
