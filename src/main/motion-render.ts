@@ -9,7 +9,6 @@ import {
   drawsCaptions,
   MOTION_FONTS,
   renderFrame,
-  template,
   themeFrom,
   type BrandLook,
   type DrawResources,
@@ -21,6 +20,8 @@ import {
   type Size
 } from '../shared/motion'
 import { frameRate, frameSize, type OverlaySpan } from './cut-render'
+import { mapResourcesFor, usesMap } from './map-data'
+import type { MapResources } from '../shared/maps'
 
 /**
  * Motion graphics for the export: the same scene the editor draws, painted
@@ -68,6 +69,8 @@ export interface MotionRenderOptions {
   images?: Map<string, string>
   icons?: (name: string) => IconNode[] | undefined
   logos?: (slug: string) => LogoMark | undefined
+  /** Map data and satellite tiles, for map graphics. */
+  map?: MapResources
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
 }
@@ -123,6 +126,7 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
     images,
     icons: opts.icons,
     logos: opts.logos,
+    map: opts.map,
     // Scratch canvases, for motion blur.
     createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>
   }
@@ -279,7 +283,8 @@ export function subtitleCut(cut: Cut): Cut {
  * Only the subtitles read the words, so the picture is unchanged.
  */
 export function subtitlePass(cut: Cut, resolved: Resolved, scene: MotionScene): { cut: Cut; resolved: Resolved } {
-  const cards = scene.items.filter((i) => template(i.kind)?.covers === 'card')
+  // What covers the screen is the graphic's own say: a full-frame map holds the captions, a map inset does not.
+  const cards = scene.items.filter((i) => i.covers === 'card')
   // Beats whose captions are off are left out too.
   const words = captionedWords(cut, resolved).words.filter(
     (w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end)
@@ -309,6 +314,9 @@ export async function renderCutMotion(input: CutMotionInput): Promise<{ overlays
     images,
     icons: usesIcons(scene.layers) && input.icons ? await input.icons() : undefined,
     logos: usesLogos(scene.layers) && input.logos ? await input.logos() : undefined,
+    map: usesMap(scene.layers)
+      ? await mapResourcesFor(scene.layers, { design: scene.size, pixels: { width, height }, fps: frameRate(first.fps) })
+      : undefined,
     onProgress: input.onProgress,
     signal: input.signal
   })
