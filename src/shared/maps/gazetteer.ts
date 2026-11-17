@@ -579,6 +579,22 @@ export function readMapQuery(text: string): MapQuery {
   return out
 }
 
+/** Countries whose names take "the" in a sentence. */
+const THE_COUNTRY =
+  /^(United |Republic of|Democratic Republic|Central African|Dominican Republic|Czech Republic|Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Vatican)|Islands$|Emirates$/
+
+/**
+ * A place's name as it reads in a sentence: "the Mid-Atlantic Ridge", "the
+ * Balkans", "the United States of America", but "Iceland" and "Lisbon".
+ */
+export function inSentence(p: Place): string {
+  const n = p.name
+  if (/^the /i.test(n)) return `the ${n.slice(4)}`
+  if (p.kind === 'line' || p.kind === 'plate' || p.kind === 'latitude') return `the ${n}`
+  if (p.kind === 'country' && THE_COUNTRY.test(n)) return `the ${n}`
+  return n
+}
+
 /** "Georgia the country or the US state?" */
 export function whichOne(name: string, options: Place[]): string {
   const say = (p: Place): string => {

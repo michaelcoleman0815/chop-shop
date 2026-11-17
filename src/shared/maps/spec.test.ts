@@ -183,12 +183,20 @@ describe('/map and map requests in words', () => {
 
   it('takes "show where Iceland is" as a map on the word Iceland', () => {
     const r = mapRequest(doc, 'show where Iceland is')
-    expect(r).toMatchObject({ kind: 'map', said: true, call: { kind: 'map', text: ['show where Iceland is'], from: 'w7' } })
+    // The graphic keeps the places part of the request, as a person would have typed it into its Place field.
+    expect(r).toMatchObject({ kind: 'map', said: true, call: { kind: 'map', text: ['Iceland'], from: 'w7' }, name: 'a map of Iceland' })
+    expect(mapRequest(doc, 'where is Iceland?')).toMatchObject({ call: { text: ['Iceland'] } })
+    expect(mapRequest(doc, 'show me a map of Iceland please')).toMatchObject({ call: { text: ['Iceland'] } })
   })
 
   it('takes the ridge between the plates as a map, on the word that names it', () => {
     const r = mapRequest(doc, 'show the Mid-Atlantic Ridge between the plates')
-    expect(r).toMatchObject({ kind: 'map', said: true, call: { from: 'w2' } })
+    expect(r).toMatchObject({
+      kind: 'map',
+      said: true,
+      call: { from: 'w2', text: ['the Mid-Atlantic Ridge between the plates'] },
+      name: 'a map of the Mid-Atlantic Ridge'
+    })
   })
 
   it('leaves a request that asks for more than a map to the planner', () => {

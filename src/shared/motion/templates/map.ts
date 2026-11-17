@@ -1,5 +1,5 @@
 import { mapDetails } from '../../maps/command'
-import { readMapQuery, whichOne } from '../../maps/gazetteer'
+import { inSentence, readMapQuery, whichOne } from '../../maps/gazetteer'
 import { mapLayers } from '../../maps/layers'
 import { isMapStyle, MAP_PLACES, specFromQuery, type MapPlace } from '../../maps/spec'
 import { MAP_STYLES } from '../../maps/types'
@@ -87,8 +87,8 @@ register({
   details: (call) => mapDetails(call.text, call.style, call.fx.map((f) => f.toLowerCase())),
   name: (call) => {
     const q = readMapQuery(mapQuery(call.text))
-    if (q.route) return `a map from ${q.route.from.name} to ${q.route.to.name}`
-    const names = q.stops.flat().map((p) => p.name)
+    if (q.route) return `a map from ${inSentence(q.route.from)} to ${inSentence(q.route.to)}`
+    const names = q.stops.flat().map(inSentence)
     return names.length ? `a map of ${names.slice(0, 3).join(', then ')}` : 'a map'
   }
 })

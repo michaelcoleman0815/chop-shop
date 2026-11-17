@@ -23,6 +23,17 @@ const FILLER = new Set(
   ).split(' ')
 )
 
+/** How a request in words starts and ends around its places: "show me where … is", "a map of …", "where is …?". */
+const LEAD =
+  /^(?:(?:please|can you|could you|would you|i want|i need|let'?s|now|then)\s+)*(?:(?:show|give)(?:\s+(?:me|us))?\s+|put up\s+|add\s+|make\s+|fly\s+(?:in\s+)?(?:to|over)\s+|zoom\s+(?:in\s+)?(?:to|on|into)\s+)?(?:(?:a|the)\s+map\s+(?:of|showing)\s+)?(?:where\s+(?:is\s+|are\s+)?)?/i
+const TRAIL = /(?:\s+(?:is|are|lies|sits|was|on the map|please))*\s*[?.!]*$/i
+
+/** The places part of a request, so a graphic reads "the Mid-Atlantic Ridge between the plates", not "show the …". */
+function placesOf(query: string): string {
+  const cut = query.replace(LEAD, '').replace(TRAIL, '').trim()
+  return cut || query
+}
+
 /** Something that says a map is wanted, so "Iceland" alone in a sentence about something else is not taken for one. */
 const ASKS_FOR_A_MAP =
   /\b(map|where|located|location|locate|fly|zoom|route|path|plates?|ridge|rift|fault|trench|parallel|latitude|arctic circle|equator|tropic of)\b/
@@ -53,10 +64,13 @@ export function mapRequest(doc: EditDoc, request: string): MapRequest | null {
   const first = q.route?.from ?? q.stops[0]?.[0]
   // "Mid-Atlantic" is one word in a transcript.
   const at = first ? (wordFor(resolved, first.name, null) ?? wordFor(resolved, first.name.replace(/-/g, ''), null)) : null
+  // The places part only, as long as it reads as the same map.
+  const places = placesOf(read.query)
+  const same = JSON.stringify(readMapQuery(places).stops.map((s) => s.map((p) => p.id))) === JSON.stringify(q.stops.map((s) => s.map((p) => p.id)))
   const call = {
     kind: 'map' as const,
     from: at ?? resolved.words[0]?.id ?? 'start',
-    text: [read.query],
+    text: [same ? places : read.query],
     style: read.style,
     place: read.place === 'full' ? '' : read.place,
     fx: read.facts === null ? [] : read.facts.length ? read.facts : ['nofacts']
