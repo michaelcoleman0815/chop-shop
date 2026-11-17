@@ -45,7 +45,14 @@ for _ in $(seq 1 120); do
     adb shell svc power stayon true
     # The keyboard on screen, as on a phone, for the drive's text boxes.
     adb shell settings put secure show_ime_with_hard_keyboard 1
-    adb shell input keyevent 82
+    # Unlocked without a key press: a press the launcher is not ready for leaves it "not responding",
+    # and that dialog takes the screen, and the keyboard, from the app.
+    adb shell locksettings set-disabled true || true
+    adb shell wm dismiss-keyguard || adb shell input keyevent 82
+    # No such dialog over the app at all; the system reads the setting at a change of configuration.
+    adb shell settings put global hide_error_dialogs 1 || true
+    adb shell cmd uimode night yes || true
+    adb shell cmd uimode night no || true
     echo "booted: $(adb shell getprop ro.build.fingerprint)"
     echo "decoders the emulator offers: $(adb shell getprop | grep -i hwcodec | tr -d '\r' | tr '\n' ' ')"
     echo "WebView: $(adb shell dumpsys webviewupdate | grep -m1 'Current WebView package')"

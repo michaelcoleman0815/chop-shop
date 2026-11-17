@@ -36,6 +36,12 @@ animations() {
   done
 }
 
+# Any system dialog still up (a "not responding" one from the emulator's boot) closed before the
+# app starts, so the app has the screen and the keyboard.
+close_dialogs() {
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+}
+
 # A file into the app's own files, through the shell (which may read
 # /data/local/tmp where the app may not), checked by its size.
 put() {
@@ -124,6 +130,7 @@ adb logcat -c || true
 # The first pass in light, moving as it moves for a person.
 adb shell cmd uimode night no || true
 animations 1
+close_dialogs
 adb shell am start -W -n "$PKG/.MainActivity"
 follow light
 flow_status=$status
@@ -144,6 +151,7 @@ elif [ -s "$OUT/drive-report.json" ]; then
   put "$OUT/tour.json" drive.json
   app rm -f files/drive-progress.txt files/drive-ack.txt
   adb shell am force-stop "$PKG"
+  close_dialogs
   adb shell am start -W -n "$PKG/.MainActivity"
   follow dark
   tour_status=$status
