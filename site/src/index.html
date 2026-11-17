@@ -42,7 +42,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
         </div>
       </div>
 
-      <figure class="demo" data-loop>
+      <figure class="demo" data-loop aria-label="An example in Cutalong: you drop in two takes and a separate microphone recording and ask it to cut the retakes and make it 10 minutes. It replies that v2 is ready, 9:58 long, down from 31:40, and the beat strip closes up to show it.">
         <div class="plate demo-slot" data-slot="hero-loop" data-kind="product"
           data-alt="A 10 to 20 second loop of the redesigned app at 2400 by 1000: footage dropped in, a request typed, the new version arriving in the editor">
           <div class="app demo-thread" aria-hidden="true">
@@ -80,7 +80,6 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
           </div>
           <button class="loop-toggle" type="button" data-loop-toggle data-keep aria-label="Pause the example">{{> icon-pause}}</button>
         </div>
-        <figcaption class="visually-hidden">An example in Cutalong: you drop in two takes and a separate microphone recording and ask it to cut the retakes and make it 10 minutes. It replies that v2 is ready, 9:58 long, down from 31:40, and the beat strip closes up to show it.</figcaption>
       </figure>
     </div>
   </section>
@@ -92,45 +91,44 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
         <dl class="facts">
           <div>
             <dt>The work happens here</dt>
-            <dd>whisper.cpp hears the words and ffmpeg renders, on your Mac. Other services get nothing unless you add their&nbsp;keys.</dd>
+            <dd><span class="mono">whisper.cpp</span> hears the words and <span class="mono">ffmpeg</span> renders, both on your&nbsp;Mac.</dd>
           </div>
           <div>
-            <dt>Your own Anthropic key</dt>
-            <dd>You pay Anthropic directly, for what you use. The key stays in your Mac’s&nbsp;keychain.</dd>
+            <dt>Your own key</dt>
+            <dd>You pay Anthropic directly, only for what you&nbsp;use.</dd>
           </div>
           <div>
             <dt>What Claude sees</dt>
-            <dd>Your words and the edit. For a vlog, three small stills from each moment, unless you switch that&nbsp;off.</dd>
+            <dd>Your words and the edit, plus vlog stills unless you switch them&nbsp;off.</dd>
           </div>
         </dl>
       </div>
-      <figure class="system" aria-labelledby="system-caption">
+      <figure class="system" aria-label="What runs where: footage, transcription and rendering stay on your Mac. Anthropic gets the words and the edit, GitHub answers the update check, and other services get nothing unless you add their keys.">
         <div class="system-mac">
           <p class="system-name">Your Mac</p>
           <ul class="system-parts">
             <li>Your footage</li>
-            <li><span class="mono">whisper.cpp</span> hears the words</li>
-            <li><span class="mono">ffmpeg</span> renders the cut</li>
-            <li>Projects, versions and your brand</li>
+            <li><span class="mono">whisper.cpp</span>: the words</li>
+            <li><span class="mono">ffmpeg</span>: the cut</li>
+            <li>Your projects and brand</li>
           </ul>
         </div>
         <ol class="system-out">
-          <li><span class="system-wire">The words and the edit</span><span class="system-node">Anthropic, with your key</span></li>
-          <li><span class="system-wire">Is there a new version?</span><span class="system-node">GitHub Releases</span></li>
+          <li><span class="system-wire">The words and the edit</span><span class="system-node">Anthropic</span></li>
+          <li><span class="system-wire">Updates</span><span class="system-node">GitHub</span></li>
+          <li><span class="system-wire">Only with your keys</span><span class="system-node system-node-off">Other services</span></li>
         </ol>
-        <figcaption id="system-caption">What runs where. Footage, transcription and rendering stay on your Mac; Claude gets the words and the edit.</figcaption>
       </figure>
-      <p class="needs">It needs a Mac with Apple silicon on macOS&nbsp;14 or later, and an Anthropic API key. Cutalong walks you through making&nbsp;one.</p>
     </div>
   </section>
 
   <section class="how" id="how" aria-labelledby="how-title">
     <div class="container">
-      <h2 id="how-title">Drop it in, say it, refine&nbsp;it</h2>
+      <h2 id="how-title">Drop it, say it, refine&nbsp;it</h2>
       <ol class="steps">
         <li class="step">
           <h3>Drop every file from the shoot</h3>
-          <p>Cutalong sorts the talking, the better sound and the B&#8209;roll, and lines the sound up by&nbsp;ear.</p>
+          <p>It sorts the talking, the better sound and the&nbsp;B&#8209;roll.</p>
           <div class="plate step-plate" data-slot="step-drop" data-kind="product" data-alt="The redesigned app sorting a dropped shoot into talking, better sound and B-roll, 1200 by 900">
             <div class="app step-drop" aria-hidden="true">
               <p class="app-group">Talking</p>
@@ -152,7 +150,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
         </li>
         <li class="step">
           <h3>Say what you want</h3>
-          <p>In plain English or a slash command. Every change lands as a version you can&nbsp;undo.</p>
+          <p>Plain English or a slash command, each change a&nbsp;version.</p>
           <div class="plate step-plate" data-slot="step-say" data-kind="product" data-alt="The redesigned app's composer with a request typed and the slash menu open, 1200 by 900">
             <div class="app step-say" aria-hidden="true">
               <p class="app-bubble">Make the hook punchier</p>
@@ -166,7 +164,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
         </li>
         <li class="step">
           <h3>Refine it, then export</h3>
-          <p>Keep talking, or pick a stretch on the beat strip and leave notes on just that&nbsp;part.</p>
+          <p>Pick a stretch on the beat strip and leave notes on&nbsp;it.</p>
           <div class="plate step-plate" data-slot="step-refine" data-kind="product" data-alt="The redesigned editor with a stretch picked on the beat strip and a note on it, 1200 by 900">
             <div class="app step-refine" aria-hidden="true">
               <div class="app-note"><span class="app-note-n">1</span><span>Four beats come in with a dissolve</span></div>
@@ -189,8 +187,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
     <div class="container">
       <h2 id="makes-title">From any recording to the&nbsp;upload</h2>
       <div class="jobs">
-        <fieldset class="seg">
-          <legend class="visually-hidden">Show what Cutalong makes from</legend>
+        <fieldset class="seg" aria-label="What Cutalong makes, by where you start">
           <input type="radio" name="job" id="job-raw" value="raw" checked><label for="job-raw">Raw footage</label>
           <input type="radio" name="job" id="job-clips" value="clips"><label for="job-clips">Long recordings</label>
           <input type="radio" name="job" id="job-vlog" value="vlog"><label for="job-vlog">A day of clips</label>
@@ -202,12 +199,11 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
         <div class="job job-raw">
           <div class="job-copy">
             <h3>Raw footage to a finished video</h3>
-            <p>Retakes and pauses go, the better sound lines up, and every change is a version you can&nbsp;undo.</p>
+            <p>Retakes and pauses go, and the better sound lines&nbsp;up.</p>
             <ul class="job-list">
-              <li>Shorts, captions, hooks, looks, music on the beat, sound effects, transitions, punch&#8209;ins, camera moves and&nbsp;chapters</li>
-              <li>Motion graphics: lower thirds, charts, counters, screenshots and device&nbsp;frames</li>
-              <li>“Make it 10 minutes” or “remove my intro”</li>
-              <li>Blurred fill for upright clips, and export to&nbsp;Premiere</li>
+              <li>Shorts, captions, hooks, looks, music on the beat, sound effects, transitions, punch&#8209;ins, camera moves, chapters</li>
+              <li>Lower thirds, charts, counters, screenshots and device&nbsp;frames</li>
+              <li>“Remove my intro”, blurred fill, and export to&nbsp;Premiere</li>
             </ul>
           </div>
           <div class="plate job-plate" data-slot="job-raw" data-kind="product" data-alt="The redesigned editor with a command run on a picked stretch, 1400 by 1000">
