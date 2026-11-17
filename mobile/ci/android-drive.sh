@@ -78,17 +78,21 @@ while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
     adb shell "run-as $PKG sh -c 'echo $n > files/drive-ack.txt'" || true
     continue
   fi
-  # Gone only when three looks in a row find no process: a busy emulator's adb can answer nothing once.
-  pid=$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r' || true)
+  # Gone only when the device itself says so five times in a row: an emulator busy exporting can
+  # leave adb without an answer, which is no news either way.
+  alive=$(adb shell "pidof $PKG >/dev/null && echo yes || echo no" 2>/dev/null | tr -d '\r' || true)
   # The app's memory every 15 s, and the device's, for when it is stopped.
-  if [ -n "$pid" ] && [ $((SECONDS - sampled)) -ge 15 ]; then
+  if [ "$alive" = yes ] && [ $((SECONDS - sampled)) -ge 15 ]; then
     sampled=$SECONDS
     pss=$(adb shell dumpsys meminfo "$PKG" 2>/dev/null | tr -d '\r' | awk '/TOTAL PSS:/ { print $3; exit } /^ *TOTAL / { print $2; exit }')
     free=$(adb shell cat /proc/meminfo 2>/dev/null | tr -d '\r' | awk '/MemAvailable/ { print $2 }')
     echo "$((SECONDS - start)) s ${seen:-starting}: app ${pss:-?} kB, device available ${free:-?} kB" >> "$OUT/memory.txt"
   fi
-  if [ -n "$pid" ]; then gone=0; else gone=$((gone + 1)); fi
-  if [ "$gone" -ge 3 ]; then
+  case "$alive" in
+    yes) gone=0 ;;
+    no) gone=$((gone + 1)) ;;
+  esac
+  if [ "$gone" -ge 5 ]; then
     why="the app stopped (last step: ${seen:-none})"
     break
   fi

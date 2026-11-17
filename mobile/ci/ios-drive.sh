@@ -74,10 +74,15 @@ while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
     continue
   fi
   # Read whole before it is searched: grep -q leaving early would break launchctl's pipe, which
-  # pipefail counts as the app gone. Gone only when three looks in a row do not find it.
+  # pipefail counts as the app gone. Gone only when the listing leaves it out five times in a
+  # row; no listing at all is no news either way.
   services=$(xcrun simctl spawn "$DEV" launchctl list 2>/dev/null || true)
-  if grep -q "UIKitApplication:$BUNDLE" <<<"$services"; then gone=0; else gone=$((gone + 1)); fi
-  if [ "$gone" -ge 3 ]; then
+  if grep -q "UIKitApplication:$BUNDLE" <<<"$services"; then
+    gone=0
+  elif [ -n "$services" ]; then
+    gone=$((gone + 1))
+  fi
+  if [ "$gone" -ge 5 ]; then
     why="the app stopped (last step: ${seen:-none})"
     break
   fi
