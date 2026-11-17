@@ -453,14 +453,14 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
         const before = Math.round(((draft.spentBefore ?? 0) + draft.scriptCost) * 10000) / 10000
         const again = await draftFor(r.draft.brief, draft.id, { ...d, signal: controller.signal, spentBefore: before })
         if (!again.ok) {
-          // Stopped or broken partway, it may have been billed: the quote stands, with that counted in it.
+          // Stopped or broken partway, it may have been billed: the quote stands, with that counted against the cap.
           if (again.cost <= 0)
             return { ok: false as const, message: controller.signal.aborted ? 'Stopped before anything was written, so nothing was spent. The quote stands as it was.' : again.message }
           const charged: Draft = { ...draft, spentBefore: Math.round(((draft.spentBefore ?? 0) + again.cost) * 10000) / 10000 }
           charged.quote = quoteDraft(charged, d)
           const said = controller.signal.aborted
-            ? `Stopped while Claude wrote it again. That may have cost up to ${dollars(again.cost)}, which counts in the quote; the script stays as it was.`
-            : `${again.message} Writing it may have cost up to ${dollars(again.cost)}, which counts in the quote; the script stays as it was.`
+            ? `Stopped while Claude wrote it again. That may have cost up to ${dollars(again.cost)}, which counts toward what this video may cost; the script stays as it was.`
+            : `${again.message} Writing it may have cost up to ${dollars(again.cost)}, which counts toward what this video may cost; the script stays as it was.`
           return { ok: false as const, message: said, draft: charged, reply: quoteOf(charged) }
         }
         // The script it replaces was paid for too: it counts against the cap, and in what the video cost.

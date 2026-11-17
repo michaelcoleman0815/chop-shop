@@ -270,7 +270,7 @@ describe('a video made from one prompt', () => {
     const r = await revising
     process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '0'
     expect(r.ok).toBe(false)
-    expect(r.message).toMatch(/^Stopped while Claude wrote it again\. That may have cost up to \$0\.\d\d, which counts in the quote; the script stays as it was\.$/)
+    expect(r.message).toMatch(/^Stopped while Claude wrote it again\. That may have cost up to \$0\.\d\d, which counts toward what this video may cost; the script stays as it was\.$/)
     // The same script and length, quoted with the cut-off script counted against the cap.
     expect(r.draft?.script).toBe(d.script)
     expect(r.draft?.brief.seconds).toBe(60)
