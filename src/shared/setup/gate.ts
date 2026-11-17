@@ -115,8 +115,10 @@ export function keyMessage(state: ClaudeKeyState, key?: string | null): string {
 
 /** The setup step that fixes a state, counted from 0 in the Anthropic guide; null when no step does. */
 export function fixingStep(state: ClaudeKeyState): number | null {
-  if (state === 'refused' || state === 'wrong' || state === 'no-access' || state === 'unreadable') return 1
+  if (state === 'refused' || state === 'wrong' || state === 'no-access') return 1
   if (state === 'no-credit' || state === 'busy') return 2
+  // The keychain could not open the saved key: pasting it again is the fix.
+  if (state === 'unreadable') return 3
   if (state === 'none') return 0
   return null
 }
@@ -140,7 +142,8 @@ const DOING: Record<Blocked, string> = {
 
 /**
  * One plain sentence for an action the gate stopped, pointing to the setup
- * steps: on Start, or below it when it is said on the setup screen itself.
+ * steps: on Start, or, said on the setup screen itself, to the steps there
+ * and to doing it again once they are done.
  */
 export function blockedSentence(
   what: Blocked,
@@ -153,5 +156,6 @@ export function blockedSentence(
       : status.state === 'no-credit'
         ? 'credit on your Anthropic account'
         : 'an Anthropic key that works'
-  return `I need ${why} before I can ${DOING[what]}. ${where === 'here' ? 'The steps are below.' : 'Start shows the steps.'}`
+  const next = where === 'here' ? 'Follow the steps here, then try again.' : 'Start shows the steps.'
+  return `I need ${why} before I can ${DOING[what]}. ${next}`
 }

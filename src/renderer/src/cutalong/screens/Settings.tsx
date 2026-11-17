@@ -99,7 +99,7 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
 
   // The Anthropic key is the app's (useCutalong), so saving it here opens the gate everywhere.
   const key = app.claudeKey
-  const saved = key.state !== 'none'
+  const saved = app.keySaved
   // A key that worked stays in the short form while it is checked again; one that did not shows the steps.
   const working = key.state === 'ok' || (key.state === 'checking' && key.confirmed)
   const failing = key.state !== 'none' && key.state !== 'ok' && key.state !== 'checking'
@@ -143,7 +143,7 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
             <p className="cl-aside">
               {costLine()}{' '}
               {anthropic.spend && (
-                <a className="cl-link" href={anthropic.spend.url} target="_blank" rel="noreferrer">
+                <a className="cl-link inline" href={anthropic.spend.url} target="_blank" rel="noreferrer">
                   {anthropic.spend.label}
                   <span className="sr-only">, opens in your browser</span>
                 </a>

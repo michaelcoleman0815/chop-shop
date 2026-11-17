@@ -51,7 +51,7 @@ export const KEY_GUIDES: Record<KeyServiceId, KeyGuide> = {
         link: { label: 'Open the Console', url: 'https://platform.claude.com/login' }
       },
       {
-        text: 'Create a key and name it Cutalong.',
+        text: 'Create a key, name it Cutalong, and copy it.',
         link: { label: 'Open API keys', url: 'https://platform.claude.com/settings/keys' }
       },
       {

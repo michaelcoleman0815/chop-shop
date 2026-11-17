@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { gateOpen, keyGuide, keyMessage, type ClaudeKeyStatus } from '../../../../shared/setup'
 import type { Cutalong } from '../useCutalong'
 import { Button, Mark } from './ui'
@@ -41,10 +41,11 @@ export function ClaudeKeyField({
   const guide = keyGuide('anthropic')
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const field = useRef<HTMLInputElement>(null)
   const key = app.claudeKey
   const checking = saving || key.state === 'checking'
   const failing = !checking && key.state !== 'none' && key.state !== 'ok'
-  const saved = key.state !== 'none'
+  const saved = app.keySaved
   const pasted = draft.trim()
 
   const run = async (check: () => Promise<ClaudeKeyStatus>): Promise<void> => {
@@ -54,6 +55,8 @@ export function ClaudeKeyField({
     const next = await check()
     setSaving(false)
     if (gateOpen(next)) onWorks?.()
+    // The button pressed was turned off while the check ran: keyboard focus comes back to the field, for the next key.
+    else field.current?.focus()
   }
 
   const save = (): void => {
@@ -68,8 +71,9 @@ export function ClaudeKeyField({
 
   return (
     <>
-      <div className="cl-key-paste">
+      <div className={`cl-key-paste${small ? ' small' : ''}`}>
         <input
+          ref={field}
           id={id}
           type="password"
           value={draft}
@@ -101,8 +105,9 @@ export function ClaudeKeyField({
         {/* Keyed by its words, so a new finding arrives rather than replacing the old in place. */}
         {line && <span key={line}>{line}</span>}
       </p>
+      {/* A saved key that failed can be tried again once what stopped it is fixed. */}
       {failing && saved && key.state !== 'wrong' && !note && (
-        <Button variant="text" small className="cl-keycheck-again" onClick={() => void run(() => app.checkClaudeKey())}>
+        <Button small className="cl-keycheck-again" onClick={() => void run(() => app.checkClaudeKey())}>
           Check again
         </Button>
       )}

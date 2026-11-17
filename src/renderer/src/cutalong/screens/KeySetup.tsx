@@ -59,15 +59,17 @@ export function KeySetup({ app }: { app: Cutalong }): JSX.Element {
               )
             }}
           />
-          <p className="cl-setup-cost">
-            {costLine()}{' '}
-            {guide.spend && (
-              <a className="cl-link" href={guide.spend.url} target="_blank" rel="noreferrer">
-                {guide.spend.label}
-                <span className="sr-only">, opens in your browser</span>
-              </a>
-            )}
-          </p>
+          <footer className="cl-setup-cost">
+            <p>
+              {costLine()}{' '}
+              {guide.spend && (
+                <a className="cl-link inline" href={guide.spend.url} target="_blank" rel="noreferrer">
+                  {guide.spend.label}
+                  <span className="sr-only">, opens in your browser</span>
+                </a>
+              )}
+            </p>
+          </footer>
         </div>
       </main>
     </>

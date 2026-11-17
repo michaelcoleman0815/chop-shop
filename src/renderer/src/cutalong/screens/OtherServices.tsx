@@ -158,6 +158,8 @@ export function OtherServices({
                 value={drafts[s.id] ?? ''}
                 placeholder={keys[s.id] ? 'Paste a new key to replace it' : `${s.name} API key`}
                 aria-label={`${s.name} API key`}
+                // Opened from its button, which the steps replace: the field takes the focus it had.
+                autoFocus={guiding.has(s.id) && !keys[s.id]}
                 autoComplete="off"
                 spellCheck={false}
                 onChange={(e) => setDraft(s.id, e.target.value)}
@@ -166,7 +168,7 @@ export function OtherServices({
                 }}
               />
               <Button small disabled={!(drafts[s.id] ?? '').trim() || saving !== null} onClick={() => void save(s.id)}>
-                Save key
+                Check and save
               </Button>
               {keys[s.id] && (
                 <Button variant="text" onClick={() => void remove(s.id)}>
@@ -189,13 +191,7 @@ export function OtherServices({
               ) : guided ? (
                 <KeySteps service={s.id} paste={{ id: fieldId, field }} />
               ) : (
-                <Button
-                  variant="text"
-                  small
-                  className="cl-key-how"
-                  aria-expanded={false}
-                  onClick={() => setGuiding((g) => new Set(g).add(s.id))}
-                >
+                <Button small className="cl-key-how" onClick={() => setGuiding((g) => new Set(g).add(s.id))}>
                   Add {aKey(s.name)}
                 </Button>
               )}

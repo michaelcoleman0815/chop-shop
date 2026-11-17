@@ -246,7 +246,7 @@
  * The loading signal: while Cutalong works, the mark's dashed bar marches
  * along, one dash and gap (7 + 6 of its 64 units) per loop, so the loop is
  * seamless. It runs on the assistant beside a progress row, in the send
- * button while busy, and in a toast that counts up.
+ * button while busy, in a toast that counts up, and beside a key being checked.
  */
 @keyframes cl-march {
   to {
@@ -256,7 +256,8 @@
 
 .cl-msg-assistant:has(.cl-progress) .cl-cut,
 .cl-composer.busy .cl-cut,
-.cl-toast-mark .cl-cut {
+.cl-toast-mark .cl-cut,
+.cl-keycheck.checking .cl-cut {
   animation: cl-march calc(var(--duration-calm) * 4) linear infinite;
 }
 
@@ -315,13 +316,14 @@
 
 /* They fade in with a short stagger as their screen opens; one added later simply fades in. */
 .cl-continue-row > .cl-project,
-.cl-list > li {
+.cl-list > li,
+.cl-steps > li {
   transition-property: opacity, translate, scale;
   transition-duration: var(--duration-gentle), var(--duration-gentle), var(--duration-fast);
   transition-timing-function: var(--ease-enter), var(--ease-enter), var(--ease-standard);
 }
 
-html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
+html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li, .cl-steps > li) {
   transition-delay:
     calc(min(sibling-index() - 1, 8) * var(--duration-gentle) / 8),
     calc(min(sibling-index() - 1, 8) * var(--duration-gentle) / 8), 0s;
@@ -329,9 +331,32 @@ html[data-cl-entering] :is(.cl-continue-row > .cl-project, .cl-list > li) {
 
 @starting-style {
   .cl-continue-row > .cl-project,
-  .cl-list > li {
+  .cl-list > li,
+  .cl-steps > li {
     opacity: 0;
     translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+}
+
+/* ---------- The key's check (components/ClaudeKeyField.tsx) ---------- */
+
+/* What the check found arrives under the field like a reply's sentence; the step that fixes it fills in. */
+.cl-keycheck > span:not(.cl-keycheck-mark) {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+.cl-step-n {
+  transition-property: background-color, border-color, color;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-standard);
+}
+
+@starting-style {
+  .cl-keycheck > span:not(.cl-keycheck-mark) {
+    opacity: 0;
+    translate: 0 calc(var(--space-1) * var(--cl-travel));
   }
 }
 
@@ -726,7 +751,8 @@ html[data-cl-move='version'] .cl-note {
 
   .cl-msg-assistant:has(.cl-progress) .cl-cut,
   .cl-composer.busy .cl-cut,
-  .cl-toast-mark .cl-cut {
+  .cl-toast-mark .cl-cut,
+  .cl-keycheck.checking .cl-cut {
     animation: cl-breathe calc(var(--duration-calm) * 3) var(--ease-standard) infinite alternate;
   }
 }

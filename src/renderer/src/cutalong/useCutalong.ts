@@ -545,6 +545,8 @@ export function useCutalong() {
   keyRef.current = key
   // Whether the launch check has answered, so Start shows neither screen before it does.
   const [keySettled, setKeySettled] = useState(false)
+  // Whether a key is saved at all: one turned away before saving leaves the saved one as it was.
+  const [keySaved, setKeySaved] = useState(false)
   // The check under way, which anything asked meanwhile waits for.
   const keyCheck = useRef<Promise<ClaudeKeyStatus> | null>(null)
   /** Whether the gate is open, once a check under way has answered. */
@@ -4046,6 +4048,7 @@ export function useCutalong() {
     if (keyCheck.current === pending) keyCheck.current = null
     keyRef.current = next
     setKey(next)
+    setKeySaved(next.state !== 'none')
     setKeySettled(true)
     return next
   }, [])
@@ -4082,6 +4085,7 @@ export function useCutalong() {
     const next = keyStatus('none')
     keyRef.current = next
     setKey(next)
+    setKeySaved(false)
   }, [])
 
   exportRef.current = exportFinal
@@ -4170,6 +4174,7 @@ export function useCutalong() {
     claudeKey: key,
     gateOpen: gateOpen(key),
     keySettled,
+    keySaved,
     checkClaudeKey,
     saveClaudeKey,
     removeClaudeKey,
