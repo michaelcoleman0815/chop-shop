@@ -313,7 +313,7 @@ describe.skipIf(!FFMPEG)('scene effects, exported', () => {
     const before = frameAt(plain, 0.6)
     // The top has not been reached: dark. The bottom has: as it was.
     expect(brightness(early, { x: 0, y: 0, w: 1, h: 0.2 })).toBeLessThan(0.45 * brightness(before, { x: 0, y: 0, w: 1, h: 0.2 }))
-    expect(Math.abs(brightness(early, { x: 0, y: 0.85, w: 1, h: 0.15 }) - brightness(before, { x: 0, y: 0.85, w: 1, h: 0.15 }))).toBeLessThan(6)
+    expect(Math.abs(brightness(early, { x: 0, y: 0.85, w: 1, h: 0.15 }) - brightness(before, { x: 0, y: 0.85, w: 1, h: 0.15 }))).toBeLessThan(1.5)
     // After the effect, the picture is the plain render's.
     expect(diff(frameAt(out, 2.4), frameAt(plain, 2.4))).toBeLessThan(1)
   }, 120_000)

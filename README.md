@@ -83,7 +83,9 @@ keeps every version so nothing is lost. It runs on your own Mac: your footage ne
   `/clipping the funny parts`).
 - **Opens in Premiere.** `/premiere` writes the version as a Premiere project on your own files, with the better sound,
   cutaways, punch-ins, music and effects on their tracks, captions as an SRT, and markers for what stays in Cutalong.
-- **Exports** with captions, logo and loudness set to -14 LUFS, rendered by ffmpeg.
+- **Exports** with captions, logo and loudness set to -14 LUFS, rendered by ffmpeg in the colour QuickTime and Chrome
+  show HD in (BT.709, and tagged so). The captions in the preview are the export's: the same words at the same size in
+  the same place.
 
 [docs/rebuild.md](docs/rebuild.md) has the plan and [docs/research](docs/research/editing-skills.md) has the research
 behind the order the skills were built in.

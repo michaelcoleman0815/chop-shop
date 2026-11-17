@@ -1,0 +1,268 @@
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
+import { fileURLToPath } from 'url'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { applyOps, createDoc, currentCut, DEFAULT_CAPTIONS, resolveCut, wordsFromTranscript } from './edit'
+import { fontInfo, MOTION_FONTS } from './motion'
+import {
+  captionStyleFor,
+  drawSubtitle,
+  layoutSubtitle,
+  SHADOW_ALPHA,
+  subtitleAt,
+  subtitleCues,
+  subtitleWords,
+  type SubtitleCue,
+  type TextMeasurer
+} from './subtitles'
+import type { TranscriptWord } from './types'
+
+/**
+ * Burned-in captions as the export draws them and the preview copies: the
+ * cues, the layout by libass's rules and the drawing. Where libass really
+ * puts them is checked against ffmpeg in main/subtitles-render.test.ts.
+ */
+
+const FONTS = fileURLToPath(new URL('../../resources/fonts/', import.meta.url))
+
+beforeAll(() => {
+  for (const f of MOTION_FONTS) GlobalFonts.registerFromPath(FONTS + f.file, f.family)
+})
+
+const said = (texts: string[], from = 1, step = 0.4, each = 0.3): TranscriptWord[] =>
+  texts.map((text, i) => ({ text, startSec: from + i * step, endSec: from + i * step + each }))
+
+/**
+ * A measurer with round numbers: every character half the em wide, ink from
+ * the pen to the advance, 0.7 em up and 0.2 em down. Records what it was set to.
+ */
+function fakeMeasurer(): TextMeasurer & { fonts: string[] } {
+  const m = {
+    font: '',
+    fontKerning: 'normal',
+    fonts: [] as string[],
+    measureText(text: string) {
+      const em = Number(/([\d.]+)px/.exec(m.font)?.[1] ?? 10)
+      m.fonts.push(m.font)
+      const width = text.length * em * 0.5
+      return {
+        width,
+        actualBoundingBoxLeft: 0,
+        actualBoundingBoxRight: text.trim() ? width : 0,
+        actualBoundingBoxAscent: 0.7 * em,
+        actualBoundingBoxDescent: 0.2 * em
+      }
+    }
+  }
+  return m
+}
+
+const cueOf = (texts: string[], active = 0): SubtitleCue => ({
+  start: 1,
+  end: 2,
+  words: said(texts),
+  active
+})
+
+describe('subtitle cues', () => {
+  it('shows each group with one word picked out, held until the next word starts', () => {
+    const cues = subtitleCues(said(['one', 'two', 'three', 'four.', 'five']), 3)
+    expect(cues.map((c) => [c.words.map((w) => w.text).join(' '), c.active])).toEqual([
+      ['one two three', 0],
+      ['one two three', 1],
+      ['one two three', 2],
+      ['four.', 0],
+      ['five', 0]
+    ])
+    // Held to the next word's start, and the group's last word to its own end.
+    expect(cues[0]).toMatchObject({ start: 1, end: 1.4 })
+    expect(cues[2].end).toBeCloseTo(2.1)
+    // A word too short to show still shows for a twentieth of a second.
+    const blink = subtitleCues([{ text: 'a', startSec: 1, endSec: 1.01 }], 3)
+    expect(blink[0].end).toBeCloseTo(1.05)
+  })
+
+  it('picks the cue on screen as libass does, to the hundredth: from its start, up to its end', () => {
+    const cues = subtitleCues(said(['one', 'two', 'three.', 'four'], 1, 0.4), 3)
+    expect(subtitleAt(cues, 0.99)).toBeNull()
+    expect(subtitleAt(cues, 1)?.active).toBe(0)
+    expect(subtitleAt(cues, 1.399)?.active).toBe(0)
+    expect(subtitleAt(cues, 1.4)?.active).toBe(1)
+    // Between "three." (out at 2.1) and "four" (in at 2.2) nothing is on screen.
+    expect(subtitleAt(cues, 2.15)).toBeNull()
+    expect(subtitleAt(cues, 2.2)?.words[0].text).toBe('four')
+  })
+
+  it('leaves out the words of beats whose captions are off, and gives back the same cut when none are', () => {
+    const words = wordsFromTranscript(said(['One', 'two.', 'Three', 'four.']), 's1')
+    const source = { id: 's1', path: '/a.mov', durationSec: 4, width: 1920, height: 1080, fps: 30 }
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const cut = currentCut(doc)
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    expect(subtitleWords(cut, resolved, { items: [] })).toBe(resolved)
+    const off = applyOps(cut, [{ op: 'treat', beats: [cut.beats[0].id], set: { captions: false } }], {
+      words: doc.words,
+      sources: doc.sources
+    }).cut
+    const kept = subtitleWords(off, resolveCut(off, doc.words, doc.sources), { items: [] }).words.map((w) => w.text)
+    expect(kept).not.toContain(resolved.words[0].text)
+    expect(kept.length).toBeLessThan(resolved.words.length)
+  })
+})
+
+describe('subtitle layout', () => {
+  const wide = { width: 1920, height: 1080 }
+  const tall = { width: 1080, height: 1920 }
+
+  it("sizes a caption by the face's cell and stands its line on MarginV, centred between the margins", () => {
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'clean', position: 'chest' }, wide.width)
+    const m = fakeMeasurer()
+    const layout = layoutSubtitle(cueOf(['Bright', 'colours']), style, wide, m)
+    const sora = fontInfo('Sora')
+    // Clean is Sora 70 at 1080 wide, so 124 at 1920: a cell 124 tall, an em of 124 / 1.54.
+    expect(style.fontSizePx).toBe(124)
+    const em = 124 / (sora.winAscent + sora.winDescent)
+    expect(m.fonts[0]).toBe(`400 ${em.toFixed(2)}px "Sora"`)
+    // libass does not kern, and neither does the measuring.
+    expect(m.fontKerning).toBe('none')
+    const [line] = layout.blocks[0].lines
+    // MarginV is 1080 * (1 - 0.66), rounded: the cell's foot is 367 up from the bottom.
+    expect(line.baseline + em * sora.winDescent).toBeCloseTo(1080 - 367)
+    const first = line.runs[0]
+    const last = line.runs[line.runs.length - 1]
+    expect((first.x + last.x + last.width) / 2).toBeCloseTo(960)
+    expect(line.runs.map((r) => r.text)).toEqual(['Bright', ' ', 'colours'])
+    // The outline and the shadow are around and below the ink.
+    expect(layout.bounds.x).toBeCloseTo(first.x - style.outlinePx)
+    expect(layout.bounds.y + layout.bounds.h).toBeCloseTo(line.baseline + 0.2 * em + style.outlinePx + style.shadowPx)
+  })
+
+  it('scales the word being said from its pen, which makes its line a taller cell', () => {
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'punch', position: 'bottom' }, tall.width)
+    const flat = layoutSubtitle(cueOf(['Big', 'jump']), { ...style, activeScale: 1 }, tall, fakeMeasurer())
+    const layout = layoutSubtitle(cueOf(['Big', 'jump'], 1), style, tall, fakeMeasurer())
+    const [line] = layout.blocks[0].lines
+    const big = line.runs[2]
+    expect(big.font).toContain(`${((style.fontSizePx / 1.347) * 1.16).toFixed(2)}px`)
+    expect(big.color).toBe(style.activeColor)
+    expect(line.runs[0].color).toBe(style.textColor)
+    // The foot stays where it was; the baseline rises by the scaled descent.
+    const d = (style.fontSizePx / 1.347) * 0.312
+    expect(line.baseline).toBeCloseTo(flat.blocks[0].lines[0].baseline - d * 0.16)
+  })
+
+  it('breaks a line too wide for the margins at a space, then evens the lines out with the top one wider', () => {
+    const style = { ...captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'stack', position: 'middle' }, tall.width) }
+    // The margins leave 1080 - 2 * 86 = 908 pixels; each character is half an em of 54.9 here.
+    const layout = layoutSubtitle(
+      cueOf(['AAAAAAAA', 'BBBBBBBB', 'CC', 'DDDD', 'EEEEEEEEE']),
+      { ...style, activeScale: 1 },
+      tall,
+      fakeMeasurer()
+    )
+    const lines = layout.blocks[0].lines.map((l) =>
+      l.runs
+        .filter((r) => r.text.trim())
+        .map((r) => r.text)
+        .join(' ')
+    )
+    // Greedily only the last word goes down; moving DDDD and then CC down after it evens the lines out.
+    expect(lines).toEqual(['AAAAAAAA BBBBBBBB', 'CC DDDD EEEEEEEEE'])
+    const [top, bottom] = layout.blocks[0].lines
+    const em = style.fontSizePx / 1.347
+    // Stacked cell on cell, the last cell's foot on MarginV.
+    expect(bottom.baseline - top.baseline).toBeCloseTo(style.fontSizePx)
+    expect(bottom.baseline + em * 0.312).toBeCloseTo(1920 - Math.round(1920 * 0.48))
+    // A word wider than the margins stays whole on its own line.
+    const long = layoutSubtitle(cueOf(['W'.repeat(40), 'x']), style, tall, fakeMeasurer())
+    expect(long.blocks[0].lines.map((l) => l.runs.length)).toEqual([1, 1])
+  })
+
+  it('draws the second tier under the word being said, gapPx below its foot', () => {
+    const style = captionStyleFor(
+      { ...DEFAULT_CAPTIONS, preset: 'feature', position: 'middle', wordsPerScreen: 5 },
+      wide.width
+    )
+    const layout = layoutSubtitle(cueOf(['one', 'two', 'three'], 1), style, wide, fakeMeasurer())
+    expect(layout.blocks).toHaveLength(2)
+    const [big, rest] = layout.blocks
+    expect(big.lines[0].runs.map((r) => r.text)).toEqual(['two'])
+    expect(big.lines[0].runs[0].color).toBe(style.textColor)
+    expect(rest.lines[0].runs.filter((r) => r.text.trim()).map((r) => r.text)).toEqual(['one', 'three'])
+    const tier = style.second as NonNullable<typeof style.second>
+    const marginV = Math.round(1080 * (1 - 0.52))
+    const sora = fontInfo('Sora')
+    const em2 = tier.fontSizePx / (sora.winAscent + sora.winDescent)
+    expect(rest.lines[0].baseline + em2 * sora.winDescent).toBeCloseTo(1080 - (marginV - tier.gapPx))
+    // The tier is bold: libass draws it a 64th of its em wider.
+    expect(rest.embolden).toBeCloseTo(em2 / 64)
+    expect(big.embolden).toBe(0)
+  })
+
+  it('puts a boxed style on a plate of its cells, the outline width out on every side', () => {
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'marker', position: 'top' }, wide.width, {
+      text: '#101010',
+      accent: '#202020'
+    })
+    const layout = layoutSubtitle(cueOf(['one', 'two']), style, wide, fakeMeasurer())
+    const [line] = layout.blocks[0].lines
+    expect(layout.blocks[0].box).toBe('#c8f04a')
+    // The brand's colours reach the words.
+    expect(line.runs[0].color).toBe('#202020')
+    expect(line.runs[2].color).toBe('#101010')
+    const first = line.runs[0]
+    const last = line.runs[2]
+    const b = layout.bounds
+    expect(b.x).toBeCloseTo(first.x - style.outlinePx)
+    expect(b.y).toBeCloseTo(line.baseline - first.ascent - style.outlinePx)
+    expect(b.w).toBeCloseTo(last.x + last.width - first.x + 2 * style.outlinePx)
+    expect(b.h).toBeCloseTo(style.fontSizePx + 2 * style.outlinePx)
+  })
+})
+
+describe('subtitle drawing', () => {
+  /** The box of every pixel drawn. */
+  function inked(data: Uint8ClampedArray, w: number, h: number): { x0: number; y0: number; x1: number; y1: number } {
+    let x0 = w
+    let y0 = h
+    let x1 = -1
+    let y1 = -1
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        if (data[(y * w + x) * 4 + 3] > 24) {
+          x0 = Math.min(x0, x)
+          y0 = Math.min(y0, y)
+          x1 = Math.max(x1, x + 1)
+          y1 = Math.max(y1, y + 1)
+        }
+    return { x0, y0, x1, y1 }
+  }
+
+  it('draws inside the laid-out bounds, at any scale, with the shadow laid down once', () => {
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'clean', position: 'chest' }, 1920)
+    for (const scale of [1, 0.5]) {
+      const w = 1920 * scale
+      const h = 1080 * scale
+      const canvas = createCanvas(w, h)
+      const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D
+      const layout = layoutSubtitle(cueOf(['Bright', 'colours'], 1), style, { width: 1920, height: 1080 }, ctx)
+      drawSubtitle(ctx, layout, scale, (cw, ch) => createCanvas(cw, ch) as unknown as HTMLCanvasElement)
+      const got = inked(ctx.getImageData(0, 0, w, h).data, w, h)
+      const b = layout.bounds
+      expect(Math.abs(got.x0 - b.x * scale)).toBeLessThanOrEqual(1.5)
+      expect(Math.abs(got.y0 - b.y * scale)).toBeLessThanOrEqual(1.5)
+      expect(Math.abs(got.x1 - (b.x + b.w) * scale)).toBeLessThanOrEqual(1.5)
+      expect(Math.abs(got.y1 - (b.y + b.h) * scale)).toBeLessThanOrEqual(1.5)
+      if (scale === 1) {
+        // Just below and right of the outline at the line's last letter: shadow only, at its one alpha.
+        const line = layout.blocks[0].lines[0]
+        const last = line.runs[line.runs.length - 1]
+        const data = ctx.getImageData(0, 0, w, h).data
+        const x = Math.round(last.x + last.ink.right + style.outlinePx + style.shadowPx / 2)
+        let alpha = 0
+        for (let y = Math.round(line.baseline - 20); y < Math.round(line.baseline + 10); y++)
+          alpha = Math.max(alpha, data[(y * w + x) * 4 + 3])
+        expect(alpha / 255).toBeCloseTo(SHADOW_ALPHA, 1)
+      }
+    }
+  })
+})

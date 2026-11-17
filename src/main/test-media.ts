@@ -56,13 +56,27 @@ function decodeLog(ffmpeg: string, args: string[]): string {
 }
 
 /**
+ * RGB into YUV as an HD camera writes it: BT.709, limited range, and no tags,
+ * which is how the export and players take a recording that says nothing.
+ * Through planar RGB at the picture's size, which every ffmpeg converts exactly.
+ */
+export const AS_SHOT = 'format=gbrp,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p'
+
+/**
+ * YUV into RGB as a player shows HD and as the export is tagged: BT.709,
+ * limited range. Put before any shrinking: ffmpeg 6 ignores the matrix when it
+ * converts and resizes in one step.
+ */
+export const AS_PLAYED = 'scale=in_color_matrix=bt709:in_range=tv,format=gbrp'
+
+/**
  * A clip from lavfi sources: `video` and `audio` are lavfi graphs, each given
- * its own duration. Encoded small and fast.
+ * its own duration. Encoded small and fast, as a camera encodes colour.
  */
 export function makeClip(ffmpeg: string, path: string, video: string, audio: string | null): string {
   const args = ['-f', 'lavfi', '-i', video]
   if (audio) args.push('-f', 'lavfi', '-i', audio)
-  args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p')
+  args.push('-vf', AS_SHOT, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p')
   if (audio) args.push('-c:a', 'aac', '-b:a', '128k', '-shortest')
   ffmpegRun(ffmpeg, [...args, path])
   return path
@@ -83,7 +97,7 @@ export function makeColourClip(
   const pads = parts.map((_, i) => `[v${i}][a${i}]`).join('')
   ffmpegRun(ffmpeg, [
     '-filter_complex',
-    [...v, ...a, `${pads}concat=n=${parts.length}:v=1:a=1[v][a]`].join(';'),
+    [...v, ...a, `${pads}concat=n=${parts.length}:v=1:a=1[vc][a]`, `[vc]${AS_SHOT}[v]`].join(';'),
     '-map',
     '[v]',
     '-map',
@@ -129,7 +143,7 @@ export function frameColour(
       '-frames:v',
       '1',
       '-vf',
-      `${crop}scale=1:1:flags=area,format=rgb24`,
+      `${crop}${AS_PLAYED},scale=1:1:flags=area,format=rgb24`,
       '-f',
       'rawvideo',
       '-'

@@ -17,7 +17,7 @@ import {
 } from '../shared/edit'
 import { renderCut } from './cut-render'
 import { writePremiere } from './premiere-cut'
-import { findFfmpeg, makeClip, onsets, toneLevel } from './test-media'
+import { AS_PLAYED, findFfmpeg, makeClip, onsets, toneLevel } from './test-media'
 
 const FFMPEG = findFfmpeg()
 
@@ -55,7 +55,7 @@ function seen(ffmpeg: string, path: string, frame: number, crop = ''): string {
       '-i',
       path,
       '-vf',
-      `select=eq(n\\,${frame}),${crop ? `${crop},` : ''}scale=1:1:flags=area,format=rgb24`,
+      `select=eq(n\\,${frame}),${crop ? `${crop},` : ''}${AS_PLAYED},scale=1:1:flags=area,format=rgb24`,
       '-frames:v',
       '1',
       '-f',

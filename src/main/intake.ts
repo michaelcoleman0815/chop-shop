@@ -1,4 +1,7 @@
 import { spawn } from 'child_process'
+import { promises as fs } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
 /**
  * What a recording is, read once when it comes in: its shape as shown, its
@@ -275,6 +278,85 @@ export function hasZscale(ffmpeg: string): Promise<boolean> {
     zscaleCache.set(ffmpeg, hit)
   }
   return hit
+}
+
+/**
+ * Which matrix this ffmpeg's subtitle filter turns a caption's colour into
+ * YUV with, on a picture tagged BT.709: 7.0 follows the tag, 6.0 and 6.1 use
+ * BT.601 whatever the picture says. Asked once per binary, by drawing a lime
+ * square and reading it back; null when the answer is neither.
+ */
+const captionMatrixCache = new Map<string, Promise<'bt709' | 'bt601' | null>>()
+export function captionMatrix(ffmpeg: string): Promise<'bt709' | 'bt601' | null> {
+  let hit = captionMatrixCache.get(ffmpeg)
+  if (!hit) {
+    hit = probeCaptionMatrix(ffmpeg).catch(() => null)
+    captionMatrixCache.set(ffmpeg, hit)
+  }
+  return hit
+}
+
+async function probeCaptionMatrix(ffmpeg: string): Promise<'bt709' | 'bt601' | null> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'cutalong-matrix-'))
+  try {
+    const ass = join(dir, 'square.ass')
+    // #C8F04A as ASS writes it, drawn as a square so no face is needed.
+    await fs.writeFile(
+      ass,
+      [
+        '[Script Info]',
+        'ScriptType: v4.00+',
+        'PlayResX: 64',
+        'PlayResY: 64',
+        '',
+        '[V4+ Styles]',
+        'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+        'Style: S,Arial,20,&H004AF0C8,&H004AF0C8,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1',
+        '',
+        '[Events]',
+        'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+        'Dialogue: 0,0:00:00.00,0:00:05.00,S,,0,0,0,,{\\pos(0,0)\\p1}m 0 0 l 64 0 64 64 0 64{\\p0}',
+        ''
+      ].join('\n')
+    )
+    const inner = ass.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
+    const filter = `subtitles='${inner.replace(/'/g, "'\\''")}'`
+    const y = await new Promise<number>((resolve, reject) => {
+      const child = spawn(ffmpeg, [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=0x808080:s=64x64:d=1:r=1',
+        '-vf',
+        `format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,${filter}`,
+        '-frames:v',
+        '1',
+        // As drawn: the Y plane comes first, at video levels. Gray would stretch it to full range.
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        'yuv420p',
+        '-'
+      ])
+      const out: Buffer[] = []
+      child.stdout.on('data', (d: Buffer) => out.push(d))
+      child.on('error', reject)
+      child.on('close', (code) => {
+        const frame = Buffer.concat(out)
+        if (code !== 0 || frame.length < 64 * 64) reject(new Error('no frame'))
+        else resolve(frame[32 * 64 + 32])
+      })
+    })
+    // The square's luma: 205 in BT.709, 196 in BT.601.
+    if (Math.abs(y - 205) <= 2) return 'bt709'
+    if (Math.abs(y - 196) <= 2) return 'bt601'
+    return null
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
 }
 
 /**

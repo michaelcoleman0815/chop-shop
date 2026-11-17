@@ -51,12 +51,26 @@ const allPlanes = (expr: string): string => `c0='${expr}':c1='${expr}':c2='${exp
  * and the label they end on. `addInput` adds a file as an input and says its
  * number. Passes may overlap: each runs on what the one before left.
  */
+/**
+ * How the picture goes into planar RGB and back, and an overlay into YUV. The
+ * export says BT.709 at every step (main/cut-render TO_RGB, TO_YUV, TO_YUVA),
+ * the RGB the preview reads the picture in; left out, ffmpeg's own choice.
+ */
+export interface FxColour {
+  toRgb: string
+  toYuv: string
+  toYuva: string
+}
+
+const AS_IS: FxColour = { toRgb: 'format=gbrp', toYuv: 'format=yuv420p', toYuva: 'format=yuva420p' }
+
 export function pictureFxChains(
   passes: FxPass[],
   input: string,
   addInput: (path: string) => number,
   fps: number,
-  totalFrames: number
+  totalFrames: number,
+  colour: FxColour = AS_IS
 ): { chains: string[]; out: string } {
   const chains: string[] = []
   let current = input
@@ -73,11 +87,11 @@ export function pictureFxChains(
     if (before) chains.push(`[${p}a]trim=end_frame=${start},setpts=PTS-STARTPTS,setsar=1[${p}pre]`)
     if (after) chains.push(`[${p}c]trim=start_frame=${end},setpts=PTS-STARTPTS,setsar=1[${p}post]`)
     // Stamped by count, as the masks are: each frame meets the mask drawn for it.
-    chains.push(`[${mid}]trim=start_frame=${start}:end_frame=${end},${counted(fps)},format=gbrp[${p}_pic]`)
+    chains.push(`[${mid}]trim=start_frame=${start}:end_frame=${end},${counted(fps)},${colour.toRgb}[${p}_pic]`)
     const masks = pass.masks.map((path) => addInput(path))
     const shifts = pass.shifts.map((path) => addInput(path))
     const out = programChains(pass.program, p, masks, shifts, pass.k, chains, fps)
-    chains.push(`[${out}]format=yuv420p,setsar=1[${p}mid]`)
+    chains.push(`[${out}]${colour.toYuv},setsar=1[${p}mid]`)
     const parts = [before ? `[${p}pre]` : '', `[${p}mid]`, after ? `[${p}post]` : ''].join('')
     // Joined and stamped again by count, so every frame is exactly where it was.
     chains.push(
@@ -217,13 +231,15 @@ export function overlayChains(
   overlays: FxOverlayFile[],
   input: string,
   addInput: (path: string) => number,
-  fps: number
+  fps: number,
+  colour: FxColour = AS_IS
 ): { chains: string[]; out: string } {
   const chains: string[] = []
   let current = input
   overlays.forEach((o, i) => {
     const k = addInput(o.path)
-    chains.push(`[${k}:v]settb=1/${fps},setpts=(N+${o.startFrame})/(${fps}*TB)[fxo${i}]`)
+    // Drawn in RGB; into YUV before it meets the picture, as the graphics go, so a ring's colour stays itself.
+    chains.push(`[${k}:v]${colour.toYuva},settb=1/${fps},setpts=(N+${o.startFrame})/(${fps}*TB)[fxo${i}]`)
     chains.push(`[${current}][fxo${i}]overlay=0:0:eof_action=pass[fxov${i}]`)
     current = `fxov${i}`
   })
