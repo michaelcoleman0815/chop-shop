@@ -6,7 +6,7 @@ import type { AudioMap } from '../shared/audio/map'
 import type { Envelope } from '../shared/audio/snap'
 import type { Source, Word } from '../shared/edit/schema'
 import { analyseMouth, type MouthResult } from '../shared/vision/analyse'
-import { linkFaces, planCrops, sendcmdScript, type CropPlan, type FaceSample } from '../shared/vision/faces'
+import { cropName, linkFaces, planCrops, sendcmdScript, type CropPlan, type FaceSample } from '../shared/vision/faces'
 import { MouthMeter, type RawMouth } from '../shared/vision/meter'
 import { neverWatches, type MouthMode } from '../shared/vision/mode'
 import { audioOffset, shiftMapSegments } from '../shared/vision/offset'
@@ -38,7 +38,11 @@ function filterPath(path: string): string {
   return `'${inner.replace(/'/g, "'\\''")}'`
 }
 
-/** The filter graph for a plan: one crop chain per slot, then the whole picture, stacked. */
+/**
+ * The filter graph for a plan: one crop chain per slot, then the whole picture,
+ * stacked. Each crop is named by cropName, for the commands sendcmdScript
+ * writes to move it.
+ */
 export function mouthGraph(plan: CropPlan, cmdPath: string): string {
   const n = plan.slots.length
   const { tileW: TW, tileH: TH } = plan
@@ -46,9 +50,8 @@ export function mouthGraph(plan: CropPlan, cmdPath: string): string {
   const chains = [`[0:v]format=gray,sendcmd=f=${filterPath(cmdPath)},split=${n + 1}${labels}`]
   plan.slots.forEach((slot, k) => {
     const first = slot.windows[0] ?? { x: 0, y: 0 }
-    chains.push(
-      `[s${k}]crop@m${k}=w=${slot.w}:h=${slot.h}:x=${first.x}:y=${first.y}:exact=1,scale=${TW}:${TH}:flags=area[t${k}]`
-    )
+    const crop = `${cropName(k)}=w=${slot.w}:h=${slot.h}:x=${first.x}:y=${first.y}:exact=1`
+    chains.push(`[s${k}]${crop},scale=${TW}:${TH}:flags=area[t${k}]`)
   })
   chains.push(`[s${n}]scale=${TW}:${TH}:flags=fast_bilinear[t${n}]`)
   const tiles = Array.from({ length: n + 1 }, (_, k) => `[t${k}]`).join('')

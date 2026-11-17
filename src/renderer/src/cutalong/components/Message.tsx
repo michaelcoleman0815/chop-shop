@@ -1,9 +1,12 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { isImagePath } from '../../../../shared/assets'
 import type { ChatMessage } from '../../../../shared/types'
 import { mediaUrlFor } from '../api'
 import { isAudioFile } from '../format'
+import { Credits } from './Crew'
 import { Poster } from './Poster'
+import { factParts, MAX_FACTS, tileColours } from '../facts'
+import { block } from '../shapes'
 import { AssistantAvatar, Button } from './ui'
 import { Working, type Progress } from './Working'
 
@@ -79,6 +82,39 @@ function Files({ files }: { files: { path: string; name: string }[] }): JSX.Elem
   )
 }
 
+/**
+ * Up to three facts as tiles, after the sentence: each a pastel block with a
+ * big number and a small label, or a short phrase when the fact has no number.
+ * The seed keeps a reply's colours the same each time it is drawn.
+ */
+export function Facts({ facts, seed }: { facts: string[]; seed: string }): JSX.Element | null {
+  const shown = facts.slice(0, MAX_FACTS)
+  if (shown.length === 0) return null
+  const colours = tileColours(seed, shown.length)
+  return (
+    <div className="cl-facts">
+      {shown.map((f, i) => {
+        const p = factParts(f)
+        return (
+          <span
+            key={f}
+            className={`cl-fact${'phrase' in p ? ' phrase' : ''}`}
+            style={{ '--block': block(colours[i]) } as CSSProperties}
+          >
+            {'phrase' in p ? (
+              p.phrase
+            ) : (
+              <>
+                <span className="cl-fact-n">{p.big}</span> <span className="cl-fact-label">{p.label}</span>
+              </>
+            )}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 /** The tallest an export plays in the chat: a vertical video is framed to this, a wide one to the column. */
 const EXPORT_MAX_HEIGHT = 'min(64vh, 560px)'
 
@@ -142,26 +178,20 @@ export function AssistantMessage({
   const [open, setOpen] = useState(false)
   return (
     <div className="cl-msg-assistant" aria-live={msg.progress ? 'polite' : undefined}>
-      <AssistantAvatar />
+      <AssistantAvatar working={!!msg.progress} />
       <div className="cl-msg-body">
         {msg.progress ? (
-          <Working progress={msg.progress} since={msg.since} />
+          <Working progress={msg.progress} since={msg.since} big crew={msg.crew} />
         ) : (
           msg.text && <p className="cl-reply">{msg.text}</p>
         )}
         {!msg.progress && msg.video && <ExportedVideo video={msg.video} />}
-        {!msg.progress && ((msg.chips?.length ?? 0) > 0 || (msg.details?.length ?? 0) > 0) && (
-          <div className="cl-chips" style={{ alignItems: 'center' }}>
-            {(msg.chips ?? []).map((c) => (
-              <span key={c} className="cl-fact">
-                {c}
-              </span>
-            ))}
-            {(msg.details?.length ?? 0) > 0 && (
-              <button type="button" className="cl-link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-                {open ? 'Hide details' : 'Details'}
-              </button>
-            )}
+        {!msg.progress && (msg.chips?.length ?? 0) > 0 && <Facts facts={msg.chips ?? []} seed={msg.id} />}
+        {!msg.progress && (msg.details?.length ?? 0) > 0 && (
+          <div className="cl-chips">
+            <button type="button" className="cl-link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              {open ? 'Hide details' : 'Details'}
+            </button>
           </div>
         )}
         {open && msg.details && (
@@ -175,6 +205,8 @@ export function AssistantMessage({
           </dl>
         )}
         {!msg.progress && msg.aside && <p className="cl-aside">{msg.aside}</p>}
+        {/* Who did the work, then what it made: a clip set reads as what Reel found. */}
+        {!msg.progress && <Credits crew={msg.crew} />}
         {!msg.progress && children}
         {(msg.actions ?? []).some((a) => !!a.during === !!msg.progress) && (
           <div className="cl-actions">

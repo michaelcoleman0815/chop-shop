@@ -12,7 +12,7 @@ import { creditsText, isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo } from './inspiration/measure'
 import { renderCut } from './cut-render'
-import { freePath } from './export-paths'
+import { freePath, placeFile } from './export-paths'
 import { claudeWriter, writeUploadKit } from './upload-kit'
 import { readApiKey } from './apikey'
 import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
@@ -402,6 +402,10 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     const final = req.quality === 'final'
     const stage = final ? 'Exporting' : 'Rendering a preview'
     const workDir = await fs.mkdtemp(join(app.getPath('temp'), 'cutalong-render-'))
+    // What ffmpeg writes, and where the finished file is: an export is made in
+    // the work folder and only goes into the export folder whole (placeFile),
+    // so a render killed partway, or the app quitting, leaves nothing there.
+    let rendering: string | null = null
     let outputPath: string | null = null
     try {
       // What each recording has now. One the cut no longer uses may be gone
@@ -415,15 +419,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         })
       )
       const n = currentVersion(doc).n
-      // An export's name is free only when nothing that goes beside it is there either.
-      outputPath = final
-        ? await freePath(
-            getSettings().outputDir,
-            req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`,
-            '.mp4',
-            EXPORT_BESIDE
-          )
-        : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
+      rendering = final ? join(workDir, 'export.mp4') : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
       // The brand this version is made in: its graphics, caption colours and logo.
       const brand = await brandOfDoc(doc)
       const report = (f: number): void => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
@@ -448,7 +444,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       // The subtitles leave out what a card holds back; the music and the sounds still follow every word.
       await renderCut(pass.cut, resolved, sources, {
         ffmpeg: FFMPEG_PATH,
-        outputPath,
+        outputPath: rendering,
         workDir,
         quality: req.quality,
         fontsDir: FONTS_DIR(),
@@ -458,6 +454,16 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         sfxDir: sfxDir(),
         onProgress: (f) => report(share + f * (1 - share))
       })
+      // An export's name is free only when nothing that goes beside it is there either.
+      outputPath = final
+        ? await placeFile(
+            rendering,
+            getSettings().outputDir,
+            req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`,
+            '.mp4',
+            EXPORT_BESIDE
+          )
+        : rendering
       // Anything from outside the person's own files is credited beside the video.
       let creditsPath: string | null = null
       const credits = final ? creditsText(doc) : null
@@ -514,10 +520,14 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         durationSec
       }
     } catch (err) {
-      console.error('[cut] render failed:', message(err))
-      // Nothing half-made, and no empty file holding the name, is left in the export folder.
+      const said = toolSaid(err)
+      console.error('[cut] render failed:', message(err), said ? `\n${said.said}` : '')
+      // A preview half-made, or an export placed before what goes beside it failed: neither is left.
       if (outputPath) await fs.rm(outputPath, { force: true }).catch(() => undefined)
-      return { ok: false as const, message: message(err) }
+      if (!final && rendering) await fs.rm(rendering, { force: true }).catch(() => undefined)
+      // A sentence, and what ffmpeg said behind Details.
+      const details = saidDetails(said)
+      return { ok: false as const, message: message(err), ...(details.length ? { details } : {}) }
     } finally {
       await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined)
     }

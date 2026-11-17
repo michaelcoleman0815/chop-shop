@@ -344,6 +344,12 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
+  /**
+   * The crew who did the work behind a reply, in the order they joined, each
+   * with the last stage they reported: the reply's credits. The member ids
+   * and stages are the renderer's (src/renderer/src/cutalong/crew.ts).
+   */
+  crew?: { id: 'echo' | 'snip' | 'quill' | 'scout' | 'tint' | 'reel'; stage: string }[]
   attachments?: { path: string; name: string }[]
   link?: { url: string; title: string | null; meta: string | null }
   chips?: string[]

@@ -45,10 +45,10 @@ export function isAudioFile(name: string): boolean {
   return AUDIO_EXT.test(name)
 }
 
-/** How long something has been running, the way a stopwatch reads: "12s", "9m 4s", "1h 2m". */
+/** How long something has been running, with its units spaced as the rest of the app writes them: "12 s", "9 min 4 s", "1 h 2 min". */
 export function elapsed(sec: number): string {
   const s = Math.max(0, Math.floor(sec))
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
-  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+  if (s < 60) return `${s} s`
+  if (s < 3600) return `${Math.floor(s / 60)} min ${s % 60} s`
+  return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`
 }

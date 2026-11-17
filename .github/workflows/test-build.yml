@@ -61,6 +61,8 @@ jobs:
           test -x resources/bin/whisper-cli || { echo "::error::whisper-cli missing"; exit 1; }
           test -x resources/bin/chopshop-vision || { echo "::error::chopshop-vision missing"; exit 1; }
           test -x resources/bin/yt-dlp || { echo "::error::yt-dlp missing"; exit 1; }
+          # Each helper must run on the oldest macOS the app opens on.
+          ./scripts/check-macos-min.sh
           # The renderer of record: its version decides how exports behave.
           "$(node -p "require('ffmpeg-static')")" -hide_banner -version | head -1
 
@@ -81,6 +83,11 @@ jobs:
         run: |
           npx electron-vite build
           npx electron-builder --mac --publish never -c.mac.identity=-
+
+      # macOS opens the app on any version its Info.plist allows, so every
+      # binary inside it must run there too.
+      - name: Check the app runs on the macOS it says
+        run: ./scripts/check-macos-min.sh "$(ls -d release/mac-arm64/*.app | head -1)"
 
       # Graphics are drawn in the export by a native module. It must be in the
       # app, outside the asar, and load there, or every export with a graphic

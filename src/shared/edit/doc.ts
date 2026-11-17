@@ -434,17 +434,22 @@ export function beatWords(doc: EditDoc, beat: Beat): Word[] {
 
 /**
  * What the beat strip shows for a beat: its big word if it has one, else its
- * opening words. Upper case, short, because it sits inside a 34px segment.
+ * opening words. Sentence case, as the script reads, and short, because it
+ * sits inside a 36px segment.
  */
 export function beatLabel(doc: EditDoc, beat: Beat): string {
   if (beat.treatment.bigWord) {
     const w = doc.words.find((x) => x.id === beat.treatment.bigWord)
-    if (w) return clean(w.text).toUpperCase()
+    if (w) return sentenceCase(clean(w.text))
   }
   const words = beatWords(doc, beat)
     .slice(0, 3)
     .map((w) => clean(w.text))
-  return words.length > 0 ? words.join(' ').toUpperCase() : beat.treatment.frame === 'card' ? 'CARD' : 'SHOT'
+  return words.length > 0 ? sentenceCase(words.join(' ')) : beat.treatment.frame === 'card' ? 'Card' : 'Shot'
+}
+
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 function clean(text: string): string {

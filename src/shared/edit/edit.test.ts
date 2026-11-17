@@ -260,7 +260,7 @@ describe('ops', () => {
     const doc = makeDoc()
     const ok = applyOps(currentCut(doc), [{ op: 'treat', beats: ['b2'], set: { bigWord: 'w11', bw: true } }], ctx(doc))
     expect(ok.rejected).toEqual([])
-    expect(beatLabel(doc, ok.cut.beats[1])).toBe('SETTINGS')
+    expect(beatLabel(doc, ok.cut.beats[1])).toBe('Settings')
 
     const wrongBeat = applyOps(currentCut(doc), [{ op: 'treat', beats: ['b1'], set: { bigWord: 'w11' } }], ctx(doc))
     expect(wrongBeat.rejected[0].reason).toBe('w11 is not a word in b1.')

@@ -33,6 +33,10 @@ extraResources:
 
 mac:
   category: public.app-category.video
+  # The oldest macOS the app opens on. The helpers in resources/bin are built
+  # for this same version (scripts/macos-min.sh reads it from here), and CI
+  # checks every bundled binary against it (scripts/check-macos-min.sh).
+  minimumSystemVersion: "14.0"
   icon: build/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
