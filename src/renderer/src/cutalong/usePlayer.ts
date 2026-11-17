@@ -93,6 +93,67 @@ const playbackRate = (rate: number): number => Math.min(16, Math.max(0.0625, rat
  */
 export const needsFrame = (v: HTMLMediaElement): boolean => v.paused && !v.seeking && v.readyState === 1
 
+/**
+ * Whether a paused element read its recording's length and stopped loading
+ * there for good. An iPhone's web view does that with a recording the app
+ * loads by itself rather than for a touch, as when a project opens from Start:
+ * a moment asked of it then never arrives, and its picture stays dark until it
+ * plays.
+ */
+const stalled = (v: HTMLMediaElement): boolean =>
+  v.paused && v.readyState === v.HAVE_METADATA && v.networkState === v.NETWORK_IDLE
+
+/** Elements playing silently to load their frames. */
+const waking = new WeakSet<HTMLMediaElement>()
+/** Frames that load have done so by then. */
+const SETTLE_MS = 500
+/** A wake that has not started playing by then gives up. */
+const WAKE_MS = 4000
+
+/**
+ * Shows a paused element's frame at `at()`. Asking for the moment is enough
+ * where the frames load; an element still stalled a moment later plays
+ * silently until they have, then stops on the moment again. While `running()`
+ * the player has taken the element over, and it is left playing. A play that
+ * is refused, or never starts, leaves the element as it was.
+ */
+export function showFrame(v: HTMLVideoElement, at: () => number | null, running: () => boolean): void {
+  const t = at()
+  if (t !== null && (Math.abs(v.currentTime - t) > 0.01 || needsFrame(v))) v.currentTime = t
+  if (stalled(v) && !running()) setTimeout(() => wake(v, at, running), SETTLE_MS)
+}
+
+/** Plays a stalled element silently until its frames load, then stops it on its moment again. */
+function wake(v: HTMLVideoElement, at: () => number | null, running: () => boolean): void {
+  if (!v.isConnected || !stalled(v) || running() || waking.has(v)) return
+  waking.add(v)
+  const muted = v.muted
+  let late = false
+  v.muted = true
+  const wait = setTimeout(() => {
+    if (!waking.has(v) || running()) return
+    late = true
+    v.pause()
+  }, WAKE_MS)
+  v.play().then(
+    () => {
+      clearTimeout(wait)
+      waking.delete(v)
+      if (running()) return
+      v.pause()
+      v.muted = muted
+      const back = at()
+      if (back !== null) v.currentTime = back
+    },
+    (err: unknown) => {
+      clearTimeout(wait)
+      waking.delete(v)
+      // Paused or given another recording meanwhile, the player has set its sound since.
+      if (late || !(err instanceof DOMException && err.name === 'AbortError')) v.muted = muted
+    }
+  )
+}
+
 export function usePlayer(
   decks: RefObject<HTMLVideoElement>[],
   resolved: Resolved | null,
@@ -373,8 +434,8 @@ export function usePlayer(
 
   // Each deck's element, from the first render it is there: the editor draws the decks once the
   // media is known, which can be after the player starts, as when a project opens from Start. From
-  // then on, media that has just loaded goes where it was asked to be; on an iPhone that is what
-  // loads its first frame, so it goes there even when it is already there. A deck drawn after the
+  // then on, media that has just loaded, or stopped loading, shows the frame it was asked for
+  // (showFrame), which on an iPhone can take a moment of silent play. A deck drawn after the
   // playhead was put somewhere is put there now.
   const watched = useRef<(HTMLVideoElement | null)[]>([])
   useEffect(() => {
@@ -383,9 +444,16 @@ export function usePlayer(
       const v = ref.current
       if (!v || watched.current[d] === v) return
       watched.current[d] = v
-      v.addEventListener('loadedmetadata', () => {
-        const at = want.current[d]
-        if (at !== null && (Math.abs(v.currentTime - at) > 0.01 || needsFrame(v))) v.currentTime = at
+      const frame = (): void =>
+        showFrame(
+          v,
+          () => want.current[d],
+          () => playingRef.current
+        )
+      v.addEventListener('loadedmetadata', frame)
+      // A deck that stops loading before its first frame; playing, one that stops has all it needs.
+      v.addEventListener('suspend', () => {
+        if (!playingRef.current && v.readyState < 2) frame()
       })
       if (!v.getAttribute('src')) late = true
     })

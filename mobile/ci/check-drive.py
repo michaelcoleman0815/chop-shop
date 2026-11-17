@@ -82,6 +82,8 @@ def steps_of(label, report, expected):
     print(f"  the editor's preview had a picture: {report.get('previewReady')}")
     for deck in report.get("previewDecks", []):
         print(f"    a picture in the frame: {deck}")
+    for event in report.get("previewEvents", []):
+        print(f"    {event}")
     for r in report.get("anthropic", []):
         print(f"  anthropic: {r.get('kind')} {r.get('said')!r} -> {r.get('status')}{' ' + r['route'] if r.get('route') else ''}")
     # A phone's plugins log each call they turn down (a file or a key that is not there yet), so

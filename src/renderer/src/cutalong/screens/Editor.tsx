@@ -93,7 +93,7 @@ import { deckStyle } from '../deck-style'
 import { grainTile } from '../grain'
 import { clock } from '../format'
 import { collapse } from '../motion'
-import { needsFrame, usePlayer, type DeckView } from '../usePlayer'
+import { showFrame, usePlayer, type DeckView } from '../usePlayer'
 import type { Cutalong, PanelStatus } from '../useCutalong'
 import { Header } from './Header'
 
@@ -514,6 +514,15 @@ function CameraInset({
   box: CSSProperties
 }): JSX.Element {
   const ref = useRef<HTMLVideoElement>(null)
+  // Where it should be and whether it plays, for a frame that arrives after this render.
+  const wanted = useRef({ at: 0, runs: false })
+  wanted.current = { at: Math.max(0, at), runs: playing && rate !== 0 }
+  const showAt = (v: HTMLVideoElement): void =>
+    showFrame(
+      v,
+      () => wanted.current.at,
+      () => wanted.current.runs
+    )
   useEffect(() => {
     const v = ref.current
     if (!v) return
@@ -531,9 +540,10 @@ function CameraInset({
         muted
         playsInline
         preload="auto"
-        onLoadedMetadata={(e) => {
-          // Its frame, on an iPhone too, which shows none until it is asked for a moment.
-          if (needsFrame(e.currentTarget)) e.currentTarget.currentTime = Math.max(0, at)
+        // Its frame, on an iPhone too, which may show none until it plays (showFrame).
+        onLoadedMetadata={(e) => showAt(e.currentTarget)}
+        onSuspend={(e) => {
+          if (!wanted.current.runs && e.currentTarget.readyState < 2) showAt(e.currentTarget)
         }}
       />
     </div>
@@ -866,6 +876,15 @@ function Cutaway({
   // The footage's own shape, once it has loaded: the move is planned on it.
   const [shape, setShape] = useState<number | null>(null)
   const fit = fitFor(shape ? { width: shape, height: 1 } : null)
+  // Where it should be and whether it plays, for a frame that arrives after this render.
+  const wanted = useRef({ at: 0, runs: false })
+  wanted.current = { at: Math.max(0, srcSec), runs: playing && moving }
+  const showAt = (v: HTMLVideoElement): void =>
+    showFrame(
+      v,
+      () => wanted.current.at,
+      () => wanted.current.runs
+    )
   useEffect(() => {
     const v = ref.current
     if (!v) return
@@ -905,8 +924,11 @@ function Cutaway({
           onLoadedMetadata={(e) => {
             const v = e.currentTarget
             setShape(v.videoWidth / Math.max(1, v.videoHeight))
-            // Its frame, on an iPhone too, which shows none until it is asked for a moment.
-            if (needsFrame(v)) v.currentTime = Math.max(0, srcSec)
+            // Its frame, on an iPhone too, which may show none until it plays (showFrame).
+            showAt(v)
+          }}
+          onSuspend={(e) => {
+            if (!wanted.current.runs && e.currentTarget.readyState < 2) showAt(e.currentTarget)
           }}
         />
       )}

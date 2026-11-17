@@ -284,7 +284,10 @@ export async function drive(): Promise<void> {
     // The drive's clicks are not a person's taps, so a button or a link the app moves focus to shows
     // the keyboard's ring, which a tap never leaves; a field keeps its focus, as it would.
     const focused = document.activeElement
-    if ((focused instanceof HTMLButtonElement || focused instanceof HTMLAnchorElement) && focused.matches(':focus-visible'))
+    if (
+      (focused instanceof HTMLButtonElement || focused instanceof HTMLAnchorElement) &&
+      focused.matches(':focus-visible')
+    )
       focused.blur()
     const screen = [shown('.cl-main'), shown('.cl-toast')].filter(Boolean).join(' || ').slice(0, 700)
     const s: Step = { n: steps.length + 1, name, atSec: seconds(), acknowledged: false, screen }
@@ -420,11 +423,29 @@ export async function drive(): Promise<void> {
     return until(place, () => document.querySelector<HTMLElement>(ready), 30)
   }
 
+  // What the editor's pictures did, in order: how a preview came to show its frame, or stayed dark.
+  // Media events do not bubble, so they are heard on their way down.
+  let pictureEvents: string[] = []
+  const mediaEvents = ['loadedmetadata', 'loadeddata', 'canplay', 'play', 'playing', 'waiting', 'pause']
+  for (const type of [...mediaEvents, 'seeking', 'seeked', 'suspend', 'stalled', 'abort', 'emptied', 'error'])
+    document.addEventListener(
+      type,
+      (e) => {
+        const v = e.target
+        if (!(v instanceof HTMLVideoElement) || !v.closest('.cl-editor .cl-frame') || pictureEvents.length >= 80) return
+        const state = `ready ${v.readyState}, network ${v.networkState}, at ${v.currentTime.toFixed(2)}`
+        pictureEvents.push(`${seconds()} s ${type}: ${state}${v.paused ? ', paused' : ''}${v.muted ? ', muted' : ''}`)
+      },
+      true
+    )
+
   // The editor with its preview ready to play, as a person sees it before they export.
   const editor = async (): Promise<void> => {
+    pictureEvents = []
     await until('the editor', () => document.querySelector('.cl-editor'), 30)
     const preview = (): HTMLVideoElement | null => document.querySelector('.cl-editor .cl-frame video')
     report.previewReady = await until('the preview', () => (preview()?.readyState ?? 0) >= 2, 60).catch(() => false)
+    report.previewEvents = [...((report.previewEvents as string[] | undefined) ?? []), ...pictureEvents]
     if (!report.previewReady) {
       const v = preview()
       keep(
