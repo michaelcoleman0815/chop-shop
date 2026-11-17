@@ -59,6 +59,7 @@ import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/spee
 import { renderFilm } from './render/film'
 import { weaveFilter } from '../shared/edit/film'
 import { hasFilm } from '../shared/edit/look'
+import { overlayChains, pictureFxChains, type FxOverlayFile, type FxPass } from '../shared/fx/ffmpeg'
 
 /**
  * Renders a resolved cut: the renderer of record for an edit document.
@@ -224,6 +225,12 @@ export interface GraphOptions {
   logo?: LogoMark | null
   /** Motion graphics, over the captions and under the logo. */
   overlays?: OverlaySpan[] | null
+  /**
+   * Scene effects (main/fx-render): their picture work on the joined picture
+   * before the look, and what they draw over it after the look and under the
+   * captions.
+   */
+  fx?: { passes: FxPass[]; overlays: FxOverlayFile[] } | null
   /** An ASS file to burn in over the joined picture. */
   assPath: string | null
   /**
@@ -323,6 +330,8 @@ export const TO_YUV = `format=gbrp,scale=out_color_matrix=bt709:out_range=tv,for
 export const TO_YUVA = `format=gbrap,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p,${AS_BT709}`
 /** A still or a GIF, decoded as its format says (JPEG as BT.601, full range), into YUV as BT.709, alpha kept for a card. */
 const STILL_TO_YUV = `format=gbrap,scale=out_color_matrix=bt709:out_range=tv,format=yuva444p,${AS_BT709}`
+/** The scene effects go into RGB and back, and lay their overlays on, as everything else does (shared/fx/ffmpeg). */
+const FX_COLOUR = { toRgb: TO_RGB, toYuv: TO_YUV, toYuva: TO_YUVA }
 /** What the encoder writes in the file, so a player reads it as BT.709 too. */
 const TAGS = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv']
 
@@ -1013,6 +1022,16 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const totalSec = spans[spans.length - 1].outEnd - spans[0].outStart
 
   let vOut = 'vcat'
+  const addInput = (path: string): number => {
+    inputs.push('-i', path)
+    return next++
+  }
+  // ---- Scene effects on the picture (shared/fx): before the look, as the preview draws them under it ----
+  if (opts.fx?.passes.length) {
+    const fx = pictureFxChains(opts.fx.passes, vOut, addInput, fps, totalFrames, FX_COLOUR)
+    chains.push(...fx.chains)
+    vOut = fx.out
+  }
   // The look goes over the whole picture, cutaways and cards included, and
   // under the captions and the logo, which keep their own colours. Its LUT,
   // colour and vignette work in RGB as BT.709, the RGB the preview grades.
@@ -1020,7 +1039,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const lutOn = !!grade?.lut && grade.lut.strength > 0.005
   const inRgb = grade ? lookRgbFilters(grade) : []
   if (lutOn || inRgb.length > 0) {
-    chains.push(`[vcat]${TO_RGB}[vrgb]`)
+    // From the picture as it is so far: with scene effects on it, theirs.
+    chains.push(`[${vOut}]${TO_RGB}[vrgb]`)
     let rgb = 'vrgb'
     if (grade?.lut && lutOn) {
       // A LUT at less than full strength is mixed back with the picture it came from.
@@ -1060,6 +1080,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       chains.push(`[${vOut}][film${i}]overlay=0:0:shortest=1:format=yuv420[vfilm${i}]`)
       vOut = `vfilm${i}`
     }
+  }
+  // What the effects draw (rings, speed lines, a scan's glow): over the look and its film, under the captions.
+  if (opts.fx?.overlays.length) {
+    const drawn = overlayChains(opts.fx.overlays, vOut, addInput, fps, FX_COLOUR)
+    chains.push(...drawn.chains)
+    vOut = drawn.out
   }
   if (opts.assPath) {
     // Straight onto the picture, tagged BT.709: 7.0 colours captions by the tag, and on 6.0 and 6.1, which
@@ -1355,6 +1381,8 @@ export interface RenderCutOptions {
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
   /** Motion graphics from renderCutMotion, laid over the joined picture in the last pass. */
   overlays?: OverlaySpan[] | null
+  /** Scene effects from renderCutFx (main/fx-render), worked into the joined picture in the last pass. */
+  fx?: GraphOptions['fx']
   /** Where the built-in sound effects are kept once made; the work folder when absent. */
   sfxDir?: string
   /**
@@ -1674,7 +1702,8 @@ export async function renderCut(
     quality,
     outputPath: opts.outputPath,
     logo: opts.brand?.logo ?? null,
-    overlays: opts.overlays ?? null
+    overlays: opts.overlays ?? null,
+    fx: opts.fx ?? null
   }
   // One pass over several pieces holds pictures it has not reached yet: the
   // loudness filter looks 3 s ahead, the sound opens the next pieces' inputs

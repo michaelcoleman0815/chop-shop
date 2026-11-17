@@ -2393,6 +2393,23 @@ button:disabled {
   flex: 1 1 260px;
 }
 
+/* Scene effects in the preview (fx-preview.ts): the picture an effect works on,
+   over the decks and under the look, and what it draws over the picture, over
+   the look and under the captions. Picture pixels, never interface colour. */
+.cl-fx-picture,
+.cl-fx-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.cl-fx-picture {
+  z-index: 3;
+}
+
 /* The picture's own decks, the whole frame or the half beside another camera. */
 .cl-decks-main {
   position: absolute;

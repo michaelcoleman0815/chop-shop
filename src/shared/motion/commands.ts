@@ -106,6 +106,27 @@ export const MOTION_COMMANDS: MotionCommand[] = [
     }
   },
   {
+    command: 'chrome',
+    kind: 'keyword',
+    title: 'Chrome text',
+    summary: '3D chrome lettering, a number counting up to itself: /chrome 1,000,000, or /chrome gold 237',
+    parse: (rest, ctx) => {
+      // Gold is a style of its own; chrome takes a colour as #RRGGBB, like any graphic.
+      const [first, ...others] = words(rest)
+      const gold = first?.toLowerCase() === 'gold'
+      const tint = first && /^#[0-9a-f]{6}$/i.test(first) ? first.toUpperCase() : ''
+      const [value, ...label] = parts(gold || tint ? others.join(' ') : rest)
+      if (!value) return { problem: 'Tell me the word or number, like /chrome 1,000,000.' }
+      const at = wordFor(ctx.resolved, value, ctx.time)
+      return {
+        style: gold ? 'gold' : 'chrome',
+        ...(tint ? { color: tint } : {}),
+        text: [value, label.join(', ')].filter((t, i) => i === 0 || t),
+        ...(at ? { from: at } : {})
+      }
+    }
+  },
+  {
     command: 'pop',
     kind: 'keyword',
     title: 'Keyword pop',

@@ -100,6 +100,8 @@ export type CutalongApi = Pick<
   | 'onAiProgress'
   | 'mapStatus'
   | 'mapData'
+  | 'fxCan'
+  | 'fxCutouts'
   | 'downloadMaps'
   | 'onMapProgress'
   | 'updateState'
@@ -119,6 +121,13 @@ export const isMock = !bridge
  * can be built and checked without the app around them.
  */
 export const api: CutalongApi = bridge ?? createMockApi()
+
+/**
+ * How a picture the scene effects read is loaded: with leave to read it, from
+ * the media server, which gives it (main/media-server); a file loaded by path
+ * cannot ask, and the effects then draw over the picture without reading it.
+ */
+export const MEDIA_CORS: 'anonymous' | undefined = bridge && !bridge.mediaBase ? undefined : 'anonymous'
 
 /** A local file as the player can load it, from the main process's media server. */
 export function mediaUrlFor(path: string): string {
