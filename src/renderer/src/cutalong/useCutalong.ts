@@ -2003,6 +2003,7 @@ export function useCutalong() {
           role: 'assistant',
           text,
           aside: aside ?? null,
+          details: plan.details.length ? plan.details : undefined,
           actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
         })
     },

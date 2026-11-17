@@ -7,6 +7,7 @@ import './logos'
 import './market'
 import './screenshot'
 import './device'
+import './map'
 import './layers'
 
 export * from './registry'
