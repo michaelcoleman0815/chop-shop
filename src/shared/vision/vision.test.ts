@@ -12,7 +12,7 @@ import {
 } from '../edit'
 import { analyseMouth, mouthForNiche, mouthNotice, setMouthMode, setMouthModeAll, type MouthResult } from './analyse'
 import { cutInAt, cutOutAt } from './cuts'
-import { boxAt, linkFaces, planCrops, sendcmdScript, type FaceSample } from './faces'
+import { boxAt, linkFaces, planCrops, sendcmdScript, type CropPlan, type CropSlot, type FaceSample } from './faces'
 import { retakeHints } from './hints'
 import { MouthMeter, type RawMouth } from './meter'
 import { MOUTH_BY_NICHE, mouthModeFor, neverWatches, nicheFrom, nicheKey, readMouthMode, type MouthMode } from './mode'
@@ -218,10 +218,41 @@ describe('faces over time', () => {
         expect(win.x + slot.w).toBeLessThanOrEqual(W)
         expect(win.y + slot.h).toBeLessThanOrEqual(H)
       }
-      // Window changes land between frames, and the script moves the named crop.
-      expect(sendcmdScript(plan)).toMatch(/^\d+\.\d{4} crop@m0 x \d+, crop@m0 y \d+;$/m)
+      // Window changes land between frames, and the script moves the named crop by
+      // both its names: crop@m0, and m0 as ffmpeg 6.0 calls it.
+      expect(sendcmdScript(plan)).toMatch(
+        /^\d+\.\d{4}(?:-\d+\.\d{4})? crop@m0 x (\d+), crop@m0 y (\d+), m0 x \1, m0 y \2;$/m
+      )
       for (const win of slot.windows) expect(Math.abs(((((win.fromSec * 30) % 1) + 1) % 1) - 0.5)).toBeLessThan(1e-6)
     }
+  })
+
+  it('holds each crop window until its slot’s next, and moves each crop by both its names', () => {
+    const slot = (windows: [number, number, number][]): CropSlot => ({
+      w: 60,
+      h: 70,
+      windows: windows.map(([fromSec, x, y]) => ({ fromSec, x, y, track: 0 }))
+    })
+    const plan: CropPlan = {
+      width: 320,
+      height: 180,
+      tileW: 64,
+      tileH: 72,
+      slots: [
+        slot([
+          [0.5, 10, 20],
+          [1.5, 30, 40]
+        ]),
+        slot([[0.25, 50, 60]])
+      ],
+      tracks: []
+    }
+    // Read from 1 s on: a window that began before then starts at once, and the last of each slot never ends.
+    expect(sendcmdScript(plan, 1)).toBe(
+      '0.0000-0.5000 crop@m0 x 10, crop@m0 y 20, m0 x 10, m0 y 20;\n' +
+        '0.0000 crop@m1 x 50, crop@m1 y 60, m1 x 50, m1 y 60;\n' +
+        '0.5000 crop@m0 x 30, crop@m0 y 40, m0 x 30, m0 y 40;\n'
+    )
   })
 })
 
