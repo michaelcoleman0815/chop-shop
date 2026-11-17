@@ -72,6 +72,9 @@ export const MOTION_FONTS: MotionFont[] = [
     cap: 0.71,
     ascent: 0.98,
     descent: 0.37,
+    // OS/2 usWinAscent 976 and usWinDescent 372 of 1000 units, read from the file.
+    winAscent: 0.976,
+    winDescent: 0.372,
     label: 'Cinzel, Roman capitals'
   },
   {
