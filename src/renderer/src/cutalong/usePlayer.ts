@@ -85,6 +85,14 @@ const TOGETHER_SEC = 0.015
 /** Browsers play from a sixteenth to sixteen times as fast. */
 const playbackRate = (rate: number): number => Math.min(16, Math.max(0.0625, rate))
 
+/**
+ * Whether a paused element has read only its recording's length, with no
+ * picture yet. An iPhone's web view never preloads: it reads the length and
+ * stops until it is asked for a moment, so such an element is asked for one,
+ * even the moment it is already at, and then shows that frame.
+ */
+export const needsFrame = (v: HTMLMediaElement): boolean => v.paused && !v.seeking && v.readyState === 1
+
 export function usePlayer(
   decks: RefObject<HTMLVideoElement>[],
   resolved: Resolved | null,
@@ -139,7 +147,7 @@ export function usePlayer(
         return true
       }
       if (v.readyState < 1) return false
-      if (Math.abs(v.currentTime - srcSec) <= tolerance) return false
+      if (Math.abs(v.currentTime - srcSec) <= tolerance && !needsFrame(v)) return false
       v.currentTime = srcSec
       return true
     },
@@ -363,21 +371,26 @@ export function usePlayer(
     if (resolved) seek(Math.min(now.current, resolved.durationSec))
   }, [resolved, seek])
 
-  // A deck whose media has just loaded goes where it was asked to be.
+  // Each deck's element, from the first render it is there: the editor draws the decks once the
+  // media is known, which can be after the player starts, as when a project opens from Start. From
+  // then on, media that has just loaded goes where it was asked to be; on an iPhone that is what
+  // loads its first frame, so it goes there even when it is already there. A deck drawn after the
+  // playhead was put somewhere is put there now.
+  const watched = useRef<(HTMLVideoElement | null)[]>([])
   useEffect(() => {
-    const off: (() => void)[] = []
+    let late = false
     decks.forEach((ref, d) => {
       const v = ref.current
-      if (!v) return
-      const ready = (): void => {
+      if (!v || watched.current[d] === v) return
+      watched.current[d] = v
+      v.addEventListener('loadedmetadata', () => {
         const at = want.current[d]
-        if (at !== null && Math.abs(v.currentTime - at) > 0.01) v.currentTime = at
-      }
-      v.addEventListener('loadedmetadata', ready)
-      off.push(() => v.removeEventListener('loadedmetadata', ready))
+        if (at !== null && (Math.abs(v.currentTime - at) > 0.01 || needsFrame(v))) v.currentTime = at
+      })
+      if (!v.getAttribute('src')) late = true
     })
-    return () => off.forEach((f) => f())
-  }, [decks])
+    if (late && !playingRef.current) seek(now.current)
+  })
 
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 

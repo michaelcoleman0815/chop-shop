@@ -294,6 +294,15 @@ export async function drive(): Promise<void> {
           ? `the preview had no picture in 60 s: readyState ${v.readyState}, networkState ${v.networkState}, error ${v.error?.code ?? 'none'}, ${v.currentSrc ? 'with' : 'without'} a source`
           : 'the editor had no preview'
       )
+      // Every picture in the frame as it stands, for what kept the first one dark.
+      report.previewDecks = [...document.querySelectorAll<HTMLVideoElement>('.cl-editor .cl-frame video')].map((e) => ({
+        readyState: e.readyState,
+        networkState: e.networkState,
+        currentTime: e.currentTime,
+        paused: e.paused,
+        seeking: e.seeking,
+        source: e.currentSrc ? e.currentSrc.split('/').pop() : null
+      }))
     }
   }
 

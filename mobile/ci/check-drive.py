@@ -1,8 +1,10 @@
 """Checks what the app's own flow in CI did (src/host/drive.ts), on the
 runner, with its ffprobe and ffmpeg: every step of the flow and of the dark
-tour reached, a new version from the command, the crew at the export, and
-each export itself, a vertical H.264 video with AAC sound the length of the
-talking less what was cut, speech in it, and a picture that is not black.
+tour reached, the editor's preview with a picture whether it was opened
+from the chat or from Start's card, a new version from the command, the
+crew at the export, and each export itself, a vertical H.264 video with AAC
+sound the length of the talking less what was cut, speech in it, and a
+picture that is not black.
 Also how the page looked and moved: dark or light, reduced motion, and what
 the web view had of view transitions.
 
@@ -72,6 +74,8 @@ def steps_of(label, report, expected):
     for t in report.get("transitions", []):
         print(f"  view transition at {t['atSec']} s, {t['form']}: {t.get('threw') or t.get('finished') or 'running'}")
     print(f"  the editor's preview had a picture: {report.get('previewReady')}")
+    for deck in report.get("previewDecks", []):
+        print(f"    a picture in the frame: {deck}")
     # A phone's plugins log each call they turn down (a file or a key that is not there yet), so
     # those are many: the rest are shown first, the drive's own notes among them.
     errors = report.get("errors", [])
@@ -90,6 +94,8 @@ def steps_of(label, report, expected):
         problem(f"{label}: steps not reached: {', '.join(missing)}")
     if report.get("ok") and not (report.get("crewAtWork") or {}).get("rows"):
         problem(f"{label}: no one of the crew was at the export")
+    if report.get("ok") and report.get("previewReady") is not True:
+        problem(f"{label}: the editor's preview showed no picture")
 
 
 def check_export(path, plan):

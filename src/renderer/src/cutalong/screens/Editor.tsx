@@ -92,7 +92,7 @@ import { deckStyle } from '../deck-style'
 import { grainTile } from '../grain'
 import { clock } from '../format'
 import { collapse } from '../motion'
-import { usePlayer, type DeckView } from '../usePlayer'
+import { needsFrame, usePlayer, type DeckView } from '../usePlayer'
 import type { Cutalong, PanelStatus } from '../useCutalong'
 import { Header } from './Header'
 
@@ -524,7 +524,17 @@ function CameraInset({
   }, [at, rate, playing])
   return (
     <div className="cl-inset" style={box}>
-      <video ref={ref} src={url} muted playsInline preload="auto" />
+      <video
+        ref={ref}
+        src={url}
+        muted
+        playsInline
+        preload="auto"
+        onLoadedMetadata={(e) => {
+          // Its frame, on an iPhone too, which shows none until it is asked for a moment.
+          if (needsFrame(e.currentTarget)) e.currentTarget.currentTime = Math.max(0, at)
+        }}
+      />
     </div>
   )
 }
@@ -891,7 +901,12 @@ function Cutaway({
           playsInline
           preload="auto"
           style={style}
-          onLoadedMetadata={(e) => setShape(e.currentTarget.videoWidth / Math.max(1, e.currentTarget.videoHeight))}
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget
+            setShape(v.videoWidth / Math.max(1, v.videoHeight))
+            // Its frame, on an iPhone too, which shows none until it is asked for a moment.
+            if (needsFrame(v)) v.currentTime = Math.max(0, srcSec)
+          }}
         />
       )}
     </div>
