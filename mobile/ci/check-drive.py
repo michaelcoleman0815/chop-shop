@@ -1,13 +1,15 @@
 """Checks what the app's own flow in CI did (src/host/drive.ts), on the
-runner, with its ffprobe and ffmpeg: every step reached, a new version from
-the command, and the export itself, a vertical H.264 video with AAC sound
-the length of the talking less what was cut, speech in it, and a picture
-that is not black.
+runner, with its ffprobe and ffmpeg: every step of the flow and of the dark
+tour reached, a new version from the command, the crew at the export, and
+each export itself, a vertical H.264 video with AAC sound the length of the
+talking less what was cut, speech in it, and a picture that is not black.
+Also how the page looked and moved: dark or light, reduced motion, and what
+the web view had of view transitions.
 
     python3 ci/check-drive.py OUT_DIR FOOTAGE_DIR
 
 OUT_DIR is what ci/android-drive.sh or ci/ios-drive.sh pulled from the app.
-Prints what it found and exits non-zero on the first thing that is wrong.
+Prints what it found and exits non-zero when something is wrong.
 """
 import json
 import os
@@ -17,8 +19,9 @@ import sys
 
 OUT = sys.argv[1]
 FOOTAGE = sys.argv[2]
-STEPS = ["start", "composer", "transcribing", "v1", "command", "editor", "exporting", "exported", "export-in-chat",
-         "licences"]
+FLOW = ["start", "composer", "transcribing", "v1", "command", "editor", "exporting", "thread-exporting",
+        "export-in-chat", "crew", "brand", "licences"]
+TOUR = ["start", "editor", "exporting", "thread-exporting", "thread", "crew", "brand"]
 
 problems = []
 
@@ -40,93 +43,123 @@ def ffmpeg_lines(path, *filters):
     return r.stderr
 
 
-with open(os.path.join(FOOTAGE, "drive.json")) as f:
-    plan = json.load(f)
-report_path = os.path.join(OUT, "drive-report.json")
-if not os.path.exists(report_path):
-    sys.exit("::error::no drive-report.json came back from the app")
-with open(report_path) as f:
-    report = json.load(f)
+def read_report(name):
+    path = os.path.join(OUT, name)
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
 
-print(f"platform: {report.get('platform')}, ffmpeg {report.get('ffmpeg')}, whisper {report.get('whisper')}")
-print(f"encoders: {', '.join(report.get('encoders', []))}")
-print(f"took {report.get('seconds')} s; v1 after {report.get('secondsToV1')} s; export in {report.get('secondsToExport')} s")
-viewport = report.get("viewport") or {}
-print(f"viewport: {viewport.get('width')}x{viewport.get('height')} at {viewport.get('pixelRatio')}x")
-for s in report.get("steps", []):
-    print(f"  step {s['n']} {s['name']} at {s['atSec']} s{'' if s.get('acknowledged') else ' (no screenshot taken)'}")
-    if s.get("screen"):
-        print(f"      on screen: {s['screen']}")
-for p in report.get("progress", []):
-    print(f"  {p['atSec']:>7} s  {p['stage']}")
-# A phone's plugins log each call they turn down (a file that is not there yet), so these are many and mostly that.
-errors = report.get("errors", [])
-print(f"console errors: {len(errors)}{' (the first 15)' if len(errors) > 15 else ''}")
-for e in errors[:15]:
-    print(f"  {e}")
 
-if not report.get("ok"):
-    problem(f"the flow stopped: {report.get('failed')}")
-    for r in report.get("replies", []):
-        print(f"  reply: {r}")
-reached = [s["name"] for s in report.get("steps", [])]
-missing = [s for s in STEPS if s not in reached]
-if missing:
-    problem(f"steps not reached: {', '.join(missing)}")
+def steps_of(label, report, expected):
+    looks = report.get("looks") or {}
+    viewport = report.get("viewport") or {}
+    print(f"== {label}: took {report.get('seconds')} s at {viewport.get('width')}x{viewport.get('height')}"
+          f" ({viewport.get('pixelRatio')}x)")
+    print(f"  dark {looks.get('dark')}, reduced motion {looks.get('reducedMotion')}, travel {looks.get('travel')!r},"
+          f" view transitions {looks.get('viewTransitions')} (types {looks.get('viewTransitionTypes')})")
+    print(f"  {looks.get('userAgent')}")
+    for s in report.get("steps", []):
+        print(f"  step {s['n']} {s['name']} at {s['atSec']} s{'' if s.get('acknowledged') else ' (no screenshot taken)'}")
+        if s.get("screen"):
+            print(f"      on screen: {s['screen']}")
+    for p in report.get("progress", []):
+        print(f"  {p['atSec']:>7} s  {p['stage']}")
+    for key in ("crewTranscribing", "crewAtWork"):
+        crew = report.get(key)
+        if crew:
+            print(f"  {key}: {crew.get('rows')}; moving {crew.get('moving')}")
+    for t in report.get("transitions", []):
+        print(f"  view transition at {t['atSec']} s, {t['form']}: {t.get('threw') or t.get('finished') or 'running'}")
+    # A phone's plugins log each call they turn down (a file that is not there yet), so these are many and mostly that.
+    errors = report.get("errors", [])
+    print(f"  console errors: {len(errors)}{' (the first 10)' if len(errors) > 10 else ''}")
+    for e in errors[:10]:
+        print(f"    {e}")
+    if not report.get("ok"):
+        problem(f"{label} stopped: {report.get('failed')}")
+        for r in report.get("replies", []):
+            print(f"  reply: {r}")
+    reached = [s["name"] for s in report.get("steps", [])]
+    missing = [s for s in expected if s not in reached]
+    if missing:
+        problem(f"{label}: steps not reached: {', '.join(missing)}")
+    if report.get("ok") and not (report.get("crewAtWork") or {}).get("rows"):
+        problem(f"{label}: no one of the crew was at the export")
 
-for r in report.get("repliesAfterFootage", []):
-    print(f"  after the footage: {r}")
-print(f"  versions: {report.get('versionsAfterCommand') or report.get('versionsAfterFootage')}")
-print(f"  {plan['command']}: {report.get('replyToCommand')}")
-print(f"  toast: {report.get('toast')}")
-licences = report.get("licences") or {}
-print(f"  licences: {', '.join(licences.get('listed', [])) or 'none'}")
-print(f"  source offer: {licences.get('sourceOffer')}")
-before = report.get("versionsAfterFootage") or []
-after = report.get("versionsAfterCommand") or []
-if report.get("ok") and len(after) <= len(before):
-    problem(f"{plan['command']} made no new version")
 
-exports_dir = os.path.join(OUT, "Exports")
-videos = sorted(n for n in (os.listdir(exports_dir) if os.path.isdir(exports_dir) else []) if n.endswith(".mp4"))
-print(f"  exports: {sorted(os.listdir(exports_dir)) if os.path.isdir(exports_dir) else 'none'}")
-if not videos:
-    problem("no export came back")
-else:
-    path = os.path.join(exports_dir, videos[-1])
+def check_export(path, plan):
+    name = os.path.basename(path)
     facts = probe(path)
     v = next((s for s in facts["streams"] if s["codec_type"] == "video"), None)
     a = next((s for s in facts["streams"] if s["codec_type"] == "audio"), None)
     length = float(facts["format"]["duration"])
-    print(f"{videos[-1]}: {length:.2f} s, {int(facts['format'].get('bit_rate', 0)) // 1000} kb/s")
+    print(f"{name}: {length:.2f} s, {int(facts['format'].get('bit_rate', 0)) // 1000} kb/s")
     if v:
         print(f"  video: {v['codec_name']} {v.get('profile')} {v['width']}x{v['height']} {v.get('pix_fmt')} {v.get('r_frame_rate')}")
     if a:
         print(f"  audio: {a['codec_name']} {a.get('sample_rate')} Hz, {a.get('channels')} channels")
     if not v or v["codec_name"] != "h264":
-        problem(f"the export's video is {v and v['codec_name']}, not H.264")
+        problem(f"{name}: the video is {v and v['codec_name']}, not H.264")
     elif (v["width"], v["height"]) != (1080, 1920):
-        problem(f"the export is {v['width']}x{v['height']}, not 1080x1920 after {plan['command']}")
+        problem(f"{name} is {v['width']}x{v['height']}, not 1080x1920 after {plan['command']}")
     if v and v.get("pix_fmt") != "yuv420p":
-        problem(f"the export's pixels are {v.get('pix_fmt')}, not yuv420p")
+        problem(f"{name}: the pixels are {v.get('pix_fmt')}, not yuv420p")
     if not a or a["codec_name"] != "aac":
-        problem(f"the export's sound is {a and a['codec_name']}, not AAC")
+        problem(f"{name}: the sound is {a and a['codec_name']}, not AAC")
     talking = float(plan.get("talkingSec", 30))
     if not 5 <= length <= talking + 1:
-        problem(f"the export runs {length:.2f} s; the talking is {talking} s")
+        problem(f"{name} runs {length:.2f} s; the talking is {talking} s")
     if a:
         loud = ffmpeg_lines(path, "-map", "0:a:0", "-af", "volumedetect")
         mean = re.search(r"mean_volume: (-?[\d.]+) dB", loud)
         print(f"  mean volume: {mean and mean[1]} dB")
         if not mean or float(mean[1]) < -40:
-            problem("the export has no speech in it")
+            problem(f"{name} has no speech in it")
     black = ffmpeg_lines(path, "-map", "0:v:0", "-vf", "blackdetect=d=0.5:pix_th=0.05")
     dark = sum(float(m) for m in re.findall(r"black_duration:([\d.]+)", black))
     print(f"  black: {dark:.2f} s")
     if dark > length / 2:
-        problem(f"the export is black for {dark:.2f} s of {length:.2f} s")
-    beside = [n for n in os.listdir(exports_dir) if n.startswith(videos[-1][:-4]) and n != videos[-1]]
-    print(f"  beside it: {beside or 'nothing'}")
+        problem(f"{name} is black for {dark:.2f} s of {length:.2f} s")
+
+
+with open(os.path.join(FOOTAGE, "drive.json")) as f:
+    plan = json.load(f)
+flow = read_report("drive-report.json")
+if flow is None:
+    sys.exit("::error::no drive-report.json came back from the app")
+print(f"platform: {flow.get('platform')}, ffmpeg {flow.get('ffmpeg')}, whisper {flow.get('whisper')}")
+print(f"v1 after {flow.get('secondsToV1')} s; export in {flow.get('secondsToExport')} s")
+steps_of("the flow, light", flow, FLOW)
+for r in flow.get("repliesAfterFootage", []):
+    print(f"  after the footage: {r}")
+print(f"  versions: {flow.get('versionsAfterCommand') or flow.get('versionsAfterFootage')}")
+print(f"  {plan['command']}: {flow.get('replyToCommand')}")
+print(f"  toast: {flow.get('toast')}")
+licences = flow.get("licences") or {}
+print(f"  licences: {', '.join(licences.get('listed', [])) or 'none'}")
+print(f"  source offer: {licences.get('sourceOffer')}")
+before = flow.get("versionsAfterFootage") or []
+after = flow.get("versionsAfterCommand") or []
+if flow.get("ok") and len(after) <= len(before):
+    problem(f"{plan['command']} made no new version")
+
+tour = read_report("tour-report.json")
+if tour is None:
+    problem("no tour-report.json came back: the dark tour did not run")
+else:
+    steps_of("the tour, dark", tour, TOUR)
+    if not (tour.get("looks") or {}).get("dark"):
+        problem("the web view did not report the system's dark: the tour set the page dark itself")
+
+exports_dir = os.path.join(OUT, "Exports")
+listed = sorted(os.listdir(exports_dir)) if os.path.isdir(exports_dir) else []
+videos = [n for n in listed if n.endswith(".mp4")]
+print(f"exports: {listed or 'none'}")
+if not videos:
+    problem("no export came back")
+for video in videos:
+    check_export(os.path.join(exports_dir, video), plan)
 
 shots = sorted(os.listdir(os.path.join(OUT, "screens"))) if os.path.isdir(os.path.join(OUT, "screens")) else []
 print(f"screenshots: {', '.join(shots) or 'none'}")
@@ -139,8 +172,10 @@ for name in shots:
     stats = ffmpeg_lines(path, "-vf", "signalstats,metadata=print")
     low = re.search(r"YMIN=(\d+)", stats)
     high = re.search(r"YMAX=(\d+)", stats)
+    mean = re.search(r"YAVG=([\d.]+)", stats)
     spread = int(high[1]) - int(low[1]) if low and high else None
-    print(f"  {name}: {facts['width']}x{facts['height']}, brightness from {low and low[1]} to {high and high[1]}")
+    print(f"  {name}: {facts['width']}x{facts['height']}, brightness {low and low[1]} to {high and high[1]},"
+          f" mean {mean and mean[1]}")
     if spread is not None and spread < 16:
         problem(f"{name} is one flat colour: the screen was blank")
 

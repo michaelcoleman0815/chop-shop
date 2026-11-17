@@ -5,7 +5,8 @@ name: Mobile
 # emulator and an iPhone simulator. Then builds the app itself on those
 # engines (mobile/): a debug APK anyone can sideload and a simulator build,
 # and runs the app's own flow on the emulator and the simulator, from the
-# footage to the export, with a screenshot at every step.
+# footage to the export, with a screenshot at every step, and then a tour of
+# the same project with the system dark.
 #
 # Once that flow has passed, the store builds go to TestFlight and to Google
 # Play's internal track, each only when its secrets are set (mobile/README.md
@@ -594,7 +595,8 @@ jobs:
     name: Android app
     needs: [android, app-web]
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    # The flow and then the dark tour, each with an export on an emulator without a GPU.
+    timeout-minutes: 130
     env:
       IMAGE: system-images;android-34;google_apis;x86_64
     steps:
@@ -685,7 +687,7 @@ jobs:
     name: iOS app
     needs: [ios, app-web]
     runs-on: macos-latest
-    timeout-minutes: 100
+    timeout-minutes: 130
     steps:
       - uses: actions/checkout@v7
 
@@ -766,8 +768,9 @@ jobs:
           path: ${{ runner.temp }}/drive
           retention-days: 14
 
-  # What the app made on each phone, measured here: the steps it reached, a
-  # new version from the command, and the export itself (ffprobe and ffmpeg).
+  # What the app made on each phone, measured here: the steps of the flow and
+  # of the dark tour, a new version from the command, the crew at the export,
+  # and each export itself (ffprobe and ffmpeg).
   app-exports:
     name: The app's exports measured on the runner
     needs: [app-web, app-android, app-ios]
