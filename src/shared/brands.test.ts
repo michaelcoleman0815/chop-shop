@@ -9,6 +9,7 @@ import {
   defaultBrand,
   FIRST_BRAND_ID,
   MAX_BRANDS,
+  nextBrandName,
   parseBrands,
   removeBrand,
   replaceBrand,
@@ -68,6 +69,16 @@ describe('a brand per channel', () => {
     // A new chat is in the default.
     expect(chatBrand(list, null, null).id).toBe('brand-tc')
     expect(brandName({ name: '  ' })).toBe('Untitled brand')
+  })
+
+  it('numbers a new brand, so two never read alike', () => {
+    let list = brandsFromLegacy(legacy)
+    expect(nextBrandName(list)).toBe('Brand 2')
+    list = addBrand(list, nextBrandName(list), 'b2')!.list
+    expect(nextBrandName(list)).toBe('Brand 3')
+    // A number someone already used for a name is skipped.
+    list = addBrand(list, 'brand 4', 'b4')!.list
+    expect(nextBrandName(list)).toBe('Brand 5')
   })
 
   it('makes a new edit in a brand, and leaves one under way alone', () => {

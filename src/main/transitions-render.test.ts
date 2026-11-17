@@ -155,7 +155,7 @@ describe.skipIf(!FFMPEG)('rendering transitions', () => {
       { op: 'transition', beats: ['b2'], kind: 'dissolve', sec: 0.4 },
       { op: 'transition', beats: ['b4'], kind: 'dip-to-white', sec: 0.4 }
     ])
-    const one = await render(cut, 'whole')
+    const one = await render(cut, 'whole', Infinity)
     const passes = await render(cut, 'passes', 1)
     expect(countFrames(ffmpeg, passes.out)).toBe(countFrames(ffmpeg, one.out))
     expect(Math.abs(audioSeconds(ffmpeg, passes.out) - audioSeconds(ffmpeg, one.out))).toBeLessThan(0.03)

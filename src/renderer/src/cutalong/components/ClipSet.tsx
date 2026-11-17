@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { currentCut, resolveCut } from '../../../../shared/edit'
 import {
   clipsOfRun,
@@ -12,6 +12,7 @@ import {
 import { api } from '../api'
 import { clock } from '../format'
 import { grow } from '../motion'
+import { block, COLOURS, type ColourName } from '../shapes'
 import type { Cutalong } from '../useCutalong'
 import { Button } from './ui'
 import { Working } from './Working'
@@ -32,13 +33,20 @@ export function ClipSet({ app, run }: { app: Cutalong; run: number }): JSX.Eleme
   return (
     <div className="cl-clipset">
       <ul className="cl-clips" aria-label={`${clips.length} clips`}>
-        {clips.map((clip) => (
-          <ClipCard key={clip.id} clip={clip} app={app} job={jobs[clip.id]} busy={!!exporting} />
+        {clips.map((clip, i) => (
+          <ClipCard
+            key={clip.id}
+            clip={clip}
+            app={app}
+            job={jobs[clip.id]}
+            busy={!!exporting}
+            tone={COLOURS[(i + run) % COLOURS.length]}
+          />
         ))}
       </ul>
       {run === newest &&
         (exporting ? (
-          <Working progress={exporting.progress} since={exporting.since} />
+          <Working progress={exporting.progress} since={exporting.since} big />
         ) : (
           <div className="cl-actions">
             <Button variant="primary" disabled={kept === 0} onClick={() => void app.clipping.exportAll()}>
@@ -82,12 +90,15 @@ function ClipCard({
   clip,
   app,
   job,
-  busy
+  busy,
+  tone
 }: {
   clip: Clip
   app: Cutalong
   job: { percent: number | null; done?: string; error?: string } | undefined
   busy: boolean
+  /** The card's pastel: colour around the clip's still, never on it. */
+  tone: ColourName
 }): JSX.Element {
   const src = useClipPoster(clip)
   const [ready, setReady] = useState(false)
@@ -97,7 +108,7 @@ function ClipCard({
   // Exported only while it is out as it is now: a clip changed since says nothing, as Export all counts it.
   const note = exportNote(clip, job)
   return (
-    <li className={`cl-clip${clip.kept ? '' : ' dropped'}`}>
+    <li className={`cl-clip${clip.kept ? '' : ' dropped'}`} style={{ '--block': block(tone) } as CSSProperties}>
       <button
         type="button"
         className="cl-clip-open"
@@ -127,6 +138,11 @@ function ClipCard({
         {clip.kept && (
           <Button small onClick={() => app.clipping.open(clip.id)}>
             Open
+          </Button>
+        )}
+        {clip.kept && note === 'Not exported' && (
+          <Button variant="text" small disabled={busy} onClick={() => void app.clipping.exportAll([clip.id])}>
+            Try again
           </Button>
         )}
         <Button variant="text" small disabled={busy} onClick={() => app.clipping.keep(clip.id, !clip.kept)}>
