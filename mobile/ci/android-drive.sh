@@ -162,8 +162,11 @@ timeout 300 adb exec-out run-as "$PKG" tar -C files -cf - Exports | tar -xf - -C
 timeout 120 adb logcat -d -b all > "$OUT/logcat.txt" || timeout 120 adb logcat -d > "$OUT/logcat.txt" || true
 if [ "$(timeout 30 adb get-state 2>/dev/null)" != device ]; then
   echo "::error::the emulator went away during the run"
-  # What the runner's kernel saw of it: a crash, or the emulator ended for memory.
+  # What the runner saw of it: the kernel's word on a crash or on memory, the emulator's own crash
+  # reports, and the disk it writes the phone's storage to.
   sudo dmesg 2>/dev/null | grep -iE 'qemu|emulator|out of memory|killed process|segfault|traps:' | tail -n 20 || true
+  ls -la /tmp/android-"$USER"/emu-crash-*.db/*/ 2>/dev/null | tail -n 10 || true
+  df -h / | tail -n 1
 fi
 # The app's own lines, without the engine's progress, which its debug build logs as it arrives.
 grep -E "\[drive\]|Capacitor/Console" "$OUT/logcat.txt" | grep -v '"stream":"stdout"' | tail -n 60 || true

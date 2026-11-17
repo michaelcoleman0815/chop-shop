@@ -24,12 +24,12 @@ export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
 export ANDROID_AVD_HOME="$HOME/.android/avd"
 mkdir -p "$ANDROID_AVD_HOME"
 echo no | "$sdk/avdmanager" create avd --force -n drive -k "$IMAGE" -d pixel_6
-# Video is decoded inside the emulated phone, as a phone decodes it itself, rather than by the
-# emulator's own decoder, which runs in the emulator's process on the runner: twice the emulator
-# went away, with no word in its log, while the chat showed an export.
-nohup "$ANDROID_HOME/emulator/emulator" -avd drive -no-window -noaudio -no-boot-anim -no-snapshot \
-  -gpu swiftshader_indirect -camera-back none -camera-front none -memory 4096 -cores 4 -partition-size 8192 \
-  -feature -HardwareDecoder > "$LOG" 2>&1 &
+# Drawn by ANGLE on SwiftShader: on SwiftShader's own GL the emulator went away three times, with
+# no word in its log, while the app moved between screens or showed an export, the decoder on the
+# runner's side or not. Its output goes to the log a line at a time, so a crash's last words land.
+nohup stdbuf -oL -eL "$ANDROID_HOME/emulator/emulator" -avd drive -no-window -noaudio -no-boot-anim -no-snapshot \
+  -gpu swangle_indirect -camera-back none -camera-front none -memory 4096 -cores 4 -partition-size 8192 \
+  > "$LOG" 2>&1 &
 emulator=$!
 for _ in $(seq 1 120); do
   if ! kill -0 "$emulator" 2>/dev/null; then
