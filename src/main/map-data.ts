@@ -295,16 +295,28 @@ export async function downloadMapData(onProgress: (percent: number) => void, opt
   if (stopped) return { ok: false, message: (stopped as Error).message, status }
   const missing = [...failed.values()].reduce((a, b) => a + b, 0)
   if (missing || platesProblem) {
+    // A plain sentence; what the servers said goes behind Details.
     const parts = [
       unreachable
-        ? `I could not reach NASA's map server (${why}), so the sharper pictures did not download`
+        ? `I could not reach NASA's map server, so the sharper pictures did not download`
         : missing
           ? `${missing} map ${missing === 1 ? 'picture' : 'pictures'} did not download`
           : '',
-      platesProblem ? `the plate boundaries did not download (${platesProblem})` : ''
+      platesProblem ? 'the plate boundaries did not download' : ''
     ].filter(Boolean)
     const said = parts.join(', and ')
-    return { ok: false, message: `${said.charAt(0).toUpperCase()}${said.slice(1)}. Try again and I'll fetch only what is missing.`, status }
+    const detail = [
+      unreachable || missing ? `NASA's server: ${why || 'no answer'}` : '',
+      platesProblem ? `The plate data's server: ${platesProblem}` : ''
+    ]
+      .filter(Boolean)
+      .join('\n')
+    return {
+      ok: false,
+      message: `${said.charAt(0).toUpperCase()}${said.slice(1)}. Try again later and I'll fetch only what is missing.`,
+      detail,
+      status
+    }
   }
   onProgress(100)
   return { ok: true, status }

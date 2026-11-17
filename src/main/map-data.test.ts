@@ -82,7 +82,7 @@ describe('map data on this computer', () => {
     const first = standIn({ missing: (u) => u.includes('TILEMATRIX=4&TILEROW=3&') })
     const stopped = await downloadMapData(() => undefined, { fetch: first.fetch, levels: [4] })
     expect(stopped.ok).toBe(false)
-    if (!stopped.ok) expect(stopped.message).toBe("16 map pictures did not download. Try again and I'll fetch only what is missing.")
+    if (!stopped.ok) expect(stopped.message).toBe("16 map pictures did not download. Try again later and I'll fetch only what is missing.")
     // The level is not counted until every tile of it is here.
     expect((await mapStatus()).level).toBe(3)
     const again = standIn()
@@ -100,7 +100,11 @@ describe('map data on this computer', () => {
     }
     const result = await downloadMapData(() => undefined, { fetch: blocked, levels: [4] })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.message).toMatch(/^I could not reach NASA's map server \(it answered 403\)/)
+    if (!result.ok) {
+      expect(result.message).toBe("I could not reach NASA's map server, so the sharper pictures did not download. Try again later and I'll fetch only what is missing.")
+      // What the server said is kept for Details, not put in the sentence.
+      expect(result.detail).toBe("NASA's server: it answered 403")
+    }
     // Not all 256 pictures of the level: it gave up once it was plain the server is out of reach.
     expect(server.asked.filter((u) => u.includes('gibs')).length).toBeLessThanOrEqual(24 + 8)
     expect(result.status).toMatchObject({ level: 3, plates: true })

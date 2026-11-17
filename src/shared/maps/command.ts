@@ -104,13 +104,16 @@ export function mapDetails(text: string[], style: string, fx: string[]): { label
   for (const t of result.spec.titles) {
     for (const f of t.facts) {
       const label = f.kind === 'area' ? 'Area' : f.kind === 'population' ? 'Population' : 'Capital'
-      rows.push({ label: result.spec.titles.length > 1 ? `${t.name}, ${label.toLowerCase()}` : label, value: `${f.given}, from ${sourceLine(f.source)}` })
+      // The figure as the Factbook gives it, and which Factbook: the rest of the source is in the credits.
+      rows.push({
+        label: result.spec.titles.length > 1 ? `${t.name}, ${label.toLowerCase()}` : label,
+        value: `${f.given}, The World Factbook`
+      })
     }
   }
   for (const id of result.spec.sources) {
-    if (id === 'factbook' && rows.length) continue
     const s = MAP_SOURCES[id]
-    rows.push({ label: s.label, value: `${s.credit} (${s.licence.toLowerCase()})` })
+    rows.push({ label: s.label, value: s.short })
   }
   return rows
 }

@@ -10,11 +10,17 @@ import { resourcePath } from './resources'
  */
 
 let running: Promise<DownloadResult> | null = null
+/** Why the last download stopped short, if it did: the first-use download runs unseen, so Settings says so. */
+let problem: { message: string; detail?: string } | null = null
 
 export function registerMapIpc(send: (sender: Electron.WebContents, channel: string, payload: unknown) => void): void {
   setMapDirs({ bundled: resourcePath('maps', 'tiles'), data: join(app.getPath('userData'), 'maps') })
 
-  ipcMain.handle('maps:status', async () => ({ ...(await mapStatus()), downloading: running !== null }))
+  ipcMain.handle('maps:status', async () => ({
+    ...(await mapStatus()),
+    downloading: running !== null,
+    ...(problem && !running ? { problem } : {})
+  }))
 
   // What the editor's preview needs to draw maps as the export does.
   ipcMain.handle('maps:data', async () => {
@@ -30,9 +36,16 @@ export function registerMapIpc(send: (sender: Electron.WebContents, channel: str
   ipcMain.handle('maps:download', async (e) => {
     running ??= downloadMapData((percent) => send(e.sender, 'maps:progress', { percent }), {
       fetch: ((url: string, init?: { signal?: AbortSignal }) => net.fetch(url, init)) as Fetch
-    }).finally(() => {
-      running = null
     })
+      .then((r) => {
+        problem = r.ok ? null : { message: r.message, detail: r.detail }
+        // A download that stopped short ends too: whoever shows its progress reads the status again.
+        if (!r.ok) send(e.sender, 'maps:progress', { percent: 100 })
+        return r
+      })
+      .finally(() => {
+        running = null
+      })
     return running
   })
 }

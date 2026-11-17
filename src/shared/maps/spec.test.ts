@@ -211,8 +211,14 @@ describe('/map and map requests in words', () => {
 
   it('puts the facts’ source and the data behind Details', () => {
     const rows = mapDetails(['Iceland'], '', [])
-    expect(rows[0]).toEqual({ label: 'Area', value: '103,000 sq km, from The World Factbook, Central Intelligence Agency (July 2015 estimates), public domain' })
-    expect(rows.map((r) => r.label)).toEqual(['Area', 'Map data', 'Satellite pictures'])
+    // Short enough to read in the graphic's panel: the figure as the Factbook gives it, then each source and its terms.
+    expect(rows).toEqual([
+      { label: 'Area', value: '103,000 sq km, The World Factbook' },
+      { label: 'Map data', value: 'Natural Earth, public domain' },
+      { label: 'Satellite pictures', value: "NASA's Blue Marble, from GIBS" },
+      { label: 'Facts', value: 'The World Factbook (CIA), July 2015, public domain' }
+    ])
+
   })
 })
 

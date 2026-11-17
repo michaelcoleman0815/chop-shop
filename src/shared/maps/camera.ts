@@ -1,7 +1,7 @@
 import { ease } from '../motion/ease'
 import type { Ease } from '../motion/types'
 import type { MapGeo } from './geo'
-import { blendViews, clampY, fitBox, flight, unproject, worldZoom, type Flight, type GeoBox, type View } from './mercator'
+import { blendViews, clampY, fillZoom, fitBox, flight, unproject, worldZoom, type Flight, type GeoBox, type View } from './mercator'
 import type { MapPaint, MapStop } from './types'
 
 /**
@@ -64,15 +64,18 @@ export function cameraFor(paint: MapPaint, geo: MapGeo | null): Camera {
   const hit = cameras.get(paint)
   if (hit && hit.key === key) return hit.camera
   const fit = { pad: paint.pad, maxZoom: CLOSEST }
-  const arrive = paint.stops.map((s) => fitBox(stopBox(s, geo), vp, fit))
+  // Never so far out that the world shows twice or ends in black: a stop as big as an ocean is framed as near as that.
+  const least = fillZoom(vp)
+  const near = (v: View): View => (v.zoom >= least ? v : { x: v.x, y: clampY(v.y, least, vp), zoom: least })
+  const arrive = paint.stops.map((s) => near(fitBox(stopBox(s, geo), vp, fit)))
   const leave = paint.stops.map((s, i) => ({ ...arrive[i], zoom: arrive[i].zoom + s.push }))
   const first = arrive[0] ?? { x: 0.5, y: 0.5, zoom: worldZoom(vp) }
   let open: View
   if (paint.open === 'world') {
     // The whole world across the frame, a little west of where the camera is going, so it drifts as it comes down.
-    const zoom = Math.min(first.zoom - 0.5, worldZoom(vp) + 0.15)
+    const zoom = Math.max(least, Math.min(first.zoom - 0.5, worldZoom(vp) + 0.15))
     open = { x: first.x - 0.05, y: clampY(0.5 + (first.y - 0.5) * 0.45, zoom, vp), zoom }
-  } else open = fitBox(paint.open, vp, fit)
+  } else open = near(fitBox(paint.open, vp, fit))
   const flights = arrive.map((to, i) => flight(i === 0 ? open : leave[i - 1], to, vp))
   const camera = { open, arrive, leave, flights }
   cameras.set(paint, { key, camera })
@@ -89,7 +92,11 @@ export function viewAt(paint: MapPaint, geo: MapGeo | null, t: number): View {
     const flyFrom = i === 0 ? 0 : stops[i - 1].leave
     if (t < s.arrive) {
       const span = Math.max(1e-6, s.arrive - flyFrom)
-      return cam.flights[i].at(ease(FLY, (t - flyFrom) / span))
+      const v = cam.flights[i].at(ease(FLY, (t - flyFrom) / span))
+      // A long flight rises on the way; never past the whole world.
+      const vp = { width: paint.viewport.w, height: paint.viewport.h }
+      const least = fillZoom(vp)
+      return v.zoom >= least ? v : { x: v.x, y: clampY(v.y, least, vp), zoom: least }
     }
     if (t <= s.leave) {
       const span = Math.max(1e-6, s.leave - s.arrive)

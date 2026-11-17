@@ -111,6 +111,10 @@ export interface MapStatus {
   complete: boolean
   downloadMb: number
   downloading?: boolean
+  /** Why the last download stopped short, when it did: a sentence, and what the servers said. */
+  problem?: { message: string; detail?: string }
 }
 
-export type MapDownloadResult = { ok: true; status: MapStatus } | { ok: false; message: string; status: MapStatus }
+export type MapDownloadResult =
+  | { ok: true; status: MapStatus }
+  | { ok: false; message: string; /** What the servers said, for Details. */ detail?: string; status: MapStatus }

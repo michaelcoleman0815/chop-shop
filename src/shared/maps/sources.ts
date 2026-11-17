@@ -14,6 +14,8 @@ export interface MapSource {
   id: MapSourceId
   /** What it is, for a Details row. */
   label: string
+  /** In a few words, for a Details row: who, and the terms. */
+  short: string
   /** As a line in the credits. */
   credit: string
   licence: string
@@ -26,6 +28,7 @@ export const MAP_SOURCES: Record<MapSourceId, MapSource> = {
   naturalearth: {
     id: 'naturalearth',
     label: 'Map data',
+    short: 'Natural Earth, public domain',
     credit: 'Map data: Natural Earth (naturalearthdata.com)',
     licence: 'Public domain',
     required: false,
@@ -34,6 +37,7 @@ export const MAP_SOURCES: Record<MapSourceId, MapSource> = {
   census: {
     id: 'census',
     label: 'US states',
+    short: 'US Census Bureau, public domain',
     credit: 'US state boundaries: US Census Bureau, cartographic boundary files 2017',
     licence: 'Public domain',
     required: false,
@@ -42,6 +46,7 @@ export const MAP_SOURCES: Record<MapSourceId, MapSource> = {
   factbook: {
     id: 'factbook',
     label: 'Facts',
+    short: 'The World Factbook (CIA), July 2015, public domain',
     credit: `Facts: ${FACT_SOURCE.title}, ${FACT_SOURCE.publisher} (${FACT_SOURCE.edition})`,
     licence: 'Public domain',
     required: false,
@@ -50,6 +55,7 @@ export const MAP_SOURCES: Record<MapSourceId, MapSource> = {
   nasa: {
     id: 'nasa',
     label: 'Satellite pictures',
+    short: "NASA's Blue Marble, from GIBS",
     credit:
       "Satellite imagery: NASA Blue Marble, shaded relief and bathymetry, from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS)",
     licence: 'NASA open data; no copyright, acknowledgement requested',
@@ -59,6 +65,7 @@ export const MAP_SOURCES: Record<MapSourceId, MapSource> = {
   pb2002: {
     id: 'pb2002',
     label: 'Plate boundaries',
+    short: 'PB2002 (Bird 2003), ODC-BY 1.0',
     credit:
       'Tectonic plate boundaries: Bird, P. (2003), An updated digital model of plate boundaries, Geochemistry Geophysics Geosystems 4(3), 1027; GIS conversion by Hugo Ahlenius, Nordpil',
     licence: 'Open Data Commons Attribution License 1.0',

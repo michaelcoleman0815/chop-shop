@@ -127,6 +127,11 @@ export function worldZoom(vp: Viewport): number {
   return Math.log2(vp.width / TILE)
 }
 
+/** The furthest out a camera may be: the world filling the frame both ways, so it never shows twice or ends in black. */
+export function fillZoom(vp: Viewport): number {
+  return Math.max(Math.log2(vp.width / TILE), Math.log2(vp.height / TILE))
+}
+
 // ---------- Flights ----------
 
 /** How much a flight rises: van Wijk and Nuij's rho; d3 uses the square root of two too. */
