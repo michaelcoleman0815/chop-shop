@@ -155,7 +155,7 @@ export function profileNamed(text: string): string | null {
   return null
 }
 
-/** Reads what follows /clipping, or a sentence that asks for clips. */
+/** Reads what follows /clipping. */
 export function readClipAsk(rest: string): ClipAsk {
   const said = rest.trim()
   const topic = FUNNY.test(said) && !/\babout\b/i.test(said) ? null : topicAsked(said)
@@ -168,20 +168,4 @@ export function readClipAsk(rest: string): ClipAsk {
     single: topic?.single ?? false,
     profile: profileNamed(said)
   }
-}
-
-/** A sentence asking for clips without the command: "find clips", "clip this stream". */
-const ASKS = [
-  /\bfind\s+(?:me\s+)?(?:the\s+|some\s+|a\s+few\s+|\d+\s+|my\s+)?(?:best\s+|good\s+|funny\s+|funniest\s+|top\s+|short\s+)?(?:clips|moments|shorts|highlights)\b/i,
-  /\bclip\s+(?:this|the|my|that|these|those)\s+(?:whole\s+|full\s+|last\s+)?(?:stream|livestream|vod|service|sermon|podcast|episode|interview|recording|broadcast|show|video)s?\b/i,
-  /\b(?:make|cut|pull|get|give\s+me|turn)\s+(?:me\s+)?(?:\d+\s+|some\s+|a\s+few\s+|the\s+best\s+|short\s+)?(?:clips|shorts|reels)\s+(?:from|out\s+of|of)\b/i,
-  /\bturn\s+(?:this|it|the\s+\w+)\s+into\s+(?:\d+\s+|some\s+)?(?:clips|shorts)\b/i
-]
-
-/** Whether a sentence asks for clips from a long recording, and what of. Null when it does not. */
-export function clippingAsked(text: string): ClipAsk | null {
-  const t = text.trim()
-  if (!t || t.startsWith('/')) return null
-  if (!ASKS.some((re) => re.test(t))) return null
-  return readClipAsk(t)
 }

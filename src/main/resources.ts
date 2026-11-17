@@ -11,5 +11,13 @@ export function resourcePath(...parts: string[]): string {
     : join(app.getAppPath(), 'resources', ...parts)
 }
 
-export const WHISPER_PATH = (): string => resourcePath('bin', 'whisper-cli')
+/** A helper in resources/bin by its name on this computer: Windows' carry .exe. */
+export const binPath = (name: string): string =>
+  resourcePath('bin', process.platform === 'win32' ? `${name}.exe` : name)
+
+/** What makes a helper a build is missing: its script on a Mac, its Node twin on Windows. */
+export const helperScript = (name: 'build-whisper' | 'fetch-ytdlp'): string =>
+  process.platform === 'win32' ? `node scripts/${name}.mjs` : `scripts/${name}.sh`
+
+export const WHISPER_PATH = (): string => binPath('whisper-cli')
 export const FONTS_DIR = (): string => resourcePath('fonts')

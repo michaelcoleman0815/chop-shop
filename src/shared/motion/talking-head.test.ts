@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { addAsset, commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../edit'
 import { creditsText } from '../assets'
+import { CAPTION_STYLE_PRESETS } from '../presets'
 import {
   buildScene,
   chipKeepOut,
@@ -14,10 +15,10 @@ import {
   DEFAULT_THEME,
   designSize,
   frameFor,
-  graphicAsked,
   graphicsGuide,
   listsSaid,
   MOTION_FONTS,
+  motionCommandEntries,
   planMotionCommand,
   renderFrame,
   speakerFace,
@@ -544,7 +545,7 @@ describe('boxed captions', () => {
   })
 })
 
-describe('commands and plain words', () => {
+describe('the commands, and what they read in the speech', () => {
   it('reads figures typed after /count and /flip', () => {
     expect(typedFigures('683,594 to 1,000,000 views')).toMatchObject({
       values: [683594, 1000000],
@@ -598,38 +599,12 @@ describe('commands and plain words', () => {
     expect(lists.map((l) => l.names)).toEqual([['Notion', 'Figma', 'Linear']])
   })
 
-  it('reads graphics asked for in plain words, and leaves the rest for the planner', () => {
-    expect(graphicAsked('list the tools around me as chips')).toEqual({ command: 'chips', rest: '' })
-    expect(graphicAsked('show Notion, Figma and Linear as chips')).toEqual({
-      command: 'chips',
-      rest: 'Notion, Figma, Linear'
-    })
-    expect(graphicAsked('count up to a million when I say it')).toEqual({ command: 'count', rest: 'to a million' })
-    expect(graphicAsked('roll up from 683,594 to 1,000,000 views')).toEqual({
-      command: 'count',
-      rest: 'from 683,594 to 1,000,000 views'
-    })
-    expect(graphicAsked('a flip calendar from day 1 to day 3')).toEqual({ command: 'flip', rest: 'from day 1 to day 3' })
-    expect(graphicAsked('DAY 1 flipping to DAY 2 and DAY 3 as I say each')).toEqual({
-      command: 'flip',
-      rest: 'DAY 1 to DAY 2 and DAY 3'
-    })
-    expect(graphicAsked('put these four in a grid with labels')).toEqual({ command: 'grid', rest: '' })
-    expect(graphicAsked('2x2 grid, labels: Talk, Map, Doc, Phone')).toEqual({
-      command: 'grid',
-      rest: 'Talk, Map, Doc, Phone'
-    })
-    expect(graphicAsked('captions with the word in a box')).toEqual({ command: 'boxed', rest: '' })
-    expect(graphicAsked('show my channel page and circle the subscriber count')).toEqual({
-      command: 'screenshot',
-      rest: 'slide ring'
-    })
-    expect(graphicAsked('turn these into video cards')).toEqual({ command: 'videos', rest: '' })
-    for (const other of ['count the beats in the music', 'make it faster', 'add a title here', '/chips Notion', 'cut the pauses'])
-      expect(graphicAsked(other), other).toBeNull()
-    // Maps asked for in words go on to the planner's quick path, which knows places.
-    for (const map of ['tag Reykjavik and Oslo on the map', 'highlight the crash site on the map', 'circle where the site is'])
-      expect(graphicAsked(map), map).toBeNull()
+  it('is in the slash menu Claude is sent, each graphic with an example to learn it from', () => {
+    // Plain words are Claude's to read: it runs a graphic as the command in the menu (docs/rebuild.md).
+    const menu = motionCommandEntries()
+    for (const command of ['chips', 'count', 'flip', 'videos', 'screenshot'])
+      expect(menu.find((c) => c.command === command)?.summary, command).toContain(`/${command} `)
+    expect(CAPTION_STYLE_PRESETS.find((p) => p.command === 'boxed')?.style.captions).toMatchObject({ on: true, preset: 'boxed' })
   })
 
   it('moves the way the house does: nothing from nothing, out quicker than in and eased out', () => {

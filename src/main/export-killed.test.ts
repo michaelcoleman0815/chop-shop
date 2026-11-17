@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,6 +12,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
  * went too. Nothing of a render that does not finish is ever in the export
  * folder, and the reply says what happened in a sentence, with ffmpeg's lines
  * behind Details.
+ *
+ * Windows has no signals: a program ended from outside just stops, with an
+ * exit code. There the same renders end that way and the reply says the
+ * renderer stopped partway; what only a signal tells apart is not tried.
  */
 
 type Handler = (...args: unknown[]) => unknown
@@ -39,7 +43,7 @@ vi.mock('./ffmpeg', async () => {
   const { findFfprobe } = await import('./test-media')
   return {
     // ffmpeg, through a stand-in that kills the render the test points at.
-    FFMPEG_PATH: path.join(os.tmpdir(), `cutalong-killing-ffmpeg-${process.pid}.sh`),
+    FFMPEG_PATH: path.join(os.tmpdir(), `cutalong-killing-ffmpeg-${process.pid}`),
     FFPROBE_PATH: findFfprobe() ?? 'ffprobe',
     probe: async () => ({ durationSec: 6, width: 1080, height: 1920, fps: 30 })
   }
@@ -51,6 +55,7 @@ import { FFMPEG_PATH } from './ffmpeg'
 import { registerCutalongIpc } from './cutalong'
 import { saveSettings } from './store'
 import { findFfmpeg, makeColourClip } from './test-media'
+import { HAND_OVER, standIn } from './test-bin'
 import { clipDoc, CLIP_PROFILES, exportAllFailed, exportNote, type Clip } from '../shared/clipping'
 import { renderFailure, toolSaid } from '../shared/failure'
 import { runRender } from './cut-render'
@@ -61,24 +66,47 @@ const REAL = findFfmpeg()
 /**
  * ffmpeg, and the Nth render that writes an .mp4 killed once it has started
  * writing: what the export folder holds at that moment is noted, then ffmpeg
- * and this script are sent the signal, so the app sees ffmpeg stopped by it.
+ * and this stand-in are sent the signal, so the app sees ffmpeg stopped by
+ * it. On Windows, which has no signals, both are ended and the stand-in
+ * exits with a code, as a program ended from outside does there.
  */
-const KILLING = `#!/bin/sh
-real="$CUTALONG_TEST_FFMPEG"
-last=""; for a in "$@"; do last="$a"; done
-case "$last" in *.mp4) ;; *) exec "$real" "$@" ;; esac
-case " $* " in *" -progress "*) ;; *) exec "$real" "$@" ;; esac
-n=$(cat "$CUTALONG_TEST_COUNT" 2>/dev/null || echo 0)
-n=$((n + 1))
-echo "$n" > "$CUTALONG_TEST_COUNT"
-[ "$n" = "\${CUTALONG_TEST_KILL_AT:-0}" ] || exec "$real" "$@"
-"$real" "$@" &
-child=$!
-i=0
-while [ ! -s "$last" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done
-ls -A "$CUTALONG_TEST_EXPORTS" > "$CUTALONG_TEST_SEEN" 2>/dev/null
-kill -"\${CUTALONG_TEST_SIGNAL:-KILL}" "$child"
-kill -"\${CUTALONG_TEST_SIGNAL:-KILL}" $$
+const KILLING = String.raw`${HAND_OVER}
+const fs = require('fs')
+const env = process.env
+const real = env.CUTALONG_TEST_FFMPEG
+const args = process.argv.slice(2)
+const last = args[args.length - 1] || ''
+if (!last.endsWith('.mp4') || !args.includes('-progress')) handOver(real, args)
+let n = 0
+try {
+  n = Number(fs.readFileSync(env.CUTALONG_TEST_COUNT, 'utf8')) || 0
+} catch {}
+n += 1
+fs.writeFileSync(env.CUTALONG_TEST_COUNT, String(n))
+if (String(n) !== (env.CUTALONG_TEST_KILL_AT || '0')) handOver(real, args)
+const child = require('child_process').spawn(real, args, { stdio: 'inherit' })
+const started = Date.now()
+const wait = setInterval(() => {
+  let size = 0
+  try {
+    size = fs.statSync(last).size
+  } catch {}
+  if (size === 0 && Date.now() - started < 30000) return
+  clearInterval(wait)
+  let seen = []
+  try {
+    seen = fs.readdirSync(env.CUTALONG_TEST_EXPORTS)
+  } catch {}
+  fs.writeFileSync(env.CUTALONG_TEST_SEEN, seen.join('\n'))
+  const signal = 'SIG' + (env.CUTALONG_TEST_SIGNAL || 'KILL')
+  if (process.platform === 'win32') {
+    child.on('exit', () => process.exit(1))
+    child.kill()
+  } else {
+    child.kill(signal)
+    process.kill(process.pid, signal)
+  }
+}, 50)
 `
 
 const invoke = async <T>(channel: string, ...args: unknown[]): Promise<T> => {
@@ -93,6 +121,13 @@ type Rendered =
 
 const MEMORY =
   'The renderer was stopped before it finished, perhaps because the Mac ran short of memory, so nothing was saved.'
+const PARTWAY = 'The renderer stopped partway, so nothing was saved.'
+
+/** What a render ended from outside says: stopped by SIGKILL, or on Windows, with a code. */
+const windows = process.platform === 'win32'
+const KILLED = windows
+  ? { message: PARTWAY, said: /ffmpeg exited with code 1\.$/ }
+  : { message: MEMORY, said: /ffmpeg was stopped by SIGKILL\.$/ }
 
 describe.skipIf(!REAL)('an export whose renderer is killed partway', () => {
   let outDir = ''
@@ -117,8 +152,7 @@ describe.skipIf(!REAL)('an export whose renderer is killed partway', () => {
     for (const p of ['userData', 'videos', 'music']) mkdirSync(join(fake.root, p), { recursive: true })
     outDir = join(fake.root, 'Exports')
     saveSettings({ outputDir: outDir })
-    writeFileSync(FFMPEG_PATH, KILLING)
-    chmodSync(FFMPEG_PATH, 0o755)
+    standIn(FFMPEG_PATH, KILLING)
     Object.assign(process.env, {
       CUTALONG_TEST_FFMPEG: REAL as string,
       CUTALONG_TEST_COUNT: join(fake.root, 'renders'),
@@ -159,29 +193,29 @@ describe.skipIf(!REAL)('an export whose renderer is killed partway', () => {
     expect(readdirSync(outDir)).toEqual([])
     expect(r.ok).toBe(false)
     if (r.ok) return
-    expect(r.message).toBe(MEMORY)
+    expect(r.message).toBe(KILLED.message)
     // What ffmpeg said, behind Details: its last lines, and that it was stopped.
     expect(r.details).toHaveLength(1)
     expect(r.details?.[0].label).toBe('What ffmpeg said')
-    expect(r.details?.[0].value).toMatch(/ffmpeg was stopped by SIGKILL\.$/)
+    expect(r.details?.[0].value).toMatch(KILLED.said)
     // The editor's reply: the sentence, and the lines behind Details.
-    expect(renderFailure(r)).toEqual({ text: MEMORY, details: r.details })
+    expect(renderFailure(r)).toEqual({ text: KILLED.message, details: r.details })
   }, 120000)
 
-  it('says only that it stopped partway when another signal stopped it', async () => {
+  // Only where there are signals can one be told from another.
+  it.skipIf(windows)('says only that it stopped partway when another signal stopped it', async () => {
     killRender(1, 'TERM')
     const r = await invoke<Rendered>('cut:render', { doc: grace, quality: 'final', name: 'What grace looks like' })
     expect(seen()).toEqual([])
     expect(readdirSync(outDir)).toEqual([])
-    expect(r).toMatchObject({ ok: false, message: 'The renderer stopped partway, so nothing was saved.' })
+    expect(r).toMatchObject({ ok: false, message: PARTWAY })
     if (r.ok) return
     expect(r.details?.[0].value).toMatch(/ffmpeg was stopped by SIGTERM\.$/)
   }, 120000)
 
-  it('says what stopped it when ffmpeg was killed before it printed a line', async () => {
-    const silent = join(fake.root, 'killed-at-once.sh')
-    writeFileSync(silent, '#!/bin/sh\nkill -KILL $$\n')
-    chmodSync(silent, 0o755)
+  // Windows ends a program with a code, never a signal, so there is no signal to name there.
+  it.skipIf(windows)('says what stopped it when ffmpeg was killed before it printed a line', async () => {
+    const silent = standIn(join(fake.root, 'killed-at-once'), "process.kill(process.pid, 'SIGKILL')\n")
     const failed = await runRender(silent, ['-y', join(fake.root, 'out.mp4')], 4).catch((err: unknown) => err)
     expect(failed).toBeInstanceOf(Error)
     expect((failed as Error).message).toBe(MEMORY)
@@ -208,9 +242,9 @@ describe.skipIf(!REAL)('an export whose renderer is killed partway', () => {
     if (killed.ok) return
     const failure = renderFailure(killed)
     const said = exportAllFailed(2, 1, [{ title: 'What grace looks like', ...failure }])
-    expect(said.text).toBe(`1 of 2 clips are exported. I couldn't export “What grace looks like”. ${MEMORY}`)
+    expect(said.text).toBe(`1 of 2 clips are exported. I couldn't export “What grace looks like”. ${KILLED.message}`)
     expect(said.details?.map((d) => d.label)).toEqual(['What ffmpeg said about “What grace looks like”'])
-    expect(said.details?.[0].value).toMatch(/ffmpeg was stopped by SIGKILL\.$/)
+    expect(said.details?.[0].value).toMatch(KILLED.said)
     const card = { kept: true, exported: undefined, doc: grace } as unknown as Clip
     expect(exportNote(card, { percent: null, error: failure.text })).toBe('Not exported')
   }, 180000)

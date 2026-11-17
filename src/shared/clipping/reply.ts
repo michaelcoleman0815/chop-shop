@@ -1,3 +1,4 @@
+import { thisComputer } from '../platform'
 import { clock, seconds } from '../presets/preset'
 import { currentCut } from '../edit/doc'
 import { resolveCut } from '../edit/resolve'
@@ -173,7 +174,8 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
         aside.push(
           'I sorted them by measuring: strong openings, finished thoughts, laughter and energy. With an Anthropic key in Settings, Claude picks them.'
         )
-    } else if (found.by === 'local') aside.push(`${found.model ?? 'A model on this Mac'} picked them, on this Mac.`)
+    } else if (found.by === 'local')
+      aside.push(`${found.model ?? `A model on ${thisComputer}`} picked them, on ${thisComputer}.`)
     else aside.push('Claude picked them from the transcript.')
   }
   aside.push(...found.notes)
@@ -219,7 +221,7 @@ export function clipsReply(found: ClipsFound, brandCaptions: boolean): ClipsRepl
       found.by === 'measured'
         ? 'Measuring'
         : found.by === 'local'
-          ? `${found.model ?? 'Ollama'}, on this Mac`
+          ? `${found.model ?? 'Ollama'}, on ${thisComputer}`
           : 'Claude'
   })
   if (found.timings.length) {

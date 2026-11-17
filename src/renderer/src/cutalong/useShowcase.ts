@@ -1,7 +1,7 @@
 import { useCallback, useRef, type MutableRefObject } from 'react'
 import { addAsset as addAssetTo, gridOps, resolveCut, currentCut, type EditDoc, type Op } from '../../../shared/edit'
 import { isImagePath, searchIcons } from '../../../shared/assets'
-import { cardLine, graphicAsked, listNear, titleToSlug } from '../../../shared/motion'
+import { cardLine, listNear, titleToSlug } from '../../../shared/motion'
 import type { Preset } from '../../../shared/presets'
 import { api } from './api'
 import type { Attachment } from './components/Composer'
@@ -14,9 +14,10 @@ import type { PanelStatus } from './useCutalong'
  * The talking-head graphics and the grid, as the session runs them: /grid
  * (an edit of several videos at once from files dropped in, or a grid on the
  * beat under the playhead), /videos from links (each read for its title,
- * views and thumbnail, never downloaded), icons for chips that are not
- * brands, and these graphics asked for in plain words, read here before any
- * planner. useCutalong calls in from submit, commandNow and the editor's notes.
+ * views and thumbnail, never downloaded) and icons for chips that are not
+ * brands. Plain words are Claude's to read: it routes files asked for as a
+ * grid and links asked for as cards here (main/triage), and runs any of
+ * these commands from a plan. useCutalong calls in from submit and dispatch.
  */
 
 type Where = 'thread' | 'panel'
@@ -42,8 +43,6 @@ export interface ShowcaseDeps {
   applyAsVersion: (ops: Op[], fallback: string) => { summary: string; n: number } | null
   /** A graphics command placed on the word under the playhead. */
   placeGraphic: (command: string, where: Where, rest: string, at: number | null, aside?: string) => void
-  /** Any slash command, as typed. */
-  run: (command: string, where: Where, rest: string, at: number | null) => Promise<void>
   /** The names of the creator's own logos, which chips show as they are. */
   logoNames: () => string[]
 }
@@ -51,14 +50,12 @@ export interface ShowcaseDeps {
 export interface Showcase {
   /** Handles /grid, /videos with links and /chips; false for anything else. */
   command(command: string, where: Where, rest: string, at: number | null, beat: string | null): Promise<boolean>
-  /** Files dropped in with /grid or "put these in a grid": an edit of them at once. False when not asked. */
-  files(recordings: Attachment[], command: string | null, said: string): Promise<boolean>
-  /** Whether files dropped in are asked to play as a grid, before anything else claims them (a label "Vlog" is not a vlog). */
-  asksGrid(files: Attachment[], command: string | null, said: string): boolean
-  /** A graphic asked for in plain words, links and all, run as its command. False when the words ask for something else. */
-  words(text: string, where: Where, at: number | null): Promise<boolean>
-  /** Whether plain words ask for one of these graphics, and an edit is open to put it on. */
-  claims(text: string): boolean
+  /**
+   * Two to four files dropped in with /grid, or asked for as a grid as Claude read the words: an edit
+   * of them at once (or a grid on the open edit's beat). Labels as given after /grid, "no labels", or
+   * '' for each file's name. False with fewer than two pictures.
+   */
+  files(recordings: Attachment[], labels: string): Promise<boolean>
   /** Whether a command reads its own links (/videos), so the chat neither studies them nor brings them in. */
   ownsLinks(command: string | null): boolean
 }
@@ -187,18 +184,11 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
     [say, withIcons]
   )
 
-  const asksGrid = useCallback(
-    (files: Attachment[], command: string | null, said: string): boolean =>
-      (command === 'grid' || graphicAsked(said)?.command === 'grid') &&
-      files.filter((f) => isVideoFile(f.name) || isImagePath(f.name)).length >= 2,
-    []
-  )
-
-  const files = useCallback(async (recordings: Attachment[], command: string | null, said: string): Promise<boolean> => {
+  const files = useCallback(async (recordings: Attachment[], labelled: string): Promise<boolean> => {
     const pictures = recordings.filter((f) => isVideoFile(f.name) || isImagePath(f.name))
-    if (!asksGrid(recordings, command, said)) return false
+    if (pictures.length < 2) return false
     const { docRef, push, patch, setDoc, setMediaUrl, applyAsVersion } = live.current
-    const labels = (command === 'grid' ? said : (graphicAsked(said)?.rest ?? '')).trim()
+    const labels = labelled.trim()
     // Asked for none, every panel's label is empty; given none, each is named after its file.
     const none = /^(?:no|without) labels?$/i.test(labels)
     const given = none ? pictures.map(() => '') : labels ? labels.split(/\s*[,;|]\s*/).filter(Boolean) : undefined
@@ -237,32 +227,9 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
     const done = applyAsVersion(plan.ops, plan.summary)
     say('thread', done ? `v${done.n} is ready. ${done.summary}` : 'That is already how the grid is.', !!done)
     return true
-  }, [say, asksGrid])
-
-  /** What plain words ask for, read without their links, and the links that go with it. */
-  const read = useCallback((text: string): { command: string; rest: string } | null => {
-    const links = [...new Set(text.match(LINKS) ?? [])]
-    const ask = graphicAsked(text.replace(LINKS, ' ').replace(/\s+/g, ' ').trim())
-    if (!ask || ask.command === 'grid') return null
-    // Cards need the videos' links; a page to ring is captured from its link, or is the newest one in the edit.
-    if (ask.command === 'videos') return links.length ? { command: 'videos', rest: links.join(' ') } : null
-    if (ask.command === 'screenshot') return { command: 'screenshot', rest: [ask.rest, links[0] ?? ''].join(' ').trim() }
-    return ask
-  }, [])
-
-  const claims = useCallback((text: string): boolean => !!live.current.docRef.current && read(text) !== null, [read])
-
-  const words = useCallback(
-    async (text: string, where: Where, at: number | null): Promise<boolean> => {
-      const ask = read(text)
-      if (!ask || !live.current.docRef.current) return false
-      await live.current.run(ask.command, where, ask.rest, at)
-      return true
-    },
-    [read]
-  )
+  }, [say])
 
   const ownsLinks = useCallback((command: string | null): boolean => command === 'videos', [])
 
-  return { command, files, asksGrid, words, claims, ownsLinks }
+  return { command, files, ownsLinks }
 }

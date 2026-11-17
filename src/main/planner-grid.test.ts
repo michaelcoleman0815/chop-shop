@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { addAsset, applyOps, createDoc, currentCut, wordsFromTranscript } from '../shared/edit'
 import { offerPlan } from './planner'
 import { fromPlannerOp, PLANNER_SYSTEM, PlanSchema, renderRequest } from './planner-prompt'
+import { TRIAGE_SYSTEM, TriageSchema } from './triage'
 
 /**
  * The planner and grids: it is taught the op and when a grid fits, a plan
@@ -65,7 +66,8 @@ describe('the planner’s grid', () => {
       summary: 'Both edits play side by side.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: { text: '', options: [] }
     })
     const offered = offerPlan(doc, plan, [])
     if (!offered.ok) throw new Error(offered.message)
@@ -102,5 +104,16 @@ describe('the planner’s grid', () => {
     })
     const out = applyOps(currentCut(doc), [op], { words: doc.words, sources: doc.sources, assets: doc.assets })
     expect(out.rejected[0]?.reason).toBe('There is no recording or material a9 in this edit to put in the grid.')
+  })
+})
+
+describe('reading a message before its footage (main/triage)', () => {
+  it('can send files asked for as a grid to the grid, and links asked for as cards to the cards', () => {
+    // Plain words are Claude's to read: "put these four in a grid with labels" and "show these as video cards".
+    expect(TRIAGE_SYSTEM).toContain('- grid: play two to four videos dropped in at once')
+    expect(TRIAGE_SYSTEM).toContain('cards (videos to show on screen as YouTube shows them')
+    const read = { reply: '', clip: { count: 0, minSec: 0, maxSec: 0, funny: false, topic: '' }, question: { text: '', options: [] } }
+    expect(TriageSchema.parse({ ...read, route: 'grid', link: 'none' }).route).toBe('grid')
+    expect(TriageSchema.parse({ ...read, route: 'edit', link: 'cards' }).link).toBe('cards')
   })
 })

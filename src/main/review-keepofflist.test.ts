@@ -35,6 +35,8 @@ function talk(): EditDoc {
 const planned = (ops: Op[], notesHandled: string[]): PlanEditResult => ({
   ok: true,
   ops,
+  steps: [{ ops }],
+  question: null,
   summary: 'A whoosh carries the cut into the next part.',
   reply: 'Done: a whoosh on the cut.',
   notesHandled,

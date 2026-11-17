@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { FFMPEG_PATH, FFPROBE_PATH, probe } from './ffmpeg'
-import { FONTS_DIR } from './resources'
+import { FONTS_DIR, helperScript } from './resources'
 import { getSettings, saveSettings } from './store'
 import { downloadModel, hasModel, transcribe } from './transcribe'
 import { fetchVideo, YTDLP_PATH } from './fetch-video'
@@ -33,10 +33,13 @@ import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply, probeSource } from './intake'
 import { projectName } from '../shared/project-name'
 import { watchClip } from './mouth'
-import { detectFaces, VISION_PATH } from './track'
+import { detectFaces, hasFaceFinder } from './track'
+import { thisComputer } from '../shared/platform'
 import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
 import { removePreset, savedPresets, savePreset } from './preset-store'
-import { checkKey, keepOffList, planEdit } from './planner'
+import { checkKey, keepOffList, keyDeps, planEdit } from './planner'
+import type { CommandLine, RequestExtra } from './planner-prompt'
+import { triage } from './triage'
 import { planEditLocally } from './planner-local'
 import { isLocalUp, localModels } from './local-llm'
 import { OLLAMA_HOST } from './clips'
@@ -335,9 +338,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    */
   /**
    * Where the speaker is through each recording, for following them into a
-   * narrower frame: the faces the Mac's Vision helper finds, twice a second.
-   * Without that helper (it is a Mac one), the reply says so and framing by
-   * hand still works.
+   * narrower frame: the faces the face finder sees (the Mac's Vision helper,
+   * YuNet on Windows), twice a second. Without one, the reply says so and
+   * framing by hand still works.
    */
   ipcMain.handle('reframe:find', async (_e, req: { sources: { id: string; path: string; durationSec: number }[] }) => {
     const subjects: Record<string, Subject> = {}
@@ -348,7 +351,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       }
       return { ok: true as const, subjects }
     } catch (err) {
-      return { ok: false as const, finder: existsSync(VISION_PATH()), message: message(err) }
+      return { ok: false as const, finder: hasFaceFinder(), message: message(err) }
     }
   })
 
@@ -610,20 +613,52 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   // the brand's own logos by name, so a logo pop can show them.
   // Claude plans unless the person picked a model on this Mac in Settings.
   // The edit's own brand gives the logos and the never list, which the plan is checked against too.
-  ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
-    const parsed = EditDocSchema.safeParse(req.doc)
-    const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
-    // What this brand has learned from its own chats.
-    const preferences = await preferencesForPlanner(brand.id).catch(() => [])
-    const logos = brand.logos.map((l) => l.name)
-    const never = await neverForBrand(brand.id).catch(() => [])
-    const said = neverForPlanner(never)
-    const local = getSettings().localPlanner
-    const result = local
-      ? await planEditLocally({ ...req, preferences, logos, never: said }, { host: OLLAMA_HOST, model: local })
-      : await planEdit({ ...req, preferences, logos, never: said })
-    return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
-  })
+  ipcMain.handle(
+    'cut:plan',
+    async (
+      _e,
+      req: { doc: unknown; request: string; notes: Note[]; voice?: string; commands?: CommandLine[] } & RequestExtra
+    ) => {
+      const parsed = EditDocSchema.safeParse(req.doc)
+      const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
+      // What this brand has learned from its own chats.
+      const preferences = await preferencesForPlanner(brand.id).catch(() => [])
+      const logos = brand.logos.map((l) => l.name)
+      const never = await neverForBrand(brand.id).catch(() => [])
+      const said = neverForPlanner(never)
+      const local = getSettings().localPlanner
+      const result = local
+        ? await planEditLocally({ ...req, preferences, logos, never: said }, { host: OLLAMA_HOST, model: local })
+        : await planEdit({ ...req, preferences, logos, never: said })
+      return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
+    }
+  )
+
+  // Claude reads a message before any footage is read: one edit, a vlog,
+  // clips from a long recording, words kept for footage still to come, or a
+  // question to answer; and what a link with it is for. Each file goes as
+  // its name, its length and whether it has a picture, never what is in it.
+  ipcMain.handle(
+    'cut:triage',
+    async (
+      _e,
+      req: {
+        request: string
+        files: { path: string; name: string }[]
+        link: string | null
+        hasEdit: boolean
+        commands?: CommandLine[]
+      }
+    ) => {
+      const files = await Promise.all(
+        req.files.map(async (f) => {
+          const p = await probe(f.path).catch(() => null)
+          return { name: f.name, durationSec: p ? p.durationSec : null, video: !!p && p.width > 0, audio: !!p?.facts.audio }
+        })
+      )
+      return triage({ request: req.request, files, link: req.link, hasEdit: req.hasEdit, commands: req.commands })
+    }
+  )
 
   // The models Ollama has on this Mac, for planning edits without Claude.
   ipcMain.handle('planner:local', async () => {
@@ -674,7 +709,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     signInFrom: getSettings().videoSignIn ?? null
   })
   const needsYtdlp = (): void => {
-    if (!existsSync(YTDLP_PATH())) throw new Error('yt-dlp is missing from this build. Run scripts/fetch-ytdlp.sh.')
+    if (!existsSync(YTDLP_PATH()))
+      throw new Error(`yt-dlp is missing from this build. Run ${helperScript('fetch-ytdlp')}.`)
   }
 
   ipcMain.handle('assets:add', async (e, req: { docId: string; path?: string; url?: string; range?: Range | null }) => {
@@ -746,7 +782,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     return saveSettings({ videoSignIn: browser && allowed.includes(browser) ? browser : null }).videoSignIn ?? null
   })
 
-  ipcMain.handle('claude:check', () => checkKey())
+  ipcMain.handle('claude:check', (_e, opts?: { quick?: boolean }) => checkKey(keyDeps(), opts ?? {}))
 
   // Other AI services: keys, the switch, and key checks (providers/index.ts).
   registerServicesIpc()
@@ -1027,7 +1063,7 @@ async function transcriptFor(
     // Learning from edits never reaches the network, not even for the model.
     if (opts.download === false) {
       throw new Error(
-        `The ${whisperModel} transcription model isn't on this Mac yet. Download it in Settings, then try again.`
+        `The ${whisperModel} transcription model isn't on ${thisComputer} yet. Download it in Settings, then try again.`
       )
     }
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))

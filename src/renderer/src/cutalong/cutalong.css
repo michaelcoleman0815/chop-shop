@@ -655,6 +655,153 @@ button:disabled {
   color: var(--muted);
 }
 
+/* ---------- Setup: Start, until an Anthropic key works ---------- */
+
+/* Start's screen and measure, with the steps where the composer would be. */
+.cl-setup {
+  padding-top: 9vh;
+}
+
+.cl-setup-inner {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  container-type: inline-size;
+}
+
+/* Tight under the title it explains. */
+.cl-setup-why {
+  margin: calc(-1 * var(--space-4)) auto 0;
+  max-width: 46ch;
+  text-align: center;
+  text-wrap: balance;
+  font-size: 17px;
+  line-height: 26px;
+  color: var(--ink-soft);
+}
+
+/* A step of the key's (components/KeySteps.tsx, on .cl-steps): what to do, the page it happens on, the field. */
+.cl-step-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cl-step-body h3 {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* A page opened in the browser: a secondary pill, the arrow saying it leaves Cutalong. */
+.cl-step-link {
+  text-decoration: none;
+}
+
+.cl-step-link > svg {
+  color: var(--muted);
+}
+
+.cl-step-field {
+  align-self: stretch;
+}
+
+/* In a Settings section the steps sit on its sheet, as rows, not sheets of their own. */
+.cl-section .cl-steps {
+  gap: 0;
+}
+
+.cl-section .cl-steps > li {
+  padding: var(--space-4) 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.cl-section .cl-steps > li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* The step to do now, on a section's sheet: its number firms instead of a ring round a sheet. */
+.cl-section .cl-steps > li.now::before {
+  background: var(--ink);
+  color: var(--card);
+  box-shadow: none;
+}
+
+/* The field and its button, side by side. */
+.cl-key-paste {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.cl-key-paste input {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* As tall as the button beside it. */
+  height: 46px;
+}
+
+.cl-key-paste.small input {
+  height: 40px;
+}
+
+/* While the check runs, the mark marches beside its line. */
+.cl-keycheck-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.cl-keycheck-again {
+  align-self: flex-start;
+}
+
+.cl-key-kept {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cl-setup-cost {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+/* A footnote's measure: short lines, under the steps' full width. */
+.cl-setup-cost p {
+  margin: 0;
+  max-width: 50ch;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* A link inside a sentence: the sentence's size, nothing added around it. */
+.cl-link.inline {
+  height: auto;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Narrow: the button goes under the field. */
+@container (max-width: 520px) {
+  .cl-key-paste {
+    flex-wrap: wrap;
+  }
+
+  .cl-key-paste .cl-btn {
+    flex: 1 1 auto;
+  }
+}
+
 /* ---------- Thread ---------- */
 
 .cl-thread {
@@ -1839,6 +1986,15 @@ button:disabled {
   padding-top: 52px;
 }
 
+/*
+ * On Windows the window's own minimise, maximise and close sit over its top
+ * right corner (main/index.ts windowFrame); the header keeps clear of them.
+ * The titlebar-area values say where they are, and their width without them.
+ */
+.cl-app.windows .cl-header {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + var(--space-3));
+}
+
 .cl-rail.open {
   flex-basis: 248px;
   width: 248px;
@@ -2034,6 +2190,19 @@ button:disabled {
   border-color: var(--ink);
   outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
   outline-offset: 0;
+}
+
+/* The browser's own placeholder grey is too faint on the ground. */
+.cl-field input::placeholder,
+.cl-field textarea::placeholder {
+  color: var(--muted);
+}
+
+/* A sentence under a setting reads at a comfortable measure, not the card's whole width. */
+.cl-section > p.cl-aside,
+.cl-field > p.cl-aside {
+  max-width: 56ch;
+  text-wrap: pretty;
 }
 
 .cl-row {

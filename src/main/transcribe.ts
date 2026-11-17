@@ -1,10 +1,11 @@
 import { spawn } from 'child_process'
 import { promises as fs, createWriteStream, existsSync } from 'fs'
+import { availableParallelism } from 'os'
 import { join } from 'path'
 import { app, net } from 'electron'
 import { loudnessEnvelope } from './audio-envelope'
 import { FFMPEG_PATH } from './ffmpeg'
-import { WHISPER_PATH } from './resources'
+import { helperScript, WHISPER_PATH } from './resources'
 import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
 import { voicedRegions } from '../shared/audio/voiced'
 import { whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
@@ -144,6 +145,21 @@ async function extractAudio(
   })
 }
 
+/**
+ * Threads for whisper where it runs on the CPU, as on Windows: about one a
+ * core (half the processors Windows counts, which counts each core twice),
+ * no fewer than whisper-cli's own four where there are four, and at most
+ * eight. Its default of four leaves most of a newer PC idle. A Mac's
+ * whisper runs on its GPU and keeps the default.
+ */
+export function whisperThreads(platform = process.platform, processors = availableParallelism()): number | undefined {
+  if (platform !== 'win32') return undefined
+  return Math.max(Math.min(4, processors), Math.min(8, Math.floor(processors / 2)))
+}
+
+/** How Windows reports a program that ran an instruction the processor does not have. */
+const ILLEGAL_INSTRUCTION = 0xc000001d
+
 /** Runs whisper-cli to the end, reporting its progress from 0 to 100. */
 function runWhisper(bin: string, args: string[], onProgress: (percent: number) => void): Promise<void> {
   return new Promise<void>((resolve, reject) => {
@@ -173,6 +189,13 @@ function runWhisper(bin: string, args: string[], onProgress: (percent: number) =
         .filter((l) => l.trim() && !/progress\s*=\s*\d+%/.test(l))
       const said = lines.slice(-12).join('\n') || `whisper-cli exited with code ${code}.`
       console.warn(`[stt] whisper stopped with code ${code}:\n${said}`)
+      // whisper-cli for Windows is built for processors with AVX2, from about 2013 on.
+      if (process.platform === 'win32' && code !== null && code >>> 0 === ILLEGAL_INSTRUCTION) {
+        const why =
+          'This PC’s processor is too old for the transcription model: it needs AVX2, which processors from before about 2013 lack.'
+        reject(new WhisperFailed(said, why))
+        return
+      }
       reject(new WhisperFailed(said))
     })
   })
@@ -185,8 +208,11 @@ function runWhisper(bin: string, args: string[], onProgress: (percent: number) =
  */
 export class WhisperFailed extends Error implements ToolSaid {
   readonly tool = 'whisper'
-  constructor(readonly said: string) {
-    super('The transcription model stopped before it finished.')
+  constructor(
+    readonly said: string,
+    message = 'The transcription model stopped before it finished.'
+  ) {
+    super(message)
     this.name = 'WhisperFailed'
   }
 }
@@ -206,7 +232,7 @@ export async function transcribe(
 ): Promise<Transcript> {
   const bin = WHISPER_PATH()
   if (!existsSync(bin)) {
-    throw new Error('whisper-cli is missing. Run scripts/build-whisper.sh.')
+    throw new Error(`whisper-cli is missing. Run ${helperScript('build-whisper')}.`)
   }
   const modelFile = modelPath(model)
   if (!existsSync(modelFile)) {
@@ -233,7 +259,8 @@ export async function transcribe(
     onProgress(12, 'Transcribing')
     const prefix = join(dir, 'out')
     const until = verbatim ? 86 : 98
-    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim }), (p) =>
+    const threads = whisperThreads()
+    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads }), (p) =>
       onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
     )
     const json = parseWhisperJson(await fs.readFile(`${prefix}.json`))
@@ -252,7 +279,7 @@ export async function transcribe(
           const partPrefix = join(dir, `again-${n}`)
           await runWhisper(
             bin,
-            whisperArgs({ model, modelFile, wav: part, prefix: partPrefix, verbatim }),
+            whisperArgs({ model, modelFile, wav: part, prefix: partPrefix, verbatim, threads }),
             () => undefined
           )
           const again = tokensToWords(parseWhisperJson(await fs.readFile(`${partPrefix}.json`)).transcription)
