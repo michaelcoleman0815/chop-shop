@@ -95,22 +95,25 @@ const busy = (): boolean => !!document.querySelector('.cl-progress, .cl-composer
 const replies = (): string[] =>
   [...document.querySelectorAll('.cl-msg-assistant')].map((m) => (m as HTMLElement).innerText.replace(/\n+/g, ' | '))
 
-/** Animations running on what moves while work goes on: the living mark and the crew at work. */
+/**
+ * Animations running on what moves while work goes on: the living mark and the crew at work.
+ * Asked of those elements and what is in them, never of the whole document: on the iOS
+ * simulator WebKit's web process crashed sorting the whole document's animations
+ * (Document::getAnimations) just after the screen changed from the editor to the chat.
+ */
 function moving(): { living: number; crew: number; properties: string[] } {
-  const animations = document.getAnimations()
   const on = (selector: string): Animation[] =>
-    animations.filter((a) => {
-      const target = (a.effect as KeyframeEffect | null)?.target
-      return target instanceof Element && !!target.closest(selector)
-    })
+    [...document.querySelectorAll(selector)].flatMap((el) => el.getAnimations({ subtree: true }))
+  const living = on('.cl-living')
+  const crew = on('.cl-crew-row')
   const properties = new Set<string>()
-  for (const a of [...on('.cl-living'), ...on('.cl-crew-row')]) {
+  for (const a of [...living, ...crew]) {
     for (const k of (a.effect as KeyframeEffect).getKeyframes()) {
       for (const p of Object.keys(k))
         if (!['offset', 'easing', 'composite', 'computedOffset'].includes(p)) properties.add(p)
     }
   }
-  return { living: on('.cl-living').length, crew: on('.cl-crew-row').length, properties: [...properties].sort() }
+  return { living: living.length, crew: crew.length, properties: [...properties].sort() }
 }
 
 /** How the page looks and moves here: the scheme, reduced motion and what the engine has of view transitions. */
@@ -282,11 +285,16 @@ export async function drive(): Promise<void> {
   // The editor with its preview ready to play, as a person sees it before they export.
   const editor = async (): Promise<void> => {
     await until('the editor', () => document.querySelector('.cl-editor'), 30)
-    report.previewReady = await until(
-      'the preview',
-      () => ((document.querySelector('.cl-editor .cl-frame video') as HTMLVideoElement | null)?.readyState ?? 0) >= 2,
-      60
-    ).catch(() => false)
+    const preview = (): HTMLVideoElement | null => document.querySelector('.cl-editor .cl-frame video')
+    report.previewReady = await until('the preview', () => (preview()?.readyState ?? 0) >= 2, 60).catch(() => false)
+    if (!report.previewReady) {
+      const v = preview()
+      keep(
+        v
+          ? `the preview had no picture in 60 s: readyState ${v.readyState}, networkState ${v.networkState}, error ${v.error?.code ?? 'none'}, ${v.currentSrc ? 'with' : 'without'} a source`
+          : 'the editor had no preview'
+      )
+    }
   }
 
   // An export's toast stays until it is closed: the screens after it are shown without it.
