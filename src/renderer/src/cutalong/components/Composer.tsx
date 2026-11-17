@@ -50,13 +50,21 @@ export function Composer({
     area.current?.focus()
   }, [seed])
 
-  // Grow with the text, up to the cap in the stylesheet.
+  // One thin line at rest; it grows with the text, up to the cap in the stylesheet, then scrolls.
+  useEffect(() => fitHeight(area.current), [text])
+  // A wider or narrower window wraps the words again, so the height follows the width too.
   useEffect(() => {
     const el = area.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [text])
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let width = el.clientWidth
+    const watch = new ResizeObserver(() => {
+      if (el.clientWidth === width) return
+      width = el.clientWidth
+      fitHeight(el)
+    })
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [])
 
   const query = slashQuery(text)
   const matches = useMemo(() => (query === null ? [] : suggestCommands(query, presets)), [query, presets])
@@ -209,21 +217,21 @@ export function Composer({
       <label className="sr-only" htmlFor="cl-ask">
         {placeholder}
       </label>
-      <textarea
-        id="cl-ask"
-        ref={area}
-        rows={2}
-        value={text}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={onKey}
-      />
+      {/* One line: add, the words, send. The buttons stay on the last line as the words grow. */}
       <div className="cl-composer-row">
         <IconButton label="Add footage, audio or images" onClick={() => void browse()}>
           <Icon.plus />
         </IconButton>
-        <span className="spacer" />
+        <textarea
+          id="cl-ask"
+          ref={area}
+          rows={1}
+          value={text}
+          placeholder={placeholder}
+          autoFocus={autoFocus}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={onKey}
+        />
         <IconButton label="Send" filled disabled={!canSend} onClick={send}>
           <Icon.send />
           <span className="cl-send-mark" aria-hidden="true">
@@ -233,4 +241,15 @@ export function Composer({
       </div>
     </div>
   )
+}
+
+/**
+ * Sizes a text box to its words: one line when empty, a line more for each
+ * line the words take, up to the max-height in the stylesheet, where it scrolls.
+ * The height changes at once, never animated (the layout never moves in motion).
+ */
+export function fitHeight(el: HTMLTextAreaElement | null): void {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
 }
