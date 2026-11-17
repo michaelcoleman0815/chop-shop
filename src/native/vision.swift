@@ -258,7 +258,8 @@ func runMasks(_ a: [String]) -> Never {
     var n = 0
     while Double(n) / rate <= duration + 1e-6 {
         let at = start + Double(n) / rate
-        let number = n
+        // Named by the moment, so a later stretch of the same recording never writes over an earlier one's masks.
+        let ms = Int((at * 1000).rounded())
         n += 1
         guard let image = try? generator.copyCGImage(at: CMTime(seconds: at, preferredTimescale: 600), actualTime: nil) else {
             continue
@@ -280,7 +281,7 @@ func runMasks(_ a: [String]) -> Never {
             request.outputPixelFormat = kCVPixelFormatType_OneComponent8
             try? handler.perform([request])
             if let buffer = request.results?.first?.pixelBuffer {
-                keep(buffer, id: 1, name: String(format: "person-%05d.png", number))
+                keep(buffer, id: 1, name: String(format: "person-%08d.png", ms))
             }
         } else {
             guard #available(macOS 14.0, *) else { fail("cutting out objects needs macOS 14") }
@@ -291,7 +292,7 @@ func runMasks(_ a: [String]) -> Never {
                     guard let buffer = try? observation.generateScaledMaskForImage(
                         forInstances: IndexSet(integer: instance), from: handler)
                     else { continue }
-                    keep(buffer, id: instance, name: String(format: "object-%05d-%d.png", number, instance))
+                    keep(buffer, id: instance, name: String(format: "object-%08d-%d.png", ms, instance))
                 }
             }
         }
