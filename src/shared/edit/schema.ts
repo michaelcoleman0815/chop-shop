@@ -4,6 +4,7 @@ import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
 import { SfxSchema } from './sfx'
 import { AngleSchema, ANGLE_LAYOUTS, BeatAngleSchema } from './angles'
+import { GridSchema } from './grid'
 import { SubjectSchema } from './reframe'
 import { CameraSchema } from './camera'
 import { FillSchema } from './fill'
@@ -151,6 +152,8 @@ export const TreatmentSchema = z.object({
   angle: BeatAngleSchema.nullable().optional(),
   /** Where the picture is centred when it is cropped to a narrower frame, by hand: 0 the left edge, 1 the right. */
   framing: z.number().min(0).max(1).nullable().optional(),
+  /** Two to four pictures at once in a grid, each with a label, instead of the frame above (edit/grid). */
+  grid: GridSchema.nullable().optional(),
   /** False hides the captions while this beat plays (over a title, a screen recording); absent follows the video's. */
   captions: z.boolean().optional()
 })

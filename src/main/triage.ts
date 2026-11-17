@@ -24,10 +24,11 @@ Routes:
 - edit: cut one video from footage of someone talking: a YouTube video, a Short, a review, a talk, a tutorial. Most messages with footage are this, however much else they ask for.
 - vlog: tell a day's clips as a story: a vlog, a day in the life, a trip, from many short clips.
 - clipping: cut many short clips, each its own video, from one or more long recordings: a stream, a church service, a sermon, a podcast, an interview, when the person asks for clips, shorts or highlights from it.
+- grid: play two to four videos dropped in at once, side by side in a grid with a label on each, when the person asks for a grid, a 2x2 or the videos side by side.
 - wait: there is no footage yet and no edit open, and the words ask for something to be made: say in one sentence that you will do it when the footage comes ("Drop your footage and I'll make it a Short with captions.").
 - answer: a question about Cutalong or what it can do, or talk that asks for nothing to be made: answer in at most three sentences, from what the <commands> block says Cutalong can do. When there is no footage yet, end by saying what to drop.
 
-A link in the message is one of: study (a video whose style the person likes, to cut theirs like it), material (footage to use in their edit, such as B-roll or an excerpt), page (a web page to show on screen as a screenshot), or none when there is no link.
+A link in the message is one of: study (a video whose style the person likes, to cut theirs like it), material (footage to use in their edit, such as B-roll or an excerpt), page (a web page to show on screen as a screenshot), cards (videos to show on screen as YouTube shows them, a card each with its thumbnail, title and views, read from their pages without downloading them), or none when there is no link.
 
 For clipping, "clip" says how many clips (0 lets Cutalong choose), how long each is in seconds (minSec and maxSec, 0 when not said), whether they are the funny parts, and what they are about ("" when not said). For any other route, fill it with 0, false and "".
 
@@ -36,10 +37,10 @@ Ask only when the road itself is unclear and the wrong one would cost the person
 Write as Cutalong: first person, plain words, exact numbers, no exclamation marks, no emoji, no praise.`
 
 export const TriageSchema = z.object({
-  route: z.enum(['edit', 'vlog', 'clipping', 'wait', 'answer']),
+  route: z.enum(['edit', 'vlog', 'clipping', 'grid', 'wait', 'answer']),
   /** For wait and answer: what to say. Empty otherwise. */
   reply: z.string(),
-  link: z.enum(['study', 'material', 'page', 'none']),
+  link: z.enum(['study', 'material', 'page', 'cards', 'none']),
   clip: z.object({
     count: z.number(),
     minSec: z.number(),

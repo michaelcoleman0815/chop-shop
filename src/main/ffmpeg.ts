@@ -358,8 +358,7 @@ export async function exportClip(opts: {
   if (opts.lutPath) {
     // Grading belongs to the footage; captions are drawn afterwards so they
     // keep their own colour.
-    const lut = opts.lutPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    filters.push(`lut3d=file='${lut}'`)
+    filters.push(`lut3d=file=${filterPath(opts.lutPath)}`)
   }
 
   const baseStyle = opts.captionStyle ?? opts.captions?.style ?? DEFAULT_CAPTION_STYLE
@@ -374,9 +373,9 @@ export async function exportClip(opts: {
       assPath,
       buildAss(captionWords, out.w, out.h, scaleStyle(baseStyle, scale))
     )
-    // ffmpeg filter syntax treats these as separators, so they need escaping.
-    const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    subtitles = `subtitles='${escaped}':fontsdir=${filterPath(FONTS_DIR())}`
+    // On Windows the temp folder is inside the user's own, so its name may have
+    // an apostrophe in it (C:\Users\O'Brien\AppData\Local\Temp).
+    subtitles = `subtitles=${filterPath(assPath)}:fontsdir=${filterPath(FONTS_DIR())}`
   }
 
   // Titles and bars ride a second subtitle track rather than sharing the
@@ -391,8 +390,7 @@ export async function exportClip(opts: {
       gPath,
       buildGraphicsAss(scaleGraphics(graphics, scale), out.w, out.h, outDuration)
     )
-    const gEscaped = gPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    graphicsFilter = `subtitles='${gEscaped}':fontsdir=${filterPath(FONTS_DIR())}`
+    graphicsFilter = `subtitles=${filterPath(gPath)}:fontsdir=${filterPath(FONTS_DIR())}`
   }
 
   const overlays = opts.overlays ?? []

@@ -53,6 +53,8 @@ import { brandInSentence, stampBrand } from '../shared/brands'
 import { registerClippingIpc } from './clipping'
 import { registerVlogIpc } from './vlog'
 import { registerMakeIpc } from './make'
+import { registerShowcaseIpc } from './showcase'
+import { themeFrom } from '../shared/motion'
 import {
   addSources,
   createDoc,
@@ -467,6 +469,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         overlays: motion.overlays,
         fx,
         captionWords: pass.resolved.words,
+        // A grid's panels show material, on a ground in the brand's look.
+        assets: doc.assets,
+        theme: themeFrom(brand),
         sfxDir: sfxDir(),
         onProgress: (f) => report(before + f * (1 - before))
       })
@@ -818,6 +823,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     mediaUrlFor: deps.mediaUrlFor,
     transcribe: (path, durationSec, progress) => transcriptFor(path, durationSec, progress, { localOnly: true })
   })
+
+  // Video cards read from links, and grids of several videos at once (main/showcase).
+  registerShowcaseIpc({ mediaUrlFor: deps.mediaUrlFor })
 
   // Vlogs: a shoot watched and told as a story (main/vlog), its talking heard as footage is here.
   registerVlogIpc({

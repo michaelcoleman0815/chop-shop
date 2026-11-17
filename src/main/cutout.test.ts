@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -6,6 +6,7 @@ import { applyOps, createDoc, currentCut, resolveCut, wordsFromTranscript } from
 import { buildFxScene } from '../shared/fx'
 import { covered, cutoutNeeds, findCutouts, missing, readCutouts, visionHelper, type CutoutRequest } from './cutout'
 import { OBJECTS, SHAPE_CLIP, shapeHelper } from './fx-shapes'
+import { standIn } from './test-bin'
 
 /**
  * Cut-outs: asked of the helper only where they are not kept yet, kept by the
@@ -91,19 +92,26 @@ describe('finding cut-outs', () => {
   })
 })
 
+// The helpers stand in as Node scripts (test-bin.ts), which run on every computer.
 describe('the Mac helper', () => {
   it('has nothing when it is missing or older than cut-outs', async () => {
     expect(await visionHelper(join(dir, 'nowhere')).can()).toEqual({ person: false, objects: false })
-    const old = join(dir, 'old-vision')
-    writeFileSync(old, '#!/bin/sh\necho "usage: chopshop-vision <video>" >&2\nexit 2\n')
-    chmodSync(old, 0o755)
+    const old = standIn(
+      join(dir, 'old-vision'),
+      "process.stderr.write('usage: chopshop-vision <video>\\n')\nprocess.exitCode = 2\n"
+    )
     expect(await visionHelper(old).can()).toEqual({ person: false, objects: false })
   })
 
   it('says what this computer can cut out', async () => {
-    const bin = join(dir, 'vision')
-    writeFileSync(bin, '#!/bin/sh\nif [ "$1" = "--masks-check" ]; then echo \'{"person":true,"objects":false}\'; exit 0; fi\nexit 1\n')
-    chmodSync(bin, 0o755)
+    const bin = standIn(
+      join(dir, 'vision'),
+      [
+        "if (process.argv[2] === '--masks-check') process.stdout.write('{\"person\":true,\"objects\":false}\\n')",
+        'else process.exitCode = 1',
+        ''
+      ].join('\n')
+    )
     expect(await visionHelper(bin).can()).toEqual({ person: true, objects: false })
   })
 })

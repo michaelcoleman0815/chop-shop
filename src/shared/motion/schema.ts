@@ -43,6 +43,8 @@ export const MOTION_KINDS = [
   'market',
   'screenshot',
   'device',
+  'chips',
+  'video-cards',
   'map',
   'layers'
 ] as const

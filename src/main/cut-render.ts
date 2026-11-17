@@ -22,6 +22,7 @@ import {
   lookMatrix,
   outToSrc,
   pictureSpan,
+  gridPictures,
   pipBox,
   placeChapters,
   placeSfx,
@@ -41,10 +42,14 @@ import {
   type Look,
   type Music,
   type Resolved,
+  type Asset,
   type Source,
   type Treatment,
   type TransitionKind
 } from '../shared/edit'
+import { LABEL_FADE } from '../shared/motion/grid-plate'
+import type { MotionTheme } from '../shared/motion/theme'
+import { prepareGrids } from './grid-render'
 import { captionStyleFor } from '../shared/subtitles'
 import type { TranscriptWord } from '../shared/types'
 import type { ToolSaid } from '../shared/failure'
@@ -178,6 +183,27 @@ export interface Segment {
    * picture clock (edit/reframe). Absent: the middle.
    */
   framing?: FrameKey[]
+  /**
+   * Two to four pictures at once in a grid, instead of the frame the
+   * treatment gives (edit/grid, main/grid-render): each panel's file and
+   * where it is read from (path null for this segment's own picture), the
+   * box it covers in output pixels, then the ground over them all, with the
+   * panels' boxes cut out of it, and the labels, PNGs the frame's size.
+   * `since` is how far into the grid this segment starts: the labels fade in
+   * only where the grid does.
+   */
+  grid?: {
+    panels: {
+      path: string | null
+      startSec: number
+      still: boolean
+      rect: { x: number; y: number; w: number; h: number }
+      convert?: string | null
+    }[]
+    ground: string
+    labels: string | null
+    since: number
+  }
   /**
    * The speaker's picture shown whole in the frame, on a blurred copy of
    * itself or between black bars, when its shape is far from the frame's
@@ -838,6 +864,45 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
 
     if (t === null) {
       chains.push(`${speaker()}fps=${fps},setsar=1,format=yuv420p,${AS_BT709},${frames}[${v}]`)
+    } else if (s.grid) {
+      // A grid (main/grid-render): each panel scaled to cover its box on a
+      // plain frame, held on its last frame if it runs out, then the ground
+      // over them with their boxes cut out, then the labels, fading in where
+      // the grid starts. Footage keeps its YUV; a still, the ground and the
+      // labels, made in RGB, go into YUV as BT.709 at their own size first,
+      // as a cutaway's still and the graphics do.
+      const g = s.grid
+      chains.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${fixed(showFor + 1)}[${v}g0]`)
+      let under = `${v}g0`
+      let ownUsed = false
+      g.panels.forEach((p, i) => {
+        const own = p.path === null && !ownUsed
+        if (p.path === null && !own) return
+        if (own) ownUsed = true
+        const source = own
+          ? speaker()
+          : p.still
+            ? `${sourcePicture(input(p.path as string, 0, showFor))}${STILL_TO_YUV},`
+            : sourcePicture(input(p.path as string, p.startSec, showFor), p.convert)
+        const { x, y, w, h } = p.rect
+        chains.push(
+          `${source}fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1${t.bw ? ',hue=s=0' : ''}[${v}p${i}]`
+        )
+        chains.push(`[${under}][${v}p${i}]overlay=x=${x}:y=${y}:eof_action=repeat[${v}g${i + 1}]`)
+        under = `${v}g${i + 1}`
+      })
+      const ground = input(g.ground, 0, showFor)
+      chains.push(`[${ground}:v]${TO_YUVA}[${v}gy]`)
+      chains.push(`[${under}][${v}gy]overlay=0:0:shortest=1[${v}gg]`)
+      under = `${v}gg`
+      if (g.labels) {
+        const words = input(g.labels, 0, showFor)
+        const fade = g.since < 0.01 ? `,fade=t=in:st=0:d=${exact(LABEL_FADE)}:alpha=1` : ''
+        chains.push(`[${words}:v]format=rgba${fade},${TO_YUVA}[${v}gw]`)
+        chains.push(`[${under}][${v}gw]overlay=0:0:shortest=1[${v}gl]`)
+        under = `${v}gl`
+      }
+      chains.push(`[${under}]format=yuv420p,${AS_BT709},${frames}[${v}]`)
     } else if (s.broll && t.frame === 'split') {
       const half = even(H / 2)
       chains.push(`${cutaway()}${moveOver(s.broll.camera, W, half)}${look(W, half, t, false)}[${v}t]`)
@@ -1390,6 +1455,10 @@ export interface RenderCutOptions {
    * every word when absent. The music still dips and sounds still land on all of them.
    */
   captionWords?: Resolved['words']
+  /** The edit's material, which a grid's panels can show (edit/grid). */
+  assets?: Asset[]
+  /** The look graphics wear, for a grid's ground and labels; the default look when absent. */
+  theme?: MotionTheme | null
 }
 
 /**
@@ -1401,6 +1470,11 @@ export function inputsFor(s: Segment): number {
   const speaker = s.reverse ? reverseSlices(s.startSec, s.srcSec ?? s.durationSec).length : 1
   // Sound read apart opens its file again, in as many slices as the picture at most.
   const sound = s.audio && !s.hold ? speaker : 0
+  // A grid opens each panel's file but its own, the ground, and the labels when it has them.
+  if (s.grid) {
+    const panels = s.grid.panels.filter((p) => p.path !== null).length
+    return speaker + sound + panels + 1 + (s.grid.labels ? 1 : 0)
+  }
   // Another camera beside or over the picture opens its own file.
   const inset = s.inset && !s.broll ? 1 : 0
   if (!s.broll) return speaker + sound + inset
@@ -1570,6 +1644,7 @@ async function checkInputs(
     if (s.broll) paths.add(s.broll.path)
     if (s.audio) paths.add(s.audio.path)
     if (s.inset) paths.add(s.inset.path)
+    for (const p of s.grid?.panels ?? []) if (p.path) paths.add(p.path)
   }
   if (logo) paths.add(logo.path)
   for (const path of more) if (path) paths.add(path)
@@ -1619,7 +1694,17 @@ export async function renderCut(
   // picture is encoded: an iPhone's HDR clip is converted as a recording is.
   const sizes = new Map<string, { width: number; height: number }>()
   const hdr = new Map<string, 'hlg' | 'pq'>()
-  const cutaways = [...new Set(cut.beats.flatMap((b) => (b.treatment.broll ? [b.treatment.broll.path] : [])))]
+  // What grids show is probed as cutaways are: an iPhone clip in a panel is converted the same way.
+  const panels = cut.beats.flatMap((b) =>
+    b.treatment.grid
+      ? gridPictures(b.treatment.grid, { id: b.source }, { sources, assets: opts.assets ?? [] }).flatMap((p) =>
+          p && !p.still ? [p.path] : []
+        )
+      : []
+  )
+  const cutaways = [
+    ...new Set([...cut.beats.flatMap((b) => (b.treatment.broll ? [b.treatment.broll.path] : [])), ...panels])
+  ]
   await Promise.all(
     cutaways.map(async (path) => {
       try {
@@ -1633,6 +1718,21 @@ export async function renderCut(
   )
   const zscale = await hasZscale(opts.ffmpeg)
   const segments = cameraSegments(cut, resolved, sources, sizes, zscale, { width, height })
+  // Beats shown as a grid (edit/grid): every panel, the ground and the labels, before the sound is read.
+  if (cut.beats.some((b) => b.treatment.grid)) {
+    await prepareGrids(segments, {
+      cut,
+      resolved,
+      sources,
+      assets: opts.assets ?? [],
+      width,
+      height,
+      design: frameSize(cut.aspect, first),
+      theme: opts.theme ?? null,
+      fontsDir: opts.fontsDir ?? null,
+      workDir: opts.workDir
+    })
+  }
   const colorOf = new Map<string, Source['color']>(sources.map((s) => [s.path, s.color]))
   // A lavalier on one input of the camera is heard in both ears.
   const heard = (s: Segment): string | null => s.audio?.path ?? (s.hasAudio ? s.path : null)
@@ -1650,6 +1750,10 @@ export async function renderCut(
     if (s.inset) {
       const convert = colorConversion(colorOf.get(s.inset.path), zscale)
       if (convert) s.inset.convert = convert
+    }
+    for (const p of s.grid?.panels ?? []) {
+      const convert = p.path ? colorConversion(colorOf.get(p.path) ?? hdr.get(p.path), zscale) : null
+      if (convert) p.convert = convert
     }
     const path = heard(s)
     const live = path ? channels.get(path) : null

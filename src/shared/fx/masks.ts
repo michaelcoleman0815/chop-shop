@@ -64,8 +64,9 @@ export interface FrameWindow {
 
 /**
  * The recording on screen at output time `t`, and the window of it the
- * frame shows; null when what shows is not a recording's own picture (a
- * cutaway, a card, another camera, a picture with no picture).
+ * frame shows; null when what shows is not a recording's own picture across
+ * the frame (a cutaway, a card, another camera, a picture with no picture, a
+ * grid of panels).
  */
 export function pictureWindow(
   cut: Cut,
@@ -83,7 +84,8 @@ export function pictureWindow(
   const source = sources.find((s) => s.id === piece.source)
   if (!beat || !source || source.width <= 0 || source.height <= 0) return null
   const tr = beat.treatment
-  if (tr.frame !== 'speaker' || (tr.angle && tr.angle.source)) return null
+  // A grid shows the recording in a panel, not across the frame (edit/grid): no cut-out lines up with it.
+  if (tr.frame !== 'speaker' || (tr.angle && tr.angle.source) || tr.grid) return null
   const frameAspect = frame.width / Math.max(1, frame.height)
   const sourceAspect = source.width / source.height
   let win: FrameWindow['window']
@@ -229,7 +231,7 @@ export function cutoutsDuring(
     const span = pictureSpan(p)
     if (span.outEnd <= start || span.outStart >= end) continue
     const beat = cut.beats.find((b) => b.id === p.beat)
-    if (!beat || beat.treatment.frame !== 'speaker') continue
+    if (!beat || beat.treatment.frame !== 'speaker' || beat.treatment.grid) continue
     const source = sources.find((s) => s.id === p.source)
     if (!source) continue
     const lo = Math.min(span.srcStart, span.srcEnd)

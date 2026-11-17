@@ -1090,11 +1090,13 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
     return
   }
 
-  // Letters go one at a time when they move on their own, or when the font's tracking spaces them.
+  // Letters go one at a time when they move on their own, when the font's tracking spaces them,
+  // or when digits must sit in the tabular columns layout gave them, so a count never wobbles.
   const charLevel =
     (layer.animators ?? []).some((a) => a.by === 'char' || a.from.tracking !== undefined) ||
     !!layer.cursor ||
-    (layer.font.tracking ?? 0) !== 0
+    (layer.font.tracking ?? 0) !== 0 ||
+    !!layer.font.tabular
   const strokeW = layer.stroke ? num(layer.stroke.width, local, length, 0) : 0
   const mids = block.lines.map((line) => {
     const first = block.words[line.words[0]]
@@ -1102,6 +1104,8 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
     return first && last ? (first.charStart + last.charStart + last.chars.length - 1) / 2 : 0
   })
 
+  // The spoken word's box, and how far it has come onto its word: the ink of both words follows it.
+  const onBox = layer.active?.box && frame.active >= 0 ? boxProgress(layer, block, frame, local) : null
   withEffects(ctx, glyphEffects, (pass, override) => {
     for (const line of block.lines) {
       const lu = frame.lines[line.index]
@@ -1117,12 +1121,19 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
         const isActive = wi === frame.active
         const activeScale = isActive && layer.active?.scale ? layer.active.scale : 1
         ctx.save()
+        // The spoken word's box is its ground: it casts no shadow onto it.
+        if (pass === 'shadow' && isActive && layer.active?.box) clearShadow(ctx)
         unitTransform(ctx, { ...wu, scale: wu.scale * activeScale }, word.x + word.w / 2, word.baseline - word.cap / 2)
         if (wu.clip || wu.wipe < 0.999) clipBox(ctx, word.x, line.top, word.w, line.height, wu, word.size)
         const blurred = wu.blur + lu.blur
         ctx.font = word.font
-        let fill: string | CanvasGradient = layer.spans?.[word.span]?.color ?? baseFill
-        if (isActive && layer.active?.color) fill = layer.active.color
+        const plain: string | CanvasGradient = layer.spans?.[word.span]?.color ?? baseFill
+        let fill = plain
+        const spoken = layer.active?.color
+        if (spoken && isActive) fill = onBox && typeof plain === 'string' ? mixColor(plain, spoken, onBox.p) : spoken
+        // The word the box is leaving keeps the spoken ink until the box has gone from under it.
+        else if (spoken && onBox?.slides && wi === frame.active - 1 && typeof plain === 'string')
+          fill = mixColor(spoken, plain, onBox.p)
         if (typeof fill === 'string') fill = tinted(tinted(fill, lu), wu)
         // Blurred letters go through a shadow; a gradient fill cannot, so it takes the filter.
         const soft = (b: number): boolean => b > 0.01 && pass !== 'glow' && typeof fill === 'string'
@@ -1153,8 +1164,10 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
             const cu = frame.chars[gi]
             const a = alpha * cu.opacity
             if (a <= 0.002 || cu.scale === 0) return
-            // Tracking spreads characters out from the middle of their line.
-            const cx = word.x + c.x + (tracking + cu.tracking) * (gi - mid)
+            // Tracking spreads characters out from the middle of their line. A tabular
+            // digit is centred in its column, as faces with tabular figures draw them.
+            const column = layer.font.tabular && /\d/.test(c.ch) ? (c.w - st.measure(word.font, c.ch)) / 2 : 0
+            const cx = word.x + c.x + column + (tracking + cu.tracking) * (gi - mid)
             ctx.save()
             unitTransform(ctx, cu, cx + c.w / 2, word.baseline - word.cap / 2)
             if (cu.clip || cu.wipe < 0.999) clipBox(ctx, cx, line.top, c.w, line.height, cu, word.size)
@@ -1281,7 +1294,6 @@ function drawActiveBox(
 ): void {
   const spec = layer.active?.box
   if (!spec) return
-  const spans = layer.spans ?? []
   const rect = (w: WordBox): Box => {
     const padX = spec.padX ?? w.size * 0.16
     const padY = spec.padY ?? w.size * 0.14
@@ -1293,31 +1305,36 @@ function drawActiveBox(
   const lu = frame.lines[cur.line]
   const alpha = opacity * wu.opacity * lu.opacity
   if (alpha <= 0.01) return
-  const t0 = spans[cur.span]?.t ?? 0
-  const move = spec.move ?? 0.12
-  const raw = move <= 0 ? 1 : (local - t0) / move
+  const { p, slides } = boxProgress(layer, block, frame, local)
   const prev = frame.active > 0 ? block.words[frame.active - 1] : undefined
   const to = rect(cur)
   let r = to
-  let s = 1
-  if (prev && prev.line === cur.line) {
+  let a = alpha
+  // Along a line it slides from the word before; onto a new line or a new page it fades in where it is.
+  if (slides && prev) {
     const from = rect(prev)
-    const p = ease('snap', raw)
     r = { x: from.x + (to.x - from.x) * p, y: to.y, w: from.w + (to.w - from.w) * p, h: to.h }
-  } else s = Math.max(0, ease('overshoot', raw))
-  if (s <= 0.001) return
+  } else a = alpha * p
+  if (a <= 0.01) return
   ctx.save()
-  const cx = r.x + r.w / 2
-  const cy = r.y + r.h / 2
-  ctx.translate(cx + lu.x, cy + lu.y)
-  ctx.scale(s, s)
-  ctx.translate(-cx, -cy)
-  ctx.globalAlpha = alpha
+  ctx.translate(lu.x, lu.y)
+  ctx.globalAlpha = a
   ctx.fillStyle = spec.color
   ctx.beginPath()
   ctx.roundRect(r.x, r.y, r.w, r.h, Math.min(spec.radius ?? cur.size * 0.18, r.h / 2))
   ctx.fill()
   ctx.restore()
+}
+
+/** How far the spoken word's box has come onto its word, 0 to 1, eased, and whether it slides from the word before. */
+function boxProgress(layer: TextLayer, block: TextBlock, frame: TextFrame, local: number): { p: number; slides: boolean } {
+  const cur = block.words[frame.active]
+  const spec = layer.active?.box
+  if (!cur || !spec) return { p: 1, slides: false }
+  const t0 = layer.spans?.[cur.span]?.t ?? 0
+  const move = spec.move ?? 0.12
+  const prev = frame.active > 0 ? block.words[frame.active - 1] : undefined
+  return { p: move <= 0 ? 1 : ease('snap', (local - t0) / move), slides: !!prev && prev.line === cur.line }
 }
 
 function drawCursor(

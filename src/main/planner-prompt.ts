@@ -4,12 +4,14 @@ import {
   currentCut,
   currentVersion,
   describeLook,
+  gridLine,
   FILL_MODES,
   fillMode,
   indexWords,
   ANGLE_LAYOUTS,
   LOOK_SETTINGS,
   NAMED_LOOKS,
+  plannedGrid,
   noteBeats,
   rangeTimes,
   resolveCut,
@@ -69,7 +71,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"join","beat":"b4"}: join a beat with the one after it. Only when they sit together in the recording.
 - {"op":"insert","to":2,"beat":{"source":"s1","from":"w40","to":"w52"}}: bring words back as a new beat.
 - {"op":"treat","beats":["b2","b5"],"set":{"bw":true}}: set treatment fields. A bigWord set names exactly one beat.
-- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest; "preset":"clean" goes back to plain subtitles.
+- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest; "preset":"boxed" for drawn captions a few words at a time with the word being said in a solid box of the brand's accent; "preset":"clean" goes back to plain subtitles.
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
 - {"op":"aspect","aspect":"vertical"}: vertical, wide, square or original.
 - {"op":"loudness","lufs":-14}.
@@ -96,6 +98,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"sync","source":"s2","of":"s1","offsetSec":1.25}: lines a camera up with its recording: what s1 shows at t, s2 shows at t + offsetSec. Only when asked to move it; "of":"" takes the camera out of the edit.
 - {"op":"reframe","on":true}: cropped to a narrower frame (a wide recording made vertical), the picture follows the speaker instead of keeping the middle; false keeps the middle. It follows recordings the transcript marks speaker="found"; for any other, say /reframe finds the speaker.
 - {"op":"framing","beats":["b4"],"x":0.25}: frames beats by hand when cropped: 0 is the recording's left edge, 0.5 its middle, 1 its right; -1 follows the speaker again.
+- {"op":"grid","beats":["b4"],"panels":[{"show":"","label":"Raw","inSec":0},{"show":"a2","label":"Edited","inSec":0}],"sound":""}: shows a beat as two to four videos at once, side by side on a soft ground, each with a small label (one to three words, or ""). "show":"" is the beat's own picture; otherwise a recording (s2) or material (a2) by id, from inSec seconds into it. "sound":"" keeps the beat's own sound, "1" to "4" plays that panel's instead, "music" leaves only the music. "panels":[] takes the grid away.
 - {"op":"fill","mode":"black"}: how a picture of another shape than the frame fills it. "auto" is what a new edit does unless asked: a picture taller than the frame (an upright phone clip in a wide video), a still or a screen recording shows whole on a blurred copy of itself, and other footage is cropped to fill the frame, as Shorts and Reels expect. "blur" shows every picture of another shape whole on a blurred copy, "black" between black bars, "crop" cropped to fill the frame. Someone talking whose recording is wider than the frame is always cropped to them.
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
 
@@ -116,6 +119,7 @@ ${fxGuide()}
 - Camera moves keep stills and long held shots alive: a ken-burns or drift on a product still, a drift on a long talking beat. Put a move on fewer than half the beats unless asked, and never two kinds in a row on the same picture.
 - Add sound effects only when asked, sparingly: a whoosh through a whip or push transition, a hit on a hard cut to something new, a riser into a new section, a pop on a big word. Never one on every cut.
 - Switch to another camera only when asked, or when asked for variety: at a change of thought, never mid-sentence, and back to the recording often enough that it stays the main view. "pip" and "side" suit a reaction or a second person.
+- Show videos in a grid only when asked, or when the words set finished videos or takes side by side ("here are four edits of the same clip"). A grid covers its whole beat, as a cutaway does, so split first and give it only the words that show them.
 - Make chapters only when asked. Start one where the subject changes, and name it in two to five words for what that part is about, never a whole sentence.
 - Leave the colour alone unless asked. For tech and product videos, "clean" keeps colour true; save warm, cool, cinematic and vintage for when someone asks for a mood.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
@@ -206,7 +210,7 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
       wordsPerScreen: z.number().optional(),
       position: z.enum(['top', 'middle', 'chest', 'bottom']).optional(),
       uppercase: z.boolean().optional(),
-      preset: z.enum(['clean', 'hierarchy']).optional()
+      preset: z.enum(['clean', 'hierarchy', 'boxed']).optional()
     })
   }),
   z.object({
@@ -282,6 +286,12 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   // Graphics. Every slot is required, so the schema spends nothing from the
   // structured-output limits on optional or union-typed parameters; an empty
   // slot means the template's default (or, in an update, no change).
+  z.object({
+    op: z.literal('grid'),
+    beats: z.array(z.string()),
+    panels: z.array(z.object({ show: z.string(), label: z.string(), inSec: z.number() })),
+    sound: z.enum(['', 'music', '1', '2', '3', '4'])
+  }),
   z.object({ op: z.literal('motion-add'), kind: z.enum(GRAPHIC_KINDS), ...graphicSlots() }),
   z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
   z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) }),
@@ -345,6 +355,8 @@ export function fromPlannerOp(op: PlannerOp): unknown {
       return op.of ? op : { op: op.op, source: op.source, of: null }
     case 'framing':
       return { op: op.op, beats: op.beats, x: op.x >= 0 && op.x <= 1 ? op.x : null }
+    case 'grid':
+      return { op: 'treat', beats: op.beats, set: { grid: plannedGrid(op) } }
     case 'look': {
       if (op.off) return { op: op.op, set: null }
       // A named look comes with its own settings; what the planner names goes over them.
@@ -560,6 +572,7 @@ export function renderRequest(
       t.captions === false ? 'no captions' : null,
       t.broll?.camera ? `cutaway camera ${describeCamera(t.broll.camera)}` : null,
       t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null,
+      t.grid ? gridLine(t.grid) : null,
       beat.sfx?.length
         ? `sounds ${beat.sfx.map((s) => `${sfxName(s)}${s.word ? ` on ${s.word}` : ''}`).join(', ')}`
         : null
@@ -592,6 +605,8 @@ export function renderRequest(
     for (const beat of cut.beats) {
       const id = beat.treatment.broll ? byPath.get(beat.treatment.broll.path) : undefined
       if (id) shows.set(id, [...(shows.get(id) ?? []), beat.id])
+      for (const p of beat.treatment.grid?.panels ?? [])
+        if (doc.assets.some((a) => a.id === p.show)) shows.set(p.show, [...(shows.get(p.show) ?? []), beat.id])
     }
     // A picture a graphic shows is shown by that graphic.
     for (const m of cut.motion ?? [])

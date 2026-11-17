@@ -2423,6 +2423,28 @@ button:disabled {
   overflow: hidden;
 }
 
+/* A beat shown as a grid (GridPanels): each panel in its box, the ground and labels drawn over them. */
+.cl-grid,
+.cl-grid-plate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cl-grid-panel {
+  position: absolute;
+  overflow: hidden;
+}
+
+.cl-grid-panel img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* ---------- Lined Script ---------- */
 
 /* A long brand name gives way before the header does. */
@@ -3355,7 +3377,8 @@ button:disabled {
   place-items: center;
 }
 
-.cl-swatch {
+/* The avatar's colour, a dot in its picker button; the Brand page's colour fields use .cl-swatch as a label. */
+.cl-pick-colours .cl-swatch {
   width: 28px;
   height: 28px;
   border-radius: 50%;

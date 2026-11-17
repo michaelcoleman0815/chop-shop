@@ -163,6 +163,7 @@ import { renderFailure } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import { useMake } from './useMake'
 import { makeName } from '../../../shared/make/brief'
+import { SHOWCASE_ENTRIES, useShowcase, type Showcase } from './useShowcase'
 import {
   brandTag,
   remember,
@@ -396,7 +397,7 @@ const MOTION_ENTRIES: Preset[] = motionCommandEntries().map((c) => ({
 /** Scene effects (shared/fx): each command puts one on the word under the playhead. */
 const FX_ENTRIES: Preset[] = fxCommandEntries().map((c) => ({ ...c, builtIn: true, style: {}, inspiration: null }))
 // Commands that act rather than set a style; what follows them is theirs, not the planner's.
-const ACTION_NAMES = new Set([...ACTION_COMMANDS, ...MOTION_ENTRIES, ...FX_ENTRIES].map((c) => c.command))
+const ACTION_NAMES = new Set([...ACTION_COMMANDS, ...MOTION_ENTRIES, ...FX_ENTRIES, ...SHOWCASE_ENTRIES].map((c) => c.command))
 
 /** An icon drawn into a PNG, as base64, at the size the renderer will scale from. */
 async function rasterize(svg: string, size = 1024): Promise<string> {
@@ -635,6 +636,7 @@ export function useCutalong() {
       ...SKILL_PRESETS,
       ...MOTION_ENTRIES,
       ...FX_ENTRIES,
+      ...SHOWCASE_ENTRIES,
       ...saved
     ]
   }, [saved, inChat])
@@ -1079,6 +1081,9 @@ export function useCutalong() {
     (left: NeverItem[] = leftOut.current): string => (left.length ? neverLeftOut(brandInSentence(brandNow()), left) : ''),
     [brandNow]
   )
+
+  // Grids and the talking-head graphics (useShowcase), made below once the commands it runs exist.
+  const showcaseRef = useRef<Showcase | null>(null)
 
   // Vlogs: a day of clips told as a story (useVlog), called in from submit, ask, commandNow and applyNotes.
   const vlog = useVlog({
@@ -3003,6 +3008,8 @@ export function useCutalong() {
         else push({ role: 'assistant', text })
         return
       }
+      // A grid, video cards from links, and chips with their icons (useShowcase).
+      if (await showcaseRef.current?.command(command, where, rest, at, beat)) return
       if (command === 'cut') {
         cutBeats(picked ?? (beat ? [beat] : []), where)
         return
@@ -3265,6 +3272,20 @@ export function useCutalong() {
     },
     [during, commandNow, keyOpen, stopped]
   )
+
+  // Grids from files, video cards from links, and chips with their icons (useShowcase).
+  const showcase = useShowcase({
+    docRef,
+    setDoc,
+    setMediaUrl,
+    push,
+    patch,
+    setPanel,
+    applyAsVersion,
+    placeGraphic,
+    logoNames: () => brandNow().logos.map((l) => l.name)
+  })
+  showcaseRef.current = showcase
 
   const studyLink = useCallback(
     async (url: string): Promise<void> => {
@@ -3802,22 +3823,42 @@ export function useCutalong() {
         const recordings = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
         const stills = attachments.filter((a) => isImagePath(a.name))
         const materialBefore = docRef.current?.assets.length ?? 0
+        // Videos dropped in to play at once, in a grid (useShowcase): with /grid, or a grid as Claude read the words.
+        const gridded =
+          recordings.length + stills.length > 1 &&
+          (command?.command === 'grid' || (!command && route?.route === 'grid')) &&
+          (await showcase.files([...recordings, ...stills], command?.command === 'grid' ? command.rest : ''))
         // A day of clips to tell as a story (useVlog): every clip is material with its own sound.
-        const vlogged = vlog.wanted(command?.command ?? null, recordings, route?.route === 'vlog')
+        const vlogged = !gridded && vlog.wanted(command?.command ?? null, recordings, route?.route === 'vlog')
         if (vlogged && (await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words))) {
           // Its story is made in main; whatever the brand never uses comes out as the next version.
           const made = docRef.current
           if (made && stripDoc(made, neverOf(brandNow().id)).ops.length > 0) stripNever('thread')
+        } else if (gridded) {
+          // The grid's own reply says what it made.
         } else if (recordings.length > 0) await takeIn(recordings, said)
-        // The edit began with this message: its words shape the version it was made with.
-        const started = !before && docRef.current !== null && !vlogged
+        // The edit began with this message: its words shape the version it was made with. A grid made from the
+        // files is already a version of its own, with its own summary, so what Claude does with the words
+        // (labels, whose sound) is the next one rather than added onto it.
+        const started = !before && docRef.current !== null && !vlogged && !gridded
         if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
-        if (stills.length > 0) {
+        if (stills.length > 0 && !gridded) {
           if (docRef.current) await addMaterial(stills)
           else push({ role: 'assistant', text: 'Drop your footage too, and these go into the edit with it.' })
         }
         let asked = false
-        if (link && command?.command !== 'screenshot' && command?.command !== 'phone') {
+        if (route?.link === 'cards' && link) {
+          // Videos to show as cards, as Claude read the words: every link in the message, each read from its
+          // page and never downloaded (useShowcase).
+          const links = [...new Set(text.match(/https?:\/\/[^\s<>"']+/gi) ?? [link])]
+          await showcase.command('videos', 'thread', links.join(' '), null, null)
+          asked = true
+        } else if (
+          link &&
+          command?.command !== 'screenshot' &&
+          command?.command !== 'phone' &&
+          !showcase.ownsLinks(command?.command ?? null)
+        ) {
           // What a link is for, as Claude read the words with it; a link alone with a time, or a picture, is material.
           const range = parseRange(text)
           const how =
@@ -3842,7 +3883,10 @@ export function useCutalong() {
           const shown = new Set(assetsInCut(d).map((a) => a.id))
           return d.assets.slice(materialBefore).some((a) => !shown.has(a.id))
         }
-        if (command && !(vlogged && command.command === 'vlog')) {
+        if (gridded && command) {
+          // Made from the files with /grid: nothing more to run. A grid Claude read from the words goes on
+          // below, where the same words (labels, whose sound) go to Claude for the next version.
+        } else if (command && !(vlogged && command.command === 'vlog')) {
           // A command the brand never uses is answered as that; its words are not asked for another way.
           const ruled = ruledCommand(command.command, command.rest)
           await runCommand(command.command, 'thread', command.rest)
@@ -3898,6 +3942,7 @@ export function useCutalong() {
       readAsk,
       ruledCommand,
       runCommand,
+      showcase,
       stopped,
       stripNever,
       studyLink,

@@ -48,10 +48,11 @@ const POSITIONS = [
   ['bottom', 'Low']
 ] as const
 
-/** Subtitles, or captions the graphics draw: two lines, the key words big. */
+/** Subtitles, or captions the graphics draw: two lines with the key words big, or the word being said in a box. */
 const LOOKS = [
   ['clean', 'Subtitles'],
-  ['hierarchy', 'Hierarchy']
+  ['hierarchy', 'Hierarchy'],
+  ['boxed', 'Boxed']
 ] as const
 
 /**
@@ -479,7 +480,7 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
               <span>Captions</span>
               <div className="cl-segments" role="radiogroup" aria-label="Caption look">
                 {LOOKS.map(([value, label]) => {
-                  const on = (caption.preset === 'hierarchy' ? 'hierarchy' : 'clean') === value
+                  const on = (LOOKS.some(([v]) => v === caption.preset) ? caption.preset : 'clean') === value
                   return (
                     <button
                       key={value}
