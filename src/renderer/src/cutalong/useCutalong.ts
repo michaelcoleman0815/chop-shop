@@ -87,7 +87,7 @@ import {
   type Camera
 } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
-import { mouthForNiche, readMouthMode, setMouthModeAll } from '../../../shared/vision'
+import { mouthForNiche, setMouthModeAll } from '../../../shared/vision'
 import { brandPreset, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
 import {
   addBrand,
@@ -125,7 +125,7 @@ import {
   bringBack,
   DEFAULT_PROFILE,
   needsTopics,
-  parseLengthAsk,
+  readLengthCommand,
   planLength,
   topicName,
   type LengthAsk,
@@ -152,7 +152,7 @@ import {
   type ClaudeKeyStatus
 } from '../../../shared/setup'
 import type { PlannedCommand } from '../../../shared/plan/commands'
-import { carrySteps, composeReply, Gathered, runCommandStep, type CommandRunners, type PanelLike } from './carry'
+import { carrySteps, composeReply, Gathered, runCommandStep, type CommandRunners } from './carry'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
@@ -416,9 +416,8 @@ const uid = (): string => `m${Date.now().toString(36)}${(counter++).toString(36)
 /** What placing material asks the planner, when the person dropped it in without a word. */
 const PLACE_MATERIAL = 'Put the material I just brought in where it fits what I am saying.'
 
-/** Words that ask for the page at a link to be shown, rather than its video learned from. */
-const SHOW_PAGE =
-  /\b(screenshot|screen shot|capture|on screen|show (?:the|this|my|our|their|a) (?:page|post|tweet|profile|site|website|thread|article|listing|review))\b/i
+/** The actions that change the edit or bring something into it: they wait for a working key. */
+const CHANGES: ReadonlySet<Action['kind']> = new Set(['use-style', 'strip-never', 'add-clip', 'add-icon', 'sign-in'])
 
 /** "a", "a and b", "a, b and c". */
 function listOf(names: string[]): string {
@@ -554,6 +553,11 @@ export function useCutalong() {
     if (keyCheck.current) await keyCheck.current
     return gateOpen(keyRef.current)
   }, [])
+  /** Why something cannot start yet, in one sentence, or null when it can. */
+  const keyBlocks = useCallback(
+    async (what: Blocked): Promise<string | null> => ((await keyOpen()) ? null : blockedSentence(what, keyRef.current)),
+    [keyOpen]
+  )
   /** The graphic selected in the editor, by id. */
   const [graphic, setGraphic] = useState<string | null>(null)
   // A brand per channel (shared/brands): the list, the one this chat is in, and the one the Brand page shows.
@@ -592,7 +596,7 @@ export function useCutalong() {
   studyRef.current = study
 
   // Each brand learns from its own videos: the Brand page's.
-  const learn = useLearn(brand.id)
+  const learn = useLearn(brand.id, keyBlocks)
 
   /** The brand this chat is in: its edit's (shared/brands brandOfCut, as main reads it), else the chat's choice, else the default. */
   const inChat = useMemo(
@@ -769,7 +773,12 @@ export function useCutalong() {
       setPanel(null)
     },
     // Clips are made in the chat's brand, as the chat shows it.
-    brand: () => brandNow().id
+    brand: () => brandNow().id,
+    gate: async (what) => {
+      if (await keyOpen()) return true
+      stopped(what)
+      return false
+    }
   })
 
   useEffect(() => {
@@ -850,6 +859,11 @@ export function useCutalong() {
 
   const learnFrom = useCallback(
     async (paths: string[]): Promise<void> => {
+      const stop = await keyBlocks('learn')
+      if (stop) {
+        setToast({ text: stop, error: true })
+        return
+      }
       // What is learned from a brand's own videos stays with that brand, even if the page moves on.
       const forBrand = brand.id
       setBrandProgress({ stage: 'Watching your videos', percent: 0 })
@@ -2758,11 +2772,10 @@ export function useCutalong() {
           if (first.some((o) => o.op === 'remove' || o.op === 'strike')) firstSaid = why ? `I cut ${why}.` : null
           else if (first.length === 0) asides.push(r.reply)
           asides.push(...r.needs, ...r.rejected)
-        } else if (r.needsKey) {
-          asides.push(
-            'Cutting by topic needs Claude to follow what you talk about, and there is no Anthropic key in Settings, so the topics stay as they are.'
-          )
-        } else asides.push(r.message)
+        } else {
+          noteKey(r.keyState)
+          asides.push(r.message)
+        }
       }
       // Only a topic was asked, and nothing came of it: the reason is the whole answer.
       const topicsOnly = asked.targetSec === undefined && !asked.range && !asked.intro && !asked.keepAll
@@ -2786,7 +2799,7 @@ export function useCutalong() {
       const aside = [plan.note ?? '', ...asides].map((t) => sentence(t)).filter(Boolean).join(' ') || null
       return { n: done.n, said: say(`v${done.n} is ready. ${done.summary}`, aside, true), met: true }
     },
-    [applyAsVersion, during, patch, push]
+    [applyAsVersion, during, noteKey, patch, push]
   )
 
   /** /length: a length, a range, the intro out, or every line kept; a vlog's story told to it. */
@@ -2805,7 +2818,7 @@ export function useCutalong() {
         await vlog.retell(rest, where)
         return
       }
-      const asked = rest.trim() ? parseLengthAsk(rest, { command: true }) : null
+      const asked = rest.trim() ? readLengthCommand(rest) : null
       if (!asked) {
         const now = resolveCut(currentCut(d), d.words, d.sources).durationSec
         say(
@@ -3814,16 +3827,9 @@ export function useCutalong() {
     [push, studyGone]
   )
 
-  const onAction = useCallback(
+  /** An action's own work, once it may run. */
+  const act = useCallback(
     (a: Action): void => {
-      if (a.kind === 'setup-key') {
-        setScreen('start')
-        return
-      }
-      if (a.kind === 'say' && a.payload) {
-        void submit(a.payload, [])
-        return
-      }
       if (a.kind === 'open-editor') setScreen('editor')
       else if (a.kind === 'open-settings') setScreen('settings')
       else if (a.kind === 'use-style') useStyle()
@@ -3852,6 +3858,29 @@ export function useCutalong() {
       }
     },
     [addIcon, bringIn, during, runCommand, saveStyle, stripNever, useStyle]
+  )
+
+  const onAction = useCallback(
+    (a: Action): void => {
+      if (a.kind === 'setup-key') {
+        setScreen('start')
+        return
+      }
+      if (a.kind === 'say' && a.payload) {
+        void submit(a.payload, [])
+        return
+      }
+      // What changes the edit or brings something in waits for a working key, like everything else.
+      if (CHANGES.has(a.kind)) {
+        void keyOpen().then((open) => {
+          if (open) act(a)
+          else stopped('edit')
+        })
+        return
+      }
+      act(a)
+    },
+    [act, keyOpen, stopped, submit]
   )
 
   // ---------- Editor ----------

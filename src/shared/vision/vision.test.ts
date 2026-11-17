@@ -15,7 +15,7 @@ import { cutInAt, cutOutAt } from './cuts'
 import { boxAt, linkFaces, planCrops, sendcmdScript, type FaceSample } from './faces'
 import { retakeHints } from './hints'
 import { MouthMeter, type RawMouth } from './meter'
-import { MOUTH_BY_NICHE, mouthModeFor, neverWatches, nicheFrom, nicheKey, readMouthMode, type MouthMode } from './mode'
+import { MOUTH_BY_NICHE, mouthModeFor, neverWatches, nicheFrom, nicheKey, type MouthMode } from './mode'
 import { heardFrom, shiftEnvelope, shiftWords, syncNotice } from './offset'
 import { PROFILES } from '../raw/profiles'
 import { offCameraLine } from './speakers'
@@ -148,25 +148,6 @@ describe('mouth watching by niche', () => {
       'reaction-commentary',
       'sports'
     ])
-  })
-
-  it('takes a sentence that sets it, and leaves every other request to the planner', () => {
-    expect(readMouthMode('Time my cuts to the sound only')).toBe('sync')
-    expect(readMouthMode("don't cut on my mouth")).toBe('sync')
-    expect(readMouthMode('Stop watching my mouth')).toBe('off')
-    expect(readMouthMode('leave the audio as recorded')).toBe('off')
-    expect(readMouthMode('time the cuts to my mouth', 'sync')).toBe('cuts+sync')
-    // Lining up the sound turns the sync on without touching cut timing.
-    expect(readMouthMode('line up my audio', 'off')).toBe('sync')
-    expect(readMouthMode('line up my audio', 'cuts+sync')).toBe('cuts+sync')
-    for (const other of [
-      'remove the part about lip sync',
-      'cut the line where I say sync',
-      'make it snappy',
-      'tighten the pauses'
-    ]) {
-      expect(readMouthMode(other)).toBeNull()
-    }
   })
 })
 

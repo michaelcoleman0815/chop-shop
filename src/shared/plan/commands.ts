@@ -96,7 +96,7 @@ export const PLAN_COMMANDS = [
   },
   {
     op: 'profile',
-    teach: `what kind of video this is, when the person says, which changes how pauses and takes are cut: {"op":"profile","kind":"podcast"}. Kinds: ${PROFILE_IDS.join(', ')}.`,
+    teach: `what kind of video this is, when the person says, which changes how pauses and takes are cut: {"op":"profile","kind":"podcast"}. Kinds: ${PROFILE_IDS.join(', ')}. A kind not among them (a cooking video, a wedding) gets no step: say in the reply that Cutalong cuts it as a talking head for now.`,
     slots: { kind: z.enum(PROFILE_IDS) }
   },
   {

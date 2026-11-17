@@ -129,7 +129,7 @@ export function keyStatus(state: ClaudeKeyState, confirmed = false, key?: string
 }
 
 /** What someone was trying to do when the gate stopped them, for the sentence that says so. */
-export type Blocked = 'footage' | 'words' | 'command' | 'notes' | 'export' | 'link'
+export type Blocked = 'footage' | 'words' | 'command' | 'notes' | 'export' | 'link' | 'edit' | 'learn'
 
 const DOING: Record<Blocked, string> = {
   footage: 'read footage',
@@ -137,7 +137,9 @@ const DOING: Record<Blocked, string> = {
   command: 'run a command',
   notes: 'carry out notes',
   export: 'export',
-  link: 'open a link'
+  link: 'open a link',
+  edit: 'change the edit',
+  learn: 'learn from your videos'
 }
 
 /**

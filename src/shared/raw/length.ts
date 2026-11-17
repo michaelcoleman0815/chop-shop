@@ -13,9 +13,10 @@ import { FUNCTION_WORDS, isFiller, normWord } from './text'
  * A length asked of a talking head, a podcast or any other edit that is not a
  * vlog: "make it 10 minutes", "cut it to 60 seconds", "about 8 to 10
  * minutes", "remove my intro", "keep the full argument", "focus on the
- * battery, cut the tangent about the conference". Vlogs tell their story
- * again for these (shared/vlog); everything else is cut here, on this
- * computer, without Claude.
+ * battery, cut the tangent about the conference". Claude reads such words
+ * and asks for a length with the planner's length step; /length's own words
+ * are read here. Vlogs tell their story again for these (shared/vlog);
+ * everything else is cut here, on this computer.
  *
  * Cutting toward a length goes from the least loss to the most: the retakes
  * and false starts, then the pauses, then the weakest lines. Lines are
@@ -45,34 +46,10 @@ export interface LengthAsk {
   focus?: string
   /** Topics to cut, in the person's words. */
   cut: string[]
-  /** What else the sentence asks, in its own words, for the planner once the length is cut: "add captions". */
-  rest?: string
 }
 
 const UNIT = String.raw`(minutes?|mins?|m|seconds?|secs?|s)`
 
-/**
- * What a length can be said of: the whole video, by name or as "it". A part,
- * a title, a fade or the music is not the video, so its length is the
- * planner's to read.
- */
-const WHOLE = String.raw`(?:(?:the|this|my|your) (?:whole |entire |final |full )?(?:video|edit|cut|thing|episode|podcast|talk|vlog|short|reel|piece|film|recording)|the whole thing|everything)`
-const PRONOUN = String.raw`(?:it|this)`
-/** Words between "make it" and the length: "make it all the way down to about", "get it under". */
-const BETWEEN = String.raw`(?:\s+(?:all|the way|back|down|up|to|into|at|under|below|about|around|roughly|approximately|exactly|just|only|no more than|no longer than|less than|shorter than|at most|max(?:imum)?|within|be|run|last|come in at|come to))*\s+(?:a\s+|an\s+)?$`
-const VERB = String.raw`\b(?:make|cut|trim|get|bring|keep|turn|shorten|edit|tighten|condense|reduce|chop|squeeze|pare|boil|whittle|want|need|like|have)`
-const MODAL = String.raw`\s+(?:should|must|needs? to|has to|ought to|could|can|would|will|is going to)\s+(?:be|run|last|come in at|come in under|come to|get down to|end up)`
-/** "Make the video 10 minutes", "the edit should be under a minute": a length said of the whole video by name. */
-const SAID_OF_WHOLE = new RegExp(String.raw`(?:${VERB}\s+${WHOLE}|\b${WHOLE}${MODAL})${BETWEEN}`)
-/** "Make it 10 minutes": the same of "it", which is the video only when nothing else was asked before it. */
-const SAID_OF_IT = new RegExp(String.raw`(?:${VERB}\s+${PRONOUN}|\b${PRONOUN}${MODAL})${BETWEEN}`)
-/** "A 3 minute version": the length of a cut of the whole video. */
-const VERSION_BEFORE = /\b(?:a|an)\s*$/
-const VERSION_AFTER = /^(?:[-\s]?long)?\s+(?:version|cut|edit|video|episode|short|reel)\b/
-/** A length and nothing else: "10m", "60 seconds", "about 8 to 10 minutes", "under a minute". */
-const BARE = new RegExp(
-  String.raw`^(?:about|around|roughly|approximately|exactly|just|only|under|below|less than|at most|max(?:imum)?|no more than|just under|within)?\s*(?:\d{1,2}:[0-5]\d|half a minute|(?:\d+(?:\.\d+)?|[a-z]+)(?: and a half)?\s*(?:-\s*)?${UNIT}|\d+(?:\.\d+)?\s*(?:${UNIT}\s*)?(?:to|-|–|or)\s*\d+(?:\.\d+)?\s*${UNIT})(?:\s+(?:long|max|tops|or less|or under|total|in total))?$`
-)
 /** A length that changes the length by so much rather than says it: "10 seconds shorter". */
 const RELATIVE = /^\s*(?:shorter|longer|less|more|faster|slower|off|out|quicker)\b/
 const RANGE = new RegExp(String.raw`\b(\d+(?:\.\d+)?)\s*(?:${UNIT}\s*)?(?:to|-|–|or)\s*(\d+(?:\.\d+)?)\s*${UNIT}\b`)
@@ -88,21 +65,18 @@ const INTRO = new RegExp(
 const KEEP_ALL =
   /\bkeep (?:the |my )?(?:full|whole|entire|complete) (?:argument|talk|explanation|story|message|point|points|lines|content)\b|\bkeep (?:every|each) (?:line|word|point|sentence)\b|\bkeep all (?:the |my |of the )?(?:lines|words|points|sentences)\b|^(?:only|just) tighten(?: it| this| the video| the pauses)?(?: up)?$|\bdon'?t (?:cut|drop|lose|remove) (?:any )?(?:lines|a line|a word|any words|my points?|any points|what i say)\b|\bwithout (?:cutting|losing|dropping) (?:any )?(?:lines|a line|words|points)\b/
 /** In /length, "keep all" says it alone. */
-const KEEP_ALL_COMMAND = /^(?:keep )?(?:all|everything|it all|every line|all lines|all of it)$/
+const KEEP_ALL_ALONE = /^(?:keep )?(?:all|everything|it all|every line|all lines|all of it)$/
 const TOPIC_CUT =
   /\b(?:cut|remove|drop|lose|skip|get rid of|take out)\s+(?:out\s+)?(?:the |my |that |all the )?(?:tangent|digression|aside|bit|part|section|story|rant|ramble|stuff|talk)s?\s+(?:about|on|regarding|where i (?:talk|ramble|go on) about)\s+(.+?)(?=,|;|\.|\bbut\b|\band\b|$)/g
 /** A focus said of the whole video: "make it all about the battery", "focus the video on the battery". */
 const FOCUS_WHOLE =
   /^(?:(?:make|keep) (?:it|the video|this video|the edit|the whole (?:video|thing)) (?:all |only |just )?(?:about|focused on)|focus (?:it|the video|this video|the edit|the whole (?:video|thing)) (?:only |just )?on|(?:only|just) keep (?:the )?(?:parts?|bits?|lines?) (?:about|on)) (.+)$/
-/** "Focus on the battery": the video's focus only beside a length or a topic, as it could be the camera's. */
+/** "Focus on the battery". */
 const FOCUS = /\bfocus (?:more |just |only )?on (.+?)(?=,|;|\.|\bbut\b|\band (?:cut|drop|remove|lose)\b|$)/
 /** Verbs a new ask opens with, where "and" or a comma starts another clause. */
 const OPENS = new RegExp(
   String.raw`^(?:(?:please|just|also|then|now|maybe|can you|could you)\s+)*(?:add|put|make|cut|trim|get|bring|keep|shorten|remove|drop|lose|skip|take|start|open|begin|focus|fade|speed|slow|change|turn|give|show|hold|move|zoom|crop|blur|set|use|swap|replace|mute|lower|raise|boost|include|end|finish|close|tighten|insert|split|join|play|apply|colou?r|caption|title|stabili[sz]e|reframe|cent(?:er|re)|try|do|don't|dont|go|let|leave|delete|ditch|kill|pick|choose|switch|flip|reverse|loop|freeze|punch|darken|brighten|warm|cool|sharpen|clean|fix|tidy|polish|duck|lift|pull|push|run|send|write|label|name|mark|highlight|emphasi[sz]e|animate|bump|drop)\b`
 )
-/** Words that ask nothing on their own: "ok, make it 10 minutes", "thanks". */
-const NOTHING = /^(?:hey|hi|hello|ok|okay|alright|all right|so|yeah|yes|please|thanks|thank you|cool|great|nice|now|right|well|um|uh|actually|and)(?:[\s,]+(?:hey|hi|hello|ok|okay|alright|all right|so|yeah|yes|please|thanks|thank you|cool|great|nice|now|right|well|um|uh|actually|and))*$/
-
 const clean = (s: string): string =>
   s
     .replace(/^(the|my|a|an)\s+/, '')
@@ -137,30 +111,18 @@ function clausesOf(t: string): { at: number; end: number }[] {
   return out.filter((c) => t.slice(c.at, c.end).trim())
 }
 
-/**
- * The length a clause asks the whole video to be: said of the video ("make
- * the video 10 minutes", "the edit should be under a minute"), of "it" when
- * `itIsTheVideo`, as "a 3 minute version", or a length and nothing else.
- */
-function lengthOf(clause: string, itIsTheVideo: boolean, command: boolean): Pick<LengthAsk, 'targetSec' | 'range' | 'under'> | null {
-  const bare = command || BARE.test(clause)
-  const said = (at: number, end: number): boolean => {
-    const before = clause.slice(0, at)
-    const after = clause.slice(end)
-    if (RELATIVE.test(after)) return false
-    if (bare) return true
-    if (SAID_OF_WHOLE.test(before) || (VERSION_BEFORE.test(before) && VERSION_AFTER.test(after))) return true
-    return itIsTheVideo && SAID_OF_IT.test(before)
-  }
+/** The length a clause of /length asks for, unless it changes the length by so much ("10 seconds shorter"). */
+function lengthOf(clause: string): Pick<LengthAsk, 'targetSec' | 'range' | 'under'> | null {
+  const said = (end: number): boolean => !RELATIVE.test(clause.slice(end))
   const range = RANGE.exec(clause)
-  if (range && said(range.index, range.index + range[0].length)) {
+  if (range && said(range.index + range[0].length)) {
     const k = /^m/.test(range[4]) ? 60 : 1
     const first = range[2] ? (/^m/.test(range[2]) ? 60 : 1) : k
     const a = Number(range[1]) * first
     const b = Number(range[3]) * k
     if (a > 0 && b > 0) return { range: a <= b ? [a, b] : [b, a] }
   }
-  const asked = lengthsIn(clause).find((l) => said(l.at, l.end))
+  const asked = lengthsIn(clause).find((l) => said(l.end))
   if (!asked) return null
   // "Under a minute": anything up to it will do, and a cut that runs longer is taken to just under it.
   if (UNDER.test(clause)) return { range: [Math.max(1, asked.sec * 0.9), asked.sec], under: true }
@@ -168,68 +130,31 @@ function lengthOf(clause: string, itIsTheVideo: boolean, command: boolean): Pick
 }
 
 /**
- * Reads what a sentence asks of an edit's length, its intro and its topics.
- * Null when it asks none of these. A length counts only when it is said of
- * the whole video ("make it 10 minutes", "the video should be under a
- * minute", "a 3 minute version", "10m" alone): "fade in for about 2 seconds",
- * "make the title 3 seconds long" and "make this part 10 seconds" are the
- * planner's. What else the sentence asks ("make it 60 seconds and add
- * captions") is kept as `rest`, for the planner. In /length (`command`) the
- * words are all about the length, so a length or "keep all" alone will do.
+ * Reads what /length's words ask: a length, a range or a limit ("10m",
+ * "8-10 min", "under a minute"), the intro out, every line kept, topics to
+ * cut and what to keep the focus on. Every word after the command is about
+ * the length. Null when they ask none of these.
  */
-export function parseLengthAsk(text: string, opts: { command?: boolean } = {}): LengthAsk | null {
-  const said = text
+export function readLengthCommand(text: string): LengthAsk | null {
+  const t = text
+    .toLowerCase()
     .replace(/[’]/g, "'")
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[.!?]+$/, '')
-  const t = said.toLowerCase()
   if (!t) return null
-  // The person's own words for the rest, where lower case keeps every letter where it was.
-  const own = said.length === t.length ? said : t
-  const command = !!opts.command
   const ask: LengthAsk = { cut: [] }
-  const rest: string[] = []
-  let focusBeside: string | null = null
-  let restAt = -1
-  /** Something other than the length was asked before: "it" may be that, not the video. */
-  let otherBefore = false
   for (const c of clausesOf(t)) {
     const clause = t.slice(c.at, c.end).trim()
-    let mine = false
-    if (ask.targetSec === undefined && !ask.range) {
-      // "It" is the video unless something else was asked before it: "add a fade and make it 2 seconds".
-      const length = lengthOf(clause, !otherBefore, command)
-      if (length) {
-        Object.assign(ask, length)
-        mine = true
-      }
-    }
-    if (INTRO.test(clause)) mine = ask.intro = true
-    if (KEEP_ALL.test(clause) || (command && KEEP_ALL_COMMAND.test(clause))) mine = ask.keepAll = true
+    if (ask.targetSec === undefined && !ask.range) Object.assign(ask, lengthOf(clause))
+    if (INTRO.test(clause)) ask.intro = true
+    if (KEEP_ALL.test(clause) || KEEP_ALL_ALONE.test(clause)) ask.keepAll = true
     for (const m of clause.matchAll(TOPIC_CUT)) {
       const topic = clean(m[1])
-      if (!topic) continue
-      ask.cut.push(topic)
-      mine = true
+      if (topic) ask.cut.push(topic)
     }
-    const whole = FOCUS_WHOLE.exec(clause)
-    if (whole && lengthsIn(whole[1]).length === 0) {
-      ask.focus = clean(whole[1])
-      mine = true
-    } else if (!mine) {
-      const focus = FOCUS.exec(clause)
-      if (focus) {
-        focusBeside = clean(focus[1])
-        restAt = rest.length
-        rest.push(own.slice(c.at, c.end).trim())
-        continue
-      }
-    }
-    if (!mine && !NOTHING.test(clause)) {
-      rest.push(own.slice(c.at, c.end).trim())
-      otherBefore = true
-    }
+    const focus = FOCUS_WHOLE.exec(clause) ?? FOCUS.exec(clause)
+    if (focus && lengthsIn(focus[1]).length === 0) ask.focus = clean(focus[1])
   }
   const any =
     ask.targetSec !== undefined ||
@@ -238,39 +163,12 @@ export function parseLengthAsk(text: string, opts: { command?: boolean } = {}): 
     !!ask.keepAll ||
     !!ask.focus ||
     ask.cut.length > 0
-  if (!any) return null
-  // A focus beside a length or a topic is the video's.
-  if (focusBeside && !ask.focus) {
-    ask.focus = focusBeside
-    rest.splice(restAt, 1)
-  }
-  if (rest.length) ask.rest = rest.join(', ')
-  return ask
-}
-
-/** Several notes' asks as one: the last length said, any intro or keeping every line, every topic. */
-export function mergeLengthAsks(asks: LengthAsk[]): LengthAsk {
-  const sized = [...asks].reverse().find((a) => a.targetSec !== undefined || a.range !== undefined)
-  const focus = [...asks].reverse().find((a) => a.focus)?.focus
-  return {
-    ...(sized?.targetSec !== undefined ? { targetSec: sized.targetSec } : {}),
-    ...(sized?.range ? { range: sized.range } : {}),
-    ...(sized?.under ? { under: true } : {}),
-    ...(asks.some((a) => a.intro) ? { intro: true } : {}),
-    ...(asks.some((a) => a.keepAll) ? { keepAll: true } : {}),
-    ...(focus ? { focus } : {}),
-    cut: asks.flatMap((a) => a.cut)
-  }
+  return any ? ask : null
 }
 
 /** Whether an ask needs to know what the video is about: a topic to cut or to focus on. */
 export function needsTopics(ask: LengthAsk): boolean {
   return !!ask.focus || ask.cut.length > 0
-}
-
-/** The same ask without its topics, for the part words can do alone. */
-export function withoutTopics(ask: LengthAsk): LengthAsk {
-  return { ...ask, focus: undefined, cut: [] }
 }
 
 /** What an ask wants, said back: "10:00", "8:00 to 10:00", "under 1:00". */
@@ -1062,21 +960,6 @@ export function topicName(ask: Pick<LengthAsk, 'cut' | 'focus'>): string | null 
   if (ask.cut.length) return `the ${ask.cut.length === 1 ? 'part' : 'parts'} about ${listOf(ask.cut.map((c) => c.replace(/^(the|my|a|an)\s+/i, '')).map((c) => `the ${c}`))}`
   if (ask.focus) return `what was not about ${/^(the|a|an)\s/i.test(ask.focus) ? ask.focus : `the ${ask.focus.replace(/^my\s+/i, '')}`}`
   return null
-}
-
-/** "Bring back the tangent about the conference", "put the intro back": what to bring back, in the person's words. */
-export function bringBackAsked(text: string): string | null {
-  const t = text
-    .toLowerCase()
-    .replace(/[’]/g, "'")
-    .replace(/[.!?]+$/, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^please,? /, '')
-    .replace(/,? please$/, '')
-  const m = /^(?:bring|put|add) (?:back (.+?)|(.+?) back)(?: in)?$/.exec(t)
-  const what = (m?.[1] ?? m?.[2])?.trim()
-  return what || null
 }
 
 /** Words that say which part, not what it was about. */

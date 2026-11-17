@@ -61,6 +61,8 @@ export interface ClippingDeps {
   clearEditor: () => void
   /** The chat's brand, by id, for its kind of video and caption look. */
   brand?: () => string | null
+  /** Whether work may start (an Anthropic key works); when not, it has said why. */
+  gate?: (what: 'export') => Promise<boolean>
 }
 
 /** The recordings a drop holds: footage and sound, not stills. */
@@ -286,7 +288,8 @@ export function useClipping(deps: ClippingDeps) {
    * finished clip plays in the chat the way an export does.
    */
   const exportAll = useCallback(async (): Promise<void> => {
-    const { push, setToast, during, exportingNow } = d.current
+    const { push, setToast, during, exportingNow, gate } = d.current
+    if (gate && !(await gate('export'))) return
     const wait = exportWait(exportingNow.current, { kind: 'clips' })
     if (wait) {
       // In the chat, where it stays: the toast is the running export's, and its next count would replace it.
