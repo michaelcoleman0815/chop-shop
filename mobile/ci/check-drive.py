@@ -71,10 +71,14 @@ def steps_of(label, report, expected):
             print(f"  {key}: {crew.get('rows')}; moving {crew.get('moving')}")
     for t in report.get("transitions", []):
         print(f"  view transition at {t['atSec']} s, {t['form']}: {t.get('threw') or t.get('finished') or 'running'}")
-    # A phone's plugins log each call they turn down (a file that is not there yet), so these are many and mostly that.
+    print(f"  the editor's preview had a picture: {report.get('previewReady')}")
+    # A phone's plugins log each call they turn down (a file or a key that is not there yet), so
+    # those are many: the rest are shown first, the drive's own notes among them.
     errors = report.get("errors", [])
-    print(f"  console errors: {len(errors)}{' (the first 10)' if len(errors) > 10 else ''}")
-    for e in errors[:10]:
+    turned_down = [e for e in errors if "does not exist" in e or "given key" in e]
+    rest = [e for e in errors if e not in turned_down]
+    print(f"  console errors: {len(errors)}, {len(turned_down)} of them a plugin turning down a read")
+    for e in (rest + turned_down)[:12]:
         print(f"    {e}")
     if not report.get("ok"):
         problem(f"{label} stopped: {report.get('failed')}")
