@@ -208,5 +208,8 @@ register({
     return null
   },
   build: keyword,
-  name: (call) => `a pop for ${(call.text[0] ?? '').trim() || 'a word'}`
+  name: (call) => {
+    const what = (call.text[0] ?? '').trim() || 'a word'
+    return call.style === 'chrome' || call.style === 'gold' ? `${call.style} lettering for ${what}` : `a pop for ${what}`
+  }
 })
