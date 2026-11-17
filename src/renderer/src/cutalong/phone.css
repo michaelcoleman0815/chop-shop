@@ -233,6 +233,12 @@
   line-height: 20px;
 }
 
+/* The key's field takes the step's whole width, under its number as well, so "Paste a new key to
+   replace this one" fits it at 16 px. */
+.cl-app.phone .cl-setup .cl-step-field {
+  margin-left: calc(-32px - var(--space-4));
+}
+
 /* ---------- The composer ---------- */
 
 /*
