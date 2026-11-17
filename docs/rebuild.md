@@ -52,8 +52,10 @@ Chop Shop is becoming **Cutalong**, a video editor people talk to. This page is 
 - **What differs is the host's:** the phone's hardware H.264 encoder at set bitrates in NV12; camera moves with scale and crop, as the phone's LGPL ffmpeg has no `perspective`; ffmpeg's raw output written to segment files and read back; keys in the Keychain or the Android Keystore; the screen kept on while an export runs.
 - **On the Mac for now,** each said in one sentence where it is asked for: vlogs, `/clipping`, `/premiere`, videos from links and B-roll search, motion graphics and icons, the brand and learning from edits, a second camera, following the speaker and LUT files. Planning with Ollama is not offered.
 - **What the phone sends:** the page reaches only itself and Anthropic (its content security policy); the other AI services are reached by the phone's own HTTP through the Mac's gate; the transcription model comes from whisper.cpp's published models.
+- **What it carries:** Settings ends with Licences on a phone: FFmpeg, FriBidi and the engine's fftools under the LGPL, with where their source is and how to replace them, and the rest of what the app is built with.
+- **Built and run in CI** (`.github/workflows/mobile-engine.yml`): the engines, then a debug APK and a simulator build, and on an emulator and a simulator the app's own flow from picked footage to an export measured on the runner, with a screenshot at each step. Store builds go to TestFlight and Google Play's internal track when their secrets are set.
 
-`mobile/README.md` says how to run it on this computer through the dev bridge, and what the native builds need.
+`mobile/README.md` says how to run it on this computer through the dev bridge, what the native builds need, what CI keeps, and the store secrets.
 
 ## How an edit moves
 
