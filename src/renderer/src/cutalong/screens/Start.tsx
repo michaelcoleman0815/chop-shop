@@ -23,7 +23,7 @@ export function Start({ app }: { app: Cutalong }): JSX.Element {
             <Mark size={44} />
           </span>
           <h1 className="cl-title">
-            What are we <em>making</em>?
+            What are we <span className="cl-accent">making</span>?
           </h1>
           <Composer
             placeholder="Drop footage, paste a video you like, or type /"

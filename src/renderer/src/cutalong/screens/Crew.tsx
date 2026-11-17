@@ -66,7 +66,7 @@ export function CrewPage({ app }: { app: Cutalong }): JSX.Element {
       <main className="cl-page">
         <div className="cl-page-inner wide">
           <h1 className="cl-page-title">
-            Your <em>crew</em>
+            Your <span className="cl-accent">crew</span>
           </h1>
           <p className="cl-lede">
             They do the work while I talk with you, and each learns how you like it

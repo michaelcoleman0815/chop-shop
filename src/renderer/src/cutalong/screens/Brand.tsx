@@ -276,7 +276,7 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                 {brandName(brand)}
               </h1>
               <p className="cl-lede">
-                What keeps every video <em>yours</em>. New edits get it automatically.
+                What keeps every video <span className="cl-accent">yours</span>. New edits get it automatically.
               </p>
             </div>
             <Button small aria-expanded={picking} onClick={() => setPicking((p) => !p)}>
