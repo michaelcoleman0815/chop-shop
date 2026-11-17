@@ -365,7 +365,7 @@ function Preview({
     [cut, resolved]
   )
   // Captions the graphics draw are on the canvas, not here; and captions wait while a card or title is up.
-  const carded = scene.items.some((i) => template(i.kind)?.covers === 'card' && time >= i.start && time < i.end)
+  const carded = scene.items.some((i) => i.covers === 'card' && time >= i.start && time < i.end)
   const page =
     cut.captions.on && !drawsCaptions(cut.captions) && !carded
       ? pages.find((p) => time >= p[0].outStart - 0.05 && time <= p[p.length - 1].outEnd + 0.25)

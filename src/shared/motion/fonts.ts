@@ -60,6 +60,16 @@ export const MOTION_FONTS: MotionFont[] = [
     ascent: 0.98,
     descent: 0.37,
     label: 'Cinzel, Roman capitals'
+  },
+  {
+    // Igino Marini's revival of the Fell types (SIL Open Font License): the vintage map's lettering.
+    family: 'IM Fell English',
+    file: 'IMFellEnglish-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.69,
+    ascent: 0.91,
+    descent: 0.36,
+    label: 'IM Fell English, an old-style serif'
   }
 ]
 
