@@ -9,7 +9,7 @@ import { analyzeTrack } from '../../../src/main/music'
 import { makeAllSfx, readSound } from '../../../src/main/sfx'
 import { findFocus } from '../../../src/main/focus'
 import { importFile } from '../../../src/main/asset-file'
-import { readBrand, saveBrand } from '../../../src/main/brand-store'
+import { brandOfDoc, readBrand, readBrands, saveBrand, saveBrands } from '../../../src/main/brand-store'
 import { removePreset, savedPresets, savePreset } from '../../../src/main/preset-store'
 import { createProject, openProject, recentProjects, saveProject } from '../../../src/main/projects'
 import { sceneForCut } from '../../../src/main/motion-scene'
@@ -17,6 +17,7 @@ import { phoneEncoder } from '../../../src/main/render/encoder'
 import { detectProvider } from '../../../src/shared/keys'
 import { isServiceId, type ServiceId } from '../../../src/shared/services'
 import { EMPTY_MEMORY, memoryView } from '../../../src/shared/memory'
+import { EditDocSchema } from '../../../src/shared/edit'
 import { learnState } from '../../../src/shared/learn'
 import { ON_THE_MAC } from './limits'
 import type { PhoneServices } from './services'
@@ -50,7 +51,6 @@ export function phoneWork(parts: Pick<PhoneApiParts, 'info' | 'settings' | 'serv
     ffmpeg: () => 'ffmpeg',
     ffprobe: () => 'ffprobe',
     probe: (path) => probeFile('ffprobe', path),
-    readBrand: () => readBrand(),
     whisperModel: () => parts.settings.current().whisperModel,
     outputDir: () => platform().paths.exports(),
     sfxDir: () => `${platform().paths.userData()}/sfx`,
@@ -63,7 +63,9 @@ export function phoneWork(parts: Pick<PhoneApiParts, 'info' | 'settings' | 'serv
       return { overlays: [], scene }
     },
     encoder: encoder ?? undefined,
-    perspective: false
+    perspective: false,
+    apiKey: () => platform().secrets.get('anthropic'),
+    claudeWritesUpload: () => parts.settings.current().claudeWritesUpload !== false
   }
 }
 
@@ -208,8 +210,13 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     findClips: async () => ({ ok: false as const, message: ON_THE_MAC.clipping }),
     onClipsProgress: quiet,
     clipPoster: async () => '',
-    planEdit: async (req) =>
-      planEdit({ ...req, preferences: [], logos: (await readBrand()).logos.map((l) => l.name), apiKey: await key() }),
+    // In the edit's own brand, as on the Mac. What a brand learns from chats, and its never
+    // list, are kept on the Mac for now, so a phone's plans have neither.
+    planEdit: async (req) => {
+      const parsed = EditDocSchema.safeParse(req.doc)
+      const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
+      return planEdit({ ...req, preferences: [], logos: brand.logos.map((l) => l.name), apiKey: await key() })
+    },
     studyInspiration: async () => ({ ok: false as const, message: ON_THE_MAC.study }),
     onInspirationProgress: quiet,
     listPresets: () => savedPresets(),
@@ -254,6 +261,9 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     setVideoSignIn: async () => null,
     getBrand: () => readBrand(),
     saveBrand: (brand) => saveBrand(brand),
+    // Brands are set up on the Mac for now; the phone makes edits in the default one.
+    getBrands: () => readBrands(),
+    saveBrands: (brands) => saveBrands(brands),
     learnBrand: async (paths) => ({
       learned: [],
       failed: paths.map((p) => `${p.split('/').pop()}: ${ON_THE_MAC.brand}`)

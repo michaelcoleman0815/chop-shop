@@ -5,6 +5,7 @@ import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
 import { voicedRegions } from '../shared/audio/voiced'
 import { whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
 import type { Transcript, TranscriptWord } from '../shared/types'
+import type { ToolSaid } from '../shared/failure'
 
 export type { VerbatimOptions, WhisperModel }
 
@@ -51,6 +52,9 @@ export async function downloadModel(model: WhisperModel, onProgress: (percent: n
   onProgress(100)
   return dest
 }
+
+/** What ffmpeg says when a file has no sound to take, on 6.0, 6.1 and 7.0. */
+const NO_SOUND = /does not contain any stream|matches no streams/i
 
 /** Whisper wants 16 kHz mono PCM; anything else is resampled internally anyway. */
 async function extractAudio(
@@ -120,7 +124,29 @@ async function runWhisper(bin: string, args: string[], onProgress: (percent: num
       if (match) onProgress(Number(match[1]))
     }
   })
-  if (r.code !== 0) throw new Error(stderr.trim().slice(-400) || `whisper exit ${r.code}`)
+  if (r.code !== 0) {
+    // Its last lines whole, without the progress it printed on the way.
+    const lines = stderr
+      .split('\n')
+      .map((l) => l.trimEnd())
+      .filter((l) => l.trim() && !/progress\s*=\s*\d+%/.test(l))
+    const said = lines.slice(-12).join('\n') || `whisper-cli exited with code ${r.code}.`
+    console.warn(`[stt] whisper stopped with code ${r.code}:\n${said}`)
+    throw new WhisperFailed(said)
+  }
+}
+
+/**
+ * Whisper stopped with an error. The message is a sentence anyone can read;
+ * what whisper printed (a model that would not load, a file it could not
+ * open) is kept in `said`, for Details (shared/failure).
+ */
+export class WhisperFailed extends Error implements ToolSaid {
+  readonly tool = 'whisper'
+  constructor(readonly said: string) {
+    super('The transcription model stopped before it finished.')
+    this.name = 'WhisperFailed'
+  }
 }
 
 export async function transcribe(
@@ -150,13 +176,19 @@ export async function transcribe(
   const dir = await host.files.tempDir('chopshop-stt-')
   try {
     const wav = join(dir, 'audio.wav')
-    await extractAudio(
-      videoPath,
-      wav,
-      durationSec,
-      (p) => onProgress(Math.round(p * 0.12), 'Extracting audio'),
-      startSec
-    )
+    try {
+      await extractAudio(
+        videoPath,
+        wav,
+        durationSec,
+        (p) => onProgress(Math.round(p * 0.12), 'Extracting audio'),
+        startSec
+      )
+    } catch (err) {
+      // A recording with no sound track has no words: none heard, rather than ffmpeg's own lines as the reply.
+      if (err instanceof Error && NO_SOUND.test(err.message)) return { words: [], text: '', language: 'en' }
+      throw err
+    }
 
     onProgress(12, 'Transcribing')
     const prefix = join(dir, 'out')
@@ -196,11 +228,12 @@ export async function transcribe(
       }
     }
 
-    const words: TranscriptWord[] = heard.map((w) => ({
-      text: w.text,
-      startSec: w.startSec + startSec,
-      endSec: w.endSec + startSec
-    }))
+    // whisper can let the last word run on past the end of the sound: no word ends after the audio does.
+    const length = durationSec > 0 ? durationSec : Infinity
+    const words: TranscriptWord[] = heard.map((w) => {
+      const end = Math.min(w.endSec, length)
+      return { text: w.text, startSec: Math.min(w.startSec, end) + startSec, endSec: end + startSec }
+    })
     onProgress(100, 'Done')
 
     return {

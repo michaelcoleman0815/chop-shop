@@ -27,6 +27,7 @@ import type { AudioMap } from '../shared/audio/map'
 import { aspectFor, extendShoot, shootDoc, talkStrikes, vlogMusic, withStory } from '../shared/vlog/build'
 import { emptyStory, finishShoot, mergeTalk, type HeardClip } from '../shared/vlog/compose'
 import { carryAsked, carryTold, opsFor, planLocally, reshapeOp, vlogShown, withOps } from '../shared/vlog/plan'
+import { wallClock } from '../shared/vlog/describe'
 import { leftOutSentence, scenesChanged, shapeSentence, storyReply, type VlogReply } from '../shared/vlog/reply'
 import { parseVlogAsk, type VlogAsk } from '../shared/vlog/request'
 import type { Moment, Story, Vlog } from '../shared/vlog/schema'
@@ -60,7 +61,13 @@ export interface VlogDeps {
    * (cutalong.ts readFootage): transcribed, the words snapped to the sound,
    * its sound mapped, the mouth watched. `n` makes its source id s{n}.
    */
-  readTalking: (path: string, n: number, progress: (stage: string, percent: number) => void) => Promise<TalkHeard>
+  readTalking: (
+    path: string,
+    n: number,
+    progress: (stage: string, percent: number) => void,
+    /** The chat's brand, by id, whose names are listened for; the default's when absent. */
+    brand?: string | null
+  ) => Promise<TalkHeard>
 }
 
 export type VlogResult = { ok: true; doc: EditDoc; mediaUrl: string; reply: VlogReply } | { ok: false; message: string }
@@ -78,7 +85,7 @@ const cacheDir = (): string => join(app.getPath('userData'), 'vlog')
 const AT_ONCE = 3
 
 export function registerVlogIpc(deps: VlogDeps): void {
-  ipcMain.handle('vlog:make', (e, req: { paths: string[]; request: string; doc?: unknown }) =>
+  ipcMain.handle('vlog:make', (e, req: { paths: string[]; request: string; doc?: unknown; brand?: string | null }) =>
     makeVlog(req, deps, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }))
   )
   ipcMain.handle('vlog:plan', (_e, req: { doc: unknown; request: string }) => planVlog(req))
@@ -289,7 +296,7 @@ function unmatchedSentence(words: string[]): string {
 }
 
 export async function makeVlog(
-  req: { paths: string[]; request: string; doc?: unknown },
+  req: { paths: string[]; request: string; doc?: unknown; brand?: string | null },
   deps: Pick<VlogDeps, 'readTalking' | 'mediaUrlFor'>,
   progress: ProgressFn
 ): Promise<VlogResult> {
@@ -353,7 +360,7 @@ export async function makeVlog(
         )
       at('', 0)
       try {
-        const got = await deps.readTalking(clip.path, Number(clip.id.slice(1)), at)
+        const got = await deps.readTalking(clip.path, Number(clip.id.slice(1)), at, req.brand)
         // No words: the reader's own note is about a talking-head beat; here the clip plays as a shot,
         // and is listened to again when more clips come.
         if (got.words.length === 0) notes.push(`I couldn't hear the words in ${clip.name}, so it plays as a shot.`)
@@ -466,15 +473,14 @@ export async function makeVlog(
   }
 }
 
-/** A vlog's title: what its files have in common, else the day it was shot. */
+/** A vlog's title: what its files have in common, else the day it was shot, where it was shot. */
 function titleFor(paths: string[], watched: WatchedClip[]): string {
   const first = watched
-    .map((w) => w.recordedAt)
-    .filter((t): t is string => !!t)
-    .sort((a, b) => Date.parse(a) - Date.parse(b))[0]
+    .filter((w) => !!w.recordedAt)
+    .sort((a, b) => Date.parse(a.recordedAt as string) - Date.parse(b.recordedAt as string))[0]
   if (first) {
-    const d = new Date(first)
-    return `Vlog ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
+    const d = wallClock(Date.parse(first.recordedAt as string) / 1000, first.zoneMin ?? null)
+    return `Vlog ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}`
   }
   return paths.length === 1 ? basename(paths[0], extname(paths[0])) : 'Vlog'
 }

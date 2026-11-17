@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cutalong</title>
+    <meta name="description" content="Cutalong is a video editor you talk to. Coming soon to the Mac." />
+    <link rel="canonical" href="https://cutalong.io/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ground: #f5f5f3;
+        --ink: #15161a;
+        --muted: #5e6068;
+        --coral: #ff5a36;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ground: #121316;
+          --ink: #f5f5f3;
+          --muted: #a7a9b0;
+        }
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--ground);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      main {
+        width: 100%;
+        max-width: 560px;
+      }
+      .lockup {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 700;
+        font-size: 24px;
+        letter-spacing: -0.02em;
+      }
+      .lockup svg .bar {
+        fill: var(--ink);
+      }
+      h1 {
+        font-size: clamp(34px, 7vw, 56px);
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        margin: 40px 0 16px;
+      }
+      p {
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.55;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="lockup">
+        <svg width="34" height="28" viewBox="0 0 64 52" aria-hidden="true">
+          <rect class="bar" x="2" y="4" width="44" height="18" rx="9" />
+          <rect x="18" y="30" width="42" height="16" rx="8" fill="none" stroke="#ff5a36" stroke-width="5" stroke-dasharray="7 6" />
+        </svg>
+        <span>cutalong</span>
+      </div>
+      <h1>A video editor you talk to.</h1>
+      <p>Drop your footage, say what you want, and Cutalong edits it on your Mac. Coming soon.</p>
+    </main>
+  </body>
+</html>

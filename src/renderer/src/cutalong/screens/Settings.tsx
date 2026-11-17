@@ -3,7 +3,7 @@ import { detectProvider, wrongKeyMessage } from '../../../../shared/keys'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api, device } from '../api'
 import { Button } from '../components/ui'
-import { ClaudeFrames } from './ClaudeFrames'
+import { ClaudeFrames, ClaudeWrites } from './ClaudeFrames'
 import { grow } from '../motion'
 import { Header } from './Header'
 import { OtherServices } from './OtherServices'
@@ -203,6 +203,7 @@ export function SettingsPage(): JSX.Element {
             {!device.away['feature:vlog'] && (
               <ClaudeFrames settings={settings} hasKey={saved} onSettings={setSettings} />
             )}
+            <ClaudeWrites settings={settings} hasKey={saved} onSettings={setSettings} />
           </section>
 
           {!phone && <Planning settings={settings} onSettings={setSettings} />}

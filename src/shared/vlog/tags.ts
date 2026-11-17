@@ -18,6 +18,11 @@ interface Tagged {
 export interface ShootTags {
   /** When it was recorded, as an ISO time, or null when the file does not say or says nonsense. */
   recordedAt: string | null
+  /**
+   * The time zone the camera was set to, in minutes east of UTC, when it
+   * gave one with its time (an iPhone does); null when it gave none.
+   */
+  zoneMin: number | null
   camera: string
   gps: Gps | null
 }
@@ -64,6 +69,15 @@ export function parseTime(text: string | undefined): string | null {
   return new Date(ms).toISOString()
 }
 
+/** The zone a recording time was given in, in minutes east of UTC: "-0700" is -420. Null for UTC or none. */
+export function zoneOf(text: string | undefined): number | null {
+  if (!text || !parseTime(text)) return null
+  const m = /([+-])(\d{2}):?(\d{2})$/.exec(text.trim())
+  if (!m) return null
+  const min = Number(m[2]) * 60 + Number(m[3])
+  return m[1] === '-' ? -min : min
+}
+
 /** What a camera names its files with: IMG_0042 is IMG, GX010042 is GX, DJI_0042 is DJI. */
 export function fileFamily(name: string): string {
   const base = name.replace(/\.[^.]+$/, '')
@@ -85,8 +99,10 @@ const FAMILY_CAMERA: Record<string, string> = {
 
 export function readShootTags(json: { format?: Tagged; streams?: Tagged[] }, name: string): ShootTags {
   const tags = allTags(json)
-  const recordedAt =
-    parseTime(tags.get('com.apple.quicktime.creationdate')) ?? parseTime(tags.get('creation_time')) ?? null
+  const apple = tags.get('com.apple.quicktime.creationdate')
+  const recordedAt = parseTime(apple) ?? parseTime(tags.get('creation_time')) ?? null
+  // A phone says the zone it was in; a plain creation time is in UTC and says nothing of where.
+  const zoneMin = parseTime(apple) ? zoneOf(apple) : null
   const gps =
     parseIso6709(tags.get('com.apple.quicktime.location.iso6709')) ??
     parseIso6709(tags.get('location')) ??
@@ -104,5 +120,5 @@ export function readShootTags(json: { format?: Tagged; streams?: Tagged[] }, nam
     const family = fileFamily(name)
     camera = FAMILY_CAMERA[family] ?? (family || 'camera')
   }
-  return { recordedAt, camera, gps }
+  return { recordedAt, zoneMin, camera, gps }
 }

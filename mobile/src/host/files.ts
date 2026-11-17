@@ -56,7 +56,17 @@ export function capacitorFiles(cache: string): PhoneFiles {
       else await Filesystem.deleteFile({ path: fileUri(path) })
     },
     stat,
-    rename: async (from, to) => void (await Filesystem.rename({ from: fileUri(from), to: fileUri(to) })),
+    // Over what is there, as a save renamed into place needs. Where the platform's own
+    // rename will not replace a file, the file is removed first and the rename tried again.
+    rename: async (from, to) => {
+      try {
+        await Filesystem.rename({ from: fileUri(from), to: fileUri(to) })
+      } catch (err) {
+        if (!(await stat(from)) || !(await stat(to))) throw err
+        await Filesystem.deleteFile({ path: fileUri(to) })
+        await Filesystem.rename({ from: fileUri(from), to: fileUri(to) })
+      }
+    },
     copy: async (from, to) => void (await Filesystem.copy({ from: fileUri(from), to: fileUri(to) })),
     list: async (dir): Promise<DirEntry[]> => {
       try {

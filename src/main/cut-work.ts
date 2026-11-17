@@ -2,6 +2,12 @@ import { basename, extname, join } from 'path'
 import { platform } from './platform'
 import { downloadModel, hasModel, transcribe, type WhisperModel } from './transcribe'
 import { creditsText } from '../shared/assets'
+import { brandOfDoc, readBrand, readBrandById } from './brand-store'
+import { stampBrand } from '../shared/brands'
+import { saidDetails, toolSaid, type Detail } from '../shared/failure'
+import { freePath } from './export-paths'
+import { claudeWriter, writeUploadKit } from './upload-kit'
+import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
 import { renderCut, type OverlaySpan, type RenderSource } from './cut-render'
 import type { Encoder } from './render/encoder'
 import { loudnessEnvelope } from './audio-envelope'
@@ -65,7 +71,6 @@ export interface WorkHost {
   ffmpeg(): string
   ffprobe(): string
   probe(path: string): Promise<ProbeResult>
-  readBrand(): Promise<Brand>
   whisperModel(): WhisperModel
   /** Where exports go. */
   outputDir(): string
@@ -96,6 +101,10 @@ export interface WorkHost {
   encoder?: Encoder
   /** False for an ffmpeg built without its GPL parts, as a phone's is: camera moves are drawn without perspective. */
   perspective?: boolean
+  /** The person's Anthropic key, or null: Claude writes an export's titles and description only with it. */
+  apiKey(): Promise<string | null>
+  /** Settings' switch for Claude writing what an upload needs. */
+  claudeWritesUpload(): boolean
 }
 
 export type ProgressFn = (stage: string, percent: number) => void
@@ -116,7 +125,7 @@ export interface Lined {
  */
 export async function prepareCut(
   host: WorkHost,
-  input: string | { paths: string[]; soundPaths?: string[] },
+  input: string | { paths: string[]; soundPaths?: string[]; brand?: string | null },
   progress: ProgressFn,
   mediaUrlFor: (path: string) => string
 ): Promise<
@@ -128,6 +137,7 @@ export async function prepareCut(
       lined: Lined[]
       intake: { sentence: string; facts: string[] } | undefined
       notice: string | null
+      details?: Detail[]
     }
   | { ok: false; message: string }
 > {
@@ -135,7 +145,9 @@ export async function prepareCut(
   const soundPaths = typeof input === 'string' ? [] : (input.soundPaths ?? [])
   try {
     if (paths.length === 0) return { ok: false as const, message: 'There is no footage to cut.' }
-    const read = await readFootage(host, paths, soundPaths, progress, 1, { niche: nicheFrom(await host.readBrand()) })
+    // The chat's brand: its kind of video, and the names it listens for.
+    const brand = await readBrandById(typeof input === 'string' ? null : input.brand)
+    const read = await readFootage(host, paths, soundPaths, progress, 1, { niche: nicheFrom(brand), brand })
     const created = createDoc({
       id: crypto.randomUUID(),
       title: basename(paths[0], extname(paths[0])),
@@ -143,7 +155,9 @@ export async function prepareCut(
       words: read.words
     })
     // How each recording sounds, word by word: what takes and the planner read.
-    const doc = Object.keys(read.maps).length > 0 ? { ...created, audio: read.maps } : created
+    const heard = Object.keys(read.maps).length > 0 ? { ...created, audio: read.maps } : created
+    // Made in the chat's brand when it named one, so it stays in it whatever becomes the default.
+    const doc = typeof input !== 'string' && input.brand ? stampBrand(heard, brand.id) : heard
     progress('Ready', 100)
     return {
       ok: true as const,
@@ -152,7 +166,8 @@ export async function prepareCut(
       warning: read.notes.length ? read.notes.join(' ') : null,
       lined: read.lined,
       intake: read.intake,
-      notice: read.notice
+      notice: read.notice,
+      ...(read.details.length ? { details: read.details } : {})
     }
   } catch (err) {
     progress('Failed', 0)
@@ -170,7 +185,14 @@ export async function extendCut(
   req: { doc: unknown; paths: string[]; soundPaths?: string[] },
   progress: ProgressFn
 ): Promise<
-  | { ok: true; doc: EditDoc; warning: string | null; lined: Lined[]; notice: string | null }
+  | {
+      ok: true
+      doc: EditDoc
+      warning: string | null
+      lined: Lined[]
+      notice: string | null
+      details?: Detail[]
+    }
   | { ok: false; message: string }
 > {
   try {
@@ -179,6 +201,7 @@ export async function extendCut(
     let doc = parsed.data
     const soundPaths = req.soundPaths ?? []
     const notes: string[] = []
+    const details: Detail[] = []
     const lined: Lined[] = []
     let notice: string | null = null
     if (soundPaths.length > 0) {
@@ -193,11 +216,14 @@ export async function extendCut(
       const first = Number(nextSourceId(doc).slice(1))
       // New clips are watched the way this edit already is: its profile, and
       // a mode a sentence chose for its mouth watching.
+      const brand = await brandOfDoc(doc)
       const read = await readFootage(host, fresh, soundPaths, progress, first, {
-        niche: doc.profile || nicheFrom(await host.readBrand()),
-        mode: doc.sources.find((s) => s.mouth?.chosen)?.mouth?.mode
+        niche: doc.profile || nicheFrom(brand),
+        mode: doc.sources.find((s) => s.mouth?.chosen)?.mouth?.mode,
+        brand
       })
       notes.push(...read.notes)
+      details.push(...read.details)
       lined.push(...read.lined)
       notice = read.notice
       const names = fresh.map((p) => basename(p))
@@ -210,7 +236,14 @@ export async function extendCut(
       )
     }
     progress('Ready', 100)
-    return { ok: true as const, doc, warning: notes.length ? notes.join(' ') : null, lined, notice }
+    return {
+      ok: true as const,
+      doc,
+      warning: notes.length ? notes.join(' ') : null,
+      lined,
+      notice,
+      ...(details.length ? { details } : {})
+    }
   } catch (err) {
     progress('Failed', 0)
     return { ok: false as const, message: message(err) }
@@ -256,6 +289,8 @@ export interface Rendered {
   mediaUrl: string
   creditsPath: string | null
   chaptersPath: string | null
+  /** What an upload needs, written beside a finished export (main/upload-kit). */
+  upload: UploadKit | null
   /** The exported file's own size and length. */
   width: number
   height: number
@@ -297,10 +332,17 @@ export async function renderEdit(
       })
     )
     const n = currentVersion(doc).n
+    // An export's name is free only when nothing that goes beside it is there either.
     outputPath = final
-      ? await freePath(host.outputDir(), req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`, '.mp4')
+      ? await freePath(
+          host.outputDir(),
+          req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`,
+          '.mp4',
+          EXPORT_BESIDE
+        )
       : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
-    const brand = await host.readBrand()
+    // The brand this version is made in: its graphics, caption colours and logo.
+    const brand = await brandOfDoc(doc)
     const progress = (f: number): void => report(stage, Math.round(f * 100))
     // Graphics first: drawn frame by frame, then laid over the picture in the final pass.
     const motion = await host.motion({
@@ -340,24 +382,53 @@ export async function renderEdit(
       creditsPath = outputPath.replace(/\.mp4$/i, '') + ' credits.txt'
       await files.writeText(creditsPath, credits)
     }
-    // Chapters for the YouTube description, the same ones the video file carries.
+    // The file's own size and length, so the chat can frame it before it loads.
+    const made = await host.probe(outputPath).catch(() => null)
+    const width = made?.width ?? 0
+    const height = made?.height ?? 0
+    const durationSec = made?.durationSec ?? resolved.durationSec
+    // Chapters for the YouTube description, the same ones the video file carries. A Short shows none.
     let chaptersPath: string | null = null
     const chapters = final ? chaptersReply(cut, resolved) : null
-    if (chapters?.shows) {
+    if (chapters?.shows && !isShort(width, height, durationSec)) {
       chaptersPath = outputPath.replace(/\.mp4$/i, '') + ' chapters.txt'
       await files.writeText(chaptersPath, `${chapters.lines}\n`)
     }
-    // The file's own size and length, so the chat can frame it before it loads.
-    const made = await host.probe(outputPath).catch(() => null)
+    // What an upload needs, beside the video: captions, a description, titles and tags (main/upload-kit).
+    let upload: UploadKit | null = null
+    if (final) {
+      report('Writing the description', 99)
+      const key = await host.apiKey()
+      const allowed = host.claudeWritesUpload()
+      upload = await writeUploadKit({
+        doc,
+        cut,
+        resolved,
+        pass,
+        scene: motion.scene,
+        brand,
+        outputPath,
+        width,
+        height,
+        durationSec,
+        // Claude only with the person's key and the switch in Settings on; otherwise nothing leaves.
+        write: key && allowed ? claudeWriter(key) : null,
+        why: !key ? 'no-key' : !allowed ? 'off' : null
+      }).catch((err) => {
+        console.error('[upload] could not write the upload kit:', message(err))
+        return null
+      })
+    }
     return {
       ok: true as const,
       outputPath,
       mediaUrl: mediaUrlFor(outputPath),
       creditsPath,
       chaptersPath,
-      width: made?.width ?? 0,
-      height: made?.height ?? 0,
-      durationSec: made?.durationSec ?? resolved.durationSec
+      upload,
+      width,
+      height,
+      durationSec
     }
   } catch (err) {
     console.error('[cut] render failed:', message(err))
@@ -421,7 +492,7 @@ export async function readFootage(
   soundPaths: string[],
   progress: ProgressFn,
   firstIndex: number,
-  mouth: { niche?: string | null; mode?: MouthMode } = {}
+  mouth: { niche?: string | null; mode?: MouthMode; brand?: Brand } = {}
 ): Promise<{
   sources: Source[]
   words: Word[]
@@ -431,10 +502,13 @@ export async function readFootage(
   intake: { sentence: string; facts: string[] } | undefined
   /** What watching the speaker's mouth changed or marked, in a sentence or two. */
   notice: string | null
+  /** What whisper printed when it could not transcribe a clip, for Details under the notes. */
+  details: Detail[]
 }> {
   const sources: Source[] = []
   const words: Word[] = []
   const notes: string[] = []
+  const details: Detail[] = []
   const lined: Lined[] = []
   const maps: Record<string, AudioMap> = {}
   const sentences: string[] = []
@@ -488,8 +562,12 @@ export async function readFootage(
         const sp = source.audio.path
         if (!soundWords.has(sp)) {
           const length = (await host.probe(sp)).durationSec
-          const heard = await transcriptFor(host, sp, length, (stage, pct) =>
-            step(`${stage} ${basename(sp, extname(sp))}`, 10 + pct * 0.85)
+          const heard = await transcriptFor(
+            host,
+            sp,
+            length,
+            (stage, pct) => step(`${stage} ${basename(sp, extname(sp))}`, 10 + pct * 0.85),
+            { brand: mouth.brand }
           )
           soundWords.set(sp, heard.words)
         }
@@ -517,7 +595,8 @@ export async function readFootage(
           source.durationSec,
           (stage, pct) => step(stage, 10 + pct * 0.85),
           {
-            notice: (sentence) => notes.push(sentence)
+            notice: (sentence) => notes.push(sentence),
+            brand: mouth.brand
           }
         )
         clip = wordsFromTranscript(transcript.words, source.id, prefix)
@@ -556,12 +635,13 @@ export async function readFootage(
       words.push(...clip)
     } catch (err) {
       notes.push(`I couldn't transcribe ${name}, so it is one long beat for now. ${message(err)}`)
+      details.push(...saidDetails(toolSaid(err), paths.length > 1 ? name : undefined))
     }
     sources.push(source)
   }
   const intake =
     sentences.length || facts.length ? { sentence: sentences.join(' '), facts: facts.slice(0, 3) } : undefined
-  return { sources, words, notes, lined, maps, intake, notice: mouthNotice(watched, paths.length) }
+  return { sources, words, notes, lined, maps, intake, notice: mouthNotice(watched, paths.length), details }
 }
 
 /**
@@ -585,6 +665,8 @@ export async function transcriptFor(
     download?: boolean
     /** True when the words must be heard on this Mac, never by another service. */
     localOnly?: boolean
+    /** The brand whose names are listened for; the default brand's when absent. */
+    brand?: Brand
   } = {}
 ): Promise<Transcript> {
   // Another AI service hears the words when the person has added one. If it
@@ -605,7 +687,7 @@ export async function transcriptFor(
     }
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))
   }
-  const brand = await host.readBrand()
+  const brand = opts.brand ?? (await readBrand())
   const names = vocabulary({ title: basename(path, extname(path)), voice: brand.voice, products: brand.products })
   return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)), 0, {
     names
@@ -617,19 +699,8 @@ export function safeName(title: string): string {
   return projectName(title)
 }
 
-/**
- * A name in `dir` no other file has, taken by making the file empty there and
- * then: two exports started together, or two edits with the same title, each
- * get their own file instead of writing over one another.
- */
-export async function freePath(dir: string, name: string, ext: string): Promise<string> {
-  const files = platform().files
-  await files.mkdir(dir)
-  for (let n = 1; ; n++) {
-    const candidate = join(dir, n === 1 ? `${name}${ext}` : `${name} (${n})${ext}`)
-    if (await files.claim(candidate)) return candidate
-  }
-}
+/** Everything an export leaves beside the video, after its name. */
+const EXPORT_BESIDE = [' credits.txt', ' chapters.txt', ...Object.values(UPLOAD_SUFFIXES)]
 
 async function previewDir(): Promise<string> {
   const dir = join(platform().paths.temp(), 'cutalong-previews')

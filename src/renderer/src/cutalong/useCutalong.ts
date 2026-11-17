@@ -9,7 +9,16 @@ import {
   commit,
   currentCut,
   currentVersion,
+  fillAsked,
+  filledIn,
+  fillMode,
+  fillNotice,
   mergeExtension,
+  onlyOn,
+  noteBeats,
+  opsInside,
+  rangeName,
+  rangeTimes,
   nextSourceId,
   openNotes,
   resolveCut,
@@ -77,11 +86,51 @@ import {
 } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { mouthForNiche, readMouthMode, setMouthModeAll } from '../../../shared/vision'
-import { brandPreset, EMPTY_BRAND, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import { brandPreset, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import {
+  addBrand,
+  brandById,
+  brandInSentence,
+  brandName,
+  brandOfCut,
+  chatBrand as chatBrandOf,
+  EMPTY_BRANDS,
+  removeBrand as removeBrandFrom,
+  replaceBrand,
+  setDefaultBrand,
+  stampMade,
+  type Brands
+} from '../../../shared/brands'
+import {
+  commandThing,
+  covering,
+  listWords,
+  neverAddedReply,
+  neverAllowedReply,
+  neverBlockedReply,
+  neverFinishNote,
+  neverGuard,
+  neverLeftOut,
+  neverSaid,
+  neverStrip,
+  readNever,
+  stripDoc,
+  type NeverItem,
+  type NeverSaid
+} from '../../../shared/never'
+import { uploadReply } from './upload-reply'
 import { findMotionCommand, motionCommandEntries, planMotionCommand, type MotionChange } from '../../../shared/motion'
 import {
   acceptsOffer,
+  bringBack,
+  bringBackAsked,
   DEFAULT_PROFILE,
+  mergeLengthAsks,
+  needsTopics,
+  parseLengthAsk,
+  planLength,
+  topicName,
+  type LengthAsk,
   profileAskedFor,
   profileById,
   styleForProfile,
@@ -96,18 +145,20 @@ import {
   type TakesOffer
 } from '../../../shared/raw'
 import { withHabits } from '../../../shared/learn/habits'
-import { clippingAsked, withDoc } from '../../../shared/clipping'
+import { clippingAsked, vlogOfClip, withDoc } from '../../../shared/clipping'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { failureOf } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import {
+  brandTag,
   remember,
   rememberAdded,
   rememberKeep,
   rememberNotes,
   rememberVersion,
-  rememberVoice,
+  rememberVoices,
+  tagSignalsWith,
   useMemory
 } from './memory'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
@@ -115,6 +166,7 @@ import { api, device, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
+import { exportWait, type ExportJob } from './exporting'
 import { clock, fileName, findLink, isAudioFile, isVideoFile } from './format'
 
 /**
@@ -131,6 +183,8 @@ export interface Toast {
   error?: boolean
   /** The result is also in the chat: the toast offers to go and see it there. */
   chat?: boolean
+  /** What a tool printed when it stopped, behind Details. */
+  details?: { label: string; value: string }[]
 }
 
 /** What the notes panel says right now, when it is not just the version summary. */
@@ -279,7 +333,14 @@ const ACTION_COMMANDS: Preset[] = [
         'reframe',
         'Follow the speaker',
         'Keep you in the frame when it is narrower: /reframe, /reframe left, /reframe off'
-      ]
+      ],
+      [
+        'fill',
+        'Fill',
+        'How a picture of another shape fills the frame: /fill blur, /fill black, /fill crop, /fill auto'
+      ],
+      ['length', 'Length', 'Cut it to a length: /length 10m, /length 8-10 min, /length 60s, /length no intro'],
+      ['cut', 'Cut', 'Cut out the stretch picked on the strip, or the beat under the playhead: /cut']
     ] as const
   ).map(([command, title, summary]) => ({ command, title, summary, builtIn: true, style: {}, inspiration: null }))
 ]
@@ -292,6 +353,9 @@ function besideIt(chapters?: string | null, credits?: string | null): string {
 
 /** The colour commands, by name; the named looks are presets. */
 const COLOUR_COMMANDS = new Set(['look', 'lut', ...Object.keys(LOOK_COMMANDS)])
+
+/** The named looks (/warm, /cinematic): presets that put a look on, which a never list can rule out. */
+const NAMED_LOOK_COMMANDS = new Set(SKILL_PRESETS.filter((p) => p.style.look).map((p) => p.command))
 
 /** The camera commands, by name. */
 const CAMERA_COMMANDS = new Set(['kenburns', 'pushin', 'pullout', 'pan', 'punchin', 'shake', 'focus', 'still'])
@@ -444,28 +508,62 @@ export function useCutalong() {
   const [panel, setPanel] = useState<PanelStatus | null>(null)
   /** The graphic selected in the editor, by id. */
   const [graphic, setGraphic] = useState<string | null>(null)
-  const [brand, setBrand] = useState<Brand>(EMPTY_BRAND)
+  // A brand per channel (shared/brands): the list, the one this chat is in, and the one the Brand page shows.
+  const [brands, setBrands] = useState<Brands>(EMPTY_BRANDS)
+  const [brandsLoaded, setBrandsLoaded] = useState(false)
+  const brandsRef = useRef<Brands>(EMPTY_BRANDS)
+  brandsRef.current = brands
+  /** The brand chosen for this chat (its project's), for while it has no edit; the edit names its own. */
+  const [chatChoice, setChatChoiceState] = useState<string | null>(null)
+  const chatChoiceRef = useRef<string | null>(null)
+  const setChatChoice = useCallback((id: string | null): void => {
+    chatChoiceRef.current = id
+    setChatChoiceState(id)
+  }, [])
+  const [pageBrandId, setPageBrandId] = useState<string | null>(null)
+  /** The brand on the Brand page. */
+  const brand = brandById(brands, pageBrandId)
   const [brandProgress, setBrandProgress] = useState<Progress | null>(null)
-  const brandRef = useRef<Brand>(EMPTY_BRAND)
-  brandRef.current = brand
 
   const docRef = useRef<EditDoc | null>(null)
   const projectRef = useRef<Project | null>(null)
   const studyRef = useRef<InspirationStudy | null>(null)
   const pendingCommand = useRef<string | null>(null)
+  /**
+   * The stretch picked on the beat strip while a command or notes run on it:
+   * its beats, its name for the version, and whether the version takes the
+   * name whatever its ops are (a plan already held to the stretch).
+   */
+  const scope = useRef<{ beats: string[]; name: string; always?: boolean } | null>(null)
+  /** The export running now, the editor's or Export all's: one at a time (exporting.ts). */
+  const exportingNow = useRef<ExportJob | null>(null)
   /** Cuts offered and not yet made: "Say 'cut it' and it goes." */
   const [offers, setOffers] = useState<TakesOffer[]>([])
   const offersRef = useRef<TakesOffer[]>([])
   offersRef.current = offers
   studyRef.current = study
 
-  const learn = useLearn()
+  // Each brand learns from its own videos: the Brand page's.
+  const learn = useLearn(brand.id)
+
+  /** The brand this chat is in: its edit's (shared/brands brandOfCut, as main reads it), else the chat's choice, else the default. */
+  const inChat = useMemo(
+    () => chatBrandOf(brands, doc ? currentCut(doc) : null, chatChoice),
+    [brands, doc, chatChoice]
+  )
+  const chatBrandRef = useRef<Brand>(inChat)
+  chatBrandRef.current = inChat
+  /** The brand of the edit as it is right now, between two draws: read from the edit itself. */
+  const brandNow = useCallback((): Brand => {
+    const d = docRef.current
+    return chatBrandOf(brandsRef.current, d ? currentCut(d) : null, chatChoiceRef.current)
+  }, [])
 
   const presets = useMemo(() => {
-    const mine = brandPreset(brand)
+    const mine = brandPreset(inChat)
     // /tighten cuts the creator's way once they keep their habits; exactly as built otherwise.
     return [
-      ...withHabits(BUILT_IN_PRESETS, brand.habits),
+      ...withHabits(BUILT_IN_PRESETS, inChat.habits),
       ...(mine ? [mine] : []),
       ...CAPTION_STYLE_PRESETS,
       ...ACTION_COMMANDS,
@@ -473,7 +571,7 @@ export function useCutalong() {
       ...MOTION_ENTRIES,
       ...saved
     ]
-  }, [saved, brand])
+  }, [saved, inChat])
   const presetsRef = useRef(presets)
   presetsRef.current = presets
 
@@ -542,7 +640,9 @@ export function useCutalong() {
           .filter((m) => !m.progress)
           .map(({ progress: _progress, since: _since, ...m }) => m)
         // A clip's edit goes back into its clip; any other is the chat's own (shared/clipping/set).
-        const updated: Project = withDoc({ ...project, chat }, next)
+        // The chat's brand goes with it once one was chosen; a chat never switched keeps none.
+        const chosen = chatChoiceRef.current
+        const updated: Project = withDoc({ ...project, chat, ...(chosen ? { brand: chosen } : {}) }, next)
         projectRef.current = updated
         await api.saveProject(updated)
       } catch (err) {
@@ -586,43 +686,97 @@ export function useCutalong() {
     ensureProject,
     setToast,
     during,
+    exportingNow,
     clearEditor: () => {
       setOffers([])
       pendingCommand.current = null
       setGraphic(null)
       setPanel(null)
-    }
+    },
+    // Clips are made in the chat's brand, as the chat shows it.
+    brand: () => brandNow().id
   })
 
   useEffect(() => {
+    // What is learned is noted with the brand of the edit it happened in.
+    tagSignalsWith((cut) => brandOfCut(brandsRef.current, cut).id)
     void api
-      .getBrand()
-      .then((b) => {
-        rememberVoice(b.voice)
-        brandRef.current = b
-        setBrand(b)
+      .getBrands()
+      .then((list) => {
+        rememberVoices(list)
+        brandsRef.current = list
+        setBrands(list)
+        setBrandsLoaded(true)
       })
       .catch(() => undefined)
   }, [])
 
   // Brand edits save as they are made, a moment after the last keystroke.
   const brandSave = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const saveBrand = useCallback((next: Brand): void => {
-    brandRef.current = next
-    setBrand(next)
+  const saveBrands = useCallback((next: Brands): void => {
+    brandsRef.current = next
+    setBrands(next)
     if (brandSave.current) clearTimeout(brandSave.current)
     brandSave.current = setTimeout(() => {
-      rememberVoice(next.voice)
-      void api.saveBrand(next).then((r) => {
-        if (!r.ok) setToast({ text: r.message, error: true })
+      // Each brand's voice notes are learned from as that brand's, when they changed.
+      rememberVoices(next)
+      void api.saveBrands(next).then((r) => {
+        // Refused whole, saying which field; the page keeps what was typed, to put right.
+        if (!r.ok) {
+          setToast({ text: r.message, error: true })
+          return
+        }
+        // The list as saved (each changed brand stamped), unless more was changed since.
+        if (brandsRef.current === next) {
+          brandsRef.current = r.brands
+          setBrands(r.brands)
+        }
       })
     }, 300)
   }, [])
+  /** One brand changed, by its id. */
+  const saveBrand = useCallback(
+    (next: Brand): void => saveBrands(replaceBrand(brandsRef.current, next)),
+    [saveBrands]
+  )
+
+  /** A new brand on the list, shown on the Brand page. */
+  const newBrand = useCallback((): void => {
+    const id = `brand-${Math.random().toString(36).slice(2, 10)}`
+    const made = addBrand(brandsRef.current, '', id)
+    if (!made) {
+      setToast({ text: 'That is as many brands as Cutalong keeps.', error: true })
+      return
+    }
+    saveBrands(made.list)
+    setPageBrandId(made.brand.id)
+  }, [saveBrands])
+
+  const deleteBrand = useCallback(
+    (id: string): void => {
+      saveBrands(removeBrandFrom(brandsRef.current, id))
+      setPageBrandId(null)
+    },
+    [saveBrands]
+  )
+
+  const makeDefaultBrand = useCallback(
+    (id: string): void => saveBrands(setDefaultBrand(brandsRef.current, id)),
+    [saveBrands]
+  )
+
   // What I learn from how you edit: noted as you go, listed on the brand page.
-  const memory = useMemory(brand, saveBrand, setToast)
+  // Caption defaults learned from a brand's chats go on that brand, once the list has loaded.
+  const memory = useMemory(brandsLoaded ? brands : null, saveBrand, setToast)
+  const memoryRef = useRef(memory)
+  memoryRef.current = memory
+  /** A brand's never list, as of the last change to it. */
+  const neverOf = useCallback((id: string): NeverItem[] => memoryRef.current.neverFor(id), [])
 
   const learnFrom = useCallback(
     async (paths: string[]): Promise<void> => {
+      // What is learned from a brand's own videos stays with that brand, even if the page moves on.
+      const forBrand = brand.id
       setBrandProgress({ stage: 'Watching your videos', percent: 0 })
       const off = api.onBrandProgress((p) => setBrandProgress(p))
       try {
@@ -634,25 +788,26 @@ export function useCutalong() {
           measuredAt: now,
           facts: l.facts
         }))
-        const current = brandRef.current
+        const current = brandById(brandsRef.current, forBrand)
         const videos = [...current.videos.filter((v) => !fresh.some((f) => f.path === v.path)), ...fresh]
         saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
-        if (r.failed.length) setToast({ text: `Couldn't watch ${r.failed.join('; ')}`, error: true })
+        if (r.failed.length)
+          setToast({ text: `Couldn't watch ${r.failed.join('; ')}`, error: true, details: r.details })
       } finally {
         off()
         setBrandProgress(null)
       }
     },
-    [saveBrand]
+    [saveBrand, brand.id]
   )
 
   const forgetBrandVideo = useCallback(
     (path: string): void => {
-      const current = brandRef.current
+      const current = brandById(brandsRef.current, brand.id)
       const videos = current.videos.filter((v) => v.path !== path)
       saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
     },
-    [saveBrand]
+    [saveBrand, brand.id]
   )
 
   useEffect(() => {
@@ -688,6 +843,8 @@ export function useCutalong() {
     }
     projectRef.current = project
     clipping.load(project)
+    // The brand chosen for the chat; its edit names its own on each version. Chats from before have none.
+    setChatChoice(project.brand ?? null)
     const edit = project.edit ?? null
     docRef.current = edit
     setDocState(edit)
@@ -732,17 +889,28 @@ export function useCutalong() {
    * Applies ops as a version and says what changed. Returns the summary, or
    * null when nothing applied. A lead sentence speaks for the first ops (the
    * takes: "I kept the 4th take of the intro..."), and the rest are described.
+   * The first version in which a picture of another shape sits on a blurred
+   * copy of itself says so, in its summary and as `notice` for replies that
+   * are not the summary (edit/fill).
    */
   const applyAsVersion = useCallback(
     (
-      ops: Op[],
+      proposed: Op[],
       fallback: string,
       preset?: string,
-      lead?: { text: string; ops: number }
-    ): { summary: string; n: number } | null => {
+      /** A sentence for the first ops, said instead of describing them; timed when it already says how long the cut runs. */
+      lead?: { text: string; ops: number; timed?: boolean }
+    ): { summary: string; n: number; left: NeverItem[]; notice: string | null } | null => {
       const d = docRef.current
+      leftOut.current = []
       if (!d) return null
       const context = { words: d.words, sources: d.sources, assets: d.assets }
+      // The brand's never list holds for every change: what it rules out is left out (shared/never).
+      const switched = [...proposed].reverse().find((o): o is Extract<Op, { op: 'brand' }> => o.op === 'brand')
+      const owner = switched ? brandById(brandsRef.current, switched.id) : brandNow()
+      const guarded = neverGuard(currentCut(d), proposed, neverOf(owner.id), context)
+      const ops = guarded.ops
+      leftOut.current = guarded.left
       const before = resolveCut(currentCut(d), d.words, d.sources)
       const trial = applyOps(currentCut(d), ops, context)
       if (trial.applied.length === 0) return null
@@ -750,20 +918,35 @@ export function useCutalong() {
       if (sameValue(trial.cut, currentCut(d))) return null
       const after = resolveCut(trial.cut, d.words, d.sources)
       const led = lead && lead.text ? lead : null
-      const rest = describePlan(led ? trial.applied.slice(led.ops) : trial.applied, before, after, trial.cut)
-      const summary = [led?.text, rest].filter(Boolean).join(' ') || fallback
+      const rest = describePlan(led ? trial.applied.slice(led.ops) : trial.applied, led?.timed ? after : before, after, trial.cut)
+      const notice = fillNotice(filledIn(d), filledIn(d, trial.cut), fillMode(trial.cut))
+      const said = [led?.text, rest].filter(Boolean).join(' ') || fallback
+      // Made on a stretch picked on the strip, the version is named by it.
+      const on = scope.current
+      const summary = [on && (on.always || onlyOn(trial.applied, on.beats)) ? leadWith(on.name, said) : said, notice]
+        .filter(Boolean)
+        .join(' ')
       const next = commit(d, trial.applied, summary, preset ? { preset } : {}).doc
       setDoc(next)
-      return { summary, n: currentVersion(next).n }
+      return { summary, n: currentVersion(next).n, left: guarded.left, notice }
     },
-    [setDoc]
+    [setDoc, brandNow, neverOf]
+  )
+  /** What the last change left out for the never list: for saying why when nothing else changed. */
+  const leftOut = useRef<NeverItem[]>([])
+
+  /** "I left out the punch-ins, as Field Notes never uses them." Empty when nothing was. */
+  const leftSentence = useCallback(
+    (left: NeverItem[] = leftOut.current): string => (left.length ? neverLeftOut(brandInSentence(brandNow()), left) : ''),
+    [brandNow]
   )
 
   // Vlogs: a day of clips told as a story (useVlog), called in from submit, ask, commandNow and applyNotes.
   const vlog = useVlog({
     docRef,
     pendingCommand,
-    setDoc,
+    // A new vlog is made in the chat's brand, every version it came with; one under way keeps its own.
+    setDoc: (next) => setDoc(docRef.current?.id === next.id ? next : stampMade(next, brandNow().id)),
     setMediaUrl,
     push,
     patch,
@@ -771,7 +954,8 @@ export function useCutalong() {
     toThread: () => setScreen('thread'),
     applyAsVersion,
     during,
-    niche: () => brandRef.current.niche
+    niche: () => brandNow().niche,
+    brand: () => brandNow().id
   })
 
   /** Talking clips into a new edit, with the better sound, if any, lined up under them. */
@@ -779,11 +963,12 @@ export function useCutalong() {
     async (talking: Attachment[], sound: Attachment[] = []): Promise<boolean> => {
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Reading the footage', percent: 0 } })
       const off = api.onCutProgress((p) => patch(id, { progress: p }))
-      const r = await api.prepareCut(
-        talking.length === 1 && sound.length === 0
-          ? talking[0].path
-          : { paths: talking.map((f) => f.path), soundPaths: sound.map((f) => f.path) }
-      )
+      // Made in the chat's brand: its kind of video and the names it listens for.
+      const r = await api.prepareCut({
+        paths: talking.map((f) => f.path),
+        soundPaths: sound.map((f) => f.path),
+        brand: brandNow().id
+      })
       off()
       if (!r.ok) {
         const what = talking.length === 1 ? talking[0].name : 'that footage'
@@ -797,7 +982,7 @@ export function useCutalong() {
       const one = talking.length === 1
       const what = one ? talking[0].name : `The ${talking.length} clips`
       const found = takesFound(r.doc)
-      const suggested = brandRef.current.niche ? null : suggestProfile(r.doc.words)
+      const suggested = brandNow().niche ? null : suggestProfile(r.doc.words)
       const text =
         r.doc.words.length > 0
           ? `Got it. ${what} ${one ? 'runs' : 'run'} ${clock(resolved.durationSec)}: ${r.doc.words.length} words in ${beats} beats.${found ? ` ${found}` : ''}`
@@ -821,7 +1006,9 @@ export function useCutalong() {
         r.intake?.sentence ?? '',
         suggested && suggested.profile.id !== DEFAULT_PROFILE.id
           ? `It sounds like a ${suggested.profile.name.toLowerCase()} video, so I'll cut it as one.`
-          : ''
+          : '',
+        // Clips of another shape than the frame, shown whole on a blurred copy (edit/fill).
+        fillNotice([], filledIn(r.doc), fillMode(currentCut(r.doc))) ?? ''
       ]
         .filter(Boolean)
         .join(' ')
@@ -830,6 +1017,7 @@ export function useCutalong() {
         text,
         aside: [noticed, r.warning ?? ''].filter(Boolean).join(' ') || null,
         chips: r.intake?.facts.length ? r.intake.facts : undefined,
+        details: r.details,
         actions
       })
       return true
@@ -862,11 +1050,13 @@ export function useCutalong() {
           : r.lined.length > 0
             ? 'The better sound is under the footage now.'
             : 'Nothing changed.'
-      const aside = [describeLined(r.lined), r.notice, r.warning].filter(Boolean).join(' ') || null
+      const filled = fillNotice(filledIn(latest ?? d), filledIn(merged), fillMode(currentCut(merged)))
+      const aside = [describeLined(r.lined), r.notice, r.warning, filled].filter(Boolean).join(' ') || null
       patch(id, {
         progress: null,
         text,
         aside,
+        details: r.details,
         actions: added > 0 ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
       })
       return true
@@ -918,39 +1108,65 @@ export function useCutalong() {
     [during, patch, push, setDoc]
   )
 
-  /** Puts an asset into the doc and cuts to it on the beat that talks about it. */
+  /**
+   * Puts an asset into the doc and cuts to it on the beat that talks about
+   * it, or on the beats asked for: over a stretch picked on the strip, the
+   * clip runs on from beat to beat rather than starting again on each.
+   */
   const placeAsset = useCallback(
-    (incoming: Omit<Asset, 'id'>, hint: string, beat?: string): { text: string; n: number | null } => {
+    (incoming: Omit<Asset, 'id'>, hint: string, beat?: string | string[]): { text: string; n: number | null } => {
       const d = docRef.current
       if (!d) return { text: 'Drop some footage first, then this can go into it.', n: null }
       const { doc: withAsset, asset } = addAssetTo(d, incoming)
       setDoc(withAsset)
-      const asked = beat && currentCut(withAsset).beats.some((b) => b.id === beat) ? beat : null
-      const beatId = asked ?? beatForAsset(withAsset, hint || asset.title)
-      if (!beatId)
+      const cut = currentCut(withAsset)
+      const asked = (Array.isArray(beat) ? beat : beat ? [beat] : []).filter((id) => cut.beats.some((b) => b.id === id))
+      const found = asked.length ? null : beatForAsset(withAsset, hint || asset.title)
+      const beatIds = asked.length ? asked : found ? [found] : []
+      if (beatIds.length === 0)
         return {
           text: `${asset.title} is in this edit's material. Say which line it goes with, like "put ${asset.title} on the part about the camera".`,
           n: null
         }
       const frame = asset.origin.type === 'icon' ? ('card' as const) : ('broll' as const)
+      const resolved = resolveCut(cut, withAsset.words, withAsset.sources)
+      const length = asset.durationSec && asset.durationSec > 1 ? asset.durationSec : null
+      let into = 0
+      const ops: Op[] = beatIds.map((id) => {
+        const inSec = frame === 'card' || !length ? 0 : into % length
+        const rb = resolved.beats.find((b) => b.id === id)
+        into += rb ? rb.outEnd - rb.outStart : 0
+        return { op: 'treat', beats: [id], set: { frame, broll: { path: asset.path, inSec, muted: true } } }
+      })
       const done = applyAsVersion(
-        [{ op: 'treat', beats: [beatId], set: { frame, broll: { path: asset.path, inSec: 0, muted: true } } }],
+        ops,
         frame === 'card' ? `The ${asset.title} icon sits on a card.` : `${asset.title} cuts in.`
       )
-      const position = currentCut(docRef.current ?? withAsset).beats.findIndex((b) => b.id === beatId) + 1
       if (!done) return { text: `${asset.title} is in this edit's material.`, n: null }
       const what = frame === 'card' ? `The ${asset.title} icon sits on a card` : `${asset.title} cuts in`
-      return { text: `${what} on beat ${position}. v${done.n} is ready.`, n: done.n }
+      const span = beatIds.length > 1 ? rangeTimes(resolved, beatIds) : null
+      const where = span
+        ? rangeName(span)
+        : `on beat ${currentCut(docRef.current ?? withAsset).beats.findIndex((b) => b.id === beatIds[0]) + 1}`
+      const notice = done.notice ? ` ${done.notice}` : ''
+      return { text: `${what} ${where}. v${done.n} is ready.${notice}`, n: done.n }
     },
     [applyAsVersion, setDoc]
   )
 
   /** Brings in a file or a link as material for the edit, then places it. */
   const bringIn = useCallback(
-    async (req: { path?: string; url?: string; range?: Range | null }, hint: string, beat?: string): Promise<void> => {
+    async (req: { path?: string; url?: string; range?: Range | null }, hint: string, beat?: string | string[]): Promise<void> => {
       const d = docRef.current
       if (!d) {
         push({ role: 'assistant', text: 'Drop some footage first, then this can go into it.' })
+        return
+      }
+      // Material from a link is from outside; the person's own files are always theirs to use.
+      const target = brandNow()
+      const ruled = req.url ? covering(neverOf(target.id), 'broll') : null
+      if (ruled) {
+        push({ role: 'assistant', text: neverBlockedReply(brandInSentence(target), ruled) })
         return
       }
       const id = push({
@@ -1002,11 +1218,11 @@ export function useCutalong() {
         actions: placed.n ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
       })
     },
-    [during, patch, placeAsset, push]
+    [brandNow, during, neverOf, patch, placeAsset, push]
   )
 
   const findBroll = useCallback(
-    async (query: string, beat?: string): Promise<void> => {
+    async (query: string, beat?: string | string[]): Promise<void> => {
       if (!query.trim()) {
         push({ role: 'assistant', text: 'Tell me what to look for, like /broll city at night.' })
         return
@@ -1015,25 +1231,61 @@ export function useCutalong() {
         push({ role: 'assistant', text: 'Drop some footage first, then I can find B-roll for it.' })
         return
       }
+      const target = brandNow()
+      const ruled = covering(neverOf(target.id), 'broll')
+      if (ruled) {
+        push({ role: 'assistant', text: neverBlockedReply(brandInSentence(target), ruled) })
+        return
+      }
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Looking for B-roll', percent: 30 } })
-      const r = await api.searchVideos(query)
+      // The brand's sources: its preferred channels are looked in first, its blocked ones never come back.
+      const r = await api.searchVideos(query, target.broll)
       if (!r.ok) {
         patch(id, { progress: null, text: `I couldn't search. ${r.message}`, error: true })
         return
       }
+      const blocked = r.blocked ?? 0
+      const left = blocked
+        ? `${blocked === 1 ? 'One result was' : `${blocked} results were`} from a source you blocked, so I left ${blocked === 1 ? 'it' : 'them'} out.`
+        : ''
       if (r.results.length === 0) {
-        patch(id, { progress: null, text: `Nothing came up for “${query}”. Try other words.` })
+        patch(id, { progress: null, text: `Nothing came up for “${query}”. Try other words.`, aside: left || null })
         return
       }
+      // The preferred channels that answered; when only some did, which share of them.
+      const looked = r.looked ?? 0
+      const tried = Math.max(looked, r.tried ?? looked)
+      const channels =
+        looked === tried
+          ? looked === 1
+            ? 'your preferred channel'
+            : `your ${looked} preferred channels`
+          : `${looked === 1 ? 'one' : looked} of your ${tried} preferred channels`
+      const preferred = r.results.slice(0, 3).filter((c) => c.preferred).length
+      const sources = [
+        looked
+          ? `I looked in ${channels} first${preferred ? `, and ${preferred === 1 ? 'one of these is' : `${preferred} of these are`} from them` : ''}.`
+          : preferred
+            ? `${preferred === 1 ? 'One of these is' : `${preferred} of these are`} from a source you prefer.`
+            : '',
+        left
+      ]
+        .filter(Boolean)
+        .join(' ')
       const d = docRef.current
-      const moment = d && beat ? momentOf(d, beat) : null
+      const first = Array.isArray(beat) ? beat[0] : beat
+      const moment = d && first ? momentOf(d, first) : null
       patch(id, {
         progress: null,
         text: moment
           ? `For “${moment}”, here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it there.`
           : `Here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it.`,
-        aside:
+        aside: [
           'Only that stretch is fetched, and it is credited in the export. To choose the stretch, paste the link with a time, like 1:02-1:10.',
+          sources
+        ]
+          .filter(Boolean)
+          .join(' '),
         actions: r.results.slice(0, 3).map(
           (c): Action => ({
             kind: 'add-clip',
@@ -1043,11 +1295,11 @@ export function useCutalong() {
         )
       })
     },
-    [patch, push]
+    [brandNow, neverOf, patch, push]
   )
 
   const findIcon = useCallback(
-    async (query: string): Promise<void> => {
+    async (query: string, beat?: string[]): Promise<void> => {
       if (!query.trim()) {
         push({ role: 'assistant', text: 'Tell me what the icon should show, like /icon camera.' })
         return
@@ -1069,7 +1321,7 @@ export function useCutalong() {
           (name): Action => ({
             kind: 'add-icon',
             label: name.replace(/-/g, ' '),
-            payload: JSON.stringify({ name, hint: query }),
+            payload: JSON.stringify({ name, hint: query, beat }),
             icon: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(iconSvg(nodes[name], { size: 64 }))}`
           })
         )
@@ -1079,7 +1331,7 @@ export function useCutalong() {
   )
 
   const addIcon = useCallback(
-    async (name: string, hint: string): Promise<void> => {
+    async (name: string, hint: string, beat?: string[]): Promise<void> => {
       const d = docRef.current
       if (!d) return
       const { nodes } = await iconData()
@@ -1098,7 +1350,7 @@ export function useCutalong() {
         push({ role: 'assistant', text: r.message, error: true })
         return
       }
-      const placed = placeAsset(r.asset, hint)
+      const placed = placeAsset(r.asset, hint, beat)
       push({
         role: 'assistant',
         text: placed.text,
@@ -1116,7 +1368,7 @@ export function useCutalong() {
    * every change of section.
    */
   const transitionCommand = useCallback(
-    (rest: string, where: 'thread' | 'panel', beat: string | null): void => {
+    (rest: string, where: 'thread' | 'panel', beat: string | null, picked: string[] | null = null): void => {
       const say = (text: string, open = false): void => {
         if (where === 'panel') setPanel({ text })
         else
@@ -1141,8 +1393,16 @@ export function useCutalong() {
       }
       const cut = currentCut(d)
       let targets: string[]
-      if (where === 'panel' && beat) {
-        if (resolveCut(cut, d.words, d.sources).beats[0]?.id === beat) {
+      const opening = resolveCut(cut, d.words, d.sources).beats[0]?.id
+      if (where === 'panel' && picked) {
+        // Every beat of a picked stretch comes in that way, but the one that opens the video.
+        targets = picked.filter((id) => id !== opening)
+        if (targets.length === 0) {
+          say('That stretch is beat 1, which opens the video, so nothing comes before it. Use /fade.')
+          return
+        }
+      } else if (where === 'panel' && beat) {
+        if (opening === beat) {
           say('Beat 1 opens the video, so nothing comes before it. Put the playhead on a later beat, or use /fade.')
           return
         }
@@ -1193,7 +1453,13 @@ export function useCutalong() {
    * the speaker, so their next line is heard before they are seen.
    */
   const splitEditCommand = useCallback(
-    (kind: 'jcut' | 'lcut', rest: string, where: 'thread' | 'panel', beat: string | null): void => {
+    (
+      kind: 'jcut' | 'lcut',
+      rest: string,
+      where: 'thread' | 'panel',
+      beat: string | null,
+      picked: string[] | null = null
+    ): void => {
       const name = kind === 'jcut' ? 'J cut' : 'L cut'
       const say = (text: string, open = false): void => {
         if (where === 'panel') setPanel({ text })
@@ -1214,8 +1480,11 @@ export function useCutalong() {
       const sec = off ? 0 : n !== null ? Math.min(MAX_SPLIT_EDIT_SEC, Math.max(0.04, n)) : DEFAULT_SPLIT_EDIT_SEC
       const cut = currentCut(d)
       let targets: string[]
-      if (where === 'panel' && beat) {
-        if (resolveCut(cut, d.words, d.sources).beats[0]?.id === beat) {
+      const opening = resolveCut(cut, d.words, d.sources).beats[0]?.id
+      if (where === 'panel' && picked && picked.some((id) => id !== opening)) {
+        targets = picked.filter((id) => id !== opening)
+      } else if (where === 'panel' && beat) {
+        if (opening === beat) {
           say('Beat 1 opens the video, so its sound and picture start together. Put the playhead on a later beat.')
           return
         }
@@ -1255,7 +1524,8 @@ export function useCutalong() {
       rest: string,
       where: 'thread' | 'panel',
       beat: string | null,
-      at: number | null
+      at: number | null,
+      picked: string[] | null = null
     ): void => {
       const say = (text: string, open = false): void => {
         if (where === 'panel') setPanel({ text })
@@ -1278,7 +1548,9 @@ export function useCutalong() {
       const speedOf = (fallback: number | null): number | null =>
         off ? 1 : asked !== null ? Math.min(MAX_SPEED, Math.max(MIN_SPEED, asked)) : fallback
       let targets: string[]
-      if (where === 'panel' && beat) targets = [beat]
+      // A freeze holds on one word; speed and direction go on every beat of a picked stretch.
+      if (where === 'panel' && picked && command !== 'freeze') targets = picked
+      else if (where === 'panel' && beat) targets = [beat]
       else if (command === 'freeze') {
         say('Put the playhead on the word to hold in the editor and run /freeze there.')
         return
@@ -1341,7 +1613,8 @@ export function useCutalong() {
       rest: string,
       where: 'thread' | 'panel',
       beat: string | null,
-      at: number | null
+      at: number | null,
+      picked: string[] | null = null
     ): Promise<void> => {
       const say = (text: string, open = false): void => {
         if (where === 'panel') setPanel({ text })
@@ -1366,9 +1639,9 @@ export function useCutalong() {
       const off = /^(off|none|no|remove|stop)$/i.test(rest.trim())
       if (off && command === 'punchin') {
         const punched = cut.beats.filter((b) => (b.treatment.zoom ?? 1) > 1.001).map((b) => b.id)
-        const targets = inPanel ? [beat as string] : punched
-        if (targets.length === 0 || (inPanel && !punched.includes(beat as string))) {
-          say(inPanel ? 'That beat is not punched in.' : 'Nothing is punched in.')
+        const targets = picked ? picked.filter((id) => punched.includes(id)) : inPanel ? [beat as string] : punched
+        if (targets.length === 0 || (inPanel && !picked && !punched.includes(beat as string))) {
+          say(picked ? 'Nothing in that stretch is punched in.' : inPanel ? 'That beat is not punched in.' : 'Nothing is punched in.')
           return
         }
         const done = applyAsVersion([{ op: 'treat', beats: targets, set: { zoom: 1 } }], 'The punch-ins are gone.')
@@ -1383,7 +1656,12 @@ export function useCutalong() {
       }
 
       let ops: Op[]
-      if (command === 'punchin' && !inPanel) {
+      let lead: { text: string; ops: number } | undefined
+      if (command === 'punchin' && picked) {
+        // A picked stretch stays closer all through: one punch-in held from its first beat to its last.
+        ops = [{ op: 'treat', beats: picked, set: { zoom: Math.min(2, (zoom as { zoom?: number }).zoom ?? 1.12) } }]
+        lead = { text: 'The picture punches in and stays closer.', ops: 1 }
+      } else if (command === 'punchin' && !inPanel) {
         // Every other section of the talk, closer: the cut at each new idea hides the jump.
         const starts = new Set(ideaStarts(d, cut))
         let section = 0
@@ -1401,7 +1679,9 @@ export function useCutalong() {
         ops = [{ op: 'treat', beats: closer, set: { zoom: Math.min(2, (zoom as { zoom?: number }).zoom ?? 1.12) } }]
       } else {
         let targets: string[]
-        if (inPanel) targets = [beat as string]
+        // A move goes over every beat of a picked stretch; a shake or a focus on the one at hand.
+        if (picked && command !== 'shake' && command !== 'focus') targets = picked
+        else if (inPanel) targets = [beat as string]
         else if (command === 'shake' || command === 'focus') {
           say(
             command === 'shake'
@@ -1475,7 +1755,7 @@ export function useCutalong() {
         }
         ops = [{ op: 'camera', beats: targets, move }]
       }
-      const done = applyAsVersion(ops, 'The frame moves.')
+      const done = applyAsVersion(ops, 'The frame moves.', undefined, lead)
       if (!done) {
         const trial = applyOps(cut, ops, { words: d.words, sources: d.sources })
         say(trial.rejected[0]?.reason ?? 'That is already how the frame moves.')
@@ -1701,7 +1981,7 @@ export function useCutalong() {
         doc: d,
         resolved,
         time: at,
-        brandName: brandRef.current.name
+        brandName: brandNow().name
       })
       if ('problem' in plan) {
         say(plan.problem)
@@ -1735,7 +2015,13 @@ export function useCutalong() {
    * a whoosh through every moving transition.
    */
   const sfxCommandRun = useCallback(
-    async (rest: string, where: 'thread' | 'panel', beat: string | null, at: number | null): Promise<void> => {
+    async (
+      rest: string,
+      where: 'thread' | 'panel',
+      beat: string | null,
+      at: number | null,
+      picked: string[] | null = null
+    ): Promise<void> => {
       const say = (text: string, open = false): void => {
         if (where === 'panel') setPanel({ text })
         else
@@ -1750,7 +2036,14 @@ export function useCutalong() {
         say('Drop some footage first, then I can put sounds on it.')
         return
       }
-      const read = sfxCommand(d, rest, beat, at)
+      // Off, over a picked stretch, takes every sound in it away; a sound goes on the cut into it or the word at hand.
+      const sounding = picked ? currentCut(d).beats.filter((b) => picked.includes(b.id) && b.sfx?.length) : []
+      const read: ReturnType<typeof sfxCommand> =
+        picked && /^(off|none|remove)$/i.test(rest.trim())
+          ? sounding.length
+            ? { ops: sounding.map((b) => ({ op: 'sfx' as const, beats: [b.id], add: null })) }
+            : { say: 'Nothing in that stretch has a sound.' }
+          : sfxCommand(d, rest, beat, at)
       if ('say' in read) {
         say(read.say)
         return
@@ -1847,7 +2140,7 @@ export function useCutalong() {
    * over it or beside it; off, sync and remove as angleCommand reads them.
    */
   const angleCommandRun = useCallback(
-    async (rest: string, where: 'thread' | 'panel', beat: string | null): Promise<void> => {
+    async (rest: string, where: 'thread' | 'panel', beat: string | null, picked: string[] | null = null): Promise<void> => {
       const say = (text: string, aside: string | null = null, open = false): void => {
         if (where === 'panel') setPanel({ text: aside ? `${text} ${aside}` : text })
         else
@@ -1863,7 +2156,14 @@ export function useCutalong() {
         say('Drop some footage first, then another camera can go with it.')
         return
       }
-      const read = angleCommand(d, rest, beat)
+      const asked = angleCommand(d, rest, beat)
+      // Made for the beat at hand, it goes on every beat of a picked stretch.
+      const read =
+        'ops' in asked
+          ? { ...asked, ops: acrossPicked(asked.ops, beat, picked) }
+          : 'file' in asked && picked && asked.file.beats.length === 1 && asked.file.beats[0] === beat
+            ? { file: { ...asked.file, beats: picked } }
+            : asked
       if ('file' in read) {
         const of = d.sources.find((s) => s.id === read.file.of)
         const path = await api.chooseCamera()
@@ -1916,7 +2216,7 @@ export function useCutalong() {
    * recording not yet looked at; framed by hand on a beat; off.
    */
   const reframeCommandRun = useCallback(
-    async (rest: string, where: 'thread' | 'panel', beat: string | null): Promise<void> => {
+    async (rest: string, where: 'thread' | 'panel', beat: string | null, picked: string[] | null = null): Promise<void> => {
       const say = (text: string, open = false): void => {
         if (where === 'panel') setPanel({ text })
         else
@@ -1957,7 +2257,7 @@ export function useCutalong() {
       } else if ('say' in read) {
         say(read.say)
         return
-      } else ops = read.ops
+      } else ops = acrossPicked(read.ops, beat, picked)
       const done = applyAsVersion(ops, 'The framing has changed.')
       if (!done) {
         say('That is already how it is framed.')
@@ -1966,6 +2266,66 @@ export function useCutalong() {
       say(`v${done.n} is ready. ${done.summary}`, true)
     },
     [applyAsVersion, push, setDoc]
+  )
+
+  /**
+   * /fill, and "use black bars": how a picture of another shape than the
+   * frame fills it, for this edit (edit/fill). On its own it says what the
+   * edit does now and how many pictures that touches.
+   */
+  const fillCommand = useCallback(
+    (rest: string, where: 'thread' | 'panel'): void => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can fit pictures of another shape into it.')
+        return
+      }
+      const words = rest.trim().toLowerCase()
+      const mode = /^(black|bars|black bars|letterbox|pillarbox)$/.test(words)
+        ? 'black'
+        : /^(crop|cropped|fill|cover|zoom)$/.test(words)
+          ? 'crop'
+          : /^(blur|blurred|on|all)$/.test(words)
+            ? 'blur'
+            : /^(auto|default|reset)$/.test(words)
+              ? 'auto'
+              : fillAsked(words, fillMode(currentCut(d)))
+      if (!mode) {
+        const now = fillMode(currentCut(d))
+        const n = new Set(filledIn(d).map((p) => p.key)).size
+        const how = {
+          auto: 'A phone clip in a wide video, a still or a screen recording is shown whole on a blurred copy of itself, and other footage is cropped to fill the frame.',
+          blur: 'Every picture of another shape than the frame is shown whole on a blurred copy of itself.',
+          black: 'A picture of another shape than the frame is shown whole between black bars.',
+          crop: 'Every picture is cropped to fill the frame.'
+        }[now]
+        const touches =
+          now === 'crop'
+            ? ''
+            : n === 0
+              ? ' No picture in this edit is shown that way yet.'
+              : ` ${n === 1 ? 'One picture is' : `${n} pictures are`} shown that way.`
+        say(`${how}${touches} /fill blur, /fill black, /fill crop and /fill auto change it.`)
+        return
+      }
+      const done = applyAsVersion([{ op: 'fill', mode }], 'Pictures of another shape fill the frame another way.')
+      if (!done) {
+        // Left out for the brand's never list, which says so; else it already was.
+        say(leftSentence() || 'That is already how pictures of another shape fill the frame.')
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, leftSentence, push]
   )
 
   /** /premiere: this version as a Premiere project on the person's own files, opened there when it can be. */
@@ -2019,10 +2379,13 @@ export function useCutalong() {
         say("Drop some footage and I'll run /all on it.")
         return
       }
-      const profile = profileFor(d, brandRef.current.niche)
+      const target = brandNow()
+      const never = neverOf(target.id)
+      const profile = profileFor(d, target.niche)
       let music: Op | null = null
       let musicNote: string | null = null
-      if (finishFor(profile.id).music && !currentCut(d).music) {
+      // A brand that never uses a music bed is not asked for a track.
+      if (finishFor(profile.id).music && !currentCut(d).music && !covering(never, 'music')) {
         const path = await api.chooseAudio()
         if (path) {
           if (where === 'panel') setPanel({ text: '', progress: { stage: 'Finding the beat', percent: 40 } })
@@ -2034,8 +2397,10 @@ export function useCutalong() {
       // The edit as it is now: another project may have opened while the track was chosen.
       const latest = docRef.current
       if (!latest || latest.id !== d.id) return
-      const plan = finishOps(latest, profile.id, music)
-      const notes = [musicNote, ...plan.notes].filter(Boolean).join(' ') || null
+      const plan = finishOps(latest, profile.id, music, never)
+      // What the never list kept out, in one sentence (shared/never).
+      const ruled = neverFinishNote(brandInSentence(target), plan.left)
+      const notes = [musicNote, ...plan.notes, ruled].filter(Boolean).join(' ') || null
       const done = applyAsVersion(plan.ops, 'The finishing touches are on.', 'all')
       if (!done) {
         say('Everything /all does is already on this cut.', notes)
@@ -2043,20 +2408,401 @@ export function useCutalong() {
       }
       say(`v${done.n} is ready. ${done.summary}`, notes, true)
     },
+    [applyAsVersion, brandNow, neverOf, push]
+  )
+
+  /**
+   * What putting a brand on the edit changes, as ops for one version: the
+   * edit names the brand, gets its look (/brand) when `look` is set, and
+   * loses whatever is on that brand's never list.
+   */
+  const brandPlan = useCallback(
+    (d: EditDoc, target: Brand, look: boolean) => {
+      const ops: Op[] = [{ op: 'brand', id: target.id }]
+      const context = { words: d.words, sources: d.sources, assets: d.assets }
+      let cut = applyOps(currentCut(d), ops, context).cut
+      const preset = look ? brandPreset(target) : null
+      let open: string[] = []
+      let takes: ReturnType<typeof planStyle>['takes'] = null
+      if (preset) {
+        const profile = profileFor(d, target.niche)
+        const plan = planStyle(d, styleForProfile('brand', preset.style, profile), cut, {
+          thresholds: profile.takes ?? undefined
+        })
+        ops.push(...plan.ops)
+        cut = applyOps(cut, plan.ops, context).cut
+        open = plan.open
+        takes = plan.takes
+      }
+      const strip = neverStrip(cut, neverOf(target.id), { assets: d.assets, words: d.words, sources: d.sources })
+      ops.push(...strip.ops)
+      return { ops, open, takes, stripped: strip.items, preset }
+    },
+    [neverOf]
+  )
+
+  /** /brand: the chat's brand on the edit, as a version. `look` is false for a brand that keeps off new edits. */
+  const brandCommand = useCallback(
+    (where: 'thread' | 'panel', look = true): void => {
+      const say = (text: string, extra: Partial<Msg> = {}): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text, ...extra })
+      }
+      const d = docRef.current
+      if (!d) {
+        pendingCommand.current = 'brand'
+        say("Drop some footage and I'll run /brand on it.")
+        return
+      }
+      const target = brandNow()
+      const plan = brandPlan(d, target, look)
+      // The brand op and the takes lead the version; the takes speak for themselves.
+      const lead = plan.takes ? { text: plan.takes.summary, ops: 1 + plan.takes.opCount } : undefined
+      const name = brandInSentence(target)
+      const done = applyAsVersion(plan.ops, `${plan.preset?.title ?? brandName(target)} is on.`, 'brand', lead)
+      rememberVersion(docRef.current, { command: 'brand' }, done?.n ?? null)
+      if (plan.takes) setOffers(plan.takes.offers)
+      const open = [
+        plan.takes?.offerText ?? '',
+        ...plan.open,
+        plan.stripped.length ? neverFinishNote(name, plan.stripped) : ''
+      ]
+        .filter(Boolean)
+        .join(' ')
+      if (!done) {
+        say(`/brand is already how this cut looks.${open ? ` ${open}` : ''}`)
+        return
+      }
+      if (where === 'panel') setPanel(open ? { text: `v${done.n} is ready. ${done.summary} ${open}` } : null)
+      else
+        push({
+          role: 'assistant',
+          text: `v${done.n} is ready. ${done.summary}`,
+          aside: open || null,
+          actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
+        })
+    },
+    [applyAsVersion, brandNow, brandPlan, push]
+  )
+
+  /**
+   * Switches the chat to another brand. With an edit, its brand-dependent
+   * parts change as a version (the brand's look, its never list), so undo
+   * brings the old brand back; without one, the chat's edit starts in it.
+   */
+  const switchBrand = useCallback(
+    (id: string): void => {
+      if (isWorking()) {
+        setToast({ text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Switch brands once I'm done.` })
+        return
+      }
+      const target = brandById(brandsRef.current, id)
+      const d = docRef.current
+      const was = d ? brandNow().id : null
+      setChatChoice(target.id)
+      if (projectRef.current) projectRef.current = { ...projectRef.current, brand: target.id }
+      const name = brandName(target)
+      if (!d) {
+        push({ role: 'assistant', text: `This chat uses ${name} now. Drop your footage and I'll cut it in that brand.` })
+        void persist()
+        return
+      }
+      if (was === target.id) return
+      const plan = brandPlan(d, target, target.autoApply)
+      const lead = {
+        text: [`${name} is on this edit now.`, plan.takes?.summary ?? ''].filter(Boolean).join(' '),
+        ops: 1 + (plan.takes?.opCount ?? 0)
+      }
+      const done = applyAsVersion(plan.ops, `${name} is on this edit now.`, 'brand', lead)
+      rememberVersion(docRef.current, { command: 'brand' }, done?.n ?? null)
+      if (!done) {
+        void persist()
+        return
+      }
+      const aside = [
+        ...plan.open,
+        plan.stripped.length ? neverFinishNote(brandInSentence(target), plan.stripped) : '',
+        'Undo brings the brand it had back.'
+      ]
+        .filter(Boolean)
+        .join(' ')
+      push({
+        role: 'assistant',
+        text: `v${done.n} is ready. ${done.summary}`,
+        aside,
+        actions: [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
+      })
+    },
+    [applyAsVersion, brandPlan, persist, push, setChatChoice]
+  )
+
+  /** Takes out of the edit what its brand's never list rules out, as a version: after a rule is said. */
+  const stripNever = useCallback(
+    (where: 'thread' | 'panel'): void => {
+      const d = docRef.current
+      if (!d) return
+      const target = brandNow()
+      const strip = stripDoc(d, neverOf(target.id))
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      if (strip.ops.length === 0) {
+        say('Nothing in this edit is on the never list.')
+        return
+      }
+      const out = listWords(strip.items.map(neverSaid))
+      const done = applyAsVersion(strip.ops, `The ${out} are out.`)
+      if (!done) {
+        say('Nothing changed.')
+        return
+      }
+      const took = neverFinishNote(brandInSentence(target), strip.items).replace('so I left', 'so I took')
+      say(`v${done.n} is ready. ${took}`, true)
+    },
+    [applyAsVersion, brandNow, neverOf, push]
+  )
+
+  /**
+   * A rule for the never list said in a chat or a note: "never use whooshes",
+   * "no transitions on this channel", "whooshes are fine again". It goes on
+   * the chat's brand's list in what Cutalong learns (shared/memory), with
+   * the words it was said in. True when the sentence was one of these.
+   */
+  const answerNever = useCallback(
+    async (rule: NeverSaid, said: string, reply: (text: string, extra?: Partial<Msg>) => void): Promise<boolean> => {
+      const target = brandNow()
+      const list = neverOf(target.id)
+      // "Fine again" counts only for what is on the list, or kinds of it.
+      const allowed = list.filter((entry) => rule.allow.some((a) => entry === a || entry.startsWith(`${a}:`)))
+      const wholes = allowed.length ? [] : rule.allow.filter((a) => covering(list, a))
+      if (rule.never.length === 0 && allowed.length === 0 && wholes.length === 0) return false
+      const name = brandInSentence(target)
+      const added = rule.never.filter((i) => !covering(list, i))
+      const already = rule.never.filter((i) => covering(list, i))
+      if (added.length) await memoryRef.current.setNever(target.id, added, true, said)
+      if (allowed.length) await memoryRef.current.setNever(target.id, allowed, false, said)
+      const whole = wholes.map((a) => neverSaid(covering(list, a) as string))
+      const parts = [
+        added.length || already.length ? neverAddedReply(name, added, already) : '',
+        allowed.length ? neverAllowedReply(name, allowed) : '',
+        wholes.length
+          ? `${name} never uses any ${listWords(whole)}. Take that off the never list on the Brand page to use ${listWords(wholes.map(neverSaid))}.`
+          : ''
+      ].filter(Boolean)
+      const d = docRef.current
+      const there = d && added.length ? stripDoc(d, neverOf(target.id)).items : []
+      reply(parts.join(' '), {
+        aside: there.length ? `This edit has ${listWords(there.map(neverSaid))} from before.` : null,
+        actions: there.length ? [{ kind: 'strip-never', label: 'Take them out', primary: true }] : undefined
+      })
+      return true
+    },
+    [brandNow, neverOf]
+  )
+
+  /** The entry on the chat's brand's never list that rules a command out, or null when none does. */
+  const ruledCommand = useCallback(
+    (command: string, rest: string): NeverItem | null => {
+      const thing = commandThing(command, rest, {
+        looks: NAMED_LOOK_COMMANDS,
+        graphic: findMotionCommand(command)?.kind ?? null,
+        captions: command === 'captions' || CAPTION_STYLE_PRESETS.some((p) => p.command === command)
+      })
+      return thing ? covering(neverOf(brandNow().id), thing) : null
+    },
+    [brandNow, neverOf]
+  )
+
+  /**
+   * A length asked of an edit that is not a vlog (shared/raw/length): "make it
+   * 10 minutes", "remove my intro", "keep the full argument". It is cut on
+   * this computer. A topic to cut or focus on needs what is said understood,
+   * so it goes to the planner first when there is a key, and only its cuts
+   * are kept, checked as any plan is. Everything lands as one version.
+   * `met` is whether what was asked is so now, by the version or already.
+   */
+  const lengthAsked = useCallback(
+    async (
+      asked: LengthAsk,
+      text: string,
+      where: 'thread' | 'panel'
+    ): Promise<{ n: number | null; said: string; met: boolean }> => {
+      const d = docRef.current
+      if (!d) return { n: null, said: '', met: false }
+      const stage = { stage: needsTopics(asked) ? 'Thinking' : 'Cutting it to length', percent: null }
+      const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: stage }) : null
+      if (where === 'panel') setPanel({ text: '', progress: stage, since: Date.now() })
+      const say = (said: string, aside: string | null, open: boolean): string => {
+        if (id)
+          patch(id, {
+            progress: null,
+            text: said,
+            aside,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+        else setPanel({ text: [said, aside].filter(Boolean).join(' ') })
+        return [said, aside].filter(Boolean).join(' ')
+      }
+      let first: Op[] = []
+      let firstSaid: string | null = null
+      const asides: string[] = []
+      if (needsTopics(asked)) {
+        const topics = [asked.focus ? `keep the focus on ${asked.focus}` : '', ...asked.cut.map((c) => `cut what is about ${c}`)]
+          .filter(Boolean)
+          .join(' and ')
+        const request = `${text}\nFor this one, only ${topics}, with remove and strike ops, and change nothing else: I cut it to any length asked for afterwards.`
+        const r = await during(() => api.planEdit({ doc: d, request, notes: [], voice: brandNow().voice }))
+        if (docRef.current?.id !== d.id) return { n: null, said: '', met: false }
+        if (r.ok) {
+          // A topic is taken out, never added to: only the planner's cuts are kept.
+          const cuts = new Set(['remove', 'strike', 'split', 'join', 'move'])
+          // Cut on request, by the name asked: it stays out when the edit grows, until it is asked back.
+          const why = topicName(asked) ?? undefined
+          first = r.ops
+            .filter((o) => cuts.has(o.op))
+            .map((o): Op => (o.op === 'remove' && why ? { ...o, why } : o))
+          const other = r.ops.length - first.length
+          if (other > 0) asides.push(other === 1 ? 'I left out one change that was not a cut.' : `I left out ${other} changes that were not cuts.`)
+          // Said from what is kept, not from the planner's summary of everything it planned.
+          if (first.some((o) => o.op === 'remove' || o.op === 'strike')) firstSaid = why ? `I cut ${why}.` : null
+          else if (first.length === 0) asides.push(r.reply)
+          asides.push(...r.needs, ...r.rejected)
+        } else if (r.needsKey) {
+          asides.push(
+            'Cutting by topic needs Claude to follow what you talk about, and there is no Anthropic key in Settings, so the topics stay as they are.'
+          )
+        } else asides.push(r.message)
+      }
+      // Only a topic was asked, and nothing came of it: the reason is the whole answer.
+      const topicsOnly = asked.targetSec === undefined && !asked.range && !asked.intro && !asked.keepAll
+      if (topicsOnly && first.length === 0) {
+        return {
+          n: null,
+          said: say(asides.map((t) => sentence(t)).join(' ') || 'I left it as it was.', null, false),
+          met: false
+        }
+      }
+      const latest = docRef.current ?? d
+      const plan = planLength(latest, asked, { profile: profileFor(latest, brandNow().niche), first, firstSaid })
+      if (plan.ops.length === 0) {
+        const said = say(plan.note ?? 'That is already how long it runs.', asides.map((t) => sentence(t)).join(' ') || null, false)
+        return { n: null, said, met: plan.met }
+      }
+      // The summary already says how long it runs.
+      const done = applyAsVersion(plan.ops, plan.summary, 'length', { text: plan.summary, ops: plan.ops.length, timed: true })
+      if (!done) return { n: null, said: say('That is already how long it runs.', null, false), met: true }
+      rememberVersion(docRef.current, { request: text }, done.n)
+      const aside = [plan.note ?? '', ...asides].map((t) => sentence(t)).filter(Boolean).join(' ') || null
+      return { n: done.n, said: say(`v${done.n} is ready. ${done.summary}`, aside, true), met: true }
+    },
+    [applyAsVersion, during, patch, push]
+  )
+
+  /** /length: a length, a range, the intro out, or every line kept; a vlog's story told to it. */
+  const lengthCommand = useCallback(
+    async (rest: string, where: 'thread' | 'panel'): Promise<void> => {
+      const say = (text: string): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can cut it to a length.')
+        return
+      }
+      if (d.vlog) {
+        await vlog.retell(rest, where, true)
+        return
+      }
+      const asked = rest.trim() ? parseLengthAsk(rest, { command: true }) : null
+      if (!asked) {
+        const now = resolveCut(currentCut(d), d.words, d.sources).durationSec
+        say(
+          `It runs ${clock(now)}. Say how long: /length 10m, /length 8-10 min or /length 60s. /length no intro starts it on the main point, and /length keep all only tightens.`
+        )
+        return
+      }
+      await lengthAsked(asked, rest, where)
+    },
+    [lengthAsked, push, vlog]
+  )
+
+  /**
+   * /cut, Delete on the strip, and "cut this out" with a stretch picked: the
+   * picked beats, or the beat under the playhead, out of the cut as one
+   * version named by where they played.
+   */
+  const cutBeats = useCallback(
+    (beats: string[], where: 'thread' | 'panel'): { n: number } | null => {
+      const say = (text: string): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+      }
+      const d = docRef.current
+      if (!d) return null
+      const cut = currentCut(d)
+      const ids = beats.filter((id) => cut.beats.some((b) => b.id === id))
+      if (ids.length === 0) {
+        say('Pick the beats to cut on the strip first: drag across them, or Shift-click one and then another.')
+        return null
+      }
+      if (ids.length === cut.beats.length) {
+        say('That is the whole video, so I left it. Pick less of it to cut.')
+        return null
+      }
+      const span = rangeTimes(resolveCut(cut, d.words, d.sources), ids)
+      const lead = span ? `I cut what played ${rangeName(span)}.` : 'I cut those beats.'
+      const done = applyAsVersion([{ op: 'remove', beats: ids }], lead, undefined, { text: lead, ops: 1 })
+      say(done ? `v${done.n} is ready. ${done.summary}` : 'Those beats are already out.')
+      return done
+    },
     [applyAsVersion, push]
   )
 
-  const commandNow = useCallback(
+  /** /captions off and on over a picked stretch: hidden while its beats play, or shown there again. */
+  const captionsOver = useCallback(
+    (picked: string[], rest: string, where: 'thread' | 'panel'): void => {
+      const say = (text: string): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+      }
+      const d = docRef.current
+      if (!d) return
+      const cut = currentCut(d)
+      const hide = /^(off|hide|none|no)$/i.test(rest.trim())
+      if (!hide && !cut.captions.on) {
+        say('Captions are off for the whole video. /captions turns them on everywhere first; then /captions off on a stretch hides them there.')
+        return
+      }
+      const change = cut.beats.filter((b) => picked.includes(b.id) && (b.treatment.captions === false) !== hide)
+      if (change.length === 0) {
+        say(hide ? 'Captions are already hidden there.' : 'Captions already show there.')
+        return
+      }
+      const done = applyAsVersion(
+        [{ op: 'treat', beats: change.map((b) => b.id), set: { captions: !hide } }],
+        hide ? 'Captions are hidden there.' : 'Captions show there again.'
+      )
+      say(done ? `v${done.n} is ready. ${done.summary}` : 'That is already how the captions are.')
+    },
+    [applyAsVersion, push]
+  )
+
+  const dispatch = useCallback(
     async (
       command: string,
-      where: 'thread' | 'panel' = 'thread',
-      rest = '',
-      at: number | null = null
+      where: 'thread' | 'panel',
+      rest: string,
+      at: number | null,
+      beat: string | null,
+      picked: string[] | null
     ): Promise<void> => {
-      // The beat under the playhead, for the commands that act on it; none in the thread.
-      const d0 = docRef.current
-      const r0 = d0 && at !== null ? resolveCut(currentCut(d0), d0.words, d0.sources) : null
-      const beat = r0 && at !== null ? ((beatAt(r0, at) ?? r0.beats[r0.beats.length - 1])?.id ?? null) : null
       // On a phone, what is on the Mac for now says so in one sentence (device.ts).
       const away = device.away[command]
       if (away) {
@@ -2064,12 +2810,40 @@ export function useCutalong() {
         else push({ role: 'assistant', text: away })
         return
       }
+      // A command for something the brand's never list rules out answers so, and makes no version.
+      const target = brandNow()
+      const rule = ruledCommand(command, rest)
+      if (rule) {
+        const text = neverBlockedReply(brandInSentence(target), rule)
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+        return
+      }
+      if (command === 'cut') {
+        cutBeats(picked ?? (beat ? [beat] : []), where)
+        return
+      }
+      if (command === 'captions' && picked) {
+        captionsOver(picked, rest, where)
+        return
+      }
       if (command === 'all') {
         await finishCommand(where)
         vlog.onBeats(where)
         return
       }
+      if (command === 'brand') {
+        brandCommand(where)
+        return
+      }
       if (command === 'vlog') {
+        // A clip from /clipping is one moment of a long recording: it stays a clip (shared/clipping/set).
+        const clip = vlogOfClip(projectRef.current?.clipping, docRef.current)
+        if (clip) {
+          if (where === 'panel') setPanel({ text: clip })
+          else push({ role: 'assistant', text: clip })
+          return
+        }
         await vlog.command(rest, where)
         return
       }
@@ -2079,15 +2853,15 @@ export function useCutalong() {
         return
       }
       if (command === 'transition') {
-        transitionCommand(rest, where, beat)
+        transitionCommand(rest, where, beat, picked)
         return
       }
       if (command === 'speed' || command === 'ramp' || command === 'freeze' || command === 'reverse') {
-        timingCommand(command, rest, where, beat, at)
+        timingCommand(command, rest, where, beat, at, picked)
         return
       }
       if (CAMERA_COMMANDS.has(command)) {
-        await cameraCommand(command as CameraCommand, rest, where, beat, at)
+        await cameraCommand(command as CameraCommand, rest, where, beat, at, picked)
         return
       }
       if (command === 'music' || command === 'polish' || command === 'onbeat') {
@@ -2105,7 +2879,7 @@ export function useCutalong() {
         return
       }
       if (command === 'jcut' || command === 'lcut') {
-        splitEditCommand(command, rest, where, beat)
+        splitEditCommand(command, rest, where, beat, picked)
         return
       }
       if (command === 'chapters') {
@@ -2113,19 +2887,27 @@ export function useCutalong() {
         return
       }
       if (command === 'reframe') {
-        await reframeCommandRun(rest, where, beat)
+        await reframeCommandRun(rest, where, beat, picked)
         return
       }
       if (command === 'angle') {
-        await angleCommandRun(rest, where, beat)
+        await angleCommandRun(rest, where, beat, picked)
         return
       }
       if (command === 'premiere') {
         await premiereCommand(where)
         return
       }
+      if (command === 'fill') {
+        fillCommand(rest, where)
+        return
+      }
+      if (command === 'length') {
+        await lengthCommand(rest, where)
+        return
+      }
       if (command === 'sfx') {
-        await sfxCommandRun(rest, where, beat, at)
+        await sfxCommandRun(rest, where, beat, at, picked)
         return
       }
       // A page to show, as a screenshot or on a phone's screen, is captured first.
@@ -2150,8 +2932,8 @@ export function useCutalong() {
       if (ACTION_NAMES.has(command)) {
         // Their results are choices to pick from, which belong in the thread.
         if (where === 'panel') setScreen('thread')
-        if (command === 'broll') await findBroll(rest)
-        else await findIcon(rest)
+        if (command === 'broll') await findBroll(rest, picked ?? undefined)
+        else await findIcon(rest, picked ?? undefined)
         return
       }
       const preset = findPreset(command, presetsRef.current)
@@ -2170,7 +2952,7 @@ export function useCutalong() {
         return
       }
       // The edit's own profile, then the brand's niche, then what the words suggest.
-      const profile = profileFor(d, brandRef.current.niche)
+      const profile = profileFor(d, brandNow().niche)
       const plan = planStyle(d, styleForProfile(command, preset.style, profile), currentCut(d), {
         thresholds: profile.takes ?? undefined
       })
@@ -2178,12 +2960,16 @@ export function useCutalong() {
       const done = applyAsVersion(plan.ops, `${preset.title} is on.`, command, lead)
       rememberVersion(docRef.current, { command }, done?.n ?? null)
       if (plan.takes) setOffers(plan.takes.offers)
-      const open = [plan.takes?.offerText ?? '', ...plan.open].filter(Boolean).join(' ')
+      // What the brand's never list kept out of it, said with the rest.
+      const left = leftSentence(done?.left)
+      const open = [plan.takes?.offerText ?? '', ...plan.open, left].filter(Boolean).join(' ')
       if (!done) {
         say(
-          plan.takes && !open
-            ? 'Every line already plays its best take, and there are no false starts left.'
-            : `/${command} is already how this cut looks.${open ? ` ${open}` : ''}`
+          left
+            ? `/${command} had nothing left to change. ${left}`
+            : plan.takes && !open
+              ? 'Every line already plays its best take, and there are no false starts left.'
+              : `/${command} is already how this cut looks.${open ? ` ${open}` : ''}`
         )
         return
       }
@@ -2198,6 +2984,12 @@ export function useCutalong() {
     },
     [
       applyAsVersion,
+      brandCommand,
+      brandNow,
+      leftSentence,
+      ruledCommand,
+      captionsOver,
+      cutBeats,
       cameraCommand,
       capturePage,
       colourCommand,
@@ -2215,14 +3007,67 @@ export function useCutalong() {
       premiereCommand,
       sfxCommandRun,
       finishCommand,
+      fillCommand,
+      lengthCommand,
       vlog
     ]
   )
 
+  /**
+   * A command in the thread or the editor. In the editor it acts on the beat
+   * under the playhead, or, with a stretch picked on the strip, on the beats
+   * in it (shared/edit/range): the version is named by where they play, and
+   * a command that can only go on the whole video says so.
+   */
+  const commandNow = useCallback(
+    async (
+      command: string,
+      where: 'thread' | 'panel' = 'thread',
+      rest = '',
+      at: number | null = null,
+      range: string[] | null = null
+    ): Promise<void> => {
+      // The beat under the playhead, for the commands that act on it; none in the thread.
+      const d0 = docRef.current
+      const r0 = d0 && (at !== null || range) ? resolveCut(currentCut(d0), d0.words, d0.sources) : null
+      const here = r0 && at !== null ? ((beatAt(r0, at) ?? r0.beats[r0.beats.length - 1])?.id ?? null) : null
+      const picked = where === 'panel' && range && range.length > 0 && r0 ? range : null
+      const span = picked && r0 ? rangeTimes(r0, picked) : null
+      // In a stretch, the beat and the moment at hand are the playhead's when it is inside it, else its start.
+      const beat = picked ? (here && picked.includes(here) ? here : picked[0]) : here
+      const moment = span && (at === null || at < span.start || at >= span.end) ? span.start + 0.01 : at
+      const onBeats = !!picked && actsOnBeats(command, rest)
+      const before = d0 ? currentVersion(d0).n : 0
+      // A cut names the stretch itself ("I cut what played between …").
+      scope.current = picked && span && onBeats && command !== 'cut' ? { beats: picked, name: rangeName(span) } : null
+      try {
+        await dispatch(command, where, rest, moment, beat, onBeats ? picked : null)
+      } finally {
+        scope.current = null
+      }
+      if (picked && span && !onBeats && where === 'panel' && command !== 'clipping') {
+        const note = `${WHOLE_NAMES[command] ?? (COLOUR_COMMANDS.has(command) ? 'A look' : `/${command}`)} goes on the whole video, not just ${rangeName(span)}.`
+        setPanel((p) => {
+          if (p?.progress) return p
+          const d = docRef.current
+          const v = d ? currentVersion(d) : null
+          const said = p?.text ?? (v && v.n !== before ? `v${v.n} is ready. ${v.summary}` : '')
+          return { ...(p ?? {}), text: [note, said].filter(Boolean).join(' ') }
+        })
+      }
+    },
+    [dispatch]
+  )
+
   /** A command, counted as work while it runs: from the editor, nothing else counts it. */
   const runCommand = useCallback(
-    (command: string, where: 'thread' | 'panel' = 'thread', rest = '', at: number | null = null): Promise<void> =>
-      during(() => commandNow(command, where, rest, at)),
+    (
+      command: string,
+      where: 'thread' | 'panel' = 'thread',
+      rest = '',
+      at: number | null = null,
+      range: string[] | null = null
+    ): Promise<void> => during(() => commandNow(command, where, rest, at, range)),
     [during, commandNow]
   )
 
@@ -2335,6 +3180,29 @@ export function useCutalong() {
         say(set.reply, false)
         return true
       }
+      // "Use black bars", "blur the sides", "crop them to fill the frame", "remove the black bars" (edit/fill).
+      const fill = fillAsked(text, fillMode(currentCut(d)))
+      if (fill) {
+        const done = applyAsVersion([{ op: 'fill', mode: fill }], 'Pictures of another shape fill the frame another way.')
+        say(
+          done
+            ? `v${done.n} is ready. ${done.summary}`
+            : leftSentence() || 'That is already how pictures of another shape fill the frame.',
+          !!done
+        )
+        return true
+      }
+      // "Bring back the intro", "bring back the part about the conference": what was cut on request, by its name.
+      const wanted = d.vlog ? null : bringBackAsked(text)
+      const back = wanted ? bringBack(d, wanted) : null
+      if (back) {
+        const done =
+          back.ops.length > 0
+            ? applyAsVersion(back.ops, back.summary, 'length', { text: back.summary, ops: back.ops.length, timed: true })
+            : null
+        say(done ? `v${done.n} is ready. ${done.summary}` : sentence(back.note ?? 'That is already back in.'), !!done)
+        return true
+      }
       const req = parseTakeRequest(text)
       if (!req) return false
       const answer = resolveTakeRequest(req, takesOf(d), currentCut(d))
@@ -2351,7 +3219,7 @@ export function useCutalong() {
       )
       return true
     },
-    [acceptOffers, setDoc, switchTake]
+    [acceptOffers, applyAsVersion, leftSentence, setDoc, switchTake]
   )
 
   /** A request in words: the planner turns it into ops. */
@@ -2370,9 +3238,19 @@ export function useCutalong() {
       }
       // A length, an opening or a part of the day asked of a vlog tells its story again (useVlog).
       if ((await vlog.retell(text, 'thread')).handled) return
+      // A length, the intro or every line kept, asked of any other edit, is cut here (shared/raw/length).
+      const length = d.vlog ? null : parseLengthAsk(text)
+      let request = text
+      if (length) {
+        await lengthAsked(length, text, 'thread')
+        // What else the sentence asked ("and add captions") goes to the planner, on the version the length made.
+        if (!length.rest || docRef.current?.id !== d.id) return
+        request = length.rest
+      }
+      const now = docRef.current ?? d
       // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
       const id = push({ role: 'assistant', text: '', progress: { stage: 'Thinking', percent: null } })
-      const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandRef.current.voice })
+      const r = await api.planEdit({ doc: now, request, notes: [], voice: brandNow().voice })
       if (!r.ok) {
         patch(id, {
           progress: null,
@@ -2383,9 +3261,9 @@ export function useCutalong() {
         return
       }
       const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
-      rememberVersion(docRef.current, { request: text }, done?.n ?? null)
+      rememberVersion(docRef.current, { request }, done?.n ?? null)
       const aside =
-        [...r.needs, ...r.rejected]
+        [...r.needs, ...r.rejected, done?.notice ?? '']
           .map((t) => sentence(t))
           .filter(Boolean)
           .join(' ') || null
@@ -2399,7 +3277,7 @@ export function useCutalong() {
       const wanted = r.brollWanted ?? []
       if (wanted.length > 0) await Promise.all(wanted.map((w) => findBroll(w.search, w.beat)))
     },
-    [applyAsVersion, findBroll, patch, push, vlog]
+    [applyAsVersion, findBroll, lengthAsked, patch, push, vlog]
   )
 
   /** Sorts what was dropped in: which files are the talking, which has the better sound, which are B-roll. */
@@ -2436,8 +3314,12 @@ export function useCutalong() {
   const startEdit = useCallback(
     async (talking: Attachment[], sound: Attachment[]): Promise<boolean> => {
       if (!(await prepare(talking, sound))) return false
-      // Your brand first, so whatever was asked for lands on top of it.
-      if (brandRef.current.autoApply && brandPreset(brandRef.current)) await runCommand('brand')
+      // Your brand first, so whatever was asked for lands on top of it: its look when it goes on
+      // new edits, and nothing its never list rules out (captions it never uses come off).
+      const brand = brandNow()
+      const d = docRef.current
+      const look = brand.autoApply && !!brandPreset(brand)
+      if (d && (look || stripDoc(d, neverOf(brand.id)).ops.length > 0)) await during(async () => brandCommand('thread', look))
       if (pendingCommand.current) {
         const waiting = pendingCommand.current
         pendingCommand.current = null
@@ -2445,7 +3327,7 @@ export function useCutalong() {
       }
       return true
     },
-    [prepare, runCommand]
+    [brandCommand, brandNow, during, neverOf, prepare, runCommand]
   )
 
   /**
@@ -2576,7 +3458,11 @@ export function useCutalong() {
         const materialBefore = docRef.current?.assets.length ?? 0
         // A day of clips to tell as a story (useVlog): every clip is material with its own sound.
         const vlogged = !device.away['feature:vlog'] && vlog.wanted(said, command?.command ?? null, recordings)
-        if (vlogged) await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words)
+        if (vlogged && (await vlog.make(recordings, command?.command === 'vlog' ? command.rest : words))) {
+          // Its story is made in main; whatever the brand never uses comes out as the next version.
+          const made = docRef.current
+          if (made && stripDoc(made, neverOf(brandNow().id)).ops.length > 0) stripNever('thread')
+        }
         else if (recordings.length > 0) await takeIn(recordings, said)
         if (!projectRef.current) void ensureProject(docRef.current?.title ?? fallbackName)
         if (stills.length > 0) {
@@ -2612,8 +3498,12 @@ export function useCutalong() {
           return d.assets.slice(materialBefore).some((a) => !shown.has(a.id))
         }
         if (command && !(vlogged && command.command === 'vlog')) {
+          // A command the brand never uses is answered as that; its words are not asked for another way.
+          const ruled = ruledCommand(command.command, command.rest)
           await runCommand(command.command, 'thread', command.rest)
-          if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
+          if (ruled) {
+            // Answered: the channel never uses it, and how to change that.
+          } else if (command.rest && !ACTION_NAMES.has(command.command)) await ask(command.rest)
           else if (unplaced()) await ask(PLACE_MATERIAL)
         } else if (vlogged) {
           // What was said with the shoot was for its story.
@@ -2628,17 +3518,26 @@ export function useCutalong() {
         } else if (text && !link && (docRef.current || attachments.length === 0)) {
           // Whatever was said with the files is the ask: the planner sees
           // the footage as sorted and places the material with it. A word
-          // about takes ("use the second take") is answered here, without it.
-          const local =
+          // about takes ("use the second take") is answered here, without it,
+          // and so is a rule for the brand's never list ("never use whooshes"),
+          // whose other words, if any, still go to the planner.
+          const rule = readNever(text)
+          const ruled =
             attachments.length === 0 &&
-            answerTakes(text, (reply, done) =>
-              push({
-                role: 'assistant',
-                text: reply,
-                actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
-              })
-            )
+            (await answerNever(rule, text, (reply, extra) => push({ role: 'assistant', text: reply, ...extra })))
+          const said = ruled ? rule.rest : text
+          const local =
+            ruled ||
+            (attachments.length === 0 &&
+              answerTakes(text, (reply, done) =>
+                push({
+                  role: 'assistant',
+                  text: reply,
+                  actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+                })
+              ))
           if (!local) await ask(text)
+          else if (ruled && said.trim() && docRef.current) await ask(said)
         } else if (unplaced() && !asked) {
           await ask(PLACE_MATERIAL)
         }
@@ -2648,14 +3547,19 @@ export function useCutalong() {
     },
     [
       addMaterial,
+      answerNever,
       answerTakes,
       ask,
+      brandNow,
       bringIn,
       capturePage,
       ensureProject,
+      neverOf,
       persist,
       push,
+      ruledCommand,
       runCommand,
+      stripNever,
       studyLink,
       takeIn,
       vlog
@@ -2728,36 +3632,37 @@ export function useCutalong() {
       else if (a.kind === 'run-command' && a.payload) void runCommand(a.payload)
       else if (a.kind === 'save-style' && a.payload) void saveStyle(a.payload)
       else if (a.kind === 'reveal' && a.payload) void api.reveal(a.payload)
+      else if (a.kind === 'strip-never') void during(async () => stripNever('thread'))
       else if (a.kind === 'copy' && a.payload) {
         void navigator.clipboard.writeText(a.payload).then(
           () => setToast({ text: 'Copied.' }),
           () => setToast({ text: "I couldn't copy that. Select the text in Details instead.", error: true })
         )
       } else if (a.kind === 'add-clip' && a.payload) {
-        const { url, hint, beat } = JSON.parse(a.payload) as { url: string; hint: string; beat?: string }
+        const { url, hint, beat } = JSON.parse(a.payload) as { url: string; hint: string; beat?: string | string[] }
         void bringIn({ url }, hint, beat)
       } else if (a.kind === 'add-icon' && a.payload) {
-        const { name, hint } = JSON.parse(a.payload) as { name: string; hint: string }
-        void addIcon(name, hint)
+        const { name, hint, beat } = JSON.parse(a.payload) as { name: string; hint: string; beat?: string[] }
+        void addIcon(name, hint, beat)
       } else if (a.kind === 'sign-in' && a.payload) {
         const { req, hint, beat } = JSON.parse(a.payload) as {
           req: { url?: string; path?: string; range?: Range | null }
           hint: string
-          beat?: string
+          beat?: string | string[]
         }
         void api.setVideoSignIn('chrome').then(() => bringIn(req, hint, beat))
       }
     },
-    [addIcon, bringIn, runCommand, saveStyle, useStyle]
+    [addIcon, bringIn, during, runCommand, saveStyle, stripNever, useStyle]
   )
 
   // ---------- Editor ----------
 
   const addNote = useCallback(
-    (text: string, beat: string | null): void => {
+    (text: string, beat: string | null, range: { from: string; to: string } | null = null): void => {
       const d = docRef.current
       if (!d) return
-      setDoc(addNoteTo(d, text, beat))
+      setDoc(addNoteTo(d, text, beat, range))
       rememberAdded(d, docRef.current)
     },
     [setDoc]
@@ -2775,7 +3680,7 @@ export function useCutalong() {
   const applyNotes = useCallback(async (): Promise<void> => {
     const d = docRef.current
     if (!d) return
-    const notes = openNotes(d)
+    let notes = openNotes(d)
     if (notes.length === 0) return
     // Notes that all ask of a vlog's story tell it again (useVlog); the planner takes the rest.
     const told = await vlog.fromNotes(notes)
@@ -2784,32 +3689,103 @@ export function useCutalong() {
       if (latest && told.length) setDoc(setNoteStatus(latest, told, 'applied'))
       return
     }
+    // A length, the intro or every line kept is cut here as a version of its own (shared/raw/length).
+    // A note left on a picked stretch is not the whole video's: the planner takes it, held to the stretch.
+    let lead = ''
+    if (!d.vlog) {
+      const lengths = notes.flatMap((n) => {
+        const asked = n.range ? null : parseLengthAsk(n.text)
+        return asked ? [{ note: n, asked }] : []
+      })
+      if (lengths.length > 0) {
+        const text = lengths.map((l) => l.note.text.trim().replace(/[.!?]+$/, '')).join('. ')
+        const r = await lengthAsked(mergeLengthAsks(lengths.map((l) => l.asked)), text, 'panel')
+        // Done when the length is so, by this version or already, for a note that asked nothing else.
+        const done = r.n !== null || r.met
+        const ids = lengths.filter((l) => !l.asked.rest).map((l) => l.note.id)
+        const latest = docRef.current
+        if (latest && done && ids.length) setDoc(setNoteStatus(latest, ids, 'applied'))
+        rememberNotes(docRef.current, done ? ids : [], 'applied', r.n)
+        // What else a note asked ("and add captions") goes on to the planner as that note.
+        const rest = new Map(lengths.flatMap((l) => (l.asked.rest ? [[l.note.id, l.asked.rest] as const] : [])))
+        const cut = new Set(lengths.map((l) => l.note.id))
+        notes = notes.flatMap((n) => {
+          const more = rest.get(n.id)
+          return more ? [{ ...n, text: more }] : cut.has(n.id) ? [] : [n]
+        })
+        if (notes.length === 0 || docRef.current?.id !== d.id) return
+        lead = `${r.said} `
+      }
+    }
+    const now = docRef.current ?? d
+    // A note on a stretch that is all cut out since is about nothing the cut plays: it stays as it is.
+    const gone = notes.filter((n) => n.range && noteBeats(currentCut(now), n.range).length === 0)
+    if (gone.length > 0) {
+      notes = notes.filter((n) => !gone.includes(n))
+      lead += `${gone.length === 1 ? 'One note is on a stretch that is no longer in the cut, so I left it as it is.' : `${gone.length} notes are on stretches no longer in the cut, so I left them as they are.`} `
+      if (notes.length === 0) {
+        setPanel({ text: lead.trim() })
+        return
+      }
+    }
+    // Notes all left on stretches picked on the strip: the plan is held to them, or what is left of them (shared/edit/range).
+    const picks = notes.map((n) => noteBeats(currentCut(now), n.range))
+    const held = picks.every((p) => p.length > 0) ? [...new Set(picks.flat())] : null
+    const heldSpan = held ? rangeTimes(resolveCut(currentCut(now), now.words, now.sources), held) : null
     setPanel({
       text: '',
       progress: { stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: null },
       since: Date.now()
     })
-    const r = await during(() => api.planEdit({ doc: d, request: '', notes, voice: brandRef.current.voice }))
+    const r = await during(() => api.planEdit({ doc: now, request: '', notes, voice: brandNow().voice }))
     // The answer is about this edit; should another be open by now, it is not applied to that one.
     if (docRef.current?.id !== d.id) return
     if (!r.ok) {
-      setPanel({ text: r.message, error: true })
+      setPanel({ text: `${lead}${r.message}`, error: true })
       return
     }
-    const done = r.ops.length > 0 ? applyAsVersion(r.ops, r.summary) : null
+    let ops = r.ops
+    let outside = 0
+    if (held) {
+      const latest = docRef.current ?? now
+      const split = opsInside(currentCut(latest), r.ops, held, {
+        words: latest.words,
+        sources: latest.sources,
+        assets: latest.assets
+      })
+      ops = split.inside
+      outside = split.outside.length
+    }
+    const name = heldSpan ? rangeName(heldSpan) : null
+    scope.current = held && name ? { beats: held, name, always: true } : null
+    // With some of the plan left out, the planner's summary says more than was done: the version says what was.
+    const done = ops.length > 0 ? applyAsVersion(ops, outside > 0 ? 'I made the changes that stay inside it.' : r.summary) : null
+    scope.current = null
+    // Every change reached outside the stretch: nothing is done, so the notes stay open and the reply says why.
+    const allOutside = !!name && outside > 0 && ops.length === 0
+    const handled = allOutside ? [] : r.notesHandled
     const latest = docRef.current
-    if (latest && r.notesHandled.length) setDoc(setNoteStatus(latest, r.notesHandled, 'applied'))
-    rememberNotes(docRef.current, r.notesHandled, 'applied', done?.n ?? null)
-    const extra = [...r.needs, ...r.rejected]
+    if (latest && handled.length) setDoc(setNoteStatus(latest, handled, 'applied'))
+    rememberNotes(docRef.current, handled, 'applied', done?.n ?? null)
+    const leftOut =
+      outside > 0 && name && !allOutside
+        ? outside === 1
+          ? `I left out one change that reached outside ${name}.`
+          : `I left out ${outside} changes that reached outside ${name}.`
+        : ''
+    // The version's own summary already carries any notice.
+    const extra = [leftOut, ...r.needs, ...r.rejected, outside > 0 ? '' : (done?.notice ?? '')]
       .map((t) => sentence(t))
       .filter(Boolean)
       .join(' ')
+    const summary = done && outside > 0 ? done.summary : name ? leadWith(name, r.summary) : r.summary
+    const reply = allOutside ? `I left the edit as it was: what the plan changed reached outside ${name}.` : r.reply
     setPanel({
       text: done
-        ? `v${done.n} is ready. ${r.summary}${extra ? ` ${extra}` : ''}`
-        : `${r.reply}${extra ? ` ${extra}` : ''}`
+        ? `${lead}v${done.n} is ready. ${summary}${extra ? ` ${extra}` : ''}`
+        : `${lead}${reply}${extra ? ` ${extra}` : ''}`
     })
-  }, [applyAsVersion, during, setDoc, vlog])
+  }, [applyAsVersion, during, lengthAsked, setDoc, vlog])
 
   const applyOpsDirect = useCallback(
     (ops: Op[], fallback: string): void => {
@@ -2830,12 +3806,9 @@ export function useCutalong() {
     }
     const n = currentVersion(d).n
     setDoc(restore(d, back))
-    remember({ kind: 'undo', doc: d.id, from: n, to: back })
+    remember({ kind: 'undo', doc: d.id, from: n, to: back, ...brandTag(currentCut(d)) })
     setPanel({ text: `v${n + 1} is v${back} again.` })
   }, [setDoc])
-
-  /** True while an export runs, so a second press waits for it. */
-  const exporting = useRef(false)
 
   /**
    * Exports the version on screen. Its progress shows in the toast and in the
@@ -2845,11 +3818,14 @@ export function useCutalong() {
     const d = docRef.current
     if (!d) return
     const n = currentVersion(d).n
-    if (exporting.current) {
-      setToast({ text: `I'm still exporting. v${n} can go once that's done.` })
+    // A second export waits for the first, Export all's included: both report on one channel.
+    const wait = exportWait(exportingNow.current, { kind: 'version', n })
+    if (wait) {
+      // In the panel, where it stays: the toast is the running export's, and its next count would replace it.
+      setPanel({ text: wait })
       return
     }
-    exporting.current = true
+    exportingNow.current = { kind: 'version', n }
     // On a phone the screen is kept on while the export runs, and the person is told so.
     const stage =
       device.kind === 'phone' ? `Exporting v${n}. I'm keeping the screen on until it's done` : `Exporting v${n}`
@@ -2871,6 +3847,8 @@ export function useCutalong() {
         return
       }
       rememberKeep(d)
+      // A clip's export is kept on its card, as Export all's are.
+      if (clipping.isClip(d)) clipping.exported(d.id, { path: r.outputPath, version: n, at: new Date().toISOString() })
       const name = fileName(r.outputPath)
       const durationSec = r.durationSec ?? 0
       // Where else it went: Photos, on a phone, or why not.
@@ -2892,9 +3870,11 @@ export function useCutalong() {
         path: r.outputPath,
         chat: true
       })
+      // Under it, what the upload needs: captions, a description, titles and tags, beside the video.
+      if (r.upload) push(uploadReply(r.upload))
     } finally {
       off()
-      exporting.current = false
+      exportingNow.current = null
     }
   }, [during, patch, push])
 
@@ -2913,6 +3893,8 @@ export function useCutalong() {
     docRef.current = null
     messagesRef.current = []
     pendingCommand.current = null
+    // A new chat uses the default brand until it is switched.
+    setChatChoice(null)
     setOffers([])
     setDocState(null)
     setMediaUrl(null)
@@ -2922,16 +3904,48 @@ export function useCutalong() {
     setGraphic(null)
     setScreen('start')
     refreshRecent()
-  }, [refreshRecent])
+  }, [refreshRecent, setChatChoice])
 
-  /** For the notes panel: a takes sentence typed as a note is answered, not stored. */
+  /**
+   * For the notes panel: a takes sentence, or a rule for the brand's never
+   * list, typed as a note is answered, not stored. Whatever else the note
+   * asks for ("never use whooshes and keep the hook short") is kept as a
+   * note of its own.
+   */
   const answerInPanel = useCallback(
-    (text: string): boolean => answerTakes(text, (reply) => setPanel({ text: reply })),
-    [answerTakes]
+    (text: string, keep?: (rest: string) => void): boolean => {
+      const rule = readNever(text)
+      if (rule.never.length > 0 || rule.allow.length > 0) {
+        const target = brandNow()
+        const list = neverOf(target.id)
+        const allows = rule.allow.some((a) => covering(list, a) || list.some((e) => e.startsWith(`${a}:`)))
+        if (rule.never.length > 0 || allows) {
+          void answerNever(rule, text, (reply, extra) =>
+            setPanel({ text: [reply, extra?.aside ?? ''].filter(Boolean).join(' ') })
+          )
+          if (rule.rest.trim()) keep?.(rule.rest)
+          return true
+        }
+      }
+      return answerTakes(text, (reply) => setPanel({ text: reply }))
+    },
+    [answerNever, answerTakes, brandNow, neverOf]
   )
 
   return {
+    /** The brand on the Brand page. */
     brand,
+    brands,
+    /** The brand the open chat's edit is made in. */
+    chatBrand: inChat,
+    showBrand: setPageBrandId,
+    newBrand,
+    deleteBrand,
+    makeDefaultBrand,
+    switchBrand,
+    /** A brand's never list, and changing it from the Brand page. */
+    neverOf: (id: string) => memory.neverFor(id),
+    setNever: memory.setNever,
     brandProgress,
     saveBrand,
     learnFrom,
@@ -2963,6 +3977,7 @@ export function useCutalong() {
     dropNote,
     applyNotes,
     applyOpsDirect,
+    cutBeats,
     switchTake,
     offers,
     acceptOffers,
@@ -2994,6 +4009,71 @@ async function musicBed(path: string): Promise<{ op: Op } | { say: string }> {
       }
     }
   }
+}
+
+/** Commands that act on the beats of a stretch picked on the strip; any other goes on the whole video. */
+const ON_BEATS = new Set([
+  'cut',
+  'transition',
+  'jcut',
+  'lcut',
+  'speed',
+  'ramp',
+  'freeze',
+  'reverse',
+  'kenburns',
+  'pushin',
+  'pullout',
+  'pan',
+  'punchin',
+  'shake',
+  'focus',
+  'still',
+  'sfx',
+  'angle',
+  'broll',
+  'icon',
+  'screenshot',
+  'phone'
+])
+
+function actsOnBeats(command: string, rest: string): boolean {
+  if (ON_BEATS.has(command) || findMotionCommand(command)) return true
+  // Captions hidden or shown again over the stretch; /captions alone and a caption style are the whole video's.
+  if (command === 'captions') return /^(off|on|hide|show|none|no)$/i.test(rest.trim())
+  // Framed by hand left, right or in the middle; following the speaker is the whole video's.
+  if (command === 'reframe') return /\b(left|right|centre|center|middle)\b/i.test(rest)
+  // A chapter started at the stretch.
+  if (command === 'chapters') return /^here\b/i.test(rest.trim())
+  return false
+}
+
+/** What a command that goes on the whole video is called when the reply says so. */
+const WHOLE_NAMES: Record<string, string> = {
+  music: 'A music bed',
+  polish: 'Voice polish',
+  onbeat: '/onbeat',
+  lut: 'A LUT',
+  fill: '/fill',
+  length: 'A length',
+  chapters: 'Chapters',
+  reframe: 'Following the speaker',
+  captions: 'A caption style',
+  hierarchy: 'A caption style'
+}
+
+/** Ops a command made for the beat at hand, made for every beat of a picked stretch instead (shared/edit/range). */
+function acrossPicked(ops: Op[], beat: string | null, picked: string[] | null): Op[] {
+  if (!picked || !beat) return ops
+  return ops.map((op) =>
+    'beats' in op && op.beats.length === 1 && op.beats[0] === beat ? ({ ...op, beats: picked } as Op) : op
+  )
+}
+
+/** A sentence led by a stretch's name: "Between 0:12 and 0:31, four beats …", with "I" and names kept as they are. */
+function leadWith(name: string, said: string): string {
+  const rest = /^[A-Z][a-z]/.test(said) && !/^I\b/.test(said) ? said.charAt(0).toLowerCase() + said.slice(1) : said
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}, ${rest}`
 }
 
 /** The profile an edit is cut with: its own, the brand's niche, what its words suggest, or a talking head. */

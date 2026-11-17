@@ -10,6 +10,8 @@ import { fetchExcerpt, fetchImage, importFile, saveImage, searchVideos, type Ass
 import { isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo } from './inspiration/measure'
+import { freePath } from './export-paths'
+import { readApiKey } from './apikey'
 import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
 import { findSounds, makeAllSfx, readSound } from './sfx'
@@ -21,10 +23,8 @@ import { loudnessEnvelope } from './audio-envelope'
 import { estimateOffset, trustworthy, type Offset } from '../shared/audio/offset'
 import { watchClip } from './mouth'
 import { detectFaces, VISION_PATH } from './track'
-import { readApiKey } from './apikey'
 import {
   extendCut,
-  freePath,
   prepareCut,
   readFootage,
   renderEdit,
@@ -34,14 +34,16 @@ import {
   type WorkHost
 } from './cut-work'
 import { removePreset, savedPresets, savePreset } from './preset-store'
-import { checkKey, planEdit } from './planner'
+import { checkKey, keepOffList, planEdit } from './planner'
 import { planEditLocally } from './planner-local'
 import { isLocalUp, localModels } from './local-llm'
 import { OLLAMA_HOST } from './clips'
-import { readBrand, saveBrand } from './brand-store'
+import { brandOfDoc, readBrand, readBrandById, readBrands, saveBrand, saveBrands } from './brand-store'
 import { hearInCloud, registerServicesIpc } from './providers'
 import { registerLearnIpc } from './learn'
-import { preferencesForPlanner, registerMemoryIpc } from './memory'
+import { neverForBrand, preferencesForPlanner, registerMemoryIpc } from './memory'
+import { neverForPlanner } from '../shared/never'
+import { brandInSentence } from '../shared/brands'
 import { registerClippingIpc } from './clipping'
 import { registerVlogIpc } from './vlog'
 import { currentVersion, subjectFrom, type Subject, EditDocSchema, type Note } from '../shared/edit'
@@ -61,6 +63,7 @@ import {
   type InspirationStudy,
   type SpeechMeasures
 } from '../shared/inspiration'
+import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 
 /**
  * The main-process side of Cutalong: turning footage into an edit document,
@@ -88,22 +91,23 @@ const soundFolders = (): string[] => [
 ]
 
 /**
- * The Mac as the shared work sees it (cut-work.ts): its ffmpeg, the brand and
- * settings in userData, other AI services, the face finder and drawing
- * motion graphics. Each is read when it is used.
+ * The Mac as the shared work sees it (cut-work.ts): its ffmpeg, settings in
+ * userData, other AI services, the face finder, drawing motion graphics and
+ * the person's key. Each is read when it is used.
  */
 export const macWork: WorkHost = {
   ffmpeg: () => FFMPEG_PATH,
   ffprobe: () => FFPROBE_PATH,
   probe: (path) => probe(path),
-  readBrand: () => readBrand(),
   whisperModel: () => getSettings().whisperModel,
   outputDir: () => getSettings().outputDir,
   sfxDir: () => sfxDir(),
   fontsDir: () => FONTS_DIR(),
   hearInCloud: (path, durationSec, progress) => hearInCloud(path, durationSec, progress),
   watch: (input) => watchClip(input, detectFaces, FFMPEG_PATH),
-  motion: (input) => renderCutMotion({ ...input, icons: loadIcons, logos: loadLogos })
+  motion: (input) => renderCutMotion({ ...input, icons: loadIcons, logos: loadLogos }),
+  apiKey: async () => readApiKey(),
+  claudeWritesUpload: () => getSettings().claudeWritesUpload !== false
 }
 
 export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: string) => string }): void {
@@ -113,13 +117,15 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    * each clip is lined up with it by ear, and the words, the preview and the
    * export all use that sound.
    */
-  ipcMain.handle('cut:prepare', (e, input: string | { paths: string[]; soundPaths?: string[] }) =>
-    prepareCut(
-      macWork,
-      input,
-      (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }),
-      deps.mediaUrlFor
-    )
+  ipcMain.handle(
+    'cut:prepare',
+    (e, input: string | { paths: string[]; soundPaths?: string[]; brand?: string | null }) =>
+      prepareCut(
+        macWork,
+        input,
+        (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }),
+        deps.mediaUrlFor
+      )
   )
 
   // Where a screen recording changes, stretch by stretch, for a camera to follow.
@@ -198,7 +204,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     let xmlPath: string | null = null
     try {
       const n = currentVersion(doc).n
-      xmlPath = await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.xml')
+      // Its captions go beside it as "<name> captions.srt", so that name has to be free too.
+      xmlPath = await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.xml', [' captions.srt'])
       const written = await writePremiere(doc, { ffmpeg: FFMPEG_PATH, xmlPath, sfxDir: sfxDir() })
       const premiere = await findPremiere()
       if (premiere) openInPremiere(premiere, xmlPath)
@@ -315,6 +322,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       // for this: the picture alone answers most of the question.
       let speech: SpeechMeasures | null = null
       let note: string | null = null
+      let said: Detail[] = []
       const settings = getSettings()
       if (measures.hasAudio && (await hasModel(settings.whisperModel))) {
         try {
@@ -326,6 +334,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
           speech = measureSpeech(transcript.words)
         } catch (err) {
           note = `I measured the picture but couldn't listen to the speech. ${message(err)}`
+          said = saidDetails(toolSaid(err))
         }
       } else if (measures.hasAudio) {
         note = 'Speech pacing needs the transcription model, which is not downloaded yet.'
@@ -340,7 +349,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         style,
         reply: factsReply(facts),
         chips: describeStyle(style).slice(0, 3),
-        details: factDetails(facts),
+        details: [...factDetails(facts), ...said],
         command: suggestCommandName(channel ?? title, taken),
         note
       }
@@ -356,13 +365,20 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   // read fresh here so a statement they deleted never reaches the planner, and
   // the brand's own logos by name, so a logo pop can show them.
   // Claude plans unless the person picked a model on this Mac in Settings.
+  // The edit's own brand gives the logos and the never list, which the plan is checked against too.
   ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
-    const preferences = await preferencesForPlanner().catch(() => [])
-    const logos = (await readBrand()).logos.map((l) => l.name)
+    const parsed = EditDocSchema.safeParse(req.doc)
+    const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
+    // What this brand has learned from its own chats.
+    const preferences = await preferencesForPlanner(brand.id).catch(() => [])
+    const logos = brand.logos.map((l) => l.name)
+    const never = await neverForBrand(brand.id).catch(() => [])
+    const said = neverForPlanner(never)
     const local = getSettings().localPlanner
-    return local
-      ? planEditLocally({ ...req, preferences, logos }, { host: OLLAMA_HOST, model: local })
-      : planEdit({ ...req, preferences, logos, apiKey: readApiKey() })
+    const result = local
+      ? await planEditLocally({ ...req, preferences, logos, never: said }, { host: OLLAMA_HOST, model: local })
+      : await planEdit({ ...req, preferences, logos, never: said, apiKey: readApiKey() })
+    return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
   })
 
   // The models Ollama has on this Mac, for planning edits without Claude.
@@ -375,9 +391,13 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   // measured here on this computer.
   ipcMain.handle('brand:get', () => readBrand())
   ipcMain.handle('brand:save', (_e, brand: unknown) => saveBrand(brand))
+  // A brand per channel: the list, and which one new chats use (shared/brands).
+  ipcMain.handle('brands:get', () => readBrands())
+  ipcMain.handle('brands:save', (_e, brands: unknown) => saveBrands(brands))
   ipcMain.handle('brand:learn', async (e, paths: string[]) => {
     const learned: { path: string; title: string; facts: ReturnType<typeof summarize> }[] = []
     const failed: string[] = []
+    const details: Detail[] = []
     const settings = getSettings()
     for (const [i, path] of paths.entries()) {
       const at = (f: number): number => Math.round(((i + f) / paths.length) * 100)
@@ -393,10 +413,11 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         learned.push({ path, title: basename(path, extname(path)), facts: summarize(measures, speech) })
       } catch (err) {
         failed.push(`${basename(path)}: ${message(err)}`)
+        details.push(...saidDetails(toolSaid(err), paths.length > 1 ? basename(path) : undefined))
       }
     }
     deps.send(e.sender, 'brand:progress', { stage: 'Done', percent: 100 })
-    return { learned, failed }
+    return { learned, failed, ...(details.length ? { details } : {}) }
   })
 
   // Material for an edit: files, image links, excerpts of videos at links,
@@ -430,10 +451,17 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('assets:search', async (_e, query: string) => {
+  // The brand's B-roll sources: channels and sites to look in first, and ones never to use.
+  ipcMain.handle('assets:search', async (_e, query: string, sources?: { prefer?: unknown; block?: unknown }) => {
+    const lines = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 30) : []
     try {
       needsYtdlp()
-      return { ok: true as const, results: await searchVideos(query, tools('search')) }
+      const found = await searchVideos(query, tools('search'), 5, {
+        prefer: lines(sources?.prefer),
+        block: lines(sources?.block)
+      })
+      return { ok: true as const, ...found }
     } catch (err) {
       return { ok: false as const, message: message(err) }
     }
@@ -499,8 +527,12 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   registerVlogIpc({
     send: deps.send,
     mediaUrlFor: deps.mediaUrlFor,
-    readTalking: async (path, n, progress) => {
-      const read = await readFootage(macWork, [path], [], progress, n, { niche: 'vlog' })
+    // In the chat's brand: the names it listens for.
+    readTalking: async (path, n, progress, brand) => {
+      const read = await readFootage(macWork, [path], [], progress, n, {
+        niche: 'vlog',
+        brand: await readBrandById(brand)
+      })
       const source = read.sources[0]
       return { source, words: read.words, map: read.maps[source.id], notes: read.notes }
     }

@@ -164,23 +164,32 @@ export async function watchClip(path: string, tools: WatchTools): Promise<Watche
     try {
       file = join(tools.cacheDir, `${await cacheKey(path)}.json`)
       const hit = JSON.parse(await fs.readFile(file, 'utf8')) as WatchedClip
-      if (hit.v === WATCH_VERSION && hit.path === path) return hit
+      if (hit.v === WATCH_VERSION && hit.path === path) {
+        if (hit.zoneMin !== undefined) return hit
+        // Watched before the camera's time zone was kept: its tags say it, without watching again.
+        const json = JSON.parse(await run(tools.ffprobe, [...PROBE_ARGS, path], tools.signal))
+        const zoned = { ...hit, zoneMin: readShootTags(json, basename(path)).zoneMin }
+        await keep(tools.cacheDir, file, zoned)
+        return zoned
+      }
     } catch {
       // Not watched yet, or the entry is unreadable: watch it now.
     }
   }
   const watched = await measureClip(path, tools)
-  if (file && tools.cacheDir) {
-    try {
-      await fs.mkdir(tools.cacheDir, { recursive: true })
-      // Whole, then renamed, so a kill mid-write leaves no half entry.
-      await fs.writeFile(`${file}.tmp`, JSON.stringify(watched))
-      await fs.rename(`${file}.tmp`, file)
-    } catch {
-      // A cache that cannot be written must not fail the watching.
-    }
-  }
+  if (file && tools.cacheDir) await keep(tools.cacheDir, file, watched)
   return watched
+}
+
+async function keep(dir: string, file: string, watched: WatchedClip): Promise<void> {
+  try {
+    await fs.mkdir(dir, { recursive: true })
+    // Whole, then renamed, so a kill mid-write leaves no half entry.
+    await fs.writeFile(`${file}.tmp`, JSON.stringify(watched))
+    await fs.rename(`${file}.tmp`, file)
+  } catch {
+    // A cache that cannot be written must not fail the watching.
+  }
 }
 
 async function measureClip(path: string, tools: WatchTools): Promise<WatchedClip> {
@@ -225,6 +234,7 @@ async function measureClip(path: string, tools: WatchTools): Promise<WatchedClip
     hasVideo,
     hasAudio: facts.audio !== null,
     recordedAt: shoot.recordedAt,
+    zoneMin: shoot.zoneMin,
     camera: shoot.camera,
     gps: shoot.gps,
     series,

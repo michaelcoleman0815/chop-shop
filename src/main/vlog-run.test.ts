@@ -48,10 +48,13 @@ let truth: ShootTruth
 let more: ShootTruth
 const sent: string[] = []
 const heardFiles: string[] = []
+/** The brand each talking clip was heard in: the chat's, for the names it listens for. */
+const heardIn: (string | null | undefined)[] = []
 
 /** Hears a talking clip as the talking-head reader would: its planted words, as source s{n}. */
-async function readTalking(path: string, n: number): Promise<TalkHeard> {
+async function readTalking(path: string, n: number, _progress?: unknown, brand?: string | null): Promise<TalkHeard> {
   heardFiles.push(path)
+  heardIn.push(brand)
   const clip = [...truth.clips, ...(more?.clips ?? [])].find((c) => c.path === path)
   const said = (clip && (truth.words.get(clip.name) ?? more?.words.get(clip.name))) || []
   return {
@@ -130,7 +133,7 @@ describe.skipIf(!ffmpeg || !ffprobe)('a vlog made the way the app makes it', () 
       join(dir, 'memo.m4a'),
       join(dir, 'broken.MOV')
     ]
-    const r = await makeVlog({ paths, request: 'make a vlog' }, deps, (stage) => stages.push(stage))
+    const r = await makeVlog({ paths, request: 'make a vlog', brand: 'brand-tc' }, deps, (stage) => stages.push(stage))
     if (!r.ok) throw new Error(r.message)
     v1 = r.doc
     expect(stages).toContain(`Watching your clips (${paths.length} of ${paths.length})`)
@@ -139,6 +142,8 @@ describe.skipIf(!ffmpeg || !ffprobe)('a vlog made the way the app makes it', () 
     // Only the two talking clips are heard.
     const talking = truth.clips.filter((c) => typeof c.sound === 'object').map((c) => c.path)
     expect(heardFiles.sort()).toEqual(talking.sort())
+    // In the chat's brand, whatever the default is.
+    expect(new Set(heardIn)).toEqual(new Set(['brand-tc']))
     expect(v1.profile).toBe('vlog')
     expect(v1.vlog?.clips).toHaveLength(truth.clips.length)
     expect(v1.vlog?.story.by).toBe('rules')

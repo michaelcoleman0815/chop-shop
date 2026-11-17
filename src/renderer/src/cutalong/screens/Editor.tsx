@@ -7,13 +7,16 @@ import {
   cameraClock,
   cameraPlan,
   cameraTransform,
+  captionedWords,
   captionPages,
   changesColour,
   currentCut,
   currentVersion,
+  cutsPicked,
   undoTarget,
   cutawayAt,
   cutawayClock,
+  cutawayFit,
   duckingKeys,
   frameAt,
   grainSpread,
@@ -26,9 +29,13 @@ import {
   pieceFraming,
   pieceRate,
   pieceTime,
+  pictureFit,
+  noteBeats,
+  pickedBeats,
   pipBox,
   placeSfx,
   RECORDED_VOICE_LUFS,
+  rangeTimes,
   resolveCut,
   SFX_INFO,
   sfxGainDb,
@@ -38,8 +45,10 @@ import {
   viewThroughAngles,
   vignetteStops,
   windowShare,
+  type BeatPick,
   type Camera,
   type EditDoc,
+  type Fit,
   type Look,
   type Music,
   type Op,
@@ -69,6 +78,7 @@ import {
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { isImagePath } from '../../../../shared/assets'
 import { api, mediaUrlFor } from '../api'
+import { Backdrop } from '../components/Backdrop'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
 import { GraphicPanel } from '../components/GraphicPanel'
 import { MotionCanvas } from '../components/MotionCanvas'
@@ -104,7 +114,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
-  // The cut's graphics on the output clock, in the brand's look: what the export draws.
+  // The cut's graphics on the output clock, in the look of the brand this version is made in: what the export draws.
   const scene = useMemo(
     () =>
       buildScene({
@@ -112,10 +122,10 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         resolved,
         words: doc.words,
         size: designSize(cut.aspect, doc.sources[0]),
-        theme: themeFrom(app.brand),
+        theme: themeFrom(app.chatBrand),
         assets: doc.assets
       }),
-    [cut, resolved, doc.words, doc.sources, doc.assets, app.brand]
+    [cut, resolved, doc.words, doc.sources, doc.assets, app.chatBrand]
   )
 
   const beats: StripBeat[] = useMemo(() => {
@@ -141,6 +151,16 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   }, [resolved, cut.beats, doc])
 
   const nowBeat = beatAt(resolved, player.time) ?? resolved.beats[resolved.beats.length - 1]
+
+  // A stretch picked on the strip: notes and commands act on its beats until it is let go.
+  const [pick, setPick] = useState<BeatPick | null>(null)
+  const picked = useMemo(() => pickedBeats(cut, pick), [cut, pick])
+  const span = useMemo(() => (picked.length ? rangeTimes(resolved, picked) : null), [resolved, picked])
+  // It goes when either end leaves the cut, and with the edit.
+  useEffect(() => {
+    if (pick && picked.length === 0) setPick(null)
+  }, [pick, picked])
+  useEffect(() => setPick(null), [doc.id])
 
   // Graphics along the beat strip, stacked in rows where they overlap.
   const marks: StripMark[] = useMemo(() => {
@@ -239,7 +259,16 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               onClose={() => app.selectGraphic(null)}
             />
           ) : (
-            <NotesPanel app={app} doc={doc} nowBeat={nowBeat?.id ?? null} presets={app.presets} time={player.time} />
+            <NotesPanel
+              app={app}
+              doc={doc}
+              nowBeat={nowBeat?.id ?? null}
+              presets={app.presets}
+              time={player.time}
+              picked={picked}
+              span={span}
+              onLetGo={() => setPick(null)}
+            />
           )}
         </div>
         <BeatStrip
@@ -251,6 +280,15 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           onSeek={player.seek}
           marks={marks}
           selected={selected?.id ?? null}
+          pick={pick}
+          onPick={setPick}
+          onCutPick={() => {
+            if (picked.length === 0) return
+            // The answer shows in the notes, so they come up.
+            setSide('notes')
+            if (selected) app.selectGraphic(null)
+            app.cutBeats(picked, 'panel')
+          }}
           onMark={(id) => {
             setSide('notes')
             app.selectGraphic(id === selected?.id ? null : id)
@@ -319,9 +357,10 @@ function Preview({
 
   const beat = beatAt(resolved, time)
   const treatment = beat ? cut.beats[beat.index]?.treatment : undefined
+  // Beats whose captions are off show none, as the export has it.
   const pages = useMemo(
-    () => captionPages(resolved, cut.captions.wordsPerScreen),
-    [resolved, cut.captions.wordsPerScreen]
+    () => captionPages(captionedWords(cut, resolved), cut.captions.wordsPerScreen),
+    [cut, resolved]
   )
   // Captions the graphics draw are on the canvas, not here; and captions wait while a card or title is up.
   const carded = scene.items.some((i) => template(i.kind)?.covers === 'card' && time >= i.start && time < i.end)
@@ -697,14 +736,35 @@ function Deck({
   }
   const cutawayCamera =
     rb && t?.broll?.camera && t.frame !== 'card' ? cameraClock(resolved, rb.id, time, t.broll.camera.word) : null
+  // A picture of another shape shows whole, on a blurred copy of itself or between bars, as the export has it (edit/fill).
+  const beat = rb ? cut.beats[rb.index] : undefined
+  const box = { width: frameAspect, height: 1 }
+  const fit = beat && source ? pictureFit(cut, beat, source, box) : 'cover'
+  const brollPath = t?.broll?.path
+  const brollAsset = brollPath ? doc.assets.find((a) => a.path === brollPath) : undefined
+  const cutawayFitFor = (size: { width: number; height: number } | null): Fit =>
+    beat
+      ? cutawayFit(
+          cut,
+          beat,
+          brollAsset?.width && brollAsset.height ? { width: brollAsset.width, height: brollAsset.height } : size,
+          box
+        )
+      : 'cover'
   return (
     <div className="cl-deck" style={style.wrapper} data-dip={style.dip} aria-hidden={!view.layer}>
-      <div className="cl-deck-picture" style={style.picture}>
+      <div className={`cl-deck-picture${fit === 'black' ? ' bars' : ''}`} style={style.picture}>
+        {fit === 'blur' && <Backdrop of={videoRef} aspect={frameAspect} bw={!!t?.bw} transform={transform} />}
         <video
           ref={videoRef}
           playsInline
           preload="auto"
-          style={{ filter: t?.bw ? 'grayscale(1)' : undefined, transform, objectPosition }}
+          style={{
+            filter: t?.bw ? 'grayscale(1)' : undefined,
+            transform,
+            objectPosition,
+            objectFit: fit === 'cover' ? undefined : 'contain'
+          }}
         />
         <audio ref={soundRef} preload="auto" aria-hidden="true" />
         {view.layer && t?.broll && t.frame !== 'speaker' && at && (
@@ -716,6 +776,8 @@ function Deck({
             moving={!runs?.held && !t.broll.reverse}
             playing={playing}
             bw={t.bw}
+            fitFor={cutawayFitFor}
+            aspect={frameAspect}
             camera={
               t.broll.camera && cutawayCamera
                 ? {
@@ -748,7 +810,9 @@ function Cutaway({
   moving,
   playing,
   bw,
-  camera
+  camera,
+  fitFor,
+  aspect
 }: {
   frame: string
   path: string
@@ -765,11 +829,17 @@ function Cutaway({
     clock: { t: number; length: number; wordAt: number | null }
     frameAspect: number
   } | null
+  /** How it fills the frame, from its size when the edit knows it, or else the size it loaded at (edit/fill). */
+  fitFor: (size: { width: number; height: number } | null) => Fit
+  /** The frame's width over its height. */
+  aspect: number
 }): JSX.Element {
   const ref = useRef<HTMLVideoElement>(null)
+  const image = useRef<HTMLImageElement>(null)
   const still = isImagePath(path) || path.startsWith('data:image')
   // The footage's own shape, once it has loaded: the move is planned on it.
   const [shape, setShape] = useState<number | null>(null)
+  const fit = fitFor(shape ? { width: shape, height: 1 } : null)
   useEffect(() => {
     const v = ref.current
     if (!v) return
@@ -786,11 +856,13 @@ function Cutaway({
     const plan = cameraPlan(camera.move, camera.clock.length, camera.clock.wordAt, shape, camera.frameAspect)
     transform = cameraTransform(viewAt(plan, camera.clock.t), plan.fw, plan.fh)
   }
-  const style = { filter: bw ? 'grayscale(1)' : undefined, transform }
+  const style = { filter: bw ? 'grayscale(1)' : undefined, transform, objectFit: fit === 'cover' ? undefined : 'contain' } as const
   return (
-    <div className={`cl-cutaway ${frame}`}>
+    <div className={`cl-cutaway ${frame}${fit === 'black' ? ' bars' : ''}`}>
+      {fit === 'blur' && <Backdrop of={still ? image : ref} aspect={aspect} bw={bw} />}
       {still ? (
         <img
+          ref={image}
           src={src}
           alt=""
           style={style}
@@ -816,7 +888,10 @@ function NotesPanel({
   doc,
   nowBeat,
   presets,
-  time
+  time,
+  picked,
+  span,
+  onLetGo
 }: {
   app: Cutalong
   doc: EditDoc
@@ -824,6 +899,10 @@ function NotesPanel({
   presets: Preset[]
   /** The playhead: where a graphic typed here lands, and what the commands that act on a word or beat act on. */
   time: number
+  /** The beats of a stretch picked on the strip, and where it plays: a note or a command acts on those. */
+  picked: string[]
+  span: { start: number; end: number } | null
+  onLetGo: () => void
 }): JSX.Element {
   const version = currentVersion(doc)
   const notes = openNotes(doc)
@@ -838,6 +917,14 @@ function NotesPanel({
     const i = beats.findIndex((b) => b.id === id)
     return i < 0 ? '' : `Beat ${i + 1}`
   }
+  // A note left on a stretch says where it played then.
+  const resolved = useMemo(() => resolveCut(currentCut(doc), doc.words, doc.sources), [doc])
+  const where = (n: (typeof notes)[number]): string => {
+    if (!n.range) return position(n.beat)
+    const times = rangeTimes(resolved, noteBeats(currentCut(doc), n.range))
+    return times ? `${clock(times.start)} to ${clock(times.end)}` : position(n.beat)
+  }
+  const stretch = span ? `${clock(span.start)} to ${clock(span.end)}` : null
 
   return (
     <aside className="cl-notes" aria-label="Notes">
@@ -859,7 +946,7 @@ function NotesPanel({
                 <span className="cl-note-n">{i + 1}</span>
                 <span className="cl-note-text">
                   {n.text}
-                  {n.beat && <span className="cl-project-meta">{position(n.beat)}</span>}
+                  {(n.beat || n.range) && <span className="cl-project-meta">{where(n)}</span>}
                 </span>
                 <button
                   type="button"
@@ -878,12 +965,33 @@ function NotesPanel({
           Apply {notes.length === 1 ? '1 note' : `${notes.length} notes`} as v{version.n + 1}
         </Button>
       )}
+      {stretch && (
+        <div className="cl-picked">
+          <span>
+            <span className="mono">{stretch}</span> picked
+          </span>
+          <Button variant="text" small onClick={onLetGo}>
+            Clear
+          </Button>
+        </div>
+      )}
       <NoteInput
         presets={presets}
+        placeholder={stretch ? `A note on ${stretch}, or type /` : undefined}
         onNote={(text) => {
           const command = parseCommand(text)
-          if (command) void app.runCommand(command.command, 'panel', command.rest, time)
-          else if (!app.answerInPanel(text)) app.addNote(text, nowBeat)
+          const range = picked.length ? picked : null
+          // A note on a stretch is left on one of its beats: the playhead's, when it is among them.
+          const note = (words: string): void =>
+            app.addNote(
+              words,
+              range ? (nowBeat && range.includes(nowBeat) ? nowBeat : range[0]) : nowBeat,
+              range ? { from: range[0], to: range[range.length - 1] } : null
+            )
+          if (command) void app.runCommand(command.command, 'panel', command.rest, time, range)
+          else if (range && cutsPicked(text)) app.cutBeats(range, 'panel')
+          // A rule for the never list is taken; whatever else was said with it is a note.
+          else if (!app.answerInPanel(text, note)) note(text)
         }}
       />
     </aside>
@@ -895,7 +1003,15 @@ function NotesPanel({
  * move through it, Tab or Enter puts the command in the box to finish, and
  * Escape closes it. Nothing runs until it is sent.
  */
-function NoteInput({ presets, onNote }: { presets: Preset[]; onNote: (text: string) => void }): JSX.Element {
+function NoteInput({
+  presets,
+  onNote,
+  placeholder = 'Add a note, or type /'
+}: {
+  presets: Preset[]
+  onNote: (text: string) => void
+  placeholder?: string
+}): JSX.Element {
   const [text, setText] = useState('')
   const [pick, setPick] = useState(0)
   const input = useRef<HTMLInputElement>(null)
@@ -936,13 +1052,13 @@ function NoteInput({ presets, onNote }: { presets: Preset[]; onNote: (text: stri
         </div>
       )}
       <label className="sr-only" htmlFor="cl-note">
-        Add a note, or type /
+        {placeholder}
       </label>
       <input
         id="cl-note"
         ref={input}
         value={text}
-        placeholder="Add a note, or type /"
+        placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (matches.length > 0) {
