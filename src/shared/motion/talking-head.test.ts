@@ -228,6 +228,17 @@ describe('a counter', () => {
     }
   })
 
+  it('stands beside the face at eye level in a wide frame, clear of captions on the chest', () => {
+    const doc = counted('wide')
+    const scene = sceneOf(doc)
+    const pill = draw(scene, saidAt(doc, idOf(doc, 'million')) + 0.6).boxOf(ACCENT)
+    expect(pill).not.toBeNull()
+    // Drawn captions rest at 0.62 of the frame's height on the chest; the pill ends well above.
+    expect(pill!.y1).toBeLessThan(1080 * 0.55)
+    const face = usualFace('wide')
+    expect(pill!.x1 < face.x * 1920 || pill!.x0 > (face.x + face.w) * 1920).toBe(true)
+  })
+
   it('counts up from nothing to one figure, landing on its word', () => {
     const doc = docWith('vertical', (d) => [
       planOp(d, 'count', 'a million views', null)
@@ -558,6 +569,26 @@ describe('commands and plain words', () => {
         { label: '1,000,000', at: idOf(doc, 'a') }
       ]
     })
+  })
+
+  it('puts cards and a page asked for in the chat where the speaker talks about them', () => {
+    let doc = docWith('wide', () => [], `${SCRIPT} Here are my latest videos. This is my channel page.`)
+    const cards = planOp(doc, 'videos', 'One | 1K views · 1 wk ago\nTwo | 2K views · 2 wk ago', null)
+    // Several videos are "videos", not the "video" said earlier about one.
+    expect(cards.from).toBe(idOf(doc, 'videos'))
+    doc = addAsset(doc, {
+      kind: 'image',
+      path: '/page.png',
+      title: 'channel',
+      durationSec: null,
+      width: 1200,
+      height: 1600,
+      origin: { type: 'file', url: null, author: null, license: null, range: null }
+    }).doc
+    const page = planOp(doc, 'screenshot', 'slide ring right', null)
+    expect(page).toMatchObject({ from: idOf(doc, 'channel'), style: 'slide', fx: ['ring'], place: 'right' })
+    // At the playhead, they go where it is, as every graphic does.
+    expect(planOp(doc, 'screenshot', 'slide', 2).from).not.toBe(idOf(doc, 'channel'))
   })
 
   it('finds lists of names in speech', () => {

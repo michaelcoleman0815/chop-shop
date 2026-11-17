@@ -262,6 +262,6 @@ register({
   name: (call) => {
     const list = videoCards(call)
     if (list.length === 1) return list[0].title ? `a video card for “${list[0].title}”` : 'a video card'
-    return `video cards for ${list.length} videos`
+    return `a row of video cards for ${list.length} videos`
   }
 })

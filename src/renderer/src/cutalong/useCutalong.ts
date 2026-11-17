@@ -2585,7 +2585,9 @@ export function useCutalong() {
         const stills = attachments.filter((a) => isImagePath(a.name))
         const materialBefore = docRef.current?.assets.length ?? 0
         // A day of clips to tell as a story (useVlog): every clip is material with its own sound.
-        const vlogged = vlog.wanted(said, command?.command ?? null, recordings)
+        const vlogged =
+          !showcase.asksGrid([...recordings, ...stills], command?.command ?? null, said) &&
+          vlog.wanted(said, command?.command ?? null, recordings)
         // Videos dropped in to play at once, in a grid (useShowcase).
         const gridded =
           !vlogged &&
@@ -2604,7 +2606,12 @@ export function useCutalong() {
         if (link && !command && docRef.current && (await showcase.words(text, 'thread', null))) {
           // Cards from the videos at those links, or the page at it with a ring (useShowcase).
           asked = true
-        } else if (link && command?.command !== 'screenshot' && command?.command !== 'phone') {
+        } else if (
+          link &&
+          command?.command !== 'screenshot' &&
+          command?.command !== 'phone' &&
+          !showcase.ownsLinks(command?.command ?? null)
+        ) {
           // A link with a time, an image link, or one called B-roll is
           // material; any other video link is something to learn a style from.
           const range = parseRange(text)

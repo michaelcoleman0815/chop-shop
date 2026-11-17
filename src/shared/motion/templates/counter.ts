@@ -167,8 +167,9 @@ function centreFor(frame: Frame, place: string, w: number, h: number, fallback: 
 /**
  * Where a block goes when the call names no place: at `fallback`, unless it
  * would cover the speaker's face; then above the face when there is room,
- * else beside it on the side with more room, else under the chin. Faces come
- * from face tracking, or the usual place for one.
+ * else beside it at eye level on the side with more room, else under the
+ * chin, where it would meet captions on the chest, so last. Faces come from
+ * face tracking, or the usual place for one.
  */
 function clearOfFace(
   frame: Frame,
@@ -190,10 +191,13 @@ function clearOfFace(
   const bottom = H - frame.safe.bottom - h / 2
   // Above the face, clear of the hair line.
   if (keep.y - m - h / 2 >= top) return { x: at.x, y: keep.y - m - h / 2 }
-  const roomLeft = keep.x - frame.safe.left
-  const roomRight = W - frame.safe.right - (keep.x + keep.w)
+  // Beside the face, at eye level, clear of the face itself: the chest is where captions sit.
+  const fx = face.x * W
+  const fw = face.w * W
+  const roomLeft = fx - frame.safe.left
+  const roomRight = W - frame.safe.right - (fx + fw)
   if (Math.max(roomLeft, roomRight) >= w + m) {
-    const x = roomRight >= roomLeft ? keep.x + keep.w + m + w / 2 : keep.x - m - w / 2
+    const x = roomRight >= roomLeft ? fx + fw + m + w / 2 : fx - m - w / 2
     return { x, y: clamp(keep.y + keep.h * 0.45, top, bottom) }
   }
   // Under the chin, on the chest.

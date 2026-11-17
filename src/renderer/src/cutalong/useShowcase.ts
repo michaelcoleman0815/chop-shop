@@ -53,10 +53,14 @@ export interface Showcase {
   command(command: string, where: Where, rest: string, at: number | null, beat: string | null): Promise<boolean>
   /** Files dropped in with /grid or "put these in a grid": an edit of them at once. False when not asked. */
   files(recordings: Attachment[], command: string | null, said: string): Promise<boolean>
+  /** Whether files dropped in are asked to play as a grid, before anything else claims them (a label "Vlog" is not a vlog). */
+  asksGrid(files: Attachment[], command: string | null, said: string): boolean
   /** A graphic asked for in plain words, links and all, run as its command. False when the words ask for something else. */
   words(text: string, where: Where, at: number | null): Promise<boolean>
   /** Whether plain words ask for one of these graphics, and an edit is open to put it on. */
   claims(text: string): boolean
+  /** Whether a command reads its own links (/videos), so the chat neither studies them nor brings them in. */
+  ownsLinks(command: string | null): boolean
 }
 
 const LINKS = /https?:\/\/[^\s<>"']+/gi
@@ -184,10 +188,16 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
     [say, withIcons]
   )
 
+  const asksGrid = useCallback(
+    (files: Attachment[], command: string | null, said: string): boolean =>
+      (command === 'grid' || graphicAsked(said)?.command === 'grid') &&
+      files.filter((f) => isVideoFile(f.name) || isImagePath(f.name)).length >= 2,
+    []
+  )
+
   const files = useCallback(async (recordings: Attachment[], command: string | null, said: string): Promise<boolean> => {
-    const asked = command === 'grid' || graphicAsked(said)?.command === 'grid'
     const pictures = recordings.filter((f) => isVideoFile(f.name) || isImagePath(f.name))
-    if (!asked || pictures.length < 2) return false
+    if (!asksGrid(recordings, command, said)) return false
     const { docRef, push, patch, setDoc, setMediaUrl, applyAsVersion } = live.current
     const labels = (command === 'grid' ? said : (graphicAsked(said)?.rest ?? '')).trim()
     const given = labels && !/^no labels?$/i.test(labels) ? labels.split(/\s*[,;|]\s*/).filter(Boolean) : undefined
@@ -225,7 +235,7 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
     const done = applyAsVersion(plan.ops, plan.summary)
     say('thread', done ? `v${done.n} is ready. ${done.summary}` : 'That is already how the grid is.', !!done)
     return true
-  }, [say])
+  }, [say, asksGrid])
 
   /** What plain words ask for, read without their links, and the links that go with it. */
   const read = useCallback((text: string): { command: string; rest: string } | null => {
@@ -250,5 +260,7 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
     [read]
   )
 
-  return { command, files, words, claims }
+  const ownsLinks = useCallback((command: string | null): boolean => command === 'videos', [])
+
+  return { command, files, asksGrid, words, claims, ownsLinks }
 }

@@ -1,7 +1,7 @@
 import type { Resolved } from '../edit/resolve'
 import type { EditDoc } from '../edit/schema'
 import { spokenFigures } from './figures'
-import { figuresSaid, listNear, namesSaid } from './heard'
+import { figuresSaid, listNear, mentionSaid, namesSaid } from './heard'
 import type { MotionCallInput, MotionKind } from './schema'
 import { template } from './templates'
 
@@ -50,6 +50,11 @@ export function parts(rest: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean)
 }
+
+/** Words that name a page the speaker shows, and videos they talk about. */
+const PAGE_WORDS = /^(?:page|channel|profile|website|site|homepage|post|tweet|thread|listing)$/
+const VIDEO_WORDS = /^(?:videos|uploads|vlogs|episodes|thumbnails)$/
+const VIDEO_WORD = /^(?:video|upload|vlog|episode|thumbnail)$/
 
 export const MOTION_COMMANDS: MotionCommand[] = [
   {
@@ -179,7 +184,11 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       if (!pictures.some((a) => a.id === id)) return { problem: `There is no picture ${id} in this edit.` }
       const style = tokens.find((t) => (template('screenshot')?.styles ?? []).includes(t)) ?? ''
       const fx = ['tilt', 'ring'].filter((f) => tokens.includes(f))
-      return { style, fx, text: [id] }
+      // Moved over to one side, so a calendar or a counter can stand beside it.
+      const place = tokens.find((t) => t === 'left' || t === 'right') ?? ''
+      // Asked for away from the playhead, it comes in where the page is talked about.
+      const said = ctx.time === null ? mentionSaid(ctx.resolved, PAGE_WORDS, null) : null
+      return { style, fx, text: [id], ...(place ? { place } : {}), ...(said ? { from: said.id } : {}) }
     },
     after: 'Drag on the picture to choose what it rings or pushes in on.'
   },
@@ -252,7 +261,13 @@ export const MOTION_COMMANDS: MotionCommand[] = [
         return { problem: 'Give me the videos’ links, like /videos https://youtu.be/…, and I will read their titles and views.' }
       const missing = items.find((c) => c.value && !ctx.doc.assets.some((a) => a.id === c.value))
       if (missing) return { problem: `There is no picture ${missing.value} in this edit.` }
-      return { style, items, to: '4.5s' }
+      // Asked for away from the playhead, they come in where the videos are talked about.
+      // Several videos are talked about as videos; one, as a video.
+      const said =
+        ctx.time === null
+          ? (mentionSaid(ctx.resolved, VIDEO_WORDS, null) ?? mentionSaid(ctx.resolved, VIDEO_WORD, null))
+          : null
+      return { style, items, to: '4.5s', ...(said ? { from: said.id } : {}) }
     }
   },
   {

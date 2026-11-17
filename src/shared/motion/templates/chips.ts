@@ -406,10 +406,11 @@ register({
   build: chips,
   name: (call) => {
     const names = chipList(call).map((c) => c.label)
+    // One thing, so a sentence about it reads: "A cloud of chips for Notion, Figma and 10 more comes in."
     if (names.length <= 3)
       return names.length === 1
         ? `a chip for ${names[0]}`
-        : `chips for ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-    return `chips for ${names.slice(0, 2).join(', ')} and ${names.length - 2} more`
+        : `a cloud of chips for ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+    return `a cloud of chips for ${names.slice(0, 2).join(', ')} and ${names.length - 2} more`
   }
 })

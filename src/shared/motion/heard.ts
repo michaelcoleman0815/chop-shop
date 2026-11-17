@@ -73,6 +73,20 @@ export function namesSaid(resolved: Resolved, names: string[], near: number | nu
   return out
 }
 
+/**
+ * Where the speaker mentions a thing ("my latest videos", "this is my channel
+ * page"): the word that names it nearest the playhead, or the first, with no
+ * playhead. Null when it is never said.
+ */
+export function mentionSaid(resolved: Resolved, kinds: RegExp, near: number | null): ResolvedWord | null {
+  return (
+    nearest(
+      resolved.words.filter((w) => kinds.test(token(w.text))).map((w) => ({ w, at: w.outStart })),
+      near
+    )?.w ?? null
+  )
+}
+
 /** Small words that start a sentence or sit in a list without being a name. */
 const NOT_NAMES = new Set(
   'i i\'m i\'ve i\'ll i\'d the a an and or but so then this that these those it it\'s my we our you your they he she here there what when why how okay ok yes no also plus'.split(
