@@ -291,7 +291,7 @@ describe.skipIf(!FFMPEG)('rendering speed, freeze frames and reverse', () => {
       { op: 'reverse', beats: ['b3'], on: true },
       { op: 'speed', beats: ['b4'], speed: 0.5 }
     ])
-    const one = await render(spoken, cut, 'passes-whole')
+    const one = await render(spoken, cut, 'passes-whole', Infinity)
     const passes = await render(spoken, cut, 'passes-split', 2)
     expect(countFrames(ffmpeg, passes.out)).toBe(countFrames(ffmpeg, one.out))
     for (const t of [0.3, 1.2, 1.9, 2.6, 3.5, 4.6, 5.5]) {
