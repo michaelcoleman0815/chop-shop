@@ -10,13 +10,18 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIN="$("$ROOT/scripts/macos-min.sh")"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
 # The oldest macOS a Mach-O file loads on, as its load commands record it
 # (the arm64 slice of a universal binary).
 minos() {
+  # otool reads a name ending in "(...)" as a member of an archive, so a file
+  # such as "Cutalong Helper (GPU)" is read through a plainly named link.
+  ln -sf "$1" "$TMP/macho"
   # awk reads to the end rather than exiting early, so otool never meets a
   # closed pipe (which pipefail would turn into a failure).
-  { otool -arch arm64 -l "$1" 2>/dev/null || otool -l "$1"; } | awk '
+  { otool -arch arm64 -l "$TMP/macho" 2>/dev/null || otool -l "$TMP/macho"; } | awk '
     /cmd LC_BUILD_VERSION/ { b = 1; next }
     /cmd LC_VERSION_MIN_MACOSX/ { v = 1; next }
     !found && b && $1 == "minos" { r = $2; found = 1 }
@@ -41,12 +46,12 @@ check() {
   need="$(minos "$1")"
   if [ -z "$need" ]; then
     echo "::$2::$1 records no minimum macOS"
-    [ "$2" = error ] && fail=1
+    if [ "$2" = error ]; then fail=1; fi
     return 0
   fi
   if newer "$need" "$MIN"; then
     echo "::$2::$1 needs macOS $need, newer than the $MIN the app says it runs on"
-    [ "$2" = error ] && fail=1
+    if [ "$2" = error ]; then fail=1; fi
   else
     echo "ok   macOS $need  $1"
   fi
@@ -57,7 +62,7 @@ if [ $# -eq 0 ]; then
     [ -f "$f" ] && is_macho "$f" && check "$f" error
   done
 else
-  APP="$1"
+  APP="$(cd "$1" && pwd)"
   declared="$(plutil -extract LSMinimumSystemVersion raw "$APP/Contents/Info.plist")"
   if [ "$declared" != "$MIN" ]; then
     echo "::error::$APP declares macOS $declared in its Info.plist, but electron-builder.yml says $MIN"
