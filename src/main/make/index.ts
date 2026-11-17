@@ -307,7 +307,17 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       // Stopped: what was spent, and a quote for the rest, which reuses the shot list, the narration and the pictures made.
       if (err instanceof Stopped) {
         const rest: Draft = { ...err.resume, quote: quoteDraft(err.resume, d) }
-        return { ok: false, message: err.message, draft: rest, reply: quoteOf(rest) }
+        const reply = quoteOf(rest)
+        return {
+          ok: false,
+          message: err.message,
+          draft: rest,
+          reply: {
+            ...reply,
+            aside: [...rest.quote.notes, ...rest.quote.missing].join(' ') || null,
+            chips: reply.chips.map((c, i) => (i === 1 && rest.plan ? `${rest.quote.counts.scenes} shots left` : c))
+          }
+        }
       }
       return { ok: false, message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err) }
     } finally {

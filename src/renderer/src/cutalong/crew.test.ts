@@ -53,7 +53,7 @@ describe('the crew', () => {
     expect(memberFor('Planning the shots')).toBe('snip')
     expect(memberFor('Describing shot 3 again')).toBe('snip')
     expect(memberFor("Drawing The wildcatter's character sheet")).toBe('tint')
-    expect(memberFor('Making 24 shots with Google')).toBe('tint')
+    expect(memberFor('Making the shots with Google: 3 of 24')).toBe('tint')
     expect(memberFor('Making shot 3 with fal.ai')).toBe('tint')
     expect(memberFor("Making shot 3's clip with Google")).toBe('tint')
     expect(memberFor('Looking for music in your Music folder')).toBe('scout')
@@ -63,12 +63,12 @@ describe('the crew', () => {
     for (const own of ['Starting', 'Reading what you asked for', 'Pricing it', 'Quoting it again', 'Ready', 'Failed']) expect(memberFor(own)).toBeNull()
     // The credits read as the work that was done.
     let log = logCrew(undefined, 'Narrating the script')
-    for (const stage of ['Narrating the script: timing every word', 'Planning the shots', 'Making 24 shots with Google', 'Looking for music in your Music folder', 'Putting the story together'])
+    for (const stage of ['Narrating the script: timing every word', 'Planning the shots', 'Making the shots with Google: 24 of 24', 'Looking for music in your Music folder', 'Putting the story together'])
       log = logCrew(log, stage)
     expect(log.map(doneLine)).toEqual([
       'Echo narrated the script',
       'Snip put the story together',
-      'Tint made 24 shots with Google',
+      'Tint made the shots with Google',
       'Scout looked for music in your Music folder'
     ])
     expect(doneLine({ id: 'quill', stage: 'Writing the script' })).toBe('Quill wrote the script')

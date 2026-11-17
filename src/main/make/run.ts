@@ -315,7 +315,7 @@ export async function makeShots(
       const finish = (s: MadeShot, fresh = true): MadeShot => {
         done++
         if (fresh && (s.maker === 'google' || s.maker === 'fal') && s.file) deps.log?.made.push(s)
-        deps.progress(`Making ${total} shots with ${service}`, Math.round((done / total) * 100))
+        deps.progress(`Making the shots with ${service}: ${done} of ${total}`, Math.round((done / total) * 100))
         return s
       }
       if (kept) {

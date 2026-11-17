@@ -118,7 +118,7 @@ const JOBS: [RegExp, CrewId][] = [
   ],
   [/^(writing the (description|titles?|chapters?|captions?|script)|reading your script|captioning)\b/i, 'quill'],
   [/^(bringing|fetching|looking (for|through)|capturing the page|working out which file|searching)\b/i, 'scout'],
-  [/^(finding what changes on screen|grading|colouring|drawing\b.*\bcharacter sheet|making (\d+ shots?|shot \d+))\b/i, 'tint'],
+  [/^(finding what changes on screen|grading|colouring|drawing\b.*\bcharacter sheet|making (the shots|\d+ shots?|shot \d+))\b/i, 'tint'],
   [
     /^(exporting|rendering|writing the premiere|finding clips|finding the moments|finding you in the picture|watching the speaker|reframing)\b/i,
     'reel'
