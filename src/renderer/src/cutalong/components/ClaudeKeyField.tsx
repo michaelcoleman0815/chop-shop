@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { gateOpen, keyGuide, keyMessage, type ClaudeKeyStatus } from '../../../../shared/setup'
 import type { Cutalong } from '../useCutalong'
-import { Button, Mark } from './ui'
+import { Button, Icon, Mark } from './ui'
 
 /** Where the key goes once pasted, said beside the field. */
 export const KEY_KEPT = 'The key is locked in this computer’s keychain and only ever sent to Anthropic.'
@@ -68,6 +68,8 @@ export function ClaudeKeyField({
   const line = checking
     ? keyMessage('checking')
     : (note ?? (failing ? key.message : showOk && key.state === 'ok' ? key.message : null))
+  // The state the line says, as an attribute the styles can read: what went wrong, or that the key works.
+  const kind = checking || note ? null : failing ? 'error' : showOk && key.state === 'ok' ? 'ok' : null
 
   return (
     <>
@@ -81,6 +83,7 @@ export function ClaudeKeyField({
           autoComplete="off"
           spellCheck={false}
           autoFocus={autoFocus}
+          aria-invalid={kind === 'error' ? true : undefined}
           aria-describedby={`${id}-line ${id}-kept`}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -96,10 +99,21 @@ export function ClaudeKeyField({
           </Button>
         )}
       </div>
-      <p id={`${id}-line`} className={`cl-keycheck${checking ? ' checking' : ''}`} role="status">
+      <p
+        id={`${id}-line`}
+        className={`cl-keycheck${checking ? ' checking' : ''}`}
+        data-kind={kind ?? undefined}
+        role="status"
+      >
         {checking && (
           <span className="cl-keycheck-mark" aria-hidden="true">
             <Mark size={20} />
+          </span>
+        )}
+        {/* The words say the state; the icon says it again, so it never rests on colour alone. */}
+        {kind && (
+          <span key={kind} className="cl-keycheck-icon" aria-hidden="true">
+            {kind === 'error' ? <Icon.alert /> : <Icon.check />}
           </span>
         )}
         {/* Keyed by its words, so a new finding arrives rather than replacing the old in place. */}

@@ -677,6 +677,16 @@ button:disabled {
   color: var(--muted);
 }
 
+/*
+ * A key whose check failed. --error and --ok are not in the tokens yet: until
+ * they are, the field keeps its edge and the line reads in ink, its icon
+ * carrying the state; once the tokens name them, both take their colour.
+ * Before focus, so a focused field still shows it is focused.
+ */
+.cl-key-paste input[aria-invalid='true'] {
+  border-color: var(--error, var(--line));
+}
+
 .cl-key-paste input:focus-visible {
   border-color: var(--ink);
 }
@@ -686,7 +696,7 @@ button:disabled {
   background: var(--ground);
 }
 
-/* What the check found, in ink beside the field; while it runs, the mark marches beside it. */
+/* What the check found, under the field with an icon for its state; while it runs, the mark marches beside it. */
 .cl-keycheck {
   margin: 0;
   display: flex;
@@ -702,10 +712,21 @@ button:disabled {
   color: var(--muted);
 }
 
-.cl-keycheck-mark {
+.cl-keycheck[data-kind='error'] {
+  color: var(--error, var(--ink));
+}
+
+.cl-keycheck[data-kind='ok'] {
+  color: var(--ok, var(--ink));
+}
+
+/* The marching mark, or the state's icon, centred on the first line of what is said. */
+.cl-keycheck-mark,
+.cl-keycheck-icon {
   flex: 0 0 auto;
   display: inline-flex;
-  padding-top: 2px;
+  align-items: center;
+  height: 1lh;
 }
 
 .cl-keycheck-again,

@@ -128,6 +128,19 @@ export const Icon = {
       <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
     </svg>
   ),
+  /** Something went wrong, beside the words that say what. */
+  alert: (): JSX.Element => (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth="2" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5M12 16.25v.25" />
+    </svg>
+  ),
+  /** It works, beside the words that say so. */
+  check: (): JSX.Element => (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth="2" aria-hidden="true">
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  ),
   /** A recording that is sound only. */
   wave: (): JSX.Element => (
     <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth="1.9" aria-hidden="true">
