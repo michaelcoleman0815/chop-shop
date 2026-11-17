@@ -262,17 +262,28 @@ export function claudeHold(input: number, output: number, ceiling: number): numb
 }
 
 /**
- * Dollars Claude's shot list may cost, from how many shots and how long the
- * narration is: each part of SHOTS_PER_PART shots one call, at its hold.
+ * The most each part of a shot list may cost, in order: each part of
+ * SHOTS_PER_PART shots is one call, at its hold. The run holds each part to
+ * its own amount here, so no part is left without its money.
  */
-export function shotListCost(scenes: number, narrationSeconds: number): number {
-  let total = 0
+export function shotListParts(scenes: number, narrationSeconds: number): number[] {
+  const parts: number[] = []
   for (let from = 0; from < scenes; from += SHOTS_PER_PART) {
     const n = Math.min(SHOTS_PER_PART, scenes - from)
     const input = CLAUDE_TOKENS.promptBase + (narrationSeconds * CLAUDE_TOKENS.scriptPerSecond * n) / Math.max(1, scenes) + (from > 0 ? 600 : 0)
-    total += claudeHold(input, n * CLAUDE_TOKENS.perShot * (1 + CLAUDE_TOKENS.thinking), 32000)
+    parts.push(claudeHold(input, n * CLAUDE_TOKENS.perShot * (1 + CLAUDE_TOKENS.thinking), 32000))
   }
-  return round(total)
+  return parts
+}
+
+/** Dollars Claude's shot list may cost, from how many shots and how long the narration is: its parts' holds added up. */
+export function shotListCost(scenes: number, narrationSeconds: number): number {
+  return round(shotListParts(scenes, narrationSeconds).reduce((t, p) => t + p, 0))
+}
+
+/** The most one video may cost: Settings' limit, or less when the prompt asks for less ("under $3"). */
+export function videoCap(brief: Pick<Brief, 'cap'>, settingsCap: number | null | undefined): number {
+  return Math.min(settingsCap ?? DEFAULT_CAP, brief.cap ?? Number.POSITIVE_INFINITY)
 }
 
 /** Dollars Claude's script may cost, for a narration this long, at its hold. */
@@ -320,7 +331,7 @@ export interface QuoteOptions {
 export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: QuoteOptions = {}): Quote {
   const today = opts.today ?? new Date().toISOString().slice(0, 10)
   // A prompt can ask for less than Settings allows, never more.
-  const cap = Math.min(opts.cap ?? DEFAULT_CAP, brief.cap ?? Number.POSITIVE_INFINITY)
+  const cap = videoCap(brief, opts.cap)
   const spent = Math.max(0, opts.spent ?? 0)
   const room = cap - spent
   const keepVoice = !!opts.reuse?.narration

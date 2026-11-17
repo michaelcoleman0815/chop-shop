@@ -5,6 +5,7 @@ import { join } from 'path'
 import { gzipSync } from 'zlib'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { readAsk } from '../../shared/make/brief'
+import { keyMessage } from '../../shared/setup'
 import { ServiceError } from '../providers/gate'
 import { MODEL } from '../planner'
 import { parseWith, planShots, streamedAnswer, writeScript } from './claude'
@@ -137,10 +138,10 @@ describe('Claude, through the real SDK', () => {
     expect(JSON.stringify(body.messages)).toContain('0: In 1950, the sky was full of derricks.')
   })
 
-  it('says plainly when the key is refused', async () => {
+  it('says plainly when the key is refused, as the planner says it, and counts nothing', async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }), { status: 401, headers: { 'content-type': 'application/json' } }))
     const r = await writeScript(brief, parseWith(new Anthropic({ apiKey: 'bad', fetch: fetch as never, maxRetries: 0 })))
-    expect(r).toMatchObject({ ok: false, message: 'Claude did not accept the Anthropic key. Check it in Settings.' })
+    expect(r).toMatchObject({ ok: false, message: keyMessage('refused'), cost: 0 })
   })
 })
 

@@ -49,6 +49,7 @@ import { EditDocSchema, type EditDoc } from '../../shared/edit/schema'
 import { asNewVersion } from '../../shared/make/assemble'
 import type { Draft } from '../../shared/make/draft'
 import { draftFingerprint } from '../../shared/make/fingerprint'
+import { scriptCost } from '../../shared/make/quote'
 import { saveSettings } from '../store'
 import { registerMakeIpc } from './index'
 
@@ -204,6 +205,90 @@ describe('a video made from one prompt', () => {
     expect(r.draft.spentBefore).toBeCloseTo(draft.scriptCost, 4)
     expect(r.draft.quote.spent).toBeCloseTo(draft.scriptCost + r.draft.scriptCost, 4)
     expect(pictures()).toBe(0)
+  })
+
+  it('holds a script written again to the cap, with what the video has cost already: past it, Claude is not asked', async () => {
+    const claude = (): number => requests().filter((q) => q.service === 'claude').length
+    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    let d = start.draft as Draft
+    // A limit with room for one script more, at the most it may cost, and not two.
+    const limit = Math.round((d.scriptCost + scriptCost(180) + 0.001) * 10000) / 10000
+    saveSettings({ makeCap: limit })
+    const before = claude()
+    const once = await call<{ ok: boolean; draft: Draft }>('make:revise', { draft: d, text: 'make it 2 minutes' })
+    expect(once.ok).toBe(true)
+    expect(claude()).toBe(before + 1)
+    d = once.draft
+    const twice = await call<{ ok: boolean; message?: string; draft?: Draft }>('make:revise', { draft: d, text: 'make it 3 minutes' })
+    saveSettings({ makeCap: null })
+    expect(twice.ok).toBe(false)
+    expect(twice.message).toMatch(
+      /^Writing the script again may cost up to \$0\.\d\d\. With the \$0\.\d\d this video has cost already, that would take it past the \$0\.\d\d a video may cost, so I kept the script it has\. Raise the limit in Settings to write it again\.$/
+    )
+    expect(twice.draft).toBeUndefined()
+    expect(claude()).toBe(before + 1)
+    expect(d.quote.spent).toBeLessThanOrEqual(limit + 1e-9)
+  })
+
+  it('writes no first script past the limit the prompt names, or Settings', async () => {
+    const claude = (): number => requests().filter((q) => q.service === 'claude').length
+    const before = claude()
+    const asked = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom under $0.05' })
+    expect(asked.ok).toBe(false)
+    expect(asked.message).toBe(
+      `Writing the script alone may cost up to $${scriptCost(60).toFixed(2)}, more than the $0.05 you asked this video to cost, so I didn't start it. Ask for a higher amount to make it.`
+    )
+    saveSettings({ makeCap: 0.1 })
+    const set = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    saveSettings({ makeCap: null })
+    expect(set.message).toBe(
+      `Writing the script alone may cost up to $${scriptCost(60).toFixed(2)}, more than the $0.10 a video may cost, so I didn't start it. Raise the limit in Settings to make it.`
+    )
+    expect(claude()).toBe(before)
+  })
+
+  it('keeps a Stop pressed the moment a script is to be written again: Claude is not asked, and the quote stands', async () => {
+    const claude = (): number => requests().filter((q) => q.service === 'claude').length
+    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const before = claude()
+    const revising = call<{ ok: boolean; message?: string; draft?: Draft | null }>('make:revise', { draft: start.draft, text: 'make it 3 minutes' })
+    expect(await call('make:cancel')).toBe(true)
+    const r = await revising
+    expect(r.ok).toBe(false)
+    expect(r.message).toBe('Stopped before anything was written, so nothing was spent. The quote stands as it was.')
+    expect(r.draft).toBeUndefined()
+    expect(claude()).toBe(before)
+  })
+
+  it('stopped while Claude writes it again, keeps the script and counts what that may have cost in its quote', async () => {
+    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const d = start.draft as Draft
+    process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '400'
+    const revising = call<{ ok: boolean; message?: string; draft?: Draft; reply?: unknown }>('make:revise', { draft: d, text: 'make it 3 minutes' })
+    await new Promise((r) => setTimeout(r, 150))
+    expect(await call('make:cancel')).toBe(true)
+    const r = await revising
+    process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '0'
+    expect(r.ok).toBe(false)
+    expect(r.message).toMatch(/^Stopped while Claude wrote it again\. That may have cost up to \$0\.\d\d, which counts in the quote; the script stays as it was\.$/)
+    // The same script and length, quoted with the cut-off script counted against the cap.
+    expect(r.draft?.script).toBe(d.script)
+    expect(r.draft?.brief.seconds).toBe(60)
+    expect(r.draft?.spentBefore).toBeCloseTo(scriptCost(180), 4)
+    expect(r.draft?.quote.spent).toBeCloseTo(d.scriptCost + scriptCost(180), 4)
+    expect(r.reply).toBeTruthy()
+  })
+
+  it('says why a video whose questions were answered by typing waits, when Settings would have gone ahead', async () => {
+    saveSettings({ makeAutoUnder: 25 })
+    const r = await call<Start & { reply?: { aside: string | null } }>('make:start', {
+      text: 'make a 30 second animated explainer about how the heart pumps blood',
+      answered: true,
+      quoteFirst: true
+    })
+    saveSettings({ makeAutoUnder: null })
+    expect(r.kind).toBe('quote')
+    expect(r.reply?.aside).toMatch(/^It comes in under the \$25\.00 Settings goes ahead at, but you typed your answers, so it waits for you to check I read them right\./)
   })
 
   it('keeps a Stop pressed the moment a video is asked for: nothing is written or made', async () => {

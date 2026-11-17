@@ -117,7 +117,7 @@ export function MadeVideos({
         </span>
         <p className="cl-aside" role="status">
           {on
-            ? `A new video whose whole cost, its script included, comes to less than $${settings?.makeAutoUnder} is made straight away, and its reply says what it cost. Anything more, and every change to a made video, waits for you.`
+            ? `A new video whose whole cost, its script included, comes to less than $${settings?.makeAutoUnder} is made straight away, and its reply says what it cost. Anything more waits for you, and so does every change to a made video, and a video whose questions you answered by typing, so you can check I read you right.`
             : 'Every video is quoted first and waits for you to press Make it. Before that, only Claude writes its script, with your Anthropic key.'}
         </p>
       </div>

@@ -11,14 +11,17 @@ import type { MotionCallInput } from '../../shared/motion/schema'
 import { PRICES } from '../../shared/make/prices'
 import {
   countShots,
+  DEFAULT_CAP,
   dollars,
   estimateCounts,
   estimateUnwritten,
   listOf,
   quoteFor,
+  scriptCost,
   shotListCost,
   stillCost,
   clipCost,
+  videoCap,
   voiceCost,
   type Availability,
   type Counts,
@@ -103,6 +106,27 @@ export interface DraftDeps {
   hear?: (path: string) => Promise<{ durationSec: number; words: TimedWord[] }>
   /** Stops the script being written. */
   signal?: AbortSignal
+  /** What the video has cost already (a script it replaces): the cap counts it, so the script is held to what is left. */
+  spentBefore?: number
+}
+
+/**
+ * Why Claude may not write a script now, in a sentence, or null when it
+ * may: the most the script may cost (its line of a quote), with what the
+ * video has cost already, would take it past the most it may cost (Settings'
+ * limit, or less when the prompt asks for less).
+ */
+export function scriptRefused(brief: Brief, spentBefore: number, settings: { cap?: number | null }): string | null {
+  if (brief.from !== 'topic') return null
+  const cap = videoCap(brief, settings.cap)
+  const most = scriptCost(brief.seconds)
+  if (spentBefore + most <= cap + 1e-9) return null
+  // The prompt's own amount, when it asked for less than Settings allows; Settings' limit otherwise.
+  const asked = brief.cap !== null && brief.cap < (settings.cap ?? DEFAULT_CAP)
+  const limit = asked ? `the ${dollars(cap)} you asked this video to cost` : `the ${dollars(cap)} a video may cost`
+  if (spentBefore > 0)
+    return `Writing the script again may cost up to ${dollars(most)}. With the ${dollars(spentBefore)} this video has cost already, that would take it past ${limit}, so I kept the script it has.${asked ? '' : ' Raise the limit in Settings to write it again.'}`
+  return `Writing the script alone may cost up to ${dollars(most)}, more than ${limit}, so I didn't start it.${asked ? ' Ask for a higher amount to make it.' : ' Raise the limit in Settings to make it.'}`
 }
 
 /** The script for a brief: Claude's from the topic, the one pasted, or the person's recording heard here; and its quote. */
@@ -110,7 +134,7 @@ export async function draftFor(
   brief: Brief,
   id: string,
   deps: DraftDeps
-): Promise<{ ok: true; draft: Draft } | { ok: false; message: string }> {
+): Promise<{ ok: true; draft: Draft } | { ok: false; message: string; cost: number }> {
   let title = cleanTopic(brief.topic)
   let script: string
   let scriptCost = 0
@@ -118,14 +142,14 @@ export async function draftFor(
   if (brief.from === 'script') script = brief.ask.replace(/^(?:here(?:'s| is) (?:my|the) script|script|narration|voice ?over)\s*[:-]\s*/i, '')
   else if (brief.from === 'recording') {
     // Heard first, here, so the quote counts the lines it really has; the run then uses these words as they are.
-    if (!deps.hear) return { ok: false, message: 'I could not listen to your recording.' }
+    if (!deps.hear) return { ok: false, message: 'I could not listen to your recording.', cost: 0 }
     let heard: { durationSec: number; words: TimedWord[] }
     try {
       heard = await deps.hear(brief.voice.id)
     } catch (err) {
-      return { ok: false, message: `I could not listen to your recording. ${errText(err)}` }
+      return { ok: false, message: `I could not listen to your recording. ${errText(err)}`, cost: 0 }
     }
-    if (heard.words.length === 0) return { ok: false, message: 'I heard no words in your recording.' }
+    if (heard.words.length === 0) return { ok: false, message: 'I heard no words in your recording.', cost: 0 }
     script = heard.words.map((w) => w.text).join(' ')
     brief = { ...brief, seconds: Math.max(15, Math.round(heard.durationSec)), inferred: brief.inferred.filter((i) => !/ long$/.test(i)) }
     kept = {
@@ -139,14 +163,24 @@ export async function draftFor(
       }
     }
   } else {
-    const written = await writeScript(brief, deps.parse, { brandVoice: deps.brand.voice, brandName: deps.brand.name, signal: deps.signal })
+    // Held to the cap with what the video has cost already: refused before Claude is asked when it would pass
+    // it, and given only what is left of it.
+    const spentBefore = deps.spentBefore ?? 0
+    const refused = scriptRefused(brief, spentBefore, deps.settings)
+    if (refused) return { ok: false, message: refused, cost: 0 }
+    const written = await writeScript(brief, deps.parse, {
+      brandVoice: deps.brand.voice,
+      brandName: deps.brand.name,
+      signal: deps.signal,
+      budget: new Budget(Math.max(0, videoCap(brief, deps.settings.cap) - spentBefore))
+    })
     scriptCost = written.cost
-    if (!written.ok) return { ok: false, message: written.message }
+    if (!written.ok) return { ok: false, message: written.message, cost: written.cost }
     script = scriptText(written.value)
     if (written.value.title.trim()) title = written.value.title.trim()
   }
   const { phrases, sections, headings } = phrasesAndSections(script)
-  if (phrases.length === 0) return { ok: false, message: 'The script has no words to read.' }
+  if (phrases.length === 0) return { ok: false, message: 'The script has no words to read.', cost: scriptCost }
   const draft: Draft = {
     id,
     brief,
@@ -696,7 +730,7 @@ async function makeVideoWith(
     const r = await planShots(
       brief,
       draft.phrases,
-      { sections: draft.sections, outline: draft.outline, maxClips, signal: deps.signal, budget: claude },
+      { sections: draft.sections, outline: draft.outline, maxClips, signal: deps.signal, budget: claude, narrationSeconds: quote.counts.narrationSeconds },
       deps.parse
     )
     if (r.ok) return { ...r.value, cost: r.cost, note: null }

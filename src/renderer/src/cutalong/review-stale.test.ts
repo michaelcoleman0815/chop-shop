@@ -264,11 +264,18 @@ describe('questions waiting before a script is written', () => {
     expect(h.starts).toHaveLength(1)
   })
 
-  it('a real answer writes it, under a progress that can be stopped', async () => {
+  it('a real answer writes it, once its own words are confirmed, under a progress that can be stopped', async () => {
     const count = { n: 0 }
     const h = harness({ cap: null, autoUnder: null }, counting(count), { open: null })
     await h.say('make a video about my trip')
     await h.say('the lakes up north, a map documentary, 5 minutes')
+    // What it should say, in words of its own, is read back first: nothing is written until the yes.
+    const back = [...h.msgs.values()].find((m) => /^Make it about “/.test(m.text ?? ''))
+    expect(back?.text).toBe('Make it about “the lakes up north”, as a cinematic documentary with maps wherever they help, 5 minutes long?')
+    expect(back?.actions?.map((a) => a.label)).toEqual(['Yes', 'Not now'])
+    expect(h.starts).toHaveLength(1)
+    expect(count.n).toBe(0)
+    await h.makes.onAction(back!.actions!.find((a) => a.label === 'Yes')!)
     expect(h.starts).toHaveLength(2)
     expect(h.starts[1].answered).toBe(true)
     expect(h.starts[1].stop).toBe(true)
@@ -276,6 +283,48 @@ describe('questions waiting before a script is written', () => {
     expect(h.starts[1].text).toMatch(/as a cinematic documentary with maps wherever they help/)
     expect(h.starts[1].text).toMatch(/5 minutes long/)
     expect(count.n).toBe(1)
+  })
+
+  it('a no or a not yet in other words writes nothing: a no drops the questions, a not yet keeps them', async () => {
+    const noes = ['I changed my mind', 'scratch that', 'forget about the video', 'actually, don’t', 'I’d rather not', 'not interested', 'please don’t', 'I’ll pass', 'skip', 'abort', 'I don’t want it anymore']
+    const notYet = ['maybe another time', 'hmm let me see', 'I’m not sure yet', 'busy right now', 'gimme a sec', 'no idea', 'no clue', 'no rush, thinking']
+    for (const p of [...noes, ...notYet]) {
+      const count = { n: 0 }
+      const h = harness({ cap: null, autoUnder: 2 }, counting(count), { open: null })
+      await h.say('make a video about my trip')
+      const card = [...h.msgs.entries()].find(([, m]) => m.makeAsk)!
+      expect(await h.say(p), p).toBe(true)
+      expect(count.n, p).toBe(0)
+      expect(h.starts, p).toHaveLength(1)
+      expect(h.madeUnasked, p).toHaveLength(0)
+      const said = [...h.msgs.values()].pop()?.text ?? ''
+      if (noes.includes(p)) {
+        expect(said, p).toBe('All right, I won’t make it. Nothing was written or spent.')
+        expect(h.makes.questions(card[1].makeAsk!), p).toBeNull()
+      } else {
+        expect(said, p).toMatch(/Nothing is written or spent until then\.$/)
+        expect(h.makes.questions(card[1].makeAsk!), p).not.toBeNull()
+      }
+    }
+  })
+
+  it('Not now on a topic read back keeps the questions, writes nothing, and a tap still answers them after', async () => {
+    const count = { n: 0 }
+    const h = harness({ cap: null, autoUnder: null }, counting(count), { open: null })
+    await h.say('make a video about my trip')
+    const card = [...h.msgs.entries()].find(([, m]) => m.makeAsk)!
+    await h.say('Lisbon')
+    const back = [...h.msgs.entries()].find(([, m]) => m.text === 'Make it about “Lisbon”?')!
+    await h.makes.onAction(back[1].actions!.find((a) => a.label === 'Not now')!)
+    expect(h.msgs.get(back[0])?.actions ?? []).toHaveLength(0)
+    expect(count.n).toBe(0)
+    expect(h.starts).toHaveLength(1)
+    expect(h.makes.questions(card[1].makeAsk!)).not.toBeNull()
+    expect([...h.msgs.values()].pop()?.text).toMatch(/^Take your time\./)
+    // The questions answered by taps after: written once.
+    await h.makes.answer(card[1].makeAsk!, ['about the best moments', 'as a cinematic documentary', '1 minute long'])
+    expect(count.n).toBe(1)
+    expect(h.starts[1].quoteFirst).toBe(false)
   })
 
   it('a pause or a question back keeps them open and spends nothing; typed answers are then quoted, never made unasked', async () => {
@@ -291,8 +340,11 @@ describe('questions waiting before a script is written', () => {
     expect(h.makes.questions(card[1].makeAsk!)).not.toBeNull()
     expect(h.msgs.get(card[0])?.makeAsk).toBe(card[1].makeAsk)
     expect([...h.msgs.values()].filter((m) => /Nothing is written or spent until then\./.test(m.text ?? ''))).toHaveLength(6)
-    // Answered by typing at last: written once, and quoted with its button, though Settings would go ahead under $2.
+    // Answered by typing at last, read back, and a typed yes: written once, and quoted with its button, though
+    // Settings would go ahead under $2.
     await h.say('the lakes up north, a documentary, 1 minute')
+    expect(count.n).toBe(0)
+    await h.say('yes')
     expect(count.n).toBe(1)
     expect(h.starts[1].quoteFirst).toBe(true)
     expect(h.madeUnasked).toHaveLength(0)

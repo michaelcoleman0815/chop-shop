@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { readAsk } from '../../shared/make/brief'
 import type { Draft } from '../../shared/make/draft'
 import { PRICES } from '../../shared/make/prices'
-import { scriptCost, type Availability } from '../../shared/make/quote'
+import { scriptCost, shotListCost, shotListParts, type Availability } from '../../shared/make/quote'
 import type { Make } from '../../shared/make/schema'
 import { phrasesAndSections } from '../../shared/make/script'
 import { ServiceError } from '../providers/gate'
@@ -30,10 +30,31 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
 const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
 const brief = readAsk('make a 2 minute documentary about the 1950s oil boom, stills only')!
 
+/** A connection that failed as Node reports it, wrapped by fetch and then by the SDK. */
+const unsent = (code: string): unknown => {
+  const system = Object.assign(new Error(`connect ${code} 104.18.0.1:443`), { code })
+  return new Anthropic.APIConnectionError({ message: 'Connection error.', cause: new TypeError('fetch failed', { cause: system }) })
+}
+
 /** How each way a call can fail is read: may it have been billed? */
 const failures: [string, unknown, boolean][] = [
   ['the stream cut off partway', new Anthropic.APIConnectionError({ message: 'Connection error.' }), true],
   ['the answer ended early', new TypeError('terminated'), true],
+  ['the connection refused, before anything was sent', unsent('ECONNREFUSED'), false],
+  ['no address for the API, before anything was sent', unsent('ENOTFOUND'), false],
+  [
+    'every address refused, before anything was sent',
+    new Anthropic.APIConnectionError({
+      message: 'Connection error.',
+      cause: new TypeError('fetch failed', {
+        cause: Object.assign(new AggregateError([Object.assign(new Error('a'), { code: 'ECONNREFUSED' }), Object.assign(new Error('b'), { code: 'ECONNREFUSED' })]), {
+          code: 'ECONNREFUSED'
+        })
+      })
+    }),
+    false
+  ],
+  ['a socket that closed after it was sent', unsentAfter(), true],
   [
     'overloaded, before it began',
     Anthropic.APIError.generate(529, { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }, 'Overloaded', new Headers()),
@@ -46,8 +67,14 @@ const failures: [string, unknown, boolean][] = [
   ]
 ]
 
+/** A socket closed while the answer streamed: sent, and maybe billed. */
+function unsentAfter(): unknown {
+  const socket = Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' })
+  return new TypeError('terminated', { cause: socket })
+}
+
 describe('a call to Claude that broke partway', () => {
-  it('is counted as spent, at its hold; one refused before it began is not', async () => {
+  it('is counted as spent, at its hold; one refused before it began, or never sent, is not', async () => {
     const make = {
       bible: { style: 'Photoreal archival photograph.', palette: 'sepia', era: '1950s', characters: [] },
       phrases: ['A wildcatter beside the derrick at dusk.']
@@ -65,12 +92,13 @@ describe('a call to Claude that broke partway', () => {
       expect(written.ok, what).toBe(false)
       expect(written.cost, what).toBeCloseTo(billed ? line : 0, 6)
       expect(script.spent, what).toBeCloseTo(billed ? line : 0, 6)
-      // The shot list, held to what is left of Claude's budget.
+      // The shot list, its one part held to its own line of the quote.
+      const part = shotListParts(3, brief.seconds)[0]
       const plan = new Budget(0.5)
       const planned = await planShots(brief, ['One.', 'Two.', 'Three.'], { sections: [0], outline: [], maxClips: 0, budget: plan }, fail)
       expect(planned.ok, what).toBe(false)
-      expect(planned.cost, what).toBeCloseTo(billed ? 0.5 : 0, 6)
-      expect(plan.spent, what).toBeCloseTo(billed ? 0.5 : 0, 6)
+      expect(planned.cost, what).toBeCloseTo(billed ? part : 0, 6)
+      expect(plan.spent, what).toBeCloseTo(billed ? part : 0, 6)
       // One shot's new description, held to its line.
       const words = new Budget(0.08)
       const rewritten = await rewriteShot(make, shot, 'a close-up of his hands', fail, { budget: words, hold: 0.08 })
@@ -162,4 +190,38 @@ describe('a picture service out of credit', () => {
     expect(rest.counts.stills).toBe(phrases.length - 2)
     expect(rest.lines.some((l) => /shot list/i.test(l.what))).toBe(false)
   })
+})
+
+describe('a shot list planned in parts', () => {
+  for (const n of [41, 80, 81]) {
+    it(`${n} shots: every part is asked for, even when each uses all its answer may, and the spend stays inside its line`, async () => {
+      const phrases = Array.from({ length: n }, (_, i) => `In ${1950 + (i % 9)} the derricks rose over town number ${i + 1} and the men worked through the night.`)
+      const long = readAsk('make a 3 minute documentary about the 1950s oil boom, stills only')!
+      const quoted = shotListCost(n, long.seconds)
+      const budget = new Budget(quoted)
+      const asked: number[] = []
+      const parse: ParseCall = async (params) => {
+        const max = params.max_tokens as number
+        const phrasesAsked = [...JSON.stringify(params.messages).matchAll(/(?:^|\\n)(\d+): /g)].map((m) => Number(m[1]))
+        asked.push(phrasesAsked.length)
+        return {
+          parsed_output: {
+            style: 'Photoreal archival photograph.',
+            palette: 'sepia',
+            era: '1950s',
+            characters: [],
+            shots: phrasesAsked.map((i) => ({ phrase: i, kind: 'still', prompt: `Derrick ${i}.`, move: 'push-in', motion: '', characters: [], place: '', titleBig: '', titleSmall: '', graphic: '', text: [], values: [], items: [], callouts: [] }))
+          },
+          stop_reason: 'end_turn',
+          // The worst a part may do: every token its answer was allowed.
+          usage: { input_tokens: 3_000, output_tokens: max }
+        }
+      }
+      const r = await planShots(long, phrases, { sections: [0], outline: [], maxClips: 0, budget, narrationSeconds: long.seconds }, parse)
+      expect(r.ok ? 'ok' : r.message).toBe('ok')
+      expect(asked).toEqual(shotListParts(n, long.seconds).map((_, k) => Math.min(40, n - k * 40)))
+      expect(r.cost).toBeLessThanOrEqual(quoted + 1e-9)
+      expect(budget.spent).toBeLessThanOrEqual(quoted + 1e-9)
+    })
+  }
 })

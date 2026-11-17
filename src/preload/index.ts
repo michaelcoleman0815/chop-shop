@@ -324,7 +324,10 @@ const api = {
     draft: Draft
     text: string
   }): Promise<
-    { ok: true; draft: Draft; reply: MakeReply; changed: string[] } | { ok: true; draft: null } | { ok: false; message: string }
+    | { ok: true; draft: Draft; reply: MakeReply; changed: string[] }
+    | { ok: true; draft: null }
+    /** Stopped or failed: why, and, when writing the script again may have cost something, the quote with that counted. */
+    | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
   > => ipcRenderer.invoke('make:revise', req),
   /** The script edited before anything is made, quoted again. */
   makeScript: (req: {

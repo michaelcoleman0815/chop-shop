@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { clock } from '../../shared/presets/preset'
 import { CLAUDE_HOLD, CLAUDE_TOKENS, PRICES, SHOTS_PER_PART } from '../../shared/make/prices'
-import { scriptCost } from '../../shared/make/quote'
+import { scriptCost, shotListParts } from '../../shared/make/quote'
 import { WORDS_PER_MINUTE, wordsFor } from '../../shared/make/script'
 import {
   checkShotList,
@@ -13,7 +13,7 @@ import {
   type ShotListAnswer
 } from '../../shared/make/shots'
 import type { Bible, Brief } from '../../shared/make/schema'
-import { MODEL } from '../planner'
+import { describeError, MODEL } from '../planner'
 import type { Budget } from './generate'
 
 /**
@@ -115,11 +115,34 @@ export function settle(budget: Budget | undefined, hold: ClaudeHold, cost: numbe
 /**
  * Whether a failed call may still be billed: anything but an answer the API
  * gave with an error status before it began (a refused key, a bad request,
- * an overloaded service). A stream that broke partway, or a Stop, may have
- * been billed for what it said by then.
+ * an overloaded service), or a request that never left this computer (no
+ * address for the API, no connection made). A stream that broke after it
+ * was sent, or a Stop, may have been billed for what it said by then.
  */
 export function maybeBilled(err: unknown): boolean {
-  return !(err instanceof Anthropic.APIError && typeof err.status === 'number')
+  if (err instanceof Anthropic.APIError && typeof err.status === 'number') return false
+  return !neverSent(err)
+}
+
+/** The system's codes for a request that failed before it was sent: no address, or no connection made. */
+const NEVER_SENT =
+  /^(?:ENOTFOUND|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|UND_ERR_CONNECT_TIMEOUT|CERT_\w+|ERR_TLS_\w+|UNABLE_TO_\w+|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN)$/
+
+/** Whether a failure, or what caused it (the SDK wraps fetch's error, which wraps the system's), says the request never went. */
+function neverSent(err: unknown): boolean {
+  const code = (e: unknown): string | null => {
+    const c = (e as { code?: unknown } | null)?.code
+    return typeof c === 'string' ? c : null
+  }
+  let e: unknown = err
+  for (let depth = 0; depth < 6 && e && typeof e === 'object'; depth++) {
+    if (NEVER_SENT.test(code(e) ?? '')) return true
+    // Every address tried and refused (Node reports them together).
+    const tried = (e as { errors?: unknown }).errors
+    if (Array.isArray(tried) && tried.length > 0 && tried.every((t) => NEVER_SENT.test(code(t) ?? ''))) return true
+    e = (e as { cause?: unknown }).cause
+  }
+  return false
 }
 
 /** Dollars a call cost, from the tokens it used, prompt-cache writes and reads included. */
@@ -205,15 +228,10 @@ export function scriptRequest(brief: Brief, opts: { brandVoice?: string | null; 
 
 export type ClaudeResult<T> = { ok: true; value: T; cost: number } | { ok: false; message: string; cost: number }
 
+/** What went wrong with a call, in the words the planner uses for every other call to Claude. */
 function describe(err: unknown): string {
   if (err instanceof Anthropic.APIUserAbortError) return 'Stopped.'
-  if (err instanceof Anthropic.APIError && /credit balance is too low|insufficient.{0,20}credit/i.test(err.message))
-    return 'Your Anthropic account has no credit left. Add credit to it, then try again.'
-  if (err instanceof Anthropic.AuthenticationError) return 'Claude did not accept the Anthropic key. Check it in Settings.'
-  if (err instanceof Anthropic.RateLimitError) return 'Claude is busy right now. Try again in a minute.'
-  if (err instanceof Anthropic.APIConnectionError) return 'I could not reach Claude. Check the connection.'
-  if (err instanceof Anthropic.APIError) return `Claude returned an error (${err.status ?? 'unknown'}). Try again.`
-  return err instanceof Error ? err.message : String(err)
+  return describeError(err)
 }
 
 /** Whether a failed call was a Stop, which may have been billed for what it said so far. */
@@ -313,12 +331,25 @@ export function shotsRequest(
 export async function planShots(
   brief: Brief,
   phrases: string[],
-  opts: { sections: number[]; outline: string[]; maxClips: number; signal?: AbortSignal; budget?: Budget },
+  opts: {
+    sections: number[]
+    outline: string[]
+    maxClips: number
+    signal?: AbortSignal
+    budget?: Budget
+    /** How long the narration runs, as the quote counted it; the brief's length when not given. */
+    narrationSeconds?: number
+  },
   parse: ParseCall
 ): Promise<ClaudeResult<CheckedShots>> {
-  // Each part is held to its share of what is left of Claude's budget, by how many shots it plans.
-  const share = (from: number, to: number): number =>
-    opts.budget ? (opts.budget.room * (to - from)) / Math.max(1, phrases.length - from) : Number.POSITIVE_INFINITY
+  // Each part is held to its own hold, as the quote priced it (shotListParts), and never to money a later
+  // part needs: when less is left than the quote allowed, the first part is the one asked to do with less.
+  const holds = shotListParts(phrases.length, opts.narrationSeconds ?? brief.seconds)
+  const share = (part: number): number => {
+    if (!opts.budget) return Number.POSITIVE_INFINITY
+    const later = holds.slice(part + 1).reduce((t, h) => t + h, 0)
+    return Math.min(holds[part] ?? 0, opts.budget.room - later)
+  }
   let bible: Bible | null = null
   const shots: ShotListAnswer['shots'] = []
   let answerBible: ShotListAnswer | null = null
@@ -330,7 +361,7 @@ export async function planShots(
     // Stopped: no later part is asked for.
     if (opts.signal?.aborted) return { ok: false, message: 'Stopped.', cost }
     const request = shotsRequest(brief, phrases, { from, to, sections: opts.sections, outline: opts.outline, maxClips: clips, bible })
-    const hold = holdFor(opts.budget, share(from, to), inputOf(request), 32000)
+    const hold = holdFor(opts.budget, share(from / SHOTS_PER_CALL), inputOf(request), 32000)
     if (!hold) return { ok: false, message: 'There was not enough left of the quote for Claude to plan the shots.', cost }
     try {
       const r = await parse({ ...request, max_tokens: hold.maxTokens }, { signal: opts.signal })

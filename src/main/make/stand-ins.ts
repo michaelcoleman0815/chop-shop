@@ -324,9 +324,11 @@ function answerFor(body: Record<string, unknown>, scripts: Scripts): { text: str
 /** Claude for the end-to-end run: the real SDK, answered here. Each request is logged. */
 export function standInClaude(scriptsFile: string, log: string): ParseCall {
   const scripts = JSON.parse(readFileSync(scriptsFile, 'utf8')) as Scripts
-  const answer = async (_url: unknown, init?: { body?: unknown }): Promise<Response> => {
+  const answer = async (_url: unknown, init?: { body?: unknown; signal?: AbortSignal | null }): Promise<Response> => {
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
     appendFileSync(log, `${JSON.stringify({ at: new Date().toISOString(), service: 'claude', model: body.model, chars: String(init?.body ?? '').length })}\n`)
+    // Taking its time, when a test asks it to, so a Stop can land while Claude is still writing.
+    await wait(Number(process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS ?? 0), init?.signal ?? undefined)
     const a = answerFor(body, scripts)
     return streamedAnswer(a.text, { model: String(body.model ?? ''), input: a.input, output: a.output })
   }

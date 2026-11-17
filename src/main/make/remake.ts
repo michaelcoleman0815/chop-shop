@@ -7,7 +7,7 @@ import { cameraFor, type Carry } from '../../shared/make/assemble'
 import { readMakeAsk, shotNumber, type MakeAsk } from '../../shared/make/edits'
 import type { KeyService } from '../../shared/make/key-steps'
 import { PRICES } from '../../shared/make/prices'
-import { clipCost, DEFAULT_CAP, dollars, REWRITE_COST, stillCost, type Availability, type QuoteLine } from '../../shared/make/quote'
+import { clipCost, dollars, REWRITE_COST, stillCost, videoCap, type Availability, type QuoteLine } from '../../shared/make/quote'
 import { promptFor } from '../../shared/make/shots'
 import { STILL_MOVES, type Brief, type ImageService, type Make, type MadeShot, type VoiceChoice } from '../../shared/make/schema'
 import { defaultVoice, voicePhrase } from '../../shared/make/voices'
@@ -86,7 +86,7 @@ export function quoteShot(
   if (clips) lines.push({ what: `One clip of ${seconds} s from it`, by: `${IMAGE_NAME[clips]} ${PRICES.clips[clips].name}`, cost: clipCost(clips, seconds) })
   const total = Math.round(lines.reduce((t, l) => t + l.cost, 0) * 10000) / 10000
   // Held to the cap with what the video has spent already: a prompt's limit can only lower Settings'.
-  const cap = Math.min(settings.cap ?? DEFAULT_CAP, make.brief.cap ?? Number.POSITIVE_INFINITY)
+  const cap = videoCap(make.brief, settings.cap)
   if (images && make.spent + total > cap + 1e-9)
     missing.push(
       `That would take this video to ${dollars(make.spent + total)} in all, more than the ${dollars(cap)} a video may cost. Raise the limit in Settings to make it.`

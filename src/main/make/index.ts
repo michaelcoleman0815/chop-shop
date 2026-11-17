@@ -15,7 +15,7 @@ import { DEFAULT_MUSIC, type Music } from '../../shared/edit/audio'
 import { readAsk } from '../../shared/make/brief'
 import { draftFingerprint } from '../../shared/make/fingerprint'
 import { questionsFor } from '../../shared/make/questions'
-import { quoteReply, type Availability } from '../../shared/make/quote'
+import { dollars, quoteReply, type Availability } from '../../shared/make/quote'
 import {
   BriefSchema,
   IMAGE_SERVICES,
@@ -387,9 +387,20 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       if (controller.signal.aborted)
         return { ok: false as const, message: brief.from === 'topic' ? 'Stopped while Claude wrote the script.' : 'Stopped before anything was made.' }
       if (!drafted.ok) return { ok: false as const, message: drafted.message }
-      // Typed answers to its questions are read from words, so their video is quoted, whatever Settings says.
-      if (!drafted.draft.quote.auto || req.quoteFirst)
-        return { ok: true as const, kind: 'quote' as const, draft: drafted.draft, reply: quoteOf(drafted.draft) }
+      // Typed answers to its questions are read from words, so their video is quoted, whatever Settings says,
+      // and the reply says so when Settings would have gone ahead.
+      if (!drafted.draft.quote.auto || req.quoteFirst) {
+        const reply = quoteOf(drafted.draft)
+        const typed = drafted.draft.quote.auto
+          ? `It comes in under the ${dollars(getSettings().makeAutoUnder ?? 0)} Settings goes ahead at, but you typed your answers, so it waits for you to check I read them right.`
+          : null
+        return {
+          ok: true as const,
+          kind: 'quote' as const,
+          draft: drafted.draft,
+          reply: typed ? { ...reply, aside: [typed, reply.aside].filter(Boolean).join(' ') } : reply
+        }
+      }
       // Made straight away, under the same Stop as its script.
       const made = await go(e.sender, drafted.draft, drafted.draft.quote.total, controller)
       if (!made.ok) return made
@@ -419,24 +430,48 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   ipcMain.handle('make:revise', async (_e, req: { draft: unknown; text: string }) => {
     const parsed = DraftSchema.safeParse(req.draft)
     if (!parsed.success) return { ok: false as const, message: 'That quote could not be read.' }
-    const d = await draftDeps()
-    const draft = { ...(parsed.data as unknown as Draft), quote: quoteDraft(parsed.data as unknown as Draft, d) }
-    const r = revise(draft, String(req.text ?? ''), d)
-    if (!r) return { ok: true as const, draft: null }
-    // A new length or format for a written script means a new script, and a new quote.
-    if (
-      draft.brief.from === 'topic' &&
-      !draft.into &&
-      (r.draft.brief.seconds !== draft.brief.seconds || r.draft.brief.format !== draft.brief.format)
-    ) {
-      const again = await draftFor(r.draft.brief, draft.id, d)
-      if (!again.ok) return { ok: false as const, message: again.message }
-      // The script it replaces was paid for too: it counts against the cap, and in what the video cost.
-      const next: Draft = { ...again.draft, spentBefore: Math.round(((draft.spentBefore ?? 0) + draft.scriptCost) * 10000) / 10000 }
-      next.quote = quoteDraft(next, d)
-      return { ok: true as const, draft: next, reply: quoteOf(next), changed: r.changed }
+    // A script written again is paid for, so its Stop holds from the moment this is asked, as a new video's does.
+    const controller = new AbortController()
+    const claimed = !running
+    if (claimed) running = controller
+    try {
+      const d = await draftDeps()
+      if (controller.signal.aborted)
+        return { ok: false as const, message: 'Stopped before anything was written, so nothing was spent. The quote stands as it was.' }
+      const was = parsed.data as unknown as Draft
+      const draft = { ...was, quote: quoteDraft(was, d) }
+      const r = revise(draft, String(req.text ?? ''), d)
+      if (!r) return { ok: true as const, draft: null }
+      // A new length or format for a written script means a new script, and a new quote.
+      if (
+        draft.brief.from === 'topic' &&
+        !draft.into &&
+        (r.draft.brief.seconds !== draft.brief.seconds || r.draft.brief.format !== draft.brief.format)
+      ) {
+        if (!claimed) return { ok: false as const, message: 'A video is being made already. Wait for it, or stop it first.' }
+        // What the video has cost already counts against the cap: the script it replaces, and any before it.
+        const before = Math.round(((draft.spentBefore ?? 0) + draft.scriptCost) * 10000) / 10000
+        const again = await draftFor(r.draft.brief, draft.id, { ...d, signal: controller.signal, spentBefore: before })
+        if (!again.ok) {
+          // Stopped or broken partway, it may have been billed: the quote stands, with that counted in it.
+          if (again.cost <= 0)
+            return { ok: false as const, message: controller.signal.aborted ? 'Stopped before anything was written, so nothing was spent. The quote stands as it was.' : again.message }
+          const charged: Draft = { ...draft, spentBefore: Math.round(((draft.spentBefore ?? 0) + again.cost) * 10000) / 10000 }
+          charged.quote = quoteDraft(charged, d)
+          const said = controller.signal.aborted
+            ? `Stopped while Claude wrote it again. That may have cost up to ${dollars(again.cost)}, which counts in the quote; the script stays as it was.`
+            : `${again.message} Writing it may have cost up to ${dollars(again.cost)}, which counts in the quote; the script stays as it was.`
+          return { ok: false as const, message: said, draft: charged, reply: quoteOf(charged) }
+        }
+        // The script it replaces was paid for too: it counts against the cap, and in what the video cost.
+        const next: Draft = { ...again.draft, spentBefore: before }
+        next.quote = quoteDraft(next, d)
+        return { ok: true as const, draft: next, reply: quoteOf(next), changed: r.changed }
+      }
+      return { ok: true as const, draft: r.draft, reply: quoteOf(r.draft), changed: r.changed }
+    } finally {
+      if (running === controller) running = null
     }
-    return { ok: true as const, draft: r.draft, reply: quoteOf(r.draft), changed: r.changed }
   })
 
   // The script edited before anything is made: read again and quoted again.
