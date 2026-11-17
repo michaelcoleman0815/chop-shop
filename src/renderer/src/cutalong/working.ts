@@ -17,7 +17,14 @@ const LINES: [RegExp, string][] = [
   [/^watching your (videos|clips)\b/i, 'Learning your pace, your cuts and your sound.'],
   [/^looking for b-roll\b/i, 'Looking through your sources for shots that fit what is said.'],
   [/^finding you in the picture\b/i, 'Finding where you are in each frame, so a crop keeps you in it.'],
-  [/^downloading model\b/i, 'Once only: after this, words are written down on this computer.']
+  [/^downloading model\b/i, 'Once only: after this, words are written down on this computer.'],
+  // A video made from nothing (main/make).
+  [/^downloading the voice\b/i, 'Once only: after this, the voice reads on this computer.'],
+  [/^writing the script\b/i, 'Part by part, in words written to be read aloud.'],
+  [/^narrating the script: timing\b/i, 'Finding when each word is said, so every shot lands on its line.'],
+  [/^narrating\b/i, 'Reading every line aloud, with a breath between the parts.'],
+  [/^planning the shots\b/i, 'Choosing a picture for every line, and how the camera moves over it.'],
+  [/^drawing\b.*\bcharacter sheet\b/i, 'One picture of them first, so they look the same in every shot.']
 ]
 
 /** The plain line under a stage: what it is doing, or else how far along it is. */
