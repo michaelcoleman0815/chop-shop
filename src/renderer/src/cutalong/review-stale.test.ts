@@ -347,7 +347,7 @@ describe('questions waiting before a script is written', () => {
     await h.say('the lakes up north, a documentary, 1 minute')
     expect(count.n).toBe(0)
     expect(await h.say('yes')).toBe(true)
-    expect([...h.msgs.values()].pop()?.text).toBe('Tap Yes above if that’s right, or tell me what to change.')
+    expect([...h.msgs.values()].pop()?.text).toBe('Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it.')
     expect(count.n).toBe(0)
     const back = [...h.msgs.values()].filter((m) => /^Make it about/.test(m.text ?? '')).pop()!
     await h.makes.onAction(back.actions!.find((a) => a.label === 'Yes')!)

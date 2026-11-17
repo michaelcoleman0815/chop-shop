@@ -36,12 +36,14 @@ export function mockMakeApi(): Pick<
 > {
   const nothing = 'This preview makes no videos. Open Cutalong to make one.'
   return {
-    makeStart: async ({ text, answered, reading }) => {
+    makeStart: async ({ text, answered, reading, consent }) => {
       const read = readAsk(reading ?? text)
       const brief = read && reading ? { ...read, ask: text } : read
       if (!brief) return { ok: false as const, message: 'Tell me what the video is about.' }
       const questions = answered ? [] : questionsFor(brief)
       if (questions.length) return { ok: true as const, kind: 'ask' as const, questions }
+      // As main: nothing is written without a tap, or a new video asked for with nothing else waiting.
+      if (consent !== 'tap' && consent !== 'command') return { ok: false as const, message: 'I wrote nothing: tap its button first.' }
       const d = draftOf(brief, SCRIPT(brief))
       return { ok: true as const, kind: 'quote' as const, draft: d, reply: reply(d) }
     },

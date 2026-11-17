@@ -75,18 +75,27 @@ export function questionsFor(brief: Brief): MakeQuestion[] {
 
 /**
  * What a typed reply to the questions says, read here and never sent
- * anywhere on its own: a no, or a pause, a hedge, a yes or a question back,
- * each only when it is the whole reply; an edit's words, while an edit is
- * open; what to read back (its answers, and what it turns down); or nothing
- * it can read. Only a read-back the person taps Yes on is sent, so a
- * misreading costs nothing.
+ * anywhere on its own: a no, or a pause, a hedge, a go-ahead or a question
+ * back, each only when it is the whole reply; an edit's words, for the edit
+ * when one is open (`edit`) and answered here when none is (`noEdit`); what
+ * to read back (its answers, what it turns down, and a limit on what it may
+ * cost); or nothing it can read. Only a read-back the person taps Yes on is
+ * sent, so a misreading costs nothing.
  */
 export type Reading =
   | { kind: 'no' }
   | { kind: 'wait'; asked: boolean }
   | { kind: 'edit' }
-  | { kind: 'read'; answers: string[]; ruled: string[] }
+  | { kind: 'noEdit' }
+  | { kind: 'read'; answers: string[]; ruled: string[]; cap?: string }
   | { kind: 'unread' }
+
+/** Answers read from a reply: one for each question, what it turns down, and a limit on what it may cost ("under $1"). */
+export interface Read {
+  answers: string[]
+  ruled: string[]
+  cap?: string
+}
 
 /** Phrases, each a whole word or words, found anywhere in what was typed. */
 const anywhere = (...phrases: string[]): RegExp => new RegExp(`(?:^|[^\\w'])(?:${phrases.join('|')})(?=$|[^\\w'])`, 'i')
@@ -217,6 +226,24 @@ function saysSomething(words: string): boolean {
     .some((w) => w.length > 1 && !EMPTY_WORDS.has(w))
 }
 
+/** Words that say go ahead and nothing else ("yes", "sure, write it", "ok, make it", "proceed", "start", "👍"). */
+const ACCEPT_WORDS = new Set(
+  "yes yeah yep yup ya y sure ok okay k kk alright fine go ahead do it make write start begin proceed confirm confirmed sounds looks good great perfect lets let's right correct exactly absolutely definitely please thanks thank you now just the script video that's all set approved lgtm and for then".split(' ')
+)
+const ACCEPT_STRONG = /\b(?:yes|yeah|yep|yup|ya|y|sure|ok|okay|k|kk|alright|fine|go|do|make|write|start|begin|proceed|confirm(?:ed)?|good|great|perfect|right|correct|exactly|absolutely|definitely|approved|lgtm)\b/
+
+/** Whether a reply says go ahead and nothing else. A go-ahead typed never makes or writes anything: only a button does. */
+export function isAcceptance(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[‘’]/g, "'")
+  if (/^(?:\p{Extended_Pictographic}|\u{FE0F}|\s)+$/u.test(t)) return /👍|✅|👌|🙌|💯|🚀/u.test(t)
+  const words = t.replace(/[^a-z' ]+/g, ' ').split(/\s+/).filter(Boolean)
+  return words.length > 0 && words.length <= 8 && words.every((w) => ACCEPT_WORDS.has(w)) && ACCEPT_STRONG.test(words.join(' '))
+}
+
+/** Words that can only ask something of an edit ("cut the first 10 seconds", "export it"): answered here when there is none. */
+const EDIT_ONLY =
+  /^\s*(?:\/|(?:cut|trim|remove|delete|drop|insert|export|undo|redo|caption|subtitle|mute|unmute|speed up|slow down|crop|zoom|split|swap|replace|hide|grade|tighten|shorten|lengthen|play|pause|reframe|select)\b)/i
+
 /** Words that ask something of an edit, or a command: for the edit, when one is open. */
 const EDIT =
   /^\s*(?:\/|(?:cut|trim|remove|delete|drop|move|add|put|insert|export|undo|redo|caption|subtitle|mute|unmute|speed|slow|crop|zoom|split|swap|replace|open|close|hide|colou?r|grade|fix|tighten|shorten|lengthen|play|pause|show me|find|search|use|turn|select|reframe|upload|save)\b)/i
@@ -314,20 +341,26 @@ const TURNED_DOWN =
   /(?:^|[\s,;(])((?:(?:but|and|so|definitely|really|just)\s+)?(?:not|no|never)(?!\s+(?:sure|certain|now|yet|today|idea|clue|rush|hurry|problem|worries|longer|more than)\b)(?:\s+(?:about|really|so much|too))?|anything but|nothing (?:about|on|with|of|to do with)|without|except(?: for)?|rather than|instead of|other than|but not)\s+([^,.;!?]+?)(?=\s*(?:[,.;!?]|\bbut\b|\band\b|\bmore like\b|\brather\b|\binstead\b|\bplease\b|$))/gi
 const LEAD = /^(?:but|and|so|definitely|really|just)\s+/
 
-/** A reply's words, read for its answers and what it turns down, the one never taken for the other. */
-function readWords(t: string, questions: MakeQuestion[]): { answers: string[]; ruled: string[] } {
+/** A limit on what it may cost, said anywhere ("under $1", "no more than $5", "budget of $3"). */
+const CAP_SAID = /\b(?:under|below|less than|at most|no more than|up to|max(?:imum)?|budget(?: of| is)?|spend(?: up to| at most)?)\s*(?:of\s*)?\$\s?\d+(?:\.\d{1,2})?/i
+
+/** A reply's words, read for its answers, what it turns down and a limit on what it may cost, the one never taken for the other. */
+function readWords(t: string, questions: MakeQuestion[]): Read {
   const answers = questions.map(() => '')
   const ruled: string[] = []
   const lengthAsked = questions.some((q) => q.id === 'length')
   const turnedDown: string[] = []
-  let rest = t
-  for (const m of [...t.matchAll(TURNED_DOWN)]) {
+  // A limit is read into the brief, never into what it should say.
+  const cap = t.match(CAP_SAID)?.[0]?.trim() ?? ''
+  const reply = cap ? t.replace(CAP_SAID, ' ') : t
+  let rest = reply
+  for (const m of [...reply.matchAll(TURNED_DOWN)]) {
     const marker = m[1].toLowerCase().replace(/\s+/g, ' ')
     const what = m[2].trim().replace(/\s+please$/i, '')
     const weak = /^(?:(?:but|and|so|definitely|really|just) )?(?:not|no|never)(?: (?:really|so much|too))?$/.test(marker)
     // What it should say nothing about ("nothing about the 10 minute drive") is about what it says, never a choice.
     const content = /^nothing\b|\bnot about$/.test(marker)
-    const before = t.slice(0, (m.index ?? 0) + m[0].indexOf(m[1])).trimEnd()
+    const before = reply.slice(0, (m.index ?? 0) + m[0].indexOf(m[1])).trimEnd()
     const atStart = !before || /[,;:(.!?]$/.test(before) || LEAD.test(marker)
     const owner = content ? undefined : questions.find((q) => q.options.some((o) => labelIn(o.label).test(what)))
     const style = content ? undefined : STYLES.find((s) => new RegExp(s.says.source, 'i').test(what))
@@ -393,7 +426,7 @@ function readWords(t: string, questions: MakeQuestion[]): { answers: string[]; r
       .trim()
     if (saysSomething(left) && !FILLER.test(left)) answers[topic] = left
   }
-  return { answers, ruled }
+  return { answers, ruled, ...(cap ? { cap } : {}) }
 }
 
 /**
@@ -414,11 +447,13 @@ export function readAnswer(text: string, questions: MakeQuestion[], opts: { edit
   const without = (re: RegExp): string => t.replace(every(re), ' ')
   if ((HOLD_ANY.test(t) && !saysSomething(without(HOLD_ANY))) || HOLD_WHOLE.test(t)) return { kind: 'wait', asked: QUESTION.test(t) }
   if (NO_WHOLE.test(t) || (NO_ANY.test(t) && !saysSomething(without(NO_ANY)))) return { kind: 'no' }
-  if (YES_WHOLE.test(t) || FILLER.test(t)) return { kind: 'wait', asked: false }
+  if (YES_WHOLE.test(t) || isAcceptance(t) || FILLER.test(t)) return { kind: 'wait', asked: false }
   if (QUESTION.test(t) && !saysSomething(t.replace(QUESTION_WORDS, ' '))) return { kind: 'wait', asked: true }
+  // An edit's words with no edit open: nothing to edit, and never what the video is about.
+  if (EDIT_ONLY.test(t)) return { kind: 'noEdit' }
   if (LENGTH_VAGUE.test(t)) return { kind: 'unread' }
   const read = readWords(t, questions)
-  if (read.answers.some(Boolean) || read.ruled.length) return { kind: 'read', ...read }
+  if (read.answers.some(Boolean) || read.ruled.length || read.cap) return { kind: 'read', ...read }
   return { kind: 'unread' }
 }
 
@@ -431,13 +466,14 @@ export function readAnswer(text: string, questions: MakeQuestion[], opts: { edit
 export function readCard(answers: string[], questions: MakeQuestion[]): Extract<Reading, { kind: 'read' | 'unread' }> | null {
   const typed = answers.map((a, i) => !!a.trim() && !questions[i]?.options.some((o) => o.adds === a))
   if (!typed.some(Boolean)) return null
-  const out = { answers: questions.map((_q, i) => (typed[i] ? '' : (answers[i] ?? ''))), ruled: [] as string[] }
+  const out: Read = { answers: questions.map((_q, i) => (typed[i] ? '' : (answers[i] ?? ''))), ruled: [] }
   for (let i = 0; i < questions.length; i++) {
     if (!typed[i]) continue
     const r = readAnswer(answers[i], [questions[i]])
     if (r.kind !== 'read') return { kind: 'unread' }
     out.answers[i] = r.answers[0]
     out.ruled.push(...r.ruled)
+    if (r.cap) out.cap = r.cap
   }
   return { kind: 'read', ...out }
 }
@@ -450,8 +486,11 @@ export function isYes(text: string): boolean {
 /** What a reply the questions could not read is answered with: nothing is sent anywhere for it. */
 export const UNREAD = 'I didn’t catch that. Tap an answer, or say a length like “5 minutes”.'
 
-/** What a yes typed to a read-back is answered with: only its button sends it. */
-export const TAP_YES = 'Tap Yes above if that’s right, or tell me what to change.'
+/** What a go-ahead typed to a read-back or a quote is answered with: only its button sends or makes anything. */
+export const TAP_TO_GO = 'Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it.'
+
+/** What an edit's words are answered with, with no edit open. */
+export const NO_EDIT = 'There’s no video open to edit yet. Tap an answer above, or say “never mind” to set these questions aside.'
 
 /**
  * A read-back of typed answers, before anything is sent. `prompt` is what
@@ -463,11 +502,7 @@ export const TAP_YES = 'Tap Yes above if that’s right, or tell me what to chan
  * about, what it should not say, its style and its length), and what that
  * may cost.
  */
-export function readBack(
-  text: string,
-  questions: MakeQuestion[],
-  read: { answers: string[]; ruled: string[] }
-): { line: string; aside: string; prompt: string; reading: string } {
+export function readBack(text: string, questions: MakeQuestion[], read: Read): { line: string; aside: string; prompt: string; reading: string } {
   const topicAt = questions.findIndex((q) => q.id === 'topic')
   const said = topicAt >= 0 ? (read.answers[topicAt] ?? '') : ''
   // What it should not say goes with what it should.
@@ -476,11 +511,9 @@ export function readBack(
       ? read.answers.map((a, i) => (i === topicAt ? `${a}, ${read.ruled.join(', ')}` : a))
       : [...read.answers, read.ruled.join(', ')]
     : read.answers
-  const prompt = answered(text, answers)
-  const reading = answered(
-    text,
-    read.answers.filter((_a, i) => i !== topicAt)
-  )
+  const cap = read.cap ? [read.cap] : []
+  const prompt = answered(text, [...answers, ...cap])
+  const reading = answered(text, [...read.answers.filter((_a, i) => i !== topicAt), ...cap])
   const brief = readAsk(reading)
   const tapped = topicAt >= 0 ? questions[topicAt].options.find((o) => o.adds === said) : undefined
   const topic =
@@ -496,7 +529,7 @@ export function readBack(
         : brief.maps === 'none'
           ? 'a cinematic documentary with no maps'
           : 'a cinematic documentary'
-  const how = [style, brief ? `${clock(brief.seconds)} long` : ''].filter(Boolean).join(', ')
+  const how = [style, brief ? `${clock(brief.seconds)} long` : '', brief?.cap ? `no more than ${dollars(brief.cap)}` : ''].filter(Boolean).join(', ')
   return {
     line: `Make it about “${topic}”${read.ruled.length ? `, ${read.ruled.join(', ')}` : ''}${how ? `: ${how}` : ''}?`,
     aside: `Yes asks Claude to write the script, which may cost up to ${dollars(scriptCost(brief?.seconds ?? 120))}. Nothing else is spent until you press its quote’s button.`,
@@ -506,11 +539,9 @@ export function readBack(
 }
 
 /** Two read-backs' answers as one: what was said last wins, question by question, and nothing turned down is lost. */
-export function mergeReads(
-  was: { answers: string[]; ruled: string[] },
-  now: { answers: string[]; ruled: string[] }
-): { answers: string[]; ruled: string[] } {
-  return { answers: was.answers.map((a, i) => now.answers[i] || a), ruled: [...new Set([...was.ruled, ...now.ruled])] }
+export function mergeReads(was: Read, now: Read): Read {
+  const cap = now.cap || was.cap
+  return { answers: was.answers.map((a, i) => now.answers[i] || a), ruled: [...new Set([...was.ruled, ...now.ruled])], ...(cap ? { cap } : {}) }
 }
 
 /** What reviseBrief reads as turned down itself ("no maps", "no clips", "no grain"). */

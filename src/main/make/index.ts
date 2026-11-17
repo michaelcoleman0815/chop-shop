@@ -32,7 +32,7 @@ import { parseWith, type ParseCall } from './claude'
 import { kokoroVoice } from './kokoro'
 import { madeMaps } from './maps'
 import type { LocalVoice } from './narrate'
-import type { Draft, Reply, ShotChange } from '../../shared/make/draft'
+import type { Consent, Draft, Reply, ShotChange } from '../../shared/make/draft'
 import { changeFor, quoteShot, remakeShot } from './remake'
 import { draftFor, makeVideo, quoteDraft, revise, Stopped, withScript, type DraftDeps } from './run'
 import type { MakeServices } from './services'
@@ -201,6 +201,14 @@ let running: AbortController | null = null
 /** What `running` is doing, so a second ask is told what it waits for. */
 let runningFor: 'script' | 'requote' | 'make' | 'shot' = 'make'
 
+/**
+ * Consent, checked here at the boundary for every call that may spend, whatever state the window is in:
+ * a script is written, a quote changed and a video or a shot made only for a button the person tapped,
+ * or (a new video's script) for an ask typed with nothing else waiting. Typed replies never carry it.
+ */
+const tapped = (consent: unknown): consent is 'tap' => consent === 'tap'
+const asked = (consent: unknown): consent is Consent => consent === 'tap' || consent === 'command'
+
 /** Why something else cannot start yet, by what is running. */
 function busy(): string {
   switch (runningFor) {
@@ -366,7 +374,15 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     'make:start',
     async (
       e,
-      req: { text: string; recording?: string | null; brand?: string | null; answered?: boolean; quoteFirst?: boolean; reading?: string }
+      req: {
+        text: string
+        recording?: string | null
+        brand?: string | null
+        answered?: boolean
+        quoteFirst?: boolean
+        reading?: string
+        consent?: Consent
+      }
     ) => {
     // The script is written (or the recording heard) under a Stop of its own, held from the moment the
     // prompt arrives: its Stop button shows from then, and one pressed while Settings is read is never lost.
@@ -391,6 +407,9 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       // What cannot be guessed is asked first, before a word is written or a token spent, whatever Settings says.
       const questions = req.answered ? [] : questionsFor(brief)
       if (questions.length) return { ok: true as const, kind: 'ask' as const, questions }
+      // Past the questions, Claude is asked: only for a tap, or a new video asked for with nothing else waiting.
+      if (!asked(req.consent))
+        return { ok: false as const, message: 'I wrote nothing: a script is written only when you tap its button, or ask for a new video with nothing else waiting.' }
       if (!claimed) return { ok: false as const, message: busy() }
       const d = await draftDeps(req.brand)
       if (controller.signal.aborted) return { ok: false as const, message: 'Stopped before anything was written, so nothing was spent.' }
@@ -433,7 +452,7 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       if (!drafted.ok) return { ok: false as const, message: drafted.message }
       // Typed answers to its questions are read from words, so their video is quoted, whatever Settings says,
       // and the reply says so when Settings would have gone ahead.
-      if (!drafted.draft.quote.auto || req.quoteFirst) {
+      if (!drafted.draft.quote.auto || req.quoteFirst || !asked(req.consent)) {
         const reply = quoteOf(drafted.draft)
         const typed = drafted.draft.quote.auto
           ? `It comes in under the ${dollars(getSettings().makeAutoUnder ?? 0)} Settings goes ahead at, but your answers were typed, so it waits for you to press its button.`
@@ -460,7 +479,8 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   })
 
   // The quote confirmed: made, if it is the draft its button showed and the price is still what was confirmed.
-  ipcMain.handle('make:go', async (e, req: { draft: unknown; confirmed: number; fingerprint?: string }) => {
+  ipcMain.handle('make:go', async (e, req: { draft: unknown; confirmed: number; fingerprint?: string; consent?: Consent }) => {
+    if (!tapped(req.consent)) return { ok: false as const, message: 'Nothing was made: a video is made only when you press its quote’s button.' }
     const parsed = DraftSchema.safeParse(req.draft)
     if (!parsed.success)
       return { ok: false as const, message: 'That quote could not be read. Ask again and I’ll quote it fresh.' }
@@ -471,7 +491,8 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   })
 
   // What was said next about a quote not yet made: the brief changed and quoted again.
-  ipcMain.handle('make:revise', async (_e, req: { draft: unknown; steps?: unknown; text?: string }) => {
+  ipcMain.handle('make:revise', async (_e, req: { draft: unknown; steps?: unknown; text?: string; consent?: Consent }) => {
+    if (!tapped(req.consent)) return { ok: false as const, message: 'Nothing was changed: a quote is changed only when you tap Yes on what I read back.' }
     const parsed = DraftSchema.safeParse(req.draft)
     if (!parsed.success) return { ok: false as const, message: 'That quote could not be read.' }
     // The changes read back and confirmed, each in turn; one said on its own reads the same.
@@ -552,7 +573,8 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   )
 
   // One shot made again for its confirmed quote.
-  ipcMain.handle('make:shot', async (e, req: { doc: unknown; change: ShotChange; confirmed: number }) => {
+  ipcMain.handle('make:shot', async (e, req: { doc: unknown; change: ShotChange; confirmed: number; consent?: Consent }) => {
+    if (!tapped(req.consent)) return { ok: false as const, message: 'Nothing was made: a shot is made again only when you press its quote’s button.' }
     const parsed = EditDocSchema.safeParse(req.doc)
     if (!parsed.success || !parsed.data.make)
       return { ok: false as const, message: 'This edit was not made from nothing.' }

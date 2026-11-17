@@ -11,6 +11,15 @@ import type { Word } from '../edit/schema'
  * main/make/run.ts and remake.ts.
  */
 
+/**
+ * Why main may spend on a made video: `tap` for a button the person tapped
+ * (a quote's, a read-back's Yes, the questions' own options), `command` for
+ * a new video asked for with nothing else waiting. Typed text in reply to
+ * questions, a quote or a read-back never carries it: main writes no
+ * script, changes no quote and makes nothing without it.
+ */
+export type Consent = 'tap' | 'command'
+
 export interface Draft {
   id: string
   brief: Brief

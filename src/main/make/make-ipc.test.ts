@@ -86,7 +86,7 @@ const call = <T>(channel: string, req?: unknown): Promise<T> =>
 
 /** make:go as a quote's button sends it: the draft, the price it showed, and its fingerprint. */
 const goWith = <T>(draft: Draft, confirmed = draft.quote.total): Promise<T> =>
-  call<T>('make:go', { draft, confirmed, fingerprint: draftFingerprint(draft) })
+  call<T>('make:go', { consent: 'tap', draft, confirmed, fingerprint: draftFingerprint(draft) })
 
 let standins = ''
 let manifest = ''
@@ -138,7 +138,7 @@ describe('a video made from one prompt', () => {
 
   it('quotes before anything is made, and asks no picture service for anything', async () => {
     saveSettings({ makeAutoUnder: null, makeCap: null })
-    const r = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom, with maps where it helps' })
+    const r = await call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom, with maps where it helps' })
     expect(r.ok).toBe(true)
     expect(r.kind).toBe('quote')
     draft = r.draft as Draft
@@ -158,6 +158,7 @@ describe('a video made from one prompt', () => {
     saveSettings({ makeAutoUnder: 25 })
     const before = requests().length
     const r = await call<{ ok: boolean; kind: string; questions: { id: string; options: unknown[] }[] }>('make:start', {
+      consent: 'command',
       text: 'make a video about my trip'
     })
     expect(r.kind).toBe('ask')
@@ -165,11 +166,12 @@ describe('a video made from one prompt', () => {
     // Nothing went to Claude or anywhere else: the questions are read from the prompt here.
     expect(requests().length).toBe(before)
     // A half-said prompt is asked only what it leaves out.
-    const half = await call<{ kind: string; questions: { id: string }[] }>('make:start', { text: 'make a documentary about the gold rush' })
+    const half = await call<{ kind: string; questions: { id: string }[] }>('make:start', { consent: 'command', text: 'make a documentary about the gold rush' })
     expect(half.questions.map((q) => q.id)).toEqual(['length'])
     saveSettings({ makeAutoUnder: null })
     // Answered, it is written and quoted.
     const answeredStart = await call<Start>('make:start', {
+      consent: 'command',
       text: 'make a documentary about the gold rush, 1 minute long.',
       answered: true
     })
@@ -181,10 +183,10 @@ describe('a video made from one prompt', () => {
     const r = await goWith<Made>(draft, draft.quote.total - 0.5)
     expect(r.ok).toBe(false)
     expect(r.message).toMatch(/price has changed/)
-    const other = await call<Made>('make:go', { draft: { ...draft, script: `${draft.script} One more line.` }, confirmed: draft.quote.total, fingerprint: draftFingerprint(draft) })
+    const other = await call<Made>('make:go', { consent: 'tap', draft: { ...draft, script: `${draft.script} One more line.` }, confirmed: draft.quote.total, fingerprint: draftFingerprint(draft) })
     expect(other.ok).toBe(false)
     expect(other.message).toMatch(/quote that has changed since/)
-    const none = await call<Made>('make:go', { draft, confirmed: draft.quote.total })
+    const none = await call<Made>('make:go', { consent: 'tap', draft, confirmed: draft.quote.total })
     expect(none.ok).toBe(false)
     // A quote confirmed for fal.ai (made when only fal.ai was open) is never made by Google instead: it is quoted again.
     const onFal: Draft = { ...draft, quote: { ...draft.quote, images: 'fal' } }
@@ -197,7 +199,7 @@ describe('a video made from one prompt', () => {
 
   it('counts a script written again for a new length against the cap, with the one it replaces', async () => {
     const claude = requests().filter((q) => q.service === 'claude').length
-    const r = await call<{ ok: boolean; draft: Draft; changed: string[] }>('make:revise', { draft, text: 'make it 2 minutes' })
+    const r = await call<{ ok: boolean; draft: Draft; changed: string[] }>('make:revise', { consent: 'tap', draft, text: 'make it 2 minutes' })
     expect(r.ok).toBe(true)
     expect(r.draft.brief.seconds).toBe(120)
     // Claude wrote it again, and the first script was paid for too: both count.
@@ -210,17 +212,17 @@ describe('a video made from one prompt', () => {
 
   it('holds a script written again to the cap, with what the video has cost already: past it, Claude is not asked', async () => {
     const claude = (): number => requests().filter((q) => q.service === 'claude').length
-    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const start = await call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
     let d = start.draft as Draft
     // A limit with room for one script more, at the most it may cost, and not two.
     const limit = Math.round((d.scriptCost + scriptCost(180) + 0.001) * 10000) / 10000
     saveSettings({ makeCap: limit })
     const before = claude()
-    const once = await call<{ ok: boolean; draft: Draft }>('make:revise', { draft: d, text: 'make it 2 minutes' })
+    const once = await call<{ ok: boolean; draft: Draft }>('make:revise', { consent: 'tap', draft: d, text: 'make it 2 minutes' })
     expect(once.ok).toBe(true)
     expect(claude()).toBe(before + 1)
     d = once.draft
-    const twice = await call<{ ok: boolean; message?: string; draft?: Draft }>('make:revise', { draft: d, text: 'make it 3 minutes' })
+    const twice = await call<{ ok: boolean; message?: string; draft?: Draft }>('make:revise', { consent: 'tap', draft: d, text: 'make it 3 minutes' })
     saveSettings({ makeCap: null })
     expect(twice.ok).toBe(false)
     expect(twice.message).toMatch(
@@ -234,13 +236,13 @@ describe('a video made from one prompt', () => {
   it('writes no first script past the limit the prompt names, or Settings', async () => {
     const claude = (): number => requests().filter((q) => q.service === 'claude').length
     const before = claude()
-    const asked = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom under $0.05' })
+    const asked = await call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom under $0.05' })
     expect(asked.ok).toBe(false)
     expect(asked.message).toBe(
       `Writing the script alone may cost up to $${scriptCost(60).toFixed(2)}, more than the $0.05 you asked this video to cost, so I didn't start it. Ask for a higher amount to make it.`
     )
     saveSettings({ makeCap: 0.1 })
-    const set = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const set = await call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
     saveSettings({ makeCap: null })
     expect(set.message).toBe(
       `Writing the script alone may cost up to $${scriptCost(60).toFixed(2)}, more than the $0.10 a video may cost, so I didn't start it. Raise the limit in Settings to make it.`
@@ -250,9 +252,9 @@ describe('a video made from one prompt', () => {
 
   it('keeps a Stop pressed the moment a script is to be written again: Claude is not asked, and the quote stands', async () => {
     const claude = (): number => requests().filter((q) => q.service === 'claude').length
-    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const start = await call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
     const before = claude()
-    const revising = call<{ ok: boolean; message?: string; draft?: Draft | null }>('make:revise', { draft: start.draft, text: 'make it 3 minutes' })
+    const revising = call<{ ok: boolean; message?: string; draft?: Draft | null }>('make:revise', { consent: 'tap', draft: start.draft, text: 'make it 3 minutes' })
     expect(await call('make:cancel')).toBe(true)
     const r = await revising
     expect(r.ok).toBe(false)
@@ -262,10 +264,10 @@ describe('a video made from one prompt', () => {
   })
 
   it('stopped while Claude writes it again, keeps the script and counts what that may have cost in its quote', async () => {
-    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const start = await call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
     const d = start.draft as Draft
     process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '400'
-    const revising = call<{ ok: boolean; message?: string; draft?: Draft; reply?: unknown }>('make:revise', { draft: d, text: 'make it 3 minutes' })
+    const revising = call<{ ok: boolean; message?: string; draft?: Draft; reply?: unknown }>('make:revise', { consent: 'tap', draft: d, text: 'make it 3 minutes' })
     await new Promise((r) => setTimeout(r, 150))
     expect(await call('make:cancel')).toBe(true)
     const r = await revising
@@ -283,6 +285,7 @@ describe('a video made from one prompt', () => {
   it('says why a video whose questions were answered by typing waits, when Settings would have gone ahead', async () => {
     saveSettings({ makeAutoUnder: 25 })
     const r = await call<Start & { reply?: { aside: string | null } }>('make:start', {
+      consent: 'command',
       text: 'make a 30 second animated explainer about how the heart pumps blood',
       answered: true,
       quoteFirst: true
@@ -292,9 +295,44 @@ describe('a video made from one prompt', () => {
     expect(r.reply?.aside).toMatch(/^It comes in under the \$25\.00 Settings goes ahead at, but your answers were typed, so it waits for you to press its button\./)
   })
 
+  it('refuses, at the boundary, every script, change and make that no tap or fresh ask stands behind', async () => {
+    const claude = (): number => requests().filter((q) => q.service === 'claude').length
+    const before = { claude: claude(), pictures: pictures() }
+    saveSettings({ makeAutoUnder: 25 })
+    // Questions cost nothing, and are asked whatever the window says.
+    const vague = await call<{ ok: boolean; kind?: string }>('make:start', { text: 'make a video about my trip' })
+    expect(vague.kind).toBe('ask')
+    // Typed text in reply to anything waiting carries no consent, whatever else it says: refused before Claude is asked.
+    for (const req of [
+      { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' },
+      { text: 'make a 1 minute cinematic documentary about the 1950s oil boom', answered: true },
+      { text: 'make a video about my trip, Lisbon, 1 minute long.', answered: true, quoteFirst: true, reading: 'make a video about my trip, 1 minute long.' },
+      { text: 'make a 1 minute cinematic documentary about the 1950s oil boom', consent: 'typed' },
+      { text: 'make a 1 minute cinematic documentary about the 1950s oil boom', consent: 'yes' }
+    ]) {
+      const r = await call<Start>('make:start', req)
+      expect(r.ok, JSON.stringify(req)).toBe(false)
+      expect(r.message).toBe('I wrote nothing: a script is written only when you tap its button, or ask for a new video with nothing else waiting.')
+    }
+    const revised = await call<{ ok: boolean; message?: string }>('make:revise', { draft, steps: ['make it 2 minutes'] })
+    expect(revised).toEqual({ ok: false, message: 'Nothing was changed: a quote is changed only when you tap Yes on what I read back.' })
+    const commanded = await call<{ ok: boolean; message?: string }>('make:revise', { consent: 'command', draft, steps: ['make it 2 minutes'] })
+    expect(commanded.ok).toBe(false)
+    const made = await call<Made>('make:go', { draft, confirmed: draft.quote.total, fingerprint: draftFingerprint(draft) })
+    expect(made).toEqual({ ok: false, message: 'Nothing was made: a video is made only when you press its quote’s button.' })
+    const fresh = await call<Made>('make:go', { consent: 'command', draft, confirmed: draft.quote.total, fingerprint: draftFingerprint(draft) })
+    expect(fresh.ok).toBe(false)
+    const shot = await call<{ ok: boolean; message?: string }>('make:shot', { doc: {}, change: {}, confirmed: 1 })
+    expect(shot).toEqual({ ok: false, message: 'Nothing was made: a shot is made again only when you press its quote’s button.' })
+    saveSettings({ makeAutoUnder: null })
+    // Not a call to Claude, nor a picture, for any of it.
+    expect(claude()).toBe(before.claude)
+    expect(pictures()).toBe(before.pictures)
+  })
+
   it('says what a Stop while Claude writes the first script may have cost', async () => {
     process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '400'
-    const starting = call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const starting = call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
     await new Promise((r) => setTimeout(r, 150))
     expect(await call('make:cancel')).toBe(true)
     const r = await starting
@@ -309,6 +347,7 @@ describe('a video made from one prompt', () => {
     // Read alone, what it should say would be its length: "10 minute".
     expect(readAsk(said)?.seconds).toBe(600)
     const r = await call<Start>('make:start', {
+      consent: 'tap',
       text: said,
       reading: 'make a video about my trip, as a cinematic documentary, 1 minute long.',
       answered: true,
@@ -322,6 +361,7 @@ describe('a video made from one prompt', () => {
 
   it('quotes the changes read back and confirmed, each in turn, the last winning', async () => {
     const r = await call<{ ok: boolean; draft: Draft; changed: string[] }>('make:revise', {
+      consent: 'tap',
       draft,
       steps: ['make it 3 minutes', 'not black and white, sepia', 'make it 2 minutes']
     })
@@ -332,10 +372,10 @@ describe('a video made from one prompt', () => {
   })
 
   it('tells the old quote’s button that its quote is being worked out again, not that a video is being made', async () => {
-    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const start = await call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
     const d = start.draft as Draft
     process.env.CUTALONG_STANDIN_CLAUDE_DELAY_MS = '400'
-    const revising = call<{ ok: boolean }>('make:revise', { draft: d, steps: ['make it 3 minutes'] })
+    const revising = call<{ ok: boolean }>('make:revise', { consent: 'tap', draft: d, steps: ['make it 3 minutes'] })
     await new Promise((r) => setTimeout(r, 100))
     const pressed = await goWith<Made>(d)
     expect(pressed.ok).toBe(false)
@@ -356,7 +396,7 @@ describe('a video made from one prompt', () => {
     expect(r.message).toBe('Stopped before anything was made, so nothing of the quote was spent.')
     // Asked with "Go ahead without asking" on, and stopped at once, while Settings is read.
     saveSettings({ makeAutoUnder: 25 })
-    const starting = call<Made>('make:start', { text: 'make a 30 second animated explainer about how the heart pumps blood' })
+    const starting = call<Made>('make:start', { consent: 'command', text: 'make a 30 second animated explainer about how the heart pumps blood' })
     expect(await call('make:cancel')).toBe(true)
     const s = await starting
     saveSettings({ makeAutoUnder: null })
@@ -405,6 +445,7 @@ describe('a video made from one prompt', () => {
     expect(c.change.kind).toBe('shot')
     expect(c.change.total).toBeGreaterThan(0)
     const r = await call<{ ok: boolean; ops: { op: string; beats: string[] }[]; make: EditDoc['make']; spent: number }>('make:shot', {
+      consent: 'tap',
       doc,
       change: c.change,
       confirmed: c.change.total
@@ -424,7 +465,7 @@ describe('a video made from one prompt', () => {
       text: 'make shot 2 a wide shot of the derricks at dusk'
     })
     expect(c.change.kind).toBe('shot')
-    const going = call<{ ok: boolean; message?: string }>('make:shot', { doc, change: c.change, confirmed: c.change.total })
+    const going = call<{ ok: boolean; message?: string }>('make:shot', { consent: 'tap', doc, change: c.change, confirmed: c.change.total })
     expect(await call('make:cancel')).toBe(true)
     const r = await going
     expect(r.ok).toBe(false)
@@ -454,7 +495,7 @@ describe('a video made from one prompt', () => {
   }, 120_000)
 
   it('stops when asked, says what was spent and what was kept, and makes only the rest after', async () => {
-    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const start = await call<Start>('make:start', { consent: 'command', text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
     const d = start.draft as Draft
     const before = pictures()
     const claudeBefore = requests().filter((q) => q.service === 'claude').length
@@ -493,7 +534,7 @@ describe('a video made from one prompt', () => {
 
   it('goes straight through under the amount in Settings, and says what it cost', async () => {
     saveSettings({ makeAutoUnder: 25 })
-    const r = await call<Made & { kind?: string; auto?: boolean }>('make:start', { text: 'make a 30 second animated explainer about how the heart pumps blood' })
+    const r = await call<Made & { kind?: string; auto?: boolean }>('make:start', { consent: 'command', text: 'make a 30 second animated explainer about how the heart pumps blood' })
     expect(r.ok).toBe(true)
     expect(r.kind).toBe('made')
     expect(r.auto).toBe(true)

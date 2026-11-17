@@ -1,22 +1,25 @@
 import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { addAsset, currentVersion, type EditDoc, type Op } from '../../../shared/edit'
 import { asNewVersion } from '../../../shared/make/assemble'
-import { reviseBrief, reviseSteps, rewritesScript, wantsMake } from '../../../shared/make/brief'
+import { cleanTopic, readAsk, reviseBrief, reviseSteps, rewritesScript, wantsMake } from '../../../shared/make/brief'
 import {
   answered as answeredPrompt,
+  isAcceptance,
   isYes,
   mergeReads,
+  NO_EDIT,
   quoteWords,
   readAnswer,
   readBack,
   readCard,
-  TAP_YES,
+  TAP_TO_GO,
   UNREAD,
   waitReply,
-  type MakeQuestion
+  type MakeQuestion,
+  type Read
 } from '../../../shared/make/questions'
 import { draftFingerprint } from '../../../shared/make/fingerprint'
-import type { Change, Draft, Reply, ShotChange } from '../../../shared/make/draft'
+import type { Change, Consent, Draft, Reply, ShotChange } from '../../../shared/make/draft'
 import { dollars, listOf, scriptCost } from '../../../shared/make/quote'
 import { api } from './api'
 import type { Attachment } from './components/Composer'
@@ -47,6 +50,13 @@ import { isAudioFile, isVideoFile } from './format'
  * documentary, 5:00 long?", "Change it to 2:00 long?"), and only that
  * read-back's Yes, tapped, asks Claude for anything. A reply it cannot read
  * is answered here too. Taps of the questions' own options go straight on.
+ *
+ * Every call that may spend says why it may (shared/make/draft Consent), and
+ * main refuses it otherwise: `tap` for a button tapped, `command` for a new
+ * video asked for with nothing else waiting. A new ask typed while anything
+ * waits is read back too, with a tap to start it and, with a quote waiting,
+ * one to change that quote to it instead; a go-ahead typed ("yes", "do it")
+ * is pointed at the button, and never goes on to the edit or to Claude.
  */
 
 export interface MakeDeps {
@@ -98,6 +108,13 @@ const MAKE_COMMANDS = new Set(['make', 'documentary', 'explainer'])
 /** What a reply that changes nothing about a quote, or a Not now to a change read back, is answered with. */
 const QUOTE_STANDS = 'The quote stands as it was. Press its button to make it, or tell me what to change: its length, its voice, its look.'
 
+/** An edit's words, with no edit open and a quote waiting. */
+const NO_EDIT_QUOTE = 'There’s no video open to edit yet, only this quote. Press its button to make it, or tell me what to change.'
+
+/** A file sent with words while questions or a quote wait: nothing is read from it until what waits is settled. */
+const FILE_WITH_QUESTIONS = 'Answer the questions above first, or say “never mind” to set them aside. Then send that again.'
+const FILE_WITH_QUOTE = 'The quote above is still waiting. Press its button, or tell me what to change. Then send that again.'
+
 /** Questions waiting to be answered before anything is written, and what was asked. */
 interface Asking {
   id: string
@@ -113,14 +130,24 @@ interface Asking {
  * changes to a quote, each as said, in turn. Only its button sends it.
  */
 type Back =
-  | { kind: 'ask'; key: string; id: string; msg: string; read: { answers: string[]; ruled: string[] }; prompt: string; reading: string }
+  | { kind: 'ask'; key: string; id: string; msg: string; read: Read; prompt: string; reading: string }
   | { kind: 'quote'; key: string; id: string; msg: string; steps: string[] }
+  /** A new ask typed while something waited: started, or (with a quote waiting) made that quote's change, only on its tap. */
+  | { kind: 'new'; key: string; msg: string; text: string; recording: string | null; quoteId: string | null; steps: string[] | null }
+
+/** What a read-back's button picks: Yes or Not now, or, for a new ask, changing the quote waiting or starting anew. */
+type BackPick = 'yes' | 'no' | 'change' | 'new'
+
+/** A read-back's button. */
+const pickAction = (key: string, label: string, pick: BackPick, primary = false): NonNullable<Msg['actions']>[number] => ({
+  kind: 'make',
+  label,
+  primary,
+  payload: JSON.stringify({ do: 'back', id: key, pick })
+})
 
 /** A read-back's buttons: Yes sends it; Not now leaves everything as it was. */
-const backActions = (key: string): NonNullable<Msg['actions']> => [
-  { kind: 'make', label: 'Yes', primary: true, payload: JSON.stringify({ do: 'back', id: key, yes: true }) },
-  { kind: 'make', label: 'Not now', payload: JSON.stringify({ do: 'back', id: key, yes: false }) }
-]
+const backActions = (key: string): NonNullable<Msg['actions']> => [pickAction(key, 'Yes', 'yes', true), pickAction(key, 'Not now', 'no')]
 
 let quoteCount = 0
 /** A key no other quote in this session has. */
@@ -258,8 +285,8 @@ export function useMake(deps: MakeDeps): Makes {
         push({ role: 'assistant', text: 'That quote is being worked out again. Press the new quote’s button when it shows, or stop it first.' })
         return
       }
-      // A change of it read back and not confirmed goes with it: it is made as it was quoted.
-      if (back.current?.kind === 'quote' && back.current.id === key) {
+      // What was read back and not confirmed goes: the quote is made as it was quoted.
+      if (back.current) {
         patch(back.current.msg, { actions: [] })
         back.current = null
       }
@@ -274,7 +301,7 @@ export function useMake(deps: MakeDeps): Makes {
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeGo>>
       try {
-        r = await during(() => api.makeGo({ draft: entry.draft, confirmed: entry.total, fingerprint: entry.fingerprint }))
+        r = await during(() => api.makeGo({ draft: entry.draft, confirmed: entry.total, fingerprint: entry.fingerprint, consent: 'tap' }))
       } catch (err) {
         r = { ok: false, message: errorText(err) }
       } finally {
@@ -308,10 +335,15 @@ export function useMake(deps: MakeDeps): Makes {
   /**
    * A prompt read and quoted, or made straight away under the amount in Settings; asked about first when it must be.
    * Typed answers confirmed on their read-back are quoted first, and their brief is read from `reading`, as it was read back.
+   * `consent` says why main may write its script: a tap, or a new ask typed with nothing else waiting.
    */
   const start = useCallback(
-    async (text: string, recording: string | null, opts: { answered?: boolean; quoteFirst?: boolean; reading?: string } = {}): Promise<void> => {
-      const { answered = false, quoteFirst = false, reading } = opts
+    async (
+      text: string,
+      recording: string | null,
+      opts: { answered?: boolean; quoteFirst?: boolean; reading?: string; consent: Consent }
+    ): Promise<void> => {
+      const { answered = false, quoteFirst = false, reading, consent } = opts
       const { push, patch, during } = live.current
       // Writing the script spends, and Settings may make the video straight after: Stop stays in reach.
       const msg = push({
@@ -323,7 +355,9 @@ export function useMake(deps: MakeDeps): Makes {
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeStart>>
       try {
-        r = await during(() => api.makeStart({ text, recording, brand: live.current.brand(), answered, quoteFirst, ...(reading ? { reading } : {}) }))
+        r = await during(() =>
+          api.makeStart({ text, recording, brand: live.current.brand(), answered, quoteFirst, consent, ...(reading ? { reading } : {}) })
+        )
       } catch (err) {
         r = { ok: false, message: errorText(err) }
       } finally {
@@ -370,7 +404,7 @@ export function useMake(deps: MakeDeps): Makes {
 
   /** Typed answers read back with what will be asked for, and Yes and Not now; nothing is sent until Yes is tapped. */
   const askBack = useCallback(
-    (open: Asking, read: { answers: string[]; ruled: string[] }): void => {
+    (open: Asking, read: Read): void => {
       // Said again on a read-back still waiting: the two as one, what was said last winning.
       const was = back.current?.kind === 'ask' && back.current.id === open.id ? back.current : null
       const merged = was ? mergeReads(was.read, read) : read
@@ -401,9 +435,51 @@ export function useMake(deps: MakeDeps): Makes {
       dropBack()
       setVersion((n) => n + 1)
       live.current.patch(a.msg, { makeAsk: undefined, aside: answers.filter(Boolean).join(', ') })
-      await start(answeredPrompt(a.text, answers), a.recording, { answered: true })
+      await start(answeredPrompt(a.text, answers), a.recording, { answered: true, consent: 'tap' })
     },
     [askBack, dropBack, start]
+  )
+
+  /**
+   * A new ask typed while something waits: read back with a tap to start it instead and, with a quote waiting
+   * that the words would change, a tap to change that quote to them. Neither runs until tapped.
+   */
+  const newAskBack = useCallback(
+    (text: string, recording: string | null): void => {
+      const brief = readAsk(text, { recording })
+      const topic = brief?.from === 'topic' ? cleanTopic(brief.topic) : ''
+      const waiting = pending.current
+      const q = waiting ? drafts.current.get(waiting.id) : undefined
+      const steps = [quoteWords(text)]
+      const change = q ? reviseSteps(q.draft.brief, steps) : null
+      dropBack()
+      const key = newKey('back')
+      const about = topic && topic !== 'what you asked for' ? `a new video about “${topic}”` : 'a new video'
+      const again = change && q ? rewritesScript(q.draft.brief, change.brief, !!q.draft.into) : false
+      const aside = [
+        change
+          ? again
+            ? `Changing this one asks Claude to write its script again, which may cost up to ${dollars(scriptCost(change.brief.seconds))}.`
+            : 'Changing this one quotes it again, for nothing.'
+          : '',
+        brief?.from === 'topic' ? `A new video asks Claude to write its script, which may cost up to ${dollars(scriptCost(brief.seconds))}.` : '',
+        'Nothing else is spent until you press a quote’s button.'
+      ]
+        .filter(Boolean)
+        .join(' ')
+      const msg = live.current.push({
+        role: 'assistant',
+        text: change ? `Change this one to ${listOf(change.changed)}, or start ${about} instead?` : `Start ${about} instead?`,
+        aside,
+        actions: [
+          ...(change ? [pickAction(key, 'Change this one', 'change', true)] : []),
+          pickAction(key, 'Start a new video', 'new', !change),
+          pickAction(key, 'Not now', 'no')
+        ]
+      })
+      back.current = { kind: 'new', key, msg, text, recording, quoteId: change && waiting ? waiting.id : null, steps: change ? steps : null }
+    },
+    [dropBack]
   )
 
   /** A quote's changes, read back and confirmed: quoted again, by Claude writing the script again when they need it. */
@@ -420,7 +496,7 @@ export function useMake(deps: MakeDeps): Makes {
       const msg = push({ role: 'assistant', text: '', progress: { stage: 'Quoting it again', percent: null }, actions: STOP })
       let r: Awaited<ReturnType<typeof api.makeRevise>>
       try {
-        r = await during(() => api.makeRevise({ draft, steps: b.steps }))
+        r = await during(() => api.makeRevise({ draft, steps: b.steps, consent: 'tap' }))
       } catch (err) {
         r = { ok: false, message: errorText(err) }
       } finally {
@@ -441,13 +517,38 @@ export function useMake(deps: MakeDeps): Makes {
     [quote]
   )
 
-  /** A read-back's Yes or Not now, tapped: Yes sends exactly what it read back; Not now leaves everything as it was. */
+  /** A read-back's button, tapped: Yes sends exactly what it read back; Not now leaves everything as it was. */
   const onBack = useCallback(
-    async (key: string, yes: boolean): Promise<void> => {
+    async (key: string, pick: BackPick): Promise<void> => {
       const b = back.current
       // An older read-back's button: a newer one replaced it.
       if (!b || b.key !== key) return
       dropBack()
+      const yes = pick === 'yes'
+      if (b.kind === 'new') {
+        const { push, patch } = live.current
+        if (pick === 'change' && b.quoteId && b.steps) {
+          await requote({ kind: 'quote', key: b.key, id: b.quoteId, msg: b.msg, steps: b.steps })
+          return
+        }
+        if (pick === 'new') {
+          // The new video takes the place of what was waiting, as a new ask always has; it is quoted before anything more.
+          if (pending.current) patch(pending.current.msg, { actions: [] })
+          pending.current = null
+          if (asking.current) {
+            patch(asking.current.msg, { makeAsk: undefined, aside: 'Left unanswered, so nothing was written.' })
+            asking.current = null
+            setVersion((n) => n + 1)
+          }
+          await start(b.text, b.recording, { consent: 'tap', quoteFirst: true })
+          return
+        }
+        push({
+          role: 'assistant',
+          text: pending.current ? QUOTE_STANDS : asking.current ? waitReply(asking.current.questions, false) : 'All right. Nothing was written or spent.'
+        })
+        return
+      }
       if (b.kind === 'quote') {
         if (yes) await requote(b)
         else live.current.push({ role: 'assistant', text: QUOTE_STANDS })
@@ -462,7 +563,7 @@ export function useMake(deps: MakeDeps): Makes {
       asking.current = null
       setVersion((n) => n + 1)
       live.current.patch(open.msg, { makeAsk: undefined, aside: 'Answered in your words, read back below.' })
-      await start(b.prompt, open.recording, { answered: true, quoteFirst: true, reading: b.reading })
+      await start(b.prompt, open.recording, { answered: true, quoteFirst: true, reading: b.reading, consent: 'tap' })
     },
     [dropBack, requote, start]
   )
@@ -492,7 +593,7 @@ export function useMake(deps: MakeDeps): Makes {
     const off = api.onCutProgress((p) => patch(msg, { progress: p }))
     let r: Awaited<ReturnType<typeof api.makeShot>>
     try {
-      r = await during(() => api.makeShot({ doc: d, change, confirmed: change.total }))
+      r = await during(() => api.makeShot({ doc: d, change, confirmed: change.total, consent: 'tap' }))
     } catch (err) {
       r = { ok: false, message: errorText(err) }
     } finally {
@@ -601,10 +702,11 @@ export function useMake(deps: MakeDeps): Makes {
       }
       const asked = command && MAKE_COMMANDS.has(command.command)
       const words = asked ? `/${command.command} ${command.rest}` : text
-      // A new made video: asked for in a chat with no edit yet, or with /make anywhere. While questions wait, words
-      // that would ask for one ("a 5 minute documentary about Lisbon") answer them, and are read back like any reply.
-      const typedOver = !!asking.current && files.length === 0
-      if (asked || (!typedOver && !docRef.current && !video && wantsMake(text, { footage: video }))) {
+      // A new made video: asked for in a chat with no edit yet, or with /make anywhere.
+      const newAsk = !!asked || (!docRef.current && !video && wantsMake(text, { footage: video }))
+      // Questions, a read-back or a quote waiting: nothing typed then starts, changes or makes anything on its own.
+      const waitingNow = !!asking.current || !!back.current || !!pending.current
+      if (newAsk) {
         if (asked && !command.rest.trim() && audio.length === 0) {
           push({
             role: 'assistant',
@@ -612,20 +714,20 @@ export function useMake(deps: MakeDeps): Makes {
           })
           return true
         }
-        // A new ask takes the place of a quote, or questions, still waiting.
-        if (pending.current) patch(pending.current.msg, { actions: [] })
-        pending.current = null
-        if (asking.current) {
-          patch(asking.current.msg, { makeAsk: undefined, aside: 'Left unanswered, so nothing was written.' })
-          asking.current = null
+        // Nothing else waiting: the ask is the person's own go-ahead to write its script.
+        if (!waitingNow) {
+          await start(words, audio[0]?.path ?? null, { consent: 'command' })
+          return true
         }
-        dropBack()
-        await start(words, audio[0]?.path ?? null)
-        return true
+        // While questions wait, plain words answer them (below). Otherwise it is read back, and starts only on its tap.
+        if (asked || !asking.current) {
+          newAskBack(words, audio[0]?.path ?? null)
+          return true
+        }
       }
       // Questions waiting: what is typed is read here, never sent, and read back before anything is written.
       const open = asking.current
-      if (open && files.length === 0 && text.trim()) {
+      if (open && text.trim()) {
         const waitingBack = back.current?.kind === 'ask' && back.current.id === open.id ? back.current : null
         const read = readAnswer(text, open.questions, { editOpen: !!docRef.current })
         // An edit's words, with an edit open: the questions go, and the edit takes them.
@@ -636,6 +738,15 @@ export function useMake(deps: MakeDeps): Makes {
           patch(open.msg, { makeAsk: undefined, aside: 'Left unanswered, so nothing was written.' })
           return false
         }
+        // A file with words: nothing is read from it while the questions wait.
+        if (files.length > 0) {
+          push({ role: 'assistant', text: FILE_WITH_QUESTIONS })
+          return true
+        }
+        if (read.kind === 'noEdit') {
+          push({ role: 'assistant', text: NO_EDIT })
+          return true
+        }
         if (read.kind === 'read') {
           askBack(open, read)
           return true
@@ -644,13 +755,14 @@ export function useMake(deps: MakeDeps): Makes {
           push({ role: 'assistant', text: UNREAD })
           return true
         }
-        // A pause, a question back, or a yes typed to a read-back, which only its button sends.
+        // A pause, a question back, or a go-ahead typed to a read-back, which only its button sends.
         if (read.kind === 'wait') {
-          push({ role: 'assistant', text: waitingBack && isYes(text) ? TAP_YES : waitReply(open.questions, read.asked) })
+          const goAhead = !!back.current && (isAcceptance(text) || isYes(text))
+          push({ role: 'assistant', text: goAhead ? TAP_TO_GO : waitReply(open.questions, read.asked) })
           return true
         }
         // A no: to a read-back it is Not now, and the questions stay; to the questions, they go.
-        if (waitingBack) {
+        if (waitingBack || back.current) {
           dropBack()
           push({ role: 'assistant', text: waitReply(open.questions, false) })
           return true
@@ -663,26 +775,40 @@ export function useMake(deps: MakeDeps): Makes {
       }
       // A quote waiting: what is said next is read back as a change, and quoted again only on its Yes.
       const waiting = pending.current
-      if (waiting && files.length === 0 && text.trim()) {
+      if (waiting && text.trim()) {
         const draft = drafts.current.get(waiting.id)?.draft
         if (!draft) return false
+        // A go-ahead typed, with an edit open or not: only the button makes it, and it never goes on to the edit or Claude.
+        if (isAcceptance(text)) {
+          push({ role: 'assistant', text: TAP_TO_GO })
+          return true
+        }
+        // An edit's words ("cut the first 10 seconds") are never a change of the quote: for the edit, or answered here.
+        if (readAnswer(text, []).kind === 'noEdit') {
+          if (docRef.current) return false
+          push({ role: 'assistant', text: NO_EDIT_QUOTE })
+          return true
+        }
         const waitingBack = back.current?.kind === 'quote' && back.current.id === waiting.id ? back.current : null
         const words = quoteWords(text)
         const sofar = waitingBack ? (reviseSteps(draft.brief, waitingBack.steps)?.brief ?? draft.brief) : draft.brief
         if (!reviseBrief(sofar, words)) {
-          if (waitingBack && isYes(text)) {
-            push({ role: 'assistant', text: TAP_YES })
-            return true
-          }
-          // A no to a change read back takes it away; the quote stands.
-          if (waitingBack && readAnswer(text, []).kind === 'no') {
+          const said = readAnswer(text, [], { editOpen: !!docRef.current })
+          // A no to what was read back takes it away; the quote stands.
+          if (back.current && said.kind === 'no') {
             dropBack()
             push({ role: 'assistant', text: QUOTE_STANDS })
             return true
           }
-          // Words that change nothing about the quote are an ask of the edit, when there is one.
-          if (docRef.current) return false
-          push({ role: 'assistant', text: QUOTE_STANDS })
+          if (docRef.current) {
+            // A no, a pause or a word that answers nothing is for the quote; an edit's words, and a file, are for the edit.
+            if (files.length === 0 && (said.kind === 'no' || said.kind === 'wait')) {
+              push({ role: 'assistant', text: QUOTE_STANDS })
+              return true
+            }
+            return false
+          }
+          push({ role: 'assistant', text: files.length > 0 ? FILE_WITH_QUOTE : QUOTE_STANDS })
           return true
         }
         const steps = [...(waitingBack?.steps ?? []), words]
@@ -706,9 +832,22 @@ export function useMake(deps: MakeDeps): Makes {
         back.current = { kind: 'quote', key, id: waiting.id, msg, steps }
         return true
       }
+      // A read-back waiting on its own: a go-ahead typed is pointed at its button, and a no sets it aside.
+      if (back.current && text.trim()) {
+        const said = readAnswer(text, [])
+        if (isAcceptance(text) || said.kind === 'wait') {
+          push({ role: 'assistant', text: TAP_TO_GO })
+          return true
+        }
+        if (said.kind === 'no') {
+          dropBack()
+          push({ role: 'assistant', text: 'All right. Nothing was written or spent.' })
+          return true
+        }
+      }
       return false
     },
-    [askBack, dropBack, offer, start]
+    [askBack, dropBack, newAskBack, offer, start]
   )
 
   const asked = useCallback(
@@ -755,6 +894,7 @@ export function useMake(deps: MakeDeps): Makes {
       const p = JSON.parse(a.payload) as {
         do: 'go' | 'shot' | 'script' | 'stop' | 'back'
         id: string
+        pick?: BackPick
         yes?: boolean
       }
       if (p.do === 'stop') {
@@ -763,7 +903,7 @@ export function useMake(deps: MakeDeps): Makes {
         return
       }
       if (p.do === 'back') {
-        await onBack(p.id, p.yes === true)
+        await onBack(p.id, p.pick ?? (p.yes === true ? 'yes' : 'no'))
         return
       }
       if (p.do === 'go') {

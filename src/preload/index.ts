@@ -35,7 +35,7 @@ import type { ClaudeKeyState } from '../shared/setup'
 import type { PlanQuestion, PlanStep } from '../shared/plan/commands'
 import type { Vlog } from '../shared/vlog/schema'
 import type { VlogReply } from '../shared/vlog/reply'
-import type { Change, Draft, Reply as MakeReply, ShotChange } from '../shared/make/draft'
+import type { Change, Consent, Draft, Reply as MakeReply, ShotChange } from '../shared/make/draft'
 import type { MakeQuestion } from '../shared/make/questions'
 import type { Make } from '../shared/make/schema'
 
@@ -304,6 +304,11 @@ const api = {
      * its style and length answers), as it was read back. `text`, with what it should say, is what Claude reads.
      */
     reading?: string
+    /**
+     * Why it may be written: a tap (a read-back's Yes, the questions' options) or a new video asked for with
+     * nothing else waiting. Without it, main asks the questions, and writes nothing.
+     */
+    consent?: Consent
   }): Promise<
     | { ok: true; kind: 'ask'; questions: MakeQuestion[] }
     | { ok: true; kind: 'quote'; draft: Draft; reply: MakeReply }
@@ -321,6 +326,8 @@ const api = {
     confirmed: number
     /** shared/make/fingerprint of the draft, as its quote was shown. */
     fingerprint: string
+    /** The quote's button, tapped: nothing is made without it. */
+    consent: 'tap'
   }): Promise<
     | { ok: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
     | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
@@ -332,6 +339,8 @@ const api = {
   makeRevise: (req: {
     draft: Draft
     steps: string[]
+    /** Yes on the read-back, tapped: no quote is changed without it. */
+    consent: 'tap'
   }): Promise<
     | { ok: true; draft: Draft; reply: MakeReply; changed: string[] }
     | { ok: true; draft: null }
@@ -359,6 +368,8 @@ const api = {
     doc: EditDoc
     change: ShotChange
     confirmed: number
+    /** The quote's button, tapped: nothing is made without it. */
+    consent: 'tap'
   }): Promise<
     | { ok: true; ops: Op[]; make: Make; asset: Omit<Asset, 'id'>; summary: string; reply: MakeReply; spent: number }
     | { ok: false; message: string }

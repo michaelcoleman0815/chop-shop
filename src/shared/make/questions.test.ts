@@ -50,10 +50,12 @@ describe('asking before writing', () => {
     })
     // A no lets the questions go.
     for (const no of ['never mind', 'no', 'stop', 'forget it', 'cancel that']) expect(readAnswer(no, qs).kind, no).toBe('no')
-    // An edit's ask, with an edit open, is for the edit; with none open it is only read back, and costs nothing.
-    for (const edit of ['cut the first 10 seconds', '/export', 'trim the intro', 'cut the first 10 seconds?'])
+    // An edit's ask, with an edit open, is for the edit; with none open it is answered here, never read as a topic.
+    for (const edit of ['cut the first 10 seconds', '/export', 'trim the intro', 'cut the first 10 seconds?']) {
       expect(readAnswer(edit, qs, { editOpen: true }).kind, edit).toBe('edit')
-    expect(readAnswer('trim the intro', qs).kind).toBe('read')
+      expect(readAnswer(edit, qs).kind, `${edit}, no edit open`).toBe('noEdit')
+    }
+    expect(readAnswer('export it', qs).kind).toBe('noEdit')
     expect(readAnswer('10 minutes', qs, { editOpen: true })).toEqual({ kind: 'read', answers: ['', '', '10 minutes long'], ruled: [] })
     expect(readAnswer('a minute', qs)).toEqual({ kind: 'read', answers: ['', '', '1 minute long'], ruled: [] })
     expect(readAnswer('Lisbon', qs)).toEqual({ kind: 'read', answers: ['Lisbon', '', ''], ruled: [] })

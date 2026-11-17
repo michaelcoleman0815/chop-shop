@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAsk, reviseBrief, reviseSteps, rewritesScript } from './brief'
-import { mergeReads, questionsFor, quoteWords, readAnswer, readBack, readCard } from './questions'
+import { isAcceptance, mergeReads, questionsFor, quoteWords, readAnswer, readBack, readCard } from './questions'
 import { dollars, scriptCost } from './quote'
 import type { Brief } from './schema'
 
@@ -183,5 +183,42 @@ describe('a reply to a quote', () => {
     expect(rewritesScript(oil, three, true)).toBe(false)
     expect(rewritesScript(oil, sepia, false)).toBe(false)
     expect(rewritesScript({ ...oil, from: 'script' }, three, false)).toBe(false)
+  })
+})
+
+describe('round 6: a go-ahead, an edit’s words and a limit, typed', () => {
+  it('reads a go-ahead in other words as one, never as a topic', () => {
+    const goAheads = ['yes', 'Yes!', 'yes please', 'go ahead', 'do it', 'ok go', 'sure, write it', 'write it', 'write the script', 'go', 'start', 'make it', 'just make it']
+    for (const y of [...goAheads, 'proceed', 'confirm', '👍', 'y', 'ok, make it', 'sounds good', 'go ahead and make it', 'make it now']) {
+      expect(isAcceptance(y), y).toBe(true)
+      expect(readAnswer(y, qs), y).toEqual({ kind: 'wait', asked: false })
+    }
+    for (const n of ['make it 3 minutes', 'make it shorter', 'Lisbon', 'no', 'not now', 'make a video about whales', 'start over with whales', 'do it again tomorrow', 'that’s it'])
+      expect(isAcceptance(n), n).toBe(false)
+  })
+
+  it('answers an edit’s words with no edit open, and leaves them to the edit when one is', () => {
+    for (const r of ['cut the first 10 seconds', 'export it', 'trim the intro', 'mute the music']) {
+      expect(readAnswer(r, qs).kind, r).toBe('noEdit')
+      expect(readAnswer(r, qs, { editOpen: true }).kind, r).toBe('edit')
+    }
+    // A topic that starts like an edit's word but is not one stays a topic.
+    expect(readAnswer('playing in the snow', qs)).toEqual({ kind: 'read', answers: ['playing in the snow', '', ''], ruled: [] })
+  })
+
+  it('reads a limit typed with the topic into the brief, and says it in the read-back', () => {
+    expect(readAnswer('Lisbon, under $1', qs)).toEqual({ kind: 'read', answers: ['Lisbon', '', ''], ruled: [], cap: 'under $1' })
+    expect(readAnswer('Lisbon under $1', qs)).toEqual({ kind: 'read', answers: ['Lisbon', '', ''], ruled: [], cap: 'under $1' })
+    const b = backOf('Lisbon, under $1')
+    expect(b.line).toBe('Make it about “Lisbon”: a cinematic documentary, 2:00 long, no more than $1.00?')
+    expect(ask(b.reading).cap).toBe(1)
+    expect(b.prompt).toBe('make a video about my trip, Lisbon, under $1.')
+    // A limit alone is read too, and kept when more is said after it.
+    const alone = readAnswer('no more than $5', qs)
+    if (alone.kind !== 'read') throw new Error('not read')
+    expect(alone.cap).toBe('no more than $5')
+    const more = readAnswer('the food we ate, 5 minutes', qs)
+    if (more.kind !== 'read') throw new Error('not read')
+    expect(readBack(TRIP, qs, mergeReads(alone, more)).line).toBe('Make it about “the food we ate”: a cinematic documentary, 5:00 long, no more than $5.00?')
   })
 })
