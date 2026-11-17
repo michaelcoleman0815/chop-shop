@@ -208,12 +208,13 @@ export function makeName(text: string): string | null {
   return t ? `${t.charAt(0).toUpperCase()}${t.slice(1)}`.slice(0, 80) : null
 }
 
-/** The topic, named for a reply: "the 1950s oil boom". */
+/** The topic, named for a reply: "the 1950s oil boom" (never "the oil boom instead"). */
 export function cleanTopic(topic: string): string {
   return topic
     .replace(/^["“'‘]+|["”'’]+$/g, '')
     .replace(/\s+/g, ' ')
     .replace(/[.,;:!?]+$/, '')
+    .replace(/\s+instead$/i, '')
     .trim()
 }
 

@@ -176,6 +176,10 @@ describe('a reply to a quote', () => {
       expect(reviseSteps(oil, [t])?.changed, t).toEqual(reviseBrief(oil, t)?.changed)
   })
 
+  it('names a topic said with "instead" without it', () => {
+    expect(ask('I want a 2 minute explainer about the oil boom instead').topic).toBe('the oil boom')
+  })
+
   it('knows when a change means Claude writes the script again', () => {
     const three = reviseBrief(oil, 'make it 3 minutes')!.brief
     const sepia = reviseBrief(oil, 'sepia')!.brief
