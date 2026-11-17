@@ -51,6 +51,10 @@ From the repository's root: `npx vitest run mobile/` runs the phone host's tests
 
 The flow is the app's own (`src/host/drive.ts`), in builds made with `CUTALONG_DRIVE=1` (the APK and the simulator build; never a store build). It runs only when the app finds `drive.json` in its documents, which only the runner can put there: `ci/android-drive.sh` and `ci/ios-drive.sh` put the whisper model where the app keeps it, the clips `ci/make-footage.py` made where the engine's importer copies what a person picks, and the plan. The app then picks them with + (the picker's own screens are the one thing left out), sorts and transcribes them, makes v1, applies /shorts, opens the editor and exports; at each step it waits for the runner's screenshot. `ci/check-drive.py` then measures the export on the runner with ffprobe and ffmpeg.
 
+## The Anthropic key
+
+The key is kept in the iOS Keychain or the Android Keystore (`src/host/boot.ts`) and only ever sent to Anthropic, by the page's own fetch. The phone answers the same key calls as the Mac (`hasApiKey`, `checkKey`, `setApiKey`, `clearApiKey` in `src/host/api.ts`), so a gate in the shared app that asks for a working key before anything runs works on a phone without a change here. CI's flow runs without a key; once such a gate is in, the flow needs a key from a repository secret, handed to the app by `ci/android-drive.sh` and `ci/ios-drive.sh` and saved as a person would save it, or a way past the gate for CI.
+
 ## Licences
 
 On a phone, Settings ends with Licences (`src/renderer/src/cutalong/screens/Licences.tsx`): FFmpeg and the rest of the engine, the whisper models, the caption fonts and the page's npm packages, each with its licence to read, and for the parts under the LGPL where their source is (`engine/` at the commit the app was built from, which the build records) and how to put a changed build of them in the app. `node scripts/licences.mjs` fetches the texts from each source at the commit `engine/scripts/versions.env` pins, into `public/licences`; run it again when a pin changes. The npm packages are listed by `vite.config.ts` as the page is built, from what is in it.

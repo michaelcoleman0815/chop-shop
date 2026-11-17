@@ -69,6 +69,12 @@ export function phoneWork(parts: Pick<PhoneApiParts, 'info' | 'settings' | 'serv
   }
 }
 
+/**
+ * The person's Anthropic key, locked in the Keychain or the Keystore. The
+ * key calls below (hasApiKey, checkKey, setApiKey, clearApiKey, provider)
+ * are the ones the Mac answers, so a gate in the shared app that asks for a
+ * working key before anything runs works on a phone as it is.
+ */
 const key = (): Promise<string | null> => platform().secrets.get('anthropic')
 
 function asService(id: unknown): ServiceId {
