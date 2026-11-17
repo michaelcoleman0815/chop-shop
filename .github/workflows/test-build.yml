@@ -84,6 +84,21 @@ jobs:
           npx electron-vite build
           npx electron-builder --mac --publish never -c.mac.identity=-
 
+      # The app holds what it runs (the built code in out, its node_modules and
+      # package.json) and nothing else of the project. A platform's files list
+      # of nothing but exclusions once packed src, docs and .claude into it.
+      - name: Check the app holds only what it runs
+        run: |
+          APP=$(ls -d release/mac-arm64/*.app | head -1)
+          npx @electron/asar list "$APP/Contents/Resources/app.asar" > "$RUNNER_TEMP/app-asar.txt"
+          TOP=$(cut -d/ -f2 "$RUNNER_TEMP/app-asar.txt" | sort -u)
+          echo "app.asar holds:" $TOP
+          EXTRA=$(echo "$TOP" | grep -vxE 'node_modules|out|package\.json' || true)
+          if [ -n "$EXTRA" ]; then
+            echo "::error::app.asar holds more than node_modules, out and package.json:" $EXTRA
+            exit 1
+          fi
+
       # macOS opens the app on any version its Info.plist allows, so every
       # binary inside it must run there too.
       - name: Check the app runs on the macOS it says

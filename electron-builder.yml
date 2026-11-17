@@ -43,12 +43,18 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   # onnxruntime-node ships its native binaries for every platform (about 295 MB); the Mac app keeps darwin arm64 only.
+  # A platform's files list must hold something besides exclusions:
+  # electron-builder 26 reads a list of nothing but '!' lines as everything
+  # else, and packs the whole project (src, docs, .build) into the app. So
+  # each names package.json, which the app holds anyway.
   files:
-    - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
-    - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/**'
-    - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/x64/**'
-    # The binding loads @rpath/libonnxruntime.1.dylib; the package also carries a second, identical copy under its full version.
-    - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/arm64/libonnxruntime.1.*.*.dylib'
+    - filter:
+        - package.json
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/x64/**'
+        # The binding loads @rpath/libonnxruntime.1.dylib; the package also carries a second, identical copy under its full version.
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/arm64/libonnxruntime.1.*.*.dylib'
   target:
     - target: dmg
       arch: [arm64]
@@ -57,10 +63,13 @@ mac:
 
 win:
   # The Windows app keeps onnxruntime-node's win32 x64 binaries (Kokoro's voice runs on them) and none of the others.
+  # With package.json first, as the Mac's (see there).
   files:
-    - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
-    - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/**'
-    - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**'
+    - filter:
+        - package.json
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**'
 
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
