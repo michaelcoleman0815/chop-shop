@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { isImagePath } from '../../../../shared/assets'
 import type { ChatMessage } from '../../../../shared/types'
-import { mediaUrlFor } from '../api'
+import { mediaUrlFor, openingFrame } from '../api'
 import { isAudioFile } from '../format'
 import { Credits } from './Crew'
 import { Poster } from './Poster'
@@ -135,7 +135,7 @@ function ExportedVideo({ video }: { video: NonNullable<Msg['video']> }): JSX.Ele
     <figure className="cl-export" style={{ width: `calc(${EXPORT_MAX_HEIGHT} * ${aspect.toFixed(4)})` }}>
       <div className="cl-frame" style={{ aspectRatio: String(aspect), width: '100%' }}>
         <video
-          src={mediaUrlFor(video.path)}
+          src={openingFrame(mediaUrlFor(video.path))}
           controls
           playsInline
           preload="auto"

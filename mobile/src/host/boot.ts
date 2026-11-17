@@ -186,6 +186,9 @@ export async function startPhone(options: StartOptions = {}): Promise<CutalongHo
               () => media.load()
             )
         : undefined,
+    // Android's web view draws a grey play sign over a video until it plays or is moved along. A
+    // media fragment's start moves it along a hair, so it shows its first picture instead.
+    openingFrame: native && info.platform === 'android' ? (url) => `${url}#t=0.001` : undefined,
     device: {
       kind: 'phone',
       here: 'this phone',

@@ -657,7 +657,10 @@ button:disabled {
   min-width: 0;
 }
 
+/* Its width said outright: an older Android web view does not stretch a box that keeps an aspect
+   ratio, and drew this one as a dot. */
 .cl-project-thumb {
+  width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-thumb);
   background: var(--well) center / cover no-repeat;

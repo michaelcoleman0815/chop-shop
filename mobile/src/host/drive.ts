@@ -129,6 +129,19 @@ async function until<T>(what: string, check: () => Maybe<T> | Promise<Maybe<T>>,
   }
 }
 
+/**
+ * What an export in the chat shows before it plays: its first picture, given a moment, where the
+ * host starts it a hair in (CutalongHost.openingFrame, Android's), and where the web view shows one anyway.
+ */
+async function openingPicture(video: HTMLVideoElement | null | undefined): Promise<Record<string, unknown>> {
+  await until('the picture an export opens on', () => (video?.readyState ?? 0) >= 2, 10).catch(() => undefined)
+  return {
+    picture: (video?.readyState ?? 0) >= 2,
+    at: Number((video?.currentTime ?? 0).toFixed(3)),
+    src: video ? video.src.replace(/^.*\//, '') : null
+  }
+}
+
 /** The last enabled button that says exactly this. */
 function button(label: string, within: ParentNode = document): HTMLButtonElement | null {
   const all = [...within.querySelectorAll<HTMLButtonElement>('button')]
@@ -650,6 +663,7 @@ export async function drive(): Promise<void> {
       () => ((document.querySelector('.cl-export video') as HTMLVideoElement | null)?.readyState ?? 0) >= 1,
       30
     ).catch(() => false)
+    report.exportOpensOn = await openingPicture(document.querySelector<HTMLVideoElement>('.cl-export video'))
     await sleep(1500)
     document.querySelector('.cl-export')?.scrollIntoView({ block: 'start' })
     report.exportReply = replies().filter((r) => /exported/i.test(r))
@@ -711,6 +725,17 @@ export async function drive(): Promise<void> {
     if (!document.querySelector('.cl-start')) await go('New edit', '.cl-start')
     report.whileDown = { reply: answered, gateOpen, startOpen: !document.querySelector('.cl-setup') }
     const card = await until('the project on Start', () => document.querySelector<HTMLButtonElement>('.cl-project'), 30)
+    // The card's picture, across the card: an older web view drew it as a dot.
+    const thumb = card.querySelector<HTMLElement>('.cl-project-thumb')
+    await until("the card's picture", () => thumb?.style.backgroundImage, 20).catch(() =>
+      keep("the project's card on Start had no picture")
+    )
+    const box = thumb?.getBoundingClientRect()
+    report.cardPicture = {
+      picture: Boolean(thumb?.style.backgroundImage),
+      width: Math.round(box?.width ?? 0),
+      height: Math.round(box?.height ?? 0)
+    }
     await step('start')
     card.click()
     await editor()
@@ -718,6 +743,9 @@ export async function drive(): Promise<void> {
     report.toast = await exportFromEditor()
     // The thread with the new export in it, and the crew credited under it.
     closeToast()
+    report.exportOpensOn = await openingPicture(
+      [...document.querySelectorAll<HTMLVideoElement>('.cl-export video')].pop()
+    )
     await sleep(1500)
     const exports = document.querySelectorAll('.cl-export')
     exports[exports.length - 1]?.scrollIntoView({ block: 'start' })

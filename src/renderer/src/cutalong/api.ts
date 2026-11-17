@@ -123,6 +123,12 @@ export interface CutalongHost {
    * iPhone's). Absent where media loads in full anyway.
    */
   loadAsTouch?: (media: HTMLMediaElement) => void
+  /**
+   * The address an export in the chat opens on, where the web view draws its own grey play sign
+   * over a video that has not played (Android's): a hair in, so it shows its first picture
+   * instead. Absent where a video shows its first picture anyway.
+   */
+  openingFrame?: (url: string) => string
 }
 
 const hosted = typeof window !== 'undefined' ? (window as { cutalongHost?: CutalongHost }).cutalongHost : undefined
@@ -136,6 +142,9 @@ export const device: Device = hosted?.device ?? COMPUTER
 
 /** How the host loads a media element as a touch would, where it needs to (CutalongHost.loadAsTouch). */
 export const loadAsTouch = hosted?.loadAsTouch
+
+/** A video's address as it opens showing its first picture (CutalongHost.openingFrame). */
+export const openingFrame = hosted?.openingFrame ?? ((url: string): string => url)
 
 /**
  * The real bridge inside Electron; the phone's host on a phone; a mock in a

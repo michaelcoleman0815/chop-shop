@@ -7,8 +7,10 @@ while Anthropic is down), the text box on Start, in the thread and in the
 editor's note box with the keyboard up (one thin line at rest, its hint on
 that line, six lines when it grows, then it scrolls, and it and its buttons
 above the keyboard), Back from the note box with the keyboard up, the editor's preview with a picture whether it was
-opened from the chat or from Start's card, a new version from the command,
-the crew at the export, and each export itself, a vertical H.264 video with
+opened from the chat or from Start's card, Start's card with its picture
+across it, a new version from the command, the crew at the export, an export
+in the chat started a hair in showing its picture before it plays (Android's,
+where the web view would draw a grey play sign), and each export itself, a vertical H.264 video with
 AAC sound the length of the talking less what was cut, speech in it, and a
 picture that is not black. Also how the page looked and moved: dark or
 light, reduced motion, and what the web view had of view transitions.
@@ -80,6 +82,10 @@ def steps_of(label, report, expected):
     for t in report.get("transitions", []):
         print(f"  view transition at {t['atSec']} s, {t['form']}: {t.get('threw') or t.get('finished') or 'running'}")
     print(f"  the editor's preview had a picture: {report.get('previewReady')}")
+    if "exportOpensOn" in report:
+        print(f"  the export in the chat before it plays: {report.get('exportOpensOn')}")
+    if "cardPicture" in report:
+        print(f"  the project's card on Start: {report.get('cardPicture')}")
     for deck in report.get("previewDecks", []):
         print(f"    a picture in the frame: {deck}")
     for event in report.get("previewEvents", []):
@@ -106,6 +112,12 @@ def steps_of(label, report, expected):
         problem(f"{label}: no one of the crew was at the export")
     if report.get("ok") and report.get("previewReady") is not True:
         problem(f"{label}: the editor's preview showed no picture")
+    opens = report.get("exportOpensOn") or {}
+    if report.get("ok") and "#t=" in (opens.get("src") or "") and not opens.get("picture"):
+        problem(f"{label}: the export in the chat, started a hair in, had no picture to show")
+    card = report.get("cardPicture")
+    if report.get("ok") and card and not (card.get("picture") and card.get("width", 0) > 100):
+        problem(f"{label}: the project's card on Start showed no picture across it")
 
 
 def check_export(path, plan):
