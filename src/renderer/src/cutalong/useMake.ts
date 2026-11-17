@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { addAsset, currentVersion, type EditDoc, type Op } from '../../../shared/edit'
 import { asNewVersion } from '../../../shared/make/assemble'
-import { wantsMake } from '../../../shared/make/brief'
+import { reviseBrief, wantsMake } from '../../../shared/make/brief'
 import type { Change, Draft, Reply, ShotChange } from '../../../shared/make/draft'
 import { dollars } from '../../../shared/make/quote'
 import { api } from './api'
@@ -389,22 +389,19 @@ export function useMake(deps: MakeDeps): Makes {
       if (waiting && files.length === 0 && text.trim()) {
         const draft = drafts.current.get(waiting.id)
         if (!draft) return false
-        const msg = push({
-          role: 'assistant',
-          text: '',
-          progress: { stage: 'Quoting it again', percent: null }
-        })
-        const r = await api.makeRevise({ draft, text })
-        if (!r.ok) {
-          patch(msg, { progress: null, text: r.message, error: true })
-          return true
-        }
-        if (!r.draft) {
-          // Nothing about the quote: an ask of the edit, if there is one.
-          patch(msg, {
-            progress: null,
+        // Words that change nothing about the quote are an ask of the edit, when there is one.
+        if (!reviseBrief(draft.brief, text)) {
+          if (docRef.current) return false
+          push({
+            role: 'assistant',
             text: 'The quote stands as it was. Press its button to make it, or tell me what to change: its length, its voice, its look.'
           })
+          return true
+        }
+        const msg = push({ role: 'assistant', text: '', progress: { stage: 'Quoting it again', percent: null } })
+        const r = await api.makeRevise({ draft, text })
+        if (!r.ok || !r.draft) {
+          patch(msg, { progress: null, text: r.ok ? 'I could not quote that again.' : r.message, error: true })
           return true
         }
         patch(waiting.msg, { actions: [] })
