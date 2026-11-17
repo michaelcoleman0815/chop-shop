@@ -82,8 +82,8 @@ export const FX_INFO: Record<FxKind, FxInfo> = {
     title: 'Impact',
     noun: 'an impact',
     about:
-      'A shockwave on a hit or a landing: a soft ring expands from a point and ripples the picture as it passes, then the frame shakes and settles. at is the point as fractions of the frame, [x, y], or empty for the person (or the middle). style ring faces the camera; tilted lies back in 3D like a ring around a flyer. extra: second-ring, streaks (copies along its path), flash, no-shake.',
-    styles: ['ring', 'tilted'],
+      'A shockwave on a hit or a landing: a soft ring expands from a point and ripples the picture as it passes, then the frame shakes and settles. at is the point as fractions of the frame, [x, y], or empty for the person (or the middle). style ring faces the camera; ground lies flat, for a landing; side stands edge on, for a flyer passing. extra: second-ring, streaks (copies along its path), flash, no-shake.',
+    styles: ['ring', 'ground', 'side'],
     color: '#FFFFFF',
     length: 0.9,
     lead: 0,

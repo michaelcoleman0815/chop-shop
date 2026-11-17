@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { followObjects, type CutoutKind, type CutoutSample, type CutoutTrack } from '../shared/fx/masks'
 import { makeClip } from './test-media'
+import type { CutoutHelper, CutoutRequest } from './cutout'
 
 /**
  * Footage made of simple shapes, and the cut-outs of those shapes, for
@@ -97,7 +98,7 @@ export function shapeTrack(
   path: string,
   kind: CutoutKind,
   dir: string,
-  opts: { from?: number; to?: number; rate?: number; size?: number } = {}
+  opts: { from?: number; to?: number; rate?: number; size?: number; follow?: boolean } = {}
 ): CutoutTrack {
   const { width: W, height: H, sec } = SHAPE_CLIP
   const from = opts.from ?? 0
@@ -111,7 +112,7 @@ export function shapeTrack(
   for (let n = 0; from + n / rate <= to + 1e-9; n++) {
     const t = from + n / rate
     if (kind === 'person') {
-      const file = join(dir, `person-${n}.png`)
+      const file = join(dir, `person-${Math.round(t * 1000)}.png`)
       writeFileSync(file, drawMask('person', t, w, h))
       const p = personAt(t)
       samples.push({ t, masks: [{ id: 1, file, box: [p.cx - p.rx, p.cy - p.ry, 2 * p.rx, 2 * p.ry] }] })
@@ -121,7 +122,7 @@ export function shapeTrack(
       samples.push({
         t,
         masks: order.map((o, k) => {
-          const file = join(dir, `object-${n}-${o.id}.png`)
+          const file = join(dir, `object-${Math.round(t * 1000)}-${o.id}.png`)
           writeFileSync(file, drawMask(o.id, t, w, h))
           const rh = (o.r * W) / H
           return { id: k + 1, file, box: [o.cx - o.r, o.cy - rh, 2 * o.r, 2 * rh] as [number, number, number, number] }
@@ -129,5 +130,24 @@ export function shapeTrack(
       })
     }
   }
-  return { path, kind, width: w, height: h, samples: kind === 'objects' ? followObjects(samples) : samples }
+  const follow = opts.follow ?? true
+  return { path, kind, width: w, height: h, samples: kind === 'objects' && follow ? followObjects(samples) : samples }
+}
+
+/** A cut-out helper that answers with the shapes, as Vision answers: for tests, and for the app run without a Mac. */
+export function shapeHelper(asked: CutoutRequest[] = []): CutoutHelper {
+  return {
+    can: async () => ({ person: true, objects: true }),
+    find: async (req) => {
+      asked.push(req)
+      const track = shapeTrack(req.video, req.kind, req.outDir, {
+        from: req.startSec,
+        to: req.startSec + req.durationSec,
+        rate: req.rate,
+        size: Math.min(req.size, 160),
+        follow: false
+      })
+      return { width: track.width, height: track.height, samples: track.samples }
+    }
+  }
 }

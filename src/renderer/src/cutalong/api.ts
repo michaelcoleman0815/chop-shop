@@ -91,6 +91,8 @@ export type CutalongApi = Pick<
   | 'onAiProgress'
   | 'mapStatus'
   | 'mapData'
+  | 'fxCan'
+  | 'fxCutouts'
   | 'downloadMaps'
   | 'onMapProgress'
   | 'updateState'

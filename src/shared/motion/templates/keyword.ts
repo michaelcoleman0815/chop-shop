@@ -1,4 +1,5 @@
 import { keys, onColor, tail } from '../anim'
+import { METALS, type Chrome } from '../chrome'
 import type { Count, Layer } from '../types'
 import { register, type BuildContext } from './registry'
 
@@ -8,7 +9,7 @@ import { register, type BuildContext } from './registry'
  * itself as it lands. An icon can sit above it and a small label below.
  */
 
-const STYLES = ['plate', 'bare'] as const
+const STYLES = ['plate', 'bare', 'chrome', 'gold'] as const
 const PLACES = ['top', 'center', 'bottom'] as const
 
 /** The number in a keyword and what is around it: "$1,299" is $ and 1299, grouped; "f/1.78" is f/ and 1.78. */
@@ -28,6 +29,26 @@ export function numberIn(text: string): Omit<Count, 'from' | 'progress'> | null 
 const counts = (n: Omit<Count, 'from' | 'progress'>): boolean =>
   n.to >= 10 && !(n.prefix === '' && n.suffix === '' && n.decimals === 0 && n.to >= 1900 && n.to <= 2099)
 
+/**
+ * Chrome lettering for a keyword: the metal it is asked in (gold, or a
+ * gradient), else chrome; it lands seen from a little above and to the left,
+ * and the camera drifts round it while it is up, so its sides turn; a light
+ * sweeps across it once it has landed.
+ */
+function chromeFor(color: string, length: number): Chrome {
+  const asked = color.trim().toLowerCase()
+  const metal = (METALS as readonly string[]).includes(asked) || /^#[0-9a-f]{6}$/.test(asked) ? asked : 'chrome'
+  return {
+    metal,
+    depth: 0.28,
+    turn: { keys: [{ t: 0, v: -0.85, ease: 'smooth' }, ...tail([0, 0.55])] },
+    lift: keys([0, -0.55, 'smooth'], [Math.max(0.6, length), -0.3]),
+    outline: 0.035,
+    glow: metal === 'gold' ? 'rgba(255, 170, 40, 0.75)' : 'rgba(150, 205, 255, 0.6)',
+    shine: keys([0.32, 0, 'smooth'], [0.32 + Math.min(0.9, Math.max(0.5, length * 0.4)), 1])
+  }
+}
+
 function keyword(ctx: BuildContext): Layer[] {
   const { frame, theme, item, span } = ctx
   const { start, end } = span
@@ -40,7 +61,10 @@ function keyword(ctx: BuildContext): Layer[] {
   const style = (STYLES as readonly string[]).includes(item.style) ? item.style : 'plate'
   const place = (PLACES as readonly string[]).includes(item.place) ? item.place : 'top'
   const accent = item.color.trim() || theme.accent
-  const size = (vertical ? 132 : 112) * u * (value.length > 10 ? 0.75 : 1)
+  // Chrome lettering is bigger, as far as the frame's width allows: its depth and outline want room.
+  const chrome = style === 'chrome' || style === 'gold'
+  const plain = (vertical ? 132 : 112) * u * (value.length > 10 ? 0.75 : 1)
+  const size = chrome ? Math.min(plain * 1.4, (W * 0.8) / Math.max(1, value.length * 0.62)) : plain
   const icon = item.icon.trim() && item.icon.trim() !== 'none' ? item.icon.trim() : ''
   const disc = size * 1.3
 
@@ -109,13 +133,15 @@ function keyword(ctx: BuildContext): Layer[] {
     fill: ink,
     align: 'center',
     valign: 'middle',
-    ...(style === 'plate'
-      ? { plate: { color: accent, radius: size * 0.22, padX: size * 0.32, padY: size * 0.16 } }
-      : { effects: { shadow: { color: 'rgba(0, 0, 0, 0.45)', blur: 22 * u, y: 6 * u } } }),
+    ...(chrome
+      ? { chrome: chromeFor(style === 'gold' ? 'gold' : item.color, end - start) }
+      : style === 'plate'
+        ? { plate: { color: accent, radius: size * 0.22, padX: size * 0.32, padY: size * 0.16 } }
+        : { effects: { shadow: { color: 'rgba(0, 0, 0, 0.45)', blur: 22 * u, y: 6 * u } } }),
     transform: {
       x: W / 2,
       y: valueY,
-      scale: keys([0, 0.55, { spring: 0.5 }], [0.55, 1]),
+      scale: keys([0, chrome ? 0.7 : 0.55, { spring: 0.5 }], [0.55, 1]),
       rotation: keys([0, -4, 'snap'], [0.4, 0])
     }
   })
@@ -159,7 +185,7 @@ register({
   kind: 'keyword',
   title: 'Keyword pop',
   about:
-    'The number or word being said, big, landing as it is said: text is ["120 Hz"] or ["$999", "a small label below"]. A number counts up to itself as it lands. icon is a Lucide icon above it, or empty. plate sets it on the accent; bare is the text alone with a shadow.',
+    'The number or word being said, big, landing as it is said: text is ["120 Hz"] or ["$999", "a small label below"]. A number counts up to itself as it lands. icon is a Lucide icon above it, or empty. plate sets it on the accent; bare is the text alone with a shadow; chrome is 3D metal lettering with depth, a bevel and a glow, for a title or a number counting up; color tints its metal; gold is the same in gold.',
   styles: STYLES,
   places: PLACES,
   length: 2.2,

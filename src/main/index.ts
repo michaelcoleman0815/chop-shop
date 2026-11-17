@@ -38,6 +38,7 @@ import {
 } from './updater'
 import { registerCutalongIpc } from './cutalong'
 import { registerMapIpc } from './maps-ipc'
+import { registerFxIpc } from './fx-ipc'
 import type {
   AspectPreset,
   Transcript,
@@ -138,6 +139,7 @@ function safeSend(sender: Electron.WebContents, channel: string, payload: unknow
 function registerIpc(): void {
   registerCutalongIpc({ send: safeSend, mediaUrlFor })
   registerMapIpc(safeSend)
+  registerFxIpc(mediaUrlFor)
   ipcMain.handle('app:version', () => app.getVersion())
 
   ipcMain.handle('settings:get', (): Settings => getSettings())
