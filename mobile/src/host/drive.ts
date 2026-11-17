@@ -35,6 +35,8 @@ interface Step {
   name: string
   atSec: number
   acknowledged: boolean
+  /** What the screen said when its screenshot was taken: the column, then a toast. */
+  screen: string
 }
 
 /** The files the plan names, as the picker hands them over; null until a plan is read. */
@@ -105,6 +107,7 @@ export async function drive(): Promise<void> {
     whisper: info.whisperVersion,
     encoders: info.encoders,
     plan,
+    viewport: { width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio },
     steps,
     progress,
     errors
@@ -133,7 +136,10 @@ export async function drive(): Promise<void> {
   // Each step, said and screenshotted once the screen has settled.
   const step = async (name: string): Promise<void> => {
     await sleep(1200)
-    const s: Step = { n: steps.length + 1, name, atSec: seconds(), acknowledged: false }
+    const shown = (selector: string): string =>
+      ((document.querySelector(selector) as HTMLElement | null)?.innerText ?? '').replace(/\s+/g, ' ').trim()
+    const screen = [shown('.cl-main'), shown('.cl-toast')].filter(Boolean).join(' || ').slice(0, 700)
+    const s: Step = { n: steps.length + 1, name, atSec: seconds(), acknowledged: false, screen }
     steps.push(s)
     console.log(`[drive] ${s.n} ${name} at ${s.atSec} s`)
     await files.writeText(at('drive-progress.txt'), `${s.n} ${name}\n`)

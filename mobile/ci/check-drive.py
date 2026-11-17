@@ -51,8 +51,12 @@ with open(report_path) as f:
 print(f"platform: {report.get('platform')}, ffmpeg {report.get('ffmpeg')}, whisper {report.get('whisper')}")
 print(f"encoders: {', '.join(report.get('encoders', []))}")
 print(f"took {report.get('seconds')} s; v1 after {report.get('secondsToV1')} s; export in {report.get('secondsToExport')} s")
+viewport = report.get("viewport") or {}
+print(f"viewport: {viewport.get('width')}x{viewport.get('height')} at {viewport.get('pixelRatio')}x")
 for s in report.get("steps", []):
     print(f"  step {s['n']} {s['name']} at {s['atSec']} s{'' if s.get('acknowledged') else ' (no screenshot taken)'}")
+    if s.get("screen"):
+        print(f"      on screen: {s['screen']}")
 for p in report.get("progress", []):
     print(f"  {p['atSec']:>7} s  {p['stage']}")
 # A phone's plugins log each call they turn down (a file that is not there yet), so these are many and mostly that.
@@ -128,5 +132,16 @@ shots = sorted(os.listdir(os.path.join(OUT, "screens"))) if os.path.isdir(os.pat
 print(f"screenshots: {', '.join(shots) or 'none'}")
 if not shots:
     problem("no screenshots were taken")
+for name in shots:
+    # A screenshot of one flat colour is a blank screen: the page did not draw.
+    path = os.path.join(OUT, "screens", name)
+    facts = probe(path)["streams"][0]
+    stats = ffmpeg_lines(path, "-vf", "signalstats,metadata=print")
+    low = re.search(r"YMIN=(\d+)", stats)
+    high = re.search(r"YMAX=(\d+)", stats)
+    spread = int(high[1]) - int(low[1]) if low and high else None
+    print(f"  {name}: {facts['width']}x{facts['height']}, brightness from {low and low[1]} to {high and high[1]}")
+    if spread is not None and spread < 16:
+        problem(f"{name} is one flat colour: the screen was blank")
 
 sys.exit(1 if problems else 0)
