@@ -9,6 +9,10 @@ import { defineConfig } from 'vite'
  * the phone's host (src/host), built into dist for Capacitor. The shared
  * main-process modules it runs import Node's 'path', which is POSIX on a
  * phone and comes from src/shims/path.ts.
+ *
+ * CUTALONG_DRIVE=1 builds in the app's own flow for CI (src/host/drive.ts),
+ * which runs only when the runner has put drive.json in the app's documents.
+ * A build for the stores leaves it out.
  */
 const here = fileURLToPath(new URL('.', import.meta.url))
 const root = resolve(here, '..')
@@ -18,7 +22,10 @@ export default defineConfig({
   root: here,
   base: './',
   plugins: [react()],
-  define: { __APP_VERSION__: JSON.stringify(version) },
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+    __DRIVE__: JSON.stringify(process.env.CUTALONG_DRIVE === '1')
+  },
   resolve: {
     alias: [{ find: /^path$/, replacement: resolve(here, 'src/shims/path.ts') }],
     // One React for the app and the phone's entry.

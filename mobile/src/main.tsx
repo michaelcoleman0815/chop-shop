@@ -8,10 +8,15 @@ import { startPhone } from './host/boot'
  * settings and keys), then the same app the Mac shows loads on top of it,
  * with the phone's layout (phone.css) over the shared one.
  */
+
+/** True only in a build for CI (CUTALONG_DRIVE=1), which can run the app's own flow (host/drive.ts). */
+declare const __DRIVE__: boolean
+
 void (async () => {
   const root = document.getElementById('root') as HTMLElement
+  const drive = __DRIVE__ ? await import('./host/drive') : null
   try {
-    ;(window as { cutalongHost?: CutalongHost }).cutalongHost = await startPhone()
+    ;(window as { cutalongHost?: CutalongHost }).cutalongHost = await startPhone({ picks: drive?.withPlannedPicks })
   } catch (err) {
     console.error('[phone] could not start:', err)
     root.className = 'cl-boot-failed'
@@ -21,4 +26,5 @@ void (async () => {
   const { mountCutalong } = await import('../../src/renderer/src/cutalong/main')
   await import('../../src/renderer/src/cutalong/phone.css')
   mountCutalong(ReactDOM.createRoot(root))
+  if (drive) void drive.drive()
 })()

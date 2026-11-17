@@ -112,7 +112,12 @@ function bridgeDownload(engine: EnginePlugin) {
   }
 }
 
-export async function startPhone(): Promise<CutalongHost> {
+export interface StartOptions {
+  /** The engine as the app's picks see it: CI's drive (drive.ts) hands over its own files. */
+  picks?: (engine: EnginePlugin) => EnginePlugin
+}
+
+export async function startPhone(options: StartOptions = {}): Promise<CutalongHost> {
   const native = Capacitor.isNativePlatform()
   const info: EngineInfo = await Engine.info()
   const files = native ? capacitorFiles(info.cache) : bridgeFiles(BRIDGE)
@@ -139,7 +144,7 @@ export async function startPhone(): Promise<CutalongHost> {
     fetch: native ? nativeFetch((options) => CapacitorHttp.request(options)) : (url, init) => fetch(url, init)
   })
   const api = createPhoneApi({
-    engine: Engine,
+    engine: options.picks ? options.picks(Engine) : Engine,
     info,
     settings,
     services,

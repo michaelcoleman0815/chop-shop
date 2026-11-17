@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Runs the app's own flow (src/host/drive.ts) on an iPhone simulator:
+# installs the app, lets it add to Photos, puts the whisper model where the
+# app keeps it, the footage where the engine's importer copies picks, and the
+# plan in its documents, launches it, and takes a screenshot at every step
+# the app says it has reached. Then copies out the app's report and exports.
+#
+#   ci/ios-drive.sh APP MODELS_DIR FOOTAGE_DIR OUT_DIR [DEVICE]
+#
+# MODELS_DIR holds ggml-base.en.bin; FOOTAGE_DIR is what ci/make-footage.py
+# made (the files and drive.json). DEVICE is a booted simulator's UDID
+# (default: the booted one). OUT_DIR gets drive-report.json, screens/,
+# Exports/, and the app's stdout and stderr. DRIVE_TIMEOUT (seconds,
+# default 2400) bounds it. The app must be built with CUTALONG_DRIVE=1.
+set -euo pipefail
+
+APP=$1
+MODELS=$2
+FOOTAGE=$3
+OUT=$4
+DEV=${5:-booted}
+BUNDLE=social.brewed.cutalong
+TIMEOUT=${DRIVE_TIMEOUT:-2400}
+mkdir -p "$OUT/screens"
+
+xcrun simctl install "$DEV" "$APP"
+# An export goes to Photos, which asks first; the simulator is told the answer.
+xcrun simctl privacy "$DEV" grant photos-add "$BUNDLE" || echo "::warning::could not let the app add to Photos"
+
+if ! data=$(xcrun simctl get_app_container "$DEV" "$BUNDLE" data 2>/dev/null); then
+  # The container is made on the first launch.
+  xcrun simctl launch "$DEV" "$BUNDLE" >/dev/null
+  sleep 5
+  xcrun simctl terminate "$DEV" "$BUNDLE" || true
+  data=$(xcrun simctl get_app_container "$DEV" "$BUNDLE" data)
+fi
+docs="$data/Documents"
+mkdir -p "$docs/Cutalong/models" "$docs/Imported"
+cp "$MODELS/ggml-base.en.bin" "$docs/Cutalong/models/"
+for f in $(python3 -c 'import json, sys; print("\n".join(json.load(open(sys.argv[1]))["files"]))' "$FOOTAGE/drive.json"); do
+  cp "$FOOTAGE/$f" "$docs/Imported/"
+done
+cp "$FOOTAGE/drive.json" "$docs/"
+rm -f "$docs/drive-progress.txt" "$docs/drive-ack.txt" "$docs/drive-report.json"
+echo "app data: $data"
+
+xcrun simctl launch --terminate-running-process --stdout="$OUT/app-stdout.txt" --stderr="$OUT/app-stderr.txt" \
+  "$DEV" "$BUNDLE"
+
+start=$SECONDS
+seen=""
+status=1
+why="no report in $TIMEOUT s"
+while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
+  progress=$(head -n1 "$docs/drive-progress.txt" 2>/dev/null || true)
+  if [ -n "$progress" ] && [ "$progress" != "$seen" ]; then
+    seen=$progress
+    n=${progress%% *}
+    step=${progress#* }
+    echo "$((SECONDS - start)) s: $n $step"
+    if [ "$step" = done ]; then
+      status=0
+      break
+    fi
+    xcrun simctl io "$DEV" screenshot "$OUT/screens/$(printf %02d "$n")-$step.png" >/dev/null 2>&1 ||
+      echo "::warning::no screenshot at $step"
+    echo "$n" > "$docs/drive-ack.txt"
+    continue
+  fi
+  if ! xcrun simctl spawn "$DEV" launchctl list 2>/dev/null | grep -q "UIKitApplication:$BUNDLE"; then
+    why="the app stopped (last step: ${seen:-none})"
+    break
+  fi
+  sleep 1
+done
+[ $status = 0 ] || echo "::error::$why"
+
+cp "$docs/drive-report.json" "$OUT/" 2>/dev/null || true
+cp -R "$docs/Exports" "$OUT/" 2>/dev/null || echo "::warning::no exports to copy"
+grep -E "\[drive\]|ERROR|Error" "$OUT/app-stdout.txt" | tail -n 120 || true
+if [ $status != 0 ]; then
+  echo "--- the app's stderr, last lines"
+  tail -n 60 "$OUT/app-stderr.txt" || true
+  find "$HOME/Library/Logs/DiagnosticReports" -name 'App*' -newer "$OUT/app-stdout.txt" -exec cp {} "$OUT/" \; 2>/dev/null || true
+fi
+[ -s "$OUT/drive-report.json" ] || { echo "::error::the app wrote no report"; exit 1; }
+exit $status

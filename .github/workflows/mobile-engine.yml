@@ -1,8 +1,11 @@
-name: Mobile engine
+name: Mobile
 
 # Builds the phone engines (ffmpeg 6.0, ffprobe and whisper.cpp in-process,
 # mobile/engine) for Android and iOS, and runs their self-test on an Android
-# emulator and an iPhone simulator. Nothing here is signed or published.
+# emulator and an iPhone simulator. Then builds the app itself on those
+# engines (mobile/): a debug APK anyone can sideload and a simulator build,
+# and runs the app's own flow on the emulator and the simulator, from the
+# footage to the export, with a screenshot at every step.
 on:
   push:
     branches:
@@ -520,3 +523,289 @@ jobs:
         run: |
           [ "${{ steps.ios.outcome }}" = success ] || { echo "::error::nothing came back from the iOS self-test"; exit 1; }
           python3 mobile/engine/example/tools/check_exports.py "$RUNNER_TEMP/ios/selftest-out" "$RUNNER_TEMP/media" "$RUNNER_TEMP/ios/selftest.json"
+
+  # The app's page, built once for both phones: with the app's own flow for
+  # CI built in (CUTALONG_DRIVE=1, mobile/src/host/drive.ts) for the APK and
+  # the simulator build, and without it for the stores. With it, the footage
+  # that flow picks, made with the runner's ffmpeg.
+  app-web:
+    name: The app's page
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - name: Build the page
+        run: |
+          # The shared code's packages. Electron and the Mac's native modules are not for a phone.
+          npm ci --ignore-scripts --no-audit --no-fund
+          cd mobile
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npx vite build --outDir "$RUNNER_TEMP/web-store" --emptyOutDir
+          CUTALONG_DRIVE=1 npx vite build --outDir "$RUNNER_TEMP/web-drive" --emptyOutDir
+          if grep -l "drive-progress" "$RUNNER_TEMP"/web-store/assets/*.js; then
+            echo "::error::the store build has the CI flow in it"
+            exit 1
+          fi
+
+      - name: ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+
+      - name: The footage the app's flow picks
+        run: python3 mobile/ci/make-footage.py "$RUNNER_TEMP/footage"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-web-drive
+          path: ${{ runner.temp }}/web-drive
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-web-store
+          path: ${{ runner.temp }}/web-store
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: drive-footage
+          path: ${{ runner.temp }}/footage
+          if-no-files-found: error
+          retention-days: 14
+
+  app-android:
+    name: Android app
+    needs: [android, app-web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      IMAGE: system-images;android-34;google_apis;x86_64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-engine
+          path: mobile/engine/android/src/main/jniLibs
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-web-drive
+          path: mobile/dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: drive-footage
+          path: ${{ runner.temp }}/footage
+
+      - name: Restore the whisper models
+        id: models
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: whisper-models-${{ runner.os }}-${{ hashFiles('mobile/engine/example/ci/fetch-models.sh') }}
+
+      - name: The whisper models
+        run: mobile/engine/example/ci/fetch-models.sh "$RUNNER_TEMP/models"
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-app-${{ hashFiles('mobile/package-lock.json', 'mobile/android/**/*.gradle', 'mobile/engine/android/build.gradle') }}
+
+      - name: Build the debug APK
+        working-directory: mobile
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync android
+          cd android
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/Cutalong-debug.apk"
+          ls -l "$RUNNER_TEMP/Cutalong-debug.apk"
+          unzip -l "$RUNNER_TEMP/Cutalong-debug.apk" | grep -E "lib/.*\.so$"
+
+      # Signed with the debug key: Android installs it from a file once
+      # installing unknown apps is allowed for the app that opens it.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cutalong-android-debug-apk
+          path: ${{ runner.temp }}/Cutalong-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Start the emulator
+        run: |
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          mobile/ci/start-emulator.sh "$IMAGE" "$RUNNER_TEMP/emulator.log"
+
+      - name: Run the app's own flow on the emulator
+        run: DRIVE_TIMEOUT=2400 mobile/ci/android-drive.sh "$RUNNER_TEMP/Cutalong-debug.apk" "$RUNNER_TEMP/models" "$RUNNER_TEMP/footage" "$RUNNER_TEMP/drive"
+
+      - if: always()
+        run: cp "$RUNNER_TEMP/emulator.log" "$RUNNER_TEMP/drive/" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-app-drive
+          path: ${{ runner.temp }}/drive
+          retention-days: 14
+
+  app-ios:
+    name: iOS app
+    needs: [ios, app-web]
+    runs-on: macos-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ios-engine
+          path: ${{ runner.temp }}/engine
+
+      - name: Unpack the frameworks
+        run: tar -C mobile/engine/ios -xzf "$RUNNER_TEMP/engine/ios-frameworks.tar.gz"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-web-drive
+          path: mobile/dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: drive-footage
+          path: ${{ runner.temp }}/footage
+
+      - name: Restore the whisper models
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: whisper-models-${{ runner.os }}-${{ hashFiles('mobile/engine/example/ci/fetch-models.sh') }}
+
+      - name: The whisper models
+        run: mobile/engine/example/ci/fetch-models.sh "$RUNNER_TEMP/models"
+
+      - name: Pick an iPhone simulator and boot it
+        id: sim
+        run: |
+          python3 mobile/engine/example/ci/pick-simulator.py > "$RUNNER_TEMP/sim.txt"
+          echo "udid=$(sed -n 1p "$RUNNER_TEMP/sim.txt")" >> "$GITHUB_OUTPUT"
+          echo "simulator: $(sed -n 2p "$RUNNER_TEMP/sim.txt")"
+          xcrun simctl boot "$(sed -n 1p "$RUNNER_TEMP/sim.txt")" || true
+
+      - name: Build the app for the simulator
+        working-directory: mobile
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync ios
+          # Signed ad hoc, as Xcode signs for the simulator: no team, no profile.
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= -quiet build
+          app="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
+          ls "$app/Frameworks"
+          du -sh "$app"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Cutalong-simulator.zip"
+
+      # For an Apple-silicon Mac's simulator: unzip, then drag App.app onto it.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cutalong-ios-simulator-app
+          path: ${{ runner.temp }}/Cutalong-simulator.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Run the app's own flow on the simulator
+        run: |
+          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+          DRIVE_TIMEOUT=2400 mobile/ci/ios-drive.sh "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app" \
+            "$RUNNER_TEMP/models" "$RUNNER_TEMP/footage" "$RUNNER_TEMP/drive" "${{ steps.sim.outputs.udid }}"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-app-drive
+          path: ${{ runner.temp }}/drive
+          retention-days: 14
+
+  # What the app made on each phone, measured here: the steps it reached, a
+  # new version from the command, and the export itself (ffprobe and ffmpeg).
+  app-exports:
+    name: The app's exports measured on the runner
+    needs: [app-web, app-android, app-ios]
+    if: ${{ !cancelled() && needs.app-web.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: drive-footage
+          path: ${{ runner.temp }}/footage
+
+      - uses: actions/download-artifact@v8
+        id: android
+        continue-on-error: true
+        with:
+          name: android-app-drive
+          path: ${{ runner.temp }}/android
+
+      - uses: actions/download-artifact@v8
+        id: ios
+        continue-on-error: true
+        with:
+          name: ios-app-drive
+          path: ${{ runner.temp }}/ios
+
+      - name: Android
+        if: ${{ !cancelled() }}
+        run: |
+          [ "${{ steps.android.outcome }}" = success ] || { echo "::error::nothing came back from the Android app"; exit 1; }
+          python3 mobile/ci/check-drive.py "$RUNNER_TEMP/android" "$RUNNER_TEMP/footage"
+
+      - name: iOS
+        if: ${{ !cancelled() }}
+        run: |
+          [ "${{ steps.ios.outcome }}" = success ] || { echo "::error::nothing came back from the iOS app"; exit 1; }
+          python3 mobile/ci/check-drive.py "$RUNNER_TEMP/ios" "$RUNNER_TEMP/footage"
+
