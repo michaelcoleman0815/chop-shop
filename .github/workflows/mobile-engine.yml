@@ -11,10 +11,22 @@ name: Mobile
 # Once that flow has passed, the store builds go to TestFlight and to Google
 # Play's internal track, each only when its secrets are set (mobile/README.md
 # lists them); without them those jobs are skipped and say what is missing.
+#
+# The desktop app and the phone app live on one branch, so every push to it
+# proves the phones too; claude/mobile is where the phone work is tried first.
 on:
   push:
     branches:
+      - claude/mcp-x1yvms
       - claude/mobile
+    # The website and the design notes are not part of either app, as for the
+    # desktop's test build: a push that only changes them builds nothing.
+    paths-ignore:
+      - 'site/**'
+      - 'docs/design/**'
+      - '.claude/**'
+      - '.impeccable/**'
+      - 'PRODUCT.md'
   workflow_dispatch:
 
 concurrency:

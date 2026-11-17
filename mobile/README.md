@@ -43,7 +43,7 @@ From the repository's root: `npx vitest run mobile/` runs the phone host's tests
 
 ## In CI
 
-`.github/workflows/mobile-engine.yml` runs on every push to `claude/mobile`. After the engines' own self-test it builds the app on them and keeps:
+`.github/workflows/mobile-engine.yml` runs on every push to `claude/mcp-x1yvms`, where the desktop app lives too, and to `claude/mobile`, where phone work is tried first (a push that only changes the website or the design notes builds nothing, as for the desktop's test build). After the engines' own self-test it builds the app on them and keeps:
 
 - `cutalong-android-debug-apk`: `Cutalong-debug.apk`, signed with the debug key, for arm64 phones and x86_64 emulators. To install it, open it on the phone (or `adb install Cutalong-debug.apk`) and let the app that opens it install unknown apps.
 - `cutalong-ios-simulator-app`: the app for an Apple-silicon Mac's simulator. Unzip it and drag `App.app` onto the simulator.
