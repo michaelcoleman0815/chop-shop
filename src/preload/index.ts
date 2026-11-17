@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { MapDownloadResult, MapStatus, PlatesFile } from '../shared/maps'
 import type {
   AnalysisOptions,
   CachedAnalysis,
@@ -405,6 +406,17 @@ const api = {
   hasModel: (model: string): Promise<boolean> => ipcRenderer.invoke('stt:hasModel', model),
   modelSizeMb: (model: string): Promise<number> => ipcRenderer.invoke('stt:modelSize', model),
   downloadModel: (model: string): Promise<boolean> => ipcRenderer.invoke('stt:downloadModel', model),
+
+  // Maps: what data is here, what the preview draws from, and the first-use download.
+  mapStatus: (): Promise<MapStatus> => ipcRenderer.invoke('maps:status'),
+  mapData: (): Promise<{ status: MapStatus; tilesDir: string | null; plates: PlatesFile | null }> =>
+    ipcRenderer.invoke('maps:data'),
+  downloadMaps: (): Promise<MapDownloadResult> => ipcRenderer.invoke('maps:download'),
+  onMapProgress: (cb: (p: { percent: number }) => void): (() => void) => {
+    const handler = (_e: unknown, p: { percent: number }): void => cb(p)
+    ipcRenderer.on('maps:progress', handler)
+    return () => ipcRenderer.removeListener('maps:progress', handler)
+  },
 
   analyze: (
     videoPath: string,

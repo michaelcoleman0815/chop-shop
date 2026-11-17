@@ -458,6 +458,8 @@ export function createMockApi(): CutalongApi {
     'medium.en': { mb: 1533, has: false }
   }
   const aiListeners = new Set<(p: { stage: string; percent: number }) => void>()
+  const mapListeners = new Set<(p: { percent: number }) => void>()
+  let maps = { level: 3, plates: false, complete: false, downloadMb: 120 }
   const learnListeners = new Set<(p: { stage: string; percent: number }) => void>()
   const mockUpload = (doc: EditDoc, outputPath: string): UploadKit =>
     mockUploadKit(doc, outputPath, brands, key === null ? 'no-key' : settings.claudeWritesUpload === false ? 'off' : 'failed')
@@ -1132,6 +1134,21 @@ export function createMockApi(): CutalongApi {
     onAiProgress: (cb) => {
       aiListeners.add(cb)
       return () => aiListeners.delete(cb)
+    },
+    // Maps: only the small pictures the app ships, until a pretend download.
+    mapStatus: async () => ({ ...maps, downloading: false }),
+    mapData: async () => ({ status: maps, tilesDir: null, plates: null }),
+    downloadMaps: async () => {
+      for (const percent of [8, 30, 55, 80, 100]) {
+        await new Promise((r) => setTimeout(r, 150))
+        mapListeners.forEach((cb) => cb({ percent }))
+      }
+      maps = { ...maps, level: 7, plates: true, complete: true }
+      return { ok: true as const, status: maps }
+    },
+    onMapProgress: (cb) => {
+      mapListeners.add(cb)
+      return () => mapListeners.delete(cb)
     },
     updateState: async () => ({ status: 'idle' as const }),
     checkForUpdates: async () => ({ status: 'none' as const, version: '0.2.13' }),

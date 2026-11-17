@@ -9,6 +9,7 @@ import { ClaudeFrames, ClaudeWrites } from './ClaudeFrames'
 import { grow } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
+import { MapsSection } from './Maps'
 import { OtherServices } from './OtherServices'
 import { Planning } from './Planning'
 
@@ -200,6 +201,8 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
               </div>
             )}
           </section>
+
+          <MapsSection />
 
           <section className="cl-section" aria-labelledby="set-exports">
             <h2 id="set-exports">Exports</h2>
