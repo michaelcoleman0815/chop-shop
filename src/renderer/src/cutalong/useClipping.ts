@@ -10,6 +10,7 @@ import {
   markExported,
   setKept,
   toExport,
+  type ClipAsk,
   type ClipNotExported,
   type ClipSet
 } from '../../../shared/clipping'
@@ -62,6 +63,8 @@ export interface ClippingDeps {
   clearEditor: () => void
   /** The chat's brand, by id, for its kind of video and caption look. */
   brand?: () => string | null
+  /** Whether work may start (an Anthropic key works); when not, it has said why. */
+  gate?: (what: 'export') => Promise<boolean>
 }
 
 /** The recordings a drop holds: footage and sound, not stills. */
@@ -165,10 +168,12 @@ export function useClipping(deps: ClippingDeps) {
    *
    * Asked in words ("turn this into shorts") rather than with /clipping, it
    * takes the request only when there is long footage to clip, and answers
-   * false otherwise, so a short is edited the way it always was.
+   * false otherwise, so a short is edited the way it always was. Claude reads
+   * those words first, and `asked` is what it read in them: how many, how
+   * long, the funny parts, a topic.
    */
   const run = useCallback(
-    async (files: Attachment[], ask: string, words = false): Promise<boolean> => {
+    async (files: Attachment[], ask: string, words = false, asked?: ClipAsk): Promise<boolean> => {
       const { push, patch } = d.current
       const dropped = recordingsOf(files)
       const own = d.current.docRef.current && !isClip(d.current.docRef.current) ? d.current.docRef.current : null
@@ -203,7 +208,14 @@ export function useClipping(deps: ClippingDeps) {
       let r: Awaited<ReturnType<typeof api.findClips>>
       try {
         r = await d.current.during(() =>
-          api.findClips({ paths, ask, known, avoid: avoidRanges(current()), brand: d.current.brand?.() ?? null })
+          api.findClips({
+            paths,
+            ask,
+            ...(asked ? { asked } : {}),
+            known,
+            avoid: avoidRanges(current()),
+            brand: d.current.brand?.() ?? null
+          })
         )
       } finally {
         off()
@@ -279,7 +291,8 @@ export function useClipping(deps: ClippingDeps) {
    */
   /** Exports the clips not out as they are now, or the ones asked for again (a card's Try again). */
   const exportAll = useCallback(async (only?: string[]): Promise<void> => {
-    const { push, setToast, during, exportingNow } = d.current
+    const { push, setToast, during, exportingNow, gate } = d.current
+    if (gate && !(await gate('export'))) return
     const wait = exportWait(exportingNow.current, { kind: 'clips' })
     if (wait) {
       // In the chat, where it stays: the toast is the running export's, and its next count would replace it.

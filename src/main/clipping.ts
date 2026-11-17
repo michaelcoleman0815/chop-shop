@@ -64,6 +64,8 @@ export interface ClipFindRequest {
   paths: string[]
   /** What was typed with the command. */
   ask: string
+  /** What Claude read in the words of a request that was not /clipping: how many, how long, what about. */
+  asked?: ClipAsk
   /** Words already heard, by recording, from the edit they are in. */
   known?: Record<string, TranscriptWord[]>
   /** Clips the set already has: a new run finds others. */
@@ -404,7 +406,8 @@ export async function findClips(
   const paths = [...new Set(req.paths)]
   if (paths.length === 0)
     return { ok: false, message: 'Drop a long recording with /clipping, and I will find the clips in it.' }
-  const ask = readClipAsk(req.ask)
+  // Claude's reading of words said in a chat; /clipping's own arguments otherwise.
+  const ask = req.asked ? { ...req.asked, said: req.asked.said || req.ask } : readClipAsk(req.ask)
   // Two recordings with one file name are told apart by their folders.
   const names = recordingNames(paths)
   const nameOf = (path: string): string => names.get(path) ?? basename(path)

@@ -104,6 +104,11 @@ export interface Settings {
   /** The Ollama model that plans edits on this computer. Absent or null means Claude, the default. */
   localPlanner?: string | null
   /**
+   * A fingerprint of the Anthropic key Anthropic last accepted (main/claude-key.ts), never the key:
+   * while Anthropic is busy or out of reach, that key still opens the gate.
+   */
+  claudeKeyAccepted?: string | null
+  /**
    * Whether Claude may see small stills from the person's footage, to say
    * what is in each moment of a vlog. On unless turned off, as other AI
    * services are; nothing is sent without an Anthropic key either way.
