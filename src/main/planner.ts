@@ -462,11 +462,9 @@ export async function checkKey(
  * the SDK wraps it in ("400 {"type":"error",...}"), so it can stand in a sentence.
  */
 export function claudeErrorText(err: unknown): string {
-  if (err instanceof Anthropic.APIError) {
-    const said = (err.error as { error?: { message?: unknown } } | undefined)?.error?.message
-    if (typeof said === 'string' && said.trim()) return said.trim().replace(/\.$/, '')
-    if (err.status) return `it answered ${err.status}`
-  }
+  // Read from the error's own fields rather than its class, so it holds for any copy of the SDK.
+  const said = (err as { error?: { error?: { message?: unknown } } } | null)?.error?.error?.message
+  if (typeof said === 'string' && said.trim()) return said.trim().replace(/\.$/, '')
   return (err instanceof Error ? err.message : String(err)).replace(/\.$/, '')
 }
 
