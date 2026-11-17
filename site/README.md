@@ -1,7 +1,8 @@
 # The Cutalong site
 
-The marketing site for Cutalong: a landing page, Privacy and Terms drafts, and a 404. Plain HTML, CSS and JavaScript,
-built by a small Node script with no dependencies, so it deploys to any static host.
+The marketing site for Cutalong: a landing page, Privacy and Terms drafts, a 404, and the email list behind the
+“Get notified” buttons. The pages are plain HTML, CSS and JavaScript, built by a small Node script with no
+dependencies. The list is one Cloudflare Pages Function, `functions/api/signup.js`.
 
 ## Run it
 
@@ -11,7 +12,12 @@ npm run serve        # builds into dist/ and serves it at http://localhost:4321
 ```
 
 `serve` behaves like Cloudflare Pages closely enough to test against: clean URLs, the rules in `_headers` (including
-the content security policy) and `_redirects`, and the 404 page.
+the content security policy) and `_redirects`, the 404 page, and the list's Function at `/api/signup`. The addresses
+you send it are kept in memory and gone when it stops. For Cloudflare's own runtime, with a local store that persists:
+
+```bash
+npm run build && npx wrangler@4.156.2 pages dev dist --kv SIGNUPS
+```
 
 ## Build it
 
@@ -20,9 +26,9 @@ npm run build        # writes dist/, the folder to deploy
 npm run preview      # writes .preview/: a self-contained copy with relative .html links, to open or share anywhere
 ```
 
-The build needs Node 20 or later (`.node-version` pins what Cloudflare uses). It fills the templates in `src/`, puts a
+The build needs Node 22 or later (`.node-version` pins what Cloudflare uses). It fills the templates in `src/`, puts a
 content hash in every asset's name, and writes `sitemap.xml`, `robots.txt`, `site.webmanifest`, `_headers` and
-`_redirects` from the config.
+`_redirects` from the config. The preview has no Function, so its form says it is not connected.
 
 ## Where the config values are
 
@@ -31,15 +37,21 @@ Everything you might change is in [`site.config.mjs`](site.config.mjs):
 | Value | What it does | Now |
 | --- | --- | --- |
 | `domain` | The main address. Every absolute URL comes from it: canonical links, Open Graph and Twitter cards, the sitemap, robots.txt. | `cutalong.io` |
-| `downloadUrl` | Where every “Download for Mac” goes, and where `/download` redirects. | the latest GitHub release |
-| `signupAction` | Where the coming-soon email form posts. Empty means the form sends nothing and says so. | empty |
-| `signupField` | The field name your email provider expects (`email`, `EMAIL`, `email_address`). | `email` |
-| `contactEmail` | The address in the footer and the legal drafts. | `hello@cutalong.io` |
+| `downloadReady` | `false` until a signed Cutalong release exists. While it is false, every download button reads “Get notified when it’s ready” and leads to the email field, `/download` goes there too, and no page links to the releases. | `false` |
+| `downloadUrl` | Where every “Download for Mac” goes once `downloadReady` is true, and where `/download` redirects then. | the latest GitHub release |
+| `signupAction` | Where the email form posts. `/api/signup` is the list's Function. An `https://` address posts to an email provider instead. Empty means the form sends nothing and says so. | `/api/signup` |
+| `signupField` | The field name the form sends the address as, and the one the Function reads (`email`, or what a provider expects). | `email` |
+| `contactEmail` | The address in the footer, the legal drafts and the list's replies. | `hello@cutalong.io` |
 | `owner` | The name in the footer and the legal drafts. | from `electron-builder.yml` |
 | `requires` | What the current release needs, for the structured data. | macOS 14 or later, Apple silicon |
 
-The form's `action` also feeds the content security policy's `form-action`, so a new provider works without editing
-headers.
+The form's `action` also feeds the content security policy's `form-action`, so a provider's address works without
+editing headers.
+
+When the release is ready, set `downloadReady: true` and deploy. The download buttons come back, and the form, its
+reply and the Privacy draft switch from “when Cutalong is ready” to the list under Being built now. People who signed
+up before were promised one email, when Cutalong is ready: send it, and ask before you write to them about anything
+else.
 
 ## Deploy on Cloudflare Pages
 
@@ -53,6 +65,12 @@ The project is set up with:
 `_headers` (security headers, long caching for hashed assets, and `noindex` on the `pages.dev` addresses) and
 `_redirects` (`/download`) are written into `dist/` by the build. Pages serves `404.html` for unknown addresses, and
 redirects `/privacy.html` to `/privacy`.
+
+`functions/` sits at the project root, `site/functions`, beside `dist/` rather than in it, which is where Pages looks
+for it. Pages builds it on every deploy and writes a `_routes.json` that sends only `/api/signup` to it, so every other
+request stays a free static one. `_headers` does not reach a Function's replies, so the Function sets its own
+(`Cache-Control: no-store` on every one). There is no Wrangler configuration file, on purpose: with one, Pages takes
+its bindings from the file and ignores the dashboard.
 
 ### Domains
 
@@ -78,8 +96,53 @@ certificate works. The domains are registered at Squarespace, so their nameserve
 
 ### Other hosts
 
-`dist/` is plain static files, so it also deploys to Netlify, Vercel or GitHub Pages with the same build command and
-output folder. Netlify reads the same `_headers` and `_redirects`; on Vercel or GitHub Pages, set the headers there.
+`dist/` is plain static files, so the pages also deploy to Netlify, Vercel or GitHub Pages with the same build command
+and output folder. Netlify reads the same `_headers` and `_redirects`; on Vercel or GitHub Pages, set the headers
+there. The list's Function runs only on Cloudflare Pages: elsewhere, point `signupAction` at an email provider.
+
+## The email list
+
+The form posts to `/api/signup`, which keeps each address in the Workers KV namespace bound as `SIGNUPS`, with the time
+it was left and where on the page it came from: `hero`, `header` or `close` for the button that led to the field,
+`soon` for the field itself, `link` for someone who arrived at `/#signup` (where `/download` goes for now). Nothing
+else is kept. It checks the address, ignores anything that fills in a hidden honeypot field (with the same reply, so a
+bot cannot tell), answers in plain words, never repeats the address, and gives an address that is already on the list
+the same reply as a new one. Without script, the form posts the ordinary way and the Function answers with a page.
+
+### Connect it, once
+
+1. **Create the namespace.** In the Cloudflare dashboard, go to **Workers KV** (under Storage & databases), select
+   **Create instance**, name it `cutalong-signups`, and select **Create**. (Or run
+   `npx wrangler@4.156.2 kv namespace create cutalong-signups`.)
+2. **Bind it.** Go to **Workers & Pages**, select the Pages project, then **Settings → Bindings → Add → KV namespace**.
+   Set **Variable name** to `SIGNUPS` and **KV namespace** to `cutalong-signups`, and save. That is the Production
+   environment. For Preview, either bind a second namespace (`cutalong-signups-preview`) so test addresses stay out of
+   the real list, or leave it unbound: the form on a preview then says the list is not connected.
+3. **Redeploy.** A binding takes effect from the next deployment: push a commit to the production branch, or on the
+   project's **Deployments** page open the menu (⋯) beside the latest production deployment and choose **Retry
+   deployment**.
+4. **Try it.** Leave your own address on https://cutalong.io, find it under the namespace's **KV Pairs**, and delete it.
+
+Until step 3, the form answers “The list isn’t connected yet, so nothing was saved” and gives the contact address.
+
+### Export it
+
+```bash
+cd site
+npx wrangler@4.156.2 login                        # once, in a browser
+npx wrangler@4.156.2 kv namespace list            # copy the id of cutalong-signups
+npx wrangler@4.156.2 kv key list --namespace-id <id> --remote > signups.json
+node -e 'for (const k of require("./signups.json")) console.log([k.name, k.metadata.at, k.metadata.source].join(","))' > signups.csv
+```
+
+Each key is an address; its metadata holds the time (`at`) and `source`. `--remote` matters: without it, Wrangler 4
+lists a local copy. `signups.json` and `signups.csv` are ignored by git; keep them off shared drives.
+
+To remove an address on request, delete it under **KV Pairs**, or run
+`npx wrangler@4.156.2 kv key delete --namespace-id <id> --remote "name@example.com"`. Addresses are stored in lower case.
+
+If you send the ready email through a mailing service, importing the list gives that service the addresses: name it in
+the Privacy draft first.
 
 ## Real visuals
 
@@ -97,20 +160,24 @@ first scroll, pointer move, touch or key, so a page left alone (and Lighthouse) 
 
 Keep a loop under 2 MB (H.264 MP4, or WebM), muted, with a poster frame.
 
-## Images and checks
+## Images, checks and tests
 
 ```bash
 npm run images       # redraws the favicons, app icons and social cards from the mark (needs Playwright)
 npm run check        # screenshots at 1440, 1024, 768 and 390, light and dark, and a keyboard pass (needs Playwright)
+npm test             # the list's Function: valid, invalid, missing, honeypot, a KV failure, with a fake KV
+npm run test:e2e     # the form against the real Function under wrangler pages dev (needs Playwright; runs Wrangler with npx)
 ```
 
-Both find Playwright in `site/node_modules` or a global install (`npm i --no-save playwright`), and Chrome through
-`CHROME_PATH`.
+`check` and `test:e2e` find Playwright in `site/node_modules` or a global install (`npm i --no-save playwright`), and
+Chrome through `CHROME_PATH`. `test:e2e` uses a throwaway store under `.wrangler/`, or a Wrangler you name with
+`WRANGLER=/path/to/wrangler`.
 
 ## The legal drafts
 
 `src/privacy.html` and `src/terms.html` are drafts, marked as drafts on the page, for the owner to review with a lawyer.
 They are not legal advice. They describe what the app does today (local processing, keys sealed in the keychain, the
 services it calls only with your keys, the update check against GitHub Releases, the one-time transcription model
-download). Their dashed blanks are decisions still open: the date they take effect, Cutalong’s price, the email
-provider, a liability cap and the governing law.
+download) and the email list (kept on Cloudflare, used only to say when Cutalong is ready, removed on request). Their
+dashed blanks are decisions still open: the date they take effect, Cutalong’s price, a liability cap and the governing
+law.

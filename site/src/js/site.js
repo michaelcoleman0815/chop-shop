@@ -93,31 +93,73 @@ if (strip) {
   place()
 }
 
-// ---- The coming-soon form: until an email provider is connected it sends nothing, and says so.
+// ---- The email list. Wired to the list's Function (functions/api/signup.js), it posts there and shows the reply;
+// without script it posts the ordinary way and the Function answers with a page. Unwired, it sends nothing and says so.
 document.querySelectorAll('form[data-signup]').forEach((form) => {
   const input = form.querySelector('input[type="email"]')
   const help = form.querySelector('[data-signup-help]')
   const submit = form.querySelector('button[type="submit"]')
+  const source = form.querySelector('[data-signup-source]')
   const wired = form.dataset.signup === 'ready'
+  const rest = help.textContent
+  let busy = false
+  const say = (text, state = '') => {
+    help.textContent = text
+    if (state) form.dataset.state = state
+    else delete form.dataset.state
+  }
+  const wrong = (text) => {
+    input.setAttribute('aria-invalid', 'true')
+    say(text, 'error')
+    input.focus()
+  }
   submit.disabled = false
-  form.addEventListener('submit', (e) => {
-    const ok = input.checkValidity()
-    input.toggleAttribute('aria-invalid', !ok)
-    if (!ok) {
-      e.preventDefault()
-      help.textContent = 'That address looks incomplete. Write it as name@example.com.'
-      input.focus()
-      return
-    }
-    if (!wired) {
-      e.preventDefault()
-      help.textContent = 'Nothing was sent: this list is not connected yet.'
+
+  // Each "Get notified" button leads to the field, and the list keeps which one it was.
+  // The link's own jump does the scrolling; focusing here, inside the tap, is what brings up a phone's keyboard.
+  document.querySelectorAll('a[data-notify]').forEach((a) =>
+    a.addEventListener('click', () => {
+      if (source) source.value = a.dataset.notify
+      input.focus({ preventScroll: true })
+    })
+  )
+  if (source && location.hash === '#signup') source.value = 'link'
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    if (busy) return
+    if (input.validity.valueMissing) return wrong('Write your email address first.')
+    if (!input.checkValidity()) return wrong('That address looks incomplete. Write it as name@example.com.')
+    if (!wired) return say('Nothing was sent: this list is not connected yet.')
+    busy = true
+    form.setAttribute('aria-busy', 'true')
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        body: new URLSearchParams(new FormData(form))
+      })
+      const reply = await response.json().catch(() => ({}))
+      if (reply.ok) {
+        input.value = ''
+        input.removeAttribute('aria-invalid')
+        say(reply.message, 'done')
+      } else if (reply.error === 'missing' || reply.error === 'invalid') {
+        wrong(reply.message)
+      } else {
+        say(reply.message || 'The list couldn’t take that just now. Try again in a minute.', 'error')
+      }
+    } catch {
+      say('The list couldn’t be reached. Check your connection and try again.', 'error')
+    } finally {
+      busy = false
+      form.removeAttribute('aria-busy')
     }
   })
   input.addEventListener('input', () => {
     if (input.hasAttribute('aria-invalid') && input.checkValidity()) {
       input.removeAttribute('aria-invalid')
-      help.textContent = help.dataset.rest || ''
+      say(rest)
     }
   })
 })

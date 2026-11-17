@@ -7,7 +7,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
 <head>
 {{> head}}
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Cutalong","applicationCategory":"MultimediaApplication","operatingSystem":"{{requires}}","description":"{{description}}","url":"{{url index}}","downloadUrl":"{{downloadUrl}}","publisher":{"@type":"Person","name":"{{owner}}"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Cutalong","applicationCategory":"MultimediaApplication","operatingSystem":"{{requires}}","description":"{{description}}","url":"{{url index}}",{{#downloadReady}}"downloadUrl":"{{downloadUrl}}",{{/downloadReady}}"publisher":{"@type":"Person","name":"{{owner}}"}}
 </script>
 </head>
 <body>
@@ -26,7 +26,8 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
       </ol>
       <span class="strip-playhead" aria-hidden="true" data-playhead></span>
     </nav>
-    <a class="btn btn-quiet slab-action" href="{{downloadUrl}}">Download</a>
+    {{#downloadReady}}<a class="btn btn-quiet slab-action" href="{{downloadUrl}}">Download</a>{{/downloadReady}}
+    {{^downloadReady}}<a class="btn btn-quiet slab-action" href="#signup" data-notify="header">Get notified</a>{{/downloadReady}}
   </div>
 </header>
 
@@ -37,7 +38,8 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
       <div class="hero-line">
         <p class="lead">Drop in your footage, say what you want, and it edits.</p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>
+          {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
+          {{^downloadReady}}<a class="btn btn-primary" href="#signup" data-notify="hero">Get notified when it’s ready</a>{{/downloadReady}}
           <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or later</p>
         </div>
       </div>
@@ -362,12 +364,14 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
       <div class="soon-copy">
         <h2 id="soon-title">Being built now</h2>
         <form class="signup" action="{{signupAction}}" method="post" data-signup="{{signupState}}" novalidate>
-          <label for="signup-email">Hear when these ship</label>
+          <label for="signup">{{^downloadReady}}Hear when Cutalong is ready{{/downloadReady}}{{#downloadReady}}Hear when these ship{{/downloadReady}}</label>
           <div class="signup-row">
-            <input id="signup-email" name="{{signupField}}" type="email" autocomplete="email" inputmode="email" enterkeyhint="send" autocapitalize="none" autocorrect="off" spellcheck="false" required aria-describedby="signup-help">
+            <input id="signup" name="{{signupField}}" type="email" autocomplete="email" inputmode="email" enterkeyhint="send" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="254" required aria-describedby="signup-help">
             <button class="btn btn-quiet" type="submit" {{signupDisabled}}>Tell me</button>
           </div>
-          <p class="signup-help" id="signup-help" data-signup-help aria-live="polite">One email for each of these, and nothing&nbsp;else.</p>
+          <p class="signup-help" id="signup-help" data-signup-help aria-live="polite">{{^downloadReady}}One email when it’s ready, and nothing&nbsp;else.{{/downloadReady}}{{#downloadReady}}One email for each of these, and nothing&nbsp;else.{{/downloadReady}}</p>
+          <input type="hidden" name="source" value="soon" data-signup-source>
+          <p class="signup-trap" aria-hidden="true"><label>Leave this empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label></p>
         </form>
       </div>
       <ul class="soon-list">
@@ -383,7 +387,8 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
     <div class="container close-grid">
       <div class="close-copy">
         <h2 id="close-title">Start with the footage you&nbsp;have</h2>
-        <a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>
+        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
+        {{^downloadReady}}<a class="btn btn-primary" href="#signup" data-notify="close">Get notified when it’s ready</a>{{/downloadReady}}
         <dl class="needs-list">
           <div><dt>Mac</dt><dd>Apple silicon</dd></div>
           <div><dt>macOS</dt><dd>14 Sonoma or later</dd></div>
@@ -412,7 +417,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
       <ul class="footer-links">
         <li><a href="{{page privacy}}">Privacy</a></li>
         <li><a href="{{page terms}}">Terms</a></li>
-        <li><a href="{{downloadUrl}}">Releases on GitHub</a></li>
+        {{#downloadReady}}<li><a href="{{downloadUrl}}">Releases on GitHub</a></li>{{/downloadReady}}
         <li><a href="mailto:{{contactEmail}}">{{contactEmail}}</a></li>
       </ul>
       <p class="footer-legal">© {{year}} {{owner}}</p>

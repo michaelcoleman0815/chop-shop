@@ -55,7 +55,9 @@ retakes and pauses. Plain-English asks and slash commands (`/shorts`, `/captions
   against GitHub Releases, the one-time transcription model download from Hugging Face, and optional services that only
   run with the creator's own keys (Deepgram and AssemblyAI hear the sound, Gemini sees short excerpts, Artlist music
   search). Keys are sealed with the macOS keychain. No analytics or telemetry.
-- Undecided: Cutalong's own price; the site's email provider. The domain is cutalong.io (cutalong.ai may become primary).
+- Undecided: Cutalong's own price. The domain is cutalong.io (cutalong.ai may become primary). Until a signed Cutalong
+  release exists, the site offers no download: its buttons read "Get notified when it's ready" and lead to an email
+  list that a Cloudflare Pages Function keeps in Workers KV (`downloadReady` in `site/site.config.mjs`).
   The app id and update feed still say chopshop on purpose; the latest public release (v0.2.13) is still named Chop Shop.
 
 ## Brand Commitments

@@ -571,8 +571,10 @@ html:not(.js) .loop-toggle { display: none; }
 .soon-list p { grid-column: 1; color: var(--color-ink-2); }
 .soon-state { grid-column: 2; grid-row: 1; align-self: center; color: var(--color-muted); font-size: var(--text-sm); white-space: nowrap; }
 
-.signup { display: grid; gap: var(--space-xs); max-width: 28rem; }
+.signup { position: relative; display: grid; gap: var(--space-xs); max-width: 28rem; }
 .signup label { font-weight: 600; }
+/* A "Get notified" jump lands with the heading and the label in view above the field. */
+.signup input[type="email"] { scroll-margin-top: 9rem; }
 .signup-row { display: flex; gap: var(--space-xs); }
 .signup input {
   flex: 1 1 auto; min-width: 0; min-height: 48px; padding: 0 var(--space-lg);
@@ -584,6 +586,10 @@ html:not(.js) .loop-toggle { display: none; }
 .signup input[aria-invalid] { border-color: var(--color-error); }
 .signup .btn { min-height: 48px; }
 .signup-help { min-height: 1lh; color: var(--color-muted); font-size: var(--text-sm); }
+.signup[data-state] .signup-help { color: var(--color-ink); }
+.signup[aria-busy="true"] .btn { opacity: 0.6; cursor: progress; }
+/* The honeypot: out of sight, out of the tab order and hidden from screen readers, so only a bot fills it in. */
+.signup-trap { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* The close: the download beside the app's first question. */
 .close { padding-block: var(--section-gap-s); background: var(--color-card); border-block: var(--rule-hair) solid var(--color-rule); }

@@ -1,4 +1,5 @@
-// The site's facts, in one place. The build reads this file and nothing else for them.
+// The site's facts, in one place. The build reads this file and nothing else for them, and the email
+// list's Function (functions/api/signup.js) reads it too.
 //
 // Every absolute URL on the site (the canonical links, Open Graph and Twitter cards, the sitemap and
 // robots.txt) is built from `domain`. When cutalong.ai becomes the main address, change `domain` to
@@ -8,16 +9,23 @@ export default {
   // The main address, without https:// or a trailing slash.
   domain: 'cutalong.io',
 
-  // Where every "Download for Mac" button goes. For now, the latest GitHub release.
-  // cutalong.io/download redirects here too (see _redirects in the build).
+  // false until a signed Cutalong release exists. While it is false, every download button reads
+  // "Get notified when it's ready" and leads to the email field, /download goes there too, and no
+  // page links to the releases. true brings the download buttons back, pointing at `downloadUrl`.
+  downloadReady: false,
+
+  // Where every "Download for Mac" button goes once `downloadReady` is true, and where
+  // cutalong.io/download redirects then (see _redirects in the build). For now, the latest GitHub release.
   downloadUrl: 'https://github.com/michaelcoleman0815/chop-shop/releases/latest',
 
-  // Where the coming-soon email form posts. Leave it empty until an email provider is chosen:
-  // the form then sends nothing and says so. `signupField` is the field name the provider expects.
-  signupAction: '',
+  // Where the email form posts. '/api/signup' is the Pages Function in functions/api/signup.js, which
+  // keeps each address in the KV namespace bound as SIGNUPS (README.md has the steps). An https://
+  // address posts to an email provider instead, with `signupField` as the field name it expects.
+  // Empty means the form sends nothing and says so.
+  signupAction: '/api/signup',
   signupField: 'email',
 
-  // The address for questions, printed in the footer and the legal drafts.
+  // The address for questions, printed in the footer, the legal drafts and the list's replies.
   contactEmail: 'hello@cutalong.io',
 
   // Who publishes the site and the app, for the footer and the legal drafts.

@@ -21,6 +21,8 @@ app arrive) and plain facts about what runs where. No testimonials, counts, logo
 Brand pinned by the Cutalong design system: coral for the cut only, ink primary, Figtree and JetBrains Mono, the voice
 rules (I and you, never we; no exclamation marks, emoji or praise). "Coming soon" items never read as shipped.
 Cloudflare Pages: root `site`, `npm run build`, output `dist`. Domain, download link and form action are config values.
+Until a signed Cutalong release exists (`downloadReady: false`), every download button reads "Get notified when it’s
+ready" and leads to the email field; the list is a Pages Function (`site/functions/api/signup.js`) and a KV namespace.
 
 ## Direction contract
 
@@ -33,11 +35,13 @@ Figtree set bold and tight for display, JetBrains Mono only for commands, timeco
 mark, the playhead and the assistant avatar. Product renderings stay the app's light palette in both page modes.
 
 STORY: In one screen a creator learns they can talk to an editor and sees a raw recording become v2. Then: footage stays
-on the Mac and the key is their own; drop, say, refine; their own job among five; straight answers; download.
+on the Mac and the key is their own; drop, say, refine; their own job among five; straight answers; download (until
+the release, the email list).
 
-FIRST VIEWPORT: Slab nav: lockup left, the page's beat strip in the middle, a quiet Download pill right. The h1 "The
-video editor you talk to" on one line across twelve columns at display size; under it the lede left and the ink
-"Download for Mac" pill right with one requirement line. Then a twelve-column plate (the hero-loop slot): the thread,
+FIRST VIEWPORT: Slab nav: lockup left, the page's beat strip in the middle, a quiet pill right ("Get notified" until the
+release, then "Download"). The h1 "The video editor you talk to" on one line across twelve columns at display size;
+under it the lede left and the ink pill right ("Get notified when it’s ready", then "Download for Mac") with one
+requirement line. Then a twelve-column plate (the hero-loop slot): the thread,
 where the creator's ink bubble asks for a cut and v2 lands, beside the script view, where the retakes and a pause are
 struck through as the beat strip closes from 31:40 to 9:58. It loops with a pause control.
 
@@ -54,7 +58,8 @@ The nav's beat strip filling in as you scroll, with the coral playhead on your p
 
 ## Unresolved
 
-Cutalong's own price (a text slot in the FAQ). The email provider (the form posts nowhere until its action is set).
+Cutalong's own price (a text slot in the FAQ). How the ready email is sent: the list is kept on Cloudflare, and a
+mailing service, if one is used, has to be named in the Privacy draft.
 Real captures of the redesigned app (slots: the hero loop, the three step screens, the five job screens).
 
 ## Review
