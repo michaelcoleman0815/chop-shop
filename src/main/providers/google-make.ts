@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { PRICES } from '../../shared/make/prices'
-import { ServiceError, type Gate } from './gate'
+import { notTaken, ServiceError, taken, type Gate } from './gate'
 
 /**
  * Making pictures, clips and narration with Google, on the Gemini key the
@@ -16,6 +16,12 @@ import { ServiceError, type Gate } from './gate'
  * https://aistudio.google.com/docs/omni               (Omni Flash: 3 to 15 s, up to 6 reference images)
  * https://aistudio.google.com/docs/speech-generation  (Gemini 3.8 Flash TTS)
  * https://aistudio.google.com/docs/models             (Imagen and Veo shutdown dates)
+ *
+ * A picture or clip is one request that makes it and answers with it. Once
+ * the request has gone, a lost answer (a timeout, a dropped connection, a
+ * Stop) or an answer without the picture may still be a picture made and
+ * billed, so from then on a failure is marked as a job taken (gate.ts
+ * taken): the budget counts it, and it is not sent again.
  */
 
 export const GOOGLE_IMAGE_MODEL = PRICES.images.google.model
@@ -151,24 +157,35 @@ function paidOnly(err: unknown): unknown {
   return err
 }
 
+/** One request that makes a picture or a clip: refused or answered with an error, it is not a job; anything after it went, is. */
+async function makeOne(gate: Gate, body: Record<string, unknown>, want: 'image' | 'video', timeoutMs: number, signal?: AbortSignal): Promise<Picture> {
+  let reply
+  try {
+    reply = await gate.send('gemini', INTERACTIONS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      timeoutMs,
+      signal
+    })
+  } catch (err) {
+    const said = paidOnly(err)
+    throw notTaken(err) ? said : taken(said, 'gemini')
+  }
+  try {
+    return fromInteraction(reply.json(), want)
+  } catch (err) {
+    throw taken(err, 'gemini')
+  }
+}
+
 export async function googleImage(
   gate: Gate,
   prompt: string,
   refs: Picture[],
   opts: { aspect: 'wide' | 'vertical'; size: string; signal?: AbortSignal }
 ): Promise<Picture> {
-  try {
-    const reply = await gate.send('gemini', INTERACTIONS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(imageBody(prompt, refs, opts)),
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      signal: opts.signal
-    })
-    return fromInteraction(reply.json(), 'image')
-  } catch (err) {
-    throw paidOnly(err)
-  }
+  return makeOne(gate, imageBody(prompt, refs, opts), 'image', IMAGE_TIMEOUT_MS, opts.signal)
 }
 
 export async function googleClip(
@@ -177,18 +194,7 @@ export async function googleClip(
   first: Picture,
   opts: { aspect: 'wide' | 'vertical'; seconds: number; signal?: AbortSignal }
 ): Promise<Picture> {
-  try {
-    const reply = await gate.send('gemini', INTERACTIONS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(clipBody(prompt, first, opts)),
-      timeoutMs: CLIP_TIMEOUT_MS,
-      signal: opts.signal
-    })
-    return fromInteraction(reply.json(), 'video')
-  } catch (err) {
-    throw paidOnly(err)
-  }
+  return makeOne(gate, clipBody(prompt, first, opts), 'video', CLIP_TIMEOUT_MS, opts.signal)
 }
 
 // ---------- Narration ----------

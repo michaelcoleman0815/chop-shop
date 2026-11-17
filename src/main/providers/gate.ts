@@ -86,6 +86,8 @@ export type FailureKind =
   | 'declined'
   | 'cancelled'
   | 'failed'
+  /** The key works, and its account has run out of credit: never tried again. */
+  | 'no-credit'
 
 /**
  * Why a service could not be used. The message is one plain sentence that
@@ -98,12 +100,19 @@ export class ServiceError extends Error {
   readonly status: number | null
   readonly retryAfterSec: number | null
   readonly detail: string | null
+  /**
+   * The service had taken the job on when this happened (a queued request,
+   * or a request sent whose answer was lost), so it runs, and is billed,
+   * whatever became of the answer. Such a job is counted as spent and never
+   * sent again.
+   */
+  readonly accepted: boolean
 
   constructor(
     service: ServiceId,
     kind: FailureKind,
     message: string,
-    extra: { status?: number; retryAfterSec?: number | null; detail?: string } = {}
+    extra: { status?: number | null; retryAfterSec?: number | null; detail?: string | null; accepted?: boolean } = {}
   ) {
     super(message)
     this.name = 'ServiceError'
@@ -112,7 +121,46 @@ export class ServiceError extends Error {
     this.status = extra.status ?? null
     this.retryAfterSec = extra.retryAfterSec ?? null
     this.detail = extra.detail ?? null
+    this.accepted = extra.accepted ?? false
   }
+}
+
+/** The same failure, marked as a job the service had already taken on. */
+export function taken(err: unknown, service: ServiceId): ServiceError {
+  if (err instanceof ServiceError)
+    return err.accepted
+      ? err
+      : new ServiceError(err.service, err.kind, err.message, {
+          status: err.status,
+          retryAfterSec: err.retryAfterSec,
+          detail: err.detail,
+          accepted: true
+        })
+  return new ServiceError(service, 'failed', `${serviceName(service)} took the job, and then something went wrong.`, {
+    detail: err instanceof Error ? err.message : String(err),
+    accepted: true
+  })
+}
+
+/** Whether a failure is worth trying again: the service was busy, slow, unreachable or broken on its side. */
+export function transient(err: unknown): boolean {
+  if (!(err instanceof ServiceError)) return false
+  if (err.kind === 'busy' || err.kind === 'timeout' || err.kind === 'unreachable') return true
+  return err.kind === 'failed' && (err.status === null || err.status >= 500)
+}
+
+/**
+ * Whether a failed request surely left the service with no job to run: it
+ * was refused before it went, answered with an error, or never connected.
+ * A request cut off after it went (a timeout, a dropped connection, a Stop,
+ * the switch turned off in flight) may have been taken on, and billed.
+ */
+export function notTaken(err: unknown): boolean {
+  if (!(err instanceof ServiceError) || err.accepted) return false
+  if (err.kind === 'timeout' || err.kind === 'cancelled') return false
+  if (err.kind === 'off') return !/in flight/i.test(err.detail ?? '')
+  if (err.kind === 'unreachable') return /ENOTFOUND|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH/.test(err.detail ?? '')
+  return true
 }
 
 export interface Reply {
@@ -232,12 +280,14 @@ export function createGate(deps: GateDeps): Gate {
         } else text = scrub(await res.text(), key)
       } catch (err) {
         if (controller.signal.aborted) {
-          throw new ServiceError(service, 'off', `Other AI services were turned off while I waited for ${name}.`)
+          throw new ServiceError(service, 'off', `Other AI services were turned off while I waited for ${name}.`, {
+            detail: 'Stopped in flight.'
+          })
         }
         if (init.signal?.aborted) throw new ServiceError(service, 'cancelled', `Stopped before ${name} answered.`)
         if (timeout.aborted) throw new ServiceError(service, 'timeout', `${name} took too long to answer.`)
         throw new ServiceError(service, 'unreachable', `I could not reach ${name}.`, {
-          detail: scrub(err instanceof Error ? err.message : String(err), key)
+          detail: scrub(described(err), key)
         })
       }
       if (status < 200 || status >= 300) throw failure(service, status, text, replyHeaders)
@@ -303,7 +353,7 @@ export function createGate(deps: GateDeps): Gate {
         if (init.signal?.aborted) throw new ServiceError(service, 'cancelled', `Stopped before ${name} answered.`)
         if (timeout.aborted) throw new ServiceError(service, 'timeout', `${name} took too long to answer.`)
         throw new ServiceError(service, 'unreachable', `I could not reach ${name}.`, {
-          detail: err instanceof Error ? err.message : String(err)
+          detail: described(err)
         })
       }
       if (!res.ok) {
@@ -347,6 +397,14 @@ export function createGate(deps: GateDeps): Gate {
   return { open, refusal, send, download, closeAll, cleanUp }
 }
 
+/** A fetch failure in words, with the system's code for it when there is one ("fetch failed (ECONNREFUSED)"). */
+function described(err: unknown): string {
+  const said = err instanceof Error ? err.message : String(err)
+  const cause = (err as { cause?: { code?: unknown } } | null)?.cause
+  const code = typeof cause?.code === 'string' ? cause.code : null
+  return code && !said.includes(code) ? `${said} (${code})` : said
+}
+
 function parsed(text: string): unknown {
   try {
     return JSON.parse(text) as unknown
@@ -363,12 +421,20 @@ function scrub(text: string, key: string): string {
 function failure(service: ServiceId, status: number, text: string, headers: Headers): ServiceError {
   const name = serviceName(service)
   const extra = { status, detail: text.slice(0, 300) }
+  // A key that works on an account with nothing left: 402, ElevenLabs' 401 quota_exceeded, OpenAI's 429
+  // insufficient_quota, fal's 403 "Exhausted balance", Google's prepaid credits run out. Said plainly, never retried.
+  if (
+    status === 402 ||
+    (status === 401 && /quota_exceeded/i.test(text)) ||
+    (status === 429 && /insufficient_quota|credits? (?:are |is )?(?:depleted|exhausted)|prepa(?:id|yment) credit/i.test(text)) ||
+    (status === 403 && /exhausted balance|insufficient (?:balance|credits?|funds)|top up your balance|out of credits?/i.test(text))
+  )
+    return new ServiceError(service, 'no-credit', `${name} says the account has no credit left.`, extra)
   // Google answers a key it does not know with 400 and API_KEY_INVALID.
   if (status === 401 || (status === 400 && /API_KEY_INVALID|API key not valid/i.test(text))) {
     return new ServiceError(service, 'refused', `${name} did not accept the key.`, extra)
   }
   if (status === 403) return new ServiceError(service, 'refused', `${name} did not let this key do that.`, extra)
-  if (status === 402) return new ServiceError(service, 'failed', `${name} says the account has no credit left.`, extra)
   if (status === 413) return new ServiceError(service, 'too-big', `${name} said the upload is too big.`, extra)
   if (status === 429) {
     const wait = Number(headers.get('retry-after'))

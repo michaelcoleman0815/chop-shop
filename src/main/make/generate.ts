@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import { existsSync, promises as fs } from 'fs'
 import { join } from 'path'
 import type { ImageService } from '../../shared/make/schema'
-import { ServiceError } from '../providers/gate'
+import { ServiceError, transient } from '../providers/gate'
 import type { MakeServices, Picture } from './services'
 
 /**
@@ -14,8 +14,10 @@ import type { MakeServices, Picture } from './services'
  * same shot costs nothing and a changed prompt makes a new one. The budget
  * holds every request to the total the person confirmed: a request that
  * would pass it is never sent. Busy, slow or failing services are tried
- * again a few times; a refusal or a declined prompt is not. Cancel stops
- * whatever is in flight.
+ * again a few times; a refusal or a declined prompt is not, and nor is a job
+ * the service had already taken on (a queued request, or one whose answer
+ * was lost on the way back): that one is billed, so it counts as spent and
+ * is never sent twice. Cancel stops whatever is in flight.
  */
 
 /** What decides what a service makes, as the cache keys it. */
@@ -130,6 +132,11 @@ export class Budget {
     return Math.round(this.spentSoFar * 10000) / 10000
   }
 
+  /** What is left to hold: the cap, less what is spent and what is on order. */
+  get room(): number {
+    return Math.max(0, this.cap - this.spentSoFar - this.held)
+  }
+
   /** Holds an amount for a request about to go; false when it would pass the cap, and then it must not go. */
   reserve(amount: number): boolean {
     if (this.spentSoFar + this.held + amount > this.cap + 1e-9) return false
@@ -156,11 +163,25 @@ export class OverBudget extends Error {
   }
 }
 
-/** Whether a failure is worth trying again: the service was busy, slow, unreachable or broken on its side. */
+/**
+ * Whether a failure is worth sending again: the service was busy, slow,
+ * unreachable or broken on its side, and had not taken the job on.
+ */
 export function retryable(err: unknown): boolean {
-  if (!(err instanceof ServiceError)) return false
-  if (err.kind === 'busy' || err.kind === 'timeout' || err.kind === 'unreachable') return true
-  return err.kind === 'failed' && (err.status === null || err.status >= 500)
+  return transient(err) && !(err as ServiceError).accepted
+}
+
+/** A job the service had taken on when it failed: billed, so it is spent, and never sent again. */
+export function acceptedJob(err: unknown): boolean {
+  return err instanceof ServiceError && err.accepted
+}
+
+/** Made and paid for, but it could not be kept: the money stays spent. */
+export class NotKept extends Error {
+  constructor(cause: unknown) {
+    super(`It was made and paid for, but I could not save it (${cause instanceof Error ? cause.message : String(cause)})`)
+    this.name = 'NotKept'
+  }
 }
 
 const wait = (ms: number, signal?: AbortSignal): Promise<void> =>
@@ -209,23 +230,35 @@ export async function makeOnce(req: MadeRequest, price: number, deps: MakeDeps, 
     throw new OverBudget(`That would take it past the $${deps.budget.cap.toFixed(2)} agreed, so I did not ask for it.`)
   const attempts = deps.attempts ?? 3
   let backoff = deps.backoffMs ?? 1500
+  let made: Picture | null = null
   let last: unknown = null
-  for (let i = 0; i < attempts; i++) {
+  for (let i = 0; i < attempts && !made; i++) {
     try {
-      const made = await make()
-      deps.budget.commit(price, price)
-      const path = await deps.cache.put(key, made, price)
-      return { path, cost: price, cached: false }
+      made = await make()
     } catch (err) {
       last = err
+      // Taken on and then lost: it is billed, so it is spent, and it is not sent again.
+      if (acceptedJob(err)) {
+        deps.budget.commit(price, price)
+        throw err
+      }
       if (deps.signal?.aborted || !retryable(err) || i === attempts - 1) break
       const after = err instanceof ServiceError && err.retryAfterSec ? err.retryAfterSec * 1000 : backoff
       await wait(Math.min(30_000, after), deps.signal)
       backoff *= 2
     }
   }
-  deps.budget.release(price)
-  throw last
+  if (!made) {
+    deps.budget.release(price)
+    throw last
+  }
+  // Paid for now, whatever happens next: what was held for it is spent once, and never let go again.
+  deps.budget.commit(price, price)
+  try {
+    return { path: await deps.cache.put(key, made, price), cost: price, cached: false }
+  } catch (err) {
+    throw new NotKept(err)
+  }
 }
 
 /** Runs jobs a few at a time, in order of starting, stopping new ones once cancelled. */

@@ -1,0 +1,278 @@
+import { describe, expect, it, vi } from 'vitest'
+
+/**
+ * Regression for the money review's second, third and fourth findings, on
+ * the window's side: the real useMake hook (React's hooks replaced by plain
+ * functions, so one call of the hook is one render) talking to the real
+ * main-process changeFor and draftFor through a fake api.
+ *
+ * Each quote has its own button and only the newest keeps it; pressing it
+ * sends the price it showed and its draft's fingerprint. Typed words answer
+ * waiting questions only when they read as answers: "never mind" writes
+ * nothing, and an edit of the open video is not taken for an answer.
+ * Anything that may spend shows Stop. Nothing read from typed words of a
+ * made video goes ahead without its button.
+ */
+
+const fake = vi.hoisted(() => ({ api: {} as Record<string, unknown> }))
+
+vi.mock('react', () => ({
+  useRef: <T>(v: T) => ({ current: v }),
+  useState: <T>(v: T | (() => T)) => [typeof v === 'function' ? (v as () => T)() : v, () => undefined],
+  useCallback: <T>(f: T) => f,
+  useMemo: <T>(f: () => T) => f()
+}))
+vi.mock('./api', () => ({ api: fake.api }))
+
+import type { EditDoc } from '../../../shared/edit/schema'
+import { readAsk } from '../../../shared/make/brief'
+import type { Draft } from '../../../shared/make/draft'
+import { draftFingerprint } from '../../../shared/make/fingerprint'
+import { questionsFor } from '../../../shared/make/questions'
+import { quoteReply, type Availability } from '../../../shared/make/quote'
+import type { Make } from '../../../shared/make/schema'
+import type { ParseCall } from '../../../main/make/claude'
+import { changeFor } from '../../../main/make/remake'
+import { draftFor, type DraftDeps } from '../../../main/make/run'
+import { useMake } from './useMake'
+import type { Msg } from './components/Message'
+
+const phrases = Array.from(
+  { length: 24 },
+  (_, i) =>
+    `In ${1950 + (i % 9)} the derricks of West Texas rose over town number ${i + 1} and the men worked through the night.`
+)
+const local = { engine: 'local' as const, id: 'am_michael', name: 'Michael' }
+const make: Make = {
+  v: 1,
+  brief: {
+    topic: 'the 1950s oil boom',
+    format: 'documentary',
+    seconds: 120,
+    voice: local,
+    from: 'topic',
+    aspect: 'wide',
+    look: 'archival',
+    maps: 'auto',
+    clips: 'auto',
+    images: null,
+    cap: null,
+    inferred: [],
+    ask: 'make a 2 minute documentary about the 1950s oil boom'
+  },
+  title: 'Black Gold',
+  outline: ['The boom'],
+  script: phrases.join(' '),
+  phrases,
+  sections: [0],
+  bible: { style: 'Photoreal archival photograph.', palette: 'sepia', era: 'West Texas, 1950s', characters: [] },
+  shots: phrases.map((_, i) => ({
+    phrase: i,
+    visual: {
+      kind: 'still' as const,
+      prompt: `A derrick at dusk, number ${i + 1}.`,
+      move: 'push-in' as const,
+      characters: []
+    },
+    title: null,
+    callouts: [],
+    beat: `b${i}`,
+    file: `/made/${i}.png`,
+    maker: 'google' as const,
+    model: 'gemini-nano-banana-2.1',
+    cost: 0.0504,
+    key: null,
+    note: null
+  })),
+  sheets: [],
+  narration: { path: '/made/narration.wav', voice: local, timing: 'whisper', durationSec: 120, cost: 0 },
+  images: 'google',
+  clips: 'google',
+  spent: 1.4
+}
+const doc = {
+  id: 'doc1',
+  sources: [{ id: 's1', path: '/made/narration.wav' }],
+  words: [],
+  assets: [],
+  make,
+  versions: []
+} as unknown as EditDoc
+
+const can: Availability = { google: true, fal: false, elevenlabs: true, openai: false, claude: true, localVoice: true }
+
+function harness(settings: DraftDeps['settings'], parse: ParseCall, opts: { open?: EditDoc | null } = {}) {
+  const msgs = new Map<string, Partial<Msg>>()
+  let n = 0
+  const goes: { draft: Draft; confirmed: number; fingerprint: string }[] = []
+  fake.api.onCutProgress = () => () => undefined
+  fake.api.makeChange = async (req: { doc: EditDoc; text: string; onScreen?: string | null }) => ({
+    ok: true,
+    change: await changeFor(req.doc, req.text, req.onScreen ?? null, { parse, can, brand: {}, settings })
+  })
+  fake.api.makeGo = async (req: { draft: Draft; confirmed: number; fingerprint: string }) => {
+    goes.push(req)
+    return { ok: false, message: 'review: stopped before anything is made' }
+  }
+  fake.api.makeCancel = async () => true
+  // make:start as main runs it: questions first unless answered, then Claude writes the script.
+  const starts: { text: string; answered: boolean; stop: boolean }[] = []
+  const madeUnasked: Draft[] = []
+  fake.api.makeStart = async (req: { text: string; recording?: string | null; answered?: boolean }) => {
+    const shown = msgs.get(`m${n}`)
+    starts.push({
+      text: req.text,
+      answered: !!req.answered,
+      stop: !!shown?.actions?.some((a) => (a.payload ?? '').includes('"stop"'))
+    })
+    const brief = readAsk(String(req.text ?? ''), { niche: null, recording: req.recording ?? null })
+    if (!brief) return { ok: false, message: 'Tell me what the video is about.' }
+    const questions = req.answered ? [] : questionsFor(brief)
+    if (questions.length) return { ok: true, kind: 'ask', questions }
+    const drafted = await draftFor(brief, `new-${n}`, { parse, can, brand: {}, settings })
+    if (!drafted.ok) return { ok: false, message: drafted.message }
+    if (drafted.draft.quote.auto) {
+      madeUnasked.push(drafted.draft)
+      return { ok: false, message: 'review: main makes it here, without asking' }
+    }
+    const d = drafted.draft
+    return {
+      ok: true,
+      kind: 'quote',
+      draft: d,
+      reply: quoteReply(d.brief, d.quote, { title: d.title, scenes: d.quote.counts.scenes })
+    }
+  }
+  const docRef = { current: (opts.open === undefined ? doc : opts.open) as EditDoc | null }
+  const makes = useMake({
+    docRef,
+    setDoc: () => undefined,
+    setMediaUrl: () => undefined,
+    push: (m) => {
+      const id = `m${++n}`
+      msgs.set(id, { ...m })
+      return id
+    },
+    patch: (id, p) => msgs.set(id, { ...msgs.get(id), ...p }),
+    applyAsVersion: () => null,
+    during: (work) => work(),
+    findBroll: async () => undefined,
+    brand: () => 'default'
+  })
+  /** What a typed message does when an edit is open: useMake.handle first, then useCutalong's ask calls useMake.asked. */
+  const say = async (text: string): Promise<boolean> => {
+    if (await makes.handle(text, null, [])) return true
+    return makes.asked(text)
+  }
+  return { msgs, goes, makes, say, starts, madeUnasked }
+}
+
+const noClaude: ParseCall = async () => {
+  throw new Error('Claude is not asked in this test')
+}
+const counting =
+  (count: { n: number }): ParseCall =>
+  async () => {
+    count.n++
+    return {
+      parsed_output: {
+        title: 'My Trip',
+        sections: [{ heading: 'North', paragraphs: ['We drove north at dawn.', 'The lake was still.'] }]
+      },
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 4000, output_tokens: 3000 }
+    }
+  }
+
+describe('a made video asked to change twice', () => {
+  it('keeps one button, the newest quote’s, and it makes exactly what it showed', async () => {
+    const h = harness({ cap: null, autoUnder: null }, noClaude)
+    await h.say('read it with ElevenLabs')
+    const first = [...h.msgs.entries()].find(([, m]) => m.actions?.some((a) => a.kind === 'make' && a.primary))!
+    const firstButton = first[1].actions!.find((a) => a.primary)!
+    await h.say('turn it into a cartoon')
+    const withButtons = [...h.msgs.entries()].filter(([, m]) => m.actions?.some((a) => a.kind === 'make' && a.primary))
+    // The first quote's button went when the second quote came.
+    expect(withButtons).toHaveLength(1)
+    expect(withButtons[0][0]).not.toBe(first[0])
+    // Pressed anyway (a stale screen), it makes nothing and says why.
+    await h.makes.onAction(firstButton)
+    expect(h.goes).toHaveLength(0)
+    expect([...h.msgs.values()].some((m) => /A newer quote replaced that one/.test(m.text ?? ''))).toBe(true)
+    // The newest one makes its own draft, at its own price, with its fingerprint.
+    const second = withButtons[0][1].actions!.find((a) => a.primary)!
+    await h.makes.onAction(second)
+    expect(h.goes).toHaveLength(1)
+    const sent = h.goes[0]
+    expect(sent.draft.kept?.narration).toBeTruthy()
+    expect(sent.draft.kept?.shots).toBeUndefined()
+    expect(second.label).toBe(`Make it for $${sent.confirmed.toFixed(2)}`)
+    expect(sent.fingerprint).toBe(draftFingerprint(sent.draft))
+    // What makes it shows Stop while it runs.
+    const progress = [...h.msgs.values()].find((m) => m.actions?.some((a) => (a.payload ?? '').includes('"stop"')))
+    expect(progress?.actions?.map((a) => a.label)).toEqual(['Stop'])
+  })
+
+  it('never goes ahead with a change read from typed words, whatever Settings says', async () => {
+    const h = harness({ cap: null, autoUnder: 50 }, noClaude)
+    await h.say('make shot 3 again')
+    await h.say('read it with ElevenLabs')
+    expect(h.goes).toHaveLength(0)
+    expect([...h.msgs.values()].filter((m) => m.actions?.some((a) => a.kind === 'make' && a.primary))).toHaveLength(1)
+  })
+})
+
+describe('"make shot 3 two seconds longer"', () => {
+  it('is an ordinary edit: no script, no quote, nothing made', async () => {
+    const count = { n: 0 }
+    const h = harness({ cap: null, autoUnder: 2 }, counting(count))
+    expect(await h.say('make shot 3 two seconds longer')).toBe(false)
+    expect(count.n).toBe(0)
+    expect(h.goes).toHaveLength(0)
+    expect([...h.msgs.values()].some((m) => m.make)).toBe(false)
+  })
+})
+
+describe('questions waiting before a script is written', () => {
+  it('"never mind" writes nothing and spends nothing, and the questions go', async () => {
+    const count = { n: 0 }
+    const h = harness({ cap: null, autoUnder: 2 }, counting(count), { open: null })
+    await h.say('make a video about my trip')
+    const card = [...h.msgs.entries()].find(([, m]) => m.makeAsk)
+    expect(card).toBeTruthy()
+    expect(h.makes.questions(card![1].makeAsk!)).not.toBeNull()
+    await h.say('never mind')
+    expect(count.n).toBe(0)
+    expect(h.starts).toHaveLength(1)
+    expect(h.madeUnasked).toHaveLength(0)
+    expect(h.makes.questions(card![1].makeAsk!)).toBeNull()
+    expect(h.msgs.get(card![0])?.makeAsk).toBeUndefined()
+    expect(
+      [...h.msgs.values()].some((m) => /I won’t make it\. Nothing was written or spent\./.test(m.text ?? ''))
+    ).toBe(true)
+  })
+
+  it('an edit asked of the open video is not taken for an answer', async () => {
+    const count = { n: 0 }
+    const h = harness({ cap: null, autoUnder: null }, counting(count))
+    await h.makes.handle('/make a video about my trip', { command: 'make', rest: 'a video about my trip' }, [])
+    const handled = await h.makes.handle('cut the first 10 seconds', null, [])
+    expect(handled).toBe(false)
+    expect(count.n).toBe(0)
+    expect(h.starts).toHaveLength(1)
+  })
+
+  it('a real answer writes it, under a progress that can be stopped', async () => {
+    const count = { n: 0 }
+    const h = harness({ cap: null, autoUnder: null }, counting(count), { open: null })
+    await h.say('make a video about my trip')
+    await h.say('the lakes up north, a map documentary, 5 minutes')
+    expect(h.starts).toHaveLength(2)
+    expect(h.starts[1].answered).toBe(true)
+    expect(h.starts[1].stop).toBe(true)
+    expect(h.starts[1].text).toMatch(/the lakes up north/)
+    expect(h.starts[1].text).toMatch(/as a cinematic documentary with maps wherever they help/)
+    expect(h.starts[1].text).toMatch(/5 minutes long/)
+    expect(count.n).toBe(1)
+  })
+})

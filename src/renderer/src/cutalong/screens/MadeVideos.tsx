@@ -80,8 +80,8 @@ export function MadeVideos({
           />
         </span>
         <p className="cl-aside">
-          A prompt can ask for less, like “under $3”. Nothing is asked of a service that would take a video past $
-          {limit}.
+          A prompt can ask for less, like “under $3”, never more. Nothing is asked of a service, Claude included, that
+          would take a video past ${limit}, with what it has cost already.
         </p>
       </div>
       <div className="cl-field">
@@ -117,8 +117,8 @@ export function MadeVideos({
         </span>
         <p className="cl-aside" role="status">
           {on
-            ? `A video quoted under $${settings?.makeAutoUnder} is made straight away, and its reply says what it cost. Anything more waits for you.`
-            : 'Every video is quoted first and waits for you to press Make it. Nothing is spent before that.'}
+            ? `A new video whose whole cost, its script included, comes to less than $${settings?.makeAutoUnder} is made straight away, and its reply says what it cost. Anything more, and every change to a made video, waits for you.`
+            : 'Every video is quoted first and waits for you to press Make it. Before that, only Claude writes its script, with your Anthropic key.'}
         </p>
       </div>
     </section>

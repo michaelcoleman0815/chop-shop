@@ -2,7 +2,8 @@ import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'r
 import { addAsset, currentVersion, type EditDoc, type Op } from '../../../shared/edit'
 import { asNewVersion } from '../../../shared/make/assemble'
 import { reviseBrief, wantsMake } from '../../../shared/make/brief'
-import { answered as answeredPrompt, type MakeQuestion } from '../../../shared/make/questions'
+import { answered as answeredPrompt, readAnswer, type MakeQuestion } from '../../../shared/make/questions'
+import { draftFingerprint } from '../../../shared/make/fingerprint'
 import type { Change, Draft, Reply, ShotChange } from '../../../shared/make/draft'
 import { dollars } from '../../../shared/make/quote'
 import { api } from './api'
@@ -19,8 +20,15 @@ import { isAudioFile, isVideoFile } from './format'
  * What is said while a quote waits changes it ("make it 3 minutes"). Asks
  * of a made video that make something again ("make shot 4 a close-up of his
  * hands", "use a different voice", "make it an explainer instead") are
- * quoted the same way and land as new versions. useCutalong calls in at a
- * few named places and keeps everything else.
+ * quoted the same way, never made without their button, and land as new
+ * versions. useCutalong calls in at a few named places and keeps everything
+ * else.
+ *
+ * Each quote has its own key, and only the newest has a button: a new quote
+ * takes the older one's away. Pressed, it sends main the price it showed and
+ * a fingerprint of its draft, so it can only make what it said, for what it
+ * said. Anything that spends (writing the script, making the video, making
+ * a shot again) shows Stop while it runs.
  */
 
 export interface MakeDeps {
@@ -69,6 +77,10 @@ const errorText = (err: unknown): string => (err instanceof Error ? err.message 
 
 const MAKE_COMMANDS = new Set(['make', 'documentary', 'explainer'])
 
+let quoteCount = 0
+/** A key no other quote in this session has. */
+const newKey = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${++quoteCount}`
+
 /** A reply as the message that shows it. */
 const shown = (r: Reply): Partial<Msg> => ({
   progress: null,
@@ -84,9 +96,10 @@ const renumber = (text: string, n: number): string => text.replace(/^v\d+\b/, `v
 export function useMake(deps: MakeDeps): Makes {
   const live = useRef(deps)
   live.current = deps
-  const drafts = useRef(new Map<string, Draft>())
+  /** Every quote shown, by its own key: its draft, the price its button showed, and its fingerprint. */
+  const drafts = useRef(new Map<string, { draft: Draft; total: number; fingerprint: string }>())
   const changes = useRef(new Map<string, ShotChange>())
-  /** The quote waiting for its button, and the message that shows it. */
+  /** The newest quote, the only one with a button, and the message that shows it. */
   const pending = useRef<{ id: string; msg: string } | null>(null)
   /** A voice-over asked for and not dropped yet. */
   const waitingRecording = useRef(false)
@@ -97,17 +110,25 @@ export function useMake(deps: MakeDeps): Makes {
   const scriptMsg = useRef<string | null>(null)
   const [, setVersion] = useState(0)
 
-  const keep = useCallback((draft: Draft): void => {
-    drafts.current.set(draft.id + (draft.into ? ':into' : ''), draft)
+  /** A quote shown: kept under a key of its own, with the price its button shows. */
+  const keep = useCallback((draft: Draft): string => {
+    const key = newKey('quote')
+    drafts.current.set(key, { draft, total: draft.quote.total, fingerprint: draftFingerprint(draft) })
     setVersion((n) => n + 1)
+    return key
   }, [])
 
-  const keyOf = (draft: Draft): string => draft.id + (draft.into ? ':into' : '')
+  /** The newest quote is this one: the button of the one before it goes, so only one quote can be made at a time. */
+  const showing = useCallback((key: string, msg: string): void => {
+    const was = pending.current
+    if (was && was.msg !== msg) live.current.patch(was.msg, { actions: [] })
+    if (was && was.id !== key) changes.current.delete(was.id)
+    pending.current = { id: key, msg }
+  }, [])
 
   /** The quote's message: its sentence, three facts, the lines behind Details, the one button, and the script behind another. */
-  const quoteMsg = useCallback((draft: Draft, reply: Reply, scriptShown = false): Partial<Msg> => {
+  const quoteMsg = useCallback((key: string, draft: Draft, reply: Reply, scriptShown = false): Partial<Msg> => {
     const q = draft.quote
-    const id = keyOf(draft)
     const actions: NonNullable<Msg['actions']> = q.missing.length
       ? [{ kind: 'open-settings', label: 'Open Settings', primary: true }]
       : [
@@ -115,16 +136,16 @@ export function useMake(deps: MakeDeps): Makes {
             kind: 'make',
             label: `Make it for ${dollars(q.total)}`,
             primary: true,
-            payload: JSON.stringify({ do: 'go', id })
+            payload: JSON.stringify({ do: 'go', id: key })
           }
         ]
     if (draft.script.trim())
       actions.push({
         kind: 'make',
         label: scriptShown ? 'Hide the script' : 'Read the script',
-        payload: JSON.stringify({ do: 'script', id })
+        payload: JSON.stringify({ do: 'script', id: key })
       })
-    return { ...shown(reply), actions, make: id }
+    return { ...shown(reply), actions, make: key }
   }, [])
 
   /** A made video in the session: a new edit, or a new version of the one it was made from. */
@@ -166,22 +187,25 @@ export function useMake(deps: MakeDeps): Makes {
     []
   )
 
-  /** Makes a confirmed draft. */
+  /** Makes a confirmed draft: the one its button showed, for the price it showed. */
   const go = useCallback(
     async (key: string): Promise<void> => {
       const { push, patch, during } = live.current
-      const draft = drafts.current.get(key)
-      if (!draft) {
+      const entry = drafts.current.get(key)
+      if (!entry) {
         push({
           role: 'assistant',
           text: 'That quote is from before Cutalong restarted. Ask again and I’ll quote it fresh.'
         })
         return
       }
-      if (pending.current?.id === key) {
-        patch(pending.current.msg, { actions: [] })
-        pending.current = null
+      // Only the newest quote's button makes anything; an older one was replaced.
+      if (pending.current?.id !== key) {
+        push({ role: 'assistant', text: 'A newer quote replaced that one. Press the newest quote’s button, or ask again.' })
+        return
       }
+      patch(pending.current.msg, { actions: [] })
+      pending.current = null
       const msg = push({
         role: 'assistant',
         text: '',
@@ -191,44 +215,47 @@ export function useMake(deps: MakeDeps): Makes {
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeGo>>
       try {
-        r = await during(() => api.makeGo({ draft, confirmed: draft.quote.total }))
+        r = await during(() => api.makeGo({ draft: entry.draft, confirmed: entry.total, fingerprint: entry.fingerprint }))
       } catch (err) {
         r = { ok: false, message: errorText(err) }
       } finally {
         off()
       }
       if (!r.ok) {
-        // A new price is a new quote, with its own button.
+        // A new price, another service, or the rest after a Stop: a new quote, with its own button.
         if (r.draft && r.reply) {
-          keep(r.draft)
-          pending.current = { id: keyOf(r.draft), msg }
-          patch(msg, { ...quoteMsg(r.draft, r.reply), text: r.message })
+          const next = keep(r.draft)
+          showing(next, msg)
+          patch(msg, { ...quoteMsg(next, r.draft, r.reply), text: r.message })
         } else patch(msg, { progress: null, text: r.message, error: true })
         return
       }
       drafts.current.delete(key)
       land(r, msg)
     },
-    [keep, land, quoteMsg]
+    [keep, land, quoteMsg, showing]
   )
 
   const quote = useCallback(
-    async (msg: string, draft: Draft, reply: Reply): Promise<void> => {
-      keep(draft)
-      pending.current = { id: keyOf(draft), msg }
-      live.current.patch(msg, quoteMsg(draft, reply))
+    async (msg: string, draft: Draft, reply: Reply): Promise<string> => {
+      const key = keep(draft)
+      showing(key, msg)
+      live.current.patch(msg, quoteMsg(key, draft, reply))
+      return key
     },
-    [keep, quoteMsg]
+    [keep, quoteMsg, showing]
   )
 
   /** A prompt read and quoted, or made straight away under the amount in Settings; asked about first when it must be. */
   const start = useCallback(
     async (text: string, recording: string | null, answered = false): Promise<void> => {
       const { push, patch, during } = live.current
+      // Writing the script spends, and Settings may make the video straight after: Stop stays in reach.
       const msg = push({
         role: 'assistant',
         text: '',
-        progress: { stage: 'Reading what you asked for', percent: null }
+        progress: { stage: 'Reading what you asked for', percent: null },
+        actions: STOP
       })
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeStart>>
@@ -240,7 +267,11 @@ export function useMake(deps: MakeDeps): Makes {
         off()
       }
       if (!r.ok) {
-        patch(msg, { progress: null, text: r.message, error: true })
+        // Made straight away and stopped: what was spent, and a quote for the rest, with its own button.
+        if (r.draft && r.reply) {
+          await quote(msg, r.draft, r.reply)
+          patch(msg, { text: r.message })
+        } else patch(msg, { progress: null, text: r.message, error: true, actions: [] })
         return
       }
       if (r.kind === 'ask') {
@@ -254,7 +285,8 @@ export function useMake(deps: MakeDeps): Makes {
             r.questions.length === 1
               ? 'One thing first, so I write the right video.'
               : `${r.questions.length === 2 ? 'Two' : 'Three'} things first, so I write the right video.`,
-          makeAsk: id
+          makeAsk: id,
+          actions: []
         })
         return
       }
@@ -281,22 +313,25 @@ export function useMake(deps: MakeDeps): Makes {
   )
 
   /** One shot made again for its confirmed quote, as a new version. */
-  const reshoot = useCallback(async (key: string, quoted?: string): Promise<void> => {
+  const reshoot = useCallback(async (key: string): Promise<void> => {
     const { docRef, push, patch, setDoc, applyAsVersion, during } = live.current
     const change = changes.current.get(key)
     const d = docRef.current
     if (!change || !d?.make) {
       push({
         role: 'assistant',
-        text: 'That quote is from before Cutalong restarted. Ask again and I’ll quote it fresh.'
+        text: 'That quote is from before Cutalong restarted, or a newer one replaced it. Ask again and I’ll quote it fresh.'
       })
       return
     }
-    if (quoted) patch(quoted, { actions: [] })
+    if (pending.current?.id === key) {
+      patch(pending.current.msg, { actions: [] })
+      pending.current = null
+    }
     const msg = push({
       role: 'assistant',
       text: '',
-      progress: { stage: 'Making the shot again', percent: null },
+      progress: { stage: 'Starting', percent: null },
       actions: STOP
     })
     const off = api.onCutProgress((p) => patch(msg, { progress: p }))
@@ -358,13 +393,14 @@ export function useMake(deps: MakeDeps): Makes {
         await findBroll(change.search, change.beat)
         return
       }
+      // Read from what was typed, so it is never made without its button, whatever Settings says.
       if (change.kind === 'draft') {
         await quote(msg, change.draft, change.reply)
-        if (change.draft.quote.auto) await go(keyOf(change.draft))
         return
       }
-      const key = `${docRef.current?.id ?? ''}:${change.phrase}:${Date.now()}`
+      const key = newKey(`shot-${docRef.current?.id ?? ''}-${change.phrase}`)
       changes.current.set(key, change)
+      showing(key, msg)
       const actions: NonNullable<Msg['actions']> = change.missing.length
         ? [{ kind: 'open-settings', label: 'Open Settings', primary: true }]
         : [
@@ -376,9 +412,8 @@ export function useMake(deps: MakeDeps): Makes {
             }
           ]
       patch(msg, { ...shown(change.reply), actions })
-      if (change.auto) await reshoot(key, msg)
     },
-    [go, quote, reshoot]
+    [quote, showing]
   )
 
   const handle = useCallback(
@@ -420,20 +455,37 @@ export function useMake(deps: MakeDeps): Makes {
           })
           return true
         }
+        // A new ask takes the place of a quote, or questions, still waiting.
+        if (pending.current) patch(pending.current.msg, { actions: [] })
         pending.current = null
+        if (asking.current) {
+          patch(asking.current.msg, { makeAsk: undefined, aside: 'Left unanswered, so nothing was written.' })
+          asking.current = null
+        }
         await start(words, audio[0]?.path ?? null)
         return true
       }
-      // Questions waiting: what is typed answers them.
+      // Questions waiting: what is typed answers them only when it reads as an answer.
       const open = asking.current
       if (open && files.length === 0 && text.trim()) {
-        await answer(open.id, [text.trim()])
-        return true
+        const read = readAnswer(text, open.questions, { editOpen: !!docRef.current })
+        if (read.kind === 'answer') {
+          await answer(open.id, read.answers)
+          return true
+        }
+        // No, or anything else: the questions go, and nothing is written for them.
+        asking.current = null
+        setVersion((n) => n + 1)
+        patch(open.msg, { makeAsk: undefined, aside: 'Left unanswered, so nothing was written.' })
+        if (read.kind === 'no') {
+          push({ role: 'assistant', text: 'All right, I won’t make it. Nothing was written or spent.' })
+          return true
+        }
       }
       // A quote waiting: what is said next changes it.
       const waiting = pending.current
       if (waiting && files.length === 0 && text.trim()) {
-        const draft = drafts.current.get(waiting.id)
+        const draft = drafts.current.get(waiting.id)?.draft
         if (!draft) return false
         // Words that change nothing about the quote are an ask of the edit, when there is one.
         if (!reviseBrief(draft.brief, text)) {
@@ -450,7 +502,6 @@ export function useMake(deps: MakeDeps): Makes {
           patch(msg, { progress: null, text: r.ok ? 'I could not quote that again.' : r.message, error: true })
           return true
         }
-        patch(waiting.msg, { actions: [] })
         await quote(msg, r.draft, r.reply)
         return true
       }
@@ -484,14 +535,14 @@ export function useMake(deps: MakeDeps): Makes {
   /** The script under a quote opened or closed, and the button that does it renamed to match. */
   const toggleScript = useCallback(
     (id: string): void => {
-      const draft = drafts.current.get(id)
+      const draft = drafts.current.get(id)?.draft
       const msg = pending.current?.id === id ? pending.current.msg : null
       if (!draft || !msg) return
       const opening = openScript !== id
       setOpenScript(opening ? id : null)
       scriptMsg.current = opening ? msg : null
       live.current.patch(msg, {
-        actions: quoteMsg(draft, { text: '', aside: null, chips: [], details: [] }, opening).actions
+        actions: quoteMsg(id, draft, { text: '', aside: null, chips: [], details: [] }, opening).actions
       })
     },
     [openScript, quoteMsg]
@@ -521,26 +572,25 @@ export function useMake(deps: MakeDeps): Makes {
   const editScript = useCallback(
     async (id: string, script: string): Promise<void> => {
       const { push, patch } = live.current
-      const draft = drafts.current.get(id)
+      const draft = drafts.current.get(id)?.draft
       if (!draft) return
       const msg = push({
         role: 'assistant',
         text: '',
-        progress: { stage: 'Reading the script again', percent: null }
+        progress: { stage: 'Reading your script again', percent: null }
       })
       const r = await api.makeScript({ draft, script })
       if (!r.ok) {
         patch(msg, { progress: null, text: r.message, error: true })
         return
       }
-      if (pending.current) patch(pending.current.msg, { actions: [] })
       setOpenScript(null)
       await quote(msg, r.draft, r.reply)
     },
     [quote]
   )
 
-  const draft = useCallback((id: string): Draft | null => drafts.current.get(id) ?? null, [])
+  const draft = useCallback((id: string): Draft | null => drafts.current.get(id)?.draft ?? null, [])
   const scriptOpen = useCallback((id: string): boolean => openScript === id, [openScript])
   const questions = useCallback((id: string): MakeQuestion[] | null => (asking.current?.id === id ? asking.current.questions : null), [])
 

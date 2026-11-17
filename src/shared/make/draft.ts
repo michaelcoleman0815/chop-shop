@@ -1,7 +1,7 @@
 import type { Carry } from './assemble'
 import type { KeyService } from './key-steps'
 import type { Quote, QuoteLine } from './quote'
-import type { Bible, Brief, ImageService, MadeShot, Sheet, VoiceChoice } from './schema'
+import type { Bible, Brief, ImageService, MadeShot, Sheet, Shot, VoiceChoice } from './schema'
 import type { Word } from '../edit/schema'
 
 /**
@@ -26,6 +26,22 @@ export interface Draft {
   kept?: Kept
   /** Made again into this edit: its id, and the recording id a new narration takes in it. */
   into?: { docId: string; sourceId: string; summary: string; carry: Carry }
+  /** Spent on this video before this quote, besides the script: a stopped run's work, or the made video a change is of. */
+  spentBefore?: number
+  /**
+   * The script is written only once this quote is confirmed (a made video
+   * asked to run a new length), in the brand's voice and under its name.
+   */
+  unwritten?: { voice: string | null; name: string | null }
+  /** The shot list planned already, and the shots of it made before a Stop, to go on from. */
+  plan?: {
+    bible: Bible
+    shots: Shot[]
+    sheets: Sheet[]
+    made: MadeShot[]
+    /** Character sheets the quote allowed that are not made yet. */
+    sheetsLeft?: number
+  }
 }
 
 /** What a remake keeps of the video it is made from, so it is neither paid for nor sent again. */
@@ -38,6 +54,8 @@ export interface Kept {
     words: Word[]
     voice: VoiceChoice
     timing: 'voice' | 'whisper'
+    /** What it cost when it was read, if it was paid for. */
+    cost?: number
   }
   shots?: { bible: Bible; shots: MadeShot[]; sheets: Sheet[] }
 }

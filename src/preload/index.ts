@@ -298,10 +298,17 @@ const api = {
     | { ok: true; kind: 'made'; auto: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
     | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
   > => ipcRenderer.invoke('make:start', req),
-  /** A quote confirmed at `confirmed` dollars: made, unless the price is now higher. */
+  /**
+   * A quote confirmed at `confirmed` dollars, the price its button showed:
+   * made, unless the price is now higher, another service would make it, or
+   * the draft is not the one the button showed (its fingerprint). Stopped, it
+   * answers with what was spent and a quote for the rest.
+   */
   makeGo: (req: {
     draft: Draft
     confirmed: number
+    /** shared/make/fingerprint of the draft, as its quote was shown. */
+    fingerprint: string
   }): Promise<
     | { ok: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
     | { ok: false; message: string; draft?: Draft; reply?: MakeReply }

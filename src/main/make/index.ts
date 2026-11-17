@@ -13,17 +13,20 @@ import { makeServices } from '../providers'
 import { EditDocSchema, type EditDoc } from '../../shared/edit/schema'
 import { DEFAULT_MUSIC, type Music } from '../../shared/edit/audio'
 import { readAsk } from '../../shared/make/brief'
+import { draftFingerprint } from '../../shared/make/fingerprint'
 import { questionsFor } from '../../shared/make/questions'
 import { quoteReply, type Availability } from '../../shared/make/quote'
 import {
   BriefSchema,
+  IMAGE_SERVICES,
   MadeShotSchema,
   SheetSchema,
+  ShotSchema,
   BibleSchema,
   VoiceChoiceSchema,
   type Brief
 } from '../../shared/make/schema'
-import { defaultVoice } from '../../shared/make/voices'
+import { defaultVoice, voicePhrase } from '../../shared/make/voices'
 import type { Transcript } from '../../shared/types'
 import { parseWith, type ParseCall } from './claude'
 import { kokoroVoice } from './kokoro'
@@ -43,9 +46,12 @@ import { standInClaude, standInServices, standInVoice, writeHeard } from './stan
  *
  * Nothing is spent here without a confirmed quote: `make:go` and
  * `make:shot` quote again with what is open now and refuse when that is
- * more than the person confirmed. With "Go ahead without asking" on in
- * Settings, a video under that amount goes straight through, and its reply
- * still says what it cost.
+ * more than the person confirmed, or when another service would make it
+ * than the one quoted; `make:go` also makes only the very draft its button
+ * showed (shared/make/fingerprint). With "Go ahead without asking" on in
+ * Settings, a new video under that amount goes straight through, and its
+ * reply still says what it cost. A Stop answers with what was spent and a
+ * quote for the rest, which reuses everything already made.
  */
 
 type Send = (sender: WebContents, channel: string, payload: unknown) => void
@@ -153,12 +159,34 @@ const DraftSchema = z.object({
               .passthrough()
           ),
           voice: VoiceChoiceSchema,
-          timing: z.enum(['voice', 'whisper'])
+          timing: z.enum(['voice', 'whisper']),
+          cost: z.number().min(0).optional()
         })
         .optional(),
       shots: z.object({ bible: BibleSchema, shots: z.array(MadeShotSchema), sheets: z.array(SheetSchema) }).optional()
     })
     .optional(),
+  spentBefore: z.number().min(0).optional(),
+  unwritten: z.object({ voice: z.string().nullable(), name: z.string().nullable() }).optional(),
+  plan: z
+    .object({
+      bible: BibleSchema,
+      shots: z.array(ShotSchema),
+      sheets: z.array(SheetSchema),
+      made: z.array(MadeShotSchema),
+      sheetsLeft: z.number().int().min(0).optional()
+    })
+    .optional(),
+  // The quote as it was shown: what the button pressed confirmed, checked against the quote made again now.
+  quote: z
+    .object({
+      total: z.number().min(0),
+      images: z.enum(IMAGE_SERVICES).nullable(),
+      clips: z.enum(IMAGE_SERVICES).nullable(),
+      size: z.string(),
+      voice: VoiceChoiceSchema
+    })
+    .passthrough(),
   into: z
     .object({
       docId: z.string(),
@@ -202,6 +230,17 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   const quoteOf = (draft: Draft): Reply =>
     quoteReply(draft.brief, draft.quote, { title: draft.title, scenes: draft.quote.counts.scenes })
 
+  /** What would make it now that the quote did not say: another picture or clip service, or another voice. Never swapped quietly. */
+  const moved = (draft: Draft, now: Draft['quote']): string | null => {
+    const was = draft.quote
+    const name = (s: 'google' | 'fal' | null): string => (s === 'google' ? 'Google' : s === 'fal' ? 'fal.ai' : 'no service')
+    if (!draft.kept?.shots && now.images !== was.images) return `The pictures would be made by ${name(now.images)} now, not ${name(was.images)} as quoted.`
+    if (!draft.kept?.shots && now.clips !== was.clips) return `The clips would be made by ${name(now.clips)} now, not ${name(was.clips)} as quoted.`
+    if (now.voice.engine !== was.voice.engine || now.voice.id !== was.voice.id)
+      return `It would be read by ${voicePhrase(now.voice)} now, not ${voicePhrase(was.voice)} as quoted.`
+    return null
+  }
+
   /** Makes a draft whose quote was confirmed at `confirmed` dollars, or refuses when the price is now higher. */
   const go = async (
     sender: WebContents,
@@ -215,6 +254,9 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     const fresh: Draft = { ...draft, quote: quoteDraft(draft, d) }
     if (fresh.quote.missing.length)
       return { ok: false, message: fresh.quote.missing.join(' '), draft: fresh, reply: quoteOf(fresh) }
+    // The services confirmed are the ones used: what changed since is a new quote to confirm.
+    const change = moved(draft, fresh.quote)
+    if (change) return { ok: false, message: `${change} Confirm the new quote and I'll make it.`, draft: fresh, reply: quoteOf(fresh) }
     if (fresh.quote.total > confirmed + 0.005)
       return {
         ok: false,
@@ -262,10 +304,12 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       }
     } catch (err) {
       progress('Failed', 0)
-      return {
-        ok: false,
-        message: err instanceof Stopped ? err.message : controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err)
+      // Stopped: what was spent, and a quote for the rest, which reuses the shot list, the narration and the pictures made.
+      if (err instanceof Stopped) {
+        const rest: Draft = { ...err.resume, quote: quoteDraft(err.resume, d) }
+        return { ok: false, message: err.message, draft: rest, reply: quoteOf(rest) }
       }
+      return { ok: false, message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err) }
     } finally {
       running = null
     }
@@ -290,11 +334,29 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
           ok: false as const,
           message: 'Add your Anthropic key in Settings, and I’ll write it and plan its shots.'
         }
-      deps.send(e.sender, 'cut:progress', {
-        stage: brief.from === 'topic' ? 'Writing the script' : 'Reading the script',
-        percent: null
-      })
-      const drafted = await draftFor(brief, randomUUID(), d)
+      if (running) return { ok: false as const, message: 'A video is being made already. Wait for it, or stop it first.' }
+      // The script is written (or the recording heard) under a Stop of its own.
+      const controller = new AbortController()
+      running = controller
+      const said = (stage: string, percent: number | null): void => deps.send(e.sender, 'cut:progress', { stage, percent })
+      said(brief.from === 'topic' ? 'Writing the script' : brief.from === 'recording' ? 'Listening to your recording' : 'Reading your script', null)
+      let drafted: Awaited<ReturnType<typeof draftFor>>
+      try {
+        drafted = await draftFor(brief, randomUUID(), {
+          ...d,
+          signal: controller.signal,
+          // The person's own voice-over is heard here first, so its quote counts the lines it really has.
+          hear: async (path) => {
+            const facts = await probe(path)
+            const heard = await deps.transcribe(path, facts.durationSec, (_stage, p) => said('Listening to your recording', p))
+            return { durationSec: facts.durationSec, words: heard.words.map((w) => ({ text: w.text, startSec: w.startSec, endSec: w.endSec })) }
+          }
+        })
+      } finally {
+        running = null
+      }
+      if (controller.signal.aborted)
+        return { ok: false as const, message: brief.from === 'topic' ? 'Stopped while Claude wrote the script.' : 'Stopped before anything was made.' }
       if (!drafted.ok) return { ok: false as const, message: drafted.message }
       const draft = drafted.draft
       if (draft.quote.auto) {
@@ -311,12 +373,15 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     }
   })
 
-  // The quote confirmed: made, if the price is still what was confirmed.
-  ipcMain.handle('make:go', async (e, req: { draft: unknown; confirmed: number }) => {
+  // The quote confirmed: made, if it is the draft its button showed and the price is still what was confirmed.
+  ipcMain.handle('make:go', async (e, req: { draft: unknown; confirmed: number; fingerprint?: string }) => {
     const parsed = DraftSchema.safeParse(req.draft)
     if (!parsed.success)
       return { ok: false as const, message: 'That quote could not be read. Ask again and I’ll quote it fresh.' }
-    return go(e.sender, parsed.data as Draft, Number(req.confirmed) || 0)
+    const draft = parsed.data as unknown as Draft
+    if (!req.fingerprint || req.fingerprint !== draftFingerprint(draft))
+      return { ok: false as const, message: 'That button is for a quote that has changed since. Press the newest quote’s button, or ask again.' }
+    return go(e.sender, draft, Number(req.confirmed) || 0)
   })
 
   // What was said next about a quote not yet made: the brief changed and quoted again.
@@ -324,7 +389,7 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     const parsed = DraftSchema.safeParse(req.draft)
     if (!parsed.success) return { ok: false as const, message: 'That quote could not be read.' }
     const d = await draftDeps()
-    const draft = { ...(parsed.data as Draft), quote: quoteDraft(parsed.data as Draft, d) }
+    const draft = { ...(parsed.data as unknown as Draft), quote: quoteDraft(parsed.data as unknown as Draft, d) }
     const r = revise(draft, String(req.text ?? ''), d)
     if (!r) return { ok: true as const, draft: null }
     // A new length or format for a written script means a new script, and a new quote.
@@ -345,7 +410,7 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     const parsed = DraftSchema.safeParse(req.draft)
     if (!parsed.success) return { ok: false as const, message: 'That quote could not be read.' }
     const d = await draftDeps()
-    const next = withScript(parsed.data as Draft, String(req.script ?? ''), d)
+    const next = withScript(parsed.data as unknown as Draft, String(req.script ?? ''), d)
     if (next.phrases.length === 0) return { ok: false as const, message: 'The script has no words to read.' }
     return { ok: true as const, draft: next, reply: quoteOf(next) }
   })
@@ -360,9 +425,8 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       const parsed = EditDocSchema.safeParse(req.doc)
       if (!parsed.success || !parsed.data.make) return { ok: true as const, change: null }
       try {
+        // Nothing is written here: a new length is quoted first, and written once its quote is confirmed.
         const d = await draftDeps(req.brand)
-        if (/\b(?:longer|shorter|minutes?|seconds?)\b/i.test(req.text))
-          deps.send(e.sender, 'cut:progress', { stage: 'Writing the script again', percent: null })
         return {
           ok: true as const,
           change: await changeFor(parsed.data, String(req.text ?? ''), req.onScreen ?? null, d, req.recording ?? null)
@@ -388,6 +452,12 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     )
     if (fresh.kind !== 'shot' || fresh.missing.length)
       return { ok: false as const, message: fresh.kind === 'shot' ? fresh.missing.join(' ') : fresh.reply.text }
+    // The service confirmed is the one used: another one now is a new quote to ask for.
+    if (fresh.images !== req.change.images || fresh.clips !== req.change.clips)
+      return {
+        ok: false as const,
+        message: `Another service would make it now than the one quoted. Ask again and I'll quote it fresh.`
+      }
     const total = fresh.total
     if (total > (Number(req.confirmed) || 0) + 0.005)
       return {
@@ -414,10 +484,8 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       })
       return { ok: true as const, ...r }
     } catch (err) {
-      return {
-        ok: false as const,
-        message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err)
-      }
+      // remakeShot says what a Stop or a failure had spent, Claude's few words included.
+      return { ok: false as const, message: message(err) }
     } finally {
       running = null
     }

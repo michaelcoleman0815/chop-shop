@@ -156,6 +156,13 @@ export function voiceRate(price: VoicePrice, today: string): { perSecond: number
   return rate
 }
 
+/**
+ * Up to this many times its estimate, one call to Claude is held to while a
+ * confirmed video is made (main/make/claude.ts holdFor): its answer is capped
+ * to what that pays for. Going ahead without asking leaves room for it.
+ */
+export const CLAUDE_HOLD = 2
+
 /** Tokens a script and a shot list take with Claude, from what they hold: about four characters a token. */
 export const CLAUDE_TOKENS = {
   /** The instructions and the ask, sent with each request. */

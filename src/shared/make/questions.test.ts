@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAsk } from './brief'
-import { answered, questionsFor, vagueTopic } from './questions'
+import { answered, questionsFor, readAnswer, vagueTopic } from './questions'
 import type { Brief } from './schema'
 
 const ask = (text: string): Brief => readAsk(text) as Brief
@@ -33,6 +33,25 @@ describe('asking before writing', () => {
     expect(questionsFor(readAsk('make a documentary about the oil boom', { recording: '/v/vo.wav' }) as Brief)).toEqual([])
     const script = `Here is my script: ${'In 1950 the wells came in and the towns grew. '.repeat(12)}`
     expect(questionsFor(ask(script))).toEqual([])
+  })
+
+  it('takes typed words as answers only when they read as answers', () => {
+    const qs = questionsFor(ask('make a video about my trip'))
+    // The options' own words, a style or a length said plainly, and what is left as what it should say.
+    expect(readAnswer('the lakes up north, a map documentary, 5 minutes', qs)).toEqual({
+      kind: 'answer',
+      answers: ['the lakes up north', 'as a cinematic documentary with maps wherever they help', '5 minutes long']
+    })
+    expect(readAnswer('The best moments, explainer, about 1 min', qs)).toEqual({
+      kind: 'answer',
+      answers: ['about the best moments', 'as an animated explainer', '1 minute long']
+    })
+    // A no lets the questions go; so does an edit's ask or a command, which are not answers at all.
+    for (const no of ['never mind', 'no', 'stop', 'forget it', 'cancel that']) expect(readAnswer(no, qs).kind).toBe('no')
+    for (const other of ['cut the first 10 seconds', '/export', 'trim the intro', 'ok']) expect(readAnswer(other, qs).kind).toBe('other')
+    // With an edit open, loose words may be meant for it: only a style or a length answers.
+    expect(readAnswer('the music is too loud', qs, { editOpen: true }).kind).toBe('other')
+    expect(readAnswer('10 minutes', qs, { editOpen: true })).toEqual({ kind: 'answer', answers: ['', '', '10 minutes long'] })
   })
 
   it('reads the answers back into the brief, so nothing is asked twice', () => {

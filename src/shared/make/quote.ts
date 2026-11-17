@@ -1,6 +1,6 @@
 import { clock } from '../presets/preset'
-import { CLAUDE_TOKENS, PRICES, PRICES_CHECKED, voiceRate } from './prices'
-import { countWords } from './script'
+import { CLAUDE_HOLD, CLAUDE_TOKENS, PRICES, PRICES_CHECKED, voiceRate } from './prices'
+import { countWords, wordsFor } from './script'
 import type { Brief, ImageService, Shot, Visual, VoiceChoice, VoiceEngine } from './schema'
 import { defaultVoice, voicePhrase, voiceShort } from './voices'
 import type { KeyService } from './key-steps'
@@ -80,8 +80,10 @@ export interface Quote {
   /** The image size asked for. */
   size: string
   voice: VoiceChoice
-  /** The most this video may cost: the prompt's limit, else Settings'. */
+  /** The most this video may cost in all: Settings' limit, or the prompt's when it asks for less. */
   cap: number
+  /** Spent on this video already (the script, a stopped run, the video a change is made from): counted against the cap. */
+  spent: number
   within: boolean
   /** Settings says to go ahead without asking when a video costs less than this, and this one does. */
   auto: boolean
@@ -123,6 +125,21 @@ export function placesIn(script: string): string[] {
 /** Phrases that open on or name a year: where a documentary sets a year big. */
 export function yearsIn(phrases: string[]): number {
   return phrases.filter((p) => /\b(1[5-9]\d\d|20[0-4]\d)\b/.test(p)).length
+}
+
+/** Words a phrase holds, about, in a script not yet written. */
+const WORDS_PER_PHRASE = 15
+
+/**
+ * The counts of a script not written yet (a made video asked to run a new
+ * length): as many phrases as that length reads in, each a still, so what is
+ * quoted is the most it can cost.
+ */
+export function estimateUnwritten(brief: Brief): Counts {
+  const words = wordsFor(brief.seconds, brief.format)
+  const phrases = Array.from({ length: Math.max(1, Math.ceil(words / WORDS_PER_PHRASE)) }, () => 'a phrase')
+  const counts = estimateCounts(brief, phrases, '')
+  return { ...counts, narrationSeconds: brief.seconds, narrationChars: words * 6 }
 }
 
 /** The counts a script will most likely need, before the shot list is planned. */
@@ -267,8 +284,10 @@ export interface QuoteOptions {
   autoUnder?: number | null
   /** The script is already written (its cost is spent), or still to be written. */
   scriptWritten?: boolean
-  /** Made again from a made video: what is kept as it is, and so costs nothing and goes nowhere. */
-  reuse?: { narration?: boolean; shots?: boolean }
+  /** Made again from a made video: what is kept as it is, and so costs nothing and goes nowhere; or the shot list planned already. */
+  reuse?: { narration?: boolean; shots?: boolean; plan?: boolean }
+  /** Spent on this video already: counted against the cap, and against the amount to go ahead under. */
+  spent?: number
 }
 
 /**
@@ -279,9 +298,13 @@ export interface QuoteOptions {
  */
 export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: QuoteOptions = {}): Quote {
   const today = opts.today ?? new Date().toISOString().slice(0, 10)
-  const cap = brief.cap ?? opts.cap ?? DEFAULT_CAP
+  // A prompt can ask for less than Settings allows, never more.
+  const cap = Math.min(opts.cap ?? DEFAULT_CAP, brief.cap ?? Number.POSITIVE_INFINITY)
+  const spent = Math.max(0, opts.spent ?? 0)
+  const room = cap - spent
   const keepVoice = !!opts.reuse?.narration
   const keepShots = !!opts.reuse?.shots
+  const keepPlan = !!opts.reuse?.plan
   if (keepShots) counts = { ...counts, stills: 0, clips: 0, sheets: 0, references: 0 }
   const missing: string[] = []
   const notes: string[] = []
@@ -315,7 +338,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
     const lines: QuoteLine[] = []
     if (brief.from === 'topic' && !opts.scriptWritten)
       lines.push({ what: 'The script', by: 'Claude, with your Anthropic key', cost: scriptCost(brief.seconds) })
-    if (!keepShots && (brief.from !== 'recording' || c.scenes > 0))
+    if (!keepShots && !keepPlan && (brief.from !== 'recording' || c.scenes > 0))
       lines.push({ what: `The shot list, ${c.scenes} shots`, by: 'Claude, with your Anthropic key', cost: shotListCost(c.scenes, c.narrationSeconds) })
     if (voice.engine !== 'own' && !keepVoice) {
       const p = voice.engine === 'local' ? PRICES.voices.local : PRICES.voices[voice.engine]
@@ -356,13 +379,13 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   }
   let built = build()
   // Over the cap: clips become stills, then the pictures drop a size.
-  if (built.total > cap && c.clips > 0 && clipsBy) {
+  if (built.total > room && c.clips > 0 && clipsBy) {
     notes.push(`Clips would take it past ${dollars(cap)}, so every shot is a still with a camera move.`)
     c = { ...c, clips: 0 }
     clipsBy = null
     built = build()
   }
-  if (built.total > cap && images) {
+  if (built.total > room && images) {
     const smaller = Object.keys(PRICES.images[images].perImage)[0]
     if (smaller !== size) {
       size = smaller
@@ -370,10 +393,12 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
       built = build()
     }
   }
-  const within = built.total <= cap + 1e-9
+  const within = built.total <= room + 1e-9
   if (!within)
     missing.push(
-      `That comes to ${dollars(built.total)}, more than the ${dollars(cap)} a video may cost. Ask for a shorter video, or raise the limit.`
+      spent > 0
+        ? `That would take this video to ${dollars(spent + built.total)} in all, more than the ${dollars(cap)} a video may cost. Raise the limit in Settings to make it.`
+        : `That comes to ${dollars(built.total)}, more than the ${dollars(cap)} a video may cost. Ask for a shorter video, or raise the limit in Settings.`
     )
 
   // Time: the shot list and the narration at once, then the pictures four at a time, the clips two at a time.
@@ -384,15 +409,16 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
       : voice.engine === 'local'
         ? c.narrationSeconds * 0.5 + (can.localVoice ? 0 : 60)
         : c.narrationSeconds * 0.15
-  const plan = keepShots ? 0 : brief.from === 'topic' && !opts.scriptWritten ? 60 : 40
+  const plan = keepShots || keepPlan ? 0 : brief.from === 'topic' && !opts.scriptWritten ? 60 : 40
   const imageSec = images ? Math.ceil((c.stills + c.sheets) / 4) * (images === 'google' ? 18 : 12) : 0
   const clipSec = clipsBy ? Math.ceil(c.clips / 2) * (clipsBy === 'google' ? 100 : 200) : 0
   const seconds = Math.round(Math.max(plan, narrate) + imageSec + clipSec + 20)
 
   const sends: string[] = []
   if (brief.from === 'topic') sends.push('The topic goes to Claude to write the script, with your Anthropic key.')
-  if (!keepShots) sends.push('The script goes to Claude to plan the shots, with your Anthropic key.')
-  if (keepVoice) sends.push('The narration stays as it is.')
+  if (!keepShots && !keepPlan) sends.push('The script goes to Claude to plan the shots, with your Anthropic key.')
+  if (keepVoice && voice.engine === 'own') sends.push('Your recording stays on this Mac. I listened to it here for the words.')
+  else if (keepVoice) sends.push('The narration stays as it is.')
   else if (voice.engine === 'local') sends.push(`${voice.name} reads the script on this Mac, so the words go nowhere else.`)
   else if (voice.engine === 'own') sends.push('Your recording stays on this Mac. I listen to it here for the words.')
   else {
@@ -408,11 +434,14 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   }
   sends.push('Nothing of your own footage leaves this Mac.')
 
+  // The amount to go ahead under is for the whole video: what is spent already (the script), this
+  // quote, and room for Claude to answer at more length than estimated (it is held to CLAUDE_HOLD times).
+  const claude = built.lines.filter((l) => l.by.startsWith('Claude')).reduce((n, l) => n + l.cost, 0)
   const auto =
     opts.autoUnder !== null &&
     opts.autoUnder !== undefined &&
     opts.autoUnder > 0 &&
-    built.total < opts.autoUnder &&
+    spent + built.total + claude * (CLAUDE_HOLD - 1) < opts.autoUnder &&
     within &&
     missing.length === 0
   return {
@@ -425,6 +454,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
     size,
     voice,
     cap,
+    spent,
     within,
     auto,
     missing,

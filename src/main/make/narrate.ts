@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import type { MakeFormat, VoiceChoice } from '../../shared/make/schema'
+import { notTaken } from '../providers/gate'
 import type { MakeServices, TimedWord } from './services'
 
 /**
@@ -48,6 +49,12 @@ export interface NarrateDeps {
   dir: string
   signal?: AbortSignal
   onProgress?: (fraction: number, stage: string) => void
+  /**
+   * A service read a section: its characters and seconds, so what it costs
+   * is spent as it arrives. Said too for a section that failed after it
+   * went, since that may be billed all the same.
+   */
+  onRead?: (chars: number, seconds: number) => void
 }
 
 export interface Narrated {
@@ -174,7 +181,7 @@ export async function narrate(
       const startSec = clock
       push(toPcm(spoken.samples, spoken.rate))
       spans.push({ phrases: [i], startSec, endSec: clock })
-      report(0.3 + (0.7 * (i + 1)) / input.phrases.length, 'Reading the script')
+      report(0.3 + (0.7 * (i + 1)) / input.phrases.length, 'Narrating the script')
     }
   } else if (voice.engine === 'elevenlabs' || voice.engine === 'gemini' || voice.engine === 'openai') {
     const chunks = chunksOf(input.phrases, input.sections)
@@ -187,25 +194,33 @@ export async function narrate(
       if (deps.signal?.aborted) throw new Error('Stopped.')
       if (k > 0) push(silence(chunk.section ? SECTION_GAP : PHRASE_GAP))
       let audio: Uint8Array
-      if (voice.engine === 'elevenlabs') {
-        const said = await deps.services.elevenlabs(
-          voiceId,
-          chunk.text,
-          { previous: chunks[k - 1]?.text, next: chunks[k + 1]?.text },
-          deps.signal
-        )
-        audio = said.audio
-        const offset = clock
-        words?.push(...said.words.map((w) => ({ text: w.text, startSec: w.startSec + offset, endSec: w.endSec + offset })))
-      } else if (voice.engine === 'gemini') {
-        audio = await deps.services.gemini(chunk.text, voice.id, READING[input.format], deps.signal)
-      } else {
-        audio = await deps.services.openai(chunk.text, voice.id, READING[input.format], deps.signal)
+      try {
+        if (voice.engine === 'elevenlabs') {
+          const said = await deps.services.elevenlabs(
+            voiceId,
+            chunk.text,
+            { previous: chunks[k - 1]?.text, next: chunks[k + 1]?.text },
+            deps.signal
+          )
+          audio = said.audio
+          const offset = clock
+          words?.push(...said.words.map((w) => ({ text: w.text, startSec: w.startSec + offset, endSec: w.endSec + offset })))
+        } else if (voice.engine === 'gemini') {
+          audio = await deps.services.gemini(chunk.text, voice.id, READING[input.format], deps.signal)
+        } else {
+          audio = await deps.services.openai(chunk.text, voice.id, READING[input.format], deps.signal)
+        }
+      } catch (err) {
+        // Cut off after it went, the section may be read and billed all the same: about 15 characters a second.
+        if (!notTaken(err)) deps.onRead?.(chunk.text.length, chunk.text.length / 15)
+        throw err
       }
       const startSec = clock
       push(await decodeToPcm(deps.ffmpeg, audio, deps.signal))
+      // Read and billed: spent now, whatever happens to the rest.
+      deps.onRead?.(chunk.text.length, clock - startSec)
       spans.push({ phrases: chunk.phrases, startSec, endSec: clock })
-      report((k + 1) / chunks.length, 'Reading the script')
+      report((k + 1) / chunks.length, 'Narrating the script')
     }
   } else {
     throw new Error('Your own recording is the narration as it is; there is nothing to read.')

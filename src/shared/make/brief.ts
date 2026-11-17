@@ -11,9 +11,10 @@ import { clock } from '../presets/preset'
  * where it helps". The topic is read first and set aside, so words in it
  * ("the man who sold the world") are never read as a voice or a look; the
  * rest is read for the format, length, voice, look, maps, clips, a service
- * and a budget. What the prompt does not say is chosen from the brand and
- * sensible defaults, and each choice is kept as a short phrase the quote
- * repeats, so nothing is decided silently.
+ * and a budget, which can only lower the limit in Settings, never raise it.
+ * What the prompt does not say is chosen from the brand and sensible
+ * defaults, and each choice is kept as a short phrase the quote repeats, so
+ * nothing is decided silently.
  *
  * Plain words are enough; /make, /documentary and /explainer say the same.
  */
@@ -288,7 +289,8 @@ export function readAsk(text: string, ctx: AskContext = {}): Brief | null {
     maps,
     clips,
     images: imagesIn(rest),
-    cap: capIn(ask),
+    // Read outside the topic, so a figure in it ("families on up to $400 a month") is never a limit.
+    cap: capIn(rest),
     inferred,
     ask
   }

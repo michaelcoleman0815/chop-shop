@@ -10,8 +10,12 @@ import { voiceFromWords } from './voices'
  * for B-roll", "make it 8 minutes" (a new script). Each becomes a new version
  * and costs only what it makes again, said before anything is spent.
  *
- * Everything else asked of a made video (cuts, music, the look, captions,
- * titles) is an ordinary edit and goes to the planner like any other.
+ * Everything else asked of a made video (cuts, timing, music, the look and
+ * grade of a shot, captions, titles) is an ordinary edit and goes to the
+ * planner like any other, at no cost: "make shot 3 two seconds longer" holds
+ * a shot longer, "make the second shot black and white" grades it. Only a
+ * whole video asked to run a new length is a new script, and only words
+ * that describe something new to show make a picture again.
  */
 
 export type MakeAsk =
@@ -97,6 +101,13 @@ export function shotMeant(make: Make, text: string, onScreen: string | null): Ma
   return key.size ? best : null
 }
 
+/** Words about timing or the grade: an ordinary edit of what is there, never a new picture. */
+const NOT_A_PICTURE = new Set(
+  'longer shorter faster slower quicker sooner later earlier tighter looser tight loose second seconds sec secs minute minutes min mins frame frames bit little lot much more less hold held linger stay brighter darker lighter dimmer warmer cooler colder softer sharper harder blurrier clearer grainier cleaner bright dark light dim warm cool cold soft sharp blurry blur clear grain grainy clean contrast saturated desaturated saturation exposure colour color colours colors coloured colored black white mono monochrome greyscale grayscale sepia faded fade vivid muted louder quieter loud quiet volume zoom zoomed bigger smaller one two three four five six seven eight nine ten half quarter'.split(
+    ' '
+  )
+)
+
 /** What the person wants a shot to show instead, from the words after "make … a", "show", "into". */
 export function wantedPicture(text: string): string | null {
   const t = text.trim().replace(/[.!?]+$/, '')
@@ -107,7 +118,37 @@ export function wantedPicture(text: string): string | null {
   const want = m[1].replace(/^(?:a|an|the)\s+/i, '').trim()
   // "for B-roll" or "for real footage" is a swap, not a picture to make.
   if (/^(?:for\s+)?(?:b-?roll|stock footage|real footage)$/i.test(want)) return null
+  // The shot named again is not what it should show ("the derrick shot longer"), and timing or grade
+  // words are an edit of what is there ("brighter", "black and white", "two seconds longer").
+  const said = contentWords(
+    m[1]
+      .replace(/\b(?:the|that|this)\s+[\w\s-]{0,40}?\b(?:shot|scene|picture|image)\b/gi, ' ')
+      .replace(/\b(?:shot|scene|picture|image)\s*(?:#|number\s*)?\d{1,3}\b/gi, ' ')
+      .replace(/\b\d+(?:\.\d+)?\b/g, ' ')
+  ).filter((w) => !NOT_A_PICTURE.has(w))
+  if (said.length === 0) return null
   return want.length >= 4 ? want : null
+}
+
+/**
+ * A new length for the whole video, said of the whole video: "make it 8
+ * minutes", "cut it to 90 seconds", "I want it 3 minutes long". Never a
+ * change by an amount ("30 seconds tighter", "two seconds longer"), and
+ * never when a shot or a part of it is named.
+ */
+export function wholeLength(text: string): number | null {
+  const t = text.trim().toLowerCase()
+  if (/\b(?:shot|scene|picture|image|beat|line|part|bit|opening|intro|start|beginning|ending|end|outro|middle|section|chapter)\b/.test(t)) return null
+  const n = String.raw`(?:\d+(?:\.\d+)?|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|ninety)`
+  const length = String.raw`(?:${n}\s*[- ]?\s*(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)|half an hour|a minute and a half)`
+  // "8 minutes", "an 8 minute video", "a 90-second one", then perhaps "long" or "instead", and nothing else.
+  const said = String.raw`(?:about\s+|around\s+|roughly\s+|just\s+|only\s+|exactly\s+)?(?:an?\s+)?${length}(?:\s+(?:video|film|one|version|cut))?(?:\s+(?:long|instead|in all|total|overall))?[.!]*$`
+  const whole = new RegExp(
+    String.raw`^(?:please\s+)?(?:make|cut|turn|trim|bring|get|redo|remake)\s+(?:it|the(?:\s+whole)?\s+(?:video|film|documentary|explainer|thing))\s+(?:down\s+|back\s+|up\s+)?(?:(?:to|into|so it(?:'s| is)|be)\s+)?${said}` +
+      String.raw`|^(?:i want|i'd like|can you make)\s+it\s+(?:to be\s+)?${said}`,
+    'i'
+  )
+  return whole.test(t) ? lengthIn(t) : null
 }
 
 /** Reads an ask of a made video. Null when it asks nothing that makes something again. */
@@ -123,12 +164,9 @@ export function readMakeAsk(make: Make, text: string, onScreen: string | null = 
     if (format !== make.brief.format) return { kind: 'restyle', format }
   }
 
-  // A new length: a new script, its narration and its shots.
-  if (/\b(?:make it|cut it to|turn it into|i want it|longer|shorter)\b/i.test(t)) {
-    const seconds = lengthIn(t)
-    if (seconds && Math.abs(seconds - make.brief.seconds) >= 10 && make.brief.from === 'topic')
-      return { kind: 'length', seconds }
-  }
+  // A new length for the whole video: a new script, its narration and its shots.
+  const seconds = wholeLength(t)
+  if (seconds && Math.abs(seconds - make.brief.seconds) >= 10 && make.brief.from === 'topic') return { kind: 'length', seconds }
 
   // A new voice.
   if (/\bvoice\b|\bnarrat(?:or|ion)\b|\bread (?:it|by)\b|\bmy own recording\b/i.test(t)) {

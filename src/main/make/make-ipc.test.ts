@@ -10,9 +10,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
  * Claude's answers written here and parsed by the real Anthropic SDK, and
  * whisper answering from where each phrase was read. Checked: nothing is
  * asked of a picture service before the quote is confirmed, a lower
- * confirmation is refused, "Go ahead without asking" makes it straight away,
- * the edit is valid, one shot is made again for its own price, and a new
- * voice makes no pictures again.
+ * confirmation is refused, and so is a draft its button did not show,
+ * "Go ahead without asking" makes it straight away, the edit is valid, one
+ * shot is made again for its own price, a new voice makes no pictures
+ * again, and a Stop says what was spent and makes only the rest after.
  */
 
 const fake = vi.hoisted(() => ({
@@ -47,6 +48,7 @@ vi.mock('electron', async () => {
 import { EditDocSchema, type EditDoc } from '../../shared/edit/schema'
 import { asNewVersion } from '../../shared/make/assemble'
 import type { Draft } from '../../shared/make/draft'
+import { draftFingerprint } from '../../shared/make/fingerprint'
 import { saveSettings } from '../store'
 import { registerMakeIpc } from './index'
 
@@ -79,6 +81,10 @@ const SCRIPTS = {
 
 const call = <T>(channel: string, req?: unknown): Promise<T> =>
   fake.handlers[channel]({ sender: {} }, req) as Promise<T>
+
+/** make:go as a quote's button sends it: the draft, the price it showed, and its fingerprint. */
+const goWith = <T>(draft: Draft, confirmed = draft.quote.total): Promise<T> =>
+  call<T>('make:go', { draft, confirmed, fingerprint: draftFingerprint(draft) })
 
 let standins = ''
 let manifest = ''
@@ -169,15 +175,20 @@ describe('a video made from one prompt', () => {
     expect(answeredStart.draft?.brief.seconds).toBe(60)
   })
 
-  it('refuses a confirmation for less than the quote, and spends nothing', async () => {
-    const r = await call<Made>('make:go', { draft, confirmed: draft.quote.total - 0.5 })
+  it('refuses a confirmation for less than the quote, or for a draft its button did not show, and spends nothing', async () => {
+    const r = await goWith<Made>(draft, draft.quote.total - 0.5)
     expect(r.ok).toBe(false)
     expect(r.message).toMatch(/price has changed/)
+    const other = await call<Made>('make:go', { draft: { ...draft, script: `${draft.script} One more line.` }, confirmed: draft.quote.total, fingerprint: draftFingerprint(draft) })
+    expect(other.ok).toBe(false)
+    expect(other.message).toMatch(/quote that has changed since/)
+    const none = await call<Made>('make:go', { draft, confirmed: draft.quote.total })
+    expect(none.ok).toBe(false)
     expect(pictures()).toBe(0)
   })
 
   it('makes the confirmed quote into a valid edit, within the quote', async () => {
-    const r = await call<Made>('make:go', { draft, confirmed: draft.quote.total })
+    const r = await goWith<Made>(draft)
     expect(r.message).toBeUndefined()
     expect(r.ok).toBe(true)
     doc = EditDocSchema.parse(r.doc)
@@ -233,7 +244,7 @@ describe('a video made from one prompt', () => {
     expect(c.change.kind).toBe('draft')
     expect(c.change.draft.quote.total).toBe(0)
     expect(c.change.draft.brief.voice.id).toMatch(/^b[mf]_/)
-    const r = await call<Made>('make:go', { draft: c.change.draft, confirmed: 0 })
+    const r = await goWith<Made>(c.change.draft, 0)
     expect(r.ok).toBe(true)
     expect(r.into?.docId).toBe(doc.id)
     const next = EditDocSchema.parse(asNewVersion(doc, r.doc as EditDoc, r.into?.summary ?? '', r.into?.carry ?? { captions: true, look: true, music: true }))
@@ -247,30 +258,42 @@ describe('a video made from one prompt', () => {
     expect(pictures()).toBe(before)
   }, 120_000)
 
-  it('stops when asked, says what was spent and what was kept, and reuses what was kept', async () => {
+  it('stops when asked, says what was spent and what was kept, and makes only the rest after', async () => {
     const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
     const d = start.draft as Draft
     const before = pictures()
+    const claudeBefore = requests().filter((q) => q.service === 'claude').length
     process.env.CUTALONG_STANDIN_DELAY_MS = '250'
-    const going = call<Made>('make:go', { draft: d, confirmed: d.quote.total })
+    const going = goWith<Made & { draft?: Draft }>(d)
     while (pictures() - before < 2) await new Promise((r) => setTimeout(r, 25))
     expect(await call('make:cancel')).toBe(true)
     const stopped = await going
     process.env.CUTALONG_STANDIN_DELAY_MS = '0'
     expect(stopped.ok).toBe(false)
     expect(stopped.message).toMatch(
-      /^Stopped: \$\d+\.\d\d of the \$\d+\.\d\d quoted was spent, and the \d+ pictures? already made (is|are) kept, so asking again reuses (it|them)\.$/
+      /^Stopped: \$\d+\.\d\d of the \$\d+\.\d\d quoted was spent\. The shot list, the narration and the \d+ pictures? already made are kept, so making the rest reuses them\.$/
     )
     const kept = Number(/the (\d+) picture/.exec(stopped.message ?? '')?.[1])
     const made = pictures() - before
     expect(kept).toBe(made)
     await new Promise((r) => setTimeout(r, 600))
     expect(pictures() - before).toBe(made)
-    // Asked again, the pictures already made come from the cache: only the rest are asked for.
-    const again = await call<Made>('make:go', { draft: d, confirmed: d.quote.total })
+    // The answer is a quote for the rest: the shot list and the pictures made are not paid for again.
+    const rest = stopped.draft as Draft
+    expect(rest.plan?.made.length).toBeGreaterThan(0)
+    expect(rest.quote.total).toBeLessThan(d.quote.total)
+    expect(rest.quote.lines.some((l) => /shot list/i.test(l.what))).toBe(false)
+    const again = await goWith<Made>(rest)
+    expect(again.message).toBeUndefined()
     expect(again.ok).toBe(true)
-    const all = (again.doc as EditDoc).make?.shots.filter((s) => s.maker === 'google').length ?? 0
-    expect(pictures() - before - made).toBeLessThan(all + 1)
+    // Claude planned once, in the run that was stopped; the rest asked it for nothing.
+    expect(requests().filter((q) => q.service === 'claude').length - claudeBefore).toBe(1)
+    // Every picture the video needs was asked for exactly once across the two runs: a sheet or a still
+    // once, a clip's still and the clip once each.
+    const shots = (again.doc as EditDoc).make?.shots ?? []
+    const sheets = (again.doc as EditDoc).make?.sheets.length ?? 0
+    const needed = sheets + shots.filter((s) => s.maker === 'google').reduce((n, s) => n + (s.visual.kind === 'clip' && /\.mp4$/.test(s.file ?? '') ? 2 : 1), 0)
+    expect(pictures() - before).toBe(needed)
   }, 240_000)
 
   it('goes straight through under the amount in Settings, and says what it cost', async () => {

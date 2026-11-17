@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { clock } from '../../shared/presets/preset'
-import { PRICES } from '../../shared/make/prices'
+import { CLAUDE_HOLD, CLAUDE_TOKENS, PRICES } from '../../shared/make/prices'
 import { WORDS_PER_MINUTE, wordsFor } from '../../shared/make/script'
 import {
   checkShotList,
@@ -13,6 +13,7 @@ import {
 } from '../../shared/make/shots'
 import type { Bible, Brief } from '../../shared/make/schema'
 import { MODEL } from '../planner'
+import type { Budget } from './generate'
 
 /**
  * Claude's two jobs in a made video, with the person's own Anthropic key:
@@ -24,20 +25,26 @@ import { MODEL } from '../planner'
  * afterwards (shared/make/shots.ts) and never trusted as it comes. A long
  * video's shots are planned in parts, the first part writing the bible and
  * every later part keeping to it.
+ *
+ * While a confirmed video is made, every call to Claude is held to the
+ * budget like any other service: a hold of up to twice its estimate is
+ * taken before it goes, the answer is capped to what that hold can pay
+ * for, and what it really cost is spent when it comes back. A Stop cuts
+ * the call short, and no later part is asked for.
  */
 
 /** One structured-output call to Claude, as the SDK makes it; tests and stand-ins hand in their own. */
-export type ParseCall = (params: Record<string, unknown>) => Promise<{
+export type ParseCall = (params: Record<string, unknown>, opts?: { signal?: AbortSignal }) => Promise<{
   parsed_output: unknown
   stop_reason: string | null
   usage?: { input_tokens?: number; output_tokens?: number } | null
 }>
 
 export function parseWith(client: Anthropic): ParseCall {
-  return async (params) => {
+  return async (params, opts) => {
     // Streamed: a long shot list may take longer than the SDK lets one request wait, and the final
-    // message is parsed against the same schema as a single answer would be.
-    const r = await client.beta.messages.stream(params as never).finalMessage()
+    // message is parsed against the same schema as a single answer would be. A Stop aborts it.
+    const r = await client.beta.messages.stream(params as never, { signal: opts?.signal }).finalMessage()
     return { parsed_output: (r as { parsed_output?: unknown }).parsed_output ?? null, stop_reason: r.stop_reason, usage: r.usage }
   }
 }
@@ -60,6 +67,40 @@ export function streamedAnswer(text: string, opts: { model?: string; input?: num
   ]
   const body = events.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('')
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+export { CLAUDE_HOLD }
+
+/** What one call to Claude is held to: the budget's hold, and the longest answer that hold pays for. */
+export interface ClaudeHold {
+  held: number
+  maxTokens: number
+}
+
+/** An answer Claude is always given room for, when the budget has it: thinking and the answer of a short call. */
+const ROOM_TO_ANSWER = 8000
+
+/**
+ * A hold on the budget for one call to Claude, about `input` tokens in and
+ * `output` out, and the longest answer it pays for, up to `ceiling` tokens;
+ * null when not even the estimate fits in what is left. With no budget (the
+ * script written before any quote), the call is only capped at `ceiling`.
+ */
+export function holdFor(budget: Budget | undefined, estimate: { input: number; output: number }, ceiling: number): ClaudeHold | null {
+  if (!budget) return { held: 0, maxTokens: ceiling }
+  const inCost = (estimate.input / 1e6) * PRICES.claude.inputPerMillion
+  const twice = callCost({ input_tokens: estimate.input, output_tokens: estimate.output }) * CLAUDE_HOLD
+  const least = callCost({ input_tokens: estimate.input, output_tokens: Math.min(ceiling, ROOM_TO_ANSWER) })
+  const want = Math.min(budget.room, Math.max(twice, least))
+  const maxTokens = Math.min(ceiling, Math.floor(((want - inCost) / PRICES.claude.outputPerMillion) * 1e6))
+  if (maxTokens < Math.min(ceiling, estimate.output) || !budget.reserve(want)) return null
+  return { held: want, maxTokens }
+}
+
+/** What a call held to the budget cost, spent; a call that never answered spends what a Stop may have cost it. */
+export function settle(budget: Budget | undefined, hold: ClaudeHold, cost: number | null): void {
+  if (!budget) return
+  budget.commit(hold.held, cost ?? hold.held)
 }
 
 /** Dollars a call cost, from the tokens it used. */
@@ -132,6 +173,9 @@ export function scriptRequest(brief: Brief, opts: { brandVoice?: string | null; 
 export type ClaudeResult<T> = { ok: true; value: T; cost: number } | { ok: false; message: string; cost: number }
 
 function describe(err: unknown): string {
+  if (err instanceof Anthropic.APIUserAbortError) return 'Stopped.'
+  if (err instanceof Anthropic.APIError && /credit balance is too low|insufficient.{0,20}credit/i.test(err.message))
+    return 'Your Anthropic account has no credit left. Add credit to it, then try again.'
   if (err instanceof Anthropic.AuthenticationError) return 'Claude did not accept the Anthropic key. Check it in Settings.'
   if (err instanceof Anthropic.RateLimitError) return 'Claude is busy right now. Try again in a minute.'
   if (err instanceof Anthropic.APIConnectionError) return 'I could not reach Claude. Check the connection.'
@@ -139,21 +183,35 @@ function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/** Whether a failed call was a Stop, which may have been billed for what it said so far. */
+const stopped = (err: unknown, signal?: AbortSignal): boolean => !!signal?.aborted || err instanceof Anthropic.APIUserAbortError
+
 export async function writeScript(
   brief: Brief,
   parse: ParseCall,
-  opts: { brandVoice?: string | null; brandName?: string | null } = {}
+  opts: { brandVoice?: string | null; brandName?: string | null; signal?: AbortSignal; budget?: Budget } = {}
 ): Promise<ClaudeResult<ScriptAnswer>> {
+  const output = Math.round(brief.seconds * CLAUDE_TOKENS.scriptPerSecond * (1 + CLAUDE_TOKENS.thinking) + 600)
+  const hold = holdFor(opts.budget, { input: CLAUDE_TOKENS.promptBase, output }, 16000)
+  if (!hold) return { ok: false, message: 'There is not enough left of the quote for Claude to write the script.', cost: 0 }
+  if (opts.signal?.aborted) {
+    settle(opts.budget, hold, 0)
+    return { ok: false, message: 'Stopped.', cost: 0 }
+  }
   try {
-    const r = await parse(scriptRequest(brief, opts))
+    const r = await parse({ ...scriptRequest(brief, opts), max_tokens: hold.maxTokens }, { signal: opts.signal })
     const cost = callCost(r.usage)
+    settle(opts.budget, hold, cost)
     if (r.stop_reason === 'refusal') return { ok: false, message: 'Claude declined to write this one. Try another topic or say it another way.', cost }
     const parsed = ScriptAnswerSchema.safeParse(r.parsed_output)
     if (!parsed.success || parsed.data.sections.every((s) => s.paragraphs.join('').trim() === ''))
       return { ok: false, message: 'The script came back in a shape I could not read. Try again.', cost }
     return { ok: true, value: parsed.data, cost }
   } catch (err) {
-    return { ok: false, message: describe(err), cost: 0 }
+    const cut = stopped(err, opts.signal)
+    // Cut short, it may have been billed for what it wrote so far: the hold is spent. Refused, it was not.
+    settle(opts.budget, hold, cut ? null : 0)
+    return { ok: false, message: cut ? 'Stopped.' : describe(err), cost: cut ? hold.held : 0 }
   }
 }
 
@@ -220,7 +278,7 @@ export function shotsRequest(
 export async function planShots(
   brief: Brief,
   phrases: string[],
-  opts: { sections: number[]; outline: string[]; maxClips: number },
+  opts: { sections: number[]; outline: string[]; maxClips: number; signal?: AbortSignal; budget?: Budget },
   parse: ParseCall
 ): Promise<ClaudeResult<CheckedShots>> {
   let bible: Bible | null = null
@@ -231,9 +289,21 @@ export async function planShots(
   for (let from = 0; from < phrases.length; from += SHOTS_PER_CALL) {
     const to = Math.min(phrases.length, from + SHOTS_PER_CALL)
     const share = Math.min(clipsLeft, Math.ceil((opts.maxClips * (to - from)) / Math.max(1, phrases.length)))
+    // Stopped: no later part is asked for.
+    if (opts.signal?.aborted) return { ok: false, message: 'Stopped.', cost }
+    const request = shotsRequest(brief, phrases, { from, to, sections: opts.sections, outline: opts.outline, maxClips: share, bible })
+    const asked = JSON.stringify(request.messages).length
+    const hold = holdFor(
+      opts.budget,
+      { input: CLAUDE_TOKENS.promptBase + Math.ceil(asked / 4), output: Math.round((to - from) * CLAUDE_TOKENS.perShot * (1 + CLAUDE_TOKENS.thinking)) },
+      32000
+    )
+    if (!hold) return { ok: false, message: 'There was not enough left of the quote for Claude to plan the shots.', cost }
     try {
-      const r = await parse(shotsRequest(brief, phrases, { from, to, sections: opts.sections, outline: opts.outline, maxClips: share, bible }))
-      cost += callCost(r.usage)
+      const r = await parse({ ...request, max_tokens: hold.maxTokens }, { signal: opts.signal })
+      const spent = callCost(r.usage)
+      settle(opts.budget, hold, spent)
+      cost += spent
       if (r.stop_reason === 'refusal') return { ok: false, message: 'Claude declined to plan these shots.', cost }
       if (r.stop_reason === 'max_tokens') return { ok: false, message: 'The shot list ran too long to plan in one go.', cost }
       const parsed = ShotListAnswerSchema.safeParse(r.parsed_output)
@@ -249,7 +319,9 @@ export async function planShots(
       shots.push(...parsed.data.shots.filter((s) => s.phrase >= from && s.phrase < to))
       clipsLeft -= parsed.data.shots.filter((s) => s.kind === 'clip' && s.phrase >= from && s.phrase < to).length
     } catch (err) {
-      return { ok: false, message: describe(err), cost }
+      const cut = stopped(err, opts.signal)
+      settle(opts.budget, hold, cut ? null : 0)
+      return { ok: false, message: cut ? 'Stopped.' : describe(err), cost: cost + (cut ? hold.held : 0) }
     }
   }
   const all = checkShotList({ ...(answerBible as ShotListAnswer), shots }, phrases, {

@@ -7,15 +7,15 @@ import { cameraFor, type Carry } from '../../shared/make/assemble'
 import { readMakeAsk, shotNumber, type MakeAsk } from '../../shared/make/edits'
 import type { KeyService } from '../../shared/make/key-steps'
 import { PRICES } from '../../shared/make/prices'
-import { clipCost, dollars, listOf, stillCost, type Availability, type QuoteLine } from '../../shared/make/quote'
+import { clipCost, DEFAULT_CAP, dollars, stillCost, type Availability, type QuoteLine } from '../../shared/make/quote'
 import { promptFor } from '../../shared/make/shots'
 import { STILL_MOVES, type Brief, type ImageService, type Make, type MadeShot, type VoiceChoice } from '../../shared/make/schema'
 import { defaultVoice, voicePhrase } from '../../shared/make/voices'
 import { MODEL } from '../planner'
-import { callCost, type ParseCall } from './claude'
+import { callCost, holdFor, settle, type ParseCall } from './claude'
 import { Budget, MadeCache, makeOnce, OverBudget, type MadeRequest } from './generate'
 import type { Change, Draft, Reply, ShotChange } from '../../shared/make/draft'
-import { draftFor, quoteDraft, type DraftDeps } from './run'
+import { MakeFailed, quoteDraft, type DraftDeps } from './run'
 import type { MakeServices, Picture } from './services'
 
 /**
@@ -28,7 +28,11 @@ import type { MakeServices, Picture } from './services'
  *
  * One shot is the treat op on its beat, so whatever else was done to the cut
  * stays. A new narration, style or length is a new cut made by the same run
- * as the first (run.ts), with what stays the same kept and not paid for.
+ * as the first (run.ts), with what stays the same kept and not paid for; a
+ * new length is quoted before its script is written, and written only once
+ * that quote is confirmed. Every change is held to the cap with what the
+ * video has spent already, and none goes ahead without its button: these are
+ * read from what was typed, so "go ahead without asking" never applies.
  */
 
 const IMAGE_NAME: Record<ImageService, string> = { google: 'Google', fal: 'fal.ai' }
@@ -58,7 +62,7 @@ export function quoteShot(
   make: Make,
   ask: Extract<MakeAsk, { kind: 'reshoot' }>,
   can: Availability,
-  settings: { autoUnder?: number | null }
+  settings: { autoUnder?: number | null; cap?: number | null }
 ): ShotChange | { kind: 'say'; reply: Reply } {
   const shot = make.shots.find((s) => s.phrase === ask.phrase)
   if (!shot) return say('I could not tell which shot you mean. Say its number, like “make shot 4 a close-up of his hands”.')
@@ -84,7 +88,14 @@ export function quoteShot(
   lines.push({ what: 'One still', by: `${IMAGE_NAME[service]} ${PRICES.images[service].name}`, cost: stillCost(service, size, refs) })
   if (clips) lines.push({ what: `One clip of ${seconds} s from it`, by: `${IMAGE_NAME[clips]} ${PRICES.clips[clips].name}`, cost: clipCost(clips, seconds) })
   const total = Math.round(lines.reduce((t, l) => t + l.cost, 0) * 10000) / 10000
-  const auto = !!settings.autoUnder && settings.autoUnder > 0 && total < settings.autoUnder && missing.length === 0
+  // Held to the cap with what the video has spent already: a prompt's limit can only lower Settings'.
+  const cap = Math.min(settings.cap ?? DEFAULT_CAP, make.brief.cap ?? Number.POSITIVE_INFINITY)
+  if (images && make.spent + total > cap + 1e-9)
+    missing.push(
+      `That would take this video to ${dollars(make.spent + total)} in all, more than the ${dollars(cap)} a video may cost. Raise the limit in Settings to make it.`
+    )
+  // Read from what was typed, so it never goes ahead without its button, whatever Settings says.
+  const auto = false
   const sends = [
     ask.want ? 'What you asked for, and the shot as it was described, go to Claude to describe the new picture, with your Anthropic key.' : '',
     `Only the text prompt goes to ${IMAGE_NAME[service]}${refs ? ', with the character sheet of each character in it' : ''}.`,
@@ -160,19 +171,29 @@ export async function rewriteShot(
   make: Make,
   shot: MadeShot,
   want: string,
-  parse: ParseCall
+  parse: ParseCall,
+  opts: { signal?: AbortSignal; budget?: Budget } = {}
 ): Promise<{ prompt: string; move: (typeof STILL_MOVES)[number]; cost: number; note: string | null }> {
   const v = shot.visual
   const move = v.kind === 'still' ? v.move : 'push-in'
   const plain = `${want.charAt(0).toUpperCase()}${want.slice(1)}.`
+  const hold = holdFor(opts.budget, { input: 2500, output: 1500 }, 4000)
+  if (!hold) return { prompt: plain, move, cost: 0, note: 'There was not enough left of the quote for Claude, so the picture was asked for in your words.' }
   try {
-    const r = await parse(reshotRequest(make, shot, want))
+    const r = await parse({ ...reshotRequest(make, shot, want), max_tokens: hold.maxTokens }, { signal: opts.signal })
     const cost = callCost(r.usage)
+    settle(opts.budget, hold, cost)
     const parsed = ReshotSchema.safeParse(r.parsed_output)
     if (r.stop_reason === 'refusal' || !parsed.success || !parsed.data.prompt.trim())
       return { prompt: plain, move, cost, note: 'Claude could not describe it, so the picture was asked for in your words.' }
     return { prompt: parsed.data.prompt.trim().slice(0, 1200), move: parsed.data.move, cost, note: null }
   } catch {
+    // Stopped, it may have been billed for what it wrote: the hold is spent, and the shot is not made.
+    if (opts.signal?.aborted) {
+      settle(opts.budget, hold, null)
+      throw new Error('Stopped.')
+    }
+    settle(opts.budget, hold, 0)
     return { prompt: plain, move, cost: 0, note: 'Claude could not be reached, so the picture was asked for in your words.' }
   }
 }
@@ -196,6 +217,27 @@ export async function remakeShot(
   change: ShotChange,
   deps: RemakeShotDeps
 ): Promise<{ ops: Op[]; make: Make; asset: Omit<Asset, 'id'>; summary: string; reply: Reply; spent: number }> {
+  // Everything, Claude's few words included, is held to what was quoted; a Stop or a failure says what it spent.
+  const budget = new Budget(change.total)
+  try {
+    return await remakeShotWith(doc, change, deps, budget)
+  } catch (err) {
+    if (deps.signal?.aborted)
+      throw new Error(
+        budget.spent > 0
+          ? `Stopped: ${dollars(budget.spent)} of the ${dollars(change.total)} quoted was spent, and the shot stays as it was.`
+          : 'Stopped before anything was made, so nothing was spent, and the shot stays as it was.'
+      )
+    throw new MakeFailed(err instanceof Error ? err.message : String(err), budget.spent, change.total)
+  }
+}
+
+async function remakeShotWith(
+  doc: EditDoc,
+  change: ShotChange,
+  deps: RemakeShotDeps,
+  budget: Budget
+): Promise<{ ops: Op[]; make: Make; asset: Omit<Asset, 'id'>; summary: string; reply: Reply; spent: number }> {
   const make = doc.make
   if (!make) throw new Error('This edit was not made from nothing, so there is no shot to make again.')
   const shot = make.shots.find((s) => s.phrase === change.phrase)
@@ -204,17 +246,13 @@ export async function remakeShot(
   if (!currentCut(doc).beats.some((b) => b.id === beat)) throw new Error('That shot is no longer in the cut.')
   const n = shotNumber(make, shot.phrase)
   const notes: string[] = []
-  let spentClaude = 0
   let visual = shot.visual
   if (change.want) {
     deps.progress(`Describing shot ${n} again`, null)
-    const r = await rewriteShot(make, shot, change.want, deps.parse)
-    spentClaude = r.cost
+    const r = await rewriteShot(make, shot, change.want, deps.parse, { signal: deps.signal, budget })
     if (r.note) notes.push(r.note)
     visual = visual.kind === 'still' ? { ...visual, prompt: r.prompt, move: r.move } : { ...visual, prompt: r.prompt }
   }
-  // Everything but Claude's few words is held to what was quoted.
-  const budget = new Budget(change.lines.filter((l) => !l.by.startsWith('Claude')).reduce((t, l) => t + l.cost, 0))
   const cache = new MadeCache(deps.dir)
   const brief = make.brief
   const size = PRICES.images[change.images].size
@@ -254,7 +292,7 @@ export async function remakeShot(
       notes.push(err instanceof OverBudget ? 'The clip would have passed the quote, so it is the still.' : 'The clip could not be made, so it is the still with a camera move.')
     }
   }
-  const spent = Math.round((budget.spent + spentClaude) * 10000) / 10000
+  const spent = budget.spent
   const facts = await deps.probe(file).catch(() => ({ durationSec: 0, width: 0, height: 0 }))
   const move = visual.kind === 'still' ? visual.move : 'push-in'
   const broll = video ? { path: file, inSec: 0, muted: true } : { path: file, inSec: 0, muted: true, camera: cameraFor(move, shot.phrase) }
@@ -343,7 +381,9 @@ export async function changeFor(
     script: make.script,
     phrases: make.phrases,
     sections: make.sections,
-    scriptCost: 0
+    scriptCost: 0,
+    // What the video has cost so far counts against the cap with what the change costs.
+    spentBefore: make.spent
   }
   const into = (summary: string, carry: Carry): Draft['into'] => ({ docId: doc.id, sourceId: nextSourceId(doc), summary, carry })
   if (ask.kind === 'voice') {
@@ -412,19 +452,29 @@ export async function changeFor(
       }
     }
   }
-  // A new length: a new script, so a new narration and new shots; quoted like the first.
+  // A new length: a new script, so a new narration and new shots. Quoted first, from the length;
+  // Claude writes it only once that quote is confirmed, held to it like the rest.
   const brief: Brief = { ...make.brief, seconds: ask.seconds, from: 'topic', inferred: [] }
-  const drafted = await draftFor(brief, doc.id, deps)
-  if (!drafted.ok) return say(drafted.message)
-  const draft: Draft = { ...drafted.draft, into: into(`Made again at ${Math.round(ask.seconds / 60) || 1} minutes.`, { captions: true, look: true, music: true }) }
+  const draft: Draft = {
+    ...base,
+    brief,
+    script: '',
+    phrases: [],
+    sections: [],
+    outline: [],
+    unwritten: { voice: deps.brand.voice ?? null, name: deps.brand.name ?? null },
+    into: into(`Made again at ${Math.round(ask.seconds / 60) || 1} minutes.`, { captions: true, look: true, music: true }),
+    quote: null as never
+  }
+  draft.quote = quoteDraft(draft, deps)
   const q = draft.quote
   return {
     kind: 'draft',
     draft,
     reply: {
-      text: `I'll write it again at ${Math.round(ask.seconds / 60) || 1} minutes and make it new: ${q.counts.scenes} shots, for ${dollars(q.total)}.`,
-      aside: [listOf(q.notes), ...q.missing].filter(Boolean).join(' ') || null,
-      chips: [`${q.counts.scenes} shots`, dollars(q.total)],
+      text: `I'll write it again at ${Math.round(ask.seconds / 60) || 1} minutes and make it new: about ${q.counts.scenes} shots, for up to ${dollars(q.total)}.`,
+      aside: [...q.notes, ...q.missing, 'Nothing is written until you press its button.'].filter(Boolean).join(' ') || null,
+      chips: [`About ${q.counts.scenes} shots`, dollars(q.total)],
       details: [...q.lines.map((l) => ({ label: l.what, value: `${l.by}: ${dollars(l.cost)}` })), { label: 'What goes where', value: q.sends.join(' ') }]
     }
   }
