@@ -57,6 +57,8 @@ describe('a grid made from files', () => {
     expect(cut.aspect).toBe('wide')
     expect(cut.captions.on).toBe(false)
     expect(doc.title).toBe('Grid: Talking head, Faceless, Map and Vlog')
+    // One version: the grid is what the edit is from the start.
+    expect(doc.versions.map((v) => v.n)).toEqual([1])
     expect(doc.versions[doc.versions.length - 1].summary).toBe(
       'Four videos play at once in a grid, labelled Talking head, Faceless, Map and Vlog.'
     )

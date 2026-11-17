@@ -108,7 +108,13 @@ export function gridDoc(input: {
   const summary = `${NUMBERS[files.length] ?? files.length} videos play at once in a grid${said.length ? `, labelled ${listOf(said)}` : ''}.`
   const made = commit(doc, ops, summary.charAt(0).toUpperCase() + summary.slice(1))
   if (made.rejected.length) throw new Error(made.rejected[0].reason)
-  return { ...made.doc, title: said.length ? `Grid: ${listOf(said)}`.slice(0, 80) : `Grid of ${files.length}` }
+  // The grid is what this edit is from the start: one version, v1, rather than the longest file on its own first.
+  const first = { ...made.doc.versions[made.doc.versions.length - 1], n: 1 }
+  return {
+    ...made.doc,
+    title: said.length ? `Grid: ${listOf(said)}`.slice(0, 80) : `Grid of ${files.length}`,
+    versions: [first]
+  }
 }
 
 /** What /grid is asked to do with the words after it. */
