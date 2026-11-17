@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { applyOps, createDoc, currentCut, resolveCut, type Cut, type EditDoc } from '../shared/edit'
 import { renderCut, type RenderSource } from './cut-render'
 import { hasEncoder } from './providers/testing'
-import { audioSeconds, countFrames, ffmpegRun, findFfmpeg, frameColour, makeColourClip, toneLevel } from './test-media'
+import { AS_PLAYED, audioSeconds, countFrames, ffmpegRun, findFfmpeg, frameColour, makeColourClip, toneLevel } from './test-media'
 
 const FFMPEG = findFfmpeg()
 
@@ -21,7 +21,7 @@ function frameN(ffmpeg: string, path: string, n: number): [number, number, numbe
       '-i',
       path,
       '-vf',
-      `select=eq(n\\,${n}),scale=1:1:flags=area,format=rgb24`,
+      `select=eq(n\\,${n}),${AS_PLAYED},scale=1:1:flags=area,format=rgb24`,
       '-frames:v',
       '1',
       '-f',

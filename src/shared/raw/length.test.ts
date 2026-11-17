@@ -168,6 +168,22 @@ describe('reading a length asked for', () => {
     })
     expect(parseLengthAsk('ok, make it 10 minutes')).toEqual({ targetSec: 600, cut: [] })
   })
+
+  it('sends on what a sentence asks around its length, and nothing when it asks only the length', () => {
+    expect(parseLengthAsk('make it 60 seconds with captions')).toEqual({ targetSec: 60, cut: [], rest: 'with captions' })
+    expect(parseLengthAsk('make it 2 minutes while keeping the jokes')).toEqual({
+      targetSec: 120,
+      cut: [],
+      rest: 'while keeping the jokes'
+    })
+    expect(parseLengthAsk('a 3 minute version with music')).toEqual({ targetSec: 180, cut: [], rest: 'with music' })
+    expect(parseLengthAsk('For YouTube, make the video 8 minutes long')).toEqual({ targetSec: 480, cut: [], rest: 'For YouTube' })
+    // Only the length: nothing goes on.
+    for (const text of ['make it 60 seconds', 'Can you make it 60 seconds long, please?', 'I want it to be 90 seconds', '60 seconds'])
+      expect(parseLengthAsk(text)?.rest, text).toBeUndefined()
+    // What the ask heard already is not sent again.
+    expect(parseLengthAsk('make it 10 minutes without cutting any lines')).toEqual({ targetSec: 600, keepAll: true, cut: [] })
+  })
 })
 
 describe('the intro', () => {
