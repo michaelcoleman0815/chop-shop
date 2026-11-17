@@ -33,6 +33,9 @@ await build({
   format: 'iife',
   target: ['es2020'],
   sourcemap: true,
+  // The desktop code it bundles lives outside this app, and the packages that code imports (zod)
+  // are found here, as CI installs only this app's.
+  nodePaths: [join(here, 'node_modules')],
   plugins: [noChildProcess],
   logLevel: 'info'
 })

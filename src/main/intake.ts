@@ -1,4 +1,3 @@
-import { join } from 'path'
 import { platform } from './platform'
 
 /**
@@ -302,7 +301,8 @@ async function probeCaptionMatrix(ffmpeg: string): Promise<'bt709' | 'bt601' | n
   const files = platform().files
   const dir = await files.tempDir('cutalong-matrix-')
   try {
-    const ass = join(dir, 'square.ass')
+    // Joined by hand: this runs on a phone too, and every system here takes a forward slash.
+    const ass = `${dir}/square.ass`
     // #C8F04A as ASS writes it, drawn as a square so no face is needed.
     await files.writeText(
       ass,
@@ -325,7 +325,7 @@ async function probeCaptionMatrix(ffmpeg: string): Promise<'bt709' | 'bt601' | n
     const inner = ass.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
     const filter = `subtitles='${inner.replace(/'/g, "'\\''")}'`
     // The frame goes to a file rather than a pipe: a phone's ffmpeg hands its output over as text.
-    const frameFile = join(dir, 'frame.yuv')
+    const frameFile = `${dir}/frame.yuv`
     const r = await platform().run(ffmpeg, [
       '-hide_banner',
       '-loglevel',

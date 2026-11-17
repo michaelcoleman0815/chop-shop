@@ -11,7 +11,8 @@
     "@capacitor/android": "8.6.2",
     "@capacitor/core": "8.6.2",
     "@capacitor/ios": "8.6.2",
-    "cutalong-engine": "file:.."
+    "cutalong-engine": "file:..",
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "@capacitor/cli": "8.6.2",
