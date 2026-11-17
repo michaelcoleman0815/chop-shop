@@ -123,7 +123,7 @@ describe('a picture service out of credit', () => {
       models: { image: { google: 'g', fal: 'f' }, clip: { google: 'g', fal: 'f' } },
       image: async () => {
         asked++
-        if (asked > 2) throw new ServiceError('google', 'no-credit', 'Google says the account has no credit left.', { status: 429 })
+        if (asked > 2) throw new ServiceError('gemini', 'no-credit', 'Google Gemini says the account has no credit left.', { status: 429 })
         return { data: PNG, mime: 'image/png' }
       }
     } as unknown as MakeServices
@@ -149,9 +149,9 @@ describe('a picture service out of credit', () => {
     const stopped = err as Stopped
     // One sentence: why it stopped, what was spent, and what is kept. No plain cards, no note per shot.
     expect(stopped.message).toMatch(
-      /^Google says the account has no credit left, so I stopped there: \$\d+\.\d\d of the \$\d+\.\d\d quoted was spent\. The shot list, the narration and the 2 pictures already made are kept, so making the rest reuses them\.$/
+      /^Google Gemini says the account has no credit left, so I stopped there: \$\d+\.\d\d of the \$\d+\.\d\d quoted was spent\. The shot list, the narration and the 2 pictures already made are kept, so making the rest reuses them\.$/
     )
-    expect(stopped.reason).toBe('Google says the account has no credit left.')
+    expect(stopped.reason).toBe('Google Gemini says the account has no credit left.')
     // No picture was asked for once the first answer said so, past the few already on their way.
     expect(asked).toBeLessThanOrEqual(2 + 4)
     // What was spent: the shot list and the two pictures made; the refused ones cost nothing.
