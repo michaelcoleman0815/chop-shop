@@ -189,10 +189,15 @@ export interface DownloadOptions {
 
 export type DownloadResult = MapDownloadResult
 
+/** This many pictures failing one after another, with none arriving, means NASA's server cannot be reached from here. */
+const GIVE_UP_AFTER = 24
+
 /**
  * Fetches the sharper satellite tiles and the plates, reporting 0 to 100.
  * Tiles already here are kept, so a download stopped half way picks up where
- * it left off; a level counts once every tile of it is here.
+ * it left off; a level counts once every tile of it is here. When NASA's
+ * server cannot be reached at all, it stops after a couple of dozen tries
+ * rather than asking for every picture, and still fetches the plates.
  */
 export async function downloadMapData(onProgress: (percent: number) => void, opts: DownloadOptions): Promise<DownloadResult> {
   if (!dirs.data) return { ok: false, message: 'There is nowhere to keep map data yet.', status: await mapStatus() }
@@ -215,6 +220,10 @@ export async function downloadMapData(onProgress: (percent: number) => void, opt
     }
   }
   const failed = new Map<number, number>()
+  // Pictures failing in a row, and how the last one failed.
+  let streak = 0
+  let why = ''
+  let unreachable = false
   const fetchTile = async ([z, x, y]: [number, number, number]): Promise<void> => {
     const path = tilePath(z, x, y) as string
     try {
@@ -227,26 +236,33 @@ export async function downloadMapData(onProgress: (percent: number) => void, opt
       try {
         const r = await opts.fetch(gibsTileUrl(z, x, y), { signal: opts.signal })
         if (!r.ok) {
+          why = `it answered ${r.status}`
           if (r.status >= 400 && r.status < 500) break
           continue
         }
         const bytes = Buffer.from(await r.arrayBuffer())
         // A JPEG starts FF D8; anything else is an error page.
-        if (bytes.length < 3 || bytes[0] !== 0xff || bytes[1] !== 0xd8) break
+        if (bytes.length < 3 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+          why = 'it sent something other than a picture'
+          break
+        }
         await fs.mkdir(join(path, '..'), { recursive: true })
         await fs.writeFile(`${path}.part`, bytes)
         await fs.rename(`${path}.part`, path)
+        streak = 0
         return
       } catch (err) {
         if (opts.signal?.aborted) throw err
+        why = err instanceof Error ? err.message : String(err)
       }
     }
     failed.set(z, (failed.get(z) ?? 0) + 1)
+    if (++streak >= GIVE_UP_AFTER) unreachable = true
   }
   // A few at a time, as a map viewer would ask for them.
   let next = 0
   const workers = Array.from({ length: Math.max(1, opts.concurrency ?? 8) }, async () => {
-    while (next < jobs.length) {
+    while (next < jobs.length && !unreachable) {
       const job = jobs[next++]
       await fetchTile(job)
       tick()
@@ -280,7 +296,11 @@ export async function downloadMapData(onProgress: (percent: number) => void, opt
   const missing = [...failed.values()].reduce((a, b) => a + b, 0)
   if (missing || platesProblem) {
     const parts = [
-      missing ? `${missing} map ${missing === 1 ? 'picture' : 'pictures'} did not download` : '',
+      unreachable
+        ? `I could not reach NASA's map server (${why}), so the sharper pictures did not download`
+        : missing
+          ? `${missing} map ${missing === 1 ? 'picture' : 'pictures'} did not download`
+          : '',
       platesProblem ? `the plate boundaries did not download (${platesProblem})` : ''
     ].filter(Boolean)
     const said = parts.join(', and ')

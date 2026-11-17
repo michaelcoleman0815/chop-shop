@@ -92,6 +92,20 @@ describe('map data on this computer', () => {
     expect(again.asked.filter((u) => u.includes('githubusercontent'))).toHaveLength(0)
   })
 
+  it('stops after a couple of dozen tries when NASA cannot be reached, and still fetches the plates', async () => {
+    const server = standIn({ missing: (u) => u.includes('gibs') })
+    const blocked: Fetch = async (url, init) => {
+      const r = await server.fetch(url, init)
+      return url.includes('gibs') ? { ...r, ok: false, status: 403 } : r
+    }
+    const result = await downloadMapData(() => undefined, { fetch: blocked, levels: [4] })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/^I could not reach NASA's map server \(it answered 403\)/)
+    // Not all 256 pictures of the level: it gave up once it was plain the server is out of reach.
+    expect(server.asked.filter((u) => u.includes('gibs')).length).toBeLessThanOrEqual(24 + 8)
+    expect(result.status).toMatchObject({ level: 3, plates: true })
+  })
+
   it('turns away an error page in place of a picture', async () => {
     const server = standIn()
     const html: Fetch = async (url, init) => {
