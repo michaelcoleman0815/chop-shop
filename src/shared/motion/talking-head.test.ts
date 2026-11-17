@@ -259,11 +259,11 @@ describe('a counter', () => {
     expect(numbers(two + 0.05).sort()).toEqual(['1', '1', '2'])
     expect(numbers(two + 0.25).sort()).toEqual(['1', '2', '2'])
     expect(numbers(two + 0.5).sort()).toEqual(['2', '2'])
-    // It stands to the left, leaving the middle of a wide frame for a screenshot.
+    // It stands in the left of a wide frame, leaving the rest for a page moved over beside it.
     const d = draw(scene, two + 0.6)
     const { width: W, height: H } = scene.size
-    expect(d.lit(0, 0, W * 0.25, H)).toBeGreaterThan(5000)
-    expect(d.lit(W * 0.3, 0, W * 0.4, H)).toBe(0)
+    expect(d.lit(0, 0, W * 0.36, H)).toBeGreaterThan(5000)
+    expect(d.lit(W * 0.37, 0, W * 0.63, H)).toBe(0)
   })
 })
 
@@ -457,13 +457,15 @@ describe('a page that slides in with a ring', () => {
     pctx.fillStyle = '#ffffff'
     pctx.fillRect(0, 0, 120, 160)
     const images = new Map([[id, page]])
-    // It starts off the right edge and comes to rest in the middle.
+    // It starts off the right edge, comes to rest in the middle, and leaves a little way back to the right.
     const card = scene.layers.find((l) => l.kind === 'group')!
     const xs = (card.transform?.x as { keys: { t: number; v: number }[] }).keys
     expect(xs[0].v).toBeGreaterThan(1920)
-    expect(xs[xs.length - 1].v).toBe(960)
-    // At rest: no ring yet; then the ring in the accent, round the region.
-    expect(draw(scene, start + 0.55, images).boxOf(ACCENT, 40)).toBeNull()
+    expect(xs[1].v).toBe(960)
+    expect(xs[xs.length - 1].v).toBeGreaterThan(960)
+    expect(xs[xs.length - 1].v).toBeLessThan(1020)
+    // On its way in, no ring yet; it starts drawing as the page comes to rest, round the region, in the accent.
+    expect(draw(scene, start + 0.3, images).boxOf(ACCENT, 40)).toBeNull()
     const ring = draw(scene, start + 1.5, images).boxOf(ACCENT, 40)
     expect(ring).not.toBeNull()
     const [bx, by, bw, bh] = box
@@ -504,6 +506,25 @@ describe('boxed captions', () => {
     expect(box).not.toBeNull()
     expect(box!.x1 - box!.x0).toBeGreaterThan(80)
     expect(draw(scene, 0.01).boxOf(ACCENT)).toBeNull()
+  })
+
+  it('darkens a word only as its box comes onto it, so no word is ever dark off its box', () => {
+    const doc = docWith('vertical', () => [{ op: 'captions', set: { on: true, preset: 'boxed', wordsPerScreen: 3 } }])
+    const scene = sceneOf(doc)
+    const INK: [number, number, number] = [0x15, 0x16, 0x1a]
+    // The first moments after each word starts, when the box is still on its way from the word before.
+    for (const word of ['use', 'Notion', 'Figma', 'Linear']) {
+      for (const after of [0.002, 0.02, 0.05]) {
+        const d = draw(scene, saidAt(doc, idOf(doc, word)) + after)
+        const box = d.boxOf(ACCENT, 40, 200)
+        const ink = d.boxOf(INK, 20)
+        if (!ink) continue
+        expect(box, `${word} +${after}`).not.toBeNull()
+        // Dark letters lie on the box, never off it on the picture.
+        expect(ink.x0, `${word} +${after}`).toBeGreaterThanOrEqual(box!.x0 - 2)
+        expect(ink.x1, `${word} +${after}`).toBeLessThanOrEqual(box!.x1 + 2)
+      }
+    }
   })
 
   it('is a preset: /boxed', async () => {
@@ -575,6 +596,57 @@ describe('commands and plain words', () => {
     expect(graphicAsked('turn these into video cards')).toEqual({ command: 'videos', rest: '' })
     for (const other of ['count the beats in the music', 'make it faster', 'add a title here', '/chips Notion', 'cut the pauses'])
       expect(graphicAsked(other), other).toBeNull()
+  })
+
+  it('moves the way the house does: nothing from nothing, out quicker than in and eased out', () => {
+    const doc = docWith('wide', (d) => [
+      planOp(d, 'chips', '', saidAt(d, idOf(d, 'Slack'))),
+      planOp(d, 'count', '683,594 to 1,000,000 views', null),
+      planOp(d, 'videos', 'One video | 1K views · 1 wk ago\nAnother | 2K views · 2 wk ago', saidAt(d, idOf(d, 'This')))
+    ])
+    const scene = sceneOf(doc)
+    const keyed = (a: unknown): { t: number; v: number; ease?: unknown; from?: string }[] =>
+      a && typeof a === 'object' && 'keys' in a ? (a as { keys: { t: number; v: number }[] }).keys : []
+    for (const item of scene.items) {
+      for (const l of flat(item.layers)) {
+        const tr = l.transform ?? {}
+        // Each enters from a little smaller, never from nothing.
+        const scale = keyed(tr.scale)
+        if (scale.length) expect(scale[0].v, item.kind).toBeGreaterThanOrEqual(0.8)
+        // And leaves eased out, never easing in as it goes.
+        for (const k of [...scale, ...keyed(tr.opacity), ...keyed(tr.y)])
+          expect(k.ease, `${item.kind} ${JSON.stringify(k)}`).not.toBe('ease-in')
+      }
+    }
+  })
+
+  it('keeps a calendar beside a page in view, whichever was added first', () => {
+    let doc = docWith('wide', () => [])
+    const page = addAsset(doc, {
+      kind: 'image',
+      path: '/page.png',
+      title: 'channel',
+      durationSec: null,
+      width: 1200,
+      height: 1600,
+      origin: { type: 'link', url: 'https://example.com/@channel', author: 'example.com', license: null, range: null }
+    })
+    doc = page.doc
+    const day = idOf(doc, 'Day')
+    doc = commit(
+      doc,
+      [
+        planOp(doc, 'flip', 'day 1 to 3', saidAt(doc, idOf(doc, 'one'))),
+        { op: 'motion-add', kind: 'screenshot', from: day, to: `${idOf(doc, 'three')}.end+1`, text: [page.asset.id], style: 'slide', place: 'right' }
+      ],
+      'pair'
+    ).doc
+    const scene = sceneOf(doc)
+    // The calendar's tab, in the accent, shows over the page's dark ground, left of the page.
+    const d = draw(scene, saidAt(doc, idOf(doc, 'two')) + 0.6, new Map([[page.asset.id, createCanvas(60, 80)]]))
+    const tab = d.boxOf(ACCENT, 30)
+    expect(tab).not.toBeNull()
+    expect(tab!.x1).toBeLessThan(1920 * 0.41)
   })
 
   it('tells the planner when each graphic fits', () => {

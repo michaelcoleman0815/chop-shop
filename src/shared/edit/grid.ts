@@ -54,6 +54,9 @@ export interface GridLayout {
   labels: { x: number; y: number; size: number }[]
 }
 
+/** A label pill's padding above and below its words, as a share of their size; its height is the words' and twice this. */
+export const LABEL_PAD_Y = 0.38
+
 /** Rows of panels, by how many: the arrangements tried for each count. */
 const ARRANGEMENTS: Record<number, number[][]> = {
   2: [[2], [1, 1]],
@@ -93,10 +96,13 @@ export function gridLayout(frame: { width: number; height: number }, count: numb
   })
   const size = Math.max(short * 0.016, Math.min(short * 0.034, ph * 0.055))
   const inset = Math.min(pw, ph) * 0.045
+  // The label's pill sits in the panel's corner, and the corner is rounded round it: the panel's radius
+  // is the pill's and the inset between them, so the two curves nest.
+  const pill = size * (0.5 + LABEL_PAD_Y)
   return {
     panels,
-    radius: Math.min(pw, ph) * 0.05,
-    labels: panels.map((p) => ({ x: p.x + inset, y: p.y + inset + size * 0.86, size }))
+    radius: inset + pill,
+    labels: panels.map((p) => ({ x: p.x + inset, y: p.y + inset + pill, size }))
   }
 }
 

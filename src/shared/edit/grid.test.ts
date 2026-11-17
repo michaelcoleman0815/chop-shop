@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { addAsset, applyOps, assetsInCut, commit, createDoc, currentCut } from '.'
-import { describeGrid, evenRect, gridAspect, gridHeard, gridLayout, gridPictures, type GridRect } from './grid'
+import {
+  describeGrid,
+  evenRect,
+  gridAspect,
+  gridHeard,
+  gridLayout,
+  gridPictures,
+  LABEL_PAD_Y,
+  type GridRect
+} from './grid'
 
 /**
  * A grid of two to four videos at once: where the panels go in a frame, what
@@ -35,6 +44,12 @@ describe('the grid’s layout', () => {
     expect(a.y).toBeCloseTo(1080 - (c.y + c.h))
     // They fill the frame's height, margins and gutter aside.
     expect(a.h * 2 + 1080 * 0.03).toBeCloseTo(1080 - 2 * 1080 * 0.045)
+    // The corners nest: a panel's radius is its label pill's and the inset between them.
+    const pillRadius = l.labels[0].size * (0.5 + LABEL_PAD_Y)
+    const inset = l.labels[0].y - pillRadius - a.y
+    expect(inset).toBeGreaterThan(0)
+    expect(l.labels[0].x - a.x).toBeCloseTo(inset)
+    expect(l.radius).toBeCloseTo(inset + pillRadius)
     // Each label sits inside the top-left corner of its own panel.
     l.labels.forEach((label, i) => {
       expect(label.x).toBeGreaterThan(l.panels[i].x)

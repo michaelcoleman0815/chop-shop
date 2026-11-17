@@ -46,7 +46,8 @@ function screenshot(ctx: BuildContext): Layer[] {
   const ch = cw * aspect
   // Moved over in a wide frame when asked, so something can stand beside it.
   const aside = !vertical && (item.place === 'left' || item.place === 'right') ? item.place : null
-  const cx = W / 2 + (aside === 'left' ? -W * 0.17 : aside === 'right' ? W * 0.17 : 0)
+  // Over far enough that a counter beside it and the card sit as one pair in the middle of the frame.
+  const cx = W / 2 + (aside === 'left' ? -W * 0.12 : aside === 'right' ? W * 0.12 : 0)
   const radius = 26 * u
   // Where the card sits with the top of the page in view, or centred when the page is short.
   const short = ch <= H * 0.8
@@ -75,9 +76,11 @@ function screenshot(ctx: BuildContext): Layer[] {
     [scrollEnd, y1, 'smooth']
   ]
   if (slide) {
-    // In from the side it sits on (the right when it is in the middle), then a slow push so it never sits dead.
-    const from = aside === 'left' ? -cw / 2 - 40 * u : W + cw / 2 + 40 * u
-    card.x = keys([0, from, 'snap'], [settle, cx])
+    // In from the side it sits on (the right when it is in the middle), then a slow push so it never sits dead,
+    // and out the way it came, only a little, as it fades.
+    const side = aside === 'left' ? -1 : 1
+    const from = side < 0 ? -cw / 2 - 40 * u : W + cw / 2 + 40 * u
+    card.x = { keys: [{ t: 0, v: from, ease: 'snap' }, { t: settle, v: cx }, ...tail([0.16, cx, 'snap'], [0, cx + side * 48 * u])] }
     card.y = atTop
     card.scale = keys([0, 0.98, 'snap'], [settle, 1], [length, 1.03])
   } else if (zooms) {
@@ -114,7 +117,9 @@ function screenshot(ctx: BuildContext): Layer[] {
     card.rotation = keys([0, 3, 'smooth'], [scrollEnd, 1, 'smooth'], [flat, 0])
     card.scaleX = keys([0, 0.94, 'smooth'], [flat, 1])
   }
-  card.opacity = { keys: [{ t: 0, v: 0 }, { t: 0.2, v: 1 }, ...tail([0.16, 1, 'ease-in'], [0, 0])] }
+  card.opacity = slide
+    ? { keys: [{ t: 0, v: 0, ease: 'snap' }, { t: 0.2, v: 1 }, ...tail([0.16, 1, 'snap'], [0, 0])] }
+    : { keys: [{ t: 0, v: 0 }, { t: 0.2, v: 1 }, ...tail([0.16, 1, 'ease-in'], [0, 0])] }
 
   const plate = { type: 'rect' as const, w: cw, h: ch, radius }
   // A ring round the region, on the page so it travels with it: drawn on once the page has come to rest.
@@ -125,7 +130,8 @@ function screenshot(ctx: BuildContext): Layer[] {
     const pad = 14 * u
     const rw = bw * W + pad * 2
     const rh = bh * H + pad * 2
-    const from = slide ? settle + 0.15 : zooms ? scrollEnd + 0.1 : Math.min(scrollEnd, length - 0.6)
+    // A sliding page is all but still well before its move ends: the ring starts drawing as it comes to rest.
+    const from = slide ? settle * 0.8 : zooms ? scrollEnd + 0.1 : Math.min(scrollEnd, length - 0.6)
     const accent = accentOf(item.color, theme)
     ring.push({
       kind: 'shape',

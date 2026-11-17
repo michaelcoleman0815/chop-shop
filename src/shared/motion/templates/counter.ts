@@ -206,7 +206,7 @@ function arriveAndLeave(
   length: number
 ): { scale: { keys: Key<number>[] }; opacity: { keys: Key<number>[] } } {
   const scale: Key<number>[] = [
-    { t: 0, v: 0.86, ease: { spring: 0.4 } },
+    { t: 0, v: 0.86, ease: { spring: 0.25 } },
     { t: 0.5, v: 1 }
   ]
   // The last figure lands with one small push, settled before the counter starts to leave.
@@ -214,10 +214,11 @@ function arriveAndLeave(
   if (land !== undefined && land > 0.55 && land + 0.34 < length - TIMING.exit - 0.05) {
     scale.push({ t: land, v: 1, ease: 'snap' }, { t: land + 0.1, v: 1.045, ease: 'smooth' }, { t: land + 0.34, v: 1 })
   }
-  scale.push(...tail([TIMING.exit, 1, 'ease-in'], [0, 0.92]))
+  // Out quicker and smaller than it came, eased out like everything else: it is already on its way.
+  scale.push(...tail([TIMING.exit, 1, 'snap'], [0, 0.96]))
   return {
     scale: { keys: scale },
-    opacity: { keys: [{ t: 0, v: 0 }, { t: 0.1, v: 1 }, ...tail([TIMING.exit, 1, 'ease-in'], [0, 0])] }
+    opacity: { keys: [{ t: 0, v: 0, ease: 'snap' }, { t: 0.12, v: 1 }, ...tail([TIMING.exit, 1, 'snap'], [0, 0])] }
   }
 }
 
@@ -326,10 +327,14 @@ function flip(ctx: BuildContext, f: CounterFigures): Layer[] {
   const { start, end } = span
   const u = frame.u
   const vertical = frame.shape === 'vertical'
-  const w = (vertical ? 280 : 260) * u
+  const w = (vertical ? 280 : 330) * u
   const h = w * 1.15
   const accent = accentOf(item.color, theme)
-  const centre = centreFor(frame, item.place, w, h, vertical ? 'top-left' : 'left')
+  const placed = centreFor(frame, item.place, w, h, vertical ? 'top-left' : 'left')
+  // In a wide frame it stands in its half, beside a page moved over to the other (screenshot's place), not on
+  // the edge, its top level with the page's.
+  const side = !vertical && (item.place === '' || item.place === 'left') ? -1 : !vertical && item.place === 'right' ? 1 : 0
+  const centre = side ? { x: frame.width * (side < 0 ? 0.26 : 0.74), y: frame.height * 0.1 + h / 2 } : placed
   const turns = counterTimes(ctx, f.steps, 0, FLIP + 0.12)
   // The first figure shows as the card arrives; every later one flips in on its moment, after it has settled.
   for (let i = 1; i < turns.length; i++) turns[i] = Math.max(turns[i], 0.55, turns[i - 1] + FLIP + 0.12)
@@ -345,7 +350,12 @@ function flip(ctx: BuildContext, f: CounterFigures): Layer[] {
   const lower = { type: 'rect' as const, w, h: halfH, y: hinge + halfH / 2 }
   const at = (local: number): number => start + local
 
-  /** One half of the calendar's page showing a figure, between two moments. */
+  /**
+   * One half of the calendar's page showing a figure, between two moments. A
+   * turning flap falls the way a real one does, gathering speed (ease-in) to
+   * the hinge, and the next lands slowing to rest (ease-out): one fold, eased
+   * in and out across its two halves.
+   */
   const half = (which: 'upper' | 'lower', value: number, from: number, to: number, turn?: 'falls' | 'lands'): Layer => {
     const shape = which === 'upper' ? upper : lower
     const shade: Key<number>[] =
@@ -419,7 +429,8 @@ function flip(ctx: BuildContext, f: CounterFigures): Layer[] {
       end,
       transform: {
         x: centre.x,
-        y: { keys: [{ t: 0, v: centre.y - 34 * u, ease: { spring: 0.35 } }, { t: 0.55, v: centre.y }] },
+        // It supports what it stands beside, so it comes in with a short drop, not a big move of its own.
+        y: { keys: [{ t: 0, v: centre.y - 18 * u, ease: { spring: 0.25 } }, { t: 0.5, v: centre.y }] },
         scale: motion.scale,
         opacity: motion.opacity
       },

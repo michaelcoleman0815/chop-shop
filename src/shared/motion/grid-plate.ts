@@ -1,4 +1,4 @@
-import type { GridLayout } from '../edit/grid'
+import { LABEL_PAD_Y, type GridLayout } from '../edit/grid'
 import { mixColor } from './anim'
 import type { MotionTheme } from './theme'
 import type { Geometry, Layer, Size } from './types'
@@ -6,10 +6,11 @@ import type { Geometry, Layer, Size } from './types'
 /**
  * What a grid of videos sits in, drawn by the same code in the editor and in
  * the export (edit/grid): the ground, a soft gradient of the brand's accent
- * with each panel's rounded box cut out of it and a soft shadow round each,
- * and the labels, a small white pill in each panel's top-left corner. The
- * videos play underneath, so the ground's cut-outs are what round their
- * corners. The ground holds still; the labels fade in as the grid comes in.
+ * with each panel's rounded box cut out of it, a soft shadow and a hairline
+ * round each, and the labels, a small pill of the brand's paper in each
+ * panel's top-left corner. The videos play underneath, so the ground's
+ * cut-outs are what round their corners. The ground holds still; the labels
+ * fade in as the grid comes in.
  */
 
 /** Long enough for any edit: the ground and labels last as long as the grid does. */
@@ -67,7 +68,19 @@ export function gridGround(layout: GridLayout, size: Size, theme: MotionTheme): 
   layout.panels.forEach((_, i) => {
     layers = [{ kind: 'group', start: 0, end: ALWAYS, mask: { shape: panelShape(layout, i), invert: true }, children: layers }]
   })
-  return layers
+  // A hairline on each panel's edge, so a pale video keeps its edge on the pale ground.
+  return [
+    ...layers,
+    ...layout.panels.map(
+      (_, i): Layer => ({
+        kind: 'shape',
+        start: 0,
+        end: ALWAYS,
+        shape: panelShape(layout, i),
+        stroke: { color: 'rgba(0, 0, 0, 0.1)', width: 2 * u }
+      })
+    )
+  ]
 }
 
 /**
@@ -80,7 +93,7 @@ export function gridLabels(layout: GridLayout, labels: string[], theme: MotionTh
     const text = (labels[i] ?? '').trim()
     if (!text) return []
     const padX = l.size * 0.62
-    const padY = l.size * 0.38
+    const padY = l.size * LABEL_PAD_Y
     return [
       {
         kind: 'text',
@@ -91,7 +104,7 @@ export function gridLabels(layout: GridLayout, labels: string[], theme: MotionTh
         fill: theme.ink,
         align: 'left',
         valign: 'middle',
-        plate: { color: '#FFFFFF', radius: l.size * 2, padX, padY },
+        plate: { color: theme.paper, radius: l.size * 2, padX, padY },
         effects: { shadow: { color: 'rgba(0, 0, 0, 0.22)', blur: 12 * u, y: 3 * u } },
         transform: {
           x: l.x + padX,

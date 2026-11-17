@@ -1,11 +1,14 @@
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import { copyFileSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { addAsset, commit, createDoc, currentCut, evenRect, gridLayout, resolveCut, type EditDoc } from '../shared/edit'
+import { DEFAULT_THEME, gridGround, gridLabels, MOTION_FONTS, renderFrame } from '../shared/motion'
 import { buildRenderArgs, renderCut, type RenderSource } from './cut-render'
 import { audioSeconds, countFrames, findFfmpeg, frameColour, makeColourClip, toneLevel, type Rgb } from './test-media'
+import { frameDiff, frameRgb, rgbOf, savePng } from './test-frames'
 
 /**
  * A grid of four videos at once, exported with ffmpeg: four clips of their own
@@ -184,6 +187,46 @@ describe.skipIf(!FFMPEG)('exporting a grid', () => {
     expect(toneLevel(ffmpeg, out.path, 0.5, 2, 660)).toBeLessThan(-50)
     // Quick to make: well under ten seconds for three seconds of four panels.
     expect(out.ms).toBeLessThan(20_000)
+  }, 120_000)
+
+  it('writes the frame the editor shows: each picture in its box, the same ground and labels over them', async () => {
+    for (const f of MOTION_FONTS) GlobalFonts.registerFromPath(join(FONTS, f.file), f.family)
+    const { doc, sources } = fourEdits()
+    const out = await exportGrid(doc, sources, 'compare')
+    // As the editor composes it: the videos in their boxes (the clips are flat colours), the plate drawn over them.
+    const W = 960
+    const H = 540
+    const design = { width: 1920, height: 1080 }
+    const canvas = createCanvas(W, H)
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, 0, W, H)
+    const colours = ['#ff0000', '#008000', '#0000ff', '#ffff00']
+    layout.panels.forEach((p, i) => {
+      ctx.fillStyle = colours[i]
+      ctx.fillRect((p.x / design.width) * W, (p.y / design.height) * H, (p.w / design.width) * W, (p.h / design.height) * H)
+    })
+    const plate = createCanvas(W, H)
+    const labels = ['Talking head', 'Faceless', 'Map', 'Product']
+    renderFrame(
+      plate.getContext('2d') as unknown as CanvasRenderingContext2D,
+      0.5,
+      [...gridGround(layout, design, DEFAULT_THEME), ...gridLabels(layout, labels, DEFAULT_THEME, 0)],
+      design,
+      { width: W, height: H },
+      { createCanvas: (w, h) => createCanvas(w, h) as unknown as HTMLCanvasElement }
+    )
+    ctx.drawImage(plate, 0, 0)
+    const shown = rgbOf(ctx.getImageData(0, 0, W, H).data)
+    // Half a second in: the labels have come in and every clip still shows its first colour.
+    const written = frameRgb(ffmpeg, out.path, 15, W, H)
+    const r = frameDiff(written, shown, W, H, null)
+    if (process.env.GRID_KEEP) {
+      savePng(`${process.env.GRID_KEEP}-shown.png`, shown, W, H)
+      savePng(`${process.env.GRID_KEEP}-written.png`, written, W, H)
+    }
+    expect(r.mean).toBeLessThan(4)
+    expect(r.visible).toBeLessThan(0.02)
   }, 120_000)
 
   it('takes the sound from one panel, or from none', async () => {

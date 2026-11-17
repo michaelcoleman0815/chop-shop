@@ -237,7 +237,7 @@ function chipLayers(
   // The word starts where the icon sits: the pill's padding before it is the round end the icon fills.
   const x = centre.x - width / 2 + height / 2
   const y = centre.y
-  const pill = style === 'dark' ? '#17181C' : style === 'accent' ? accent : '#FFFFFF'
+  const pill = style === 'dark' ? theme.ink : style === 'accent' ? accent : theme.paper
   const ink = style === 'dark' ? theme.text : inkOn(pill, theme)
   const icon = chip.value && !chip.value.startsWith('si:') && !ASSET.test(chip.value) ? chip.value : ''
   const iconLayers: Layer[] = icon
@@ -258,7 +258,8 @@ function chipLayers(
           w: disc * 0.56,
           h: disc * 0.56,
           color: style === 'accent' ? accent : inkOn(accent, theme),
-          strokeWidth: 2.2,
+          // The weight of the semibold word beside it.
+          strokeWidth: 2,
           transform: { x, y }
         }
       ]
@@ -285,21 +286,24 @@ function chipLayers(
         y,
         anchorX: x,
         anchorY: y,
-        // A pop with a little spring, a tilt that settles, and out with the rest, quicker than it came.
+        // In from a little smaller with a touch of spring (small things need a little more to feel alive), a
+        // tilt that settles with it, and out with the rest: quicker, smaller, and eased out, as it came.
         scale: {
           keys: [
-            { t, v: 0, ease: { spring: 0.45 } },
-            { t: t + 0.5, v: 1 },
-            ...tail([TIMING.exit, 1, 'ease-in'], [0, 0.6])
+            { t, v: 0.82, ease: { spring: 0.3 } },
+            { t: t + 0.45, v: 1 },
+            ...tail([TIMING.exit, 1, 'snap'], [0, 0.92])
           ]
         },
         rotation: {
           keys: [
-            { t, v: tilt * 4, ease: 'snap' },
+            { t, v: tilt * 3, ease: 'snap' },
             { t: t + 0.42, v: tilt }
           ]
         },
-        opacity: { keys: [{ t, v: 0 }, { t: t + 0.07, v: 1 }, ...tail([TIMING.exit, 1, 'ease-in'], [0, 0])] }
+        opacity: {
+          keys: [{ t, v: 0, ease: 'snap' }, { t: t + 0.12, v: 1 }, ...tail([TIMING.exit, 1, 'snap'], [0, 0])]
+        }
       },
       children: [
         {
@@ -338,11 +342,12 @@ export function chipTimes(ctx: BuildContext, list: Chip[]): number[] {
     const heard = own ?? whenSaid(ctx.tl, c.label.split(/\s+/)[0] ?? '', from, end)
     if (heard !== null) from = heard + 0.01
     const before = i > 0 ? times[i - 1] : null
+    // Not heard: a beat after the one before, the beats shortening as the cloud fills, so it reads as a wave.
     const t =
       heard !== null && heard !== undefined
         ? heard - start - 0.08
         : before !== null
-          ? before + 0.28
+          ? before + Math.max(0.12, 0.26 * Math.pow(0.88, i - 1))
           : Math.max(0, at - start)
     // Never before the one named before it, and every chip in for a second before they go.
     times.push(clamp(Math.max(t, before ?? 0), 0, Math.max(0, length - 1)))

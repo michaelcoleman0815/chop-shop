@@ -75,16 +75,18 @@ export function buildScene(input: SceneInput): MotionScene {
     emphasis: input.emphasis,
     covers
   })
-  // Backdrops replace the picture, so they go under the captions; everything else goes over.
-  const backdrop = (i: SceneItem): boolean => template(i.kind)?.covers === 'backdrop'
+  // Backdrops replace the picture, so they go under the captions; everything else goes over. Cards hold
+  // the screen, so what stands beside one (a counter by a page) goes over it, whichever came first.
+  const coverOf = (i: SceneItem): string | undefined => template(i.kind)?.covers
   return {
     size: input.size,
     frame,
     duration: tl.duration,
     layers: [
-      ...items.filter(backdrop).flatMap((i) => i.layers),
+      ...items.filter((i) => coverOf(i) === 'backdrop').flatMap((i) => i.layers),
       ...captions,
-      ...items.filter((i) => !backdrop(i)).flatMap((i) => i.layers)
+      ...items.filter((i) => coverOf(i) === 'card').flatMap((i) => i.layers),
+      ...items.filter((i) => !coverOf(i)).flatMap((i) => i.layers)
     ],
     items,
     hidden
