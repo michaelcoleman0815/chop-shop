@@ -129,6 +129,11 @@ function ClipCard({
             Open
           </Button>
         )}
+        {clip.kept && note === 'Not exported' && (
+          <Button variant="text" small disabled={busy} onClick={() => void app.clipping.exportAll([clip.id])}>
+            Try again
+          </Button>
+        )}
         <Button variant="text" small disabled={busy} onClick={() => app.clipping.keep(clip.id, !clip.kept)}>
           {clip.kept ? 'Drop' : 'Keep'}
         </Button>

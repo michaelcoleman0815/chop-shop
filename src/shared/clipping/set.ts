@@ -126,6 +126,38 @@ export function exportNote(
   return job?.error ? 'Not exported' : null
 }
 
+/** A clip an export did not make: its title, the sentence why, and what ffmpeg said. */
+export interface ClipNotExported {
+  title: string
+  text: string
+  details?: { label: string; value: string }[]
+}
+
+/**
+ * What Export all says when not every clip went out: how many did, then each
+ * that did not by its title with the sentence why (those that stopped for one
+ * reason said together), and what ffmpeg said behind Details, named by clip.
+ */
+export function exportAllFailed(
+  total: number,
+  made: number,
+  failed: ClipNotExported[]
+): { text: string; details?: { label: string; value: string }[] } {
+  const why = new Map<string, string[]>()
+  for (const f of failed) why.set(f.text, [...(why.get(f.text) ?? []), `“${f.title}”`])
+  const said = [...why]
+    .map(([text, titles]) => {
+      const named = titles.length > 1 ? `${titles.slice(0, -1).join(', ')} or ${titles[titles.length - 1]}` : titles[0]
+      return `I couldn't export ${named}. ${text}`
+    })
+    .join(' ')
+  const text = total === 1 ? said : `${made} of ${total} clips are exported. ${said}`
+  const details = failed.flatMap((f) =>
+    (f.details ?? []).map((d) => ({ label: `${d.label} about “${f.title}”`, value: d.value }))
+  )
+  return details.length ? { text, details } : { text }
+}
+
 /**
  * What Export all makes: the kept clips not exported as they are now, so a
  * second run's clips go out without copies of the first's. When every one

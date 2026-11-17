@@ -9,6 +9,7 @@ import {
   avoidRanges,
   clipOfDoc,
   clipsOfRun,
+  exportAllFailed,
   exportedNow,
   exportNote,
   keptClips,
@@ -139,6 +140,26 @@ describe('the clip set in a project', () => {
     expect(exportNote(changed, { percent: 40 })).toBeNull()
     expect(exportNote(changed, { percent: null, error: 'The renderer stopped partway.' })).toBe('Not exported')
     expect(exportNote({ ...out, kept: false }, done)).toBeNull()
+  })
+
+  it('names the clips Export all could not make, the same reason said once, ffmpeg behind Details by clip', () => {
+    const stopped = { text: 'The renderer stopped partway, so nothing was saved.' }
+    const said = exportAllFailed(4, 1, [
+      { title: 'A', ...stopped, details: [{ label: 'What ffmpeg said', value: 'a' }] },
+      { title: 'B', ...stopped, details: [{ label: 'What ffmpeg said', value: 'b' }] },
+      { title: 'C', text: "I can't find IMG_1.MOV." }
+    ])
+    expect(said.text).toBe(
+      "1 of 4 clips are exported. I couldn't export “A” or “B”. The renderer stopped partway, so nothing was saved. I couldn't export “C”. I can't find IMG_1.MOV."
+    )
+    expect(said.details).toEqual([
+      { label: 'What ffmpeg said about “A”', value: 'a' },
+      { label: 'What ffmpeg said about “B”', value: 'b' }
+    ])
+    // One clip tried again on its own: no count.
+    expect(exportAllFailed(1, 0, [{ title: 'A', ...stopped }])).toEqual({
+      text: "I couldn't export “A”. The renderer stopped partway, so nothing was saved."
+    })
   })
 
   it('says Exported on a card whose Export all failed once the clip went out from the editor', () => {
