@@ -199,7 +199,9 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
     if (!asksGrid(recordings, command, said)) return false
     const { docRef, push, patch, setDoc, setMediaUrl, applyAsVersion } = live.current
     const labels = (command === 'grid' ? said : (graphicAsked(said)?.rest ?? '')).trim()
-    const given = labels && !/^no labels?$/i.test(labels) ? labels.split(/\s*[,;|]\s*/).filter(Boolean) : undefined
+    // Asked for none, every panel's label is empty; given none, each is named after its file.
+    const none = /^(?:no|without) labels?$/i.test(labels)
+    const given = none ? pictures.map(() => '') : labels ? labels.split(/\s*[,;|]\s*/).filter(Boolean) : undefined
     if (pictures.length > 4) say('thread', `A grid holds four at most, so I used the first four of ${pictures.length}.`)
     const d = docRef.current
     if (!d) {
@@ -227,7 +229,7 @@ export function useShowcase(deps: ShowcaseDeps): Showcase {
       if (r.ok) doc = addAssetTo(doc, r.asset).doc
     }
     setDoc(doc)
-    const plan = gridOps(doc, null, given ? given.join(', ') : '')
+    const plan = gridOps(doc, null, none ? 'no labels' : given ? given.join(', ') : '')
     if ('problem' in plan) {
       say('thread', plan.problem)
       return true

@@ -161,6 +161,19 @@ describe('/grid in words', () => {
     expect(gridOps(doc, beat, 'off')).toEqual({ problem: 'There is no grid here to take off.' })
   })
 
+  it('leaves the labels off when asked for none, on a new grid and on files dropped in', () => {
+    const doc = talking()
+    const made = gridOps(doc, currentCut(doc).beats[0].id, 'no labels')
+    if ('problem' in made) throw new Error(made.problem)
+    const after = commit(doc, made.ops, made.summary).doc
+    expect(currentCut(after).beats[0].treatment.grid?.panels.map((p) => p.label)).toEqual(['', '', '', ''])
+    expect(made.summary).toBe('This part plays as a grid of four, with no labels.')
+    const files = gridDoc({ id: 'g', files: [file('/v/a.mp4', 5), file('/v/b.mp4', 6)], labels: ['', ''] })
+    expect(currentCut(files).beats[0].treatment.grid?.panels.map((p) => p.label)).toEqual(['', ''])
+    expect(files.versions[0].summary).toBe('Two videos play at once in a grid.')
+    expect(files.title).toBe('Grid of 2')
+  })
+
   it('asks for the videos when there is no footage to put beside the beat', () => {
     const doc = createDoc({
       id: 'd',

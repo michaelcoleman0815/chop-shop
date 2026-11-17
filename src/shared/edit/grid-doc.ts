@@ -182,14 +182,17 @@ export function gridOps(doc: EditDoc, beatId: string | null, rest: string): { op
   const footage = doc.assets.filter((a: Asset) => a.kind === 'video').slice(-3)
   if (footage.length === 0)
     return { problem: 'Bring in the videos to put in the grid first: drop them here, then /grid.' }
+  // Labels as given, the names of what is shown when none are, or none at all when asked for none.
   const given = 'labels' in ask ? ask.labels : []
+  const named = (label: string): string => ('noLabels' in ask ? '' : label.slice(0, 40))
   const source = doc.sources.find((s) => s.id === beat.source)
   const panels: GridPanel[] = [
-    { show: '', label: (given[0] ?? labelFor(source?.path ?? 'This video')).slice(0, 40) },
-    ...footage.map((a, i) => ({ show: a.id, label: (given[i + 1] ?? labelFor(a.title || a.path)).slice(0, 40) }))
+    { show: '', label: named(given[0] ?? labelFor(source?.path ?? 'This video')) },
+    ...footage.map((a, i) => ({ show: a.id, label: named(given[i + 1] ?? labelFor(a.title || a.path)) }))
   ]
+  const labels = panels.map((p) => p.label).filter(Boolean)
   return {
     ops: [{ op: 'treat', beats: [beat.id], set: { grid: { panels } } }],
-    summary: `This part plays as a grid of ${NUMBERS[panels.length] ?? panels.length}, labelled ${listOf(panels.map((p) => p.label).filter(Boolean))}.`
+    summary: `This part plays as a grid of ${NUMBERS[panels.length] ?? panels.length}, ${labels.length ? `labelled ${listOf(labels)}` : 'with no labels'}.`
   }
 }
