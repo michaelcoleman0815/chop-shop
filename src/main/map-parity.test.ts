@@ -1,4 +1,4 @@
-import { createCanvas, GlobalFonts, loadImage, type Image } from '@napi-rs/canvas'
+import { createCanvas, GlobalFonts, loadImage, type Image as SkiaImage } from '@napi-rs/canvas'
 import { build } from 'esbuild'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
@@ -65,7 +65,7 @@ const SHOTS: Shot[] = [
 let browser: Browser | null = null
 let page: Page | null = null
 let geo: MapGeo | null = null
-const pictures = new Map<string, Image>()
+const pictures = new Map<string, SkiaImage>()
 const plates = platesFromGeoJson(STANDIN_BOUNDARIES, STANDIN_PLATES)
 
 function layersFor(s: Shot): Layer[] {
