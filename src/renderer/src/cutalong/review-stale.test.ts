@@ -116,13 +116,14 @@ function harness(settings: DraftDeps['settings'], parse: ParseCall, opts: { open
   }
   fake.api.makeCancel = async () => true
   // make:start as main runs it: questions first unless answered, then Claude writes the script.
-  const starts: { text: string; answered: boolean; stop: boolean }[] = []
+  const starts: { text: string; answered: boolean; quoteFirst: boolean; stop: boolean }[] = []
   const madeUnasked: Draft[] = []
-  fake.api.makeStart = async (req: { text: string; recording?: string | null; answered?: boolean }) => {
+  fake.api.makeStart = async (req: { text: string; recording?: string | null; answered?: boolean; quoteFirst?: boolean }) => {
     const shown = msgs.get(`m${n}`)
     starts.push({
       text: req.text,
       answered: !!req.answered,
+      quoteFirst: !!req.quoteFirst,
       stop: !!shown?.actions?.some((a) => (a.payload ?? '').includes('"stop"'))
     })
     const brief = readAsk(String(req.text ?? ''), { niche: null, recording: req.recording ?? null })
@@ -131,7 +132,8 @@ function harness(settings: DraftDeps['settings'], parse: ParseCall, opts: { open
     if (questions.length) return { ok: true, kind: 'ask', questions }
     const drafted = await draftFor(brief, `new-${n}`, { parse, can, brand: {}, settings })
     if (!drafted.ok) return { ok: false, message: drafted.message }
-    if (drafted.draft.quote.auto) {
+    // As main does: typed answers are quoted, whatever Settings says.
+    if (drafted.draft.quote.auto && !req.quoteFirst) {
       madeUnasked.push(drafted.draft)
       return { ok: false, message: 'review: main makes it here, without asking' }
     }
@@ -274,5 +276,26 @@ describe('questions waiting before a script is written', () => {
     expect(h.starts[1].text).toMatch(/as a cinematic documentary with maps wherever they help/)
     expect(h.starts[1].text).toMatch(/5 minutes long/)
     expect(count.n).toBe(1)
+  })
+
+  it('a pause or a question back keeps them open and spends nothing; typed answers are then quoted, never made unasked', async () => {
+    const count = { n: 0 }
+    const h = harness({ cap: null, autoUnder: 2 }, counting(count), { open: null })
+    await h.say('make a video about my trip')
+    const card = [...h.msgs.entries()].find(([, m]) => m.makeAsk)!
+    for (const p of ['hold on a sec', 'give me a minute', 'hang on', 'let me think about it', 'wait, what do you mean?', 'maybe later'])
+      expect(await h.say(p), p).toBe(true)
+    expect(count.n).toBe(0)
+    expect(h.starts).toHaveLength(1)
+    expect(h.madeUnasked).toHaveLength(0)
+    expect(h.makes.questions(card[1].makeAsk!)).not.toBeNull()
+    expect(h.msgs.get(card[0])?.makeAsk).toBe(card[1].makeAsk)
+    expect([...h.msgs.values()].filter((m) => /Nothing is written or spent until then\./.test(m.text ?? ''))).toHaveLength(6)
+    // Answered by typing at last: written once, and quoted with its button, though Settings would go ahead under $2.
+    await h.say('the lakes up north, a documentary, 1 minute')
+    expect(count.n).toBe(1)
+    expect(h.starts[1].quoteFirst).toBe(true)
+    expect(h.madeUnasked).toHaveLength(0)
+    expect([...h.msgs.values()].some((m) => m.actions?.some((a) => a.primary && /^Make it for \$/.test(a.label)))).toBe(true)
   })
 })

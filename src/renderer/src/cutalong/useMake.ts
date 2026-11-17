@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'r
 import { addAsset, currentVersion, type EditDoc, type Op } from '../../../shared/edit'
 import { asNewVersion } from '../../../shared/make/assemble'
 import { reviseBrief, wantsMake } from '../../../shared/make/brief'
-import { answered as answeredPrompt, readAnswer, type MakeQuestion } from '../../../shared/make/questions'
+import { answered as answeredPrompt, readAnswer, waitReply, type MakeQuestion } from '../../../shared/make/questions'
 import { draftFingerprint } from '../../../shared/make/fingerprint'
 import type { Change, Draft, Reply, ShotChange } from '../../../shared/make/draft'
 import { dollars } from '../../../shared/make/quote'
@@ -64,8 +64,8 @@ export interface Makes {
   scriptOpen: (id: string) => boolean
   /** The questions waiting under a reply, if they are still waiting. */
   questions: (id: string) => MakeQuestion[] | null
-  /** Answers to them, one for each question in order: a tap's words or what was typed. */
-  answer: (id: string, answers: string[]) => Promise<void>
+  /** Answers to them, one for each question in order: a tap's words or what was typed (then quoted, never made unasked). */
+  answer: (id: string, answers: string[], typed?: boolean) => Promise<void>
 }
 
 const OPEN: NonNullable<Msg['actions']> = [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
@@ -248,7 +248,7 @@ export function useMake(deps: MakeDeps): Makes {
 
   /** A prompt read and quoted, or made straight away under the amount in Settings; asked about first when it must be. */
   const start = useCallback(
-    async (text: string, recording: string | null, answered = false): Promise<void> => {
+    async (text: string, recording: string | null, answered = false, quoteFirst = false): Promise<void> => {
       const { push, patch, during } = live.current
       // Writing the script spends, and Settings may make the video straight after: Stop stays in reach.
       const msg = push({
@@ -260,7 +260,7 @@ export function useMake(deps: MakeDeps): Makes {
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeStart>>
       try {
-        r = await during(() => api.makeStart({ text, recording, brand: live.current.brand(), answered }))
+        r = await during(() => api.makeStart({ text, recording, brand: live.current.brand(), answered, quoteFirst }))
       } catch (err) {
         r = { ok: false, message: errorText(err) }
       } finally {
@@ -301,13 +301,13 @@ export function useMake(deps: MakeDeps): Makes {
 
   /** The questions answered, by taps or typing: the prompt with its answers is read again, and asked nothing more. */
   const answer = useCallback(
-    async (id: string, answers: string[]): Promise<void> => {
+    async (id: string, answers: string[], typed = false): Promise<void> => {
       const a = asking.current
       if (!a || a.id !== id) return
       asking.current = null
       setVersion((n) => n + 1)
       live.current.patch(a.msg, { makeAsk: undefined, aside: answers.filter(Boolean).join(', ') })
-      await start(answeredPrompt(a.text, answers), a.recording, true)
+      await start(answeredPrompt(a.text, answers), a.recording, true, typed)
     },
     [start]
   )
@@ -470,7 +470,12 @@ export function useMake(deps: MakeDeps): Makes {
       if (open && files.length === 0 && text.trim()) {
         const read = readAnswer(text, open.questions, { editOpen: !!docRef.current })
         if (read.kind === 'answer') {
-          await answer(open.id, read.answers)
+          await answer(open.id, read.answers, true)
+          return true
+        }
+        // A pause or a question back: the questions stay, and nothing is written or spent.
+        if (read.kind === 'wait') {
+          push({ role: 'assistant', text: waitReply(open.questions, read.asked) })
           return true
         }
         // No, or anything else: the questions go, and nothing is written for them.

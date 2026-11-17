@@ -420,7 +420,8 @@ function scrub(text: string, key: string): string {
 
 function failure(service: ServiceId, status: number, text: string, headers: Headers): ServiceError {
   const name = serviceName(service)
-  const extra = { status, detail: text.slice(0, 300) }
+  // A 429 keeps more of what it said: which quota ran out (Google names a free tier's, or a paid one's) comes late in it.
+  const extra = { status, detail: text.slice(0, status === 429 ? 2000 : 300) }
   // A key that works on an account with nothing left: 402, ElevenLabs' 401 quota_exceeded, OpenAI's 429
   // insufficient_quota, fal's 403 "Exhausted balance", Google's prepaid credits run out. Said plainly, never retried.
   if (
@@ -437,7 +438,10 @@ function failure(service: ServiceId, status: number, text: string, headers: Head
   if (status === 403) return new ServiceError(service, 'refused', `${name} did not let this key do that.`, extra)
   if (status === 413) return new ServiceError(service, 'too-big', `${name} said the upload is too big.`, extra)
   if (status === 429) {
-    const wait = Number(headers.get('retry-after'))
+    // The header when there is one; Google says it in the body instead ("retryDelay": "21s").
+    const header = Number(headers.get('retry-after'))
+    const said = Number(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(text)?.[1])
+    const wait = Number.isFinite(header) && header > 0 ? header : said
     return new ServiceError(service, 'busy', `${name} is busy right now.`, {
       ...extra,
       retryAfterSec: Number.isFinite(wait) && wait > 0 ? wait : null

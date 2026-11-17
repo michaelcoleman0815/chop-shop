@@ -72,12 +72,48 @@ export function questionsFor(brief: Brief): MakeQuestion[] {
   return out.slice(0, 3)
 }
 
-/** What was typed while questions wait: their answers, a no, or something else that lets them go. */
-export type Reading = { kind: 'answer'; answers: string[] } | { kind: 'no' } | { kind: 'other' }
+/**
+ * What was typed while questions wait: their answers; a no; a pause or a
+ * question back (wait: the questions stay, and nothing is written); or
+ * something else, meant for the edit, that lets them go.
+ */
+export type Reading =
+  | { kind: 'answer'; answers: string[] }
+  | { kind: 'no' }
+  | { kind: 'wait'; asked: boolean }
+  | { kind: 'other' }
 
 /** "No", "never mind", "stop": the questions go, and nothing is written. */
 const NO =
-  /^\s*(?:no(?:pe)?|nah|never ?mind|nevermind|cancel|stop|forget (?:it|that|about it)|not now|skip (?:it|that)|leave it|don'?t(?: bother| make it)?)\b/i
+  /^\s*(?:no(?:pe)?|nah|never ?mind|nevermind|cancel|stop|forget (?:it|that|about it)|skip (?:it|that)|leave it|don'?t(?: bother| make it)?)\b/i
+
+/** A pause ("hold on a sec", "give me a minute", "maybe later"): not an answer yet. */
+const PAUSE =
+  /^\s*(?:hold on|hang on|hold up|wait|(?:one|1|a) (?:sec|second|moment)|just a (?:sec|second|moment|min(?:ute)?|bit)|give me (?:a |one |some |1 )?(?:sec|second|moment|min(?:ute)?|bit|while|time)|let me (?:think|check|see|get back|decide|look|ask|sleep)|i'?ll (?:think|get back|decide|come back|let you know|tell you)|i need (?:to think|a (?:sec|second|minute|moment)|more time|time)|(?:maybe |perhaps )?later|not (?:now|yet|right now|sure|today)|brb|be right back|in a (?:sec|second|minute|moment|bit)|thinking|idk|i don'?t know|dunno|no idea|good question)\b|\b(?:hold on|hang on|give me a (?:sec|second|moment|minute)|let me think|think (?:about|it over)|maybe later|be right back|one sec(?:ond)?|just a (?:sec|second|moment|minute))\b/i
+
+/** A question back ("wait, what do you mean?"): not an answer either. */
+const QUESTION =
+  /\?\s*$|^\s*(?:what|why|how|which|who|when|where)\s+(?:do|does|did|is|are|was|were|can|could|would|should|will|you|i|we|that|this|it)\b|^\s*(?:do|does|did|can|could|would|should|will|is|are|am)\s+(?:you|i|we|it|that|this|there)\b|\bwhat (?:do you|does that|does it) mean\b/i
+
+/** A word that answers nothing ("ok", "hmm", "up to you"). */
+const FILLER =
+  /^\s*(?:ok(?:ay)?|k|sure|yes|yeah|yep|yup|alright|all right|fine|cool|great|nice|thanks|thank you|right|hm+|um+|uh+|er+m*|lol|hi|hello|hey|you (?:choose|pick|decide)|up to you|your (?:call|choice)|whatever|anything|something|dunno)[\s.!]*$/i
+
+/** Words that carry no topic of their own. */
+const EMPTY_WORDS = new Set(
+  'a an the it its is are was were be been am do does did i im me my we our you your they them their he she his her this that these those there here and or but so then just about on in at to of for with from by as like ok okay sure yes yeah yep no not maybe perhaps please thanks thank well um uh hmm er really very some any all much more less let think know wait hold hang give sec second moment minute later now soon mean meaning what why how which who when where can could would should will shall may might must also too again still anything something everything whatever stuff thing things'.split(
+    ' '
+  )
+)
+
+/** Whether words name something to say: at least one word that is not filler. */
+function saysSomething(words: string): boolean {
+  return words
+    .toLowerCase()
+    .split(/[^a-z0-9\u00c0-\u024f'-]+/)
+    .map((w) => w.replace(/^'+|'+$/g, '').replace(/'s$/, ''))
+    .some((w) => w.length > 1 && !EMPTY_WORDS.has(w))
+}
 
 /** Words that ask something of an edit, or a command: not an answer to what the video should be. */
 const EDIT =
@@ -105,16 +141,23 @@ const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /**
  * Reads what was typed while questions wait. It answers them only when it
- * reads as an answer: one of the options' own words, a style or a length
- * said plainly, or, for what the video should say, a few words of its own
- * when no edit is open to be talking to. "No", "never mind" or "stop" is a
- * no; an edit's words, a command, or anything else lets the questions go.
+ * reads clearly as an answer: one of the options' own words, a style or a
+ * length said plainly, or, for what the video should say, words of its own
+ * that name something, when no edit is open to be talking to. "No", "never
+ * mind" or "stop" is a no. A pause ("hold on a sec", "maybe later"), a
+ * question back ("what do you mean?") or a word that answers nothing ("ok")
+ * is a wait: the questions stay, and nothing is written. An edit's words,
+ * a command, or anything else lets the questions go.
  */
 export function readAnswer(text: string, questions: MakeQuestion[], opts: { editOpen?: boolean } = {}): Reading {
-  const t = text.trim()
+  // Curly quotes read as straight ones ("I don’t know").
+  const t = text.trim().replace(/[\u2018\u2019]/g, "'")
   if (!t) return { kind: 'other' }
   if (NO.test(t)) return { kind: 'no' }
+  // An edit's words go to the edit, even asked as a question ("cut the first 10 seconds?").
   if (EDIT.test(t)) return { kind: 'other' }
+  if (QUESTION.test(t)) return { kind: 'wait', asked: true }
+  if (PAUSE.test(t) || FILLER.test(t)) return { kind: 'wait', asked: false }
   let rest = t
   const answers = questions.map(() => '')
   questions.forEach((q, i) => {
@@ -147,9 +190,17 @@ export function readAnswer(text: string, questions: MakeQuestion[], opts: { edit
       .replace(/^(?:and|it'?s|about|on|it should (?:say|be about)|say)\s+/i, '')
       .replace(/(?:[\s,]+(?:and|as|in|for|a|an|the))+$/i, '')
       .trim()
-    if (countWords(left) >= 2) answers[topic] = left
+    if (countWords(left) >= 1 && saysSomething(left) && !FILLER.test(left)) answers[topic] = left
   }
   return answers.some(Boolean) ? { kind: 'answer', answers } : { kind: 'other' }
+}
+
+/** What a pause or a question back is answered with: the questions stay, and nothing is written or spent. */
+export function waitReply(questions: MakeQuestion[], asked: boolean): string {
+  if (!asked) return 'Take your time. Tap an answer above or type one when you’re ready. Nothing is written or spent until then.'
+  const what = questions.map((q) => (q.id === 'topic' ? 'what it should say' : q.id === 'style' ? 'its style' : 'how long it runs'))
+  const said = what.length > 1 ? `${what.slice(0, -1).join(', ')} and ${what[what.length - 1]}` : (what[0] ?? 'what the video should be')
+  return `I ask ${questions.length === 1 ? 'this' : 'these'} first so the script fits: ${said}. Tap an answer above or type one. Nothing is written or spent until then.`
 }
 
 /** The prompt with its answers added, to be read again: each answer a tap's words, or what was typed. */

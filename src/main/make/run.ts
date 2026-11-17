@@ -38,6 +38,7 @@ import type { Bible, Brief, ImageService, Make, MadeShot, Sheet, Shot, VoiceChoi
 import { defaultVoice, voicePhrase } from '../../shared/make/voices'
 import { planShots, writeScript, type ParseCall } from './claude'
 import { acceptedJob, Budget, inTurn, MadeCache, makeOnce, NotKept, OverBudget, type MadeRequest } from './generate'
+import { ServiceError } from '../providers/gate'
 import { groundFor } from './local-pictures'
 import { narrate, type LocalVoice } from './narrate'
 import type { MakeServices, Picture, TimedWord } from './services'
@@ -242,7 +243,13 @@ interface ShotsMade {
   files: Map<string, MadeFile>
   /** Map shots the map kind answered as a graphic over the ground, by phrase. */
   mapGraphics: Map<number, Omit<MotionCallInput, 'from'>>
+  /** What stopped the shots partway: the picture service out of credit, or the key refused. */
+  halted: ServiceError | null
 }
+
+/** A failure every later picture would meet as well: no credit left, a refused key, no key, the switch off. */
+const allWouldFail = (err: unknown): err is ServiceError =>
+  err instanceof ServiceError && (err.kind === 'no-credit' || err.kind === 'refused' || err.kind === 'no-key' || err.kind === 'off')
 
 /**
  * Makes every shot of a planned list: sheets first, then stills and clips,
@@ -265,6 +272,16 @@ export async function makeShots(
 ): Promise<ShotsMade> {
   const { brief, bible, images, size } = plan
   const cache = new MadeCache(deps.dir)
+  // The first answer every later picture would get too (no credit left, a refused key) stops the shots
+  // there, with one plain sentence, rather than shot by shot.
+  let halted: ServiceError | null = null
+  const halting = new AbortController()
+  const signal = deps.signal ? AbortSignal.any([deps.signal, halting.signal]) : halting.signal
+  const haltOn = (err: unknown): void => {
+    if (halted || !allWouldFail(err)) return
+    halted = err
+    halting.abort()
+  }
   const notes: string[] = []
   const files = new Map<string, MadeFile>()
   const mapGraphics = new Map<number, Omit<MotionCallInput, 'from'>>()
@@ -289,14 +306,16 @@ export async function makeShots(
     const prompt = sheetPrompt(c, bible)
     const req: MadeRequest = { kind: 'image', service: images, model: deps.services.models.image[images], prompt, refs: [], aspect: 'wide', size }
     try {
-      const made = await makeOnce(req, stillCost(images, size), { services: deps.services, cache, budget, signal: deps.signal }, () =>
-        deps.services.image(images, prompt, [], { aspect: 'wide', size, signal: deps.signal })
+      const made = await makeOnce(req, stillCost(images, size), { services: deps.services, cache, budget, signal }, () =>
+        deps.services.image(images, prompt, [], { aspect: 'wide', size, signal })
       )
       if (deps.tally) deps.tally.made++
       const sheet: Sheet = { character: c.id, file: made.path, maker: images, cost: made.cost }
       sheets.push(sheet)
       deps.log?.sheets.push(sheet)
     } catch (err) {
+      haltOn(err)
+      if (halted) break
       notes.push(`I couldn't draw ${c.name}'s character sheet, so their shots are made from the description alone. ${errText(err)}`)
     }
   }
@@ -348,8 +367,8 @@ export async function makeShots(
             .map(readPicture)
         )
         const req: MadeRequest = { kind: 'image', service: images, model: deps.services.models.image[images], prompt, refs, aspect: brief.aspect, size }
-        const still = await makeOnce(req, stillCost(images, size, refs.length), { services: deps.services, cache, budget, signal: deps.signal }, () =>
-          deps.services.image(images, prompt, refs, { aspect: brief.aspect, size, signal: deps.signal })
+        const still = await makeOnce(req, stillCost(images, size, refs.length), { services: deps.services, cache, budget, signal }, () =>
+          deps.services.image(images, prompt, refs, { aspect: brief.aspect, size, signal })
         )
         if (deps.tally) deps.tally.made++
         let file = still.path
@@ -363,20 +382,22 @@ export async function makeShots(
           const motion = `${visual.prompt} ${visual.motion}`.trim()
           const clipReq: MadeRequest = { kind: 'clip', service: plan.clips, model: deps.services.models.clip[plan.clips], prompt: motion, refs: [first], aspect: brief.aspect, seconds }
           try {
-            const clip = await makeOnce(clipReq, clipCost(plan.clips, seconds), { services: deps.services, cache, budget, signal: deps.signal }, () =>
-              deps.services.clip(plan.clips as ImageService, motion, first, { aspect: brief.aspect, seconds, signal: deps.signal })
+            const clip = await makeOnce(clipReq, clipCost(plan.clips, seconds), { services: deps.services, cache, budget, signal }, () =>
+              deps.services.clip(plan.clips as ImageService, motion, first, { aspect: brief.aspect, seconds, signal })
             )
             if (deps.tally) deps.tally.made++
             file = clip.path
             cost += clip.cost
             model = deps.services.models.clip[plan.clips]
           } catch (err) {
+            haltOn(err)
             note = err instanceof OverBudget ? 'The clip would have passed the agreed total, so this shot is its still.' : `The clip could not be made, so this shot is its still. ${errText(err)}`
           }
         }
         await record(file, /\.(mp4|mov|webm)$/i.test(file))
         return finish({ ...base, file, maker: images, model, cost, key: null, note })
       } catch (err) {
+        haltOn(err)
         // A plain card holds the beat until the shot is asked for again.
         await record(deps.ground, false)
         const why =
@@ -388,10 +409,10 @@ export async function makeShots(
         return finish({ ...base, file: deps.ground, maker: 'local', note: `Shot ${i + 1} is a plain card for now: ${why}.` })
       }
     },
-    deps.signal
+    signal
   )
   for (const s of made) if (s?.note) notes.push(s.note)
-  return { shots: made.filter(Boolean), sheets, notes, files, mapGraphics }
+  return { shots: made.filter(Boolean), sheets, notes, files, mapGraphics, halted }
 }
 
 /** The narration's words and file: read in the chosen voice, or the creator's own recording heard here. */
@@ -482,15 +503,25 @@ export class Stopped extends Error {
     readonly spent: number,
     readonly quoted: number,
     readonly kept: KeptSoFar,
-    readonly resume: Draft
+    readonly resume: Draft,
+    /** Why, when a service stopped it rather than the person: "Google Gemini says the account has no credit left." */
+    readonly reason: string | null = null
   ) {
-    super(stoppedSentence(spent, quoted, kept))
+    super(stoppedSentence(spent, quoted, kept, reason))
     this.name = 'Stopped'
   }
 }
 
+/** The shots stopped by a service's answer every later picture would get too. */
+class Halted extends Error {
+  constructor(readonly cause: ServiceError) {
+    super(cause.message)
+    this.name = 'Halted'
+  }
+}
+
 /** The one sentence a stop is answered with. */
-export function stoppedSentence(spent: number, quoted: number, kept: KeptSoFar): string {
+export function stoppedSentence(spent: number, quoted: number, kept: KeptSoFar, reason: string | null = null): string {
   const parts = [
     kept.plan ? 'the shot list' : '',
     kept.narration ? 'the narration' : '',
@@ -499,11 +530,12 @@ export function stoppedSentence(spent: number, quoted: number, kept: KeptSoFar):
   const one = parts.length === 1 && !(kept.pictures > 1 && !kept.plan && !kept.narration)
   const said = listOf(parts)
   const keeps = parts.length ? ` ${said.charAt(0).toUpperCase()}${said.slice(1)} ${one ? 'is' : 'are'} kept, so making the rest reuses ${one ? 'it' : 'them'}.` : ''
+  const lead = reason ? `${reason.replace(/[.\s]+$/, '')}, so I stopped there` : 'Stopped'
   if (spent <= 0)
     return parts.length
-      ? `Stopped before anything was paid for.${keeps}`
-      : `Stopped before anything was made, so nothing of the ${dollars(quoted)} quoted was spent.`
-  return `Stopped: ${dollars(spent)} of the ${dollars(quoted)} quoted was spent.${keeps || ' Nothing was made yet.'}`
+      ? `${lead} before anything was paid for.${keeps}`
+      : `${lead} before anything was made, so nothing of the ${dollars(quoted)} quoted was spent.`
+  return `${lead}: ${dollars(spent)} of the ${dollars(quoted)} quoted was spent.${keeps || ' Nothing was made yet.'}`
 }
 
 /** A video that could not be made: why, and what it had spent by then, Claude included. */
@@ -568,8 +600,12 @@ function resumeOf(state: RunState, spent: number): Draft {
 /** The finished video: the made edit, what it cost, and the reply that says so. Stopped, it says what was spent and kept. */
 export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc: EditDoc; reply: Reply; spent: number }> {
   if (!draft.quote.images && !draft.kept?.shots) throw new Error(draft.quote.missing[0] ?? 'There is no service to make the pictures.')
-  // Everything this run spends, Claude included, is held to the quote confirmed.
-  const budget = new Budget(draft.quote.total)
+  // Everything this run spends is held to the quote confirmed: Claude to its own lines, from a budget of
+  // its own, and the narration, pictures and clips to theirs, so Claude never takes a quoted picture's money.
+  const claudeTotal = Math.round(draft.quote.lines.filter((l) => l.by.startsWith('Claude')).reduce((n, l) => n + l.cost, 0) * 10000) / 10000
+  const claude = new Budget(claudeTotal)
+  const budget = new Budget(Math.round((draft.quote.total - claudeTotal) * 10000) / 10000)
+  const spent = (): number => Math.round((budget.spent + claude.spent) * 10000) / 10000
   const state: RunState = {
     draft,
     plan: draft.plan ? { bible: draft.plan.bible, shots: draft.plan.shots } : null,
@@ -579,22 +615,30 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
     tally: { made: (draft.plan?.made.length ?? 0) + (draft.plan?.sheets.length ?? 0) }
   }
   try {
-    return await makeVideoWith(draft, deps, budget, state)
+    return await makeVideoWith(draft, deps, budget, claude, state)
   } catch (err) {
-    if (deps.signal?.aborted) {
-      const resume = resumeOf(state, budget.spent)
+    // Stopped by the person, or by a picture service every later picture would hear from too: what was
+    // spent, what is kept, and a draft to go on from once the person has seen to it.
+    if (deps.signal?.aborted || err instanceof Halted) {
+      const resume = resumeOf(state, spent())
       const kept = {
         plan: !!resume.plan,
         narration: !!resume.kept?.narration && resume.kept.narration.voice.engine !== 'own',
         pictures: state.tally.made
       }
-      throw new Stopped(budget.spent, draft.quote.total, kept, resume)
+      throw new Stopped(spent(), draft.quote.total, kept, resume, err instanceof Halted && !deps.signal?.aborted ? err.cause.message : null)
     }
-    throw new MakeFailed(errText(err), budget.spent, draft.quote.total)
+    throw new MakeFailed(errText(err), spent(), draft.quote.total)
   }
 }
 
-async function makeVideoWith(draft: Draft, deps: MakeRunDeps, budget: Budget, state: RunState): Promise<{ doc: EditDoc; reply: Reply; spent: number }> {
+async function makeVideoWith(
+  draft: Draft,
+  deps: MakeRunDeps,
+  budget: Budget,
+  claude: Budget,
+  state: RunState
+): Promise<{ doc: EditDoc; reply: Reply; spent: number }> {
   const notes: string[] = []
   // A script asked for at a new length is written now its quote is confirmed, held to the quote like the rest.
   if (draft.unwritten) {
@@ -603,7 +647,8 @@ async function makeVideoWith(draft: Draft, deps: MakeRunDeps, budget: Budget, st
       brandVoice: draft.unwritten.voice,
       brandName: draft.unwritten.name,
       signal: deps.signal,
-      budget
+      budget: claude,
+      hold: draft.quote.lines.find((l) => l.what === 'The script')?.cost
     })
     if (!written.ok) throw new Error(written.message)
     const script = scriptText(written.value)
@@ -651,7 +696,7 @@ async function makeVideoWith(draft: Draft, deps: MakeRunDeps, budget: Budget, st
     const r = await planShots(
       brief,
       draft.phrases,
-      { sections: draft.sections, outline: draft.outline, maxClips, signal: deps.signal, budget },
+      { sections: draft.sections, outline: draft.outline, maxClips, signal: deps.signal, budget: claude },
       deps.parse
     )
     if (r.ok) return { ...r.value, cost: r.cost, note: null }
@@ -702,8 +747,9 @@ async function makeVideoWith(draft: Draft, deps: MakeRunDeps, budget: Budget, st
         { clipSeconds: quote.counts.clipSeconds, maxSheets: Math.max(state.sheets, 0) }
       )
   notes.push(...made.notes)
-  // Stopped while the shots were made: nothing is put together.
+  // Stopped while the shots were made, or a service stopped them: nothing is put together.
   if (deps.signal?.aborted) throw new Error('Stopped.')
+  if (made.halted) throw new Halted(made.halted)
   // Kept shots keep their maps: the map graphics are drawn again for each beat's new length (free, on this Mac).
   if (keptShots)
     for (const s of made.shots) {
@@ -719,7 +765,7 @@ async function makeVideoWith(draft: Draft, deps: MakeRunDeps, budget: Budget, st
   deps.progress('Putting the story together', null)
 
   // What this run spent, Claude included, against its quote; and what the video has cost in all.
-  const runSpent = budget.spent
+  const runSpent = Math.round((budget.spent + claude.spent) * 10000) / 10000
   const make: Make = {
     v: 1,
     brief: ownScript ? { ...brief, from: 'recording' } : brief,
@@ -773,7 +819,7 @@ async function keptFiles(kept: NonNullable<Kept['shots']>, probe: MakeRunDeps['p
     const video = s.visual.kind === 'clip' || s.visual.kind === 'broll'
     files.set(s.file, { width: p.width, height: p.height, durationSec: video ? p.durationSec : null })
   }
-  return { shots: kept.shots.map((s) => ({ ...s, cost: 0 })), sheets: kept.sheets, notes: [], files, mapGraphics: new Map() }
+  return { shots: kept.shots.map((s) => ({ ...s, cost: 0 })), sheets: kept.sheets, notes: [], files, mapGraphics: new Map(), halted: null }
 }
 
 /** What was made, in Cutalong's voice: a sentence, three facts, and the rest behind Details. `spent` is this run's, against its quote. */

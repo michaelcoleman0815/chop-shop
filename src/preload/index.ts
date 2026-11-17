@@ -292,6 +292,8 @@ const api = {
     brand?: string | null
     /** The questions were answered (or answered by typing): ask nothing again. */
     answered?: boolean
+    /** Answered by typing: show the quote, whatever Settings says about going ahead without asking. */
+    quoteFirst?: boolean
   }): Promise<
     | { ok: true; kind: 'ask'; questions: MakeQuestion[] }
     | { ok: true; kind: 'quote'; draft: Draft; reply: MakeReply }

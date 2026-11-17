@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAsk } from './brief'
-import { answered, questionsFor, readAnswer, vagueTopic } from './questions'
+import { answered, questionsFor, readAnswer, vagueTopic, waitReply } from './questions'
 import type { Brief } from './schema'
 
 const ask = (text: string): Brief => readAsk(text) as Brief
@@ -48,10 +48,51 @@ describe('asking before writing', () => {
     })
     // A no lets the questions go; so does an edit's ask or a command, which are not answers at all.
     for (const no of ['never mind', 'no', 'stop', 'forget it', 'cancel that']) expect(readAnswer(no, qs).kind).toBe('no')
-    for (const other of ['cut the first 10 seconds', '/export', 'trim the intro', 'ok']) expect(readAnswer(other, qs).kind).toBe('other')
+    for (const other of ['cut the first 10 seconds', '/export', 'trim the intro', 'cut the first 10 seconds?']) expect(readAnswer(other, qs).kind).toBe('other')
     // With an edit open, loose words may be meant for it: only a style or a length answers.
     expect(readAnswer('the music is too loud', qs, { editOpen: true }).kind).toBe('other')
     expect(readAnswer('10 minutes', qs, { editOpen: true })).toEqual({ kind: 'answer', answers: ['', '', '10 minutes long'] })
+    expect(readAnswer('a minute', qs)).toEqual({ kind: 'answer', answers: ['', '', 'a minute long'] })
+    expect(readAnswer('Lisbon', qs)).toEqual({ kind: 'answer', answers: ['Lisbon', '', ''] })
+  })
+
+  it('keeps the questions open for a pause, a question back or a word that answers nothing, with or without an edit open', () => {
+    const qs = questionsFor(ask('make a video about my trip'))
+    const pauses = [
+      'hold on a sec',
+      'give me a minute',
+      'hang on',
+      'let me think about it',
+      'wait, what do you mean?',
+      'maybe later',
+      'one sec',
+      'just a moment',
+      'in a minute',
+      'not now',
+      'not sure yet',
+      'I don’t know',
+      "i'll get back to you",
+      'brb',
+      'hmm',
+      'ok',
+      'up to you',
+      'what are my options',
+      'why do you need that?',
+      'can you choose for me?',
+      'what does that mean'
+    ]
+    for (const p of pauses) {
+      expect(readAnswer(p, qs).kind, p).toBe('wait')
+      expect(readAnswer(p, qs, { editOpen: true }).kind, `${p}, with an edit open`).toBe('wait')
+    }
+    // A question back is said as one, so the reply can say why it asks, naming only what is still asked.
+    expect(readAnswer('wait, what do you mean?', qs)).toEqual({ kind: 'wait', asked: true })
+    expect(readAnswer('hold on a sec', qs)).toEqual({ kind: 'wait', asked: false })
+    expect(waitReply(qs, true)).toBe(
+      'I ask these first so the script fits: what it should say, its style and how long it runs. Tap an answer above or type one. Nothing is written or spent until then.'
+    )
+    expect(waitReply(questionsFor(ask('make a documentary about the gold rush')), true)).toMatch(/^I ask this first so the script fits: how long it runs\./)
+    expect(waitReply(qs, false)).toMatch(/^Take your time\..*Nothing is written or spent until then\.$/)
   })
 
   it('reads the answers back into the brief, so nothing is asked twice', () => {

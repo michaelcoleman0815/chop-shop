@@ -193,6 +193,40 @@ describe('a video made from one prompt', () => {
     expect(pictures()).toBe(0)
   })
 
+  it('counts a script written again for a new length against the cap, with the one it replaces', async () => {
+    const claude = requests().filter((q) => q.service === 'claude').length
+    const r = await call<{ ok: boolean; draft: Draft; changed: string[] }>('make:revise', { draft, text: 'make it 2 minutes' })
+    expect(r.ok).toBe(true)
+    expect(r.draft.brief.seconds).toBe(120)
+    // Claude wrote it again, and the first script was paid for too: both count.
+    expect(requests().filter((q) => q.service === 'claude').length).toBe(claude + 1)
+    expect(r.draft.scriptCost).toBeGreaterThan(0)
+    expect(r.draft.spentBefore).toBeCloseTo(draft.scriptCost, 4)
+    expect(r.draft.quote.spent).toBeCloseTo(draft.scriptCost + r.draft.scriptCost, 4)
+    expect(pictures()).toBe(0)
+  })
+
+  it('keeps a Stop pressed the moment a video is asked for: nothing is written or made', async () => {
+    const claude = (): number => requests().filter((q) => q.service === 'claude').length
+    const before = claude()
+    // The quote confirmed, and stopped at once, while its price is checked again.
+    const going = goWith<Made>(draft)
+    expect(await call('make:cancel')).toBe(true)
+    const r = await going
+    expect(r.ok).toBe(false)
+    expect(r.message).toBe('Stopped before anything was made, so nothing of the quote was spent.')
+    // Asked with "Go ahead without asking" on, and stopped at once, while Settings is read.
+    saveSettings({ makeAutoUnder: 25 })
+    const starting = call<Made>('make:start', { text: 'make a 30 second animated explainer about how the heart pumps blood' })
+    expect(await call('make:cancel')).toBe(true)
+    const s = await starting
+    saveSettings({ makeAutoUnder: null })
+    expect(s.ok).toBe(false)
+    expect(s.message).toBe('Stopped before anything was written, so nothing was spent.')
+    expect(claude()).toBe(before)
+    expect(pictures()).toBe(0)
+  })
+
   it('makes the confirmed quote into a valid edit, within the quote', async () => {
     const r = await goWith<Made>(draft)
     expect(r.message).toBeUndefined()
@@ -243,6 +277,22 @@ describe('a video made from one prompt', () => {
     const shot = r.make?.shots.find((s) => s.phrase === c.change.phrase)
     expect(shot?.visual.kind === 'still' && shot.visual.prompt).toMatch(/close-up of a roughneck/i)
   }, 120_000)
+
+  it('keeps a Stop pressed the moment a shot is asked for again', async () => {
+    const before = requests().length
+    const c = await call<{ ok: boolean; change: { kind: string; total: number } }>('make:change', {
+      doc,
+      text: 'make shot 2 a wide shot of the derricks at dusk'
+    })
+    expect(c.change.kind).toBe('shot')
+    const going = call<{ ok: boolean; message?: string }>('make:shot', { doc, change: c.change, confirmed: c.change.total })
+    expect(await call('make:cancel')).toBe(true)
+    const r = await going
+    expect(r.ok).toBe(false)
+    expect(r.message).toBe('Stopped before anything was made, so nothing was spent, and the shot stays as it was.')
+    // Neither Claude nor the picture service was asked for anything.
+    expect(requests().length).toBe(before)
+  })
 
   it('reads it again in another voice for nothing, keeping every picture', async () => {
     const before = pictures()

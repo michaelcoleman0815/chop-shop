@@ -241,16 +241,40 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     return null
   }
 
-  /** Makes a draft whose quote was confirmed at `confirmed` dollars, or refuses when the price is now higher. */
+  /**
+   * Makes a draft whose quote was confirmed at `confirmed` dollars, or refuses when the price is now higher.
+   * Its Stop holds from the moment it is asked (`controller`, handed on by make:start when Settings makes
+   * a video straight after its script), so one pressed while the quote is checked again is never lost.
+   */
   const go = async (
     sender: WebContents,
     draft: Draft,
-    confirmed: number
+    confirmed: number,
+    controller: AbortController = new AbortController()
+  ): Promise<
+    | { ok: true; doc: EditDoc; mediaUrl: string; reply: Reply; spent: number; into: Draft['into'] | null }
+    | { ok: false; message: string; draft?: Draft; reply?: Reply }
+  > => {
+    if (running && running !== controller) return { ok: false, message: 'A video is being made already. Wait for it, or stop it first.' }
+    running = controller
+    try {
+      return await goWith(sender, draft, confirmed, controller)
+    } finally {
+      if (running === controller) running = null
+    }
+  }
+
+  const goWith = async (
+    sender: WebContents,
+    draft: Draft,
+    confirmed: number,
+    controller: AbortController
   ): Promise<
     | { ok: true; doc: EditDoc; mediaUrl: string; reply: Reply; spent: number; into: Draft['into'] | null }
     | { ok: false; message: string; draft?: Draft; reply?: Reply }
   > => {
     const d = await draftDeps()
+    if (controller.signal.aborted) return { ok: false, message: 'Stopped before anything was made, so nothing of the quote was spent.' }
     const fresh: Draft = { ...draft, quote: quoteDraft(draft, d) }
     if (fresh.quote.missing.length)
       return { ok: false, message: fresh.quote.missing.join(' '), draft: fresh, reply: quoteOf(fresh) }
@@ -264,9 +288,6 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
         draft: fresh,
         reply: quoteOf(fresh)
       }
-    if (running) return { ok: false, message: 'A video is being made already. Wait for it, or stop it first.' }
-    const controller = new AbortController()
-    running = controller
     const progress = (stage: string, percent: number | null): void =>
       deps.send(sender, 'cut:progress', { stage, percent })
     const docId = draft.into?.docId ?? draft.id
@@ -320,13 +341,18 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
         }
       }
       return { ok: false, message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err) }
-    } finally {
-      running = null
     }
   }
 
   // A prompt read and quoted; with "Go ahead without asking" on and the video under it, made straight away.
-  ipcMain.handle('make:start', async (e, req: { text: string; recording?: string | null; brand?: string | null; answered?: boolean }) => {
+  ipcMain.handle(
+    'make:start',
+    async (e, req: { text: string; recording?: string | null; brand?: string | null; answered?: boolean; quoteFirst?: boolean }) => {
+    // The script is written (or the recording heard) under a Stop of its own, held from the moment the
+    // prompt arrives: its Stop button shows from then, and one pressed while Settings is read is never lost.
+    const controller = new AbortController()
+    const claimed = !running
+    if (claimed) running = controller
     try {
       const brand = req.brand ? await readBrandById(req.brand) : await readBrand()
       const brief = readAsk(String(req.text ?? ''), { niche: brand.niche ?? null, recording: req.recording ?? null })
@@ -338,48 +364,43 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       // What cannot be guessed is asked first, before a word is written or a token spent, whatever Settings says.
       const questions = req.answered ? [] : questionsFor(brief)
       if (questions.length) return { ok: true as const, kind: 'ask' as const, questions }
+      if (!claimed) return { ok: false as const, message: 'A video is being made already. Wait for it, or stop it first.' }
       const d = await draftDeps(req.brand)
+      if (controller.signal.aborted) return { ok: false as const, message: 'Stopped before anything was written, so nothing was spent.' }
       if (!d.can.claude)
         return {
           ok: false as const,
           message: 'Add your Anthropic key in Settings, and I’ll write it and plan its shots.'
         }
-      if (running) return { ok: false as const, message: 'A video is being made already. Wait for it, or stop it first.' }
-      // The script is written (or the recording heard) under a Stop of its own.
-      const controller = new AbortController()
-      running = controller
       const said = (stage: string, percent: number | null): void => deps.send(e.sender, 'cut:progress', { stage, percent })
       said(brief.from === 'topic' ? 'Writing the script' : brief.from === 'recording' ? 'Listening to your recording' : 'Reading your script', null)
-      let drafted: Awaited<ReturnType<typeof draftFor>>
-      try {
-        drafted = await draftFor(brief, randomUUID(), {
-          ...d,
-          signal: controller.signal,
-          // The person's own voice-over is heard here first, so its quote counts the lines it really has.
-          hear: async (path) => {
-            const facts = await probe(path)
-            const heard = await deps.transcribe(path, facts.durationSec, (_stage, p) => said('Listening to your recording', p))
-            return { durationSec: facts.durationSec, words: heard.words.map((w) => ({ text: w.text, startSec: w.startSec, endSec: w.endSec })) }
-          }
-        })
-      } finally {
-        running = null
-      }
+      const drafted = await draftFor(brief, randomUUID(), {
+        ...d,
+        signal: controller.signal,
+        // The person's own voice-over is heard here first, so its quote counts the lines it really has.
+        hear: async (path) => {
+          const facts = await probe(path)
+          const heard = await deps.transcribe(path, facts.durationSec, (_stage, p) => said('Listening to your recording', p))
+          return { durationSec: facts.durationSec, words: heard.words.map((w) => ({ text: w.text, startSec: w.startSec, endSec: w.endSec })) }
+        }
+      })
       if (controller.signal.aborted)
         return { ok: false as const, message: brief.from === 'topic' ? 'Stopped while Claude wrote the script.' : 'Stopped before anything was made.' }
       if (!drafted.ok) return { ok: false as const, message: drafted.message }
-      const draft = drafted.draft
-      if (draft.quote.auto) {
-        const made = await go(e.sender, draft, draft.quote.total)
-        if (!made.ok) return made
-        // Why it did not wait, said every time, after the sentence that says what it cost.
-        const why = `Settings says to go ahead without asking under $${getSettings().makeAutoUnder ?? 0}, so I did not wait for you.`
-        const aside = [why, made.reply.aside].filter(Boolean).join(' ')
-        return { ...made, reply: { ...made.reply, aside }, kind: 'made' as const, auto: true }
-      }
-      return { ok: true as const, kind: 'quote' as const, draft, reply: quoteOf(draft) }
+      // Typed answers to its questions are read from words, so their video is quoted, whatever Settings says.
+      if (!drafted.draft.quote.auto || req.quoteFirst)
+        return { ok: true as const, kind: 'quote' as const, draft: drafted.draft, reply: quoteOf(drafted.draft) }
+      // Made straight away, under the same Stop as its script.
+      const made = await go(e.sender, drafted.draft, drafted.draft.quote.total, controller)
+      if (!made.ok) return made
+      // Why it did not wait, said every time, after the sentence that says what it cost.
+      const why = `Settings says to go ahead without asking under $${getSettings().makeAutoUnder ?? 0}, so I did not wait for you.`
+      const aside = [why, made.reply.aside].filter(Boolean).join(' ')
+      return { ...made, reply: { ...made.reply, aside }, kind: 'made' as const, auto: true }
     } catch (err) {
       return { ok: false as const, message: message(err) }
+    } finally {
+      if (running === controller) running = null
     }
   })
 
@@ -410,7 +431,10 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     ) {
       const again = await draftFor(r.draft.brief, draft.id, d)
       if (!again.ok) return { ok: false as const, message: again.message }
-      return { ok: true as const, draft: again.draft, reply: quoteOf(again.draft), changed: r.changed }
+      // The script it replaces was paid for too: it counts against the cap, and in what the video cost.
+      const next: Draft = { ...again.draft, spentBefore: Math.round(((draft.spentBefore ?? 0) + draft.scriptCost) * 10000) / 10000 }
+      next.quote = quoteDraft(next, d)
+      return { ok: true as const, draft: next, reply: quoteOf(next), changed: r.changed }
     }
     return { ok: true as const, draft: r.draft, reply: quoteOf(r.draft), changed: r.changed }
   })
@@ -452,35 +476,38 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     const parsed = EditDocSchema.safeParse(req.doc)
     if (!parsed.success || !parsed.data.make)
       return { ok: false as const, message: 'This edit was not made from nothing.' }
-    const d = await draftDeps()
-    // Quoted again with what is open now: a price above the one confirmed is never spent.
-    const fresh = quoteShot(
-      parsed.data.make,
-      { kind: 'reshoot', phrase: req.change.phrase, want: req.change.want },
-      d.can,
-      d.settings
-    )
-    if (fresh.kind !== 'shot' || fresh.missing.length)
-      return { ok: false as const, message: fresh.kind === 'shot' ? fresh.missing.join(' ') : fresh.reply.text }
-    // The service confirmed is the one used: another one now is a new quote to ask for.
-    if (fresh.images !== req.change.images || fresh.clips !== req.change.clips)
-      return {
-        ok: false as const,
-        message: `Another service would make it now than the one quoted. Ask again and I'll quote it fresh.`
-      }
-    const total = fresh.total
-    if (total > (Number(req.confirmed) || 0) + 0.005)
-      return {
-        ok: false as const,
-        message: `The price has changed since the quote: it is $${total.toFixed(2)} now. Ask again and I'll quote it fresh.`
-      }
     if (running)
       return { ok: false as const, message: 'Something is being made already. Wait for it, or stop it first.' }
-    const parse = t.parse()
-    if (!parse) return { ok: false as const, message: 'There is no Anthropic key in Settings.' }
+    // Its Stop holds from the moment it is asked, so one pressed while the price is checked again is never lost.
     const controller = new AbortController()
     running = controller
     try {
+      const d = await draftDeps()
+      if (controller.signal.aborted)
+        return { ok: false as const, message: 'Stopped before anything was made, so nothing was spent, and the shot stays as it was.' }
+      // Quoted again with what is open now: a price above the one confirmed is never spent.
+      const fresh = quoteShot(
+        parsed.data.make,
+        { kind: 'reshoot', phrase: req.change.phrase, want: req.change.want },
+        d.can,
+        d.settings
+      )
+      if (fresh.kind !== 'shot' || fresh.missing.length)
+        return { ok: false as const, message: fresh.kind === 'shot' ? fresh.missing.join(' ') : fresh.reply.text }
+      // The service confirmed is the one used: another one now is a new quote to ask for.
+      if (fresh.images !== req.change.images || fresh.clips !== req.change.clips)
+        return {
+          ok: false as const,
+          message: `Another service would make it now than the one quoted. Ask again and I'll quote it fresh.`
+        }
+      const total = fresh.total
+      if (total > (Number(req.confirmed) || 0) + 0.005)
+        return {
+          ok: false as const,
+          message: `The price has changed since the quote: it is $${total.toFixed(2)} now. Ask again and I'll quote it fresh.`
+        }
+      const parse = t.parse()
+      if (!parse) return { ok: false as const, message: 'There is no Anthropic key in Settings.' }
       const r = await remakeShot(parsed.data, req.change, {
         services: t.services,
         parse,
@@ -497,7 +524,7 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       // remakeShot says what a Stop or a failure had spent, Claude's few words included.
       return { ok: false as const, message: message(err) }
     } finally {
-      running = null
+      if (running === controller) running = null
     }
   })
 

@@ -144,9 +144,14 @@ export function fromInteraction(json: unknown, want: 'image' | 'video'): Picture
   return { data: new Uint8Array(Buffer.from(made.data, 'base64')), mime: made.mime_type ?? (want === 'image' ? 'image/png' : 'video/mp4') }
 }
 
-/** Google answers a key with no billing behind it with a quota of zero: that says what to do. */
+/**
+ * Google answers a key with no billing behind it with a free tier's quota of
+ * zero: that says what to do. Every 429 says "check your plan and billing
+ * details", a paid key's per-minute limit included, so only the free tier's
+ * own markers count; any other 429 is busy, and is tried again.
+ */
 function paidOnly(err: unknown): unknown {
-  if (err instanceof ServiceError && err.kind === 'busy' && /free_tier|limit: 0|billing/i.test(err.detail ?? '')) {
+  if (err instanceof ServiceError && err.kind === 'busy' && /free_tier|FreeTier|\blimit:\s*0\b/.test(err.detail ?? '')) {
     return new ServiceError(
       'gemini',
       'refused',

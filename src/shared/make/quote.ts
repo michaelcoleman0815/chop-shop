@@ -1,5 +1,5 @@
 import { clock } from '../presets/preset'
-import { CLAUDE_HOLD, CLAUDE_TOKENS, PRICES, PRICES_CHECKED, voiceRate } from './prices'
+import { CLAUDE_HOLD, CLAUDE_TOKENS, PRICES, PRICES_CHECKED, ROOM_TO_ANSWER, SHOTS_PER_PART, voiceRate } from './prices'
 import { countWords, wordsFor } from './script'
 import type { Brief, ImageService, Shot, Visual, VoiceChoice, VoiceEngine } from './schema'
 import { defaultVoice, voicePhrase, voiceShort } from './voices'
@@ -247,20 +247,41 @@ export function clipCost(service: ImageService, seconds: number): number {
   return round(Math.min(p.maxSec, Math.max(p.minSec, seconds)) * p.perSecond)
 }
 
-/** Dollars Claude's shot list costs, from how many shots and how long the narration is. */
-export function shotListCost(scenes: number, narrationSeconds: number): number {
-  const input = CLAUDE_TOKENS.promptBase + narrationSeconds * CLAUDE_TOKENS.scriptPerSecond
-  const output = scenes * CLAUDE_TOKENS.perShot * (1 + CLAUDE_TOKENS.thinking)
-  return round((input / 1e6) * PRICES.claude.inputPerMillion + (output / 1e6) * PRICES.claude.outputPerMillion)
+/** Dollars so many tokens cost with Claude, in and out. */
+const claudeDollars = (input: number, output: number): number =>
+  (input / 1e6) * PRICES.claude.inputPerMillion + (output / 1e6) * PRICES.claude.outputPerMillion
+
+/**
+ * The most one call to Claude, of about `input` tokens in and `output` out,
+ * may cost: CLAUDE_HOLD times its estimate, and room for a short answer at
+ * least, up to the call's own ceiling on its answer. It is quoted at this,
+ * and held to it, so it never takes a quoted picture's money.
+ */
+export function claudeHold(input: number, output: number, ceiling: number): number {
+  return round(Math.max(claudeDollars(input, output) * CLAUDE_HOLD, claudeDollars(input, Math.min(ceiling, ROOM_TO_ANSWER))))
 }
 
-/** Dollars Claude's script costs, for a narration this long. */
-export function scriptCost(seconds: number): number {
-  const output = seconds * CLAUDE_TOKENS.scriptPerSecond * (1 + CLAUDE_TOKENS.thinking) + 600
-  return round(
-    (CLAUDE_TOKENS.promptBase / 1e6) * PRICES.claude.inputPerMillion + (output / 1e6) * PRICES.claude.outputPerMillion
-  )
+/**
+ * Dollars Claude's shot list may cost, from how many shots and how long the
+ * narration is: each part of SHOTS_PER_PART shots one call, at its hold.
+ */
+export function shotListCost(scenes: number, narrationSeconds: number): number {
+  let total = 0
+  for (let from = 0; from < scenes; from += SHOTS_PER_PART) {
+    const n = Math.min(SHOTS_PER_PART, scenes - from)
+    const input = CLAUDE_TOKENS.promptBase + (narrationSeconds * CLAUDE_TOKENS.scriptPerSecond * n) / Math.max(1, scenes) + (from > 0 ? 600 : 0)
+    total += claudeHold(input, n * CLAUDE_TOKENS.perShot * (1 + CLAUDE_TOKENS.thinking), 32000)
+  }
+  return round(total)
 }
+
+/** Dollars Claude's script may cost, for a narration this long, at its hold. */
+export function scriptCost(seconds: number): number {
+  return claudeHold(CLAUDE_TOKENS.promptBase, seconds * CLAUDE_TOKENS.scriptPerSecond * (1 + CLAUDE_TOKENS.thinking) + 600, 16000)
+}
+
+/** Dollars Claude's description of one shot made again may cost, at its hold. */
+export const REWRITE_COST = claudeHold(2500, 1500, 4000)
 
 /** The voice that will read it: the one asked for when its service can be reached, else the one on this Mac. */
 export function voiceFor(brief: Brief, can: Availability): { voice: VoiceChoice; note: string | null } {
@@ -434,14 +455,13 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   }
   sends.push('Nothing of your own footage leaves this Mac.')
 
-  // The amount to go ahead under is for the whole video: what is spent already (the script), this
-  // quote, and room for Claude to answer at more length than estimated (it is held to CLAUDE_HOLD times).
-  const claude = built.lines.filter((l) => l.by.startsWith('Claude')).reduce((n, l) => n + l.cost, 0)
+  // The amount to go ahead under is for the whole video: what is spent already (the script) and this
+  // quote, which holds Claude's lines at the most each call may cost.
   const auto =
     opts.autoUnder !== null &&
     opts.autoUnder !== undefined &&
     opts.autoUnder > 0 &&
-    spent + built.total + claude * (CLAUDE_HOLD - 1) < opts.autoUnder &&
+    spent + built.total < opts.autoUnder &&
     within &&
     missing.length === 0
   return {

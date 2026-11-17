@@ -7,12 +7,12 @@ import { cameraFor, type Carry } from '../../shared/make/assemble'
 import { readMakeAsk, shotNumber, type MakeAsk } from '../../shared/make/edits'
 import type { KeyService } from '../../shared/make/key-steps'
 import { PRICES } from '../../shared/make/prices'
-import { clipCost, DEFAULT_CAP, dollars, stillCost, type Availability, type QuoteLine } from '../../shared/make/quote'
+import { clipCost, DEFAULT_CAP, dollars, REWRITE_COST, stillCost, type Availability, type QuoteLine } from '../../shared/make/quote'
 import { promptFor } from '../../shared/make/shots'
 import { STILL_MOVES, type Brief, type ImageService, type Make, type MadeShot, type VoiceChoice } from '../../shared/make/schema'
 import { defaultVoice, voicePhrase } from '../../shared/make/voices'
 import { MODEL } from '../planner'
-import { callCost, holdFor, settle, type ParseCall } from './claude'
+import { callCost, holdFor, inputOf, maybeBilled, settle, type ParseCall } from './claude'
 import { Budget, MadeCache, makeOnce, OverBudget, type MadeRequest } from './generate'
 import type { Change, Draft, Reply, ShotChange } from '../../shared/make/draft'
 import { MakeFailed, quoteDraft, type DraftDeps } from './run'
@@ -45,9 +45,6 @@ export function withArticle(want: string): string {
 }
 
 const say = (text: string): { kind: 'say'; reply: Reply } => ({ kind: 'say', reply: { text, aside: null, chips: [], details: [] } })
-
-/** What rewriting a shot's prompt costs, about: a short ask and a short answer. */
-const REWRITE_COST = callCost({ input_tokens: 2500, output_tokens: 1500 })
 
 /** The picture service a remake uses: the one the video was made with, else whichever is open. */
 function serviceFor(make: Make, can: Availability): ImageService | null {
@@ -172,29 +169,33 @@ export async function rewriteShot(
   shot: MadeShot,
   want: string,
   parse: ParseCall,
-  opts: { signal?: AbortSignal; budget?: Budget } = {}
+  opts: { signal?: AbortSignal; budget?: Budget; hold?: number } = {}
 ): Promise<{ prompt: string; move: (typeof STILL_MOVES)[number]; cost: number; note: string | null }> {
   const v = shot.visual
   const move = v.kind === 'still' ? v.move : 'push-in'
   const plain = `${want.charAt(0).toUpperCase()}${want.slice(1)}.`
-  const hold = holdFor(opts.budget, { input: 2500, output: 1500 }, 4000)
+  const request = reshotRequest(make, shot, want)
+  // Held to its line of the quote, from Claude's own budget: the still's money is never in it.
+  const hold = holdFor(opts.budget, opts.hold ?? REWRITE_COST, inputOf(request), 4000)
   if (!hold) return { prompt: plain, move, cost: 0, note: 'There was not enough left of the quote for Claude, so the picture was asked for in your words.' }
   try {
-    const r = await parse({ ...reshotRequest(make, shot, want), max_tokens: hold.maxTokens }, { signal: opts.signal })
+    const r = await parse({ ...request, max_tokens: hold.maxTokens }, { signal: opts.signal })
     const cost = callCost(r.usage)
     settle(opts.budget, hold, cost)
     const parsed = ReshotSchema.safeParse(r.parsed_output)
     if (r.stop_reason === 'refusal' || !parsed.success || !parsed.data.prompt.trim())
       return { prompt: plain, move, cost, note: 'Claude could not describe it, so the picture was asked for in your words.' }
     return { prompt: parsed.data.prompt.trim().slice(0, 1200), move: parsed.data.move, cost, note: null }
-  } catch {
+  } catch (err) {
     // Stopped, it may have been billed for what it wrote: the hold is spent, and the shot is not made.
     if (opts.signal?.aborted) {
       settle(opts.budget, hold, null)
       throw new Error('Stopped.')
     }
-    settle(opts.budget, hold, 0)
-    return { prompt: plain, move, cost: 0, note: 'Claude could not be reached, so the picture was asked for in your words.' }
+    // Broken partway, it may have been billed all the same; refused with an error, it was not.
+    const billed = maybeBilled(err)
+    settle(opts.budget, hold, billed ? null : 0)
+    return { prompt: plain, move, cost: billed ? hold.held : 0, note: 'Claude could not be reached, so the picture was asked for in your words.' }
   }
 }
 
@@ -217,18 +218,22 @@ export async function remakeShot(
   change: ShotChange,
   deps: RemakeShotDeps
 ): Promise<{ ops: Op[]; make: Make; asset: Omit<Asset, 'id'>; summary: string; reply: Reply; spent: number }> {
-  // Everything, Claude's few words included, is held to what was quoted; a Stop or a failure says what it spent.
-  const budget = new Budget(change.total)
+  // Held to what was quoted: Claude's few words to their own line, the still and the clip to theirs, so
+  // Claude never takes the picture's money. A Stop or a failure says what it spent.
+  const claudeLine = change.lines.filter((l) => l.by.startsWith('Claude')).reduce((t, l) => t + l.cost, 0)
+  const claude = new Budget(claudeLine)
+  const budget = new Budget(Math.round((change.total - claudeLine) * 10000) / 10000)
+  const spentSoFar = (): number => Math.round((budget.spent + claude.spent) * 10000) / 10000
   try {
-    return await remakeShotWith(doc, change, deps, budget)
+    return await remakeShotWith(doc, change, deps, budget, claude)
   } catch (err) {
     if (deps.signal?.aborted)
       throw new Error(
-        budget.spent > 0
-          ? `Stopped: ${dollars(budget.spent)} of the ${dollars(change.total)} quoted was spent, and the shot stays as it was.`
+        spentSoFar() > 0
+          ? `Stopped: ${dollars(spentSoFar())} of the ${dollars(change.total)} quoted was spent, and the shot stays as it was.`
           : 'Stopped before anything was made, so nothing was spent, and the shot stays as it was.'
       )
-    throw new MakeFailed(err instanceof Error ? err.message : String(err), budget.spent, change.total)
+    throw new MakeFailed(err instanceof Error ? err.message : String(err), spentSoFar(), change.total)
   }
 }
 
@@ -236,7 +241,8 @@ async function remakeShotWith(
   doc: EditDoc,
   change: ShotChange,
   deps: RemakeShotDeps,
-  budget: Budget
+  budget: Budget,
+  claude: Budget
 ): Promise<{ ops: Op[]; make: Make; asset: Omit<Asset, 'id'>; summary: string; reply: Reply; spent: number }> {
   const make = doc.make
   if (!make) throw new Error('This edit was not made from nothing, so there is no shot to make again.')
@@ -249,7 +255,7 @@ async function remakeShotWith(
   let visual = shot.visual
   if (change.want) {
     deps.progress(`Describing shot ${n} again`, null)
-    const r = await rewriteShot(make, shot, change.want, deps.parse, { signal: deps.signal, budget })
+    const r = await rewriteShot(make, shot, change.want, deps.parse, { signal: deps.signal, budget: claude, hold: claude.cap })
     if (r.note) notes.push(r.note)
     visual = visual.kind === 'still' ? { ...visual, prompt: r.prompt, move: r.move } : { ...visual, prompt: r.prompt }
   }
@@ -292,7 +298,7 @@ async function remakeShotWith(
       notes.push(err instanceof OverBudget ? 'The clip would have passed the quote, so it is the still.' : 'The clip could not be made, so it is the still with a camera move.')
     }
   }
-  const spent = budget.spent
+  const spent = Math.round((budget.spent + claude.spent) * 10000) / 10000
   const facts = await deps.probe(file).catch(() => ({ durationSec: 0, width: 0, height: 0 }))
   const move = visual.kind === 'still' ? visual.move : 'push-in'
   const broll = video ? { path: file, inSec: 0, muted: true } : { path: file, inSec: 0, muted: true, camera: cameraFor(move, shot.phrase) }

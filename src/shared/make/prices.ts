@@ -133,10 +133,13 @@ export const PRICES = {
     }
   } satisfies Record<string, VoicePrice>,
   // The model the planner uses, with the person's own Anthropic key (src/main/planner.ts):
-  // $4 per 1M input tokens and $20 per 1M output tokens.
+  // $4 per 1M input tokens and $20 per 1M output tokens. Prompt caching: a 5-minute cache write costs
+  // 1.25 times an input token, a cache read 0.1 times.
   claude: {
     inputPerMillion: 4,
     outputPerMillion: 20,
+    cacheWrite: 1.25,
+    cacheRead: 0.1,
     source: 'https://platform.claude.com/docs/en/about-claude/pricing'
   }
 } as const
@@ -157,11 +160,18 @@ export function voiceRate(price: VoicePrice, today: string): { perSecond: number
 }
 
 /**
- * Up to this many times its estimate, one call to Claude is held to while a
- * confirmed video is made (main/make/claude.ts holdFor): its answer is capped
- * to what that pays for. Going ahead without asking leaves room for it.
+ * Up to this many times its estimate, one call to Claude may cost, and is
+ * quoted at: the quote's Claude lines are what each call is held to while the
+ * video is made (main/make/claude.ts holdFor), with its answer capped to what
+ * that pays for. So Claude never takes the money of a picture that was quoted.
  */
 export const CLAUDE_HOLD = 2
+
+/** Output tokens a call to Claude always has room for, up to its own ceiling: thinking and a short answer. */
+export const ROOM_TO_ANSWER = 8000
+
+/** Phrases one call plans the shots of; a longer video's shot list is planned in parts. */
+export const SHOTS_PER_PART = 40
 
 /** Tokens a script and a shot list take with Claude, from what they hold: about four characters a token. */
 export const CLAUDE_TOKENS = {
