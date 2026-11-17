@@ -76,6 +76,8 @@ TestFlight:
 
 The app's record is made in App Store Connect first, for the bundle ID `social.brewed.cutalong`. Xcode signs the archive with those keys and uploads it; App Store Connect processes it before testers see it, and asks about export compliance for each build unless the app's Info.plist answers it.
 
+The icons are drawn from the Mac app's mark by `scripts/make-icons.py`, at the sizes each store and launcher asks for: one 1024 px opaque square for iOS, which Xcode makes the rest from; Android's adaptive icon (the coral behind the mark, which also serves as Android 13's themed icon) and the 48 dp icons for Android 7, square and round. `python3 scripts/make-icons.py --play icon.png` writes the 512 px icon the Play Console's listing asks for.
+
 Google Play:
 
 - `PLAY_UPLOAD_KEYSTORE_BASE64`: the upload keystore (`.jks` or `.keystore`), base64-encoded (`base64 -i upload.jks`).
