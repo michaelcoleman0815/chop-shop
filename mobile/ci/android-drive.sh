@@ -58,7 +58,9 @@ follow() {
   status=1
   why="$label: no report in $TIMEOUT s"
   while [ $((SECONDS - start)) -lt "$TIMEOUT" ]; do
-    progress=$(app cat files/drive-progress.txt 2>/dev/null | head -n1 || true)
+    # Every pipeline here reads to its end: one that stops early (head, awk's exit) breaks the pipe
+    # behind it, which pipefail and set -e count as the script failing.
+    progress=$(app cat files/drive-progress.txt 2>/dev/null | sed -n 1p || true)
     # The flow says its first step within a minute or two of the app starting; nothing by then is a stop.
     if [ -z "$seen" ] && [ -z "$progress" ] && [ $((SECONDS - start)) -gt 240 ]; then
       why="$label: the app showed no step of its flow in 240 s: it did not find drive.json, or could not start"
@@ -84,8 +86,9 @@ follow() {
     # The app's memory every 15 s, and the device's, for when it is stopped.
     if [ "$alive" = yes ] && [ $((SECONDS - sampled)) -ge 15 ]; then
       sampled=$SECONDS
-      pss=$(adb shell dumpsys meminfo "$PKG" 2>/dev/null | tr -d '\r' | awk '/TOTAL PSS:/ { print $3; exit } /^ *TOTAL / { print $2; exit }')
-      free=$(adb shell cat /proc/meminfo 2>/dev/null | tr -d '\r' | awk '/MemAvailable/ { print $2 }')
+      pss=$(adb shell dumpsys meminfo "$PKG" 2>/dev/null | tr -d '\r' |
+        awk '!n && /TOTAL PSS:/ { print $3; n = 1 } !n && /^ *TOTAL / { print $2; n = 1 }' || true)
+      free=$(adb shell cat /proc/meminfo 2>/dev/null | tr -d '\r' | awk '/MemAvailable/ { print $2 }' || true)
       echo "$label $((SECONDS - start)) s ${seen:-starting}: app ${pss:-?} kB, device available ${free:-?} kB" >> "$OUT/memory.txt"
     fi
     case "$alive" in
