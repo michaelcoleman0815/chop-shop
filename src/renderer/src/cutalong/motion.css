@@ -1107,9 +1107,10 @@ html[data-cl-move='detach']::view-transition-old(cl-behind) {
     animation: cl-living-glow calc(var(--duration-calm) * 9) var(--ease-breathe) infinite alternate;
   }
 
+  /* Each turn is named with its order (.cl-living-turn.one), which outranks the class alone. */
   .cl-living-turn,
   .cl-living-core {
-    animation: none;
+    animation: none !important;
   }
 
   .cl-crew-face,
