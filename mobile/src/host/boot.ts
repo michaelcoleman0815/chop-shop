@@ -17,7 +17,7 @@ import { nativeFetch } from './http'
 import { commandsOnTheMac, ON_THE_MAC } from './limits'
 import { phonePlatform } from './platform'
 import { phoneServices } from './services'
-import { loadSettings } from './settings'
+import { loadSettings, sharedSettings } from './settings'
 import { KEYCHAIN, phoneIs } from '../shims/platform'
 
 /**
@@ -49,7 +49,15 @@ const secureSecrets: PlatformSecrets = {
     }
   },
   set: async (name, value) => void (await SecureStoragePlugin.set({ key: name, value })),
-  remove: async (name) => void (await SecureStoragePlugin.remove({ key: name }).catch(() => undefined))
+  remove: async (name) => void (await SecureStoragePlugin.remove({ key: name }).catch(() => undefined)),
+  // Saved, even when it cannot be opened: the key gate then asks for it again rather than for a first one.
+  has: async (name) => {
+    try {
+      return (await SecureStoragePlugin.keys()).value.includes(name)
+    } catch {
+      return false
+    }
+  }
 }
 
 const preferences: PlatformSettings = {
@@ -118,7 +126,12 @@ function bridgeDownload(engine: EnginePlugin) {
 export interface StartOptions {
   /** The engine as the app's picks see it: CI's drive (drive.ts) hands over its own files. */
   picks?: (engine: EnginePlugin) => EnginePlugin
+  /** The page's fetch as the shared work reaches Anthropic with it: CI's drive answers with its stand-in. */
+  network?: (fetch: typeof globalThis.fetch) => typeof globalThis.fetch
 }
+
+/** The page's own fetch: Anthropic answers a page that asks it to (main/planner.ts). */
+const pageFetch: typeof fetch = (input, init) => fetch(input, init)
 
 export async function startPhone(options: StartOptions = {}): Promise<CutalongHost> {
   const native = Capacitor.isNativePlatform()
@@ -130,19 +143,21 @@ export async function startPhone(options: StartOptions = {}): Promise<CutalongHo
   const mediaUrlFor = (path: string): string =>
     native ? Capacitor.convertFileSrc(path) : `${BRIDGE}/media?path=${encodeURIComponent(path)}`
   const fonts = `${info.documents}/Cutalong/fonts`
+  const shared = sharedSettings(preferences)
   const platform = phonePlatform({
     engine: Engine,
     info,
     files,
-    settings: preferences,
+    settings: shared.store,
     secrets: secureSecrets,
-    fetch: (input, init) => fetch(input, init),
+    fetch: options.network ? options.network(pageFetch) : pageFetch,
     download: native ? nativeDownload(files) : bridgeDownload(Engine),
     fonts
   })
   setPlatform(platform)
   await copyFonts(files, fonts)
   const settings = await loadSettings(preferences, platform.paths.exports())
+  shared.use(settings)
   // Other AI services are reached by the phone itself; in a browser on the bridge, by the page.
   const services = await phoneServices({
     settings,

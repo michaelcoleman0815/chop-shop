@@ -64,3 +64,25 @@ export async function loadSettings(store: PlatformSettings, exportsDir: string):
     }
   }
 }
+
+/**
+ * The settings as the shared work reads and writes them on the phone's
+ * platform (the key gate remembers there which key Anthropic accepted): once
+ * the app has read its settings, through that one copy, so neither side
+ * writes over what the other wrote.
+ */
+export function sharedSettings(store: PlatformSettings): { store: PlatformSettings; use(settings: PhoneSettings): void } {
+  let loaded: PhoneSettings | null = null
+  return {
+    store: {
+      read: async () => (loaded ? loaded.current() : store.read()),
+      write: async (value) => {
+        if (loaded) await loaded.set(value as Partial<Settings>)
+        else await store.write(value)
+      }
+    },
+    use: (settings) => {
+      loaded = settings
+    }
+  }
+}

@@ -16,7 +16,10 @@ void (async () => {
   const root = document.getElementById('root') as HTMLElement
   const drive = __DRIVE__ ? await import('./host/drive') : null
   try {
-    ;(window as { cutalongHost?: CutalongHost }).cutalongHost = await startPhone({ picks: drive?.withPlannedPicks })
+    ;(window as { cutalongHost?: CutalongHost }).cutalongHost = await startPhone({
+      picks: drive?.withPlannedPicks,
+      network: drive?.withStandIn
+    })
   } catch (err) {
     console.error('[phone] could not start:', err)
     root.className = 'cl-boot-failed'

@@ -1,12 +1,14 @@
 """Checks what the app's own flow in CI did (src/host/drive.ts), on the
 runner, with its ffprobe and ffmpeg: every step of the flow and of the dark
-tour reached, the editor's preview with a picture whether it was opened
-from the chat or from Start's card, a new version from the command, the
-crew at the export, and each export itself, a vertical H.264 video with AAC
-sound the length of the talking less what was cut, speech in it, and a
-picture that is not black.
-Also how the page looked and moved: dark or light, reduced motion, and what
-the web view had of view transitions.
+tour reached, the key gate both ways (Start without a key is the steps to
+get one, a key Anthropic turns down marks the step that fixes it, one it
+takes opens Start, and in the tour a key accepted before keeps the gate open
+while Anthropic is down), the editor's preview with a picture whether it was
+opened from the chat or from Start's card, a new version from the command,
+the crew at the export, and each export itself, a vertical H.264 video with
+AAC sound the length of the talking less what was cut, speech in it, and a
+picture that is not black. Also how the page looked and moved: dark or
+light, reduced motion, and what the web view had of view transitions.
 
     python3 ci/check-drive.py OUT_DIR FOOTAGE_DIR
 
@@ -21,9 +23,9 @@ import sys
 
 OUT = sys.argv[1]
 FOOTAGE = sys.argv[2]
-FLOW = ["start", "composer", "transcribing", "v1", "command", "editor", "exporting", "thread-exporting",
-        "export-in-chat", "crew", "brand", "licences"]
-TOUR = ["start", "editor", "exporting", "thread-exporting", "thread", "crew", "brand"]
+FLOW = ["key", "key-refused", "start", "composer", "transcribing", "v1", "command", "editor", "exporting",
+        "thread-exporting", "export-in-chat", "crew", "brand", "licences"]
+TOUR = ["thread-down", "start", "editor", "exporting", "thread-exporting", "thread", "crew", "brand"]
 
 problems = []
 
@@ -76,6 +78,8 @@ def steps_of(label, report, expected):
     print(f"  the editor's preview had a picture: {report.get('previewReady')}")
     for deck in report.get("previewDecks", []):
         print(f"    a picture in the frame: {deck}")
+    for r in report.get("anthropic", []):
+        print(f"  anthropic: {r.get('kind')} {r.get('said')!r} -> {r.get('status')}{' ' + r['route'] if r.get('route') else ''}")
     # A phone's plugins log each call they turn down (a file or a key that is not there yet), so
     # those are many: the rest are shown first, the drive's own notes among them.
     errors = report.get("errors", [])
@@ -149,6 +153,25 @@ print(f"  toast: {flow.get('toast')}")
 licences = flow.get("licences") or {}
 print(f"  licences: {', '.join(licences.get('listed', [])) or 'none'}")
 print(f"  source offer: {licences.get('sourceOffer')}")
+setup = flow.get("keySetup") or {}
+refused = flow.get("keyRefused") or {}
+print(f"  without a key, Start's steps: {setup.get('steps')}")
+print(f"    pages: {setup.get('pages')}")
+print(f"    cost: {setup.get('cost')}")
+print(f"  a key turned down: {refused.get('said')!r}, the step marked: {refused.get('marked')!r}")
+print(f"    {refused.get('kept')}")
+print(f"  a key taken: {flow.get('keyAccepted')!r}")
+asked = flow.get("anthropic", [])
+checks = [r["status"] for r in asked if r.get("kind") == "key check"]
+if flow.get("ok"):
+    if len(setup.get("steps") or []) < 3 or not setup.get("cost"):
+        problem("without a key, Start did not show the steps to get one and what it costs")
+    if checks[:2] != [401, 200]:
+        problem(f"the key checks went {checks}, not a key turned down and then one taken")
+    if not refused.get("marked"):
+        problem("a key turned down marked no step to fix it")
+    if not any(r.get("kind") == "triage" for r in asked) or not any(r.get("kind") == "plan" for r in asked):
+        problem("the words sent with the footage did not go to Claude, to read and then to plan")
 before = flow.get("versionsAfterFootage") or []
 after = flow.get("versionsAfterCommand") or []
 if flow.get("ok") and len(after) <= len(before):
@@ -161,6 +184,18 @@ else:
     steps_of("the tour, dark", tour, TOUR)
     if not (tour.get("looks") or {}).get("dark"):
         problem("the web view did not report the system's dark: the tour set the page dark itself")
+    down = tour.get("whileDown") or {}
+    print(f"  while Anthropic was down: {down}")
+    tour_asked = tour.get("anthropic", [])
+    if tour.get("ok"):
+        if any(r.get("kind") == "key check" for r in tour_asked):
+            problem("the tour checked the key again at launch, though Anthropic had accepted it")
+        if not any(r.get("status") == 529 for r in tour_asked):
+            problem("nothing in the tour met Anthropic down")
+        if not (down.get("gateOpen") and down.get("startOpen")):
+            problem("with Anthropic down, the gate closed on a key it had accepted")
+        if not re.search(r"overloaded|having trouble", str(down.get("reply"))):
+            problem(f"with Anthropic down, the answer was {down.get('reply')!r}")
 
 exports_dir = os.path.join(OUT, "Exports")
 listed = sorted(os.listdir(exports_dir)) if os.path.isdir(exports_dir) else []

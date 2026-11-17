@@ -6,12 +6,13 @@ import { platform, setPlatform, type Platform } from '../../../src/main/platform
 import { findFfmpeg, findFfprobe } from '../../../src/main/test-media'
 import { missingOnPhone } from '../../../src/main/render/lgpl'
 import { applyOps, currentCut, type EditDoc, type Op } from '../../../src/shared/edit'
-import { keyMessage } from '../../../src/shared/setup'
+import { gateOpen, keyMessage } from '../../../src/shared/setup'
 import { createPhoneApi } from './api'
 import { commandsOnTheMac, ON_THE_MAC } from './limits'
 import { phonePlatform } from './platform'
 import { phoneServices } from './services'
-import { loadSettings } from './settings'
+import { loadSettings, sharedSettings } from './settings'
+import { anthropicStandIn } from './standin'
 import { fakeEngine, folderFiles, tempRoot, type FakeEngine } from './testing'
 
 const FFMPEG = findFfmpeg()
@@ -40,7 +41,10 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
   const sent: Sent[] = []
   /** Requests to other AI services, which go by the phone's own HTTP rather than the page's. */
   const toServices: string[] = []
-  let answer: (url: string) => Response = () => new Response('{}', { status: 500 })
+  let answer: (url: string, init?: RequestInit) => Response | Promise<Response> = () =>
+    new Response('{}', { status: 500 })
+  /** The phone's Preferences: the settings, as the app and the shared work keep them. */
+  const store = new Map<string, unknown>()
   let take = ''
   let sound = ''
 
@@ -99,24 +103,30 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
     })
     const info = await engine.info()
     keys = new Map()
-    const store = new Map<string, unknown>()
     before = platform()
+    const preferences = {
+      read: async () => store.get('settings') ?? null,
+      write: async (v: unknown) => void store.set('settings', v)
+    }
+    // As boot.ts has it: the shared work reads and writes the settings through the app's own copy.
+    const shared = sharedSettings(preferences)
     const host = phonePlatform({
       engine,
       info,
       files: folderFiles(info.cache),
-      settings: { read: async () => store.get('settings') ?? null, write: async (v) => void store.set('settings', v) },
+      settings: shared.store,
       secrets: {
         get: async (k) => keys.get(k) ?? null,
         set: async (k, v) => void keys.set(k, v),
-        remove: async (k) => void keys.delete(k)
+        remove: async (k) => void keys.delete(k),
+        has: async (k) => keys.has(k)
       },
       fetch: async (input, init) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
         const headers: Record<string, string> = {}
         new Headers(init?.headers).forEach((v, k) => (headers[k] = v))
         sent.push({ url, method: init?.method ?? 'GET', headers })
-        return answer(url)
+        return answer(url, init)
       },
       download: async (url, dest, onProgress) => {
         sent.push({ url, method: 'GET', headers: {} })
@@ -126,7 +136,8 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
       fonts: join(root, 'fonts')
     })
     setPlatform(host)
-    const settings = await loadSettings(host.settings, host.paths.exports())
+    const settings = await loadSettings(preferences, host.paths.exports())
+    shared.use(settings)
     kept = { keep: 0, allow: 0 }
     const services = await phoneServices({
       settings,
@@ -211,6 +222,76 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
     }
     await api.clearApiKey()
     expect(await api.hasApiKey()).toBe(false)
+  })
+
+  it('keeps the gate as the desktop does, with the key in the Keychain or Keystore', async () => {
+    const anthropic = anthropicStandIn()
+    answer = (url, init) => anthropic.answer(url, init)
+    sent.length = 0
+    // No key: the gate is shut, and nothing is asked of anyone.
+    expect(await api.checkKey({ quick: true })).toMatchObject({ ok: false, state: 'none', confirmed: false })
+    expect(sent).toEqual([])
+    // A key Anthropic turns down shuts it.
+    await api.setApiKey('sk-ant-api03-phone-gate-refused')
+    expect(await api.checkKey()).toMatchObject({ ok: false, state: 'refused', confirmed: false, needsKey: true })
+    // One it takes opens it, and the phone remembers which key that was: a fingerprint, never the key.
+    await api.setApiKey('sk-ant-api03-phone-gate')
+    expect(await api.checkKey()).toEqual({ ok: true, state: 'ok', confirmed: true })
+    const print = (await api.getSettings()).claudeKeyAccepted
+    expect(print).toMatch(/^[0-9a-f]{16}$/)
+    expect(JSON.stringify([...store.values()])).not.toContain('sk-ant')
+    expect(keys.get('anthropic')).toBe('sk-ant-api03-phone-gate')
+    // A setting changed in the app keeps it.
+    await api.setSettings({ whisperModel: 'small.en' })
+    expect((await api.getSettings()).claudeKeyAccepted).toBe(print)
+    await api.setSettings({ whisperModel: 'base.en' })
+    // At launch, the key it took passes without asking again.
+    const asked = anthropic.requests.length
+    expect(await api.checkKey({ quick: true })).toEqual({ ok: true, state: 'ok', confirmed: true })
+    expect(anthropic.requests.length).toBe(asked)
+    // Words are read and planned with it, through the page's own fetch, to Anthropic only.
+    const road = await api.triage({
+      request: 'Make this into a video for my channel.',
+      files: [{ path: take, name: 'take.mov' }],
+      link: null,
+      hasEdit: false
+    })
+    expect(road).toMatchObject({ ok: true, route: 'edit' })
+    expect(await api.planEdit({ doc, request: 'make the hook punchier', notes: [] })).toMatchObject({ ok: true, ops: [] })
+    expect(anthropic.requests.map((r) => `${r.kind} ${r.status}`)).toEqual([
+      'key check 401',
+      'key check 200',
+      'triage 200',
+      'plan 200'
+    ])
+    for (const s of sent) {
+      expect(new URL(s.url).host).toBe('api.anthropic.com')
+      expect(s.headers['x-api-key']).toMatch(/^sk-ant-api03-phone-gate/)
+    }
+    // Anthropic overloaded, or out of reach: the key it took keeps the gate open.
+    answer = () =>
+      new Response(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }), {
+        status: 529,
+        headers: { 'content-type': 'application/json', 'x-should-retry': 'false' }
+      })
+    const down = await api.checkKey()
+    expect(down).toMatchObject({ ok: false, state: 'down', confirmed: true })
+    expect(gateOpen(down)).toBe(true)
+    answer = () => Promise.reject(new TypeError('Load failed'))
+    const offline = await api.checkKey()
+    expect(offline).toMatchObject({ ok: false, state: 'offline', confirmed: true })
+    expect(gateOpen(offline)).toBe(true)
+    // A key it never took does not get that benefit.
+    await api.setApiKey('sk-ant-api03-phone-gate-new')
+    const untried = await api.checkKey()
+    expect(untried).toMatchObject({ ok: false, state: 'offline', confirmed: false })
+    expect(gateOpen(untried)).toBe(false)
+    // A key the Keychain or Keystore has but cannot open is asked for again, not as a first one.
+    keys.set('anthropic', '')
+    expect(await api.checkKey({ quick: true })).toMatchObject({ ok: false, state: 'unreadable' })
+    await api.clearApiKey()
+    expect(await api.checkKey({ quick: true })).toMatchObject({ ok: false, state: 'none' })
+    expect((await api.getSettings()).claudeKeyAccepted ?? null).toBeNull()
   })
 
   it('says, in one sentence each, what is on the Mac for now', async () => {

@@ -1,6 +1,7 @@
 import type { EnginePlugin, PickedFile } from 'cutalong-engine'
 import { platform } from '../../../src/main/platform'
 import { Engine } from './engine'
+import { anthropicStandIn, type StandIn } from './standin'
 
 /**
  * The app's own flow, run by the app itself on an emulator or a simulator
@@ -9,13 +10,20 @@ import { Engine } from './engine'
  * documents, which only the runner can put there (adb run-as on a debuggable
  * build, or the simulator's container).
  *
- * The flow: pick footage, sort and transcribe it, make v1, apply a command,
- * open the editor and export, watch the crew at the export from the thread,
- * then open the Crew page, Brand and Settings' Licences. Then the runner
- * turns the system dark, adds "tour": "dark" to the plan and starts the app
- * again, and the tour opens the same project: Start, the editor, the crew at
- * another export in the thread, the thread with it in, the Crew page and
- * Brand.
+ * The flow: Start without a key is the steps to get one, so the drive pastes
+ * a key Anthropic turns down and then one it takes; then it picks footage,
+ * sorts and transcribes it, makes v1, applies a command, opens the editor
+ * and exports, watches the crew at the export from the thread, then opens
+ * the Crew page, Brand and Settings' Licences. Then the runner turns the
+ * system dark, adds "tour": "dark" to the plan and starts the app again,
+ * and the tour, with the key saved and Anthropic down, asks for a change in
+ * the thread (the gate stays open for a key accepted before), then opens the
+ * same project from Start's card: the editor, the crew at another export in
+ * the thread, the thread with it in, the Crew page and Brand.
+ *
+ * Anthropic is stood in for while a drive runs (standin.ts): the shared
+ * work's requests to it go through the page's fetch, which withStandIn
+ * answers, and nothing leaves the emulator or the simulator.
  *
  * drive.json: { "files": ["Talking.mp4"], "request": "…", "command": "/shorts", "tour"?: "dark" }.
  * The files are already in documents/Imported, where the engine's importer
@@ -49,6 +57,43 @@ interface Step {
 
 /** The files the plan names, as the picker hands them over; null until a plan is read. */
 let planned: PickedFile[] | null = null
+
+/** The plan in the app's documents, read once: null when there is none, and the app runs as a person uses it. */
+let planRead: Promise<Plan | null> | null = null
+function readPlan(): Promise<Plan | null> {
+  planRead ??= (async () => {
+    try {
+      const info = await Engine.info()
+      return JSON.parse(await platform().files.readText(`${info.documents}/drive.json`)) as Plan
+    } catch {
+      return null
+    }
+  })()
+  return planRead
+}
+
+/** Anthropic as the drive stands in for it, once a plan is read: down for the dark tour. */
+let standIn: StandIn | null = null
+
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).host
+  } catch {
+    return ''
+  }
+}
+
+/** The page's fetch, with Anthropic answered by the stand-in while a drive runs. */
+export function withStandIn(base: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (hostOf(url) !== 'api.anthropic.com') return base(input, init)
+    const plan = await readPlan()
+    if (!plan) return base(input, init)
+    standIn ??= anthropicStandIn({ down: plan.tour === 'dark' })
+    return standIn.answer(url, init)
+  }
+}
 
 /** The engine, with + handing over the plan's files while a drive runs. */
 export function withPlannedPicks(engine: EnginePlugin): EnginePlugin {
@@ -86,8 +131,9 @@ function button(label: string, within: ParentNode = document): HTMLButtonElement
 }
 
 /** Types into a field React controls: its value, then the input event React listens for. */
-function type(field: HTMLTextAreaElement, value: string): void {
-  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(field, value)
+function type(field: HTMLTextAreaElement | HTMLInputElement, value: string): void {
+  const kind = field instanceof HTMLInputElement ? HTMLInputElement : HTMLTextAreaElement
+  Object.getOwnPropertyDescriptor(kind.prototype, 'value')?.set?.call(field, value)
   field.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
@@ -132,12 +178,9 @@ export async function drive(): Promise<void> {
   const info = await Engine.info()
   const files = platform().files
   const at = (name: string): string => `${info.documents}/${name}`
-  let plan: Plan
-  try {
-    plan = JSON.parse(await files.readText(at('drive.json'))) as Plan
-  } catch {
-    return // No plan: the app as a person uses it.
-  }
+  const read = await readPlan()
+  if (!read) return // No plan: the app as a person uses it.
+  const plan: Plan = read
   const tour = plan.tour === 'dark'
   // The runner clears the progress before each pass, so progress from before means the page started
   // again partway through, as it does when its web view is restarted: the pass ends there, saying so.
@@ -259,6 +302,13 @@ export async function drive(): Promise<void> {
     ;(await until('Send', () => button('Send'), 10)).click()
   }
 
+  // A key typed into the setup's field, and its check started.
+  const paste = async (key: string): Promise<void> => {
+    type(await until('the key field', () => document.querySelector<HTMLInputElement>('#cl-key'), 10), key)
+    await sleep(300)
+    ;(await until('Check and save', () => button('Check and save'), 10)).click()
+  }
+
   const versions = async (): Promise<string[]> => {
     try {
       const index = JSON.parse(await files.readText(`${platform().paths.userData()}/projects.json`)) as {
@@ -355,7 +405,8 @@ export async function drive(): Promise<void> {
       planned.push({ path, name, bytes: facts.size })
     }
 
-    await until('the app', () => document.querySelector('#cl-ask'), 60)
+    // Start, or without a key the steps to get one there.
+    await until('the app', () => document.querySelector('#cl-ask, .cl-setup'), 60)
     report.looks = looks()
     if (earlier && !/ done$/.test(earlier)) {
       report.restartedAfter = earlier
@@ -374,13 +425,42 @@ export async function drive(): Promise<void> {
     await step('failed').catch(() => undefined)
   } finally {
     planned = null
+    report.anthropic = standIn?.requests ?? []
     report.seconds = seconds()
     await files.writeText(at(tour ? 'tour-report.json' : 'drive-report.json'), JSON.stringify(report, null, 1))
     await files.writeText(at('drive-progress.txt'), `${steps.length + 1} done\n`)
     console.log(`[drive] done: ${report.ok ? 'ok' : `failed (${String(report.failed)})`}`)
   }
 
+  // Without a key, Start is the steps to get one and the cost: a key Anthropic turns down marks the
+  // step that fixes it, and one it takes opens Start.
+  async function keySetup(): Promise<void> {
+    const setup = await until('the key steps on Start', () => document.querySelector<HTMLElement>('.cl-setup'), 30)
+    report.keySetup = {
+      steps: [...setup.querySelectorAll('.cl-steps > li h3')].map((h) => text(h)),
+      pages: [...setup.querySelectorAll<HTMLAnchorElement>('.cl-steps a')].map((a) => a.href),
+      cost: shown('.cl-setup-cost')
+    }
+    await step('key')
+    await paste('sk-ant-drive-standin-refused')
+    report.keyRefused = await until(
+      'Anthropic turning the key down',
+      () =>
+        /did not accept/.test(shown('.cl-keycheck')) && {
+          said: shown('.cl-keycheck'),
+          marked: text(document.querySelector('.cl-steps > li.now h3')),
+          kept: shown('.cl-key-kept')
+        },
+      60
+    )
+    await step('key-refused')
+    await paste('sk-ant-drive-standin')
+    await until('Start, once Anthropic takes the key', () => document.querySelector('#cl-ask'), 60)
+    report.keyAccepted = shown('.cl-toast')
+  }
+
   async function flow(): Promise<void> {
+    await keySetup()
     await step('start')
     ;(await until('+', () => button('Add footage, audio or images'), 10)).click()
     await until('the picked files', () => document.querySelectorAll('.cl-attachment').length === planned?.length, 30)
@@ -478,7 +558,24 @@ export async function drive(): Promise<void> {
       () => document.querySelector('.cl-thread-scroll, .cl-editor'),
       20
     ).catch(() => keep('the app did not open the chat it was left in'))
+    // Anthropic is down for the tour (standin.ts): the key was accepted before, so the gate stays
+    // open, and a change asked for meanwhile is answered with what happened.
+    if (document.querySelector('.cl-editor')) (await until('Back', () => button('Back'), 10)).click()
+    await until('the chat', () => document.querySelector('.cl-thread-scroll'), 20)
+    const before = replies().length
+    await send('Make the captions bigger.')
+    const answered = await until(
+      'the answer while Anthropic is down',
+      () => {
+        const now = replies()
+        return now.length > before && !busy() && now[now.length - 1]
+      },
+      180
+    )
+    const gateOpen = !document.querySelector('.cl-setup')
+    await step('thread-down')
     if (!document.querySelector('.cl-start')) await go('New edit', '.cl-start')
+    report.whileDown = { reply: answered, gateOpen, startOpen: !document.querySelector('.cl-setup') }
     const card = await until('the project on Start', () => document.querySelector<HTMLButtonElement>('.cl-project'), 30)
     await step('start')
     card.click()

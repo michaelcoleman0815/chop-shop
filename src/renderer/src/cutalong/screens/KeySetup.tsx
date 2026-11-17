@@ -1,5 +1,6 @@
 import { useState, type DragEvent } from 'react'
 import { blockedSentence, costLine, doneSteps, fixingStep, keyGuide, keyMessage } from '../../../../shared/setup'
+import { device } from '../api'
 import { ClaudeKeyField } from '../components/ClaudeKeyField'
 import { KeySteps } from '../components/KeySteps'
 import { Mark } from '../components/ui'
@@ -59,7 +60,8 @@ export function KeySetup({ app }: { app: Cutalong }): JSX.Element {
                   app={app}
                   id="cl-key"
                   note={refused}
-                  autoFocus
+                  // On a phone the keyboard would cover the steps, which come first there.
+                  autoFocus={device.kind !== 'phone'}
                   onCheck={() => setRefused(null)}
                   onWorks={works}
                 />
