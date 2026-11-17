@@ -2,6 +2,7 @@
 <header class="slab">
   <div class="container slab-row">
     {{> lockup}}
-    <a class="btn btn-quiet slab-action" href="{{downloadUrl}}">Download</a>
+    {{#downloadReady}}<a class="btn btn-quiet slab-action" href="{{downloadUrl}}">Download</a>{{/downloadReady}}
+    {{^downloadReady}}<a class="btn btn-quiet slab-action" href="{{page index}}#signup">Get notified</a>{{/downloadReady}}
   </div>
 </header>

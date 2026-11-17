@@ -119,6 +119,8 @@ export function folderFiles(cache: string): PhoneFiles {
     },
     rename: (from, to) => fs.rename(from, to),
     copy: (from, to) => fs.copyFile(from, to),
+    // As on a phone: no second names for a file, so an export is copied into place.
+    link: () => Promise.reject(Object.assign(new Error('This storage has no links.'), { code: 'ENOTSUP' })),
     list: async (dir) =>
       (await fs.readdir(dir, { withFileTypes: true }).catch(() => [])).map((e) => ({
         name: e.name,

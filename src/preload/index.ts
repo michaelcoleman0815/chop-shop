@@ -174,7 +174,8 @@ const api = {
         /** On a phone, whether the export went to Photos too, and why not when it did not. */
         photos?: { saved: boolean; message?: string }
       }
-    | { ok: false; message: string }
+    /** A sentence, and what ffmpeg said behind Details when it was ffmpeg that stopped. */
+    | { ok: false; message: string; details?: { label: string; value: string }[] }
   > => ipcRenderer.invoke('cut:render', req),
   addAsset: (req: {
     docId: string

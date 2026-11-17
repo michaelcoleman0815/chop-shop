@@ -1,71 +1,219 @@
 /*
- * Cutalong design tokens, as CSS variables.
+ * Cutalong design tokens, as CSS variables: Lined Script.
  *
  * tokens.json beside this file is a copy of the published design system and
  * the source of truth; tokens.test.ts fails when the two drift apart. Change
  * the design system first, copy its tokens.json here, then update this file.
+ *
+ * Light is luminous paper on a warm desk; dark is a calm night page, never a
+ * void. The dark values live twice below, for the system setting and for an
+ * explicit data-theme, and the test checks both against tokens.json.
  */
 :root {
-  /* Colour. The interface is ink, card, ground and greys; coral marks the cut and nothing else. */
-  --ground: #f5f5f3;
-  --card: #ffffff;
-  --well: #ecebe8;
-  --line: #e8e7e4;
-  --beat: #e7e6e2;
-  --ink: #15161a;
-  --ink-soft: #4b4d55;
-  --muted: #5e6068;
-  --coral: #ff5a36;
-  --coral-glow: rgba(255, 90, 54, 0.05);
+  color-scheme: light;
+
+  /*
+   * Colour. Paper, ink and soft greys; coral is now (the playhead) and the mark;
+   * blue pencil picks. The revision colours come three ways: a gentle page tint
+   * (rev), a confident pastel block (block), and a deeper tone for shapes (bloom).
+   */
+  --ground: oklch(96.9% 0.006 85);
+  --glow: oklch(99.4% 0.012 90);
+  --card: oklch(99.6% 0.003 90);
+  --card-2: oklch(98.2% 0.005 85);
+  --well: oklch(94.3% 0.007 82);
+  --line: oklch(90.8% 0.007 80);
+  --line-mid: oklch(84% 0.008 80);
+  --line-strong: oklch(64% 0.012 75);
+  --beat: oklch(93.2% 0.008 80);
+  --ink: oklch(25% 0.014 272);
+  --ink-soft: oklch(41% 0.014 272);
+  --muted: oklch(50% 0.012 272);
+  --coral: #FF5A36;
+  --pick: oklch(52% 0.13 258);
+  --error: oklch(52% 0.17 27);
+  --ok: oklch(50% 0.1 155);
+  --frame: oklch(15% 0.012 268);
+  --frame-2: oklch(27% 0.012 268);
+  --selection: oklch(89% 0.04 245);
+  --shadow-soft: oklch(30% 0.02 272 / 0.06);
+  --shadow-deep: oklch(30% 0.03 272 / 0.2);
+  --rev-1: oklch(93.2% 0.008 80);
+  --rev-2: oklch(93.8% 0.03 240);
+  --rev-3: oklch(94.2% 0.028 352);
+  --rev-4: oklch(95.8% 0.045 98);
+  --rev-5: oklch(94.4% 0.034 152);
+  --rev-6: oklch(92.8% 0.05 82);
+  --rev-7: oklch(94.2% 0.03 50);
+  --block-blue: oklch(85% 0.075 255);
+  --block-pink: oklch(86% 0.08 350);
+  --block-yellow: oklch(92% 0.11 100);
+  --block-green: oklch(88% 0.09 148);
+  --block-gold: oklch(86% 0.1 78);
+  --block-salmon: oklch(86% 0.075 52);
+  --block-lavender: oklch(86% 0.06 300);
+  --bloom-blue: oklch(68% 0.14 258);
+  --bloom-pink: oklch(70% 0.15 352);
+  --bloom-yellow: oklch(83% 0.16 95);
+  --bloom-green: oklch(74% 0.15 150);
+  --bloom-gold: oklch(74% 0.15 72);
+  --bloom-salmon: oklch(74% 0.13 50);
+  --bloom-lavender: oklch(70% 0.12 300);
+  --on-bloom: oklch(25% 0.014 272);
+  --halo: oklch(99% 0.01 90 / 0.95);
+  --gloss: oklch(100% 0 0 / 0.5);
+  --gloss-edge: oklch(100% 0 0 / 0.3);
+  --gloss-shade: oklch(0% 0 0 / 0.18);
 
   /* Spacing */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-10: 40px;
   --space-12: 48px;
+  --space-16: 64px;
 
   /* Radius */
-  --radius-tile: 10px;
-  --radius-thumb: 16px;
-  --radius-card: 24px;
-  --radius-composer: 28px;
+  --radius-tile: 8px;
+  --radius-thumb: 10px;
+  --radius-card: 14px;
+  --radius-composer: 24px;
   --radius-pill: 999px;
 
-  /* Shadow: only the composer and the video frame are lifted. */
-  --shadow-composer: 0 0 0 6px rgba(255, 90, 54, 0.045), 0 24px 50px rgba(21, 22, 26, 0.07);
-  --shadow-frame: 0 24px 50px rgba(21, 22, 26, 0.16);
-  --shadow-tab: 0 1px 3px rgba(21, 22, 26, 0.12);
+  /* Shadow: soft light under lifted paper. The colours above change with the theme. */
+  --shadow-composer: 0 1px 2px var(--shadow-soft), 0 18px 40px -20px var(--shadow-deep);
+  --shadow-frame: 0 30px 60px -28px var(--shadow-deep);
+  --shadow-tab: 0 1px 3px var(--shadow-soft);
+  --shadow-page: 0 1px 2px var(--shadow-soft), 0 12px 28px -16px var(--shadow-deep);
+  --shadow-float: 0 1px 2px var(--shadow-soft), 0 22px 48px -18px var(--shadow-deep);
 
   /*
-   * Motion. Things arrive with ease-enter, leave sooner with ease-exit, move
-   * between places with ease-standard, and what a hand moves springs.
+   * Motion. Things arrive softly and settle, landing on a gentle spring with a
+   * hair of overshoot; they leave sooner, easing out, and never bounce.
    */
   --duration-fast: 120ms;
   --duration-base: 180ms;
-  --duration-gentle: 240ms;
-  --duration-calm: 320ms;
+  --duration-gentle: 260ms;
+  --duration-calm: 340ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-enter: cubic-bezier(0.25, 1, 0.5, 1);
-  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
-  --spring-gentle: linear(
-    0,
-    0.023 2.8%,
-    0.102 6.3%,
-    0.294 12%,
-    0.605 20.8%,
-    0.774 26.8%,
-    0.897 32.8%,
-    0.979 39.3%,
-    1.026 47%,
-    1.037 58.8%,
-    1 97.3%,
-    1
-  );
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.33, 1, 0.68, 1);
+  --spring-gentle: linear(0, 0.08 4%, 0.28 10%, 0.53 18%, 0.74 27%, 0.87 36%, 0.94 46%, 0.98 58%, 0.995 72%, 1);
+  --duration-spring: 460ms;
+  --spring-settle: linear(0, 0.054 4.8%, 0.116 7.3%, 0.178 9.5%, 0.241 11.5%, 0.304 13.4%, 0.366 15.2%, 0.430 17.1%, 0.492 19%, 0.554 21%, 0.617 23.1%, 0.679 25.3%, 0.741 27.8%, 0.803 30.5%, 0.863 33.7%, 0.922 37.5%, 0.977 42.6%, 1.021 49.9%, 1.038 59.7%, 1.032 69.8%, 1.019 79.8%, 1.008 89.8%, 1);
+  --ease-breathe: cubic-bezier(0.37, 0, 0.63, 1);
+  --spring-pop: linear(0, 0.056 3.7%, 0.117 5.6%, 0.179 7.2%, 0.241 8.6%, 0.302 10%, 0.363 11.3%, 0.426 12.7%, 0.487 14.1%, 0.549 15.4%, 0.611 16.9%, 0.672 18.4%, 0.733 20.1%, 0.795 21.9%, 0.856 24%, 0.916 26.4%, 0.975 29.5%, 1.030 34%, 1.063 42%, 1.048 51.6%, 1.022 60.7%, 1.004 70.2%, 0.997 80.1%, 0.996 90%, 1);
 
-  /* Type. Figtree ships bundled as a variable font under its own family name. */
+  /* Type. The faces ship inside the app (fonts.css); nothing loads from the web. */
   --font-sans: 'Figtree Variable', 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: 'Source Serif 4 Variable', 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --ground: oklch(19.5% 0.018 268);
+    --glow: oklch(26% 0.032 262);
+    --card: oklch(23.5% 0.02 268);
+    --card-2: oklch(26.5% 0.021 268);
+    --well: oklch(16.5% 0.017 268);
+    --line: oklch(31% 0.02 268);
+    --line-mid: oklch(40% 0.02 268);
+    --line-strong: oklch(54% 0.02 268);
+    --beat: oklch(30% 0.02 268);
+    --ink: oklch(94.5% 0.008 85);
+    --ink-soft: oklch(85% 0.01 85);
+    --muted: oklch(72% 0.012 268);
+    --coral: #FF6E4E;
+    --pick: oklch(76% 0.1 255);
+    --error: oklch(75% 0.13 27);
+    --ok: oklch(78% 0.1 155);
+    --frame: oklch(13% 0.012 268);
+    --frame-2: oklch(25% 0.012 268);
+    --selection: oklch(38% 0.06 255);
+    --shadow-soft: oklch(5% 0.01 268 / 0.5);
+    --shadow-deep: oklch(4% 0.02 268 / 0.72);
+    --rev-1: oklch(30% 0.02 268);
+    --rev-2: oklch(32% 0.045 248);
+    --rev-3: oklch(32% 0.04 350);
+    --rev-4: oklch(33% 0.04 95);
+    --rev-5: oklch(32% 0.038 155);
+    --rev-6: oklch(34% 0.05 78);
+    --rev-7: oklch(33% 0.04 45);
+    --block-blue: oklch(34% 0.06 258);
+    --block-pink: oklch(34.5% 0.04 350);
+    --block-yellow: oklch(39% 0.038 80);
+    --block-green: oklch(35% 0.055 152);
+    --block-gold: oklch(35% 0.042 75);
+    --block-salmon: oklch(35% 0.06 48);
+    --block-lavender: oklch(34% 0.06 300);
+    --bloom-blue: oklch(74% 0.12 258);
+    --bloom-pink: oklch(76% 0.12 352);
+    --bloom-yellow: oklch(86% 0.13 95);
+    --bloom-green: oklch(80% 0.12 150);
+    --bloom-gold: oklch(80% 0.12 72);
+    --bloom-salmon: oklch(80% 0.1 50);
+    --bloom-lavender: oklch(78% 0.1 300);
+    --on-bloom: oklch(25% 0.014 272);
+    --halo: oklch(99% 0.01 90 / 0.95);
+    --gloss: oklch(100% 0 0 / 0.5);
+    --gloss-edge: oklch(100% 0 0 / 0.3);
+    --gloss-shade: oklch(0% 0 0 / 0.18);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ground: oklch(19.5% 0.018 268);
+  --glow: oklch(26% 0.032 262);
+  --card: oklch(23.5% 0.02 268);
+  --card-2: oklch(26.5% 0.021 268);
+  --well: oklch(16.5% 0.017 268);
+  --line: oklch(31% 0.02 268);
+  --line-mid: oklch(40% 0.02 268);
+  --line-strong: oklch(54% 0.02 268);
+  --beat: oklch(30% 0.02 268);
+  --ink: oklch(94.5% 0.008 85);
+  --ink-soft: oklch(85% 0.01 85);
+  --muted: oklch(72% 0.012 268);
+  --coral: #FF6E4E;
+  --pick: oklch(76% 0.1 255);
+  --error: oklch(75% 0.13 27);
+  --ok: oklch(78% 0.1 155);
+  --frame: oklch(13% 0.012 268);
+  --frame-2: oklch(25% 0.012 268);
+  --selection: oklch(38% 0.06 255);
+  --shadow-soft: oklch(5% 0.01 268 / 0.5);
+  --shadow-deep: oklch(4% 0.02 268 / 0.72);
+  --rev-1: oklch(30% 0.02 268);
+  --rev-2: oklch(32% 0.045 248);
+  --rev-3: oklch(32% 0.04 350);
+  --rev-4: oklch(33% 0.04 95);
+  --rev-5: oklch(32% 0.038 155);
+  --rev-6: oklch(34% 0.05 78);
+  --rev-7: oklch(33% 0.04 45);
+  --block-blue: oklch(34% 0.06 258);
+  --block-pink: oklch(34.5% 0.04 350);
+  --block-yellow: oklch(39% 0.038 80);
+  --block-green: oklch(35% 0.055 152);
+  --block-gold: oklch(35% 0.042 75);
+  --block-salmon: oklch(35% 0.06 48);
+  --block-lavender: oklch(34% 0.06 300);
+  --bloom-blue: oklch(74% 0.12 258);
+  --bloom-pink: oklch(76% 0.12 352);
+  --bloom-yellow: oklch(86% 0.13 95);
+  --bloom-green: oklch(80% 0.12 150);
+  --bloom-gold: oklch(80% 0.12 72);
+  --bloom-salmon: oklch(80% 0.1 50);
+  --bloom-lavender: oklch(78% 0.1 300);
+  --on-bloom: oklch(25% 0.014 272);
+  --halo: oklch(99% 0.01 90 / 0.95);
+  --gloss: oklch(100% 0 0 / 0.5);
+  --gloss-edge: oklch(100% 0 0 / 0.3);
+  --gloss-shade: oklch(0% 0 0 / 0.18);
 }

@@ -46,78 +46,104 @@ document.querySelectorAll('[data-loop]').forEach((el) => {
   for (const type of ['scroll', 'pointermove', 'touchstart', 'keydown']) addEventListener(type, engage, { once: true, passive: true })
 })
 
-// ---- The page's beat strip: the section you are reading is the beat in ink, and the playhead sits on your place.
-const strip = document.querySelector('[data-strip]')
-if (strip) {
-  const links = [...strip.querySelectorAll('a[href^="#"]')]
-  const sections = links.map((a) => document.getElementById(a.hash.slice(1))).filter(Boolean)
-  const playhead = strip.querySelector('[data-playhead]')
-  const beats = strip.querySelector('.strip-beats')
-  let queued = false
-  let current = -1
-
-  const place = () => {
-    queued = false
-    if (!strip.offsetParent) return
-    const line = innerHeight * 0.4
-    let index = -1
-    let progress = 0
-    sections.forEach((section, i) => {
-      const box = section.getBoundingClientRect()
-      if (box.top <= line) {
-        index = i
-        progress = Math.min(1, Math.max(0, (line - box.top) / Math.max(1, box.height)))
-      }
-    })
-    // At the end of the page the last beat is reached even when the last section is short.
-    if (innerHeight + scrollY >= document.documentElement.scrollHeight - 2) {
-      index = sections.length - 1
-      progress = 1
-    }
-    if (index !== current) {
-      links.forEach((a, i) => (i === index ? a.setAttribute('aria-current', 'true') : a.removeAttribute('aria-current')))
-      current = index
-    }
-    const width = beats.getBoundingClientRect().width
-    const x = index < 0 ? 0 : ((index + progress) / sections.length) * width
-    playhead.style.transform = `translateX(${x.toFixed(1)}px)`
-  }
-  const queue = () => {
-    if (!queued) {
-      queued = true
-      requestAnimationFrame(place)
-    }
-  }
-  addEventListener('scroll', queue, { passive: true })
-  addEventListener('resize', queue)
-  place()
+// ---- The header takes a hairline once the page has moved under it.
+const slab = document.querySelector('.slab')
+if (slab) {
+  const mark = () => slab.classList.toggle('is-scrolled', scrollY > 8)
+  addEventListener('scroll', mark, { passive: true })
+  mark()
 }
 
-// ---- The coming-soon form: until an email provider is connected it sends nothing, and says so.
+// ---- The living mark breathes only while it can be seen.
+if ('IntersectionObserver' in window) {
+  document.querySelectorAll('[data-living]').forEach((el) =>
+    new IntersectionObserver(([entry]) => el.classList.toggle('is-asleep', !entry.isIntersecting)).observe(el)
+  )
+}
+
+// ---- Arrivals: each part floats up and settles once, as it comes into view. With less motion the CSS shows it as it is.
+const reveals = document.querySelectorAll('.reveal')
+if (reveals.length && 'IntersectionObserver' in window) {
+  const seen = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        entry.target.classList.add('is-in')
+        seen.unobserve(entry.target)
+      }
+    },
+    { rootMargin: '0px 0px -8% 0px', threshold: 0.12 }
+  )
+  reveals.forEach((el) => seen.observe(el))
+} else reveals.forEach((el) => el.classList.add('is-in'))
+
+// ---- The email list. Wired to the list's Function (functions/api/signup.js), it posts there and shows the reply;
+// without script it posts the ordinary way and the Function answers with a page. Unwired, it sends nothing and says so.
 document.querySelectorAll('form[data-signup]').forEach((form) => {
   const input = form.querySelector('input[type="email"]')
   const help = form.querySelector('[data-signup-help]')
   const submit = form.querySelector('button[type="submit"]')
+  const source = form.querySelector('[data-signup-source]')
   const wired = form.dataset.signup === 'ready'
+  const rest = help.textContent
+  let busy = false
+  const say = (text, state = '') => {
+    help.textContent = text
+    if (state) form.dataset.state = state
+    else delete form.dataset.state
+  }
+  const wrong = (text) => {
+    input.setAttribute('aria-invalid', 'true')
+    say(text, 'error')
+    input.focus()
+  }
   submit.disabled = false
-  form.addEventListener('submit', (e) => {
-    const ok = input.checkValidity()
-    input.toggleAttribute('aria-invalid', !ok)
-    if (!ok) {
-      e.preventDefault()
-      help.textContent = 'That address looks incomplete. Write it as name@example.com.'
-      input.focus()
-      return
-    }
-    if (!wired) {
-      e.preventDefault()
-      help.textContent = 'Nothing was sent: this list is not connected yet.'
+
+  // Each "Get notified" button leads to the field, and the list keeps which one it was.
+  // The link's own jump does the scrolling; focusing here, inside the tap, is what brings up a phone's keyboard.
+  document.querySelectorAll('a[data-notify]').forEach((a) =>
+    a.addEventListener('click', () => {
+      if (source) source.value = a.dataset.notify
+      input.focus({ preventScroll: true })
+    })
+  )
+  if (source && location.hash === '#signup') source.value = 'link'
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    if (busy) return
+    if (input.validity.valueMissing) return wrong('Write your email address first.')
+    if (!input.checkValidity()) return wrong('That address looks incomplete. Write it as name@example.com.')
+    if (!wired) return say('Nothing was sent: this list is not connected yet.')
+    busy = true
+    form.setAttribute('aria-busy', 'true')
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        body: new URLSearchParams(new FormData(form))
+      })
+      const reply = await response.json().catch(() => ({}))
+      if (reply.ok) {
+        input.value = ''
+        input.removeAttribute('aria-invalid')
+        say(reply.message, 'done')
+      } else if (reply.error === 'missing' || reply.error === 'invalid') {
+        wrong(reply.message)
+      } else {
+        say(reply.message || 'The list couldn’t take that just now. Try again in a minute.', 'error')
+      }
+    } catch {
+      say('The list couldn’t be reached. Check your connection and try again.', 'error')
+    } finally {
+      busy = false
+      form.removeAttribute('aria-busy')
     }
   })
   input.addEventListener('input', () => {
     if (input.hasAttribute('aria-invalid') && input.checkValidity()) {
       input.removeAttribute('aria-invalid')
-      help.textContent = help.dataset.rest || ''
+      say(rest)
     }
   })
 })
@@ -140,6 +166,3 @@ document.querySelectorAll('[data-slot] img').forEach((img) => {
   if (img.complete && !img.naturalWidth) img.remove()
   else img.addEventListener('error', () => img.remove(), { once: true })
 })
-
-// ---- The switcher: its panels fade in when you change them, never on the first paint.
-document.querySelectorAll('.jobs').forEach((jobs) => requestAnimationFrame(() => jobs.classList.add('is-ready')))

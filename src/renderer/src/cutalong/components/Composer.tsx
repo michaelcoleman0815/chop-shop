@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { namesCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
 import { api, device } from '../api'
+import { prefersReducedMotion, viewTransition } from '../motion'
 import { Poster } from './Poster'
 import { Icon, IconButton, Mark } from './ui'
 
@@ -36,6 +38,8 @@ export function Composer({
 }): JSX.Element {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  // Where each file stands in the drop it came with: a second drop's stills start at once, then 40 ms apart.
+  const inDrop = useRef(new Map<string, number>())
   const [dropping, setDropping] = useState(false)
   const [pick, setPick] = useState(0)
   const area = useRef<HTMLTextAreaElement>(null)
@@ -106,9 +110,34 @@ export function Composer({
     }
   }
 
+  /**
+   * Changes the files waiting to be sent. When the row of stills appears or
+   * goes, the composer opens or closes as one box (motion.css, "attach" and "detach")
+   * instead of jumping to its new height in a frame, and the stills float up
+   * inside it. Files added to a row already there just float in, so a second
+   * drop never restarts the first.
+   */
+  const changeFiles = (change: (prev: Attachment[]) => Attachment[]): void => {
+    const opensOrCloses = (attachments.length === 0) !== (change(attachments).length === 0)
+    if (!opensOrCloses || prefersReducedMotion()) {
+      setAttachments(change)
+      return
+    }
+    viewTransition(attachments.length === 0 ? 'attach' : 'detach', () => flushSync(() => setAttachments(change)))
+  }
+
+  /** New files after the ones already waiting, each once. */
+  const withNew =
+    (fresh: Attachment[]) =>
+    (prev: Attachment[]): Attachment[] => {
+      const added = fresh.filter((n) => !prev.some((a) => a.path === n.path))
+      added.forEach((a, i) => inDrop.current.set(a.path, i))
+      return added.length ? [...prev, ...added] : prev
+    }
+
   const add = (files: File[]): void => {
     const next = files.map((f) => ({ path: api.pathForFile(f), name: f.name })).filter((a) => a.path)
-    if (next.length) setAttachments((prev) => [...prev, ...next.filter((n) => !prev.some((a) => a.path === n.path))])
+    if (next.length) changeFiles(withNew(next))
   }
 
   const onDrop = (e: DragEvent): void => {
@@ -119,8 +148,7 @@ export function Composer({
 
   const browse = async (): Promise<void> => {
     const picked = await api.openMedia()
-    if (picked.length)
-      setAttachments((prev) => [...prev, ...picked.filter((p) => !prev.some((a) => a.path === p.path))])
+    if (picked.length) changeFiles(withNew(picked))
   }
 
   const canSend = !busy && (text.trim().length > 0 || attachments.length > 0)
@@ -162,13 +190,19 @@ export function Composer({
           aria-label={`${attachments.length} ${attachments.length === 1 ? 'file' : 'files'} to send`}
         >
           {attachments.map((a, i) => (
-            <span key={`${a.path}-${i}`} className="cl-attachment" title={a.name}>
+            // Each file floats up into the composer as a round still of itself, one just after another.
+            <span
+              key={`${a.path}-${i}`}
+              className="cl-attachment"
+              title={a.name}
+              style={{ '--i': Math.min(inDrop.current.get(a.path) ?? i, 5) } as CSSProperties}
+            >
               <Poster path={a.path} name={a.name} />
-              <span>{a.name}</span>
+              <span className="cl-attachment-name">{a.name}</span>
               <button
                 type="button"
                 aria-label={`Remove ${a.name}`}
-                onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                onClick={() => changeFiles((prev) => prev.filter((_, j) => j !== i))}
               >
                 <Icon.close />
               </button>

@@ -1,6 +1,9 @@
+import type { CSSProperties } from 'react'
 import { api, device } from '../api'
+import { Blob } from '../components/Shapes'
 import { Button } from '../components/ui'
 import { collapse } from '../motion'
+import { block } from '../shapes'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { ProjectCard } from './Start'
@@ -15,7 +18,9 @@ export function ProjectsPage({ app, onBrowse }: { app: Cutalong; onBrowse: () =>
       <main className="cl-page">
         <div className="cl-page-inner wide">
           <div className="cl-row" style={{ justifyContent: 'space-between' }}>
-            <h1 className="cl-page-title">Projects</h1>
+            <h1 className="cl-page-title">
+              Your <span className="cl-accent">projects</span>
+            </h1>
             {/* A phone keeps its projects in the app: there is no file to open. */}
             {device.kind !== 'phone' && (
               <Button small onClick={onBrowse}>
@@ -24,7 +29,13 @@ export function ProjectsPage({ app, onBrowse }: { app: Cutalong; onBrowse: () =>
             )}
           </div>
           {app.recent.length === 0 ? (
-            <p className="cl-lede">Nothing yet. Start a new edit and it shows up here.</p>
+            <div className="cl-empty-block" style={{ '--block': block('blue') } as CSSProperties}>
+              <Blob shape="flower" colour="blue" size={64} className="cl-empty-shape" />
+              <p className="cl-empty-title">
+                Nothing <span className="cl-accent">yet</span>
+              </p>
+              <p className="cl-empty-line">Start a new edit and it shows up here.</p>
+            </div>
           ) : (
             <div className="cl-continue-row">
               {app.recent.map((p) => (
@@ -49,7 +60,9 @@ export function PresetsPage({ app }: { app: Cutalong }): JSX.Element {
       </Header>
       <main className="cl-page">
         <div className="cl-page-inner">
-          <h1 className="cl-page-title">Presets</h1>
+          <h1 className="cl-page-title">
+            Your <span className="cl-accent">presets</span>
+          </h1>
           <p className="cl-lede">Type any of these after a slash, in the composer or in a note.</p>
           <ul className="cl-list">
             {presets.map((p) => (

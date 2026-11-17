@@ -48,7 +48,7 @@ export function runProgram(bin: string, args: string[], opts: RunOptions = {}): 
       opts.onStderr?.(text)
     })
     child.on('error', reject)
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
+    child.on('close', (code, signal) => resolve({ code, signal, stdout, stderr }))
   })
 }
 
@@ -138,6 +138,7 @@ export function nodePlatform(o: NodePlatformOptions): Platform {
       },
       rename: (from, to) => fs.rename(from, to),
       copy: (from, to) => fs.copyFile(from, to),
+      link: (from, to) => fs.link(from, to),
       list: async (dir) => {
         const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
         return entries.map((e) => ({ name: e.name, directory: e.isDirectory(), file: e.isFile() }))

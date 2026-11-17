@@ -5,7 +5,7 @@ import { creditsText } from '../shared/assets'
 import { brandOfDoc, readBrand, readBrandById } from './brand-store'
 import { stampBrand } from '../shared/brands'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
-import { freePath } from './export-paths'
+import { placeFile } from './export-paths'
 import { claudeWriter, writeUploadKit } from './upload-kit'
 import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
 import { renderCut, type OverlaySpan, type RenderSource } from './cut-render'
@@ -306,7 +306,7 @@ export async function renderEdit(
   req: { doc: unknown; quality: 'preview' | 'final'; name?: string },
   report: (stage: string, percent: number) => void,
   mediaUrlFor: (path: string) => string
-): Promise<Rendered | { ok: false; message: string }> {
+): Promise<Rendered | { ok: false; message: string; details?: Detail[] }> {
   const parsed = EditDocSchema.safeParse(req.doc)
   if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
   const doc = parsed.data
@@ -319,6 +319,10 @@ export async function renderEdit(
   const final = req.quality === 'final'
   const stage = final ? 'Exporting' : 'Rendering a preview'
   const workDir = await files.tempDir('cutalong-render-')
+  // What ffmpeg writes, and where the finished file is: an export is made in
+  // the work folder and only goes into the export folder whole (placeFile),
+  // so a render killed partway, or the app quitting, leaves nothing there.
+  let rendering: string | null = null
   let outputPath: string | null = null
   try {
     // What each recording has now. One the cut no longer uses may be gone
@@ -332,15 +336,7 @@ export async function renderEdit(
       })
     )
     const n = currentVersion(doc).n
-    // An export's name is free only when nothing that goes beside it is there either.
-    outputPath = final
-      ? await freePath(
-          host.outputDir(),
-          req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`,
-          '.mp4',
-          EXPORT_BESIDE
-        )
-      : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
+    rendering = final ? join(workDir, 'export.mp4') : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
     // The brand this version is made in: its graphics, caption colours and logo.
     const brand = await brandOfDoc(doc)
     const progress = (f: number): void => report(stage, Math.round(f * 100))
@@ -363,7 +359,7 @@ export async function renderEdit(
     // The subtitles leave out what a card holds back; the music and the sounds still follow every word.
     await renderCut(pass.cut, resolved, sources, {
       ffmpeg: host.ffmpeg(),
-      outputPath,
+      outputPath: rendering,
       workDir,
       quality: req.quality,
       fontsDir: host.fontsDir(),
@@ -375,6 +371,16 @@ export async function renderEdit(
       perspective: host.perspective,
       onProgress: (f) => progress(share + f * (1 - share))
     })
+    // An export's name is free only when nothing that goes beside it is there either.
+    outputPath = final
+      ? await placeFile(
+          rendering,
+          host.outputDir(),
+          req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`,
+          '.mp4',
+          EXPORT_BESIDE
+        )
+      : rendering
     // Anything from outside the person's own files is credited beside the video.
     let creditsPath: string | null = null
     const credits = final ? creditsText(doc) : null
@@ -431,10 +437,14 @@ export async function renderEdit(
       durationSec
     }
   } catch (err) {
-    console.error('[cut] render failed:', message(err))
-    // Nothing half-made, and no empty file holding the name, is left in the export folder.
+    const said = toolSaid(err)
+    console.error('[cut] render failed:', message(err), said ? `\n${said.said}` : '')
+    // A preview half-made, or an export placed before what goes beside it failed: neither is left.
     if (outputPath) await files.remove(outputPath).catch(() => undefined)
-    return { ok: false as const, message: message(err) }
+    if (!final && rendering) await files.remove(rendering).catch(() => undefined)
+    // A sentence, and what ffmpeg said behind Details.
+    const details = saidDetails(said)
+    return { ok: false as const, message: message(err), ...(details.length ? { details } : {}) }
   } finally {
     await files.remove(workDir).catch(() => undefined)
   }

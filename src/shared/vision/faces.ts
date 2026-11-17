@@ -283,18 +283,44 @@ export function windowAt(slot: CropSlot, t: number): { window: CropWindow; index
   return found
 }
 
+/** A slot's crop as the pass's filter graph names it (main/mouth.ts), for the commands that move it. */
+export const cropName = (slot: number): string => `crop@m${slot}`
+
 /**
- * The commands that move each slot's crop, for ffmpeg's sendcmd filter. Times
- * are relative to `originSec`, where the pass starts reading.
+ * The names a filter written `kind@id` answers to. ffmpeg 6.0 names it by the
+ * id alone (its rewritten graph parser keeps only what follows the @); 5.x,
+ * 6.1 and later by the whole of it. sendcmd ignores a command that no filter
+ * takes, and nothing else in the pass's graph answers to either name, so a
+ * command sent to both reaches the filter once on every version. Its kind
+ * would not do: a command to `crop` reaches only the first crop.
+ */
+function namesOf(spelled: string): string[] {
+  return [spelled, spelled.slice(spelled.indexOf('@') + 1)]
+}
+
+/**
+ * The commands that move each slot's crop, for ffmpeg's sendcmd filter, to
+ * every name the crop can have. Times are relative to `originSec`, where the
+ * pass starts reading.
+ *
+ * Each window's commands hold until its slot's next window: sendcmd looks
+ * through the commands of every interval still open on every frame, and one
+ * without an end never closes, so a long recording would slow with every
+ * window passed. A slot's intervals meet end to end, so every frame falls in
+ * exactly one of them, and a frame that skips past a window lands on the next.
  */
 export function sendcmdScript(plan: CropPlan, originSec = 0): string {
   const lines: { t: number; text: string }[] = []
+  const at = (sec: number): number => Math.max(0, sec - originSec)
   plan.slots.forEach((slot, s) => {
-    for (const win of slot.windows) {
-      const t = Math.max(0, win.fromSec - originSec)
-      lines.push({ t, text: `crop@m${s} x ${win.x}, crop@m${s} y ${win.y}` })
-    }
+    const names = namesOf(cropName(s))
+    slot.windows.forEach((win, i) => {
+      const t = at(win.fromSec)
+      const next = slot.windows[i + 1]
+      const span = next ? `${t.toFixed(4)}-${at(next.fromSec).toFixed(4)}` : t.toFixed(4)
+      lines.push({ t, text: `${span} ${names.map((name) => `${name} x ${win.x}, ${name} y ${win.y}`).join(', ')}` })
+    })
   })
   lines.sort((a, b) => a.t - b.t)
-  return lines.map((l) => `${l.t.toFixed(4)} ${l.text};`).join('\n') + '\n'
+  return lines.map((l) => `${l.text};`).join('\n') + '\n'
 }

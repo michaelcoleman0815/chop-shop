@@ -9,7 +9,7 @@ export function Header({ children }: { children: ReactNode }): JSX.Element {
   return (
     <header className="cl-header">
       {back && (
-        <Button variant="text" onClick={back.go} aria-label={`Back to ${back.name}`}>
+        <Button variant="text" className="cl-back-to-work" onClick={back.go} aria-label={`Back to ${back.name}`}>
           <Icon.back />
           <span className="cl-back-name">{back.name}</span>
         </Button>

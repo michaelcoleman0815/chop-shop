@@ -21,6 +21,9 @@ export function fileUri(path: string): string {
   return `file://${path.split('/').map(encodeURIComponent).join('/')}`
 }
 
+/** A phone's storage gives a file no second name: an export is copied into place instead (export-paths). */
+const noLinks = (): Error => Object.assign(new Error('This storage has no links.'), { code: 'ENOTSUP' })
+
 const random = (): string => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 
 /** The phone's own storage, through Capacitor's Filesystem. */
@@ -68,6 +71,7 @@ export function capacitorFiles(cache: string): PhoneFiles {
       }
     },
     copy: async (from, to) => void (await Filesystem.copy({ from: fileUri(from), to: fileUri(to) })),
+    link: () => Promise.reject(noLinks()),
     list: async (dir): Promise<DirEntry[]> => {
       try {
         const { files } = await Filesystem.readdir({ path: fileUri(dir) })
@@ -114,6 +118,8 @@ export function bridgeFiles(base: string): PhoneFiles {
     stat: async (path) => (await op<{ stat: FileInfo | null }>('stat', { path })).stat,
     rename: async (from, to) => void (await op('rename', { from, to })),
     copy: async (from, to) => void (await op('copy', { from, to })),
+    // As on the phone the bridge stands in for.
+    link: () => Promise.reject(noLinks()),
     list: async (dir) => (await op<{ entries: DirEntry[] }>('list', { path: dir })).entries,
     tempDir: async (prefix) => (await op<{ path: string }>('tempdir', { prefix })).path,
     claim: async (path) => (await op<{ claimed: boolean }>('claim', { path })).claimed

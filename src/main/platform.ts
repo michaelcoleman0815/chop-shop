@@ -30,6 +30,8 @@ export interface RunOptions {
 export interface RunResult {
   /** The exit code; null when the tool was stopped. */
   code: number | null
+  /** The signal that stopped it, when one did: SIGKILL is the system ending it for memory. */
+  signal?: string | null
   /** Everything written to stdout, unless onBytes took it. */
   stdout: string
   /** The last 64 KB written to stderr. */
@@ -60,6 +62,12 @@ export interface PlatformFiles {
   stat(path: string): Promise<FileInfo | null>
   rename(from: string, to: string): Promise<void>
   copy(from: string, to: string): Promise<void>
+  /**
+   * Gives the file at `from` a second name, `to`, in one step. Fails with
+   * the error's code: EEXIST when `to` is taken, ENOTSUP or EXDEV and the
+   * like where the storage cannot (a phone's cannot).
+   */
+  link(from: string, to: string): Promise<void>
   /** What a folder holds; nothing when it is not there. */
   list(dir: string): Promise<DirEntry[]>
   /** A new, empty folder under the temporary folder. */
