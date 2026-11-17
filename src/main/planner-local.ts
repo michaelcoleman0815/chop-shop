@@ -19,7 +19,15 @@ import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIc
 export const PLAN_JSON_SCHEMA = z.toJSONSchema(PlanSchema)
 
 export async function planEditLocally(
-  input: { doc: unknown; request: string; notes: Note[]; voice?: string; preferences?: string[]; logos?: string[] },
+  input: {
+    doc: unknown
+    request: string
+    notes: Note[]
+    voice?: string
+    preferences?: string[]
+    logos?: string[]
+    never?: string[]
+  },
   local: { host: string; model: string }
 ): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
@@ -45,7 +53,7 @@ export async function planEditLocally(
       PLANNER_SYSTEM,
       [
         renderTranscript(doc),
-        renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos),
+        renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos, input.never),
         // Ollama's guidance: the schema in the prompt as well grounds the answer.
         `Answer with JSON in this shape:\n${JSON.stringify(PLAN_JSON_SCHEMA)}`
       ].join('\n\n'),

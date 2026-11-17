@@ -9,7 +9,10 @@ import { downloadModel, hasModel, transcribe } from './transcribe'
 import { listenFrames } from './audio-map'
 import { loudnessEnvelope } from './audio-envelope'
 import { readAnalysis } from './analysis-cache'
-import { readBrand } from './brand-store'
+import { readBrand, readBrandById } from './brand-store'
+import { brandInSentence, stampMade } from '../shared/brands'
+import { neverFinishNote, stripDoc, type NeverItem } from '../shared/never'
+import { neverForBrand } from './memory'
 import { readApiKey } from './apikey'
 import { suggestClips, OLLAMA_HOST } from './clips'
 import { isLocalUp, localModels } from './local-llm'
@@ -19,7 +22,7 @@ import { detectShots } from './shots'
 import { buildAudioMap, type Frames } from '../shared/audio/map'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { brandStyle, type Brand } from '../shared/brand'
-import { subjectFrom, type Source, type Subject, type Word } from '../shared/edit'
+import { commit, currentCut, subjectFrom, type Source, type Subject, type Word } from '../shared/edit'
 import {
   clipDoc,
   clipsReply,
@@ -65,6 +68,8 @@ export interface ClipFindRequest {
   known?: Record<string, TranscriptWord[]>
   /** Clips the set already has: a new run finds others. */
   avoid?: { path: string; startSec: number; endSec: number }[]
+  /** The chat's brand, by id (shared/brands): its kind of video and caption look. The default when absent. */
+  brand?: string | null
 }
 
 export type ClipFindResult =
@@ -651,10 +656,53 @@ export async function findClips(
   return { ok: true, ...found, reply: clipsReply(found, brandCaptions) }
 }
 
+/**
+ * The clips a run found, made in the chat's brand: every version names it,
+ * and what its never list rules out (shared/never) comes off as one more
+ * version, which says so.
+ */
+export function clipsInBrand(clips: FoundClip[], brand: Brand, never: NeverItem[]): FoundClip[] {
+  return clips.map((c) => inBrand(c, brand, never).clip)
+}
+
+function inBrand(c: FoundClip, brand: Brand, never: NeverItem[]): { clip: FoundClip; left: NeverItem[] } {
+  const doc = stampMade(c.doc, brand.id)
+  const strip = stripDoc(doc, never)
+  if (strip.ops.length === 0) return { clip: { ...c, doc }, left: [] }
+  return {
+    clip: { ...c, doc: commit(doc, strip.ops, neverFinishNote(brandInSentence(brand), strip.items)).doc },
+    left: strip.items
+  }
+}
+
+/**
+ * What /clipping sends back: the clips made in the chat's brand (clipsInBrand)
+ * and the reply as they are, said again from them. Captions the never list
+ * took off are not called on, and the reply says what was left out and why.
+ */
+export function sentInBrand<T extends ClipsFound & { reply: ClipsReply }>(found: T, brand: Brand, never: NeverItem[]): T {
+  const made = found.clips.map((c) => inBrand(c, brand, never))
+  const clips = made.map((m) => m.clip)
+  const left = [...new Set(made.flatMap((m) => m.left))]
+  const styled = brand.autoApply && Object.keys(brandStyle(brand).captions ?? {}).length > 0
+  const reply = clipsReply({ ...found, clips }, styled)
+  const captionsOff = clips.length > 0 && clips.every((c) => !currentCut(c.doc).captions.on)
+  const chips = captionsOff ? reply.chips.filter((c) => !/^Captions\b/.test(c)) : reply.chips
+  const aside = [reply.aside, neverFinishNote(brandInSentence(brand), left)].filter(Boolean).join(' ') || null
+  return { ...found, clips, reply: { ...reply, chips, aside } }
+}
+
 export function registerClippingIpc(deps: { send: Send }, tools: () => ClippingTools = defaultTools): void {
   ipcMain.handle('clips:find', async (e, req: ClipFindRequest): Promise<ClipFindResult> => {
     try {
-      return await findClips(req, tools(), (p) => deps.send(e.sender, 'clips:progress', p))
+      const own = tools()
+      // The chat's brand, when it named one, over whatever brand the tools read; each clip is made in it.
+      const brand = req.brand ? await readBrandById(req.brand) : null
+      const picked = brand ? { ...own, brand: async () => brand } : own
+      const found = await findClips(req, picked, (p) => deps.send(e.sender, 'clips:progress', p))
+      if (!found.ok || !brand) return found
+      const never = await neverForBrand(brand.id).catch(() => [])
+      return sentInBrand(found, brand, never)
     } catch (err) {
       console.error('[clipping] failed:', message(err))
       deps.send(e.sender, 'clips:progress', { stage: 'Failed', percent: 0 })

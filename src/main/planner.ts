@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { readApiKey } from './apikey'
+import { covering, neverEmptiedReply, neverGuard, neverLeftOut, thingsIn } from '../shared/never'
 import {
   applyOps,
   currentCut,
@@ -55,6 +56,8 @@ export async function planEdit(input: {
   preferences?: string[]
   /** The names of the creator's own logos. */
   logos?: string[]
+  /** What the channel never uses, in words (shared/never). */
+  never?: string[]
 }): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
@@ -88,7 +91,15 @@ export async function planEdit(input: {
             { type: 'text', text: renderTranscript(doc), cache_control: { type: 'ephemeral' } },
             {
               type: 'text',
-              text: renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos)
+              text: renderRequest(
+                doc,
+                input.request,
+                input.notes,
+                input.voice,
+                input.preferences ?? [],
+                input.logos,
+                input.never
+              )
             }
           ]
         }
@@ -161,6 +172,49 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[]): PlanEditResu
       .filter((w) => beats.has(w.beat) && w.search.trim())
       .slice(0, 3)
       .map((w) => ({ beat: w.beat, search: w.search.trim() }))
+  }
+}
+
+/** What the planner did, when part of it was left out for the never list. */
+const OTHERS_DONE = 'I made the other changes you asked for.'
+
+/**
+ * A plan checked against the channel's never list (shared/never): whatever it
+ * would add from the list is left out, and no B-roll is looked for when
+ * B-roll from outside is on it. Claude is told the list; this holds
+ * whichever model planned.
+ *
+ * When something was left out, the planner's own words no longer say what
+ * happened, so they are said again: the other changes are in, and what was
+ * left out and why beside them, or, when nothing was left to do, that the
+ * edit stayed as it was. A note that asked for what was left out, and every
+ * note when nothing was left to do, is not marked done.
+ */
+export function keepOffList(result: PlanEditResult, doc: EditDoc, never: string[], brand: string): PlanEditResult {
+  if (!result.ok || never.length === 0) return result
+  const kept = neverGuard(currentCut(doc), result.ops, never, {
+    words: doc.words,
+    sources: doc.sources,
+    assets: doc.assets
+  })
+  const brollWanted = covering(never, 'broll') !== null ? [] : result.brollWanted
+  if (kept.left.length === 0) return { ...result, ops: kept.ops, brollWanted }
+  const emptied = kept.ops.length === 0
+  // A thing and one kind of it ask for the same: "a sound effect" and the whooshes left out.
+  const overlaps = (a: string, b: string): boolean => covering([a], b) !== null || covering([b], a) !== null
+  const askedFor = (id: string): boolean => {
+    const note = doc.notes.find((n) => n.id === id)
+    return !!note && thingsIn(note.text).some((item) => kept.left.some((l) => overlaps(item, l)))
+  }
+  return {
+    ...result,
+    ops: kept.ops,
+    summary: emptied ? result.summary : OTHERS_DONE,
+    reply: emptied ? neverEmptiedReply(brand, kept.left) : OTHERS_DONE,
+    // Said once: beside the reply, or as the reply when nothing else was done.
+    rejected: emptied ? result.rejected : [...result.rejected, neverLeftOut(brand, kept.left)],
+    notesHandled: emptied ? [] : result.notesHandled.filter((id) => !askedFor(id)),
+    brollWanted
   }
 }
 

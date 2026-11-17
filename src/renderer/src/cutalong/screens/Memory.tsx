@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
-import { PLANNER_PREFERENCES } from '../../../../shared/memory'
+import { learnedFor, PLANNER_PREFERENCES, seenFor } from '../../../../shared/memory'
 import { Button, Icon } from '../components/ui'
 import type { Cutalong } from '../useCutalong'
 
@@ -47,7 +47,10 @@ function where(items: number): string {
 export function MemorySection({ app }: { app: Cutalong }): JSX.Element {
   const memory = app.memory
   const { view } = memory
-  const items = view.learned
+  // What this page's brand has learned from its own chats.
+  const items = learnedFor(view, app.brand.id)
+  const seen = seenFor(view, app.brand.id)
+  const notices = memory.notices.filter((n) => n.brand === app.brand.id)
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
 
   const save = (e: FormEvent): void => {
@@ -63,9 +66,9 @@ export function MemorySection({ app }: { app: Cutalong }): JSX.Element {
   return (
     <section className="cl-section cl-memory" aria-labelledby="brand-memory">
       <h2 id="brand-memory">What I&apos;ve learned about how you edit</h2>
-      <p className="cl-reply">{sentence(view.paused, items.length, view.signals)}</p>
+      <p className="cl-reply">{sentence(view.paused, items.length, seen)}</p>
 
-      {memory.notices.map((n) => (
+      {notices.map((n) => (
         <div key={n.id} className="cl-row">
           <p className="cl-aside">{n.text}</p>
           <Button variant="text" onClick={() => memory.dismissNotice(n.id)}>

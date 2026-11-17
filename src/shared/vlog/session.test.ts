@@ -245,6 +245,19 @@ describe('a story told again after edits in the editor', () => {
     expect(beats.filter((b) => b.transition)).toHaveLength(1)
   })
 
+  it('keeps captions turned off over a shot on the moment it was on', () => {
+    const quiet = commit(edited, [{ op: 'treat', beats: [beatOf(v1, 's13')], set: { captions: false } }], 'No captions there.').doc
+    const v4 = retold(quiet, 'make it 40 seconds')
+    const beats = currentCut(v4).beats
+    expect(beats.find((b) => b.source === 's13')?.treatment.captions).toBe(false)
+    expect(beats.filter((b) => b.treatment.captions === false)).toHaveLength(1)
+    expect(carriedNote(v4)).not.toMatch(/captions/)
+    // Its moment left out of the story, it is said to have gone with it.
+    const s10 = beatOf(v1, 's10', true)
+    const gone = retold(commit(edited, [{ op: 'treat', beats: [s10], set: { captions: false } }], 'x').doc, 'make it 40 seconds')
+    expect(carriedNote(gone)).toMatch(/^The stretch without captions and the chapter “The quiet bit” were on moments the new story leaves out/)
+  })
+
   it('keeps a chapter and a graphic on the beat that plays their moment now', () => {
     const v3 = retold(edited, 'make it 40 seconds')
     const now = beatOf(v3, 's20')
