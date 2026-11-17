@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ProjectSummary } from '../../../../shared/types'
 import { api } from '../api'
 import { Composer } from '../components/Composer'
+import { Mark } from '../components/ui'
 import { when } from '../format'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
@@ -18,6 +19,9 @@ export function Start({ app }: { app: Cutalong }): JSX.Element {
       </Header>
       <main className="cl-start">
         <div className="cl-start-inner">
+          <span className="cl-start-mark" aria-hidden="true">
+            <Mark size={44} />
+          </span>
           <h1 className="cl-title">What are we making?</h1>
           <Composer
             placeholder="Drop footage, paste a video you like, or type /"
@@ -43,9 +47,9 @@ export function Start({ app }: { app: Cutalong }): JSX.Element {
         </div>
         {app.recent.length > 0 && (
           <section className="cl-continue" aria-labelledby="cl-continue-head">
-            <div className="cl-continue-head" id="cl-continue-head">
+            <h2 className="cl-continue-head" id="cl-continue-head">
               Continue
-            </div>
+            </h2>
             <div className="cl-continue-row">
               {app.recent.slice(0, 3).map((p) => (
                 <ProjectCard key={p.path} project={p} onOpen={() => void app.openProject(p.path, 'editor')} />
