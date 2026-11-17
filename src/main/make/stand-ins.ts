@@ -34,6 +34,22 @@ function run(bin: string, args: string[], input?: Buffer): Promise<Buffer> {
   })
 }
 
+/** A service's time to answer, cut short by a stop as a real request is. */
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(resolve, ms)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(t)
+        reject(Object.assign(new Error('Stopped.'), { kind: 'cancelled' }))
+      },
+      { once: true }
+    )
+  })
+}
+
 const hex = (n: number): string => `0x${(n & 0xffffff).toString(16).padStart(6, '0')}`
 
 /** A picture for a prompt, made by ffmpeg: a gradient ground, a few shapes where a subject would be, grain. */
@@ -177,6 +193,7 @@ export function standInServices(ffmpeg: string, log: string): MakeServices {
       clip: { google: 'stand-in clip (ffmpeg)', fal: 'stand-in clip (ffmpeg)' }
     },
     image: async (service, prompt, refs, opts) => {
+      await wait(Number(process.env.CUTALONG_STANDIN_DELAY_MS ?? 0), opts.signal)
       note({ service, kind: 'image', prompt, refs: refs.map((r) => r.data.length), aspect: opts.aspect, size: opts.size })
       return { data: new Uint8Array(await picture(ffmpeg, prompt, opts.aspect)), mime: 'image/png' }
     },
@@ -249,9 +266,9 @@ function shotsFor(user: string, documentary: boolean): Record<string, unknown> {
     }
     const year = /\b(1[89]\d\d)\b/.exec(text)?.[1]
     if (k === 0 && n === 0) return { ...blank, kind: 'card', titleBig: documentary ? 'Black Gold' : 'The Heart', titleSmall: documentary ? 'The 1950s oil boom' : 'How it pumps' }
-    if (documentary && mapsAllowed && !mapped && /\b(Texas|Oklahoma|California|Long Beach|Signal Hill|Permian)\b/.test(text)) {
+    if (documentary && mapsAllowed && !mapped && k > 0 && /\b(Texas|Oklahoma|California|Long Beach|Signal Hill|Permian|Midland)\b/.test(text)) {
       mapped = true
-      return { ...blank, kind: 'map', place: /Signal Hill|Long Beach/.test(text) ? 'Signal Hill, Long Beach, California' : 'Midland, Texas' }
+      return { ...blank, kind: 'map', place: /Signal Hill|Long Beach|California/.test(text) ? 'California' : 'Texas' }
     }
     if (clips < maxClips && k % 6 === 3) {
       clips++

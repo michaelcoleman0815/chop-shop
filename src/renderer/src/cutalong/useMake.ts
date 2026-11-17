@@ -57,6 +57,9 @@ export interface Makes {
 
 const OPEN: NonNullable<Msg['actions']> = [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
 
+/** While a video is made (and spends money), a way to stop it: shown on the progress, gone once it is done. */
+const STOP: NonNullable<Msg['actions']> = [{ kind: 'make', label: 'Stop', payload: JSON.stringify({ do: 'stop', id: '' }), during: true }]
+
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 const MAKE_COMMANDS = new Set(['make', 'documentary', 'explainer'])
@@ -175,7 +178,8 @@ export function useMake(deps: MakeDeps): Makes {
       const msg = push({
         role: 'assistant',
         text: '',
-        progress: { stage: 'Starting', percent: null }
+        progress: { stage: 'Starting', percent: null },
+        actions: STOP
       })
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeGo>>
@@ -257,7 +261,8 @@ export function useMake(deps: MakeDeps): Makes {
     const msg = push({
       role: 'assistant',
       text: '',
-      progress: { stage: 'Making the shot again', percent: null }
+      progress: { stage: 'Making the shot again', percent: null },
+      actions: STOP
     })
     const off = api.onCutProgress((p) => patch(msg, { progress: p }))
     let r: Awaited<ReturnType<typeof api.makeShot>>
@@ -455,8 +460,13 @@ export function useMake(deps: MakeDeps): Makes {
     async (a: Action): Promise<void> => {
       if (a.kind !== 'make' || !a.payload) return
       const p = JSON.parse(a.payload) as {
-        do: 'go' | 'shot' | 'script'
+        do: 'go' | 'shot' | 'script' | 'stop'
         id: string
+      }
+      if (p.do === 'stop') {
+        // What is in flight is cut short; what was made stays in the cache. The reply says what was spent and kept.
+        await api.makeCancel()
+        return
       }
       if (p.do === 'go') {
         setOpenScript(null)

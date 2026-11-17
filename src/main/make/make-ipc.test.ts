@@ -217,8 +217,38 @@ describe('a video made from one prompt', () => {
     expect(next.versions.length).toBe(doc.versions.length + 1)
     expect(next.sources.length).toBe(doc.sources.length + 1)
     expect(next.versions[next.versions.length - 1].cut.beats[0].source).toBe('s2')
+    // The map shot is the map documentaries' own graphic, and the remade cut keeps it.
+    const maps = (cut: EditDoc['versions'][number]['cut']): number => cut.motion.filter((m) => m.kind === 'map').length
+    expect(maps(doc.versions[0].cut)).toBe(1)
+    expect(maps(next.versions[next.versions.length - 1].cut)).toBe(1)
     expect(pictures()).toBe(before)
   }, 120_000)
+
+  it('stops when asked, says what was spent and what was kept, and reuses what was kept', async () => {
+    const start = await call<Start>('make:start', { text: 'make a 1 minute cinematic documentary about the 1950s oil boom' })
+    const d = start.draft as Draft
+    const before = pictures()
+    process.env.CUTALONG_STANDIN_DELAY_MS = '250'
+    const going = call<Made>('make:go', { draft: d, confirmed: d.quote.total })
+    while (pictures() - before < 2) await new Promise((r) => setTimeout(r, 25))
+    expect(await call('make:cancel')).toBe(true)
+    const stopped = await going
+    process.env.CUTALONG_STANDIN_DELAY_MS = '0'
+    expect(stopped.ok).toBe(false)
+    expect(stopped.message).toMatch(
+      /^Stopped: \$\d+\.\d\d of the \$\d+\.\d\d quoted was spent, and the \d+ pictures? already made (is|are) kept, so asking again reuses (it|them)\.$/
+    )
+    const kept = Number(/the (\d+) picture/.exec(stopped.message ?? '')?.[1])
+    const made = pictures() - before
+    expect(kept).toBe(made)
+    await new Promise((r) => setTimeout(r, 600))
+    expect(pictures() - before).toBe(made)
+    // Asked again, the pictures already made come from the cache: only the rest are asked for.
+    const again = await call<Made>('make:go', { draft: d, confirmed: d.quote.total })
+    expect(again.ok).toBe(true)
+    const all = (again.doc as EditDoc).make?.shots.filter((s) => s.maker === 'google').length ?? 0
+    expect(pictures() - before - made).toBeLessThan(all + 1)
+  }, 240_000)
 
   it('goes straight through under the amount in Settings, and says what it cost', async () => {
     saveSettings({ makeAutoUnder: 25 })

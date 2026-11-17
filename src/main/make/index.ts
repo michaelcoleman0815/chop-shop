@@ -26,11 +26,11 @@ import { defaultVoice } from '../../shared/make/voices'
 import type { Transcript } from '../../shared/types'
 import { parseWith, type ParseCall } from './claude'
 import { kokoroVoice } from './kokoro'
-import { placeholderMaps } from './local-pictures'
+import { madeMaps } from './maps'
 import type { LocalVoice } from './narrate'
 import type { Draft, Reply, ShotChange } from '../../shared/make/draft'
 import { changeFor, quoteShot, remakeShot } from './remake'
-import { draftFor, makeVideo, quoteDraft, revise, withScript, type DraftDeps } from './run'
+import { draftFor, makeVideo, quoteDraft, revise, Stopped, withScript, type DraftDeps } from './run'
 import type { MakeServices } from './services'
 import { standInClaude, standInServices, standInVoice, writeHeard } from './stand-ins'
 
@@ -244,7 +244,7 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
           const heard = await deps.transcribe(path, durationSec, prog)
           return heard.words.map((w) => ({ text: w.text, startSec: w.startSec, endSec: w.endSec }))
         },
-        maps: placeholderMaps(madeDir(docId), FONTS_DIR()),
+        maps: madeMaps(madeDir(docId), FONTS_DIR()),
         dir: madeDir(docId),
         findMusic: (format) => findMusic(format),
         progress,
@@ -263,7 +263,7 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       progress('Failed', 0)
       return {
         ok: false,
-        message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err)
+        message: err instanceof Stopped ? err.message : controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err)
       }
     } finally {
       running = null

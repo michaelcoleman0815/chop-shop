@@ -182,7 +182,13 @@ interface ShotsMade {
 export async function makeShots(
   plan: { brief: Brief; bible: Bible; shots: Shot[]; images: ImageService; clips: ImageService | null; size: string; lengths: number[] },
   budget: Budget,
-  deps: Pick<MakeRunDeps, 'services' | 'maps' | 'dir' | 'progress' | 'signal' | 'probe'> & { ground: string; sheets?: Sheet[]; keep?: Map<number, MadeShot> },
+  deps: Pick<MakeRunDeps, 'services' | 'maps' | 'dir' | 'progress' | 'signal' | 'probe'> & {
+    ground: string
+    sheets?: Sheet[]
+    keep?: Map<number, MadeShot>
+    /** Counts every picture and clip made or found in the cache, for what a stop keeps. */
+    tally?: { made: number }
+  },
   opts: { clipSeconds: number; maxSheets: number }
 ): Promise<ShotsMade> {
   const { brief, bible, images, size } = plan
@@ -214,6 +220,7 @@ export async function makeShots(
       const made = await makeOnce(req, stillCost(images, size), { services: deps.services, cache, budget, signal: deps.signal }, () =>
         deps.services.image(images, prompt, [], { aspect: 'wide', size, signal: deps.signal })
       )
+      if (deps.tally) deps.tally.made++
       sheets.push({ character: c.id, file: made.path, maker: images, cost: made.cost })
     } catch (err) {
       notes.push(`I couldn't draw ${c.name}'s character sheet, so their shots are made from the description alone. ${errText(err)}`)
@@ -269,6 +276,7 @@ export async function makeShots(
         const still = await makeOnce(req, stillCost(images, size, refs.length), { services: deps.services, cache, budget, signal: deps.signal }, () =>
           deps.services.image(images, prompt, refs, { aspect: brief.aspect, size, signal: deps.signal })
         )
+        if (deps.tally) deps.tally.made++
         let file = still.path
         let cost = still.cost
         let model = deps.services.models.image[images]
@@ -283,6 +291,7 @@ export async function makeShots(
             const clip = await makeOnce(clipReq, clipCost(plan.clips, seconds), { services: deps.services, cache, budget, signal: deps.signal }, () =>
               deps.services.clip(plan.clips as ImageService, motion, first, { aspect: brief.aspect, seconds, signal: deps.signal })
             )
+            if (deps.tally) deps.tally.made++
             file = clip.path
             cost += clip.cost
             model = deps.services.models.clip[plan.clips]
@@ -363,11 +372,46 @@ async function narration(
   return { path: read.path, durationSec: read.durationSec, words, timing: 'whisper', voice: reader, cost }
 }
 
-/** The finished video: the made edit, what it cost, and the reply that says so. */
+/** A video stopped while it was being made: what was spent, and how many pictures stay in the cache. */
+export class Stopped extends Error {
+  constructor(
+    readonly spent: number,
+    readonly quoted: number,
+    readonly kept: number
+  ) {
+    super(stoppedSentence(spent, quoted, kept))
+    this.name = 'Stopped'
+  }
+}
+
+/** The one sentence a stop is answered with. */
+export function stoppedSentence(spent: number, quoted: number, kept: number): string {
+  if (kept === 0 && spent <= 0) return `Stopped before anything was made, so nothing of the ${dollars(quoted)} quoted was spent.`
+  const pictures = `${kept} ${kept === 1 ? 'picture' : 'pictures'}`
+  return `Stopped: ${dollars(spent)} of the ${dollars(quoted)} quoted was spent, and the ${pictures} already made ${kept === 1 ? 'is' : 'are'} kept, so asking again reuses ${kept === 1 ? 'it' : 'them'}.`
+}
+
+/** The finished video: the made edit, what it cost, and the reply that says so. Stopped, it says what was spent and kept. */
 export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc: EditDoc; reply: Reply; spent: number }> {
+  if (!draft.quote.images) throw new Error(draft.quote.missing[0] ?? 'There is no service to make the pictures.')
+  const budget = new Budget(servicesTotal(draft.quote))
+  const tally = { made: 0 }
+  try {
+    return await makeVideoWith(draft, deps, budget, tally)
+  } catch (err) {
+    if (deps.signal?.aborted) throw new Stopped(budget.spent, draft.quote.total, tally.made)
+    throw err
+  }
+}
+
+async function makeVideoWith(
+  draft: Draft,
+  deps: MakeRunDeps,
+  budget: Budget,
+  tally: { made: number }
+): Promise<{ doc: EditDoc; reply: Reply; spent: number }> {
   const { brief, quote } = draft
-  if (!quote.images) throw new Error(quote.missing[0] ?? 'There is no service to make the pictures.')
-  const budget = new Budget(servicesTotal(quote))
+  if (!quote.images) throw new Error('There is no service to make the pictures.')
   const notes: string[] = []
 
   // The narration and the shot list at once: neither needs the other.
@@ -418,10 +462,21 @@ export async function makeVideo(draft: Draft, deps: MakeRunDeps): Promise<{ doc:
     : await makeShots(
         { brief, bible: planned.bible, shots: fit.shots, images: quote.images, clips: quote.clips, size, lengths },
         budget,
-        { ...deps, ground },
+        { ...deps, ground, tally },
         { clipSeconds: quote.counts.clipSeconds, maxSheets: Math.max(quote.counts.sheets, 0) }
       )
   notes.push(...made.notes)
+  // Stopped while the shots were made: nothing is put together.
+  if (deps.signal?.aborted) throw new Error('Stopped.')
+  // Kept shots keep their maps: the map graphics are drawn again for each beat's new length (free, on this Mac).
+  if (keptShots)
+    for (const s of made.shots) {
+      if (s.visual.kind !== 'map' || s.model !== 'map') continue
+      const map = await deps.maps
+        .make({ place: s.visual.place, seconds: Math.max(1.5, lengths[s.phrase] ?? 4), style: brief.format, aspect: brief.aspect })
+        .catch(() => null)
+      if (map?.kind === 'motion') made.mapGraphics.set(s.phrase, map.call)
+    }
 
   deps.progress('Finding music in your Music folder', null)
   const music = await deps.findMusic(brief.format).catch(() => null)

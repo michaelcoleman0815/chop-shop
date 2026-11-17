@@ -335,6 +335,8 @@ export interface ChatAction {
   primary?: boolean
   payload?: string
   icon?: string
+  /** Shown only while the reply's work runs (a Stop), never once it is done. */
+  during?: boolean
 }
 
 /** One turn of a Cutalong chat, as it is kept in the project file. */
