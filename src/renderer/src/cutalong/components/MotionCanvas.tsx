@@ -3,6 +3,7 @@ import { renderFrame, type IconNode, type Layer, type LogoMark, type MotionScene
 import type { Asset } from '../../../../shared/edit'
 import { mediaUrlFor } from '../api'
 import { loadIconNodes, loadLogoMarks, loadMotionFonts, loadPicture } from '../graphics'
+import { useMapResources } from '../map-resources'
 
 /**
  * The cut's graphics over the preview: a canvas the size of the frame, drawn
@@ -45,6 +46,8 @@ export function MotionCanvas({
   const [icons, setIcons] = useState<((name: string) => IconNode[] | undefined) | null>(null)
   const [logos, setLogos] = useState<((slug: string) => LogoMark | undefined) | null>(null)
   const [pictures, setPictures] = useState<Map<string, CanvasImageSource>>(new Map())
+  // Map data and satellite tiles, at the canvas's own scale, for map graphics.
+  const map = useMapResources(scene, time, (width * (window.devicePixelRatio || 1)) / Math.max(1, scene.size.width))
 
   useEffect(() => {
     void loadMotionFonts().then(() => setLoaded((n) => n + 1))
@@ -109,11 +112,11 @@ export function MotionCanvas({
       scene.layers,
       scene.size,
       { width: pw, height: ph },
-      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas }
+      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map }
     )
     // The moment drawn, for anyone checking the preview against the export.
     el.dataset.time = time.toFixed(4)
-  }, [scene, time, width, height, loaded, icons, logos, pictures])
+  }, [scene, time, width, height, loaded, icons, logos, pictures, map])
 
   if (scene.layers.length === 0) return null
   return <canvas ref={canvas} className="cl-motion" style={{ width, height }} aria-hidden="true" />

@@ -22,6 +22,8 @@ export interface SceneItem {
   start: number
   end: number
   layers: Layer[]
+  /** How it meets the captions: its template's, or this call's own. */
+  covers?: 'backdrop' | 'card'
 }
 
 export interface MotionScene {
@@ -61,10 +63,7 @@ export function buildScene(input: SceneInput): MotionScene {
     if ('reason' in built) hidden.push({ id: item.id, reason: built.reason })
     else items.push(built)
   }
-  const covers: CaptionCover[] = items.flatMap((i) => {
-    const kind = template(i.kind)?.covers
-    return kind ? [{ start: i.start, end: i.end, kind }] : []
-  })
+  const covers: CaptionCover[] = items.flatMap((i) => (i.covers ? [{ start: i.start, end: i.end, kind: i.covers }] : []))
   const captions = captionLayers({
     spec: input.cut.captions,
     // Beats whose captions are off are left out of drawn captions as of subtitles.
@@ -78,16 +77,15 @@ export function buildScene(input: SceneInput): MotionScene {
   })
   // Backdrops replace the picture, so they go under the captions; everything else goes over. Cards hold
   // the screen, so what stands beside one (a counter by a page) goes over it, whichever came first.
-  const coverOf = (i: SceneItem): string | undefined => template(i.kind)?.covers
   return {
     size: input.size,
     frame,
     duration: tl.duration,
     layers: [
-      ...items.filter((i) => coverOf(i) === 'backdrop').flatMap((i) => i.layers),
+      ...items.filter((i) => i.covers === 'backdrop').flatMap((i) => i.layers),
       ...captions,
-      ...items.filter((i) => coverOf(i) === 'card').flatMap((i) => i.layers),
-      ...items.filter((i) => !coverOf(i)).flatMap((i) => i.layers)
+      ...items.filter((i) => i.covers === 'card').flatMap((i) => i.layers),
+      ...items.filter((i) => !i.covers).flatMap((i) => i.layers)
     ],
     items,
     hidden
@@ -126,7 +124,8 @@ function buildItem(
   } catch (err) {
     return { reason: `It could not be drawn: ${err instanceof Error ? err.message : String(err)}` }
   }
-  return { id: item.id, kind: item.kind, at: span.at, start: span.start, end: span.end, layers }
+  const covers = tpl.coversFor ? tpl.coversFor(item) : tpl.covers
+  return { id: item.id, kind: item.kind, at: span.at, start: span.start, end: span.end, layers, ...(covers ? { covers } : {}) }
 }
 
 /** Every stretch of output time when something is drawn, merged where gaps are short. */

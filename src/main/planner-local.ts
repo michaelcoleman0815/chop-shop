@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { EditDocSchema, type Note } from '../shared/edit'
 import { chatLocally, isLocalUp } from './local-llm'
-import { offerPlan, type PlanEditResult } from './planner'
+import { offerPlan, planMapRequest, type PlanEditResult } from './planner'
 import { PLANNER_SYSTEM, PlanSchema, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
 
 /**
@@ -33,6 +33,10 @@ export async function planEditLocally(
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
   const doc = parsedDoc.data
+
+  // A request for a map and nothing else needs no model.
+  const map = planMapRequest(doc, input.request, input.notes)
+  if (map) return map
 
   if (!(await isLocalUp(local.host))) {
     return {

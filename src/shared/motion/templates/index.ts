@@ -10,6 +10,7 @@ import './device'
 import './counter'
 import './chips'
 import './cards'
+import './map'
 import './layers'
 
 export * from './registry'
