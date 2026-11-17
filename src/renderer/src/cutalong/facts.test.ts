@@ -19,6 +19,12 @@ describe('facts as tiles', () => {
     expect(factParts('-14 LUFS')).toEqual({ big: '-14', label: 'LUFS' })
   })
 
+  it('puts a running time big with what it is under it', () => {
+    expect(factParts('6:45 per long video')).toEqual({ big: '6:45', label: 'per long video' })
+    expect(factParts('38 s per Short')).toEqual({ big: '38 s', label: 'per Short' })
+    expect(factParts('195 words a minute')).toEqual({ big: '195', label: 'words a minute' })
+  })
+
   it('leaves a fact with no number as a phrase', () => {
     expect(factParts('No sound')).toEqual({ phrase: 'No sound' })
     expect(factParts('Captions in your brand')).toEqual({ phrase: 'Captions in your brand' })

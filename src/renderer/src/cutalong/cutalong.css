@@ -2302,6 +2302,12 @@ button:disabled {
   color: var(--ink);
 }
 
+/* A link to one of the brand's videos, beside its button: the field takes the room. */
+.cl-brand-link .cl-field {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
 .cl-list {
   list-style: none;
   margin: 0;

@@ -24,6 +24,7 @@ import type {
 import type { Asset, EditDoc, Note, Op, Region, Source, Subject } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
+import type { VideoRun } from '../shared/channel-habits'
 import type { Brands } from '../shared/brands'
 import type { UploadKit } from '../shared/upload'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
@@ -252,10 +253,11 @@ const api = {
   getBrands: (): Promise<Brands> => ipcRenderer.invoke('brands:get'),
   saveBrands: (brands: Brands): Promise<{ ok: true; brands: Brands } | { ok: false; message: string }> =>
     ipcRenderer.invoke('brands:save', brands),
+  /** Files and links to the person's own videos: a link gives its length and captions, and no look (shared/channel-habits). */
   learnBrand: (
     paths: string[]
   ): Promise<{
-    learned: { path: string; title: string; facts: InspirationFacts }[]
+    learned: { path: string; title: string; facts: InspirationFacts | null; run: VideoRun }[]
     failed: string[]
     /** What whisper printed when it could not hear a video, for Details. */
     details?: { label: string; value: string }[]

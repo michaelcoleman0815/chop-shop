@@ -88,7 +88,7 @@ import {
 } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
 import { mouthForNiche, setMouthModeAll } from '../../../shared/vision'
-import { brandPreset, learnStyle, type Brand, type BrandVideo } from '../../../shared/brand'
+import { brandPreset, styleOfVideos, type Brand, type BrandVideo } from '../../../shared/brand'
 import {
   addBrand,
   brandById,
@@ -913,11 +913,12 @@ export function useCutalong() {
           path: l.path,
           title: l.title,
           measuredAt: now,
-          facts: l.facts
+          facts: l.facts,
+          run: l.run
         }))
         const current = brandById(brandsRef.current, forBrand)
         const videos = [...current.videos.filter((v) => !fresh.some((f) => f.path === v.path)), ...fresh]
-        saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
+        saveBrand({ ...current, videos, style: styleOfVideos(videos) })
         if (r.failed.length)
           setToast({ text: `Couldn't watch ${r.failed.join('; ')}`, error: true, details: r.details })
       } finally {
@@ -932,7 +933,7 @@ export function useCutalong() {
     (path: string): void => {
       const current = brandById(brandsRef.current, brand.id)
       const videos = current.videos.filter((v) => v.path !== path)
-      saveBrand({ ...current, videos, style: learnStyle(videos.map((v) => v.facts)) })
+      saveBrand({ ...current, videos, style: styleOfVideos(videos) })
     },
     [saveBrand, brand.id]
   )
