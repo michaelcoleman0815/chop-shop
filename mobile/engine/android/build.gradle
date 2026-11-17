@@ -1,0 +1,75 @@
+// The engine plugin's Android library. Its native libraries are built by
+// ../scripts/build.sh android into src/main/jniLibs, which is not committed;
+// the build stops here with a plain message when they are missing.
+ext {
+    androidxActivityVersion = project.hasProperty('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.11.0'
+    androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'
+}
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace = "app.cutalong.engine"
+    compileSdk = project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+    defaultConfig {
+        minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 24
+        targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36
+        // The engine is built for these two: phones, and the emulator.
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+        // JNI finds EngineNative and its listener by name.
+        consumerProguardFiles 'proguard-rules.pro'
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    lint {
+        abortOnError = false
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    packaging {
+        jniLibs {
+            // Other libraries in an app may ship their own copy.
+            pickFirsts += ['**/libc++_shared.so']
+            // Stored uncompressed and page-aligned, so they load straight from the APK.
+            useLegacyPackaging = false
+        }
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation "androidx.activity:activity:$androidxActivityVersion"
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+}
+
+tasks.register('checkEngineLibraries') {
+    doLast {
+        def lib = file('src/main/jniLibs/arm64-v8a/libcutalong_engine.so')
+        if (!lib.exists()) {
+            throw new GradleException("The engine's native libraries are not built. Run mobile/engine/scripts/build.sh android first (see mobile/engine/README.md).")
+        }
+    }
+}
+preBuild.dependsOn('checkEngineLibraries')
