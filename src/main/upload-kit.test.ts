@@ -1,7 +1,7 @@
 import { spawnSync } from 'child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -401,7 +401,7 @@ describe.skipIf(!FFMPEG)('ready to upload', () => {
       invoke<Rendered>('cut:render', { doc, quality: 'final' })
     ])
     if (!a.ok || !b.ok) throw new Error('no export')
-    const names = [a.outputPath, b.outputPath].map((p) => p.split('/').pop()).sort()
+    const names = [a.outputPath, b.outputPath].map((p) => basename(p)).sort()
     expect(names).toEqual(['Old talk v1 (2).mp4', 'Old talk v1 (3).mp4'])
     for (const r of [a, b]) {
       const base = r.outputPath.replace(/\.mp4$/, '')

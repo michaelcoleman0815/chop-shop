@@ -20,6 +20,19 @@ function push(state: UpdateState): void {
   }
 }
 
+/**
+ * An update check's failure, said plainly. Releases are built for the Mac
+ * alone so far, so on Windows the check finds no latest.yml to read: that
+ * is no fault, and it says so instead of the updater's HTTP error.
+ */
+export function updateFailure(err: unknown, platform = process.platform): string {
+  const text = err instanceof Error ? err.message : String(err)
+  if (platform === 'win32' && /latest\.yml/.test(text) && /404|cannot find/i.test(text)) {
+    return 'There is no Windows release to update to yet.'
+  }
+  return text
+}
+
 export function getUpdateState(): UpdateState {
   return current
 }
@@ -60,7 +73,7 @@ export function initUpdater(target: BrowserWindow): void {
   autoUpdater.on('error', (err) => {
     // An unsigned or ad-hoc signed build cannot self-install on macOS; the
     // banner falls back to "open the release page" in that case.
-    push({ status: 'error', message: err?.message ?? String(err), releaseUrl: RELEASES_URL })
+    push({ status: 'error', message: updateFailure(err), releaseUrl: RELEASES_URL })
   })
 }
 
@@ -75,11 +88,7 @@ export async function checkForUpdates(silent = false): Promise<UpdateState> {
     await autoUpdater.checkForUpdates()
   } catch (err) {
     if (!silent) {
-      push({
-        status: 'error',
-        message: err instanceof Error ? err.message : String(err),
-        releaseUrl: RELEASES_URL
-      })
+      push({ status: 'error', message: updateFailure(err), releaseUrl: RELEASES_URL })
     }
   }
   return current
@@ -87,11 +96,7 @@ export async function checkForUpdates(silent = false): Promise<UpdateState> {
 
 export function downloadUpdate(): void {
   autoUpdater.downloadUpdate().catch((err) => {
-    push({
-      status: 'error',
-      message: err instanceof Error ? err.message : String(err),
-      releaseUrl: RELEASES_URL
-    })
+    push({ status: 'error', message: updateFailure(err), releaseUrl: RELEASES_URL })
   })
 }
 

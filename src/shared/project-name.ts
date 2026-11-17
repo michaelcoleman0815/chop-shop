@@ -1,3 +1,5 @@
+import { onWindows } from './platform'
+
 /** The longest name a project gets, in characters: room for " 12.cutalong" within any file system's 255 bytes. */
 export const PROJECT_NAME_CHARS = 50
 
@@ -9,6 +11,22 @@ export const PROJECT_NAME_CHARS = 50
  * saved in it was too long to save, and the chat was lost.
  */
 export function projectName(raw: string): string {
+  const name = plainName(raw)
+  return onWindows ? notADevice(name) : name
+}
+
+/**
+ * Windows keeps a few names for its devices, whatever follows the first dot:
+ * a file called "Con.mp4" or "aux.cutalong" cannot be made there, and
+ * writing to one writes to nowhere. Such a name gets an underscore.
+ */
+export function notADevice(name: string): string {
+  return name.replace(/^[^.]*/, (first) =>
+    /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(first.trimEnd()) ? `${first.trimEnd()}_` : first
+  )
+}
+
+function plainName(raw: string): string {
   const line = raw
     .replace(/[/\\:*?"<>|]/g, '-')
     .replace(/[\u0000-\u001f\u007f\s]+/g, ' ')

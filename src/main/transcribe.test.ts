@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -31,7 +31,8 @@ vi.mock('./ffmpeg', async () => {
 })
 
 import { findFfmpeg, ffmpegRun } from './test-media'
-import { transcribe } from './transcribe'
+import { exe, standIn } from './test-bin'
+import { transcribe, whisperThreads } from './transcribe'
 import { saidDetails, toolSaid } from '../shared/failure'
 
 const ffmpeg = findFfmpeg()
@@ -40,9 +41,10 @@ beforeAll(() => {
   fake.root = mkdtempSync(join(tmpdir(), 'transcribe-'))
   // A whisper that fails if it is ever asked: a file with no sound needs none.
   mkdirSync(join(fake.root, 'resources', 'bin'), { recursive: true })
-  const whisper = join(fake.root, 'resources', 'bin', 'whisper-cli')
-  writeFileSync(whisper, '#!/bin/sh\necho "whisper was asked" >&2\nexit 1\n')
-  chmodSync(whisper, 0o755)
+  standIn(
+    join(fake.root, 'resources', 'bin', exe('whisper-cli')),
+    `process.stderr.write('whisper was asked\\n')\nprocess.exitCode = 1\n`
+  )
   mkdirSync(join(fake.root, 'userData', 'models'), { recursive: true })
   writeFileSync(join(fake.root, 'userData', 'models', 'ggml-small.en.bin'), 'a model')
 })
@@ -92,10 +94,11 @@ describe.skipIf(!ffmpeg)('a transcription model that stops with an error', () =>
   ]
 
   it('says so in a sentence, and keeps what whisper said whole for Details', async () => {
-    const whisper = join(fake.root, 'resources', 'bin', 'whisper-cli')
     const earlier = Array.from({ length: 30 }, (_, i) => `system_info: n_threads = 4 / 8 | step ${i}`)
-    writeFileSync(whisper, `#!/bin/sh\ncat >&2 <<'EOF'\n${[...earlier, ...SAID].join('\n')}\nEOF\nexit 3\n`)
-    chmodSync(whisper, 0o755)
+    standIn(
+      join(fake.root, 'resources', 'bin', exe('whisper-cli')),
+      `process.stderr.write(${JSON.stringify([...earlier, ...SAID].join('\n') + '\n')})\nprocess.exitCode = 3\n`
+    )
     const video = join(fake.root, 'Talking.mp4')
     ffmpegRun(ffmpeg as string, [
       ...['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=15:d=4', '-f', 'lavfi', '-i', 'sine=f=300:d=4'],
@@ -109,5 +112,17 @@ describe.skipIf(!ffmpeg)('a transcription model that stops with an error', () =>
     // Every line whole, the last ones whisper printed.
     expect(said?.said.split('\n').slice(-SAID.length)).toEqual(SAID)
     expect(saidDetails(said)).toEqual([{ label: 'What whisper said', value: SAID.slice(-6).join('\n') }])
+  })
+})
+
+describe('whisper on the CPU', () => {
+  it('runs about a thread a core on Windows, four to eight, and leaves the Mac’s GPU whisper as it was', () => {
+    expect(whisperThreads('darwin', 10)).toBeUndefined()
+    expect(whisperThreads('linux', 16)).toBeUndefined()
+    expect(whisperThreads('win32', 2)).toBe(2)
+    expect(whisperThreads('win32', 4)).toBe(4)
+    expect(whisperThreads('win32', 8)).toBe(4)
+    expect(whisperThreads('win32', 12)).toBe(6)
+    expect(whisperThreads('win32', 32)).toBe(8)
   })
 })

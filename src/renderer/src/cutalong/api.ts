@@ -1,3 +1,4 @@
+import { fileUrl } from './format'
 import { createMockApi } from './mock'
 
 type ChopApi = Window['chop']
@@ -126,6 +127,6 @@ export function mediaUrlFor(path: string): string {
   if (path.startsWith('data:')) return path
   if (isMock || !bridge) return '/sample.mp4'
   // Without the server (it could not start), the packaged page plays files by path.
-  if (!bridge.mediaBase) return `file://${path.split('/').map(encodeURIComponent).join('/')}`
+  if (!bridge.mediaBase) return fileUrl(path)
   return `${bridge.mediaBase}/${encodeURIComponent(path)}`
 }

@@ -1,4 +1,4 @@
-"""Generates build/icon.icns and build/icon.png from the Cutalong mark.
+"""Generates build/icon.icns, build/icon.png and build/icon.ico from the Cutalong mark.
 
 The icon is the mark in white on a coral tile, the same as the assistant's
 avatar in the app: a solid bar (the take) above a dashed bar (the line you cut
@@ -12,11 +12,18 @@ ends, starting where an SVG rect's path starts. Every size is rendered from
 that geometry rather than scaled from a bitmap, and the .icns is written here
 with PNG entries, so this runs anywhere Python does: no sips, no iconutil.
 
-    python3 build/make-icon.py
+Windows draws no shadow under an icon and fills more of its square, so the
+.ico has the same tile and mark, near the square's edges and with no shadow,
+at the sizes Windows asks for (16 to 256 px), as bitmaps up to 128 px and a
+PNG at 256, which every Windows and the installer read.
+
+    python3 build/make-icon.py           # all three
+    python3 build/make-icon.py --ico     # the .ico alone
 """
 import math
 import os
 import struct
+import sys
 import zlib
 
 CORAL = (0xFF, 0x5A, 0x36)
@@ -33,6 +40,8 @@ BOUNDS = (2.0, 4.0, CUT[0] + CUT[2] + STROKE / 2, CUT[1] + CUT[3] + STROKE / 2)
 
 # macOS icon grid at 1024: the tile, its corners, and how wide the mark sits.
 TILE_FRAC = 824 / 1024
+# Windows' grid: the tile fills the square but for a pixel's margin at 16 px.
+WIN_TILE_FRAC = 15 / 16
 CORNER_FRAC = 185.4 / 824
 SQUIRCLE_N = 5.0
 MARK_FRAC = 0.62  # the mark's drawn width as a share of the tile
@@ -58,9 +67,9 @@ def squircle(x, y, box, r, n):
     return clamp(r - d + 0.5)
 
 
-def render(size):
-    """RGBA rows for one icon size."""
-    tile = size * TILE_FRAC
+def render(size, windows=False):
+    """RGBA rows for one icon size: on macOS's grid, or for Windows, near the edges and with no shadow."""
+    tile = size * (WIN_TILE_FRAC if windows else TILE_FRAC)
     t0 = (size - tile) / 2
     tile_box = (t0, t0, t0 + tile, t0 + tile)
     corner = tile * CORNER_FRAC
@@ -88,7 +97,7 @@ def render(size):
         for px in range(size):
             x, y = px + 0.5, py + 0.5
             fill = squircle(x, y, tile_box, corner, SQUIRCLE_N)
-            if fill < 1:
+            if fill < 1 and not windows:
                 # Shadow under the transparent part of the canvas only.
                 sh_box = (t0, t0 + shadow_off, t0 + tile, t0 + tile + shadow_off)
                 left, top, right, bottom = sh_box
@@ -169,8 +178,46 @@ ICNS_TYPES = [
 ]
 
 
+# The sizes Windows shows an icon at, from a list's 16 px to a tile's 256.
+ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
+
+
+def dib(size, rows):
+    """One .ico bitmap entry: BGRA rows bottom up, then the 1-bit mask (all shown; alpha decides)."""
+    header = struct.pack("<IiiHHIIiiII", 40, size, size * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    pixels = bytearray()
+    for row in reversed(rows):
+        for x in range(size):
+            r, g, b, a = row[1 + 4 * x : 5 + 4 * x]
+            pixels += bytes((b, g, r, a))
+    mask_row = ((size + 31) // 32) * 4
+    return header + bytes(pixels) + bytes(mask_row * size)
+
+
+def ico():
+    """The .ico: bitmaps up to 128 px and a PNG at 256."""
+    entries = []
+    for size in ICO_SIZES:
+        rows = render(size, windows=True)
+        entries.append((size, png(size, rows) if size >= 256 else dib(size, rows)))
+    head = struct.pack("<HHH", 0, 1, len(entries))
+    offset = 6 + 16 * len(entries)
+    table = b""
+    body = b""
+    for size, data in entries:
+        side = 0 if size >= 256 else size
+        table += struct.pack("<BBBBHHII", side, side, 0, 0, 1, 32, len(data), offset + len(body))
+        body += data
+    return head + table + body
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, "icon.ico"), "wb") as f:
+        f.write(ico())
+    if "--ico" in sys.argv:
+        print("wrote build/icon.ico")
+        return
     pngs = {}
     for _, size in ICNS_TYPES:
         if size not in pngs:
@@ -180,7 +227,7 @@ def main():
         f.write(b"icns" + struct.pack(">I", len(body) + 8) + body)
     with open(os.path.join(here, "icon.png"), "wb") as f:
         f.write(pngs[1024])
-    print("wrote build/icon.icns and build/icon.png")
+    print("wrote build/icon.icns, build/icon.png and build/icon.ico")
 
 
 if __name__ == "__main__":

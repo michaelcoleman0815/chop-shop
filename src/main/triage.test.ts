@@ -157,7 +157,8 @@ describe('reading a message before its footage', () => {
     })
     expect(odd.ok).toBe(false)
     expect(!odd.ok && odd.keyState).toBeUndefined()
-    expect(!odd.ok && odd.message).toMatch(/^Claude could not take that request/)
+    // In plain words: the message Claude gave, not the status code and the JSON around it.
+    expect(!odd.ok && odd.message).toBe('Claude could not take that request: messages: text too long.')
   })
 
   it('says when Claude declined', async () => {

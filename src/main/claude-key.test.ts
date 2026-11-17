@@ -104,7 +104,11 @@ describe('checking the Anthropic key', () => {
     const s = setup({ key: null, saved: true, answer: model })
     const status = await claudeKeyStatus(s.deps)
     expect(status).toMatchObject({ state: 'unreadable', confirmed: false })
-    expect(status.message).toBe('I could not open the saved key from this computer’s keychain. Paste it again.')
+    expect(status.message).toBe(
+      process.platform === 'win32'
+        ? 'I could not open the saved key, which is locked to your Windows account. Paste it again.'
+        : 'I could not open the saved key from this computer’s keychain. Paste it again.'
+    )
     expect(s.spy).not.toHaveBeenCalled()
   })
 

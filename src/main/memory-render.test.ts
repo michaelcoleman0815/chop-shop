@@ -1,40 +1,63 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync } from 'fs'
 import { cpus, tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { applyOps, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
 import { renderCut, type RenderSource } from './cut-render'
 import { countFrames, findFfmpeg, frameColour, makeColourClip, toneLevel, type Rgb } from './test-media'
+import { HAND_OVER, standIn } from './test-bin'
 
 const FFMPEG = findFfmpeg()
 
 /**
  * ffmpeg, its resident size polled while it renders: VmRSS, or ps where there
- * is no /proc. The peak of each render goes in a file; a render that passes
- * the cap is stopped, so one that balloons fails the test instead of taking
- * the machine's memory. Anything else ffmpeg is asked runs as it is.
+ * is no /proc, or on Windows the working set tasklist reports. The peak of
+ * each render goes in a file; a render that passes the cap is stopped, so
+ * one that balloons fails the test instead of taking the machine's memory.
+ * Anything else ffmpeg is asked runs as it is.
  */
-const WATCHING = String.raw`#!/bin/sh
-real="$CUTALONG_MEMORY_FFMPEG"
-last=""; for a in "$@"; do last="$a"; done
-case " $* " in *" -progress "*) ;; *) exec "$real" "$@" ;; esac
-"$real" "$@" &
-child=$!
-peak=0
-while kill -0 "$child" 2>/dev/null; do
-  if [ -r "/proc/$child/status" ]; then
-    rss=$(sed -n 's/^VmRSS:[^0-9]*\([0-9]*\).*/\1/p' "/proc/$child/status" 2>/dev/null)
-  else
-    rss=$(ps -o rss= -p "$child" 2>/dev/null | tr -d ' ')
-  fi
-  [ -n "$rss" ] && [ "$rss" -gt "$peak" ] && peak=$rss
-  if [ "$peak" -gt "$CUTALONG_MEMORY_CAP_KB" ]; then kill -9 "$child"; break; fi
-  sleep 0.05
-done
-wait "$child"
-code=$?
-echo "$peak $(basename "$last")" >> "$CUTALONG_MEMORY_PEAKS"
-exit $code
+const WATCHING = String.raw`${HAND_OVER}
+const { execFileSync, spawn } = require('child_process')
+const fs = require('fs')
+const path = require('path')
+const env = process.env
+const real = env.CUTALONG_MEMORY_FFMPEG
+const args = process.argv.slice(2)
+const last = args[args.length - 1] || ''
+if (!args.includes('-progress')) handOver(real, args)
+const child = spawn(real, args, { stdio: 'inherit' })
+/** The child's resident size in KB, or 0 when it cannot be read. */
+function rss() {
+  try {
+    if (process.platform === 'linux') {
+      const m = /^VmRSS:\s*(\d+)/m.exec(fs.readFileSync('/proc/' + child.pid + '/status', 'utf8'))
+      return m ? Number(m[1]) : 0
+    }
+    if (process.platform === 'win32') {
+      const out = execFileSync('tasklist', ['/FI', 'PID eq ' + child.pid, '/FO', 'CSV', '/NH'], { encoding: 'utf8' })
+      const m = /"([^"]*) K"\s*$/m.exec(out)
+      return m ? Number(m[1].replace(/\D/g, '')) : 0
+    }
+    return Number(execFileSync('ps', ['-o', 'rss=', '-p', String(child.pid)], { encoding: 'utf8' }).trim()) || 0
+  } catch {
+    return 0
+  }
+}
+let peak = 0
+let running = true
+const poll = () => {
+  if (!running) return
+  peak = Math.max(peak, rss())
+  if (peak > Number(env.CUTALONG_MEMORY_CAP_KB)) child.kill('SIGKILL')
+  else setTimeout(poll, process.platform === 'win32' ? 200 : 50)
+}
+poll()
+child.on('exit', (code, signal) => {
+  running = false
+  fs.appendFileSync(env.CUTALONG_MEMORY_PEAKS, peak + ' ' + path.basename(last) + '\n')
+  if (signal && process.platform !== 'win32') process.kill(process.pid, signal)
+  process.exit(code === null ? 1 : code)
+})
 `
 
 /**
@@ -90,9 +113,7 @@ describe.skipIf(!FFMPEG)('the memory an export of many pieces holds', () => {
     // A word every 0.4 s, for the captions a clip has.
     const said = Array.from({ length: 36 }, (_, i) => ({ text: `word${i}`, startSec: 0.4 * i, endSec: 0.4 * i + 0.3 }))
     doc = createDoc({ id: 'd', title: 'Service', source, words: wordsFromTranscript(said, 's1') })
-    const wrapper = join(dir, 'watching-ffmpeg.sh')
-    writeFileSync(wrapper, WATCHING)
-    chmodSync(wrapper, 0o755)
+    standIn(join(dir, 'watching-ffmpeg'), WATCHING)
     Object.assign(process.env, {
       CUTALONG_MEMORY_FFMPEG: ffmpeg,
       CUTALONG_MEMORY_CAP_KB: String(CAP_MB * 1024),
@@ -129,7 +150,7 @@ describe.skipIf(!FFMPEG)('the memory an export of many pieces holds', () => {
     const out = join(dir, 'nine.mp4')
     let stopped: string | null = null
     await renderCut(cut, resolved, sources, {
-      ffmpeg: join(dir, 'watching-ffmpeg.sh'),
+      ffmpeg: join(dir, 'watching-ffmpeg'),
       outputPath: out,
       workDir: join(dir, 'work'),
       quality: 'final'

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { onWindows } from '../../../../shared/platform'
 import { costLine, doneSteps, fixingStep, keyGuide } from '../../../../shared/setup'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api } from '../api'
@@ -30,7 +31,8 @@ const MODELS: { id: Model; label: string }[] = [
 const BROWSERS: { id: string | null; label: string }[] = [
   { id: null, label: 'Off' },
   { id: 'chrome', label: 'Chrome' },
-  { id: 'safari', label: 'Safari' },
+  // Safari is a Mac's alone.
+  ...(onWindows ? [] : [{ id: 'safari', label: 'Safari' }]),
   { id: 'firefox', label: 'Firefox' },
   { id: 'edge', label: 'Edge' },
   { id: 'brave', label: 'Brave' }

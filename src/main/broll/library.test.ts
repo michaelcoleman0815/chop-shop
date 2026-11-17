@@ -31,6 +31,9 @@ const at = (...p: string[]): string => {
   return path
 }
 
+/** A name with a line break in it; Windows allows no control character in a name, so there it has a space. */
+const ODD_NAME = process.platform === 'win32' ? 'odd name #1 %20.png' : 'odd\nname #1 %20.png'
+
 const deps = () => ({ probe: (p: string) => probeFile(FFMPEG as string, p), loudness: (p: string) => trackLoudness(FFMPEG as string, p) })
 
 beforeAll(() => {
@@ -51,7 +54,7 @@ beforeAll(() => {
   run(['-f', 'lavfi', '-i', 'testsrc=size=160x90:rate=15', '-t', '1', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', join(outside, 'outside.mp4')])
   // Odd names: other scripts, an emoji, a line break, 200 characters.
   copyFileSync(at('B-Roll', 'City at Night', 'IMG_0042.MOV'), at('Café B-roll', 'ねこ 🐈 clip.mp4'))
-  copyFileSync(at('Overlays', 'sparkle.png'), at('Overlays', 'odd\nname #1 %20.png'))
+  copyFileSync(at('Overlays', 'sparkle.png'), at('Overlays', ODD_NAME))
   copyFileSync(at('Photos', 'photo.jpg'), at('Photos', `${'a'.repeat(200)}.jpg`))
   // Looks, fonts and animations.
   writeFileSync(at('Looks', 'Teal Orange.cube'), 'TITLE "Teal Orange"\nLUT_3D_SIZE 33\n0 0 0\n')
@@ -121,7 +124,7 @@ describeMedia('indexing the person’s own folder', () => {
 
   it('takes odd names in its stride', () => {
     expect(item('ねこ 🐈 clip.mp4')?.k).toBe('video')
-    expect(item('odd\nname #1 %20.png')?.k).toBe('overlay')
+    expect(item(ODD_NAME)?.k).toBe('overlay')
     expect(item(`${'a'.repeat(200)}.jpg`)?.k).toBe('image')
   })
 

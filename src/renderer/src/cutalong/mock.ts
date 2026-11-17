@@ -41,6 +41,7 @@ import { chaptersOf, chaptersReply } from '../../../shared/presets'
 import { fillDescription, isShort, writeLocally, type UploadKit } from '../../../shared/upload'
 import { groupWords } from '../../../shared/words'
 import { detectProvider } from '../../../shared/keys'
+import { thisComputer } from '../../../shared/platform'
 import { keyMessage, type ClaudeKeyState } from '../../../shared/setup'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
@@ -764,7 +765,7 @@ export function createMockApi(): CutalongApi {
       return settings.localPlanner
         ? {
             ok: false as const,
-            message: `Plans come from ${settings.localPlanner} on this Mac, and this browser preview cannot reach it.`
+            message: `Plans come from ${settings.localPlanner} on ${thisComputer}, and this browser preview cannot reach it.`
           }
         : key === null
           ? { ok: false as const, message: keyMessage('none'), needsKey: true, keyState: 'none' as const }

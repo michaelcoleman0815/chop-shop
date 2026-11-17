@@ -16,6 +16,7 @@ import {
 } from '../../../shared/clipping'
 import { sentence } from '../../../shared/edit'
 import { renderFailure } from '../../../shared/failure'
+import { SHOW_FILE } from '../../../shared/platform'
 import type { Project, TranscriptWord } from '../../../shared/types'
 import type { UploadKit } from '../../../shared/upload'
 import { api, mediaUrlFor } from './api'
@@ -361,7 +362,7 @@ export function useClipping(deps: ClippingDeps) {
             durationSec
           },
           chips: [clock(durationSec), ...(r.width && r.height ? [`${r.width} × ${r.height}`] : [])],
-          actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
+          actions: [{ kind: 'reveal', label: SHOW_FILE, payload: r.outputPath }]
         })
         // What its upload needs, beside it: captions, a description, titles and tags.
         if (r.upload) kits.push({ name: clip.title, kit: r.upload })
@@ -389,7 +390,7 @@ export function useClipping(deps: ClippingDeps) {
         ...(failed.length
           ? [{ kind: 'retry' as const, label: 'Try again', payload: `clips:${failed.map((f) => f.id).join(',')}` }]
           : []),
-        ...(made.length ? [{ kind: 'reveal' as const, label: 'Show in Finder', payload: made[0] }] : [])
+        ...(made.length ? [{ kind: 'reveal' as const, label: SHOW_FILE, payload: made[0] }] : [])
       ]
     })
     // One reply for what every clip's upload needs, not one a clip.

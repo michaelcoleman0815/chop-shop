@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
+import { KEY_PLACE } from '../../../../shared/platform'
 import { gateOpen, keyGuide, keyMessage, type ClaudeKeyStatus } from '../../../../shared/setup'
 import type { Cutalong } from '../useCutalong'
 import { Button, Icon, Mark } from './ui'
 
 /** Where the key goes once pasted, said beside the field. */
-export const KEY_KEPT = 'The key is locked in this computer’s keychain and only ever sent to Anthropic.'
+export const KEY_KEPT = `The key is ${KEY_PLACE} and only ever sent to Anthropic.`
 
 /**
  * The field an Anthropic key is pasted into, and what its check found, on

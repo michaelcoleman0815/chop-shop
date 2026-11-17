@@ -1,6 +1,7 @@
 import { currentCut } from '../edit/doc'
 import { resolveCut } from '../edit/resolve'
 import type { Beat, EditDoc } from '../edit/schema'
+import { thisComputer } from '../platform'
 import { clock, seconds } from '../presets/preset'
 import { leftOut } from './carry'
 import { timeOfDay, zoneAt } from './describe'
@@ -310,7 +311,7 @@ export function storyReply(
     value:
       vlog.described.by === 'measurements'
         ? 'the measurements of the picture and sound'
-        : `${vlog.described.by === 'claude' ? 'Claude' : `${vlog.described.model ?? 'a model'} on this Mac`}, from ${
+        : `${vlog.described.by === 'claude' ? 'Claude' : `${vlog.described.model ?? 'a model'} on ${thisComputer}`}, from ${
             vlog.described.stills > 0 ? plural(vlog.described.stills, 'still') : 'stills it saw before'
           }`
   })

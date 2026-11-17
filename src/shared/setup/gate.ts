@@ -1,4 +1,5 @@
 import { detectProvider, wrongKeyMessage } from '../keys'
+import { KEY_UNREADABLE } from '../platform'
 import { KEY_GUIDES } from './guides'
 
 /**
@@ -109,7 +110,7 @@ export function keyMessage(state: ClaudeKeyState, key?: string | null): string {
     case 'offline':
       return 'I could not reach Anthropic. Check the connection, then try again.'
     case 'unreadable':
-      return 'I could not open the saved key from this computer’s keychain. Paste it again.'
+      return KEY_UNREADABLE
   }
 }
 

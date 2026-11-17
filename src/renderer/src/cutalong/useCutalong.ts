@@ -143,6 +143,7 @@ import {
   type TakesOffer
 } from '../../../shared/raw'
 import { withHabits } from '../../../shared/learn/habits'
+import { onWindows, SHOW_FILE } from '../../../shared/platform'
 import { vlogOfClip, withDoc } from '../../../shared/clipping'
 import { detectProvider } from '../../../shared/keys'
 import {
@@ -2417,7 +2418,9 @@ export function useCutalong() {
           say(
             r.finder
               ? `I couldn't find you in the picture. ${r.message}`
-              : 'Following you needs the face finder Cutalong has on a Mac, and this computer does not have it. /reframe left, centre or right frames the beat under the playhead by hand.'
+              : onWindows
+                ? 'Following you needs the face finder, which is missing from this copy of Cutalong. /reframe left, centre or right frames the beat under the playhead by hand.'
+                : 'Following you needs the face finder Cutalong has on a Mac, and this computer does not have it. /reframe left, centre or right frames the beat under the playhead by hand.'
           )
           return
         }
@@ -2522,7 +2525,7 @@ export function useCutalong() {
         return
       }
       const reply = premiereReply(r)
-      const actions: Action[] = [{ kind: 'reveal', label: 'Show in Finder', payload: r.xmlPath }]
+      const actions: Action[] = [{ kind: 'reveal', label: SHOW_FILE, payload: r.xmlPath }]
       if (id) patch(id, { progress: null, text: reply.text, aside: reply.aside, actions })
       else setPanel({ text: reply.aside ? `${reply.text} ${reply.aside}` : reply.text })
     },
@@ -4180,7 +4183,7 @@ export function useCutalong() {
         text: `${clipping.isClip(d) ? `“${d.title}” v${n}` : `v${n}`} is exported${besideIt(r.chaptersPath, r.creditsPath)}.`,
         video: { path: r.outputPath, name, width: r.width ?? 0, height: r.height ?? 0, durationSec },
         chips: [clock(durationSec), ...(r.width && r.height ? [`${r.width} × ${r.height}`] : [])],
-        actions: [{ kind: 'reveal', label: 'Show in Finder', payload: r.outputPath }]
+        actions: [{ kind: 'reveal', label: SHOW_FILE, payload: r.outputPath }]
       })
       // Under it, what the upload needs: captions, a description, titles and tags, beside the video.
       if (r.upload) push(uploadReply(r.upload))

@@ -1,6 +1,6 @@
 import { promises as fs, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { placeFile } from './export-paths'
 
@@ -39,7 +39,7 @@ describe('placing a finished export', () => {
     // A name an earlier export left something beside is not free either.
     writeFileSync(join(out, 'My talk v1 (3) credits.txt'), 'credits')
     const c = await placeFile(made('c.mp4', 'third'), out, 'My talk v1', '.mp4', [' credits.txt'])
-    expect([a, b, c].map((p) => p.split('/').pop())).toEqual(['My talk v1.mp4', 'My talk v1 (2).mp4', 'My talk v1 (4).mp4'])
+    expect([a, b, c].map((p) => basename(p))).toEqual(['My talk v1.mp4', 'My talk v1 (2).mp4', 'My talk v1 (4).mp4'])
     expect(readFileSync(c, 'utf8')).toBe('third')
   })
 
