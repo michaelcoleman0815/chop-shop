@@ -528,8 +528,11 @@ export function checkWriting(answer: unknown, local: UploadWriting): { writing: 
 
 const NUMBER = ['no', 'one', 'two', 'three']
 
-/** The reply under an export: a sentence, three facts, the rest behind Details. */
-export function uploadMessage(kit: UploadKit): {
+/**
+ * The reply under an export: a sentence, three facts, the rest behind
+ * Details. `here` is the device it was made on: "this Mac", "this phone".
+ */
+export function uploadMessage(kit: UploadKit, here = 'this Mac'): {
   text: string
   chips: string[]
   details: { label: string; value: string }[]
@@ -563,10 +566,10 @@ export function uploadMessage(kit: UploadKit): {
   if (kit.by === 'local') {
     asides.push(
       kit.why === 'off'
-        ? 'I made these on this Mac without Claude, as Settings asks.'
+        ? `I made these on ${here} without Claude, as Settings asks.`
         : kit.why === 'failed'
-          ? "Claude couldn't write them this time, so I made them from your words on this Mac."
-          : 'I made these on this Mac without Claude. With your Anthropic key in Settings, Claude writes them.'
+          ? `Claude couldn't write them this time, so I made them from your words on ${here}.`
+          : `I made these on ${here} without Claude. With your Anthropic key in Settings, Claude writes them.`
     )
   }
   if (kit.short) asides.push("It's a Short, so the description has no chapters.")
@@ -579,7 +582,7 @@ export function uploadMessage(kit: UploadKit): {
  * clips are ready to upload: captions, a description, titles and tags beside
  * each."
  */
-export function uploadSetMessage(kits: { name: string; kit: UploadKit }[]): {
+export function uploadSetMessage(kits: { name: string; kit: UploadKit }[], here = 'this Mac'): {
   text: string
   details: { label: string; value: string }[]
   aside: string | null
@@ -601,13 +604,13 @@ export function uploadSetMessage(kits: { name: string; kit: UploadKit }[]): {
       ? 'Claude wrote the titles, the openings and the tags from what you say.'
       : local.length < n
         ? local.length === 1
-          ? "Claude couldn't write one of them, so I made that one from your words on this Mac."
-          : `Claude couldn't write ${local.length} of them, so I made those from your words on this Mac.`
+          ? `Claude couldn't write one of them, so I made that one from your words on ${here}.`
+          : `Claude couldn't write ${local.length} of them, so I made those from your words on ${here}.`
         : why === 'off'
-          ? 'I made these on this Mac without Claude, as Settings asks.'
+          ? `I made these on ${here} without Claude, as Settings asks.`
           : why === 'failed'
-            ? "Claude couldn't write them this time, so I made them from your words on this Mac."
-            : 'I made these on this Mac without Claude. With your Anthropic key in Settings, Claude writes them.'
+            ? `Claude couldn't write them this time, so I made them from your words on ${here}.`
+            : `I made these on ${here} without Claude. With your Anthropic key in Settings, Claude writes them.`
   return { text, details, aside }
 }
 

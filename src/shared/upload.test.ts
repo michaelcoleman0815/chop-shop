@@ -204,6 +204,16 @@ describe('in the chat', () => {
     for (const m of [uploadMessage(kit), short]) expect(`${m.text} ${m.aside}`).not.toMatch(/!/)
   })
 
+  it('names the phone it was made on, on a phone', () => {
+    expect(uploadMessage({ ...kit, by: 'local', why: 'no-key' }, 'this phone').aside).toBe(
+      'I made these on this phone without Claude. With your Anthropic key in Settings, Claude writes them.'
+    )
+    const off = { ...kit, by: 'local' as const, why: 'off' as const }
+    expect(uploadSetMessage([{ name: 'A', kit: off }, { name: 'B', kit: off }], 'this phone').aside).toBe(
+      'I made these on this phone without Claude, as Settings asks.'
+    )
+  })
+
   it('says what every clip of an Export all needs in one reply, each clip’s titles behind Details', () => {
     const clip = (name: string, over: Partial<UploadKit> = {}): { name: string; kit: UploadKit } => ({
       name,

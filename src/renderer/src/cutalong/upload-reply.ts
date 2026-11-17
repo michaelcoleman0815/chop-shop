@@ -1,5 +1,13 @@
 import { titlesText, uploadMessage, uploadSetMessage, type UploadKit } from '../../../shared/upload'
+import { device } from './api'
 import type { Msg } from './components/Message'
+
+/** Where the kit was made, when it is not the Mac the shared sentences name. */
+const here = device.kind === 'phone' ? device.here : undefined
+
+/** Show the files, where the device has a place to show them (a phone keeps them in the app). */
+const showFiles = (path: string): NonNullable<Msg['actions']> =>
+  device.reveal ? [{ kind: 'reveal', label: 'Show the files', payload: path }] : []
 
 /**
  * The reply under an export that says what is ready for the upload: a
@@ -8,7 +16,7 @@ import type { Msg } from './components/Message'
  * the files.
  */
 export function uploadReply(kit: UploadKit): Omit<Msg, 'id'> {
-  const m = uploadMessage(kit)
+  const m = uploadMessage(kit, here)
   return {
     role: 'assistant',
     text: m.text,
@@ -18,7 +26,7 @@ export function uploadReply(kit: UploadKit): Omit<Msg, 'id'> {
     actions: [
       { kind: 'copy', label: 'Copy the description', payload: kit.description, primary: true },
       { kind: 'copy', label: 'Copy the titles', payload: titlesText(kit) },
-      { kind: 'reveal', label: 'Show the files', payload: kit.files.description }
+      ...showFiles(kit.files.description)
     ]
   }
 }
@@ -30,12 +38,13 @@ export function uploadReply(kit: UploadKit): Omit<Msg, 'id'> {
  */
 export function uploadSetReply(kits: { name: string; kit: UploadKit }[]): Omit<Msg, 'id'> {
   if (kits.length === 1) return uploadReply(kits[0].kit)
-  const m = uploadSetMessage(kits)
+  const m = uploadSetMessage(kits, here)
+  const actions = showFiles(kits[0].kit.files.description)
   return {
     role: 'assistant',
     text: m.text,
     details: m.details,
     aside: m.aside,
-    actions: [{ kind: 'reveal', label: 'Show the files', payload: kits[0].kit.files.description }]
+    ...(actions.length ? { actions } : {})
   }
 }
