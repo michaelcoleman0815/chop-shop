@@ -17,7 +17,7 @@ import { BUSY_EXAMPLE, buildScene, DEFAULT_THEME, designSize, fullCall, template
 import { docFor } from '../shared/raw/eval'
 import { FIXTURES } from '../shared/raw/fixtures'
 import { planTakes, takesOf, switchTakeOps } from '../shared/raw/plan'
-import { offerPlan } from './planner'
+import { keepOffList, offerPlan } from './planner'
 import {
   fromPlannerOp,
   PLANNER_SYSTEM,
@@ -83,6 +83,39 @@ describe('the planner request', () => {
     expect(currentCut(doc).removed).toEqual(['w5'])
   })
 
+  it('holds a note left on a stretch picked on the strip to its beats', () => {
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    doc = addNote(doc, 'Make this black and white.', 'b2', { from: 'b2', to: 'b1' })
+    expect(doc.notes[0].range).toEqual({ from: 'b2', to: 'b1', beats: ['b1', 'b2'] })
+    const text = renderRequest(doc, '', doc.notes)
+    expect(text).toContain('n1 (on b1 to b2 only, 0:00-0:04): Make this black and white.')
+    expect(PLANNER_SYSTEM).toContain('A note left on a stretch ("on b3 to b6 only") is about those beats alone')
+    // Once an end of it is cut, the note is on what is left of it.
+    doc = commit(doc, [{ op: 'remove', beats: ['b1'] }], 'x').doc
+    expect(renderRequest(doc, '', doc.notes)).toContain('n1 (on b2 only, 0:00-0:03): Make this black and white.')
+  })
+
+  it('leaves a note on a stretch on one of its beats, never the playhead’s outside it, and keeps it on what is left', () => {
+    const six = wordsFromTranscript(
+      ['Here we go.', 'The first point.', 'It matters most.', 'Then the second.', 'A short tangent.', 'Thanks for watching.'].flatMap(
+        (line, l) => line.split(' ').map((text, i) => ({ text, startSec: l * 5 + 0.5 + i * 0.4, endSec: l * 5 + 0.8 + i * 0.4 }))
+      ),
+      's1'
+    )
+    let doc = createDoc({ id: 'd', title: 't', source: { ...source, durationSec: 40 }, words: six })
+    expect(currentCut(doc).beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b3', 'b4', 'b5', 'b6'])
+    // The playhead on b6, b2 to b4 dragged across on the strip.
+    doc = addNote(doc, 'Make this black and white.', 'b6', { from: 'b2', to: 'b4' })
+    expect(doc.notes[0].beat).toBe('b2')
+    expect(renderRequest(doc, '', doc.notes)).toContain('n1 (on b2 to b4 only')
+    // b4 cut out: the note is on b2 and b3, what is left of it, and never on b6.
+    doc = commit(doc, [{ op: 'remove', beats: ['b4'] }], 'x').doc
+    const line = renderRequest(doc, '', doc.notes)
+      .split('\n')
+      .find((l) => l.startsWith('n1'))
+    expect(line).toMatch(/^n1 \(on b2 to b3 only, \d:\d\d-\d:\d\d\): Make this black and white\.$/)
+  })
+
   it('carries what has been learned about the creator in a block of its own, only when there is some', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     const learned = ['You undo zoom punch-ins (3 of 4)', 'Captions at chest height (every edit)']
@@ -96,6 +129,40 @@ describe('the planner request', () => {
     expect(renderRequest(doc, 'tighten it', [], '', [])).not.toContain('creator-preferences')
     expect(renderRequest(doc, 'tighten it', [])).not.toContain('creator-preferences')
     expect(PLANNER_SYSTEM).toContain('<creator-preferences>')
+  })
+
+  it('tells the planner what the channel never uses, and the plan comes back without it', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const text = renderRequest(doc, 'make it pop', [], '', [], [], ['whooshes', 'zoom transitions'])
+    expect(text).toContain('<never-on-this-channel>\n- whooshes\n- zoom transitions\n</never-on-this-channel>')
+    expect(text.indexOf('<never-on-this-channel>')).toBeLessThan(text.indexOf('<request>'))
+    expect(renderRequest(doc, 'make it pop', [])).not.toContain('never-on-this-channel')
+    expect(PLANNER_SYSTEM).toContain('<never-on-this-channel>')
+    // Whatever model planned it, what the list rules out is left out and said in one sentence.
+    const offered = offerPlan(
+      doc,
+      {
+        ops: [
+          { op: 'sfx', beats: ['b2'], kind: 'whoosh', word: '', gainDb: 0 },
+          { op: 'transition', beats: ['b2'], kind: 'zoom', sec: 0 },
+          { op: 'treat', beats: ['b2'], set: { bw: true } }
+        ].map((o) => o as never),
+        summary: 's',
+        reply: 'r',
+        notesHandled: [],
+        needs: [],
+        brollWanted: [{ beat: 'b2', search: 'city at night' }]
+      },
+      []
+    )
+    expect(offered.ok && offered.ops.length).toBe(3)
+    const kept = keepOffList(offered, doc, ['sfx:whoosh', 'transition:zoom', 'broll'], 'Field Notes')
+    if (!kept.ok) throw new Error('not ok')
+    expect(kept.ops).toEqual([{ op: 'treat', beats: ['b2'], set: { bw: true } }])
+    expect(kept.rejected).toEqual(['I left out the whooshes and zoom transitions, as Field Notes never uses them.'])
+    expect(kept.brollWanted).toEqual([])
+    // An empty list changes nothing.
+    expect(keepOffList(offered, doc, [], 'Field Notes')).toBe(offered)
   })
 
   it('fences a typed request so it reads as a request', () => {

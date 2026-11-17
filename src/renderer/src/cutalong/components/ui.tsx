@@ -116,6 +116,12 @@ export const Icon = {
       <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   ),
+  /** Opens a menu below. */
+  chevron: (): JSX.Element => (
+    <svg width="12" height="12" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2" aria-hidden="true">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  ),
   /** A recording that is sound only. */
   wave: (): JSX.Element => (
     <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth="1.9" aria-hidden="true">

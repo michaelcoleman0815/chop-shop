@@ -27,6 +27,7 @@ export interface Action {
     | 'run-command'
     | 'copy'
     | 'make'
+    | 'strip-never'
   label: string
   primary?: boolean
   /** A command name for save-style and run-command, a path for reveal, the text for copy, JSON for the asset actions. */

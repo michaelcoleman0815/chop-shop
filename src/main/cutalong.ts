@@ -12,6 +12,10 @@ import { creditsText, isImageUrl, type Range } from '../shared/assets'
 import { existsSync } from 'fs'
 import { measureVideo } from './inspiration/measure'
 import { renderCut } from './cut-render'
+import { freePath } from './export-paths'
+import { claudeWriter, writeUploadKit } from './upload-kit'
+import { readApiKey } from './apikey'
+import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
 import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
 import { findSounds, makeAllSfx, readSound } from './sfx'
@@ -32,14 +36,16 @@ import { watchClip } from './mouth'
 import { detectFaces, VISION_PATH } from './track'
 import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
 import { removePreset, savedPresets, savePreset } from './preset-store'
-import { checkKey, planEdit } from './planner'
+import { checkKey, keepOffList, planEdit } from './planner'
 import { planEditLocally } from './planner-local'
 import { isLocalUp, localModels } from './local-llm'
 import { OLLAMA_HOST } from './clips'
-import { readBrand, saveBrand } from './brand-store'
+import { brandOfDoc, readBrand, readBrandById, readBrands, saveBrand, saveBrands } from './brand-store'
 import { hearInCloud, registerServicesIpc } from './providers'
 import { registerLearnIpc } from './learn'
-import { preferencesForPlanner, registerMemoryIpc } from './memory'
+import { neverForBrand, preferencesForPlanner, registerMemoryIpc } from './memory'
+import { neverForPlanner } from '../shared/never'
+import { brandInSentence, stampBrand } from '../shared/brands'
 import { registerClippingIpc } from './clipping'
 import { registerVlogIpc } from './vlog'
 import { registerMakeIpc } from './make'
@@ -76,6 +82,7 @@ import {
   type SpeechMeasures
 } from '../shared/inspiration'
 import type { Transcript } from '../shared/types'
+import type { Brand } from '../shared/brand'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 
 /**
@@ -110,37 +117,44 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    * each clip is lined up with it by ear, and the words, the preview and the
    * export all use that sound.
    */
-  ipcMain.handle('cut:prepare', async (e, input: string | { paths: string[]; soundPaths?: string[] }) => {
-    const paths = typeof input === 'string' ? [input] : input.paths
-    const soundPaths = typeof input === 'string' ? [] : (input.soundPaths ?? [])
-    const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
-    try {
-      if (paths.length === 0) return { ok: false as const, message: 'There is no footage to cut.' }
-      const read = await readFootage(paths, soundPaths, progress, 1, { niche: nicheFrom(await readBrand()) })
-      const created = createDoc({
-        id: randomUUID(),
-        title: basename(paths[0], extname(paths[0])),
-        sources: read.sources,
-        words: read.words
-      })
-      // How each recording sounds, word by word: what takes and the planner read.
-      const doc = Object.keys(read.maps).length > 0 ? { ...created, audio: read.maps } : created
-      progress('Ready', 100)
-      return {
-        ok: true as const,
-        doc,
-        mediaUrl: deps.mediaUrlFor(paths[0]),
-        warning: read.notes.length ? read.notes.join(' ') : null,
-        lined: read.lined,
-        intake: read.intake,
-        notice: read.notice,
-        ...(read.details.length ? { details: read.details } : {})
+  ipcMain.handle(
+    'cut:prepare',
+    async (e, input: string | { paths: string[]; soundPaths?: string[]; brand?: string | null }) => {
+      const paths = typeof input === 'string' ? [input] : input.paths
+      const soundPaths = typeof input === 'string' ? [] : (input.soundPaths ?? [])
+      const progress = (stage: string, percent: number): void => deps.send(e.sender, 'cut:progress', { stage, percent })
+      try {
+        if (paths.length === 0) return { ok: false as const, message: 'There is no footage to cut.' }
+        // The chat's brand: its kind of video, and the names it listens for.
+        const brand = await readBrandById(typeof input === 'string' ? null : input.brand)
+        const read = await readFootage(paths, soundPaths, progress, 1, { niche: nicheFrom(brand), brand })
+        const created = createDoc({
+          id: randomUUID(),
+          title: basename(paths[0], extname(paths[0])),
+          sources: read.sources,
+          words: read.words
+        })
+        // How each recording sounds, word by word: what takes and the planner read.
+        const heard = Object.keys(read.maps).length > 0 ? { ...created, audio: read.maps } : created
+        // Made in the chat's brand when it named one, so it stays in it whatever becomes the default.
+        const doc = typeof input !== 'string' && input.brand ? stampBrand(heard, brand.id) : heard
+        progress('Ready', 100)
+        return {
+          ok: true as const,
+          doc,
+          mediaUrl: deps.mediaUrlFor(paths[0]),
+          warning: read.notes.length ? read.notes.join(' ') : null,
+          lined: read.lined,
+          intake: read.intake,
+          notice: read.notice,
+          ...(read.details.length ? { details: read.details } : {})
+        }
+      } catch (err) {
+        progress('Failed', 0)
+        return { ok: false as const, message: message(err) }
       }
-    } catch (err) {
-      progress('Failed', 0)
-      return { ok: false as const, message: message(err) }
     }
-  })
+  )
 
   // Where a screen recording changes, stretch by stretch, for a camera to follow.
   ipcMain.handle(
@@ -220,9 +234,11 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         const first = Number(nextSourceId(doc).slice(1))
         // New clips are watched the way this edit already is: its profile, and
         // a mode a sentence chose for its mouth watching.
+        const brand = await brandOfDoc(doc)
         const read = await readFootage(fresh, soundPaths, progress, first, {
-          niche: doc.profile || nicheFrom(await readBrand()),
-          mode: doc.sources.find((s) => s.mouth?.chosen)?.mouth?.mode
+          niche: doc.profile || nicheFrom(brand),
+          mode: doc.sources.find((s) => s.mouth?.chosen)?.mouth?.mode,
+          brand
         })
         notes.push(...read.notes)
         details.push(...read.details)
@@ -294,7 +310,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     let xmlPath: string | null = null
     try {
       const n = currentVersion(doc).n
-      xmlPath = await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.xml')
+      // Its captions go beside it as "<name> captions.srt", so that name has to be free too.
+      xmlPath = await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.xml', [' captions.srt'])
       const written = await writePremiere(doc, { ffmpeg: FFMPEG_PATH, xmlPath, sfxDir: sfxDir() })
       const premiere = await findPremiere()
       if (premiere) openInPremiere(premiere, xmlPath)
@@ -398,14 +415,17 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         })
       )
       const n = currentVersion(doc).n
+      // An export's name is free only when nothing that goes beside it is there either.
       outputPath = final
         ? await freePath(
             getSettings().outputDir,
             req.name ? safeName(req.name) : `${safeName(doc.title)} v${n}`,
-            '.mp4'
+            '.mp4',
+            EXPORT_BESIDE
           )
         : join(await previewDir(), `${doc.id}-v${n}-${Date.now()}.mp4`)
-      const brand = await readBrand()
+      // The brand this version is made in: its graphics, caption colours and logo.
+      const brand = await brandOfDoc(doc)
       const report = (f: number): void => deps.send(e.sender, 'cut:progress', { stage, percent: Math.round(f * 100) })
       // Graphics first: drawn frame by frame, then laid over the picture in the final pass.
       const motion = await renderCutMotion({
@@ -445,24 +465,53 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         creditsPath = outputPath.replace(/\.mp4$/i, '') + ' credits.txt'
         await fs.writeFile(creditsPath, credits)
       }
-      // Chapters for the YouTube description, the same ones the video file carries.
+      // The file's own size and length, so the chat can frame it before it loads.
+      const made = await probe(outputPath).catch(() => null)
+      const width = made?.width ?? 0
+      const height = made?.height ?? 0
+      const durationSec = made?.durationSec ?? resolved.durationSec
+      // Chapters for the YouTube description, the same ones the video file carries. A Short shows none.
       let chaptersPath: string | null = null
       const chapters = final ? chaptersReply(cut, resolved) : null
-      if (chapters?.shows) {
+      if (chapters?.shows && !isShort(width, height, durationSec)) {
         chaptersPath = outputPath.replace(/\.mp4$/i, '') + ' chapters.txt'
         await fs.writeFile(chaptersPath, `${chapters.lines}\n`)
       }
-      // The file's own size and length, so the chat can frame it before it loads.
-      const made = await probe(outputPath).catch(() => null)
+      // What an upload needs, beside the video: captions, a description, titles and tags (main/upload-kit).
+      let upload: UploadKit | null = null
+      if (final) {
+        deps.send(e.sender, 'cut:progress', { stage: 'Writing the description', percent: 99 })
+        const key = readApiKey()
+        const allowed = getSettings().claudeWritesUpload !== false
+        upload = await writeUploadKit({
+          doc,
+          cut,
+          resolved,
+          pass,
+          scene: motion.scene,
+          brand,
+          outputPath,
+          width,
+          height,
+          durationSec,
+          // Claude only with the person's key and the switch in Settings on; otherwise nothing leaves.
+          write: key && allowed ? claudeWriter(key) : null,
+          why: !key ? 'no-key' : !allowed ? 'off' : null
+        }).catch((err) => {
+          console.error('[upload] could not write the upload kit:', message(err))
+          return null
+        })
+      }
       return {
         ok: true as const,
         outputPath,
         mediaUrl: deps.mediaUrlFor(outputPath),
         creditsPath,
         chaptersPath,
-        width: made?.width ?? 0,
-        height: made?.height ?? 0,
-        durationSec: made?.durationSec ?? resolved.durationSec
+        upload,
+        width,
+        height,
+        durationSec
       }
     } catch (err) {
       console.error('[cut] render failed:', message(err))
@@ -546,13 +595,20 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   // read fresh here so a statement they deleted never reaches the planner, and
   // the brand's own logos by name, so a logo pop can show them.
   // Claude plans unless the person picked a model on this Mac in Settings.
+  // The edit's own brand gives the logos and the never list, which the plan is checked against too.
   ipcMain.handle('cut:plan', async (_e, req: { doc: unknown; request: string; notes: Note[]; voice?: string }) => {
-    const preferences = await preferencesForPlanner().catch(() => [])
-    const logos = (await readBrand()).logos.map((l) => l.name)
+    const parsed = EditDocSchema.safeParse(req.doc)
+    const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
+    // What this brand has learned from its own chats.
+    const preferences = await preferencesForPlanner(brand.id).catch(() => [])
+    const logos = brand.logos.map((l) => l.name)
+    const never = await neverForBrand(brand.id).catch(() => [])
+    const said = neverForPlanner(never)
     const local = getSettings().localPlanner
-    return local
-      ? planEditLocally({ ...req, preferences, logos }, { host: OLLAMA_HOST, model: local })
-      : planEdit({ ...req, preferences, logos })
+    const result = local
+      ? await planEditLocally({ ...req, preferences, logos, never: said }, { host: OLLAMA_HOST, model: local })
+      : await planEdit({ ...req, preferences, logos, never: said })
+    return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
   })
 
   // The models Ollama has on this Mac, for planning edits without Claude.
@@ -565,6 +621,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   // measured here on this computer.
   ipcMain.handle('brand:get', () => readBrand())
   ipcMain.handle('brand:save', (_e, brand: unknown) => saveBrand(brand))
+  // A brand per channel: the list, and which one new chats use (shared/brands).
+  ipcMain.handle('brands:get', () => readBrands())
+  ipcMain.handle('brands:save', (_e, brands: unknown) => saveBrands(brands))
   ipcMain.handle('brand:learn', async (e, paths: string[]) => {
     const learned: { path: string; title: string; facts: ReturnType<typeof summarize> }[] = []
     const failed: string[] = []
@@ -622,10 +681,17 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     }
   })
 
-  ipcMain.handle('assets:search', async (_e, query: string) => {
+  // The brand's B-roll sources: channels and sites to look in first, and ones never to use.
+  ipcMain.handle('assets:search', async (_e, query: string, sources?: { prefer?: unknown; block?: unknown }) => {
+    const lines = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 30) : []
     try {
       needsYtdlp()
-      return { ok: true as const, results: await searchVideos(query, tools('search')) }
+      const found = await searchVideos(query, tools('search'), 5, {
+        prefer: lines(sources?.prefer),
+        block: lines(sources?.block)
+      })
+      return { ok: true as const, ...found }
     } catch (err) {
       return { ok: false as const, message: message(err) }
     }
@@ -698,8 +764,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   registerVlogIpc({
     send: deps.send,
     mediaUrlFor: deps.mediaUrlFor,
-    readTalking: async (path, n, progress) => {
-      const read = await readFootage([path], [], progress, n, { niche: 'vlog' })
+    // In the chat's brand: the names it listens for.
+    readTalking: async (path, n, progress, brand) => {
+      const read = await readFootage([path], [], progress, n, { niche: 'vlog', brand: await readBrandById(brand) })
       const source = read.sources[0]
       return { source, words: read.words, map: read.maps[source.id], notes: read.notes }
     }
@@ -764,7 +831,7 @@ async function readFootage(
   soundPaths: string[],
   progress: ProgressFn,
   firstIndex: number,
-  mouth: { niche?: string | null; mode?: MouthMode } = {}
+  mouth: { niche?: string | null; mode?: MouthMode; brand?: Brand } = {}
 ): Promise<{
   sources: Source[]
   words: Word[]
@@ -834,8 +901,11 @@ async function readFootage(
         const sp = source.audio.path
         if (!soundWords.has(sp)) {
           const length = (await probe(sp)).durationSec
-          const heard = await transcriptFor(sp, length, (stage, pct) =>
-            step(`${stage} ${basename(sp, extname(sp))}`, 10 + pct * 0.85)
+          const heard = await transcriptFor(
+            sp,
+            length,
+            (stage, pct) => step(`${stage} ${basename(sp, extname(sp))}`, 10 + pct * 0.85),
+            { brand: mouth.brand }
           )
           soundWords.set(sp, heard.words)
         }
@@ -858,7 +928,8 @@ async function readFootage(
         }
       } else {
         const transcript = await transcriptFor(path, source.durationSec, (stage, pct) => step(stage, 10 + pct * 0.85), {
-          notice: (sentence) => notes.push(sentence)
+          notice: (sentence) => notes.push(sentence),
+          brand: mouth.brand
         })
         clip = wordsFromTranscript(transcript.words, source.id, prefix)
         // Listen to the recording so every word's edges sit on its sound,
@@ -929,6 +1000,8 @@ async function transcriptFor(
     download?: boolean
     /** True when the words must be heard on this Mac, never by another service. */
     localOnly?: boolean
+    /** The brand whose names are listened for; the default brand's when absent. */
+    brand?: Brand
   } = {}
 ): Promise<Transcript> {
   // Another AI service hears the words when the person has added one. If it
@@ -949,7 +1022,7 @@ async function transcriptFor(
     }
     await downloadModel(whisperModel, (p) => progress(`Downloading ${whisperModel}`, Math.round(p * 0.3)))
   }
-  const brand = await readBrand()
+  const brand = opts.brand ?? (await readBrand())
   const names = vocabulary({ title: basename(path, extname(path)), voice: brand.voice, products: brand.products })
   return transcribe(path, whisperModel, durationSec, (p, stage) => progress(stage, 30 + Math.round(p * 0.7)), 0, {
     names
@@ -961,23 +1034,8 @@ function safeName(title: string): string {
   return projectName(title)
 }
 
-/**
- * A name in `dir` no other file has, taken by making the file empty there and
- * then: two exports started together, or two edits with the same title, each
- * get their own file instead of writing over one another.
- */
-async function freePath(dir: string, name: string, ext: string): Promise<string> {
-  await fs.mkdir(dir, { recursive: true })
-  for (let n = 1; ; n++) {
-    const candidate = join(dir, n === 1 ? `${name}${ext}` : `${name} (${n})${ext}`)
-    try {
-      await (await fs.open(candidate, 'wx')).close()
-      return candidate
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-    }
-  }
-}
+/** Everything an export leaves beside the video, after its name. */
+const EXPORT_BESIDE = [' credits.txt', ' chapters.txt', ...Object.values(UPLOAD_SUFFIXES)]
 
 async function previewDir(): Promise<string> {
   const dir = join(app.getPath('temp'), 'cutalong-previews')

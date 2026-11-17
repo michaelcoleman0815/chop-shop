@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Composer } from '../components/Composer'
 import { AssistantMessage, UserMessage } from '../components/Message'
+import { BrandSwitch } from '../components/BrandSwitch'
 import { ClipSet } from '../components/ClipSet'
 import { MakeBrief } from '../components/MakeBrief'
 import { Button, Icon, IconButton } from '../components/ui'
@@ -22,6 +23,7 @@ export function Thread({ app }: { app: Cutalong }): JSX.Element {
         </IconButton>
         <span className="cl-heading">{app.doc?.title ?? app.work()?.name ?? 'New edit'}</span>
         <span className="spacer" />
+        <BrandSwitch app={app} />
         {app.doc && (
           <Button variant="text" onClick={() => app.setScreen('editor')}>
             Editor

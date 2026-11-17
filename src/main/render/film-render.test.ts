@@ -101,26 +101,58 @@ describe.skipIf(!FFMPEG)('a documentary’s look, in the export as in the editor
   it('lays the same dust over the picture the editor draws, frame for frame', async () => {
     const look: Look = { dust: 1 }
     const out = await render(withOps([{ op: 'look', set: look, replace: true }]), 'dust')
-    for (const t of [0.5, 1.25, 2.0]) {
-      const got = frameAt(ffmpeg, out, t + 0.5 / FPS)
-      // The editor's drawing of the same film frame, over the same grey.
+    /** How far each pixel is from the plain grey, softened over 3 x 3 so compression does not decide it. */
+    const away = (lum: (i: number) => number, grey: number): Float32Array => {
+      const d = new Float32Array(W * H)
+      for (let y = 1; y < H - 1; y++)
+        for (let x = 1; x < W - 1; x++) {
+          let sum = 0
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += lum((y + dy) * W + x + dx) - grey
+          d[y * W + x] = sum / 9
+        }
+      return d
+    }
+    const pearson = (a: Float32Array, b: Float32Array): number => {
+      let ma = 0
+      let mb = 0
+      for (let i = 0; i < a.length; i++) {
+        ma += a[i]
+        mb += b[i]
+      }
+      ma /= a.length
+      mb /= b.length
+      let ab = 0
+      let aa = 0
+      let bb = 0
+      for (let i = 0; i < a.length; i++) {
+        ab += (a[i] - ma) * (b[i] - mb)
+        aa += (a[i] - ma) ** 2
+        bb += (b[i] - mb) ** 2
+      }
+      return ab / Math.sqrt(aa * bb || 1)
+    }
+    /** The editor's drawing of a film frame over the same grey: the film is a layer of its own, as its canvas is. */
+    const drawn = (frame: number): Float32Array => {
+      const film = createCanvas(W, H)
+      drawFilmFine(film.getContext('2d') as unknown as FilmCanvas, W, H, look, frame, FPS)
       const canvas = createCanvas(W, H)
       const ctx = canvas.getContext('2d')
       ctx.fillStyle = 'rgb(128, 128, 128)'
       ctx.fillRect(0, 0, W, H)
-      drawFilmFine(ctx as unknown as FilmCanvas, W, H, look, filmFrame(t + 0.5 / FPS, FPS), FPS)
-      const want = Buffer.from(ctx.getImageData(0, 0, W, H).data)
-      // Every speck the editor draws darker or lighter than the grey is there in the export too.
-      let marked = 0
-      let found = 0
-      for (let i = 0; i < W * H; i++) {
-        const w = 0.299 * want[i * 4] + 0.587 * want[i * 4 + 1] + 0.114 * want[i * 4 + 2]
-        if (Math.abs(w - 128) < 40) continue
-        marked++
-        if (Math.sign(luma(got, i) - 127) === Math.sign(w - 128) && Math.abs(luma(got, i) - 127) > 8) found++
-      }
-      expect(marked).toBeGreaterThan(20)
-      expect(found / marked).toBeGreaterThan(0.7)
+      ctx.drawImage(film, 0, 0)
+      const px = ctx.getImageData(0, 0, W, H).data
+      return away((i) => 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2], 128)
+    }
+    for (const t of [0.5, 1.25, 2.0]) {
+      const at = t + 0.5 / FPS
+      const got = frameAt(ffmpeg, out, at)
+      const shown = away((i) => luma(got, i), 127)
+      // The export's overlays (graphics too) land within a frame of the editor's moment: the same dust, that frame or the next.
+      const n = filmFrame(at, FPS)
+      const same = Math.max(...[-1, 0, 1].map((k) => pearson(shown, drawn(n + k))))
+      const other = Math.max(...[-6, -4, 4, 6].map((k) => pearson(shown, drawn(n + k))))
+      expect(same).toBeGreaterThan(0.6)
+      expect(same - other).toBeGreaterThan(0.4)
     }
   }, 120_000)
 

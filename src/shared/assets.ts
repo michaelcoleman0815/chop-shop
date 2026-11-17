@@ -160,9 +160,9 @@ export function beatForAsset(doc: EditDoc, query: string): string | null {
   return best?.id ?? null
 }
 
-/** Credits for everything from outside the editor's own files that the cut uses. Null when there is nothing to credit. */
-export function creditsText(doc: EditDoc): string | null {
-  const lines = assetsInCut(doc)
+/** A line for each thing from outside the editor's own files that the cut uses: title, author, link, stretch, licence. */
+export function creditLines(doc: EditDoc): string[] {
+  return assetsInCut(doc)
     .filter((a) => a.origin.type !== 'file')
     .map((a) => {
       const parts = [a.title]
@@ -172,5 +172,10 @@ export function creditsText(doc: EditDoc): string | null {
       if (a.origin.license) parts.push(a.origin.license)
       return `- ${parts.join(' · ')}`
     })
+}
+
+/** Credits for everything from outside the editor's own files that the cut uses. Null when there is nothing to credit. */
+export function creditsText(doc: EditDoc): string | null {
+  const lines = creditLines(doc)
   return lines.length ? `Credits for ${doc.title}\n\n${lines.join('\n')}\n` : null
 }

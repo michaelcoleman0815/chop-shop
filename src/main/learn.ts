@@ -16,6 +16,8 @@ import { loudnessEnvelope } from './audio-envelope'
 import { FFMPEG_PATH } from './ffmpeg'
 import { learnFromFiles } from './learn-pipeline'
 import { readPairs, removePair, savePair } from './learn-store'
+import { readBrands } from './brand-store'
+import { brandById, legacyBrandId } from '../shared/brands'
 
 /**
  * Learning from the creator's own edits, on this computer: a raw recording
@@ -52,51 +54,67 @@ export function registerLearnIpc(deps: { send: Send; transcribe: Transcribe }): 
     return res.canceled ? [] : res.filePaths
   })
 
-  ipcMain.handle('learn:state', () => currentState(false))
+  // Each brand learns from its own videos only: the state, a check and a run are for one brand.
+  ipcMain.handle('learn:state', (_e, brand?: string | null) => currentState(false, brand))
   // Checking again re-runs every cutter on the labels as they stand.
-  ipcMain.handle('learn:evaluate', () => currentState(true))
-  ipcMain.handle('learn:forget', async (_e, id: string) => {
+  ipcMain.handle('learn:evaluate', (_e, brand?: string | null) => currentState(true, brand))
+  ipcMain.handle('learn:forget', async (_e, id: string, brand?: string | null) => {
     await removePair(folder(), id)
-    return currentState(false)
+    return currentState(false, brand)
   })
 
-  ipcMain.handle('learn:run', async (e, req: { recordings: string[]; finished: string }): Promise<LearnRunResult> => {
-    const strings = (v: unknown): v is string[] =>
-      Array.isArray(v) && v.every((x) => typeof x === 'string' && x.length > 0)
-    if (!req || !strings(req.recordings) || typeof req.finished !== 'string' || !req.finished) {
-      return {
-        ok: false,
-        message: 'Pick the recording and the finished video made from it.',
-        state: await currentState(false)
+  ipcMain.handle(
+    'learn:run',
+    async (e, req: { recordings: string[]; finished: string; brand?: string | null }): Promise<LearnRunResult> => {
+      const owner = await ownerOf(req?.brand)
+      const stateNow = (listening: boolean): Promise<LearnState> => stateFor(listening, owner)
+      const strings = (v: unknown): v is string[] =>
+        Array.isArray(v) && v.every((x) => typeof x === 'string' && x.length > 0)
+      if (!req || !strings(req.recordings) || typeof req.finished !== 'string' || !req.finished) {
+        return {
+          ok: false,
+          message: 'Pick the recording and the finished video made from it.',
+          state: await stateNow(false)
+        }
+      }
+      if (running) {
+        return {
+          ok: false,
+          message: "I'm already lining up another video. Give me a moment.",
+          state: await stateNow(false)
+        }
+      }
+      running = true
+      const progress = (stage: string, percent: number): void => deps.send(e.sender, 'learn:progress', { stage, percent })
+      try {
+        const outcome = await learnFromFiles(
+          { recordings: req.recordings, finished: req.finished },
+          { ffmpeg: FFMPEG_PATH, transcribe: deps.transcribe, onProgress: progress, id: randomUUID }
+        )
+        if (!outcome.ok) return { ok: false, message: outcome.message, state: await stateNow(false) }
+        await savePair(folder(), { ...outcome.pair, brand: owner.id })
+        return { ok: true, video: learnedVideo(outcome.pair), state: await stateNow(false) }
+      } catch (err) {
+        return { ok: false, message: message(err), state: await stateNow(false) }
+      } finally {
+        running = false
       }
     }
-    if (running) {
-      return {
-        ok: false,
-        message: "I'm already lining up another video. Give me a moment.",
-        state: await currentState(false)
-      }
-    }
-    running = true
-    const progress = (stage: string, percent: number): void => deps.send(e.sender, 'learn:progress', { stage, percent })
-    try {
-      const outcome = await learnFromFiles(
-        { recordings: req.recordings, finished: req.finished },
-        { ffmpeg: FFMPEG_PATH, transcribe: deps.transcribe, onProgress: progress, id: randomUUID }
-      )
-      if (!outcome.ok) return { ok: false, message: outcome.message, state: await currentState(false) }
-      await savePair(folder(), outcome.pair)
-      return { ok: true, video: learnedVideo(outcome.pair), state: await currentState(false) }
-    } catch (err) {
-      return { ok: false, message: message(err), state: await currentState(false) }
-    } finally {
-      running = false
-    }
-  })
+  )
 }
 
-async function currentState(listening: boolean): Promise<LearnState> {
-  const pairs = await readPairs(folder())
+/** The brand learning is for: the one named, else the default; and which brand owns videos learned before brands had ids. */
+async function ownerOf(id: string | null | undefined): Promise<{ id: string; legacy: string }> {
+  const list = await readBrands()
+  return { id: brandById(list, id).id, legacy: legacyBrandId(list) }
+}
+
+async function currentState(listening: boolean, brand?: string | null): Promise<LearnState> {
+  return stateFor(listening, await ownerOf(brand))
+}
+
+async function stateFor(listening: boolean, owner: { id: string; legacy: string }): Promise<LearnState> {
+  const pairs = (await readPairs(folder())).filter((p) => (p.brand ?? owner.legacy) === owner.id)
   let envelope: ((pair: LabelledPair, source: string) => Envelope | null) | undefined
   // Only a cutter that listens needs each recording heard again, and only
   // where the recording is still on this computer.

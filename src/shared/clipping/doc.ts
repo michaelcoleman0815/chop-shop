@@ -157,7 +157,8 @@ export function clipDoc(input: ClipDocInput): EditDoc {
     captions: { ...DEFAULT_CAPTIONS },
     aspect: source.height > source.width ? 'vertical' : 'original',
     loudness: DEFAULT_LOUDNESS,
-    motion: []
+    motion: [],
+    fill: 'auto'
   }
   const cutting = CUTTING[input.profile.id]
   const doc: EditDoc = {

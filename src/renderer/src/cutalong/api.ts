@@ -65,6 +65,8 @@ export type CutalongApi = Pick<
   | 'setVideoSignIn'
   | 'getBrand'
   | 'saveBrand'
+  | 'getBrands'
+  | 'saveBrands'
   | 'learnBrand'
   | 'onBrandProgress'
   | 'learnChoose'

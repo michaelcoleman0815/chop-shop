@@ -24,7 +24,22 @@ import {
   type InspirationStudy
 } from '../../../shared/inspiration'
 import type { Project, ProjectSummary, Settings } from '../../../shared/types'
-import { EMPTY_BRAND, type Brand } from '../../../shared/brand'
+import {
+  brandById,
+  brandOfCut,
+  checkBrands,
+  defaultBrand,
+  EMPTY_BRANDS,
+  FIRST_BRAND_ID,
+  stampBrand,
+  stampMade,
+  type Brands
+} from '../../../shared/brands'
+import { orderFound, readSources } from '../../../shared/broll-sources'
+import { creditLines } from '../../../shared/assets'
+import { chaptersOf, chaptersReply } from '../../../shared/presets'
+import { fillDescription, isShort, writeLocally, type UploadKit } from '../../../shared/upload'
+import { groupWords } from '../../../shared/words'
 import { detectProvider } from '../../../shared/keys'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
@@ -315,6 +330,53 @@ function seededMemory(): Memory {
   )
 }
 
+/**
+ * What an export leaves beside it for an upload, made the way this computer
+ * makes it without Claude: the browser preview reaches no service.
+ */
+function mockUploadKit(
+  doc: EditDoc,
+  outputPath: string,
+  brands: Brands,
+  why: UploadKit['why']
+): UploadKit {
+  const cut = currentCut(doc)
+  const resolved = resolveCut(cut, doc.words, doc.sources)
+  const brand = brandOfCut(brands, cut)
+  const short = isShort(1080, 1920, resolved.durationSec)
+  const placed = chaptersReply(cut, resolved).shows && !short ? chaptersOf(cut, resolved).chapters : []
+  const lines = placed.length ? chaptersReply(cut, resolved).lines.split('\n') : []
+  const writing = writeLocally({
+    words: resolved.words.map((w) => w.text),
+    chapters: placed.map((c) => c.title),
+    brand,
+    kind: doc.profile ?? (brand.niche || null),
+    short,
+    durationSec: resolved.durationSec
+  })
+  const pages = groupWords(
+    resolved.words.map((w) => ({ text: w.text, startSec: w.outStart, endSec: w.outEnd })),
+    cut.captions.wordsPerScreen
+  ).length
+  const base = outputPath.replace(/\.mp4$/, '')
+  return {
+    ...writing,
+    description: fillDescription(brand.description, { opening: writing.opening, chapters: lines, credits: creditLines(doc) }),
+    by: 'local',
+    why,
+    captions: { pages, burned: cut.captions.on },
+    chapters: lines.length,
+    short,
+    credits: creditLines(doc).length,
+    files: {
+      srt: pages ? `${base}.srt` : null,
+      vtt: pages ? `${base}.vtt` : null,
+      description: `${base} description.txt`,
+      titles: `${base} titles and tags.txt`
+    }
+  }
+}
+
 export function createMockApi(): CutalongApi {
   const listeners = {
     cut: new Set<(p: { stage: string; percent: number }) => void>(),
@@ -322,7 +384,7 @@ export function createMockApi(): CutalongApi {
     clips: new Set<(p: { stage: string; percent: number }) => void>()
   }
   let saved: Preset[] = []
-  let brand: Brand = { ...EMPTY_BRAND }
+  let brands: Brands = EMPTY_BRANDS
   const projects = new Map<string, Project>()
   const now = Date.now()
   const day = 86_400_000
@@ -394,7 +456,14 @@ export function createMockApi(): CutalongApi {
   }
   const aiListeners = new Set<(p: { stage: string; percent: number }) => void>()
   const learnListeners = new Set<(p: { stage: string; percent: number }) => void>()
+  const mockUpload = (doc: EditDoc, outputPath: string): UploadKit =>
+    mockUploadKit(doc, outputPath, brands, key === null ? 'no-key' : settings.claudeWritesUpload === false ? 'off' : 'failed')
   let learned: LabelledPair[] = []
+  /** What each brand learned from its own videos: from before brands had ids, the first brand's. */
+  const learnedFor = (id?: string | null): LabelledPair[] => {
+    const owner = brandById(brands, id).id
+    return learned.filter((p) => (p.brand ?? FIRST_BRAND_ID) === owner)
+  }
   let runs = 0
   let memory = seededMemory()
 
@@ -422,7 +491,9 @@ export function createMockApi(): CutalongApi {
         'Listening for the cuts',
         'Watching the speaker'
       ])
-      const doc = fakeDoc(paths[0])
+      const made = fakeDoc(paths[0])
+      // Made in the chat's brand, as the app makes it.
+      const doc = typeof input !== 'string' && input.brand ? stampBrand(made, brandById(brands, input.brand).id) : made
       // As if the take came through a wireless microphone 0.12 s late, and was lined up.
       const late = 0.12
       doc.sources[0] = {
@@ -581,14 +652,18 @@ export function createMockApi(): CutalongApi {
       await progress(listeners.cut, [quality === 'final' ? 'Exporting' : 'Rendering a preview'])
       const n = doc.versions[doc.versions.length - 1].n
       const chapters = (doc.versions[doc.versions.length - 1].cut.chapters ?? []).length > 0
+      const outputPath = `/Users/you/Movies/Cutalong/${name ?? `${doc.title} v${n}`}.mp4`
+      const cut = currentCut(doc)
+      const resolved = resolveCut(cut, doc.words, doc.sources)
       return {
         ok: true as const,
-        outputPath: `/Users/you/Movies/Cutalong/${name ?? `${doc.title} v${n}`}.mp4`,
+        outputPath,
         mediaUrl: '/sample.mp4',
         chaptersPath: chapters ? `/Users/you/Movies/Cutalong/${doc.title} v${n} chapters.txt` : null,
+        upload: quality === 'final' ? mockUpload(doc, outputPath) : null,
         width: 1080,
         height: 1920,
-        durationSec: resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
+        durationSec: resolved.durationSec
       }
     },
     onCutProgress: (cb) => {
@@ -596,7 +671,7 @@ export function createMockApi(): CutalongApi {
       return () => listeners.cut.delete(cb)
     },
     // A long recording, as one of the planted ones (shared/clipping/fixtures), clipped by measuring.
-    findClips: async ({ paths, ask, avoid }) => {
+    findClips: async ({ paths, ask, avoid, brand: brandId }) => {
       await progress(listeners.clips, ['Transcribing', 'Listening', 'Finding the moments'])
       // The planted recordings load only when the mock clips something.
       const { PODCAST, SERVICE, STREAM } = await import('../../../shared/clipping/fixtures')
@@ -614,14 +689,16 @@ export function createMockApi(): CutalongApi {
       for (const path of paths) {
         const planted = /service|sermon|church/i.test(path) ? SERVICE : /podcast|episode/i.test(path) ? PODCAST : STREAM
         const facts = { ...factsOf(planted, path), path }
-        const plan = planRecording(facts, said, brand.niche || null)
+        const plan = planRecording(facts, said, brandById(brands, brandId).niche || null)
         const mine = (avoid ?? []).filter((a) => a.path === path)
         found.had += mine.length
         const picks = measureRecording(facts, plan, said, mine)
+        // Each clip is made in the chat's brand, as main makes it.
         const clips: FoundClip[] = picks.map((p) => ({
           source: path,
           ...p,
-          doc: clipDoc({
+          doc: stampMade(
+            clipDoc({
             id: `clip-${Date.now()}-${Math.round(p.startSec)}`,
             title: p.title,
             source: { path, durationSec: facts.durationSec, width: 1920, height: 1080, fps: 30, audio: null },
@@ -629,7 +706,9 @@ export function createMockApi(): CutalongApi {
             profile: plan.profile,
             laughter: (facts.sounds ?? []).filter((x) => x.kind === 'laughter'),
             tailSec: 0
-          })
+            }),
+            brandById(brands, brandId).id
+          )
         }))
         found.clips.push(...clips)
         found.recordings.push({
@@ -801,31 +880,35 @@ export function createMockApi(): CutalongApi {
       }
     },
     onAssetProgress: () => () => undefined,
-    searchVideos: async () => {
+    // Three made-up results from three channels, with the brand's sources applied as the app applies them.
+    searchVideos: async (_query, sources) => {
       await sleep(300)
-      return {
-        ok: true as const,
-        results: [
-          {
-            url: 'https://www.youtube.com/watch?v=a1',
-            title: 'City at night, 4K',
-            author: 'Nightfilm',
-            durationSec: 42
-          },
-          {
-            url: 'https://www.youtube.com/watch?v=b2',
-            title: 'Camera settings close-up',
-            author: 'Lens Lab',
-            durationSec: 95
-          },
-          {
-            url: 'https://www.youtube.com/watch?v=c3',
-            title: 'Hands on a dial, macro',
-            author: 'Macro Shots',
-            durationSec: 31
-          }
-        ]
-      }
+      const found = [
+        {
+          url: 'https://www.youtube.com/watch?v=a1',
+          title: 'City at night, 4K',
+          author: 'Nightfilm',
+          durationSec: 42,
+          handle: '@nightfilm'
+        },
+        {
+          url: 'https://www.youtube.com/watch?v=b2',
+          title: 'Camera settings close-up',
+          author: 'Lens Lab',
+          durationSec: 95,
+          handle: '@lenslab'
+        },
+        {
+          url: 'https://www.youtube.com/watch?v=c3',
+          title: 'Hands on a dial, macro',
+          author: 'Macro Shots',
+          durationSec: 31,
+          handle: '@macroshots'
+        }
+      ]
+      const prefer = readSources(sources?.prefer ?? []).sources
+      const ordered = orderFound([], found, { prefer, block: readSources(sources?.block ?? []).sources })
+      return { ok: true as const, results: ordered.results, blocked: ordered.blocked, looked: 0 }
     },
     saveImageAsset: async ({ base64, name, origin }) => ({
       ok: true as const,
@@ -861,10 +944,20 @@ export function createMockApi(): CutalongApi {
       settings = { ...settings, videoSignIn: browser }
       return browser
     },
-    getBrand: async () => brand,
+    getBrand: async () => defaultBrand(brands),
     saveBrand: async (next) => {
-      brand = { ...next, updatedAt: new Date().toISOString() }
-      return { ok: true as const, brand }
+      const id = next.id || brands.default
+      const saved = { ...next, id, updatedAt: new Date().toISOString() }
+      brands = { ...brands, brands: brands.brands.map((b) => (b.id === id ? saved : b)) }
+      return { ok: true as const, brand: saved }
+    },
+    getBrands: async () => brands,
+    saveBrands: async (next) => {
+      // All or nothing, as the main process saves them (shared/brands checkBrands).
+      const checked = checkBrands(next)
+      if (!checked.ok) return { ok: false as const, message: checked.message }
+      brands = checked.brands
+      return { ok: true as const, brands }
     },
     learnBrand: async (paths) => {
       await progress(listeners.cut, ['Watching'])
@@ -898,7 +991,9 @@ export function createMockApi(): CutalongApi {
     },
     learnChoose: async (kind) =>
       kind === 'recordings' ? ['/Users/you/Movies/studio-take-03.mov'] : ['/Users/you/Movies/The $40 camera setup.mp4'],
-    learnRun: async ({ recordings, finished }) => {
+    learnRun: async ({ recordings, finished, brand: forBrand }) => {
+      const owner = brandById(brands, forBrand).id
+      const mine = (): LabelledPair[] => learned.filter((p) => (p.brand ?? FIRST_BRAND_ID) === owner)
       const names = [...recordings, finished].map((p) => p.split('/').pop() ?? p)
       const stages = names.flatMap((n) => [`Listening to ${n}`, `Transcribing ${n}`, `Transcribing ${n}`])
       for (let i = 0; i < stages.length; i++) {
@@ -908,18 +1003,18 @@ export function createMockApi(): CutalongApi {
       for (const cb of learnListeners) cb({ stage: 'Lining them up', percent: 95 })
       await sleep(400)
       const r = mockLearn(++runs, recordings[0], finished)
-      if (!r.ok) return { ok: false as const, message: r.message, state: learnState(learned) }
-      learned = [...learned, r.pair]
-      return { ok: true as const, video: learnedVideo(r.pair), state: learnState(learned) }
+      if (!r.ok) return { ok: false as const, message: r.message, state: learnState(mine()) }
+      learned = [...learned, { ...r.pair, brand: owner }]
+      return { ok: true as const, video: learnedVideo(r.pair), state: learnState(mine()) }
     },
-    learnState: async () => learnState(learned),
-    learnEvaluate: async () => {
+    learnState: async (forBrand) => learnState(learnedFor(forBrand)),
+    learnEvaluate: async (forBrand) => {
       await sleep(500)
-      return learnState(learned)
+      return learnState(learnedFor(forBrand))
     },
-    learnForget: async (id) => {
+    learnForget: async (id, forBrand) => {
       learned = learned.filter((p) => p.id !== id)
-      return learnState(learned)
+      return learnState(learnedFor(forBrand))
     },
     onLearnProgress: (cb) => {
       learnListeners.add(cb)

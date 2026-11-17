@@ -2,11 +2,16 @@ import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import { basename, join } from 'path'
 import {
+  BACKDROP_LEVEL,
+  BACKDROP_SIGMA,
+  backdropSize,
   cameraClock,
   cameraPlan,
   changesColour,
   chaptersMetadata,
+  cutawayFit,
   maxZoom,
+  pictureFit,
   cutawayAt,
   cutawayClock,
   cutawaySteps,
@@ -116,6 +121,8 @@ export interface Segment {
     camera?: SegmentCamera
     /** A conversion that goes first on the cutaway's picture: HDR to ordinary video. */
     convert?: string | null
+    /** Shown whole, on a blurred copy of itself or between black bars (edit/fill). Absent: cropped to fill. */
+    fill?: 'blur' | 'black'
   } | null
   /**
    * Sound read apart from the picture: another recording of the same take, or
@@ -169,6 +176,12 @@ export interface Segment {
    * picture clock (edit/reframe). Absent: the middle.
    */
   framing?: FrameKey[]
+  /**
+   * The speaker's picture shown whole in the frame, on a blurred copy of
+   * itself or between black bars, when its shape is far from the frame's
+   * (edit/fill). Absent: cropped to fill it.
+   */
+  fill?: 'blur' | 'black'
 }
 
 /**
@@ -444,13 +457,16 @@ export function segmentsFor(
  * The segments a cut plays, its other cameras included: a beat shown through
  * another camera reads that camera's file (edit/angle-view), and one with a
  * camera beside it or in a box over it carries that camera as an inset.
+ * Given the frame, a picture of another shape is marked to be shown whole
+ * (edit/fill), from the recordings' shapes and the cutaways' in `sizes`.
  */
 export function cameraSegments(
   cut: Cut,
   resolved: Resolved,
   sources: RenderSource[],
   sizes: Map<string, { width: number; height: number }> = new Map(),
-  zscale = true
+  zscale = true,
+  frame: { width: number; height: number } | null = null
 ): Segment[] {
   const seen = viewThroughAngles(cut, resolved, sources)
   const segments = segmentsFor(cut, seen.resolved, seen.sources, sizes, zscale)
@@ -463,8 +479,16 @@ export function cameraSegments(
     }
     // Following the speaker, or framed by hand (edit/reframe).
     const beat = beats.get(p.beat)
-    const framing = beat ? pieceFraming(cut, beat.treatment, p, bySource.get(p.source)?.subject) : null
+    const source = bySource.get(p.source)
+    const framing = beat ? pieceFraming(cut, beat.treatment, p, source?.subject) : null
     if (framing) segments[i].framing = framing
+    if (frame && beat) {
+      const fit = pictureFit(cut, beat, source && pictured(source) ? source : null, frame)
+      if (fit !== 'cover' && !segments[i].noPicture) segments[i].fill = fit
+      const b = segments[i].broll
+      const cutaway = b ? cutawayFit(cut, beat, sizes.get(b.path) ?? null, frame) : 'cover'
+      if (b && cutaway !== 'cover') b.fill = cutaway
+    }
   })
   return segments
 }
@@ -562,11 +586,52 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     return next++
   }
 
-  /** Scale to cover w x h, crop the overflow, then apply the look. */
-  const look = (w: number, h: number, t: Treatment | null, zoom: boolean, framing?: FrameKey[]): string => {
+  /**
+   * A picture whole in a w x h box (edit/fill): scaled to fit it, between
+   * black bars, or over a blurred, darker copy of itself. The copy is cut from
+   * the same frames by split, so it opens no input of its own; it is cropped
+   * to cover the box at a small size, blurred and darkened there, and scaled
+   * back up, as the preview draws it. It stays YUV, every plane at full size
+   * while it is small, and is darkened toward video black (16, 128, 128),
+   * which is the picture's red, green and blue each times BACKDROP_LEVEL
+   * whatever matrix it was made with; a trip through RGB would need that
+   * matrix, and an HDR clip converted to BT.709 came back the wrong colour.
+   * The picture sits on even pixels, so its colour stays on the chroma grid.
+   * `name` keeps the labels apart.
+   */
+  const whole = (w: number, h: number, fit: 'blur' | 'black', name: string): string => {
+    const fitted = `scale=${w}:${h}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1`
+    if (fit === 'black') return `${fitted},pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`
+    const small = backdropSize({ width: w, height: h })
+    const k = BACKDROP_LEVEL.toFixed(3)
+    return [
+      `split=2[${name}w][${name}c]`,
+      `[${name}c]scale=${small.width}:${small.height}:force_original_aspect_ratio=increase:flags=area,` +
+        `crop=${small.width}:${small.height},setsar=1,format=yuv444p,gblur=sigma=${BACKDROP_SIGMA}:steps=2,` +
+        `lutyuv=y=16+(val-16)*${k}:u=128+(val-128)*${k}:v=128+(val-128)*${k},` +
+        `scale=${w}:${h}:flags=bilinear,format=yuv420p,setsar=1[${name}g]`,
+      `[${name}w]${fitted},format=yuv420p[${name}p]`,
+      `[${name}g][${name}p]overlay=x='trunc((W-w)/4)*2':y='trunc((H-h)/4)*2',setsar=1`
+    ].join(';')
+  }
+
+  /**
+   * Scale to cover w x h, crop the overflow, then apply the look; or, with a
+   * fill, show the picture whole and fill the rest of the box (`whole`).
+   */
+  const look = (
+    w: number,
+    h: number,
+    t: Treatment | null,
+    zoom: boolean,
+    framing?: FrameKey[],
+    fill?: { fit: 'blur' | 'black'; name: string }
+  ): string => {
     // Cropped to the frame's shape: in the middle, or where the speaker is.
     const crop = framing?.length ? `crop=${w}:${h}:x='${framingX(framing, w)}':y=(ih-${h})/2` : `crop=${w}:${h}`
-    let f = `fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,${crop},setsar=1`
+    let f = fill
+      ? `fps=${fps},${whole(w, h, fill.fit, fill.name)}`
+      : `fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,${crop},setsar=1`
     const z = t?.zoom ?? 1
     // A punch-in rarely crops to exactly the frame's shape (1080/1.12 is 964.3), so
     // scaling it back up stretches the pixels a hair; square them again, or the
@@ -772,8 +837,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       )
       chains.push(`[${v}g][${v}i]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,${frames}[${v}]`)
     } else if (s.broll) {
-      // The cutaway fills the frame; the speaker's input is only heard.
-      chains.push(`${cutaway()}${moveOver(s.broll.camera, W, H)}${look(W, H, t, false)},format=yuv420p,${frames}[${v}]`)
+      // The cutaway fills the frame, or shows whole in it; the speaker's input is only heard.
+      const fill = s.broll.fill ? { fit: s.broll.fill, name: `${v}fb` } : undefined
+      chains.push(
+        `${cutaway()}${moveOver(s.broll.camera, W, H)}${look(W, H, t, false, undefined, fill)},format=yuv420p,${frames}[${v}]`
+      )
     } else if (s.inset) {
       // Another camera of the same moment, read as the picture is: held with
       // a freeze, through the same speed.
@@ -797,7 +865,10 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         chains.push(`[${v}m][${v}p]overlay=x=${box.x}:y=${box.y},format=yuv420p,${frames}[${v}]`)
       }
     } else {
-      chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim)},format=yuv420p,${frames}[${v}]`)
+      const fill = s.fill ? { fit: s.fill, name: `${v}fs` } : undefined
+      chains.push(
+        `${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim, fill)},format=yuv420p,${frames}[${v}]`
+      )
     }
 
     // Every segment's audio is exactly as long as its piece: through its
@@ -968,8 +1039,9 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       if (!file) continue
       inputs.push('-stream_loop', '-1', '-i', file)
       const k = next++
-      chains.push(`[${k}:v]${i === 0 ? `scale=${W}:${H}:flags=bicubic,` : ''}format=rgba[film${i}]`)
-      chains.push(`[${vOut}][film${i}]overlay=0:0:shortest=1[vfilm${i}]`)
+      // Laid on in YUV with its alpha, the soft glow scaled up the cheap way: a quarter of the time RGBA took.
+      chains.push(`[${k}:v]${i === 0 ? `scale=${W}:${H}:flags=fast_bilinear,` : ''}format=yuva420p[film${i}]`)
+      chains.push(`[${vOut}][film${i}]overlay=0:0:shortest=1:format=yuv420[vfilm${i}]`)
       vOut = `vfilm${i}`
     }
   }
@@ -1440,7 +1512,7 @@ export async function renderCut(
     })
   )
   const zscale = await hasZscale(opts.ffmpeg)
-  const segments = cameraSegments(cut, resolved, sources, sizes, zscale)
+  const segments = cameraSegments(cut, resolved, sources, sizes, zscale, { width, height })
   const colorOf = new Map<string, Source['color']>(sources.map((s) => [s.path, s.color]))
   // A lavalier on one input of the camera is heard in both ears.
   const heard = (s: Segment): string | null => s.audio?.path ?? (s.hasAudio ? s.path : null)

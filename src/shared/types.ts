@@ -110,6 +110,13 @@ export interface Settings {
    */
   claudeSeesFrames?: boolean
   /**
+   * Whether Claude writes each export's three titles, the description's
+   * opening and its tags from the words. On unless turned off; nothing is
+   * sent without an Anthropic key either way, and without Claude they are
+   * made on this computer (main/upload-kit).
+   */
+  claudeWritesUpload?: boolean
+  /**
    * Videos made from nothing (main/make): go ahead without asking when one
    * costs less than this many dollars. Absent or null is off, the default:
    * every made video is quoted and waits for the person to confirm.
@@ -313,6 +320,12 @@ export interface Project extends ProjectSummary {
   chat?: ChatMessage[]
   /** Clips /clipping cut from long recordings, each its own edit (shared/clipping). Absent before clipping existed. */
   clipping?: ClipSet | null
+  /**
+   * The brand chosen for this chat, by id (shared/brands), for while it has
+   * no edit and for clips; an edit names its own on each version. Absent,
+   * the default brand, as chats were before there could be more than one.
+   */
+  brand?: string | null
 }
 
 /** A button under a reply. The kinds are the renderer's to define. */

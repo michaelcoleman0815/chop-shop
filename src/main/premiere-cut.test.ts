@@ -15,7 +15,7 @@ import {
   type Op,
   type Source
 } from '../shared/edit'
-import { renderCut, segmentsFor } from './cut-render'
+import { cameraSegments, renderCut, segmentsFor } from './cut-render'
 import { PLANNER_SYSTEM } from './planner-prompt'
 import { buildPremiereXml, captionsSrt, planPremiere, writePremiere, type PremiereMedia } from './premiere-cut'
 import { ffmpegRun, findFfmpeg, gradientWindow, makeClip, makeGradientStill, onsets } from './test-media'
@@ -252,7 +252,9 @@ const EDIT: Op[] = [
   { op: 'treat', beats: ['b3'], set: { frame: 'broll', broll: { path: 'still', inSec: 0, muted: true } } },
   { op: 'jcut', beats: ['b4'], sec: 0.3 },
   { op: 'speed', beats: ['b5'], speed: 2 },
-  { op: 'treat', beats: ['b6'], set: { zoom: 1.2 } }
+  { op: 'treat', beats: ['b6'], set: { zoom: 1.2 } },
+  // The wide still is shown whole in the tall frame between black bars, which Premiere shows exactly (edit/fill).
+  { op: 'fill', mode: 'black' }
 ]
 
 describe('a Premiere project from an edit, read back', () => {
@@ -334,6 +336,34 @@ describe('a Premiere project from an edit, read back', () => {
     expect(Math.abs(v2[0].scale - (1920 / 1080) * 100)).toBeLessThan(0.01)
     const b3 = resolved.beats.find((b) => b.id === 'b3')!
     expect(Math.abs(v2[0].start - b3.outStart)).toBeLessThan(1 / 30)
+  })
+
+  it('fits a picture the export shows whole, and marks the blurred fill, which stays in Cutalong', () => {
+    // As the export plans it: the frame and the still's shape known, the edit asking for what a new one does, which shows a still whole.
+    const blurred: typeof cut = { ...cut, fill: 'auto' }
+    const segments = cameraSegments(blurred, resolved, sources, new Map([[still, { width: 1920, height: 1080 }]]), true, {
+      width: 1080,
+      height: 1920
+    })
+    expect(segments.find((s) => s.broll)?.broll?.fill).toBe('blur')
+    const p = planPremiere({
+      name: 'Plan v2',
+      cut: blurred,
+      resolved,
+      segments,
+      shapes: new Map(doc.sources.map((s) => [s.path, s])),
+      width: 1080,
+      height: 1920,
+      fps: 30,
+      media,
+      sfxFiles: new Map(),
+      graphics: []
+    })
+    expect(Math.abs((p.cutaways[0].scale ?? 100) - (1080 / 1920) * 100)).toBeLessThan(0.01)
+    expect(p.markers.map((m) => m.name)).toContain('Blurred fill')
+    expect(p.leftOut).toContain('the blurred fill on 1 beat')
+    // The talking recordings are wide in a tall frame: still cropped to fill it, as reframing is.
+    expect(Math.abs((p.picture[0].scale ?? 100) - (1920 / 360) * 100)).toBeLessThan(0.01)
   })
 
   it('marks what stays in Cutalong where it happens, and says so', () => {

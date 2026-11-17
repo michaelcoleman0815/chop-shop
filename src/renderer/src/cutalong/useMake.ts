@@ -37,6 +37,8 @@ export interface MakeDeps {
   during: <T>(work: () => Promise<T>) => Promise<T>
   /** The B-roll finder (useCutalong), for a shot swapped for real footage. */
   findBroll: (query: string, beat?: string) => Promise<void>
+  /** The chat's brand, by id: its voice writes the script. */
+  brand: () => string
 }
 
 export interface Makes {
@@ -220,7 +222,7 @@ export function useMake(deps: MakeDeps): Makes {
       const off = api.onCutProgress((p) => patch(msg, { progress: p }))
       let r: Awaited<ReturnType<typeof api.makeStart>>
       try {
-        r = await during(() => api.makeStart({ text, recording }))
+        r = await during(() => api.makeStart({ text, recording, brand: live.current.brand() }))
       } catch (err) {
         r = { ok: false, message: errorText(err) }
       } finally {
@@ -355,7 +357,8 @@ export function useMake(deps: MakeDeps): Makes {
         const r = await api.makeChange({
           doc: docRef.current,
           text: 'use my own recording',
-          recording: audio[0].path
+          recording: audio[0].path,
+          brand: live.current.brand()
         })
         if (!r.ok || !r.change)
           patch(msg, {
@@ -418,7 +421,7 @@ export function useMake(deps: MakeDeps): Makes {
       const { docRef, push } = live.current
       const d = docRef.current
       if (!d?.make || !text.trim()) return false
-      const r = await api.makeChange({ doc: d, text, onScreen })
+      const r = await api.makeChange({ doc: d, text, onScreen, brand: live.current.brand() })
       if (!r.ok) {
         push({ role: 'assistant', text: r.message, error: true })
         return true

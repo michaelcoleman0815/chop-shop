@@ -101,6 +101,19 @@ describe('/all', () => {
     expect(kinds(finishOps(doc, 'tech', MUSIC).ops)).not.toContain('chapters')
   })
 
+  it('leaves out what the brand never uses, and says which in one list', () => {
+    const plan = finishOps(talk(), 'tech', MUSIC, ['music', 'transition:whip', 'sfx'])
+    expect(kinds(plan.ops)).toEqual(['voice', 'look', 'chapters'])
+    expect(plan.left).toEqual(['music', 'transition:whip'])
+    expect(plan.notes).toEqual([])
+    // Ruling out whooshes alone keeps the whips and leaves their sound off.
+    const quiet = finishOps(talk(), 'tech', MUSIC, ['sfx:whoosh'])
+    expect(kinds(quiet.ops)).toEqual(['voice', 'look', 'music', 'transition', 'chapters'])
+    expect(quiet.left).toEqual(['sfx:whoosh'])
+    // A kind of transition this video does not use is not mentioned.
+    expect(finishOps(talk(), 'tech', MUSIC, ['transition:zoom']).left).toEqual([])
+  })
+
   it('finishes a video of an unknown kind as a talking head', () => {
     const plan = finishOps(talk(), 'not-a-kind', MUSIC)
     const cut = currentCut(apply(talk(), plan.ops))

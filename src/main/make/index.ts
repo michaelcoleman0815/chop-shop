@@ -8,13 +8,20 @@ import { FFMPEG_PATH, probe } from '../ffmpeg'
 import { analyzeTrack, findTracks } from '../music'
 import { FONTS_DIR, VOICES_DIR } from '../resources'
 import { getSettings } from '../store'
-import { readBrand } from '../brand-store'
+import { readBrand, readBrandById } from '../brand-store'
 import { makeServices } from '../providers'
 import { EditDocSchema, type EditDoc } from '../../shared/edit/schema'
 import { DEFAULT_MUSIC, type Music } from '../../shared/edit/audio'
 import { readAsk } from '../../shared/make/brief'
 import { quoteReply, type Availability } from '../../shared/make/quote'
-import { BriefSchema, MadeShotSchema, SheetSchema, BibleSchema, VoiceChoiceSchema, type Brief } from '../../shared/make/schema'
+import {
+  BriefSchema,
+  MadeShotSchema,
+  SheetSchema,
+  BibleSchema,
+  VoiceChoiceSchema,
+  type Brief
+} from '../../shared/make/schema'
 import { defaultVoice } from '../../shared/make/voices'
 import type { Transcript } from '../../shared/types'
 import { parseWith, type ParseCall } from './claude'
@@ -46,7 +53,11 @@ export interface MakeIpcDeps {
   send: Send
   mediaUrlFor: (path: string) => string
   /** A recording's words, heard on this Mac, never by another service (cutalong.ts transcriptFor). */
-  transcribe: (path: string, durationSec: number, progress: (stage: string, percent: number) => void) => Promise<Transcript>
+  transcribe: (
+    path: string,
+    durationSec: number,
+    progress: (stage: string, percent: number) => void
+  ) => Promise<Transcript>
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
@@ -129,7 +140,17 @@ const DraftSchema = z.object({
           path: z.string().min(1),
           durationSec: z.number().min(0),
           sourceId: z.string().min(1),
-          words: z.array(z.object({ id: z.string(), source: z.string(), text: z.string(), startSec: z.number(), endSec: z.number() }).passthrough()),
+          words: z.array(
+            z
+              .object({
+                id: z.string(),
+                source: z.string(),
+                text: z.string(),
+                startSec: z.number(),
+                endSec: z.number()
+              })
+              .passthrough()
+          ),
           voice: VoiceChoiceSchema,
           timing: z.enum(['voice', 'whisper'])
         })
@@ -164,9 +185,10 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     return { ...open, claude: t.parse() !== null, localVoice }
   }
 
-  const draftDeps = async (): Promise<DraftDeps> => {
+  /** What a draft is written and quoted with: Claude, what is open, the chat's brand (by id) and Settings. */
+  const draftDeps = async (brandId?: string | null): Promise<DraftDeps> => {
     const parse = t.parse()
-    const brand = await readBrand()
+    const brand = brandId ? await readBrandById(brandId) : await readBrand()
     const s = getSettings()
     return {
       parse: parse ?? (async () => Promise.reject(new Error('There is no Anthropic key in Settings.'))),
@@ -190,7 +212,8 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   > => {
     const d = await draftDeps()
     const fresh: Draft = { ...draft, quote: quoteDraft(draft, d) }
-    if (fresh.quote.missing.length) return { ok: false, message: fresh.quote.missing.join(' '), draft: fresh, reply: quoteOf(fresh) }
+    if (fresh.quote.missing.length)
+      return { ok: false, message: fresh.quote.missing.join(' '), draft: fresh, reply: quoteOf(fresh) }
     if (fresh.quote.total > confirmed + 0.005)
       return {
         ok: false,
@@ -201,7 +224,8 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     if (running) return { ok: false, message: 'A video is being made already. Wait for it, or stop it first.' }
     const controller = new AbortController()
     running = controller
-    const progress = (stage: string, percent: number | null): void => deps.send(sender, 'cut:progress', { stage, percent })
+    const progress = (stage: string, percent: number | null): void =>
+      deps.send(sender, 'cut:progress', { stage, percent })
     const docId = draft.into?.docId ?? draft.id
     const parse = t.parse()
     if (!parse) return { ok: false, message: 'There is no Anthropic key in Settings.' }
@@ -227,24 +251,45 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
         signal: controller.signal
       })
       progress('Ready', 100)
-      return { ok: true, doc: made.doc, mediaUrl: deps.mediaUrlFor(made.doc.sources[0].path), reply: made.reply, spent: made.spent, into: draft.into ?? null }
+      return {
+        ok: true,
+        doc: made.doc,
+        mediaUrl: deps.mediaUrlFor(made.doc.sources[0].path),
+        reply: made.reply,
+        spent: made.spent,
+        into: draft.into ?? null
+      }
     } catch (err) {
       progress('Failed', 0)
-      return { ok: false, message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err) }
+      return {
+        ok: false,
+        message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err)
+      }
     } finally {
       running = null
     }
   }
 
   // A prompt read and quoted; with "Go ahead without asking" on and the video under it, made straight away.
-  ipcMain.handle('make:start', async (e, req: { text: string; recording?: string | null }) => {
+  ipcMain.handle('make:start', async (e, req: { text: string; recording?: string | null; brand?: string | null }) => {
     try {
-      const brand = await readBrand()
+      const brand = req.brand ? await readBrandById(req.brand) : await readBrand()
       const brief = readAsk(String(req.text ?? ''), { niche: brand.niche ?? null, recording: req.recording ?? null })
-      if (!brief) return { ok: false as const, message: 'Tell me what the video is about, like “make a 2 minute documentary about the 1950s oil boom”.' }
-      const d = await draftDeps()
-      if (!d.can.claude) return { ok: false as const, message: 'Add your Anthropic key in Settings, and I’ll write it and plan its shots.' }
-      deps.send(e.sender, 'cut:progress', { stage: brief.from === 'topic' ? 'Writing the script' : 'Reading the script', percent: null })
+      if (!brief)
+        return {
+          ok: false as const,
+          message: 'Tell me what the video is about, like “make a 2 minute documentary about the 1950s oil boom”.'
+        }
+      const d = await draftDeps(req.brand)
+      if (!d.can.claude)
+        return {
+          ok: false as const,
+          message: 'Add your Anthropic key in Settings, and I’ll write it and plan its shots.'
+        }
+      deps.send(e.sender, 'cut:progress', {
+        stage: brief.from === 'topic' ? 'Writing the script' : 'Reading the script',
+        percent: null
+      })
       const drafted = await draftFor(brief, randomUUID(), d)
       if (!drafted.ok) return { ok: false as const, message: drafted.message }
       const draft = drafted.draft
@@ -261,7 +306,8 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   // The quote confirmed: made, if the price is still what was confirmed.
   ipcMain.handle('make:go', async (e, req: { draft: unknown; confirmed: number }) => {
     const parsed = DraftSchema.safeParse(req.draft)
-    if (!parsed.success) return { ok: false as const, message: 'That quote could not be read. Ask again and I’ll quote it fresh.' }
+    if (!parsed.success)
+      return { ok: false as const, message: 'That quote could not be read. Ask again and I’ll quote it fresh.' }
     return go(e.sender, parsed.data as Draft, Number(req.confirmed) || 0)
   })
 
@@ -274,7 +320,11 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
     const r = revise(draft, String(req.text ?? ''), d)
     if (!r) return { ok: true as const, draft: null }
     // A new length or format for a written script means a new script, and a new quote.
-    if (draft.brief.from === 'topic' && !draft.into && (r.draft.brief.seconds !== draft.brief.seconds || r.draft.brief.format !== draft.brief.format)) {
+    if (
+      draft.brief.from === 'topic' &&
+      !draft.into &&
+      (r.draft.brief.seconds !== draft.brief.seconds || r.draft.brief.format !== draft.brief.format)
+    ) {
       const again = await draftFor(r.draft.brief, draft.id, d)
       if (!again.ok) return { ok: false as const, message: again.message }
       return { ok: true as const, draft: again.draft, reply: quoteOf(again.draft), changed: r.changed }
@@ -293,31 +343,51 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
   })
 
   // An ask of a made video: what changing it costs, before anything is made.
-  ipcMain.handle('make:change', async (e, req: { doc: unknown; text: string; onScreen?: string | null; recording?: string | null }) => {
-    const parsed = EditDocSchema.safeParse(req.doc)
-    if (!parsed.success || !parsed.data.make) return { ok: true as const, change: null }
-    try {
-      const d = await draftDeps()
-      if (/\b(?:longer|shorter|minutes?|seconds?)\b/i.test(req.text))
-        deps.send(e.sender, 'cut:progress', { stage: 'Writing the script again', percent: null })
-      return { ok: true as const, change: await changeFor(parsed.data, String(req.text ?? ''), req.onScreen ?? null, d, req.recording ?? null) }
-    } catch (err) {
-      return { ok: false as const, message: message(err) }
+  ipcMain.handle(
+    'make:change',
+    async (
+      e,
+      req: { doc: unknown; text: string; onScreen?: string | null; recording?: string | null; brand?: string | null }
+    ) => {
+      const parsed = EditDocSchema.safeParse(req.doc)
+      if (!parsed.success || !parsed.data.make) return { ok: true as const, change: null }
+      try {
+        const d = await draftDeps(req.brand)
+        if (/\b(?:longer|shorter|minutes?|seconds?)\b/i.test(req.text))
+          deps.send(e.sender, 'cut:progress', { stage: 'Writing the script again', percent: null })
+        return {
+          ok: true as const,
+          change: await changeFor(parsed.data, String(req.text ?? ''), req.onScreen ?? null, d, req.recording ?? null)
+        }
+      } catch (err) {
+        return { ok: false as const, message: message(err) }
+      }
     }
-  })
+  )
 
   // One shot made again for its confirmed quote.
   ipcMain.handle('make:shot', async (e, req: { doc: unknown; change: ShotChange; confirmed: number }) => {
     const parsed = EditDocSchema.safeParse(req.doc)
-    if (!parsed.success || !parsed.data.make) return { ok: false as const, message: 'This edit was not made from nothing.' }
+    if (!parsed.success || !parsed.data.make)
+      return { ok: false as const, message: 'This edit was not made from nothing.' }
     const d = await draftDeps()
     // Quoted again with what is open now: a price above the one confirmed is never spent.
-    const fresh = quoteShot(parsed.data.make, { kind: 'reshoot', phrase: req.change.phrase, want: req.change.want }, d.can, d.settings)
-    if (fresh.kind !== 'shot' || fresh.missing.length) return { ok: false as const, message: fresh.kind === 'shot' ? fresh.missing.join(' ') : fresh.reply.text }
+    const fresh = quoteShot(
+      parsed.data.make,
+      { kind: 'reshoot', phrase: req.change.phrase, want: req.change.want },
+      d.can,
+      d.settings
+    )
+    if (fresh.kind !== 'shot' || fresh.missing.length)
+      return { ok: false as const, message: fresh.kind === 'shot' ? fresh.missing.join(' ') : fresh.reply.text }
     const total = fresh.total
     if (total > (Number(req.confirmed) || 0) + 0.005)
-      return { ok: false as const, message: `The price has changed since the quote: it is $${total.toFixed(2)} now. Ask again and I'll quote it fresh.` }
-    if (running) return { ok: false as const, message: 'Something is being made already. Wait for it, or stop it first.' }
+      return {
+        ok: false as const,
+        message: `The price has changed since the quote: it is $${total.toFixed(2)} now. Ask again and I'll quote it fresh.`
+      }
+    if (running)
+      return { ok: false as const, message: 'Something is being made already. Wait for it, or stop it first.' }
     const parse = t.parse()
     if (!parse) return { ok: false as const, message: 'There is no Anthropic key in Settings.' }
     const controller = new AbortController()
@@ -336,7 +406,10 @@ export function registerMakeIpc(deps: MakeIpcDeps): void {
       })
       return { ok: true as const, ...r }
     } catch (err) {
-      return { ok: false as const, message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err) }
+      return {
+        ok: false as const,
+        message: controller.signal.aborted ? 'Stopped. Nothing more is made or spent.' : message(err)
+      }
     } finally {
       running = null
     }
