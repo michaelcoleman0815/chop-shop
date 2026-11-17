@@ -21,11 +21,17 @@ import { SFX_INFO, type SfxKind } from '../shared/edit'
 /**
  * Bumped whenever a recipe changes, so files made from an older one are made
  * again. 2: the whoosh's noise has a fixed seed, so it is the same sound on
- * every computer, and in the preview and the export.
+ * every computer, and in the preview and the export. 3: the whoosh's sweep
+ * reaches its filters on ffmpeg 6.0 as well (see sweep).
  */
-const RECIPE_VERSION = 2
+const RECIPE_VERSION = 3
 
-/** The whoosh's filter sweep: up to its middle and back, as commands to a lowpass and a highpass. */
+/**
+ * The whoosh's filter sweep: up to its middle and back, as commands to a
+ * lowpass and a highpass. They are sent to each filter's kind, the one of
+ * each in the graph: ffmpeg 6.0 names `lowpass@lp` "lp" and 6.1 and later
+ * "lowpass@lp", so a command to either name misses on one of them.
+ */
 function sweep(sec: number): string {
   const steps = 28
   const at: string[] = []
@@ -34,7 +40,7 @@ function sweep(sec: number): string {
     const x = Math.sin((Math.PI * t) / sec)
     const lp = Math.round(500 + 6500 * x * x)
     const hp = Math.round(150 + 1100 * x * x)
-    at.push(`${t.toFixed(3)} lowpass@lp f ${lp}, highpass@hp f ${hp}`)
+    at.push(`${t.toFixed(3)} lowpass f ${lp}, highpass f ${hp}`)
   }
   return `asendcmd=c='${at.join(';')}'`
 }

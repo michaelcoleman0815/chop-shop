@@ -17,7 +17,7 @@ import {
 } from '../shared/edit'
 import { BUILT_IN_PRESETS, planStyle } from '../shared/presets'
 import type { MouthResult } from '../shared/vision/analyse'
-import type { FaceSample } from '../shared/vision/faces'
+import { windowAt, type CropPlan, type FaceBox, type FaceSample } from '../shared/vision/faces'
 import { heardFrom } from '../shared/vision/offset'
 import {
   detections,
@@ -33,6 +33,7 @@ import {
 import { loudnessEnvelope } from './audio-envelope'
 import { renderCut } from './cut-render'
 import { displaySize, measureMouth, watchClip, watchMouth, type FaceDetector } from './mouth'
+import { makeClip } from './test-media'
 
 function findFfmpeg(): string | null {
   const candidates = [process.env.FFMPEG_PATH, 'ffmpeg']
@@ -448,6 +449,91 @@ describe.skipIf(!FFMPEG)('watching the mouth in real footage', () => {
     await expect(
       measureMouth(stuck, join(dir, 'offset-0.12.mp4'), plan, { fps: 30, durationSec: 2, stallSec: 0.3 })
     ).rejects.toThrow('The picture stopped coming after 0 frames.')
+  })
+
+  it('moves every crop to each of its windows, whatever this ffmpeg calls the crops', async () => {
+    // Four flat greys, one to each quarter of the picture, so the grey a crop
+    // sees says which quarter it is looking at.
+    const W = 320
+    const H = 180
+    const quarters = 'if(lt(Y,H/2),if(lt(X,W/2),40,100),if(lt(X,W/2),160,220))'
+    const src = makeClip(
+      ffmpeg,
+      join(dir, 'quarters.mp4'),
+      `color=c=black:s=${W}x${H}:r=${FPS}:d=4,format=gray,geq=lum='${quarters}'`,
+      null
+    )
+    const centre = {
+      TL: [W / 4, H / 4],
+      TR: [(3 * W) / 4, H / 4],
+      BL: [W / 4, (3 * H) / 4],
+      BR: [(3 * W) / 4, (3 * H) / 4]
+    }
+    type Quarter = keyof typeof centre
+    const names = Object.keys(centre) as Quarter[]
+    // Each quarter's grey once decoded and turned grey, as the pass does it.
+    const still = spawnSync(
+      ffmpeg,
+      ['-hide_banner', '-loglevel', 'error', '-i', src, '-frames:v', '1', '-vf', 'format=gray', '-f', 'rawvideo', '-'],
+      { maxBuffer: 1 << 20 }
+    ).stdout
+    const grey = (q: Quarter): number => still[centre[q][1] * W + centre[q][0]]
+    const levels = names.map(grey).sort((a, b) => a - b)
+    expect(Math.min(...levels.slice(1).map((v, i) => v - levels[i]))).toBeGreaterThan(30)
+    const nearest = (lum: number): Quarter | '?' =>
+      Number.isFinite(lum)
+        ? names.reduce((a, b) => (Math.abs(grey(a) - lum) <= Math.abs(grey(b) - lum) ? a : b))
+        : '?'
+
+    // Two crops, each moved three times, across and up or down, on frames of
+    // its own, so a move that reached the wrong crop, or no crop, shows.
+    const moves: { path: Quarter[]; onFrames: number[] }[] = [
+      { path: ['TL', 'TR', 'BR', 'BL'], onFrames: [20, 50, 80] },
+      { path: ['BR', 'BL', 'TL', 'TR'], onFrames: [35, 65, 95] }
+    ]
+    const SW = 60
+    const SH = 70
+    const corner = (q: Quarter): { x: number; y: number } => ({ x: centre[q][0] - SW / 2, y: centre[q][1] - SH / 2 })
+    // The face, inside the window; it holds still in each quarter and jumps with the window.
+    const face = (q: Quarter): FaceBox => {
+      const { x, y } = corner(q)
+      return { x: (x + 10) / W, y: (y + 10) / H, w: 40 / W, h: 50 / H }
+    }
+    // Window changes land between frames, as planCrops puts them.
+    const between = (frame: number): number => (frame + 0.5) / FPS
+    const plan: CropPlan = {
+      width: W,
+      height: H,
+      tileW: 64,
+      tileH: 72,
+      slots: moves.map(({ path, onFrames }, k) => ({
+        w: SW,
+        h: SH,
+        windows: path.map((q, i) => ({ fromSec: i === 0 ? 0 : between(onFrames[i - 1]), ...corner(q), track: k }))
+      })),
+      tracks: moves.map(({ path, onFrames }, k) => ({
+        id: k,
+        points: path.flatMap((q, i) => [
+          { t: i === 0 ? 0 : between(onFrames[i - 1]), box: face(q) },
+          { t: i === path.length - 1 ? 4 : between(onFrames[i]) - 0.001, box: face(q) }
+        ])
+      }))
+    }
+
+    // Where a crop looked, as runs: "TL from 0.00 s, TR from 0.70 s, ...".
+    const runs = (seen: string[], times: Float64Array): string =>
+      seen.flatMap((q, i) => (i === 0 || q !== seen[i - 1] ? [`${q} from ${times[i].toFixed(2)} s`] : [])).join(', ')
+    // From the start, and from partway in, as a pass over a stretch of a
+    // recording reads it: by 1 s, crop 0's first window has come and gone.
+    for (const startSec of [0, 1]) {
+      const raw = await measureMouth(ffmpeg, src, plan, { fps: FPS, startSec, durationSec: 4 - startSec })
+      expect(raw.times.length).toBeGreaterThanOrEqual((4 - startSec) * FPS - 1)
+      plan.slots.forEach((slot, k) => {
+        const planned = Array.from(raw.times, (t) => moves[k].path[windowAt(slot, t)?.index ?? -1] ?? '?')
+        const looked = Array.from(raw.slots[k].lum, nearest)
+        expect(runs(looked, raw.times), `crop ${k}, from ${startSec} s`).toBe(runs(planned, raw.times))
+      })
+    }
   })
 
   describe.skipIf(!ESPEAK)('with espeak-ng speech', () => {
