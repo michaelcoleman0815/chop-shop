@@ -1,11 +1,13 @@
+import { fxCommandEntries } from '../../../src/shared/fx'
 import { motionCommandEntries } from '../../../src/shared/motion'
 
 /**
  * What the phone does not do yet, each said in one plain sentence. They
- * need the Mac's yt-dlp, its face finder, a local model, or a canvas the
- * export draws motion graphics on. The app says so before anything starts
- * (useCutalong asks device.away), and the phone's API answers with the same
- * sentence if it is reached another way.
+ * need the Mac's yt-dlp, its face finder or Vision, a local model, or a
+ * canvas the export draws motion graphics, scene effects and a grid's ground
+ * on. The app says so before anything starts (useCutalong asks device.away),
+ * and the phone's API answers with the same sentence if it is reached another
+ * way.
  */
 export const ON_THE_MAC = {
   vlog: 'Vlogs are made on the Mac for now. Here I cut a recording, or a few clips of one talk, into an edit.',
@@ -14,6 +16,9 @@ export const ON_THE_MAC = {
   link: 'Videos and pictures from links are on the Mac for now. Add your own with +.',
   broll: 'Finding B-roll online is on the Mac for now. Add your own clips with +.',
   graphics: 'Motion graphics are on the Mac for now.',
+  effects: 'Scene effects are on the Mac for now.',
+  hype: 'The hype edit is on the Mac for now: its scans, speed lines and impacts are drawn there.',
+  grid: 'Grids of several videos are on the Mac for now. Here I cut one recording, or a few clips of one talk.',
   maps: 'Maps are on the Mac for now.',
   icon: 'Icons are on the Mac for now.',
   reframe: 'Following the speaker is on the Mac for now.',
@@ -37,8 +42,11 @@ export function commandsOnTheMac(): Record<string, string> {
     reframe: ON_THE_MAC.reframe,
     angle: ON_THE_MAC.angle,
     lut: ON_THE_MAC.lut,
-    map: ON_THE_MAC.maps
+    map: ON_THE_MAC.maps,
+    hype: ON_THE_MAC.hype,
+    grid: ON_THE_MAC.grid
   }
   for (const entry of motionCommandEntries()) away[entry.command] ??= ON_THE_MAC.graphics
+  for (const entry of fxCommandEntries()) away[entry.command] ??= ON_THE_MAC.effects
   return away
 }

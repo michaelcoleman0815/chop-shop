@@ -12,6 +12,23 @@ import type { Preset } from './preset'
  */
 export const SKILL_PRESETS: Preset[] = [
   {
+    command: 'hype',
+    title: 'Hype edit',
+    summary:
+      'Fast gaming and commentary cuts: punch-ins, big captions, a pixel scan to open, and speed lines into impacts on the big moments.',
+    builtIn: true,
+    style: {
+      tighten: { maxGapSec: 0.25, padSec: 0.04, fillers: true },
+      pad: { inSec: 0.04, outSec: 0.06 },
+      pace: { secondsPerShot: 1.8 },
+      punchIn: { scale: 1.15 },
+      captions: { on: true, wordsPerScreen: 2, position: 'chest', uppercase: true },
+      loudness: { lufs: -14 },
+      fx: { open: true, moments: 4 }
+    },
+    inspiration: null
+  },
+  {
     command: 'fade',
     title: 'Fade',
     summary: 'Fades in from black at the start and out to black at the end.',

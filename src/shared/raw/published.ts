@@ -176,6 +176,8 @@ export interface PlayedSpan {
   to: number
   /** Another stretch of the raw reads the same, and nothing could hear which was played. */
   ambiguous: boolean
+  /** When ambiguous: the other stretches that read the same, as raw word positions. */
+  twins?: { from: number; to: number }[]
 }
 
 export interface RecoveredEdit {
@@ -200,14 +202,29 @@ export interface RecoverOptions {
 
 const tokenOf = (text: string): string => (isMark(text) ? '' : normWord(text))
 
+/** Whether published words carry their times: auto-captions read as text do not (NaN). */
+export function timed(words: TimedText[]): boolean {
+  return words.length > 0 && words.every((w) => Number.isFinite(w.startSec) && Number.isFinite(w.endSec))
+}
+
+/** Published words from text alone, with no times: a caption track read as text. */
+export function untimedWords(text: string): TimedText[] {
+  return text
+    .replace(/\[[^\]]*\]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => /[\p{L}\p{N}]/u.test(t))
+    .map((t) => ({ text: t, startSec: Number.NaN, endSec: Number.NaN }))
+}
+
 /**
  * What the published edit plays, recovered from its words: the raw word each
  * published word was said as, the stretches played without a cut, and the
  * raw words inside them. A stretch ends where the raw skips ahead, goes back
- * or changes recording, or where the time between two words differs between
- * the two clocks (a pause cut out).
+ * or changes recording, or, when the published words are timed, where the
+ * time between two words differs between the two clocks (a pause cut out).
  */
 export function recoverEdit(published: TimedText[], raw: RawWord[], opts: RecoverOptions = {}): RecoveredEdit {
+  const clocked = timed(published)
   const pubAt = published.map((_, i) => i).filter((i) => tokenOf(published[i].text) !== '')
   const rawAt = raw.map((_, i) => i).filter((i) => tokenOf(raw[i].text) !== '')
   const rawTokens = rawAt.map((i) => tokenOf(raw[i].text))
@@ -235,7 +252,7 @@ export function recoverEdit(published: TimedText[], raw: RawWord[], opts: Recove
       w.source === open.source &&
       j > open.to &&
       j - open.to <= 4 &&
-      Math.abs(p.startSec - published[lastPub].startSec - (w.startSec - raw[open.to].startSec)) <= 0.35
+      (!clocked || Math.abs(p.startSec - published[lastPub].startSec - (w.startSec - raw[open.to].startSec)) <= 0.35)
     if (open && continues) {
       open.to = j
       open.endSec = w.endSec
@@ -275,8 +292,10 @@ export function recoverEdit(published: TimedText[], raw: RawWord[], opts: Recove
       if (same >= Math.ceil(len * 0.9)) others.push(k)
     }
     if (others.length === 0) continue
-    if (!opts.hear) {
+    // Hearing which take was played needs the published words' times.
+    if (!opts.hear || !clocked) {
       s.ambiguous = true
+      s.twins = others.map((k) => ({ from: rawAt[k], to: rawAt[k + len - 1] }))
       continue
     }
     const pub = { startSec: s.pubStartSec, endSec: s.pubEndSec }
@@ -286,6 +305,7 @@ export function recoverEdit(published: TimedText[], raw: RawWord[], opts: Recove
     // Too close to call by ear as well.
     if (scores.length > 1 && scores[0].v - scores[1].v < 0.02) {
       s.ambiguous = true
+      s.twins = others.map((k) => ({ from: rawAt[k], to: rawAt[k + len - 1] }))
       continue
     }
     const pick = scores[0].k
@@ -347,8 +367,11 @@ export interface CutScore {
   takesBoth: number
   takesSame: number
   runningSec: { raw: number; cut: number; published: number }
+  /** Words a minute as each plays: the pace, which untimed published words still give. */
+  wpm: { cut: number; published: number }
   opening: { same: boolean; published: string; cut: string }
-  pauses: { published: GapStats; cut: GapStats }
+  /** The published pauses need its words' times: null for words read as text. */
+  pauses: { published: GapStats | null; cut: GapStats }
   /** Share of the published words found in the raw. */
   found: number
 }
@@ -375,6 +398,11 @@ export function gapStats(words: TimedText[], durationSec: number): GapStats {
     p90Sec: round(quantile(sorted, 0.9)),
     pauseShare: durationSec > 0 ? round(long / durationSec) : 0
   }
+}
+
+/** Words said a minute over a running time, punctuation marks not counted. */
+export function wordsPerMinute(words: TimedText[], durationSec: number): number {
+  return durationSec > 0 ? round((words.filter((w) => tokenOf(w.text) !== '').length / durationSec) * 60) : 0
 }
 
 /** Which take a set of played raw words plays: the one with most of its words played, if at least half. */
@@ -432,28 +460,47 @@ export function scoreCut(input: ScoreInput): CutScore & { edit: RecoveredEdit } 
   const { raw, cut, published } = input
   const edit = recoverEdit(published.words, raw, input.recover)
   const played = new Set(cut.words.map((w) => w.id))
-  let both = 0
-  let bothSec = 0
+  // Where the words cannot say which of two same-worded takes was played, a
+  // word of either counts as the other: playing the twin is no miss.
+  const twinOf = new Map<string, string[]>()
+  for (const s of edit.spans) {
+    for (const t of s.twins ?? []) {
+      for (let k = 0; k <= s.to - s.from && t.from + k <= t.to; k++) {
+        const a = raw[s.from + k].id
+        const b = raw[t.from + k].id
+        twinOf.set(a, [...(twinOf.get(a) ?? []), b])
+        twinOf.set(b, [...(twinOf.get(b) ?? []), a])
+      }
+    }
+  }
+  const kept = (id: string): boolean => edit.kept.has(id) || (twinOf.get(id) ?? []).some((t) => edit.kept.has(t))
+  const plays = (id: string): boolean => played.has(id) || (twinOf.get(id) ?? []).some((t) => played.has(t))
+  let cutBoth = 0
+  let cutBothSec = 0
+  let pubBoth = 0
+  let pubBothSec = 0
   let cutN = 0
   let cutSec = 0
   let pubN = 0
   let pubSec = 0
   for (const w of raw) {
     if (tokenOf(w.text) === '') continue
-    const inCut = played.has(w.id)
-    const inPub = edit.kept.has(w.id)
     const sec = Math.max(0.01, w.endSec - w.startSec)
-    if (inCut) {
+    if (played.has(w.id)) {
       cutN++
       cutSec += sec
+      if (kept(w.id)) {
+        cutBoth++
+        cutBothSec += sec
+      }
     }
-    if (inPub) {
+    if (edit.kept.has(w.id)) {
       pubN++
       pubSec += sec
-    }
-    if (inCut && inPub) {
-      both++
-      bothSec += sec
+      if (plays(w.id)) {
+        pubBoth++
+        pubBothSec += sec
+      }
     }
   }
   const pos = new Map(raw.map((w, i) => [w.id, i]))
@@ -499,16 +546,20 @@ export function scoreCut(input: ScoreInput): CutScore & { edit: RecoveredEdit } 
           .map((w) => w.text)
           .join(' ')
   return {
-    precision: round(cutN ? both / cutN : 0),
-    recall: round(pubN ? both / pubN : 0),
-    precisionSec: round(cutSec ? bothSec / cutSec : 0),
-    recallSec: round(pubSec ? bothSec / pubSec : 0),
+    precision: round(cutN ? cutBoth / cutN : 0),
+    recall: round(pubN ? pubBoth / pubN : 0),
+    precisionSec: round(cutSec ? cutBothSec / cutSec : 0),
+    recallSec: round(pubSec ? pubBothSec / pubSec : 0),
     takes,
     takesBoth: both2.length,
     takesSame: both2.filter((t) => t.published === t.cut).length,
     runningSec: { raw: round(input.rawSec), cut: round(cut.durationSec), published: round(published.durationSec) },
+    wpm: { cut: wordsPerMinute(cut.words, cut.durationSec), published: wordsPerMinute(published.words, published.durationSec) },
     opening: { same, published: lineAt(firstPub), cut: lineAt(firstCut) },
-    pauses: { published: gapStats(published.words, published.durationSec), cut: gapStats(cut.words, cut.durationSec) },
+    pauses: {
+      published: timed(published.words) ? gapStats(published.words, published.durationSec) : null,
+      cut: gapStats(cut.words, cut.durationSec)
+    },
     found: round(edit.found),
     edit
   }

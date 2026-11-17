@@ -2,6 +2,7 @@ import {
   addSources,
   createDoc,
   currentCut,
+  gridDoc,
   nextSourceId,
   resolveCut,
   wordsFromTranscript,
@@ -67,6 +68,7 @@ import {
   type FoundClip
 } from '../../../shared/clipping'
 import type { CutalongApi } from './api'
+import { measureRun } from '../../../shared/channel-habits'
 
 /**
  * A stand-in for the main process, used only when the UI runs in a plain
@@ -990,6 +992,39 @@ export function createMockApi(): CutalongApi {
         }
       }
     },
+    // A video's card as if read from its link: a title, round numbers, and a thumbnail drawn here.
+    videoCard: async ({ url }) => {
+      await sleep(500)
+      const id = /(?:v=|youtu\.be\/)([\w-]+)/.exec(url)?.[1] ?? 'video'
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="1280" height="720" fill="#2b2d34"/><circle cx="640" cy="360" r="120" fill="#F5F5F3"/></svg>`
+      return {
+        ok: true as const,
+        card: {
+          url,
+          title: `How I edit a video in ten minutes (${id})`,
+          channel: '@yourchannel',
+          views: 492310,
+          uploaded: new Date(Date.now() - 40 * 86400 * 1000).toISOString()
+        },
+        asset: {
+          kind: 'image' as const,
+          path: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+          title: `How I edit a video in ten minutes (${id})`,
+          durationSec: null,
+          width: 1280,
+          height: 720,
+          origin: { type: 'link' as const, url, author: '@yourchannel', license: null, range: null }
+        }
+      }
+    },
+    // Several videos at once, made by the shared grid logic from files it pretends to have probed.
+    makeGrid: async ({ paths, labels, sound }) => {
+      await sleep(400)
+      const files = paths
+        .slice(0, 4)
+        .map((path, i) => ({ path, durationSec: 20 + i, width: 1920, height: 1080, fps: 30, still: false, sound: true }))
+      return { ok: true as const, doc: gridDoc({ id: `grid-${Date.now()}`, files, labels, sound }), mediaUrl: '/sample.mp4' }
+    },
     setVideoSignIn: async (browser) => {
       settings = { ...settings, videoSignIn: browser }
       return browser
@@ -1012,26 +1047,48 @@ export function createMockApi(): CutalongApi {
     learnBrand: async (paths) => {
       await progress(listeners.cut, ['Watching'])
       return {
-        learned: paths.map((path, i) => ({
-          path,
-          title: path
-            .split('/')
-            .pop()!
-            .replace(/\.[^.]+$/, ''),
-          facts: summarize(
-            {
-              durationSec: 48 + i * 6,
-              measuredSec: 48 + i * 6,
-              width: 1080,
-              height: 1920,
-              hasAudio: true,
-              cuts: Array.from({ length: 20 }, (_, k) => 0.8 + k * (2.1 + i * 0.2)),
-              bwShare: 0,
-              loudnessLufs: -14.2
-            },
-            measureSpeech(Array.from({ length: 160 }, (_, k) => ({ startSec: k * 0.33, endSec: k * 0.33 + 0.28 })))
-          )
-        })),
+        learned: paths.map((path, i) => {
+          // Made-up words at 200 a minute, a full stop every eleven, “like” now and then, no ums.
+          const durationSec = 48 + i * 6
+          const words = Array.from({ length: Math.floor(durationSec / 0.3) - 2 }, (_, k) => ({
+            text: k % 11 === 10 ? 'done.' : k % 57 === 20 ? 'like,' : 'word',
+            startSec: 0.2 + k * 0.3,
+            endSec: 0.2 + k * 0.3 + 0.24
+          }))
+          if (i % 2 === 0) words.push({ text: 'subscribe.', startSec: durationSec - 0.6, endSec: durationSec - 0.2 })
+          const link = /^https?:/.test(path)
+          const run = measureRun({
+            from: link ? 'link' : 'file',
+            durationSec,
+            aspect: link ? null : 'vertical',
+            heard: { by: link ? 'captions' : 'whisper', stretches: [words] }
+          })
+          return {
+            path,
+            title: link
+              ? 'A video at a link'
+              : path
+                  .split('/')
+                  .pop()!
+                  .replace(/\.[^.]+$/, ''),
+            facts: link
+              ? null
+              : summarize(
+                  {
+                    durationSec,
+                    measuredSec: durationSec,
+                    width: 1080,
+                    height: 1920,
+                    hasAudio: true,
+                    cuts: Array.from({ length: 20 }, (_, k) => 0.8 + k * (2.1 + i * 0.2)),
+                    bwShare: 0,
+                    loudnessLufs: -14.2
+                  },
+                  measureSpeech(Array.from({ length: 160 }, (_, k) => ({ startSec: k * 0.33, endSec: k * 0.33 + 0.28 })))
+                ),
+            run
+          }
+        }),
         failed: []
       }
     },
@@ -1177,6 +1234,9 @@ export function createMockApi(): CutalongApi {
     // Maps: only the small pictures the app ships, until a pretend download.
     mapStatus: async () => ({ ...maps, downloading: false }),
     mapData: async () => ({ status: maps, tilesDir: null, plates: null }),
+    // No Vision in a browser: every effect does its version without a cut-out.
+    fxCan: async () => ({ person: false, objects: false }),
+    fxCutouts: async () => ({ tracks: [], missing: [] }),
     downloadMaps: async () => {
       for (const percent of [8, 30, 55, 80, 100]) {
         await new Promise((r) => setTimeout(r, 150))

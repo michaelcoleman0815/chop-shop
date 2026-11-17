@@ -1,3 +1,4 @@
+import type { Chrome } from './chrome'
 /**
  * The motion layer model: what gets drawn over the picture, and how it moves.
  *
@@ -310,6 +311,8 @@ export interface TextLayer<T = number> extends Base<T> {
   count?: Count
   /** Set along a path instead of in lines, starting at `offset` pixels along it. */
   path?: { shape: Geometry; offset?: Anim<number> }
+  /** Drawn as chrome lettering, with depth, a bevel, an outline and a glow (motion/chrome); fill and plate are not used. */
+  chrome?: Chrome
 }
 
 export interface ShapeLayer<T = number> extends Base<T> {

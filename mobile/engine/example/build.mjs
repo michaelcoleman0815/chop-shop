@@ -18,11 +18,13 @@ const media = process.argv[2] ? resolve(process.argv[2]) : null
 rmSync(www, { recursive: true, force: true })
 mkdirSync(www, { recursive: true })
 
-// src/main/intake.ts imports child_process for the Mac; the phone has none.
+// src/main/intake.ts imports child_process for the Mac; the phone has none. Nor has it the Mac's Skia,
+// which src/main/cut-render.ts reaches through a grid's drawing (../../src/shims/canvas.ts).
 const noChildProcess = {
   name: 'no-child-process',
   setup(b) {
     b.onResolve({ filter: /^(node:)?child_process$/ }, () => ({ path: join(here, 'src/child-process.ts') }))
+    b.onResolve({ filter: /^@napi-rs\/canvas$/ }, () => ({ path: join(here, '../../src/shims/canvas.ts') }))
   }
 }
 

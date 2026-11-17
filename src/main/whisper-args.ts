@@ -10,6 +10,12 @@ export type WhisperModel = 'base.en' | 'small.en' | 'medium.en'
 export interface VerbatimOptions {
   /** Product names and other names to listen for, most important first. */
   names: string[]
+  /**
+   * Listen again where there is sound no word accounts for (transcribe.ts),
+   * for the takes raw footage hides. Off for a finished video, whose music
+   * would only be heard as words that were never said.
+   */
+  again?: boolean
 }
 
 /**

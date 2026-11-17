@@ -21,6 +21,8 @@ import { EMPTY_MEMORY, memoryView } from '../../../src/shared/memory'
 import { EditDocSchema } from '../../../src/shared/edit'
 import type { MapStatus } from '../../../src/shared/maps'
 import { learnState } from '../../../src/shared/learn'
+import { effectsOf } from '../../../src/shared/fx'
+import { habitLines } from '../../../src/shared/channel-habits'
 import { ON_THE_MAC } from './limits'
 import type { PhoneServices } from './services'
 import type { PhoneSettings } from './settings'
@@ -61,8 +63,11 @@ export function phoneWork(parts: Pick<PhoneApiParts, 'info' | 'settings' | 'serv
     sfxDir: () => `${platform().paths.userData()}/sfx`,
     fontsDir: () => platform().paths.fonts(),
     hearInCloud: (path, durationSec, progress) => parts.services.hearInCloud(path, durationSec, progress),
-    // Graphics are drawn on the Mac's canvas for now: a cut with none renders here.
+    // Graphics, scene effects and a grid's ground are drawn on the Mac's canvas for now: a cut with none
+    // of them renders here.
     motion: async (input) => {
+      if (effectsOf(input.cut).length > 0) throw new Error(ON_THE_MAC.effects)
+      if (input.cut.beats.some((b) => b.treatment.grid)) throw new Error(ON_THE_MAC.grid)
       const scene = sceneForCut(input)
       if (scene.layers.length > 0) throw new Error(ON_THE_MAC.graphics)
       return { overlays: [], scene }
@@ -221,13 +226,19 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     findClips: async () => ({ ok: false as const, message: ON_THE_MAC.clipping }),
     onClipsProgress: quiet,
     clipPoster: async () => '',
-    // In the edit's own brand, as on the Mac. What a brand learns from chats, and its never
-    // list, are kept on the Mac for now, so a phone's plans have neither. A map asked for in
-    // words goes to Claude as on the Mac; /map, which a plan may run, says it is on the Mac.
+    // In the edit's own brand, as on the Mac, with how its videos run when any were learned. What a
+    // brand learns from chats, and its never list, are kept on the Mac for now, so a phone's plans
+    // have neither. A map asked for in words goes to Claude as on the Mac; /map, which a plan may
+    // run, says it is on the Mac.
     planEdit: async (req) => {
       const parsed = EditDocSchema.safeParse(req.doc)
       const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
-      return planEdit({ ...req, preferences: [], logos: brand.logos.map((l) => l.name) })
+      return planEdit({
+        ...req,
+        preferences: [],
+        logos: brand.logos.map((l) => l.name),
+        habits: habitLines(brand.videos)
+      })
     },
     // What a message asks for, read by Claude before any footage is: each file goes as its name,
     // its length and whether it has a picture and sound, never what is in it.
@@ -281,6 +292,12 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     searchVideos: async () => ({ ok: false as const, message: ON_THE_MAC.broll }),
     saveImageAsset: async () => ({ ok: false as const, message: ON_THE_MAC.icon }),
     capturePage: async () => ({ ok: false as const, message: ON_THE_MAC.link }),
+    // A video's card is read from its page by yt-dlp, and a grid's ground is drawn on the Mac's canvas.
+    videoCard: async () => ({ ok: false as const, message: ON_THE_MAC.link }),
+    makeGrid: async () => ({ ok: false as const, message: ON_THE_MAC.grid }),
+    // Nothing is cut out of a picture here: that is the Mac's Vision.
+    fxCan: async () => ({ person: false, objects: false }),
+    fxCutouts: async () => ({ tracks: [], missing: [] }),
     setVideoSignIn: async () => null,
     getBrand: () => readBrand(),
     saveBrand: (brand) => saveBrand(brand),

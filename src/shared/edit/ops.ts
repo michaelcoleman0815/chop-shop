@@ -1,4 +1,5 @@
 import { addMotion, removeMotion, updateMotion, type MotionOpContext, type MotionResult } from '../motion/apply'
+import { addFx, removeFx, updateFx, type FxResult } from '../fx/apply'
 import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
 import { fillMode } from './fill'
 import { mergeLook } from './look'
@@ -47,13 +48,18 @@ interface Ctx {
   sources: Map<string, Source>
   /** Picture asset ids, or null when the caller did not say. */
   pictures: Set<string> | null
+  /** Material a grid panel can show (footage and pictures), or null when the caller did not say. */
+  material: Set<string> | null
 }
 
 function makeCtx(ctx: OpContext): Ctx {
   return {
     index: indexWords(ctx.words),
     sources: new Map(ctx.sources.map((s) => [s.id, s])),
-    pictures: ctx.assets ? new Set(ctx.assets.filter((a) => a.kind === 'image').map((a) => a.id)) : null
+    pictures: ctx.assets ? new Set(ctx.assets.filter((a) => a.kind === 'image').map((a) => a.id)) : null,
+    material: ctx.assets
+      ? new Set(ctx.assets.filter((a) => a.kind === 'image' || a.kind === 'video').map((a) => a.id))
+      : null
   }
 }
 
@@ -213,6 +219,12 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
 
     case 'treat': {
       const targets = op.beats.map((id) => findBeat(cut, id))
+      // A grid shows what the edit has: its recordings, and its material when the caller said what that is.
+      for (const panel of op.set.grid?.panels ?? []) {
+        const id = panel.show.trim()
+        if (id && !ctx.sources.has(id) && ctx.material && !ctx.material.has(id))
+          throw new OpError(`There is no recording or material ${id} in this edit to put in the grid.`)
+      }
       if (op.set.bigWord !== undefined && op.set.bigWord !== null) {
         if (targets.length !== 1) throw new OpError('A big word belongs to one beat; name only that beat.')
         const beat = cut.beats[targets[0]]
@@ -527,7 +539,23 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
     }
     case 'motion-remove':
       return motionCut(removeMotion(cut, op.ids))
+    // Scene effects on the picture. The checks live in shared/fx.
+    case 'fx-add': {
+      const { op: _op, ...call } = op
+      return fxCut(addFx(cut, call, motionContext(cut, ctx)))
+    }
+    case 'fx-update': {
+      const { op: _op, id, ...change } = op
+      return fxCut(updateFx(cut, id, change, motionContext(cut, ctx)))
+    }
+    case 'fx-remove':
+      return fxCut(removeFx(cut, op.ids))
   }
+}
+
+function fxCut(result: FxResult): Cut {
+  if (!result.ok) throw new OpError(result.reason)
+  return result.cut
 }
 
 function motionContext(cut: Cut, ctx: Ctx): MotionOpContext {

@@ -1,6 +1,7 @@
 import type { Resolved, ResolvedWord } from '../edit/resolve'
 import type { CaptionSpec } from '../edit/schema'
-import { tail } from './anim'
+import { onColor, tail } from './anim'
+import { textWidth } from './templates/measure'
 import type { Frame, MotionTheme } from './theme'
 import type { Layer, Span, TextLayer } from './types'
 
@@ -26,6 +27,12 @@ export const MOTION_CAPTION_LOOKS: MotionCaptionLook[] = [
     id: 'hierarchy',
     name: 'Hierarchy',
     phrase: 'captions come in word by word, in two lines with the key words big'
+  },
+  {
+    // Boxed: a few words a page, and the word being said in a solid box of the brand's accent.
+    id: 'boxed',
+    name: 'Boxed',
+    phrase: 'captions come a few words at a time, with the word being said in a box of your accent colour'
   }
 ]
 
@@ -338,12 +345,89 @@ export function hierarchyPage(
   }
 }
 
-/** Hierarchy captions as text layers, one a page, on the output clock. Empty unless the cut asks for them. */
+/** The look of boxed pages in a frame: the size, the wrap width, and the box that follows the spoken word. */
+export function boxedLook(frame: Frame): { size: number; maxWidth: number; lineHeight: number } {
+  const vertical = frame.shape === 'vertical'
+  const safeWidth = frame.width - frame.safe.left - frame.safe.right
+  return {
+    size: (vertical ? 76 : 68) * frame.u,
+    maxWidth: vertical ? safeWidth * 0.92 : frame.shape === 'wide' ? frame.width * 0.5 : safeWidth * 0.84,
+    lineHeight: 1.24
+  }
+}
+
+/** A boxed page's height, near enough to place it by: one line, or two when it wraps. */
+export function boxedHeight(
+  page: Pick<ResolvedWord, 'text'>[],
+  frame: Frame,
+  theme: MotionTheme,
+  uppercase = false
+): number {
+  const { size, maxWidth, lineHeight } = boxedLook(frame)
+  const wide = textWidth(page.map((w) => shown(w.text)).join(' '), theme.display, size, uppercase)
+  const lines = Math.min(3, Math.max(1, Math.ceil(wide / maxWidth)))
+  return lines * size * lineHeight
+}
+
+/**
+ * One boxed page as a text layer: its top centred on `at`. The page pops in
+ * whole, every word white with a soft shadow, and the word being said sits
+ * in a solid box of the accent that slides to the next word as it is said.
+ */
+export function boxedPage(
+  page: ResolvedWord[],
+  start: number,
+  end: number,
+  at: { x: number; y: number },
+  opts: { frame: Frame; theme: MotionTheme; uppercase?: boolean }
+): TextLayer {
+  const { frame, theme } = opts
+  const u = frame.u
+  const { size, maxWidth, lineHeight } = boxedLook(frame)
+  const height = boxedHeight(page, frame, theme, opts.uppercase)
+  return {
+    kind: 'text',
+    start,
+    end,
+    text: '',
+    spans: page.map((w) => ({ text: shown(w.text), t: Math.max(0, w.outStart - start), end: w.outEnd - start })),
+    font: { family: theme.display, size, lineHeight, uppercase: opts.uppercase },
+    fill: theme.text,
+    align: 'center',
+    valign: 'top',
+    maxWidth,
+    balance: true,
+    effects: { shadow: { color: 'rgba(0, 0, 0, 0.55)', blur: 14 * u, y: 4 * u } },
+    active: {
+      color: onColor(theme.accent, theme.ink, '#FFFFFF'),
+      box: {
+        color: theme.accent,
+        radius: size * 0.18,
+        padX: size * 0.16,
+        // Room for descenders when the words are not in capitals.
+        padY: size * (opts.uppercase ? 0.14 : 0.2),
+        move: 0.1
+      }
+    },
+    transform: {
+      x: at.x,
+      y: at.y,
+      anchorY: height / 2,
+      scale: { keys: [{ t: 0, v: 0.9, ease: 'snap' }, { t: 0.18, v: 1 }] },
+      opacity: { keys: [{ t: 0, v: 0 }, { t: 0.08, v: 1 }, ...tail([0.12, 1, 'ease-in'], [0, 0])] }
+    }
+  }
+}
+
+/** Captions the graphics draw, as text layers, one a page, on the output clock. Empty unless the cut asks for them. */
 export function captionLayers(input: CaptionInput): Layer[] {
   const { spec, resolved, frame, theme } = input
   if (!drawsCaptions(spec) || resolved.words.length === 0) return []
-  const { maxWidth } = hierarchyLook(frame)
-  const maxWords = Math.max(3, Math.min(8, spec.wordsPerScreen * 2))
+  const boxed = spec.preset === 'boxed'
+  const maxWidth = boxed ? boxedLook(frame).maxWidth : hierarchyLook(frame).maxWidth
+  const maxWords = boxed
+    ? Math.max(2, Math.min(5, spec.wordsPerScreen + 1))
+    : Math.max(3, Math.min(8, spec.wordsPerScreen * 2))
   const covers = input.covers ?? []
   const pages = hierarchyPages(resolved.words, maxWords)
   const layers: Layer[] = []
@@ -360,10 +444,14 @@ export function captionLayers(input: CaptionInput): Layer[] {
     }
     if (end - start < 0.2) return
     const backdrop = covers.some((c) => c.kind === 'backdrop' && start >= c.start - 0.05 && start < c.end)
-    const height = pageHeight(page, frame, input.emphasis)
+    const height = boxed
+      ? boxedHeight(page, frame, theme, spec.uppercase)
+      : pageHeight(page, frame, input.emphasis)
     const at = placePage(frame, spec.position, facesNear(input.faces, start), height, maxWidth / 2, backdrop)
     layers.push(
-      hierarchyPage(page, start, end, at, { frame, theme, uppercase: spec.uppercase, emphasis: input.emphasis })
+      boxed
+        ? boxedPage(page, start, end, at, { frame, theme, uppercase: spec.uppercase })
+        : hierarchyPage(page, start, end, at, { frame, theme, uppercase: spec.uppercase, emphasis: input.emphasis })
     )
   })
   return layers

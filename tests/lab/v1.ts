@@ -154,12 +154,15 @@ function main(): void {
   const doc = (JSON.parse(readFileSync(input, 'utf8')) as { prepared: { doc: EditDoc } }).prepared.doc
   const profile = profileFor(doc, niche === '-' ? '' : niche)
   const raw = resolveCut(currentCut(doc), doc.words, doc.sources)
-  const summary: Record<string, unknown> = {
+  // What the takes analysis found, and each policy's cut under its own name (one is called "takes").
+  const policiesDone: Record<string, unknown> = {}
+  const summary = {
     profile: profile.id,
     rawSec: r2(doc.sources.reduce((s, x) => s + x.durationSec, 0)),
     rawPlaysSec: r2(raw.durationSec),
     rawWords: doc.words.length,
-    takes: takesOf(doc).map((a) => ({
+    policies: policiesDone,
+    found: takesOf(doc).map((a) => ({
       source: a.source,
       groups: a.groups.map((g) => ({
         label: g.label,
@@ -179,7 +182,7 @@ function main(): void {
     const name = policy.replace(/[^\w.-]+/g, '_')
     writeFileSync(`${prefix}.${name}.doc.json`, JSON.stringify(made))
     writeFileSync(`${prefix}.${name}.report.json`, JSON.stringify({ policy, summary: p.summary, ...p.extra, ...rep }, null, 1))
-    summary[policy] = { summary: p.summary, durationSec: rep.durationSec, words: rep.words, beats: rep.beats.length, ...p.extra }
+    policiesDone[policy] = { summary: p.summary, durationSec: rep.durationSec, words: rep.words, beats: rep.beats.length, ...p.extra }
     process.stderr.write(`${policy}: ${rep.durationSec} s, ${rep.words} words, ${rep.beats.length} beats. ${p.summary}\n`)
   }
   writeFileSync(`${prefix}.summary.json`, JSON.stringify(summary, null, 1))

@@ -4,6 +4,7 @@ import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
 import { SfxSchema } from './sfx'
 import { AngleSchema, ANGLE_LAYOUTS, BeatAngleSchema } from './angles'
+import { GridSchema } from './grid'
 import { SubjectSchema } from './reframe'
 import { CameraSchema } from './camera'
 import { FillSchema } from './fill'
@@ -19,6 +20,7 @@ import {
 } from './transitions'
 import { AudioMapSchema } from '../audio/map'
 import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
+import { FxItemSchema, FxOpSchemas } from '../fx/schema'
 import { MouthModeSchema } from '../vision/mode'
 import { VlogSchema } from '../vlog/schema'
 
@@ -149,6 +151,8 @@ export const TreatmentSchema = z.object({
   angle: BeatAngleSchema.nullable().optional(),
   /** Where the picture is centred when it is cropped to a narrower frame, by hand: 0 the left edge, 1 the right. */
   framing: z.number().min(0).max(1).nullable().optional(),
+  /** Two to four pictures at once in a grid, each with a label, instead of the frame above (edit/grid). */
+  grid: GridSchema.nullable().optional(),
   /** False hides the captions while this beat plays (over a title, a screen recording); absent follows the video's. */
   captions: z.boolean().optional()
 })
@@ -252,7 +256,14 @@ export const CutSchema = z.object({
    * the crop it always had. Only the cut says it: a version's ops never carry
    * a fill (edit/doc).
    */
-  fill: FillSchema.optional()
+  fill: FillSchema.optional(),
+  /**
+   * Scene effects on the picture itself (shared/fx): a pixel scan, an impact,
+   * speed lines, the background blurred behind someone. Only the cut says
+   * them: a version's ops never carry the fx ops, so 0.2.13, which drops
+   * this field, still opens the edit (without them).
+   */
+  fx: z.array(FxItemSchema).max(60).optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -373,7 +384,9 @@ export const OpSchema = z.discriminatedUnion('op', [
     of: z.enum(['beat', 'cutaway']).optional()
   }),
   // motion-add, motion-update, motion-remove: graphics over the picture (shared/motion).
-  ...MotionOpSchemas
+  ...MotionOpSchemas,
+  // fx-add, fx-update, fx-remove: scene effects on the picture (shared/fx), never kept in a version's ops.
+  ...FxOpSchemas
 ])
 export type Op = z.infer<typeof OpSchema>
 export type OpName = Op['op']

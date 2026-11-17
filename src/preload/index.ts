@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { MapDownloadResult, MapStatus, PlatesFile } from '../shared/maps'
+import type { CutoutKind, CutoutTrack } from '../shared/fx/masks'
 import type {
   AnalysisOptions,
   CachedAnalysis,
@@ -23,6 +24,7 @@ import type {
 import type { Asset, EditDoc, Note, Op, Region, Source, Subject } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
+import type { VideoRun } from '../shared/channel-habits'
 import type { Brands } from '../shared/brands'
 import type { UploadKit } from '../shared/upload'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
@@ -222,6 +224,25 @@ const api = {
     url: string
   }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string }> =>
     ipcRenderer.invoke('assets:capturePage', req),
+  /** A video's card from its link: title, views and age, and its thumbnail as material. The video is never fetched. */
+  videoCard: (req: {
+    docId: string
+    url: string
+  }): Promise<
+    | {
+        ok: true
+        card: { url: string; title: string; channel: string | null; views: number | null; uploaded: string | null }
+        asset: Omit<Asset, 'id'> | null
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('assets:videoCard', req),
+  /** Two to four finished videos as one edit, playing at once in a grid. */
+  makeGrid: (req: {
+    paths: string[]
+    labels?: string[]
+    sound?: number | 'none'
+  }): Promise<{ ok: true; doc: EditDoc; mediaUrl: string } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('cut:grid', req),
   setVideoSignIn: (browser: string | null): Promise<string | null> =>
     ipcRenderer.invoke('settings:videoSignIn', browser),
   getBrand: (): Promise<Brand> => ipcRenderer.invoke('brand:get'),
@@ -231,10 +252,11 @@ const api = {
   getBrands: (): Promise<Brands> => ipcRenderer.invoke('brands:get'),
   saveBrands: (brands: Brands): Promise<{ ok: true; brands: Brands } | { ok: false; message: string }> =>
     ipcRenderer.invoke('brands:save', brands),
+  /** Files and links to the person's own videos: a link gives its length and captions, and no look (shared/channel-habits). */
   learnBrand: (
     paths: string[]
   ): Promise<{
-    learned: { path: string; title: string; facts: InspirationFacts }[]
+    learned: { path: string; title: string; facts: InspirationFacts | null; run: VideoRun }[]
     failed: string[]
     /** What whisper printed when it could not hear a video, for Details. */
     details?: { label: string; value: string }[]
@@ -335,9 +357,9 @@ const api = {
   }): Promise<
     | {
         ok: true
-        route: 'edit' | 'vlog' | 'clipping' | 'wait' | 'answer'
+        route: 'edit' | 'vlog' | 'clipping' | 'grid' | 'wait' | 'answer'
         reply: string
-        link: 'study' | 'material' | 'page' | 'none'
+        link: 'study' | 'material' | 'page' | 'cards' | 'none'
         clip: ClipAsk
         question: PlanQuestion | null
       }
@@ -420,6 +442,11 @@ const api = {
     ipcRenderer.on('maps:progress', handler)
     return () => ipcRenderer.removeListener('maps:progress', handler)
   },
+
+  // Scene effects: what this computer can cut out, and the cut-outs the preview draws an edit's effects from.
+  fxCan: (): Promise<{ person: boolean; objects: boolean }> => ipcRenderer.invoke('fx:can'),
+  fxCutouts: (doc: unknown): Promise<{ tracks: CutoutTrack[]; missing: CutoutKind[] }> =>
+    ipcRenderer.invoke('fx:cutouts', { doc }),
 
   analyze: (
     videoPath: string,

@@ -17,6 +17,7 @@ import {
   duckingKeys,
   frameAt,
   grainSpread,
+  gridHeard,
   indexWords,
   insetFor,
   levelAt,
@@ -36,6 +37,7 @@ import {
   resolveCut,
   SFX_INFO,
   sfxGainDb,
+  silenceGrids,
   svgColourMatrix,
   transitionInfo,
   viewAt,
@@ -72,16 +74,18 @@ import {
   template,
   themeFrom,
   type MotionItem,
-  type MotionScene
+  type MotionScene,
+  type MotionTheme
 } from '../../../../shared/motion'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { captionStyleFor, subtitleAt, subtitleCues, subtitleWords } from '../../../../shared/subtitles'
 import { isImagePath } from '../../../../shared/assets'
-import { api, mediaUrlFor } from '../api'
+import { api, MEDIA_CORS, mediaUrlFor } from '../api'
 import { Backdrop } from '../components/Backdrop'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
 import { fitHeight } from '../components/Composer'
 import { GraphicPanel } from '../components/GraphicPanel'
+import { boxStyle, GridPanels, gridViewFor } from '../components/GridPanels'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { RegionPicker } from '../components/RegionPicker'
 import { Subtitles } from '../components/Subtitles'
@@ -90,6 +94,7 @@ import { Sticker } from '../components/Shapes'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
+import { useFxRender, useFxScene } from '../fx-preview'
 import { grainTile } from '../grain'
 import { clock } from '../format'
 import { collapse } from '../motion'
@@ -113,8 +118,14 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const soundA = useRef<HTMLAudioElement>(null)
   const soundB = useRef<HTMLAudioElement>(null)
   const sounds = useMemo(() => [soundA, soundB], [])
-  // Beats shown through another camera play its file, heard as the recording is (edit/angle-view).
-  const seen = useMemo(() => viewThroughAngles(cut, resolved, doc.sources), [cut, resolved, doc.sources])
+  // Beats shown through another camera play its file, heard as the recording is (edit/angle-view);
+  // a grid heard from another panel, or none, is silent on its own picture (edit/grid).
+  const seen = useMemo(() => {
+    const view = viewThroughAngles(cut, resolved, doc.sources)
+    return { ...view, resolved: silenceGrids(cut, view.resolved) }
+  }, [cut, resolved, doc.sources])
+  // The look of the brand this edit is made in, for a grid's ground and labels, as its graphics have.
+  const theme = useMemo(() => themeFrom(app.chatBrand), [app.chatBrand])
   const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
@@ -255,6 +266,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             mediaUrl={app.mediaUrl}
             selected={selected}
             onRegion={(box) => selected && app.updateGraphic(selected.id, { box })}
+            theme={theme}
             captionColors={captionColors}
           />
           {side === 'script' ? (
@@ -333,6 +345,7 @@ function Preview({
   mediaUrl,
   selected,
   onRegion,
+  theme,
   captionColors
 }: {
   doc: EditDoc
@@ -344,6 +357,8 @@ function Preview({
   captionColors: { text: string; accent: string } | null
   selected: MotionItem | null
   onRegion: (box: number[]) => void
+  /** The look graphics wear, for a grid's ground and labels. */
+  theme: MotionTheme
   time: number
   playing: boolean
   decks: RefObject<HTMLVideoElement>[]
@@ -355,6 +370,12 @@ function Preview({
   const well = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
   const cut = currentCut(doc)
+  // Scene effects, drawn as the export draws them (fx-preview): the picture's inside the decks, the rest over the look.
+  const decksBox = useRef<HTMLDivElement>(null)
+  const fxPicture = useRef<HTMLCanvasElement>(null)
+  const fxOverlay = useRef<HTMLCanvasElement>(null)
+  const fx = useFxScene(doc, resolved)
+  useFxRender({ ...fx, time, playing, box, decks: decksBox, picture: fxPicture, overlay: fxOverlay })
   const source = doc.sources[0]
   const ratio = ASPECT[cut.aspect] ?? (source.width > 0 && source.height > 0 ? source.width / source.height : 16 / 9)
 
@@ -417,7 +438,7 @@ function Preview({
           </svg>
         )}
         {mediaUrl ? (
-          <div className="cl-decks" style={grade ? { filter: 'url(#cl-look)' } : undefined}>
+          <div className="cl-decks" ref={decksBox} style={grade ? { filter: 'url(#cl-look)' } : undefined}>
             <div className="cl-decks-main" style={mainBox}>
               {views.map((view, d) => (
                 <Deck
@@ -431,6 +452,7 @@ function Preview({
                   time={time}
                   playing={playing}
                   frameAspect={inset?.layout === 'side' ? (across ? ratio / 2 : ratio * 2) : ratio}
+                  theme={theme}
                 />
               ))}
             </div>
@@ -453,11 +475,13 @@ function Preview({
                 }
               />
             )}
+            {fx.scene && <canvas ref={fxPicture} className="cl-fx-picture" aria-hidden="true" />}
           </div>
         ) : (
           <span className="cl-frame-empty" />
         )}
         {look && <LookOver look={look} playing={playing} />}
+        {fx.scene && <canvas ref={fxOverlay} className="cl-fx-overlay" aria-hidden="true" />}
         {showBig && big && (
           <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
             {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}
@@ -537,6 +561,7 @@ function CameraInset({
       <video
         ref={ref}
         src={url}
+        crossOrigin={MEDIA_CORS}
         muted
         playsInline
         preload="auto"
@@ -731,7 +756,8 @@ function Deck({
   sources,
   time,
   playing,
-  frameAspect
+  frameAspect,
+  theme
 }: {
   videoRef: RefObject<HTMLVideoElement>
   /** Plays the better sound of a recording whose own microphone is not the one heard. */
@@ -745,12 +771,31 @@ function Deck({
   playing: boolean
   /** The finished frame's width over its height. */
   frameAspect: number
+  theme: MotionTheme
 }): JSX.Element {
   const cut = currentCut(doc)
   const piece = view.piece !== null ? resolved.pieces[view.piece] : undefined
   const rb = piece ? resolved.beats.find((b) => b.id === piece.beat) : undefined
   const t = rb ? cut.beats[rb.index]?.treatment : undefined
   const style = deckStyle(view.layer)
+  // A beat shown as a grid (edit/grid): this deck's picture in its own box, the others and the ground over it.
+  const grid = rb && t?.grid ? t.grid : null
+  const beatSource = rb ? cut.beats[rb.index]?.source : undefined
+  const design = designSize(cut.aspect, doc.sources[0])
+  const gridView = useMemo(
+    () => (grid && beatSource ? gridViewFor(grid, beatSource, doc, design) : null),
+    // The frame's shape and the edit's material are what the layout depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [grid, beatSource, doc.assets, doc.sources, design.width, design.height]
+  )
+  const gridClock = grid && rb ? cutawayClock(resolved, rb.id, time) : null
+  const heard = grid ? gridHeard(grid) : 'own'
+  // In a grid the beat's own picture fills its box as recorded, centred, with no camera over it, as the export shows it.
+  const ownBox: CSSProperties | undefined = gridView
+    ? gridView.own >= 0
+      ? { ...boxStyle(gridView.layout.panels[gridView.own], design), right: 'auto', bottom: 'auto' }
+      : { opacity: 0 }
+    : undefined
   // The cutaway runs on its own clock: its speed, its direction, held by a freeze.
   const runs = rb && t?.broll ? cutawayClock(resolved, rb.id, time) : null
   const at = runs && t?.broll ? cutawayAt(t.broll, runs.length, runs.offset) : null
@@ -775,7 +820,8 @@ function Deck({
   // A picture of another shape shows whole, on a blurred copy of itself or between bars, as the export has it (edit/fill).
   const beat = rb ? cut.beats[rb.index] : undefined
   const box = { width: frameAspect, height: 1 }
-  const fit = beat && source ? pictureFit(cut, beat, source, box) : 'cover'
+  // In a grid each picture fills its own box, as the export crops it there.
+  const fit = !grid && beat && source ? pictureFit(cut, beat, source, box) : 'cover'
   const brollPath = t?.broll?.path
   const brollAsset = brollPath ? doc.assets.find((a) => a.path === brollPath) : undefined
   const cutawayFitFor = (size: { width: number; height: number } | null): Fit =>
@@ -793,17 +839,32 @@ function Deck({
         {fit === 'blur' && <Backdrop of={videoRef} aspect={frameAspect} bw={!!t?.bw} transform={transform} />}
         <video
           ref={videoRef}
+          crossOrigin={MEDIA_CORS}
           playsInline
           preload="auto"
           style={{
             filter: t?.bw ? 'grayscale(1)' : undefined,
-            transform,
-            objectPosition,
-            objectFit: fit === 'cover' ? undefined : 'contain'
+            ...(ownBox ?? { transform, objectPosition, objectFit: fit === 'cover' ? undefined : 'contain' })
           }}
         />
         <audio ref={soundRef} preload="auto" aria-hidden="true" />
-        {view.layer && t?.broll && t.frame !== 'speaker' && at && (
+        {view.layer && grid && gridView && (
+          <GridPanels
+            layout={gridView.layout}
+            design={design}
+            panels={gridView.pictures.map((picture, i) =>
+              picture && i !== gridView.own
+                ? { picture, at: (grid.panels[i].inSec ?? 0) + (gridClock?.offset ?? 0) }
+                : null
+            )}
+            labels={grid.panels.map((p) => p.label)}
+            theme={theme}
+            since={gridClock?.offset ?? 0}
+            playing={playing && !gridClock?.held}
+            heard={typeof heard === 'number' ? heard : null}
+          />
+        )}
+        {view.layer && !grid && t?.broll && t.frame !== 'speaker' && at && (
           <Cutaway
             frame={t.frame}
             path={t.broll.path}
@@ -909,6 +970,7 @@ function Cutaway({
         <img
           ref={image}
           src={src}
+          crossOrigin={src.startsWith('data:') ? undefined : MEDIA_CORS}
           alt=""
           style={style}
           onLoad={(e) => setShape(e.currentTarget.naturalWidth / Math.max(1, e.currentTarget.naturalHeight))}
@@ -917,6 +979,7 @@ function Cutaway({
         <video
           ref={ref}
           src={src}
+          crossOrigin={MEDIA_CORS}
           muted
           playsInline
           preload="auto"

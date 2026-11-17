@@ -458,9 +458,11 @@ The synthetic lab above tells whether the takes planner finds what was planted. 
 
 - **kept words**: of the raw words the cut plays, the share the published edit plays (precision), and the reverse (recall), by count and by seconds said;
 - **takes**: for each line said more than once, the take each edit plays, and how often they agree where both play one;
-- **running time**: raw, the cut, and published;
+- **running time**: raw, the cut, and published, and the pace as each plays, in words a minute;
 - **the opening**: whether both open on the same raw sentence, or on takes of the same line;
 - **pauses**: between neighbouring words as each plays: median, 90th percentile, and the share of time in pauses over 0.25 s.
+
+**When the published words have no times.** A published video's auto-captions read as text come in playing order with no timings. They still align (stretches then end only where the raw skips, jumps or changes recording), and they still give kept words, takes, the opening and the pace; the published pauses and telling same-worded takes apart by ear need the times, so those are left out.
 
 **What the words cannot tell**: picture-only material (screen recordings, B-roll, text on screen), music and sound effects, a voiceover recorded elsewhere (its words go unmatched, which `found` shows), and speed changes.
 

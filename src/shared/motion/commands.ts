@@ -2,6 +2,8 @@ import type { Resolved } from '../edit/resolve'
 import type { EditDoc } from '../edit/schema'
 import { mapProblem, readMapCommand } from '../maps/command'
 import { lookup } from '../maps/gazetteer'
+import { spokenFigures } from './figures'
+import { figuresSaid, listNear, mentionSaid, namesSaid } from './heard'
 import type { MotionCallInput, MotionKind } from './schema'
 import { template } from './templates'
 
@@ -50,6 +52,11 @@ export function parts(rest: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean)
 }
+
+/** Words that name a page the speaker shows, and videos they talk about. */
+const PAGE_WORDS = /^(?:page|channel|profile|website|site|homepage|post|tweet|thread|listing)$/
+const VIDEO_WORDS = /^(?:videos|uploads|vlogs|episodes|thumbnails)$/
+const VIDEO_WORD = /^(?:video|upload|vlog|episode|thumbnail)$/
 
 export const MOTION_COMMANDS: MotionCommand[] = [
   {
@@ -103,6 +110,27 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       const [line, ...more] = parts(text)
       if (!line) return { problem: 'Tell me the line to end on, like /endcard Subscribe for part two.' }
       return { style, text: [line, more.join(', ')].filter((t, i) => i === 0 || t), from: 'end-2', to: 'end' }
+    }
+  },
+  {
+    command: 'chrome',
+    kind: 'keyword',
+    title: 'Chrome text',
+    summary: '3D chrome lettering, a number counting up to itself: /chrome 1,000,000, or /chrome gold 237',
+    parse: (rest, ctx) => {
+      // Gold is a style of its own; chrome takes a colour as #RRGGBB, like any graphic.
+      const [first, ...others] = words(rest)
+      const gold = first?.toLowerCase() === 'gold'
+      const tint = first && /^#[0-9a-f]{6}$/i.test(first) ? first.toUpperCase() : ''
+      const [value, ...label] = parts(gold || tint ? others.join(' ') : rest)
+      if (!value) return { problem: 'Tell me the word or number, like /chrome 1,000,000.' }
+      const at = wordFor(ctx.resolved, value, ctx.time)
+      return {
+        style: gold ? 'gold' : 'chrome',
+        ...(tint ? { color: tint } : {}),
+        text: [value, label.join(', ')].filter((t, i) => i === 0 || t),
+        ...(at ? { from: at } : {})
+      }
     }
   },
   {
@@ -178,7 +206,91 @@ export const MOTION_COMMANDS: MotionCommand[] = [
       if (!id) return { problem: 'Give me a link to capture, like /screenshot https://example.com.' }
       if (!pictures.some((a) => a.id === id)) return { problem: `There is no picture ${id} in this edit.` }
       const style = tokens.find((t) => (template('screenshot')?.styles ?? []).includes(t)) ?? ''
-      return { style, fx: tokens.includes('tilt') ? ['tilt'] : [], text: [id] }
+      const fx = ['tilt', 'ring'].filter((f) => tokens.includes(f))
+      // Moved over to one side, so a calendar or a counter can stand beside it.
+      const place = tokens.find((t) => t === 'left' || t === 'right') ?? ''
+      // Asked for away from the playhead, it comes in where the page is talked about.
+      const said = ctx.time === null ? mentionSaid(ctx.resolved, PAGE_WORDS, null) : null
+      return { style, fx, text: [id], ...(place ? { place } : {}), ...(said ? { from: said.id } : {}) }
+    },
+    after: 'Drag on the picture to choose what it rings or pushes in on.'
+  },
+  {
+    command: 'chips',
+    kind: 'chips',
+    title: 'Chips',
+    summary: 'Words with their icons popping in around you as you name them: /chips Notion, Figma, Linear',
+    parse: (rest, ctx) => {
+      const { style, rest: text } = takeStyle(rest, 'chips')
+      // "Email: mail" gives a word its Lucide icon; a brand needs none.
+      const given = parts(text)
+        .slice(0, 12)
+        .map((p) => {
+          const [label, value = ''] = p.split(/\s*:\s*/)
+          return { label: label.trim(), value: value.trim() }
+        })
+        .filter((c) => c.label)
+      // Named here, each lands on its word; named nowhere, the list said nearest the playhead.
+      const list = given.length ? null : listNear(ctx.resolved, ctx.time)
+      const chips = given.length ? given : (list?.names ?? []).slice(0, 12).map((label) => ({ label, value: '' }))
+      if (chips.length === 0)
+        return { problem: 'Tell me the words, like /chips Notion, Figma, Linear, or say the list in the video first.' }
+      const said = list ? list.words : namesSaid(ctx.resolved, chips.map((c) => c.label), ctx.time)
+      const items = chips.map((c, i) => ({ ...c, at: said[i]?.id ?? '' }))
+      const first = said.find((w) => w)
+      const last = [...said].reverse().find((w) => w)
+      return {
+        style,
+        items,
+        ...(first ? { from: first.id } : {}),
+        ...(last ? { to: `${last.id}.end+1.5` } : {})
+      }
+    }
+  },
+  {
+    command: 'count',
+    kind: 'counter',
+    title: 'Counter',
+    summary: 'A number rolling up in a pill as you say it: /count 683,594 to 1,000,000 views',
+    parse: (rest, ctx) => {
+      const { style, rest: text } = takeStyle(rest, 'counter')
+      return counterCall(text, ctx, style === 'flip' ? 'flip' : '')
+    }
+  },
+  {
+    command: 'flip',
+    kind: 'counter',
+    title: 'Flip calendar',
+    summary: 'A desk calendar flipping to each day as you say it: /flip day 1 to 3',
+    parse: (rest, ctx) => counterCall(rest, ctx, 'flip'),
+    after: 'It sits to one side, so a screenshot can stand beside it.'
+  },
+  {
+    command: 'videos',
+    kind: 'video-cards',
+    title: 'Video cards',
+    summary: 'Videos as YouTube shows them, read from their links: /videos https://youtu.be/…',
+    // Links are read by the app first; what reaches here is a card a line: "a3 | title | views line".
+    parse: (rest, ctx) => {
+      const { style, rest: text } = takeStyle(rest, 'video-cards')
+      const items = text
+        .split(/\s*(?:\n|;)\s*/)
+        .map((line) => line.split(/\s*\|\s*/).map((f) => f.trim()))
+        .map((f) => (/^a\d+$/.test(f[0] ?? '') ? f : ['', ...f]))
+        .map(([thumb, title = '', note = '']) => ({ label: title, value: thumb ?? '', note }))
+        .filter((c) => c.label || c.value)
+        .slice(0, 4)
+      if (items.length === 0)
+        return { problem: 'Give me the videos’ links, like /videos https://youtu.be/…, and I will read their titles and views.' }
+      const missing = items.find((c) => c.value && !ctx.doc.assets.some((a) => a.id === c.value))
+      if (missing) return { problem: `There is no picture ${missing.value} in this edit.` }
+      // Asked for away from the playhead, they come in where the videos are talked about.
+      // Several videos are talked about as videos; one, as a video.
+      const said =
+        ctx.time === null
+          ? (mentionSaid(ctx.resolved, VIDEO_WORDS, null) ?? mentionSaid(ctx.resolved, VIDEO_WORD, null))
+          : null
+      return { style, items, to: '4.5s', ...(said ? { from: said.id } : {}) }
     }
   },
   {
@@ -225,6 +337,71 @@ export const MOTION_COMMANDS: MotionCommand[] = [
     }
   }
 ]
+
+/** Words between and around figures that only join them: "683,594 to a million", "count up to 10K". */
+const JOINERS = new Set(['to', 'from', 'and', 'then', 'up', 'down', 'count', 'counting', 'counts', 'roll', 'rolling', 'it', 'a', 'of'])
+
+/**
+ * The figures typed after /count or /flip, in order, as they are written
+ * ("683,594", "$999"; a figure in words is written in digits), and the words
+ * before the first and after the last: a calendar's label ("day") or a
+ * count's unit ("views"). A short range, "1 to 3" or "1-3", counts every
+ * day in it when asked to.
+ */
+export function typedFigures(
+  text: string,
+  ranges = false
+): { values: number[]; written: string[]; before: string; after: string } {
+  const plain = text.replace(/(\d)\s*[-–]\s*(?=\d)/g, '$1 to ')
+  const tokens = plain.split(/\s+/).filter(Boolean)
+  const words = tokens.map((t, i) => ({ id: `t${i}`, text: t, outStart: i, outEnd: i + 0.5 }))
+  const found = spokenFigures(words)
+  const index = (id: string): number => Number(id.slice(1))
+  const around = (from: number, to: number): string =>
+    tokens
+      .slice(from, to)
+      .map((t) => t.replace(/[^\p{L}\p{N}'’-]/gu, ''))
+      .filter((t) => t && !JOINERS.has(t.toLowerCase()))
+      .join(' ')
+  const before = found.length ? around(0, index(found[0].from)) : ''
+  const after = found.length ? around(index(found[found.length - 1].to) + 1, tokens.length) : ''
+  let values = found.map((f) => f.value)
+  let written = found.map((f) =>
+    /\d/.test(f.text) ? f.text.replace(/[.,;:!?]+$/, '') : f.value.toLocaleString('en-US', { maximumFractionDigits: 2 })
+  )
+  const [a, b] = values
+  if (ranges && values.length === 2 && Number.isInteger(a) && Number.isInteger(b) && b > a && b - a <= 11) {
+    values = Array.from({ length: b - a + 1 }, (_, i) => a + i)
+    written = values.map(String)
+  }
+  return { values, written, before, after }
+}
+
+/** /count and /flip as a counter call: each figure on the word that says it, the first nearest the playhead. */
+function counterCall(text: string, ctx: CommandContext, style: '' | 'flip'): Partial<MotionCallInput> | { problem: string } {
+  const typed = typedFigures(text, style === 'flip')
+  if (typed.values.length === 0)
+    return {
+      problem:
+        style === 'flip'
+          ? 'Tell me the numbers, like /flip day 1 to 3.'
+          : 'Tell me the number, like /count 683,594 to 1,000,000 views.'
+    }
+  const said = figuresSaid(ctx.resolved, typed.values, ctx.time)
+  const items = typed.values.slice(0, 12).map((_, i) => ({ label: typed.written[i], at: said[i]?.from ?? '' }))
+  const first = said.find((f) => f)
+  const last = [...said].reverse().find((f) => f)
+  // One figure counts up from nothing and lands as it is said, so the pill comes in a second before.
+  const single = typed.values.length === 1 && style !== 'flip'
+  const label = style === 'flip' ? typed.before || typed.after : typed.after
+  return {
+    style,
+    items,
+    text: label ? [label] : [],
+    ...(first ? { from: single ? `${first.from}-1.2` : first.from } : {}),
+    ...(last ? { to: `${last.to}.end+1.2` } : {})
+  }
+}
 
 export function findMotionCommand(command: string): MotionCommand | undefined {
   return MOTION_COMMANDS.find((c) => c.command === command.toLowerCase().replace(/^\//, ''))

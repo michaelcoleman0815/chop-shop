@@ -107,7 +107,11 @@ export default defineConfig({
     __DRIVE__: JSON.stringify(process.env.CUTALONG_DRIVE === '1')
   },
   resolve: {
-    alias: [{ find: /^path$/, replacement: resolve(here, 'src/shims/path.ts') }],
+    alias: [
+      { find: /^path$/, replacement: resolve(here, 'src/shims/path.ts') },
+      // The Mac's Skia, which the export's grids draw with: none on a phone (src/shims/canvas.ts).
+      { find: /^@napi-rs\/canvas$/, replacement: resolve(here, 'src/shims/canvas.ts') }
+    ],
     // One React for the app and the phone's entry.
     dedupe: ['react', 'react-dom']
   },

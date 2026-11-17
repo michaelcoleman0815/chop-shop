@@ -135,6 +135,31 @@ describe('the planner request', () => {
     expect(PLANNER_SYSTEM).toContain('<creator-preferences>')
   })
 
+  it('tells the planner how the channel’s videos run, and changes nothing until something is learned', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    // Made-up habits, as habitLines (shared/channel-habits) writes them.
+    const habits = [
+      'Their Shorts usually run 30–44 s (about 35), at about 190 words a minute, with a one-sentence hook of about 2 s.',
+      'Their long videos usually run 8:00–9:10 (about 8:30), and end on the payoff. They cut ums and uhs.'
+    ]
+    const text = renderRequest(doc, 'turn this into a short', [], 'Warm and quick.', ['Captions at chest height (every edit)'], [], [], {
+      habits
+    })
+    expect(text).toContain(`<channel-habits>\n${habits.join('\n')}\n</channel-habits>`)
+    // With the brand's other blocks, before the request.
+    expect(text.indexOf('<creator-preferences>')).toBeLessThan(text.indexOf('<channel-habits>'))
+    expect(text.indexOf('<channel-habits>')).toBeLessThan(text.indexOf('<request>'))
+    // Nothing learned: the request is exactly what it was.
+    const before = renderRequest(doc, 'turn this into a short', [], 'Warm and quick.')
+    expect(renderRequest(doc, 'turn this into a short', [], 'Warm and quick.', [], [], [], { habits: [] })).toBe(before)
+    expect(renderRequest(doc, 'turn this into a short', [], 'Warm and quick.', [], [], [], { habits: ['  '] })).toBe(before)
+    expect(before).not.toContain('channel-habits')
+    // The planner is told to aim for the usual length, and that an asked-for length wins.
+    expect(PLANNER_SYSTEM).toContain('<channel-habits>')
+    expect(PLANNER_SYSTEM).toContain('("turn this into a short"), aim for that format\'s usual length')
+    expect(PLANNER_SYSTEM).toContain('A length the person asks for always wins')
+  })
+
   it('tells the planner what the channel never uses, and the plan comes back without it', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     const text = renderRequest(doc, 'make it pop', [], '', [], [], ['whooshes', 'zoom transitions'])

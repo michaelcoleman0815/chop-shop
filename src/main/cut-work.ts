@@ -9,7 +9,7 @@ import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { placeFile } from './export-paths'
 import { claudeWriter, writeUploadKit } from './upload-kit'
 import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
-import { renderCut, type OverlaySpan, type RenderSource } from './cut-render'
+import { renderCut, type GraphOptions, type OverlaySpan, type RenderSource } from './cut-render'
 import type { Encoder } from './render/encoder'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
@@ -23,7 +23,7 @@ import { projectName } from '../shared/project-name'
 import { mouthNotice, nicheFrom, type MouthMode, type WatchedClip } from '../shared/vision'
 import { subtitlePass, type CutMotionInput } from './motion-scene'
 import type { Brand } from '../shared/brand'
-import type { MotionScene } from '../shared/motion'
+import { themeFrom, type MotionScene } from '../shared/motion'
 import {
   addSources,
   createDoc,
@@ -33,7 +33,9 @@ import {
   EditDocSchema,
   resolveCut,
   wordsFromTranscript,
+  type Cut,
   type EditDoc,
+  type Resolved,
   type Source,
   type Word
 } from '../shared/edit'
@@ -98,6 +100,19 @@ export interface WorkHost {
   }) => Promise<Watched>
   /** Draws the cut's motion graphics to overlay files; empty overlays when it has none. */
   motion(input: CutMotionInput): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }>
+  /**
+   * The cut's scene effects for the export, from the cut-outs this computer can
+   * make (main/fx-ipc); null when it has none. Absent where they are not drawn.
+   */
+  fx?: (input: {
+    cut: Cut
+    resolved: Resolved
+    words: Word[]
+    sources: Source[]
+    quality: 'preview' | 'final'
+    workDir: string
+    onProgress?: (fraction: number) => void
+  }) => Promise<GraphOptions['fx']>
   /** How video is encoded: the computer's x264 when absent. */
   encoder?: Encoder
   /** False for an ffmpeg built without its GPL parts, as a phone's is: camera moves are drawn without perspective. */
@@ -356,6 +371,19 @@ export async function renderEdit(
       onProgress: (f) => progress(f * 0.25)
     })
     const share = motion.overlays.length > 0 ? 0.25 : 0
+    // Scene effects next: their masks, maps and overlays, where this host draws them.
+    const fx = host.fx
+      ? await host.fx({
+          cut,
+          resolved,
+          words: doc.words,
+          sources,
+          quality: req.quality,
+          workDir: join(workDir, 'fx'),
+          onProgress: (f) => progress(share + f * 0.15)
+        })
+      : null
+    const before = share + (fx ? 0.15 : 0)
     const pass = subtitlePass(cut, resolved, motion.scene)
     // The subtitles leave out what a card holds back; the music and the sounds still follow every word.
     await renderCut(pass.cut, resolved, sources, {
@@ -366,11 +394,15 @@ export async function renderEdit(
       fontsDir: host.fontsDir(),
       brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
       overlays: motion.overlays,
+      fx,
       captionWords: pass.resolved.words,
+      // A grid's panels show material, on a ground in the brand's look.
+      assets: doc.assets,
+      theme: themeFrom(brand),
       sfxDir: host.sfxDir(),
       encoder: host.encoder,
       perspective: host.perspective,
-      onProgress: (f) => progress(share + f * (1 - share))
+      onProgress: (f) => progress(before + f * (1 - before))
     })
     // An export's name is free only when nothing that goes beside it is there either.
     outputPath = final

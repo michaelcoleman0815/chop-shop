@@ -43,7 +43,8 @@ export async function planEditLocally(input: PlanInput, local: { host: string; m
         renderRequest(doc, input.request, input.notes, input.voice, input.preferences ?? [], input.logos, input.never, {
           offers: input.offers,
           chat: input.chat,
-          brands: input.brands
+          brands: input.brands,
+          habits: input.habits
         }),
         // Ollama's guidance: the schema in the prompt as well grounds the answer.
         `Answer with JSON in this shape:\n${JSON.stringify(PLAN_JSON_SCHEMA)}`

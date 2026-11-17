@@ -3,6 +3,7 @@ import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { clampExcerpt, defaultExcerpt, type Range } from '../shared/assets'
 import type { NewAsset } from './asset-file'
+import { uploadedOn } from '../shared/motion/figures'
 import { probeMedia } from './inspiration/measure'
 import { channelSearchUrl, orderFound, readSources, type FoundClip } from '../shared/broll-sources'
 
@@ -227,6 +228,77 @@ export async function fetchExcerpt(
     height: probe.height,
     origin: { type: 'video', url, author: info.author, license: null, range: stretch }
   }
+}
+
+/** What a video card shows, read from a link without downloading the video. */
+export interface VideoCardInfo {
+  url: string
+  title: string
+  /** The channel, by handle when it has one. */
+  channel: string | null
+  views: number | null
+  /** When it went up, as an ISO date. */
+  uploaded: string | null
+  durationSec: number | null
+  /** The best thumbnail to show at card size, or null when it has none. */
+  thumbnail: string | null
+}
+
+/**
+ * A video card's facts from yt-dlp's info JSON (-J): its title, channel,
+ * views, upload date and the thumbnail nearest 1280 wide. yt-dlp reads all
+ * of it from the page; the video itself is never fetched.
+ */
+export function parseVideoCard(json: string, url: string): VideoCardInfo {
+  const d = JSON.parse(json) as Record<string, unknown>
+  const info = parseInfo(json)
+  const thumbs = Array.isArray(d.thumbnails)
+    ? (d.thumbnails as { url?: unknown; width?: unknown; height?: unknown }[]).filter(
+        (t): t is { url: string; width?: number; height?: number } => typeof t.url === 'string'
+      )
+    : []
+  // Card size wants about 640 to 1280 across; the widest within that, else whatever there is.
+  const sized = thumbs
+    .filter((t) => typeof t.width === 'number' && t.width >= 320 && t.width <= 1280)
+    .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))
+  const thumbnail = sized[0]?.url ?? (typeof d.thumbnail === 'string' ? d.thumbnail : (thumbs[thumbs.length - 1]?.url ?? null))
+  const uploaded = uploadedOn(d.upload_date, d.timestamp)
+  return {
+    url: typeof d.webpage_url === 'string' ? d.webpage_url : url,
+    title: info.title,
+    channel: info.author,
+    views: typeof d.view_count === 'number' && Number.isFinite(d.view_count) ? d.view_count : null,
+    uploaded: uploaded ? uploaded.toISOString() : null,
+    durationSec: info.durationSec,
+    thumbnail
+  }
+}
+
+/**
+ * A video's card from its link: its facts from yt-dlp, and its thumbnail
+ * brought into the edit as a picture, credited to the video and its channel.
+ * A thumbnail that will not come leaves the card without one, never failing it.
+ */
+export async function fetchVideoCard(
+  url: string,
+  tools: AssetTools
+): Promise<{ card: VideoCardInfo; thumbnail: NewAsset | null }> {
+  const json = await run(tools.ytdlp, ['-J', '--no-playlist', '--skip-download', ...signIn(tools.signInFrom), url], tools.signal)
+  const card = parseVideoCard(json, url)
+  let thumbnail: NewAsset | null = null
+  if (card.thumbnail) {
+    try {
+      const image = await fetchImage(card.thumbnail, tools)
+      thumbnail = {
+        ...image,
+        title: card.title,
+        origin: { type: 'link', url: card.url, author: card.channel, license: null, range: null }
+      }
+    } catch (err) {
+      console.warn('[assets] no thumbnail for', url, err instanceof Error ? err.message : err)
+    }
+  }
+  return { card, thumbnail }
 }
 
 export type Candidate = FoundClip
