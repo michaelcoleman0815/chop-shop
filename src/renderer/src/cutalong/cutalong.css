@@ -3467,6 +3467,7 @@ button:disabled {
   .cl-crew-tile > .cl-crew-face {
     scale: 0.72;
   }
+}
 
 /* A made video's quote: its outline, its script behind a link, how to get a missing key (MakeBrief). */
 .cl-make {
