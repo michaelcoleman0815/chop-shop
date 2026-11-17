@@ -54,7 +54,8 @@ describe('the planner and scene effects', () => {
       summary: 'The items scan in and the landing hits.',
       reply: 'Done.',
       notesHandled: [],
-      needs: []
+      needs: [],
+      question: { text: '', options: [] }
     })
     const r = applyOps(currentCut(doc), plan.ops.map(fromPlannerOp) as Op[], context(doc))
     expect(r.rejected).toEqual([])

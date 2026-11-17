@@ -2,15 +2,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: { getPath: () => '/nowhere' }, safeStorage: {} }))
 
-import { commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type Note } from '../shared/edit'
+import { commit, createDoc, currentCut, resolveCut, wordsFromTranscript } from '../shared/edit'
 import { planMotionCommand } from '../shared/motion'
-import { planMapRequest } from './planner'
+import { offerPlan } from './planner'
+import { PLANNER_SYSTEM, PlanSchema } from './planner-prompt'
 
 /**
- * Maps asked for in words: "/map Iceland" from the composer, and a plain
- * request that names nothing but places, which needs no model. Both put the
- * map on the word that names the place, and ask rather than guess when a
- * name is two places.
+ * Maps: "/map Iceland" from the composer, read on this computer, and a map
+ * asked for in words ("show where Iceland is"), which Claude plans like any
+ * other request: as the map graphic, or as /map run by the plan. Both put
+ * the map on the word that names the place, and ask rather than guess when
+ * a name is two places.
  */
 
 const said = 'This summer we drove right round Iceland and it was nothing like the pictures'.split(' ')
@@ -48,25 +50,37 @@ describe('/map', () => {
   })
 })
 
-describe('a request for a map in plain words', () => {
-  it('places it on the word, with no model', () => {
-    const r = planMapRequest(doc, 'show where Iceland is', [])
-    expect(r).toMatchObject({ ok: true, reply: 'A map of Iceland comes in as the place is named.' })
-    if (!r?.ok) throw new Error('no plan')
-    expect(r.ops).toEqual([expect.objectContaining({ op: 'motion-add', kind: 'map', from: 'w7' })])
+describe('a map asked for in words', () => {
+  // What Claude plans for "show where Iceland is", in the plan's own shape.
+  const plan = (ops: unknown[]) =>
+    PlanSchema.parse({
+      ops,
+      summary: 'A map of Iceland comes in.',
+      reply: 'A map of Iceland comes in as you name it.',
+      notesHandled: [],
+      needs: [],
+      question: { text: '', options: [] }
+    })
+
+  it('is a graphic Claude is taught, with where it goes and how to name a place', () => {
+    expect(PLANNER_SYSTEM).toContain('- map: A documentary map shot')
+    expect(PLANNER_SYSTEM).toContain('"op":"motion-add","kind":"map"')
+  })
+
+  it('is offered as Claude plans it: the map on the word that names the place', () => {
+    const map = { op: 'motion-add', kind: 'map', from: 'w7', to: '', text: ['Iceland'], items: [], values: [], box: [], icon: '', style: '', place: '', color: '', fx: [] }
+    const r = offerPlan(doc, plan([map]), [])
+    if (!r.ok) throw new Error(r.message)
+    expect(r.ops).toEqual([expect.objectContaining({ op: 'motion-add', kind: 'map', from: 'w7', text: ['Iceland'] })])
     // The op is one the edit takes.
     expect(() => commit(doc, r.ops, r.summary)).not.toThrow()
   })
 
-  it('puts a place that is never said at the start, and says so', () => {
-    const r = planMapRequest(doc, 'show where Norway is', [])
-    expect(r).toMatchObject({ ok: true, reply: expect.stringContaining('comes in at the start, since the place is never said') })
-  })
-
-  it('asks rather than guesses which Georgia, and leaves anything more to the planner', () => {
-    expect(planMapRequest(doc, 'show where Georgia is', [])).toMatchObject({ ok: true, ops: [], reply: expect.stringContaining('Georgia the country or the US state?') })
-    expect(planMapRequest(doc, 'cut the intro and show where Iceland is', [])).toBeNull()
-    const notes: Note[] = [{ id: 'n1', text: 'Tighten the start.', beat: 'b1', status: 'open', version: 1 }]
-    expect(planMapRequest(doc, 'show where Iceland is', notes)).toBeNull()
+  it('or as /map, run by the plan the way it runs when typed', () => {
+    const r = offerPlan(doc, plan([{ op: 'run', command: 'map', rest: 'Iceland', note: '' }]), [], [
+      { command: 'map', summary: 'Fly in to a place on a dark satellite map: /map Iceland' }
+    ])
+    if (!r.ok) throw new Error(r.message)
+    expect(r.steps).toEqual([{ command: { op: 'run', command: 'map', rest: 'Iceland', note: '' } }])
   })
 })

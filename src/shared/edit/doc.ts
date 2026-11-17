@@ -99,20 +99,12 @@ export function beatsFromWords(words: Word[], source: string, opts: BeatSplitOpt
   return beats
 }
 
-export function createDoc(input: {
-  id: string
-  title: string
-  /** One recording, or several in the order they were shot. */
-  source?: Source
-  sources?: Source[]
-  words: Word[]
-  at?: string
-}): EditDoc {
-  const at = input.at ?? new Date().toISOString()
-  const sources = input.sources ?? (input.source ? [input.source] : [])
-  if (sources.length === 0) throw new Error('An edit needs at least one recording.')
-  const ids = new Set(sources.map((s) => s.id))
-  const words = input.words.filter((w) => ids.has(w.source))
+/**
+ * The recordings as they were shot, split into beats: what a new edit's
+ * first version plays before anything is asked of it. Beat ids run through
+ * every recording, in order.
+ */
+export function recordingBeats(sources: Source[], words: Word[]): Beat[] {
   const beats: Beat[] = []
   for (const source of sources) {
     const own = words.filter((w) => w.source === source.id).sort((a, b) => a.startSec - b.startSec)
@@ -131,8 +123,25 @@ export function createDoc(input: {
         treatment: { ...DEFAULT_TREATMENT }
       })
   }
-  // Beat ids run through every recording, in order.
   beats.forEach((b, i) => (b.id = `b${i + 1}`))
+  return beats
+}
+
+export function createDoc(input: {
+  id: string
+  title: string
+  /** One recording, or several in the order they were shot. */
+  source?: Source
+  sources?: Source[]
+  words: Word[]
+  at?: string
+}): EditDoc {
+  const at = input.at ?? new Date().toISOString()
+  const sources = input.sources ?? (input.source ? [input.source] : [])
+  if (sources.length === 0) throw new Error('An edit needs at least one recording.')
+  const ids = new Set(sources.map((s) => s.id))
+  const words = input.words.filter((w) => ids.has(w.source))
+  const beats = recordingBeats(sources, words)
   const first = sources[0]
   const cut: Cut = {
     beats,
@@ -300,7 +309,54 @@ export function commit(
   }
 }
 
-/** Brings back an earlier version's cut as the newest version. */
+/**
+ * Applies ops to the newest version rather than making another: the steps of
+ * one plan land in one version, and the words sent with the footage shape
+ * the version the edit was made with. The version keeps its number; its ops
+ * gain these, its cut becomes theirs and its summary says them too, or only
+ * them when `replace` is set. Replaying the version's ops on the version
+ * before it still gives its cut. When nothing applies, the doc comes back
+ * unchanged.
+ */
+export function amend(
+  doc: EditDoc,
+  ops: unknown[],
+  summary: string,
+  opts: { at?: string; preset?: string | null; replace?: boolean } = {}
+): CommitResult {
+  const last = currentVersion(doc)
+  const { cut, applied, rejected } = applyOps(last.cut, ops, {
+    words: doc.words,
+    sources: doc.sources,
+    assets: doc.assets
+  })
+  const kept = savedOps(applied)
+  if (applied.length === 0 || (kept.length === 0 && sameValue(cut, last.cut))) return { doc, applied, rejected }
+  const version: Version = {
+    ...last,
+    at: opts.at ?? new Date().toISOString(),
+    summary: opts.replace ? summary : [last.summary, summary].filter(Boolean).join(' '),
+    ops: [...last.ops, ...kept],
+    cut
+  }
+  return {
+    doc: {
+      ...doc,
+      versions: [...doc.versions.slice(0, -1), version],
+      preset: opts.preset === undefined ? doc.preset : opts.preset
+    },
+    applied,
+    rejected
+  }
+}
+
+/** The edit with the newest version's summary said again: once a plan's steps have all run. */
+export function resummarize(doc: EditDoc, summary: string): EditDoc {
+  const last = currentVersion(doc)
+  if (!summary.trim() || last.summary === summary) return doc
+  return { ...doc, versions: [...doc.versions.slice(0, -1), { ...last, summary }] }
+}
+
 /**
  * Footage that finished coming in while the person kept editing. `extended`
  * is what the main process made from `before`: more sources and their words,
@@ -338,6 +394,7 @@ export function mergeExtension(current: EditDoc, before: EditDoc, extended: Edit
   return next
 }
 
+/** Brings back an earlier version's cut as the newest version. */
 export function restore(doc: EditDoc, n: number, at = new Date().toISOString()): EditDoc {
   const target = doc.versions.find((v) => v.n === n)
   if (!target) throw new Error(`There is no v${n}.`)

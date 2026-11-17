@@ -26,7 +26,11 @@ function remembered(): string | null {
  * brand is still the one shown, so one brand's habits are never offered on
  * another's page. Moving to another brand starts its page afresh.
  */
-export function useLearn(brand: string) {
+export function useLearn(
+  brand: string,
+  /** The sentence that says why nothing can run yet (no working Anthropic key), or null when it can. */
+  blocked: (what: 'learn') => Promise<string | null> = async () => null
+) {
   const [recordings, setRecordings] = useState<string[]>([])
   const [finished, setFinishedState] = useState<string | null>(null)
   const [progress, setProgress] = useState<Progress | null>(null)
@@ -96,6 +100,11 @@ export function useLearn(brand: string) {
 
   const run = useCallback(async (): Promise<void> => {
     if (busy.current || recordings.length === 0 || !finished) return
+    const stop = await blocked('learn')
+    if (stop) {
+      setError(stop)
+      return
+    }
     busy.current = true
     setError(null)
     setNotes([])
@@ -123,17 +132,22 @@ export function useLearn(brand: string) {
       setSince(null)
       busy.current = false
     }
-  }, [recordings, finished, brand, take])
+  }, [recordings, finished, brand, take, blocked])
 
   const checkAgain = useCallback(async (): Promise<void> => {
     const forBrand = brand
+    const stop = await blocked('learn')
+    if (stop) {
+      setError(stop)
+      return
+    }
     setCheckingFor(forBrand)
     try {
       take(forBrand, await api.learnEvaluate(forBrand))
     } finally {
       setCheckingFor((c) => (c === forBrand ? null : c))
     }
-  }, [brand, take])
+  }, [brand, take, blocked])
 
   const forget = useCallback(
     async (id: string): Promise<void> => {

@@ -6,7 +6,6 @@ import { creditsText } from '../assets'
 import { mapCredits, mapDetails, mapProblem, readMapCommand } from './command'
 import { decodePlates } from './geo'
 import { platesFromGeoJson } from './plates'
-import { mapRequest } from './request'
 import { mapShot, mapShotLayers } from './shot'
 import { FLY } from './camera'
 import { specFor, timeline } from './spec'
@@ -166,7 +165,7 @@ describe('a map shot from a place and a length', () => {
   })
 })
 
-describe('/map and map requests in words', () => {
+describe('/map, read into a map graphic', () => {
   it('reads a style, a place in the frame and facts out of the words', () => {
     expect(readMapCommand('Iceland')).toEqual({ query: 'Iceland', style: '', place: '', facts: null })
     expect(readMapCommand('vintage Iceland with its population')).toEqual({ query: 'Iceland', style: 'vintage', place: '', facts: ['population'] })
@@ -174,39 +173,6 @@ describe('/map and map requests in words', () => {
     expect(readMapCommand('Iceland, no facts').facts).toEqual([])
     expect(mapProblem('Georgia')).toBe('Georgia the country or the US state? Say /map Georgia, the country, or /map Georgia, US state.')
     expect(mapProblem('')).toBe('Tell me the place, like /map Iceland.')
-  })
-
-  const source = { id: 's1', path: '/x.mov', durationSec: 12, width: 1920, height: 1080, fps: 30 }
-  const said = 'The Mid-Atlantic Ridge runs right through Iceland and it is still spreading'.split(' ')
-  const words = wordsFromTranscript(said.map((text, i) => ({ text, startSec: 0.4 + i * 0.4, endSec: 0.7 + i * 0.4 })), 's1')
-  const doc = createDoc({ id: 'd', title: 't', source, words })
-
-  it('takes "show where Iceland is" as a map on the word Iceland', () => {
-    const r = mapRequest(doc, 'show where Iceland is')
-    // The graphic keeps the places part of the request, as a person would have typed it into its Place field.
-    expect(r).toMatchObject({ kind: 'map', said: true, call: { kind: 'map', text: ['Iceland'], from: 'w7' }, name: 'a map of Iceland' })
-    expect(mapRequest(doc, 'where is Iceland?')).toMatchObject({ call: { text: ['Iceland'] } })
-    expect(mapRequest(doc, 'show me a map of Iceland please')).toMatchObject({ call: { text: ['Iceland'] } })
-  })
-
-  it('takes the ridge between the plates as a map, on the word that names it', () => {
-    const r = mapRequest(doc, 'show the Mid-Atlantic Ridge between the plates')
-    expect(r).toMatchObject({
-      kind: 'map',
-      said: true,
-      call: { from: 'w2', text: ['the Mid-Atlantic Ridge between the plates'] },
-      name: 'a map of the Mid-Atlantic Ridge'
-    })
-  })
-
-  it('leaves a request that asks for more than a map to the planner', () => {
-    expect(mapRequest(doc, 'cut the intro and show where Iceland is')).toBeNull()
-    expect(mapRequest(doc, 'make the captions bigger')).toBeNull()
-    expect(mapRequest(doc, 'Iceland')).toBeNull()
-  })
-
-  it('asks which Georgia rather than guessing', () => {
-    expect(mapRequest(doc, 'show where Georgia is')).toEqual({ kind: 'problem', problem: expect.stringContaining('Georgia the country or the US state?') })
   })
 
   it('puts the facts’ source and the data behind Details', () => {

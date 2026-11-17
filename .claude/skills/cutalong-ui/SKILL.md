@@ -52,7 +52,7 @@ Cutalong runs separate jobs; each has a small character, so you watch a crew wor
 - **The living mark** (`LivingMark`): three soft shapes in the bloom colours turning over a warm core. Big above long work; small in the assistant's tile while it thinks.
 - **A brand's avatar** (`BrandAvatar`, `avatarOf(brand)`): the shape and colour picked on the Brand page (`AvatarPicker`), or one chosen from the brand's id until then. It shows in the brand's hero, the brand switch and the brand list.
 - **Composer files**: round, glossy stills that float up into the composer (`.cl-attachment` with its `.cl-poster`).
-- **Fields and steps for key setup**: `.cl-field` with `aria-invalid`, `.cl-field-msg` (`.error`, `.ok`), and `.cl-steps`.
+- **Fields and steps for key setup**: `.cl-field` with `aria-invalid`, `.cl-field-msg` (`.error`, `.ok`), and `.cl-steps` (`.now` for the step that fixes what went wrong, `.done` for the ones a key Anthropic accepted shows are done). `KeySteps` draws any service's steps from `shared/setup`, and `ClaudeKeyField` is the Anthropic key's field: Start shows them until a key works (`KeySetup`), and Settings shows them while one does not.
 - **Toasts** float at the top right under the header, on paper, and never cover the beat strip.
 
 ## Motion

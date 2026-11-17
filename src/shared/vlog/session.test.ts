@@ -19,7 +19,7 @@ import { dayName, nameScene } from './describe'
 import { pretendClip, pretendVlog } from './pretend'
 import { assembleShoot } from './shoot'
 import { carriedNote, sceneInSentence, scenesChanged, storyReply } from './reply'
-import { parseVlogAsk, sceneNamed, wantsVlog } from './request'
+import { parseVlogAsk, sceneNamed } from './request'
 import type { Vlog } from './schema'
 import { clock } from '../presets/preset'
 
@@ -49,14 +49,7 @@ function retold(doc: EditDoc, text: string): EditDoc {
 
 const runs = (doc: EditDoc): number => resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
 
-describe('words that ask for a vlog', () => {
-  it('are heard however they are put, and not when they say it is not one', () => {
-    for (const yes of ['make a vlog', 'Vlog this please', 'cut my day into a v-log', 'a day in the life of me'])
-      expect(wantsVlog(yes)).toBe(true)
-    for (const no of ['make it shorter', 'this is not a vlog, it is a tutorial', 'start with the airport', ''])
-      expect(wantsVlog(no)).toBe(false)
-  })
-
+describe('words asked of a vlog', () => {
   it('read the shape asked for, and not a wide shot asked for', () => {
     expect(parseVlogAsk('make it vertical for reels')?.aspect).toBe('vertical')
     expect(parseVlogAsk('a 9:16 one for TikTok')?.aspect).toBe('vertical')

@@ -4,11 +4,9 @@ import { resolveCut } from '../edit/resolve'
 import type { EditDoc, Source } from '../edit/schema'
 import {
   bringBack,
-  bringBackAsked,
   findIntro,
-  mergeLengthAsks,
-  parseLengthAsk,
   planLength,
+  readLengthCommand,
   toleranceFor,
   topicName,
   type LengthAsk
@@ -82,107 +80,32 @@ function lightingDoc(): EditDoc {
 const runs = (doc: EditDoc): number => resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
 const said = (doc: EditDoc): string => resolveCut(currentCut(doc), doc.words, doc.sources).words.map((w) => w.text).join(' ')
 
-describe('reading a length asked for', () => {
-  it('hears a length, a range, a limit and a clock', () => {
-    expect(parseLengthAsk('make it 10 minutes')).toEqual({ targetSec: 600, cut: [] })
-    expect(parseLengthAsk('cut it to 60 seconds')).toEqual({ targetSec: 60, cut: [] })
-    expect(parseLengthAsk('about 8 to 10 minutes')?.range).toEqual([480, 600])
-    expect(parseLengthAsk('make it 8-10 min')?.range).toEqual([480, 600])
-    expect(parseLengthAsk('get it under a minute')?.range).toEqual([54, 60])
-    expect(parseLengthAsk('make it 1:30')?.targetSec).toBe(90)
-    expect(parseLengthAsk('10m')?.targetSec).toBe(600)
-    expect(parseLengthAsk('60 seconds')?.targetSec).toBe(60)
-    expect(parseLengthAsk('a 3 minute version')?.targetSec).toBe(180)
+describe('reading /length', () => {
+  it('reads a length, a range, a limit and a clock', () => {
+    expect(readLengthCommand('10 minutes')).toEqual({ targetSec: 600, cut: [] })
+    expect(readLengthCommand('60s')).toEqual({ targetSec: 60, cut: [] })
+    expect(readLengthCommand('10m')?.targetSec).toBe(600)
+    expect(readLengthCommand('about 8 to 10 minutes')?.range).toEqual([480, 600])
+    expect(readLengthCommand('8-10 min')?.range).toEqual([480, 600])
+    expect(readLengthCommand('under a minute')).toEqual({ range: [54, 60], under: true, cut: [] })
+    expect(readLengthCommand('1:30')?.targetSec).toBe(90)
   })
 
-  it('hears the intro, keeping every line, and topics', () => {
-    expect(parseLengthAsk('remove my intro')).toEqual({ intro: true, cut: [] })
-    expect(parseLengthAsk('start on the main point')?.intro).toBe(true)
-    expect(parseLengthAsk('Get straight to the point.')?.intro).toBe(true)
-    expect(parseLengthAsk('make it 10 minutes but keep the full argument')).toEqual({
-      targetSec: 600,
-      keepAll: true,
-      cut: []
-    })
-    expect(parseLengthAsk('focus on the battery, cut the tangent about the conference')).toEqual({
-      focus: 'battery',
-      cut: ['conference']
-    })
-    expect(parseLengthAsk('remove the part where I talk about my cat and make it 5 minutes')).toEqual({
-      targetSec: 300,
-      cut: ['cat']
-    })
+  it('reads the intro out, every line kept, topics and a focus', () => {
+    expect(readLengthCommand('no intro')).toEqual({ intro: true, cut: [] })
+    expect(readLengthCommand('start on the main point')?.intro).toBe(true)
+    expect(readLengthCommand('keep all')).toEqual({ keepAll: true, cut: [] })
+    expect(readLengthCommand('keep every line')).toEqual({ keepAll: true, cut: [] })
+    expect(readLengthCommand('8 min, keep the full argument')).toEqual({ targetSec: 480, keepAll: true, cut: [] })
+    expect(readLengthCommand('5 min, cut the tangent about the conference')).toEqual({ targetSec: 300, cut: ['conference'] })
+    expect(readLengthCommand('focus on the battery')).toEqual({ focus: 'battery', cut: [] })
   })
 
-  it('leaves alone what is not about the length', () => {
-    expect(parseLengthAsk('the 10 minutes I spent on the bus is the best bit')).toBeNull()
-    expect(parseLengthAsk('make the hook punchier')).toBeNull()
-    expect(parseLengthAsk('add a dissolve here')).toBeNull()
-  })
-
-  it('hears a length only when it is said of the whole video', () => {
-    // A fade, a title, a freeze, a part, the music: the planner's, never the video's length.
-    for (const text of [
-      'fade in for about 2 seconds',
-      'make the title 3 seconds long',
-      'hold the freeze frame for about 2 seconds',
-      'make this part about 10 seconds',
-      'speed up the part from 1:20 to 1:40',
-      'add a title from 0:05 to 0:10',
-      'cut 2 to 3 seconds of silence from the start',
-      'the music should come in 5-10 seconds in',
-      'add a fade at the start and make it 2 seconds',
-      'make it 10 seconds shorter'
-    ])
-      expect(parseLengthAsk(text), text).toBeNull()
-    // Said of the video, by name or as "it" before anything else is asked.
-    expect(parseLengthAsk('the video should be under a minute')).toEqual({ range: [54, 60], under: true, cut: [] })
-    expect(parseLengthAsk('Can you make the whole video 3 minutes long?')?.targetSec).toBe(180)
-    expect(parseLengthAsk('I want it to be 90 seconds')?.targetSec).toBe(90)
-  })
-
-  it('hears every line kept, the intro and a focus only when they are about the lines', () => {
-    for (const text of [
-      'keep all the music but make it quieter',
-      "don't cut anything, just add captions",
-      'focus on my face when I say the price',
-      'remove the intro music',
-      'cut the opening title card',
-      'trim the intro a bit',
-      'cut the intro to 5 seconds'
-    ])
-      expect(parseLengthAsk(text), text).toBeNull()
-    expect(parseLengthAsk('keep every line')).toEqual({ keepAll: true, cut: [] })
-    expect(parseLengthAsk('make it all about the battery')).toEqual({ focus: 'battery', cut: [] })
-    // In /length the words are all about the length.
-    expect(parseLengthAsk('keep all', { command: true })).toEqual({ keepAll: true, cut: [] })
-    expect(parseLengthAsk('keep all')).toBeNull()
-  })
-
-  it('keeps what else a sentence asks for the planner', () => {
-    expect(parseLengthAsk('make it 60 seconds and add captions')).toEqual({ targetSec: 60, cut: [], rest: 'add captions' })
-    expect(parseLengthAsk('Remove my intro, then add a title saying Berlin')).toEqual({
-      intro: true,
-      cut: [],
-      rest: 'add a title saying Berlin'
-    })
-    expect(parseLengthAsk('ok, make it 10 minutes')).toEqual({ targetSec: 600, cut: [] })
-  })
-
-  it('sends on what a sentence asks around its length, and nothing when it asks only the length', () => {
-    expect(parseLengthAsk('make it 60 seconds with captions')).toEqual({ targetSec: 60, cut: [], rest: 'with captions' })
-    expect(parseLengthAsk('make it 2 minutes while keeping the jokes')).toEqual({
-      targetSec: 120,
-      cut: [],
-      rest: 'while keeping the jokes'
-    })
-    expect(parseLengthAsk('a 3 minute version with music')).toEqual({ targetSec: 180, cut: [], rest: 'with music' })
-    expect(parseLengthAsk('For YouTube, make the video 8 minutes long')).toEqual({ targetSec: 480, cut: [], rest: 'For YouTube' })
-    // Only the length: nothing goes on.
-    for (const text of ['make it 60 seconds', 'Can you make it 60 seconds long, please?', 'I want it to be 90 seconds', '60 seconds'])
-      expect(parseLengthAsk(text)?.rest, text).toBeUndefined()
-    // What the ask heard already is not sent again.
-    expect(parseLengthAsk('make it 10 minutes without cutting any lines')).toEqual({ targetSec: 600, keepAll: true, cut: [] })
+  it('reads nothing from words that ask none of it', () => {
+    expect(readLengthCommand('')).toBeNull()
+    expect(readLengthCommand('please')).toBeNull()
+    // A length changed by so much is not a length to cut to.
+    expect(readLengthCommand('10 seconds shorter')).toBeNull()
   })
 })
 
@@ -294,7 +217,7 @@ describe('cutting toward a length', () => {
     let doc = lightingDoc()
     const intro = planLength(doc, { intro: true, cut: [] })
     doc = commit(doc, intro.ops, intro.summary).doc
-    const why = topicName(parseLengthAsk('cut the tangent about the conference') as LengthAsk) as string
+    const why = topicName(readLengthCommand('cut the tangent about the conference') as LengthAsk) as string
     expect(why).toBe('the part about the conference')
     const tangent = currentCut(doc).beats.filter((b) =>
       /conference|buffet|umbrellas/.test(said({ ...doc, versions: [{ ...doc.versions[0], cut: { ...currentCut(doc), beats: [b] } }] }))
@@ -329,9 +252,6 @@ describe('cutting toward a length', () => {
 
   it('brings back what was cut on request when asked for it by name, and leaves other asks alone', () => {
     const doc = askedAndShort()
-    expect(bringBackAsked('bring back the tangent about the conference')).toBe('the tangent about the conference')
-    expect(bringBackAsked('Put the intro back, please.')).toBe('the intro')
-    expect(bringBackAsked('make it 10 minutes')).toBeNull()
     const tangent = bringBack(doc, 'the tangent about the conference')
     expect(tangent?.summary).toMatch(/^It runs \d:\d\d now, up from \d:\d\d\. I brought back the part about the conference\.$/)
     const back = commit(doc, tangent?.ops ?? [], tangent?.summary ?? '').doc
@@ -382,7 +302,7 @@ describe('what a length keeps, says and brings back', () => {
     const short = planLength(doc, { targetSec: 40, cut: [] })
     doc = commit(doc, short.ops, short.summary).doc
     const was = runs(doc)
-    const ask = parseLengthAsk('get it under a minute') as LengthAsk
+    const ask = readLengthCommand('under a minute') as LengthAsk
     expect(ask).toEqual({ range: [54, 60], under: true, cut: [] })
     const plan = planLength(doc, ask)
     expect(plan.ops).toEqual([])
@@ -425,7 +345,7 @@ describe('what a length keeps, says and brings back', () => {
     doc = commit(doc, short.ops, short.summary).doc
     doc = commit(doc, [{ op: 'tighten', set: null }], 'pauses back').doc
     const was = runs(doc)
-    const ask = parseLengthAsk('make it 80 seconds but keep the full argument') as LengthAsk
+    const ask = readLengthCommand('80 seconds, keep the full argument') as LengthAsk
     expect(ask).toEqual({ targetSec: 80, keepAll: true, cut: [] })
     const plan = planLength(doc, ask)
     expect(plan.ops.some((o) => o.op === 'tighten' || o.op === 'remove' || o.op === 'strike')).toBe(false)
@@ -452,19 +372,5 @@ describe('what a length keeps, says and brings back', () => {
     const after = commit(doc, plan.ops, plan.summary).doc
     expect(said(after)).toMatch(/^Hey everyone, welcome back/)
     expect(currentCut(after).beats[0].treatment.frame).toBe('broll')
-  })
-})
-
-describe('notes that ask of the length together', () => {
-  it('are one ask: the last length, the intro and every topic', () => {
-    const asks = [
-      'make it 10 minutes',
-      'remove my intro',
-      'cut the tangent about the conference',
-      'actually make it 8 minutes'
-    ]
-      .map((t) => parseLengthAsk(t))
-      .filter((a): a is NonNullable<typeof a> => a !== null)
-    expect(mergeLengthAsks(asks)).toEqual({ targetSec: 480, intro: true, cut: ['conference'] })
   })
 })

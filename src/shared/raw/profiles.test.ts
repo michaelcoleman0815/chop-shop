@@ -4,7 +4,7 @@ import { BUILT_IN_PRESETS, planStyle } from '../presets'
 import { docFor } from './eval'
 import { FIXTURES } from './fixtures'
 import lab from './lab-transcripts.json'
-import { DEFAULT_PROFILE, profileAskedFor, profileById, PROFILES, styleForProfile, suggestProfile } from './profiles'
+import { DEFAULT_PROFILE, profileById, PROFILES, styleForProfile, suggestProfile } from './profiles'
 
 const preset = (command: string): (typeof BUILT_IN_PRESETS)[number] => {
   const p = BUILT_IN_PRESETS.find((x) => x.command === command)
@@ -13,27 +13,6 @@ const preset = (command: string): (typeof BUILT_IN_PRESETS)[number] => {
 }
 
 describe('cutting profiles', () => {
-  it('hears a profile asked for in a sentence, and nothing in other sentences', () => {
-    const id = (t: string): string | null => {
-      const r = profileAskedFor(t)
-      return r && 'profile' in r ? r.profile.id : r && 'notBuilt' in r ? `not built: ${r.notBuilt}` : null
-    }
-    expect(id('This one is a podcast.')).toBe('podcast')
-    expect(id("it's a tech review")).toBe('tech')
-    expect(id('treat this as gaming')).toBe('gaming')
-    expect(id('This one is a cooking video')).toBe('not built: cooking')
-    // Every kind built is heard by its name, ASMR included: its pattern once
-    // had nothing to capture, so "this one is ASMR" fell through to nothing.
-    expect(id('This one is ASMR')).toBe('asmr')
-    expect(id("it's an asmr video")).toBe('asmr')
-    expect(id('this is a livestream')).toBe('livestream')
-    expect(id('this one is a sermon')).toBe('church')
-    expect(id('this is commentary')).toBe('talking-head')
-    expect(id('this is a game changer')).toBeNull()
-    expect(id('this is a great take, keep it')).toBeNull()
-    expect(id('make the intro punchier')).toBeNull()
-  })
-
   it('suggests tech from what a review says, and nothing from too little', () => {
     const words = (lab.transcripts['verbatim prompt, no rolling context'] as { text: string }[]).map((w) => ({
       text: w.text

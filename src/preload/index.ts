@@ -30,7 +30,9 @@ import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { PremiereFacts, Preset } from '../shared/presets'
 import type { KeyCheck, ServiceId } from '../shared/services'
-import type { ClipsFound, ClipsReply } from '../shared/clipping'
+import type { ClipAsk, ClipsFound, ClipsReply } from '../shared/clipping'
+import type { ClaudeKeyState } from '../shared/setup'
+import type { PlanQuestion, PlanStep } from '../shared/plan/commands'
 import type { Vlog } from '../shared/vlog/schema'
 import type { VlogReply } from '../shared/vlog/reply'
 
@@ -256,6 +258,8 @@ const api = {
   findClips: (req: {
     paths: string[]
     ask: string
+    /** What Claude read in words that were not /clipping. */
+    asked?: ClipAsk
     known?: Record<string, TranscriptWord[]>
     avoid?: { path: string; startSec: number; endSec: number }[]
     /** The chat's brand, by id. */
@@ -291,10 +295,22 @@ const api = {
     request: string
     notes: Note[]
     voice?: string
+    /** The slash commands there are, the person's own among them: a plan may run any of them. */
+    commands?: { command: string; summary: string }[]
+    /** Cuts offered and not yet answered, in plain words. */
+    offers?: string[]
+    /** The last turns of the chat, oldest first. */
+    chat?: { role: 'user' | 'assistant'; text: string }[]
+    /** The person's brands by name, and whether this chat is in each. */
+    brands?: { name: string; current: boolean }[]
   }): Promise<
     | {
         ok: true
         ops: Op[]
+        /** The plan in order: runs of edit ops, and Cutalong's commands between them. */
+        steps: PlanStep[]
+        /** A question Claude asked instead of guessing, or null. */
+        question: PlanQuestion | null
         summary: string
         reply: string
         notesHandled: string[]
@@ -302,10 +318,37 @@ const api = {
         rejected: string[]
         brollWanted?: { beat: string; search: string }[]
       }
-    | { ok: false; message: string; needsKey?: boolean }
+    | { ok: false; message: string; needsKey?: boolean; keyState?: ClaudeKeyState }
   > => ipcRenderer.invoke('cut:plan', req),
-  checkKey: (): Promise<{ ok: true } | { ok: false; message: string; needsKey?: boolean }> =>
-    ipcRenderer.invoke('claude:check'),
+  /**
+   * What a message asks Cutalong to make, read by Claude before any footage
+   * is: an edit, a vlog, clips from a long recording, words to wait for
+   * footage with, or a question answered; and what a link with it is for.
+   */
+  triage: (req: {
+    request: string
+    files: { path: string; name: string }[]
+    link: string | null
+    hasEdit: boolean
+    commands?: { command: string; summary: string }[]
+  }): Promise<
+    | {
+        ok: true
+        route: 'edit' | 'vlog' | 'clipping' | 'wait' | 'answer'
+        reply: string
+        link: 'study' | 'material' | 'page' | 'none'
+        clip: ClipAsk
+        question: PlanQuestion | null
+      }
+    | { ok: false; message: string; keyState?: ClaudeKeyState }
+  > => ipcRenderer.invoke('cut:triage', req),
+  /** `quick` takes a key Anthropic accepted before as working, without asking again: for launch. */
+  checkKey: (opts?: {
+    quick?: boolean
+  }): Promise<
+    | { ok: true; state: 'ok'; confirmed: true }
+    | { ok: false; state: ClaudeKeyState; message: string; confirmed: boolean; needsKey: boolean }
+  > => ipcRenderer.invoke('claude:check', opts),
   // Other AI services: whether each key exists (never what it is), saving and
   // checking a key, and the one switch that lets anything go to them.
   serviceKeys: (): Promise<Record<ServiceId, boolean>> => ipcRenderer.invoke('services:keys'),
