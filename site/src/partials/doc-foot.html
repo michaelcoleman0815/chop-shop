@@ -5,7 +5,7 @@
       <ul class="footer-links">
         <li><a href="{{page privacy}}">Privacy</a></li>
         <li><a href="{{page terms}}">Terms</a></li>
-        <li><a href="{{downloadUrl}}">Releases on GitHub</a></li>
+        {{#downloadReady}}<li><a href="{{downloadUrl}}">Releases on GitHub</a></li>{{/downloadReady}}
         <li><a href="mailto:{{contactEmail}}">{{contactEmail}}</a></li>
       </ul>
       <p class="footer-legal">© {{year}} {{owner}}</p>

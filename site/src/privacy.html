@@ -24,6 +24,7 @@ description: How Cutalong and this site handle your footage, your keys and your 
         <li>I never receive your footage, your projects, your keys or anything you type. Cutalong has no account and sends nothing to me.</li>
         <li>Cutalong talks to other services only with keys you add: Claude through your own Anthropic key, and optional services through theirs.</li>
         <li>Neither the app nor this site uses analytics, tracking or advertising.</li>
+        <li>If you leave your email address on this site, it is stored on Cloudflare, used only to tell you {{^downloadReady}}when Cutalong is ready{{/downloadReady}}{{#downloadReady}}when the things listed on the home page ship{{/downloadReady}}, and deleted when you ask.</li>
       </ul>
 
       <h2>What stays on your Mac</h2>
@@ -59,8 +60,8 @@ description: How Cutalong and this site handle your footage, your keys and your 
       <p>These sites see your IP address and what was asked for, as any website does, under their own policies.</p>
 
       <h2>This website</h2>
-      <p>This site is a set of static pages hosted on Cloudflare Pages. Cloudflare handles each request, and may keep the IP address and request details in its logs, under Cloudflare’s privacy policy. The site sets no cookies, runs no analytics, and loads no fonts or scripts from anyone else. The download link goes to GitHub Releases.</p>
-      <p>If you join the list on the home page, your email address is used only to tell you when the things listed there ship, and is held by <span class="fill" data-fill="email provider">the email provider, once chosen</span>. Every email has a way to leave the list, and you can ask me to delete your address at any time.</p>
+      <p>This site is a set of static pages hosted on Cloudflare Pages, with one small program, also on Cloudflare, that takes the email form. Cloudflare handles each request, and may keep the IP address and request details in its logs, under Cloudflare’s privacy policy. The site sets no cookies, runs no analytics, and loads no fonts or scripts from anyone else.{{#downloadReady}} The download link goes to GitHub Releases.{{/downloadReady}}</p>
+      <p>If you leave your email address in the form on the home page, it is stored on Cloudflare, in Workers KV under my Cloudflare account, with the time you left it and which part of the page took you to the form. Nothing else is kept with it. It is used only to tell you {{^downloadReady}}when Cutalong is ready{{/downloadReady}}{{#downloadReady}}when the things listed there ship{{/downloadReady}}. To have it removed, write to <a href="mailto:{{contactEmail}}">{{contactEmail}}</a> and I will delete it.</p>
 
       <h2>Your choices</h2>
       <p>You can turn off each setting above, remove any key, or delete Cutalong’s folder to remove everything it stored. For anything this site or the list holds about you, write to <a href="mailto:{{contactEmail}}">{{contactEmail}}</a> and I will answer within 30 days.</p>

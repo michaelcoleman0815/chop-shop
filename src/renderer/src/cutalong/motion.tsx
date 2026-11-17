@@ -48,8 +48,12 @@ function ms(name: string): number {
 
 // ---------- View Transitions ----------
 
-/** What a View Transition is moving; motion.css names what travels for each. */
-export type Move = 'screen' | 'rail' | 'version'
+/**
+ * What a View Transition is moving; motion.css names what travels for each.
+ * "attach" is the composer opening for a row of dropped files, "detach" it
+ * closing when the last one is taken out.
+ */
+export type Move = 'screen' | 'rail' | 'version' | 'attach' | 'detach'
 
 let latest = 0
 const named = new Set<HTMLElement>()

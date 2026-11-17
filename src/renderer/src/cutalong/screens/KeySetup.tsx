@@ -1,7 +1,8 @@
 import { useState, type DragEvent } from 'react'
-import { blockedSentence, costLine, fixingStep, keyGuide, keyMessage } from '../../../../shared/setup'
+import { blockedSentence, costLine, doneSteps, fixingStep, keyGuide, keyMessage } from '../../../../shared/setup'
 import { ClaudeKeyField } from '../components/ClaudeKeyField'
 import { KeySteps } from '../components/KeySteps'
+import { Mark } from '../components/ui'
 import type { Cutalong } from '../useCutalong'
 import { BackToWork, Header } from './Header'
 
@@ -40,11 +41,17 @@ export function KeySetup({ app }: { app: Cutalong }): JSX.Element {
       </BackToWork.Provider>
       <main className="cl-start cl-setup" onDragOver={(e) => e.preventDefault()} onDrop={drop}>
         <div className="cl-setup-inner">
-          <h1 className="cl-title">First, an Anthropic key</h1>
+          <span className="cl-start-mark" aria-hidden="true">
+            <Mark size={44} />
+          </span>
+          <h1 className="cl-title">
+            First, an Anthropic <span className="cl-accent">key</span>
+          </h1>
           <p className="cl-setup-why">{guide.why}</p>
           <KeySteps
             service="anthropic"
             current={failing ? fixingStep(key.state) : null}
+            done={failing ? doneSteps(key.state) : 0}
             paste={{
               id: 'cl-key',
               field: (

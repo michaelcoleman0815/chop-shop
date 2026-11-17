@@ -14,7 +14,10 @@ import { aKey, KeySteps } from './KeySteps'
  * went wrong is the one marked.
  */
 
-const render = (service: KeyServiceId, extra: { current?: number | null; paste?: { id: string; field: unknown } } = {}): string =>
+const render = (
+  service: KeyServiceId,
+  extra: { current?: number | null; done?: number; paste?: { id: string; field: unknown } } = {}
+): string =>
   renderToStaticMarkup(createElement(KeySteps, { service, ...extra } as Parameters<typeof KeySteps>[0]))
 
 describe('the steps to a key', () => {
@@ -24,9 +27,10 @@ describe('the steps to a key', () => {
       expect(html).toContain(`aria-label="How to get ${aKey(guide.name)}"`)
       const items = html.match(/<li/g) ?? []
       expect(items, guide.id).toHaveLength(guide.steps.length)
-      for (const [i, step] of guide.steps.entries()) {
-        expect(html, guide.id).toContain(`<span class="cl-step-n" aria-hidden="true">${i + 1}</span>`)
-        expect(html, guide.id).toContain(step.text.replace(/’/g, '’'))
+      // Numbered by the list itself (the design system's .cl-steps), each step what to do as its heading.
+      expect(html, guide.id).toMatch(/^<ol class="cl-steps" role="list"/)
+      for (const step of guide.steps) {
+        expect(html, guide.id).toContain(`<div class="cl-step-body"><h3>${step.text}`)
         if (!step.link) continue
         expect(html, guide.id).toContain(
           `<a class="cl-btn secondary small cl-step-link" href="${step.link.url.replace(/&/g, '&amp;')}" target="_blank" rel="noreferrer">${step.link.label}`
@@ -46,22 +50,28 @@ describe('the steps to a key', () => {
   it('holds the field in the last step, labelled by it, and marks the step that fixes what went wrong', () => {
     const html = render('anthropic', {
       current: 2,
+      done: 2,
       paste: { id: 'cl-key', field: createElement('input', { id: 'cl-key', type: 'password' }) }
     })
-    expect(html).toContain('<label class="cl-step-text" for="cl-key">Paste the key here.</label>')
+    expect(html).toContain('<h3><label for="cl-key">Paste the key here.</label></h3>')
     expect(html).toContain('<div class="cl-step-field"><input id="cl-key" type="password"/></div>')
     expect(html.match(/aria-current="step"/g)).toHaveLength(1)
-    expect(html).toMatch(/<li class="now" aria-current="step"><span class="cl-step-n" aria-hidden="true">3<\/span><span class="cl-step-text">Add credit under Billing/)
+    expect(html).toMatch(/<li class="now" aria-current="step"><div class="cl-step-body"><h3>Add credit under Billing/)
+    // The steps before it are done, and say so to a screen reader too.
+    expect(html.match(/<li class="done">/g)).toHaveLength(2)
+    expect(html).toContain('<h3>Create a key, name it Cutalong, and copy it.<span class="sr-only">, done</span></h3>')
     // Nothing marked when nothing went wrong.
-    expect(render('anthropic')).not.toContain('aria-current')
+    const plain = render('anthropic')
+    expect(plain).not.toContain('aria-current')
+    expect(plain).not.toContain('class="done"')
   })
 })
 
 /**
- * The field an Anthropic key is pasted into marks its state for the styles
- * to read, the way the redesign's key screen draws it: a failed check makes
- * the field invalid and says what went wrong beside an alert icon; a key that
- * works says so beside a check. Neither rests on colour alone.
+ * The field an Anthropic key is pasted into, in the design system's field
+ * states (.cl-field, .cl-field-msg): a failed check makes the field invalid
+ * and says what went wrong in the error colour beside an alert icon; a key
+ * that works says so in the ok colour beside a check. Never colour alone.
  */
 describe('the field a key is pasted into', () => {
   const field = (status: ClaudeKeyStatus, extra: { showOk?: boolean; note?: string; saved?: boolean } = {}): string => {
@@ -81,7 +91,7 @@ describe('the field a key is pasted into', () => {
     for (const state of ['refused', 'no-credit', 'no-access', 'busy', 'down', 'offline', 'unreadable', 'wrong'] as const) {
       const html = field(keyStatus(state, false, 'sk-proj-abc'))
       expect(html, state).toContain('aria-invalid="true"')
-      expect(html, state).toMatch(/<p id="cl-key-line" class="cl-keycheck" data-kind="error" role="status"><span class="cl-keycheck-icon" aria-hidden="true"><svg/)
+      expect(html, state).toMatch(/<p id="cl-key-line" class="cl-field-msg cl-keycheck error" role="status"><svg/)
       expect(html, state).toContain(keyMessage(state, 'sk-proj-abc'))
     }
   })
@@ -89,10 +99,10 @@ describe('the field a key is pasted into', () => {
   it('says a working key works beside a check, where it is asked to', () => {
     const html = field(keyStatus('ok', true), { showOk: true })
     expect(html).not.toContain('aria-invalid')
-    expect(html).toContain('data-kind="ok"')
+    expect(html).toMatch(/<p id="cl-key-line" class="cl-field-msg cl-keycheck ok" role="status"><svg/)
     expect(html).toContain(keyMessage('ok'))
     // On the setup screen the screen moves on instead, so nothing is said.
-    expect(field(keyStatus('ok', true))).not.toContain('data-kind')
+    expect(field(keyStatus('ok', true))).toContain('<p id="cl-key-line" class="cl-field-msg cl-keycheck" role="status"></p>')
   })
 
   it('marks nothing with no key, while checking, or when a sentence stands in for the check', () => {
@@ -102,8 +112,7 @@ describe('the field a key is pasted into', () => {
       field(keyStatus('refused'), { note: 'I need an Anthropic key before I can read footage. Follow the steps here, then try again.' })
     ]) {
       expect(html).not.toContain('aria-invalid')
-      expect(html).not.toContain('data-kind')
-      expect(html).not.toContain('cl-keycheck-icon')
+      expect(html).not.toMatch(/cl-keycheck (error|ok)/)
     }
   })
 })

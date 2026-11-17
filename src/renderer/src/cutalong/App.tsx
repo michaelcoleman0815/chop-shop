@@ -5,6 +5,7 @@ import { Sidebar, type Place } from './components/Sidebar'
 import { Button, Mark } from './components/ui'
 import { moveRail, useLingering, useMotion } from './motion'
 import { BrandPage } from './screens/Brand'
+import { CrewPage } from './screens/Crew'
 import { Editor } from './screens/Editor'
 import { BackToWork } from './screens/Header'
 import { PresetsPage, ProjectsPage } from './screens/Library'
@@ -68,6 +69,7 @@ export default function App(): JSX.Element {
     app.screen === 'projects' ||
     app.screen === 'brand' ||
     app.screen === 'presets' ||
+    app.screen === 'crew' ||
     app.screen === 'settings'
       ? app.screen
       : null
@@ -96,6 +98,7 @@ export default function App(): JSX.Element {
             {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
             {app.screen === 'brand' && <BrandPage app={app} />}
             {app.screen === 'presets' && <PresetsPage app={app} />}
+            {app.screen === 'crew' && <CrewPage app={app} />}
             {app.screen === 'settings' && <SettingsPage app={app} />}
           </BackToWork.Provider>
         </ScreenGuard>

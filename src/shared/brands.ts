@@ -189,6 +189,18 @@ export function brandName(brand: Pick<Brand, 'name'>): string {
   return brand.name.trim() || 'Untitled brand'
 }
 
+/**
+ * The name a new brand starts with, so no two read alike before one is
+ * renamed: "Brand 2" beside the first, then the lowest number no brand on the
+ * list is called.
+ */
+export function nextBrandName(list: Brands): string {
+  const taken = new Set(list.brands.map((b) => b.name.trim().toLowerCase()))
+  let n = Math.max(2, list.brands.length + 1)
+  while (taken.has(`brand ${n}`)) n++
+  return `Brand ${n}`
+}
+
 /** A brand's name in a sentence: "Field Notes", or "this brand" when it has none. */
 export function brandInSentence(brand: Pick<Brand, 'name'>): string {
   return brand.name.trim() || 'this brand'

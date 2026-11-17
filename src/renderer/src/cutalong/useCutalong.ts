@@ -97,6 +97,7 @@ import {
   brandOfCut,
   chatBrand as chatBrandOf,
   EMPTY_BRANDS,
+  nextBrandName,
   removeBrand as removeBrandFrom,
   replaceBrand,
   setDefaultBrand,
@@ -156,7 +157,7 @@ import type { PlannedCommand } from '../../../shared/plan/commands'
 import { carrySteps, composeReply, Gathered, runCommandStep, type CommandRunners } from './carry'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
-import { failureOf } from '../../../shared/failure'
+import { renderFailure } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import {
   brandTag,
@@ -174,6 +175,7 @@ import { api, mediaUrlFor } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
+import { logCrew } from './crew'
 import { exportWait, type ExportJob } from './exporting'
 import { clock, fileName, findLink, isAudioFile, isVideoFile } from './format'
 
@@ -183,7 +185,7 @@ import { clock, fileName, findLink, isAudioFile, isVideoFile } from './format'
  * commit(), so each one is a version the notes panel can name and undo.
  */
 
-export type Screen = 'start' | 'thread' | 'editor' | 'projects' | 'brand' | 'presets' | 'settings'
+export type Screen = 'start' | 'thread' | 'editor' | 'projects' | 'brand' | 'presets' | 'crew' | 'settings'
 
 export interface Toast {
   text: string
@@ -576,6 +578,8 @@ export function useCutalong() {
     setChatChoiceState(id)
   }, [])
   const [pageBrandId, setPageBrandId] = useState<string | null>(null)
+  /** The brand made last in this session, which opens with its shape and colour to pick. */
+  const [madeBrandId, setMadeBrandId] = useState<string | null>(null)
   /** The brand on the Brand page. */
   const brand = brandById(brands, pageBrandId)
   const [brandProgress, setBrandProgress] = useState<Progress | null>(null)
@@ -634,8 +638,16 @@ export function useCutalong() {
     const id = uid()
     // What a plan's steps say is gathered for its one reply.
     if (gather.current && m.role === 'assistant') return gather.current.push(m, id)
-    // Work starts its stopwatch the moment it shows.
-    setMessages((ms) => [...ms, { ...m, id, since: m.progress ? (m.since ?? Date.now()) : undefined }])
+    // Work starts its stopwatch the moment it shows, and its crew with the first stage one of them owns.
+    setMessages((ms) => [
+      ...ms,
+      {
+        ...m,
+        id,
+        since: m.progress ? (m.since ?? Date.now()) : undefined,
+        crew: m.progress ? logCrew(m.crew, m.progress.stage) : m.crew
+      }
+    ])
     return id
   }, [])
   const patch = useCallback((id: string, p: Partial<Msg>): void => {
@@ -646,7 +658,13 @@ export function useCutalong() {
     setMessages((ms) =>
       ms.map((m) =>
         m.id === id
-          ? { ...m, ...p, since: p.progress ? (m.since ?? Date.now()) : p.progress === null ? undefined : m.since }
+          ? {
+              ...m,
+              ...p,
+              since: p.progress ? (m.since ?? Date.now()) : p.progress === null ? undefined : m.since,
+              // Each stage the work reports brings in the member whose job it is: the reply's credits.
+              crew: p.progress ? logCrew(m.crew, p.progress.stage) : (p.crew ?? m.crew)
+            }
           : m
       )
     )
@@ -827,15 +845,16 @@ export function useCutalong() {
     [saveBrands]
   )
 
-  /** A new brand on the list, shown on the Brand page. */
+  /** A new brand on the list, numbered so it never reads like another, shown on the Brand page. */
   const newBrand = useCallback((): void => {
     const id = `brand-${Math.random().toString(36).slice(2, 10)}`
-    const made = addBrand(brandsRef.current, '', id)
+    const made = addBrand(brandsRef.current, nextBrandName(brandsRef.current), id)
     if (!made) {
       setToast({ text: 'That is as many brands as Cutalong keeps.', error: true })
       return
     }
     saveBrands(made.list)
+    setMadeBrandId(made.brand.id)
     setPageBrandId(made.brand.id)
   }, [saveBrands])
 
@@ -3862,10 +3881,14 @@ export function useCutalong() {
     [push, studyGone]
   )
 
+  /** An export tried again from its reply: the version on screen, or the clips that did not go out. Set below, with exportFinal. */
+  const retry = useRef<(payload: string) => void>(() => undefined)
+
   /** An action's own work, once it may run. */
   const act = useCallback(
     (a: Action): void => {
       if (a.kind === 'open-editor') setScreen('editor')
+      else if (a.kind === 'retry' && a.payload) retry.current(a.payload)
       else if (a.kind === 'open-settings') setScreen('settings')
       else if (a.kind === 'use-style') useStyle()
       else if (a.kind === 'run-command' && a.payload) void runCommand(a.payload)
@@ -4036,6 +4059,20 @@ export function useCutalong() {
     setPanel({ text: `v${n + 1} is v${back} again.` })
   }, [setDoc])
 
+  /** Brings an earlier revision back as the newest, as Undo does, from its tab above the preview. */
+  const showVersion = useCallback(
+    (target: number): void => {
+      const d = docRef.current
+      if (!d) return
+      const n = currentVersion(d).n
+      if (target === n || !d.versions.some((v) => v.n === target)) return
+      setDoc(restore(d, target))
+      remember({ kind: 'undo', doc: d.id, from: n, to: target, ...brandTag(currentCut(d)) })
+      setPanel({ text: `v${n + 1} is v${target} again.` })
+    },
+    [setDoc]
+  )
+
   /**
    * Exports the version on screen. Its progress shows in the toast and in the
    * chat, where the finished file then plays, the whole of it.
@@ -4066,9 +4103,15 @@ export function useCutalong() {
     try {
       const r = await during(() => api.renderCut({ doc: d, quality: 'final' }))
       if (!r.ok) {
-        // ffmpeg's own lines go behind Details, never into the sentence or the toast.
-        const failed = failureOf(r.message)
-        patch(id, { progress: null, text: `I couldn't export v${n}. ${failed.text}`, details: failed.details, error: true })
+        // ffmpeg's own lines go behind Details, never into the sentence or the toast; when it stopped, it can go again.
+        const failed = renderFailure(r)
+        patch(id, {
+          progress: null,
+          text: `I couldn't export v${n}. ${failed.text}`,
+          details: failed.details,
+          error: true,
+          actions: failed.details ? [{ kind: 'retry', label: 'Try again', payload: 'export' }] : undefined
+        })
         setToast({ text: `I couldn't export v${n}. The chat says why.`, error: true })
         return
       }
@@ -4158,6 +4201,10 @@ export function useCutalong() {
 
   exportRef.current = exportFinal
   undoRef.current = undo
+  retry.current = (payload: string): void => {
+    if (payload === 'export') void exportFinal()
+    else if (payload.startsWith('clips:')) void clipping.exportAll(payload.slice('clips:'.length).split(','))
+  }
 
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
@@ -4195,6 +4242,8 @@ export function useCutalong() {
     chatBrand: inChat,
     showBrand: setPageBrandId,
     newBrand,
+    /** The brand made last in this session. */
+    madeBrandId,
     deleteBrand,
     makeDefaultBrand,
     switchBrand,
@@ -4237,6 +4286,7 @@ export function useCutalong() {
     offers,
     acceptOffers,
     undo,
+    showVersion,
     exportFinal,
     /** The Anthropic key, as the gate and the setup screen read it. */
     claudeKey: key,

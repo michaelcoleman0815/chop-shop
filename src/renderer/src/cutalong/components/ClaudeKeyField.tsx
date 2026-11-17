@@ -68,11 +68,11 @@ export function ClaudeKeyField({
   const line = checking
     ? keyMessage('checking')
     : (note ?? (failing ? key.message : showOk && key.state === 'ok' ? key.message : null))
-  // The state the line says, as an attribute the styles can read: what went wrong, or that the key works.
+  // The state the line says, for the design system's field states: what went wrong, or that the key works.
   const kind = checking || note ? null : failing ? 'error' : showOk && key.state === 'ok' ? 'ok' : null
 
   return (
-    <>
+    <div className="cl-field">
       <div className={`cl-key-paste${small ? ' small' : ''}`}>
         <input
           ref={field}
@@ -101,8 +101,7 @@ export function ClaudeKeyField({
       </div>
       <p
         id={`${id}-line`}
-        className={`cl-keycheck${checking ? ' checking' : ''}`}
-        data-kind={kind ?? undefined}
+        className={`cl-field-msg cl-keycheck${kind ? ` ${kind}` : ''}${checking ? ' checking' : ''}`}
         role="status"
       >
         {checking && (
@@ -110,12 +109,9 @@ export function ClaudeKeyField({
             <Mark size={20} />
           </span>
         )}
-        {/* The words say the state; the icon says it again, so it never rests on colour alone. */}
-        {kind && (
-          <span key={kind} className="cl-keycheck-icon" aria-hidden="true">
-            {kind === 'error' ? <Icon.alert /> : <Icon.check />}
-          </span>
-        )}
+        {/* The words say the state, and the colour and the icon say it again. */}
+        {kind === 'error' && <Icon.alert />}
+        {kind === 'ok' && <Icon.check />}
         {/* Keyed by its words, so a new finding arrives rather than replacing the old in place. */}
         {line && <span key={line}>{line}</span>}
       </p>
@@ -128,6 +124,6 @@ export function ClaudeKeyField({
       <p id={`${id}-kept`} className="cl-key-kept">
         {KEY_KEPT}
       </p>
-    </>
+    </div>
   )
 }

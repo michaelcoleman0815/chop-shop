@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { LivingMark } from './Shapes'
 
 /**
  * The small pieces every screen uses, drawn to the design system: pills for
@@ -8,7 +9,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 export function Mark({ size = 30, white = false }: { size?: number; white?: boolean }): JSX.Element {
   return (
     <svg width={size} height={(size * 52) / 64} viewBox="0 0 64 52" aria-hidden="true">
-      <rect x="2" y="4" width="44" height="18" rx="9" fill={white ? '#FFFFFF' : 'var(--ink)'} />
+      <rect x="2" y="4" width="44" height="18" rx="9" fill={white ? 'currentColor' : 'var(--ink)'} />
       <rect
         className="cl-cut"
         x="18"
@@ -17,7 +18,7 @@ export function Mark({ size = 30, white = false }: { size?: number; white?: bool
         height="16"
         rx="8"
         fill="none"
-        stroke={white ? '#FFFFFF' : 'var(--coral)'}
+        stroke={white ? 'currentColor' : 'var(--coral)'}
         strokeWidth="5"
         strokeDasharray="7 6"
       />
@@ -34,11 +35,15 @@ export function Lockup({ onClick }: { onClick?: () => void }): JSX.Element {
   )
 }
 
-/** The assistant's avatar: the mark in white on a coral tile. */
-export function AssistantAvatar(): JSX.Element {
+/**
+ * The assistant's tile: the mark on a small sheet of paper. Only the newest
+ * reply shows it (cutalong.css), so the mark's coral is on screen once. While
+ * the reply is still being thought out, the mark is the small living blob.
+ */
+export function AssistantAvatar({ working = false }: { working?: boolean }): JSX.Element {
   return (
-    <span className="cl-assistant-avatar" aria-hidden="true">
-      <Mark size={20} white />
+    <span className={`cl-assistant-avatar${working ? ' living' : ''}`} aria-hidden="true">
+      {working ? <LivingMark size={30} /> : <Mark size={20} />}
     </span>
   )
 }
@@ -130,14 +135,14 @@ export const Icon = {
   ),
   /** Something went wrong, beside the words that say what. */
   alert: (): JSX.Element => (
-    <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth="2" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" {...stroke} strokeWidth="2.2" aria-hidden="true">
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7.5v5M12 16.25v.25" />
     </svg>
   ),
-  /** It works, beside the words that say so. */
+  /** Done. */
   check: (): JSX.Element => (
-    <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} strokeWidth="2" aria-hidden="true">
+    <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} strokeWidth="2.4" aria-hidden="true">
       <path d="M5 12.5l4.5 4.5L19 7.5" />
     </svg>
   ),

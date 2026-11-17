@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { costLine, fixingStep, keyGuide } from '../../../../shared/setup'
+import { costLine, doneSteps, fixingStep, keyGuide } from '../../../../shared/setup'
 import type { Settings, UpdateState } from '../../../../shared/types'
 import { api } from '../api'
 import { ClaudeKeyField } from '../components/ClaudeKeyField'
@@ -122,18 +122,19 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
           <section className="cl-section" aria-labelledby="set-claude">
             <h2 id="set-claude">Claude</h2>
             {working ? (
-              <div className="cl-field">
+              <>
                 <label className="sr-only" htmlFor="set-claude-key">
                   Anthropic API key
                 </label>
                 <ClaudeKeyField app={app} id="set-claude-key" showOk removable small />
-              </div>
+              </>
             ) : (
               <>
                 <p className="cl-aside">{anthropic.why}</p>
                 <KeySteps
                   service="anthropic"
                   current={failing ? fixingStep(key.state) : null}
+                  done={failing ? doneSteps(key.state) : 0}
                   paste={{
                     id: 'set-claude-key',
                     field: <ClaudeKeyField app={app} id="set-claude-key" removable small />

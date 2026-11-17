@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   blockedSentence,
   costLine,
+  doneSteps,
   fixingStep,
   gateOpen,
   guideLinks,
@@ -81,6 +82,14 @@ describe('the gate', () => {
     // Anthropic being down or out of reach is not fixed by any step.
     expect(fixingStep('down')).toBeNull()
     expect(fixingStep('offline')).toBeNull()
+    // Done only where Anthropic accepted the key: always before the step that fixes what is left.
+    for (const state of STATES) {
+      const done = doneSteps(state)
+      if (done > 0) expect(done, state).toBeLessThanOrEqual(fixingStep(state) as number)
+    }
+    expect(doneSteps('no-credit')).toBe(2)
+    expect(doneSteps('no-access')).toBe(1)
+    for (const state of ['none', 'wrong', 'refused', 'unreadable', 'down', 'offline'] as const) expect(doneSteps(state), state).toBe(0)
     expect(keyStatus('refused')).toEqual({ state: 'refused', message: keyMessage('refused'), confirmed: false })
     expect(keyMessage('wrong', 'sk-proj-abc123abc123abc123')).toMatch(/OpenAI/)
   })

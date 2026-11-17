@@ -4,14 +4,16 @@ import { AssistantMessage, UserMessage } from '../components/Message'
 import { BrandSwitch } from '../components/BrandSwitch'
 import { ClipSet } from '../components/ClipSet'
 import { Button, Icon, IconButton } from '../components/ui'
+import { prefersReducedMotion } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 
 /** The conversation: what was given, what was understood, what happens next. */
 export function Thread({ app }: { app: Cutalong }): JSX.Element {
   const end = useRef<HTMLDivElement>(null)
+  // New turns glide into view; with reduced motion they are simply there.
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    end.current?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'end' })
   }, [app.messages])
 
   return (

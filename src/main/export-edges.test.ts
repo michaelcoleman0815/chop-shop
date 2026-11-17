@@ -187,7 +187,7 @@ describe.skipIf(!FFMPEG)('exports of awkward material', () => {
     const sdoc = createDoc({ id: 'scr', title: 'Screen', source: src, words: [] })
     const cut = currentCut(sdoc)
     console.log('loudness target', cut.loudness)
-    for (const extra of [{}, { maxInputs: 1 }]) {
+    for (const extra of [{ maxInputs: Infinity }, { maxInputs: 1 }]) {
       const r = applyOps(
         cut,
         [
@@ -198,7 +198,7 @@ describe.skipIf(!FFMPEG)('exports of awkward material', () => {
         { words: sdoc.words, sources: sdoc.sources }
       )
       const resolved = resolveCut(r.cut, sdoc.words, sdoc.sources)
-      const name = `silent-${Object.keys(extra).length}`
+      const name = `silent-${extra.maxInputs === 1 ? 'passes' : 'one'}`
       try {
         const out = await renderCut(r.cut, resolved, [{ ...src, hasAudio: true }], {
           ffmpeg,

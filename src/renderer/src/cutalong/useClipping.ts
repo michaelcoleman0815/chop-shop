@@ -4,16 +4,18 @@ import {
   addRun,
   avoidRanges,
   clipOfDoc,
+  exportAllFailed,
   keptClips,
   markDocExported,
   markExported,
   setKept,
   toExport,
   type ClipAsk,
+  type ClipNotExported,
   type ClipSet
 } from '../../../shared/clipping'
 import { sentence } from '../../../shared/edit'
-import { failureOf } from '../../../shared/failure'
+import { renderFailure } from '../../../shared/failure'
 import type { Project, TranscriptWord } from '../../../shared/types'
 import type { UploadKit } from '../../../shared/upload'
 import { api, mediaUrlFor } from './api'
@@ -287,7 +289,8 @@ export function useClipping(deps: ClippingDeps) {
    * title in the export folder. Each card shows its own progress, and each
    * finished clip plays in the chat the way an export does.
    */
-  const exportAll = useCallback(async (): Promise<void> => {
+  /** Exports the clips not out as they are now, or the ones asked for again (a card's Try again). */
+  const exportAll = useCallback(async (only?: string[]): Promise<void> => {
     const { push, setToast, during, exportingNow, gate } = d.current
     if (gate && !(await gate('export'))) return
     const wait = exportWait(exportingNow.current, { kind: 'clips' })
@@ -296,7 +299,7 @@ export function useClipping(deps: ClippingDeps) {
       push({ role: 'assistant', text: wait })
       return
     }
-    const clips = toExport(current())
+    const clips = only ? keptClips(current()).filter((c) => only.includes(c.id)) : toExport(current())
     if (clips.length === 0) {
       push({ role: 'assistant', text: 'Every clip is dropped, so there is nothing to export. Keep one and try again.' })
       return
@@ -304,7 +307,7 @@ export function useClipping(deps: ClippingDeps) {
     exportingNow.current = { kind: 'clips' }
     const since = Date.now()
     const made: string[] = []
-    const failed: string[] = []
+    const failed: (ClipNotExported & { id: string })[] = []
     // What each clip's upload needs, said once for them all after the last one.
     const kits: { name: string; kit: UploadKit }[] = []
     setJobs(Object.fromEntries(clips.map((c) => [c.id, { percent: null }])))
@@ -329,10 +332,10 @@ export function useClipping(deps: ClippingDeps) {
           off()
         }
         if (!r.ok) {
-          // A plain sentence, never ffmpeg's own lines (shared/failure).
-          const why = failureOf(r.message).text
-          failed.push(`“${clip.title}”: ${why}`)
-          setJobs((j) => ({ ...j, [clip.id]: { percent: null, error: why } }))
+          // A plain sentence; ffmpeg's own lines go behind Details (shared/failure).
+          const why = renderFailure(r)
+          failed.push({ id: clip.id, title: clip.title, ...why })
+          setJobs((j) => ({ ...j, [clip.id]: { percent: null, error: why.text } }))
           continue
         }
         made.push(r.outputPath)
@@ -368,18 +371,26 @@ export function useClipping(deps: ClippingDeps) {
       setExporting(null)
     }
     const all = made.length === clips.length
-    const text = all
-      ? clips.length === 1
+    // Those that did not go out are named, with what ffmpeg said behind Details, and can go again.
+    const missed = all ? null : exportAllFailed(clips.length, made.length, failed)
+    const text = missed
+      ? missed.text
+      : clips.length === 1
         ? 'The clip is exported.'
         : clips.length < keptClips(current()).length
           ? `${clips.length} more clips are exported.`
           : `All ${clips.length} clips are exported.`
-      : `${made.length} of ${clips.length} clips are exported. I couldn't export ${failed.join(' ')}`
     push({
       role: 'assistant',
       text,
       error: !all,
-      actions: made.length ? [{ kind: 'reveal', label: 'Show in Finder', payload: made[0] }] : undefined
+      details: missed?.details,
+      actions: [
+        ...(failed.length
+          ? [{ kind: 'retry' as const, label: 'Try again', payload: `clips:${failed.map((f) => f.id).join(',')}` }]
+          : []),
+        ...(made.length ? [{ kind: 'reveal' as const, label: 'Show in Finder', payload: made[0] }] : [])
+      ]
     })
     // One reply for what every clip's upload needs, not one a clip.
     if (kits.length > 0) push(uploadSetReply(kits))

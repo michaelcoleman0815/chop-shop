@@ -123,6 +123,18 @@ export function fixingStep(state: ClaudeKeyState): number | null {
   return null
 }
 
+/**
+ * How many of the Anthropic guide's first steps a state shows are done. Only
+ * a key Anthropic accepted says so: the account and the key exist, and what
+ * is left is credit (out of it, or limited) or a workspace that can use the
+ * model. Any other state says nothing for certain, so nothing is marked.
+ */
+export function doneSteps(state: ClaudeKeyState): number {
+  if (state === 'no-credit' || state === 'busy') return 2
+  if (state === 'no-access') return 1
+  return 0
+}
+
 /** The status for a state, with its message. */
 export function keyStatus(state: ClaudeKeyState, confirmed = false, key?: string | null): ClaudeKeyStatus {
   return { state, message: keyMessage(state, key), confirmed }

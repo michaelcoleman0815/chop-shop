@@ -125,6 +125,33 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 const MOCK_KEY_STATES: ClaudeKeyState[] = ['refused', 'no-credit', 'no-access', 'busy', 'down', 'offline']
 
 /**
+ * A still for a file in the browser, where there is no footage to read: a
+ * soft generated gradient with a pale round shape in it, the same each time
+ * for the same file. Nobody's footage, only paint.
+ */
+function generatedStill(key: string, width: number, height: number): string {
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+  const hue = h % 360
+  const wash = ctx.createLinearGradient(0, 0, width, height)
+  wash.addColorStop(0, `hsl(${hue} 42% 66%)`)
+  wash.addColorStop(0.55, `hsl(${(hue + 35) % 360} 48% 56%)`)
+  wash.addColorStop(1, `hsl(${(hue + 210) % 360} 36% 26%)`)
+  ctx.fillStyle = wash
+  ctx.fillRect(0, 0, width, height)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
+  ctx.beginPath()
+  ctx.arc(width * (0.4 + ((h >> 8) % 30) / 100), height * 0.56, Math.min(width, height) * 0.26, 0, Math.PI * 2)
+  ctx.fill()
+  return canvas.toDataURL('image/jpeg', 0.82)
+}
+
+/**
  * A plain page drawn as SVG, 860 wide like a capture: a header, a name and a
  * column of posts, in shapes only, so the export draws it exactly as the
  * browser does. Its colours shift with the site's name.
@@ -420,10 +447,11 @@ export function createMockApi(): CutalongApi {
     set: Set<(p: { stage: string; percent: number }) => void>,
     stages: string[]
   ): Promise<void> => {
+    // Slow enough to watch the crew hand the work along, as they would on a real recording.
     for (let i = 0; i <= 10; i++) {
       for (const cb of set)
         cb({ stage: stages[Math.min(stages.length - 1, Math.floor((i / 11) * stages.length))], percent: i * 10 })
-      await sleep(90)
+      await sleep(260)
     }
   }
 
@@ -729,16 +757,19 @@ export function createMockApi(): CutalongApi {
       listeners.clips.add(cb)
       return () => listeners.clips.delete(cb)
     },
-    clipPoster: async () => '',
-    planEdit: async () =>
-      settings.localPlanner
+    clipPoster: async (source, at) => generatedStill(`${source}@${at}`, 180, 320),
+    // Planning takes Claude a moment; the preview waits as long before saying it cannot reach it.
+    planEdit: async () => {
+      await sleep(1600)
+      return settings.localPlanner
         ? {
             ok: false as const,
             message: `Plans come from ${settings.localPlanner} on this Mac, and this browser preview cannot reach it.`
           }
         : key === null
           ? { ok: false as const, message: keyMessage('none'), needsKey: true, keyState: 'none' as const }
-          : { ok: false as const, message: 'Claude reads what you ask, and this browser preview has no connection to it.' },
+          : { ok: false as const, message: 'Claude reads what you ask, and this browser preview has no connection to it.' }
+    },
     // The preview cannot reach Claude: footage starts an edit, a link is a style to learn, words wait for footage.
     triage: async ({ files, link, hasEdit }) =>
       key === null
@@ -827,10 +858,17 @@ export function createMockApi(): CutalongApi {
     saveProject: async (project) => {
       projects.set(project.path, { ...project, openedAt: new Date().toISOString() })
     },
-    mediaPreviews: async () => {
-      throw new Error('No previews in the browser.')
-    },
-    mediaPoster: async () => null,
+    // Only a poster: the browser has no footage to sample, so it is a generated still.
+    mediaPreviews: async (path) => ({
+      filmstripUrl: '',
+      posterUrl: generatedStill(path, 320, 180),
+      waveformUrl: null,
+      durationSec: 0,
+      width: 1920,
+      height: 1080,
+      frames: 0
+    }),
+    mediaPoster: async (path) => generatedStill(path, 160, 160),
     openMedia: async () => [],
     extendCut: async ({ doc, paths, soundPaths }) => {
       await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Listening for the cuts'])
