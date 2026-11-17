@@ -83,6 +83,7 @@ import { isImagePath } from '../../../../shared/assets'
 import { api, mediaUrlFor } from '../api'
 import { Backdrop } from '../components/Backdrop'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
+import { fitHeight } from '../components/Composer'
 import { GraphicPanel } from '../components/GraphicPanel'
 import { boxStyle, GridPanels, gridViewFor } from '../components/GridPanels'
 import { MotionCanvas } from '../components/MotionCanvas'
@@ -1100,10 +1101,12 @@ function NoteInput({
 }): JSX.Element {
   const [text, setText] = useState('')
   const [pick, setPick] = useState(0)
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   const query = slashQuery(text)
   const matches = query === null ? [] : suggestCommands(query, presets, 5)
   useEffect(() => setPick(0), [query])
+  // One thin line, growing with a longer note as the chat's box does.
+  useEffect(() => fitHeight(input.current), [text])
   const send = (): void => {
     const value = text.trim()
     if (!value) return
@@ -1140,9 +1143,10 @@ function NoteInput({
       <label className="sr-only" htmlFor="cl-note">
         {placeholder}
       </label>
-      <input
+      <textarea
         id="cl-note"
         ref={input}
+        rows={1}
         value={text}
         placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}
@@ -1156,7 +1160,7 @@ function NoteInput({
             }
             // Enter runs a command typed in full; it completes one typed in part.
             const runs = e.key === 'Enter' && namesCommand(query, matches)
-            if (!runs && (e.key === 'Tab' || e.key === 'Enter')) {
+            if (!runs && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey))) {
               e.preventDefault()
               choose(matches[Math.min(pick, matches.length - 1)].command)
               return
@@ -1167,7 +1171,8 @@ function NoteInput({
               return
             }
           }
-          if (e.key === 'Enter') {
+          // Enter adds the note; Shift+Enter starts a new line in it.
+          if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
             send()
           }
