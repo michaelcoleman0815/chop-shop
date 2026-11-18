@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BrandSchema, brandPreset, describeLearned, EMPTY_BRAND, learnStyle, type Brand } from './brand'
+import { BrandSchema, brandPreset, describeLearned, EMPTY_BRAND, learnStyle, styleOfVideos, type Brand } from './brand'
 import { summarize, type InspirationFacts } from './inspiration'
 import type { Habits } from './learn/schema'
 
@@ -100,6 +100,37 @@ describe('the brand as a command', () => {
       style: learnStyle([video(2, -14, 180)])
     }
     expect(describeLearned(brand)).toMatch(/^From your video: 2\.0 s per shot/)
+  })
+
+  it('learns no look from a link, which gives only its length and captions', () => {
+    const link = {
+      path: 'https://example.com/v/1',
+      title: 'A made-up video',
+      measuredAt: '',
+      facts: null,
+      run: {
+        from: 'link' as const,
+        durationSec: 44,
+        aspect: null,
+        heard: 'captions' as const,
+        unheard: null,
+        words: 120,
+        wordsPerMinute: 180,
+        hook: null,
+        fillers: {},
+        punctuated: false,
+        ending: null
+      }
+    }
+    const file = { path: '/a.mp4', title: 'a', measuredAt: '', facts: video(2, -14, 180) }
+    expect(styleOfVideos([link, file])).toEqual(learnStyle([video(2, -14, 180)]))
+    expect(styleOfVideos([link])).toEqual({})
+    expect(describeLearned({ ...EMPTY_BRAND, videos: [link] })).toMatch(/^A link gives me its length and captions, not its look\./)
+    expect(describeLearned({ ...EMPTY_BRAND, videos: [link, file], style: styleOfVideos([file]) })).toMatch(
+      /^From your video: /
+    )
+    // A brand saved with a link reads back as it was.
+    expect(BrandSchema.parse({ ...EMPTY_BRAND, videos: [link, file] }).videos[0].run?.from).toBe('link')
   })
 })
 

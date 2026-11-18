@@ -258,7 +258,7 @@ export async function transcribe(
 
     onProgress(12, 'Transcribing')
     const prefix = join(dir, 'out')
-    const until = verbatim ? 86 : 98
+    const until = verbatim && verbatim.again !== false ? 86 : 98
     const threads = whisperThreads()
     await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads }), (p) =>
       onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
@@ -266,7 +266,7 @@ export async function transcribe(
     const json = parseWhisperJson(await fs.readFile(`${prefix}.json`))
     let heard = tokensToWords(json.transcription)
 
-    if (verbatim && heard.length > 0) {
+    if (verbatim && verbatim.again !== false && heard.length > 0) {
       // Listen again, alone, wherever there is voiced sound no word accounts
       // for: a take Whisper skipped, or swallowed into one stretched word.
       onProgress(until, 'Listening again')

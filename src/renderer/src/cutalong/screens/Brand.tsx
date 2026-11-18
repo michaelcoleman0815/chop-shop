@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react'
 import { CORNERS, describeLearned, LOGO_NAME_MAX, MAX_LOGOS, type Brand } from '../../../../shared/brand'
 import { brandName } from '../../../../shared/brands'
+import { describeHabits } from '../../../../shared/channel-habits'
 import { MOTION_FONTS } from '../../../../shared/motion/fonts'
 import { describeStyle } from '../../../../shared/presets'
 import { PROFILES, profileById } from '../../../../shared/raw/profiles'
@@ -196,12 +197,56 @@ function AvatarPicker({ value, onPick }: { value: Avatar; onPick: (a: Avatar) =>
   )
 }
 
+/** A link as typed or dropped, with its scheme; null for anything that is not one. */
+function linkOf(text: string): string | null {
+  const t = text.trim()
+  if (!t || /\s/.test(t)) return null
+  if (/^https?:\/\/[^/\s]+\.[^/\s]+/i.test(t)) return t
+  return /^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+\/\S+$/i.test(t) ? `https://${t}` : null
+}
+
+/**
+ * How the brand's videos run, learned with their look: a plain sentence, three
+ * facts at most, the numbers behind Details, and what could not be learned,
+ * said as plainly. Nothing shows until a video has been learned.
+ */
+function RunsSection({ brand }: { brand: Brand }): JSX.Element | null {
+  const [open, setOpen] = useState(false)
+  const said = describeHabits(brand.videos)
+  if (!said) return null
+  return (
+    <section className="cl-section" aria-labelledby="brand-runs">
+      <h2 id="brand-runs">How your videos run</h2>
+      <p className="cl-reply">{said.sentence}</p>
+      <Facts facts={said.facts} seed={`${brand.id}-runs`} />
+      <div className="cl-chips">
+        <button type="button" className="cl-link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          {open ? 'Hide details' : 'Details'}
+        </button>
+      </div>
+      {open && (
+        <dl className="cl-details">
+          {said.details.map((d) => (
+            <div key={d.label} style={{ display: 'contents' }}>
+              <dt>{d.label}</dt>
+              <dd>{d.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {said.missing.length > 0 && <p className="cl-aside">{said.missing.slice(0, 3).join(' ')}</p>}
+    </section>
+  )
+}
+
 export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
   const brand = app.brand
   const [dropping, setDropping] = useState(false)
   // Typed as one line and saved as a list when the field is left.
   const [products, setProducts] = useState(app.brand.products.join(', '))
   const [deleting, setDeleting] = useState(false)
+  // A link to one of their videos, typed or pasted, until it is added.
+  const [link, setLink] = useState('')
   // A brand just made, or one never named, opens with its shape and colour to pick, like a new sticker.
   const fresh = !brand.avatar && (brand.id === app.madeBrandId || !brand.name)
   const [picking, setPicking] = useState(fresh)
@@ -219,7 +264,21 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
     e.preventDefault()
     setDropping(false)
     const paths = [...e.dataTransfer.files].filter((f) => isVideoFile(f.name)).map((f) => api.pathForFile(f))
-    if (paths.length) void app.learnFrom(paths)
+    if (paths.length) {
+      void app.learnFrom(paths)
+      return
+    }
+    // A link dragged from a browser: its length and captions.
+    const listed = e.dataTransfer.getData('text/uri-list').split('\n').find((l) => l.trim() && !l.startsWith('#'))
+    const dropped = linkOf(listed ?? e.dataTransfer.getData('text/plain'))
+    if (dropped) void app.learnFrom([dropped])
+  }
+
+  const addLink = (): void => {
+    const url = linkOf(link)
+    if (!url) return
+    setLink('')
+    void app.learnFrom([url])
   }
 
   const addVideo = async (): Promise<void> => {
@@ -311,6 +370,29 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                 </>
               )}
             </div>
+            <form
+              className="cl-row cl-brand-link"
+              onSubmit={(e) => {
+                e.preventDefault()
+                addLink()
+              }}
+            >
+              <label className="cl-field">
+                <span className="sr-only">A link to one of your videos</span>
+                <input
+                  type="url"
+                  inputMode="url"
+                  spellCheck={false}
+                  value={link}
+                  placeholder="Or paste a link to one of your videos"
+                  onChange={(e) => setLink(e.target.value)}
+                />
+              </label>
+              <Button small type="submit" disabled={!linkOf(link) || app.brandProgress !== null}>
+                Add the link
+              </Button>
+            </form>
+            <p className="cl-aside">A link gives me its length and captions; a file gives me everything.</p>
             {brand.videos.length > 0 && (
               <ul className="cl-list">
                 {brand.videos.map((v) => (
@@ -318,7 +400,9 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                     <span className="cl-list-main">
                       {v.title}
                       <span className="cl-project-meta">
-                        {clock(v.facts.durationSec)} · {v.facts.secondsPerShot.toFixed(1)} s per shot
+                        {v.facts
+                          ? `${clock(v.facts.durationSec)} · ${v.facts.secondsPerShot.toFixed(1)} s per shot`
+                          : `${clock(v.run?.durationSec ?? 0)} · ${v.run?.heard ? 'link and its captions' : 'link, no captions'}`}
                       </span>
                     </span>
                     <button
@@ -333,6 +417,8 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
               </ul>
             )}
           </section>
+
+          <RunsSection key={brand.id} brand={brand} />
 
           <LearnSection app={app} />
 

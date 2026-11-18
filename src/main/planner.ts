@@ -152,7 +152,7 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
                 input.preferences ?? [],
                 input.logos,
                 input.never,
-                { offers: input.offers, chat: input.chat, brands: input.brands }
+                { offers: input.offers, chat: input.chat, brands: input.brands, habits: input.habits }
               )
             }
           ]

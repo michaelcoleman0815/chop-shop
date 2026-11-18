@@ -23,7 +23,15 @@ export const AudioMapSchema = z.object({
   v: z.literal(1),
   /** Loudness in dBFS and pitch in Hz (null when unvoiced), by word id. */
   words: z.record(z.string(), z.tuple([z.number(), z.number().nullable()])),
-  segments: z.array(z.object({ kind: z.enum(SOUND_KINDS), startSec: z.number(), endSec: z.number() })),
+  segments: z.array(
+    z.object({
+      kind: z.enum(SOUND_KINDS),
+      startSec: z.number(),
+      endSec: z.number(),
+      /** How loud a sound that is not speech gets, in dBFS: the top tenth of it. Maps made before have none. */
+      db: z.number().optional()
+    })
+  ),
   /** Words said with stress: louder and higher than the words around them. */
   emphasis: z.array(z.string()),
   /** Room tone and typical speech, in dBFS. */
@@ -313,6 +321,13 @@ export function buildAudioMap(frames: Frames, words: Timed[]): AudioMap {
   }
   const total = Math.round(n * hop * 100) / 100
   if (total - cursor >= 0.3) joined.push({ kind: 'silence', startSec: cursor, endSec: total })
+  // How loud each sound that is not speech gets, so a laugh or a bang can be weighed against another recording's.
+  for (const seg of joined) {
+    if (seg.kind === 'speech' || seg.kind === 'silence') continue
+    const dbs: number[] = []
+    for (let i = at(seg.startSec); i < Math.max(at(seg.startSec) + 1, at(seg.endSec)); i++) dbs.push(frames.db[i])
+    seg.db = Math.round(percentile(dbs, 0.9) * 10) / 10
+  }
 
   return {
     v: 1,
