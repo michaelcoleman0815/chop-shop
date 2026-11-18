@@ -223,7 +223,7 @@ export function AssistantMessage({
                     Save as <span className="cmd">/{a.payload}</span>
                   </>
                 ) : (
-                  a.label
+                  <span className="cl-btn-label">{a.label}</span>
                 )}
               </Button>
             ))}

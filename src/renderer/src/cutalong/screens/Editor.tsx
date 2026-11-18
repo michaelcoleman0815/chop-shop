@@ -1031,7 +1031,7 @@ function NotesPanel({
               <div className="cl-actions">
                 {status.actions!.map((a) => (
                   <Button key={a.kind + a.label} variant="secondary" small onClick={() => app.onAction(a)}>
-                    {a.label}
+                    <span className="cl-btn-label">{a.label}</span>
                   </Button>
                 ))}
               </div>
