@@ -26,6 +26,7 @@ import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from
 import { FX_PLANNER_OPS, fromFxPlannerOp, fxGuide, fxLines } from '../shared/fx/planner'
 import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
+import { renderPovs } from '../shared/pov/choose'
 import { ordinal } from '../shared/raw/takes'
 import { renderSound } from '../shared/audio/map'
 import { offCameraLine } from '../shared/vision/speakers'
@@ -135,6 +136,9 @@ Read the whole request and do every part of it you can, in one plan. When a part
 
 ## Takes
 A <takes> block, when present, lists lines said more than once in the raw footage: each take with its word ids, whether it plays or is struck, and what went wrong in it. Cutalong keeps the last complete take unless an earlier one is clearly cleaner. To use another take ("use the second take of the intro"), use the take command with the line's id and the take's number: it plays that take where the line plays. Never strike the take that plays without bringing another one back. False starts listed there are struck already; unstrike one only when asked.
+
+## Players' views
+A <povs> block, when present, says the edit is one gaming session several players recorded: each view by id, the person's own first (the edit's recording and sound), and the reactions heard in each, whose and when. Whose view a moment shows is the povs step's: follow whoever is talking, stay on theirs and cut to the others for reactions, everyone at once where they all react, or theirs throughout. To show one view on particular beats, use the angle op with that view's id; for everyone at once on a moment, a grid op with "" for theirs and each view's id, labelled as the block names them; a view's panel plays in step with the moment, whatever its inSec.
 
 ## Sound
 A <sound> block, when present, lists stretches that are not speech (laughter, music, applause, noise) with their times in the recording, and words said with stress. A laugh or a noise between takes is a break, music under speech is not yours to cut, and a stressed word is a good big word.
@@ -643,6 +647,9 @@ export function renderRequest(
     const sound = map ? renderSound(map, text) : ''
     if (sound) parts.push(sound)
   }
+  // Several players' views of one session, and the reactions heard in them (shared/pov).
+  const povs = renderPovs(doc)
+  if (povs) parts.push(povs)
   if (notes.length > 0) {
     parts.push('<notes>')
     for (const note of notes) {

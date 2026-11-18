@@ -37,6 +37,7 @@ const EVERY: PlannedCommand[] = [
   { op: 'mouth', mode: 'sync' },
   { op: 'never', never: ['sfx:whoosh'], allow: ['bw'] },
   { op: 'brand', name: ' Field Notes ' },
+  { op: 'povs', mode: 'reactions', everyone: true, minSec: 0 },
   { op: 'undo' }
 ]
 
@@ -69,6 +70,7 @@ function recording(): { runners: CommandRunners; calls: [string, ...unknown[]][]
       mouth: note('mouth'),
       never: async('never'),
       brand: note('brand'),
+      povs: async('povs'),
       undo: note('undo')
     }
   }
@@ -104,6 +106,7 @@ describe('each command a plan can choose', () => {
       ['mouth', 'sync'],
       ['never', ['sfx:whoosh'], ['bw']],
       ['brand', 'Field Notes'],
+      ['povs', 'reactions', true, 0],
       ['undo']
     ])
   })
@@ -135,7 +138,7 @@ describe('each command a plan can choose', () => {
 
   it('knows which commands are meant to change this edit', () => {
     const changing = EVERY.filter(changesEdit).map((c) => c.op)
-    expect(changing).toEqual(['run', 'length', 'take', 'bring-back', 'music-track', 'vlog', 'accept-offers', 'brand', 'undo'])
+    expect(changing).toEqual(['run', 'length', 'take', 'bring-back', 'music-track', 'vlog', 'accept-offers', 'brand', 'povs', 'undo'])
     expect(changesEdit({ op: 'run', command: 'premiere', rest: '', note: '' })).toBe(false)
   })
 })
