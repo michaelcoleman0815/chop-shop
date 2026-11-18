@@ -1006,6 +1006,9 @@ function NotesPanel({
   const stretch = span ? `${clock(span.start)} to ${clock(span.end)}` : null
   // Applying notes: each goes to the member whose job it is, and those are the ones at work on it.
   const noteCrew = [...new Set(notes.map((n) => memberForNote(n.text)))]
+  // A beat that cuts to B-roll (not an icon on a card) can swap it for other B-roll, offered here.
+  const atNow = beats.find((b) => b.id === nowBeat)
+  const swappable = !!atNow?.treatment.broll && (atNow.treatment.frame === 'broll' || atNow.treatment.frame === 'split')
 
   return (
     <aside className="cl-notes" aria-label="Notes">
@@ -1025,6 +1028,13 @@ function NotesPanel({
                     {a.label}
                   </Button>
                 ))}
+              </div>
+            )}
+            {!status.progress && (status.actions?.length ?? 0) === 0 && swappable && nowBeat && (
+              <div className="cl-actions">
+                <Button variant="secondary" small onClick={() => void app.otherBroll(nowBeat)}>
+                  Other B-roll for {position(nowBeat).toLowerCase()}
+                </Button>
               </div>
             )}
           </div>

@@ -24,6 +24,10 @@ export interface Action {
     | 'reveal'
     | 'retry'
     | 'add-clip'
+    /** A B-roll choice the router found (renderer broll.ts BrollPick): fetched, credited and cut to when tapped. */
+    | 'add-broll'
+    /** Looking on the web too, with its price on the button: the only way a paid search starts. */
+    | 'broll-web'
     | 'add-icon'
     | 'sign-in'
     | 'open-settings'

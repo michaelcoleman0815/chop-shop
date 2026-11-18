@@ -36,7 +36,6 @@ import {
 } from '../../../shared/edit'
 import {
   beatForAsset,
-  DEFAULT_EXCERPT_SEC,
   iconSvg,
   isImagePath,
   isImageUrl,
@@ -173,8 +172,10 @@ import {
   tagSignalsWith,
   useMemory
 } from './memory'
+import { momentsFor } from '../../../shared/broll/moment'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
+import { offerReply, pickedAside, swapWords, webWaits, type BrollPick, type BrollWebAsk, type BrollWhere } from './broll'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
@@ -425,7 +426,7 @@ const uid = (): string => `m${Date.now().toString(36)}${(counter++).toString(36)
 const PLACE_MATERIAL = 'Put the material I just brought in where it fits what I am saying.'
 
 /** The actions that change the edit or bring something into it: they wait for a working key. */
-const CHANGES: ReadonlySet<Action['kind']> = new Set(['use-style', 'strip-never', 'add-clip', 'add-icon', 'sign-in'])
+const CHANGES: ReadonlySet<Action['kind']> = new Set(['use-style', 'strip-never', 'add-clip', 'add-icon', 'sign-in', 'add-broll', 'broll-web'])
 
 /** "a", "a and b", "a, b and c". */
 function listOf(names: string[]): string {
@@ -1365,81 +1366,170 @@ export function useCutalong() {
     [brandNow, during, neverOf, patch, placeAsset, push]
   )
 
-  const findBroll = useCallback(
-    async (query: string, beat?: string | string[]): Promise<void> => {
-      if (!query.trim()) {
-        push({ role: 'assistant', text: 'Tell me what to look for, like /broll city at night.' })
+  /**
+   * B-roll for moments of the edit, from everywhere (main/broll): the
+   * person's folders first, then the free libraries and sites. One search
+   * for all the moments, so they share each source's limits, and a reply
+   * each, its best few to pick from. The web, which costs money, is asked
+   * only with `paid`, which only its own button sends: typed words never spend.
+   */
+  const offerBroll = useCallback(
+    async (
+      wants: { search: string; beat?: string | string[] | null }[],
+      opts: {
+        paid?: boolean
+        /** The web alone: a moment looked for already, now with its price agreed to. */
+        webOnly?: boolean
+        where?: BrollWhere
+        perMoment?: number
+        except?: { path: string; url: string | null }
+      } = {}
+    ): Promise<void> => {
+      const where = opts.where ?? 'thread'
+      const say = (text: string): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+      }
+      if (!wants.some((w) => w.search.trim())) {
+        say('Tell me what to look for, like /broll city at night.')
         return
       }
-      if (!docRef.current) {
-        push({ role: 'assistant', text: 'Drop some footage first, then I can find B-roll for it.' })
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can find B-roll for it.')
         return
       }
       const target = brandNow()
-      const ruled = covering(neverOf(target.id), 'broll')
-      if (ruled) {
-        push({ role: 'assistant', text: neverBlockedReply(brandInSentence(target), ruled) })
+      const first = (b: string | string[] | null | undefined): string | null => (Array.isArray(b) ? (b[0] ?? null) : (b ?? null))
+      const moments = momentsFor(
+        d,
+        wants.map((w) => ({ search: w.search, beat: first(w.beat) })),
+        { niche: target.niche || undefined }
+      )
+      if (moments.length === 0) {
+        say('That line is not in the cut any more, so there is nothing to find B-roll for.')
         return
       }
-      const id = push({ role: 'assistant', text: '', progress: { stage: 'Looking for B-roll', percent: 30 } })
-      // The brand's sources: its preferred channels are looked in first, its blocked ones never come back.
-      const r = await api.searchVideos(query, target.broll)
+      const since = Date.now()
+      const looking = { stage: 'Looking for B-roll', percent: null }
+      const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: looking }) : null
+      if (!id) setPanel({ text: '', progress: looking, since })
+      const off = api.onBrollProgress((p) => (id ? patch(id, { progress: p }) : setPanel({ text: '', progress: p, since })))
+      const [r, settings] = await Promise.all([
+        api.brollFind({
+          moments,
+          brandId: target.id,
+          paid: opts.paid === true,
+          perMoment: opts.perMoment,
+          ...(opts.webOnly ? { only: ['web' as const] } : {})
+        }),
+        api.brollSettings().catch(() => null)
+      ])
+      off()
       if (!r.ok) {
-        patch(id, { progress: null, text: `I couldn't search. ${r.message}`, error: true })
+        const text = `I couldn't look for B-roll. ${r.message}`
+        if (id) patch(id, { progress: null, text, error: true })
+        else setPanel({ text, error: true })
         return
       }
-      const blocked = r.blocked ?? 0
-      const left = blocked
-        ? `${blocked === 1 ? 'One result was' : `${blocked} results were`} from a source you blocked, so I left ${blocked === 1 ? 'it' : 'them'} out.`
-        : ''
-      if (r.results.length === 0) {
-        patch(id, { progress: null, text: `Nothing came up for “${query}”. Try other words.`, aside: left || null })
-        return
-      }
-      // The preferred channels that answered; when only some did, which share of them.
-      const looked = r.looked ?? 0
-      const tried = Math.max(looked, r.tried ?? looked)
-      const channels =
-        looked === tried
-          ? looked === 1
-            ? 'your preferred channel'
-            : `your ${looked} preferred channels`
-          : `${looked === 1 ? 'one' : looked} of your ${tried} preferred channels`
-      const preferred = r.results.slice(0, 3).filter((c) => c.preferred).length
-      const sources = [
-        looked
-          ? `I looked in ${channels} first${preferred ? `, and ${preferred === 1 ? 'one of these is' : `${preferred} of these are`} from them` : ''}.`
-          : preferred
-            ? `${preferred === 1 ? 'One of these is' : `${preferred} of these are`} from a source you prefer.`
-            : '',
-        left
-      ]
-        .filter(Boolean)
-        .join(' ')
-      const d = docRef.current
-      const first = Array.isArray(beat) ? beat[0] : beat
-      const moment = d && first ? momentOf(d, first) : null
-      patch(id, {
-        progress: null,
-        text: moment
-          ? `For “${moment}”, here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it there.`
-          : `Here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it.`,
-        aside: [
-          'Only that stretch is fetched, and it is credited in the export. To choose the stretch, paste the link with a time, like 1:02-1:10.',
-          sources
-        ]
-          .filter(Boolean)
-          .join(' '),
-        actions: r.results.slice(0, 3).map(
-          (c): Action => ({
-            kind: 'add-clip',
-            label: `${c.title}${c.durationSec ? ` · ${clock(c.durationSec)}` : ''}`,
-            payload: JSON.stringify({ url: c.url, hint: query, beat })
-          })
+      // The price is asked only when the web is on and would have been looked in with a yes.
+      const webQuote = settings?.webSearch && r.results.some((x) => webWaits(x.plan)) ? await api.brollQuote(1).catch(() => null) : null
+      const except = opts.except
+      const replies = r.results.map((found, i) => {
+        const results = except
+          ? found.results.filter((x) => x.candidate.extra?.path !== except.path && !(except.url && x.candidate.pageUrl === except.url))
+          : found.results
+        const w = wants.find((x) => first(x.beat) === (found.moment.beat ?? null)) ?? wants[i]
+        return offerReply(
+          { ...found, results },
+          {
+            moment: found.moment.beat ? momentOf(docRef.current ?? d, found.moment.beat) : null,
+            where,
+            webQuote,
+            beats: Array.isArray(w?.beat) ? w.beat : null
+          }
         )
       })
+      // The reply's credit says what Scout did for all the moments, not the last source one of them asked.
+      if (id) patch(id, { progress: looking })
+      if (!id) {
+        // The editor's panel holds one moment: the beat whose B-roll is being swapped.
+        const one = replies[0]
+        setPanel(one ? { text: one.brief, actions: one.actions } : { text: 'Nothing came up.' })
+        return
+      }
+      replies.forEach((reply, i) => {
+        const m = { text: reply.text, aside: reply.aside, details: reply.details.length ? reply.details : undefined, actions: reply.actions.length ? reply.actions : undefined }
+        if (i === 0) patch(id, { progress: null, ...m })
+        else push({ role: 'assistant', ...m })
+      })
     },
-    [brandNow, neverOf, patch, push]
+    [brandNow, patch, push]
+  )
+
+  /** /broll words: one moment, on the stretch picked or the line the words are about. */
+  const findBroll = useCallback(
+    (query: string, beat?: string | string[]): Promise<void> => offerBroll([{ search: query, beat: beat ?? null }]),
+    [offerBroll]
+  )
+
+  /**
+   * A B-roll pick: fetched (only the stretch it needs, from a long video),
+   * normalized, credited, and cut to on its beat, as a new version. Swapping
+   * the B-roll on a beat is the same: the pick takes that beat.
+   */
+  const takeBroll = useCallback(
+    async (pick: BrollPick): Promise<void> => {
+      const d = docRef.current
+      if (!d) {
+        if (pick.where === 'panel') setPanel({ text: 'Drop some footage first, then this can go into it.' })
+        else push({ role: 'assistant', text: 'Drop some footage first, then this can go into it.' })
+        return
+      }
+      const since = Date.now()
+      const fetching = { stage: 'Fetching it', percent: 0 }
+      const id = pick.where === 'thread' ? push({ role: 'assistant', text: '', progress: fetching }) : null
+      if (!id) setPanel({ text: '', progress: fetching, since })
+      const off = api.onBrollProgress((p) => (id ? patch(id, { progress: p }) : setPanel({ text: '', progress: p, since })))
+      // Counted as work, so another project can't open while it is still coming in.
+      const r = await during(() =>
+        api.brollFetch({ candidate: pick.candidate, docId: d.id, seconds: pick.seconds, output: pick.output, brandId: brandNow().id })
+      )
+      off()
+      const report = (text: string, extra: Partial<Msg> = {}): void => {
+        if (id) patch(id, { progress: null, text, ...extra })
+        else setPanel({ text: extra.aside ? `${text} ${extra.aside}` : text, error: extra.error })
+      }
+      if (docRef.current?.id !== d.id) return report('That edit closed before this came in, so it was left out.')
+      if (!r.ok) return report(r.message, { error: true })
+      const placed = placeAsset(r.asset, pick.hint, pick.beat ?? undefined)
+      report(placed.text, {
+        aside: pickedAside(r.asset, pick.candidate),
+        actions: placed.n && id ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+      })
+    },
+    [brandNow, during, patch, placeAsset, push]
+  )
+
+  /** Other B-roll for a beat that already cuts to some, in the editor's panel: picking one swaps it. */
+  const otherBroll = useCallback(
+    async (beat: string): Promise<void> => {
+      const d = docRef.current
+      if (!d) return
+      const b = currentCut(d).beats.find((x) => x.id === beat)
+      const path = b?.treatment.broll?.path
+      if (!b || !path) return
+      const asset = d.assets.find((a) => a.path === path)
+      const said = beatWords(d, b)
+        .map((w) => w.text)
+        .join(' ')
+      await offerBroll([{ search: swapWords(asset, said), beat }], {
+        where: 'panel',
+        perMoment: 4,
+        except: { path, url: asset?.origin.url ?? null }
+      })
+    },
+    [offerBroll]
   )
 
   const findIcon = useCallback(
@@ -3570,12 +3660,12 @@ export function useCutalong() {
         const { id: _id, ...rest } = m
         push(rest)
       }
-      // Moments that want B-roll the edit does not have yet: one search each, to pick from.
+      // Moments that want B-roll the edit does not have yet: one search for them all, a reply each to pick from.
       const wanted = r.brollWanted ?? []
-      if (wanted.length > 0) await Promise.all(wanted.map((w) => findBroll(w.search, w.beat)))
+      if (wanted.length > 0) await offerBroll(wanted.map((w) => ({ search: w.search, beat: w.beat })))
       return done.n
     },
-    [brandNow, carryPlan, findBroll, noteKey, patch, planContext, push]
+    [brandNow, carryPlan, offerBroll, noteKey, patch, planContext, push]
   )
 
   /** A request in words: Claude reads it, and Cutalong carries out the plan. */
@@ -4007,6 +4097,12 @@ export function useCutalong() {
       } else if (a.kind === 'add-clip' && a.payload) {
         const { url, hint, beat } = JSON.parse(a.payload) as { url: string; hint: string; beat?: string | string[] }
         void bringIn({ url }, hint, beat)
+      } else if (a.kind === 'add-broll' && a.payload) {
+        void takeBroll(JSON.parse(a.payload) as BrollPick)
+      } else if (a.kind === 'broll-web' && a.payload) {
+        // The one way a paid search starts: this button, tapped, with its price on it.
+        const ask = JSON.parse(a.payload) as BrollWebAsk
+        void offerBroll([{ search: ask.moment.search, beat: ask.moment.beat ?? null }], { paid: true, webOnly: true, where: ask.where })
       } else if (a.kind === 'add-icon' && a.payload) {
         const { name, hint, beat } = JSON.parse(a.payload) as { name: string; hint: string; beat?: string[] }
         void addIcon(name, hint, beat)
@@ -4019,7 +4115,7 @@ export function useCutalong() {
         void api.setVideoSignIn('chrome').then(() => bringIn(req, hint, beat))
       }
     },
-    [addIcon, bringIn, during, runCommand, saveStyle, stripNever, useStyle]
+    [addIcon, bringIn, during, offerBroll, runCommand, saveStyle, stripNever, takeBroll, useStyle]
   )
 
   const onAction = useCallback(
@@ -4381,6 +4477,8 @@ export function useCutalong() {
     onAction,
     openProject,
     runCommand,
+    /** Other B-roll for a beat that cuts to some, offered in the editor's panel. */
+    otherBroll,
     addNote,
     dropNote,
     applyNotes,

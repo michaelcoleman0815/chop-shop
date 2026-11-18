@@ -31,6 +31,15 @@ import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { PremiereFacts, Preset } from '../shared/presets'
 import type { KeyCheck, ServiceId } from '../shared/services'
+import type { BrollKeyId } from '../shared/broll/keys'
+import type { MomentResult as BrollMomentResult } from '../shared/broll/route'
+import type { BrollSettings, LibraryFolder, WebQuote } from '../shared/broll/settings'
+import type {
+  Candidate as BrollCandidate,
+  Fetched as BrollFetched,
+  Moment as BrollMoment,
+  SourceId as BrollSourceId
+} from '../shared/broll/types'
 import type { ClipAsk, ClipsFound, ClipsReply } from '../shared/clipping'
 import type { ClaudeKeyState } from '../shared/setup'
 import type { PlanQuestion, PlanStep } from '../shared/plan/commands'
@@ -216,6 +225,45 @@ const api = {
     origin: Asset['origin']
   }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string }> =>
     ipcRenderer.invoke('assets:saveImage', req),
+  // B-roll from everywhere (main/broll/app): the person's folders first, then the free libraries and sites.
+  /** B-roll for moments of the edit: the best few for each, with a reason. `paid` only from a tapped yes to the price. */
+  brollFind: (req: {
+    moments: BrollMoment[]
+    brandId?: string | null
+    paid?: boolean
+    perMoment?: number
+    /** Ask only these sources: the web alone, once its price is agreed to. */
+    only?: BrollSourceId[]
+  }): Promise<{ ok: true; results: BrollMomentResult[] } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('broll:find', req),
+  /** The picked B-roll as a file in the edit's material, normalized, with its credit on it. */
+  brollFetch: (req: {
+    candidate: BrollCandidate
+    docId: string
+    seconds?: number
+    output?: { width: number; height: number }
+    brandId?: string | null
+  }): Promise<({ ok: true } & BrollFetched) | { ok: false; message: string }> => ipcRenderer.invoke('broll:fetch', req),
+  /** What looking on the web for `moments` moments may cost, before anything is spent. */
+  brollQuote: (moments: number): Promise<WebQuote> => ipcRenderer.invoke('broll:quote', moments),
+  onBrollProgress: (cb: (p: Progress) => void): (() => void) => listen('broll:progress', cb),
+  brollSettings: (): Promise<BrollSettings> => ipcRenderer.invoke('broll:settings'),
+  /** Folders are not changed here: only the folder picker adds one (brollAddFolder). */
+  brollSaveSettings: (patch: Partial<Omit<BrollSettings, 'folders'>>): Promise<BrollSettings> =>
+    ipcRenderer.invoke('broll:saveSettings', patch),
+  /** Which B-roll sites have a key saved; the keys never come back to the window. */
+  brollKeys: (): Promise<Record<BrollKeyId, boolean>> => ipcRenderer.invoke('broll:keys'),
+  brollSetKey: (id: BrollKeyId, key: string): Promise<{ ok: true } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('broll:setKey', id, key),
+  brollClearKey: (id: BrollKeyId): Promise<void> => ipcRenderer.invoke('broll:clearKey', id),
+  brollCheckKey: (id: BrollKeyId): Promise<KeyCheck> => ipcRenderer.invoke('broll:checkKey', id),
+  /** The person's asset folders: a sentence each of what it holds, and what it cannot use and why. */
+  brollLibrary: (): Promise<{ folders: LibraryFolder[] }> => ipcRenderer.invoke('broll:library'),
+  /** Opens the folder picker; a folder picked is looked through at once (progress on onBrollProgress). */
+  brollAddFolder: (): Promise<{ ok: false } | { ok: true; said: string[] }> => ipcRenderer.invoke('broll:addFolder'),
+  brollRemoveFolder: (path: string): Promise<BrollSettings> => ipcRenderer.invoke('broll:removeFolder', path),
+  /** Looks through every folder again, opening only what changed. */
+  brollScan: (): Promise<{ said: string[] }> => ipcRenderer.invoke('broll:scan'),
   /** A page at a link, captured on this computer as it shows logged out, saved into the edit's material. */
   capturePage: (req: {
     docId: string
