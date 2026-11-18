@@ -706,6 +706,16 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const frameAt = (sec: number): number => Math.round(sec * fps) - base
   const framesOf = (k: number): number => Math.max(1, frameAt(pics[k].outEnd) - frameAt(pics[k].outStart))
   /**
+   * How far to move a read that serves a segment's picture alone, so its
+   * first frame is the one the editor's player shows where the segment's
+   * first output frame falls: the segment starts on the output's frame grid
+   * rather than exactly where its piece does, and a seek keeps the first
+   * frame at or after its time where a player shows the one under it, so the
+   * nearest is taken. Another camera of a recording (edit/angles), and each
+   * panel of a grid, then show the frame the editor does.
+   */
+  const onGrid = (k: number): number => Math.round(pics[k].outStart * fps) / fps - pics[k].outStart - 0.5 / fps
+  /**
    * A picture made exactly `frames` long: held on its last frame if it runs
    * short, cut if it runs long. A freeze is one frame held for `padSec`.
    */
@@ -826,6 +836,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         chains.push(`${latestFirst(back.inputs.length, `${a}r`)}concat=n=${back.inputs.length}:v=0:a=1[${a}j]`)
         sound = `[${a}j]`
       }
+    } else if (s.audio) {
+      // The picture alone from this input, the sound from the recording it is lined up with: read
+      // from the frame the editor shows where this segment's first output frame falls (onGrid).
+      const main = input(s.path, pic.startSec + onGrid(k), pic.srcSec)
+      speaker = () => `${sourcePicture(main, s.convert)}${retime(pic.steps)}`
+      sound = linedSound(s.audio, s.startSec, soundSrc, false, a)
     } else {
       // One input covers both the sound and the picture; each is cut from it.
       const inStart = Math.min(s.startSec, pic.startSec)
@@ -837,8 +853,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         ? `trim=start=${exact(pic.startSec - inStart)}:duration=${exact(pic.srcSec)},setpts=PTS-STARTPTS,`
         : ''
       speaker = () => `${sourcePicture(main, s.convert)}${cutPicture}${retime(pic.steps)}`
-      if (s.audio) sound = linedSound(s.audio, s.startSec, soundSrc, false, a)
-      else if (s.hasAudio) {
+      if (s.hasAudio) {
         const cutSound = differs(s.startSec, soundSrc)
           ? `atrim=start=${exact(s.startSec - inStart)}:duration=${exact(soundSrc)},asetpts=PTS-STARTPTS,`
           : ''
@@ -883,7 +898,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
           ? speaker()
           : p.still
             ? `${sourcePicture(input(p.path as string, 0, showFor))}${STILL_TO_YUV},`
-            : sourcePicture(input(p.path as string, p.startSec, showFor), p.convert)
+            : sourcePicture(input(p.path as string, p.startSec + onGrid(k), showFor), p.convert)
         const { x, y, w, h } = p.rect
         chains.push(
           `${source}fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1${t.bw ? ',hue=s=0' : ''}[${v}p${i}]`

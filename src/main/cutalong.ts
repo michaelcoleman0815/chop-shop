@@ -28,6 +28,7 @@ import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
 import { assignRoles, factsFor, separateSameTakes, type FileFacts } from './session'
+import { findSession, hearViews } from './session-povs'
 import { listenFrames } from './audio-map'
 import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
 import { vocabulary } from '../shared/raw/prompt'
@@ -300,9 +301,34 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       // Claude reading the request has no percent to give, so the bar sweeps.
       deps.send(e.sender, 'cut:progress', { stage: 'Working out which file is which', percent: null })
       const assigned = await assignRoles(req.request, facts)
+      // Several players' views of one gaming session are lined up by ear, the person's own first.
+      deps.send(e.sender, 'cut:progress', { stage: 'Listening for one session in them', percent: null })
+      const session = await findSession(assigned, facts, req.request)
       // Sorted without reading the request, one take recorded twice would be cut in twice.
-      const roles = assigned.by === 'measurement' ? await separateSameTakes(assigned, facts) : assigned
-      return { ok: true as const, roles, facts }
+      const roles = session.povs?.length
+        ? session
+        : assigned.by === 'measurement'
+          ? await separateSameTakes(assigned, facts)
+          : assigned
+      // Each other view as the edit takes a camera: its shape and its frame rate.
+      const povs = await Promise.all(
+        (roles.povs ?? []).map(async (p) => {
+          const meta = await probe(p.path)
+          const color = meta.facts?.color
+          return {
+            ...p,
+            camera: {
+              path: p.path,
+              durationSec: meta.durationSec,
+              width: meta.width,
+              height: meta.height,
+              fps: meta.fps > 0 ? meta.fps : 30,
+              ...(color && color !== 'sdr' ? { color } : {})
+            }
+          }
+        })
+      )
+      return { ok: true as const, roles: { ...roles, ...(povs.length ? { povs } : {}) }, facts }
     } catch (err) {
       return { ok: false as const, message: message(err) }
     }
@@ -358,6 +384,22 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       return { ok: true as const, subjects }
     } catch (err) {
       return { ok: false as const, finder: hasFaceFinder(), message: message(err) }
+    }
+  })
+
+  /**
+   * Each other player's view of a session, heard on the person's own clock
+   * (session-povs: hearViews), so whose voice, laugh or bang each moment is
+   * can be told (shared/pov/choose).
+   */
+  ipcMain.handle('pov:listen', async (e, req: { doc: unknown }) => {
+    const parsed = EditDocSchema.safeParse(req.doc)
+    if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
+    try {
+      const maps = await hearViews(parsed.data, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }))
+      return { ok: true as const, maps }
+    } catch (err) {
+      return { ok: false as const, message: message(err) }
     }
   })
 

@@ -85,11 +85,16 @@ function bestLag(
  * recording that runs through several camera clips is. Returns null when the
  * two never overlap long enough to say.
  */
-export function estimateOffset(a: Envelope, b: Envelope, opts: { maxLagSec?: number } = {}): Offset | null {
+export function estimateOffset(
+  a: Envelope,
+  b: Envelope,
+  opts: { maxLagSec?: number; minOverlapSec?: number } = {}
+): Offset | null {
   const aSec = a.db.length * a.hopSec
   const bSec = b.db.length * b.hopSec
   const maxLag = opts.maxLagSec ?? Math.max(aSec, bSec)
-  const minOverlapSec = Math.min(8, 0.5 * Math.min(aSec, bSec))
+  // A match over a few seconds can happen by chance; long recordings that share most of their length ask for more.
+  const minOverlapSec = Math.min(opts.minOverlapSec ?? 8, 0.5 * Math.min(aSec, bSec))
   if (minOverlapSec < 2) return null
 
   // Coarse: every lag, a quarter second apart.

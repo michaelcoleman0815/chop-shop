@@ -3,6 +3,7 @@ import type { ClipAsk } from '../../../shared/clipping'
 import type { PlannedCommand, PlanQuestion, PlanStep } from '../../../shared/plan/commands'
 import type { LengthAsk } from '../../../shared/raw'
 import type { MouthMode } from '../../../shared/vision'
+import type { PovMode } from '../../../shared/pov/modes'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
 
@@ -36,6 +37,8 @@ export interface CommandRunners {
   mouth(mode: MouthMode): void
   never(never: string[], allow: string[]): Promise<void>
   brand(name: string): void
+  /** Whose view each moment shows, in a session several players recorded (shared/pov). */
+  povs(mode: PovMode, everyone: boolean, minSec: number): Promise<void>
   undo(): void
 }
 
@@ -103,6 +106,8 @@ export async function runCommandStep(c: PlannedCommand, run: CommandRunners, sai
       return run.never(c.never, c.allow)
     case 'brand':
       return run.brand(c.name.trim())
+    case 'povs':
+      return run.povs(c.mode, c.everyone, c.minSec)
     case 'undo':
       return run.undo()
   }
