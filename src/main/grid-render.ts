@@ -8,6 +8,7 @@ import {
   gridHeard,
   gridLayout,
   gridPictures,
+  panelInStep,
   pictureSpan,
   type Asset,
   type Cut,
@@ -114,9 +115,14 @@ export async function prepareGrids(segments: Segment[], input: GridInput): Promi
         })
       )
     const plate = await (plates.get(beat.id) as Promise<{ ground: string; labels: string | null }>)
-    // Every other panel runs on the beat's cutaway clock, from its own in point.
+    // Every other panel runs on the beat's cutaway clock, from its own in point; another
+    // camera of the beat's own recording plays in step with its picture, through its line-up.
     const clock = cutawayClock(input.resolved, beat.id, pictureSpan(piece).outStart)
     const offset = clock?.offset ?? 0
+    const from = (k: number): number => {
+      const inStep = panelInStep(input.cut.angles, beat.source, grid.panels[k])
+      return inStep !== null ? pictureSpan(piece).srcStart + inStep : (grid.panels[k].inSec ?? 0) + offset
+    }
     const panels: NonNullable<Segment['grid']>['panels'] = []
     grid.panels.forEach((p, k) => {
       const picture = pictures[k]
@@ -124,7 +130,7 @@ export async function prepareGrids(segments: Segment[], input: GridInput): Promi
       const own = !p.show.trim() || p.show.trim() === beat.source
       panels.push({
         path: own ? null : picture.path,
-        startSec: own || picture.still ? 0 : (p.inSec ?? 0) + offset,
+        startSec: own || picture.still ? 0 : Math.max(0, from(k)),
         still: !own && picture.still,
         rect: evenRect(layout.panels[k], scale, BLEED)
       })
@@ -138,8 +144,7 @@ export async function prepareGrids(segments: Segment[], input: GridInput): Promi
     } else if (heard !== 'own') {
       const picture = pictures[heard]
       if (picture?.sound) {
-        const from = (grid.panels[heard].inSec ?? 0) + offset
-        s.audio = { path: picture.path, offsetSec: from - s.startSec }
+        s.audio = { path: picture.path, offsetSec: from(heard) - s.startSec }
         s.hasAudio = true
       } else {
         s.hasAudio = false

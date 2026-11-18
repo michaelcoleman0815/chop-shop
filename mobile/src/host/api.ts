@@ -154,6 +154,7 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     openVideo: async () => null,
     prepareCut: (input) => prepareCut(work, input, progress, parts.mediaUrlFor),
     extendCut: (req) => extendCut(work, req, progress),
+    // Several players' views of one session are not looked for here (no WorkHost.session): they are cut on the Mac.
     planSession: async (req) => {
       const r = await sortFootage(req, await key(), progress)
       return r.ok ? { ok: true as const, roles: r.roles } : r
@@ -180,6 +181,7 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     },
     openPremiere: async () => ({ ok: false as const, message: ON_THE_MAC.premiere }),
     lineUpCamera: async () => ({ ok: false as const, message: ON_THE_MAC.angle }),
+    listenPovs: async () => ({ ok: false as const, message: ON_THE_MAC.povs }),
     chooseCamera: async () => null,
     findSpeaker: async () => ({ ok: false as const, finder: false, message: ON_THE_MAC.reframe }),
     findFocus: async (req) => {

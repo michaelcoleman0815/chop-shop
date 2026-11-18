@@ -2,6 +2,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { basename } from 'path'
 import { z } from 'zod'
 import { estimateOffset, trustworthy } from '../shared/audio/offset'
+import type { LinedRecording } from '../shared/pov/lineup'
 import { levels, type Envelope } from '../shared/audio/snap'
 import { loudnessEnvelope } from './audio-envelope'
 import { PROBE_ARGS, readDuration, readProbe } from './intake'
@@ -51,6 +52,11 @@ export interface Roles {
   ignored: string[]
   /** One or two plain sentences for the person, naming files by name. */
   reply: string
+  /**
+   * The other players' views of one gaming session, each lined up by ear
+   * with the first talking recording, the person's own (shared/pov/lineup).
+   */
+  povs?: LinedRecording[]
   /** Whether Claude read the request, or the files were sorted by measurement alone. */
   by: 'claude' | 'measurement'
 }

@@ -15,6 +15,7 @@ import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { estimateOffset, shiftEnvelope, shiftFrames, trustworthy, type Offset } from '../shared/audio/offset'
 import { assignRoles, factsFor, separateSameTakes, type FileFacts, type Roles } from './session'
+import type { LinedRecording } from '../shared/pov/lineup'
 import { listenFrames } from './audio-map'
 import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
 import { vocabulary } from '../shared/raw/prompt'
@@ -113,6 +114,12 @@ export interface WorkHost {
     workDir: string
     onProgress?: (fraction: number) => void
   }) => Promise<GraphOptions['fx']>
+  /**
+   * Several players' views of one gaming session found among the files and
+   * lined up by ear with the person's own (main/session-povs); the roles as
+   * they were when there is none. Absent where other views are not cut in.
+   */
+  session?: (roles: Roles, facts: FileFacts[], request: string) => Promise<Roles>
   /** How video is encoded: the computer's x264 when absent. */
   encoder?: Encoder
   /** False for an ffmpeg built without its GPL parts, as a phone's is: camera moves are drawn without perspective. */
@@ -266,12 +273,25 @@ export async function extendCut(
   }
 }
 
-/** Which file is which: measured, then read against what the person said. */
+/** Another player's view of one session, lined up with the person's own, as the edit takes a camera. */
+export type SessionView = LinedRecording & {
+  camera: { path: string; durationSec: number; width: number; height: number; fps: number; color?: 'hlg' | 'pq' }
+}
+
+/**
+ * Which file is which: measured, then read against what the person said. A
+ * host that lines up several players' views of one session (WorkHost.session)
+ * finds them too, each as a camera of the person's own recording.
+ */
 export async function sortFootage(
   req: { request: string; paths: string[] },
   apiKey: string | null,
-  progress: (stage: string, percent: number | null) => void
-): Promise<{ ok: true; roles: Roles; facts: FileFacts[] } | { ok: false; message: string }> {
+  progress: (stage: string, percent: number | null) => void,
+  host?: Pick<WorkHost, 'probe' | 'session'>
+): Promise<
+  | { ok: true; roles: Omit<Roles, 'povs'> & { povs?: SessionView[] }; facts: FileFacts[] }
+  | { ok: false; message: string }
+> {
   try {
     const facts: FileFacts[] = new Array(req.paths.length)
     let done = 0
@@ -291,9 +311,38 @@ export async function sortFootage(
     // Claude reading the request has no percent to give, so the bar sweeps.
     progress('Working out which file is which', null)
     const assigned = await assignRoles(req.request, facts, apiKey)
+    let session = assigned
+    let povs: SessionView[] = []
+    if (host?.session) {
+      // Several players' views of one gaming session are lined up by ear, the person's own first.
+      progress('Listening for one session in them', null)
+      session = await host.session(assigned, facts, req.request)
+      // Each other view as the edit takes a camera: its shape and its frame rate.
+      povs = await Promise.all(
+        (session.povs ?? []).map(async (p) => {
+          const meta = await host.probe(p.path)
+          const color = meta.facts?.color
+          return {
+            ...p,
+            camera: {
+              path: p.path,
+              durationSec: meta.durationSec,
+              width: meta.width,
+              height: meta.height,
+              fps: meta.fps > 0 ? meta.fps : 30,
+              ...(color && color !== 'sdr' ? { color } : {})
+            }
+          }
+        })
+      )
+    }
     // Sorted without reading the request, one take recorded twice would be cut in twice.
-    const roles = assigned.by === 'measurement' ? await separateSameTakes(assigned, facts) : assigned
-    return { ok: true as const, roles, facts }
+    const { povs: _lined, ...roles } = povs.length
+      ? session
+      : assigned.by === 'measurement'
+        ? await separateSameTakes(assigned, facts)
+        : assigned
+    return { ok: true as const, roles: { ...roles, ...(povs.length ? { povs } : {}) }, facts }
   } catch (err) {
     return { ok: false as const, message: message(err) }
   }

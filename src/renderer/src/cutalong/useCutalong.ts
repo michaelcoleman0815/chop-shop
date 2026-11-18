@@ -32,7 +32,8 @@ import {
   type Asset,
   type EditDoc,
   type Note,
-  type Op
+  type Op,
+  type Source
 } from '../../../shared/edit'
 import {
   beatForAsset,
@@ -156,6 +157,7 @@ import {
   type ClaudeKeyStatus
 } from '../../../shared/setup'
 import type { PlannedCommand } from '../../../shared/plan/commands'
+import { joinViews, planPovs, readPovWords, type PovAsk } from '../../../shared/pov'
 import { carrySteps, composeReply, Gathered, runCommandStep, type CommandRunners } from './carry'
 import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
@@ -343,6 +345,11 @@ const ACTION_COMMANDS: Preset[] = [
         'angle',
         'Camera angle',
         'Another camera of the same take: /angle, /angle pip, /angle side, /angle off, /angle sync +2f'
+      ],
+      [
+        'povs',
+        'Players’ views',
+        'Cut between everyone’s views of one session: /povs, /povs talking, /povs reactions, /povs everyone, /povs mine'
       ],
       [
         'reframe',
@@ -2392,6 +2399,42 @@ export function useCutalong() {
   )
 
   /**
+   * /povs, and the planner's povs step: whose view each moment of a session
+   * several players recorded shows (shared/pov/choose), as one version.
+   */
+  const povsCommandRun = useCallback(
+    (ask: PovAsk, where: 'thread' | 'panel'): void => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop the players’ recordings of one session in together, yours with them, and I’ll line them up.')
+        return
+      }
+      const plan = planPovs(d, ask)
+      if ('say' in plan) {
+        say(plan.say)
+        return
+      }
+      const done =
+        plan.ops.length > 0 ? applyAsVersion(plan.ops, plan.summary, undefined, { text: plan.summary, ops: plan.ops.length }) : null
+      if (!done) {
+        say(`That is already how it cuts between your views. ${plan.summary}`)
+        return
+      }
+      say(`v${done.n} is ready. ${done.summary}`, true)
+    },
+    [applyAsVersion, push]
+  )
+
+  /**
    * /reframe: a narrower frame follows the speaker, found first in any
    * recording not yet looked at; framed by hand on a beat; off.
    */
@@ -3077,6 +3120,13 @@ export function useCutalong() {
         await angleCommandRun(rest, where, beat, picked)
         return
       }
+      if (command === 'povs') {
+        const read = readPovWords(rest)
+        if (read) povsCommandRun(read, where)
+        else if (where === 'panel') setPanel({ text: '/povs takes talking, reactions, everyone or mine.' })
+        else push({ role: 'assistant', text: '/povs takes talking, reactions, everyone or mine.' })
+        return
+      }
       if (command === 'premiere') {
         await premiereCommand(where)
         return
@@ -3190,6 +3240,7 @@ export function useCutalong() {
       timingCommand,
       transitionCommand,
       angleCommandRun,
+      povsCommandRun,
       reframeCommandRun,
       chaptersCommandRun,
       premiereCommand,
@@ -3446,6 +3497,7 @@ export function useCutalong() {
           if (!found) return say(`There is no brand called “${name}”. The Brand page lists yours.`)
           switchBrand(found.id)
         },
+        povs: async (mode, everyone, minSec) => povsCommandRun({ mode, everyone, minSec }, where),
         undo: () => {
           const before = docRef.current
           undoRef.current()
@@ -3459,7 +3511,20 @@ export function useCutalong() {
         }
       }
     },
-    [acceptOffers, answerNever, applyAsVersion, clipping, commandNow, lengthAsked, push, setDoc, switchBrand, switchTake, vlog]
+    [
+      acceptOffers,
+      answerNever,
+      applyAsVersion,
+      clipping,
+      commandNow,
+      lengthAsked,
+      povsCommandRun,
+      push,
+      setDoc,
+      switchBrand,
+      switchTake,
+      vlog
+    ]
   )
 
   /**
@@ -3682,6 +3747,47 @@ export function useCutalong() {
   )
 
   /**
+   * The other players' views of one session, once the edit is made from the
+   * person's own: each a camera of it at its line-up, heard on its clock
+   * (main: pov:listen), and the edit made one timeline of the whole session
+   * that stays on theirs and cuts to the others for their reactions, with
+   * everyone at once where everyone reacts (shared/pov) — one version.
+   */
+  const joinSession = useCallback(
+    async (povs: { path: string; offsetSec: number; camera: Omit<Source, 'id'> }[]): Promise<void> => {
+      const d = docRef.current
+      if (!d || povs.length === 0) return
+      const joined = joinViews(d, povs)
+      let next = joined.doc
+      const lines = joined.ops
+      if (lines.length === 0) return
+      const id = push({ role: 'assistant', text: '', progress: { stage: 'Listening to the other views', percent: 0 } })
+      const off = api.onCutProgress((p) => patch(id, { progress: p }))
+      const lined = commit(next, lines, 'The other players’ views are lined up with yours.').doc
+      const heard = await api.listenPovs({ doc: lined }).catch(() => null)
+      off()
+      const maps = heard && heard.ok ? heard.maps : {}
+      next = { ...next, audio: { ...(next.audio ?? {}), ...maps } }
+      setDoc(next)
+      const plan = planPovs({ ...lined, audio: next.audio }, { mode: 'reactions', everyone: true, fill: true })
+      const ops = 'ops' in plan ? [...lines, ...plan.ops] : lines
+      const said =
+        'ops' in plan
+          ? plan.summary
+          : `The other players’ views are lined up with yours, but I couldn’t hear them${
+              heard && !heard.ok ? `: ${heard.message}` : ''
+            }, so it stays on yours.`
+      const done = applyAsVersion(ops, said, undefined, { text: said, ops: ops.length })
+      patch(id, {
+        progress: null,
+        text: done ? `v${done.n} is ready. ${done.summary}` : said,
+        actions: done ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+      })
+    },
+    [applyAsVersion, patch, push, setDoc]
+  )
+
+  /**
    * Footage dropped into the chat, any amount of it. One clip into an empty
    * chat starts the edit at once. Anything more is sorted first: the talking
    * becomes the edit in the order it was shot, the better sound goes under
@@ -3727,13 +3833,15 @@ export function useCutalong() {
         }
         const earlier = wordless ? d.sources.map((s) => ({ path: s.path, name: fileName(s.path) })) : []
         if (!(await startEdit(talking, sound))) return
+        // Several players' views of one session: the others go in as views of the person's own.
+        if (roles?.povs?.length) await joinSession(roles.povs)
         await addMaterial([...earlier, ...broll])
         return
       }
       if (talking.length > 0 || sound.length > 0) await extend(talking, sound)
       await addMaterial(broll)
     },
-    [addMaterial, ensureProject, extend, persist, push, sortFiles, startEdit]
+    [addMaterial, ensureProject, extend, joinSession, persist, push, sortFiles, startEdit]
   )
 
   const submit = useCallback(

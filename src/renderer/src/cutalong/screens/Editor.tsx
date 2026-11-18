@@ -23,6 +23,7 @@ import {
   levelAt,
   lookMatrix,
   openNotes,
+  panelInStep,
   pictureSpan,
   pieceFraming,
   pieceRate,
@@ -852,11 +853,16 @@ function Deck({
           <GridPanels
             layout={gridView.layout}
             design={design}
-            panels={gridView.pictures.map((picture, i) =>
-              picture && i !== gridView.own
-                ? { picture, at: (grid.panels[i].inSec ?? 0) + (gridClock?.offset ?? 0) }
-                : null
-            )}
+            panels={gridView.pictures.map((picture, i) => {
+              if (!picture || i === gridView.own) return null
+              // Another view of the beat's own recording plays in step with it, through its line-up, as the export has it.
+              const inStep = beatSource ? panelInStep(cut.angles, beatSource, grid.panels[i]) : null
+              const at =
+                inStep !== null && piece
+                  ? pieceTime(piece, time) + inStep
+                  : (grid.panels[i].inSec ?? 0) + (gridClock?.offset ?? 0)
+              return { picture, at }
+            })}
             labels={grid.panels.map((p) => p.label)}
             theme={theme}
             since={gridClock?.offset ?? 0}

@@ -15,7 +15,18 @@ const RATE = 16000
 export async function loudnessEnvelope(
   ffmpeg: string,
   path: string,
-  opts: { hopSec?: number; startSec?: number; durationSec?: number; signal?: AbortSignal } = {}
+  opts: {
+    hopSec?: number
+    startSec?: number
+    durationSec?: number
+    signal?: AbortSignal
+    /**
+     * Only the band voices fill, 250 Hz to 3.5 kHz: what several players'
+     * recordings of one session share is the voice chat, under game sound
+     * that is mostly lower or higher.
+     */
+    voice?: boolean
+  } = {}
 ): Promise<Envelope> {
   const hopSec = opts.hopSec ?? 0.01
   const perFrame = Math.max(1, Math.round(RATE * hopSec))
@@ -30,6 +41,7 @@ export async function loudnessEnvelope(
     '-i',
     path,
     '-vn',
+    ...(opts.voice ? ['-af', 'highpass=f=250,lowpass=f=3500'] : []),
     '-ac',
     '1',
     '-ar',

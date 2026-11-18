@@ -24,6 +24,7 @@ import type {
 import type { Asset, EditDoc, Note, Op, Region, Source, Subject } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
+import type { AudioMap } from '../shared/audio/map'
 import type { VideoRun } from '../shared/channel-habits'
 import type { Brands } from '../shared/brands'
 import type { UploadKit } from '../shared/upload'
@@ -110,6 +111,16 @@ const api = {
           ignored: string[]
           reply: string
           by: 'claude' | 'measurement'
+          /** The other players' views of one gaming session, lined up with the first talking file (main/session-povs). */
+          povs?: {
+            path: string
+            offsetSec: number
+            confidence: number
+            overlapSec: number
+            via: string | null
+            driftSec: number | null
+            camera: { path: string; durationSec: number; width: number; height: number; fps: number; color?: 'hlg' | 'pq' }
+          }[]
         }
       }
     | { ok: false; message: string }
@@ -151,6 +162,11 @@ const api = {
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('angle:line', req),
+  /** Each other player's view of a session, heard on the person's own clock (main: pov:listen), as audio maps under home@view. */
+  listenPovs: (req: {
+    doc: EditDoc
+  }): Promise<{ ok: true; maps: Record<string, AudioMap> } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('pov:listen', req),
   openPremiere: (req: {
     doc: EditDoc
   }): Promise<

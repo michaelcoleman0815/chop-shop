@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { PROFILES } from '../raw/profiles'
 import { MOUTH_MODES } from '../vision/mode'
+import { POV_MODES } from '../pov/modes'
 
 /**
  * Cutalong's own commands as steps Claude can choose in a plan, beside the
@@ -115,6 +116,12 @@ export const PLAN_COMMANDS = [
     op: 'brand',
     teach: 'put this chat in another of the person’s brands, by its name in the <brands> block: {"op":"brand","name":"Field Notes"}.',
     slots: { name: z.string() }
+  },
+  {
+    op: 'povs',
+    teach:
+      'whose view each moment shows, in an edit of one gaming session several players recorded (the <povs> block lists the views): {"op":"povs","mode":"talking","everyone":false,"minSec":0}. talking follows whoever is talking; reactions stays on the person’s own view and cuts to the others for their laughs, screams and loud moments, back soon; everyone shows all the views at once, in a grid, where everyone reacts together; mine puts every moment back on the person’s own view. everyone true adds those grids to talking or reactions. minSec is the shortest a view stays, 0 for the usual 1.5 s.',
+    slots: { mode: z.enum(POV_MODES), everyone: z.boolean(), minSec: z.number() }
   },
   {
     op: 'undo',

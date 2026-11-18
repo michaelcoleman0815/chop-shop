@@ -22,6 +22,7 @@ import { captureLink } from './page-shot'
 import { loadIcons, loadLogos } from './motion-icons'
 import { loudnessEnvelope } from './audio-envelope'
 import { estimateOffset, trustworthy, type Offset } from '../shared/audio/offset'
+import { findSession, hearViews } from './session-povs'
 import { watchClip } from './mouth'
 import { detectFaces, hasFaceFinder } from './track'
 import {
@@ -117,6 +118,8 @@ export const macWork: WorkHost = {
   motion: (input) => renderCutMotion({ ...input, icons: loadIcons, logos: loadLogos }),
   // Scene effects, from the cut-outs this Mac makes with Vision (main/fx-ipc).
   fx: (input) => renderEditFx(input),
+  // Several players' views of one gaming session, lined up by ear (main/session-povs).
+  session: (roles, facts, request) => findSession(roles, facts, request),
   apiKey: async () => readApiKey(),
   claudeWritesUpload: () => getSettings().claudeWritesUpload !== false
 }
@@ -198,9 +201,12 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     extendCut(macWork, req, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }))
   )
 
-  /** Which file is which: measured, then read against what the person said. */
+  /**
+   * Which file is which: measured, then read against what the person said, with
+   * several players' views of one gaming session lined up by ear (macWork.session).
+   */
   ipcMain.handle('cut:session', (e, req: { request: string; paths: string[] }) =>
-    sortFootage(req, readApiKey(), (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }))
+    sortFootage(req, readApiKey(), (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }), macWork)
   )
 
   /**
@@ -253,6 +259,22 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       return { ok: true as const, subjects }
     } catch (err) {
       return { ok: false as const, finder: hasFaceFinder(), message: message(err) }
+    }
+  })
+
+  /**
+   * Each other player's view of a session, heard on the person's own clock
+   * (session-povs: hearViews), so whose voice, laugh or bang each moment is
+   * can be told (shared/pov/choose).
+   */
+  ipcMain.handle('pov:listen', async (e, req: { doc: unknown }) => {
+    const parsed = EditDocSchema.safeParse(req.doc)
+    if (!parsed.success) return { ok: false as const, message: 'The edit could not be read.' }
+    try {
+      const maps = await hearViews(parsed.data, (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }))
+      return { ok: true as const, maps }
+    } catch (err) {
+      return { ok: false as const, message: message(err) }
     }
   })
 
