@@ -250,14 +250,29 @@ const EDIT =
 
 /**
  * A part of an edit that a reply would change ("the captions", "the music", "at 1:20", "shot 3", "the last
- * two seconds"): only an edit has these, so with one open the reply is for it. A quote has none of them.
+ * two seconds"), or how what plays should look or sound ("louder", "darker", "warmer", "faster"): only an
+ * edit has these, so with one open the reply is for it. A quote has none of them; a look a quote has
+ * ("black and white", "sepia") is read as a change of it before this is asked.
  */
 const EDIT_PART =
   /\b(?:captions?|subtitles?|music|soundtrack|audio|volume|intro|outro|lower thirds?|fonts?|colou?rs?|colou?r grade|grading|brightness|contrast|saturation|transitions?|b-?roll|clips?|zoom(?:s|ed|ing)?|speed|pace|pauses?|silences?|filler words?|logo|watermark|crop|aspect ratio|(?:shot|scene|beat)\s*#?\d{1,3})\b|\b\d{1,2}:\d{2}\b|\b(?:first|last|opening|closing|final)\s+(?:\d+|few|couple of|two|three|four|five|ten)\s+(?:seconds?|secs?|words?|lines?|shots?|scenes?)\b/i
+const EDIT_FEEL =
+  /\b(?:louder|quieter|softer|darker|brighter|lighter|dimmer|warmer|cooler|colder|sharper|crisper|clearer|punchier|snappier|smoother|faster|slower|tighter|looser|bolder|bigger|smaller|grainier|moodier|calmer|livelier|richer)\b/i
 
-/** Whether a reply names a part of an edit to change, so that with an edit open it is for the edit. */
+/** Whether a reply names a part of an edit to change, or how it should look or sound, so that with an edit open it is for the edit. */
 export function namesEditPart(text: string): boolean {
-  return EDIT_PART.test(text.trim().replace(/[‘’]/g, "'"))
+  const t = text.trim().replace(/[‘’]/g, "'")
+  return EDIT_PART.test(t) || EDIT_FEEL.test(t)
+}
+
+/**
+ * A pause or a "not now" ("later", "not yet", "another time", "let me think", "hold on"): nothing is decided,
+ * so what waits stays as it is. A question back is not one, and nor is a no ("never mind", "cancel").
+ */
+export function isDeferral(text: string): boolean {
+  const t = text.trim().replace(/[‘’]/g, "'")
+  if (!t || QUESTION.test(t)) return false
+  return HOLD_WHOLE.test(t) || (HOLD_ANY.test(t) && !saysSomething(t.replace(every(HOLD_ANY), ' ')))
 }
 
 /** Each style the words can say, what it adds to the prompt, and the style that is left when it is turned down. */

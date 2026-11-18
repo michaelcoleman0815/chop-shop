@@ -58,7 +58,8 @@ const made: Make = {
   spent: 1.4
 }
 const madeDoc = { id: 'doc1', sources: [{ id: 's1', path: '/made/narration.wav' }], words: [], assets: [], make: made, versions: [] } as unknown as EditDoc
-const QUOTE_WAITS = 'Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it; say “not now” to set it aside.'
+const QUOTE_WAITS = 'Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it; say “never mind” to set it aside.'
+const QUOTE_ASIDE = 'All right, I’ve set that quote aside. Its script stays above to read, and nothing more is spent.'
 const EXPIRED_WAITS = 'What was waiting above has expired, so nothing is written or made from it. Ask again for a fresh quote, or say “never mind”.'
 
 type Spend = { what: string; consent: unknown; topic?: string; cap?: number | null; quoteFirst?: boolean; chat: string }
@@ -312,8 +313,8 @@ describe('a chat opened again with something left waiting', () => {
   it('a chat whose quote was set aside before it was saved has nothing waiting: a fresh ask there is the ask itself', async () => {
     const w = window({ cap: null, autoUnder: null })
     await w.type('make a 1 minute cinematic documentary about the oil boom in Texas')
-    await w.type('not now')
-    expect(w.last()?.text).toBe('All right, I’ve set that quote aside. Nothing was spent.')
+    await w.type('never mind')
+    expect(w.last()?.text).toBe(QUOTE_ASIDE)
     w.restart(w.messages())
     expect([...w.messages().values()].some((m) => /expired/.test(m.aside ?? ''))).toBe(false)
     await w.type('make a 2 minute documentary about Lisbon')
@@ -326,7 +327,7 @@ describe('a new chat, or another one opened', () => {
     // A chat saved with its quote set aside: nothing waits in it.
     const s = window({ cap: null, autoUnder: null })
     await s.type('make a 1 minute cinematic documentary about the moon landing')
-    await s.type('not now')
+    await s.type('never mind')
     const settled = s.messages()
     for (const [state, setup] of STATES)
       for (const how of ['a new chat', 'another chat opened, with nothing waiting in it'])
@@ -501,7 +502,7 @@ describe('a quote waiting, a made video open', () => {
     }
   })
 
-  it('a change of the quote is read back, an edit’s words go to the edit, and “not now” sets the quote aside', async () => {
+  it('a change of the quote is read back, an edit’s words go to the edit, “not now” keeps it and “never mind” sets it aside', async () => {
     const w = window({ cap: null, autoUnder: null })
     w.setDoc(madeDoc)
     await w.type('make it 3 minutes')
@@ -516,10 +517,16 @@ describe('a quote waiting, a made video open', () => {
     await w.type('turn it into an explainer')
     expect(w.last()?.text).toMatch(/^Change it to .*an animated explainer.*4:00 long|^Change it to .*4:00 long.*an animated explainer/)
     expect(w.letGo).toEqual(edits)
+    // Not decided yet: the quote and what was read back of it stay as they are.
     await w.type('not now')
+    expect(w.last()?.text).toBe('It’s here when you’re ready.')
+    expect(w.quoteShown()).toBe(true)
+    expect(w.buttons('Yes')).toHaveLength(1)
+    // A no takes what was read back away, and the quote stands; a no to the quote sets it aside.
+    await w.type('no')
     expect(w.last()?.text).toBe('The quote stands as it was. Press its button to make it, or tell me what to change: its length, its voice, its look.')
-    await w.type('not now')
-    expect(w.last()?.text).toBe('All right, I’ve set that quote aside. Nothing was spent.')
+    await w.type('never mind')
+    expect(w.last()?.text).toBe(QUOTE_ASIDE)
     expect(w.quoteShown()).toBe(false)
     // Set aside, the edit has the chat again, whatever is typed.
     await w.type('ship it')

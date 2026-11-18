@@ -5,6 +5,7 @@ import { cleanTopic, readAsk, reviseBrief, reviseSteps, rewritesScript, wantsMak
 import {
   answered as answeredPrompt,
   isAcceptance,
+  isDeferral,
   isYes,
   mergeReads,
   namesEditPart,
@@ -23,10 +24,13 @@ import { draftFingerprint } from '../../../shared/make/fingerprint'
 import { readMakeAsk } from '../../../shared/make/edits'
 import type { Change, Consent, Draft, Reply, ShotChange } from '../../../shared/make/draft'
 import { dollars, listOf, scriptCost } from '../../../shared/make/quote'
+import type { Brief } from '../../../shared/make/schema'
+import type { ChatMessage } from '../../../shared/types'
 import { api } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import { isAudioFile, isVideoFile } from './format'
+import { renumber, type Kept } from './kept'
 
 /**
  * Videos made from nothing, in the session. "make a 2 minute cinematic
@@ -66,6 +70,15 @@ import { isAudioFile, isVideoFile } from './format'
  * opened from disk has its make buttons expired (`restore`). A chat whose
  * questions, read-back or quote were left waiting counts as waiting still, so
  * a new ask typed in it is read back before anything is written.
+ *
+ * What is paid for belongs to the chat that paid for it. Writing a script,
+ * quoting one again, making a video or a shot keep the chat and its file they
+ * were asked in; if another chat is open when the result comes back, it is
+ * kept in that chat's own file (`keepFor`), never in the one open, and the
+ * chat open says where it is. While it runs, any other chat shows a line with
+ * its Stop. A tap that would spend while another chat is opening does nothing
+ * (`switching`). A quote's script is kept with its reply, so it can be read
+ * once the quote has gone, set aside, replaced or expired.
  */
 
 export interface MakeDeps {
@@ -87,6 +100,36 @@ export interface MakeDeps {
   brand: () => string
   /** Which chat is open: what waits is that chat's, and nothing of another chat's can be tapped or changed from it. */
   chat?: () => string
+  /** The open chat's file, once it has one: a paid result is kept in the chat that paid for it. */
+  project?: () => { path: string; name: string } | null
+  /** Keeps a paid result in its own chat's file while another chat is open (useCutalong). False when it could not. */
+  keepFor?: (project: { path: string; name: string }, kept: Kept) => Promise<boolean>
+  /** Another chat is being opened: a tap that would write, change or make anything does nothing until it has. */
+  switching?: () => boolean
+  /** Resolves once no other chat is being opened: a result that comes back meanwhile goes where that leaves it. */
+  settled?: () => Promise<void>
+  /** A short notice outside the chat (a toast). */
+  notify?: (text: string) => void
+}
+
+/** Where a paid piece of work was asked for: its chat, and that chat's file once it has one. */
+interface Origin {
+  key: string
+  project: { path: string; name: string } | null
+}
+
+/** Paid work under way: the chat it was asked in, what it is, its stage, and where its progress and Stop show. */
+interface Run {
+  origin: Origin
+  /** "your video about the oil boom". */
+  what: string
+  stage: string | null
+  /** Its progress, with Stop, and the chat that shows it. */
+  msg: string
+  msgKey: string
+  /** A line with its Stop in another chat opened while it runs, and that chat. */
+  mirror: string | null
+  mirrorKey: string | null
 }
 
 export interface Makes {
@@ -110,12 +153,19 @@ export interface Makes {
    * expired, since nothing behind them is here any more; any left waiting make the chat count as waiting.
    */
   restore: (messages: Msg[]) => Msg[]
+  /** Paid work under way, for a line wherever the person is: what it is, and its stage. */
+  running: () => { what: string; stage: string | null } | null
+  /** Stops what is being made, from wherever the person is. */
+  stop: () => Promise<void>
 }
 
 const OPEN: NonNullable<Msg['actions']> = [{ kind: 'open-editor', label: 'Open the editor', primary: true }]
 
 /** While a video is made (and spends money), a way to stop it: shown on the progress, gone once it is done. */
 const STOP: NonNullable<Msg['actions']> = [{ kind: 'make', label: 'Stop', payload: JSON.stringify({ do: 'stop', id: '' }), during: true }]
+
+/** The same Stop, on the line another chat shows while the work runs in its own. */
+const STOP_AWAY: NonNullable<Msg['actions']> = [{ kind: 'make', label: 'Stop', payload: JSON.stringify({ do: 'stop', id: '' }) }]
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
@@ -125,16 +175,25 @@ const MAKE_COMMANDS = new Set(['make', 'documentary', 'explainer'])
 const QUOTE_STANDS = 'The quote stands as it was. Press its button to make it, or tell me what to change: its length, its voice, its look.'
 
 /** What any other reply to a waiting quote is answered with: only its button makes it. */
-const QUOTE_WAITS = 'Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it; say “not now” to set it aside.'
+const QUOTE_WAITS = 'Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it; say “never mind” to set it aside.'
 
-/** A no, or "not now", to a waiting quote. */
-const QUOTE_ASIDE = 'All right, I’ve set that quote aside. Nothing was spent.'
+/** "Later", "not yet", "let me think": nothing is decided, so what waits stays as it is. */
+const QUOTE_LATER = 'It’s here when you’re ready.'
+
+/** A no ("no", "never mind", "cancel") to a waiting quote: its button goes, and its script, paid for, stays to read. */
+const QUOTE_ASIDE = 'All right, I’ve set that quote aside. Its script stays above to read, and nothing more is spent.'
+
+/** A tap that would spend, while another chat opens. */
+const ONE_MOMENT = 'One moment… another chat is opening, so that tap did nothing and nothing was spent.'
+
+/** A quote kept in a chat that was closed when it came back: no button there to make it from. */
+const CAME_AWAY = 'It came back after you left this chat, so it has no button. Ask again here and I’ll quote it fresh.'
+
+/** Questions that came back for a chat already closed. */
+const ASK_AWAY = 'You left this chat before I could ask about this video. Ask again here and I’ll ask fresh.'
 
 /** What is typed in a chat whose make questions, read-back or quote expired when it was opened again. */
 const EXPIRED_WAITS = 'What was waiting above has expired, so nothing is written or made from it. Ask again for a fresh quote, or say “never mind”.'
-
-/** "Not now" and its kin, to a quote: set it aside. */
-const NOT_NOW = /^\s*(?:not now|not right now|not today|maybe later|later|another time|not yet)\b[\s.!]*$/i
 
 /** Each make message left waiting in a chat opened again, and what it says once expired. */
 const EXPIRED = {
@@ -200,8 +259,37 @@ const shown = (r: Reply): Partial<Msg> => ({
   details: r.details
 })
 
-/** The reply's version number made the one committed. */
-const renumber = (text: string, n: number): string => text.replace(/^v\d+\b/, `v${n}`)
+/** A quote's script, kept with its reply so it can be read once the quote has gone. */
+const scriptOf = (d: Draft): ChatMessage['script'] =>
+  d.script.trim() ? { outline: d.outline, sections: d.sections, phrases: d.phrases } : undefined
+
+/** "your video about the oil boom", for saying where a video is. */
+const aboutOf = (brief: Brief | null): string => {
+  const topic = brief?.from === 'topic' ? cleanTopic(brief.topic) : ''
+  return topic && topic !== 'what you asked for' ? `your video about ${topic}` : 'your video'
+}
+
+const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
+
+/** A quote kept in a chat that was closed when it came back: what it said, and its script to read, with no button. */
+const keptQuote = (draft: Draft, reply: Reply, text?: string): Omit<ChatMessage, 'id'> => ({
+  role: 'assistant',
+  text: text ?? reply.text,
+  aside: [reply.aside, CAME_AWAY].filter(Boolean).join(' '),
+  chips: reply.chips,
+  details: reply.details,
+  script: scriptOf(draft)
+})
+
+/** A reply kept in a chat that was closed when it came back. */
+const keptReply = (reply: Reply, actions?: NonNullable<Msg['actions']>): Omit<ChatMessage, 'id'> => ({
+  role: 'assistant',
+  text: reply.text,
+  aside: reply.aside,
+  chips: reply.chips,
+  details: reply.details,
+  ...(actions ? { actions } : {})
+})
 
 export function useMake(deps: MakeDeps): Makes {
   const live = useRef(deps)
@@ -255,6 +343,95 @@ export function useMake(deps: MakeDeps): Makes {
   /** Still the chat `mine` was taken in: what a piece of work brings back lands only in the chat that asked for it. */
   const still = useCallback((mine: string): boolean => (live.current.chat?.() ?? '') === mine, [])
 
+  /** A short notice: a toast where there is one, else a reply. */
+  const say = useCallback((text: string): void => {
+    const { notify, push } = live.current
+    if (notify) notify(text)
+    else push({ role: 'assistant', text })
+  }, [])
+
+  /** Paid work under way, and its line for wherever the person is. */
+  const running = useRef<Run | null>(null)
+  const [runLine, setRunLine] = useState<{ what: string; stage: string | null } | null>(null)
+
+  /** Paid work begins in the chat open, its progress in `msg`. */
+  const begin = useCallback((what: string, msg: string): Run => {
+    const run: Run = {
+      origin: { key: owner.current, project: live.current.project?.() ?? null },
+      what,
+      stage: null,
+      msg,
+      msgKey: owner.current,
+      mirror: null,
+      mirrorKey: null
+    }
+    running.current = run
+    setRunLine({ what, stage: null })
+    return run
+  }, [])
+
+  /** The line another chat shows while paid work runs in its own. */
+  const awayLine = (run: Run): string =>
+    `I’m working on ${run.what} in its chat${run.origin.project ? `, “${run.origin.project.name}”` : ''}. Stop it here if you like.`
+
+  /** Its progress, on its own reply and on the line another chat shows. */
+  const progressed = useCallback((run: Run, p: NonNullable<Msg['progress']>): void => {
+    const { patch } = live.current
+    run.stage = p.stage
+    if (run.msgKey === owner.current) patch(run.msg, { progress: p })
+    if (running.current === run) setRunLine({ what: run.what, stage: p.stage })
+  }, [])
+
+  const end = useCallback((run: Run): void => {
+    if (running.current !== run) return
+    running.current = null
+    setRunLine(null)
+  }, [])
+
+  /**
+   * Where the chat a paid piece of work was asked in is now: still open, closed and opened again, or not open. A chat
+   * being opened as it comes back is waited for, so it goes where that leaves it.
+   */
+  const whereIs = useCallback(
+    async (o: Origin): Promise<'here' | 'back' | 'away'> => {
+      if (live.current.switching?.()) await live.current.settled?.()
+      if (still(o.key)) return 'here'
+      const now = live.current.project?.()
+      return o.project && now && now.path === o.project.path ? 'back' : 'away'
+    },
+    [still]
+  )
+
+  /** The reply in the chat open to show a result in: its own progress if it is there, else a new one. */
+  const replyFor = useCallback((run: Run): string => {
+    if (run.msgKey === owner.current) return run.msg
+    return live.current.push({ role: 'assistant', text: '' })
+  }, [])
+
+  /**
+   * What paid work brought back for a chat that is not the one open: kept in that chat's own file, and never in the
+   * one open, which says where it is.
+   */
+  const away = useCallback(async (run: Run, kept: Kept, news: 'ready' | 'quote' | 'news'): Promise<void> => {
+    const { keepFor, patch, push } = live.current
+    const where = run.origin.project
+    const saved = where && keepFor ? await keepFor(where, kept).catch(() => false) : false
+    const chat = where ? `its chat, “${where.name}”` : 'its chat'
+    const text = !saved
+      ? news === 'ready'
+        ? `${capital(run.what)} is made, but its chat was closed and I couldn’t keep it there.`
+        : news === 'quote'
+          ? `The quote for ${run.what} came back after its chat was closed, and I couldn’t keep it there.`
+          : `What happened with ${run.what} came back after its chat was closed, and I couldn’t keep it there.`
+      : news === 'ready'
+        ? `${capital(run.what)} is ready in ${chat}.`
+        : news === 'quote'
+          ? `The quote for ${run.what} is in ${chat}.`
+          : `What happened with ${run.what} is in ${chat}.`
+    if (run.mirror && run.mirrorKey === owner.current) patch(run.mirror, { text, actions: [] })
+    else push({ role: 'assistant', text })
+  }, [])
+
   /** A quote shown: kept under a key of its own, with the price its button shows. */
   const keep = useCallback((draft: Draft): string => {
     const key = newKey('quote')
@@ -266,7 +443,8 @@ export function useMake(deps: MakeDeps): Makes {
   /** The newest quote is this one: the button of the one before it goes, so only one quote can be made at a time. */
   const showing = useCallback((key: string, msg: string): void => {
     const was = pending.current
-    if (was && was.msg !== msg) live.current.patch(was.msg, { actions: [] })
+    // The one before keeps its words and its script to read; only its button goes.
+    if (was && was.msg !== msg) live.current.patch(was.msg, { actions: [], make: undefined })
     if (was && was.id !== key) changes.current.delete(was.id)
     pending.current = { id: key, msg }
   }, [])
@@ -290,7 +468,7 @@ export function useMake(deps: MakeDeps): Makes {
         label: scriptShown ? 'Hide the script' : 'Read the script',
         payload: JSON.stringify({ do: 'script', id: key })
       })
-    return { ...shown(reply), actions, make: key }
+    return { ...shown(reply), actions, make: key, script: scriptOf(draft) }
   }, [])
 
   /** A made video in the session: a new edit, or a new version of the one it was made from. */
@@ -365,7 +543,7 @@ export function useMake(deps: MakeDeps): Makes {
         patch(back.current.msg, { actions: [] })
         back.current = null
       }
-      patch(pending.current.msg, { actions: [] })
+      patch(pending.current.msg, { actions: [], make: undefined })
       pending.current = null
       const msg = push({
         role: 'assistant',
@@ -373,7 +551,8 @@ export function useMake(deps: MakeDeps): Makes {
         progress: { stage: 'Starting', percent: null },
         actions: STOP
       })
-      const off = api.onCutProgress((p) => patch(msg, { progress: p }))
+      const run = begin(aboutOf(entry.draft.brief), msg)
+      const off = api.onCutProgress((p) => progressed(run, p))
       let r: Awaited<ReturnType<typeof api.makeGo>>
       try {
         r = await during(() => api.makeGo({ draft: entry.draft, confirmed: entry.total, fingerprint: entry.fingerprint, consent: 'tap' }))
@@ -381,20 +560,35 @@ export function useMake(deps: MakeDeps): Makes {
         r = { ok: false, message: errorText(err) }
       } finally {
         off()
+        end(run)
       }
+      drafts.current.delete(key)
+      // Its chat is not the one open now: what it made is kept in that chat, never in this one.
+      const where = await whereIs(run.origin)
+      if (where === 'away') {
+        if (r.ok) await away(run, { message: keptReply(r.reply, OPEN), doc: r.doc, into: r.into }, 'ready')
+        else
+          await away(
+            run,
+            { message: r.draft && r.reply ? keptQuote(r.draft, r.reply, r.message) : { role: 'assistant', text: r.message, error: true } },
+            'news'
+          )
+        return
+      }
+      if (where === 'back') sync()
+      const at = replyFor(run)
       if (!r.ok) {
         // A new price, another service, or the rest after a Stop: a new quote, with its own button.
         if (r.draft && r.reply) {
           const next = keep(r.draft)
-          showing(next, msg)
-          patch(msg, { ...quoteMsg(next, r.draft, r.reply), text: r.message })
-        } else patch(msg, { progress: null, text: r.message, error: true })
+          showing(next, at)
+          patch(at, { ...quoteMsg(next, r.draft, r.reply), text: r.message })
+        } else patch(at, { progress: null, text: r.message, error: true })
         return
       }
-      drafts.current.delete(key)
-      land(r, msg)
+      land(r, at)
     },
-    [keep, land, quoteMsg, showing]
+    [away, begin, end, keep, land, progressed, quoteMsg, replyFor, showing, sync, whereIs]
   )
 
   const quote = useCallback(
@@ -420,7 +614,7 @@ export function useMake(deps: MakeDeps): Makes {
     ): Promise<void> => {
       const { answered = false, quoteFirst = false, reading, consent } = opts
       if (consent === 'tap') restored.current = false
-      const { push, patch, during } = live.current
+      const { push, during } = live.current
       // Writing the script spends, and Settings may make the video straight after: Stop stays in reach.
       const msg = push({
         role: 'assistant',
@@ -428,7 +622,8 @@ export function useMake(deps: MakeDeps): Makes {
         progress: { stage: 'Reading what you asked for', percent: null },
         actions: STOP
       })
-      const off = api.onCutProgress((p) => patch(msg, { progress: p }))
+      const run = begin(aboutOf(readAsk(reading ?? text, { recording })), msg)
+      const off = api.onCutProgress((p) => progressed(run, p))
       let r: Awaited<ReturnType<typeof api.makeStart>>
       try {
         r = await during(() =>
@@ -438,21 +633,39 @@ export function useMake(deps: MakeDeps): Makes {
         r = { ok: false, message: errorText(err) }
       } finally {
         off()
+        end(run)
       }
+      // Its chat is not the one open now: what came back is kept in that chat, never in this one.
+      const where = await whereIs(run.origin)
+      if (where === 'away') {
+        if (!r.ok)
+          await away(
+            run,
+            { message: r.draft && r.reply ? keptQuote(r.draft, r.reply, r.message) : { role: 'assistant', text: r.message, error: true } },
+            'news'
+          )
+        else if (r.kind === 'ask') await away(run, { message: { role: 'assistant', text: ASK_AWAY } }, 'news')
+        else if (r.kind === 'quote') await away(run, { message: keptQuote(r.draft, r.reply) }, 'quote')
+        else await away(run, { message: keptReply(r.reply, OPEN), doc: r.doc, into: r.into }, 'ready')
+        return
+      }
+      if (where === 'back') sync()
+      const { patch } = live.current
+      const at = replyFor(run)
       if (!r.ok) {
         // Made straight away and stopped: what was spent, and a quote for the rest, with its own button.
         if (r.draft && r.reply) {
-          await quote(msg, r.draft, r.reply)
-          patch(msg, { text: r.message })
-        } else patch(msg, { progress: null, text: r.message, error: true, actions: [] })
+          await quote(at, r.draft, r.reply)
+          patch(at, { text: r.message })
+        } else patch(at, { progress: null, text: r.message, error: true, actions: [] })
         return
       }
       if (r.kind === 'ask') {
         // Nothing is written yet: the questions wait under this reply, and so does what was asked.
         const id = `ask-${Date.now()}`
-        asking.current = { id, msg, text, recording, questions: r.questions }
+        asking.current = { id, msg: at, text, recording, questions: r.questions }
         setVersion((n) => n + 1)
-        patch(msg, {
+        patch(at, {
           progress: null,
           text:
             r.questions.length === 1
@@ -464,12 +677,12 @@ export function useMake(deps: MakeDeps): Makes {
         return
       }
       if (r.kind === 'quote') {
-        await quote(msg, r.draft, r.reply)
+        await quote(at, r.draft, r.reply)
         return
       }
-      land(r, msg)
+      land(r, at)
     },
-    [land, quote]
+    [away, begin, end, land, progressed, quote, replyFor, sync, whereIs]
   )
 
   /** The read-back waiting goes, and its buttons with it. */
@@ -499,6 +712,11 @@ export function useMake(deps: MakeDeps): Makes {
       sync()
       const a = asking.current
       if (!a || a.id !== id) return
+      // Another chat is opening: what the answers would write waits until it has.
+      if (live.current.switching?.()) {
+        say(ONE_MOMENT)
+        return
+      }
       const card = readCard(answers, a.questions)
       if (card?.kind === 'unread') {
         live.current.push({ role: 'assistant', text: UNREAD })
@@ -514,7 +732,7 @@ export function useMake(deps: MakeDeps): Makes {
       live.current.patch(a.msg, { makeAsk: undefined, aside: answers.filter(Boolean).join(', ') })
       await start(answeredPrompt(a.text, answers), a.recording, { answered: true, consent: 'tap' })
     },
-    [askBack, dropBack, start, sync]
+    [askBack, dropBack, say, start, sync]
   )
 
   /**
@@ -571,27 +789,40 @@ export function useMake(deps: MakeDeps): Makes {
       requoting.current = b.id
       // A script written again is paid for: Stop stays in reach.
       const msg = push({ role: 'assistant', text: '', progress: { stage: 'Quoting it again', percent: null }, actions: STOP })
+      const run = begin(aboutOf(draft.brief), msg)
+      const off = api.onCutProgress((p) => progressed(run, p))
       let r: Awaited<ReturnType<typeof api.makeRevise>>
       try {
         r = await during(() => api.makeRevise({ draft, steps: b.steps, consent: 'tap' }))
       } catch (err) {
         r = { ok: false, message: errorText(err) }
       } finally {
+        off()
+        end(run)
         if (requoting.current === b.id) requoting.current = null
       }
+      // Its chat is not the one open now: the new quote, and its script, are kept in that chat, never in this one.
+      const where = await whereIs(run.origin)
+      if (where === 'away') {
+        if (r.draft && r.reply) await away(run, { message: keptQuote(r.draft, r.reply, r.ok ? undefined : r.message) }, 'quote')
+        else await away(run, { message: { role: 'assistant', text: r.ok ? 'I could not quote that again.' : r.message, error: true } }, 'news')
+        return
+      }
+      if (where === 'back') sync()
+      const at = replyFor(run)
       if (!r.ok && r.draft && r.reply) {
         // Stopped or failed after Claude began: the same script, quoted with what that may have cost.
-        await quote(msg, r.draft, r.reply)
-        patch(msg, { text: r.message })
+        await quote(at, r.draft, r.reply)
+        patch(at, { text: r.message })
         return
       }
       if (!r.ok || !r.draft) {
-        patch(msg, { progress: null, text: r.ok ? 'I could not quote that again.' : r.message, error: true, actions: [] })
+        patch(at, { progress: null, text: r.ok ? 'I could not quote that again.' : r.message, error: true, actions: [] })
         return
       }
-      await quote(msg, r.draft, r.reply)
+      await quote(at, r.draft, r.reply)
     },
-    [quote]
+    [away, begin, end, progressed, quote, replyFor, sync, whereIs]
   )
 
   /** A read-back's button, tapped: Yes sends exactly what it read back; Not now leaves everything as it was. */
@@ -673,7 +904,8 @@ export function useMake(deps: MakeDeps): Makes {
       progress: { stage: 'Starting', percent: null },
       actions: STOP
     })
-    const off = api.onCutProgress((p) => patch(msg, { progress: p }))
+    const run = begin(`a shot of ${aboutOf(d.make.brief)}`, msg)
+    const off = api.onCutProgress((p) => progressed(run, p))
     let r: Awaited<ReturnType<typeof api.makeShot>>
     try {
       r = await during(() => api.makeShot({ doc: d, change, confirmed: change.total, consent: 'tap' }))
@@ -681,15 +913,30 @@ export function useMake(deps: MakeDeps): Makes {
       r = { ok: false, message: errorText(err) }
     } finally {
       off()
+      end(run)
     }
     changes.current.delete(key)
+    // Its chat is not the one open now: the shot goes into that chat's edit, never into this one.
+    const where = await whereIs(run.origin)
+    if (where === 'away') {
+      if (r.ok)
+        await away(
+          run,
+          { message: keptReply(r.reply, OPEN), shot: { doc: d.id, asset: r.asset, ops: r.ops, make: r.make, summary: r.summary } },
+          'ready'
+        )
+      else await away(run, { message: { role: 'assistant', text: r.message, error: true } }, 'news')
+      return
+    }
+    if (where === 'back') sync()
+    const at = replyFor(run)
     if (!r.ok) {
-      patch(msg, { progress: null, text: r.message, error: true })
+      patch(at, { progress: null, text: r.message, error: true })
       return
     }
     const latest = docRef.current
     if (!latest || latest.id !== d.id) {
-      patch(msg, {
+      patch(at, {
         progress: null,
         text: 'Another edit is open now, so I left the shot out of it.',
         error: true
@@ -704,12 +951,12 @@ export function useMake(deps: MakeDeps): Makes {
     })
     const after = docRef.current
     if (after) setDoc({ ...after, make: r.make })
-    patch(msg, {
+    patch(at, {
       ...shown(r.reply),
       text: done ? `v${done.n} is ready. ${r.reply.text}` : r.reply.text,
       actions: OPEN
     })
-  }, [])
+  }, [away, begin, end, progressed, replyFor, sync, whereIs])
 
   /** What a change of a made video costs, shown, or done straight away when it costs nothing or is under the amount. */
   const offer = useCallback(
@@ -877,14 +1124,21 @@ export function useMake(deps: MakeDeps): Makes {
           push({ role: 'assistant', text: NO_EDIT_QUOTE })
           return true
         }
-        // A no, or "not now": to what was read back of it, that goes and the quote stands; to the quote, it is set aside.
-        if (said.kind === 'no' || NOT_NOW.test(text)) {
+        // Not decided yet ("later", "not yet", "let me think"): the quote, and anything read back of it, stay as they are.
+        if (isDeferral(text)) {
+          push({ role: 'assistant', text: QUOTE_LATER })
+          return true
+        }
+        // A no ("no", "never mind", "cancel"): to what was read back of it, that goes and the quote stands; to the
+        // quote, its button goes, and its script, paid for, stays to read.
+        if (said.kind === 'no') {
           if (back.current) {
             dropBack()
             push({ role: 'assistant', text: QUOTE_STANDS })
             return true
           }
-          patch(waiting.msg, { actions: [] })
+          if (openScript === waiting.id) setOpenScript(null)
+          patch(waiting.msg, { actions: [], make: undefined })
           pending.current = null
           push({ role: 'assistant', text: QUOTE_ASIDE })
           return true
@@ -934,7 +1188,12 @@ export function useMake(deps: MakeDeps): Makes {
         if (said.kind === 'edit' || (command && !MAKE_COMMANDS.has(command.command))) return false
         if (editing?.make && files.length === 0 && readMakeAsk(editing.make, text)) return false
         if (editing && files.length === 0 && namesEditPart(text)) return false
-        if (said.kind === 'no' || NOT_NOW.test(text)) {
+        // Not decided yet: a read-back waits as it is; what expired stays expired.
+        if (isDeferral(text)) {
+          push({ role: 'assistant', text: back.current ? QUOTE_LATER : EXPIRED_WAITS })
+          return true
+        }
+        if (said.kind === 'no') {
           dropBack()
           restored.current = false
           push({ role: 'assistant', text: 'All right. Nothing was written or spent.' })
@@ -945,7 +1204,7 @@ export function useMake(deps: MakeDeps): Makes {
       }
       return false
     },
-    [askBack, dropBack, newAskBack, offer, start, still, sync]
+    [askBack, dropBack, newAskBack, offer, openScript, start, still, sync]
   )
 
   const asked = useCallback(
@@ -1005,6 +1264,11 @@ export function useMake(deps: MakeDeps): Makes {
         await api.makeCancel()
         return
       }
+      // Another chat is opening: a tap that would write, change or make anything does nothing until it has.
+      if (p.do !== 'script' && live.current.switching?.()) {
+        say(ONE_MOMENT)
+        return
+      }
       if (p.do === 'back') {
         await onBack(p.id, p.pick ?? (p.yes === true ? 'yes' : 'no'))
         return
@@ -1015,7 +1279,7 @@ export function useMake(deps: MakeDeps): Makes {
       } else if (p.do === 'script') toggleScript(p.id)
       else await reshoot(p.id)
     },
-    [go, onBack, reshoot, sync, toggleScript]
+    [go, onBack, reshoot, say, sync, toggleScript]
   )
 
   const editScript = useCallback(
@@ -1064,7 +1328,7 @@ export function useMake(deps: MakeDeps): Makes {
       let waiting = false
       const out = messages.map((m) => {
         const makes = (m.actions ?? []).filter((a) => a.kind === 'make')
-        if (!m.makeAsk && makes.length === 0) return m
+        if (!m.makeAsk && makes.length === 0 && !m.make) return m
         const kinds = makes.map((a) => /"do":"(\w+)"/.exec(a.payload ?? '')?.[1] ?? '')
         const note = m.makeAsk ? EXPIRED.questions : kinds.some((k) => k === 'go' || k === 'shot') ? EXPIRED.quote : kinds.includes('back') ? EXPIRED.back : null
         if (note) waiting = true
@@ -1077,13 +1341,38 @@ export function useMake(deps: MakeDeps): Makes {
         }
       })
       restored.current = waiting
+      // Paid work still under way: in its own chat opened again, its progress and Stop; in any other, a line with its
+      // Stop. Either way it shows wherever the person is, and what it brings back goes to its own chat.
+      const run = running.current
+      if (run) {
+        const id = newKey('run')
+        const own = !!run.origin.project && live.current.project?.()?.path === run.origin.project.path
+        if (own) {
+          run.msg = id
+          run.msgKey = owner.current
+          out.push({ id, role: 'assistant', text: '', progress: { stage: run.stage ?? 'Working on it', percent: null }, actions: STOP })
+        } else {
+          run.mirror = id
+          run.mirrorKey = owner.current
+          out.push({ id, role: 'assistant', text: awayLine(run), actions: STOP_AWAY })
+        }
+      }
       return out
     },
     [sync]
   )
 
+  const stop = useCallback(async (): Promise<void> => {
+    await api.makeCancel()
+  }, [])
+  // Read from the work itself, so a check made straight after it begins sees it; its line re-renders what shows it.
+  const runningNow = useCallback(
+    (): { what: string; stage: string | null } | null => (running.current ? { what: running.current.what, stage: running.current.stage } : null),
+    [runLine]
+  )
+
   return useMemo(
-    () => ({ handle, asked, onAction, draft, editScript, scriptOpen, questions, answer, restore }),
-    [handle, asked, onAction, draft, editScript, scriptOpen, questions, answer, restore]
+    () => ({ handle, asked, onAction, draft, editScript, scriptOpen, questions, answer, restore, running: runningNow, stop }),
+    [handle, asked, onAction, draft, editScript, scriptOpen, questions, answer, restore, runningNow, stop]
   )
 }

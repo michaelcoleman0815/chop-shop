@@ -164,6 +164,7 @@ import { useLearn } from './useLearn'
 import { renderFailure } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import { useMake, type Makes } from './useMake'
+import { keepInProject, type Kept } from './kept'
 import { makeName } from '../../../shared/make/brief'
 import { SHOWCASE_ENTRIES, useShowcase, type Showcase } from './useShowcase'
 import {
@@ -607,6 +608,21 @@ export function useCutalong() {
   const chatKey = useRef(0)
   /** useMake, for the chat changes made above it. */
   const makeRef = useRef<Makes | null>(null)
+  /**
+   * Another chat being opened: set while its file is read, so a tap that would spend does nothing until the
+   * chat has changed (useMake), and settled when it has, or when it gave way.
+   */
+  const switching = useRef(false)
+  const switchDone = useRef<Promise<void>>(Promise.resolve())
+  /** Counted up by every chat change asked for: an open overtaken while its file was read gives way. */
+  const switchSeq = useRef(0)
+  /** Results being kept in a chat's own file while another chat is open, by that chat's path: opening it waits for them. */
+  const keeping = useRef(new Map<string, Promise<boolean>>())
+  /** Why another chat can't be opened, or a new one started, now: a video being made says so, and how to stop it. */
+  const busyText = (to: 'open' | 'start'): string =>
+    makeRef.current?.running()
+      ? `A video is being made in this chat. ${to === 'open' ? 'Open the other one' : 'Start a new one'} when it’s done, or stop it first.`
+      : `I'm still working on ${projectRef.current?.name ?? 'this edit'}. ${to === 'open' ? 'Open another' : 'Start a new one'} once I'm done.`
   const studyRef = useRef<InspirationStudy | null>(null)
   const pendingCommand = useRef<string | null>(null)
   /**
@@ -967,15 +983,37 @@ export function useCutalong() {
     // Work still running belongs to the chat it started in; switching now would
     // land its result in the wrong one.
     if (isWorking()) {
-      setToast({ text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Open another once I'm done.` })
+      setToast({ text: busyText('open') })
       return
     }
-    rememberKeep(docRef.current)
-    const project = await api.openProject(path)
+    // From here until the chat changes, a tap that would spend does nothing (useMake), and a later open or a
+    // new chat takes over from this one.
+    const seq = ++switchSeq.current
+    switching.current = true
+    let settle = (): void => undefined
+    switchDone.current = new Promise<void>((r) => (settle = r))
+    let project: Project | null = null
+    try {
+      rememberKeep(docRef.current)
+      // A result still being kept in that chat's file is in it before it is read.
+      await keeping.current.get(path)
+      project = await api.openProject(path)
+    } finally {
+      if (switchSeq.current === seq) switching.current = false
+      settle()
+    }
+    if (switchSeq.current !== seq) return
     if (!project) {
       if (recallPlace()?.path === path) rememberPlace(null, 'thread')
       return
     }
+    // Work started while it was read (an ask typed and sent): this chat stays open until it is done, and says why.
+    if (isWorking()) {
+      setToast({ text: busyText('open') })
+      return
+    }
+    // The chat being left is saved as it stands, its last reply with it.
+    if (projectRef.current) void persist()
     projectRef.current = project
     clipping.load(project)
     // The brand chosen for the chat; its edit names its own on each version. Chats from before have none.
@@ -1462,6 +1500,37 @@ export function useCutalong() {
     [brandNow, neverOf, patch, push]
   )
 
+  /**
+   * A paid result for a chat that is not the one open (useMake): kept in that chat's own file, as it would have
+   * landed there, and never in the chat open. Results for one chat are kept one after another, and opening that
+   * chat waits for them.
+   */
+  const keepInChat = useCallback(
+    (where: { path: string; name: string }, kept: Kept): Promise<boolean> => {
+      const run = async (): Promise<boolean> => {
+        // Open again by now: it lands there as a reply of its own (useMake), never in the file under it.
+        if (projectRef.current?.path === where.path) return false
+        const project = await api.openProject(where.path)
+        if (!project) return false
+        const brand = chatBrandOf(brandsRef.current, project.edit ? currentCut(project.edit) : null, project.brand ?? null).id
+        await api.saveProject(keepInProject(project, kept, { id: uid(), brand, never: neverOf(brand) }))
+        refreshRecent()
+        return true
+      }
+      const before = keeping.current.get(where.path) ?? Promise.resolve(true)
+      const turn = before
+        .catch(() => false)
+        .then(run)
+        .catch(() => false)
+      keeping.current.set(where.path, turn)
+      void turn.then(() => {
+        if (keeping.current.get(where.path) === turn) keeping.current.delete(where.path)
+      })
+      return turn
+    },
+    [neverOf, refreshRecent]
+  )
+
   // Videos made from nothing (useMake), called in from submit, ask and act.
   const make = useMake({
     docRef,
@@ -1474,7 +1543,12 @@ export function useCutalong() {
     during,
     findBroll,
     brand: () => brandNow().id,
-    chat: () => String(chatKey.current)
+    chat: () => String(chatKey.current),
+    project: () => (projectRef.current ? { path: projectRef.current.path, name: projectRef.current.name } : null),
+    keepFor: keepInChat,
+    switching: () => switching.current,
+    settled: () => switchDone.current,
+    notify: (text) => setToast({ text })
   })
   makeRef.current = make
 
@@ -4460,33 +4534,36 @@ export function useCutalong() {
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
     if (isWorking()) {
-      setToast({
-        text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Start a new one once I'm done.`
-      })
+      setToast({ text: busyText('start') })
       return
     }
+    // A chat being opened gives way to the new one.
+    switchSeq.current += 1
+    switching.current = false
+    // The chat being left is saved as it stands, its last reply with it.
+    if (projectRef.current) void persist()
     rememberPlace(null, 'thread')
     rememberKeep(docRef.current)
     projectRef.current = null
     // A new chat: nothing a made video left waiting in the last one comes along.
     chatKey.current += 1
-    makeRef.current?.restore([])
+    const fresh = makeRef.current?.restore([]) ?? []
     clipping.load(null)
     docRef.current = null
-    messagesRef.current = []
+    messagesRef.current = fresh
     pendingCommand.current = null
     // A new chat uses the default brand until it is switched.
     setChatChoice(null)
     setOffers([])
     setDocState(null)
     setMediaUrl(null)
-    setMessages([])
+    setMessages(fresh)
     setStudy(null)
     setPanel(null)
     setGraphic(null)
     setScreen('start')
     refreshRecent()
-  }, [refreshRecent, setChatChoice])
+  }, [persist, refreshRecent, setChatChoice])
 
   return {
     /** The brand on the Brand page. */

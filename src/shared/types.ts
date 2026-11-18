@@ -368,6 +368,11 @@ export interface ChatMessage {
   clipRun?: number
   /** The quote for a video made from nothing whose outline and script show under this reply (useMake). */
   make?: string
+  /**
+   * That quote's script, kept with the reply: it was paid for, so it can still be read once the quote has
+   * gone (set aside, replaced, or from before the chat was opened again).
+   */
+  script?: { outline: string[]; sections: number[]; phrases: string[] }
   /** Questions asked before a made video's script is written, answered under this reply (useMake). */
   makeAsk?: string
 }

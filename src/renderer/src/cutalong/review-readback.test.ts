@@ -61,7 +61,7 @@ const made: Make = {
 const madeDoc = { id: 'doc1', sources: [{ id: 's1', path: '/made/narration.wav' }], words: [], assets: [], make: made, versions: [] } as unknown as EditDoc
 const PHOTO = [{ name: 'lisbon.jpg', path: '/tmp/lisbon.jpg' }]
 /** What any reply to a waiting quote that neither changes it nor is plainly an edit is answered with. */
-const QUOTE_WAITS = 'Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it; say “not now” to set it aside.'
+const QUOTE_WAITS = 'Tap the button above to go ahead, or tell me what to change. Nothing is spent until you tap it; say “never mind” to set it aside.'
 
 function harness(settings: DraftDeps['settings'] = { cap: null, autoUnder: 2 }, opts: { open?: EditDoc | null; sentences?: (call: number) => number } = {}) {
   const msgs = new Map<string, Partial<Msg>>()

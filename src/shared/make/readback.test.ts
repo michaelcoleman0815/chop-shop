@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readAsk, reviseBrief, reviseSteps, rewritesScript } from './brief'
-import { isAcceptance, mergeReads, namesEditPart, questionsFor, quoteWords, readAnswer, readBack, readCard } from './questions'
+import { isAcceptance, isDeferral, mergeReads, namesEditPart, questionsFor, quoteWords, readAnswer, readBack, readCard } from './questions'
 import { dollars, scriptCost } from './quote'
 import type { Brief } from './schema'
 
@@ -170,6 +170,18 @@ describe('a reply to a quote', () => {
       expect(reviseBrief(oil, quoteWords(t)), t).toBeNull()
     for (const [t, said] of [['1:30', '1:30 long'], ['make it 4:30', '4:30 long'], ['more like 2:00', '2:00 long'], ['make it around 1:30', '1:30 long'], ['cut it to 0:45', '0:45 long']])
       expect(reviseBrief(oil, quoteWords(t))?.changed, t).toEqual([said])
+  })
+
+  it('puts off without deciding: "later" keeps what waits, a no or a go-ahead is never one', () => {
+    for (const t of ['later', 'maybe later', 'not yet', 'another time', 'not today', 'not now', 'not right now', 'let me think', 'hold on', 'give me a minute', 'I’ll think about it'])
+      expect(isDeferral(t), t).toBe(true)
+    for (const t of ['no', 'never mind', 'cancel', 'nope', 'yes', 'ship it', 'go ahead', 'what does it cost?', 'make it 3 minutes', 'later, make it 3 minutes'])
+      expect(isDeferral(t), t).toBe(false)
+  })
+
+  it('reads how the edit should look or sound as the edit’s', () => {
+    for (const t of ['make it louder', 'make it darker', 'quieter please', 'warmer', 'a bit cooler', 'sharper', 'make it brighter', 'make it faster'])
+      expect(namesEditPart(t), t).toBe(true)
   })
 
   it('knows a part only an edit has, and finds none in a go-ahead or a change of the quote', () => {

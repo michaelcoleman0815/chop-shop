@@ -8,7 +8,7 @@ import { Button } from './ui'
 const COUNT = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
 
 /** The script as pages of a shooting script: each part's heading, then its lines, numbered as the shots they become. */
-function Lined({ draft }: { draft: Draft }): JSX.Element {
+function Lined({ draft }: { draft: Pick<Draft, 'outline' | 'sections' | 'phrases'> }): JSX.Element {
   const starts = draft.sections.length ? draft.sections : [0]
   const parts = starts.map((from, k) => ({
     heading: draft.outline[k] ?? '',
@@ -88,6 +88,28 @@ export function MakeBrief({ app, id }: { app: Cutalong; id: string }): JSX.Eleme
           </div>
         )
       })}
+    </div>
+  )
+}
+
+/**
+ * A quote's script kept with its reply once the quote has gone (set aside, replaced, or from before the chat was
+ * opened again): it was paid for, so it can still be read, as the same shooting-script pages.
+ */
+export function KeptScript({ script }: { script: Pick<Draft, 'outline' | 'sections' | 'phrases'> }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="cl-make">
+      {open && (
+        <div className="cl-make-script">
+          <Lined draft={script} />
+        </div>
+      )}
+      <div className="cl-actions">
+        <Button variant="secondary" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          {open ? 'Hide the script' : 'Read the script'}
+        </Button>
+      </div>
     </div>
   )
 }
