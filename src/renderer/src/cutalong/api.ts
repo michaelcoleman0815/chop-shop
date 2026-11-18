@@ -20,6 +20,7 @@ export type CutalongApi = Pick<
   | 'renderCut'
   | 'openPremiere'
   | 'lineUpCamera'
+  | 'listenPovs'
   | 'chooseCamera'
   | 'findSpeaker'
   | 'findFocus'

@@ -654,6 +654,8 @@ export function createMockApi(): CutalongApi {
       sure: true,
       hasSound: true
     }),
+    // The preview has no recordings to hear: the other views come with no sound maps, so they stay as cameras.
+    listenPovs: async () => ({ ok: true as const, maps: {} }),
     openPremiere: async ({ doc }) => {
       await progress(listeners.cut, ['Writing the Premiere project'])
       const n = doc.versions[doc.versions.length - 1].n

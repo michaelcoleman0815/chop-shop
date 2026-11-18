@@ -15,6 +15,7 @@ import { amend, commit, currentVersion, resummarize, type EditDoc, type Op } fro
 import { motionCommandEntries } from '../../../shared/motion'
 import { neverAfter } from '../../../shared/never'
 import { PLAN_COMMAND_NAMES, type PlanQuestion } from '../../../shared/plan/commands'
+import { planPovs } from '../../../shared/pov'
 import { BUILT_IN_PRESETS, CAPTION_STYLE_PRESETS, planStyle, SKILL_PRESETS } from '../../../shared/presets'
 import { switchedSentence } from '../../../shared/raw/ask'
 import { docFor } from '../../../shared/raw/eval'
@@ -454,6 +455,17 @@ const CASES: Case[] = [
     reached: ['brand', 'never', 'export']
   },
   {
+    name: 'players’ views of one session: follow whoever is talking, everyone when it goes off',
+    prompt: 'Follow whoever’s talking, and show everyone at once when it goes off.',
+    plan: plan(
+      [{ op: 'povs', mode: 'talking', everyone: true, minSec: 0 }],
+      'It follows whoever is talking, and everyone shows at once where you all react.'
+    ),
+    reached: ['povs'],
+    // One recording, so there are no other views to cut to, and it says how to add them.
+    check: ({ reply }) => expect(reply.aside ?? reply.text).toContain('This edit has one view. Drop the other players’ recordings')
+  },
+  {
     name: 'a command Cutalong does not have, left out in one sentence',
     prompt: 'Make me dance on the beat for the intro and tighten the rest.',
     plan: plan([run('dance'), run('tighten')], 'Tighter.'),
@@ -582,6 +594,12 @@ class StandIn {
       brand: (name) => {
         this.reached.push('brand')
         this.brand = name
+      },
+      povs: async (mode, everyone, minSec) => {
+        this.reached.push('povs')
+        const p = planPovs(this.doc, { mode, everyone, minSec })
+        if ('ops' in p) this.apply(p.ops, p.summary)
+        else this.say(p.say)
       },
       undo: () => {
         this.reached.push('undo')

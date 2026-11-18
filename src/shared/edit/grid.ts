@@ -166,6 +166,24 @@ export function gridAspect(pictures: (GridPicture | null)[]): number {
   return shapes[Math.floor((shapes.length - 1) / 2)]
 }
 
+/**
+ * A panel showing another camera of the beat's own recording (edit/angles),
+ * as each player's view of one gaming session is, plays in step with the
+ * beat's picture through the camera's line-up, rather than on the grid's
+ * own clock: where the beat's picture is at t, the panel is at t + this.
+ * Null for any other panel, which keeps its in point.
+ */
+export function panelInStep(
+  angles: { source: string; of: string; offsetSec: number }[] | undefined,
+  beatSource: string,
+  panel: GridPanel
+): number | null {
+  const id = panel.show.trim()
+  if (!id || id === beatSource) return null
+  const angle = (angles ?? []).find((a) => a.source === id && a.of === beatSource)
+  return angle ? angle.offsetSec : null
+}
+
 /** The panel whose sound is heard, or 'own' or 'none'. A panel showing the beat's own picture is heard as 'own'. */
 export function gridHeard(grid: Grid): 'own' | 'none' | number {
   const sound = grid.sound ?? 'own'

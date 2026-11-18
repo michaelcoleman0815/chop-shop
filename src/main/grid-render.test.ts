@@ -49,8 +49,8 @@ describe('the grid in the filter graph', () => {
       { width: 960, height: 540, fps: 30, assPath: null, fontsDir: null, loudness: null, quality: 'preview', outputPath: '/o.mp4' }
     )
     const graph = args[args.indexOf('-filter_complex') + 1]
-    // The other panel is read from its own in point.
-    expect(args.join(' ')).toContain('-ss 1.500 -t 2.000 -i /b.mp4')
+    // The other panel is read from its own in point, from the frame nearest it (cut-render: onGrid).
+    expect(args.join(' ')).toContain('-ss 1.483 -t 2.000 -i /b.mp4')
     expect(graph).toContain('color=c=black:s=960x540')
     expect(graph).toContain('scale=420:236:force_original_aspect_ratio=increase,crop=420:236')
     expect(graph).toContain('overlay=x=48:y=30:eof_action=repeat')
