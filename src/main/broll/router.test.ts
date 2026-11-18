@@ -119,6 +119,25 @@ describe('the router', () => {
     expect(r.notes.join(' ')).toMatch(/YouTube did not answer, so it was left out\./)
   })
 
+  it('asks only the sources it is told to, and starts a note with a capital whatever it names', async () => {
+    const log = newLog()
+    const failing: BrollSource = { ...fake('archive', [], log), search: async () => Promise.reject(new Error('no answer')) }
+    const [r] = await findBroll(
+      [m({ search: 'rocket launch', said: 'it went straight up' })],
+      {
+        sources: {
+          library: fake('library', [cand('library', 'l1', { title: 'rocket launch' })], log),
+          nasa: fake('nasa', [cand('nasa', 'n1', { license: CC0, title: 'rocket launch' })], log),
+          archive: failing
+        }
+      },
+      { only: ['nasa', 'archive'] }
+    )
+    expect(r.asked.map((a) => a.id).sort()).toEqual(['archive', 'nasa'])
+    expect(r.results.map((x) => x.candidate.id)).toEqual(['n1'])
+    expect(r.notes).toContain('The Internet Archive did not answer, so it was left out.')
+  })
+
   it('passes a quota or a missing key on in the person’s words', async () => {
     const log = newLog()
     const quotas = createQuotas({ limits: { pexels: { perHour: 0 } } })

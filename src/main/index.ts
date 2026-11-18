@@ -47,6 +47,7 @@ import {
 } from './updater'
 import { registerCutalongIpc } from './cutalong'
 import { registerMapIpc } from './maps-ipc'
+import { registerBrollIpc } from './broll/app'
 import { registerFxIpc } from './fx-ipc'
 import { selfCheck } from './self-check'
 import { patchRenames } from './windows-rename'
@@ -187,6 +188,7 @@ function registerIpc(): void {
   registerCutalongIpc({ send: safeSend, mediaUrlFor })
   registerMapIpc(safeSend)
   registerFxIpc(mediaUrlFor)
+  registerBrollIpc(safeSend)
   ipcMain.handle('app:version', () => app.getVersion())
 
   ipcMain.handle('settings:get', (): Settings => getSettings())

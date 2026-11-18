@@ -1,7 +1,7 @@
 import { covering, type NeverItem } from '../never'
 import { isOutside, sourceBlocked } from './policy'
 import { stem, words } from './text'
-import { SOURCE_NAMES, type BrollIntent, type BrollKind, type Moment, type SourceId } from './types'
+import { SOURCE_NAMES, type BrollIntent, type BrollKind, type Moment, type Ranked, type SourceId } from './types'
 
 /**
  * Which B-roll a moment wants and where to look for it, in order. The
@@ -177,6 +177,26 @@ export function wantsOfficial(m: Pick<Moment, 'said' | 'search'>, intent: BrollI
 export interface Availability {
   /** Why a source cannot be asked right now ("Pexels needs a key"), or null when it can. */
   why(id: SourceId): string | null
+}
+
+/** A source asked for a moment: what it found, how many of those the policy kept, and why it failed. */
+export interface Asked {
+  id: SourceId
+  found: number
+  /** Of those, how many the policy let through. */
+  kept: number
+  ms: number
+  error?: string
+}
+
+/** What the router found for one moment (main/broll/router findBroll), as the window gets it. */
+export interface MomentResult {
+  moment: Moment
+  plan: Plan
+  results: Ranked[]
+  asked: Asked[]
+  /** Sentences for the reply, each complete. */
+  notes: string[]
 }
 
 export interface Plan {

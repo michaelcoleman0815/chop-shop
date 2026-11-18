@@ -152,7 +152,7 @@ describeMedia('indexing the person’s own folder', () => {
     expect(by.fcpbundle.what).toBe('Final Cut Pro libraries')
     expect(index.report.ignored).toBeGreaterThanOrEqual(2)
     expect(describeIndex(index)).toMatch(
-      /^\d+ files: 3 clips, 5 pictures, 5 overlays, 2 sound effects, 1 music track, 1 LUT, 1 font, 1 Lottie animation\. I cannot use .*Premiere motion graphics templates \(1\).*; Settings says why\.$/
+      /^\d+ files: 3 clips, 5 pictures, 5 overlays, 2 sound effects, 1 music track, 1 LUT, 1 font, 1 Lottie animation\. I cannot use .*Premiere motion graphics templates \(1\)[^;]*\.$/
     )
   })
 

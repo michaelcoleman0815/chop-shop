@@ -13,7 +13,7 @@ import { blueskySource } from './sources/bluesky'
 import { freesoundSource } from './sources/freesound'
 import { giphySource } from './sources/giphy'
 import { logosSource, type LogoData } from './sources/logos'
-import { nasaSource } from './sources/nasa'
+import { nasaSource, seconds as nasaSeconds } from './sources/nasa'
 import { openverseSource } from './sources/openverse'
 import { pexelsSource } from './sources/pexels'
 import { pixabaySource } from './sources/pixabay'
@@ -179,12 +179,29 @@ describeMedia('NASA', () => {
     [/images-api\.nasa\.gov\/search/, () => json(F.nasaSearch)],
     [/images-assets\.nasa\.gov\/video\/EXAMPLE-LAUNCH-1\/collection\.json/, () => json(F.nasaAssets('EXAMPLE-LAUNCH-1', 'video').collection.items.map((i) => i.href))],
     [/images-api\.nasa\.gov\/metadata\/EXAMPLE-LAUNCH-1/, () => json({ location: 'https://images-assets.nasa.gov/video/EXAMPLE-LAUNCH-1/metadata.json' })],
-    [/images-assets\.nasa\.gov\/video\/EXAMPLE-LAUNCH-1\/metadata\.json/, () => json({ 'QuickTime:Duration': '0:01:30', 'File:FileSize': '9 MB' })],
+    // As NASA writes it: XMP's length as a count and a scale first, a preview length of 0 s, then QuickTime's.
+    [
+      /images-assets\.nasa\.gov\/video\/EXAMPLE-LAUNCH-1\/metadata\.json/,
+      () =>
+        json({
+          'XMP:Duration': { Value: 8100000, Scale: 1.11111111111111e-5 },
+          'QuickTime:PreviewDuration': '0 s',
+          'QuickTime:Duration': '0:01:30',
+          'File:FileSize': '9 MB'
+        })
+    ],
     [/images-assets\.nasa\.gov\/video\/EXAMPLE-LAUNCH-1\/EXAMPLE-LAUNCH-1~large\.mp4/, ranged(join(media, 'long.mp4'), 'video/mp4')],
     [/images-assets\.nasa\.gov\/image\/EXAMPLE-MOON-3\/collection\.json/, () => json(F.nasaAssets('EXAMPLE-MOON-3', 'image').collection.items.map((i) => i.href))],
     [/images-assets\.nasa\.gov\/image\/EXAMPLE-MOON-3\/EXAMPLE-MOON-3~orig\.jpg/, () => new Response(Buffer.alloc(10), { headers: { 'content-type': 'image/jpeg', 'content-length': String(90 * 1024 * 1024) } })],
     [/images-assets\.nasa\.gov\/image\/EXAMPLE-MOON-3\/EXAMPLE-MOON-3~large\.jpg/, () => file(join(media, 'red.jpg'), 'image/jpeg')]
   ]
+
+  it('reads a length in each form NASA writes one', () => {
+    expect(nasaSeconds({ Value: 35566080, Scale: 1.11111111111111e-5 })).toBeCloseTo(395.18, 1)
+    expect(nasaSeconds('0:06:35')).toBe(395)
+    expect(nasaSeconds('12.5 s')).toBe(12.5)
+    expect(nasaSeconds({ Value: 'x' })).toBeNull()
+  })
 
   it('treats as public domain only what NASA itself is credited with', async () => {
     const { d } = deps(routes)
