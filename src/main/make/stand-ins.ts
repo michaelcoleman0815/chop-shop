@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { spawn } from 'child_process'
 import { createHash } from 'crypto'
 import { appendFileSync, readFileSync, writeFileSync } from 'fs'
+import { delimiter } from 'path'
 import { parseWith, streamedAnswer, type ParseCall } from './claude'
 import type { LocalVoice } from './narrate'
 import type { MakeServices, Picture, TimedWord } from './services'
@@ -333,6 +334,15 @@ export function standInClaude(scriptsFile: string, log: string): ParseCall {
     return streamedAnswer(a.text, { model: String(body.model ?? ''), input: a.input, output: a.output })
   }
   return parseWith(new Anthropic({ apiKey: 'stand-in', fetch: answer as never, maxRetries: 0 }))
+}
+
+/**
+ * Where a narration read here is written for whisper's stand-in to hear: the first of the manifests
+ * E2E_WHISPER_MANIFEST lists, separated as PATH is on this computer (';' on Windows, where a path holds a ':', as
+ * in C:\Users\…). Null when it lists none.
+ */
+export function heardManifest(list: string | undefined = process.env.E2E_WHISPER_MANIFEST, sep: string = delimiter): string | null {
+  return list?.split(sep).find(Boolean) ?? null
 }
 
 /** What whisper's stand-in hears in a narration read here: each phrase's words spread over its span. */
