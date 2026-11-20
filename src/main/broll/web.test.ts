@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { createQuotas } from '../../shared/broll/quota'
 import { ffmpegRun, findFfmpeg } from '../test-media'
 import { claudeWebAnswer } from './fixtures/api'
-import { foundPages, quoteWebSearch, webSource, WEB_MODEL, WEB_TOOL } from './sources/web'
+import { foundPages, PAID_MOMENTS, paidSearchCovers, quoteWebSearch, webSource, WEB_MODEL, WEB_TOOL } from './sources/web'
 import { readFileSync } from 'fs'
 
 /**
@@ -85,6 +85,14 @@ describe('looking on the web through Claude', () => {
     expect(q.high).toBeCloseTo(0.12, 3)
     expect(q.said).toBe('Looking on the web for this moment costs about 3 cents to 12 cents on your Anthropic account, for at most 3 web searches.')
     expect(quoteWebSearch(3).said).toMatch(/^Looking on the web for 3 moments costs about 10 cents to 36 cents/)
+  })
+
+  it('lets a paid search cover only the one moment its price was quoted for', () => {
+    expect(PAID_MOMENTS).toBe(1)
+    expect(paidSearchCovers(1)).toBe(true)
+    for (const n of [0, 2, 6, 1.5, Number.NaN]) expect(paidSearchCovers(n)).toBe(false)
+    // The button's price is for that one moment: at most three searches.
+    expect(quoteWebSearch(PAID_MOMENTS).searches).toBe(3)
   })
 
   it('captures the picked page as it shows logged out, and credits it', async () => {

@@ -24,7 +24,7 @@ import { fetchPick, findBroll, type FindOptions, type MomentResult } from './rou
 import { quotaStore, settingsStore, type BrollSettings } from './settings'
 import { createSources, unavailable } from './sources'
 import { makerEntries, type LogoData } from './sources/logos'
-import { quoteWebSearch } from './sources/web'
+import { paidSearchCovers, quoteWebSearch } from './sources/web'
 
 /**
  * B-roll from everywhere, wired to the app: keys from the keychain,
@@ -277,9 +277,15 @@ export function registerBrollIpc(send: Send): void {
   ipcMain.handle('broll:find', async (e, req: { moments?: Moment[]; brandId?: string | null; paid?: boolean; perMoment?: number; only?: unknown }) => {
     try {
       const perMoment = Math.max(1, Math.min(6, Math.round(Number(req?.perMoment) || 3)))
-      const results = await findBrollFor(Array.isArray(req?.moments) ? req.moments.slice(0, 6) : [], req?.brandId ?? null, {
-        // A paid search runs only for a yes tapped on its price; the window sends it from that button alone.
-        paid: req?.paid === true,
+      const asked = Array.isArray(req?.moments) ? req.moments : []
+      // A paid search runs only for a yes tapped on its price; the window sends it from that button alone.
+      const paid = req?.paid === true
+      // And it covers only what that price was for, one moment, so nothing is spent past it.
+      if (paid && !paidSearchCovers(asked.length)) {
+        return { ok: false as const, message: 'A web search looks for one moment at a time, so nothing was searched or paid for.' }
+      }
+      const results = await findBrollFor(asked.slice(0, 6), req?.brandId ?? null, {
+        paid,
         perMoment,
         only: Array.isArray(req?.only) ? req.only.filter(isSourceId) : undefined,
         onProgress: (p) => send(e.sender, 'broll:progress', { stage: p.stage, percent: p.percent })
