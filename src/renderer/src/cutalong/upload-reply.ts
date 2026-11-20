@@ -2,8 +2,11 @@ import { titlesText, uploadMessage, uploadSetMessage, type UploadKit } from '../
 import { device } from './api'
 import type { Msg } from './components/Message'
 
-/** Where the kit was made, when it is not the Mac the shared sentences name. */
-const here = device.kind === 'phone' ? device.here : undefined
+/**
+ * Where the kit was made, when it is not the Mac the shared sentences name. Read when a reply is made, not when
+ * this loads: a window's test may stand in for the API without a device and still load what imports this.
+ */
+const here = (): string | undefined => (device.kind === 'phone' ? device.here : undefined)
 
 /** Show the files, where the device has a place to show them (a phone keeps them in the app). */
 const showFiles = (path: string): NonNullable<Msg['actions']> =>
@@ -16,7 +19,7 @@ const showFiles = (path: string): NonNullable<Msg['actions']> =>
  * the files.
  */
 export function uploadReply(kit: UploadKit): Omit<Msg, 'id'> {
-  const m = uploadMessage(kit, here)
+  const m = uploadMessage(kit, here())
   return {
     role: 'assistant',
     text: m.text,
@@ -38,7 +41,7 @@ export function uploadReply(kit: UploadKit): Omit<Msg, 'id'> {
  */
 export function uploadSetReply(kits: { name: string; kit: UploadKit }[]): Omit<Msg, 'id'> {
   if (kits.length === 1) return uploadReply(kits[0].kit)
-  const m = uploadSetMessage(kits, here)
+  const m = uploadSetMessage(kits, here())
   const actions = showFiles(kits[0].kit.files.description)
   return {
     role: 'assistant',
