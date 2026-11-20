@@ -24,6 +24,10 @@ export interface Action {
     | 'reveal'
     | 'retry'
     | 'add-clip'
+    /** A B-roll choice the router found (renderer broll.ts BrollPick): fetched, credited and cut to when tapped. */
+    | 'add-broll'
+    /** Looking on the web too, with its price on the button: the only way a paid search starts. */
+    | 'broll-web'
     | 'add-icon'
     | 'sign-in'
     | 'open-settings'
@@ -35,6 +39,8 @@ export interface Action {
     | 'setup-key'
     | 'strip-never'
   label: string
+  /** Words after the label that stay whole when a narrow column shortens the label: " · NASA", where a B-roll choice is from. */
+  tail?: string
   primary?: boolean
   /** A command name for save-style and run-command, a path for reveal, the text for copy or say, JSON for the asset actions. */
   payload?: string
@@ -212,14 +218,21 @@ export function AssistantMessage({
         {!msg.progress && (msg.actions?.length ?? 0) > 0 && (
           <div className="cl-actions">
             {msg.actions!.map((a) => (
-              <Button key={a.kind + a.label} variant={a.primary ? 'primary' : 'secondary'} onClick={() => onAction(a)}>
+              <Button
+                key={`${a.kind}|${a.label}|${a.tail ?? ''}|${a.payload ?? ''}`}
+                variant={a.primary ? 'primary' : 'secondary'}
+                onClick={() => onAction(a)}
+              >
                 {a.icon && <img src={a.icon} alt="" width={20} height={20} />}
                 {a.kind === 'save-style' && a.payload ? (
                   <>
                     Save as <span className="cmd">/{a.payload}</span>
                   </>
                 ) : (
-                  a.label
+                  <>
+                    <span className="cl-btn-label">{a.label}</span>
+                    {a.tail && <span className="cl-btn-tail">{a.tail}</span>}
+                  </>
                 )}
               </Button>
             ))}

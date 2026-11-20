@@ -166,6 +166,8 @@ export function creditLines(doc: EditDoc): string[] {
   return assetsInCut(doc)
     .filter((a) => a.origin.type !== 'file')
     .map((a) => {
+      // B-roll found by Cutalong carries its source's own wording.
+      if (a.origin.credit?.trim()) return `- ${a.origin.credit.trim()}`
       const parts = [a.title]
       if (a.origin.author) parts.push(a.origin.author)
       if (a.origin.url) parts.push(a.origin.url)

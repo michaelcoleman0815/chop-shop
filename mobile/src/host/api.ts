@@ -23,6 +23,8 @@ import type { MapStatus } from '../../../src/shared/maps'
 import { learnState } from '../../../src/shared/learn'
 import { effectsOf } from '../../../src/shared/fx'
 import { habitLines } from '../../../src/shared/channel-habits'
+import { BROLL_KEYS, type BrollKeyId } from '../../../src/shared/broll/keys'
+import { DEFAULT_BROLL } from '../../../src/shared/broll/settings'
 import { ON_THE_MAC } from './limits'
 import type { PhoneServices } from './services'
 import type { PhoneSettings } from './settings'
@@ -291,7 +293,21 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
       }
     },
     onAssetProgress: quiet,
-    searchVideos: async () => ({ ok: false as const, message: ON_THE_MAC.broll }),
+    // B-roll is found, fetched and credited on the Mac for now: its folders, free libraries, keys and the web.
+    brollFind: async () => ({ ok: false as const, message: ON_THE_MAC.broll }),
+    brollFetch: async () => ({ ok: false as const, message: ON_THE_MAC.broll }),
+    brollQuote: async () => ({ low: 0, high: 0, searches: 0, said: ON_THE_MAC.broll }),
+    onBrollProgress: quiet,
+    brollSettings: async () => DEFAULT_BROLL,
+    brollSaveSettings: async () => DEFAULT_BROLL,
+    brollKeys: async () => Object.fromEntries(BROLL_KEYS.map((k) => [k.id, false])) as Record<BrollKeyId, boolean>,
+    brollSetKey: async () => ({ ok: false as const, message: ON_THE_MAC.broll }),
+    brollClearKey: async () => undefined,
+    brollCheckKey: async () => ({ ok: false as const, state: 'none' as const, message: ON_THE_MAC.broll }),
+    brollLibrary: async () => ({ folders: [] }),
+    brollAddFolder: async () => ({ ok: false as const }),
+    brollRemoveFolder: async () => DEFAULT_BROLL,
+    brollScan: async () => ({ said: [] }),
     saveImageAsset: async () => ({ ok: false as const, message: ON_THE_MAC.icon }),
     capturePage: async () => ({ ok: false as const, message: ON_THE_MAC.link }),
     // A video's card is read from its page by yt-dlp, and a grid's ground is drawn on the Mac's canvas.

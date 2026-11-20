@@ -12,14 +12,16 @@ import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { Licences } from './Licences'
 import { MapsSection } from './Maps'
+import { BrollSources } from './BrollSources'
 import { OtherServices } from './OtherServices'
 import { Planning } from './Planning'
 
 /**
  * The few things that belong to this computer rather than to an edit: the
- * Claude key, the transcription model, where exports go, whose sign-in video
- * links may borrow, and updates. Each change saves as it is made. On a phone,
- * also the licences of what the app is built with (Licences.tsx).
+ * Claude key, the transcription model, where B-roll comes from, where exports
+ * go, whose sign-in video links may borrow, and updates. Each change saves as
+ * it is made. On a phone, also the licences of what the app is built with
+ * (Licences.tsx).
  */
 
 type Model = Settings['whisperModel']
@@ -30,7 +32,7 @@ const MODELS: { id: Model; label: string }[] = [
   { id: 'medium.en', label: 'Most accurate' }
 ].filter((m) => !device.models || device.models.includes(m.id as Model)) as { id: Model; label: string }[]
 
-/** A phone has no updates to check and no Ollama to plan with; vlogs and links are on the Mac for now (device.ts). */
+/** A phone has no updates to check and no Ollama to plan with; vlogs, links and B-roll are on the Mac for now (device.ts). */
 const phone = device.kind === 'phone'
 
 const BROWSERS: { id: string | null; label: string }[] = [
@@ -167,6 +169,8 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
           {!phone && <Planning settings={settings} onSettings={setSettings} />}
 
           <OtherServices settings={settings} onSettings={setSettings} onHearer={setHearer} />
+
+          {!device.away['feature:broll'] && <BrollSources />}
 
           <section className="cl-section" aria-labelledby="set-words">
             <h2 id="set-words">Transcription</h2>

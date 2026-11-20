@@ -303,7 +303,8 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
       ok: false,
       message: ON_THE_MAC.study
     })
-    expect(await api.searchVideos('city at night')).toEqual({ ok: false, message: ON_THE_MAC.broll })
+    expect(await api.brollFind({ moments: [] })).toEqual({ ok: false, message: ON_THE_MAC.broll })
+    expect(await api.listenPovs({ doc })).toEqual({ ok: false, message: ON_THE_MAC.povs })
     expect(await api.addAsset({ docId: doc.id, url: 'https://example.com/a.jpg' })).toEqual({
       ok: false,
       message: ON_THE_MAC.link,
@@ -311,7 +312,19 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
     })
     expect(await api.localPlanners()).toEqual({ up: false, models: [] })
     const away = commandsOnTheMac()
-    for (const c of ['vlog', 'clipping', 'premiere', 'broll', 'lowerthird', 'pop', 'title', 'reframe', 'angle', 'lut'])
+    for (const c of [
+      'vlog',
+      'clipping',
+      'premiere',
+      'broll',
+      'lowerthird',
+      'pop',
+      'title',
+      'reframe',
+      'angle',
+      'povs',
+      'lut'
+    ])
       expect(away[c], c).toMatch(/on the Mac for now/)
     for (const c of [
       'tighten',

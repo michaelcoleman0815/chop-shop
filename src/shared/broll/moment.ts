@@ -19,9 +19,13 @@ export function outputOf(aspect: string, source: { width: number; height: number
   return { width: even(source.width), height: even(source.height) }
 }
 
+/**
+ * A moment with no beat (a typed /broll that names no line) is looked for by
+ * its words alone; one whose beat is not in the cut is left out.
+ */
 export function momentsFor(
   doc: EditDoc,
-  wanted: { beat: string; search: string; intent?: BrollIntent; makers?: string[] }[],
+  wanted: { beat?: string | null; search: string; intent?: BrollIntent; makers?: string[] }[],
   ctx: { topic?: string; niche?: string } = {}
 ): Moment[] {
   const cut = currentCut(doc)
@@ -33,15 +37,18 @@ export function momentsFor(
   const struck = new Set(cut.removed)
   const out: Moment[] = []
   for (const w of wanted) {
-    const beat = cut.beats.find((b) => b.id === w.beat)
-    if (!beat || !w.search.trim()) continue
-    const rb = resolved.beats.find((b) => b.id === w.beat)
+    if (!w.search.trim()) continue
+    const beat = w.beat ? cut.beats.find((b) => b.id === w.beat) : undefined
+    if (w.beat && !beat) continue
+    const rb = beat ? resolved.beats.find((b) => b.id === beat.id) : undefined
     out.push({
-      beat: beat.id,
-      said: beatWords(doc, beat)
-        .filter((x) => !struck.has(x.id))
-        .map((x) => x.text)
-        .join(' '),
+      ...(beat ? { beat: beat.id } : {}),
+      said: beat
+        ? beatWords(doc, beat)
+            .filter((x) => !struck.has(x.id))
+            .map((x) => x.text)
+            .join(' ')
+        : '',
       search: w.search.trim(),
       topic: ctx.topic ?? doc.title,
       format,

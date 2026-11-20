@@ -36,7 +36,6 @@ import {
   stampMade,
   type Brands
 } from '../../../shared/brands'
-import { orderFound, readSources } from '../../../shared/broll-sources'
 import { creditLines } from '../../../shared/assets'
 import { chaptersOf, chaptersReply } from '../../../shared/presets'
 import { fillDescription, isShort, writeLocally, type UploadKit } from '../../../shared/upload'
@@ -47,6 +46,7 @@ import { keyMessage, type ClaudeKeyState } from '../../../shared/setup'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
 import { mockVlogApi } from './vlog-mock'
+import { mockBrollApi } from './broll-mock'
 import type { Word } from '../../../shared/edit'
 import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
 import { synthFinished, synthRecording } from '../../../shared/learn/synth'
@@ -504,6 +504,8 @@ export function createMockApi(): CutalongApi {
   let memory = seededMemory()
 
   return {
+    // B-roll found by the shared router's plan and ranking, from sources it pretends to ask.
+    ...mockBrollApi(),
     // A shoot made into a vlog by the shared story logic, from clips it pretends to have watched.
     ...mockVlogApi(async (stage) => {
       for (const cb of listeners.cut) cb({ stage, percent: 50 })
@@ -934,36 +936,6 @@ export function createMockApi(): CutalongApi {
       }
     },
     onAssetProgress: () => () => undefined,
-    // Three made-up results from three channels, with the brand's sources applied as the app applies them.
-    searchVideos: async (_query, sources) => {
-      await sleep(300)
-      const found = [
-        {
-          url: 'https://www.youtube.com/watch?v=a1',
-          title: 'City at night, 4K',
-          author: 'Nightfilm',
-          durationSec: 42,
-          handle: '@nightfilm'
-        },
-        {
-          url: 'https://www.youtube.com/watch?v=b2',
-          title: 'Camera settings close-up',
-          author: 'Lens Lab',
-          durationSec: 95,
-          handle: '@lenslab'
-        },
-        {
-          url: 'https://www.youtube.com/watch?v=c3',
-          title: 'Hands on a dial, macro',
-          author: 'Macro Shots',
-          durationSec: 31,
-          handle: '@macroshots'
-        }
-      ]
-      const prefer = readSources(sources?.prefer ?? []).sources
-      const ordered = orderFound([], found, { prefer, block: readSources(sources?.block ?? []).sources })
-      return { ok: true as const, results: ordered.results, blocked: ordered.blocked, looked: 0 }
-    },
     saveImageAsset: async ({ base64, name, origin }) => ({
       ok: true as const,
       asset: {

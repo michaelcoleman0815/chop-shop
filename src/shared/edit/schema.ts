@@ -444,7 +444,13 @@ export const AssetSchema = z.object({
     /** Known licence, or null when using it is the editor's own call. */
     license: z.string().nullable(),
     /** The stretch taken from a longer video. */
-    range: z.object({ startSec: z.number().nonnegative(), endSec: z.number().nonnegative() }).nullable()
+    range: z.object({ startSec: z.number().nonnegative(), endSec: z.number().nonnegative() }).nullable(),
+    /**
+     * The credit line in the form its source asks for ("Photo by … on
+     * Unsplash", "Powered by GIPHY"), for B-roll found by Cutalong
+     * (main/broll); the upload kit prints it in place of the parts above.
+     */
+    credit: z.string().optional()
   })
 })
 export type Asset = z.infer<typeof AssetSchema>

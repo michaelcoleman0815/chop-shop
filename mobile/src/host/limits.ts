@@ -14,7 +14,8 @@ export const ON_THE_MAC = {
   clipping: '/clipping is on the Mac for now. Here I cut a recording into one edit.',
   premiere: 'Premiere projects are made on the Mac for now.',
   link: 'Videos and pictures from links are on the Mac for now. Add your own with +.',
-  broll: 'Finding B-roll online is on the Mac for now. Add your own clips with +.',
+  broll:
+    'Finding B-roll is on the Mac for now: your folders, the free libraries and the web. Add your own clips with +.',
   graphics: 'Motion graphics are on the Mac for now.',
   effects: 'Scene effects are on the Mac for now.',
   hype: 'The hype edit is on the Mac for now: its scans, speed lines and impacts are drawn there.',
