@@ -381,6 +381,7 @@ register({
   places: PLACES,
   length: 6,
   lead: TIMING.lead,
+  aroundSpeaker: true,
   fields: [{ slot: 'items', label: 'Chips, one a line: the word, then : and an icon if it is not a brand' }],
   example: {
     call: {

@@ -29,16 +29,17 @@ describe('a grid made from files', () => {
     expect(labelFor('/v/v2.mp4')).toBe('V2')
   })
 
-  it('plays the longest as the edit’s recording and shows the others as material, in the order they came', () => {
+  it('plays the video it takes the sound from as the edit’s recording and the others as material, in the order they came', () => {
     const doc = gridDoc({
       id: 'g',
       files: [file('/v/talking.mp4', 20), file('/v/faceless.mp4', 31), file('/v/map.mp4', 12), file('/v/vlog.mp4', 25)],
       labels: ['Talking head', 'Faceless', 'Map', 'Vlog']
     })
+    // The first video's sound by default: it is the recording, so its sound is the recording's own.
     expect(doc.sources).toHaveLength(1)
-    expect(doc.sources[0].path).toBe('/v/faceless.mp4')
+    expect(doc.sources[0].path).toBe('/v/talking.mp4')
     expect(doc.assets.map((a) => [a.id, a.path, a.kind])).toEqual([
-      ['a1', '/v/talking.mp4', 'video'],
+      ['a1', '/v/faceless.mp4', 'video'],
       ['a2', '/v/map.mp4', 'video'],
       ['a3', '/v/vlog.mp4', 'video']
     ])
@@ -46,15 +47,14 @@ describe('a grid made from files', () => {
     expect(cut.beats).toHaveLength(1)
     const grid = cut.beats[0].treatment.grid
     expect(grid?.panels).toEqual([
-      { show: 'a1', label: 'Talking head' },
-      { show: '', label: 'Faceless' },
+      { show: '', label: 'Talking head' },
+      { show: 'a1', label: 'Faceless' },
       { show: 'a2', label: 'Map' },
       { show: 'a3', label: 'Vlog' }
     ])
-    // The first video's sound by default, here a panel's, not the recording's own.
-    expect(grid?.sound).toBe(0)
-    // One beat over the whole of the longest, so no panel is cut short.
-    expect(resolveCut(cut, doc.words, doc.sources).durationSec).toBeCloseTo(31, 0)
+    expect(grid?.sound).toBe('own')
+    // One beat over the whole of the voice: the grid ends when the talk does, longer panels with it.
+    expect(resolveCut(cut, doc.words, doc.sources).durationSec).toBeCloseTo(20, 0)
     expect(cut.aspect).toBe('wide')
     expect(cut.captions.on).toBe(false)
     expect(doc.title).toBe('Grid: Talking head, Faceless, Map and Vlog')
@@ -63,6 +63,21 @@ describe('a grid made from files', () => {
     expect(doc.versions[doc.versions.length - 1].summary).toBe(
       'Four videos play at once in a grid, labelled Talking head, Faceless, Map and Vlog.'
     )
+  })
+
+  it('runs as long as another panel when its sound is asked for, and as the longest with music only', () => {
+    const files = [file('/v/talking.mp4', 20), file('/v/faceless.mp4', 31), file('/v/map.mp4', 12)]
+    const second = gridDoc({ id: 'g', files, sound: 1 })
+    expect(second.sources[0].path).toBe('/v/faceless.mp4')
+    expect(currentCut(second).beats[0].treatment.grid?.panels.map((p) => p.show)).toEqual(['a1', '', 'a2'])
+    expect(currentCut(second).beats[0].treatment.grid?.sound).toBe('own')
+    const music = gridDoc({ id: 'g', files, sound: 'none' })
+    expect(music.sources[0].path).toBe('/v/faceless.mp4')
+    expect(currentCut(music).beats[0].treatment.grid?.sound).toBe('none')
+    expect(resolveCut(currentCut(music), music.words, music.sources).durationSec).toBeCloseTo(31, 0)
+    // A first video with no sound of its own gives way to the longest.
+    const silent = gridDoc({ id: 'g', files: [{ ...files[0], sound: false }, files[1], files[2]] })
+    expect(silent.sources[0].path).toBe('/v/faceless.mp4')
   })
 
   it('goes vertical when every video is tall, takes the sound asked for, and keeps a still as a picture', () => {

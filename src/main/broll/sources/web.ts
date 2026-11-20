@@ -51,6 +51,18 @@ export function quoteWebSearch(moments: number, maxUses = MAX_USES): { low: numb
   }
 }
 
+/**
+ * How many moments one paid web search may cover: what its price was quoted for. The window's one paid
+ * button quotes a single moment (broll:quote with 1), so main turns down a paid search for more, whatever
+ * arrives with it, and never spends past the price the person tapped.
+ */
+export const PAID_MOMENTS = 1
+
+/** Whether a paid web search may run for this many moments. */
+export function paidSearchCovers(moments: number): boolean {
+  return Number.isInteger(moments) && moments >= 1 && moments <= PAID_MOMENTS
+}
+
 const WEB_LICENSE: License = {
   ...FAIR_USE,
   note: 'A page as it shows to anyone: credited, and whether showing it is fair use is your call.'

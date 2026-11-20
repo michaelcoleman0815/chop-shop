@@ -56,6 +56,12 @@ export interface Template {
   covers?: 'backdrop' | 'card'
   /** How one call meets the captions, when that depends on the call (a map inset in a corner covers nothing). */
   coversFor?(call: MotionCall): 'backdrop' | 'card' | undefined
+  /**
+   * Drawn round the speaker, on their picture: when a card takes the screen
+   * while it is up (a page sliding in after a list), it leaves as the card
+   * comes in rather than staying on top of it.
+   */
+  aroundSpeaker?: boolean
   fields: Field[]
   /** A call the planner's instructions show, and what it does, in a few words. */
   example: { call: Omit<MotionCallInput, 'kind'>; says: string }

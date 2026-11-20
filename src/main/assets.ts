@@ -185,12 +185,23 @@ export interface VideoInfo {
   durationSec: number | null
 }
 
+/**
+ * A name to credit, never an address: archive.org gives the account that
+ * uploaded an item, an e-mail address, as its uploader.
+ */
+function creditName(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const name = value.trim()
+  return name && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name) ? name : null
+}
+
 /** Title, channel and length, from yt-dlp's info JSON. */
 export function parseInfo(json: string): VideoInfo {
   const d = JSON.parse(json) as Record<string, unknown>
   const handle = typeof d.uploader_id === 'string' && d.uploader_id.startsWith('@') ? d.uploader_id : null
-  const author =
-    handle ?? (typeof d.channel === 'string' ? d.channel : typeof d.uploader === 'string' ? d.uploader : null)
+  // The channel, else who uploaded it, else who made it (archive.org's creator, like "NASA TV").
+  const creators = Array.isArray(d.creators) ? (d.creators.map(creditName).find((n) => n !== null) ?? null) : null
+  const author = handle ?? creditName(d.channel) ?? creditName(d.uploader) ?? creators ?? creditName(d.creator)
   return {
     title: typeof d.title === 'string' ? d.title : 'Video',
     author,
