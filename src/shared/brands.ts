@@ -252,6 +252,6 @@ export function stampBrand<T extends { versions: { cut: Pick<Cut, 'brand'> }[] }
  * edit just made; one that names a brand already is left as it is.
  */
 export function stampMade<T extends { versions: { cut: Pick<Cut, 'brand'> }[] }>(doc: T, id: string): T {
-  if (!Array.isArray(doc.versions) || doc.versions.some((v) => v.cut?.brand)) return doc
+  if (doc.versions.some((v) => v.cut.brand)) return doc
   return { ...doc, versions: doc.versions.map((v) => ({ ...v, cut: { ...v.cut, brand: id } })) }
 }

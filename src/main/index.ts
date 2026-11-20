@@ -31,7 +31,7 @@ import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
 import { presetById } from '../shared/caption-presets'
 import { buildAss } from './captions'
-import { recentProjects, createProject, openProject, saveProject, removeFromRecent, projectsDir, keepInFile } from './projects'
+import { recentProjects, createProject, openProject, saveProject, removeFromRecent, projectsDir, keepInFile, sweepPartials } from './projects'
 import type { Kept } from '../shared/make/kept'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips, listModels, OLLAMA_HOST } from './clips'
@@ -1193,6 +1193,8 @@ if (selfCheckReport) {
 
   app.whenReady().then(async () => {
     void sweepTemp()
+    // What a crash left half-written beside the chats and the recent list.
+    void sweepPartials()
     electronApp.setAppUserModelId('social.brewed.chopshop')
     // Before the window: the page asks for the media address as it loads. A
     // server that cannot start must not keep the app from opening.

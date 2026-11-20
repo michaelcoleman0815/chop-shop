@@ -1671,7 +1671,7 @@ export function useCutalong() {
    * a new chat of its own. Never into the chat open.
    */
   const keepInChat = useCallback(
-    async (where: { path: string; name: string } | null, name: string, kept: Kept): Promise<{ path: string; name: string } | null> => {
+    async (where: { path: string; name: string } | null, name: string, kept: Kept): Promise<{ path: string; name: string; aside?: boolean } | null> => {
       // Open again by now (it never is: useMake waits for a chat being opened), so a chat of its own instead.
       const path = where && projectRef.current?.path !== where.path ? where.path : null
       const at = await api.keepInChat({ path, name, kept }).catch(() => null)

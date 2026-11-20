@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto'
 import { projectName } from '../shared/project-name'
 import { upgradeProject } from '../shared/project-upgrade'
 import { freshVideo, keepInProject, renumber, type Kept } from '../shared/make/kept'
-import type { EditDoc } from '../shared/edit'
+import { EditDocSchema, type EditDoc } from '../shared/edit'
 import type { ChatMessage, Project, ProjectMode, ProjectSummary } from '../shared/types'
 
 /**
@@ -81,7 +81,37 @@ async function readIndex(): Promise<ProjectSummary[]> {
   }
 }
 
+/** How old a partial file must be before it counts as left by a crash, not a save still being written. */
+const STALE_MS = 60_000
+
+/** A partial file a crash left, removed: only a regular file (never through a link), and only an old one. */
+async function removeIfStale(p: string): Promise<void> {
+  const st = await fs.lstat(p).catch(() => null)
+  if (!st || !st.isFile() || Date.now() - st.mtimeMs < STALE_MS) return
+  await fs.rm(p, { force: true }).catch(() => undefined)
+}
+
+/** The partial files beside `file` (`<file>.*.saving`) a crash left there. */
+async function sweepBeside(file: string): Promise<void> {
+  const base = `${basename(file)}.`
+  const names = await fs.readdir(dirname(file)).catch(() => [] as string[])
+  for (const n of names) if (n.startsWith(base) && n.endsWith('.saving')) await removeIfStale(join(dirname(file), n))
+}
+
+/** A chat's partial file (`<chat>.cutalong.*.saving`), and only that: any other file in the folder is the person's. */
+const CHAT_PARTIAL = /\.(cutalong|chopshop)\.(.+\.)?saving$/i
+
+/** Once at start: what crashes left beside every chat in both folders, and beside the recent list. */
+export async function sweepPartials(): Promise<void> {
+  for (const folder of [projectsDir(), oldProjectsDir()]) {
+    const names = await fs.readdir(folder).catch(() => [] as string[])
+    for (const n of names) if (CHAT_PARTIAL.test(n)) await removeIfStale(join(folder, n))
+  }
+  await sweepBeside(indexPath())
+}
+
 async function writeIndex(entries: ProjectSummary[]): Promise<void> {
+  await sweepBeside(indexPath())
   // Written whole under a name of its own, made new ('wx', so never through a link), then renamed over the list: a
   // crash mid-write leaves the old list, never an empty one.
   const partial = `${indexPath()}.${randomUUID()}.saving`
@@ -252,9 +282,17 @@ const movedLine = (kept: Kept, name: string): ChatMessage => ({
 export async function keepInFile(
   path: string | null,
   name: string,
-  kept: Kept
-): Promise<{ path: string; name: string } | null> {
+  given: Kept
+): Promise<{ path: string; name: string; aside?: boolean } | null> {
   const id = (): string => `kept-${randomUUID()}`
+  // A made video is written into a chat only once it reads as an edit: one that doesn't is set aside, whole, beside
+  // the chat, so what was paid for can be got back, and nothing in the chat changes.
+  let kept = given
+  if (given.doc) {
+    const read = EditDocSchema.safeParse(given.doc)
+    if (!read.success) return setAside(path, name, given)
+    kept = { ...given, doc: read.data }
+  }
   // The chat it was asked in, while it is one of the person's: a path that isn't is as a chat that is gone, so what
   // was paid for goes in a new chat of its own, and nothing is written there.
   let asked: string | null = null
@@ -304,6 +342,40 @@ export async function keepInFile(
     if (told) await touch(told)
   }
   return kept2 ? { path: made.path, name: made.name } : null
+}
+
+/**
+ * What came back for a chat that can't be added to it (a made video that doesn't read as an edit), saved beside it
+ * under a name that says so, made new so it never writes over anything; in the projects folder when there is no chat
+ * of the person's to put it beside, or its folder can't be written to. Where it is.
+ */
+async function setAside(path: string | null, name: string, kept: Kept): Promise<{ path: string; name: string; aside: true }> {
+  const chat = path && (await projectPathOk(path)) ? path : null
+  // Named for the chat, at most as long as a chat's own name, so the file's name always fits.
+  const of = projectName(chat ? basename(chat).replace(PROJECT_FILE, '') : name)
+  // When, on the person's own clock, in characters every file system takes.
+  const now = new Date()
+  const two = (n: number): string => String(n).padStart(2, '0')
+  const stamp = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())} ${two(now.getHours())}.${two(now.getMinutes())}`
+  const folders =[...new Set([...(chat ? [dirname(chat)] : []), projectsDir()])]
+  let failed: unknown = null
+  for (const folder of folders) {
+    try {
+      await fs.mkdir(folder, { recursive: true })
+      for (let n = 1; ; n++) {
+        const file = join(folder, `Could not be added to ${of}, ${stamp}${n > 1 ? ` (${n})` : ''}.json`)
+        try {
+          await fs.writeFile(file, JSON.stringify(kept, null, 2), { flag: 'wx' })
+          return { path: file, name: basename(file), aside: true }
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+        }
+      }
+    } catch (err) {
+      failed = err
+    }
+  }
+  throw failed
 }
 
 /** What the chat says, once, when an edit comes back. */
@@ -372,6 +444,7 @@ export async function saveProject(project: Project): Promise<void> {
 
 /** Writes a project whole beside its file, then over it. Its place in the recent list is the caller's to move. */
 async function writeProject(project: Project): Promise<void> {
+  await sweepBeside(project.path)
   const next: Project = { ...project, primaryMedia: project.media[0] ?? null }
   // Under a name of its own, made new ('wx' never writes through a link planted beside the chat), then renamed over it.
   const partial = `${project.path}.${randomUUID()}.saving`

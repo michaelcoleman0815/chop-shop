@@ -28,6 +28,7 @@ import { readMakeAsk } from '../../../shared/make/edits'
 import type { Change, Consent, Draft, Reply, ShotChange } from '../../../shared/make/draft'
 import { dollars, listOf, scriptCost } from '../../../shared/make/quote'
 import type { Brief } from '../../../shared/make/schema'
+import { SHOW_FILE } from '../../../shared/platform'
 import type { ChatMessage } from '../../../shared/types'
 import { api } from './api'
 import type { Attachment } from './components/Composer'
@@ -114,7 +115,11 @@ export interface MakeDeps {
    * Keeps a paid result in its own chat's file while another chat is open (main, in that file's turn): with no file,
    * or a new video for a chat that has an edit, it goes in a new chat of its own. Where it was kept, or null.
    */
-  keepFor?: (project: { path: string; name: string } | null, name: string, kept: Kept) => Promise<{ path: string; name: string } | null>
+  keepFor?: (
+    project: { path: string; name: string } | null,
+    name: string,
+    kept: Kept
+  ) => Promise<{ path: string; name: string; aside?: boolean } | null>
   /**
    * A chat of its own for a new video, as the chat it was asked in has an edit it never replaces: made with `first`
    * in it and saved, the chat being left given the line `leaving` says, then opened. Refused while other work runs
@@ -335,6 +340,9 @@ const aboutOf = (brief: Brief | null): string => {
 
 const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
+/** The folder a file is in, on any system ('' for a bare name). */
+const folderOf = (path: string): string => path.slice(0, Math.max(0, path.lastIndexOf('/'), path.lastIndexOf('\\')))
+
 /** A chat's name for a video of its own: its topic, as the chat would be named had it been asked for there. */
 const nameOf = (brief: Brief | null): string => {
   const topic = brief?.from === 'topic' ? cleanTopic(brief.topic) : ''
@@ -523,7 +531,12 @@ export function useMake(deps: MakeDeps): Makes {
     const where = keepFor ? await keepFor(run.origin.project, run.name, full).catch(() => null) : null
     const elsewhere = !!where && where.path !== run.origin.project?.path
     const chat = where ? `${elsewhere ? 'a new chat' : 'its chat'}, “${where.name}”` : 'its chat'
-    const text = !where
+    // A made video main couldn't read as an edit: nothing in its chat changed, and what came back is in a file of its
+    // own, which the reply names and shows.
+    const beside = !!run.origin.project && !!where && folderOf(where.path) === folderOf(run.origin.project.path)
+    const text = where?.aside
+      ? `${capital(run.what)} came back, but I couldn’t read it as an edit, so it couldn’t be added to its chat and nothing there changed. It’s saved ${beside ? 'beside that chat' : 'in the folder your chats are kept in'}, as “${where.name}”.`
+      : !where
       ? news === 'ready'
         ? `${capital(run.what)} is made, but its chat was closed and I couldn’t keep it there.`
         : news === 'quote'
@@ -534,9 +547,10 @@ export function useMake(deps: MakeDeps): Makes {
         : news === 'quote'
           ? `The quote for ${run.what} is in ${chat}.`
           : `What happened with ${run.what} is in ${chat}.`
-    if (target) patch(target, { progress: null, text, actions: [] })
-    else if (run.mirror && run.mirrorKey === owner.current) patch(run.mirror, { text, actions: [] })
-    else push({ role: 'assistant', text })
+    const actions: NonNullable<Msg['actions']> = where?.aside ? [{ kind: 'reveal', label: SHOW_FILE, payload: where.path }] : []
+    if (target) patch(target, { progress: null, text, actions })
+    else if (run.mirror && run.mirrorKey === owner.current) patch(run.mirror, { text, actions })
+    else push({ role: 'assistant', text, ...(actions.length ? { actions } : {}) })
   }, [])
 
   /** A quote shown: kept under a key of its own, with the price its button shows and what it said. */

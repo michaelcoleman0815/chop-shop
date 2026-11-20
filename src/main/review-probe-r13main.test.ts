@@ -5,6 +5,9 @@ import { join } from 'path'
 /**
  * Round 13 (3ed58d9): main's real path guard (projectPathOk / mustBeChat) on files in a scratch folder: ways around
  * it, and the ways a person's own chats must still open and save.
+ *
+ * Kept as a regression test from round 15 on: the made video it keeps is a whole one (createDoc), as main now checks
+ * a kept video against the edit's schema before writing it into a chat.
  */
 
 const dir = vi.hoisted(() => `${process.env.TMPDIR ?? '/tmp'}/probe-r13main-${process.pid}`)
@@ -12,6 +15,7 @@ vi.mock('electron', () => ({ app: { getPath: () => dir } }))
 
 import { createProject, keepInFile, openProject, projectsDir, saveProject } from './projects'
 import type { Kept } from '../shared/make/kept'
+import { createDoc } from '../shared/edit'
 import type { Project } from '../shared/types'
 
 afterAll(async () => {
@@ -73,7 +77,8 @@ describe('the person’s own chats', () => {
     for (let i = 0; i < 30; i++) await createProject(`New ${i}`, 'cut')
     const reopened = await result(openProject(old))
     const savedAfter = await result(saveProject(chatAt(old, 'what was said last')))
-    const kept: Kept = { message: { role: 'assistant', text: 'v1 is ready.' }, doc: { id: 'made-1' } as unknown as Kept['doc'], into: null, brand: 'default', never: [] }
+    const made = createDoc({ id: 'made-1', title: 'Trip', source: { id: 's1', path: '/made/narration.wav', durationSec: 60, width: 1920, height: 1080, fps: 30 }, words: [] })
+    const kept: Kept = { message: { role: 'assistant', text: 'v1 is ready.' }, doc: made, into: null, brand: 'default', never: [] }
     const keptAt = await keepInFile(old, 'Trip', kept).then(
       (w) => `kept at ${w?.name}`,
       (e) => `refused: ${e instanceof Error ? e.message : String(e)}`

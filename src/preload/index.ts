@@ -737,7 +737,7 @@ const api = {
    * turn. A new made video never replaces an edit; it goes in a new chat then, as with no file to keep it in.
    * Where it was kept, or null.
    */
-  keepInChat: (req: { path: string | null; name: string; kept: Kept }): Promise<{ path: string; name: string } | null> =>
+  keepInChat: (req: { path: string | null; name: string; kept: Kept }): Promise<{ path: string; name: string; aside?: boolean } | null> =>
     ipcRenderer.invoke('project:keep', req),
   forgetProject: (path: string): Promise<void> => ipcRenderer.invoke('project:forget', path),
 

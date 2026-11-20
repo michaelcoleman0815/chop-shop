@@ -35,6 +35,7 @@ import type { ParseCall } from '../../../main/make/claude'
 import { changeFor } from '../../../main/make/remake'
 import { draftFor, quoteDraft, revise, type DraftDeps } from '../../../main/make/run'
 import { keepInProject } from '../../../shared/make/kept'
+import { SHOW_FILE } from '../../../shared/platform'
 import { useMake } from './useMake'
 import type { Action, Msg } from './components/Message'
 
@@ -77,7 +78,7 @@ const settle = async (): Promise<void> => {
 
 type Settings = DraftDeps['settings']
 
-function app(settings: Settings, opts: { guarded: boolean; open?: EditDoc | null }) {
+function app(settings: Settings, opts: { guarded: boolean; open?: EditDoc | null; aside?: 'beside' | 'projects' }) {
   const files = new Map<string, Project>()
   const file = (path: string, edit: EditDoc | null = null, chat: ChatMessage[] = []): Project =>
     ({ path, name: path, mode: 'cut', chat, edit, media: [], openedAt: 'then' }) as unknown as Project
@@ -210,6 +211,12 @@ function app(settings: Settings, opts: { guarded: boolean; open?: EditDoc | null
     // main's keepInFile: the chat's own file, through the real keepInProject, never the chat open; with no file,
     // or a new video for a chat with an edit, a new chat of its own.
     keepFor: async (where, name, kept) => {
+      // Main found what came back doesn't read as an edit: set aside in a file of its own, beside the chat or in the
+      // projects folder, and nothing written to the chat.
+      if (opts.aside) {
+        const aside = `Could not be added to ${where?.name ?? name}, 2026-11-20 15.25.json`
+        return { path: opts.aside === 'beside' ? aside : `/Projects/${aside}`, name: aside, aside: true }
+      }
       const target = where && open !== where.path ? files.get(where.path) : undefined
       const next = target ? keepInProject(target, kept, `k${++n}`) : null
       if (where && target && next) {
@@ -464,6 +471,38 @@ describe('a tap during a chat switch (the eighth review, finding 1)', () => {
     expect(w.last()).toMatchObject({ text: READY, progress: null })
     expect(w.files.get('B')?.edit?.id).toBe('b-edit')
   })
+})
+
+describe('a made video main couldn’t read as an edit (round 15)', () => {
+  for (const at of ['beside', 'projects'] as const) {
+    it(`says it couldn’t be added, that nothing in its chat changed, and where it is (${at}), with a button to the file`, async () => {
+      const w = app({ cap: null, autoUnder: null }, { guarded: false, aside: at })
+      await w.type(QUOTED)
+      const go = w.goButton() as Action
+      const read = w.hold('read')
+      const make = w.hold('make')
+      const opening = w.openProject('B')
+      const tapped = w.makes.onAction(go)
+      await settle()
+      read.release()
+      expect(await opening).toBe('opened')
+      const a = w.files.get('A')
+      make.release()
+      await tapped
+      expect(w.calls.go).toEqual(['the 1950s oil boom'])
+      const name = 'Could not be added to A, 2026-11-20 15.25.json'
+      const where = at === 'beside' ? 'beside that chat' : 'in the folder your chats are kept in'
+      expect(w.last()).toMatchObject({
+        text: `Your video about the 1950s oil boom came back, but I couldn’t read it as an edit, so it couldn’t be added to its chat and nothing there changed. It’s saved ${where}, as “${name}”.`,
+        actions: [{ kind: 'reveal', label: SHOW_FILE, payload: at === 'beside' ? name : `/Projects/${name}` }]
+      })
+      // Its chat is as it was left, and the chat open keeps its own edit.
+      expect(w.files.get('A')).toBe(a)
+      expect(w.files.get('B')?.edit?.id).toBe('b-edit')
+      expect(w.docRef.current?.id).toBe('b-edit')
+      expect(w.chat().some((m) => (m.actions ?? []).some((x) => x.label === 'Stop'))).toBe(false)
+    })
+  }
 })
 
 describe('a quote put off, or turned down (finding 2)', () => {
