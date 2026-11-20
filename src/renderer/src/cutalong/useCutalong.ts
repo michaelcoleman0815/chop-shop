@@ -163,6 +163,7 @@ import { useLearn } from './useLearn'
 import { renderFailure } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import { useMake, type Makes, type NewChat } from './useMake'
+import { inTime, NEW_CHAT_WAIT_MS } from './in-time'
 import { editIn, type Kept } from '../../../shared/make/kept'
 import { makeName } from '../../../shared/make/brief'
 import { SHOWCASE_ENTRIES, useShowcase, type Showcase } from './useShowcase'
@@ -1701,11 +1702,25 @@ export function useCutalong() {
       let settle = (): void => undefined
       switchDone.current = new Promise<void>((r) => (settle = r))
       let project: Project | null = null
+      let late = false
       try {
-        const made = await api.createProject(name.trim() || 'New video', 'cut')
-        const brand = chatChoiceRef.current
-        project = { ...made, chat: first.map((m) => ({ ...m, id: uid() })), ...(brand ? { brand } : {}) }
-        await api.saveProject(project)
+        const making = (async (): Promise<Project> => {
+          const made = await api.createProject(name.trim() || 'New video', 'cut')
+          const brand = chatChoiceRef.current
+          const next: Project = { ...made, chat: first.map((m) => ({ ...m, id: uid() })), ...(brand ? { brand } : {}) }
+          await api.saveProject(next)
+          return next
+        })()
+        // Never waited on for ever: past its time, nothing is started and every click works again. A chat made after
+        // all stays as it is, in the list, for the person to keep or delete.
+        const got = await inTime(making, NEW_CHAT_WAIT_MS)
+        if (got === 'late') {
+          late = true
+          void making.then(
+            () => refreshRecent(),
+            () => undefined
+          )
+        } else project = got
       } catch {
         // Not made whole: whatever was made stays as it is, in the list, for the person to keep or delete.
         project = null
@@ -1715,6 +1730,7 @@ export function useCutalong() {
         switching.current = false
         settle()
       }
+      if (late) return { refused: 'slow' }
       if (!project) {
         refreshRecent()
         return { refused: 'failed' }

@@ -57,9 +57,14 @@ describe('project:discardNew, gone (round 12)', () => {
         ['the recent-chats list', index]
       ] as const) {
         const crafted = `${projectsDir()}/../../${target.slice(dir.length + 1)}`
-        // What the window can still ask about a chat's path: forget it from the recent list.
-        await removeFromRecent(crafted)
-        rows.push(`${label} (${crafted.slice(dir.length)}): forgotten from the list; still there ${await exists(target)}`)
+        // What the window can still ask about a chat's path: forget it from the recent list. Round 13: refused for a
+        // path that isn't a chat's, with nothing changed.
+        const refused = await removeFromRecent(crafted).then(
+          () => false,
+          () => true
+        )
+        expect(refused).toBe(true)
+        rows.push(`${label} (${crafted.slice(dir.length)}): forgetting it refused ${refused}; still there ${await exists(target)}`)
       }
       const after = (await exists(index)) ? (JSON.parse(await fs.readFile(index, 'utf8')) as unknown[]).length : 'gone'
       console.log(`${rows.join('\n')}\nrecent chats listed before ${listed}, after ${after}`)

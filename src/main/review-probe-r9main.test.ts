@@ -18,14 +18,15 @@ import { join } from 'path'
 const dir = vi.hoisted(() => `${process.env.TMPDIR ?? '/tmp'}/probe-r9main-${process.pid}`)
 vi.mock('electron', () => ({ app: { getPath: () => dir } }))
 
-import { openProject, saveProject } from './projects'
+import { openProject, projectsDir, saveProject } from './projects'
 import type { ChatMessage, Project } from '../shared/types'
 
 const has = (p: Project, id: string): boolean => (p.chat ?? []).some((m) => m.id === id)
 
 async function chatFile(name: string): Promise<Project> {
-  await fs.mkdir(dir, { recursive: true })
-  const path = join(dir, `${name}.cutalong`)
+  // Round 13: main saves chats only in its own folder (or ones it listed), so the probe's chats are made there.
+  await fs.mkdir(projectsDir(), { recursive: true })
+  const path = join(projectsDir(), `${name}.cutalong`)
   // A long chat, so writing it takes a moment as a real one does.
   const chat: ChatMessage[] = Array.from({ length: 30000 }, (_, i) => ({
     id: `m${i}`,

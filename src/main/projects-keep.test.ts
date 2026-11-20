@@ -10,7 +10,7 @@ import { join } from 'path'
 const dir = vi.hoisted(() => `${process.env.TMPDIR ?? '/tmp'}/projects-keep-${process.pid}`)
 vi.mock('electron', () => ({ app: { getPath: () => dir } }))
 
-import { keepInFile, openProject, saveProject } from './projects'
+import { keepInFile, openProject, projectsDir, saveProject } from './projects'
 import type { Kept } from '../shared/make/kept'
 import { createDoc, type EditDoc } from '../shared/edit'
 import type { ChatMessage, Project } from '../shared/types'
@@ -27,8 +27,8 @@ const edit = (id: string, versions: number): EditDoc => {
 }
 
 async function chatFile(name: string, messages = 20000, withEdit: EditDoc | null = null): Promise<Project> {
-  await fs.mkdir(dir, { recursive: true })
-  const path = join(dir, `${name}.cutalong`)
+  await fs.mkdir(projectsDir(), { recursive: true })
+  const path = join(projectsDir(), `${name}.cutalong`)
   // A long chat, so writing it takes a moment as a real one does.
   const chat = Array.from({ length: messages }, (_, i) => ({
     id: `m${i}`,
@@ -123,7 +123,7 @@ describe('a kept result never replaces an edit, and is never dropped', () => {
       const none = await keepInFile(null, 'Lisbon', { message: reply('The quote for your video about Lisbon.'), brand: 'default', never: [] })
       expect(none?.name).toBe('Lisbon')
       expect(says(await onDisk(none?.path as string), /The quote for your video about Lisbon/)).toBe(true)
-      const gone = await keepInFile(join(dir, 'Gone.cutalong'), 'Whales', { message: reply('v1 is ready.'), doc: made('made-2'), into: null, brand: 'default', never: [] })
+      const gone = await keepInFile(join(projectsDir(), 'Gone.cutalong'), 'Whales', { message: reply('v1 is ready.'), doc: made('made-2'), into: null, brand: 'default', never: [] })
       expect(gone?.name).toBe('Whales')
       expect((await onDisk(gone?.path as string)).edit?.id).toBe('made-2')
     } finally {

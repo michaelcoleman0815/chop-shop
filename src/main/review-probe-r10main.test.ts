@@ -9,7 +9,7 @@ import { join } from 'path'
 const dir = vi.hoisted(() => `${process.env.TMPDIR ?? '/tmp'}/probe-r10main-${process.pid}`)
 vi.mock('electron', () => ({ app: { getPath: () => dir } }))
 
-import { createProject, keepInFile, openProject, saveProject } from './projects'
+import { createProject, keepInFile, openProject, projectsDir, saveProject } from './projects'
 import type { Kept } from '../shared/make/kept'
 import { createDoc, type EditDoc } from '../shared/edit'
 import type { ChatMessage, Project } from '../shared/types'
@@ -23,12 +23,13 @@ const onDisk = async (path: string): Promise<Project> => JSON.parse(await fs.rea
 const video = (id: string): Kept => ({ message: { role: 'assistant', text: 'v1 is ready.' }, doc: edit(id, 1), into: null, brand: 'default', never: [] })
 
 async function chat(name: string, withEdit: EditDoc | null): Promise<Project> {
-  await fs.mkdir(dir, { recursive: true })
+  // Round 13: main saves chats only in its own folder (or ones it listed), so the probe's chats are made there.
+  await fs.mkdir(projectsDir(), { recursive: true })
   const project = {
     id: name,
     name,
     mode: 'cut',
-    path: join(dir, `${name}.cutalong`),
+    path: join(projectsDir(), `${name}.cutalong`),
     createdAt: 'then',
     openedAt: 'then',
     primaryMedia: null,
@@ -73,7 +74,7 @@ describe('main at round 10', () => {
       }
       const where = await keepInFile(a.path, 'The 1950s oil boom', kept)
       const after = await onDisk(a.path)
-      const others = (await fs.readdir(dir)).filter((f) => f.endsWith('.cutalong') && f !== 'A.cutalong')
+      const others = (await fs.readdir(projectsDir())).filter((f) => f.endsWith('.cutalong') && f !== 'A.cutalong')
       console.log(`kept at ${where?.name}; A's last message "${after.chat?.at(-1)?.text}" (error ${after.chat?.at(-1)?.error === true}); A's edit ${after.edit?.id}; other chats ${JSON.stringify(others)}`)
       expect(after.chat?.at(-1)?.text).not.toMatch(/left it out/)
     } finally {

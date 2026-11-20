@@ -1132,7 +1132,8 @@ function registerIpc(): void {
       target = res.filePaths[0]
     }
     try {
-      return await openProject(target)
+      // A file picked in main's own dialog is the person's; a path the window names must be one of their chats.
+      return await openProject(target, { picked: !path })
     } catch (err) {
       console.error('[project] open failed:', err instanceof Error ? err.message : err)
       return null

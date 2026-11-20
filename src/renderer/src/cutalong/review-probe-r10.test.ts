@@ -47,6 +47,7 @@ import { changeFor } from '../../../main/make/remake'
 import { draftFor, quoteDraft, revise, type DraftDeps } from '../../../main/make/run'
 import { editIn, freshVideo, keepInProject, type Kept } from '../../../shared/make/kept'
 import { useMake } from './useMake'
+import { inTime, NEW_CHAT_WAIT_MS } from './in-time'
 import type { Action, Msg } from './components/Message'
 
 const can: Availability = { google: true, fal: false, elevenlabs: true, openai: false, claude: true, localVoice: true }
@@ -105,8 +106,9 @@ function app(settings: Settings, opts: { open?: EditDoc | null } = {}) {
   let switching = false
   let switchSeq = 0
   let switchDone: Promise<void> = Promise.resolve()
-  /** A new video's chat being made: every chat click waits for it. */
+  /** A new video's chat being made: every chat click waits for it, only so long (round 13). */
   let settingUp = false
+  let newChatWait = NEW_CHAT_WAIT_MS
   let chat = new Map<string, Partial<Msg>>()
   let n = 0
   const notices: string[] = []
@@ -316,17 +318,25 @@ function app(settings: Settings, opts: { open?: EditDoc | null } = {}) {
       let done = (): void => undefined
       switchDone = new Promise<void>((r) => (done = r))
       let project: Project | null = null
+      let late = false
       try {
-        await waitFor(take('newChat'))
-        const madeChat = createProject(name.trim() || 'New video')
-        project = { ...madeChat, chat: first.map((m, i) => ({ ...m, id: `f${++n}-${i}` }) as ChatMessage) }
-        files.set(project.path, project)
+        const making = (async (): Promise<Project> => {
+          await waitFor(take('newChat'))
+          const madeChat = createProject(name.trim() || 'New video')
+          const next = { ...madeChat, chat: first.map((m, i) => ({ ...m, id: `f${++n}-${i}` }) as ChatMessage) }
+          files.set(next.path, next)
+          return next
+        })()
+        const got = await inTime(making, newChatWait)
+        if (got === 'late') late = true
+        else project = got
       } finally {
         working--
         settingUp = false
         switching = false
         done()
       }
+      if (late) return { refused: 'slow' }
       if (!project) return { refused: 'failed' }
       const line = leaving(project.name)
       chat.set(`m${++n}`, { role: line.role, text: line.text })
@@ -396,6 +406,8 @@ function app(settings: Settings, opts: { open?: EditDoc | null } = {}) {
     goButton,
     openProject,
     hold: (k: Kind) => (holds[k] = held()),
+    /** How long newChat is waited on (useCutalong's NEW_CHAT_WAIT_MS). */
+    setNewChatWait: (ms: number) => (newChatWait = ms),
     chat: () => [...chat.values()],
     last: () => [...chat.values()].pop(),
     open: () => open,
@@ -481,6 +493,34 @@ describe('a new video for a chat with an edit, and its new chat', () => {
     )
     expect(a?.edit?.id).toBe('a-edit')
     expect(others.some((k) => w.files.get(k)?.edit?.id === 'made-video-1')).toBe(true)
+  })
+})
+
+describe('a new chat that is never made (round 13)', () => {
+  it('is waited on only so long: then nothing is started or spent, the quote keeps its button, chats open again, and one made late stays', async () => {
+    const w = app({ cap: null, autoUnder: null }, { open: ownEdit('a-edit', 3) })
+    w.files.set('A', withDoc(w.files.get('A') as Project, ownEdit('a-edit', 3)))
+    await w.type(`/${QUOTED}`)
+    w.setNewChatWait(30)
+    const stuck = w.hold('newChat')
+    const tapped = w.makes.onAction(w.goButton() as Action)
+    await pause(5)
+    const during = await w.openProject('B')
+    await tapped
+    const said = w.last()?.text
+    const button = w.goButton()?.label
+    const after = await w.openProject('B')
+    stuck.release()
+    await pause()
+    console.log(`while it was made: B ${during}; then A said "${said}", its button "${button}"; B ${after}; make:go ${w.calls.go.length}; chats made ${JSON.stringify(w.calls.created)}`)
+    expect(during).toBe('one moment')
+    expect(w.calls.go).toEqual([])
+    expect(said).toBe('Making the new chat for your video took too long, so I didn’t start your video and nothing was spent. Press its button to try again.')
+    expect(button).toMatch(/^Make it for/)
+    expect(after).toBe('opened')
+    // Made late, it stays as it is: never opened, never taken away.
+    expect(w.files.has('The 1950s oil boom')).toBe(true)
+    expect(w.open()).toBe('B')
   })
 })
 

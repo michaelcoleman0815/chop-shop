@@ -118,7 +118,8 @@ export interface MakeDeps {
   /**
    * A chat of its own for a new video, as the chat it was asked in has an edit it never replaces: made with `first`
    * in it and saved, the chat being left given the line `leaving` says, then opened. Refused while other work runs
-   * ('busy'), or not made ('failed', or null). Every chat click waits while it is made, so nothing overtakes it.
+   * ('busy'), not made ('failed', or null), or taking so long it was given up on ('slow'). Every chat click waits while
+   * it is made, so nothing overtakes it.
    */
   newChat?: (
     name: string,
@@ -145,7 +146,7 @@ export interface MakeDeps {
 }
 
 /** How making a new chat for a new video went: where it is, or why there is none. */
-export type NewChat = { path: string; name: string } | { refused: 'busy' | 'failed' }
+export type NewChat = { path: string; name: string } | { refused: 'busy' | 'failed' | 'slow' }
 
 /** Where a paid piece of work was asked for: its chat, that chat's file once it has one, and its brand. */
 interface Origin {
@@ -241,9 +242,11 @@ const NEW_CHAT = 'It goes in a new chat, so your edit here stays as it is.'
 const NO_NEW_CHAT = 'I couldn’t make a new chat for it, so nothing was made or spent, and your edit here stays as it is. Press its button to try again.'
 
 /** Why no new chat was made for a new video, said in the chat that asked: by its quote's button, or by its ask. */
-const notMoved = (why: 'busy' | 'failed', by: 'tap' | 'ask'): string => {
+const notMoved = (why: 'busy' | 'failed' | 'slow', by: 'tap' | 'ask'): string => {
   const again = by === 'tap' ? 'Press its button again' : 'Ask again'
   if (why === 'busy') return `Something else is still running here, so I didn’t start your video and nothing was spent. ${again} once it’s done.`
+  if (why === 'slow')
+    return `Making the new chat for your video took too long, so I didn’t start your video and nothing was spent. ${by === 'tap' ? 'Press its button to try again.' : 'Ask again in a moment.'}`
   return by === 'tap' ? NO_NEW_CHAT : 'I couldn’t make a new chat for it, so nothing was written or spent, and your edit here stays as it is. Ask again in a moment.'
 }
 
