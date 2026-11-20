@@ -36,7 +36,7 @@ import type { Consent, Draft, Reply, ShotChange } from '../../shared/make/draft'
 import { changeFor, quoteShot, remakeShot } from './remake'
 import { draftFor, makeVideo, quoteDraft, revise, Stopped, withScript, type DraftDeps } from './run'
 import type { MakeServices } from './services'
-import { standInClaude, standInServices, standInVoice, writeHeard } from './stand-ins'
+import { heardManifest, standInClaude, standInServices, standInVoice, writeHeard } from './stand-ins'
 
 /**
  * Videos made from nothing, in the main process: the prompt read and
@@ -85,7 +85,7 @@ function tools(): Tools {
       services: standInServices(FFMPEG_PATH, log),
       parse: () => standInClaude(join(dir, 'scripts.json'), log),
       local: standInVoice(),
-      standIn: { log, manifest: process.env.E2E_WHISPER_MANIFEST?.split(':')[0] ?? null }
+      standIn: { log, manifest: heardManifest() }
     }
   }
   return {
