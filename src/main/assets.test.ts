@@ -45,6 +45,15 @@ describe('fetching from video sites', () => {
     expect(parseInfo(JSON.stringify({ title: 'X', uploader: 'Someone' })).author).toBe('Someone')
   })
 
+  it('credits who made a video, never the e-mail address archive.org gives as its uploader', () => {
+    // As yt-dlp reads an archive.org item: the uploading account's address, and the maker as creator.
+    const item = { title: 'California Students Speak with Station Crew', uploader: 'someone@example.org', creator: 'NASA TV', creators: ['NASA TV'] }
+    expect(parseInfo(JSON.stringify(item)).author).toBe('NASA TV')
+    expect(parseInfo(JSON.stringify({ ...item, creators: undefined })).author).toBe('NASA TV')
+    expect(parseInfo(JSON.stringify({ title: 'X', uploader: ' someone@example.org ' })).author).toBeNull()
+    expect(parseInfo(JSON.stringify({ title: 'X', channel: 'Lens Lab', uploader: 'someone@example.org' })).author).toBe('Lens Lab')
+  })
+
   it('reads search results, skipping what it cannot use', () => {
     const json = JSON.stringify({
       entries: [

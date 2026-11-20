@@ -42,11 +42,13 @@ const listOf = (names: string[]): string =>
 const NUMBERS = ['no', 'one', 'two', 'three', 'four']
 
 /**
- * An edit that is several videos at once. The longest video is the recording
- * the edit plays, one beat over the whole of it, so no panel is cut short;
- * every other file is material shown in its own panel, in the order the
- * files came. Labels are the ones given, else the files' names. The sound is
- * the panel asked for, the first by default, or none.
+ * An edit that is several videos at once. The video whose sound it plays
+ * (the first, unless another is asked for) is the recording the edit plays,
+ * one beat over the whole of it, so the grid ends when that voice does
+ * rather than holding its last frame in silence while a longer panel runs
+ * on; with music only, the longest, so no panel is cut short. Every other
+ * file is material shown in its own panel, in the order the files came.
+ * Labels are the ones given, else the files' names.
  */
 export function gridDoc(input: {
   id: string
@@ -59,7 +61,9 @@ export function gridDoc(input: {
   if (files.length < 2) throw new Error('A grid needs two to four videos.')
   const videos = files.map((f, i) => ({ f, i })).filter(({ f }) => !f.still)
   if (videos.length === 0) throw new Error('A grid needs at least one video to play.')
-  const main = videos.reduce((a, b) => (b.f.durationSec > a.f.durationSec + 0.01 ? b : a))
+  const asked = input.sound ?? 0
+  const voiced = asked === 'none' ? undefined : videos.find(({ f, i }) => i === Math.min(files.length - 1, asked) && f.sound)
+  const main = voiced ?? videos.reduce((a, b) => (b.f.durationSec > a.f.durationSec + 0.01 ? b : a))
   const m = main.f
   let doc = createDoc({
     id: input.id,
@@ -95,7 +99,6 @@ export function gridDoc(input: {
     shown.push(added.asset.id)
   }
   const labels = files.map((f, i) => (input.labels?.[i] ?? labelFor(f.path)).trim().slice(0, 40))
-  const asked = input.sound ?? 0
   const sound: Grid['sound'] = asked === 'none' ? 'none' : asked === main.i ? 'own' : Math.min(files.length - 1, asked)
   const grid: Grid = { panels: shown.map((show, i): GridPanel => ({ show, label: labels[i] })), sound }
   const tall = files.every((f) => f.height > f.width)

@@ -279,6 +279,12 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[], commands?: Co
 
 /** An edit op as the planner wrote it, as the edit takes it; null for a cutaway to material the edit does not have. */
 function editOpOf(doc: EditDoc, op: Plan['ops'][number], unknown: string[]): unknown {
+  if (op.op === 'grid' && op.sound === '' && op.panels.length > 0) {
+    // A grid written again (to relabel it, say) leaves its sound as it is: another panel's, or the music.
+    const heard = currentCut(doc).beats.find((b) => b.id === op.beats[0])?.treatment.grid?.sound
+    const sound = heard === 'none' ? 'music' : typeof heard === 'number' ? String(heard + 1) : ''
+    return fromPlannerOp({ ...op, sound: sound as typeof op.sound })
+  }
   if (op.op !== 'treat' || !op.set.broll) return fromPlannerOp(op)
   const asset = doc.assets.find((a) => a.id === op.set.broll?.asset)
   if (!asset) {

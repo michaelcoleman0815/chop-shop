@@ -86,22 +86,31 @@ function screenshot(ctx: BuildContext): Layer[] {
   } else if (zooms) {
     const at = scrollEnd + 0.1
     const done = Math.min(length - 0.3, at + 0.9)
-    let z: number
+    // The region, or else the top of the page (its header, filling the width), pushed in on.
+    let z = box ? clamp(Math.min((W * 0.86) / (box[2] * W), (H * 0.8) / (box[3] * H)), 1, 4) : vertical ? 1.2 : 1.7
+    // With something beside it (a calendar), it pushes in on its own side of the frame only: out from its inner
+    // edge toward the frame's edge, as far as there is room, so it never grows over what stands beside it.
+    const side = aside === 'left' ? -1 : 1
+    const inner = cx - (side * cw) / 2
+    if (aside) {
+      const room = side > 0 ? W - frame.safe.right - inner : inner - frame.safe.left
+      // Room for the slow push that follows, too.
+      z = clamp(Math.min(z, room / (cw * 1.035)), 1, z)
+    }
     let x: number
     let y: number
     if (box) {
       // The region, where it is at the end of the scroll, comes to the middle and fills most of the frame.
       const [bx, by, bw, bh] = box
-      z = clamp(Math.min((W * 0.86) / (bw * W), (H * 0.8) / (bh * H)), 1, 4)
-      x = W / 2 - z * ((bx + bw / 2) * W - cx)
+      x = aside ? inner + (side * z * cw) / 2 : W / 2 - z * ((bx + bw / 2) * W - cx)
       y = H / 2 - z * ((by + bh / 2) * H - y1)
     } else {
-      // The top of the page: its header, filling the width, a little below the frame's top.
-      z = vertical ? 1.2 : 1.7
-      x = cx
+      // The top of the page: its header, a little below the frame's top.
+      x = aside ? inner + (side * z * cw) / 2 : cx
       y = Math.max(H * 0.06 + (z * ch) / 2, H / 2)
     }
-    card.x = keys([at, cx, 'smooth'], [done, x])
+    // Beside something, the slow push that follows grows out from the same inner edge.
+    card.x = aside ? keys([at, cx, 'smooth'], [done, x], [length, inner + (side * z * 1.035 * cw) / 2]) : keys([at, cx, 'smooth'], [done, x])
     card.y = keys(...opening, [at, y1, 'smooth'], [done, y])
     // A slow push on after it lands, so the frame never sits dead.
     card.scale = keys([0, 0.96, 'snap'], [settle, 1], [at, 1, 'smooth'], [done, z], [length, z * 1.035])

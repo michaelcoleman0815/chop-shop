@@ -40,16 +40,32 @@ export function videoCards(call: Pick<MotionCall, 'items'>): VideoCard[] {
     .map((r) => ({ title: r.label.trim(), thumb: r.value.trim(), line: r.note.trim(), at: r.at.trim() }))
 }
 
-/** A title cut to what fits in two lines of `width` at `size`, with an ellipsis when it was longer. */
+/**
+ * A title cut to what fits in two lines of `width` at `size`, with an ellipsis when it was longer.
+ * The lines are found as the drawing wraps them, a word at a time: two lines' worth of letters can
+ * still take three lines when long words break early ("Space Station / Commander / Discusses…").
+ */
 export function twoLines(title: string, family: string, size: number, width: number): string {
-  // A little short of two full lines: wrapping breaks between words, so lines rarely fill.
-  const room = width * 1.8
-  if (textWidth(title, family, size) <= room) return title
-  const words = title.split(/\s+/)
+  // A little narrower than the line: the measure here is an estimate of the face's real widths.
+  const room = width * 0.95
+  const lines = (text: string): number => {
+    let n = 1
+    let line = ''
+    for (const w of text.split(/\s+/).filter(Boolean)) {
+      const next = line ? `${line} ${w}` : w
+      if (line && textWidth(next, family, size) > room) {
+        n += 1
+        line = w
+      } else line = next
+    }
+    return n
+  }
+  if (lines(title) <= 2) return title
+  const words = title.split(/\s+/).filter(Boolean)
   let out = ''
   for (const w of words) {
     const next = out ? `${out} ${w}` : w
-    if (textWidth(`${next}…`, family, size) > room) break
+    if (lines(`${next}…`) > 2) break
     out = next
   }
   return `${(out || words[0]).replace(/[\s,.;:–—-]+$/, '')}…`
