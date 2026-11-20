@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CC0, FAIR_USE, OWN, openverseLicense } from '../../../shared/broll/license'
 import { planFor, type MomentResult } from '../../../shared/broll/route'
 import type { Candidate, Moment, Ranked } from '../../../shared/broll/types'
-import { choiceLabel, offerReply, pickedAside, priceRange, swapWords, type BrollPick, type BrollWebAsk } from './broll'
+import { choiceLabel, choiceParts, offerReply, pickedAside, priceRange, swapWords, type BrollPick, type BrollWebAsk } from './broll'
 
 /** How the chat and the editor offer B-roll: generic moments, made-up finds. */
 
@@ -61,6 +61,9 @@ describe('offering B-roll', () => {
     expect(choiceLabel(cand({ source: 'library', kind: 'video', license: OWN }))).toBe('Your clip: Laptop keyboard close up')
     expect(choiceLabel(cand({ source: 'logos', kind: 'logo', title: 'HTML5' }))).toBe('The HTML5 logo')
     expect(choiceLabel(cand({ title: 'A very long title that goes on and on about a keyboard in the night' }))).toMatch(/…/)
+    // On the button, where it is from stays whole after the name, which a narrow column may shorten.
+    expect(choiceParts(cand({}))).toEqual({ label: 'Laptop keyboard close up', tail: ' · Wikimedia Commons' })
+    expect(choiceParts(cand({ source: 'library', kind: 'video', license: OWN }))).toEqual({ label: 'Your clip: Laptop keyboard close up' })
   })
 
   it('offers the best few as buttons, the reasons behind Details, and what a key would add', () => {
@@ -101,8 +104,8 @@ describe('offering B-roll', () => {
     const reply = offerReply(result([ranked(steam)]), { moment: null, where: 'panel' })
     expect(reply.aside).toContain('It is someone else’s: credited, a short stretch at most, and whether that is fair use is your call.')
     expect(JSON.parse(reply.actions[0].payload ?? '').where).toBe('panel')
-    // The editor's panel is narrow: a compact label, and a sentence or two.
-    expect(reply.actions[0].label).toBe('Example Quest: Launch… · Steam')
+    // The editor's panel is narrow: a compact label, where it is from kept whole after it, and a sentence or two.
+    expect([reply.actions[0].label, reply.actions[0].tail]).toEqual(['Example Quest: Launch…', ' · Steam'])
     expect(reply.brief).toBe('Here is other B-roll, best first. What is someone else’s is credited, and whether it is fair use is your call.')
     const asset = {
       kind: 'video' as const,

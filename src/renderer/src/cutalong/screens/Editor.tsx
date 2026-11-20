@@ -1030,8 +1030,14 @@ function NotesPanel({
             {!status.progress && (status.actions?.length ?? 0) > 0 && (
               <div className="cl-actions">
                 {status.actions!.map((a) => (
-                  <Button key={a.kind + a.label} variant="secondary" small onClick={() => app.onAction(a)}>
+                  <Button
+                    key={`${a.kind}|${a.label}|${a.tail ?? ''}|${a.payload ?? ''}`}
+                    variant="secondary"
+                    small
+                    onClick={() => app.onAction(a)}
+                  >
                     <span className="cl-btn-label">{a.label}</span>
+                    {a.tail && <span className="cl-btn-tail">{a.tail}</span>}
                   </Button>
                 ))}
               </div>

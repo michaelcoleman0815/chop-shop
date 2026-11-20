@@ -71,15 +71,25 @@ function short(text: string, max = 44): string {
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t
 }
 
-/** A choice's button: what it is and where it is from, short. "Rocket launch · NASA", "Your clip: city at night". */
-export function choiceLabel(c: Candidate, compact = false): string {
+/**
+ * A choice's button in two parts: what it is, which a narrow column may
+ * shorten further, and where it is from, which stays whole after it.
+ * "Rocket launch" + " · NASA"; "Your clip: city at night" alone.
+ */
+export function choiceParts(c: Candidate, compact = false): { label: string; tail?: string } {
   // The editor's panel is narrow: shorter names, and a source by its first word.
   const max = compact ? 22 : 44
-  if (c.source === 'library') return `Your ${KIND[c.kind]}: ${short(c.title, max - 4)}`
-  if (c.source === 'own-uploads') return `Your earlier video: ${short(c.title, max - 10)}`
-  if (c.source === 'logos') return `The ${short(c.title, max - 14)} logo`
+  if (c.source === 'library') return { label: `Your ${KIND[c.kind]}: ${short(c.title, max - 4)}` }
+  if (c.source === 'own-uploads') return { label: `Your earlier video: ${short(c.title, max - 10)}` }
+  if (c.source === 'logos') return { label: `The ${short(c.title, max - 14)} logo` }
   const from = compact ? SOURCE_LABEL[c.source].replace(/^Internet /, '').split(' ')[0] : SOURCE_LABEL[c.source]
-  return `${short(c.title, max)} · ${from}`
+  return { label: short(c.title, max), tail: ` · ${from}` }
+}
+
+/** A choice's button as one line: what it is and where it is from, short. "Rocket launch · NASA", "Your clip: city at night". */
+export function choiceLabel(c: Candidate, compact = false): string {
+  const { label, tail } = choiceParts(c, compact)
+  return label + (tail ?? '')
 }
 
 /** "3 to 12 cents", "$1.20 to $2.40": a paid search's price, for its button. */
@@ -143,9 +153,11 @@ export function offerReply(
       output: r.moment.output,
       where: ctx.where
     }
+    const { label, tail } = choiceParts(x.candidate, ctx.where === 'panel')
     return {
       kind: 'add-broll',
-      label: choiceLabel(x.candidate, ctx.where === 'panel'),
+      label,
+      ...(tail ? { tail } : {}),
       primary: i === 0 && ctx.primary !== false,
       payload: JSON.stringify(pick)
     }
