@@ -721,6 +721,62 @@ describe('the commands, and what they read in the speech', () => {
     expect(tab!.x1).toBeLessThan(1920 * 0.41)
   })
 
+  it('pushes a page or photo in on its own side of the frame, never over the calendar beside it', () => {
+    // A landscape photo held still, and a tall page that rises: both push in at the end.
+    for (const [style, width, height] of [
+      ['still', 1920, 1280],
+      ['rise', 1200, 3600]
+    ] as const) {
+      for (const place of ['right', 'left'] as const) {
+        let doc = docWith('wide', () => [])
+        const pic = addAsset(doc, {
+          kind: 'image',
+          path: '/pic.png',
+          title: 'pic',
+          durationSec: null,
+          width,
+          height,
+          origin: { type: 'link', url: 'https://example.com/', author: 'example.com', license: null, range: null }
+        })
+        doc = pic.doc
+        const from = idOf(doc, 'Day')
+        const to = `${idOf(doc, 'That')}.end+1`
+        doc = commit(
+          doc,
+          [
+            { op: 'motion-add', kind: 'counter', from, to, style: 'flip', place: place === 'right' ? 'left' : 'right', text: ['DAY'], items: [{ label: '1', at: from }] },
+            { op: 'motion-add', kind: 'screenshot', from, to, text: [pic.asset.id], style, place }
+          ],
+          'pair'
+        ).doc
+        const scene = sceneOf(doc)
+        const shot = scene.items.find((i) => i.kind === 'screenshot')!
+        const card = shot.layers.find((l) => l.kind === 'group')!
+        const last = (v: unknown): number => {
+          const k = (v as { keys: { v: number }[] }).keys
+          return k[k.length - 1].v
+        }
+        const cw = 1920 * 0.42
+        const x = last(card.transform!.x)
+        const scale = last(card.transform!.scale)
+        const side = place === 'right' ? 1 : -1
+        const inner = 1920 / 2 + side * 1920 * 0.12 - (side * cw) / 2
+        const label = `${style} ${place}`
+        // It did push in, out from the edge that faces the calendar, and stays in the frame.
+        expect(scale, label).toBeGreaterThan(1.2)
+        expect(x - (side * scale * cw) / 2, label).toBeCloseTo(inner, 0)
+        expect(x - (scale * cw) / 2, label).toBeGreaterThanOrEqual(-0.5)
+        expect(x + (scale * cw) / 2, label).toBeLessThanOrEqual(1920.5)
+        // And the calendar's tab still shows, clear of it, at the end.
+        const d = draw(scene, shot.end - 0.35, new Map([[pic.asset.id, createCanvas(60, 40)]]))
+        const tab = d.boxOf(ACCENT, 30)
+        expect(tab, label).not.toBeNull()
+        if (place === 'right') expect(tab!.x1, label).toBeLessThan(inner)
+        else expect(tab!.x0, label).toBeGreaterThan(inner)
+      }
+    }
+  })
+
   it('tells the planner when each graphic fits', () => {
     const guide = graphicsGuide()
     for (const kind of ['chips', 'counter', 'video-cards']) expect(guide).toContain(`"kind":"${kind}"`)
