@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'fs'
-import { join, relative } from 'path'
+import { join, relative, sep } from 'path'
 import { describe, expect, it } from 'vitest'
 import { ROUTES } from '../../src/main/providers/gate'
 import { PHONE_SERVICES } from './host/services'
@@ -66,7 +66,9 @@ describe('what the phone app can reach', () => {
     // fetch is not switched to the native HTTP, so the page's own requests stay under its policy.
     expect(readFileSync(join(here, 'capacitor.config.ts'), 'utf8')).not.toMatch(/CapacitorHttp/)
     const users = sources(join(here, 'src')).filter((f) => /CapacitorHttp|nativeFetch\(/.test(readFileSync(f, 'utf8')))
-    expect(users.map((f) => relative(here, f)).sort()).toEqual(['src/host/boot.ts', 'src/host/http.ts'])
+    // Named the same on every computer: Windows' paths use backslashes.
+    const named = users.map((f) => relative(here, f).split(sep).join('/'))
+    expect(named.sort()).toEqual(['src/host/boot.ts', 'src/host/http.ts'])
     const boot = readFileSync(join(here, 'src/host/boot.ts'), 'utf8')
     expect(boot.match(/nativeFetch\(/g)).toHaveLength(1)
     expect(boot).toMatch(/phoneServices\(\{[^}]*nativeFetch\(/s)

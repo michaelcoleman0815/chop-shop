@@ -4,6 +4,7 @@ import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { platform, setPlatform, type Platform } from '../../../src/main/platform'
 import { findFfmpeg, findFfprobe } from '../../../src/main/test-media'
+import { filterPath } from '../../../src/main/cut-render'
 import { missingOnPhone } from '../../../src/main/render/lgpl'
 import { applyOps, currentCut, type EditDoc, type Op } from '../../../src/shared/edit'
 import { gateOpen, keyMessage } from '../../../src/shared/setup'
@@ -390,7 +391,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
     expect(final.slice(final.indexOf('-c:v'), final.indexOf('-c:v') + 2)).toEqual(['-c:v', 'h264_videotoolbox'])
     expect(final[final.indexOf('-b:v') + 1]).toBe('12000k')
     // Captions drawn with the fonts copied into the app's storage.
-    expect(final.join(' ')).toContain(`fontsdir='${join(root, 'fonts')}'`)
+    expect(final.join(' ')).toContain(`fontsdir=${filterPath(join(root, 'fonts'))}`)
     const streams = JSON.parse(
       execFileSync(FFPROBE as string, ['-v', 'error', '-show_streams', '-of', 'json', r.outputPath], {
         encoding: 'utf8'

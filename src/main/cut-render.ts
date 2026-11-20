@@ -568,7 +568,7 @@ export function framingX(keys: FrameKey[], w: number): string {
  * them, comes escaped, and opens them again. (A LUT in "Mike's LUTs" failed
  * the export.)
  */
-function filterPath(path: string): string {
+export function filterPath(path: string): string {
   const inner = path.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
   return `'${inner.replace(/'/g, "'\\''")}'`
 }

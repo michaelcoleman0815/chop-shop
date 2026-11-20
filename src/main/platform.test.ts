@@ -62,7 +62,7 @@ describe('the computer platform', () => {
     const lines: string[] = []
     const r = await runProgram(
       process.execPath,
-      ['-e', 'console.log("one"); console.log("two"); console.error("x".repeat(70000) + "end"); process.exit(3)'],
+      ['-e', 'console.log("one"); console.log("two"); console.error("x".repeat(70000) + "end"); process.exitCode = 3'],
       {
         onStdout: (t) => lines.push(t)
       }

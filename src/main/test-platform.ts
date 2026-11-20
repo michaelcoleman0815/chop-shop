@@ -3,6 +3,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { platform, setPlatform, type PlatformSecrets } from './platform'
 import { nodePlatform, type NodePlatformOptions } from './platform-node'
+import { exe } from './test-bin'
 import { findFfmpeg, findFfprobe } from './test-media'
 
 /**
@@ -58,7 +59,7 @@ const options: NodePlatformOptions = {
   tools: {
     ffmpeg: once(findFfmpeg, 'ffmpeg'),
     ffprobe: once(findFfprobe, 'ffprobe'),
-    whisper: () => join(process.cwd(), 'resources', 'bin', 'whisper-cli')
+    whisper: () => join(process.cwd(), 'resources', 'bin', exe('whisper-cli'))
   },
   userData: () => join(root, 'userData'),
   exports: () => join(root, 'Movies', 'Cutalong'),
@@ -71,15 +72,15 @@ setPlatform(nodePlatform(options))
 /**
  * For a test whose stand-in for Electron keeps the app's folders under its
  * own root (app.getPath(name) is root/name): the platform's folders there
- * too, and whisper-cli in root/resources/bin, as a test that makes one
- * expects. Gives back what puts the platform as it was.
+ * too, and whisper-cli (whisper-cli.exe on Windows) in root/resources/bin,
+ * as a test that makes one expects. Gives back what puts the platform as it was.
  */
 export function platformUnder(dir: string, overrides: Partial<NodePlatformOptions> = {}): () => void {
   const before = platform()
   setPlatform(
     nodePlatform({
       ...options,
-      tools: { ...options.tools, whisper: () => join(dir, 'resources', 'bin', 'whisper-cli') },
+      tools: { ...options.tools, whisper: () => join(dir, 'resources', 'bin', exe('whisper-cli')) },
       userData: () => join(dir, 'userData'),
       ...overrides
     })
