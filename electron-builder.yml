@@ -17,12 +17,16 @@ asarUnpack:
   - '**/node_modules/ffmpeg-static/**'
   - '**/node_modules/@ffprobe-installer/**'
   - '**/node_modules/@napi-rs/canvas*/**'
+  # Kokoro, the voice that reads on this Mac, runs on onnxruntime's native binary.
+  - '**/node_modules/onnxruntime-node/**'
 
 extraResources:
   - from: resources/bin
     to: bin
   - from: resources/fonts
     to: fonts
+  - from: resources/voices
+    to: voices
   # The small satellite pictures every map starts from; the export reads them here.
   - from: resources/maps
     to: maps
@@ -38,10 +42,9 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # A Mac finds faces with Vision, so the Mac app leaves out onnxruntime-node
-  # (the runtime of Windows' face finder) and the packages only it brings,
-  # and is the app it was. Should the Mac app come to run onnxruntime itself,
-  # lines that keep its darwin arm64 binary take the place of these.
+  # onnxruntime-node ships its native binaries for every platform (about 295 MB). The Mac app
+  # keeps darwin arm64's only, for Kokoro, the voice that reads on this Mac (a Mac finds faces
+  # with Vision, not with the runtime).
   #
   # A platform's files list must hold something besides exclusions:
   # electron-builder 26 reads a list of nothing but '!' lines as everything
@@ -50,18 +53,11 @@ mac:
   files:
     - filter:
         - package.json
-        - '!**/node_modules/onnxruntime-node/**'
-        - '!**/node_modules/onnxruntime-common/**'
-        - '!**/node_modules/adm-zip/**'
-        - '!**/node_modules/globalthis/**'
-        - '!**/node_modules/define-properties/**'
-        - '!**/node_modules/define-data-property/**'
-        - '!**/node_modules/es-define-property/**'
-        - '!**/node_modules/es-errors/**'
-        - '!**/node_modules/gopd/**'
-        - '!**/node_modules/has-property-descriptors/**'
-        - '!**/node_modules/object-keys/**'
-        - '!**/node_modules/escape-string-regexp/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/x64/**'
+        # The binding loads @rpath/libonnxruntime.1.dylib; the package also carries a second, identical copy under its full version.
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/arm64/libonnxruntime.1.*.*.dylib'
   target:
     - target: dmg
       arch: [arm64]

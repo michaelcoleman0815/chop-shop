@@ -3,6 +3,8 @@ import { Composer } from '../components/Composer'
 import { AssistantMessage, UserMessage } from '../components/Message'
 import { BrandSwitch } from '../components/BrandSwitch'
 import { ClipSet } from '../components/ClipSet'
+import { KeptScript, MakeBrief } from '../components/MakeBrief'
+import { MakeQuestions } from '../components/MakeQuestions'
 import { Button, Icon, IconButton } from '../components/ui'
 import { prefersReducedMotion } from '../motion'
 import type { Cutalong } from '../useCutalong'
@@ -59,6 +61,8 @@ export function Thread({ app }: { app: Cutalong }): JSX.Element {
               ) : (
                 <AssistantMessage key={m.id} msg={m} onAction={app.onAction}>
                   {m.clipRun ? <ClipSet app={app} run={m.clipRun} /> : null}
+                  {m.make ? <MakeBrief app={app} id={m.make} /> : m.script ? <KeptScript script={m.script} /> : null}
+                  {m.makeAsk ? <MakeQuestions app={app} id={m.makeAsk} /> : null}
                 </AssistantMessage>
               )
             )}

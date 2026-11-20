@@ -11,6 +11,7 @@ import { grow } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { Licences } from './Licences'
+import { MadeVideos } from './MadeVideos'
 import { MapsSection } from './Maps'
 import { BrollSources } from './BrollSources'
 import { OtherServices } from './OtherServices'
@@ -169,6 +170,8 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
           {!phone && <Planning settings={settings} onSettings={setSettings} />}
 
           <OtherServices settings={settings} onSettings={setSettings} onHearer={setHearer} />
+
+          {!device.away['feature:make'] && <MadeVideos settings={settings} onSettings={setSettings} />}
 
           {!device.away['feature:broll'] && <BrollSources />}
 

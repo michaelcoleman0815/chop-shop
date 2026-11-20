@@ -33,6 +33,7 @@ export interface Action {
     | 'open-settings'
     | 'run-command'
     | 'copy'
+    | 'make'
     /** Sends its words as the person's next message: an answer to a question Claude asked. */
     | 'say'
     /** Opens the steps for the Anthropic key, on Start. */
@@ -46,6 +47,8 @@ export interface Action {
   payload?: string
   /** A small picture shown in the button, as a data URL. */
   icon?: string
+  /** Shown only while the reply's work runs (a Stop), never once it is done. */
+  during?: boolean
 }
 
 export interface Msg extends Omit<ChatMessage, 'actions'> {
@@ -215,9 +218,9 @@ export function AssistantMessage({
         {/* Who did the work, then what it made: a clip set reads as what Reel found. */}
         {!msg.progress && <Credits crew={msg.crew} />}
         {!msg.progress && children}
-        {!msg.progress && (msg.actions?.length ?? 0) > 0 && (
+        {(msg.actions ?? []).some((a) => !!a.during === !!msg.progress) && (
           <div className="cl-actions">
-            {msg.actions!.map((a) => (
+            {msg.actions!.filter((a) => !!a.during === !!msg.progress).map((a) => (
               <Button
                 key={`${a.kind}|${a.label}|${a.tail ?? ''}|${a.payload ?? ''}`}
                 variant={a.primary ? 'primary' : 'secondary'}

@@ -27,12 +27,16 @@ export interface BrollPick {
   seconds?: number
   output?: { width: number; height: number }
   where: BrollWhere
+  /** The edit it was found for: it goes into that one only. */
+  docId?: string
 }
 
 /** What the paid button carries: the moment to look for again, on the web this time. */
 export interface BrollWebAsk {
   moment: Moment
   where: BrollWhere
+  /** The edit it was asked for: the web is looked in for that one only. */
+  docId?: string
 }
 
 /** What a source is called on a button or a switch (SOURCE_NAMES is how a sentence says it). */
@@ -126,6 +130,8 @@ export function offerReply(
     primary?: boolean
     /** Where a pick goes when it is not the moment's own beat: a stretch picked on the strip. */
     beats?: string[] | null
+    /** The edit these were found for, carried by every choice. */
+    docId?: string
   }
 ): {
   text: string
@@ -151,7 +157,8 @@ export function offerReply(
       hint: r.moment.search,
       ...(r.moment.seconds ? { seconds: r.moment.seconds } : {}),
       output: r.moment.output,
-      where: ctx.where
+      where: ctx.where,
+      ...(ctx.docId ? { docId: ctx.docId } : {})
     }
     const { label, tail } = choiceParts(x.candidate, ctx.where === 'panel')
     return {
@@ -164,7 +171,7 @@ export function offerReply(
   })
   const web = ctx.webQuote && webWaits(r.plan) ? ctx.webQuote : null
   if (web) {
-    const ask: BrollWebAsk = { moment: r.moment, where: ctx.where }
+    const ask: BrollWebAsk = { moment: r.moment, where: ctx.where, ...(ctx.docId ? { docId: ctx.docId } : {}) }
     actions.push({
       kind: 'broll-web',
       label: `Look on the web too, ${priceRange(web)}`,

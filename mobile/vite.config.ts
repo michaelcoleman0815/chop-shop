@@ -98,21 +98,36 @@ function phoneWords(): Plugin {
 }
 
 /**
- * A grid's ground and labels are drawn on the Mac's Skia with Node's files
- * (src/main/grid-render.ts), which src/main/cut-render.ts imports. On the
- * phone, grids are on the Mac for now, and the render reaches a stand-in that
- * says so (src/shims/grid-render.ts).
+ * What the export draws on the Mac's Skia with Node's files, which
+ * src/main/cut-render.ts imports: a grid's ground and labels
+ * (src/main/grid-render.ts) and film's dust, leaks and flicker
+ * (src/main/render/film.ts). On the phone they are on the Mac for now, and the
+ * render reaches stand-ins that say so (src/shims/grid-render.ts, film.ts).
  */
-function phoneGrids(): Plugin {
-  const computer = resolve(root, 'src/main/grid-render.ts')
-  const phone = resolve(here, 'src/shims/grid-render.ts')
+function phoneStandIns(): Plugin {
+  const swaps = [
+    {
+      name: /(^|\/)grid-render(\.ts)?$/,
+      computer: resolve(root, 'src/main/grid-render.ts'),
+      phone: resolve(here, 'src/shims/grid-render.ts')
+    },
+    {
+      name: /(^|\/)film(\.ts)?$/,
+      computer: resolve(root, 'src/main/render/film.ts'),
+      phone: resolve(here, 'src/shims/film.ts')
+    }
+  ]
   return {
-    name: 'cutalong-phone-grids',
+    name: 'cutalong-phone-stand-ins',
     enforce: 'pre',
     async resolveId(source, importer, options) {
-      if (!importer || !/(^|\/)grid-render(\.ts)?$/.test(source) || importer === phone) return null
-      const found = await this.resolve(source, importer, { ...options, skipSelf: true })
-      return found && found.id.split('?')[0] === computer ? phone : null
+      if (!importer) return null
+      for (const swap of swaps) {
+        if (!swap.name.test(source) || importer === swap.phone) continue
+        const found = await this.resolve(source, importer, { ...options, skipSelf: true })
+        if (found && found.id.split('?')[0] === swap.computer) return swap.phone
+      }
+      return null
     }
   }
 }
@@ -120,7 +135,7 @@ function phoneGrids(): Plugin {
 export default defineConfig({
   root: here,
   base: './',
-  plugins: [phoneWords(), phoneGrids(), react(), packageLicences()],
+  plugins: [phoneWords(), phoneStandIns(), react(), packageLicences()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
     __APP_COMMIT__: JSON.stringify(commit()),

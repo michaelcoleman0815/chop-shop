@@ -61,6 +61,9 @@ import { cropMove, perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
 import { platform } from './platform'
 import { encodeArgs, X264, type Encoder } from './render/encoder'
+import { renderFilm } from './render/film'
+import { weaveFilter } from '../shared/edit/film'
+import { hasFilm } from '../shared/edit/look'
 import { overlayChains, pictureFxChains, type FxOverlayFile, type FxPass } from '../shared/fx/ffmpeg'
 
 /**
@@ -275,6 +278,8 @@ export interface GraphOptions {
   look?: Look | null
   /** Whether the look's LUT is a 3D one (most are) or a 1D curve per channel. */
   lutKind?: LutKind
+  /** Old film over the graded picture (render/film.ts): the weave, and one loop of each layer's file. */
+  film?: { fine: string | null; soft: string | null; weave: number } | null
   /** An ffmpeg metadata file of chapters to write into the video, which players show. */
   chaptersPath?: string | null
   /** Sound effects over the finished sound, before any music goes under it. */
@@ -1152,7 +1157,24 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${vOut}]${inYuv.join(',')}[vlook]`)
     vOut = 'vlook'
   }
-  // What the effects draw (rings, speed lines, a scan's glow): over the look, under the captions.
+  // Old film: the graded picture weaves in the gate, then the leaks and the dust loop over it.
+  if (opts.film) {
+    const weave = weaveFilter(opts.film.weave, W, H, fps)
+    if (weave) {
+      chains.push(`[${vOut}]${weave}[vweave]`)
+      vOut = 'vweave'
+    }
+    for (const [i, file] of [opts.film.soft, opts.film.fine].entries()) {
+      if (!file) continue
+      inputs.push('-stream_loop', '-1', '-i', file)
+      const k = next++
+      // Laid on in YUV with its alpha, the soft glow scaled up the cheap way: a quarter of the time RGBA took.
+      chains.push(`[${k}:v]${i === 0 ? `scale=${W}:${H}:flags=fast_bilinear,` : ''}format=yuva420p[film${i}]`)
+      chains.push(`[${vOut}][film${i}]overlay=0:0:shortest=1:format=yuv420[vfilm${i}]`)
+      vOut = `vfilm${i}`
+    }
+  }
+  // What the effects draw (rings, speed lines, a scan's glow): over the look and its film, under the captions.
   if (opts.fx?.overlays.length) {
     const drawn = overlayChains(opts.fx.overlays, vOut, addInput, fps, FX_COLOUR)
     chains.push(...drawn.chains)
@@ -1771,6 +1793,13 @@ export async function renderCut(
     music: cut.music ? bedFor(cut.music, resolved, cut.loudness) : null,
     look: cut.look ?? null,
     lutKind: cut.look?.lut ? await lutKindOf(cut.look.lut.path) : undefined,
+    film:
+      cut.look && hasFilm(cut.look)
+        ? {
+            ...(await renderFilm(cut.look, width, height, fps, opts.ffmpeg, join(opts.workDir, 'film'), opts.signal)),
+            weave: cut.look.weave ?? 0
+          }
+        : null,
     chaptersPath: await writeChapters(cut, resolved, opts.workDir),
     sfx: await sfxFor(cut, resolved, opts.ffmpeg, opts.sfxDir ?? join(opts.workDir, 'sfx')),
     quality,

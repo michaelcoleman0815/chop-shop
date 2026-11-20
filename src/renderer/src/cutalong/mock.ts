@@ -46,6 +46,8 @@ import { keyMessage, type ClaudeKeyState } from '../../../shared/setup'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
 import { mockVlogApi } from './vlog-mock'
+import { mockMakeApi } from './make-mock'
+import { keepInProject } from '../../../shared/make/kept'
 import { mockBrollApi } from './broll-mock'
 import type { Word } from '../../../shared/edit'
 import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
@@ -511,6 +513,8 @@ export function createMockApi(): CutalongApi {
       for (const cb of listeners.cut) cb({ stage, percent: 50 })
       await sleep(150)
     }),
+    // A video made from nothing, quoted over a stand-in script; nothing is made in the preview.
+    ...mockMakeApi(),
     getVersion: async () => '0.2.13',
     pathForFile: (file: File) => `/Users/you/Movies/${file.name}`,
     openVideo: async () => null,
@@ -864,6 +868,19 @@ export function createMockApi(): CutalongApi {
     openProject: async (path?: string) => (path ? (projects.get(path) ?? null) : null),
     saveProject: async (project) => {
       projects.set(project.path, { ...project, openedAt: new Date().toISOString() })
+    },
+    keepInChat: async ({ path, name, kept }) => {
+      const at = path ? projects.get(path) : undefined
+      const next = at ? keepInProject(at, kept, `kept-${Date.now()}`) : null
+      if (at && next) {
+        projects.set(at.path, next)
+        return { path: at.path, name: at.name }
+      }
+      const made = `/Users/you/Movies/Cutalong/${name}.cutalong`
+      const fresh = keepInProject({ id: made, name, mode: 'cut', path: made, createdAt: new Date().toISOString(), openedAt: new Date().toISOString(), primaryMedia: null, mediaBytes: null, media: [], clips: [], transcript: null, timeline: null, edit: null }, kept, `kept-${Date.now()}`)
+      if (!fresh) return null
+      projects.set(made, fresh)
+      return { path: made, name }
     },
     // Only a poster: the browser has no footage to sample, so it is a generated still.
     mediaPreviews: async (path) => ({

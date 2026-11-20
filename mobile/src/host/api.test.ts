@@ -305,6 +305,13 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
     })
     expect(await api.brollFind({ moments: [] })).toEqual({ ok: false, message: ON_THE_MAC.broll })
     expect(await api.listenPovs({ doc })).toEqual({ ok: false, message: ON_THE_MAC.povs })
+    // A video made from nothing is never started here, tapped or not: nothing is written, quoted or spent.
+    expect(await api.makeStart({ text: 'a 2 minute documentary about the oil boom', consent: 'tap' })).toEqual({
+      ok: false,
+      message: ON_THE_MAC.make
+    })
+    expect(await api.makeCancel()).toBe(false)
+    expect(await api.keepInChat({ path: null, name: 'Oil boom', kept: {} as never })).toBeNull()
     expect(await api.addAsset({ docId: doc.id, url: 'https://example.com/a.jpg' })).toEqual({
       ok: false,
       message: ON_THE_MAC.link,
@@ -323,7 +330,9 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
       'reframe',
       'angle',
       'povs',
-      'lut'
+      'lut',
+      'make',
+      'documentary'
     ])
       expect(away[c], c).toMatch(/on the Mac for now/)
     for (const c of [

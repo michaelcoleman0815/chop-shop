@@ -145,6 +145,30 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
+/* A video being made while its progress is out of sight: what it is, its stage, and its Stop. */
+.cl-running {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cl-running > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-running-stage {
+  margin-left: var(--space-2);
+  color: var(--muted);
+}
+
 .cl-heading {
   font-size: 19px;
   line-height: 26px;
@@ -1415,10 +1439,17 @@ button:disabled {
 }
 
 .cl-look-vignette,
-.cl-look-grain {
+.cl-look-grain,
+.cl-film {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+/* Old film's canvases fill the frame; the soft one is drawn small and scaled up, as the export scales it. */
+.cl-film {
+  width: 100%;
+  height: 100%;
 }
 
 /* Larger than the frame, so it can jump about while the video plays. */
@@ -3668,4 +3699,187 @@ button:disabled {
   .cl-crew-tile > .cl-crew-face {
     scale: 0.72;
   }
+}
+
+/* A made video's quote: its outline, its script behind a link, how to get a missing key (MakeBrief). */
+.cl-make {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.cl-make > .cl-field {
+  align-self: stretch;
+}
+
+.cl-make-outline,
+.cl-make-key ol {
+  margin: 0;
+  padding-left: var(--space-6);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--muted);
+}
+
+.cl-make-key {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+}
+
+.cl-make-key ol {
+  color: var(--ink);
+}
+
+/* A dollar amount in Settings: a small field with its sign in front (MadeVideos). */
+.cl-dollars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--ground);
+  padding: 6px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-dollars:focus-within {
+  border-color: var(--ink);
+}
+
+.cl-dollars input {
+  width: 4.5em;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-make-limit,
+.cl-make-auto {
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/*
+ * A made video's script, read as the pages of a shooting script (MakeBrief):
+ * the editor's own .cl-script type, each part's heading set as a scene
+ * heading, and each line numbered in the margin as the shot it becomes,
+ * beside a coverage rule. Tokens only, so it follows the editor's script panel.
+ */
+.cl-make-script {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.cl-make-page {
+  align-self: stretch;
+  padding: var(--space-4) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  max-height: 22rem;
+  overflow-y: auto;
+  text-wrap: pretty;
+}
+
+.cl-make-slug {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cl-make-page section:first-child .cl-make-slug {
+  margin-top: 0;
+}
+
+.cl-make-line {
+  position: relative;
+  padding-left: var(--space-8);
+}
+
+/* The shot number in the margin, and the coverage rule beside the line. */
+.cl-make-line::before {
+  content: attr(data-shot);
+  position: absolute;
+  left: 0;
+  width: var(--space-4);
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-make-line::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--space-6) - 1px);
+  top: var(--space-1);
+  bottom: var(--space-1);
+  border-left: 1px solid var(--line);
+}
+
+/* The questions asked before a made video is written (MakeQuestions): options as pills, your own words beside them. */
+.cl-make-ask {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.cl-make-question {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-make-question legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cl-make-question .cl-row {
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.cl-pill[aria-checked='true'] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.cl-make-own {
+  min-width: 12rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.cl-make-own:focus-visible {
+  border-color: var(--ink);
+}
+
+.cl-make-own::placeholder {
+  color: var(--muted);
 }

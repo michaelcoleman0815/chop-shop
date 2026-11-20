@@ -121,6 +121,14 @@ export interface Settings {
    * made on this computer (main/upload-kit).
    */
   claudeWritesUpload?: boolean
+  /**
+   * Videos made from nothing (main/make): go ahead without asking when one
+   * costs less than this many dollars. Absent or null is off, the default:
+   * every made video is quoted and waits for the person to confirm.
+   */
+  makeAutoUnder?: number | null
+  /** The most one made video may cost, in dollars, unless the prompt says otherwise. Absent is $10. */
+  makeCap?: number | null
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string
@@ -334,6 +342,8 @@ export interface ChatAction {
   primary?: boolean
   payload?: string
   icon?: string
+  /** Shown only while the reply's work runs (a Stop), never once it is done. */
+  during?: boolean
 }
 
 /** One turn of a Cutalong chat, as it is kept in the project file. */
@@ -358,6 +368,15 @@ export interface ChatMessage {
   video?: { path: string; name: string; width: number; height: number; durationSec: number }
   /** The /clipping run whose clips this reply shows, as cards under it. */
   clipRun?: number
+  /** The quote for a video made from nothing whose outline and script show under this reply (useMake). */
+  make?: string
+  /**
+   * That quote's script, kept with the reply: it was paid for, so it can still be read once the quote has
+   * gone (set aside, replaced, or from before the chat was opened again).
+   */
+  script?: { outline: string[]; sections: number[]; phrases: string[] }
+  /** Questions asked before a made video's script is written, answered under this reply (useMake). */
+  makeAsk?: string
 }
 
 export interface TimelineClip {

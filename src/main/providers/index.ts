@@ -10,6 +10,10 @@ import { judgeExcerpts as judge, type JudgeInput, type JudgeResult } from './jud
 import { serviceKeys } from './keys'
 import { extractSpeech } from './media'
 import { cloudTranscript, type CloudResult } from './transcribe-cloud'
+import { googleClip, googleImage, googleSpeech, GOOGLE_CLIP_MODEL, GOOGLE_IMAGE_MODEL } from './google-make'
+import { falClip, falImage, FAL_CLIP_MODEL, FAL_IMAGE_MODEL } from './fal'
+import { elevenSpeech, elevenVoiceNamed, openaiSpeech } from './voices'
+import type { MakeServices } from '../make/services'
 
 export type { ClipJudgement, ExcerptClip, JudgeInput, JudgeResult } from './judge'
 
@@ -58,6 +62,35 @@ export function hearInCloud(
  */
 export function judgeExcerpts(input: JudgeInput): Promise<JudgeResult> {
   return judge(input, { gate, ffmpeg: FFMPEG_PATH, tempDir: app.getPath('temp') })
+}
+
+/**
+ * Pictures, clips and narration for videos made from nothing (main/make),
+ * every request through the same gate: nothing goes without the switch on
+ * and the service's key, and only the prompts, the script and the pictures
+ * the services made themselves are ever sent.
+ */
+export function makeServices(): MakeServices {
+  return {
+    open: () => ({
+      google: gate.open('gemini'),
+      fal: gate.open('fal'),
+      elevenlabs: gate.open('elevenlabs'),
+      openai: gate.open('openai')
+    }),
+    models: {
+      image: { google: GOOGLE_IMAGE_MODEL, fal: FAL_IMAGE_MODEL },
+      clip: { google: GOOGLE_CLIP_MODEL, fal: FAL_CLIP_MODEL }
+    },
+    image: (service, prompt, refs, opts) =>
+      service === 'google' ? googleImage(gate, prompt, refs, opts) : falImage(gate, prompt, refs, opts),
+    clip: (service, prompt, first, opts) =>
+      service === 'google' ? googleClip(gate, prompt, first, opts) : falClip(gate, prompt, first, opts),
+    elevenlabs: (voiceId, text, around, signal) => elevenSpeech(gate, voiceId, text, around, signal),
+    elevenVoice: (name, signal) => elevenVoiceNamed(gate, name, signal),
+    gemini: (text, voice, style, signal) => googleSpeech(gate, text, voice, style, signal),
+    openai: (text, voice, instructions, signal) => openaiSpeech(gate, text, voice, instructions, signal)
+  }
 }
 
 function asService(id: unknown): ServiceId {

@@ -50,6 +50,7 @@ import { neverForPlanner } from '../shared/never'
 import { brandInSentence } from '../shared/brands'
 import { registerClippingIpc } from './clipping'
 import { registerVlogIpc } from './vlog'
+import { registerMakeIpc } from './make'
 import { registerShowcaseIpc } from './showcase'
 import { currentVersion, subjectFrom, type Subject, EditDocSchema, type Note } from '../shared/edit'
 import {
@@ -650,6 +651,14 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   registerMemoryIpc()
   // /clipping: many short clips from long recordings (main/clipping).
   registerClippingIpc({ send: deps.send })
+
+  // Videos made from nothing (main/make): a narration read or recorded is heard on this Mac only.
+  registerMakeIpc({
+    send: deps.send,
+    mediaUrlFor: deps.mediaUrlFor,
+    transcribe: (path, durationSec, progress) =>
+      transcriptFor(macWork, path, durationSec, progress, { localOnly: true })
+  })
 
   // Video cards read from links, and grids of several videos at once (main/showcase).
   registerShowcaseIpc({ mediaUrlFor: deps.mediaUrlFor })

@@ -24,7 +24,7 @@ describe('the other AI services switch', () => {
   })
 
   it('names each service plainly', () => {
-    expect(SERVICES.map((s) => s.name)).toEqual(['Deepgram', 'AssemblyAI', 'Google Gemini'])
+    expect(SERVICES.map((s) => s.name)).toEqual(['Deepgram', 'AssemblyAI', 'Google Gemini', 'fal.ai', 'ElevenLabs', 'OpenAI'])
     expect(serviceName('gemini')).toBe('Google Gemini')
     expect(isServiceId('deepgram')).toBe(true)
     expect(isServiceId('anthropic')).toBe(false)

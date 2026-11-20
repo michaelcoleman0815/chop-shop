@@ -21,3 +21,5 @@ export const helperScript = (name: 'build-whisper' | 'fetch-ytdlp'): string =>
 
 export const WHISPER_PATH = (): string => binPath('whisper-cli')
 export const FONTS_DIR = (): string => resourcePath('fonts')
+/** misaki's lexicons, for the voice that reads on this Mac (main/make/g2p.ts). */
+export const VOICES_DIR = (): string => resourcePath('voices')

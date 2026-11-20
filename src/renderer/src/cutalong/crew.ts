@@ -53,7 +53,7 @@ export const CREW: Record<CrewId, CrewMember> = {
   quill: {
     name: 'Quill',
     job: 'Words on screen',
-    does: 'Captions, titles, chapters and descriptions.',
+    does: 'The script of a video made from nothing, and captions, titles, chapters and descriptions.',
     watches: 'how you like your captions',
     shape: 'leaf',
     colour: 'yellow'
@@ -69,7 +69,7 @@ export const CREW: Record<CrewId, CrewMember> = {
   tint: {
     name: 'Tint',
     job: 'The look',
-    does: 'Colour, effects, graphics and motion.',
+    does: 'Colour, effects, graphics and motion, and the pictures of a video made from nothing.',
     watches: 'your look: colour, black and white, and fades',
     shape: 'scallop',
     colour: 'pink'
@@ -101,20 +101,25 @@ export const willLearn = (id: CrewId): string => `${CREW[id].name} will learn ${
 export const crewBlock = (id: CrewId): string =>
   `var(--block-${CREW[id].colour === 'coral' ? 'salmon' : CREW[id].colour})`
 
-/** Which member does a stage, by the words the app reports it with. */
+/**
+ * Which member does a stage, by the words the app reports it with. A video
+ * made from nothing (main/make) reports its own: Quill writes the script,
+ * Echo narrates and times it, Snip plans the shots and puts the story
+ * together, Tint draws the pictures, Scout looks for the music.
+ */
 const JOBS: [RegExp, CrewId][] = [
   [
     // The model's download says its name ("Downloading base.en") when it starts a job's transcription.
-    /^(listening|transcribing|reusing transcript|finding the beat|lining|downloading (model|(tiny|base|small|medium|large)\S*)|extracting audio)\b/i,
+    /^(listening|transcribing|reusing transcript|finding the beat|lining|downloading (model|the voice|(tiny|base|small|medium|large)\S*)|extracting audio|narrating)\b/i,
     'echo'
   ],
   [
-    /^(reading the|measuring the cuts|cutting|putting the story|telling the story|looking at your moments|watching your|watching$)/i,
+    /^(reading the|measuring the cuts|cutting|putting the story|telling the story|looking at your moments|watching your|watching$|planning the shots|describing shot)/i,
     'snip'
   ],
-  [/^(writing the (description|titles?|chapters?|captions?)|captioning)\b/i, 'quill'],
+  [/^(writing the (description|titles?|chapters?|captions?|script)|reading your script|captioning)\b/i, 'quill'],
   [/^(bringing|fetching|looking (for|through)|capturing the page|working out which file|searching)\b/i, 'scout'],
-  [/^(finding what changes on screen|grading|colouring)\b/i, 'tint'],
+  [/^(finding what changes on screen|grading|colouring|drawing\b.*\bcharacter sheet|making (the shots|\d+ shots?|shot \d+))\b/i, 'tint'],
   [
     /^(exporting|rendering|writing the premiere|finding clips|finding the moments|finding you in the picture|watching the speaker|reframing)\b/i,
     'reel'
@@ -181,7 +186,12 @@ const PAST: Record<string, string> = {
   colouring: 'coloured',
   exporting: 'exported',
   rendering: 'rendered',
-  reframing: 'reframed'
+  reframing: 'reframed',
+  narrating: 'narrated',
+  planning: 'planned',
+  describing: 'described',
+  drawing: 'drew',
+  making: 'made'
 }
 
 /** What a member did, for the credits: "Echo transcribed take-3.mov". */

@@ -30,11 +30,30 @@ const SETTING_WORDS: Record<string, LookSetting> = {
   fade: 'lift',
   faded: 'lift',
   lift: 'lift',
-  sharpness: 'sharpen'
+  sharpness: 'sharpen',
+  // Old film (edit/film.ts): /look sepia 0.6, /look dust 0.3, /look weave off.
+  sepia: 'sepia',
+  weave: 'weave',
+  gate: 'weave',
+  dust: 'dust',
+  scratches: 'dust',
+  leak: 'leak',
+  leaks: 'leak',
+  flicker: 'flicker'
 }
 
 /** How much a setting gets when its command comes on its own: /grain, /vignette. */
-const ON_ITS_OWN: Partial<Record<LookSetting, number>> = { grain: 0.3, vignette: 0.4, sharpen: 0.4, lift: 0.4 }
+const ON_ITS_OWN: Partial<Record<LookSetting, number>> = {
+  grain: 0.3,
+  vignette: 0.4,
+  sharpen: 0.4,
+  lift: 0.4,
+  sepia: 0.6,
+  weave: 0.5,
+  dust: 0.4,
+  leak: 0.3,
+  flicker: 0.35
+}
 
 /** Plain names for the settings, in replies. */
 const SPOKEN: Record<LookSetting, string> = {
@@ -46,7 +65,12 @@ const SPOKEN: Record<LookSetting, string> = {
   lift: 'faded blacks',
   sharpen: 'sharpening',
   vignette: 'vignette',
-  grain: 'grain'
+  grain: 'grain',
+  sepia: 'sepia',
+  weave: 'gate weave',
+  dust: 'dust and scratches',
+  leak: 'light leaks',
+  flicker: 'flicker'
 }
 
 export type LookCommandResult =

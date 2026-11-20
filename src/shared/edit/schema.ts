@@ -23,6 +23,7 @@ import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 import { FxItemSchema, FxOpSchemas } from '../fx/schema'
 import { MouthModeSchema } from '../vision/mode'
 import { VlogSchema } from '../vlog/schema'
+import { MakeSchema } from '../make/schema'
 
 /**
  * The edit as data.
@@ -478,7 +479,14 @@ export const EditDocSchema = z.object({
    * moments, scenes and story. One that cannot be read is dropped rather
    * than keeping the edit from opening.
    */
-  vlog: VlogSchema.optional().catch(undefined)
+  vlog: VlogSchema.optional().catch(undefined),
+  /**
+   * What a video made from nothing was made from (shared/make): its brief,
+   * script, style bible, shots and narration, so a later ask makes again only
+   * what it changes. One that cannot be read is dropped rather than keeping
+   * the edit from opening.
+   */
+  make: MakeSchema.optional().catch(undefined)
 })
 export type EditDoc = z.infer<typeof EditDocSchema>
 

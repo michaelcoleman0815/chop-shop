@@ -19,7 +19,17 @@ function sources(dir: string): { file: string; text: string }[] {
     .map((f) => ({ file: relative(MAIN, join(dir, f)), text: readFileSync(join(dir, f), 'utf8') }))
 }
 
-const HOSTS = ['api.deepgram.com', 'api.assemblyai.com', 'generativelanguage.googleapis.com']
+const HOSTS = [
+  'api.deepgram.com',
+  'api.assemblyai.com',
+  'generativelanguage.googleapis.com',
+  'queue.fal.run',
+  'fal.run',
+  'api.fal.ai',
+  'fal.media',
+  'api.elevenlabs.io',
+  'api.openai.com'
+]
 
 describe('one way out', () => {
   const provider = sources(PROVIDERS).filter((s) => s.file !== join('providers', 'testing.ts'))

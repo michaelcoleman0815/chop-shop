@@ -143,7 +143,7 @@
  * in; a reply's sentence, chips and buttons follow one another closely.
  */
 .cl-msg-user,
-.cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-actions, .cl-credits) {
+.cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-make, .cl-make-ask, .cl-actions, .cl-credits) {
   transition-property: opacity, translate;
   transition-duration: var(--duration-gentle);
   transition-timing-function: var(--ease-enter);
@@ -175,7 +175,9 @@
   transition-timing-function: var(--ease-enter);
 }
 
-.cl-details {
+.cl-details,
+.cl-make-script,
+.cl-make-key {
   transition-property: opacity, translate;
   transition-duration: var(--duration-base);
   transition-timing-function: var(--ease-enter);
@@ -196,12 +198,14 @@
     filter: blur(calc(2px * var(--cl-travel)));
   }
 
-  html:not([data-cl-entering]) .cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-actions, .cl-credits) {
+  html:not([data-cl-entering]) .cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-make, .cl-make-ask, .cl-actions, .cl-credits) {
     opacity: 0;
     translate: 0 calc(var(--space-2) * var(--cl-travel));
   }
 
-  .cl-details {
+  .cl-details,
+  .cl-make-script,
+  .cl-make-key {
     opacity: 0;
     translate: 0 calc(-1 * var(--space-1) * var(--cl-travel));
   }

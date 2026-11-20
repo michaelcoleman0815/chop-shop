@@ -28,7 +28,9 @@ export const ON_THE_MAC = {
   lut: 'LUT files are on the Mac for now. The looks work here: try /look warm.',
   brand: 'Learning your look from your videos and edits is on the Mac for now.',
   learn: 'Learning from your edits is on the Mac for now.',
-  study: 'Learning a style from a video is on the Mac for now.'
+  study: 'Learning a style from a video is on the Mac for now.',
+  make: 'Videos made from nothing are on the Mac for now. Here I cut your own footage.',
+  film: 'Film dust, light leaks and flicker are drawn on the Mac for now. Gate weave and the looks work here.'
 } as const
 
 /** Slash commands that are on the Mac for now, with what the phone says when one is typed. */
@@ -47,7 +49,10 @@ export function commandsOnTheMac(): Record<string, string> {
     lut: ON_THE_MAC.lut,
     map: ON_THE_MAC.maps,
     hype: ON_THE_MAC.hype,
-    grid: ON_THE_MAC.grid
+    grid: ON_THE_MAC.grid,
+    make: ON_THE_MAC.make,
+    documentary: ON_THE_MAC.make,
+    explainer: ON_THE_MAC.make
   }
   for (const entry of motionCommandEntries()) away[entry.command] ??= ON_THE_MAC.graphics
   for (const entry of fxCommandEntries()) away[entry.command] ??= ON_THE_MAC.effects

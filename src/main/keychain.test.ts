@@ -60,11 +60,11 @@ describe('keys for the other services', () => {
     expect(existsSync(join(dir, 'deepgram.key'))).toBe(true)
     expect(existsSync(join(dir, 'gemini.key'))).toBe(true)
     expect(existsSync(join(dir, 'anthropic.key'))).toBe(false)
-    expect(k.all()).toEqual({ deepgram: true, assemblyai: false, gemini: true })
+    expect(k.all()).toEqual({ deepgram: true, assemblyai: false, gemini: true, fal: false, elevenlabs: false, openai: false })
     expect(k.read('deepgram')).toBe('dg-0123456789')
     expect(k.read('assemblyai')).toBeNull()
     k.clear('deepgram')
-    expect(k.all()).toEqual({ deepgram: false, assemblyai: false, gemini: true })
+    expect(k.all()).toEqual({ deepgram: false, assemblyai: false, gemini: true, fal: false, elevenlabs: false, openai: false })
   })
 
   it('takes no key from the environment, so a key in a shell sends nothing', () => {
@@ -72,11 +72,18 @@ describe('keys for the other services', () => {
     process.env.ASSEMBLYAI_API_KEY = 'aai-env'
     process.env.GEMINI_API_KEY = 'AIza-env'
     process.env.GOOGLE_API_KEY = 'AIza-env'
+    process.env.FAL_KEY = 'fal-env'
+    process.env.ELEVENLABS_API_KEY = 'el-env'
+    process.env.OPENAI_API_KEY = 'sk-env'
     const k = keys()
-    expect(k.all()).toEqual({ deepgram: false, assemblyai: false, gemini: false })
+    expect(k.all()).toEqual({ deepgram: false, assemblyai: false, gemini: false, fal: false, elevenlabs: false, openai: false })
     expect(k.read('deepgram')).toBeNull()
     expect(k.read('assemblyai')).toBeNull()
     expect(k.read('gemini')).toBeNull()
+    expect(k.read('fal')).toBeNull()
+    expect(k.read('elevenlabs')).toBeNull()
+    expect(k.read('openai')).toBeNull()
+    for (const name of ['FAL_KEY', 'ELEVENLABS_API_KEY', 'OPENAI_API_KEY']) delete process.env[name]
   })
 
   it('turns away another company’s key before storing it', () => {

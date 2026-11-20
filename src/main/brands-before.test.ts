@@ -186,7 +186,7 @@ describe.skipIf(!FFMPEG)('a brand and a project from before there could be more 
 
   it('opens the project as it was, in the brand it always had', async () => {
     const brandFile = readFileSync(join(fake.root, 'userData', 'brand.json'), 'utf8')
-    const project = await openProject(projectPath)
+    const project = await openProject(projectPath, { picked: true })
     expect(project.edit).toBeTruthy()
     expect(project.brand).toBeUndefined()
     expect(project.chat).toEqual([{ id: 'm1', role: 'user', text: 'tighten it' }])
@@ -203,7 +203,7 @@ describe.skipIf(!FFMPEG)('a brand and a project from before there could be more 
   })
 
   it('exports with that brand’s caption colours, as it did', async () => {
-    const project = await openProject(projectPath)
+    const project = await openProject(projectPath, { picked: true })
     const fn = fake.handlers.get('cut:render')!
     const r = (await fn({ sender: {} }, { doc: project.edit, quality: 'final' })) as
       | { ok: true; outputPath: string }

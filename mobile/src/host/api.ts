@@ -12,7 +12,7 @@ import { findFocus } from '../../../src/main/focus'
 import { importFile } from '../../../src/main/asset-file'
 import { brandOfDoc, readBrand, readBrands, saveBrand, saveBrands } from '../../../src/main/brand-store'
 import { removePreset, savedPresets, savePreset } from '../../../src/main/preset-store'
-import { createProject, openProject, recentProjects, saveProject } from '../../../src/main/projects'
+import { createProject, openProject, recentProjects, saveProject } from './projects'
 import { sceneForCut } from '../../../src/main/motion-scene'
 import { phoneEncoder } from '../../../src/main/render/encoder'
 import { detectProvider } from '../../../src/shared/keys'
@@ -22,6 +22,7 @@ import { EditDocSchema } from '../../../src/shared/edit'
 import type { MapStatus } from '../../../src/shared/maps'
 import { learnState } from '../../../src/shared/learn'
 import { effectsOf } from '../../../src/shared/fx'
+import { filmLayers } from '../../../src/shared/edit/film'
 import { habitLines } from '../../../src/shared/channel-habits'
 import { BROLL_KEYS, type BrollKeyId } from '../../../src/shared/broll/keys'
 import { DEFAULT_BROLL } from '../../../src/shared/broll/settings'
@@ -65,11 +66,13 @@ export function phoneWork(parts: Pick<PhoneApiParts, 'info' | 'settings' | 'serv
     sfxDir: () => `${platform().paths.userData()}/sfx`,
     fontsDir: () => platform().paths.fonts(),
     hearInCloud: (path, durationSec, progress) => parts.services.hearInCloud(path, durationSec, progress),
-    // Graphics, scene effects and a grid's ground are drawn on the Mac's canvas for now: a cut with none
-    // of them renders here.
+    // Graphics, scene effects, a grid's ground and film's dust, leaks and flicker are drawn on the Mac's
+    // canvas for now: a cut with none of them renders here.
     motion: async (input) => {
       if (effectsOf(input.cut).length > 0) throw new Error(ON_THE_MAC.effects)
       if (input.cut.beats.some((b) => b.treatment.grid)) throw new Error(ON_THE_MAC.grid)
+      const film = filmLayers(input.cut.look)
+      if (film.fine || film.soft) throw new Error(ON_THE_MAC.film)
       const scene = sceneForCut(input)
       if (scene.layers.length > 0) throw new Error(ON_THE_MAC.graphics)
       return { overlays: [], scene }
@@ -163,6 +166,14 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     },
     makeVlog: async () => ({ ok: false as const, message: ON_THE_MAC.vlog }),
     planVlog: async () => ({ ok: false as const, message: ON_THE_MAC.vlog }),
+    // Videos made from nothing are on the Mac for now: nothing is written, quoted, made or spent here, tap or no tap.
+    makeStart: async () => ({ ok: false as const, message: ON_THE_MAC.make }),
+    makeGo: async () => ({ ok: false as const, message: ON_THE_MAC.make }),
+    makeRevise: async () => ({ ok: false as const, message: ON_THE_MAC.make }),
+    makeScript: async () => ({ ok: false as const, message: ON_THE_MAC.make }),
+    makeChange: async () => ({ ok: false as const, message: ON_THE_MAC.make }),
+    makeShot: async () => ({ ok: false as const, message: ON_THE_MAC.make }),
+    makeCancel: async () => false,
     /**
      * Rendered by the renderer of record with the phone's encoder. An export
      * keeps the screen on while it runs, then goes to Photos as well.
@@ -265,6 +276,8 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     // No browsing for project files: the phone's projects are in its list.
     openProject: async (path) => (path ? openProject(path) : null),
     saveProject: (project) => saveProject(project),
+    // Only a made video's result is kept in another chat, and a phone makes none.
+    keepInChat: async () => null,
     mediaPreviews: async (path) => {
       const url = await poster(path)
       if (!url) throw new Error('There is no picture to show.')

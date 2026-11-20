@@ -32,7 +32,8 @@ import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
 import { presetById } from '../shared/caption-presets'
 import { buildAss } from './captions'
-import { recentProjects, createProject, openProject, saveProject, removeFromRecent, projectsDir } from './projects'
+import { recentProjects, createProject, openProject, saveProject, removeFromRecent, projectsDir, keepInFile, sweepPartials } from './projects'
+import type { Kept } from '../shared/make/kept'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips, listModels, OLLAMA_HOST } from './clips'
 import { localModels, isLocalUp } from './local-llm'
@@ -1114,6 +1115,10 @@ function registerIpc(): void {
   ipcMain.handle('project:recent', () => recentProjects())
   ipcMain.handle('project:create', (_e, name: string, mode: ProjectMode) => createProject(name, mode))
   ipcMain.handle('project:save', (_e, project: Project) => saveProject(project))
+  // A paid result for a chat not open, read, merged and written in that file's turn (useMake's keepFor).
+  ipcMain.handle('project:keep', (_e, req: { path: string | null; name: string; kept: Kept }) =>
+    keepInFile(req.path, String(req.name ?? '') || 'New video', req.kept)
+  )
   ipcMain.handle('project:forget', (_e, path: string) => removeFromRecent(path))
 
   ipcMain.handle('project:open', async (_e, path?: string) => {
@@ -1128,7 +1133,8 @@ function registerIpc(): void {
       target = res.filePaths[0]
     }
     try {
-      return await openProject(target)
+      // A file picked in main's own dialog is the person's; a path the window names must be one of their chats.
+      return await openProject(target, { picked: !path })
     } catch (err) {
       console.error('[project] open failed:', err instanceof Error ? err.message : err)
       return null
@@ -1188,6 +1194,8 @@ if (selfCheckReport) {
 
   app.whenReady().then(async () => {
     void sweepTemp()
+    // What a crash left half-written beside the chats and the recent list.
+    void sweepPartials()
     electronApp.setAppUserModelId('social.brewed.chopshop')
     // Before the window: the page asks for the media address as it loads. A
     // server that cannot start must not keep the app from opening.

@@ -188,7 +188,7 @@ describe('callouts', () => {
       sources: doc.sources
     })
     expect(r.rejected.map((x) => x.reason)).toEqual([
-      'A callout is spec, arrow, circle, underline, box, pointer; glitter is not one of them.',
+      'A callout is spec, arrow, circle, underline, box, pointer, label; glitter is not one of them.',
       'A callout’s region is x and y, or x, y, width and height.'
     ])
   })
