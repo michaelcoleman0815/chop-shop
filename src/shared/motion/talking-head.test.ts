@@ -16,7 +16,9 @@ import {
   designSize,
   frameFor,
   graphicsGuide,
+  layoutText,
   listsSaid,
+  measurer,
   MOTION_FONTS,
   motionCommandEntries,
   planMotionCommand,
@@ -437,6 +439,34 @@ describe('video cards', () => {
     expect(cut.length).toBeLessThan(t.length)
     expect(twoLines('Short', 'Sora', 30, 380)).toBe('Short')
   })
+
+  it('keeps every title to two lines as the drawing wraps it, so none runs into its pill', () => {
+    // Long titles whose long words break early, as archive.org gives NASA's school contacts:
+    // under two lines' worth of letters, the second still wrapped to three on its card.
+    const titles = [
+      'California Students Speak with Station Crew',
+      'Space Station Commander Discusses Life in Space with Ukrainian Students',
+      'Hadfield Shares The Excitement Of Space With Canadian Students'
+    ]
+    const doc = docWith('wide', () => [])
+    const op = planOp(doc, 'videos', titles.map((t) => `${t} | 2 yr ago`).join('\n'), saidAt(doc, idOf(doc, 'This')))
+    const scene = sceneOf(commit(doc, [op], 'cards').doc)
+    const texts: TextLayer[] = []
+    const walk = (layers: Layer[]): void => {
+      for (const l of layers) {
+        if (l.kind === 'text') texts.push(l)
+        else if (l.kind === 'group') walk(l.children)
+      }
+    }
+    walk(scene.layers)
+    const shown = texts.filter((t) => t.maxWidth !== undefined && t.text !== '2 yr ago')
+    expect(shown).toHaveLength(3)
+    const ctx = createCanvas(16, 16).getContext('2d') as unknown as CanvasRenderingContext2D
+    for (const t of shown) expect(layoutText(measurer(ctx), t).lines.length).toBeLessThanOrEqual(2)
+    expect(shown[1].text.endsWith('…')).toBe(true)
+    // Cut a word at a time, never inside one.
+    for (const [i, t] of shown.entries()) expect(titles[i].startsWith(t.text.replace(/…$/, ''))).toBe(true)
+  })
 })
 
 describe('a page that slides in with a ring', () => {
@@ -497,6 +527,39 @@ describe('a page that slides in with a ring', () => {
     const { doc } = withPage('scroll', [])
     const op = planOp(doc, 'screenshot', 'slide ring', null)
     expect(op).toMatchObject({ style: 'slide', fx: ['ring'] })
+  })
+
+  it('sends the chips round the speaker off as it slides in over them, and leaves them be when it does not', () => {
+    // A list, then the page straight after it: the chips' call holds them a second past the list,
+    // into the page's first second, as a plan writes it.
+    const base = docWith('wide', () => [])
+    const page = addAsset(base, {
+      kind: 'image',
+      path: '/page.png',
+      title: 'page',
+      durationSec: null,
+      width: 1200,
+      height: 1600,
+      origin: { type: 'link', url: 'https://example.com/', author: 'example.com', license: null, range: null }
+    })
+    const chips = {
+      op: 'motion-add',
+      kind: 'chips',
+      from: idOf(base, 'Notion'),
+      to: `${idOf(base, 'Framer')}.end+1.5`,
+      items: ['Notion', 'Figma', 'Linear', 'Slack'].map((label) => ({ label, at: idOf(base, label) }))
+    }
+    const slide = { op: 'motion-add', kind: 'screenshot', from: idOf(base, 'Arc'), to: '4s', text: [page.asset.id], style: 'slide' }
+    const alone = sceneOf(commit(page.doc, [chips], 'chips').doc)
+    const both = sceneOf(commit(page.doc, [chips, slide], 'both').doc)
+    const card = both.items.find((i) => i.kind === 'screenshot')!
+    const before = alone.items.find((i) => i.kind === 'chips')!
+    const after = both.items.find((i) => i.kind === 'chips')!
+    expect(before.end).toBeGreaterThan(card.start + 1)
+    // Gone as the card arrives, every layer with them, and arriving as they did.
+    expect(after.start).toBeCloseTo(before.start, 5)
+    expect(after.end).toBeLessThanOrEqual(card.start + 0.2)
+    expect(Math.max(...flat(after.layers).map((l) => l.end))).toBeLessThanOrEqual(card.start + 0.2)
   })
 })
 
