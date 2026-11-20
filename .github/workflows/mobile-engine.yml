@@ -233,10 +233,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
+      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
       - name: ffmpeg
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg >/dev/null
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -qq
+          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
           ffmpeg -hide_banner -version | head -1
 
       - name: Make the sample media and what each render should come out as
@@ -505,10 +509,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
+      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
       - name: ffmpeg
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg >/dev/null
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -qq
+          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
 
       - uses: actions/download-artifact@v8
         with:
@@ -574,10 +582,14 @@ jobs:
             exit 1
           fi
 
+      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
+      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
       - name: ffmpeg
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg >/dev/null
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -qq
+          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
 
       - name: The footage the app's flow picks
         run: python3 mobile/ci/make-footage.py "$RUNNER_TEMP/footage"
@@ -805,10 +817,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
+      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
       - name: ffmpeg
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg >/dev/null
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -qq
+          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
 
       - uses: actions/download-artifact@v8
         with:
