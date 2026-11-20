@@ -164,7 +164,7 @@ import { useLearn } from './useLearn'
 import { renderFailure } from '../../../shared/failure'
 import { useVlog } from './useVlog'
 import { useMake, type Makes } from './useMake'
-import { keepInProject, type Kept } from './kept'
+import type { Kept } from '../../../shared/make/kept'
 import { makeName } from '../../../shared/make/brief'
 import { SHOWCASE_ENTRIES, useShowcase, type Showcase } from './useShowcase'
 import {
@@ -616,8 +616,6 @@ export function useCutalong() {
   const switchDone = useRef<Promise<void>>(Promise.resolve())
   /** Counted up by every chat change asked for: an open overtaken while its file was read gives way. */
   const switchSeq = useRef(0)
-  /** Results being kept in a chat's own file while another chat is open, by that chat's path: opening it waits for them. */
-  const keeping = useRef(new Map<string, Promise<boolean>>())
   /** Why another chat can't be opened, or a new one started, now: a video being made says so, and how to stop it. */
   const busyText = (to: 'open' | 'start'): string =>
     makeRef.current?.running()
@@ -975,8 +973,11 @@ export function useCutalong() {
   /** Opens a saved chat: its thread when it has one, else straight into the editor. */
   const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
     // The chat already open is not read again from disk: whatever is running
-    // in it, and anything said since it was last saved, would be lost.
+    // in it, and anything said since it was last saved, would be lost. Asked
+    // for again, it also takes over from another chat still being opened.
     if (path === projectRef.current?.path) {
+      switchSeq.current += 1
+      switching.current = false
       setScreen(docRef.current && (prefer === 'editor' || messagesRef.current.length === 0) ? 'editor' : 'thread')
       return
     }
@@ -995,8 +996,7 @@ export function useCutalong() {
     let project: Project | null = null
     try {
       rememberKeep(docRef.current)
-      // A result still being kept in that chat's file is in it before it is read.
-      await keeping.current.get(path)
+      // main reads it in its file's turn: after any save or keep of it still being written.
       project = await api.openProject(path)
     } finally {
       if (switchSeq.current === seq) switching.current = false
@@ -1012,7 +1012,14 @@ export function useCutalong() {
       setToast({ text: busyText('open') })
       return
     }
-    // The chat being left is saved as it stands, its last reply with it.
+    enter(project, prefer)
+  }, [])
+
+  /**
+   * The chat open becomes `project`'s: the one being left saved as it stands, its last reply with it; then this
+   * one's edit, its chat (what a made video left waiting in it expired), and its place.
+   */
+  const enter = useCallback((project: Project, prefer: 'thread' | 'editor'): void => {
     if (projectRef.current) void persist()
     projectRef.current = project
     clipping.load(project)
@@ -1501,34 +1508,67 @@ export function useCutalong() {
   )
 
   /**
-   * A paid result for a chat that is not the one open (useMake): kept in that chat's own file, as it would have
-   * landed there, and never in the chat open. Results for one chat are kept one after another, and opening that
-   * chat waits for them.
+   * A paid result for a chat that is not the one open (useMake): main reads that chat's file, puts it in as it
+   * would have landed there, and writes it, in that file's turn, so a save or an open of it never crosses it. A
+   * new video never replaces an edit, and with no file of its own chat it is never dropped: either way it goes in
+   * a new chat of its own. Never into the chat open.
    */
   const keepInChat = useCallback(
-    (where: { path: string; name: string }, kept: Kept): Promise<boolean> => {
-      const run = async (): Promise<boolean> => {
-        // Open again by now: it lands there as a reply of its own (useMake), never in the file under it.
-        if (projectRef.current?.path === where.path) return false
-        const project = await api.openProject(where.path)
-        if (!project) return false
-        const brand = chatBrandOf(brandsRef.current, project.edit ? currentCut(project.edit) : null, project.brand ?? null).id
-        await api.saveProject(keepInProject(project, kept, { id: uid(), brand, never: neverOf(brand) }))
-        refreshRecent()
-        return true
-      }
-      const before = keeping.current.get(where.path) ?? Promise.resolve(true)
-      const turn = before
-        .catch(() => false)
-        .then(run)
-        .catch(() => false)
-      keeping.current.set(where.path, turn)
-      void turn.then(() => {
-        if (keeping.current.get(where.path) === turn) keeping.current.delete(where.path)
-      })
-      return turn
+    async (where: { path: string; name: string } | null, name: string, kept: Kept): Promise<{ path: string; name: string } | null> => {
+      // Open again by now (it never is: useMake waits for a chat being opened), so a chat of its own instead.
+      const path = where && projectRef.current?.path !== where.path ? where.path : null
+      const at = await api.keepInChat({ path, name, kept }).catch(() => null)
+      refreshRecent()
+      return at
     },
-    [neverOf, refreshRecent]
+    [refreshRecent]
+  )
+
+  /** The open chat's file, made and saved now if it has none yet (useMake: before anything is spent). */
+  const ensureChat = useCallback(
+    async (name: string): Promise<{ path: string; name: string } | null> => {
+      const project = projectRef.current ?? (await ensureProject(name).catch(() => null))
+      return project ? { path: project.path, name: project.name } : null
+    },
+    [ensureProject]
+  )
+
+  /**
+   * A chat of its own for a new video asked for in a chat that has an edit, which it never replaces (useMake): made
+   * and saved with `first` in it and the chat's brand, the chat being left given a line saying where it went, then
+   * opened, all before anything is spent. A tap meanwhile does nothing, as while any chat opens.
+   */
+  const newChat = useCallback(
+    async (
+      name: string,
+      first: Omit<ChatMessage, 'id'>[],
+      leaving: (name: string) => Omit<ChatMessage, 'id'>
+    ): Promise<{ path: string; name: string } | null> => {
+      if (working.current > 0) return null
+      const seq = ++switchSeq.current
+      switching.current = true
+      let settle = (): void => undefined
+      switchDone.current = new Promise<void>((r) => (settle = r))
+      let project: Project | null = null
+      try {
+        const made = await api.createProject(name.trim() || 'New video', 'cut')
+        const brand = chatChoiceRef.current
+        project = { ...made, chat: first.map((m) => ({ ...m, id: uid() })), ...(brand ? { brand } : {}) }
+        await api.saveProject(project)
+      } catch {
+        project = null
+      } finally {
+        if (switchSeq.current === seq) switching.current = false
+        settle()
+      }
+      if (switchSeq.current !== seq || !project || working.current > 0) return null
+      // The chat left says where its video went, saved with it as it is left.
+      messagesRef.current = [...messagesRef.current, { ...leaving(project.name), id: uid() }]
+      enter(project, 'thread')
+      refreshRecent()
+      return { path: project.path, name: project.name }
+    },
+    [enter, refreshRecent]
   )
 
   // Videos made from nothing (useMake), called in from submit, ask and act.
@@ -1545,7 +1585,14 @@ export function useCutalong() {
     brand: () => brandNow().id,
     chat: () => String(chatKey.current),
     project: () => (projectRef.current ? { path: projectRef.current.path, name: projectRef.current.name } : null),
+    ensureChat,
     keepFor: keepInChat,
+    newChat,
+    goAhead: async () => {
+      const settings = await api.getSettings().catch(() => null)
+      return typeof settings?.makeAutoUnder === 'number' && settings.makeAutoUnder > 0
+    },
+    never: (brand) => neverOf(brand),
     switching: () => switching.current,
     settled: () => switchDone.current,
     notify: (text) => setToast({ text })

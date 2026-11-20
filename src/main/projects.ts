@@ -4,6 +4,7 @@ import { join, basename, dirname } from 'path'
 import { randomUUID } from 'crypto'
 import { projectName } from '../shared/project-name'
 import { upgradeProject } from '../shared/project-upgrade'
+import { freshVideo, keepInProject, type Kept } from '../shared/make/kept'
 import type { EditDoc } from '../shared/edit'
 import type { ChatMessage, Project, ProjectMode, ProjectSummary } from '../shared/types'
 
@@ -112,7 +113,17 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
   return project
 }
 
-export async function openProject(path: string): Promise<Project> {
+/**
+ * Opens a project. It waits for that file's saves still being written, so it
+ * reads what was last saved, and anything it writes back (an upgrade, an edit
+ * brought back, where the file lives now) is written in the same turn, and
+ * only when reading it changed something.
+ */
+export function openProject(path: string): Promise<Project> {
+  return inTurn(path, () => readProject(path))
+}
+
+async function readProject(path: string): Promise<Project> {
   const raw = JSON.parse(await fs.readFile(path, 'utf8')) as Project
   const { project: read, unreadable } = upgradeProject(raw)
   if (unreadable) {
@@ -134,8 +145,65 @@ export async function openProject(path: string): Promise<Project> {
     name: basename(path).replace(/\.(cutalong|chopshop)$/i, ''),
     openedAt: new Date().toISOString()
   }
-  await saveProject(project)
+  // Its place in the recent list moves either way; the file is written only when reading it changed it.
+  const changed = !!back || raw.path !== project.path || raw.name !== project.name || JSON.stringify(read) !== JSON.stringify(raw)
+  if (changed) await writeProject(project)
+  else await touch(project)
   return project
+}
+
+/** What a chat that gave its new video a chat of its own says, so nothing it paid for is out of sight. */
+const movedLine = (kept: Kept, name: string): ChatMessage => ({
+  id: `moved-${randomUUID()}`,
+  role: 'assistant',
+  text: `${kept.doc ? 'Your new video' : 'What came back'} is in a new chat, “${name}”, so the edit here stays as it is.`
+})
+
+/**
+ * Keeps a paid result in a chat's own file while another chat is open (useMake's keepFor): read, merged and
+ * written in that file's turn, so nothing saved to it just before is lost and nothing saved just after is
+ * written over. A new made video never replaces the edit a chat has: it goes in a new chat of its own, and the
+ * chat it was asked in says where. With no file to keep it in (or one that is gone), it goes in a new chat too.
+ * Returns where it was kept.
+ */
+export async function keepInFile(
+  path: string | null,
+  name: string,
+  kept: Kept
+): Promise<{ path: string; name: string } | null> {
+  const id = (): string => `kept-${randomUUID()}`
+  if (path) {
+    const put = await inTurn(path, async () => {
+      let project: Project
+      try {
+        project = await readProject(path)
+      } catch {
+        return 'gone' as const
+      }
+      const next = keepInProject(project, kept, id())
+      if (!next) return 'moved' as const
+      await writeProject(next)
+      return { path, name: project.name }
+    })
+    if (put !== 'gone' && put !== 'moved') return put
+    if (put === 'moved' && !freshVideo(kept)) return null
+  }
+  // A chat of its own: made, and the result kept in it, in its turn.
+  const made = await createProject(name, 'cut')
+  const kept2 = await inTurn(made.path, async () => {
+    const next = keepInProject(made, kept, id())
+    if (!next) return null
+    await writeProject(next)
+    return { path: made.path, name: made.name }
+  })
+  if (kept2 && path) {
+    // The chat it was asked in says where it went.
+    await inTurn(path, async () => {
+      const project = await readProject(path).catch(() => null)
+      if (project) await writeProject({ ...project, chat: [...(project.chat ?? []), movedLine(kept, made.name)] })
+    }).catch(() => undefined)
+  }
+  return kept2
 }
 
 /** What the chat says, once, when an edit comes back. */
@@ -167,26 +235,32 @@ async function editLeftBeside(path: string): Promise<EditDoc | null> {
   }
 }
 
-/** Each project's saves, one after another in the order they were asked for. */
-const saving = new Map<string, Promise<void>>()
+/** Each project file's saves, opens and keeps, one after another in the order they were asked for. */
+const turns = new Map<string, Promise<void>>()
+
+/** Runs `work` on one project file once everything asked of that file before it is done. */
+function inTurn<T>(path: string, work: () => Promise<T>): Promise<T> {
+  const turn = (turns.get(path) ?? Promise.resolve()).catch(() => undefined).then(work)
+  const done = turn.then(
+    () => undefined,
+    () => undefined
+  )
+  turns.set(path, done)
+  void done.then(() => {
+    if (turns.get(path) === done) turns.delete(path)
+  })
+  return turn
+}
 
 /**
  * Saves a project. The app often saves twice at once (a version, then what
  * goes with it), and a big project is written in pieces: two writes at once
  * interleaved in the file and left it unreadable. So saves of one project
- * wait their turn, and each is written whole beside the file, then renamed
- * over it, so nothing ever reads half a project.
+ * wait their turn, opens and keeps of it with them, and each is written whole
+ * beside the file, then renamed over it, so nothing ever reads half a project.
  */
 export function saveProject(project: Project): Promise<void> {
-  const turn = (saving.get(project.path) ?? Promise.resolve())
-    .catch(() => undefined)
-    .then(() => writeProject(project))
-  saving.set(project.path, turn)
-  const forget = (): void => {
-    if (saving.get(project.path) === turn) saving.delete(project.path)
-  }
-  turn.then(forget, forget)
-  return turn
+  return inTurn(project.path, () => writeProject(project))
 }
 
 async function writeProject(project: Project): Promise<void> {

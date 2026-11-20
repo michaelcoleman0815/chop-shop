@@ -40,6 +40,7 @@ import type { VlogReply } from '../shared/vlog/reply'
 import type { Change, Consent, Draft, Reply as MakeReply, ShotChange } from '../shared/make/draft'
 import type { MakeQuestion } from '../shared/make/questions'
 import type { Make } from '../shared/make/schema'
+import type { Kept } from '../shared/make/kept'
 
 type Progress = { stage: string; percent: number | null }
 
@@ -683,6 +684,13 @@ const api = {
     ipcRenderer.invoke('project:create', name, mode),
   openProject: (path?: string): Promise<Project | null> => ipcRenderer.invoke('project:open', path),
   saveProject: (project: Project): Promise<void> => ipcRenderer.invoke('project:save', project),
+  /**
+   * A paid result kept in its own chat's file while another chat is open: read, merged and written in that file's
+   * turn. A new made video never replaces an edit; it goes in a new chat then, as with no file to keep it in.
+   * Where it was kept, or null.
+   */
+  keepInChat: (req: { path: string | null; name: string; kept: Kept }): Promise<{ path: string; name: string } | null> =>
+    ipcRenderer.invoke('project:keep', req),
   forgetProject: (path: string): Promise<void> => ipcRenderer.invoke('project:forget', path),
 
   reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),

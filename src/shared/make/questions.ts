@@ -272,7 +272,62 @@ export function namesEditPart(text: string): boolean {
 export function isDeferral(text: string): boolean {
   const t = text.trim().replace(/[‘’]/g, "'")
   if (!t || QUESTION.test(t)) return false
-  return HOLD_WHOLE.test(t) || (HOLD_ANY.test(t) && !saysSomething(t.replace(every(HOLD_ANY), ' ')))
+  return HOLD_WHOLE.test(t) || (HOLD_ANY.test(t) && !hasContent(t.replace(every(HOLD_ANY), ' ')))
+}
+
+/**
+ * Whether words say anything at all: a word that is not filler, or a number or a length ("3", "90 s", "1:30",
+ * "a minute"), which always count, however short.
+ */
+export function hasContent(words: string): boolean {
+  return saysSomething(words) || /\d/.test(words) || LENGTH_IN.test(plainLengths(words, true))
+}
+
+/** A part of a reply that only puts things off ("hold on", "not yet", "later", "let me think"). */
+const holdOnly = (c: string): boolean => HOLD_WHOLE.test(c) || (HOLD_ANY.test(c) && !hasContent(c.replace(every(HOLD_ANY), ' ')))
+/** A part of a reply that only says no ("no", "no thanks", "never mind", "cancel"). */
+const noOnly = (c: string): boolean => NO_WHOLE.test(c) || (NO_ANY.test(c) && !hasContent(c.replace(every(NO_ANY), ' ')))
+
+/**
+ * A reply to a waiting quote taken apart: whether it puts things off, whether it says no, and what is left once
+ * the parts that only do that are taken out ("hold on, make it 3 minutes" puts off and leaves "make it 3
+ * minutes"), with whether that says anything. What is left is read for a change before either counts, so a
+ * change said with them is never lost.
+ */
+export function quoteReplyParts(text: string): { later: boolean; no: boolean; rest: string; says: boolean } {
+  const t = text.trim().replace(/[‘’]/g, "'")
+  let later = false
+  let no = false
+  const kept: string[] = []
+  for (const part of t.split(/\s*(?:[,;.!?…]+|\s[-–—]\s|\band then\b|\bbut\b)\s*/i)) {
+    const c = part.trim()
+    if (!c) continue
+    if (holdOnly(c)) later = true
+    else if (noOnly(c)) no = true
+    else kept.push(c)
+  }
+  const rest = kept.join(', ')
+  return { later, no, rest, says: hasContent(rest) }
+}
+
+/** Words that ask to change something about a video ("make it shorter", "a different voice", "less grain"). */
+const CHANGE_WORDS =
+  /\b(?:change|switch|swap|instead|different|another|more|less|fewer|shorter|longer|quicker|briefer|cheaper|minutes?|mins?|seconds?|secs?|hours?|voice|narrat\w*|read by|look|style|grain|maps?|explainer|documentary|animation|cartoon|vertical|portrait|landscape|square|widescreen)\b/i
+
+/** Whether words ask to change something, so that if they cannot be read as a change it is said, never let go. */
+export function looksLikeChange(text: string): boolean {
+  return CHANGE_WORDS.test(text.trim().replace(/[‘’]/g, "'"))
+}
+
+/**
+ * What a reply that asks to change a quote, but says nothing it can be changed to, is answered with: the quote
+ * did not change, and why, so its button never makes what was just asked to be changed.
+ */
+export function unplacedChange(words: string): string {
+  const said = words.trim().replace(/[.!?]+$/, '')
+  if (/\b(?:shorter|longer|quicker|briefer)\b/i.test(said))
+    return `The quote hasn’t changed: “${said}” doesn’t say how long, so it stays as it was. Say a length, like “make it 3 minutes”, or press its button to make it as it is.`
+  return `The quote hasn’t changed: I couldn’t read “${said}” as a change to it, so it stays as it was. Say its length, voice or look, like “make it 3 minutes”, or press its button to make it as it is.`
 }
 
 /** Each style the words can say, what it adds to the prompt, and the style that is left when it is turned down. */
@@ -332,6 +387,9 @@ const LENGTH_VAGUE =
 /** A length said in words ("about 5 minutes", "a minute"); a second or two is a moment, not a length. */
 const LENGTH_SAID =
   /\b(?:about\s+|around\s+|roughly\s+|maybe\s+|more like\s+|like\s+)?(?:(?:\d+(?:\.\d+)?|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|ninety)\s*[- ]?\s*(?:hours?|hrs?|minutes?|mins?)|(?:\d{2,}|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|ninety)\s*[- ]?\s*(?:seconds?|secs?))\b(?:\s+long)?|\bhalf an hour\b|\ba minute and a half\b/gi
+
+/** The same, once: whether words say a length at all. */
+const LENGTH_IN = new RegExp(LENGTH_SAID.source, 'i')
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -476,8 +534,8 @@ export function readAnswer(text: string, questions: MakeQuestion[], opts: { edit
   if (opts.editOpen && EDIT.test(t)) return { kind: 'edit' }
   // Only that, with nothing else that names something.
   const without = (re: RegExp): string => t.replace(every(re), ' ')
-  if ((HOLD_ANY.test(t) && !saysSomething(without(HOLD_ANY))) || HOLD_WHOLE.test(t)) return { kind: 'wait', asked: QUESTION.test(t) }
-  if (NO_WHOLE.test(t) || (NO_ANY.test(t) && !saysSomething(without(NO_ANY)))) return { kind: 'no' }
+  if ((HOLD_ANY.test(t) && !hasContent(without(HOLD_ANY))) || HOLD_WHOLE.test(t)) return { kind: 'wait', asked: QUESTION.test(t) }
+  if (NO_WHOLE.test(t) || (NO_ANY.test(t) && !hasContent(without(NO_ANY)))) return { kind: 'no' }
   if (YES_WHOLE.test(t) || isAcceptance(t) || FILLER.test(t)) return { kind: 'wait', asked: false }
   if (QUESTION.test(t) && !saysSomething(t.replace(QUESTION_WORDS, ' '))) return { kind: 'wait', asked: true }
   // An edit's words with no edit open: nothing to edit, and never what the video is about.

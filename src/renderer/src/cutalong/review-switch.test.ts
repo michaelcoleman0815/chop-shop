@@ -34,7 +34,7 @@ import type { ChatMessage, Project } from '../../../shared/types'
 import type { ParseCall } from '../../../main/make/claude'
 import { changeFor } from '../../../main/make/remake'
 import { draftFor, quoteDraft, revise, type DraftDeps } from '../../../main/make/run'
-import { keepInProject } from './kept'
+import { keepInProject } from '../../../shared/make/kept'
 import { useMake } from './useMake'
 import type { Action, Msg } from './components/Message'
 
@@ -207,13 +207,20 @@ function app(settings: Settings, opts: { guarded: boolean; open?: EditDoc | null
     brand: () => 'default',
     chat: () => String(key),
     project: () => (open ? { path: open, name: open } : null),
-    // useCutalong's keepInChat: the chat's own file, through the real keepInProject, never the chat open.
-    keepFor: async (where, kept) => {
-      if (open === where.path) return false
-      const f = files.get(where.path)
-      if (!f) return false
-      files.set(where.path, keepInProject(f, kept, { id: `k${++n}`, brand: 'default', never: [] }))
-      return true
+    // main's keepInFile: the chat's own file, through the real keepInProject, never the chat open; with no file,
+    // or a new video for a chat with an edit, a new chat of its own.
+    keepFor: async (where, name, kept) => {
+      const target = where && open !== where.path ? files.get(where.path) : undefined
+      const next = target ? keepInProject(target, kept, `k${++n}`) : null
+      if (where && target && next) {
+        files.set(where.path, next)
+        return { path: where.path, name: where.path }
+      }
+      const path = `${name} (new)`
+      const fresh = keepInProject(file(path), kept, `k${++n}`)
+      if (!fresh) return null
+      files.set(path, fresh)
+      return { path, name: path }
     },
     ...(opts.guarded ? { switching: () => switching, settled: () => switchDone } : {}),
     notify: (text) => notices.push(text)

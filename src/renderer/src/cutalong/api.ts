@@ -54,6 +54,7 @@ export type CutalongApi = Pick<
   | 'createProject'
   | 'openProject'
   | 'saveProject'
+  | 'keepInChat'
   | 'mediaPreviews'
   | 'mediaPoster'
   | 'openMedia'

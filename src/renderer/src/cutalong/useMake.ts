@@ -7,15 +7,18 @@ import {
   isAcceptance,
   isDeferral,
   isYes,
+  looksLikeChange,
   mergeReads,
   namesEditPart,
   NO_EDIT,
+  quoteReplyParts,
   quoteWords,
   readAnswer,
   readBack,
   readCard,
   TAP_TO_GO,
   UNREAD,
+  unplacedChange,
   waitReply,
   type MakeQuestion,
   type Read
@@ -30,7 +33,7 @@ import { api } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import { isAudioFile, isVideoFile } from './format'
-import { renumber, type Kept } from './kept'
+import { renumber, type Kept } from '../../../shared/make/kept'
 
 /**
  * Videos made from nothing, in the session. "make a 2 minute cinematic
@@ -102,8 +105,29 @@ export interface MakeDeps {
   chat?: () => string
   /** The open chat's file, once it has one: a paid result is kept in the chat that paid for it. */
   project?: () => { path: string; name: string } | null
-  /** Keeps a paid result in its own chat's file while another chat is open (useCutalong). False when it could not. */
-  keepFor?: (project: { path: string; name: string }, kept: Kept) => Promise<boolean>
+  /**
+   * The open chat's file, made and saved now if it has none yet: done before anything is spent, so what comes back
+   * always has a chat to go to.
+   */
+  ensureChat?: (name: string) => Promise<{ path: string; name: string } | null>
+  /**
+   * Keeps a paid result in its own chat's file while another chat is open (main, in that file's turn): with no file,
+   * or a new video for a chat that has an edit, it goes in a new chat of its own. Where it was kept, or null.
+   */
+  keepFor?: (project: { path: string; name: string } | null, name: string, kept: Kept) => Promise<{ path: string; name: string } | null>
+  /**
+   * A chat of its own for a new video, as the chat it was asked in has an edit it never replaces: made with `first`
+   * in it and saved, the chat being left given the line `leaving` says, then opened. Null when it could not be.
+   */
+  newChat?: (
+    name: string,
+    first: Omit<ChatMessage, 'id'>[],
+    leaving: (name: string) => Omit<ChatMessage, 'id'>
+  ) => Promise<{ path: string; name: string } | null>
+  /** Whether Settings makes a new video straight away when it costs less than its amount. */
+  goAhead?: () => Promise<boolean>
+  /** What a brand never uses, by its id: kept with a shot made for a chat not open. */
+  never?: (brand: string) => string[]
   /** Another chat is being opened: a tap that would write, change or make anything does nothing until it has. */
   switching?: () => boolean
   /** Resolves once no other chat is being opened: a result that comes back meanwhile goes where that leaves it. */
@@ -112,17 +136,24 @@ export interface MakeDeps {
   notify?: (text: string) => void
 }
 
-/** Where a paid piece of work was asked for: its chat, and that chat's file once it has one. */
+/** Where a paid piece of work was asked for: its chat, that chat's file once it has one, and its brand. */
 interface Origin {
   key: string
   project: { path: string; name: string } | null
+  brand: string
 }
 
-/** Paid work under way: the chat it was asked in, what it is, its stage, and where its progress and Stop show. */
+/**
+ * Paid work under way, each its own (one ending never takes another's line or Stop): what it does, the chat it
+ * was asked in, what it is, its stage, and where its progress and Stop show.
+ */
 interface Run {
+  kind: 'script' | 'requote' | 'make' | 'shot'
   origin: Origin
   /** "your video about the oil boom". */
   what: string
+  /** A chat of its own, should it need one: "The oil boom". */
+  name: string
   stage: string | null
   /** Its progress, with Stop, and the chat that shows it. */
   msg: string
@@ -191,6 +222,15 @@ const CAME_AWAY = 'It came back after you left this chat, so it has no button. A
 
 /** Questions that came back for a chat already closed. */
 const ASK_AWAY = 'You left this chat before I could ask about this video. Ask again here and I’ll ask fresh.'
+
+/** A new video's quote, in a chat with an edit: the edit is never replaced. */
+const NEW_CHAT = 'It goes in a new chat, so your edit here stays as it is.'
+
+/** A new chat for a new video could not be made: so nothing was. */
+const NO_NEW_CHAT = 'I couldn’t make a new chat for it, so nothing was made or spent, and your edit here stays as it is. Press its button to try again.'
+
+/** A new chat for a new video was overtaken by another chat being opened: so nothing was made. */
+const NO_NEW_CHAT_AWAY = 'Another chat opened before the new one for your video was ready, so nothing was made or spent.'
 
 /** What is typed in a chat whose make questions, read-back or quote expired when it was opened again. */
 const EXPIRED_WAITS = 'What was waiting above has expired, so nothing is written or made from it. Ask again for a fresh quote, or say “never mind”.'
@@ -271,6 +311,16 @@ const aboutOf = (brief: Brief | null): string => {
 
 const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
+/** A chat's name for a video of its own: its topic, as the chat would be named had it been asked for there. */
+const nameOf = (brief: Brief | null): string => {
+  const topic = brief?.from === 'topic' ? cleanTopic(brief.topic) : ''
+  return topic && topic !== 'what you asked for' ? capital(topic).slice(0, 60) : 'New video'
+}
+
+/** Said instead of asking main for anything while a video or a shot is made. */
+const stillMaking = (run: { what: string; origin: Origin }): string =>
+  `I’m still making ${run.what} in “${run.origin.project?.name ?? 'this chat'}”. Stop it, or wait until it’s done.`
+
 /** A quote kept in a chat that was closed when it came back: what it said, and its script to read, with no button. */
 const keptQuote = (draft: Draft, reply: Reply, text?: string): Omit<ChatMessage, 'id'> => ({
   role: 'assistant',
@@ -295,7 +345,7 @@ export function useMake(deps: MakeDeps): Makes {
   const live = useRef(deps)
   live.current = deps
   /** Every quote shown, by its own key: its draft, the price its button showed, and its fingerprint. */
-  const drafts = useRef(new Map<string, { draft: Draft; total: number; fingerprint: string }>())
+  const drafts = useRef(new Map<string, { draft: Draft; total: number; fingerprint: string; reply: Reply }>())
   /** Shot changes quoted, each with the edit it was quoted on: it is made only while that edit is open. */
   const changes = useRef(new Map<string, { change: ShotChange; doc: string }>())
   /** The newest quote, the only one with a button, and the message that shows it. */
@@ -350,43 +400,73 @@ export function useMake(deps: MakeDeps): Makes {
     else push({ role: 'assistant', text })
   }, [])
 
-  /** Paid work under way, and its line for wherever the person is. */
-  const running = useRef<Run | null>(null)
+  /** Paid work under way, each its own token: one ending takes away only its own line and Stop. */
+  const runs = useRef(new Set<Run>())
   const [runLine, setRunLine] = useState<{ what: string; stage: string | null } | null>(null)
 
-  /** Paid work begins in the chat open, its progress in `msg`. */
-  const begin = useCallback((what: string, msg: string): Run => {
-    const run: Run = {
-      origin: { key: owner.current, project: live.current.project?.() ?? null },
-      what,
-      stage: null,
-      msg,
-      msgKey: owner.current,
-      mirror: null,
-      mirrorKey: null
-    }
-    running.current = run
-    setRunLine({ what, stage: null })
-    return run
+  /** The work whose line shows wherever the person is: a video or a shot being made first, else the newest. */
+  const shownRun = useCallback((): Run | null => {
+    const all = [...runs.current]
+    return all.filter((r) => r.kind === 'make' || r.kind === 'shot').pop() ?? all.pop() ?? null
   }, [])
+  const showLine = useCallback((): void => {
+    const r = shownRun()
+    setRunLine(r ? { what: r.what, stage: r.stage } : null)
+  }, [shownRun])
+
+  /** A video tapped and being got ready (its new chat made, its file saved): it counts as being made from the tap on. */
+  const claimed = useRef<{ what: string; origin: Origin } | null>(null)
+
+  /** A video or a shot being made now, or tapped and being got ready: while one is, no other make is asked of main. */
+  const making = useCallback(
+    (): { what: string; origin: Origin } | null =>
+      [...runs.current].find((r) => r.kind === 'make' || r.kind === 'shot') ?? claimed.current,
+    []
+  )
+
+  /** Paid work begins in the chat open, its progress in `msg`. */
+  const begin = useCallback(
+    (kind: Run['kind'], what: string, name: string, msg: string): Run => {
+      const run: Run = {
+        kind,
+        origin: { key: owner.current, project: live.current.project?.() ?? null, brand: live.current.brand() },
+        what,
+        name,
+        stage: null,
+        msg,
+        msgKey: owner.current,
+        mirror: null,
+        mirrorKey: null
+      }
+      runs.current.add(run)
+      showLine()
+      return run
+    },
+    [showLine]
+  )
 
   /** The line another chat shows while paid work runs in its own. */
   const awayLine = (run: Run): string =>
     `I’m working on ${run.what} in its chat${run.origin.project ? `, “${run.origin.project.name}”` : ''}. Stop it here if you like.`
 
   /** Its progress, on its own reply and on the line another chat shows. */
-  const progressed = useCallback((run: Run, p: NonNullable<Msg['progress']>): void => {
-    const { patch } = live.current
-    run.stage = p.stage
-    if (run.msgKey === owner.current) patch(run.msg, { progress: p })
-    if (running.current === run) setRunLine({ what: run.what, stage: p.stage })
-  }, [])
+  const progressed = useCallback(
+    (run: Run, p: NonNullable<Msg['progress']>): void => {
+      const { patch } = live.current
+      run.stage = p.stage
+      if (run.msgKey === owner.current) patch(run.msg, { progress: p })
+      showLine()
+    },
+    [showLine]
+  )
 
-  const end = useCallback((run: Run): void => {
-    if (running.current !== run) return
-    running.current = null
-    setRunLine(null)
-  }, [])
+  /** This work is over: only its own line and Stop go. */
+  const end = useCallback(
+    (run: Run): void => {
+      if (runs.current.delete(run)) showLine()
+    },
+    [showLine]
+  )
 
   /**
    * Where the chat a paid piece of work was asked in is now: still open, closed and opened again, or not open. A chat
@@ -412,12 +492,14 @@ export function useMake(deps: MakeDeps): Makes {
    * What paid work brought back for a chat that is not the one open: kept in that chat's own file, and never in the
    * one open, which says where it is.
    */
-  const away = useCallback(async (run: Run, kept: Kept, news: 'ready' | 'quote' | 'news'): Promise<void> => {
-    const { keepFor, patch, push } = live.current
-    const where = run.origin.project
-    const saved = where && keepFor ? await keepFor(where, kept).catch(() => false) : false
-    const chat = where ? `its chat, “${where.name}”` : 'its chat'
-    const text = !saved
+  const away = useCallback(async (run: Run, kept: Omit<Kept, 'brand' | 'never'>, news: 'ready' | 'quote' | 'news', target?: string): Promise<void> => {
+    const { keepFor, never, patch, push } = live.current
+    const full: Kept = { ...kept, brand: run.origin.brand, never: never?.(run.origin.brand) ?? [] }
+    // Never dropped: with no file of its own chat, or a new video for a chat with an edit, it goes in a new chat.
+    const where = keepFor ? await keepFor(run.origin.project, run.name, full).catch(() => null) : null
+    const elsewhere = !!where && where.path !== run.origin.project?.path
+    const chat = where ? `${elsewhere ? 'a new chat' : 'its chat'}, “${where.name}”` : 'its chat'
+    const text = !where
       ? news === 'ready'
         ? `${capital(run.what)} is made, but its chat was closed and I couldn’t keep it there.`
         : news === 'quote'
@@ -428,14 +510,15 @@ export function useMake(deps: MakeDeps): Makes {
         : news === 'quote'
           ? `The quote for ${run.what} is in ${chat}.`
           : `What happened with ${run.what} is in ${chat}.`
-    if (run.mirror && run.mirrorKey === owner.current) patch(run.mirror, { text, actions: [] })
+    if (target) patch(target, { progress: null, text, actions: [] })
+    else if (run.mirror && run.mirrorKey === owner.current) patch(run.mirror, { text, actions: [] })
     else push({ role: 'assistant', text })
   }, [])
 
-  /** A quote shown: kept under a key of its own, with the price its button shows. */
-  const keep = useCallback((draft: Draft): string => {
+  /** A quote shown: kept under a key of its own, with the price its button shows and what it said. */
+  const keep = useCallback((draft: Draft, reply: Reply): string => {
     const key = newKey('quote')
-    drafts.current.set(key, { draft, total: draft.quote.total, fingerprint: draftFingerprint(draft) })
+    drafts.current.set(key, { draft, total: draft.quote.total, fingerprint: draftFingerprint(draft), reply })
     setVersion((n) => n + 1)
     return key
   }, [])
@@ -468,7 +551,32 @@ export function useMake(deps: MakeDeps): Makes {
         label: scriptShown ? 'Hide the script' : 'Read the script',
         payload: JSON.stringify({ do: 'script', id: key })
       })
-    return { ...shown(reply), actions, make: key, script: scriptOf(draft) }
+    // A new video, asked for in a chat with an edit: it goes in a chat of its own, and the quote says so.
+    const elsewhere = !draft.into && !!live.current.docRef.current
+    return {
+      ...shown(reply),
+      ...(elsewhere ? { aside: [reply.aside, NEW_CHAT].filter(Boolean).join(' ') } : {}),
+      actions,
+      make: key,
+      script: scriptOf(draft)
+    }
+  }, [])
+
+  /**
+   * A new video asked for in a chat that has an edit: a chat of its own, made, saved and opened before anything is
+   * spent, with what was asked (and its quote) in it, and a line in the chat left saying where it went. False when
+   * no new chat could be made.
+   */
+  const moveToNewChat = useCallback(async (brief: Brief | null, ask: string, quoted: Omit<ChatMessage, 'id'> | null): Promise<boolean> => {
+    const { newChat } = live.current
+    if (!newChat) return false
+    const what = aboutOf(brief)
+    const first: Omit<ChatMessage, 'id'>[] = [{ role: 'user', text: ask }, ...(quoted ? [quoted] : [])]
+    const where = await newChat(nameOf(brief), first, (name) => ({
+      role: 'assistant',
+      text: `${capital(what)} goes in a new chat, “${name}”, so your edit here stays as it is.`
+    })).catch(() => null)
+    return !!where
   }, [])
 
   /** A made video in the session: a new edit, or a new version of the one it was made from. */
@@ -510,10 +618,25 @@ export function useMake(deps: MakeDeps): Makes {
     []
   )
 
+  /**
+   * A new video come back into a chat that has an edit (Settings changed while it was written, say): it never takes
+   * that edit's place, so it is kept in a chat of its own, and this one says where.
+   */
+  const intrudes = (r: { doc: EditDoc; into: Draft['into'] | null }): boolean => {
+    const d = live.current.docRef.current
+    return !r.into && !!d && d.id !== r.doc.id
+  }
+
   /** Makes a confirmed draft: the one its button showed, for the price it showed. */
   const go = useCallback(
     async (key: string): Promise<void> => {
       const { push, patch, during } = live.current
+      // One video or shot at a time: nothing more is asked of main while one is made.
+      const busy = making()
+      if (busy) {
+        push({ role: 'assistant', text: stillMaking(busy) })
+        return
+      }
       const entry = drafts.current.get(key)
       if (!entry) {
         push({
@@ -538,20 +661,54 @@ export function useMake(deps: MakeDeps): Makes {
         push({ role: 'assistant', text: OTHER_EDIT })
         return
       }
+      // Anything else paid under way (a script being written): main does one at a time, so nothing is got ready for it.
+      const other = [...runs.current][0]
+      if (other) {
+        push({ role: 'assistant', text: `I’m still working on ${other.what}. Wait for it, or stop it first.` })
+        return
+      }
       // What was read back and not confirmed goes: the quote is made as it was quoted.
       if (back.current) {
         patch(back.current.msg, { actions: [] })
         back.current = null
       }
-      patch(pending.current.msg, { actions: [], make: undefined })
+      const quoteAt = pending.current.msg
+      patch(quoteAt, { actions: [], make: undefined })
       pending.current = null
-      const msg = push({
-        role: 'assistant',
-        text: '',
-        progress: { stage: 'Starting', percent: null },
-        actions: STOP
-      })
-      const run = begin(aboutOf(entry.draft.brief), msg)
+      const mine = owner.current
+      // From the tap on it counts as being made: nothing else is asked of main while its chat is got ready.
+      claimed.current = { what: aboutOf(entry.draft.brief), origin: { key: mine, project: live.current.project?.() ?? null, brand: live.current.brand() } }
+      let begun: Run | null = null
+      try {
+        // A new video never takes the place of an edit: with one here, it is made in a chat of its own, made, saved
+        // and opened now, before anything is spent, and what was asked and its quote go with it.
+        if (!into && live.current.docRef.current) {
+          const quoted = { ...keptReply(entry.reply), script: scriptOf(entry.draft) }
+          if (!(await moveToNewChat(entry.draft.brief, entry.draft.brief.ask, quoted))) {
+            // Nothing was made or spent. Still here, its quote keeps its button to try again; overtaken by another
+            // chat, it says so where the person is.
+            if (still(mine)) {
+              showing(key, quoteAt)
+              live.current.patch(quoteAt, quoteMsg(key, entry.draft, entry.reply))
+              live.current.push({ role: 'assistant', text: NO_NEW_CHAT })
+            } else say(NO_NEW_CHAT_AWAY)
+            return
+          }
+        }
+        // Its chat has a file before anything is spent, so what comes back always has somewhere to go.
+        await live.current.ensureChat?.(nameOf(entry.draft.brief))
+        const msg = live.current.push({
+          role: 'assistant',
+          text: '',
+          progress: { stage: 'Starting', percent: null },
+          actions: STOP
+        })
+        begun = begin('make', aboutOf(entry.draft.brief), nameOf(entry.draft.brief), msg)
+      } finally {
+        claimed.current = null
+      }
+      if (!begun) return
+      const run = begun
       const off = api.onCutProgress((p) => progressed(run, p))
       let r: Awaited<ReturnType<typeof api.makeGo>>
       try {
@@ -580,20 +737,24 @@ export function useMake(deps: MakeDeps): Makes {
       if (!r.ok) {
         // A new price, another service, or the rest after a Stop: a new quote, with its own button.
         if (r.draft && r.reply) {
-          const next = keep(r.draft)
+          const next = keep(r.draft, r.reply)
           showing(next, at)
-          patch(at, { ...quoteMsg(next, r.draft, r.reply), text: r.message })
-        } else patch(at, { progress: null, text: r.message, error: true })
+          live.current.patch(at, { ...quoteMsg(next, r.draft, r.reply), text: r.message })
+        } else live.current.patch(at, { progress: null, text: r.message, error: true })
+        return
+      }
+      if (intrudes(r)) {
+        await away(run, { message: keptReply(r.reply, OPEN), doc: r.doc, into: null }, 'ready', at)
         return
       }
       land(r, at)
     },
-    [away, begin, end, keep, land, progressed, quoteMsg, replyFor, showing, sync, whereIs]
+    [away, begin, end, keep, land, making, moveToNewChat, progressed, quoteMsg, replyFor, say, showing, still, sync, whereIs]
   )
 
   const quote = useCallback(
     async (msg: string, draft: Draft, reply: Reply): Promise<string> => {
-      const key = keep(draft)
+      const key = keep(draft, reply)
       showing(key, msg)
       live.current.patch(msg, quoteMsg(key, draft, reply))
       return key
@@ -613,16 +774,33 @@ export function useMake(deps: MakeDeps): Makes {
       opts: { answered?: boolean; quoteFirst?: boolean; reading?: string; consent: Consent }
     ): Promise<void> => {
       const { answered = false, quoteFirst = false, reading, consent } = opts
+      const { during } = live.current
+      // One video or shot at a time: nothing more is asked of main while one is made.
+      const busy = making()
+      if (busy) {
+        live.current.push({ role: 'assistant', text: stillMaking(busy) })
+        return
+      }
       if (consent === 'tap') restored.current = false
-      const { push, during } = live.current
+      const brief = readAsk(reading ?? text, { recording })
+      // A new video never takes the place of an edit. Where Settings may make it straight away, it goes in a chat of
+      // its own now, before anything is spent; otherwise its quote says it will, and its button moves it.
+      if (!quoteFirst && live.current.docRef.current && (await live.current.goAhead?.())) {
+        if (!(await moveToNewChat(brief, text, null))) {
+          live.current.push({ role: 'assistant', text: NO_NEW_CHAT })
+          return
+        }
+      }
+      // Its chat has a file before Claude is asked anything, so what comes back always has somewhere to go.
+      await live.current.ensureChat?.(nameOf(brief))
       // Writing the script spends, and Settings may make the video straight after: Stop stays in reach.
-      const msg = push({
+      const msg = live.current.push({
         role: 'assistant',
         text: '',
         progress: { stage: 'Reading what you asked for', percent: null },
         actions: STOP
       })
-      const run = begin(aboutOf(readAsk(reading ?? text, { recording })), msg)
+      const run = begin('script', aboutOf(brief), nameOf(brief), msg)
       const off = api.onCutProgress((p) => progressed(run, p))
       let r: Awaited<ReturnType<typeof api.makeStart>>
       try {
@@ -680,9 +858,13 @@ export function useMake(deps: MakeDeps): Makes {
         await quote(at, r.draft, r.reply)
         return
       }
+      if (intrudes(r)) {
+        await away(run, { message: keptReply(r.reply, OPEN), doc: r.doc, into: null }, 'ready', at)
+        return
+      }
       land(r, at)
     },
-    [away, begin, end, land, progressed, quote, replyFor, sync, whereIs]
+    [away, begin, end, land, making, moveToNewChat, progressed, quote, replyFor, sync, whereIs]
   )
 
   /** The read-back waiting goes, and its buttons with it. */
@@ -781,6 +963,12 @@ export function useMake(deps: MakeDeps): Makes {
   const requote = useCallback(
     async (b: Extract<Back, { kind: 'quote' }>): Promise<void> => {
       const { push, patch, during } = live.current
+      // One video or shot at a time: nothing more is asked of main while one is made.
+      const busy = making()
+      if (busy) {
+        push({ role: 'assistant', text: stillMaking(busy) })
+        return
+      }
       const draft = drafts.current.get(b.id)?.draft
       if (!draft || pending.current?.id !== b.id) {
         push({ role: 'assistant', text: 'A newer quote replaced that one. Tell me the change again and I’ll read it back.' })
@@ -789,7 +977,7 @@ export function useMake(deps: MakeDeps): Makes {
       requoting.current = b.id
       // A script written again is paid for: Stop stays in reach.
       const msg = push({ role: 'assistant', text: '', progress: { stage: 'Quoting it again', percent: null }, actions: STOP })
-      const run = begin(aboutOf(draft.brief), msg)
+      const run = begin('requote', aboutOf(draft.brief), nameOf(draft.brief), msg)
       const off = api.onCutProgress((p) => progressed(run, p))
       let r: Awaited<ReturnType<typeof api.makeRevise>>
       try {
@@ -822,7 +1010,7 @@ export function useMake(deps: MakeDeps): Makes {
       }
       await quote(at, r.draft, r.reply)
     },
-    [away, begin, end, progressed, quote, replyFor, sync, whereIs]
+    [away, begin, end, making, progressed, quote, replyFor, sync, whereIs]
   )
 
   /** A read-back's button, tapped: Yes sends exactly what it read back; Not now leaves everything as it was. */
@@ -841,7 +1029,7 @@ export function useMake(deps: MakeDeps): Makes {
         }
         if (pick === 'new') {
           // The new video takes the place of what was waiting, as a new ask always has; it is quoted before anything more.
-          if (pending.current) patch(pending.current.msg, { actions: [] })
+          if (pending.current) patch(pending.current.msg, { actions: [], make: undefined })
           pending.current = null
           if (asking.current) {
             patch(asking.current.msg, { makeAsk: undefined, aside: 'Left unanswered, so nothing was written.' })
@@ -879,6 +1067,12 @@ export function useMake(deps: MakeDeps): Makes {
   /** One shot made again for its confirmed quote, as a new version. */
   const reshoot = useCallback(async (key: string): Promise<void> => {
     const { docRef, push, patch, setDoc, applyAsVersion, during } = live.current
+    // One video or shot at a time: nothing more is asked of main while one is made.
+    const busy = making()
+    if (busy) {
+      push({ role: 'assistant', text: stillMaking(busy) })
+      return
+    }
     const kept = changes.current.get(key)
     const d = docRef.current
     if (!kept || !d?.make) {
@@ -904,7 +1098,7 @@ export function useMake(deps: MakeDeps): Makes {
       progress: { stage: 'Starting', percent: null },
       actions: STOP
     })
-    const run = begin(`a shot of ${aboutOf(d.make.brief)}`, msg)
+    const run = begin('shot', `a shot of ${aboutOf(d.make.brief)}`, nameOf(d.make.brief), msg)
     const off = api.onCutProgress((p) => progressed(run, p))
     let r: Awaited<ReturnType<typeof api.makeShot>>
     try {
@@ -956,7 +1150,7 @@ export function useMake(deps: MakeDeps): Makes {
       text: done ? `v${done.n} is ready. ${r.reply.text}` : r.reply.text,
       actions: OPEN
     })
-  }, [away, begin, end, progressed, replyFor, sync, whereIs])
+  }, [away, begin, end, making, progressed, replyFor, sync, whereIs])
 
   /** What a change of a made video costs, shown, or done straight away when it costs nothing or is under the amount. */
   const offer = useCallback(
@@ -1010,6 +1204,11 @@ export function useMake(deps: MakeDeps): Makes {
       const video = files.some((f) => isVideoFile(f.name))
       // The voice-over a made video was waiting for.
       if (waitingRecording.current && docRef.current?.make && audio.length > 0 && !video) {
+        const busy = making()
+        if (busy) {
+          push({ role: 'assistant', text: stillMaking(busy) })
+          return true
+        }
         waitingRecording.current = false
         const msg = push({
           role: 'assistant',
@@ -1124,27 +1323,32 @@ export function useMake(deps: MakeDeps): Makes {
           push({ role: 'assistant', text: NO_EDIT_QUOTE })
           return true
         }
-        // Not decided yet ("later", "not yet", "let me think"): the quote, and anything read back of it, stay as they are.
-        if (isDeferral(text)) {
-          push({ role: 'assistant', text: QUOTE_LATER })
-          return true
-        }
-        // A no ("no", "never mind", "cancel"): to what was read back of it, that goes and the quote stands; to the
-        // quote, its button goes, and its script, paid for, stays to read.
-        if (said.kind === 'no') {
-          if (back.current) {
-            dropBack()
-            push({ role: 'assistant', text: QUOTE_STANDS })
+        // Words that only put things off ("hold on", "not yet") or only say no come out first, and what is left is read
+        // for a change, so a change said with them ("hold on, make it 3 minutes") is never lost.
+        const parts = quoteReplyParts(text)
+        if (!parts.says) {
+          // Not decided yet ("later", "no, not now"): the quote, and anything read back of it, stay as they are.
+          if (parts.later) {
+            push({ role: 'assistant', text: QUOTE_LATER })
             return true
           }
-          if (openScript === waiting.id) setOpenScript(null)
-          patch(waiting.msg, { actions: [], make: undefined })
-          pending.current = null
-          push({ role: 'assistant', text: QUOTE_ASIDE })
-          return true
+          // Only a no ("no", "never mind", "cancel"): to what was read back of it, that goes and the quote stands; to
+          // the quote, its button goes, and its script, paid for, stays to read.
+          if (parts.no) {
+            if (back.current) {
+              dropBack()
+              push({ role: 'assistant', text: QUOTE_STANDS })
+              return true
+            }
+            if (openScript === waiting.id) setOpenScript(null)
+            patch(waiting.msg, { actions: [], make: undefined })
+            pending.current = null
+            push({ role: 'assistant', text: QUOTE_ASIDE })
+            return true
+          }
         }
         const waitingBack = back.current?.kind === 'quote' && back.current.id === waiting.id ? back.current : null
-        const words = quoteWords(text)
+        const words = quoteWords(parts.says ? parts.rest : text)
         const sofar = draft ? (waitingBack ? (reviseSteps(draft.brief, waitingBack.steps)?.brief ?? draft.brief) : draft.brief) : null
         if (draft && sofar && reviseBrief(sofar, words)) {
           const steps = [...(waitingBack?.steps ?? []), words]
@@ -1176,6 +1380,12 @@ export function useMake(deps: MakeDeps): Makes {
           // A part only an edit has ("make the captions bigger", "at 1:20"): the edit's to change.
           if (files.length === 0 && namesEditPart(text)) return false
         }
+        // Words that ask for a change it cannot place ("make it shorter"): never let go, and the quote stays as it was,
+        // said so, so its button never makes what was just asked to be changed.
+        if (files.length === 0 && parts.says && looksLikeChange(parts.rest)) {
+          push({ role: 'assistant', text: unplacedChange(parts.rest) })
+          return true
+        }
         // Anything else, a file sent with it or not, stays here.
         push({ role: 'assistant', text: files.length > 0 ? FILE_WITH_QUOTE : back.current ? TAP_TO_GO : QUOTE_WAITS })
         return true
@@ -1204,7 +1414,7 @@ export function useMake(deps: MakeDeps): Makes {
       }
       return false
     },
-    [askBack, dropBack, newAskBack, offer, openScript, start, still, sync]
+    [askBack, dropBack, making, newAskBack, offer, openScript, start, still, sync]
   )
 
   const asked = useCallback(
@@ -1213,6 +1423,12 @@ export function useMake(deps: MakeDeps): Makes {
       const { docRef, push } = live.current
       const d = docRef.current
       if (!d?.make || !text.trim()) return false
+      // A change of the made video, asked while a video or a shot is made: nothing more is asked of main till it is.
+      const busy = making()
+      if (busy && readMakeAsk(d.make, text, onScreen)) {
+        push({ role: 'assistant', text: stillMaking(busy) })
+        return true
+      }
       const mine = owner.current
       const r = await api.makeChange({ doc: d, text, onScreen, brand: live.current.brand() })
       // Another chat opened while it was priced: nothing of this chat's video lands there, and what was typed stays here.
@@ -1230,7 +1446,7 @@ export function useMake(deps: MakeDeps): Makes {
       await offer(r.change, msg)
       return true
     },
-    [offer, still, sync]
+    [making, offer, still, sync]
   )
 
   /** The script under a quote opened or closed, and the button that does it renamed to match. */
@@ -1288,6 +1504,11 @@ export function useMake(deps: MakeDeps): Makes {
       const { push, patch } = live.current
       const draft = drafts.current.get(id)?.draft
       if (!draft) return
+      const busy = making()
+      if (busy) {
+        push({ role: 'assistant', text: stillMaking(busy) })
+        return
+      }
       const msg = push({
         role: 'assistant',
         text: '',
@@ -1303,7 +1524,7 @@ export function useMake(deps: MakeDeps): Makes {
       setOpenScript(null)
       await quote(msg, r.draft, r.reply)
     },
-    [quote, still, sync]
+    [making, quote, still, sync]
   )
 
   const draft = useCallback(
@@ -1343,7 +1564,7 @@ export function useMake(deps: MakeDeps): Makes {
       restored.current = waiting
       // Paid work still under way: in its own chat opened again, its progress and Stop; in any other, a line with its
       // Stop. Either way it shows wherever the person is, and what it brings back goes to its own chat.
-      const run = running.current
+      const run = shownRun()
       if (run) {
         const id = newKey('run')
         const own = !!run.origin.project && live.current.project?.()?.path === run.origin.project.path
@@ -1359,17 +1580,17 @@ export function useMake(deps: MakeDeps): Makes {
       }
       return out
     },
-    [sync]
+    [shownRun, sync]
   )
 
   const stop = useCallback(async (): Promise<void> => {
     await api.makeCancel()
   }, [])
   // Read from the work itself, so a check made straight after it begins sees it; its line re-renders what shows it.
-  const runningNow = useCallback(
-    (): { what: string; stage: string | null } | null => (running.current ? { what: running.current.what, stage: running.current.stage } : null),
-    [runLine]
-  )
+  const runningNow = useCallback((): { what: string; stage: string | null } | null => {
+    const r = shownRun()
+    return r ? { what: r.what, stage: r.stage } : null
+  }, [runLine, shownRun])
 
   return useMemo(
     () => ({ handle, asked, onAction, draft, editScript, scriptOpen, questions, answer, restore, running: runningNow, stop }),
