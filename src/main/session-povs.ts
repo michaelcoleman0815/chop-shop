@@ -136,6 +136,13 @@ export async function findSession(
       reply.push(
         `${name(l.path)}’s clock runs a little apart from yours, ${Math.abs(l.driftSec).toFixed(2)} s over the session, so I lined it up in the middle; near the start and the end it can be up to ${(Math.abs(l.driftSec) / 2).toFixed(2)} s out.`
       )
+  // Matched over the whole session but confirmed nowhere on its own: in, but not cut to until they check it.
+  const labels = povLabels([home, ...others].map(name))
+  for (const [i, l] of up.lined.entries())
+    if (!l.sure)
+      reply.push(
+        `I’m not sure of ${name(l.path)}’s line-up: it matched yours over the whole session, but not in stretches of its own, so I haven’t cut to it. Check it at a moment you all hear, a shout or a clap; /angle sync ${labels[i + 1]} +0.1 nudges it, and /povs cuts to it once it’s right.`
+      )
   for (const p of up.apart)
     reply.push(`${name(p)} doesn’t line up with the others by ear, so it isn’t part of the session; it’s in as footage to cut to.`)
   // The sound under every view is theirs (their microphone and their game) unless they ask for another player's.

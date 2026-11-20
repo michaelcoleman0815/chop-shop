@@ -3738,10 +3738,12 @@ export function useCutalong() {
    * person's own: each a camera of it at its line-up, heard on its clock
    * (main: pov:listen), and the edit made one timeline of the whole session
    * that stays on theirs and cuts to the others for their reactions, with
-   * everyone at once where everyone reacts (shared/pov) — one version.
+   * everyone at once where everyone reacts (shared/pov) — one version. A view
+   * whose line-up is unsure is in, heard and ready, but not cut to until the
+   * person checks it (main/session-povs says so).
    */
   const joinSession = useCallback(
-    async (povs: { path: string; offsetSec: number; camera: Omit<Source, 'id'> }[]): Promise<void> => {
+    async (povs: { path: string; offsetSec: number; sure?: boolean; camera: Omit<Source, 'id'> }[]): Promise<void> => {
       const d = docRef.current
       if (!d || povs.length === 0) return
       const joined = joinViews(d, povs)
@@ -3756,7 +3758,9 @@ export function useCutalong() {
       const maps = heard && heard.ok ? heard.maps : {}
       next = { ...next, audio: { ...(next.audio ?? {}), ...maps } }
       setDoc(next)
-      const plan = planPovs({ ...lined, audio: next.audio }, { mode: 'reactions', everyone: true, fill: true })
+      const sure = next.sources.filter((s) => povs.some((p) => p.path === s.path && p.sure !== false)).map((s) => s.id)
+      const ask: PovAsk = sure.length ? { mode: 'reactions', everyone: true, fill: true, only: sure } : { mode: 'mine', fill: true }
+      const plan = planPovs({ ...lined, audio: next.audio }, ask)
       const ops = 'ops' in plan ? [...lines, ...plan.ops] : lines
       const said =
         'ops' in plan

@@ -37,6 +37,33 @@ export function voiceChat(sec: number, seed: number): Float32Array {
   return db
 }
 
+/**
+ * A voice chat that hardly talks: bursts of 4 to 20 seconds, with quiet
+ * between them so talk is `share` of the time, as in a long session where
+ * everyone is busy playing.
+ */
+export function sparseChat(sec: number, share: number, seed: number): Float32Array {
+  const r = rng(seed)
+  const db = new Float32Array(Math.round(sec / HOP)).fill(-70)
+  let t = 5
+  while (t < sec) {
+    const burst = 4 + r() * 16
+    const end = Math.min(sec, t + burst)
+    while (t < end) {
+      const phrase = Math.min(end, t + 1 + r() * 3)
+      while (t < phrase) {
+        const syl = 0.08 + r() * 0.25
+        const loud = -24 + r() * 8
+        for (let i = Math.round(t / HOP); i < Math.min(db.length, Math.round((t + syl) / HOP)); i++) db[i] = loud
+        t += syl + 0.03 + r() * 0.12
+      }
+      t += 0.4 + r() * 1.5
+    }
+    t += ((burst * (1 - share)) / share) * (0.3 + 1.4 * r())
+  }
+  return db
+}
+
 const mix = (a: number, b: number): number => 10 * Math.log10(10 ** (a / 10) + 10 ** (b / 10))
 
 /**

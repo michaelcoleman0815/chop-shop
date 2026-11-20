@@ -11,12 +11,14 @@
  * A long session need not be read whole to see how it cuts: with --window,
  * the line-up is still found over everything, but only that many seconds of
  * theirs are transcribed and cut, from the middle of the stretch every
- * player recorded.
+ * player recorded. With --keep, the heard edit (its words and every view's
+ * sound map) is saved too, so the cut can be read again without hearing the
+ * session again; it holds what was said, so it goes where the footage goes.
  *
- *   node scripts/lab.mjs povs <out.json> [--window <seconds>] <their file> <another player's file> [...]
+ *   node scripts/lab.mjs povs <out.json> [--window <seconds>] [--keep <edit.json>] <their file> <another player's file> [...]
  */
 import { execFileSync } from 'child_process'
-import { rmSync, writeFileSync } from 'fs'
+import { chmodSync, rmSync, writeFileSync } from 'fs'
 import { basename, join } from 'path'
 import { loudnessEnvelope } from '../../src/main/audio-envelope'
 import { registerCutalongIpc } from '../../src/main/cutalong'
@@ -31,6 +33,7 @@ import {
   momentsOf,
   ownLevels,
   planPovs,
+  povCoverage,
   povLabels,
   povSessionOf,
   povSounds,
@@ -41,9 +44,16 @@ import { fail, handler, progressLogger } from './handlers'
 
 async function main(): Promise<void> {
   const [out, ...rest] = process.argv.slice(2)
-  const windowSec = rest[0] === '--window' ? Number(rest[1]) : 0
-  const files = rest[0] === '--window' ? rest.slice(2) : rest
-  if (!out || files.length < 2 || !(windowSec >= 0)) throw new Error('usage: povs <out.json> [--window <seconds>] <their file> <other file> [...]')
+  let windowSec = 0
+  let keep: string | null = null
+  while (rest[0] === '--window' || rest[0] === '--keep') {
+    const [flag, value] = rest.splice(0, 2)
+    if (flag === '--window') windowSec = Number(value)
+    else keep = value ?? null
+  }
+  const files = rest
+  if (!out || files.length < 2 || !(windowSec >= 0))
+    throw new Error('usage: povs <out.json> [--window <seconds>] [--keep <edit.json>] <their file> <other file> [...]')
   const log = progressLogger()
   const t0 = Date.now()
   const lap = (): number => Math.round((Date.now() - t0) / 100) / 10
@@ -104,6 +114,10 @@ async function main(): Promise<void> {
   const heard: EditDoc = { ...lined, audio: { ...(lined.audio ?? {}), ...listened.maps } }
   const heardAt = lap()
   if (window) rmSync(read, { force: true })
+  if (keep) {
+    writeFileSync(keep, JSON.stringify(heard), { mode: 0o600 })
+    chmodSync(keep, 0o600)
+  }
 
   // 3. Who said what, who reacted, and the cut each mode makes.
   const pov = povSessionOf(heard)
@@ -118,9 +132,11 @@ async function main(): Promise<void> {
     const who = talkerOf(w.id, sounds) ?? 'nobody clearly'
     talkers[who] = (talkers[who] ?? 0) + 1
   }
-  const moments = momentsOf(sounds, words)
+  const moments = pov ? momentsOf(sounds, words, povCoverage(heard, pov)) : []
+  // As it comes in: the views whose line-up is sure (main/session-povs, useCutalong: joinSession); then /povs talking, all of them.
+  const sure = heard.sources.filter((s) => (roles.povs ?? []).some((p) => p.path === s.path && p.sure)).map((s) => s.id)
   const asks: [string, PovAsk][] = [
-    ['reactions, everyone, the play in', { mode: 'reactions', everyone: true, fill: true }],
+    ['as it comes in: reactions, everyone, the play in, the sure views', { mode: 'reactions', everyone: true, fill: true, only: sure }],
     ['talking, everyone, the play in', { mode: 'talking', everyone: true, fill: true }]
   ]
   const cuts = asks.map(([name, ask]) => {

@@ -9,6 +9,7 @@ import {
   ownLevels,
   ownSoundKey,
   planPovs,
+  povCoverage,
   povLabels,
   povSessionOf,
   povSounds,
@@ -179,6 +180,119 @@ describe('who said it, and who reacted', () => {
   })
 })
 
+/**
+ * A session as long ones can be: yours started 13.5 minutes before the
+ * others did, so for that long only yours was running. The others talk all
+ * along, through the voice chat, and some of it is shouting; they joined at
+ * 810 s and recorded the next ten minutes with you. Their sound on your
+ * clock is as pov:listen lays it: silence before they started.
+ */
+const JOINED_SEC = 810
+function startedEarly(): { doc: EditDoc; said: Map<string, string>; shouts: Set<string> } {
+  const words: Word[] = []
+  const said = new Map<string, string>()
+  const shouts = new Set<string>()
+  const who = ['s1', 's2', 's3'] as const
+  let line = 0
+  for (let at = 1; at + 3 < JOINED_SEC + 600; at += 5, line++) {
+    const speaker = who[line % 3]
+    // Every fourth line of theirs is a shout.
+    const shout = speaker !== 's1' && line % 4 === 1
+    for (let k = 0; k < 6; k++) {
+      const id = `w${words.length + 1}`
+      words.push({ id, source: 's1', text: 'word', startSec: at + k * 0.4, endSec: at + k * 0.4 + 0.3 })
+      said.set(id, speaker)
+      if (shout) shouts.add(id)
+    }
+  }
+  const home = { id: 's1', path: '/Session pov-1.mp4', durationSec: JOINED_SEC + 600, width: 1920, height: 1080, fps: 30 }
+  let doc = createDoc({ id: 'd', title: 'Session', source: home, words })
+  doc = {
+    ...doc,
+    sources: [
+      ...doc.sources,
+      { id: 's2', path: '/Session pov-2.mp4', durationSec: 600, width: 1920, height: 1080, fps: 30 },
+      { id: 's3', path: '/Session pov-3.mp4', durationSec: 600, width: 1920, height: 1080, fps: 30 }
+    ]
+  }
+  doc = commit(
+    doc,
+    [
+      { op: 'sync', source: 's2', of: 's1', offsetSec: -JOINED_SEC },
+      { op: 'sync', source: 's3', of: 's1', offsetSec: -JOINED_SEC }
+    ],
+    'Lined up.'
+  ).doc
+  const map = (view: string, segments: AudioMap['segments']): AudioMap => ({
+    v: 1,
+    words: Object.fromEntries(
+      words.map((w) => {
+        // Before they started, their recordings heard nothing.
+        if (view !== 's1' && w.startSec < JOINED_SEC) return [w.id, [-120, null]]
+        const mine = said.get(w.id) === view
+        // A shout is 12 dB over the shouter's voice in their own recording, and comes through the chat 8 dB over yours.
+        const db = shouts.has(w.id) ? (mine ? -8 : -12) : mine ? -20 : -32
+        return [w.id, [db, null]]
+      })
+    ),
+    segments,
+    emphasis: [],
+    level: { floor: -60, speech: -20 }
+  })
+  const before = { kind: 'silence' as const, startSec: 0, endSec: JOINED_SEC }
+  doc = {
+    ...doc,
+    audio: {
+      // s2 laughs at 300 s, before anyone else was recording: it comes through the chat loud in yours.
+      // s3 laughs at 1001 s, when everyone was.
+      s1: map('s1', [
+        { kind: 'laughter', startSec: 300.5, endSec: 301.7, db: -18 },
+        { kind: 'laughter', startSec: 1001, endSec: 1002.2, db: -31 }
+      ]),
+      [throughId('s1', 's2')]: map('s2', [before, { kind: 'laughter', startSec: 1001, endSec: 1002.2, db: -31 }]),
+      [throughId('s1', 's3')]: map('s3', [before, { kind: 'laughter', startSec: 1001, endSec: 1002.2, db: -19 }])
+    }
+  }
+  return { doc, said, shouts }
+}
+
+const tally = (list: string[]): Record<string, number> => {
+  const out: Record<string, number> = {}
+  for (const k of list) out[k] = (out[k] ?? 0) + 1
+  return out
+}
+
+describe('a recording that started long before the others', () => {
+  it('credits no one with what was said or heard while only it was running', () => {
+    const { doc, said, shouts } = startedEarly()
+    const session = povSessionOf(doc)!
+    const sounds = povSounds(doc, session)
+    const early = doc.words.filter((w) => w.startSec < JOINED_SEC)
+    const late = doc.words.filter((w) => w.startSec >= JOINED_SEC)
+    // Before the others started, every word is loudest in yours, whoever said it: no one can tell, so no one is credited.
+    expect.soft(tally(early.map((w) => talkerOf(w.id, sounds) ?? 'no one'))).toEqual({ 'no one': early.length })
+    // After, each word is its speaker's.
+    for (const w of late) expect(talkerOf(w.id, sounds), w.id).toBe(said.get(w.id))
+    // Your own voice is your words', not the others' heard through the chat.
+    expect.soft(ownLevels(sounds, doc.words)).toEqual({ s1: -20, s2: -20, s3: -20 })
+    const moments = momentsOf(sounds, doc.words, povCoverage(doc, session))
+    // Nothing of the first 13.5 minutes is anyone's: not their shouts as your screams, not s2's laugh as yours.
+    expect.soft(tally(moments.filter((m) => m.startSec < JOINED_SEC).map((m) => `${m.view} ${m.kind}`))).toEqual({})
+    // Once all three were recording, each shouted word is the shouter's scream, and s3's laugh is s3's.
+    const lateShouts = late.filter((w) => shouts.has(w.id)).map((w) => said.get(w.id) as string)
+    expect(lateShouts.length).toBeGreaterThan(0)
+    expect(tally(moments.filter((m) => m.kind === 'scream').map((m) => m.view))).toEqual(tally(lateShouts))
+    expect(moments.filter((m) => m.kind === 'laugh').map((m) => [m.view, m.startSec])).toEqual([['s3', 1001]])
+    // The planner hears of none of the first 13.5 minutes either.
+    const listed = /reactions: (.*)/.exec(renderPovs(doc))?.[1].split(', ') ?? []
+    expect(listed.length).toBeGreaterThan(0)
+    for (const r of listed) {
+      const [m, s] = (r.split(' ').pop() as string).split(':').map(Number)
+      expect(m * 60 + s, r).toBeGreaterThanOrEqual(JOINED_SEC)
+    }
+  })
+})
+
 describe('cutting between the views', () => {
   it('stays on yours, cuts to the others for their reactions and shows everyone where all react, the play between lines in', () => {
     const { doc } = session()
@@ -263,6 +377,21 @@ describe('cutting between the views', () => {
     if ('say' in mine) throw new Error(mine.say)
     expect(shots(commit(done, mine.ops, mine.summary).doc).map((s) => s.view)).toEqual(['s1'])
     expect(mine.summary).toBe('It is all on your view.')
+  })
+
+  it('cuts only to the views it may, as when one’s line-up is unsure, and listens only to them', () => {
+    const { doc } = session()
+    const plan = planPovs(doc, { mode: 'reactions', everyone: true, fill: true, only: ['s3'] })
+    if ('say' in plan) throw new Error(plan.say)
+    const done = commit(doc, plan.ops, plan.summary)
+    const list = shots(done.doc)
+    // s2's laugh stays on yours; s3's bang is s3's; everyone at once is you and s3.
+    expect(at(list, 30.5)?.view).toBe('s1')
+    expect(at(list, 45.3)?.view).toBe('s3')
+    expect(at(list, 63)?.view).toBe('grid')
+    expect(list.some((s) => s.view === 's2')).toBe(false)
+    const grid = currentCut(done.doc).beats.find((b) => b.treatment.grid)!.treatment.grid!
+    expect(grid.panels.map((p) => p.show)).toEqual(['', 's3'])
   })
 
   it('says so when the edit is one view', () => {

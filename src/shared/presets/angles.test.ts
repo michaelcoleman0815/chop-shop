@@ -64,6 +64,10 @@ describe('/angle', () => {
     expect(moved('sync -2f')).toBeCloseTo(1.25 - 2 / 25, 9)
     expect(moved('sync 0.5')).toBeCloseTo(0.5, 9)
     expect(moved('sync 2 +1f')).toBeCloseTo(1.29, 9)
+    // By a word of its file's name that only it has, as the app names a player's view.
+    expect(moved('sync b.mov +1f')).toBeCloseTo(1.29, 9)
+    expect(moved('sync B.MOV -0.25')).toBeCloseTo(1, 9)
+    expect(moved('sync zed +0.1')).toBeUndefined()
     expect(angleCommand(doc, 'sync +0.1', 'b1')).toMatchObject({
       say: 'Camera 2 is 1.35 s ahead of the recording now.'
     })

@@ -1,5 +1,5 @@
 import { currentCut } from '../edit/doc'
-import type { EditDoc, Op } from '../edit/schema'
+import type { EditDoc, Op, Source } from '../edit/schema'
 import { LAYOUT_INFO, type Angle, type AngleLayout } from '../edit/angles'
 
 /**
@@ -31,13 +31,22 @@ export function angleHelp(): string {
   )
 }
 
-/** A camera by how the person names it: "2" is the first camera after the recording, "s3" by its id. */
-function pick(cameras: Angle[], word: string | undefined): Angle | null {
+/**
+ * A camera by how the person names it: "2" is the first camera after the
+ * recording, "s3" by its id, "pov-3" or "teo" by a word of its file's name
+ * that only it has.
+ */
+function pick(cameras: Angle[], word: string | undefined, sources: Source[] = []): Angle | null {
   if (!word) return cameras[0] ?? null
   const byId = cameras.find((c) => c.source === word)
   if (byId) return byId
   const n = Number(word)
-  return Number.isInteger(n) && n >= 2 ? (cameras[n - 2] ?? null) : null
+  if (Number.isInteger(n)) return n >= 2 ? (cameras[n - 2] ?? null) : null
+  const named = cameras.filter((c) => {
+    const path = sources.find((s) => s.id === c.source)?.path ?? ''
+    return word.length >= 2 && path.replace(/^.*[\\/]/, '').toLowerCase().includes(word.toLowerCase())
+  })
+  return named.length === 1 ? named[0] : null
 }
 
 /**
@@ -57,7 +66,7 @@ export function angleCommand(doc: EditDoc, rest: string, beat: string | null): A
   if (words[0] === 'help') return { say: angleHelp() }
 
   if (words[0] === 'sync') {
-    const camera = pick(cameras, words[2] ? words[1] : undefined)
+    const camera = pick(cameras, words[2] ? words[1] : undefined, doc.sources)
     if (!camera) return { say: 'There is no other camera to move yet. /angle lines one up.' }
     const amount = /^([+-]?)(\d+(?:\.\d+)?)(f|s)?$/.exec(words[words.length - 1] ?? '')
     if (!amount)
@@ -83,7 +92,7 @@ export function angleCommand(doc: EditDoc, rest: string, beat: string | null): A
   }
 
   if (words[0] === 'remove') {
-    const camera = pick(cameras, words[1])
+    const camera = pick(cameras, words[1], doc.sources)
     if (!camera) return { say: 'There is no other camera to take out.' }
     return { ops: [{ op: 'sync', source: camera.source, of: null }] }
   }
@@ -92,14 +101,14 @@ export function angleCommand(doc: EditDoc, rest: string, beat: string | null): A
   const layoutWord = words.find((w) => w in layouts)
   const layout = layoutWord ? layouts[layoutWord] : (here?.treatment.angle?.layout ?? 'full')
   const cameraWord = words.find((w) => !(w in layouts))
-  if (cameraWord && cameraWord !== 'new' && !pick(cameras, cameraWord)) {
+  if (cameraWord && cameraWord !== 'new' && !pick(cameras, cameraWord, doc.sources)) {
     return {
       say: `There is no ${/^\d+$/.test(cameraWord) ? `camera ${cameraWord}` : cameraWord}. ${cameras.length ? `This recording has ${cameras.length + 1} cameras.` : '/angle lines one up.'}`
     }
   }
   // No camera yet, or a new one asked for: the app asks for the file and lines it up first.
   if (cameras.length === 0 || cameraWord === 'new') return { file: { of: recording, beats: targets, layout } }
-  const camera = pick(cameras, cameraWord) as Angle
+  const camera = pick(cameras, cameraWord, doc.sources) as Angle
   const already = targets.every((id) => {
     const a = cut.beats.find((b) => b.id === id)?.treatment.angle
     return a?.source === camera.source && a.layout === layout
