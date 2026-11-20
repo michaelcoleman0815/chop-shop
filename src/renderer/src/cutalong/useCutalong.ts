@@ -1652,8 +1652,9 @@ export function useCutalong() {
         settle()
       }
       if (switchSeq.current !== seq || !project || working.current > 0) return null
-      // The chat left says where its video went, saved with it as it is left.
-      messagesRef.current = [...messagesRef.current, { ...leaving(project.name), id: uid() }]
+      // The chat left says where its video went, saved with it as it is left: a line of its own, with nothing to tap.
+      const line = leaving(project.name)
+      messagesRef.current = [...messagesRef.current, { id: uid(), role: line.role, text: line.text }]
       enter(project, 'thread')
       refreshRecent()
       return { path: project.path, name: project.name }

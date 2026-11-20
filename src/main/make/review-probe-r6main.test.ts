@@ -95,7 +95,7 @@ function deps(sentences: number) {
 describe('claim 9: a script written at make time longer than quoted', () => {
   it('stops before any shot-list part, keeps the script, and quotes the rest at its real length', async () => {
     const c = await changeFor(doc, 'make it 3 minutes', null, { parse: async () => Promise.reject(new Error('no Claude when quoting')), can, brand: {}, settings: { cap: null, autoUnder: null } })
-    if (c.kind !== 'draft') throw new Error(`not a draft change: ${c.kind}`)
+    if (!c || c.kind !== 'draft') throw new Error(`not a draft change: ${c?.kind ?? 'none'}`)
     const draft = c.draft as Draft
     console.log(`quoted: ${draft.quote.counts.scenes} shots; lines: ${draft.quote.lines.map((l) => `${l.what} $${l.cost.toFixed(4)}`).join('; ')}; total $${draft.quote.total.toFixed(4)}`)
     for (const sentences of [draft.quote.counts.scenes, draft.quote.counts.scenes + 12]) {

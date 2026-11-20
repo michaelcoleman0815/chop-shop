@@ -13,7 +13,8 @@ import { Budget } from './generate'
 
 const sysErr = (code: string): Error => Object.assign(new Error(code), { code })
 const fetchFailed = (cause: unknown): TypeError => Object.assign(new TypeError('fetch failed'), { cause })
-const conn = (cause: unknown): Anthropic.APIConnectionError => new Anthropic.APIConnectionError({ message: 'Connection error.', cause: cause as Error })
+const conn = (cause: unknown): InstanceType<typeof Anthropic.APIConnectionError> =>
+  new Anthropic.APIConnectionError({ message: 'Connection error.', cause: cause as Error })
 
 describe('a call that never left the computer costs nothing; one cut off after it went keeps its hold (extra)', () => {
   it('reads the cause chain as undici builds it', () => {
