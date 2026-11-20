@@ -490,6 +490,13 @@ export function forgetPlace(): void {
   rememberPlace(null, 'thread')
 }
 
+/** What a chat that couldn't be opened is called: its file's name. */
+const chatNameOf = (path: string): string => (path.split(/[\\/]/).pop() ?? path).replace(/\.(cutalong|chopshop)$/i, '')
+
+/** Said when a chat can't be opened (main refused it, or it can't be read): never silent, and where to open it from. */
+export const couldNotOpen = (path: string, atLaunch: boolean): string =>
+  `I couldn’t open ${atLaunch ? 'your last chat, ' : ''}“${chatNameOf(path)}”${atLaunch ? ', again' : ''}. Open it from Projects with “Open a project file…”, and it opens from then on.`
+
 function recallPlace(): { path: string; screen: 'thread' | 'editor' } | null {
   try {
     const v = JSON.parse(localStorage.getItem(LAST) ?? 'null') as { path?: unknown; screen?: unknown } | null
@@ -986,7 +993,7 @@ export function useCutalong() {
   }, [])
 
   /** Opens a saved chat: its thread when it has one, else straight into the editor. */
-  const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
+  const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread', at: 'launch' | null = null): Promise<void> => {
     // A new video's chat being made: every chat waits for it, the one open too, so it is always made whole.
     if (settingUp.current) {
       setToast({ text: SETTING_UP })
@@ -1025,6 +1032,8 @@ export function useCutalong() {
     if (switchSeq.current !== seq) return
     if (!project) {
       if (recallPlace()?.path === path) rememberPlace(null, 'thread')
+      // Said in plain words, never silent: Projects can open it.
+      setToast({ text: couldNotOpen(path, at === 'launch') })
       return
     }
     // Work started while it was read (an ask typed and sent): this chat stays open until it is done, and says why.
@@ -1071,7 +1080,7 @@ export function useCutalong() {
   // Reopening Cutalong lands back where the person was.
   useEffect(() => {
     const last = recallPlace()
-    if (last) void openProject(last.path, last.screen)
+    if (last) void openProject(last.path, last.screen, 'launch')
   }, [openProject])
 
   // Keep track of the chat or editor the person is in, across the rail's other places and restarts.

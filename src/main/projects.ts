@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { promises as fs } from 'fs'
+import { constants as fsc, promises as fs } from 'fs'
 import { join, basename, dirname, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
 import { projectName } from '../shared/project-name'
@@ -40,15 +40,16 @@ async function realOf(p: string): Promise<string> {
 
 /**
  * Whether main may read or write a chat at `path` for the window: a project file which, its links followed, is in
- * Cutalong's own folder, or is one main itself put in the recent list (from its own open dialog, or createProject).
- * Anything else the window names (a file of the person's elsewhere, the recent list itself) is not one.
+ * Cutalong's own folder or the one chats were kept in before, is one main opened or made this session, or is one main
+ * itself put in the recent list (from its own open dialog, or createProject). Anything else the window names (a file
+ * of the person's elsewhere, the recent list itself) is not one.
  */
 export async function projectPathOk(path: unknown): Promise<boolean> {
   if (typeof path !== 'string' || !path.trim() || path.includes('\u0000') || !PROJECT_FILE.test(path)) return false
   const real = await realOf(path)
   if (!PROJECT_FILE.test(real)) return false
-  const root = await realOf(projectsDir())
-  if (real.startsWith(root + sep)) return true
+  if (ours.has(real)) return true
+  for (const folder of [projectsDir(), oldProjectsDir()]) if (real.startsWith((await realOf(folder)) + sep)) return true
   for (const entry of await readIndex()) {
     if (PROJECT_FILE.test(entry.path) && (await realOf(entry.path)) === real) return true
   }
@@ -64,6 +65,14 @@ export function projectsDir(): string {
   return join(app.getPath('videos'), 'Cutalong', 'Projects')
 }
 
+/** Where chats were kept until Cutalong had its own name (9d0c72a): still the person's chats. */
+export function oldProjectsDir(): string {
+  return join(app.getPath('videos'), 'Chop Shop', 'Projects')
+}
+
+/** Every chat main opened or made this session, as the disk has it: always the person's, listed or not. */
+const ours = new Set<string>()
+
 async function readIndex(): Promise<ProjectSummary[]> {
   try {
     return JSON.parse(await fs.readFile(indexPath(), 'utf8')) as ProjectSummary[]
@@ -73,7 +82,15 @@ async function readIndex(): Promise<ProjectSummary[]> {
 }
 
 async function writeIndex(entries: ProjectSummary[]): Promise<void> {
-  await fs.writeFile(indexPath(), JSON.stringify(entries, null, 2)).catch(() => undefined)
+  // Written whole under a name of its own, made new ('wx', so never through a link), then renamed over the list: a
+  // crash mid-write leaves the old list, never an empty one.
+  const partial = `${indexPath()}.${randomUUID()}.saving`
+  try {
+    await fs.writeFile(partial, JSON.stringify(entries, null, 2), { flag: 'wx' })
+    await fs.rename(partial, indexPath())
+  } catch {
+    await fs.rm(partial, { force: true }).catch(() => undefined)
+  }
 }
 
 function summarise(project: Project): ProjectSummary {
@@ -163,6 +180,7 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
       }
     })
     if (!claimed) continue
+    ours.add(await realOf(path))
     await touch(project)
     return project
   }
@@ -181,6 +199,7 @@ export async function openProject(path: string, opts: { picked?: boolean } = {})
     if (opts.picked ? !PROJECT_FILE.test(path) : !(await projectPathOk(path))) throw new Error(NOT_A_CHAT)
     return readProject(path)
   })
+  ours.add(await realOf(path))
   // Its place in the recent list moves either way, in the list's own turn, after the file's.
   await touch(project)
   return project
@@ -192,7 +211,7 @@ async function readProject(path: string): Promise<Project> {
   if (unreadable) {
     // Kept as it was, beside the project, before anything is saved over it.
     console.error('[projects] could not read the edit in', path, unreadable)
-    await fs.copyFile(path, `${path}.unread-${Date.now()}.json`).catch(() => undefined)
+    await fs.copyFile(path, `${path}.unread-${Date.now()}.json`, fsc.COPYFILE_EXCL).catch(() => undefined)
   }
   // An edit an older Cutalong could not read, and so left out, comes back from
   // the copy it kept beside the project, when this one can read it. Only into
@@ -236,12 +255,16 @@ export async function keepInFile(
   kept: Kept
 ): Promise<{ path: string; name: string } | null> {
   const id = (): string => `kept-${randomUUID()}`
+  // The chat it was asked in, while it is one of the person's: a path that isn't is as a chat that is gone, so what
+  // was paid for goes in a new chat of its own, and nothing is written there.
+  let asked: string | null = null
   if (path) {
-    const put = await inTurn(path, async () => {
-      await mustBeChat(path)
+    const at = path
+    const put = await inTurn(at, async () => {
+      if (!(await projectPathOk(at))) return 'refused' as const
       let project: Project
       try {
-        project = await readProject(path)
+        project = await readProject(at)
       } catch {
         return 'gone' as const
       }
@@ -250,11 +273,12 @@ export async function keepInFile(
       await writeProject(next)
       return next
     })
-    if (put !== 'gone' && put !== 'moved') {
+    if (put !== 'gone' && put !== 'moved' && put !== 'refused') {
       await touch(put)
-      return { path, name: put.name }
+      return { path: at, name: put.name }
     }
     if (put === 'moved' && !freshVideo(kept) && !kept.into) return null
+    if (put !== 'refused') asked = at
   }
   // A chat of its own: made, and the result kept in it, in its turn. A change made for an edit no longer anywhere to
   // go into is a whole video of its own, so it is that chat's edit.
@@ -267,10 +291,11 @@ export async function keepInFile(
     return next
   })
   if (kept2) await touch(kept2)
-  if (kept2 && path) {
+  if (kept2 && asked) {
     // The chat it was asked in says where it went.
-    const told = await inTurn(path, async () => {
-      const project = await readProject(path).catch(() => null)
+    const back = asked
+    const told = await inTurn(back, async () => {
+      const project = await readProject(back).catch(() => null)
       if (!project) return null
       const next = { ...project, chat: [...(project.chat ?? []), movedLine(kept, made.name)] }
       await writeProject(next)
@@ -348,9 +373,15 @@ export async function saveProject(project: Project): Promise<void> {
 /** Writes a project whole beside its file, then over it. Its place in the recent list is the caller's to move. */
 async function writeProject(project: Project): Promise<void> {
   const next: Project = { ...project, primaryMedia: project.media[0] ?? null }
-  const partial = `${project.path}.saving`
-  await fs.writeFile(partial, JSON.stringify(next, null, 2))
-  await fs.rename(partial, project.path)
+  // Under a name of its own, made new ('wx' never writes through a link planted beside the chat), then renamed over it.
+  const partial = `${project.path}.${randomUUID()}.saving`
+  try {
+    await fs.writeFile(partial, JSON.stringify(next, null, 2), { flag: 'wx' })
+    await fs.rename(partial, project.path)
+  } catch (err) {
+    await fs.rm(partial, { force: true }).catch(() => undefined)
+    throw err
+  }
 }
 
 /** Takes a chat off the recent list only: the chat itself stays where it is. Only a chat's path. */

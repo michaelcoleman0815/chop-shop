@@ -48,7 +48,8 @@ export function withDoc(project: Project, doc: EditDoc | null): Project {
 
 /** The project's recordings: its edit's, then the long recordings clips were cut from. */
 function mediaOf(doc: EditDoc, set: ClipSet | null | undefined): string[] {
-  const own = doc.sources.map((s) => s.path)
+  // A doc with no recordings listed (never one made whole) has none to add.
+  const own = (doc.sources ?? []).map((s) => s.path)
   const long = (set?.runs ?? []).flatMap((r) => r.recordings.map((x) => x.path))
   return [...new Set([...own, ...long])]
 }
