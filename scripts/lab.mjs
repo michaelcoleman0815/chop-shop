@@ -3,7 +3,7 @@
  * Runs the app's own main-process code on real files, outside the app: the
  * footage lab (docs/research/raw-footage.md, "The real footage lab").
  *
- *   node scripts/lab.mjs <prepare|v1|clip|hear|render|score|sync> [args]
+ *   node scripts/lab.mjs <prepare|v1|clip|hear|render|score|sync|povs> [args]
  *
  * Each entry in tests/lab is bundled against src/ with Electron stubbed
  * (tests/lab/electron-stub.cjs) and run in plain node, so it is the same code
@@ -25,7 +25,7 @@ import { fileURLToPath } from 'url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const [entry, ...args] = process.argv.slice(2)
-const entries = ['prepare', 'v1', 'clip', 'hear', 'render', 'score', 'sync']
+const entries = ['prepare', 'v1', 'clip', 'hear', 'render', 'score', 'sync', 'povs']
 if (!entry || !entries.includes(entry)) {
   console.error(`usage: node scripts/lab.mjs <${entries.join('|')}> [args]`)
   process.exit(2)
