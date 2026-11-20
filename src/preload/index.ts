@@ -132,6 +132,9 @@ const api = {
             overlapSec: number
             via: string | null
             driftSec: number | null
+            /** Whether stretches of their own confirmed the line-up; unsure, it is in but not cut to until checked. */
+            sure: boolean
+            stretches: { checked: number; agreed: number } | null
             camera: { path: string; durationSec: number; width: number; height: number; fps: number; color?: 'hlg' | 'pq' }
           }[]
         }

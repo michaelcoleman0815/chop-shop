@@ -25,7 +25,9 @@ import {
  * the voice chat. So a word is said by whoever's recording has it loudest
  * against their usual speech; a laugh, a scream or a bang is theirs when it
  * is loud in their recording against their speech; and where three of them
- * react at once, everyone shows at once, in a grid.
+ * react at once, everyone shows at once, in a grid. It takes two recordings
+ * to tell: where only one was running (someone started early or stopped
+ * late), no one is credited with anything said or heard in it.
  *
  * The modes, from words or /povs:
  * - talking: follow whoever is talking, and cut to a reaction between lines.
@@ -56,6 +58,12 @@ const REACT_MARGIN_DB = 3
 const CHAT_GUESS_DB = -10
 /** Reactions this close together are one moment. */
 const TOGETHER_SEC = 1
+/**
+ * A word this quiet in a recording was not heard in it at all: before it
+ * started or after it stopped (its sound on home's clock is silence there),
+ * or in digital silence.
+ */
+const UNHEARD_DB = -90
 
 export interface PovView {
   /** The recording, by source id. */
@@ -171,17 +179,22 @@ export interface Moment {
 /** A word's loudness in a view against that view's usual speech, or null when it was not heard there. */
 function against(map: AudioMap | undefined, word: string): number | null {
   const w = map?.words[word]
-  return w && Number.isFinite(w[0]) ? w[0] - map.level.speech : null
+  return w && Number.isFinite(w[0]) && w[0] > UNHEARD_DB ? w[0] - map.level.speech : null
 }
 
-/** Who said a word: the view whose recording has it loudest against its own speech, by a clear margin. */
+/**
+ * Who said a word: the view whose recording has it loudest against its own
+ * speech, by a clear margin. Only recordings that heard it vote, and it takes
+ * two: where one recording ran alone (it started before the others, or ran
+ * on after them), everything said is loud in it, whoever said it, so no one is
+ * credited.
+ */
 export function talkerOf(word: string, sounds: Record<string, AudioMap>): string | null {
   const levels = Object.entries(sounds)
     .map(([id, map]) => ({ id, rel: against(map, word) }))
     .filter((x): x is { id: string; rel: number } => x.rel !== null)
     .sort((a, b) => b.rel - a.rel)
-  if (levels.length === 0) return null
-  if (levels.length > 1 && levels[0].rel - levels[1].rel < TALK_MARGIN_DB) return null
+  if (levels.length < 2 || levels[0].rel - levels[1].rel < TALK_MARGIN_DB) return null
   return levels[0].id
 }
 
@@ -215,7 +228,7 @@ export function ownLevels(
     else {
       const heard = Object.values(map.words)
         .map((x) => x[0])
-        .filter(Number.isFinite)
+        .filter((db) => Number.isFinite(db) && db > UNHEARD_DB)
         .sort((a, b) => a - b)
       out[view] = heard.length ? Math.max(map.level.speech, heard[Math.floor(0.9 * (heard.length - 1))]) : map.level.speech
     }
@@ -244,7 +257,7 @@ export function chatPaths(
     for (const [view, map] of Object.entries(sounds)) {
       const db = map.words[w.id]?.[0]
       // Outside a recording, its sound is silence: those words say nothing about the chat in it.
-      if (view === who || db === undefined || !Number.isFinite(db) || db <= -90) continue
+      if (view === who || db === undefined || !Number.isFinite(db) || db <= UNHEARD_DB) continue
       pairs.set(`${who}>${view}`, [...(pairs.get(`${who}>${view}`) ?? []), db - said])
       heard.set(view, [...(heard.get(view) ?? []), db - own[view]])
     }
@@ -274,10 +287,19 @@ function reactionDb(map: AudioMap, a: number, b: number): number | null {
   return talked > 0.5 * (b - a) ? null : loudest
 }
 
-/** Every reaction heard, whoever's it is, on home's clock, in time order. */
+/** Whether a view's recording was running over a stretch of home's clock. */
+export type Sees = (view: string, startSec: number, endSec: number) => boolean
+
+/**
+ * Every reaction heard, whoever's it is, on home's clock, in time order.
+ * `sees` says which recordings were running when: a reaction is weighed only
+ * against the ones that were, and where no other was, no one can say whose
+ * it is, so it is no one's.
+ */
 export function momentsOf(
   sounds: Record<string, AudioMap>,
-  words: { id: string; startSec: number; endSec: number }[]
+  words: { id: string; startSec: number; endSec: number }[],
+  sees: Sees = () => true
 ): Moment[] {
   const own = ownLevels(sounds, words)
   const chat = chatPaths(sounds, words, own)
@@ -294,9 +316,10 @@ export function momentsOf(
             ? 'loud'
             : null
       if (!kind) continue
+      const running = Object.entries(sounds).filter(([u]) => u !== view && sees(u, seg.startSec, seg.endSec))
+      if (!sees(view, seg.startSec, seg.endSec) || running.length === 0) continue
       // And louder here than the chat would bring it in from any of the others: theirs, not a laugh heard.
-      const brought = Object.entries(sounds)
-        .filter(([u]) => u !== view)
+      const brought = running
         .map(([u, m]) => {
           const db = reactionDb(m, seg.startSec, seg.endSec)
           return db === null ? null : db + chat(u, view)
@@ -352,6 +375,17 @@ const overlap = (a0: number, a1: number, b0: number, b1: number): number => Math
 function covers(v: PovView, durations: Map<string, number>, a: number, b: number): boolean {
   const d = durations.get(v.id) ?? 0
   return a + v.offsetSec >= -0.02 && b + v.offsetSec <= d + 0.02
+}
+
+/** Which of a session's recordings were running over each stretch of home's clock: home's always was. */
+export function povCoverage(doc: Pick<EditDoc, 'sources'>, session: PovSession): Sees {
+  const durations = new Map(doc.sources.map((s) => [s.id, s.durationSec]))
+  const others = new Map(session.others.map((v) => [v.id, v]))
+  return (view, a, b) => {
+    if (view === session.home.id) return true
+    const v = others.get(view)
+    return !!v && covers(v, durations, a, b)
+  }
 }
 
 /** The stretches the cut plays, beat by beat, and when asked, the gaps between them on home's clock. */
@@ -410,6 +444,12 @@ export interface PovAsk {
   fill?: boolean
   /** With talking or reactions, everyone at once too, where everyone reacts together. */
   everyone?: boolean
+  /**
+   * The other views it may cut to and listen to, by source id; all of them
+   * when absent. A view whose line-up is unsure is left out until the
+   * person has checked it.
+   */
+  only?: string[]
 }
 
 /** The grid of everyone a stretch can show: home first, then whoever reacted, then the rest, four at most. */
@@ -579,7 +619,8 @@ export function renderPovs(doc: EditDoc): string {
   const sounds = povSounds(doc, session)
   const moments = momentsOf(
     sounds,
-    doc.words.filter((w) => w.source === session.home.id)
+    doc.words.filter((w) => w.source === session.home.id),
+    povCoverage(doc, session)
   )
   const sign = (n: number): string => `${n >= 0 ? '+' : '-'}${Math.abs(n).toFixed(2)} s`
   const lines = [
@@ -598,11 +639,13 @@ export function renderPovs(doc: EditDoc): string {
 
 /** The ops that show each moment of a session through the view the mode picks. */
 export function planPovs(doc: EditDoc, ask: PovAsk): PovPlan | { say: string } {
-  const session = povSessionOf(doc)
-  if (!session)
+  const found = povSessionOf(doc)
+  if (!found)
     return {
       say: 'This edit has one view. Drop the other players’ recordings of the same session with yours and I’ll line them up.'
     }
+  const only = ask.only
+  const session = only ? { ...found, others: found.others.filter((v) => only.includes(v.id)) } : found
   const cut = currentCut(doc)
   const home = session.home.id
   const minSec = ask.minSec && ask.minSec > 0 ? Math.min(10, ask.minSec) : MIN_SHOT_SEC
@@ -610,7 +653,7 @@ export function planPovs(doc: EditDoc, ask: PovAsk): PovPlan | { say: string } {
   const durations = new Map(doc.sources.map((s) => [s.id, s.durationSec]))
   const homeWords = doc.words.filter((w) => w.source === home)
   const wordSpan = new Map(homeWords.map((w) => [w.id, { startSec: w.startSec, endSec: w.endSec }]))
-  const moments = momentsOf(sounds, homeWords)
+  const moments = momentsOf(sounds, homeWords, povCoverage(doc, session))
   // Each reaction its own stretch of the play between lines: from just before it, and long enough to be a shot.
   const edges = moments.flatMap((m) => {
     const from = m.startSec - 0.4

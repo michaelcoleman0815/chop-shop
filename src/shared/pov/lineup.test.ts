@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HOP, recording, voiceChat } from './test-session'
+import { HOP, recording, sparseChat, voiceChat } from './test-session'
 import { lineUpSession, loudestVoice, pairUp, sameSession, sliceEnvelope } from './lineup'
 
 /**
@@ -76,14 +76,34 @@ describe('lining up one session', () => {
     const home = recording(long, 0, 3000, 1)
     const steady = pairUp(home, recording(long, 5, 2950, 2))
     expect(sameSession(steady)).toBe(true)
+    expect(steady?.sure).toBe(true)
     expect(Math.abs((steady?.offsetSec ?? 0) - -5)).toBeLessThan(FRAME)
     expect(Math.abs(steady?.driftSec ?? 1)).toBeLessThan(FRAME)
     const fast = pairUp(home, recording(long, 5, 2950, 3, 0, 1.0001))
     expect(sameSession(fast)).toBe(true)
-    // Home's t is at (t - 5) * 1.0001 in it: the middle stretch, about 1500 s in, is 0.15 s on.
-    expect(Math.abs((fast?.offsetSec ?? 0) - (-5.0005 + 0.15))).toBeLessThan(FRAME)
-    // Its first and last stretches sit about 2850 s apart, so the line-up moves about 0.285 s.
-    expect(Math.abs((fast?.driftSec ?? 0) - 0.285)).toBeLessThan(FRAME)
+    // Home's t is at (t - 5) * 1.0001 in it: in the middle of what they share, about 1480 s in, 0.148 s on.
+    expect(Math.abs((fast?.offsetSec ?? 0) - (-5.0005 + 0.148))).toBeLessThan(FRAME)
+    // They share about 2950 s, over which the line-up moves about 0.295 s.
+    expect(Math.abs((fast?.driftSec ?? 0) - 0.295)).toBeLessThan(FRAME)
+    // Twelve stretches checked, where both talk most, two in each sixth; with talk all along, every one agrees.
+    expect(fast?.stretches).toEqual({ checked: 12, agreed: 12 })
+  })
+
+  it('lines up a long session where they hardly talk, from the minutes they do, and never another evening’s', () => {
+    // An hour, talk only a sixteenth of the time; the other recording starts 13.5 minutes in, its clock 30 ppm fast.
+    const quiet = sparseChat(3700, 1 / 16, 5)
+    const home = recording(quiet, 0, 3600, 1)
+    const late = pairUp(home, recording(quiet, 810, 2790, 2, 0, 1.00003))
+    expect(late?.sure).toBe(true)
+    expect(sameSession(late)).toBe(true)
+    // Home's t is at (t - 810) * 1.00003 in it; in the middle of what they share, 2205 s in, that is -809.958.
+    expect(Math.abs((late?.offsetSec ?? 0) - ((2205 - 810) * 1.00003 - 2205))).toBeLessThan(FRAME)
+    expect(Math.abs((late?.driftSec ?? 0) - 2790 * 0.00003)).toBeLessThan(FRAME)
+    expect(late?.stretches?.agreed).toBeGreaterThanOrEqual(6)
+    // Another evening's recording, as quiet: no stretch of it agrees with anything, so it is not this session.
+    const other = pairUp(home, recording(sparseChat(3700, 1 / 16, 99), 810, 2790, 3))
+    expect(sameSession(other)).toBe(false)
+    expect(other?.sure).toBe(false)
   })
 
   it('takes the loudest voice as yours', () => {

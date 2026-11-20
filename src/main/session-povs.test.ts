@@ -4,7 +4,13 @@ import { recording, voiceChat } from '../shared/pov/test-session'
 import type { FileFacts, Roles } from './session'
 
 vi.mock('./ffmpeg', () => ({ FFMPEG_PATH: 'ffmpeg', FFPROBE_PATH: 'ffprobe' }))
+// The line-up as it is, unless a test makes one unsure.
+vi.mock('../shared/pov/lineup', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../shared/pov/lineup')>()
+  return { ...real, lineUpSession: vi.fn(real.lineUpSession) }
+})
 
+import { lineUpSession } from '../shared/pov/lineup'
 import { findSession, saidHome, saidSound } from './session-povs'
 
 /**
@@ -114,6 +120,27 @@ describe('finding one session among the files', () => {
     expect(r.broll).toEqual(['/in/Lantern run pov-4.mp4'])
     expect(r.reply).toContain(
       'Lantern run pov-4.mp4 doesn’t line up with the others by ear, so it isn’t part of the session; it’s in as footage to cut to.'
+    )
+  })
+
+  it('says plainly when it is not sure of a line-up, and how to check it', async () => {
+    const real = await vi.importActual<typeof import('../shared/pov/lineup')>('../shared/pov/lineup')
+    // As a long session can be: its voice chat matched over all of it, but no stretch of its own agreed.
+    vi.mocked(lineUpSession).mockImplementationOnce((recordings, home) => {
+      const up = real.lineUpSession(recordings, home)
+      return {
+        ...up,
+        lined: up.lined.map((l) => (l.path === POVS[2] ? { ...l, sure: false, driftSec: null, stretches: { checked: 12, agreed: 1 } } : l))
+      }
+    })
+    const r = await findSession(roles(POVS), POVS.map((p) => facts(p)), 'our povs, mine is pov-1', envelopeOf)
+    // Both are in, so it can be checked and nudged; the app cuts only to the one that is sure (shared/pov: planPovs only).
+    expect(r.povs?.map((p) => [p.path, p.sure])).toEqual([
+      [POVS[1], true],
+      [POVS[2], false]
+    ])
+    expect(r.reply).toContain(
+      'I’m not sure of Lantern run pov-3.mp4’s line-up: it matched yours over the whole session, but not in stretches of its own, so I haven’t cut to it. Check it at a moment you all hear, a shout or a clap; /angle sync pov-3 +0.1 nudges it, and /povs cuts to it once it’s right.'
     )
   })
 
