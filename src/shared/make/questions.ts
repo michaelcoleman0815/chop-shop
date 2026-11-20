@@ -105,6 +105,15 @@ const whole = (...replies: string[]): RegExp =>
 /** The same phrases, every one of them, to take out of a reply and see what is left. */
 const every = (re: RegExp): RegExp => new RegExp(re.source, 'gi')
 
+/**
+ * What turns down what follows it: "not" ("do not"), "no", "never", and "don't", "doesn't", "won't" and the rest, with what they
+ * don't want done ("don't use", "I don't want"). "Why don't you" asks for it, so it is not one.
+ */
+const NEGATOR = String.raw`(?:(?:(?:do|does|did|would|should|could|will|can)\s+)?not|cannot|no|never|(?<!\bwhy\s)(?:(?:do|does|did)n'?t|(?:would|should|could|wo|ca|is|are)n't)(?:\s+(?:want|need|use|make|have|give|put|add|choose|pick|go with|do))?)`
+
+/** Whether words turn something down anywhere. */
+const TURNS_DOWN = new RegExp(String.raw`(?:^|[\s,;(])(?:${NEGATOR}|without|anything but|rather than|instead of|other than)\s`, 'i')
+
 /** A pause or a hedge ("hmm let me see", "I'm not sure yet", "no rush"). */
 const HOLD_ANY = anywhere(
   // A moment.
@@ -325,6 +334,8 @@ export function looksLikeChange(text: string): boolean {
  */
 export function unplacedChange(words: string): string {
   const said = words.trim().replace(/[.!?]+$/, '')
+  if (TURNS_DOWN.test(said.replace(/[‘’]/g, "'")))
+    return `The quote hasn’t changed: “${said}” says what it shouldn’t be, not what to change it to, so it stays as it was. Say what you want instead, like “make it 2 minutes”, or press its button to make it as it is.`
   if (/\b(?:shorter|longer|quicker|briefer)\b/i.test(said))
     return `The quote hasn’t changed: “${said}” doesn’t say how long, so it stays as it was. Say a length, like “make it 3 minutes”, or press its button to make it as it is.`
   return `The quote hasn’t changed: I couldn’t read “${said}” as a change to it, so it stays as it was. Say its length, voice or look, like “make it 3 minutes”, or press its button to make it as it is.`
@@ -426,9 +437,22 @@ const labelIn = (label: string): RegExp => new RegExp(`(?:^|\\W)${escape(label)}
  * run to the end of their clause, and are taken out of the reply, so nothing
  * turned down is ever picked.
  */
-const TURNED_DOWN =
-  /(?:^|[\s,;(])((?:(?:but|and|so|definitely|really|just)\s+)?(?:not|no|never)(?!\s+(?:sure|certain|now|yet|today|idea|clue|rush|hurry|problem|worries|longer|more than)\b)(?:\s+(?:about|really|so much|too))?|anything but|nothing (?:about|on|with|of|to do with)|without|except(?: for)?|rather than|instead of|other than|but not)\s+([^,.;!?]+?)(?=\s*(?:[,.;!?]|\bbut\b|\band\b|\bmore like\b|\brather\b|\binstead\b|\bplease\b|$))/gi
+const TURNED_DOWN = new RegExp(
+  String.raw`(?:^|[\s,;(])((?:(?:but|and|so|definitely|really|just)\s+)?${NEGATOR}(?!\s+(?:sure|certain|now|yet|today|idea|clue|rush|hurry|problem|worries|longer|more than)\b)(?:\s+(?:about|really|so much|too))?|anything but|nothing (?:about|on|with|of|to do with)|without|except(?: for)?|rather than|instead of|other than|but not)\s+([^,.;!?]+?)(?=\s*(?:[,.;!?]|\bbut\b|\band\b|\bmore like\b|\brather\b|\binstead\b|\bplease\b|$))`,
+  'gi'
+)
 const LEAD = /^(?:but|and|so|definitely|really|just)\s+/
+/** A marker that is only a "not" or a "don't", which inside a phrase may be part of what was said. */
+const WEAK = new RegExp(String.raw`^(?:(?:but|and|so|definitely|really|just) )?${NEGATOR}(?: (?:really|so much|too))?$`, 'i')
+
+/** The words with everything they turn down taken out ("don't use a British voice" says nothing to use). */
+export function withoutTurnedDown(text: string): string {
+  return text
+    .replace(/[‘’]/g, "'")
+    .replace(TURNED_DOWN, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 /** A limit on what it may cost, said anywhere ("under $1", "no more than $5", "budget of $3"). */
 const CAP_SAID = /\b(?:under|below|less than|at most|no more than|up to|max(?:imum)?|budget(?: of| is)?|spend(?: up to| at most)?)\s*(?:of\s*)?\$\s?\d+(?:\.\d{1,2})?/i
@@ -446,7 +470,7 @@ function readWords(t: string, questions: MakeQuestion[]): Read {
   for (const m of [...reply.matchAll(TURNED_DOWN)]) {
     const marker = m[1].toLowerCase().replace(/\s+/g, ' ')
     const what = m[2].trim().replace(/\s+please$/i, '')
-    const weak = /^(?:(?:but|and|so|definitely|really|just) )?(?:not|no|never)(?: (?:really|so much|too))?$/.test(marker)
+    const weak = WEAK.test(marker)
     // What it should say nothing about ("nothing about the 10 minute drive") is about what it says, never a choice.
     const content = /^nothing\b|\bnot about$/.test(marker)
     const before = reply.slice(0, (m.index ?? 0) + m[0].indexOf(m[1])).trimEnd()

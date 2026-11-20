@@ -45,10 +45,13 @@ function summarise(project: Project): ProjectSummary {
   }
 }
 
-async function touch(project: Project): Promise<void> {
-  const entries = await readIndex()
-  const without = entries.filter((e) => e.path !== project.path)
-  await writeIndex([summarise(project), ...without].slice(0, 30))
+/** Moves a project to the top of the recent list, in the list's own turn, so two at once never lose one. */
+function touch(project: Project): Promise<void> {
+  return inTurn(indexPath(), async () => {
+    const entries = await readIndex()
+    const without = entries.filter((e) => e.path !== project.path)
+    await writeIndex([summarise(project), ...without].slice(0, 30))
+  })
 }
 
 /** Recent projects, newest first, with any that have been deleted pruned. */
@@ -73,7 +76,11 @@ export async function recentProjects(): Promise<ProjectSummary[]> {
       // The file is gone; drop it rather than offering a dead row.
     }
   }
-  if (alive.length !== entries.length) await writeIndex(alive)
+  // Pruned in the list's turn, against the list as it is then, so nothing touched meanwhile is lost.
+  if (alive.length !== entries.length) {
+    const gone = new Set(entries.filter((e) => !alive.some((a) => a.path === e.path)).map((e) => e.path))
+    await inTurn(indexPath(), async () => writeIndex((await readIndex()).filter((e) => !gone.has(e.path))))
+  }
   return alive
 }
 
@@ -82,35 +89,59 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
   await fs.mkdir(dir, { recursive: true })
 
   const safe = projectName(name)
-  let path = join(dir, `${safe}.cutalong`)
-  let n = 2
-  for (;;) {
-    try {
-      await fs.access(path)
-      path = join(dir, `${safe} ${n++}.cutalong`)
-    } catch {
-      break
-    }
-  }
-
   const now = new Date().toISOString()
-  const project: Project = {
-    id: randomUUID(),
-    name: safe,
-    mode,
-    path,
-    createdAt: now,
-    openedAt: now,
-    primaryMedia: null,
-    mediaBytes: null,
-    media: [],
-    clips: [],
-    transcript: null,
-    timeline: mode === 'edit' ? { clips: [], width: 1920, height: 1080, fps: 30 } : null
+  // Each chat has a file of its own, claimed in one step ('wx' fails when one is there), so two made at once for one
+  // name never take one file; and its name is its file's ("Lisbon", "Lisbon 2"), so every chat can be told apart.
+  for (let n = 1; ; n++) {
+    const named = n === 1 ? safe : `${safe} ${n}`
+    const path = join(dir, `${named}.cutalong`)
+    const project: Project = {
+      id: randomUUID(),
+      name: named,
+      mode,
+      path,
+      createdAt: now,
+      openedAt: now,
+      primaryMedia: null,
+      mediaBytes: null,
+      media: [],
+      clips: [],
+      transcript: null,
+      timeline: mode === 'edit' ? { clips: [], width: 1920, height: 1080, fps: 30 } : null
+    }
+    const claimed = await inTurn(path, async () => {
+      try {
+        await fs.writeFile(path, JSON.stringify(project, null, 2), { flag: 'wx' })
+        return true
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false
+        throw err
+      }
+    })
+    if (!claimed) continue
+    await touch(project)
+    return project
   }
+}
 
-  await saveProject(project)
-  return project
+/**
+ * Takes away a chat that was only just made for a new video and then given way (another chat was asked for while it
+ * was made): only one in Cutalong's own folder, with no edit and nothing in it but what was asked and its quote, so
+ * nothing anyone made is ever taken away. Whether it was.
+ */
+export async function discardNewChat(path: string): Promise<boolean> {
+  const dir = projectsDir()
+  if (!path.startsWith(`${dir}/`) && !path.startsWith(`${dir}\\`)) return false
+  const gone = await inTurn(path, async () => {
+    const raw = await fs.readFile(path, 'utf8').catch(() => null)
+    if (!raw) return false
+    const project = JSON.parse(raw) as Project
+    if (project.edit || project.clipping || (project.chat ?? []).length > 2 || (project.media ?? []).length > 0) return false
+    await fs.rm(path, { force: true })
+    return true
+  }).catch(() => false)
+  if (gone) await inTurn(indexPath(), async () => writeIndex((await readIndex()).filter((e) => e.path !== path)))
+  return gone
 }
 
 /**
@@ -152,11 +183,13 @@ async function readProject(path: string): Promise<Project> {
   return project
 }
 
-/** What a chat that gave its new video a chat of its own says, so nothing it paid for is out of sight. */
+/** What a chat that gave a paid result a chat of its own says, so nothing it paid for is out of sight. */
 const movedLine = (kept: Kept, name: string): ChatMessage => ({
   id: `moved-${randomUUID()}`,
   role: 'assistant',
-  text: `${kept.doc ? 'Your new video' : 'What came back'} is in a new chat, “${name}”, so the edit here stays as it is.`
+  text: kept.into
+    ? `The new version of your video is in a new chat, “${name}”, as the edit it was made for isn’t in this chat any more.`
+    : `${kept.doc ? 'Your new video' : 'What came back'} is in a new chat, “${name}”, so the edit here stays as it is.`
 })
 
 /**
@@ -186,12 +219,14 @@ export async function keepInFile(
       return { path, name: project.name }
     })
     if (put !== 'gone' && put !== 'moved') return put
-    if (put === 'moved' && !freshVideo(kept)) return null
+    if (put === 'moved' && !freshVideo(kept) && !kept.into) return null
   }
-  // A chat of its own: made, and the result kept in it, in its turn.
+  // A chat of its own: made, and the result kept in it, in its turn. A change made for an edit no longer anywhere to
+  // go into is a whole video of its own, so it is that chat's edit.
   const made = await createProject(name, 'cut')
+  const own: Kept = kept.into ? { ...kept, into: null } : kept
   const kept2 = await inTurn(made.path, async () => {
-    const next = keepInProject(made, kept, id())
+    const next = keepInProject(made, own, id())
     if (!next) return null
     await writeProject(next)
     return { path: made.path, name: made.name }
@@ -272,5 +307,5 @@ async function writeProject(project: Project): Promise<void> {
 }
 
 export async function removeFromRecent(path: string): Promise<void> {
-  await writeIndex((await readIndex()).filter((e) => e.path !== path))
+  await inTurn(indexPath(), async () => writeIndex((await readIndex()).filter((e) => e.path !== path)))
 }

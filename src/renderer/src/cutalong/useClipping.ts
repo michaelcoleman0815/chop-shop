@@ -66,6 +66,8 @@ export interface ClippingDeps {
   brand?: () => string | null
   /** Whether work may start (an Anthropic key works); when not, it has said why. */
   gate?: (what: 'export') => Promise<boolean>
+  /** Why a clip can't be opened now (a video being made in the chat), as another chat can't be; null when it can. */
+  busy?: () => string | null
 }
 
 /** The recordings a drop holds: footage and sound, not stills. */
@@ -134,10 +136,15 @@ export function useClipping(deps: ClippingDeps) {
     if (deps.screen === 'thread' || deps.screen === 'start') leave()
   }, [deps.screen, leave])
 
-  /** Opens one clip in the editor. */
+  /** Opens one clip in the editor, unless work runs in the chat: then it says why, as opening another chat does. */
   const open = useCallback((id: string): void => {
     const clip = current()?.clips.find((c) => c.id === id)
     if (!clip) return
+    const why = d.current.busy?.() ?? null
+    if (why) {
+      d.current.setToast({ text: why })
+      return
+    }
     void d.current.persist()
     d.current.docRef.current = clip.doc
     d.current.setDocState(clip.doc)

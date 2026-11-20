@@ -869,6 +869,12 @@ export function createMockApi(): CutalongApi {
     saveProject: async (project) => {
       projects.set(project.path, { ...project, openedAt: new Date().toISOString() })
     },
+    discardNewChat: async (path) => {
+      const p = projects.get(path)
+      if (!p || p.edit || (p.chat ?? []).length > 2) return false
+      projects.delete(path)
+      return true
+    },
     keepInChat: async ({ path, name, kept }) => {
       const at = path ? projects.get(path) : undefined
       const next = at ? keepInProject(at, kept, `kept-${Date.now()}`) : null

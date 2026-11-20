@@ -1,4 +1,5 @@
 import { lengthIn } from './brief'
+import { withoutTurnedDown } from './questions'
 import { normalWord } from './script'
 import type { Make, MakeFormat, MadeShot, VoiceChoice } from './schema'
 import { voiceFromWords } from './voices'
@@ -156,23 +157,25 @@ export function readMakeAsk(make: Make, text: string, onScreen: string | null = 
   const t = text.trim()
   if (!t) return null
   const lower = t.toLowerCase()
+  // What the words turn down ("don't use a British voice", "not an explainer") is never the style, length or voice asked for.
+  const said = withoutTurnedDown(t)
 
   // A new style: every picture made again.
-  const restyle = /\b(?:make it|turn it into|as|redo it as|instead,?)\s+(?:an?\s+)?(?:(?:animated\s+)?explainer|(?:cinematic\s+)?documentary|cartoon|animation)\b|\b(?:explainer|documentary|cartoon) instead\b/i.exec(t)
+  const restyle = /\b(?:make it|turn it into|as|redo it as|instead,?)\s+(?:an?\s+)?(?:(?:animated\s+)?explainer|(?:cinematic\s+)?documentary|cartoon|animation)\b|\b(?:explainer|documentary|cartoon) instead\b/i.exec(said)
   if (restyle) {
     const format: MakeFormat = /explainer|cartoon|animation/i.test(restyle[0]) ? 'explainer' : 'documentary'
     if (format !== make.brief.format) return { kind: 'restyle', format }
   }
 
   // A new length for the whole video: a new script, its narration and its shots.
-  const seconds = wholeLength(t)
+  const seconds = wholeLength(said)
   if (seconds && Math.abs(seconds - make.brief.seconds) >= 10 && make.brief.from === 'topic') return { kind: 'length', seconds }
 
   // A new voice.
-  if (/\bvoice\b|\bnarrat(?:or|ion)\b|\bread (?:it|by)\b|\bmy own recording\b/i.test(t)) {
-    const own = /\b(?:my (?:own )?voice|my recording|i(?:'ll| will) (?:record|narrate))\b/i.test(t)
-    const voice = own ? null : voiceFromWords(t, make.brief.format, make.narration.voice)
-    if (own || voice || /\b(?:different|another|other|new)\b/.test(lower)) return { kind: 'voice', voice, own }
+  if (/\bvoice\b|\bnarrat(?:or|ion)\b|\bread (?:it|by)\b|\bmy own recording\b/i.test(said)) {
+    const own = /\b(?:my (?:own )?voice|my recording|i(?:'ll| will) (?:record|narrate))\b/i.test(said)
+    const voice = own ? null : voiceFromWords(said, make.brief.format, make.narration.voice)
+    if (own || voice || /\b(?:different|another|other|new)\b/.test(said.toLowerCase())) return { kind: 'voice', voice, own }
   }
 
   // A shot swapped for real footage.

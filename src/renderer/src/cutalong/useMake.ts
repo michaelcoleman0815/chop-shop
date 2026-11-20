@@ -33,7 +33,7 @@ import { api } from './api'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import { isAudioFile, isVideoFile } from './format'
-import { renumber, type Kept } from '../../../shared/make/kept'
+import { renumber, shotInto, shotKeptAt, type Kept } from '../../../shared/make/kept'
 
 /**
  * Videos made from nothing, in the session. "make a 2 minute cinematic
@@ -117,13 +117,22 @@ export interface MakeDeps {
   keepFor?: (project: { path: string; name: string } | null, name: string, kept: Kept) => Promise<{ path: string; name: string } | null>
   /**
    * A chat of its own for a new video, as the chat it was asked in has an edit it never replaces: made with `first`
-   * in it and saved, the chat being left given the line `leaving` says, then opened. Null when it could not be.
+   * in it and saved, the chat being left given the line `leaving` says, then opened. Refused while other work runs
+   * ('busy'), not made ('failed', or null), or given way to the chat open being asked for meanwhile ('overtaken', and
+   * the chat it had made is taken away again).
    */
   newChat?: (
     name: string,
     first: Omit<ChatMessage, 'id'>[],
     leaving: (name: string) => Omit<ChatMessage, 'id'>
-  ) => Promise<{ path: string; name: string } | null>
+  ) => Promise<NewChat | null>
+  /**
+   * The chat's own edit, or one of its clips, by its id, while another of them is open in the editor: where a paid
+   * result made for it goes all the same.
+   */
+  chatEdit?: (id: string) => EditDoc | null
+  /** That edit, changed, put back where it is in the chat and saved, without opening it. */
+  putChatEdit?: (doc: EditDoc) => void
   /** Whether Settings makes a new video straight away when it costs less than its amount. */
   goAhead?: () => Promise<boolean>
   /** What a brand never uses, by its id: kept with a shot made for a chat not open. */
@@ -135,6 +144,9 @@ export interface MakeDeps {
   /** A short notice outside the chat (a toast). */
   notify?: (text: string) => void
 }
+
+/** How making a new chat for a new video went: where it is, or why there is none. */
+export type NewChat = { path: string; name: string } | { refused: 'busy' | 'failed' | 'overtaken' }
 
 /** Where a paid piece of work was asked for: its chat, that chat's file once it has one, and its brand. */
 interface Origin {
@@ -229,8 +241,20 @@ const NEW_CHAT = 'It goes in a new chat, so your edit here stays as it is.'
 /** A new chat for a new video could not be made: so nothing was. */
 const NO_NEW_CHAT = 'I couldn’t make a new chat for it, so nothing was made or spent, and your edit here stays as it is. Press its button to try again.'
 
+/** Why no new chat was made for a new video, said in the chat that asked: by its quote's button, or by its ask. */
+const notMoved = (why: 'busy' | 'failed' | 'overtaken', by: 'tap' | 'ask'): string => {
+  const again = by === 'tap' ? 'Press its button again' : 'Ask again'
+  if (why === 'busy') return `Something else is still running here, so I didn’t start your video and nothing was spent. ${again} once it’s done.`
+  if (why === 'overtaken')
+    return `You stayed in this chat, so I didn’t start your video and nothing was spent. ${by === 'tap' ? 'Press its button' : 'Ask again'} to make it in a new chat.`
+  return by === 'tap' ? NO_NEW_CHAT : 'I couldn’t make a new chat for it, so nothing was written or spent, and your edit here stays as it is. Ask again in a moment.'
+}
+
+/** Where a paid result made for an edit not open went: that edit, in this chat, beside the one open. */
+const besideLine = (doc: EditDoc): string => `It went into “${doc.title}”, the edit it was made for, not the one open now. Go back to the chat to see it.`
+
 /** A new chat for a new video was overtaken by another chat being opened: so nothing was made. */
-const NO_NEW_CHAT_AWAY = 'Another chat opened before the new one for your video was ready, so nothing was made or spent.'
+const NO_NEW_CHAT_AWAY = 'Another chat opened before the new one for your video was ready, so nothing was started or spent.'
 
 /** What is typed in a chat whose make questions, read-back or quote expired when it was opened again. */
 const EXPIRED_WAITS = 'What was waiting above has expired, so nothing is written or made from it. Ask again for a fresh quote, or say “never mind”.'
@@ -564,20 +588,32 @@ export function useMake(deps: MakeDeps): Makes {
 
   /**
    * A new video asked for in a chat that has an edit: a chat of its own, made, saved and opened before anything is
-   * spent, with what was asked (and its quote) in it, and a line in the chat left saying where it went. False when
-   * no new chat could be made.
+   * spent, with what was asked (and its quote) in it, and a line in the chat left saying where it went. How it went.
    */
-  const moveToNewChat = useCallback(async (brief: Brief | null, ask: string, quoted: Omit<ChatMessage, 'id'> | null): Promise<boolean> => {
+  const moveToNewChat = useCallback(async (brief: Brief | null, ask: string, quoted: Omit<ChatMessage, 'id'> | null): Promise<NewChat> => {
     const { newChat } = live.current
-    if (!newChat) return false
+    if (!newChat) return { refused: 'failed' }
     const what = aboutOf(brief)
     const first: Omit<ChatMessage, 'id'>[] = [{ role: 'user', text: ask }, ...(quoted ? [quoted] : [])]
     const where = await newChat(nameOf(brief), first, (name) => ({
       role: 'assistant',
       text: `${capital(what)} goes in a new chat, “${name}”, so your edit here stays as it is.`
     })).catch(() => null)
-    return !!where
+    return where ?? { refused: 'failed' }
   }, [])
+
+  /**
+   * A paid result for edit X, back while another of its chat's edits is open (one of its clips): X's next version all
+   * the same, put back in the chat beside the one open. Null when X is not in this chat.
+   */
+  const intoBeside = (docId: string, next: (x: EditDoc) => EditDoc): EditDoc | null => {
+    const { chatEdit, putChatEdit } = live.current
+    const x = chatEdit?.(docId)
+    if (!x || !putChatEdit) return null
+    const done = next(x)
+    putChatEdit(done)
+    return done
+  }
 
   /** A made video in the session: a new edit, or a new version of the one it was made from. */
   const land = useCallback(
@@ -594,11 +630,19 @@ export function useMake(deps: MakeDeps): Makes {
       const latest = docRef.current
       if (r.into) {
         if (!latest || latest.id !== r.into.docId) {
-          patch(msg, {
-            progress: null,
-            text: 'Another edit is open now, so I left it out of that one.',
-            error: true
-          })
+          // Another of this chat's edits is open (one of its clips): X's next version all the same, beside it.
+          const into = r.into
+          const beside = intoBeside(into.docId, (x) => asNewVersion(x, r.doc, into.summary, into.carry))
+          if (beside) {
+            patch(msg, {
+              ...shown(r.reply),
+              text: `${renumber(r.reply.text, currentVersion(beside).n)} ${besideLine(beside)}`,
+              actions: []
+            })
+            return
+          }
+          // Not in this chat at all: a whole video of its own all the same (go keeps it in a new chat first).
+          patch(msg, { progress: null, text: 'The edit it was made for isn’t in this chat any more.', error: true })
           return
         }
         const next = asNewVersion(latest, r.doc, r.into.summary, r.into.carry)
@@ -684,13 +728,14 @@ export function useMake(deps: MakeDeps): Makes {
         // and opened now, before anything is spent, and what was asked and its quote go with it.
         if (!into && live.current.docRef.current) {
           const quoted = { ...keptReply(entry.reply), script: scriptOf(entry.draft) }
-          if (!(await moveToNewChat(entry.draft.brief, entry.draft.brief.ask, quoted))) {
-            // Nothing was made or spent. Still here, its quote keeps its button to try again; overtaken by another
-            // chat, it says so where the person is.
+          const moved = await moveToNewChat(entry.draft.brief, entry.draft.brief.ask, quoted)
+          if ('refused' in moved) {
+            // Nothing was started or spent. Still here, its quote keeps its button to try again; somewhere else, it
+            // says so where the person is.
             if (still(mine)) {
               showing(key, quoteAt)
               live.current.patch(quoteAt, quoteMsg(key, entry.draft, entry.reply))
-              live.current.push({ role: 'assistant', text: NO_NEW_CHAT })
+              live.current.push({ role: 'assistant', text: notMoved(moved.refused, 'tap') })
             } else say(NO_NEW_CHAT_AWAY)
             return
           }
@@ -747,6 +792,13 @@ export function useMake(deps: MakeDeps): Makes {
         await away(run, { message: keptReply(r.reply, OPEN), doc: r.doc, into: null }, 'ready', at)
         return
       }
+      // A change of a made video whose edit is not the one open goes into that edit all the same, in this chat (land:
+      // one of its clips is open). With that edit nowhere in this chat, it is a whole video of its own, in a new chat.
+      const { chatEdit, putChatEdit } = live.current
+      if (r.into && live.current.docRef.current?.id !== r.into.docId && !(putChatEdit && chatEdit?.(r.into.docId))) {
+        await away(run, { message: keptReply(r.reply, OPEN), doc: r.doc, into: r.into }, 'ready', at)
+        return
+      }
       land(r, at)
     },
     [away, begin, end, keep, land, making, moveToNewChat, progressed, quoteMsg, replyFor, say, showing, still, sync, whereIs]
@@ -786,8 +838,11 @@ export function useMake(deps: MakeDeps): Makes {
       // A new video never takes the place of an edit. Where Settings may make it straight away, it goes in a chat of
       // its own now, before anything is spent; otherwise its quote says it will, and its button moves it.
       if (!quoteFirst && live.current.docRef.current && (await live.current.goAhead?.())) {
-        if (!(await moveToNewChat(brief, text, null))) {
-          live.current.push({ role: 'assistant', text: NO_NEW_CHAT })
+        const mine = owner.current
+        const moved = await moveToNewChat(brief, text, null)
+        if ('refused' in moved) {
+          if (still(mine)) live.current.push({ role: 'assistant', text: notMoved(moved.refused, 'ask') })
+          else say(NO_NEW_CHAT_AWAY)
           return
         }
       }
@@ -1130,10 +1185,21 @@ export function useMake(deps: MakeDeps): Makes {
     }
     const latest = docRef.current
     if (!latest || latest.id !== d.id) {
+      // Another of this chat's edits is open (one of its clips): the shot goes into X all the same, beside it; with X
+      // in this chat no more, it is in no edit, and its picture is said where it is kept.
+      const shot = { doc: d.id, asset: r.asset, ops: r.ops, make: r.make, summary: r.summary }
+      let version: number | null = null
+      const beside = intoBeside(d.id, (x) => {
+        const made = shotInto(x, shot, live.current.never?.(run.origin.brand) ?? [])
+        version = made.version
+        return made.doc
+      })
       patch(at, {
-        progress: null,
-        text: 'Another edit is open now, so I left the shot out of it.',
-        error: true
+        ...shown(r.reply),
+        text: beside
+          ? `${version ? `v${version} is ready. ` : ''}${r.reply.text} ${besideLine(beside)}`
+          : `${r.reply.text} ${shotKeptAt(r.asset.path)}`,
+        actions: []
       })
       return
     }
