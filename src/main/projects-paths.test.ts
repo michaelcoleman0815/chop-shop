@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { promises as fs } from 'fs'
-import { join } from 'path'
+import { join, parse } from 'path'
 
 /**
  * Which paths main reads and writes a chat at for the window: a project file (.cutalong, or .chopshop from before)
@@ -137,7 +137,7 @@ describe('the person’s chats once the recent list no longer has them (round 14
         expect(await projectPathOk(path), path).toBe(true)
         await saveProject({ ...chatAt(path), chat: [{ id: 'z', role: 'user', text: 'what was said last' }] })
         expect((await openProject(path)).chat?.at(-1)?.text, path).toBe('what was said last')
-        expect(await keepInFile(path, 'x', kept), path).toEqual({ path, name: path.split('/').pop()?.replace('.cutalong', '') })
+        expect(await keepInFile(path, 'x', kept), path).toEqual({ path, name: parse(path).name })
       }
     } finally {
       await fs.rm(dir, { recursive: true, force: true })

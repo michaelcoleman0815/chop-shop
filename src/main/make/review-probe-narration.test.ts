@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -9,6 +9,7 @@ import type { Availability } from '../../shared/make/quote'
 import { phrasesAndSections } from '../../shared/make/script'
 import { elevenSpeech } from '../providers/voices'
 import { gateFor, json, scriptedFetch } from '../providers/testing'
+import { exe, standIn } from '../test-bin'
 import type { ParseCall } from './claude'
 import type { LocalVoice } from './narrate'
 import { makeVideo, quoteDraft, servicesTotal, type MakeRunDeps } from './run'
@@ -23,11 +24,12 @@ import type { MakeServices, TimedWord } from './services'
  * pictures, and the reason given is "did not accept the key".
  */
 
-/** Stands in for ffmpeg decoding a voice chunk: reads the bytes, answers one second of silence as s16le mono 48 kHz. */
+/**
+ * Stands in for ffmpeg decoding a voice chunk: reads the bytes, answers one second of silence as s16le mono 48 kHz.
+ * A Node stand-in (test-bin.ts), which runs on every computer: it was a #!/bin/sh script, which Windows can't run.
+ */
 const FAKE_DIR = mkdtempSync(join(tmpdir(), 'probe-narration-ffmpeg-'))
-const FAKE_FFMPEG = join(FAKE_DIR, 'fake-ffmpeg.sh')
-writeFileSync(FAKE_FFMPEG, '#!/bin/sh\ncat > /dev/null\nhead -c 96000 /dev/zero\n')
-chmodSync(FAKE_FFMPEG, 0o755)
+const FAKE_FFMPEG = standIn(join(FAKE_DIR, exe('fake-ffmpeg')), "process.stdin.resume()\nprocess.stdin.on('end', () => process.stdout.write(Buffer.alloc(96000)))\n")
 afterAll(() => rmSync(FAKE_DIR, { recursive: true, force: true }))
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
 const can: Availability = { google: true, fal: false, elevenlabs: true, openai: false, claude: true, localVoice: true }

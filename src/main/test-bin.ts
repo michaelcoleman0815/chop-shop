@@ -18,6 +18,19 @@ export function standIn(path: string, source: string): string {
   return path
 }
 
+/** A #! line that runs a shell (sh, bash, dash, zsh or ksh), by its path or through env. */
+const SHELL = /^#!\s*(?:\S*\/)?(?:env\s+)?(?:\S*\/)?(?:sh|bash|dash|zsh|ksh)(?:\s|$)/
+
+/**
+ * What a test is told when it runs a stand-in written for a shell, which
+ * Windows can't run, or null for any other file: test-setup.ts throws it on
+ * Windows (and with CUTALONG_STAND_INS=node), and fails the test with it.
+ */
+export function shellStandIn(file: string, line: string | null): string | null {
+  if (!line || !SHELL.test(line)) return null
+  return `${file} is a stand-in written for a shell (${line}), which Windows can't run. Write it with standIn() from src/main/test-bin.ts: a few lines of JavaScript, which run on every computer.`
+}
+
 /** A program's file name on this computer: Windows' end in .exe. */
 export const exe = (name: string): string => (process.platform === 'win32' ? `${name}.exe` : name)
 

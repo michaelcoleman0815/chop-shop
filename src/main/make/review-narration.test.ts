@@ -1,7 +1,7 @@
-import { chmodSync, mkdtempSync, writeFileSync } from 'fs'
+import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { readAsk } from '../../shared/make/brief'
 import type { Draft } from '../../shared/make/draft'
 import { PRICES } from '../../shared/make/prices'
@@ -9,6 +9,7 @@ import type { Availability } from '../../shared/make/quote'
 import { phrasesAndSections } from '../../shared/make/script'
 import { elevenSpeech } from '../providers/voices'
 import { gateFor, json, scriptedFetch } from '../providers/testing'
+import { exe, standIn } from '../test-bin'
 import type { ParseCall } from './claude'
 import type { LocalVoice } from './narrate'
 import { makeVideo, quoteDraft, type MakeRunDeps } from './run'
@@ -72,13 +73,24 @@ const alignment = (text: string) => {
   }
 }
 
-/** Stands in for ffmpeg decoding a voice chunk: reads the bytes, answers one second of silence as s16le mono 48 kHz. */
+/** The folders this file makes (its stand-in, and the narration it reads), taken away once it is done. */
+const made: string[] = []
+const scratch = (prefix: string): string => {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  made.push(dir)
+  return dir
+}
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
+
+/**
+ * Stands in for ffmpeg decoding a voice chunk: reads the bytes, answers one second of silence as s16le mono 48 kHz.
+ * A Node stand-in (test-bin.ts), which runs on every computer.
+ */
 function fakeFfmpeg(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'review-ffmpeg-'))
-  const bin = join(dir, 'ffmpeg')
-  writeFileSync(bin, '#!/bin/sh\ncat > /dev/null\nhead -c 96000 /dev/zero\n')
-  chmodSync(bin, 0o755)
-  return bin
+  const dir = scratch('review-ffmpeg-')
+  return standIn(join(dir, exe('ffmpeg')), "process.stdin.resume()\nprocess.stdin.on('end', () => process.stdout.write(Buffer.alloc(96000)))\n")
 }
 
 describe('a paid voice that stops partway', () => {
@@ -165,7 +177,7 @@ describe('a paid voice that stops partway', () => {
           camera: { kind: 'push-in', zoom: 1.1, to: { x: 0.5, y: 0.5 } }
         })
       },
-      dir: mkdtempSync(join(tmpdir(), 'review-narration-')),
+      dir: scratch('review-narration-'),
       findMusic: async () => null,
       progress: () => undefined
     }
