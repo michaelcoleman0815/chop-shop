@@ -11,7 +11,8 @@ import { join } from 'path'
 const dir = vi.hoisted(() => `${process.env.TMPDIR ?? '/tmp'}/projects-new-${process.pid}`)
 vi.mock('electron', () => ({ app: { getPath: () => dir } }))
 
-import { createProject, discardNewChat, projectsDir, recentProjects, saveProject } from './projects'
+import { createProject, discardNewChat, keepInFile, projectsDir, recentProjects, saveProject } from './projects'
+import type { Kept } from '../shared/make/kept'
 import { createDoc } from '../shared/edit'
 import type { Project } from '../shared/types'
 
@@ -71,6 +72,30 @@ describe('new chats', () => {
       await fs.writeFile(outside, JSON.stringify({ ...withEdit, path: outside, edit: null, chat: [] }))
       expect(await discardNewChat(outside)).toBe(false)
       expect(await exists(outside)).toBe(true)
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a change made for an edit no longer in its chat is a whole video in a new chat, as its v1, and the chat says why', async () => {
+    try {
+      const doc = (id: string) => createDoc({ id, title: id, source: { id: 's1', path: `/${id}.mp4`, durationSec: 10, width: 1920, height: 1080, fps: 30 }, words: [] })
+      const a = await createProject('A', 'cut')
+      await saveProject({ ...a, edit: doc('other-edit') } as Project)
+      const kept: Kept = {
+        message: { role: 'assistant', text: 'v2 is ready. It runs 3:00 now.' },
+        doc: doc('made-again'),
+        into: { docId: 'gone', summary: 'Made again at 3 minutes.', carry: [] } as unknown as Kept['into'],
+        brand: 'default',
+        never: []
+      }
+      const where = await keepInFile(a.path, 'The 1950s oil boom', kept)
+      const fresh = JSON.parse(await fs.readFile(where?.path as string, 'utf8')) as Project
+      expect(fresh.edit?.id).toBe('made-again')
+      expect(fresh.chat?.at(-1)?.text).toBe('v1 is ready. It runs 3:00 now.')
+      const left = JSON.parse(await fs.readFile(a.path, 'utf8')) as Project
+      expect(left.edit?.id).toBe('other-edit')
+      expect(left.chat?.at(-1)?.text).toBe('The new version of your video is in a new chat, “The 1950s oil boom”, as the edit it was made for isn’t in this chat any more.')
     } finally {
       await fs.rm(dir, { recursive: true, force: true })
     }

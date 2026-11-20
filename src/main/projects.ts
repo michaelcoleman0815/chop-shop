@@ -4,7 +4,7 @@ import { join, basename, dirname } from 'path'
 import { randomUUID } from 'crypto'
 import { projectName } from '../shared/project-name'
 import { upgradeProject } from '../shared/project-upgrade'
-import { freshVideo, keepInProject, type Kept } from '../shared/make/kept'
+import { freshVideo, keepInProject, renumber, type Kept } from '../shared/make/kept'
 import type { EditDoc } from '../shared/edit'
 import type { ChatMessage, Project, ProjectMode, ProjectSummary } from '../shared/types'
 
@@ -224,7 +224,7 @@ export async function keepInFile(
   // A chat of its own: made, and the result kept in it, in its turn. A change made for an edit no longer anywhere to
   // go into is a whole video of its own, so it is that chat's edit.
   const made = await createProject(name, 'cut')
-  const own: Kept = kept.into ? { ...kept, into: null } : kept
+  const own: Kept = kept.into ? { ...kept, into: null, message: { ...kept.message, text: renumber(kept.message.text, 1) } } : kept
   const kept2 = await inTurn(made.path, async () => {
     const next = keepInProject(made, own, id())
     if (!next) return null

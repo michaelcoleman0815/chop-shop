@@ -1504,10 +1504,12 @@ export function useCutalong() {
       // come back to the chat and the edit that paid for them.
       const [r, settings] = opts.paid ? await during(asking) : await asking()
       off()
-      if (!still()) {
+      /** Given way: in the same chat, its line says so (another of its edits is open now); elsewhere, nothing shows. */
+      const gaveWay = (): void => {
+        if (id && chatKey.current === mine) patch(id, { progress: null, text: 'That search was for the edit open before this one, so I left what it found out.' })
         if (opts.paid) setToast({ text: 'What the web search found came back after its edit closed, so its choices aren’t shown.' })
-        return
       }
+      if (!still()) return gaveWay()
       if (!r.ok) {
         const text = `I couldn't look for B-roll. ${r.message}`
         if (id) patch(id, { progress: null, text, error: true })
@@ -1516,7 +1518,7 @@ export function useCutalong() {
       }
       // The price is asked only when the web is on and would have been looked in with a yes.
       const webQuote = settings?.webSearch && r.results.some((x) => webWaits(x.plan)) ? await api.brollQuote(1).catch(() => null) : null
-      if (!still()) return
+      if (!still()) return gaveWay()
       const except = opts.except
       const replies = r.results.map((found, i) => {
         const results = except
