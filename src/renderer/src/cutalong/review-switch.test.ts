@@ -473,6 +473,36 @@ describe('a tap during a chat switch (the eighth review, finding 1)', () => {
   })
 })
 
+describe('another make asked for while a video is made (the real-app run’s step 7)', () => {
+  it('is refused below it, asks nothing of main or Claude, and the video lands in its own reply above the refusals', async () => {
+    const w = app({ cap: null, autoUnder: null }, { guarded: true })
+    await w.type(QUOTED)
+    const go = w.goButton() as Action
+    const make = w.hold('make')
+    const tapped = w.makes.onAction(go)
+    await settle()
+    const asked = { start: w.calls.start.length, claude: w.calls.claude }
+    await w.type('/make a 2 minute documentary about Lisbon')
+    await w.type('make a video about Lisbon')
+    const refused = 'I’m still making your video about the 1950s oil boom in “A”. Stop it, or wait until it’s done.'
+    expect(w.chat().slice(-2).map((m) => m.text)).toEqual([refused, refused])
+    expect(w.calls.start.length).toBe(asked.start)
+    expect(w.calls.claude).toBe(asked.claude)
+    make.release()
+    await tapped
+    expect(w.calls.go).toEqual(['the 1950s oil boom'])
+    // The reply that showed its progress is the one that says it is ready, with the editor's button; the refusals
+    // stay below it, as they were said.
+    const texts = w.chat().map((m) => m.text)
+    const ready = texts.indexOf(READY)
+    expect(ready).toBeGreaterThan(-1)
+    expect(texts.slice(ready + 1)).toEqual([refused, refused])
+    expect(w.chat()[ready]).toMatchObject({ progress: null, actions: [{ kind: 'open-editor' }] })
+    expect(w.docRef.current?.id).toBe('made-video-1')
+    expect(w.files.get('A')?.edit?.id).toBe('made-video-1')
+  })
+})
+
 describe('a made video main couldn’t read as an edit (round 15)', () => {
   for (const at of ['beside', 'projects'] as const) {
     it(`says it couldn’t be added, that nothing in its chat changed, and where it is (${at}), with a button to the file`, async () => {
