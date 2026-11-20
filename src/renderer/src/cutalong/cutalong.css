@@ -1045,6 +1045,16 @@ button:disabled {
   gap: var(--space-2);
 }
 
+/* A long choice ends in an ellipsis before it outgrows a phone's column; where it is from stays whole after it, a space away. */
+.cl-actions > .cl-btn {
+  max-width: 100%;
+}
+
+.cl-btn-tail {
+  flex: none;
+  margin-inline-start: calc(var(--space-1) - var(--space-2));
+}
+
 .cl-progress {
   display: flex;
   align-items: center;

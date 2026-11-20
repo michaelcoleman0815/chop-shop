@@ -152,8 +152,10 @@ export async function encodeMp4(
  */
 export async function normalized(path: string, c: Candidate, range: Range | null, ffmpeg: string): Promise<Fetched> {
   const base = await importFile(path, { ffmpeg })
-  const asset = { ...base, title: c.title || base.title, origin: originFor(c, range) }
+  const credit = creditLine(c, range)
+  // The credit rides on the asset, so the upload kit prints it as the source asks.
+  const asset = { ...base, title: c.title || base.title, origin: { ...originFor(c, range), ...(credit ? { credit } : {}) } }
   // Sounds have a length too; importFile leaves it out for audio.
   if (asset.kind === 'audio' && asset.durationSec === null && c.durationSec) asset.durationSec = c.durationSec
-  return { asset, credit: creditLine(c, range) }
+  return { asset, credit }
 }

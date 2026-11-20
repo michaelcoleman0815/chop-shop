@@ -93,6 +93,11 @@ function candidateOf(it: NasaItem): Candidate | null {
 /** Seconds from exiftool's ways of writing a length: "0:01:35", "95.1 s". */
 export function seconds(v: unknown): number | null {
   if (typeof v === 'number') return v
+  // XMP writes a length as a count and the length of one: { Value: 35566080, Scale: 1.111e-05 }.
+  if (v && typeof v === 'object') {
+    const { Value, Scale } = v as { Value?: unknown; Scale?: unknown }
+    return typeof Value === 'number' && typeof Scale === 'number' && Scale > 0 ? Math.round(Value * Scale * 1000) / 1000 : null
+  }
   if (typeof v !== 'string') return null
   const clock = /^(\d+):(\d{2}):(\d{2}(?:\.\d+)?)$/.exec(v.trim())
   if (clock) return Number(clock[1]) * 3600 + Number(clock[2]) * 60 + Number(clock[3])
@@ -139,8 +144,12 @@ export function nasaSource(deps: SourceDeps): BrollSource {
           const where = await deps.http.json<{ location?: string }>(`${API}/metadata/${encodeURIComponent(c.id)}`, { signal: opts.signal })
           if (where.value.location) {
             const m = await deps.http.json<Record<string, unknown>>(https(where.value.location), { signal: opts.signal })
-            const key = Object.keys(m.value).find((k) => /(^|:)Duration$/.test(k))
-            durationSec = key ? seconds(m.value[key]) : durationSec
+            // Several tags carry a length (XMP:Duration, QuickTime:Duration); the first that reads as one, over 0, is it.
+            const lengths = Object.keys(m.value)
+              .filter((k) => /(^|:)Duration$/.test(k))
+              .map((k) => seconds(m.value[k]))
+              .filter((s): s is number => s !== null && s > 0)
+            durationSec = lengths[0] ?? durationSec
           }
         } catch {
           // Without its length, a stretch from the start is taken.
