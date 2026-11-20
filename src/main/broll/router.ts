@@ -1,6 +1,6 @@
 import { judge, LICENCE_TROUBLE, type LicenceTrouble, type PolicyOptions } from '../../shared/broll/policy'
 import { partsOf, rankFor } from '../../shared/broll/rank'
-import { makersIn, orientationOf, planFor, type Plan } from '../../shared/broll/route'
+import { makersIn, orientationOf, planFor, type Asked, type MomentResult } from '../../shared/broll/route'
 import { listOf } from '../../shared/broll/text'
 import {
   SOURCE_NAMES,
@@ -9,7 +9,6 @@ import {
   type Fetched,
   type FetchOptions,
   type Moment,
-  type Ranked,
   type SourceId
 } from '../../shared/broll/types'
 import { QuotaError } from './sources/common'
@@ -51,27 +50,13 @@ export interface FindOptions {
   deadlineMs?: number
   /** The person said yes to the price of the paid sources for this search. */
   paid?: boolean
+  /** Ask only these sources: the web alone, once its price has been agreed to for a moment already looked for. */
+  only?: SourceId[]
   signal?: AbortSignal
   onProgress?: (p: { stage: string; percent: number | null; moment: number }) => void
 }
 
-export interface Asked {
-  id: SourceId
-  found: number
-  /** Of those, how many the policy let through. */
-  kept: number
-  ms: number
-  error?: string
-}
-
-export interface MomentResult {
-  moment: Moment
-  plan: Plan
-  results: Ranked[]
-  asked: Asked[]
-  /** Sentences for the reply, each complete. */
-  notes: string[]
-}
+export type { Asked, MomentResult }
 
 /** yt-dlp asks YouTube one channel at a time; the web search reads several pages; Openverse is slow to answer. */
 const TIMEOUTS: Partial<Record<SourceId, number>> = {
@@ -124,6 +109,9 @@ function queryFor(id: SourceId, m: Moment): string {
   return m.search
 }
 
+/** A note begins with a capital, whatever source it names first ("the Internet Archive", "a web search"). */
+const sentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
+
 const stageFor = (id: SourceId): string => (id === 'library' ? 'Looking through your library' : `Searching ${SOURCE_NAMES[id]}`)
 
 /** Library matches good enough that nothing outside needs asking: the words match well and the policy allows them. */
@@ -148,6 +136,7 @@ export async function findBroll(moments: Moment[], deps: RouterDeps, opts: FindO
       never: opts.never,
       block: opts.brand?.block
     })
+    if (opts.only) plan.sources = plan.sources.filter((id) => opts.only?.includes(id))
     const notes = [...plan.notes]
     const asked: Asked[] = []
     const found: { candidate: Candidate; place: number; of: number }[] = []
@@ -213,7 +202,7 @@ export async function findBroll(moments: Moment[], deps: RouterDeps, opts: FindO
     await Promise.all(plan.sources.filter((id) => id !== 'library').map(ask))
 
     const failed = asked.filter((a) => a.error && !/key in Settings|all the searches it allows/.test(a.error)).map((a) => SOURCE_NAMES[a.id])
-    if (failed.length) notes.push(`${listOf(failed)} did not answer, so ${failed.length === 1 ? 'it was' : 'they were'} left out.`)
+    if (failed.length) notes.push(sentence(`${listOf(failed)} did not answer, so ${failed.length === 1 ? 'it was' : 'they were'} left out.`))
     if (blocked) notes.push(`${blocked === 1 ? 'One result was' : `${blocked} results were`} from a source the brand never uses, so I left ${blocked === 1 ? 'it' : 'them'} out.`)
     if (unlicensed) {
       const why = listOf([...troubles].map((t) => LICENCE_TROUBLE[t]))

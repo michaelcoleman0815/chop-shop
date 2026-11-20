@@ -39,6 +39,13 @@ describe('moments from the planner’s brollWanted', () => {
     expect(momentsFor(doc, [{ beat: 'missing', search: 'x' }, { beat: currentCut(doc).beats[0].id, search: '  ' }])).toEqual([])
   })
 
+  it('looks for a typed /broll that names no line by its words alone', () => {
+    const [m] = momentsFor(doc, [{ search: 'city at night' }])
+    expect(m).toMatchObject({ said: '', search: 'city at night', topic: 'A new laptop, reviewed', format: 'long' })
+    expect(m.beat).toBeUndefined()
+    expect(m.seconds).toBeUndefined()
+  })
+
   it('knows a vertical cut under three minutes is a Short', () => {
     const vertical = commit(doc, [{ op: 'aspect', aspect: 'vertical' }], 'vertical').doc
     const [m] = momentsFor(vertical, [{ beat: currentCut(vertical).beats[0].id, search: 'laptop' }])

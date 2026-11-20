@@ -490,7 +490,8 @@ export function describeIndex(index: LibraryIndex): string {
   const failed = index.items.filter((i) => i.e).length
   return [
     `${n(index.report.files)} files: ${parts.join(', ') || 'nothing I can use yet'}.`,
-    cannot.length ? `I cannot use ${cannot.join(', ')}; Settings says why.` : '',
+    // Settings shows this sentence with each one's reason under it.
+    cannot.length ? `I cannot use ${cannot.join(', ')}.` : '',
     failed ? `${n(failed)} could not be read.` : ''
   ]
     .filter(Boolean)

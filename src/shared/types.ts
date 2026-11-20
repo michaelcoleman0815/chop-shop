@@ -337,6 +337,8 @@ export interface Project extends ProjectSummary {
 export interface ChatAction {
   kind: string
   label: string
+  /** Words after the label that stay whole when a narrow column shortens it: where a B-roll choice is from. */
+  tail?: string
   primary?: boolean
   payload?: string
   icon?: string
