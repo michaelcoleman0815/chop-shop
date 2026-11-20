@@ -1,11 +1,12 @@
 import { execFileSync } from 'child_process'
-import { readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { platform, setPlatform, type Platform } from '../../../src/main/platform'
 import { findFfmpeg, findFfprobe } from '../../../src/main/test-media'
 import { createPhoneApi } from './api'
 import { phonePlatform } from './platform'
+import { ON_THE_MAC } from './limits'
 import { phoneServices } from './services'
 import { loadSettings } from './settings'
 import { fakeEngine, folderFiles, tempRoot, type FakeEngine } from './testing'
@@ -45,7 +46,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('other AI services on a phone', () => {
   beforeAll(async () => {
     root = await tempRoot()
     take = join(root, 'Picked', 'take.mov')
-    execFileSync('mkdir', ['-p', join(root, 'Picked')])
+    mkdirSync(join(root, 'Picked'), { recursive: true })
     execFileSync(FFMPEG as string, [
       ...[
         '-hide_banner',
@@ -139,7 +140,15 @@ describe.skipIf(!FFMPEG || !FFPROBE)('other AI services on a phone', () => {
 
   it('is on, as on the Mac, and sends nothing to a service that has no key', async () => {
     expect((await api.getSettings()).otherServices).toBe(true)
-    expect(await api.serviceKeys()).toEqual({ deepgram: false, assemblyai: false, gemini: false })
+    // The services of a video made from nothing (fal.ai, ElevenLabs, OpenAI) have no keys here: making is on the Mac.
+    expect(await api.serviceKeys()).toEqual({
+      deepgram: false,
+      assemblyai: false,
+      gemini: false,
+      fal: false,
+      elevenlabs: false,
+      openai: false
+    })
     const r = await api.prepareCut({ paths: [take] })
     if (!r.ok) throw new Error(r.message)
     expect(r.doc.words[0].text).toBe('heard1')
@@ -160,12 +169,21 @@ describe.skipIf(!FFMPEG || !FFPROBE)('other AI services on a phone', () => {
     expect(await api.setServiceKey('deepgram', ` ${DEEPGRAM_KEY} `)).toEqual({ ok: true })
     expect(await api.setServiceKey('assemblyai', ASSEMBLY_KEY)).toEqual({ ok: true })
     expect(await api.setServiceKey('gemini', GEMINI_KEY)).toEqual({ ok: true })
+    // A key for a service that makes videos from nothing is never kept here: making is on the Mac.
+    expect(await api.setServiceKey('fal', 'fal-key-for-a-mac')).toEqual({ ok: false, message: ON_THE_MAC.make })
     expect(Object.fromEntries(secrets)).toEqual({
       deepgram: DEEPGRAM_KEY,
       assemblyai: ASSEMBLY_KEY,
       gemini: GEMINI_KEY
     })
-    expect(await api.serviceKeys()).toEqual({ deepgram: true, assemblyai: true, gemini: true })
+    expect(await api.serviceKeys()).toEqual({
+      deepgram: true,
+      assemblyai: true,
+      gemini: true,
+      fal: false,
+      elevenlabs: false,
+      openai: false
+    })
     expect(JSON.stringify(await api.getSettings())).not.toMatch(/phone-test/)
     expect(toServices).toEqual([])
   })

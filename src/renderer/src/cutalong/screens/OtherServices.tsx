@@ -11,7 +11,7 @@ import {
 } from '../../../../shared/services'
 import { thisComputer, ThisComputer } from '../../../../shared/platform'
 import type { Settings } from '../../../../shared/types'
-import { api } from '../api'
+import { api, device } from '../api'
 import { aKey, KeySteps } from '../components/KeySteps'
 import { Button } from '../components/ui'
 
@@ -22,6 +22,9 @@ import { Button } from '../components/ui'
  */
 
 type KeyState = { status: 'none' } | { status: 'checking' } | { status: 'ok' } | { status: 'bad'; message: string }
+
+/** The services offered here: a device that makes no videos (a phone's, for now) has no use for the ones that make them. */
+const OFFERED = SERVICES.filter((s) => !(device.away['feature:make'] && (s.job === 'make' || s.job === 'voice')))
 
 /** What the switch means, in one sentence for each state. */
 export const SWITCH_ON =
@@ -80,7 +83,7 @@ export function OtherServices({
     if (!settings || !on) return
     void api.serviceKeys().then((saved) => {
       setKeys(saved)
-      for (const s of SERVICES) {
+      for (const s of OFFERED) {
         if (saved[s.id]) void check(s.id)
         else setState(s.id, { status: 'none' })
       }
@@ -152,7 +155,7 @@ export function OtherServices({
       </p>
 
       {on &&
-        SERVICES.map((s) => {
+        OFFERED.map((s) => {
           const state = states[s.id] ?? { status: 'none' }
           const fieldId = `set-key-${s.id}`
           const field = (

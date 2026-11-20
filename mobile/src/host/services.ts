@@ -4,6 +4,7 @@ import { createGate } from '../../../src/main/providers/gate'
 import { extractSpeech } from '../../../src/main/providers/media'
 import { cloudTranscript, type CloudResult } from '../../../src/main/providers/transcribe-cloud'
 import { SERVICES, servicesOn, wrongServiceKey, type KeyCheck, type ServiceId } from '../../../src/shared/services'
+import { ON_THE_MAC } from './limits'
 import type { PhoneSettings } from './settings'
 
 /**
@@ -14,6 +15,15 @@ import type { PhoneSettings } from './settings'
  * Deepgram, AssemblyAI or Google Gemini goes through the one gate, which
  * refuses while the switch is off or the service has no key.
  */
+
+/**
+ * The services a phone uses: hearing the words and judging takes. Those that
+ * make a video from nothing (fal.ai, ElevenLabs, OpenAI) are the Mac's for now
+ * (host/limits.ts): a phone keeps no key for them, so the gate sends them nothing.
+ */
+export const PHONE_SERVICES: readonly ServiceId[] = SERVICES.filter(
+  (s) => s.job === 'transcribe' || s.job === 'judge'
+).map((s) => s.id)
 
 export interface PhoneServices {
   /** Whether each service has a key; never the key. */
@@ -37,9 +47,9 @@ export async function phoneServices(deps: {
   const secrets = platform().secrets
   // Read once: the gate asks for a key synchronously, as the Mac's keychain answers.
   const keys = new Map<ServiceId, string>()
-  for (const s of SERVICES) {
-    const key = await secrets.get(s.id).catch(() => null)
-    if (key) keys.set(s.id, key)
+  for (const id of PHONE_SERVICES) {
+    const key = await secrets.get(id).catch(() => null)
+    if (key) keys.set(id, key)
   }
   const hasKey = (id: ServiceId): boolean => keys.has(id)
   const gate = createGate({
@@ -51,6 +61,7 @@ export async function phoneServices(deps: {
   return {
     keys: () => Object.fromEntries(SERVICES.map((s) => [s.id, hasKey(s.id)])) as Record<ServiceId, boolean>,
     setKey: async (id, key) => {
+      if (!PHONE_SERVICES.includes(id)) return { ok: false, message: ON_THE_MAC.make }
       const trimmed = key.trim()
       // Turned away before it is stored, so it can never be sent to the wrong service.
       const wrong = wrongServiceKey(id, trimmed)

@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'fs'
 import { join, relative } from 'path'
 import { describe, expect, it } from 'vitest'
 import { ROUTES } from '../../src/main/providers/gate'
+import { PHONE_SERVICES } from './host/services'
 
 /**
  * Where the phone app may send anything. The page's content security policy
@@ -69,11 +70,13 @@ describe('what the phone app can reach', () => {
     const boot = readFileSync(join(here, 'src/host/boot.ts'), 'utf8')
     expect(boot.match(/nativeFetch\(/g)).toHaveLength(1)
     expect(boot).toMatch(/phoneServices\(\{[^}]*nativeFetch\(/s)
-    // The gate sends each service's requests to that service's own hosts, and to nothing else.
-    expect(
-      Object.values(ROUTES)
-        .flatMap((r) => r.hosts)
-        .sort()
-    ).toEqual(['api.assemblyai.com', 'api.deepgram.com', 'generativelanguage.googleapis.com'])
+    // The gate sends each service's requests to that service's own hosts, and to nothing else; a phone keeps
+    // keys only for hearing the words and judging takes, so those hosts are all its gate can reach. The
+    // services of a video made from nothing have routes in the gate, for the Mac, and never a key here.
+    expect(PHONE_SERVICES.flatMap((id) => ROUTES[id].hosts).sort()).toEqual([
+      'api.assemblyai.com',
+      'api.deepgram.com',
+      'generativelanguage.googleapis.com'
+    ])
   })
 })

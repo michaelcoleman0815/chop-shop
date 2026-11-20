@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process'
-import { readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { platform, setPlatform, type Platform } from '../../../src/main/platform'
@@ -58,7 +58,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
     ])
     take = join(root, 'Picked', 'take.mov')
     sound = join(root, 'Picked', '2026-10-16 20-49-09.mp4')
-    execFileSync('mkdir', ['-p', join(root, 'Picked')])
+    mkdirSync(join(root, 'Picked'), { recursive: true })
     execFileSync(FFMPEG as string, [
       ...['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=12'],
       ...['-ss', '2.5', '-i', voice, '-af', 'highpass=f=400,volume=0.5', '-shortest'],
