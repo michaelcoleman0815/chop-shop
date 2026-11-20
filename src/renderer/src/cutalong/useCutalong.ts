@@ -521,6 +521,11 @@ export function useCutalong() {
    */
   const working = useRef(0)
   const isWorking = (): boolean => busyRef.current || working.current > 0
+  /** Paid B-roll web searches running now: a clip waits for them to be left. */
+  const webSearches = useRef(0)
+  /** Why the clip open can't be left for the chat now: work runs in the chat, what it brings back is the clip's. */
+  const stayText = (): string | null =>
+    !isWorking() ? null : webSearches.current > 0 ? 'One moment, your web search is still running.' : 'One moment, I’m still working on this clip.'
   const during = useCallback(async <T>(work: () => Promise<T>): Promise<T> => {
     working.current++
     try {
@@ -617,7 +622,11 @@ export function useCutalong() {
   const switchDone = useRef<Promise<void>>(Promise.resolve())
   /** Counted up by every chat change asked for: an open overtaken while its file was read gives way. */
   const switchSeq = useRef(0)
+  /** A new video's chat is being made (newChat): no chat opens, and no new one starts, until it is. */
+  const settingUp = useRef(false)
   /** Why another chat can't be opened, or a new one started, now: a video being made says so, and how to stop it. */
+  /** What a chat click says while a new video's chat is being made. */
+  const SETTING_UP = 'One moment… the new chat for your video is being made.'
   const busyText = (to: 'open' | 'start' | 'clip'): string =>
     makeRef.current?.running()
       ? `A video is being made in this chat. ${to === 'open' ? 'Open the other one' : to === 'clip' ? 'Open the clip' : 'Start a new one'} when it’s done, or stop it first.`
@@ -835,6 +844,8 @@ export function useCutalong() {
     brand: () => brandNow().id,
     // A clip opens in the editor only when nothing runs in the chat: what a make brings back goes where it was made for.
     busy: () => (isWorking() ? busyText('clip') : null),
+    // And is left for the chat only then too: a web search from its panel comes back to it.
+    stay: stayText,
     gate: async (what) => {
       if (await keyOpen()) return true
       stopped(what)
@@ -975,6 +986,11 @@ export function useCutalong() {
 
   /** Opens a saved chat: its thread when it has one, else straight into the editor. */
   const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
+    // A new video's chat being made: every chat waits for it, the one open too, so it is always made whole.
+    if (settingUp.current) {
+      setToast({ text: SETTING_UP })
+      return
+    }
     // The chat already open is not read again from disk: whatever is running
     // in it, and anything said since it was last saved, would be lost. Asked
     // for again, it also takes over from another chat still being opened.
@@ -1502,7 +1518,16 @@ export function useCutalong() {
         ])
       // The web costs money, so while it is asked it is work: no other chat or clip opens under it, and its choices
       // come back to the chat and the edit that paid for them.
-      const [r, settings] = opts.paid ? await during(asking) : await asking()
+      let answered: Awaited<ReturnType<typeof asking>>
+      if (opts.paid) {
+        webSearches.current++
+        try {
+          answered = await during(asking)
+        } finally {
+          webSearches.current--
+        }
+      } else answered = await asking()
+      const [r, settings] = answered
       off()
       /** Given way: in the same chat, its line says so (another of its edits is open now); elsewhere, nothing shows. */
       const gaveWay = (): void => {
@@ -1667,33 +1692,32 @@ export function useCutalong() {
       leaving: (name: string) => Omit<ChatMessage, 'id'>
     ): Promise<NewChat> => {
       if (working.current > 0) return { refused: 'busy' }
-      // Work while it is made, so no other chat opens and no new one starts under it.
+      // Work while it is made, and every chat click waits for it ("One moment…"), the chat open's too: it is always
+      // made whole, and nothing of it is ever left behind or taken away.
       working.current++
-      const seq = ++switchSeq.current
+      settingUp.current = true
+      switchSeq.current += 1
       switching.current = true
       let settle = (): void => undefined
       switchDone.current = new Promise<void>((r) => (settle = r))
-      let made: Project | null = null
       let project: Project | null = null
       try {
-        made = await api.createProject(name.trim() || 'New video', 'cut')
+        const made = await api.createProject(name.trim() || 'New video', 'cut')
         const brand = chatChoiceRef.current
         project = { ...made, chat: first.map((m) => ({ ...m, id: uid() })), ...(brand ? { brand } : {}) }
         await api.saveProject(project)
       } catch {
+        // Not made whole: whatever was made stays as it is, in the list, for the person to keep or delete.
         project = null
       } finally {
         working.current--
-        if (switchSeq.current === seq) switching.current = false
+        settingUp.current = false
+        switching.current = false
         settle()
       }
-      // Given way (the chat open was asked for again meanwhile), or not made whole: the chat it made holds only the
-      // ask, so it goes again, and nothing was started.
-      const why = !project ? 'failed' : switchSeq.current !== seq ? 'overtaken' : working.current > 0 ? 'busy' : null
-      if (why || !project) {
-        if (made) await api.discardNewChat(made.path).catch(() => false)
+      if (!project) {
         refreshRecent()
-        return { refused: why ?? 'failed' }
+        return { refused: 'failed' }
       }
       // The chat left says where its video went, saved with it as it is left: a line of its own, with nothing to tap.
       const line = leaving(project.name)
@@ -1703,6 +1727,21 @@ export function useCutalong() {
       return { path: project.path, name: project.name }
     },
     [enter, refreshRecent]
+  )
+
+  /** The screen as the window's own buttons change it: back from a clip to the chat only when nothing runs in the chat. */
+  const showScreen = useCallback(
+    (next: Screen): void => {
+      if ((next === 'thread' || next === 'start') && clipping.isClip(docRef.current)) {
+        const why = stayText()
+        if (why) {
+          setToast({ text: why })
+          return
+        }
+      }
+      setScreen(next)
+    },
+    [clipping.isClip]
   )
 
   // Videos made from nothing (useMake), called in from submit, ask and act.
@@ -4735,6 +4774,10 @@ export function useCutalong() {
 
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
+    if (settingUp.current) {
+      setToast({ text: SETTING_UP })
+      return
+    }
     if (isWorking()) {
       setToast({ text: busyText('start') })
       return
@@ -4791,7 +4834,7 @@ export function useCutalong() {
     memory,
     setSaved,
     screen,
-    setScreen,
+    setScreen: showScreen,
     goStart,
     work,
     resume,

@@ -15,8 +15,8 @@ import { describe, expect, it, vi } from 'vitest'
  * - goAhead: Settings' amount as it is when asked.
  *
  * Kept as a regression test from round 11 on, played as useCutalong and main are now:
- * - newChat counts as work while it is made, so another chat is refused meanwhile; given way all the same (the chat
- *   open asked for again), the chat it made is taken away, and nothing was started or spent.
+ * - newChat counts as work while it is made, and every chat click waits for it ("One moment…"), the chat open's too
+ *   (round 12), so it is always made whole and nothing is ever taken away.
  * - createProject names each chat after its own file ("…", "… 2"), and keepInFile keeps a change made for an edit no
  *   longer in its chat as a whole video of its own, in a new chat.
  * - chatEdit and putChatEdit: the chat's own edit and its clips, by id, while another of them is open, where a paid
@@ -105,6 +105,8 @@ function app(settings: Settings, opts: { open?: EditDoc | null } = {}) {
   let switching = false
   let switchSeq = 0
   let switchDone: Promise<void> = Promise.resolve()
+  /** A new video's chat being made: every chat click waits for it. */
+  let settingUp = false
   let chat = new Map<string, Partial<Msg>>()
   let n = 0
   const notices: string[] = []
@@ -306,9 +308,10 @@ function app(settings: Settings, opts: { open?: EditDoc | null } = {}) {
     keepFor: async (where, name, kept) => keepInFile(where && open !== where.path ? where.path : null, name, kept),
     newChat: async (name, first, leaving) => {
       if (working > 0) return { refused: 'busy' }
-      // Work while it is made: no other chat opens, and no new one starts, under it.
+      // Work while it is made, and every chat click waits for it: it is always made whole.
       working++
-      const seq = ++switchSeq
+      settingUp = true
+      switchSeq += 1
       switching = true
       let done = (): void => undefined
       switchDone = new Promise<void>((r) => (done = r))
@@ -320,15 +323,11 @@ function app(settings: Settings, opts: { open?: EditDoc | null } = {}) {
         files.set(project.path, project)
       } finally {
         working--
-        if (switchSeq === seq) switching = false
+        settingUp = false
+        switching = false
         done()
       }
-      const why = !project ? 'failed' : switchSeq !== seq ? 'overtaken' : working > 0 ? 'busy' : null
-      if (why || !project) {
-        // Given way: the chat it made holds only the ask, so it goes again (main's discardNewChat).
-        if (project) files.delete(project.path)
-        return { refused: why ?? 'failed' }
-      }
+      if (!project) return { refused: 'failed' }
       const line = leaving(project.name)
       chat.set(`m${++n}`, { role: line.role, text: line.text })
       enter(project)
@@ -349,6 +348,8 @@ function app(settings: Settings, opts: { open?: EditDoc | null } = {}) {
     notify: (text) => notices.push(text)
   })
   const openProject = async (path: string): Promise<string> => {
+    // useCutalong at round 12: a new video's chat being made, every chat click waits, the chat open's too.
+    if (settingUp) return 'one moment'
     if (path === open) {
       switchSeq += 1
       switching = false
@@ -412,7 +413,7 @@ function app(settings: Settings, opts: { open?: EditDoc | null } = {}) {
 describe('a new video for a chat with an edit, and its new chat', () => {
   // Round 11's decision: setting up the new chat is work, so another chat asked for meanwhile is refused, and the
   // video is made in its new chat; nothing is left behind but that chat. (The reviewer expected B to open and
-  // nothing to be made.) Given way all the same, the next test.
+  // nothing to be made.) Round 12: the click waits with "One moment…", and nothing is ever taken away.
   it('another chat opened while the new chat is being made: refused, and the video is made in its new chat; nothing else is left behind', async () => {
     const w = app({ cap: null, autoUnder: null }, { open: ownEdit('a-edit', 3) })
     w.files.set('A', withDoc(w.files.get('A') as Project, ownEdit('a-edit', 3)))
@@ -435,14 +436,16 @@ describe('a new video for a chat with an edit, and its new chat', () => {
       `quote aside: "${aside}"; tapped Make it, then B clicked while its new chat was made: make:go ${w.calls.go.length}; A said "${said}", its button "${button}"; B ${b}; ` +
         `chats made: ${JSON.stringify(w.calls.created)}; left over: ${JSON.stringify(orphan)}`
     )
-    expect(b).toBe('refused')
+    expect(b).toBe('one moment')
     expect(w.calls.go).toHaveLength(1)
     expect(left).toEqual(['The 1950s oil boom'])
     expect(w.files.get('The 1950s oil boom')?.edit?.id).toBe('made-video-1')
     expect(w.files.get('A')?.edit?.id).toBe('a-edit')
   })
 
-  it('the chat itself asked for again while its new chat is made: the new chat gives way and is taken away; nothing started or spent', async () => {
+  // Round 12's decision: the chat open asked for again waits too ("One moment…"), so the new chat is made whole and
+  // the video is made there; nothing is taken away. (Round 11 let it give way and took the new chat away.)
+  it('the chat itself asked for again while its new chat is made: it waits, and the video is made in its new chat', async () => {
     const w = app({ cap: null, autoUnder: null }, { open: ownEdit('a-edit', 3) })
     w.files.set('A', withDoc(w.files.get('A') as Project, ownEdit('a-edit', 3)))
     await w.type(`/${QUOTED}`)
@@ -453,13 +456,13 @@ describe('a new video for a chat with an edit, and its new chat', () => {
     ready.release()
     await tapped
     const left = [...w.files.keys()].filter((k) => k !== 'A' && k !== 'B')
-    console.log(`A asked for again: ${stay}; make:go ${w.calls.go.length}; A said "${w.last()?.text}"; its button "${w.goButton()?.label}"; chats made ${JSON.stringify(w.calls.created)}; left over ${JSON.stringify(left)}`)
-    expect(stay).toBe('already open')
-    expect(w.calls.go).toEqual([])
-    expect(left).toEqual([])
-    expect(w.open()).toBe('A')
-    expect(w.last()?.text).toBe('You stayed in this chat, so I didn’t start your video and nothing was spent. Press its button to make it in a new chat.')
-    expect(w.goButton()?.label).toMatch(/^Make it for/)
+    console.log(`A asked for again: ${stay}; make:go ${w.calls.go.length}; open ${w.open()}; said "${w.last()?.text}"; chats made ${JSON.stringify(w.calls.created)}; left over ${JSON.stringify(left)}`)
+    expect(stay).toBe('one moment')
+    expect(w.calls.go).toHaveLength(1)
+    expect(left).toEqual(['The 1950s oil boom'])
+    expect(w.open()).toBe('The 1950s oil boom')
+    expect(w.files.get('The 1950s oil boom')?.edit?.id).toBe('made-video-1')
+    expect(w.files.get('A')?.chat?.at(-1)?.text).toBe('Your video about the 1950s oil boom goes in a new chat, “The 1950s oil boom”, so your edit here stays as it is.')
   })
 
   it('Settings turned on between the window asking and main writing the script: the video goes in a new chat', async () => {

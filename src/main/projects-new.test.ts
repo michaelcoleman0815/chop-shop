@@ -4,14 +4,14 @@ import { join } from 'path'
 
 /**
  * New chats in main: each gets a file of its own and a name to match it, even when two are made at once for one name;
- * the recent list keeps every chat touched at once; and a chat only just made for a new video and given way is taken
- * away again, but nothing anyone made ever is.
+ * the recent list keeps every chat touched at once; and nothing in main ever takes a chat away (round 12).
  */
 
 const dir = vi.hoisted(() => `${process.env.TMPDIR ?? '/tmp'}/projects-new-${process.pid}`)
 vi.mock('electron', () => ({ app: { getPath: () => dir } }))
 
-import { createProject, discardNewChat, keepInFile, projectsDir, recentProjects, saveProject } from './projects'
+import * as projects from './projects'
+import { createProject, keepInFile, projectsDir, recentProjects, removeFromRecent, saveProject } from './projects'
 import type { Kept } from '../shared/make/kept'
 import { createDoc } from '../shared/edit'
 import type { Project } from '../shared/types'
@@ -38,7 +38,7 @@ describe('new chats', () => {
     }
   })
 
-  it('a chat only just made, holding only the ask and its quote, is taken away again, and leaves the recent list', async () => {
+  it('a chat made for a new video stays as it is, the ask and its quote in it: main has nothing that takes a chat away', async () => {
     try {
       const made = await createProject('The 1950s oil boom', 'cut')
       await saveProject({
@@ -48,30 +48,12 @@ describe('new chats', () => {
           { id: 'b', role: 'assistant', text: 'I’ll make a 1:00 documentary about the 1950s oil boom.' }
         ]
       })
-      expect(await discardNewChat(made.path)).toBe(true)
-      expect(await exists(made.path)).toBe(false)
-      expect((await recentProjects()).some((r) => r.path === made.path)).toBe(false)
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('never takes away a chat with an edit, with more said in it, or outside Cutalong’s own folder', async () => {
-    try {
-      const edit = createDoc({ id: 'e', title: 'e', source: { id: 's1', path: '/talk.mp4', durationSec: 10, width: 1920, height: 1080, fps: 30 }, words: [] })
-      const withEdit = await createProject('Edited', 'cut')
-      await saveProject({ ...withEdit, edit } as Project)
-      const talked = await createProject('Talked', 'cut')
-      await saveProject({ ...talked, chat: ['a', 'b', 'c'].map((id) => ({ id, role: 'user', text: id })) } as Project)
-      expect(await discardNewChat(withEdit.path)).toBe(false)
-      expect(await discardNewChat(talked.path)).toBe(false)
-      expect(await exists(withEdit.path)).toBe(true)
-      expect(await exists(talked.path)).toBe(true)
-      await fs.mkdir(join(dir, 'elsewhere'), { recursive: true })
-      const outside = join(dir, 'elsewhere', 'Mine.cutalong')
-      await fs.writeFile(outside, JSON.stringify({ ...withEdit, path: outside, edit: null, chat: [] }))
-      expect(await discardNewChat(outside)).toBe(false)
-      expect(await exists(outside)).toBe(true)
+      expect(Object.keys(projects).filter((k) => /discard|delete|remove(?!FromRecent)|unlink|trash/i.test(k))).toEqual([])
+      // Forgetting it takes it off the recent list only: the chat stays where it is, with what was said in it.
+      await removeFromRecent(made.path)
+      expect(await exists(made.path)).toBe(true)
+      expect((JSON.parse(await fs.readFile(made.path, 'utf8')) as Project).chat).toHaveLength(2)
+      expect(await exists(join(projectsDir(), 'The 1950s oil boom.cutalong'))).toBe(true)
     } finally {
       await fs.rm(dir, { recursive: true, force: true })
     }

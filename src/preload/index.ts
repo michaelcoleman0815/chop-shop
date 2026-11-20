@@ -739,8 +739,6 @@ const api = {
    */
   keepInChat: (req: { path: string | null; name: string; kept: Kept }): Promise<{ path: string; name: string } | null> =>
     ipcRenderer.invoke('project:keep', req),
-  /** Takes away a chat only just made for a new video and given way: one with nothing in it but the ask. Whether it did. */
-  discardNewChat: (path: string): Promise<boolean> => ipcRenderer.invoke('project:discardNew', path),
   forgetProject: (path: string): Promise<void> => ipcRenderer.invoke('project:forget', path),
 
   reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),

@@ -31,7 +31,7 @@ import { buildProject, buildSrt, type PremiereClip } from './premiere'
 import { buildKeepSegments } from './tighten'
 import { presetById } from '../shared/caption-presets'
 import { buildAss } from './captions'
-import { recentProjects, createProject, openProject, saveProject, removeFromRecent, projectsDir, keepInFile, discardNewChat } from './projects'
+import { recentProjects, createProject, openProject, saveProject, removeFromRecent, projectsDir, keepInFile } from './projects'
 import type { Kept } from '../shared/make/kept'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips, listModels, OLLAMA_HOST } from './clips'
@@ -1118,8 +1118,6 @@ function registerIpc(): void {
   ipcMain.handle('project:keep', (_e, req: { path: string | null; name: string; kept: Kept }) =>
     keepInFile(req.path, String(req.name ?? '') || 'New video', req.kept)
   )
-  // A chat only just made for a new video, given way before anything was started in it (useCutalong's newChat).
-  ipcMain.handle('project:discardNew', (_e, path: string) => discardNewChat(String(path ?? '')))
   ipcMain.handle('project:forget', (_e, path: string) => removeFromRecent(path))
 
   ipcMain.handle('project:open', async (_e, path?: string) => {

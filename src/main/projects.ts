@@ -125,26 +125,6 @@ export async function createProject(name: string, mode: ProjectMode): Promise<Pr
 }
 
 /**
- * Takes away a chat that was only just made for a new video and then given way (another chat was asked for while it
- * was made): only one in Cutalong's own folder, with no edit and nothing in it but what was asked and its quote, so
- * nothing anyone made is ever taken away. Whether it was.
- */
-export async function discardNewChat(path: string): Promise<boolean> {
-  const dir = projectsDir()
-  if (!path.startsWith(`${dir}/`) && !path.startsWith(`${dir}\\`)) return false
-  const gone = await inTurn(path, async () => {
-    const raw = await fs.readFile(path, 'utf8').catch(() => null)
-    if (!raw) return false
-    const project = JSON.parse(raw) as Project
-    if (project.edit || project.clipping || (project.chat ?? []).length > 2 || (project.media ?? []).length > 0) return false
-    await fs.rm(path, { force: true })
-    return true
-  }).catch(() => false)
-  if (gone) await inTurn(indexPath(), async () => writeIndex((await readIndex()).filter((e) => e.path !== path)))
-  return gone
-}
-
-/**
  * Opens a project. It waits for that file's saves still being written, so it
  * reads what was last saved, and anything it writes back (an upgrade, an edit
  * brought back, where the file lives now) is written in the same turn, and

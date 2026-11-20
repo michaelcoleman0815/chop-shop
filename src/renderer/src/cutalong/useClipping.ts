@@ -68,6 +68,8 @@ export interface ClippingDeps {
   gate?: (what: 'export') => Promise<boolean>
   /** Why a clip can't be opened now (a video being made in the chat), as another chat can't be; null when it can. */
   busy?: () => string | null
+  /** Why the clip open can't be left for the chat now (work runs in it: a web search from its panel); null when it can. */
+  stay?: () => string | null
 }
 
 /** The recordings a drop holds: footage and sound, not stills. */
@@ -118,10 +120,20 @@ export function useClipping(deps: ClippingDeps) {
   /** Whether an edit is one of the set's clips. */
   const isClip = useCallback((doc: EditDoc | null): boolean => !!doc && !!clipOfDoc(current(), doc.id), [])
 
-  /** Back from a clip to the chat: the chat's own edit is the session's again. */
-  const leave = useCallback((): void => {
+  /**
+   * Back from a clip to the chat: the chat's own edit is the session's again. Not while work runs in the chat, as a
+   * clip can't be opened then: what it brings back is for the clip, so the clip stays open, and it says why. Whether
+   * it left.
+   */
+  const leave = useCallback((): boolean => {
     const doc = d.current.docRef.current
-    if (!doc || !clipOfDoc(current(), doc.id)) return
+    if (!doc || !clipOfDoc(current(), doc.id)) return true
+    const why = d.current.stay?.() ?? null
+    if (why) {
+      d.current.setToast({ text: why })
+      d.current.setScreen('editor')
+      return false
+    }
     const own = d.current.projectRef.current?.edit ?? null
     d.current.docRef.current = own
     d.current.setDocState(own)
@@ -129,6 +141,7 @@ export function useClipping(deps: ClippingDeps) {
     d.current.clearEditor()
     // The cards show the clips as they were left: a new length after tightening, a new title.
     setSet(current())
+    return true
   }, [])
 
   // Going back to the chat leaves the clip; going to Brand or Settings keeps it open to come back to.
