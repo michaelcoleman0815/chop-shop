@@ -23,6 +23,7 @@ import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 import { FxItemSchema, FxOpSchemas } from '../fx/schema'
 import { MouthModeSchema } from '../vision/mode'
 import { VlogSchema } from '../vlog/schema'
+import { MakeSchema } from '../make/schema'
 
 /**
  * The edit as data.
@@ -444,7 +445,13 @@ export const AssetSchema = z.object({
     /** Known licence, or null when using it is the editor's own call. */
     license: z.string().nullable(),
     /** The stretch taken from a longer video. */
-    range: z.object({ startSec: z.number().nonnegative(), endSec: z.number().nonnegative() }).nullable()
+    range: z.object({ startSec: z.number().nonnegative(), endSec: z.number().nonnegative() }).nullable(),
+    /**
+     * The credit line in the form its source asks for ("Photo by … on
+     * Unsplash", "Powered by GIPHY"), for B-roll found by Cutalong
+     * (main/broll); the upload kit prints it in place of the parts above.
+     */
+    credit: z.string().optional()
   })
 })
 export type Asset = z.infer<typeof AssetSchema>
@@ -472,7 +479,14 @@ export const EditDocSchema = z.object({
    * moments, scenes and story. One that cannot be read is dropped rather
    * than keeping the edit from opening.
    */
-  vlog: VlogSchema.optional().catch(undefined)
+  vlog: VlogSchema.optional().catch(undefined),
+  /**
+   * What a video made from nothing was made from (shared/make): its brief,
+   * script, style bible, shots and narration, so a later ask makes again only
+   * what it changes. One that cannot be read is dropped rather than keeping
+   * the edit from opening.
+   */
+  make: MakeSchema.optional().catch(undefined)
 })
 export type EditDoc = z.infer<typeof EditDocSchema>
 

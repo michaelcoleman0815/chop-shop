@@ -32,11 +32,24 @@ import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
 import type { PremiereFacts, Preset } from '../shared/presets'
 import type { KeyCheck, ServiceId } from '../shared/services'
+import type { BrollKeyId } from '../shared/broll/keys'
+import type { MomentResult as BrollMomentResult } from '../shared/broll/route'
+import type { BrollSettings, LibraryFolder, WebQuote } from '../shared/broll/settings'
+import type {
+  Candidate as BrollCandidate,
+  Fetched as BrollFetched,
+  Moment as BrollMoment,
+  SourceId as BrollSourceId
+} from '../shared/broll/types'
 import type { ClipAsk, ClipsFound, ClipsReply } from '../shared/clipping'
 import type { ClaudeKeyState } from '../shared/setup'
 import type { PlanQuestion, PlanStep } from '../shared/plan/commands'
 import type { Vlog } from '../shared/vlog/schema'
 import type { VlogReply } from '../shared/vlog/reply'
+import type { Change, Consent, Draft, Reply as MakeReply, ShotChange } from '../shared/make/draft'
+import type { MakeQuestion } from '../shared/make/questions'
+import type { Make } from '../shared/make/schema'
+import type { Kept } from '../shared/make/kept'
 
 type Progress = { stage: string; percent: number | null }
 
@@ -122,7 +135,7 @@ const api = {
             /** Whether stretches of their own confirmed the line-up; unsure, it is in but not cut to until checked. */
             sure: boolean
             stretches: { checked: number; agreed: number } | null
-            camera:{ path: string; durationSec: number; width: number; height: number; fps: number; color?: 'hlg' | 'pq' }
+            camera: { path: string; durationSec: number; width: number; height: number; fps: number; color?: 'hlg' | 'pq' }
           }[]
         }
       }
@@ -235,6 +248,45 @@ const api = {
     origin: Asset['origin']
   }): Promise<{ ok: true; asset: Omit<Asset, 'id'> } | { ok: false; message: string }> =>
     ipcRenderer.invoke('assets:saveImage', req),
+  // B-roll from everywhere (main/broll/app): the person's folders first, then the free libraries and sites.
+  /** B-roll for moments of the edit: the best few for each, with a reason. `paid` only from a tapped yes to the price. */
+  brollFind: (req: {
+    moments: BrollMoment[]
+    brandId?: string | null
+    paid?: boolean
+    perMoment?: number
+    /** Ask only these sources: the web alone, once its price is agreed to. */
+    only?: BrollSourceId[]
+  }): Promise<{ ok: true; results: BrollMomentResult[] } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('broll:find', req),
+  /** The picked B-roll as a file in the edit's material, normalized, with its credit on it. */
+  brollFetch: (req: {
+    candidate: BrollCandidate
+    docId: string
+    seconds?: number
+    output?: { width: number; height: number }
+    brandId?: string | null
+  }): Promise<({ ok: true } & BrollFetched) | { ok: false; message: string }> => ipcRenderer.invoke('broll:fetch', req),
+  /** What looking on the web for `moments` moments may cost, before anything is spent. */
+  brollQuote: (moments: number): Promise<WebQuote> => ipcRenderer.invoke('broll:quote', moments),
+  onBrollProgress: (cb: (p: Progress) => void): (() => void) => listen('broll:progress', cb),
+  brollSettings: (): Promise<BrollSettings> => ipcRenderer.invoke('broll:settings'),
+  /** Folders are not changed here: only the folder picker adds one (brollAddFolder). */
+  brollSaveSettings: (patch: Partial<Omit<BrollSettings, 'folders'>>): Promise<BrollSettings> =>
+    ipcRenderer.invoke('broll:saveSettings', patch),
+  /** Which B-roll sites have a key saved; the keys never come back to the window. */
+  brollKeys: (): Promise<Record<BrollKeyId, boolean>> => ipcRenderer.invoke('broll:keys'),
+  brollSetKey: (id: BrollKeyId, key: string): Promise<{ ok: true } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('broll:setKey', id, key),
+  brollClearKey: (id: BrollKeyId): Promise<void> => ipcRenderer.invoke('broll:clearKey', id),
+  brollCheckKey: (id: BrollKeyId): Promise<KeyCheck> => ipcRenderer.invoke('broll:checkKey', id),
+  /** The person's asset folders: a sentence each of what it holds, and what it cannot use and why. */
+  brollLibrary: (): Promise<{ folders: LibraryFolder[] }> => ipcRenderer.invoke('broll:library'),
+  /** Opens the folder picker; a folder picked is looked through at once (progress on onBrollProgress). */
+  brollAddFolder: (): Promise<{ ok: false } | { ok: true; said: string[] }> => ipcRenderer.invoke('broll:addFolder'),
+  brollRemoveFolder: (path: string): Promise<BrollSettings> => ipcRenderer.invoke('broll:removeFolder', path),
+  /** Looks through every folder again, opening only what changed. */
+  brollScan: (): Promise<{ said: string[] }> => ipcRenderer.invoke('broll:scan'),
   /** A page at a link, captured on this computer as it shows logged out, saved into the edit's material. */
   capturePage: (req: {
     docId: string
@@ -322,6 +374,97 @@ const api = {
     brand?: string | null
   }): Promise<{ ok: true; doc: EditDoc; mediaUrl: string; reply: VlogReply } | { ok: false; message: string }> =>
     ipcRenderer.invoke('vlog:make', req),
+  /**
+   * A video made from nothing (main/make): the prompt read, its script
+   * written and the whole of it quoted. Under "Go ahead without asking" in
+   * Settings it is made straight away. Progress comes on cut:progress.
+   */
+  makeStart: (req: {
+    text: string
+    recording?: string | null
+    /** The chat's brand, by id: its voice writes the script. The default brand's when absent. */
+    brand?: string | null
+    /** The questions were answered (or answered by typing): ask nothing again. */
+    answered?: boolean
+    /** Answered by typing: show the quote, whatever Settings says about going ahead without asking. */
+    quoteFirst?: boolean
+    /**
+     * Typed answers confirmed on their read-back: the words the brief is read from (the ask with only
+     * its style and length answers), as it was read back. `text`, with what it should say, is what Claude reads.
+     */
+    reading?: string
+    /**
+     * Why it may be written: a tap (a read-back's Yes, the questions' options) or a new video asked for with
+     * nothing else waiting. Without it, main asks the questions, and writes nothing.
+     */
+    consent?: Consent
+  }): Promise<
+    | { ok: true; kind: 'ask'; questions: MakeQuestion[] }
+    | { ok: true; kind: 'quote'; draft: Draft; reply: MakeReply }
+    | { ok: true; kind: 'made'; auto: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
+    | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
+  > => ipcRenderer.invoke('make:start', req),
+  /**
+   * A quote confirmed at `confirmed` dollars, the price its button showed:
+   * made, unless the price is now higher, another service would make it, or
+   * the draft is not the one the button showed (its fingerprint). Stopped, it
+   * answers with what was spent and a quote for the rest.
+   */
+  makeGo: (req: {
+    draft: Draft
+    confirmed: number
+    /** shared/make/fingerprint of the draft, as its quote was shown. */
+    fingerprint: string
+    /** The quote's button, tapped: nothing is made without it. */
+    consent: 'tap'
+  }): Promise<
+    | { ok: true; doc: EditDoc; mediaUrl: string; reply: MakeReply; spent: number; into: Draft['into'] | null }
+    | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
+  > => ipcRenderer.invoke('make:go', req),
+  /**
+   * Changes said about a quote, read back and confirmed: each in turn, the last winning, the brief
+   * changed and quoted again; draft null when, in the end, nothing changed.
+   */
+  makeRevise: (req: {
+    draft: Draft
+    steps: string[]
+    /** Yes on the read-back, tapped: no quote is changed without it. */
+    consent: 'tap'
+  }): Promise<
+    | { ok: true; draft: Draft; reply: MakeReply; changed: string[] }
+    | { ok: true; draft: null }
+    /** Stopped or failed: why, and, when writing the script again may have cost something, the quote with that counted. */
+    | { ok: false; message: string; draft?: Draft; reply?: MakeReply }
+  > => ipcRenderer.invoke('make:revise', req),
+  /** The script edited before anything is made, quoted again. */
+  makeScript: (req: {
+    draft: Draft
+    script: string
+  }): Promise<{ ok: true; draft: Draft; reply: MakeReply } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('make:script', req),
+  /** An ask of a made video: what making it again costs, before anything is made. Null when it is an ordinary edit. */
+  makeChange: (req: {
+    doc: EditDoc
+    text: string
+    onScreen?: string | null
+    /** The person's own voice-over, dropped for a made video that asked for one. */
+    recording?: string | null
+    brand?: string | null
+  }): Promise<{ ok: true; change: Change | null } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('make:change', req),
+  /** One shot made again for its confirmed quote: the op for a new version, the record and the asset. */
+  makeShot: (req: {
+    doc: EditDoc
+    change: ShotChange
+    confirmed: number
+    /** The quote's button, tapped: nothing is made without it. */
+    consent: 'tap'
+  }): Promise<
+    | { ok: true; ops: Op[]; make: Make; asset: Omit<Asset, 'id'>; summary: string; reply: MakeReply; spent: number }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('make:shot', req),
+  /** Stops whatever is being made: nothing more is asked for or spent. */
+  makeCancel: (): Promise<boolean> => ipcRenderer.invoke('make:cancel'),
   /** A vlog's story told again for what was asked, as ops for a new version and the shoot with its new story. */
   planVlog: (req: {
     doc: EditDoc
@@ -592,6 +735,13 @@ const api = {
     ipcRenderer.invoke('project:create', name, mode),
   openProject: (path?: string): Promise<Project | null> => ipcRenderer.invoke('project:open', path),
   saveProject: (project: Project): Promise<void> => ipcRenderer.invoke('project:save', project),
+  /**
+   * A paid result kept in its own chat's file while another chat is open: read, merged and written in that file's
+   * turn. A new made video never replaces an edit; it goes in a new chat then, as with no file to keep it in.
+   * Where it was kept, or null.
+   */
+  keepInChat: (req: { path: string | null; name: string; kept: Kept }): Promise<{ path: string; name: string; aside?: boolean } | null> =>
+    ipcRenderer.invoke('project:keep', req),
   forgetProject: (path: string): Promise<void> => ipcRenderer.invoke('project:forget', path),
 
   reveal: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),

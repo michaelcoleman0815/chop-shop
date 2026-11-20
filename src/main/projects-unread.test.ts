@@ -13,7 +13,14 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({ dir: '' }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.dir } }))
 
-import { BROUGHT_BACK, openProject, saveProject } from './projects'
+import { mkdirSync } from 'fs'
+import { BROUGHT_BACK, openProject, projectsDir, saveProject } from './projects'
+
+/** Cutalong's own folder of chats, where main saves them. */
+const chats = (): string => {
+  mkdirSync(projectsDir(), { recursive: true })
+  return projectsDir()
+}
 import { EditDocSchema as EditDocSchema0213 } from '../shared/edit/schema-0213.review'
 import { commit, createDoc, currentCut, wordsFromTranscript, type EditDoc } from '../shared/edit'
 import { stampBrand } from '../shared/brands'
@@ -85,7 +92,7 @@ function openIn0213(path: string, at: number): boolean {
 
 describe('an edit an older Cutalong could not read', () => {
   it('comes back from the copy kept beside the project, said once in the chat', async () => {
-    const dir = mkdtempSync(join(fake.dir, 'back-'))
+    const dir = mkdtempSync(join(chats(), 'back-'))
     const path = join(dir, 'Talk.cutalong')
     // As the first builds with brands saved it: a brand op in a version's ops, which 0.2.13 cannot read.
     const doc = edit()
@@ -116,7 +123,7 @@ describe('an edit an older Cutalong could not read', () => {
   })
 
   it('never writes over an edit made since', async () => {
-    const dir = mkdtempSync(join(fake.dir, 'since-'))
+    const dir = mkdtempSync(join(chats(), 'since-'))
     const path = join(dir, 'Talk.cutalong')
     const old = JSON.parse(JSON.stringify(edit())) as EditDoc
     old.versions[1].ops = [{ op: 'brand', id: 'brand-x' }, ...old.versions[1].ops]
@@ -135,7 +142,7 @@ describe('an edit an older Cutalong could not read', () => {
   })
 
   it('stays out when the newest copy is beyond this build, rather than an older edit coming back', async () => {
-    const dir = mkdtempSync(join(fake.dir, 'newer-'))
+    const dir = mkdtempSync(join(chats(), 'newer-'))
     const path = join(dir, 'Talk.cutalong')
     const doc = edit()
     // An older copy this build could read...
@@ -152,7 +159,7 @@ describe('an edit an older Cutalong could not read', () => {
   })
 
   it('leaves a project with no edit and no copy beside it as it was', async () => {
-    const dir = mkdtempSync(join(fake.dir, 'none-'))
+    const dir = mkdtempSync(join(chats(), 'none-'))
     const path = join(dir, 'Talk.cutalong')
     await saveProject(project(path, null))
     const opened = await openProject(path)

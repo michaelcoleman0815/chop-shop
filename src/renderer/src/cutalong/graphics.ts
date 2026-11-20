@@ -1,6 +1,7 @@
 import antonUrl from '../../../../resources/fonts/Anton-Regular.ttf?url'
 import archivoUrl from '../../../../resources/fonts/ArchivoBlack-Regular.ttf?url'
 import soraUrl from '../../../../resources/fonts/Sora.ttf?url'
+import cinzelUrl from '../../../../resources/fonts/Cinzel.ttf?url'
 import fellUrl from '../../../../resources/fonts/IMFellEnglish-Regular.ttf?url'
 import {
   logoLookup,
@@ -22,6 +23,7 @@ const URLS: Record<string, string> = {
   'Anton-Regular.ttf': antonUrl,
   'ArchivoBlack-Regular.ttf': archivoUrl,
   'Sora.ttf': soraUrl,
+  'Cinzel.ttf': cinzelUrl,
   'IMFellEnglish-Regular.ttf': fellUrl
 }
 

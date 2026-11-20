@@ -135,6 +135,33 @@ describe('placing and crediting assets', () => {
     )
   })
 
+  it('prints B-roll found by Cutalong with the credit its source asks for', () => {
+    let d = addAsset(doc, {
+      kind: 'image',
+      path: '/assets/keys.jpg',
+      title: 'Laptop keys',
+      durationSec: null,
+      width: 1920,
+      height: 1080,
+      origin: {
+        type: 'link',
+        url: 'https://unsplash.com/photos/example?utm_source=cutalong&utm_medium=referral',
+        author: 'A Photographer on Unsplash',
+        license: 'Unsplash License',
+        range: null,
+        credit: 'Photo by A Photographer on Unsplash'
+      }
+    }).doc
+    d = commit(
+      d,
+      [{ op: 'treat', beats: ['b2'], set: { frame: 'broll', broll: { path: '/assets/keys.jpg', inSec: 0, muted: true } } }],
+      'Cutaway.'
+    ).doc
+    expect(creditsText(d)).toBe('Credits for Settings\n\n- Photo by A Photographer on Unsplash\n')
+    // Saved with it, and read back.
+    expect(EditDocSchema.parse(JSON.parse(JSON.stringify(d))).assets[0].origin.credit).toBe('Photo by A Photographer on Unsplash')
+  })
+
   it('reads docs saved before assets existed', () => {
     const { assets, ...old } = doc
     expect(assets).toEqual([])

@@ -65,6 +65,19 @@ export const MOTION_FONTS: MotionFont[] = [
     label: 'Sora, a clean sans'
   },
   {
+    // SIL Open Font License 1.1, resources/fonts/Cinzel-OFL.txt. For engraved documentary titles.
+    family: 'Cinzel',
+    file: 'Cinzel.ttf',
+    weights: [400, 900],
+    cap: 0.71,
+    ascent: 0.98,
+    descent: 0.37,
+    // OS/2 usWinAscent 976 and usWinDescent 372 of 1000 units, read from the file.
+    winAscent: 0.976,
+    winDescent: 0.372,
+    label: 'Cinzel, Roman capitals'
+  },
+  {
     // Igino Marini's revival of the Fell types (SIL Open Font License): the vintage map's lettering.
     family: 'IM Fell English',
     file: 'IMFellEnglish-Regular.ttf',

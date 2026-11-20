@@ -14,8 +14,9 @@ import { detectProvider } from './keys'
  * beside the one gate every request goes through (src/main/providers/gate.ts).
  */
 
-export type ServiceId = 'deepgram' | 'assemblyai' | 'gemini'
-export type ServiceJob = 'transcribe' | 'judge'
+export type ServiceId = 'deepgram' | 'assemblyai' | 'gemini' | 'fal' | 'elevenlabs' | 'openai'
+/** What a service is for: hearing the words, judging a take, making pictures and clips, or reading a narration. */
+export type ServiceJob = 'transcribe' | 'judge' | 'make' | 'voice'
 
 export interface Service {
   id: ServiceId
@@ -45,6 +46,25 @@ export const SERVICES: readonly Service[] = [
     // reviewers may read them; in the EEA, Switzerland and the UK the paid
     // terms apply to free use as well.
     note: 'On a free Gemini key, one without billing on its Google Cloud project, Google may use the excerpts I send and its answers to improve its products, and people at Google may review them, unless you are in the EEA, Switzerland or the UK.'
+  },
+  // Videos made from nothing (shared/make): pictures and clips, and narration.
+  {
+    id: 'fal',
+    name: 'fal.ai',
+    job: 'make',
+    note: 'For a video made from nothing, only the text prompts for its pictures go to fal.ai, with a character sheet it made for the shots that character is in, and a still it made when it turns one into a clip. Your own footage never goes.'
+  },
+  {
+    id: 'elevenlabs',
+    name: 'ElevenLabs',
+    job: 'voice',
+    note: 'For a video made from nothing, the script goes to ElevenLabs to be read aloud, and nothing else.'
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    job: 'voice',
+    note: 'For a video made from nothing, the script goes to OpenAI to be read aloud, and nothing else. OpenAI stops this voice on January 6, 2027.'
   }
 ]
 
@@ -110,7 +130,7 @@ export type KeyCheck =
 export function wrongServiceKey(id: ServiceId, key: string): string | null {
   const from = detectProvider(key)
   if (from === 'anthropic') return 'That looks like an Anthropic key. It goes in the Claude section.'
-  if (from === 'openai') return `That looks like an OpenAI key. ${serviceName(id)} needs its own key.`
+  if (from === 'openai' && id !== 'openai') return `That looks like an OpenAI key. ${serviceName(id)} needs its own key.`
   if (from === 'google' && id !== 'gemini') return `That looks like a Google key. ${serviceName(id)} needs its own key.`
   return null
 }

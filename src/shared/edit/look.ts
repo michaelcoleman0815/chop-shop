@@ -34,6 +34,14 @@ export const LookSchema = z.object({
   sharpen: z.number().min(0).max(1).optional(),
   vignette: z.number().min(0).max(1).optional(),
   grain: z.number().min(0).max(1).optional(),
+  // Film, for an archival look (edit/film.ts): a sepia tone in the colour
+  // matrix, the frame weaving in the gate, dust and scratches, light leaks
+  // and the exposure flickering. Each 0 to 1.
+  sepia: z.number().min(0).max(1).optional(),
+  weave: z.number().min(0).max(1).optional(),
+  dust: z.number().min(0).max(1).optional(),
+  leak: z.number().min(0).max(1).optional(),
+  flicker: z.number().min(0).max(1).optional(),
   lut: LutSchema.optional()
 })
 export type Look = z.infer<typeof LookSchema>
@@ -52,7 +60,12 @@ export const LOOK_SETTINGS = [
   'lift',
   'sharpen',
   'vignette',
-  'grain'
+  'grain',
+  'sepia',
+  'weave',
+  'dust',
+  'leak',
+  'flicker'
 ] as const
 export type LookSetting = (typeof LOOK_SETTINGS)[number]
 
@@ -66,7 +79,12 @@ export const LOOK_RANGE: Record<LookSetting, { min: number; max: number; step: n
   lift: { min: 0, max: 1, step: 0.1 },
   sharpen: { min: 0, max: 1, step: 0.1 },
   vignette: { min: 0, max: 1, step: 0.1 },
-  grain: { min: 0, max: 1, step: 0.1 }
+  grain: { min: 0, max: 1, step: 0.1 },
+  sepia: { min: 0, max: 1, step: 0.1 },
+  weave: { min: 0, max: 1, step: 0.1 },
+  dust: { min: 0, max: 1, step: 0.1 },
+  leak: { min: 0, max: 1, step: 0.1 },
+  flicker: { min: 0, max: 1, step: 0.1 }
 }
 
 /** The named looks, each a starting point the person can change. */
@@ -95,6 +113,61 @@ export const NAMED_LOOKS: Record<string, { title: string; summary: string; look:
     title: 'Vintage',
     summary: 'Faded blacks, warm and muted, with grain and a vignette.',
     look: { name: 'vintage', lift: 0.5, contrast: -0.1, saturation: -0.3, temperature: 0.3, vignette: 0.5, grain: 0.4 }
+  },
+  archival: {
+    title: 'Archival',
+    summary: 'A warm sepia grade on old film: grain, a vignette, the frame weaving, dust, leaks and a flicker.',
+    look: {
+      name: 'archival',
+      sepia: 0.6,
+      saturation: -0.2,
+      contrast: 0.14,
+      lift: 0.16,
+      temperature: 0.1,
+      vignette: 0.55,
+      grain: 0.35,
+      weave: 0.5,
+      dust: 0.4,
+      leak: 0.25,
+      flicker: 0.35
+    }
+  },
+  newsreel: {
+    title: 'Newsreel',
+    summary: 'Black and white film with deep contrast, heavy grain, weave, dust and flicker.',
+    look: {
+      name: 'newsreel',
+      saturation: -1,
+      contrast: 0.22,
+      lift: 0.1,
+      vignette: 0.6,
+      grain: 0.45,
+      weave: 0.55,
+      dust: 0.5,
+      flicker: 0.45
+    }
+  },
+  kodachrome: {
+    title: 'Period colour',
+    summary: 'Warm, saturated period colour film with fine grain, a soft vignette and a little weave.',
+    look: {
+      name: 'kodachrome',
+      saturation: 0.08,
+      contrast: 0.12,
+      temperature: 0.22,
+      lift: 0.08,
+      vignette: 0.4,
+      grain: 0.25,
+      weave: 0.3,
+      dust: 0.2,
+      leak: 0.2,
+      flicker: 0.15
+    }
+  },
+  explainer: {
+    title: 'Explainer',
+    summary: 'Clean and bright: a lift in colour and contrast, crisp edges, nothing on top.',
+    look: { name: 'explainer', saturation: 0.12, contrast: 0.06, exposure: 0.05 }
   }
 }
 
@@ -120,9 +193,14 @@ export function mergeLook(was: Look | null | undefined, patch: LookPatch | null,
 
 /** Whether a look changes the picture's colour at all. */
 export function changesColour(look: Look): boolean {
-  return [look.exposure, look.contrast, look.saturation, look.temperature, look.tint, look.lift].some(
+  return [look.exposure, look.contrast, look.saturation, look.temperature, look.tint, look.lift, look.sepia].some(
     (v) => v !== undefined && Math.abs(v) > 1e-6
   )
+}
+
+/** Whether a look puts film on top of the picture: weave, dust, leaks or flicker (edit/film.ts). */
+export function hasFilm(look: Look | null | undefined): boolean {
+  return !!look && [look.weave, look.dust, look.leak, look.flicker].some((v) => v !== undefined && v > 1e-6)
 }
 
 /** A 3x4 colour matrix: each row is one output channel's red, green and blue weights, then its offset. */
@@ -157,10 +235,26 @@ const scale = (r: number, g: number, b: number): Affine => ({
   o: [0, 0, 0]
 })
 
+/** The classic sepia toning matrix: each channel a weighted mix of all three, warm browns from any colour. */
+const SEPIA: Affine = {
+  m: [
+    [0.393, 0.769, 0.189],
+    [0.349, 0.686, 0.168],
+    [0.272, 0.534, 0.131]
+  ],
+  o: [0, 0, 0]
+}
+
+/** A share of the way from the identity to a toning matrix. */
+const toward = (to: Affine, k: number): Affine => ({
+  m: to.m.map((row, i) => row.map((v, j) => (i === j ? 1 : 0) * (1 - k) + v * k)),
+  o: to.o.map((v) => v * k)
+})
+
 /**
  * The look's colour as one matrix on encoded values from 0 to 1: exposure,
- * then saturation around Rec. 709 luma, then warmth and tint as channel
- * gains, then contrast around mid grey, then lifted blacks.
+ * then the sepia tone, then saturation around Rec. 709 luma, then warmth and
+ * tint as channel gains, then contrast around mid grey, then lifted blacks.
  */
 export function lookMatrix(look: Look): ColourMatrix {
   const e = 2 ** (look.exposure ?? 0)
@@ -182,7 +276,9 @@ export function lookMatrix(look: Look): ColourMatrix {
   const contrast: Affine = { ...scale(c, c, c), o: [0.5 * (1 - c), 0.5 * (1 - c), 0.5 * (1 - c)] }
   const lifted: Affine = { ...scale(1 - lift, 1 - lift, 1 - lift), o: [lift, lift, lift] }
   let a = scale(e, e, e)
-  for (const step of [saturation, warmth, contrast, lifted]) a = apply(step, a)
+  const sepia = look.sepia ?? 0
+  const steps = sepia > 1e-6 ? [toward(SEPIA, Math.min(1, sepia)), saturation, warmth, contrast, lifted] : [saturation, warmth, contrast, lifted]
+  for (const step of steps) a = apply(step, a)
   return [...a.m[0], a.o[0], ...a.m[1], a.o[1], ...a.m[2], a.o[2]] as ColourMatrix
 }
 
@@ -240,7 +336,18 @@ export function describeLook(look: Look | null | undefined): string {
     if (v === undefined) continue
     // A named look's own settings go without saying.
     if (named && named.look[k] !== undefined && Math.abs((named.look[k] as number) - v) < 1e-6) continue
-    const label = k === 'temperature' ? 'warmth' : k === 'lift' ? 'faded blacks' : k
+    const label =
+      k === 'temperature'
+        ? 'warmth'
+        : k === 'lift'
+          ? 'faded blacks'
+          : k === 'weave'
+            ? 'gate weave'
+            : k === 'dust'
+              ? 'dust and scratches'
+              : k === 'leak'
+                ? 'light leaks'
+                : k
     parts.push(`${label} ${LOOK_RANGE[k].min < 0 ? sign(v) : +v.toFixed(2)}`)
   }
   if (look.lut) parts.push(`a LUT at ${Math.round(look.lut.strength * 100)}%`)

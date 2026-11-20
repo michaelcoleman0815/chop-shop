@@ -84,6 +84,21 @@ jobs:
           npx electron-vite build
           npx electron-builder --mac --publish never -c.mac.identity=-
 
+      # The app holds what it runs (the built code in out, its node_modules and
+      # package.json) and nothing else of the project. A platform's files list
+      # of nothing but exclusions once packed src, docs and .claude into it.
+      - name: Check the app holds only what it runs
+        run: |
+          APP=$(ls -d release/mac-arm64/*.app | head -1)
+          npx @electron/asar list "$APP/Contents/Resources/app.asar" > "$RUNNER_TEMP/app-asar.txt"
+          TOP=$(cut -d/ -f2 "$RUNNER_TEMP/app-asar.txt" | sort -u)
+          echo "app.asar holds:" $TOP
+          EXTRA=$(echo "$TOP" | grep -vxE 'node_modules|out|package\.json' || true)
+          if [ -n "$EXTRA" ]; then
+            echo "::error::app.asar holds more than node_modules, out and package.json:" $EXTRA
+            exit 1
+          fi
+
       # macOS opens the app on any version its Info.plist allows, so every
       # binary inside it must run there too.
       - name: Check the app runs on the macOS it says
@@ -212,6 +227,22 @@ jobs:
           npx electron-vite build
           npx electron-builder --win nsis --x64 --publish never
 
+      # The app holds what it runs (the built code in out, its node_modules and
+      # package.json) and nothing else of the project, as on the Mac.
+      - name: Check the app holds only what it runs
+        id: asar
+        continue-on-error: true
+        run: |
+          LIST=$(npx @electron/asar list release/win-unpacked/resources/app.asar)
+          # Each path starts with the separator, a backslash on Windows.
+          TOP=$(printf '%s\n' "$LIST" | tr -d '\r' | tr '\\' '/' | cut -d/ -f2 | sort -u)
+          echo "app.asar holds:" $TOP
+          EXTRA=$(printf '%s\n' "$TOP" | grep -vxE 'node_modules|out|package\.json' || true)
+          if [ -n "$EXTRA" ]; then
+            echo "::error::app.asar holds more than node_modules, out and package.json:" $EXTRA
+            exit 1
+          fi
+
       - name: Check the app holds what it needs and its native modules load
         id: contents
         continue-on-error: true
@@ -252,10 +283,11 @@ jobs:
       - name: Fail when a check failed
         if: >-
           steps.tests.outcome == 'failure' || steps.binaries.outcome == 'failure' ||
-          steps.whisper.outcome == 'failure' || steps.contents.outcome == 'failure' ||
-          steps.app.outcome == 'failure' || steps.installed.outcome == 'failure'
+          steps.whisper.outcome == 'failure' || steps.asar.outcome == 'failure' ||
+          steps.contents.outcome == 'failure' || steps.app.outcome == 'failure' ||
+          steps.installed.outcome == 'failure'
         run: |
-          echo "::error::tests ${{ steps.tests.outcome }}, helpers ${{ steps.binaries.outcome }}, whisper ${{ steps.whisper.outcome }}, app contents ${{ steps.contents.outcome }}, the app ${{ steps.app.outcome }}, the installed app ${{ steps.installed.outcome }}"
+          echo "::error::tests ${{ steps.tests.outcome }}, helpers ${{ steps.binaries.outcome }}, whisper ${{ steps.whisper.outcome }}, app.asar ${{ steps.asar.outcome }}, app contents ${{ steps.contents.outcome }}, the app ${{ steps.app.outcome }}, the installed app ${{ steps.installed.outcome }}"
           exit 1
 
       - uses: actions/upload-artifact@v4

@@ -42,6 +42,39 @@ describe('the crew', () => {
     expect(memberFor('Something new')).toBeNull()
   })
 
+  it('gives each stage of a video made from nothing to a member, and none to Cutalong’s own reading', () => {
+    expect(memberFor('Writing the script')).toBe('quill')
+    expect(memberFor('Writing the script again')).toBe('quill')
+    expect(memberFor('Reading your script')).toBe('quill')
+    expect(memberFor('Narrating the script')).toBe('echo')
+    expect(memberFor('Downloading the voice')).toBe('echo')
+    expect(memberFor('Listening to your recording')).toBe('echo')
+    expect(memberFor('Narrating the script: timing every word')).toBe('echo')
+    expect(memberFor('Planning the shots')).toBe('snip')
+    expect(memberFor('Describing shot 3 again')).toBe('snip')
+    expect(memberFor("Drawing The wildcatter's character sheet")).toBe('tint')
+    expect(memberFor('Making the shots with Google: 3 of 24')).toBe('tint')
+    expect(memberFor('Making shot 3 with fal.ai')).toBe('tint')
+    expect(memberFor("Making shot 3's clip with Google")).toBe('tint')
+    expect(memberFor('Looking for music in your Music folder')).toBe('scout')
+    expect(memberFor('Putting the story together')).toBe('snip')
+    // Clips cut from a recording stay Reel's, and the steps that are Cutalong's own bring no one in.
+    expect(memberFor('Making the clips (1 of 3)')).toBeNull()
+    for (const own of ['Starting', 'Reading what you asked for', 'Pricing it', 'Quoting it again', 'Ready', 'Failed']) expect(memberFor(own)).toBeNull()
+    // The credits read as the work that was done.
+    let log = logCrew(undefined, 'Narrating the script')
+    for (const stage of ['Narrating the script: timing every word', 'Planning the shots', 'Making the shots with Google: 24 of 24', 'Looking for music in your Music folder', 'Putting the story together'])
+      log = logCrew(log, stage)
+    expect(log.map(doneLine)).toEqual([
+      'Echo narrated the script',
+      'Snip put the story together',
+      'Tint made the shots with Google',
+      'Scout looked for music in your Music folder'
+    ])
+    expect(doneLine({ id: 'quill', stage: 'Writing the script' })).toBe('Quill wrote the script')
+    expect(liveLine({ id: 'tint', stage: "Drawing The wildcatter's character sheet" })).toBe("Tint is drawing The wildcatter's character sheet")
+  })
+
   it('lines the crew up as a job runs, each once, with what they did last', () => {
     let log = logCrew(undefined, 'Bringing in a.mov')
     log = logCrew(log, 'Thinking')

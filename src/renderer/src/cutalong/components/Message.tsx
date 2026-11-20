@@ -24,22 +24,31 @@ export interface Action {
     | 'reveal'
     | 'retry'
     | 'add-clip'
+    /** A B-roll choice the router found (renderer broll.ts BrollPick): fetched, credited and cut to when tapped. */
+    | 'add-broll'
+    /** Looking on the web too, with its price on the button: the only way a paid search starts. */
+    | 'broll-web'
     | 'add-icon'
     | 'sign-in'
     | 'open-settings'
     | 'run-command'
     | 'copy'
+    | 'make'
     /** Sends its words as the person's next message: an answer to a question Claude asked. */
     | 'say'
     /** Opens the steps for the Anthropic key, on Start. */
     | 'setup-key'
     | 'strip-never'
   label: string
+  /** Words after the label that stay whole when a narrow column shortens the label: " · NASA", where a B-roll choice is from. */
+  tail?: string
   primary?: boolean
   /** A command name for save-style and run-command, a path for reveal, the text for copy or say, JSON for the asset actions. */
   payload?: string
   /** A small picture shown in the button, as a data URL. */
   icon?: string
+  /** Shown only while the reply's work runs (a Stop), never once it is done. */
+  during?: boolean
 }
 
 export interface Msg extends Omit<ChatMessage, 'actions'> {
@@ -209,17 +218,24 @@ export function AssistantMessage({
         {/* Who did the work, then what it made: a clip set reads as what Reel found. */}
         {!msg.progress && <Credits crew={msg.crew} />}
         {!msg.progress && children}
-        {!msg.progress && (msg.actions?.length ?? 0) > 0 && (
+        {(msg.actions ?? []).some((a) => !!a.during === !!msg.progress) && (
           <div className="cl-actions">
-            {msg.actions!.map((a) => (
-              <Button key={a.kind + a.label} variant={a.primary ? 'primary' : 'secondary'} onClick={() => onAction(a)}>
+            {msg.actions!.filter((a) => !!a.during === !!msg.progress).map((a) => (
+              <Button
+                key={`${a.kind}|${a.label}|${a.tail ?? ''}|${a.payload ?? ''}`}
+                variant={a.primary ? 'primary' : 'secondary'}
+                onClick={() => onAction(a)}
+              >
                 {a.icon && <img src={a.icon} alt="" width={20} height={20} />}
                 {a.kind === 'save-style' && a.payload ? (
                   <>
                     Save as <span className="cmd">/{a.payload}</span>
                   </>
                 ) : (
-                  a.label
+                  <>
+                    <span className="cl-btn-label">{a.label}</span>
+                    {a.tail && <span className="cl-btn-tail">{a.tail}</span>}
+                  </>
                 )}
               </Button>
             ))}

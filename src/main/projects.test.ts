@@ -15,7 +15,8 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({ dir: '' }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.dir } }))
 
-import { openProject, saveProject } from './projects'
+import { mkdirSync } from 'fs'
+import { openProject, projectsDir, saveProject } from './projects'
 import type { Project } from '../shared/types'
 
 fake.dir = mkdtempSync(join(tmpdir(), 'projects-'))
@@ -46,7 +47,8 @@ function project(path: string, messages: number, word: string): Project {
 
 describe('saving a project', () => {
   it('lands saves made at once whole, and in the order they were made', async () => {
-    const path = join(fake.dir, 'Vlog.cutalong')
+    mkdirSync(projectsDir(), { recursive: true })
+    const path = join(projectsDir(), 'Vlog.cutalong')
     for (let k = 0; k < 10; k++) {
       // The version, then the story kept with it: the second is the one that counts.
       const version = project(path, 4000, 'v'.repeat(200))
@@ -60,7 +62,8 @@ describe('saving a project', () => {
   })
 
   it('never shows half a project to anything that reads it while it saves', async () => {
-    const path = join(fake.dir, 'Read while saving.cutalong')
+    mkdirSync(projectsDir(), { recursive: true })
+    const path = join(projectsDir(), 'Read while saving.cutalong')
     await saveProject(project(path, 4000, 'a'.repeat(200)))
     const saves = Array.from({ length: 6 }, (_, i) => saveProject(project(path, 4000 - i, 'b'.repeat(200))))
     let done = false

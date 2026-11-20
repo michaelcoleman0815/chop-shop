@@ -97,6 +97,8 @@ import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
 import { useFxRender, useFxScene } from '../fx-preview'
 import { grainTile } from '../grain'
+import { FilmOver, filmFps } from '../components/FilmOver'
+import { weaveTransform } from '../../../../shared/edit/film'
 import { clock } from '../format'
 import { collapse } from '../motion'
 import { usePlayer, type DeckView } from '../usePlayer'
@@ -439,7 +441,15 @@ function Preview({
           </svg>
         )}
         {mediaUrl ? (
-          <div className="cl-decks" ref={decksBox} style={grade ? { filter: 'url(#cl-look)' } : undefined}>
+          <div
+            className="cl-decks"
+            ref={decksBox}
+            style={{
+              ...(grade ? { filter: 'url(#cl-look)' } : {}),
+              // The gate weave moves the graded picture as the export's crop does (shared/edit/film.ts).
+              transform: look?.weave ? weaveTransform(look.weave, time, filmFps(doc.sources[0]?.fps ?? 30)) : undefined
+            }}
+          >
             <div className="cl-decks-main" style={mainBox}>
               {views.map((view, d) => (
                 <Deck
@@ -482,6 +492,7 @@ function Preview({
           <span className="cl-frame-empty" />
         )}
         {look && <LookOver look={look} playing={playing} />}
+        {look && <FilmOver look={look} time={time} fps={filmFps(doc.sources[0]?.fps ?? 30)} width={box.w} height={box.h} />}
         {fx.scene && <canvas ref={fxOverlay} className="cl-fx-overlay" aria-hidden="true" />}
         {showBig && big && (
           <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
@@ -994,9 +1005,11 @@ function NotesPanel({
   // A v1 shaped by the words sent with the footage is not the recording as shot: it says what it is.
   const status: PanelStatus = app.panel ?? {
     text:
-      version.n === 1 && version.ops.length === 0
-        ? `v1 is the recording in ${beats.length} beats. Leave notes as you watch, or type / for a preset.`
-        : `v${version.n} is ready. ${version.summary}`
+      version.n === 1 && doc.make
+        ? `v1 is the ${doc.make.brief.format} in ${beats.length} shots. Ask for a shot again, or leave notes as you watch.`
+        : version.n === 1 && version.ops.length === 0
+          ? `v1 is the recording in ${beats.length} beats. Leave notes as you watch, or type / for a preset.`
+          : `v${version.n} is ready. ${version.summary}`
   }
   const position = (id: string | null): string => {
     const i = beats.findIndex((b) => b.id === id)
@@ -1012,6 +1025,9 @@ function NotesPanel({
   const stretch = span ? `${clock(span.start)} to ${clock(span.end)}` : null
   // Applying notes: each goes to the member whose job it is, and those are the ones at work on it.
   const noteCrew = [...new Set(notes.map((n) => memberForNote(n.text)))]
+  // A beat that cuts to B-roll (not an icon on a card) can swap it for other B-roll, offered here.
+  const atNow = beats.find((b) => b.id === nowBeat)
+  const swappable = !!atNow?.treatment.broll && (atNow.treatment.frame === 'broll' || atNow.treatment.frame === 'split')
 
   return (
     <aside className="cl-notes" aria-label="Notes">
@@ -1027,10 +1043,23 @@ function NotesPanel({
             {!status.progress && (status.actions?.length ?? 0) > 0 && (
               <div className="cl-actions">
                 {status.actions!.map((a) => (
-                  <Button key={a.kind + a.label} variant="secondary" small onClick={() => app.onAction(a)}>
-                    {a.label}
+                  <Button
+                    key={`${a.kind}|${a.label}|${a.tail ?? ''}|${a.payload ?? ''}`}
+                    variant="secondary"
+                    small
+                    onClick={() => app.onAction(a)}
+                  >
+                    <span className="cl-btn-label">{a.label}</span>
+                    {a.tail && <span className="cl-btn-tail">{a.tail}</span>}
                   </Button>
                 ))}
+              </div>
+            )}
+            {!status.progress && (status.actions?.length ?? 0) === 0 && swappable && nowBeat && (
+              <div className="cl-actions">
+                <Button variant="secondary" small onClick={() => void app.otherBroll(nowBeat)}>
+                  Other B-roll for {position(nowBeat).toLowerCase()}
+                </Button>
               </div>
             )}
           </div>

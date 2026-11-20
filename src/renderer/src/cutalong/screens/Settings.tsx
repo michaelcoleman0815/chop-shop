@@ -10,14 +10,17 @@ import { ClaudeFrames, ClaudeWrites } from './ClaudeFrames'
 import { grow } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
+import { MadeVideos } from './MadeVideos'
 import { MapsSection } from './Maps'
+import { BrollSources } from './BrollSources'
 import { OtherServices } from './OtherServices'
 import { Planning } from './Planning'
 
 /**
  * The few things that belong to this computer rather than to an edit: the
- * Claude key, the transcription model, where exports go, whose sign-in video
- * links may borrow, and updates. Each change saves as it is made.
+ * Claude key, the transcription model, where B-roll comes from, where exports
+ * go, whose sign-in video links may borrow, and updates. Each change saves as
+ * it is made.
  */
 
 type Model = Settings['whisperModel']
@@ -160,6 +163,10 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
           <Planning settings={settings} onSettings={setSettings} />
 
           <OtherServices settings={settings} onSettings={setSettings} onHearer={setHearer} />
+
+          <MadeVideos settings={settings} onSettings={setSettings} />
+
+          <BrollSources />
 
           <section className="cl-section" aria-labelledby="set-words">
             <h2 id="set-words">Transcription</h2>

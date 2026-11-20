@@ -37,7 +37,6 @@ import {
 } from '../../../shared/edit'
 import {
   beatForAsset,
-  DEFAULT_EXCERPT_SEC,
   iconSvg,
   isImagePath,
   isImageUrl,
@@ -163,6 +162,10 @@ import { useClipping } from './useClipping'
 import { useLearn } from './useLearn'
 import { renderFailure } from '../../../shared/failure'
 import { useVlog } from './useVlog'
+import { useMake, type Makes, type NewChat } from './useMake'
+import { inTime, NEW_CHAT_WAIT_MS } from './in-time'
+import { editIn, type Kept } from '../../../shared/make/kept'
+import { makeName } from '../../../shared/make/brief'
 import { SHOWCASE_ENTRIES, useShowcase, type Showcase } from './useShowcase'
 import {
   brandTag,
@@ -175,8 +178,10 @@ import {
   tagSignalsWith,
   useMemory
 } from './memory'
+import { momentsFor } from '../../../shared/broll/moment'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, mediaUrlFor } from './api'
+import { offerReply, pickedAside, swapWords, webWaits, type BrollPick, type BrollWebAsk, type BrollWhere } from './broll'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
@@ -432,7 +437,7 @@ const uid = (): string => `m${Date.now().toString(36)}${(counter++).toString(36)
 const PLACE_MATERIAL = 'Put the material I just brought in where it fits what I am saying.'
 
 /** The actions that change the edit or bring something into it: they wait for a working key. */
-const CHANGES: ReadonlySet<Action['kind']> = new Set(['use-style', 'strip-never', 'add-clip', 'add-icon', 'sign-in'])
+const CHANGES: ReadonlySet<Action['kind']> = new Set(['use-style', 'strip-never', 'add-clip', 'add-icon', 'sign-in', 'add-broll', 'broll-web'])
 
 /** "a", "a and b", "a, b and c". */
 function listOf(names: string[]): string {
@@ -485,6 +490,13 @@ export function forgetPlace(): void {
   rememberPlace(null, 'thread')
 }
 
+/** What a chat that couldn't be opened is called: its file's name. */
+const chatNameOf = (path: string): string => (path.split(/[\\/]/).pop() ?? path).replace(/\.(cutalong|chopshop)$/i, '')
+
+/** Said when a chat can't be opened (main refused it, or it can't be read): never silent, and where to open it from. */
+export const couldNotOpen = (path: string, atLaunch: boolean): string =>
+  `I couldn’t open ${atLaunch ? 'your last chat, ' : ''}“${chatNameOf(path)}”${atLaunch ? ', again' : ''}. Open it from Projects with “Open a project file…”, and it opens from then on.`
+
 function recallPlace(): { path: string; screen: 'thread' | 'editor' } | null {
   try {
     const v = JSON.parse(localStorage.getItem(LAST) ?? 'null') as { path?: unknown; screen?: unknown } | null
@@ -517,6 +529,11 @@ export function useCutalong() {
    */
   const working = useRef(0)
   const isWorking = (): boolean => busyRef.current || working.current > 0
+  /** Paid B-roll web searches running now: a clip waits for them to be left. */
+  const webSearches = useRef(0)
+  /** Why the clip open can't be left for the chat now: work runs in the chat, what it brings back is the clip's. */
+  const stayText = (): string | null =>
+    !isWorking() ? null : webSearches.current > 0 ? 'One moment, your web search is still running.' : 'One moment, I’m still working on this clip.'
   const during = useCallback(async <T>(work: () => Promise<T>): Promise<T> => {
     working.current++
     try {
@@ -598,6 +615,30 @@ export function useCutalong() {
 
   const docRef = useRef<EditDoc | null>(null)
   const projectRef = useRef<Project | null>(null)
+  /**
+   * Which chat is open, counted up each time another is opened or a new one started: what a made video
+   * left waiting (questions, a read-back, a quote) belongs to the chat it was asked in (useMake).
+   */
+  const chatKey = useRef(0)
+  /** useMake, for the chat changes made above it. */
+  const makeRef = useRef<Makes | null>(null)
+  /**
+   * Another chat being opened: set while its file is read, so a tap that would spend does nothing until the
+   * chat has changed (useMake), and settled when it has, or when it gave way.
+   */
+  const switching = useRef(false)
+  const switchDone = useRef<Promise<void>>(Promise.resolve())
+  /** Counted up by every chat change asked for: an open overtaken while its file was read gives way. */
+  const switchSeq = useRef(0)
+  /** A new video's chat is being made (newChat): no chat opens, and no new one starts, until it is. */
+  const settingUp = useRef(false)
+  /** Why another chat can't be opened, or a new one started, now: a video being made says so, and how to stop it. */
+  /** What a chat click says while a new video's chat is being made. */
+  const SETTING_UP = 'One moment… the new chat for your video is being made.'
+  const busyText = (to: 'open' | 'start' | 'clip'): string =>
+    makeRef.current?.running()
+      ? `A video is being made in this chat. ${to === 'open' ? 'Open the other one' : to === 'clip' ? 'Open the clip' : 'Start a new one'} when it’s done, or stop it first.`
+      : `I'm still working on ${projectRef.current?.name ?? 'this edit'}. ${to === 'open' ? 'Open another' : to === 'clip' ? 'Open the clip' : 'Start a new one'} once I'm done.`
   const studyRef = useRef<InspirationStudy | null>(null)
   const pendingCommand = useRef<string | null>(null)
   /**
@@ -809,6 +850,10 @@ export function useCutalong() {
     },
     // Clips are made in the chat's brand, as the chat shows it.
     brand: () => brandNow().id,
+    // A clip opens in the editor only when nothing runs in the chat: what a make brings back goes where it was made for.
+    busy: () => (isWorking() ? busyText('clip') : null),
+    // And is left for the chat only then too: a web search from its panel comes back to it.
+    stay: stayText,
     gate: async (what) => {
       if (await keyOpen()) return true
       stopped(what)
@@ -948,25 +993,63 @@ export function useCutalong() {
   }, [])
 
   /** Opens a saved chat: its thread when it has one, else straight into the editor. */
-  const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread'): Promise<void> => {
+  const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread', at: 'launch' | null = null): Promise<void> => {
+    // A new video's chat being made: every chat waits for it, the one open too, so it is always made whole.
+    if (settingUp.current) {
+      setToast({ text: SETTING_UP })
+      return
+    }
     // The chat already open is not read again from disk: whatever is running
-    // in it, and anything said since it was last saved, would be lost.
+    // in it, and anything said since it was last saved, would be lost. Asked
+    // for again, it also takes over from another chat still being opened.
     if (path === projectRef.current?.path) {
+      switchSeq.current += 1
+      switching.current = false
       setScreen(docRef.current && (prefer === 'editor' || messagesRef.current.length === 0) ? 'editor' : 'thread')
       return
     }
     // Work still running belongs to the chat it started in; switching now would
     // land its result in the wrong one.
     if (isWorking()) {
-      setToast({ text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Open another once I'm done.` })
+      setToast({ text: busyText('open') })
       return
     }
-    rememberKeep(docRef.current)
-    const project = await api.openProject(path)
+    // From here until the chat changes, a tap that would spend does nothing (useMake), and a later open or a
+    // new chat takes over from this one.
+    const seq = ++switchSeq.current
+    switching.current = true
+    let settle = (): void => undefined
+    switchDone.current = new Promise<void>((r) => (settle = r))
+    let project: Project | null = null
+    try {
+      rememberKeep(docRef.current)
+      // main reads it in its file's turn: after any save or keep of it still being written.
+      project = await api.openProject(path)
+    } finally {
+      if (switchSeq.current === seq) switching.current = false
+      settle()
+    }
+    if (switchSeq.current !== seq) return
     if (!project) {
       if (recallPlace()?.path === path) rememberPlace(null, 'thread')
+      // Said in plain words, never silent: Projects can open it.
+      setToast({ text: couldNotOpen(path, at === 'launch') })
       return
     }
+    // Work started while it was read (an ask typed and sent): this chat stays open until it is done, and says why.
+    if (isWorking()) {
+      setToast({ text: busyText('open') })
+      return
+    }
+    enter(project, prefer)
+  }, [])
+
+  /**
+   * The chat open becomes `project`'s: the one being left saved as it stands, its last reply with it; then this
+   * one's edit, its chat (what a made video left waiting in it expired), and its place.
+   */
+  const enter = useCallback((project: Project, prefer: 'thread' | 'editor'): void => {
+    if (projectRef.current) void persist()
     projectRef.current = project
     clipping.load(project)
     // The brand chosen for the chat; its edit names its own on each version. Chats from before have none.
@@ -975,7 +1058,11 @@ export function useCutalong() {
     docRef.current = edit
     setDocState(edit)
     setMediaUrl(edit?.sources[0] ? mediaUrlFor(edit.sources[0].path) : null)
-    const chat = (project.chat ?? []) as Msg[]
+    // Another chat: what the last one left waiting stays with it, and this one's make buttons expire, since
+    // nothing behind them is here any more. Any left waiting make it count as waiting (useMake.restore).
+    chatKey.current += 1
+    const saved = (project.chat ?? []) as Msg[]
+    const chat = makeRef.current ? makeRef.current.restore(saved) : saved
     messagesRef.current = chat
     setMessages(chat)
     // Nothing of the chat left behind comes along: its offers, a command
@@ -993,7 +1080,7 @@ export function useCutalong() {
   // Reopening Cutalong lands back where the person was.
   useEffect(() => {
     const last = recallPlace()
-    if (last) void openProject(last.path, last.screen)
+    if (last) void openProject(last.path, last.screen, 'launch')
   }, [openProject])
 
   // Keep track of the chat or editor the person is in, across the rail's other places and restarts.
@@ -1372,82 +1459,351 @@ export function useCutalong() {
     [brandNow, during, neverOf, patch, placeAsset, push]
   )
 
-  const findBroll = useCallback(
-    async (query: string, beat?: string | string[]): Promise<void> => {
-      if (!query.trim()) {
-        push({ role: 'assistant', text: 'Tell me what to look for, like /broll city at night.' })
+  /**
+   * B-roll for moments of the edit, from everywhere (main/broll): the
+   * person's folders first, then the free libraries and sites. One search
+   * for all the moments, so they share each source's limits, and a reply
+   * each, its best few to pick from. The web, which costs money, is asked
+   * only with `paid`, which only its own button sends: typed words never spend.
+   */
+  const offerBroll = useCallback(
+    async (
+      wants: { search: string; beat?: string | string[] | null }[],
+      opts: {
+        paid?: boolean
+        /** The web alone: a moment looked for already, now with its price agreed to. */
+        webOnly?: boolean
+        where?: BrollWhere
+        perMoment?: number
+        except?: { path: string; url: string | null }
+      } = {}
+    ): Promise<void> => {
+      const where = opts.where ?? 'thread'
+      const say = (text: string): void => {
+        if (where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+      }
+      if (!wants.some((w) => w.search.trim())) {
+        say('Tell me what to look for, like /broll city at night.')
         return
       }
-      if (!docRef.current) {
-        push({ role: 'assistant', text: 'Drop some footage first, then I can find B-roll for it.' })
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can find B-roll for it.')
         return
       }
       const target = brandNow()
-      const ruled = covering(neverOf(target.id), 'broll')
-      if (ruled) {
-        push({ role: 'assistant', text: neverBlockedReply(brandInSentence(target), ruled) })
+      const first = (b: string | string[] | null | undefined): string | null => (Array.isArray(b) ? (b[0] ?? null) : (b ?? null))
+      const moments = momentsFor(
+        d,
+        wants.map((w) => ({ search: w.search, beat: first(w.beat) })),
+        { niche: target.niche || undefined }
+      )
+      if (moments.length === 0) {
+        say('That line is not in the cut any more, so there is nothing to find B-roll for.')
         return
       }
-      const id = push({ role: 'assistant', text: '', progress: { stage: 'Looking for B-roll', percent: 30 } })
-      // The brand's sources: its preferred channels are looked in first, its blocked ones never come back.
-      const r = await api.searchVideos(query, target.broll)
+      // Bound to the chat and the edit it was asked in: either changed meanwhile, a free find gives way, quietly.
+      const mine = chatKey.current
+      const still = (): boolean => chatKey.current === mine && docRef.current?.id === d.id
+      const since = Date.now()
+      const looking = { stage: 'Looking for B-roll', percent: null }
+      const id = where === 'thread' ? push({ role: 'assistant', text: '', progress: looking }) : null
+      if (!id) setPanel({ text: '', progress: looking, since })
+      const off = api.onBrollProgress((p) => {
+        if (!still()) return
+        if (id) patch(id, { progress: p })
+        else setPanel({ text: '', progress: p, since })
+      })
+      const asking = () =>
+        Promise.all([
+          api.brollFind({
+            moments,
+            brandId: target.id,
+            paid: opts.paid === true,
+            perMoment: opts.perMoment,
+            ...(opts.webOnly ? { only: ['web' as const] } : {})
+          }),
+          api.brollSettings().catch(() => null)
+        ])
+      // The web costs money, so while it is asked it is work: no other chat or clip opens under it, and its choices
+      // come back to the chat and the edit that paid for them.
+      let answered: Awaited<ReturnType<typeof asking>>
+      if (opts.paid) {
+        webSearches.current++
+        try {
+          answered = await during(asking)
+        } finally {
+          webSearches.current--
+        }
+      } else answered = await asking()
+      const [r, settings] = answered
+      off()
+      /** Given way: in the same chat, its line says so (another of its edits is open now); elsewhere, nothing shows. */
+      const gaveWay = (): void => {
+        if (id && chatKey.current === mine) patch(id, { progress: null, text: 'That search was for the edit open before this one, so I left what it found out.' })
+        if (opts.paid) setToast({ text: 'What the web search found came back after its edit closed, so its choices aren’t shown.' })
+      }
+      if (!still()) return gaveWay()
       if (!r.ok) {
-        patch(id, { progress: null, text: `I couldn't search. ${r.message}`, error: true })
+        const text = `I couldn't look for B-roll. ${r.message}`
+        if (id) patch(id, { progress: null, text, error: true })
+        else setPanel({ text, error: true })
         return
       }
-      const blocked = r.blocked ?? 0
-      const left = blocked
-        ? `${blocked === 1 ? 'One result was' : `${blocked} results were`} from a source you blocked, so I left ${blocked === 1 ? 'it' : 'them'} out.`
-        : ''
-      if (r.results.length === 0) {
-        patch(id, { progress: null, text: `Nothing came up for “${query}”. Try other words.`, aside: left || null })
-        return
-      }
-      // The preferred channels that answered; when only some did, which share of them.
-      const looked = r.looked ?? 0
-      const tried = Math.max(looked, r.tried ?? looked)
-      const channels =
-        looked === tried
-          ? looked === 1
-            ? 'your preferred channel'
-            : `your ${looked} preferred channels`
-          : `${looked === 1 ? 'one' : looked} of your ${tried} preferred channels`
-      const preferred = r.results.slice(0, 3).filter((c) => c.preferred).length
-      const sources = [
-        looked
-          ? `I looked in ${channels} first${preferred ? `, and ${preferred === 1 ? 'one of these is' : `${preferred} of these are`} from them` : ''}.`
-          : preferred
-            ? `${preferred === 1 ? 'One of these is' : `${preferred} of these are`} from a source you prefer.`
-            : '',
-        left
-      ]
-        .filter(Boolean)
-        .join(' ')
-      const d = docRef.current
-      const first = Array.isArray(beat) ? beat[0] : beat
-      const moment = d && first ? momentOf(d, first) : null
-      patch(id, {
-        progress: null,
-        text: moment
-          ? `For “${moment}”, here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it there.`
-          : `Here's what I found for “${query}”. Pick one and I'll cut to ${DEFAULT_EXCERPT_SEC} seconds of it.`,
-        aside: [
-          'Only that stretch is fetched, and it is credited in the export. To choose the stretch, paste the link with a time, like 1:02-1:10.',
-          sources
-        ]
-          .filter(Boolean)
-          .join(' '),
-        actions: r.results.slice(0, 3).map(
-          (c): Action => ({
-            kind: 'add-clip',
-            label: `${c.title}${c.durationSec ? ` · ${clock(c.durationSec)}` : ''}`,
-            payload: JSON.stringify({ url: c.url, hint: query, beat })
-          })
+      // The price is asked only when the web is on and would have been looked in with a yes.
+      const webQuote = settings?.webSearch && r.results.some((x) => webWaits(x.plan)) ? await api.brollQuote(1).catch(() => null) : null
+      if (!still()) return gaveWay()
+      const except = opts.except
+      const replies = r.results.map((found, i) => {
+        const results = except
+          ? found.results.filter((x) => x.candidate.extra?.path !== except.path && !(except.url && x.candidate.pageUrl === except.url))
+          : found.results
+        const w = wants.find((x) => first(x.beat) === (found.moment.beat ?? null)) ?? wants[i]
+        return offerReply(
+          { ...found, results },
+          {
+            moment: found.moment.beat ? momentOf(docRef.current ?? d, found.moment.beat) : null,
+            where,
+            webQuote,
+            beats: Array.isArray(w?.beat) ? w.beat : null,
+            docId: d.id
+          }
         )
       })
+      // The reply's credit says what Scout did for all the moments, not the last source one of them asked.
+      if (id) patch(id, { progress: looking })
+      if (!id) {
+        // The editor's panel holds one moment: the beat whose B-roll is being swapped.
+        const one = replies[0]
+        setPanel(one ? { text: one.brief, actions: one.actions } : { text: 'Nothing came up.' })
+        return
+      }
+      replies.forEach((reply, i) => {
+        const m = { text: reply.text, aside: reply.aside, details: reply.details.length ? reply.details : undefined, actions: reply.actions.length ? reply.actions : undefined }
+        if (i === 0) patch(id, { progress: null, ...m })
+        else push({ role: 'assistant', ...m })
+      })
     },
-    [brandNow, neverOf, patch, push]
+    [brandNow, during, patch, push]
   )
+
+  /** /broll words: one moment, on the stretch picked or the line the words are about. */
+  const findBroll = useCallback(
+    (query: string, beat?: string | string[]): Promise<void> => offerBroll([{ search: query, beat: beat ?? null }]),
+    [offerBroll]
+  )
+
+  /**
+   * A B-roll pick: fetched (only the stretch it needs, from a long video),
+   * normalized, credited, and cut to on its beat, as a new version. Swapping
+   * the B-roll on a beat is the same: the pick takes that beat.
+   */
+  const takeBroll = useCallback(
+    async (pick: BrollPick): Promise<void> => {
+      const d = docRef.current
+      const say = (text: string): void => {
+        if (pick.where === 'panel') setPanel({ text })
+        else push({ role: 'assistant', text })
+      }
+      if (!d) {
+        say('Drop some footage first, then this can go into it.')
+        return
+      }
+      // Found for one edit, it goes into that one only: picked in another (a chat or a clip opened since), it is not.
+      if (pick.docId && pick.docId !== d.id) {
+        say('That B-roll was found for another edit, so I didn’t put it in this one. Ask for B-roll here, and pick from what comes up.')
+        return
+      }
+      const mine = chatKey.current
+      const since = Date.now()
+      const fetching = { stage: 'Fetching it', percent: 0 }
+      const id = pick.where === 'thread' ? push({ role: 'assistant', text: '', progress: fetching }) : null
+      if (!id) setPanel({ text: '', progress: fetching, since })
+      const off = api.onBrollProgress((p) => (id ? patch(id, { progress: p }) : setPanel({ text: '', progress: p, since })))
+      // Counted as work, so another project can't open while it is still coming in.
+      const r = await during(() =>
+        api.brollFetch({ candidate: pick.candidate, docId: d.id, seconds: pick.seconds, output: pick.output, brandId: brandNow().id })
+      )
+      off()
+      // Another chat open by now (it can't be while it is fetched, but if it were): nothing of it goes there.
+      if (chatKey.current !== mine) return
+      const report = (text: string, extra: Partial<Msg> = {}): void => {
+        if (id) patch(id, { progress: null, text, ...extra })
+        else setPanel({ text: extra.aside ? `${text} ${extra.aside}` : text, error: extra.error })
+      }
+      if (docRef.current?.id !== d.id) return report('That edit closed before this came in, so it was left out.')
+      if (!r.ok) return report(r.message, { error: true })
+      const placed = placeAsset(r.asset, pick.hint, pick.beat ?? undefined)
+      report(placed.text, {
+        aside: pickedAside(r.asset, pick.candidate),
+        actions: placed.n && id ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+      })
+    },
+    [brandNow, during, patch, placeAsset, push]
+  )
+
+  /** Other B-roll for a beat that already cuts to some, in the editor's panel: picking one swaps it. */
+  const otherBroll = useCallback(
+    async (beat: string): Promise<void> => {
+      const d = docRef.current
+      if (!d) return
+      const b = currentCut(d).beats.find((x) => x.id === beat)
+      const path = b?.treatment.broll?.path
+      if (!b || !path) return
+      const asset = d.assets.find((a) => a.path === path)
+      const said = beatWords(d, b)
+        .map((w) => w.text)
+        .join(' ')
+      await offerBroll([{ search: swapWords(asset, said), beat }], {
+        where: 'panel',
+        perMoment: 4,
+        except: { path, url: asset?.origin.url ?? null }
+      })
+    },
+    [offerBroll]
+  )
+
+  /**
+   * A paid result for a chat that is not the one open (useMake): main reads that chat's file, puts it in as it
+   * would have landed there, and writes it, in that file's turn, so a save or an open of it never crosses it. A
+   * new video never replaces an edit, and with no file of its own chat it is never dropped: either way it goes in
+   * a new chat of its own. Never into the chat open.
+   */
+  const keepInChat = useCallback(
+    async (where: { path: string; name: string } | null, name: string, kept: Kept): Promise<{ path: string; name: string; aside?: boolean } | null> => {
+      // Open again by now (it never is: useMake waits for a chat being opened), so a chat of its own instead.
+      const path = where && projectRef.current?.path !== where.path ? where.path : null
+      const at = await api.keepInChat({ path, name, kept }).catch(() => null)
+      refreshRecent()
+      return at
+    },
+    [refreshRecent]
+  )
+
+  /** The open chat's file, made and saved now if it has none yet (useMake: before anything is spent). */
+  const ensureChat = useCallback(
+    async (name: string): Promise<{ path: string; name: string } | null> => {
+      const project = projectRef.current ?? (await ensureProject(name).catch(() => null))
+      return project ? { path: project.path, name: project.name } : null
+    },
+    [ensureProject]
+  )
+
+  /**
+   * A chat of its own for a new video asked for in a chat that has an edit, which it never replaces (useMake): made
+   * and saved with `first` in it and the chat's brand, the chat being left given a line saying where it went, then
+   * opened, all before anything is spent. A tap meanwhile does nothing, as while any chat opens.
+   */
+  const newChat = useCallback(
+    async (
+      name: string,
+      first: Omit<ChatMessage, 'id'>[],
+      leaving: (name: string) => Omit<ChatMessage, 'id'>
+    ): Promise<NewChat> => {
+      if (working.current > 0) return { refused: 'busy' }
+      // Work while it is made, and every chat click waits for it ("One moment…"), the chat open's too: it is always
+      // made whole, and nothing of it is ever left behind or taken away.
+      working.current++
+      settingUp.current = true
+      switchSeq.current += 1
+      switching.current = true
+      let settle = (): void => undefined
+      switchDone.current = new Promise<void>((r) => (settle = r))
+      let project: Project | null = null
+      let late = false
+      try {
+        const making = (async (): Promise<Project> => {
+          const made = await api.createProject(name.trim() || 'New video', 'cut')
+          const brand = chatChoiceRef.current
+          const next: Project = { ...made, chat: first.map((m) => ({ ...m, id: uid() })), ...(brand ? { brand } : {}) }
+          await api.saveProject(next)
+          return next
+        })()
+        // Never waited on for ever: past its time, nothing is started and every click works again. A chat made after
+        // all stays as it is, in the list, for the person to keep or delete.
+        const got = await inTime(making, NEW_CHAT_WAIT_MS)
+        if (got === 'late') {
+          late = true
+          void making.then(
+            () => refreshRecent(),
+            () => undefined
+          )
+        } else project = got
+      } catch {
+        // Not made whole: whatever was made stays as it is, in the list, for the person to keep or delete.
+        project = null
+      } finally {
+        working.current--
+        settingUp.current = false
+        switching.current = false
+        settle()
+      }
+      if (late) return { refused: 'slow' }
+      if (!project) {
+        refreshRecent()
+        return { refused: 'failed' }
+      }
+      // The chat left says where its video went, saved with it as it is left: a line of its own, with nothing to tap.
+      const line = leaving(project.name)
+      messagesRef.current = [...messagesRef.current, { id: uid(), role: line.role, text: line.text }]
+      enter(project, 'thread')
+      refreshRecent()
+      return { path: project.path, name: project.name }
+    },
+    [enter, refreshRecent]
+  )
+
+  /** The screen as the window's own buttons change it: back from a clip to the chat only when nothing runs in the chat. */
+  const showScreen = useCallback(
+    (next: Screen): void => {
+      if ((next === 'thread' || next === 'start') && clipping.isClip(docRef.current)) {
+        const why = stayText()
+        if (why) {
+          setToast({ text: why })
+          return
+        }
+      }
+      setScreen(next)
+    },
+    [clipping.isClip]
+  )
+
+  // Videos made from nothing (useMake), called in from submit, ask and act.
+  const make = useMake({
+    docRef,
+    // A new made video is made in the chat's brand, as a new vlog is; one under way keeps its own.
+    setDoc: (next) => setDoc(docRef.current?.id === next.id ? next : stampMade(next, brandNow().id)),
+    setMediaUrl,
+    push,
+    patch,
+    applyAsVersion,
+    during,
+    findBroll,
+    brand: () => brandNow().id,
+    chat: () => String(chatKey.current),
+    project: () => (projectRef.current ? { path: projectRef.current.path, name: projectRef.current.name } : null),
+    ensureChat,
+    keepFor: keepInChat,
+    newChat,
+    chatEdit: (id) => (projectRef.current ? editIn(projectRef.current, id) : null),
+    putChatEdit: (next) => {
+      const p = projectRef.current
+      if (!p || !editIn(p, next.id)) return
+      // Into its place in the chat (its own edit, or its clip), the one open left as it is; saved with the chat.
+      projectRef.current = withDoc(p, next)
+      void persist()
+    },
+    goAhead: async () => {
+      const settings = await api.getSettings().catch(() => null)
+      return typeof settings?.makeAutoUnder === 'number' && settings.makeAutoUnder > 0
+    },
+    never: (brand) => neverOf(brand),
+    switching: () => switching.current,
+    settled: () => switchDone.current,
+    notify: (text) => setToast({ text })
+  })
+  makeRef.current = make
 
   const findIcon = useCallback(
     async (query: string, beat?: string[]): Promise<void> => {
@@ -3635,12 +3991,12 @@ export function useCutalong() {
         const { id: _id, ...rest } = m
         push(rest)
       }
-      // Moments that want B-roll the edit does not have yet: one search each, to pick from.
+      // Moments that want B-roll the edit does not have yet: one search for them all, a reply each to pick from.
       const wanted = r.brollWanted ?? []
-      if (wanted.length > 0) await Promise.all(wanted.map((w) => findBroll(w.search, w.beat)))
+      if (wanted.length > 0) await offerBroll(wanted.map((w) => ({ search: w.search, beat: w.beat })))
       return done.n
     },
-    [brandNow, carryPlan, findBroll, noteKey, patch, planContext, push]
+    [brandNow, carryPlan, offerBroll, noteKey, patch, planContext, push]
   )
 
   /** A request in words: Claude reads it, and Cutalong carries out the plan. */
@@ -3650,9 +4006,11 @@ export function useCutalong() {
         push({ role: 'assistant', text: "Drop some footage or paste a video you like, and I'll start from there." })
         return
       }
+      // A shot, the voice, the style or the length of a made video, made again for a quote (useMake).
+      if (await make.asked(text)) return
       await planWords(text)
     },
-    [planWords, push]
+    [make, planWords, push]
   )
 
   /**
@@ -3864,7 +4222,9 @@ export function useCutalong() {
       // clip once it is known, not after whichever file was dropped first.
       const sorting = recordingsIn.length > 1 && !docRef.current
       // A command typed first names the chat after itself ("/vlog 8 min" is "Vlog"), never "-vlog 8 min".
-      const named = command ? command.command.charAt(0).toUpperCase() + command.command.slice(1) : words
+      const named =
+        (attachments.length === 0 ? makeName(text) : null) ??
+        (command ? command.command.charAt(0).toUpperCase() + command.command.slice(1) : words)
       const fallbackName = attachments[0]?.name.replace(/\.[^.]+$/, '') || named || 'New edit'
       if (!sorting) void ensureProject(fallbackName).then(() => persist())
       const userId = push({
@@ -3878,6 +4238,8 @@ export function useCutalong() {
       })
       setBusy(true)
       try {
+        // A video made from nothing, a quote or questions waiting, or the voice-over one waits for (useMake).
+        if (await make.handle(text, command, attachments)) return
         const before = docRef.current
         // Words with footage or a link, or before there is an edit: Claude reads them first, for what to make.
         const route =
@@ -3988,6 +4350,8 @@ export function useCutalong() {
         } else if (vlogged || route?.route === 'clipping') {
           // What was said with the shoot was for its story, or for the clips.
         } else if (words && !asked && docRef.current && (!link || route?.link === 'none' || !route?.link)) {
+          // A shot, the voice, the style or the length of a made video, made again for a quote (useMake).
+          if (!started && (await make.asked(words))) return
           // Whatever was said is the ask, a sentence or a whole prompt: Claude reads it, with the footage as sorted.
           const intake = started ? intakeId.current : null
           const n = await planWords(words, { first: started })
@@ -4023,6 +4387,7 @@ export function useCutalong() {
       capturePage,
       ensureProject,
       keyOpen,
+      make,
       neverOf,
       persist,
       planWords,
@@ -4103,7 +4468,8 @@ export function useCutalong() {
   /** An action's own work, once it may run. */
   const act = useCallback(
     (a: Action): void => {
-      if (a.kind === 'open-editor') setScreen('editor')
+      if (a.kind === 'make') void make.onAction(a)
+      else if (a.kind === 'open-editor') setScreen('editor')
       else if (a.kind === 'retry' && a.payload) retry.current(a.payload)
       else if (a.kind === 'open-settings') setScreen('settings')
       else if (a.kind === 'use-style') useStyle()
@@ -4119,6 +4485,19 @@ export function useCutalong() {
       } else if (a.kind === 'add-clip' && a.payload) {
         const { url, hint, beat } = JSON.parse(a.payload) as { url: string; hint: string; beat?: string | string[] }
         void bringIn({ url }, hint, beat)
+      } else if (a.kind === 'add-broll' && a.payload) {
+        void takeBroll(JSON.parse(a.payload) as BrollPick)
+      } else if (a.kind === 'broll-web' && a.payload) {
+        // The one way a paid search starts: this button, tapped, with its price on it.
+        const ask = JSON.parse(a.payload) as BrollWebAsk
+        // Priced for one edit, it is looked for for that one only: tapped with another open, nothing is searched or paid.
+        if (ask.docId && ask.docId !== docRef.current?.id) {
+          const text = 'That web search was for another edit, so nothing was searched or paid for. Ask for B-roll here to look again.'
+          if (ask.where === 'panel') setPanel({ text })
+          else push({ role: 'assistant', text })
+          return
+        }
+        void offerBroll([{ search: ask.moment.search, beat: ask.moment.beat ?? null }], { paid: true, webOnly: true, where: ask.where })
       } else if (a.kind === 'add-icon' && a.payload) {
         const { name, hint, beat } = JSON.parse(a.payload) as { name: string; hint: string; beat?: string[] }
         void addIcon(name, hint, beat)
@@ -4131,7 +4510,7 @@ export function useCutalong() {
         void api.setVideoSignIn('chrome').then(() => bringIn(req, hint, beat))
       }
     },
-    [addIcon, bringIn, during, runCommand, saveStyle, stripNever, useStyle]
+    [addIcon, bringIn, during, make, offerBroll, push, runCommand, saveStyle, stripNever, takeBroll, useStyle]
   )
 
   const onAction = useCallback(
@@ -4424,31 +4803,41 @@ export function useCutalong() {
 
   /** A new chat. The one being left was saved as it went. */
   const goStart = useCallback((): void => {
-    if (isWorking()) {
-      setToast({
-        text: `I'm still working on ${projectRef.current?.name ?? 'this edit'}. Start a new one once I'm done.`
-      })
+    if (settingUp.current) {
+      setToast({ text: SETTING_UP })
       return
     }
+    if (isWorking()) {
+      setToast({ text: busyText('start') })
+      return
+    }
+    // A chat being opened gives way to the new one.
+    switchSeq.current += 1
+    switching.current = false
+    // The chat being left is saved as it stands, its last reply with it.
+    if (projectRef.current) void persist()
     rememberPlace(null, 'thread')
     rememberKeep(docRef.current)
     projectRef.current = null
+    // A new chat: nothing a made video left waiting in the last one comes along.
+    chatKey.current += 1
+    const fresh = makeRef.current?.restore([]) ?? []
     clipping.load(null)
     docRef.current = null
-    messagesRef.current = []
+    messagesRef.current = fresh
     pendingCommand.current = null
     // A new chat uses the default brand until it is switched.
     setChatChoice(null)
     setOffers([])
     setDocState(null)
     setMediaUrl(null)
-    setMessages([])
+    setMessages(fresh)
     setStudy(null)
     setPanel(null)
     setGraphic(null)
     setScreen('start')
     refreshRecent()
-  }, [refreshRecent, setChatChoice])
+  }, [persist, refreshRecent, setChatChoice])
 
   return {
     /** The brand on the Brand page. */
@@ -4474,7 +4863,7 @@ export function useCutalong() {
     memory,
     setSaved,
     screen,
-    setScreen,
+    setScreen: showScreen,
     goStart,
     work,
     resume,
@@ -4491,8 +4880,11 @@ export function useCutalong() {
     setPanel,
     submit,
     onAction,
+    make,
     openProject,
     runCommand,
+    /** Other B-roll for a beat that cuts to some, offered in the editor's panel. */
+    otherBroll,
     addNote,
     dropNote,
     applyNotes,

@@ -4,7 +4,7 @@ import { join } from 'path'
 import { isBrollKeyId, type BrollKeyId } from '../../shared/broll/keys'
 import { createQuotas, type Quotas } from '../../shared/broll/quota'
 import { makerNames } from '../../shared/broll/route'
-import type { BrollSource, Candidate, Fetched, Moment, SourceId } from '../../shared/broll/types'
+import { isSourceId, type BrollSource, type Candidate, type Fetched, type Moment, type SourceId } from '../../shared/broll/types'
 import type { KeyCheck } from '../../shared/services'
 import { readApiKey } from '../apikey'
 import { readBrandById } from '../brand-store'
@@ -24,16 +24,16 @@ import { fetchPick, findBroll, type FindOptions, type MomentResult } from './rou
 import { quotaStore, settingsStore, type BrollSettings } from './settings'
 import { createSources, unavailable } from './sources'
 import { makerEntries, type LogoData } from './sources/logos'
-import { quoteWebSearch } from './sources/web'
+import { paidSearchCovers, quoteWebSearch } from './sources/web'
 
 /**
  * B-roll from everywhere, wired to the app: keys from the keychain,
  * settings and quota counts in userData, the person's library index, yt-dlp
  * and ffmpeg from the build, pages captured in the app's private window.
  *
- * Nothing here is called yet: phase 2 calls registerBrollIpc() from the
- * main process's start and the functions below from the chat (Scout), the
- * editor and Settings.
+ * registerBrollIpc() is called from the main process's start (main/index
+ * registerIpc); the chat (Scout), the editor and Settings reach the
+ * functions below through it (preload: brollFind, brollFetch and the rest).
  */
 
 type Send = (wc: WebContents, channel: string, payload: unknown) => void
@@ -86,7 +86,12 @@ function brollState(): State {
     logos: { index: logoIndex, marks: loadLogos },
     fontsDir: FONTS_DIR(),
     capture: async (url) => (await import('../page-capture')).capturePage(url),
-    anthropicKey: readApiKey
+    anthropicKey: readApiKey,
+    // The seam for generated B-roll (sources/generated). It stays empty until the make consent boundary
+    // lands (make:start, make:revise, make:go and make:shot need a tapped consent, and typed text never
+    // spends); a provider then joins here through that boundary. Empty, the router never asks for
+    // generation and nothing is paid for.
+    generation: null
   })
   state = { keys, settings, quotas, libraries, sources, logoIndex }
   return state
@@ -161,7 +166,7 @@ async function brandRules(brandId?: string | null): Promise<{ brand: { prefer: s
 export async function findBrollFor(
   moments: Moment[],
   brandId: string | null,
-  opts: Pick<FindOptions, 'paid' | 'perMoment' | 'signal' | 'onProgress'> = {}
+  opts: Pick<FindOptions, 'paid' | 'perMoment' | 'signal' | 'onProgress' | 'only'> = {}
 ): Promise<MomentResult[]> {
   const s = brollState()
   const set = s.settings.get()
@@ -171,6 +176,7 @@ export async function findBrollFor(
     policy: { shareAlike: set.shareAlike, fairUse: set.fairUse },
     paid: opts.paid === true && set.webSearch,
     perMoment: opts.perMoment,
+    only: opts.only,
     signal: opts.signal,
     onProgress: opts.onProgress
   })
@@ -268,10 +274,20 @@ export function registerBrollIpc(send: Send): void {
     const said = await scanLibraries((stage, percent) => send(e.sender, 'broll:progress', { stage, percent }))
     return { said }
   })
-  ipcMain.handle('broll:find', async (e, req: { moments?: Moment[]; brandId?: string | null; paid?: boolean }) => {
+  ipcMain.handle('broll:find', async (e, req: { moments?: Moment[]; brandId?: string | null; paid?: boolean; perMoment?: number; only?: unknown }) => {
     try {
-      const results = await findBrollFor(Array.isArray(req?.moments) ? req.moments.slice(0, 6) : [], req?.brandId ?? null, {
-        paid: req?.paid === true,
+      const perMoment = Math.max(1, Math.min(6, Math.round(Number(req?.perMoment) || 3)))
+      const asked = Array.isArray(req?.moments) ? req.moments : []
+      // A paid search runs only for a yes tapped on its price; the window sends it from that button alone.
+      const paid = req?.paid === true
+      // And it covers only what that price was for, one moment, so nothing is spent past it.
+      if (paid && !paidSearchCovers(asked.length)) {
+        return { ok: false as const, message: 'A web search looks for one moment at a time, so nothing was searched or paid for.' }
+      }
+      const results = await findBrollFor(asked.slice(0, 6), req?.brandId ?? null, {
+        paid,
+        perMoment,
+        only: Array.isArray(req?.only) ? req.only.filter(isSourceId) : undefined,
         onProgress: (p) => send(e.sender, 'broll:progress', { stage: p.stage, percent: p.percent })
       })
       return { ok: true as const, results }

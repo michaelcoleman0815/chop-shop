@@ -25,20 +25,24 @@ type KeyState = { status: 'none' } | { status: 'checking' } | { status: 'ok' } |
 
 /** What the switch means, in one sentence for each state. */
 export const SWITCH_ON =
-  'I may send audio, and short video excerpts, to the services below that have a key, and nothing goes to one until you add its key.'
+  'I may send audio and short video excerpts, and the script and picture prompts of a video made from nothing, to the services below that have a key. Nothing goes to one until you add its key.'
 export const SWITCH_OFF = `Nothing but the transcript leaves ${thisComputer}, and it goes only to Claude.`
 
 /** What a service is for, said while it has no key yet; how to get one is in its steps (shared/setup). */
 function purpose(s: Service): string {
-  return s.job === 'transcribe'
-    ? 'With it I hear every um, stutter and false start, with the time of each word.'
-    : 'With it I can ask which take is delivered best, or whether focus is hunting.'
+  if (s.job === 'transcribe') return 'With it I hear every um, stutter and false start, with the time of each word.'
+  if (s.job === 'make') return 'With it I make the pictures and clips of a video made from nothing, after you confirm its quote.'
+  if (s.job === 'voice') return `With it a video made from nothing can be read in a ${s.name} voice.`
+  if (s.id === 'gemini')
+    return 'With it I can ask which take is delivered best, or whether focus is hunting, and make the pictures of a video made from nothing.'
+  return 'With it I can ask which take is delivered best, or whether focus is hunting.'
 }
 
 function accepted(s: Service): string {
-  return s.job === 'transcribe'
-    ? `${s.name} accepted the key.`
-    : `${s.name} accepted the key. I send it short excerpts when a take is hard to call.`
+  if (s.job === 'transcribe') return `${s.name} accepted the key.`
+  if (s.job === 'make') return `${s.name} accepted the key. It makes nothing until you confirm a quote.`
+  if (s.job === 'voice') return `${s.name} accepted the key. Ask for its voice when you make a video.`
+  return `${s.name} accepted the key. I send it short excerpts when a take is hard to call.`
 }
 
 export function OtherServices({

@@ -90,6 +90,40 @@ describe('the planner’s grid', () => {
     expect(off.cut.beats[0].treatment.grid).toBeNull()
   })
 
+  it('keeps the sound a grid already has when the plan writes the grid again with its sound left empty', () => {
+    // A grid playing its second panel's sound, relabelled: as a plan writes a relabel, sound "".
+    const doc = talkingWithEdit()
+    const beat = currentCut(doc).beats[0].id
+    const panels = [
+      { show: '', label: 'Raw', inSec: 0 },
+      { show: 'a1', label: 'Edited', inSec: 0 }
+    ]
+    const step = (ops: unknown[]) => {
+      const offered = offerPlan(
+        doc,
+        PlanSchema.parse({ ops, summary: 's', reply: '', notesHandled: [], needs: [], question: { text: '', options: [] } }),
+        []
+      )
+      if (!offered.ok) throw new Error(offered.message)
+      return offered.ops
+    }
+    const second = applyOps(currentCut(doc), step([{ op: 'grid', beats: [beat], panels, sound: '2' }]), doc)
+    expect(second.cut.beats[0].treatment.grid?.sound).toBe(1)
+    const withSecond = { ...doc, versions: [...doc.versions, { ...doc.versions[0], n: 2, cut: second.cut }] }
+    const relabel = [{ op: 'grid', beats: [beat], panels: panels.map((p, i) => ({ ...p, label: ['Before', 'After'][i] })), sound: '' }]
+    const offered = offerPlan(
+      withSecond,
+      PlanSchema.parse({ ops: relabel, summary: 's', reply: '', notesHandled: [], needs: [], question: { text: '', options: [] } }),
+      []
+    )
+    if (!offered.ok) throw new Error(offered.message)
+    const relabelled = applyOps(second.cut, offered.ops, doc)
+    expect(relabelled.cut.beats[0].treatment.grid?.panels.map((p) => p.label)).toEqual(['Before', 'After'])
+    expect(relabelled.cut.beats[0].treatment.grid?.sound).toBe(1)
+    // A new grid with its sound left empty plays the beat's own.
+    expect(applyOps(currentCut(doc), step(relabel), doc).cut.beats[0].treatment.grid?.sound).toBeUndefined()
+  })
+
   it('cannot show what the edit does not have', () => {
     const doc = talkingWithEdit()
     const beat = currentCut(doc).beats[0].id

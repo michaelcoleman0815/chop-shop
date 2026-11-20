@@ -3,6 +3,7 @@ import type { Cut, Word } from '../edit/schema'
 import { captionLayers, facesNear, type CaptionCover, type FaceSample } from './captions'
 import type { MotionItem, MotionKind } from './schema'
 import { template } from './templates'
+import { TIMING } from './templates/kit'
 import { frameFor, type Frame, type MotionTheme } from './theme'
 import { anchorTime, spanFor, timelineFor, type Timeline } from './timing'
 import type { Layer, Size } from './types'
@@ -63,6 +64,17 @@ export function buildScene(input: SceneInput): MotionScene {
     if ('reason' in built) hidden.push({ id: item.id, reason: built.reason })
     else items.push(built)
   }
+  // A card that comes in while graphics round the speaker are up takes the screen from them:
+  // they are built again to leave as it arrives, rather than staying on top of the page.
+  const cards = items.filter((i) => i.covers === 'card')
+  items.forEach((built, n) => {
+    if (!template(built.kind)?.aroundSpeaker) return
+    const card = cards.find((c) => c.start > built.start + 0.05 && c.start < built.end)
+    const item = card ? (input.cut.motion ?? []).find((m) => m.id === built.id) : undefined
+    if (!card || !item) return
+    const again = buildItem(item, tl, frame, input.theme, input.faces, input.assets ?? [], card.start + TIMING.exit)
+    if (!('reason' in again)) items[n] = again
+  })
   const covers: CaptionCover[] = items.flatMap((i) => (i.covers ? [{ start: i.start, end: i.end, kind: i.covers }] : []))
   const captions = captionLayers({
     spec: input.cut.captions,
@@ -98,14 +110,17 @@ function buildItem(
   frame: Frame,
   theme: MotionTheme,
   faces: FaceSample[] | undefined,
-  assets: NonNullable<SceneInput['assets']>
+  assets: NonNullable<SceneInput['assets']>,
+  /** Gone by this time on the output clock, whatever its call says (a card took the screen). */
+  until?: number
 ): SceneItem | { reason: string } {
   const tpl = template(item.kind)
   if (!tpl) return { reason: `There is no ${item.kind} graphic.` }
   const problem = tpl.check(item)
   if (problem) return { reason: problem }
-  const span = spanFor(tl, item.from, item.to, tpl.length, tpl.lead)
-  if (!span) return { reason: 'What it was on is no longer in the cut.' }
+  const whole = spanFor(tl, item.from, item.to, tpl.length, tpl.lead)
+  if (!whole) return { reason: 'What it was on is no longer in the cut.' }
+  const span = until !== undefined && until < whole.end ? { ...whole, end: Math.max(whole.start + 0.1, until) } : whole
   let layers: Layer[]
   try {
     layers = tpl.build({

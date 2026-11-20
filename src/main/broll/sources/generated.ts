@@ -2,12 +2,12 @@ import type { BrollSource, Candidate, Fetched, FetchOptions, Moment } from '../.
 
 /**
  * The slot for generated B-roll. Generation itself belongs to the providers
- * being added in main/providers (fal, Google); nothing here makes a picture.
- * A provider that fills this slot offers what it would make for a moment as
- * candidates, says what each costs before anything is made, and makes the
- * file only when one is picked, through the same consent path as any other
- * paid call. Until one is registered, the slot answers with nothing and the
- * router leaves it out.
+ * in main/providers (fal, Google); nothing here makes a picture. A provider
+ * that fills this slot offers what it would make for a moment as candidates,
+ * says what each costs before anything is made, and makes the file only when
+ * one is picked, through the make consent boundary (a tapped consent; typed
+ * text never spends) once that lands. Until then main/broll/app passes no
+ * provider, the slot answers with nothing, and the router leaves it out.
  */
 
 export interface GenerationProvider {

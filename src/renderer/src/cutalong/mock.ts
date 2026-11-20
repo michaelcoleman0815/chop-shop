@@ -36,7 +36,6 @@ import {
   stampMade,
   type Brands
 } from '../../../shared/brands'
-import { orderFound, readSources } from '../../../shared/broll-sources'
 import { creditLines } from '../../../shared/assets'
 import { chaptersOf, chaptersReply } from '../../../shared/presets'
 import { fillDescription, isShort, writeLocally, type UploadKit } from '../../../shared/upload'
@@ -47,6 +46,9 @@ import { keyMessage, type ClaudeKeyState } from '../../../shared/setup'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
 import { mockVlogApi } from './vlog-mock'
+import { mockMakeApi } from './make-mock'
+import { keepInProject } from '../../../shared/make/kept'
+import { mockBrollApi } from './broll-mock'
 import type { Word } from '../../../shared/edit'
 import { alignPair, buildPair, learnedVideo, learnState, type LabelledPair } from '../../../shared/learn'
 import { synthFinished, synthRecording } from '../../../shared/learn/synth'
@@ -504,11 +506,15 @@ export function createMockApi(): CutalongApi {
   let memory = seededMemory()
 
   return {
+    // B-roll found by the shared router's plan and ranking, from sources it pretends to ask.
+    ...mockBrollApi(),
     // A shoot made into a vlog by the shared story logic, from clips it pretends to have watched.
     ...mockVlogApi(async (stage) => {
       for (const cb of listeners.cut) cb({ stage, percent: 50 })
       await sleep(150)
     }),
+    // A video made from nothing, quoted over a stand-in script; nothing is made in the preview.
+    ...mockMakeApi(),
     getVersion: async () => '0.2.13',
     pathForFile: (file: File) => `/Users/you/Movies/${file.name}`,
     openVideo: async () => null,
@@ -863,6 +869,19 @@ export function createMockApi(): CutalongApi {
     saveProject: async (project) => {
       projects.set(project.path, { ...project, openedAt: new Date().toISOString() })
     },
+    keepInChat: async ({ path, name, kept }) => {
+      const at = path ? projects.get(path) : undefined
+      const next = at ? keepInProject(at, kept, `kept-${Date.now()}`) : null
+      if (at && next) {
+        projects.set(at.path, next)
+        return { path: at.path, name: at.name }
+      }
+      const made = `/Users/you/Movies/Cutalong/${name}.cutalong`
+      const fresh = keepInProject({ id: made, name, mode: 'cut', path: made, createdAt: new Date().toISOString(), openedAt: new Date().toISOString(), primaryMedia: null, mediaBytes: null, media: [], clips: [], transcript: null, timeline: null, edit: null }, kept, `kept-${Date.now()}`)
+      if (!fresh) return null
+      projects.set(made, fresh)
+      return { path: made, name }
+    },
     // Only a poster: the browser has no footage to sample, so it is a generated still.
     mediaPreviews: async (path) => ({
       filmstripUrl: '',
@@ -934,36 +953,6 @@ export function createMockApi(): CutalongApi {
       }
     },
     onAssetProgress: () => () => undefined,
-    // Three made-up results from three channels, with the brand's sources applied as the app applies them.
-    searchVideos: async (_query, sources) => {
-      await sleep(300)
-      const found = [
-        {
-          url: 'https://www.youtube.com/watch?v=a1',
-          title: 'City at night, 4K',
-          author: 'Nightfilm',
-          durationSec: 42,
-          handle: '@nightfilm'
-        },
-        {
-          url: 'https://www.youtube.com/watch?v=b2',
-          title: 'Camera settings close-up',
-          author: 'Lens Lab',
-          durationSec: 95,
-          handle: '@lenslab'
-        },
-        {
-          url: 'https://www.youtube.com/watch?v=c3',
-          title: 'Hands on a dial, macro',
-          author: 'Macro Shots',
-          durationSec: 31,
-          handle: '@macroshots'
-        }
-      ]
-      const prefer = readSources(sources?.prefer ?? []).sources
-      const ordered = orderFound([], found, { prefer, block: readSources(sources?.block ?? []).sources })
-      return { ok: true as const, results: ordered.results, blocked: ordered.blocked, looked: 0 }
-    },
     saveImageAsset: async ({ base64, name, origin }) => ({
       ok: true as const,
       asset: {

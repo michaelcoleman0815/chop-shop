@@ -8,7 +8,7 @@ import { moveRail, useLingering, useMotion } from './motion'
 import { BrandPage } from './screens/Brand'
 import { CrewPage } from './screens/Crew'
 import { Editor } from './screens/Editor'
-import { BackToWork } from './screens/Header'
+import { BackToWork, MakeRunning } from './screens/Header'
 import { PresetsPage, ProjectsPage } from './screens/Library'
 import { SettingsPage } from './screens/Settings'
 import { Start } from './screens/Start'
@@ -65,6 +65,8 @@ export default function App(): JSX.Element {
   }
 
   const work = app.work()
+  // A video being made shows its stage and Stop on every page but the chat, where its own progress shows them.
+  const making = app.make.running()
   const place: Place | null =
     app.screen === 'start' ||
     app.screen === 'projects' ||
@@ -93,14 +95,16 @@ export default function App(): JSX.Element {
           backLabel={app.screen === 'start' ? 'Reload' : 'Back to start'}
         >
           <BackToWork.Provider value={place && place !== 'start' && work ? { name: work.name, go: app.resume } : null}>
-            {app.screen === 'start' && <Start app={app} />}
-            {app.screen === 'thread' && <Thread app={app} />}
-            {app.screen === 'editor' && app.doc && <Editor app={app} />}
-            {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
-            {app.screen === 'brand' && <BrandPage app={app} />}
-            {app.screen === 'presets' && <PresetsPage app={app} />}
-            {app.screen === 'crew' && <CrewPage app={app} />}
-            {app.screen === 'settings' && <SettingsPage app={app} />}
+            <MakeRunning.Provider value={making && app.screen !== 'thread' ? { ...making, stop: () => void app.make.stop() } : null}>
+              {app.screen === 'start' && <Start app={app} />}
+              {app.screen === 'thread' && <Thread app={app} />}
+              {app.screen === 'editor' && app.doc && <Editor app={app} />}
+              {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}
+              {app.screen === 'brand' && <BrandPage app={app} />}
+              {app.screen === 'presets' && <PresetsPage app={app} />}
+              {app.screen === 'crew' && <CrewPage app={app} />}
+              {app.screen === 'settings' && <SettingsPage app={app} />}
+            </MakeRunning.Provider>
           </BackToWork.Provider>
         </ScreenGuard>
       </div>
