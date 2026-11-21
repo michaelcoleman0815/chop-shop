@@ -85,6 +85,8 @@ export function BrandAvatar({
 }: {
   avatar: Avatar
   size: number
+  /** The brand's name, for when the avatar draws its initials; this one draws the shape alone. */
+  name?: string
   className?: string
 }): JSX.Element {
   const [layers, setLayers] = useState<Layer[]>(() => [{ ...avatar, key: 0, leaving: false }])
