@@ -1,0 +1,66 @@
+<!--page
+title: Remove pauses and ums from video automatically, Cutalong
+socialTitle: Take out the pauses and the ums
+crumb: Remove pauses and ums
+description: Say /tighten and Cutalong cuts every pause over a third of a second and takes out the ums, even the ones the transcript missed. On your Mac.
+card: img/og-remove-pauses.png
+cardAlt: Take out the pauses and the ums, with /tighten, beside the two commands: /tighten, pauses over 0.35 s and ums, and /snappy, pauses over 0.15 s.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+{{> head}}
+</head>
+<body>
+{{> doc-top}}
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="container intro">
+      <h1 id="hero-title">Take out the pauses and the&nbsp;<em>ums</em></h1>
+      <p class="lead job-lead">Say <span class="mono">/tighten</span>. I keep the best takes, cut every long pause down to a breath, and take out the&nbsp;ums.</p>
+      <div class="hero-actions">
+        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
+        {{^downloadReady}}<a class="btn btn-primary" href="{{page index}}#signup">Get notified when it’s ready</a>{{/downloadReady}}
+        <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="proof" aria-labelledby="run-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="run-title">How tight</h2>
+      </div>
+      <ul class="tiles">
+        <li class="tile reveal"><p class="tile-label">A pause is cut past</p><p class="tile-number num">0.35&nbsp;s</p><p class="tile-note">anything shorter stays&nbsp;whole</p></li>
+        <li class="tile reveal"><p class="tile-label">What is left of it</p><p class="tile-number num">0.12&nbsp;s</p><p class="tile-note">a breath either side of the&nbsp;words</p></li>
+        <li class="tile reveal"><p class="tile-label">With <span class="mono">/snappy</span></p><p class="tile-number num">0.15&nbsp;s</p><p class="tile-note">so the cuts land right on the&nbsp;words</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="questions" id="questions" aria-labelledby="questions-title">
+    <div class="container questions-grid">
+      <h2 id="questions-title" class="reveal">Questions</h2>
+      <div class="qa reveal">
+        <details>
+          <summary>Which words does it take out?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Um, uh, er, erm, ah, hmm and mm. Never “like”, “actually” or “literally”, which are often part of what you&nbsp;mean.</p>
+        </details>
+        <details>
+          <summary>What about the ums the transcript misses?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Transcripts often leave them out. When the words are heard on your Mac, Cutalong listens again where no word was written, and the ums it finds go&nbsp;too.</p>
+        </details>
+        <details>
+          <summary>Does it work on a podcast or a sermon?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Yes, more gently. A podcast keeps pauses up to 0.6&nbsp;s and a sermon up to 1.5&nbsp;s, and both keep the&nbsp;ums.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  {{> jobs-list}}
+</main>
+{{> doc-foot}}
+</body>
+</html>

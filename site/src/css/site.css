@@ -858,3 +858,32 @@ section:last-of-type { padding-bottom: var(--section-gap); }
 .app-poster { background: url("../img/footage-thumb.jpg") center / cover; }
 .app-poster-light { background: url("../img/footage-broll.jpg") center / cover; }
 .app-poster-sound { background: var(--block-yellow); }
+
+/* ---------- The job pages: one for each thing people search for (cut-retakes.html and the rest) ----------
+   Each is the landing page's own parts, on one job: the hero, a real run, the steps, its questions. They link
+   to each other here, from the landing page's What you get, and from every footer. */
+
+/* Under a job on the landing page: where it is told in full. */
+.job-more { display: flex; flex-wrap: wrap; gap: var(--space-3xs) var(--space-md); margin-top: var(--space-xs); font-size: var(--text-sm); }
+.job-more a { display: inline-flex; min-height: 44px; align-items: center; font-weight: 650; text-decoration: underline; }
+
+/* A job page's lead sits under its heading as the landing page's does; the command reads as one. */
+.job-lead .mono { font-size: 0.92em; }
+
+/* The other jobs, as a ruled list of links. */
+.jobs { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0 var(--space-2xl); margin: 0; list-style: none; border-top: 1.5px solid var(--color-ink); }
+.jobs li { border-bottom: 1px solid var(--color-rule); }
+.jobs a { display: grid; gap: var(--space-3xs); min-height: 44px; padding: var(--space-lg) 0; text-decoration: none; }
+.jobs strong { font-weight: 700; }
+.jobs span { color: var(--color-ink-2); font-size: var(--text-sm); }
+/* The page you are on is not one of the others. */
+.jobs li:has(> [aria-current="page"]) { display: none; }
+
+/* The footer's list of jobs, above the legal row. */
+section.more:last-of-type { padding-bottom: var(--space-md); }
+.footer-jobs { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-lg); margin: 0 0 var(--space-md); padding: 0; list-style: none; font-size: var(--text-sm); }
+.footer-jobs a { display: inline-flex; min-height: 44px; align-items: center; color: var(--color-ink-2); }
+
+@media (hover: hover) and (pointer: fine) {
+  .jobs a:hover strong, .footer-jobs a:hover { text-decoration: underline; text-decoration-color: currentColor; }
+}

@@ -1,0 +1,77 @@
+<!--page
+title: Turn streams, sermons and podcasts into clips, Cutalong
+socialTitle: One long recording, many clips
+crumb: Clips from long recordings
+description: Say /clipping and Cutalong finds the moments in a long recording that stand on their own and makes each a vertical, captioned clip. On your Mac.
+card: img/og-clip-long-videos.png
+cardAlt: One long recording, many clips, with /clipping, beside four clips it found: the testimony that stands on its own, the question from the back row, why the youth group meets on Tuesdays and the closing story.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+{{> head}}
+</head>
+<body>
+{{> doc-top}}
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="container intro">
+      <h1 id="hero-title">One long recording, many&nbsp;<em>clips</em></h1>
+      <p class="lead job-lead">Drop a stream, a service or a podcast and say <span class="mono">/clipping</span>. I find the moments that stand on their own and make each a vertical, captioned&nbsp;clip.</p>
+      <div class="hero-actions">
+        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
+        {{^downloadReady}}<a class="btn btn-primary" href="{{page index}}#signup">Get notified when it’s ready</a>{{/downloadReady}}
+        <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="makes" aria-labelledby="run-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="run-title">What it&nbsp;finds</h2>
+      </div>
+      <div class="bento">
+        <article class="job job-clips reveal" aria-labelledby="job-found">
+          <div class="job-copy">
+            <h3 id="job-found">Four clips, the rest left&nbsp;out</h3>
+            <ul class="job-list">
+              <li>It leaves out the worship set, the announcements and the sponsor&nbsp;read</li>
+            </ul>
+          </div>
+          <ul class="app app-files" aria-label="The clips /clipping found, with their lengths">
+            <li><span>The testimony that stands on its own</span><span class="mono">0:41</span></li>
+            <li><span>The question from the back row</span><span class="mono">0:58</span></li>
+            <li><span>Why the youth group meets on Tuesdays</span><span class="mono">0:33</span></li>
+            <li><span>The closing story</span><span class="mono">0:52</span></li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="questions" id="questions" aria-labelledby="questions-title">
+    <div class="container questions-grid">
+      <h2 id="questions-title" class="reveal">Questions</h2>
+      <div class="qa reveal">
+        <details>
+          <summary>How many clips does it make?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>About one for every few minutes of the recording. Say a number, like <span class="mono">/clipping 10</span>, for that many at&nbsp;most.</p>
+        </details>
+        <details>
+          <summary>How long is each clip?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>30 to 60 seconds from a talk or a sermon, 15 to 60 from a stream, and 30 to 90 from a&nbsp;podcast.</p>
+        </details>
+        <details>
+          <summary>Does it follow the speaker?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>When your Mac finds a face, the vertical clip follows it. Otherwise it keeps the middle of the&nbsp;picture.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  {{> jobs-list}}
+</main>
+{{> doc-foot}}
+</body>
+</html>

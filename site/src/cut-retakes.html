@@ -1,0 +1,91 @@
+<!--page
+title: Cut retakes automatically and keep the best take, Cutalong
+socialTitle: Cut the retakes, keep the best take
+crumb: Cut retakes
+description: Say /takes and Cutalong strikes every retake and false start and keeps the best take of each line, on your Mac. Bring any take back with a tap.
+card: img/og-cut-retakes.png
+cardAlt: Cut the retakes, keep the best take, with /takes, beside a script on blue pages: three takes of a line struck through and the take that plays kept.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+{{> head}}
+</head>
+<body>
+{{> doc-top}}
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="container intro">
+      <h1 id="hero-title">Cut the retakes, keep the best&nbsp;<em>take</em></h1>
+      <p class="lead job-lead">Say <span class="mono">/takes</span>. I strike every retake and false start, and keep the best take of each&nbsp;line.</p>
+      <div class="hero-actions">
+        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
+        {{^downloadReady}}<a class="btn btn-primary" href="{{page index}}#signup">Get notified when it’s ready</a>{{/downloadReady}}
+        <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="proof" aria-labelledby="run-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="run-title">A real run of&nbsp;/takes</h2>
+      </div>
+      <ul class="tiles">
+        <li class="tile reveal"><p class="tile-label">Running time</p><p class="tile-number num">0:39</p><p class="tile-note">down from <span class="num">1:13</span></p></li>
+        <li class="tile reveal"><p class="tile-label">Struck</p><p class="tile-number num">10</p><p class="tile-note">7 other takes and 3 false&nbsp;starts</p></li>
+        <li class="tile reveal"><p class="tile-label">Cut by mistake</p><p class="tile-number num">0</p><p class="tile-note">“Never, never” and “again and again” both&nbsp;stayed</p></li>
+      </ul>
+      <div class="proof-grid">
+        <figure class="proof-page reveal" aria-label="The script after the cut: the false starts and earlier takes struck through, the take that plays and a line said twice on purpose kept.">
+          <p class="page-head"><span>The script, v2</span><span class="page-rev">Blue pages</span></p>
+          <ol class="script" aria-hidden="true">
+            <li class="cut"><span class="n">9</span><span class="w"><s>The RTX 5090 is the fastest graphics ca…</s></span><span class="note">three false starts</span></li>
+            <li class="cut"><span class="n">10</span><span class="w"><s>The RTX 5090 is the fa…</s></span></li>
+            <li class="cut"><span class="n">12</span><span class="w"><s>The RTX 5090 is the fastest graphics card you can b…</s></span></li>
+            <li class="cut"><span class="n">13</span><span class="w"><s>The RTX 5090 is the fastest graphics card you can buy right now.</s></span><span class="note">an earlier take</span></li>
+            <li class="keep"><span class="n">14</span><span class="w">The RTX 5090 is the fastest graphics card you can buy right now.</span><span class="note">the take that plays</span></li>
+            <li class="keep"><span class="n">17</span><span class="w">Never, never buy a laptop with eight gigabytes of memory.</span><span class="note">said twice on purpose</span></li>
+            <li><span class="n">18</span><span class="w">I tested it again and again and again.</span></li>
+          </ol>
+        </figure>
+        <div class="proof-aside reveal">
+          <p class="proof-reply"><span class="proof-mark">{{> mark-tile}}</span>“v2 is ready. I kept the best take of 4 lines and removed 7 other takes, 3 false starts and 2.0&nbsp;s of dead air. It runs 0:39, down from&nbsp;1:13.”</p>
+          <details class="method">
+            <summary>How this was measured</summary>
+            <p>An 85&#8209;second test recording made for Cutalong’s own checks, with retakes, broken sentences and a groan planted in it. <span class="mono">/takes</span> cut it, and the cut was scored word by word against what was planted. One recording, not an&nbsp;average.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="questions" id="questions" aria-labelledby="questions-title">
+    <div class="container questions-grid">
+      <h2 id="questions-title" class="reveal">Questions</h2>
+      <div class="qa reveal">
+        <details>
+          <summary>How does it pick the best take?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>By rule, not by guess. It keeps the last complete take, unless an earlier one ran clearly smoother, with fewer ums, restarts and&nbsp;stumbles.</p>
+        </details>
+        <details>
+          <summary>What if it isn’t sure?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>It asks instead of cutting. Say “cut it” and it&nbsp;goes.</p>
+        </details>
+        <details>
+          <summary>Will it cut a line I say twice on purpose?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>No. Repeats you mean, like “again and again” or “very very”, are left&nbsp;alone.</p>
+        </details>
+        <details>
+          <summary>Can I bring a take back?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Yes. Struck takes stay in the script, crossed out. Tap one to bring it back, as a new version, so nothing is&nbsp;lost.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  {{> jobs-list}}
+</main>
+{{> doc-foot}}
+</body>
+</html>
