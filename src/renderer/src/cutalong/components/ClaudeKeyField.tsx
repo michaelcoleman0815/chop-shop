@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { KEY_PLACE } from '../../../../shared/platform'
 import { gateOpen, keyGuide, keyMessage, type ClaudeKeyStatus } from '../../../../shared/setup'
+import { api, device } from '../api'
 import type { Cutalong } from '../useCutalong'
 import { Button, Icon, Mark } from './ui'
 
@@ -22,6 +23,7 @@ export function ClaudeKeyField({
   removable = false,
   small = false,
   autoFocus = false,
+  watch = false,
   onCheck,
   onWorks
 }: {
@@ -35,6 +37,12 @@ export function ClaudeKeyField({
   removable?: boolean
   small?: boolean
   autoFocus?: boolean
+  /**
+   * Pick up a key the person copies in the Console: looked for when the field
+   * appears and each time the window comes back, on a computer (a phone asks
+   * before an app reads what was copied, so a key is pasted there).
+   */
+  watch?: boolean
   /** A check begins: whatever stood in for its sentence goes. */
   onCheck?: () => void
   onWorks?: () => void
@@ -49,16 +57,51 @@ export function ClaudeKeyField({
   const saved = app.keySaved
   const pasted = draft.trim()
 
+  // A check under way, as a ref too: the clipboard's listener outlives the render that made it.
+  const busy = useRef(false)
   const run = async (check: () => Promise<ClaudeKeyStatus>): Promise<void> => {
-    if (checking) return
+    if (checking || busy.current) return
+    busy.current = true
     onCheck?.()
     setSaving(true)
-    const next = await check()
-    setSaving(false)
-    if (gateOpen(next)) onWorks?.()
-    // The button pressed was turned off while the check ran: keyboard focus comes back to the field, for the next key.
-    else field.current?.focus()
+    try {
+      const next = await check()
+      if (gateOpen(next)) onWorks?.()
+      // The button pressed was turned off while the check ran: keyboard focus comes back to the field, for the next key.
+      else field.current?.focus()
+    } finally {
+      setSaving(false)
+      busy.current = false
+    }
   }
+
+  // A copied key, picked up once: the same key is not checked again until another is copied.
+  const watching = watch && device.kind !== 'phone'
+  const [picked, setPicked] = useState(false)
+  const tried = useRef<string | null>(null)
+  const latest = useRef({ run, app })
+  latest.current = { run, app }
+  useEffect(() => {
+    if (!watching) return
+    let live = true
+    const look = (): void => {
+      void api
+        .anthropicKeyOnClipboard()
+        .then((found) => {
+          if (!live || !found || found === tried.current || busy.current) return
+          tried.current = found
+          setPicked(true)
+          void latest.current.run(() => latest.current.app.saveClaudeKey(found))
+        })
+        .catch(() => undefined)
+    }
+    look()
+    window.addEventListener('focus', look)
+    return () => {
+      live = false
+      window.removeEventListener('focus', look)
+    }
+  }, [watching])
 
   const save = (): void => {
     if (!pasted) return
@@ -123,6 +166,8 @@ export function ClaudeKeyField({
         </Button>
       )}
       <p id={`${id}-kept`} className="cl-key-kept">
+        {watching &&
+          (picked ? 'I picked up the key you copied. ' : 'Copy it and come back here: I pick it up, or paste it. ')}
         {KEY_KEPT}
       </p>
     </div>

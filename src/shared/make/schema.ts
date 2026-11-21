@@ -18,16 +18,41 @@ export const MAKE_FORMATS = ['documentary', 'explainer'] as const
 export type MakeFormat = (typeof MAKE_FORMATS)[number]
 
 /** Who reads the narration: a voice on this Mac, a service, or the creator's own recording. */
-export const VOICE_ENGINES = ['local', 'elevenlabs', 'gemini', 'openai', 'own'] as const
+export const VOICE_ENGINES = ['local', 'elevenlabs', 'gemini', 'own'] as const
 export type VoiceEngine = (typeof VOICE_ENGINES)[number]
 
-export const VoiceChoiceSchema = z.object({
-  engine: z.enum(VOICE_ENGINES),
-  /** The engine's own name for the voice: a Kokoro voice, an ElevenLabs voice id, a Gemini or OpenAI voice name; for own, the file. */
-  id: z.string().min(1).max(2000),
-  /** As a person would say it: "Michael". */
-  name: z.string().min(1).max(80)
-})
+/**
+ * Cutalong used to offer OpenAI's voices and no longer does. A made video
+ * saved with one still opens: its voice reads as the one on this Mac that
+ * stood in the same place (Cedar was a documentary's, Marin an explainer's),
+ * so a later remake reads it here and never sends the script to OpenAI.
+ * The narration already made is kept as it is.
+ */
+const RETIRED_OPENAI_VOICES = new Map([
+  ['cedar', { id: 'am_michael', name: 'Michael' }],
+  ['marin', { id: 'af_heart', name: 'Heart' }],
+  ['onyx', { id: 'am_fenrir', name: 'Fenrir' }]
+])
+const RETIRED_FALLBACK = { id: 'am_michael', name: 'Michael' }
+
+/** A voice saved with an engine Cutalong no longer has, as the voice on this Mac it now reads as. */
+export function retiredVoice(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || (value as { engine?: unknown }).engine !== 'openai') return value
+  const id = (value as { id?: unknown }).id
+  const local = (typeof id === 'string' ? RETIRED_OPENAI_VOICES.get(id.toLowerCase()) : undefined) ?? RETIRED_FALLBACK
+  return { engine: 'local', ...local }
+}
+
+export const VoiceChoiceSchema = z.preprocess(
+  retiredVoice,
+  z.object({
+    engine: z.enum(VOICE_ENGINES),
+    /** The engine's own name for the voice: a Kokoro voice, an ElevenLabs voice id, a Gemini voice name; for own, the file. */
+    id: z.string().min(1).max(2000),
+    /** As a person would say it: "Michael". */
+    name: z.string().min(1).max(80)
+  })
+)
 export type VoiceChoice = z.infer<typeof VoiceChoiceSchema>
 
 /**

@@ -310,6 +310,9 @@ describe('B-roll keys', () => {
   it('turns away another company’s key before it is stored', () => {
     expect(wrongBrollKey('pexels', 'sk-ant-api03-example')).toMatch(/Anthropic key/)
     expect(wrongBrollKey('giphy', 'AIzaSyExample')).toMatch(/Google key/)
+    expect(wrongBrollKey('pexels', 'sk-proj-example')).toBe(
+      'That looks like an OpenAI key. Cutalong doesn’t use OpenAI; Pexels needs its own key.'
+    )
     expect(wrongBrollKey('unsplash', 'abc def')).toMatch(/no spaces/)
     expect(wrongBrollKey('freesound', 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2')).toBeNull()
   })

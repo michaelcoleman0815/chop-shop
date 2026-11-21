@@ -1,8 +1,8 @@
 import { useEffect, useState, type CSSProperties, type DragEvent } from 'react'
-import { costLine, doneSteps, fixingStep, keyGuide, keyMessage } from '../../../../shared/setup'
+import { thisComputer } from '../../../../shared/platform'
+import { costLine, keyGuide, keyMessage } from '../../../../shared/setup'
 import { api, device, isMock } from '../api'
-import { ClaudeKeyField } from '../components/ClaudeKeyField'
-import { KeySteps } from '../components/KeySteps'
+import { AiOptions, canRunLocal, ClaudeSteps, LocalSteps, type AiPick } from '../components/AiChoice'
 import { BrandAvatar } from '../components/Shapes'
 import { Button, Mark } from '../components/ui'
 import { markOnboarded } from '../firstRun'
@@ -228,49 +228,54 @@ function Account({ onNext }: { onNext: () => void }): JSX.Element {
   )
 }
 
-/** The Anthropic key: the same steps and field as Settings, moving on once the key works. */
+/** Which AI edits with you: Claude's two steps to a key, or a model on this computer; moving on once one works. */
 function Key({ app, onNext }: { app: Cutalong; onNext: () => void }): JSX.Element {
   const guide = keyGuide('anthropic')
-  const key = app.claudeKey
-  const failing = key.state !== 'none' && key.state !== 'ok' && key.state !== 'checking'
+  const [pick, setPick] = useState<AiPick>('claude')
   return (
     <div className="cl-onboard-body">
       <div className="cl-onboard-say">
-        <h1 className="cl-welcome step">
-          First, an Anthropic <span className="cl-accent" style={{ '--hl': 'var(--block-pink)' } as CSSProperties}>key</span>.
-        </h1>
-        <p className="cl-onboard-lede">{guide.why}</p>
-        <p className="cl-onboard-note">
-          {costLine()}{' '}
-          {guide.spend && (
-            <a className="cl-link inline" href={guide.spend.url} target="_blank" rel="noreferrer">
-              {guide.spend.label}
-              <span className="sr-only">, opens in your browser</span>
-            </a>
-          )}
+        {canRunLocal ? (
+          <h1 className="cl-welcome step">
+            First, choose an <span className="cl-accent" style={{ '--hl': 'var(--block-pink)' } as CSSProperties}>AI</span>.
+          </h1>
+        ) : (
+          <h1 className="cl-welcome step">
+            First, an Anthropic <span className="cl-accent" style={{ '--hl': 'var(--block-pink)' } as CSSProperties}>key</span>.
+          </h1>
+        )}
+        <p className="cl-onboard-lede">
+          {canRunLocal
+            ? `Claude plans the best edits, with an Anthropic key. A model on ${thisComputer} is free and offline.`
+            : guide.why}
         </p>
+        {pick === 'claude' && (
+          <p className="cl-onboard-note">
+            {costLine()}{' '}
+            {guide.spend && (
+              <a className="cl-link inline" href={guide.spend.url} target="_blank" rel="noreferrer">
+                {guide.spend.label}
+                <span className="sr-only">, opens in your browser</span>
+              </a>
+            )}
+          </p>
+        )}
       </div>
       <div className="cl-setup-inner">
-        <KeySteps
-          service="anthropic"
-          current={failing ? fixingStep(key.state) : null}
-          done={failing ? doneSteps(key.state) : 0}
-          paste={{
-            id: 'cl-key',
-            field: (
-              <ClaudeKeyField
-                app={app}
-                id="cl-key"
-                note={null}
-                autoFocus={device.kind !== 'phone'}
-                onWorks={() => {
-                  app.setToast({ text: keyMessage('ok') })
-                  onNext()
-                }}
-              />
-            )
-          }}
-        />
+        {canRunLocal && <AiOptions pick={pick} onPick={setPick} />}
+        {pick === 'claude' ? (
+          <ClaudeSteps
+            app={app}
+            id="cl-key"
+            autoFocus={device.kind !== 'phone'}
+            onWorks={() => {
+              app.setToast({ text: keyMessage('ok') })
+              onNext()
+            }}
+          />
+        ) : (
+          <LocalSteps app={app} onWorks={onNext} />
+        )}
       </div>
     </div>
   )

@@ -27,7 +27,7 @@ import type { MakeServices, TimedWord } from './services'
  */
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 const brief = readAsk('make a 2 minute documentary about the 1950s oil boom, stills only')!
 
 /** A connection that failed as Node reports it, wrapped by fetch and then by the SDK. */
@@ -147,7 +147,7 @@ describe('a picture service out of credit', () => {
     // Two pictures are made, then the account is empty: every later picture would hear the same.
     let asked = 0
     const services = {
-      open: () => ({ google: true, fal: false, elevenlabs: false, openai: false }),
+      open: () => ({ google: true, fal: false, elevenlabs: false }),
       models: { image: { google: 'g', fal: 'f' }, clip: { google: 'g', fal: 'f' } },
       image: async () => {
         asked++

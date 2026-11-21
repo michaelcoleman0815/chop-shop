@@ -58,14 +58,7 @@ export const GEMINI_VOICES: VoiceInfo[] = [
   { engine: 'gemini', id: 'Kore', name: 'Kore', sounds: 'a firm voice' }
 ]
 
-/** OpenAI's voices; cedar and marin are the ones OpenAI recommends for quality. */
-export const OPENAI_VOICES: VoiceInfo[] = [
-  { engine: 'openai', id: 'cedar', name: 'Cedar', sounds: 'a grounded voice' },
-  { engine: 'openai', id: 'marin', name: 'Marin', sounds: 'a clear voice' },
-  { engine: 'openai', id: 'onyx', name: 'Onyx', sounds: 'a deep voice' }
-]
-
-export const ALL_VOICES: VoiceInfo[] = [...LOCAL_VOICES, ...ELEVENLABS_VOICES, ...GEMINI_VOICES, ...OPENAI_VOICES]
+export const ALL_VOICES: VoiceInfo[] = [...LOCAL_VOICES, ...ELEVENLABS_VOICES, ...GEMINI_VOICES]
 
 /** The voice a format is read in unless the person says otherwise: on this Mac, free. */
 export function defaultVoice(format: MakeFormat, engine: VoiceEngine = 'local'): VoiceChoice {
@@ -75,7 +68,6 @@ export function defaultVoice(format: MakeFormat, engine: VoiceEngine = 'local'):
   }
   if (engine === 'elevenlabs') return pick(ELEVENLABS_VOICES, 'JBFqnCBsd6RMkjVDRZzb')
   if (engine === 'gemini') return pick(GEMINI_VOICES, format === 'documentary' ? 'Charon' : 'Puck')
-  if (engine === 'openai') return pick(OPENAI_VOICES, format === 'documentary' ? 'cedar' : 'marin')
   return pick(LOCAL_VOICES, format === 'documentary' ? 'am_michael' : 'af_heart')
 }
 
@@ -85,8 +77,7 @@ export function voicePhrase(voice: VoiceChoice): string {
   const where: Record<Exclude<VoiceEngine, 'own'>, string> = {
     local: 'a voice that runs on this Mac, free',
     elevenlabs: 'an ElevenLabs voice',
-    gemini: 'a Google Gemini voice',
-    openai: 'an OpenAI voice'
+    gemini: 'a Google Gemini voice'
   }
   return `${voice.name}, ${where[voice.engine]}`
 }
@@ -94,7 +85,7 @@ export function voicePhrase(voice: VoiceChoice): string {
 /** A voice in the quote's sentence: "Michael on this Mac", "George from ElevenLabs". */
 export function voiceShort(voice: VoiceChoice): string {
   if (voice.engine === 'own') return 'your own recording'
-  const from: Record<Exclude<VoiceEngine, 'own'>, string> = { local: 'on this Mac', elevenlabs: 'from ElevenLabs', gemini: 'from Google', openai: 'from OpenAI' }
+  const from: Record<Exclude<VoiceEngine, 'own'>, string> = { local: 'on this Mac', elevenlabs: 'from ElevenLabs', gemini: 'from Google' }
   return `${voice.name} ${from[voice.engine]}`
 }
 
@@ -115,13 +106,11 @@ export function voiceFromWords(text: string, format: MakeFormat, current?: Voice
   const t = ` ${text.toLowerCase()} `
   const engine: VoiceEngine | null = /\beleven ?labs\b/.test(t)
     ? 'elevenlabs'
-    : /\bopen ?ai\b/.test(t)
-      ? 'openai'
-      : /\b(gemini|google)\b[^.]*\bvoice\b|\bvoice\b[^.]*\b(gemini|google)\b|\bgemini tts\b/.test(t)
-        ? 'gemini'
-        : /\b(on this mac|local|offline|free voice|kokoro)\b/.test(t)
-          ? 'local'
-          : null
+    : /\b(gemini|google)\b[^.]*\bvoice\b|\bvoice\b[^.]*\b(gemini|google)\b|\bgemini tts\b/.test(t)
+      ? 'gemini'
+      : /\b(on this mac|local|offline|free voice|kokoro)\b/.test(t)
+        ? 'local'
+        : null
   // A voice named outright.
   const pool = engine ? ALL_VOICES.filter((v) => v.engine === engine) : ALL_VOICES
   const named = pool.find((v) => new RegExp(`\\b${v.name.toLowerCase()}\\b`).test(t))

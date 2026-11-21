@@ -5,6 +5,7 @@ import { readApiKey } from './apikey'
 import type { SuggestedClip, Transcript } from '../shared/types'
 import { normaliseClips, transcriptLines } from './clip-shape'
 import { selectLocally } from './local-llm'
+import { localHost } from './local-server'
 
 /** Ollama's default. Nothing else listens here. */
 export const OLLAMA_HOST = 'http://127.0.0.1:11434'
@@ -219,7 +220,7 @@ export async function suggestClips(
   if (local) {
     // "ollama:llama3.2:3b" names the runtime and the model it should load.
     const name = model.slice('ollama:'.length)
-    const raw = await selectLocally(OLLAMA_HOST, name, SYSTEM, prompt)
+    const raw = await selectLocally(await localHost(), name, SYSTEM, prompt)
     return normaliseClips(raw, transcript.words, durationSec)
   }
 

@@ -3,7 +3,7 @@ import { retryable } from '../make/generate'
 import { falImage } from './fal'
 import { googleImage } from './google-make'
 import { gateFor, json, scriptedFetch } from './testing'
-import { elevenSpeech, openaiSpeech } from './voices'
+import { elevenSpeech } from './voices'
 
 /**
  * Regression for the money review's eighth finding, the gate's half: a key
@@ -35,32 +35,6 @@ describe('out of credit, in plain words', () => {
             'Hello.'
           ),
         'ElevenLabs says the account has no credit left.'
-      ],
-      [
-        'OpenAI 429 insufficient_quota',
-        () =>
-          openaiSpeech(
-            gateFor(
-              scriptedFetch([
-                () =>
-                  json(
-                    {
-                      error: {
-                        message: 'You exceeded your current quota, please check your plan and billing details.',
-                        type: 'insufficient_quota',
-                        code: 'insufficient_quota'
-                      }
-                    },
-                    429
-                  )
-              ]).fetch,
-              { keys: { openai: 'k' } }
-            ),
-            'Hello.',
-            'cedar',
-            'Read calmly.'
-          ),
-        'OpenAI says the account has no credit left.'
       ],
       [
         'fal 403 exhausted balance',
@@ -108,18 +82,21 @@ describe('out of credit, in plain words', () => {
       'Hello.'
     ).catch((e: unknown) => e)) as { kind: string }
     expect(refused.kind).toBe('refused')
-    const busy = (await openaiSpeech(
+    const busy = (await elevenSpeech(
       gateFor(
         scriptedFetch([
-          () => json({ error: { message: 'Rate limit reached', type: 'requests', code: 'rate_limit_exceeded' } }, 429)
+          () =>
+            json(
+              { detail: { status: 'too_many_concurrent_requests', message: 'Too many concurrent requests for your plan.' } },
+              429
+            )
         ]).fetch,
         {
-          keys: { openai: 'k' }
+          keys: { elevenlabs: 'k' }
         }
       ),
-      'Hello.',
-      'cedar',
-      'Read calmly.'
+      'JBFqnCBsd6RMkjVDRZzb',
+      'Hello.'
     ).catch((e: unknown) => e)) as { kind: string }
     expect(busy.kind).toBe('busy')
     expect(retryable(busy)).toBe(true)

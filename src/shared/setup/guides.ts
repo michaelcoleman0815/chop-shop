@@ -10,7 +10,7 @@
 
 export const KEYS_CHECKED = '2026-11-16'
 
-export type KeyServiceId = 'anthropic' | 'gemini' | 'fal' | 'elevenlabs' | 'openai' | 'deepgram' | 'assemblyai'
+export type KeyServiceId = 'anthropic' | 'gemini' | 'fal' | 'elevenlabs' | 'deepgram' | 'assemblyai'
 
 export interface KeyLink {
   /** What the button says: a verb and the page, "Open API keys". */
@@ -29,7 +29,11 @@ export interface KeyGuide {
   name: string
   /** What the key is for in Cutalong, one sentence. */
   why: string
-  /** The steps in order; the last one is always pasting the key into Cutalong. */
+  /**
+   * The steps in order; the paste field sits in the last. Every guide ends on
+   * pasting the key, but Anthropic's, which ends on copying it: the desktop app
+   * picks a copied key up when the person comes back, and the field is for pasting.
+   */
   steps: KeyStep[]
   /** Where the person sees what they have spent. */
   spend?: KeyLink
@@ -45,20 +49,16 @@ export const KEY_GUIDES: Record<KeyServiceId, KeyGuide> = {
     id: 'anthropic',
     name: 'Anthropic',
     why: 'Claude reads everything you ask and plans each edit, so nothing in Cutalong runs until an Anthropic key works.',
+    // Two steps only the person can take: signing in and paying are theirs. Everything after the copy is Cutalong's.
     steps: [
       {
-        text: 'Open the Anthropic Console and sign in, or sign up.',
-        link: { label: 'Open the Console', url: 'https://platform.claude.com/login' }
-      },
-      {
-        text: 'Create a key, name it Cutalong, and copy it.',
-        link: { label: 'Open API keys', url: 'https://platform.claude.com/settings/keys' }
-      },
-      {
-        text: 'Add credit under Billing, so the key can be used.',
+        text: 'Sign in to the Anthropic Console, or sign up, and add credit.',
         link: { label: 'Open Billing', url: 'https://platform.claude.com/settings/billing' }
       },
-      PASTE
+      {
+        text: 'Create a key named Cutalong, and copy it.',
+        link: { label: 'Open API keys', url: 'https://platform.claude.com/settings/keys' }
+      }
     ],
     spend: { label: 'Open Usage', url: 'https://platform.claude.com/usage' },
     looksLike: 'sk-ant-…'
@@ -117,23 +117,6 @@ export const KEY_GUIDES: Record<KeyServiceId, KeyGuide> = {
       },
       PASTE
     ]
-  },
-  openai: {
-    id: 'openai',
-    name: 'OpenAI',
-    why: 'OpenAI makes pictures and speech from words.',
-    steps: [
-      {
-        text: 'Open the OpenAI Platform, sign in or sign up, and create a key named Cutalong.',
-        link: { label: 'Open API keys', url: 'https://platform.openai.com/api-keys' }
-      },
-      {
-        text: 'Add credit under Billing.',
-        link: { label: 'Open Billing', url: 'https://platform.openai.com/settings/organization/billing/overview' }
-      },
-      PASTE
-    ],
-    looksLike: 'sk-…'
   },
   deepgram: {
     id: 'deepgram',

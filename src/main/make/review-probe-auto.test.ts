@@ -9,7 +9,7 @@ import { draftFor } from './run'
  * script already paid (and an allowance for Claude) in the total it compares.
  */
 
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 const usage = { input_tokens: 4_000, output_tokens: 9_000 }
 const scriptOf = (k: number): unknown => ({
   title: 'Black Gold',

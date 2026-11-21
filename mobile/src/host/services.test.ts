@@ -140,14 +140,13 @@ describe.skipIf(!FFMPEG || !FFPROBE)('other AI services on a phone', () => {
 
   it('is on, as on the Mac, and sends nothing to a service that has no key', async () => {
     expect((await api.getSettings()).otherServices).toBe(true)
-    // The services of a video made from nothing (fal.ai, ElevenLabs, OpenAI) have no keys here: making is on the Mac.
+    // The services of a video made from nothing (fal.ai, ElevenLabs) have no keys here: making is on the Mac.
     expect(await api.serviceKeys()).toEqual({
       deepgram: false,
       assemblyai: false,
       gemini: false,
       fal: false,
-      elevenlabs: false,
-      openai: false
+      elevenlabs: false
     })
     const r = await api.prepareCut({ paths: [take] })
     if (!r.ok) throw new Error(r.message)
@@ -181,8 +180,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('other AI services on a phone', () => {
       assemblyai: true,
       gemini: true,
       fal: false,
-      elevenlabs: false,
-      openai: false
+      elevenlabs: false
     })
     expect(JSON.stringify(await api.getSettings())).not.toMatch(/phone-test/)
     expect(toServices).toEqual([])

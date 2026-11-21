@@ -585,10 +585,18 @@ export function useCutalong() {
   const [keySaved, setKeySaved] = useState(false)
   // The check under way, which anything asked meanwhile waits for.
   const keyCheck = useRef<Promise<ClaudeKeyStatus> | null>(null)
-  /** Whether the gate is open, once a check under way has answered. */
+  /**
+   * The model on this computer chosen to edit with instead of Claude (Ollama or
+   * LM Studio, main/local-llm), or null for Claude. Chosen, it opens the gate as
+   * a working key does: the person picks what they use.
+   */
+  const [localAi, setLocalAi] = useState<string | null>(null)
+  const localAiRef = useRef<string | null>(null)
+  localAiRef.current = localAi
+  /** Whether the gate is open, once a check under way has answered: a key that works, or a local model chosen. */
   const keyOpen = useCallback(async (): Promise<boolean> => {
     if (keyCheck.current) await keyCheck.current
-    return gateOpen(keyRef.current)
+    return gateOpen(keyRef.current) || localAiRef.current !== null
   }, [])
   /** Why something cannot start yet, in one sentence, or null when it can. */
   const keyBlocks = useCallback(
@@ -4879,8 +4887,23 @@ export function useCutalong() {
     return next
   }, [])
   useEffect(() => {
-    void checkClaudeKey(true)
+    // Which AI was chosen is read before the check settles, so Start never shows the key steps to someone editing locally.
+    void api
+      .getSettings()
+      .then((s) => {
+        localAiRef.current = s.localPlanner ?? null
+        setLocalAi(s.localPlanner ?? null)
+      })
+      .catch(() => undefined)
+      .finally(() => void checkClaudeKey(true))
   }, [checkClaudeKey])
+
+  /** Edits with a model on this computer from now on, or with Claude again when null. */
+  const chooseLocalAi = useCallback(async (model: string | null): Promise<void> => {
+    const s = await api.setSettings({ localPlanner: model })
+    localAiRef.current = s.localPlanner ?? null
+    setLocalAi(s.localPlanner ?? null)
+  }, [])
 
   /** Saves a pasted key and checks it; a key plainly from another company is turned away first. */
   const saveClaudeKey = useCallback(
@@ -5023,7 +5046,10 @@ export function useCutalong() {
     exportFinal,
     /** The Anthropic key, as the gate and the setup screen read it. */
     claudeKey: key,
-    gateOpen: gateOpen(key),
+    gateOpen: gateOpen(key) || localAi !== null,
+    /** The local model edits are planned with, or null for Claude. */
+    localAi,
+    chooseLocalAi,
     keySettled,
     keySaved,
     checkClaudeKey,

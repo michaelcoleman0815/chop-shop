@@ -138,6 +138,14 @@ Checked in the source of the version `scripts/build-whisper.sh` builds [measured
 - A published pipeline feeds the speech regions an ASR left untranscribed to a voice-activity model and classifies what it finds, beating both a CRNN and a forced aligner at finding filled pauses (Ge et al., via CrisperWhisper) [reported].
 - Cutalong already measures loudness every 10 ms. Voice activity from that envelope, compared with the words, finds speech with no words: a swallowed take, a dropped false start, a laugh, a cough [estimate; tested on fixtures in the build].
 
+### Fillers heard in the sound
+
+Cutalong now looks at what is left after Whisper and its second listen: voiced sound no word accounts for (main/filler-listen.ts, shared/audio/filled-pause.ts). Each stretch gets two votes. The sound: unvoiced is breath or noise and never a filler, and a vowel held at one pitch with a still shape is one. Whisper, listening to that stretch alone with fillers in its prompt: only a lone filler sound counts.
+
+- **On the owner's own footage** (MVI_9293, 4:49, 282 words, one "uh" written) [measured, 2026-11-21]: the unworded stretches that were unvoiced (breath, room noise) were never sent to Whisper. The 12 voiced ones were listened to alone, in 13.8 s on small.en and 48 s on medium.en: the edges of words already written ("Recording", "Okay", "Wake up"), which Whisper alone hears as those words, and two sounds small.en hears as "[clears throat]" and medium.en as "So". None was taken as a filler, so nothing false was added.
+- **Not yet measured: recall.** That footage holds almost no fillers, so how many missed ums this finds is open. It needs a recording with many, or one compared with Deepgram's transcript.
+- **Synthetic speech does not calibrate it.** The Mac's voices say "umm" with the rise and fall of a word (a pitch spread of 3 to 5.5 semitones, against 1 to 2 for a held human "uh"), so their fillers and words cannot be told apart by sound.
+
 ### The lab, in numbers
 
 The 85 s synthetic session holds 14 planted takes and restarts, plus a groan and a laugh. Whisper small (int8) through faster-whisper 1.1.1, beam 5, best of 5, word timestamps; 33 runs in all [measured]:

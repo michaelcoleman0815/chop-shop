@@ -357,13 +357,15 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     },
     // The desktop's rules: a key Anthropic accepted before passes while it is busy, down or out of reach.
     checkKey: (opts) => checkKey(keyDeps(), opts ?? {}),
+    // A phone asks before an app reads what was copied, so the key is pasted there instead.
+    anthropicKeyOnClipboard: async () => null,
     // The app learns whether each service has a key, never what it is.
     serviceKeys: async () => parts.services.keys(),
     setServiceKey: (id, next) => parts.services.setKey(asService(id), typeof next === 'string' ? next : ''),
     clearServiceKey: (id) => parts.services.clearKey(asService(id)),
     checkServiceKey: (id) => parts.services.check(asService(id)),
     setOtherServices: (on) => parts.services.setOn(on === true),
-    localPlanners: async () => ({ up: false, models: [] }),
+    localPlanners: async () => ({ up: false, kind: null, host: null, models: [] }),
     setApiKey: async (next) => {
       const trimmed = next.trim()
       if (trimmed) await platform().secrets.set('anthropic', trimmed)

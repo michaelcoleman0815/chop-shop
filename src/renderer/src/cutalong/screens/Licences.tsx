@@ -111,8 +111,7 @@ export function Licences({ where, version }: { where: NonNullable<Device['licenc
   const source = notices?.source
 
   return (
-    <section className="cl-section cl-licences" aria-labelledby="set-licences">
-      <h2 id="set-licences">Licences</h2>
+    <div className="cl-set-card cl-set-prose cl-licences">
       {failed ? (
         <p className="cl-reply">I couldn't open the list of licences that comes with Cutalong.</p>
       ) : (
@@ -172,6 +171,6 @@ export function Licences({ where, version }: { where: NonNullable<Device['licenc
         </ul>
       )}
       {notices && <p className="cl-aside">{notices.freetype}</p>}
-    </section>
+    </div>
   )
 }

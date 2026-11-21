@@ -13,7 +13,7 @@ import { servicesTotal } from './run'
  * with what the video has spent already.
  */
 
-const can: Availability = { google: true, fal: true, elevenlabs: true, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: true, elevenlabs: true, claude: true, localVoice: true }
 const sentences = (n: number): string[] =>
   Array.from(
     { length: n },

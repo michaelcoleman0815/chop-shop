@@ -12,7 +12,7 @@ import type { CutalongApi } from './api'
  * be seen and changed. Nothing is made here; the button says so.
  */
 
-const CAN: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const CAN: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 
 const SCRIPT = (brief: Brief): string =>
   [

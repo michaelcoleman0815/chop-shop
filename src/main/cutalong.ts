@@ -1,4 +1,5 @@
-import { app, dialog, ipcMain, type WebContents } from 'electron'
+import { app, clipboard, dialog, ipcMain, type WebContents } from 'electron'
+import { anthropicKeyIn } from '../shared/keys'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { FFMPEG_PATH, FFPROBE_PATH, probe } from './ffmpeg'
@@ -41,8 +42,8 @@ import { checkKey, keepOffList, keyDeps, planEdit } from './planner'
 import type { CommandLine, RequestExtra } from './planner-prompt'
 import { triage } from './triage'
 import { planEditLocally } from './planner-local'
-import { isLocalUp, localModels } from './local-llm'
-import { OLLAMA_HOST } from './clips'
+import { findServer, localModels } from './local-llm'
+import { localHost } from './local-server'
 import { brandOfDoc, readBrand, readBrandById, readBrands, saveBrand, saveBrands } from './brand-store'
 import { hearInCloud, registerServicesIpc } from './providers'
 import { registerLearnIpc } from './learn'
@@ -440,7 +441,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       const result = local
         ? await planEditLocally(
             { ...req, preferences, logos, never: said, habits },
-            { host: OLLAMA_HOST, model: local }
+            { host: await localHost(), model: local }
           )
         : await planEdit({ ...req, preferences, logos, never: said, habits })
       return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
@@ -469,14 +470,26 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
           return { name: f.name, durationSec: p ? p.durationSec : null, video: !!p && p.width > 0, audio: !!p?.facts.audio }
         })
       )
-      return triage({ request: req.request, files, link: req.link, hasEdit: req.hasEdit, commands: req.commands })
+      // With no key, the model on this computer chosen in Claude's place reads it (main/local-llm).
+      return triage(
+        { request: req.request, files, link: req.link, hasEdit: req.hasEdit, commands: req.commands },
+        {
+          key: () => keyDeps().read(),
+          local: async () => {
+            const model = getSettings().localPlanner
+            return model ? { host: await localHost(), model } : null
+          }
+        }
+      )
     }
   )
 
-  // The models Ollama has on this Mac, for planning edits without Claude.
+  // The local AI server on this computer, which kind it is, and its models: for planning edits,
+  // seeing pictures and finding clips without Claude (main/local-llm).
   ipcMain.handle('planner:local', async () => {
-    if (!(await isLocalUp(OLLAMA_HOST))) return { up: false, models: [] }
-    return { up: true, models: await localModels(OLLAMA_HOST).catch(() => []) }
+    const server = await findServer(getSettings().localServer)
+    if (!server) return { up: false, models: [], kind: null, host: null }
+    return { up: true, kind: server.kind, host: server.host, models: await localModels(server.host).catch(() => []) }
   })
 
   // The brand: kept in userData, learned from the person's own videos, all
@@ -652,6 +665,9 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   })
 
   ipcMain.handle('claude:check', (_e, opts?: { quick?: boolean }) => checkKey(keyDeps(), opts ?? {}))
+  // A key copied in the Console, picked up when the person comes back: only text shaped like an
+  // Anthropic key ever leaves the clipboard, and nothing of it is kept here (shared/keys).
+  ipcMain.handle('claude:keyOnClipboard', async () => anthropicKeyIn(await clipboard.readText()))
 
   // Other AI services: keys, the switch, and key checks (providers/index.ts).
   registerServicesIpc()

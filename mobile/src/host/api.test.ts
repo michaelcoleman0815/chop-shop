@@ -318,7 +318,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
       message: ON_THE_MAC.link,
       signIn: false
     })
-    expect(await api.localPlanners()).toEqual({ up: false, models: [] })
+    expect(await api.localPlanners()).toEqual({ up: false, kind: null, host: null, models: [] })
     const away = commandsOnTheMac()
     for (const c of [
       'vlog',

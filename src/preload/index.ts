@@ -563,6 +563,8 @@ const api = {
     | { ok: true; state: 'ok'; confirmed: true }
     | { ok: false; state: ClaudeKeyState; message: string; confirmed: boolean; needsKey: boolean }
   > => ipcRenderer.invoke('claude:check', opts),
+  /** An Anthropic key the person copied, if that is what is on the clipboard now, else null: nothing else is read back. */
+  anthropicKeyOnClipboard: (): Promise<string | null> => ipcRenderer.invoke('claude:keyOnClipboard'),
   // Other AI services: whether each key exists (never what it is), saving and
   // checking a key, and the one switch that lets anything go to them.
   serviceKeys: (): Promise<Record<ServiceId, boolean>> => ipcRenderer.invoke('services:keys'),
@@ -571,8 +573,13 @@ const api = {
   clearServiceKey: (id: ServiceId): Promise<void> => ipcRenderer.invoke('services:clearKey', id),
   checkServiceKey: (id: ServiceId): Promise<KeyCheck> => ipcRenderer.invoke('services:check', id),
   setOtherServices: (on: boolean): Promise<boolean> => ipcRenderer.invoke('services:setOn', on),
-  localPlanners: (): Promise<{ up: boolean; models: { name: string; sizeBytes: number }[] }> =>
-    ipcRenderer.invoke('planner:local'),
+  /** The local AI server on this computer (Ollama, or another with the /v1 chat API), where it is, and its models. */
+  localPlanners: (): Promise<{
+    up: boolean
+    kind: 'ollama' | 'v1' | null
+    host: string | null
+    models: { name: string; sizeBytes: number }[]
+  }> => ipcRenderer.invoke('planner:local'),
   studyInspiration: (input: {
     url?: string
     path?: string

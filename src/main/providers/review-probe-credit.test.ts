@@ -3,7 +3,7 @@ import { retryable } from '../make/generate'
 import { falImage } from './fal'
 import { googleImage } from './google-make'
 import { gateFor, json, scriptedFetch } from './testing'
-import { elevenSpeech, openaiSpeech } from './voices'
+import { elevenSpeech } from './voices'
 
 /**
  * Review probe: what the person reads when a key works but its account is out
@@ -21,16 +21,6 @@ describe('fixed: out of credit, in plain words', () => {
             gateFor(scriptedFetch([() => json({ detail: { status: 'quota_exceeded', message: 'This request exceeds your quota of 10000.' } }, 401)]).fetch, { keys: { elevenlabs: 'k' } }),
             'JBFqnCBsd6RMkjVDRZzb',
             'Hello.'
-          )
-      ],
-      [
-        'OpenAI 429 insufficient_quota',
-        () =>
-          openaiSpeech(
-            gateFor(scriptedFetch([() => json({ error: { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: 'insufficient_quota' } }, 429)]).fetch, { keys: { openai: 'k' } }),
-            'Hello.',
-            'cedar',
-            'Read calmly.'
           )
       ],
       [

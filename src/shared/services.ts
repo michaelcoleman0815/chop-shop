@@ -14,7 +14,7 @@ import { detectProvider } from './keys'
  * beside the one gate every request goes through (src/main/providers/gate.ts).
  */
 
-export type ServiceId = 'deepgram' | 'assemblyai' | 'gemini' | 'fal' | 'elevenlabs' | 'openai'
+export type ServiceId = 'deepgram' | 'assemblyai' | 'gemini' | 'fal' | 'elevenlabs'
 /** What a service is for: hearing the words, judging a take, making pictures and clips, or reading a narration. */
 export type ServiceJob = 'transcribe' | 'judge' | 'make' | 'voice'
 
@@ -59,12 +59,6 @@ export const SERVICES: readonly Service[] = [
     name: 'ElevenLabs',
     job: 'voice',
     note: 'For a video made from nothing, the script goes to ElevenLabs to be read aloud, and nothing else.'
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    job: 'voice',
-    note: 'For a video made from nothing, the script goes to OpenAI to be read aloud, and nothing else. OpenAI stops this voice on January 6, 2027.'
   }
 ]
 
@@ -130,7 +124,8 @@ export type KeyCheck =
 export function wrongServiceKey(id: ServiceId, key: string): string | null {
   const from = detectProvider(key)
   if (from === 'anthropic') return 'That looks like an Anthropic key. It goes in the Claude section.'
-  if (from === 'openai' && id !== 'openai') return `That looks like an OpenAI key. ${serviceName(id)} needs its own key.`
+  // Cutalong does not use OpenAI, so an OpenAI key belongs in no field.
+  if (from === 'openai') return `That looks like an OpenAI key. Cutalong doesn’t use OpenAI; ${serviceName(id)} needs its own key.`
   if (from === 'google' && id !== 'gemini') return `That looks like a Google key. ${serviceName(id)} needs its own key.`
   return null
 }

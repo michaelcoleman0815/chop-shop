@@ -67,9 +67,7 @@ export const ROUTES: Record<ServiceId, Route> = {
       (url.hostname === 'storage.googleapis.com' && url.pathname.startsWith('/falserverless/'))
   },
   // https://elevenlabs.io/docs/api-reference/authentication: "xi-api-key".
-  elevenlabs: { hosts: ['api.elevenlabs.io'], auth: (key) => ({ 'xi-api-key': key }) },
-  // https://developers.openai.com/api/docs/guides/text-to-speech: "Authorization: Bearer $OPENAI_API_KEY".
-  openai: { hosts: ['api.openai.com'], auth: (key) => ({ Authorization: `Bearer ${key}` }) }
+  elevenlabs: { hosts: ['api.elevenlabs.io'], auth: (key) => ({ 'xi-api-key': key }) }
 }
 
 const CLEANUP_TIMEOUT_MS = 15_000
@@ -422,12 +420,12 @@ function failure(service: ServiceId, status: number, text: string, headers: Head
   const name = serviceName(service)
   // A 429 keeps more of what it said: which quota ran out (Google names a free tier's, or a paid one's) comes late in it.
   const extra = { status, detail: text.slice(0, status === 429 ? 2000 : 300) }
-  // A key that works on an account with nothing left: 402, ElevenLabs' 401 quota_exceeded, OpenAI's 429
-  // insufficient_quota, fal's 403 "Exhausted balance", Google's prepaid credits run out. Said plainly, never retried.
+  // A key that works on an account with nothing left: 402, ElevenLabs' 401 quota_exceeded, fal's 403
+  // "Exhausted balance", Google's prepaid credits run out. Said plainly, never retried.
   if (
     status === 402 ||
     (status === 401 && /quota_exceeded/i.test(text)) ||
-    (status === 429 && /insufficient_quota|credits? (?:are |is )?(?:depleted|exhausted)|prepa(?:id|yment) credit/i.test(text)) ||
+    (status === 429 && /credits? (?:are |is )?(?:depleted|exhausted)|prepa(?:id|yment) credit/i.test(text)) ||
     (status === 403 && /exhausted balance|insufficient (?:balance|credits?|funds)|top up your balance|out of credits?/i.test(text))
   )
     return new ServiceError(service, 'no-credit', `${name} says the account has no credit left.`, extra)

@@ -1,3 +1,4 @@
+import { device } from './api'
 /**
  * First run: whether onboarding has been seen, and what the rail's setup card
  * still asks for. Both are remembered on this computer only; forgetting them
@@ -39,7 +40,8 @@ export interface SetupStep {
 /** What setup still asks for, in order. The card goes once every step is done. */
 export function setupSteps(state: { keyWorks: boolean; named: boolean; edits: number; exported: boolean }): SetupStep[] {
   return [
-    { id: 'key', label: 'Add your Anthropic key', done: state.keyWorks },
+    // Claude's key, or a model on this computer: whichever the person chose (components/AiChoice).
+    { id: 'key', label: device.kind === 'phone' ? 'Add your Anthropic key' : 'Choose your AI', done: state.keyWorks },
     { id: 'channel', label: 'Name your channel', done: state.named },
     { id: 'first', label: 'Make your first edit', done: state.edits > 0 },
     { id: 'export', label: 'Export once', done: state.exported }

@@ -1,0 +1,119 @@
+import { useEffect, useState } from 'react'
+import { DEFAULT_CAP } from '../../../../../shared/make/quote'
+import type { Settings } from '../../../../../shared/types'
+import { api } from '../../api'
+import { SetGroup, SetRow, SetSwitch } from './rows'
+
+/**
+ * Money for videos made from nothing: the most one may cost, and whether a
+ * video under an amount is made without waiting for its button. Off unless
+ * turned on; every reply still says what was spent, and every quote says
+ * what goes where.
+ */
+
+/** Dollars as typed, or null when they are not an amount. */
+function amount(s: string): number | null {
+  const n = Number(s.replace(/[$,\s]/g, ''))
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null
+}
+
+/** A dollar amount in a small field with its sign in front. */
+function Dollars({
+  label,
+  value,
+  disabled,
+  onChange,
+  onDone
+}: {
+  label: string
+  value: string
+  disabled: boolean
+  onChange: (v: string) => void
+  onDone: () => void
+}): JSX.Element {
+  return (
+    <span className="cl-dollars">
+      <span aria-hidden="true">$</span>
+      <input
+        inputMode="decimal"
+        aria-label={label}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onDone}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+    </span>
+  )
+}
+
+export function MadeSection({
+  settings,
+  onSettings
+}: {
+  settings: Settings | null
+  onSettings: (next: Settings) => void
+}): JSX.Element {
+  const on = typeof settings?.makeAutoUnder === 'number' && settings.makeAutoUnder > 0
+  const [under, setUnder] = useState(String(settings?.makeAutoUnder ?? 2))
+  const [cap, setCap] = useState(String(settings?.makeCap ?? DEFAULT_CAP))
+  useEffect(() => {
+    if (settings?.makeAutoUnder) setUnder(String(settings.makeAutoUnder))
+    if (settings?.makeCap) setCap(String(settings.makeCap))
+  }, [settings?.makeAutoUnder, settings?.makeCap])
+  const limit = settings?.makeCap ?? DEFAULT_CAP
+
+  return (
+    <SetGroup>
+      <SetRow
+        title="The most one video may cost"
+        desc={`A prompt can ask for less, like “under $3”, never more. Nothing is asked of any service that would take a video past $${limit}.`}
+        find="cap limit money spend price dollars"
+        control={
+          <Dollars
+            label="The most one video may cost, in dollars"
+            value={cap}
+            disabled={!settings}
+            onChange={setCap}
+            onDone={() => {
+              const n = amount(cap)
+              setCap(String(n ?? DEFAULT_CAP))
+              void api.setSettings({ makeCap: n }).then(onSettings)
+            }}
+          />
+        }
+      />
+      <SetRow
+        title="Go ahead without asking"
+        desc={
+          on
+            ? `A new video that comes to less than $${settings?.makeAutoUnder}, its script included, is made straight away. Anything more, and every change, waits for you.`
+            : 'Every video is quoted first and waits for you to press Make it.'
+        }
+        find="auto quote confirm money"
+        control={
+          <>
+            <Dollars
+              label="Go ahead without asking under this many dollars"
+              value={under}
+              disabled={!settings}
+              onChange={setUnder}
+              onDone={() => {
+                const n = amount(under) ?? 2
+                setUnder(String(n))
+                if (on) void api.setSettings({ makeAutoUnder: n }).then(onSettings)
+              }}
+            />
+            <SetSwitch
+              checked={on}
+              disabled={!settings}
+              onChange={(next) =>
+                void api.setSettings({ makeAutoUnder: next ? (amount(under) ?? 2) : null }).then(onSettings)
+              }
+            />
+          </>
+        }
+      />
+    </SetGroup>
+  )
+}

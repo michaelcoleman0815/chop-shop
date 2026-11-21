@@ -8,7 +8,7 @@
  * service's own pages on the date below.
  */
 
-export type KeyService = 'gemini' | 'fal' | 'elevenlabs' | 'openai'
+export type KeyService = 'gemini' | 'fal' | 'elevenlabs'
 
 export interface KeySteps {
   service: KeyService
@@ -59,18 +59,6 @@ export const KEY_STEPS: Record<KeyService, KeySteps> = {
       'Copy the key at once, as ElevenLabs shows it in full only once, and paste it into Settings, under Other AI services, as the ElevenLabs key.'
     ],
     source: 'https://elevenlabs.io/docs/help-center/technical/how-do-i-authorize-myself-using-an-api-key',
-    checked: KEY_STEPS_CHECKED
-  },
-  openai: {
-    service: 'openai',
-    name: 'OpenAI',
-    url: 'https://platform.openai.com/api-keys',
-    steps: [
-      'Sign in at platform.openai.com and open API keys.',
-      'Click Create new secret key, then copy it, as it is shown only once.',
-      'Paste it into Settings, under Other AI services, as the OpenAI key.'
-    ],
-    source: 'https://developers.openai.com/api/docs/quickstart',
     checked: KEY_STEPS_CHECKED
   }
 }

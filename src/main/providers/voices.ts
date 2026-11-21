@@ -3,20 +3,17 @@ import { PRICES } from '../../shared/make/prices'
 import { ServiceError, type Gate } from './gate'
 
 /**
- * Reading a narration aloud with ElevenLabs or OpenAI, each on its own key.
- * Only the script is sent.
+ * Reading a narration aloud with ElevenLabs, on its own key. Only the script
+ * is sent. (Gemini's voices are in google-make.ts.)
  *
  * ElevenLabs answers with the time of every character it spoke, which gives
- * the edit its word timings straight from the voice; OpenAI does not, so its
- * narration is listened to on this Mac for them.
+ * the edit its word timings straight from the voice.
  *
  * https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps
  * https://elevenlabs.io/docs/api-reference/voices/search
- * https://developers.openai.com/api/docs/guides/text-to-speech (gpt-4o-mini-tts: deprecated, shuts down January 6, 2027)
  */
 
 export const ELEVENLABS_MODEL = PRICES.voices.elevenlabs.model
-export const OPENAI_TTS_MODEL = PRICES.voices.openai.model
 
 const TTS_TIMEOUT_MS = 4 * 60_000
 
@@ -116,35 +113,4 @@ export async function elevenVoiceNamed(gate: Gate, name: string, signal?: AbortS
 /** A key check that reads nothing aloud: the account's voice list. */
 export async function checkElevenLabs(gate: Gate): Promise<void> {
   await gate.send('elevenlabs', 'https://api.elevenlabs.io/v1/voices', { timeoutMs: 15_000 })
-}
-
-// ---------- OpenAI ----------
-
-export function openaiBody(text: string, voice: string, instructions: string): Record<string, unknown> {
-  return { model: OPENAI_TTS_MODEL, input: text, voice, instructions, response_format: 'wav' }
-}
-
-export async function openaiSpeech(
-  gate: Gate,
-  text: string,
-  voice: string,
-  instructions: string,
-  signal?: AbortSignal
-): Promise<Uint8Array> {
-  const reply = await gate.send('openai', 'https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(openaiBody(text, voice, instructions)),
-    timeoutMs: TTS_TIMEOUT_MS,
-    bytes: true,
-    signal
-  })
-  if (!reply.bytes || reply.bytes.length < 44)
-    throw new ServiceError('openai', 'unreadable', 'OpenAI sent back no sound.')
-  return reply.bytes
-}
-
-/** A key check that reads nothing aloud: the models the key can use. */
-export async function checkOpenAI(gate: Gate): Promise<void> {
-  await gate.send('openai', 'https://api.openai.com/v1/models', { timeoutMs: 15_000 })
 }

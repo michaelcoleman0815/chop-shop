@@ -28,7 +28,7 @@ import { draftFor, revise, type DraftDeps } from '../../../main/make/run'
 import { useMake } from './useMake'
 import type { Action, Msg } from './components/Message'
 
-const can: Availability = { google: true, fal: false, elevenlabs: true, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: true, claude: true, localVoice: true }
 
 function window(settings: DraftDeps['settings']) {
   let chat = new Map<string, Partial<Msg>>()

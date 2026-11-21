@@ -99,7 +99,7 @@ const doc = {
   versions: []
 } as unknown as EditDoc
 
-const can: Availability = { google: true, fal: false, elevenlabs: true, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: true, claude: true, localVoice: true }
 
 function harness(settings: DraftDeps['settings'], parse: ParseCall, opts: { open?: EditDoc | null } = {}) {
   const msgs = new Map<string, Partial<Msg>>()

@@ -13,7 +13,7 @@ import { draftFor } from './run'
  * estimate, so the quote itself is that most.
  */
 
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 const usage = { input_tokens: 4_000, output_tokens: 9_000 }
 const scriptOf = (k: number): unknown => ({
   title: 'Black Gold',

@@ -3,7 +3,7 @@ import { checkAssemblyAI } from './assemblyai'
 import { checkDeepgram } from './deepgram'
 import { checkGemini } from './gemini'
 import { checkFal } from './fal'
-import { checkElevenLabs, checkOpenAI } from './voices'
+import { checkElevenLabs } from './voices'
 import { ServiceError, type Gate } from './gate'
 
 /**
@@ -18,8 +18,7 @@ const CHECKS: Record<ServiceId, (gate: Gate) => Promise<void>> = {
   assemblyai: checkAssemblyAI,
   gemini: checkGemini,
   fal: checkFal,
-  elevenlabs: checkElevenLabs,
-  openai: checkOpenAI
+  elevenlabs: checkElevenLabs
 }
 
 export async function checkServiceKey(

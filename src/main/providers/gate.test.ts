@@ -7,8 +7,7 @@ const URLS: Record<ServiceId, string> = {
   assemblyai: 'https://api.assemblyai.com/v2/transcript?limit=1',
   gemini: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest',
   fal: 'https://api.fal.ai/v1/models/pricing?endpoint_id=blackforestlabs/flux-3/text-to-image',
-  elevenlabs: 'https://api.elevenlabs.io/v1/voices',
-  openai: 'https://api.openai.com/v1/models'
+  elevenlabs: 'https://api.elevenlabs.io/v1/voices'
 }
 
 type FetchFn = (url: string, init: RequestInit) => Promise<Response>

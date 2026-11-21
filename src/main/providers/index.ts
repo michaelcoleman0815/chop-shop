@@ -7,12 +7,12 @@ import { getSettings, saveSettings } from '../store'
 import { checkServiceKey } from './check'
 import { createGate } from './gate'
 import { judgeExcerpts as judge, type JudgeInput, type JudgeResult } from './judge'
-import { serviceKeys } from './keys'
+import { forgetRetiredKeys, serviceKeys } from './keys'
 import { extractSpeech } from './media'
 import { cloudTranscript, type CloudResult } from './transcribe-cloud'
 import { googleClip, googleImage, googleSpeech, GOOGLE_CLIP_MODEL, GOOGLE_IMAGE_MODEL } from './google-make'
 import { falClip, falImage, FAL_CLIP_MODEL, FAL_IMAGE_MODEL } from './fal'
-import { elevenSpeech, elevenVoiceNamed, openaiSpeech } from './voices'
+import { elevenSpeech, elevenVoiceNamed } from './voices'
 import type { MakeServices } from '../make/services'
 
 export type { ClipJudgement, ExcerptClip, JudgeInput, JudgeResult } from './judge'
@@ -24,7 +24,8 @@ export type { ClipJudgement, ExcerptClip, JudgeInput, JudgeResult } from './judg
  * Google Gemini goes through this one gate.
  */
 
-const keys = serviceKeys({ dir: () => app.getPath('userData'), sealer: () => safeStorage })
+const keyDeps = { dir: () => app.getPath('userData'), sealer: () => safeStorage }
+const keys = serviceKeys(keyDeps)
 
 const gate = createGate({
   on: () => servicesOn(getSettings()),
@@ -75,8 +76,7 @@ export function makeServices(): MakeServices {
     open: () => ({
       google: gate.open('gemini'),
       fal: gate.open('fal'),
-      elevenlabs: gate.open('elevenlabs'),
-      openai: gate.open('openai')
+      elevenlabs: gate.open('elevenlabs')
     }),
     models: {
       image: { google: GOOGLE_IMAGE_MODEL, fal: FAL_IMAGE_MODEL },
@@ -88,8 +88,7 @@ export function makeServices(): MakeServices {
       service === 'google' ? googleClip(gate, prompt, first, opts) : falClip(gate, prompt, first, opts),
     elevenlabs: (voiceId, text, around, signal) => elevenSpeech(gate, voiceId, text, around, signal),
     elevenVoice: (name, signal) => elevenVoiceNamed(gate, name, signal),
-    gemini: (text, voice, style, signal) => googleSpeech(gate, text, voice, style, signal),
-    openai: (text, voice, instructions, signal) => openaiSpeech(gate, text, voice, instructions, signal)
+    gemini: (text, voice, style, signal) => googleSpeech(gate, text, voice, style, signal)
   }
 }
 
@@ -99,6 +98,8 @@ function asService(id: unknown): ServiceId {
 }
 
 export function registerServicesIpc(): void {
+  // At launch, once: an OpenAI key saved when Cutalong could use one is removed (keys.ts).
+  forgetRetiredKeys(keyDeps)
   // The renderer learns whether each key exists, never what it is.
   ipcMain.handle('services:keys', (): Record<ServiceId, boolean> => keys.all())
   ipcMain.handle('services:setKey', (_e, id: unknown, key: unknown) =>

@@ -14,7 +14,8 @@ import { brandInSentence, stampMade } from '../shared/brands'
 import { neverFinishNote, stripDoc, type NeverItem } from '../shared/never'
 import { neverForBrand } from './memory'
 import { readApiKey } from './apikey'
-import { suggestClips, OLLAMA_HOST } from './clips'
+import { suggestClips } from './clips'
+import { localHost } from './local-server'
 import { isLocalUp, localModels } from './local-llm'
 import { claudeErrorText, MODEL } from './planner'
 import { detectFaces, hasFaceFinder, type VisionSample } from './track'
@@ -280,10 +281,11 @@ export async function chooseEngine(): Promise<{ by: Picker; model: string | null
   const settings = getSettings()
   const chosen =
     settings.localPlanner ?? (settings.clipModel?.startsWith('ollama:') ? settings.clipModel.slice(7) : null)
-  if (chosen && (await isLocalUp(OLLAMA_HOST))) return { by: 'local', model: chosen }
+  const host = await localHost()
+  if (chosen && (await isLocalUp(host))) return { by: 'local', model: chosen }
   if (readApiKey()) return { by: 'claude', model: MODEL }
-  if (await isLocalUp(OLLAMA_HOST)) {
-    const models = await localModels(OLLAMA_HOST).catch(() => [])
+  if (await isLocalUp(host)) {
+    const models = await localModels(host).catch(() => [])
     // The biggest that fits a laptop's memory; a 70B model takes minutes a transcript.
     const fits = models.filter((m) => m.sizeBytes <= 20e9).sort((a, b) => b.sizeBytes - a.sizeBytes)
     const pick = fits[0] ?? [...models].sort((a, b) => a.sizeBytes - b.sizeBytes)[0]

@@ -115,6 +115,11 @@ function spoken(date: string): string {
 
 /** The one line on what using Claude costs, with where to see it. */
 export function costLine(): string {
+  return `${planCostLine()} The Console’s Usage page shows what you actually spend.`
+}
+
+/** What a plan costs, in one sentence, for a row that links to the Usage page itself. */
+export function planCostLine(): string {
   const { low, high } = planCost()
-  return `A plan on a ${TYPICAL_PLAN.minutes}-minute video costs about ${cents(low)} to ${cents(high)} cents at Anthropic’s prices on ${spoken(PLANNER_PRICE.read)}. The Console’s Usage page shows what you actually spend.`
+  return `A plan on a ${TYPICAL_PLAN.minutes}-minute video costs about ${cents(low)} to ${cents(high)} cents at Anthropic’s prices on ${spoken(PLANNER_PRICE.read)}.`
 }

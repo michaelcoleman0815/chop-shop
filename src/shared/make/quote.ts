@@ -21,7 +21,6 @@ export interface Availability {
   google: boolean
   fal: boolean
   elevenlabs: boolean
-  openai: boolean
   /** The person's Anthropic key, for the script and the shot list. */
   claude: boolean
   /** The voice on this Mac has been downloaded already. */
@@ -32,7 +31,6 @@ export const NOTHING_AVAILABLE: Availability = {
   google: false,
   fal: false,
   elevenlabs: false,
-  openai: false,
   claude: false,
   localVoice: false
 }
@@ -298,10 +296,10 @@ export const REWRITE_COST = claudeHold(2500, 1500, 4000)
 export function voiceFor(brief: Brief, can: Availability): { voice: VoiceChoice; note: string | null } {
   const v = brief.voice
   const engine = v.engine as VoiceEngine
-  const reachable = engine === 'local' || engine === 'own' || (engine === 'gemini' ? can.google : can[engine as 'elevenlabs' | 'openai'])
+  const reachable = engine === 'local' || engine === 'own' || (engine === 'gemini' ? can.google : can[engine])
   if (reachable) return { voice: v, note: null }
   const local = defaultVoice(brief.format)
-  const names: Record<string, string> = { elevenlabs: 'ElevenLabs', openai: 'OpenAI', gemini: 'Google Gemini' }
+  const names: Record<string, string> = { elevenlabs: 'ElevenLabs', gemini: 'Google Gemini' }
   return {
     voice: local,
     note: `There is no ${names[engine]} key in Settings, or other AI services are off, so ${local.name} reads it on this Mac instead.`
@@ -360,7 +358,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   if (note && !keepVoice) {
     notes.push(note)
     const asked = brief.voice.engine === 'gemini' ? 'gemini' : brief.voice.engine
-    if (asked === 'gemini' || asked === 'elevenlabs' || asked === 'openai') if (!keys.includes(asked)) keys.push(asked)
+    if (asked === 'gemini' || asked === 'elevenlabs') if (!keys.includes(asked)) keys.push(asked)
   }
   if (!keepVoice && voice.engine === 'own' && voice.id === 'pending') missing.push('Drop your voice-over in and I will make the video to it.')
 
@@ -454,7 +452,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   else if (voice.engine === 'local') sends.push(`${voice.name} reads the script on this Mac, so the words go nowhere else.`)
   else if (voice.engine === 'own') sends.push('Your recording stays on this Mac. I listen to it here for the words.')
   else {
-    const where = { elevenlabs: 'ElevenLabs', openai: 'OpenAI', gemini: 'Google' }[voice.engine]
+    const where = { elevenlabs: 'ElevenLabs', gemini: 'Google' }[voice.engine]
     sends.push(`The script goes to ${where} to be read aloud, with your ${where === 'Google' ? 'Gemini' : where} key.`)
   }
   if (keepShots) sends.push('The pictures stay as they are, so nothing goes to make them.')

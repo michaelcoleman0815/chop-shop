@@ -36,7 +36,7 @@ import { draftFor, revise, type DraftDeps } from '../../../main/make/run'
 import { useMake } from './useMake'
 import type { Action, Msg } from './components/Message'
 
-const can: Availability = { google: true, fal: false, elevenlabs: true, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: true, claude: true, localVoice: true }
 const local = { engine: 'local' as const, id: 'am_michael', name: 'Michael' }
 const phrases = Array.from({ length: 24 }, (_, i) => `In ${1950 + (i % 9)} the derricks of West Texas rose over town number ${i + 1} and the men worked through the night.`)
 const made: Make = {

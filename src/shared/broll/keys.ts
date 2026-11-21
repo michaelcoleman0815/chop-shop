@@ -118,7 +118,7 @@ export function wrongBrollKey(id: BrollKeyId, key: string): string | null {
   const name = brollKeyService(id).name
   const from = detectProvider(k)
   if (from === 'anthropic') return 'That looks like an Anthropic key. It goes in the Claude section.'
-  if (from === 'openai') return `That looks like an OpenAI key. ${name} needs its own key.`
+  if (from === 'openai') return `That looks like an OpenAI key. Cutalong doesn’t use OpenAI; ${name} needs its own key.`
   if (from === 'google') return `That looks like a Google key. ${name} needs its own key.`
   if (/\s/.test(k)) return 'A key has no spaces in it. Copy it again, on its own.'
   return null

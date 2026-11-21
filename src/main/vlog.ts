@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { randomUUID } from 'crypto'
 import { readApiKey } from './apikey'
-import { OLLAMA_HOST } from './clips'
+import { localHost } from './local-server'
 import { FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
 import { isLocalUp } from './local-llm'
 import { analyzeTrack } from './music'
@@ -201,7 +201,9 @@ async function describe(
   const clipOf = new Map(shoot.clips.map((c) => [c.id, c]))
   const worth = shoot.moments.filter((m) => !clipOf.get(m.clip)?.left && !(m.kind === 'talk' && heardClips.has(m.clip)))
   const key = claudeSees()
-  const local = key ? null : (await isLocalUp(OLLAMA_HOST)) ? await visionModel(OLLAMA_HOST) : null
+  const host = key ? null : await localHost()
+  // The model chosen in Settings, or the first that sees pictures.
+  const local = host && (await isLocalUp(host)) ? (getSettings().localVision ?? (await visionModel(host))) : null
   const who = key ? 'claude' : local ? `ollama:${local}` : null
   const empty = { lines: new Map<string, string>(), kinds: new Map(), stills: 0, note: null }
   if (!who) return { ...empty, by: 'measurements', model: null }
@@ -234,7 +236,7 @@ async function describe(
     say(0, todo.length)
     got = key
       ? await describeWithClaude(todo, shoot, strips, claudeParse(key), say)
-      : await describeWithOllama(todo, shoot, strips, { host: OLLAMA_HOST, model: local as string }, say)
+      : await describeWithOllama(todo, shoot, strips, { host: host as string, model: local as string }, say)
     // Kept by file, so the same moments are never sent twice.
     for (const [id, line] of got.lines) {
       const m = todo.find((x) => x.id === id) as Moment
@@ -274,9 +276,10 @@ async function storyByModel(
   const failed = `${who} could not tell the story this time, so I told it by its rules.`
   try {
     if (local) {
-      if (!(await isLocalUp(OLLAMA_HOST)))
+      const host = await localHost()
+      if (!(await isLocalUp(host)))
         return { made: null, note: `${local} is not running on ${thisComputer}, so I told the story by its rules.` }
-      const made = await storyLocally(doc, vlog, request, ask, { host: OLLAMA_HOST, model: local })
+      const made = await storyLocally(doc, vlog, request, ask, { host, model: local })
       return { made, note: made ? null : failed }
     }
     const key = readApiKey()

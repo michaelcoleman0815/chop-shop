@@ -18,3 +18,12 @@ export function wrongKeyMessage(provider: Provider | string): string | null {
   const from = provider === 'openai' ? 'an OpenAI' : provider === 'google' ? 'a Google' : null
   return from ? `That looks like ${from} key. Cutalong needs one from Anthropic, which starts sk-ant-.` : null
 }
+
+/**
+ * The Anthropic key in some copied text, or null: only text that is one key
+ * and nothing else counts, so whatever else is on the clipboard is never taken.
+ */
+export function anthropicKeyIn(text: string | null | undefined): string | null {
+  const k = (text ?? '').trim()
+  return /^sk-ant-[A-Za-z0-9_-]{20,200}$/.test(k) ? k : null
+}

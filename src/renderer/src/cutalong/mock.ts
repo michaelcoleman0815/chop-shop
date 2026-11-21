@@ -1,3 +1,4 @@
+import { anthropicKeyIn } from '../../../shared/keys'
 import {
   addSources,
   createDoc,
@@ -1186,6 +1187,14 @@ export function createMockApi(): CutalongApi {
     }),
     // A pretend check, as long as a real one takes. An Anthropic-looking key works unless it ends with
     // one of the gate's states ("sk-ant-test-no-credit"), so every answer can be seen in the browser.
+    // The browser's own clipboard stands in for the Mac's, where the page is allowed to read it.
+    anthropicKeyOnClipboard: async () => {
+      try {
+        return anthropicKeyIn(await navigator.clipboard.readText())
+      } catch {
+        return null
+      }
+    },
     checkKey: async (opts) => {
       const fail = (state: ClaudeKeyState): Awaited<ReturnType<CutalongApi['checkKey']>> => ({
         ok: false as const,
@@ -1238,14 +1247,29 @@ export function createMockApi(): CutalongApi {
       settings = { ...settings, otherServices: on }
       return on
     },
-    // Stands in for Ollama running on this Mac with two models pulled.
-    localPlanners: async () => ({
-      up: true,
-      models: [
-        { name: 'local-8b', sizeBytes: 4_900_000_000 },
-        { name: 'local-3b', sizeBytes: 2_000_000_000 }
-      ]
-    }),
+    // Stands in for Ollama running on this Mac with three models pulled, one that sees pictures;
+    // an address set in Settings that is not Ollama's own stands in for LM Studio there.
+    localPlanners: async () =>
+      settings.localServer && !/11434/.test(settings.localServer)
+        ? {
+            up: true,
+            kind: 'v1' as const,
+            host: `http://${settings.localServer.replace(/^https?:\/\//, '')}`,
+            models: [
+              { name: 'qwen2.5-7b-instruct', sizeBytes: 0 },
+              { name: 'gemma-3-12b', sizeBytes: 0 }
+            ]
+          }
+        : {
+            up: true,
+            kind: 'ollama' as const,
+            host: 'http://127.0.0.1:11434',
+            models: [
+              { name: 'local-8b', sizeBytes: 4_900_000_000 },
+              { name: 'local-3b', sizeBytes: 2_000_000_000 },
+              { name: 'qwen2.5vl:7b', sizeBytes: 6_000_000_000 }
+            ]
+          },
     setApiKey: async (next) => {
       key = next.trim() || null
     },

@@ -3,7 +3,7 @@ import { ServiceError } from './gate'
 import { falClip, falImage, FAL_CLIP_MODEL, FAL_EDIT_MODEL, FAL_IMAGE_MODEL, FAL_QUEUE } from './fal'
 import { fromTts, googleClip, googleImage, googleSpeech, GOOGLE_CLIP_MODEL, GOOGLE_IMAGE_MODEL, INTERACTIONS_URL, TTS_URL } from './google-make'
 import { gateFor, json, scriptedFetch } from './testing'
-import { elevenSpeech, ELEVENLABS_MODEL, openaiSpeech, OPENAI_TTS_MODEL, wordsFromCharacters } from './voices'
+import { elevenSpeech, ELEVENLABS_MODEL, wordsFromCharacters } from './voices'
 
 /**
  * The services a made video uses, as their documentation shows them (URLs
@@ -157,27 +157,16 @@ describe('voices', () => {
     expect(JSON.parse(f.sent[0].text ?? '{}')).toMatchObject({ text: 'In 1950, oil.', model_id: ELEVENLABS_MODEL, previous_text: 'Before.', next_text: 'After.' })
     expect(wordsFromCharacters({ characters: [], character_start_times_seconds: [], character_end_times_seconds: [] })).toEqual([])
   })
-
-  it('OpenAI: WAV, the voice, and how to read it apart from the words', async () => {
-    const wav = new Uint8Array(48)
-    wav.set([0x52, 0x49, 0x46, 0x46])
-    const f = scriptedFetch([() => new Response(wav, { status: 200 })])
-    await openaiSpeech(gateFor(f.fetch, { keys: { openai: 'sk-o' } }), 'Hello.', 'cedar', 'Calm.')
-    expect(f.sent[0].url).toBe('https://api.openai.com/v1/audio/speech')
-    expect(f.sent[0].headers.get('authorization')).toBe('Bearer sk-o')
-    expect(JSON.parse(f.sent[0].text ?? '{}')).toEqual({ model: OPENAI_TTS_MODEL, input: 'Hello.', voice: 'cedar', instructions: 'Calm.', response_format: 'wav' })
-  })
 })
 
 describe('nothing leaves without the key and the switch', () => {
   it('sends no request without a key, or with other AI services off', async () => {
-    for (const opts of [{ keys: {} }, { on: false, keys: { gemini: 'g', fal: 'f', elevenlabs: 'e', openai: 'o' } }]) {
+    for (const opts of [{ keys: {} }, { on: false, keys: { gemini: 'g', fal: 'f', elevenlabs: 'e' } }]) {
       const f = scriptedFetch([])
       const gate = gateFor(f.fetch, opts)
       await expect(googleImage(gate, 'x', [], { aspect: 'wide', size: '1K' })).rejects.toBeInstanceOf(ServiceError)
       await expect(falImage(gate, 'x', [], { aspect: 'wide', size: '1K', pollMs: 1 })).rejects.toBeInstanceOf(ServiceError)
       await expect(elevenSpeech(gate, 'JBFqnCBsd6RMkjVDRZzb', 'x', {})).rejects.toBeInstanceOf(ServiceError)
-      await expect(openaiSpeech(gate, 'x', 'cedar', '')).rejects.toBeInstanceOf(ServiceError)
       expect(f.spy).not.toHaveBeenCalled()
     }
   })

@@ -43,7 +43,7 @@ const make = {
   spent: 1
 } as unknown as Make
 const doc = { id: 'doc1', sources: [{ id: 's1', path: '/m/n.wav' }], words: [], assets: [], make, versions: [] } as unknown as EditDoc
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 
 describe('fixed: ordinary edits are not paid remakes', () => {
   it('reads timing and grade asks as nothing to make again', () => {

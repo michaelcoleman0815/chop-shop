@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -113,9 +113,20 @@ const root = mkdtempSync(join(tmpdir(), 'cutalong-prepare-'))
 beforeAll(() => {
   fake.userData = join(root, 'userData')
   mkdirSync(fake.userData, { recursive: true })
+  // An OpenAI key saved when Cutalong could use one, there before this launch.
+  writeFileSync(join(fake.userData, 'openai.key'), `sealed:${Buffer.from('sk-proj-0123456789').toString('base64')}`)
   registerCutalongIpc({ send: () => undefined, mediaUrlFor: (p) => `media://${p}` })
 })
 afterAll(() => rmSync(root, { recursive: true, force: true }))
+
+describe('a key Cutalong no longer uses', () => {
+  it('is removed at launch, and no service is named for it', async () => {
+    expect(existsSync(join(fake.userData, 'openai.key'))).toBe(false)
+    expect(Object.keys(await invoke<Record<string, boolean>>('services:keys'))).not.toContain('openai')
+    await expect(invoke('services:setKey', 'openai', 'sk-proj-0123456789')).rejects.toThrow('That is not a service Cutalong knows.')
+    expect(existsSync(join(fake.userData, 'openai.key'))).toBe(false)
+  })
+})
 
 describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' : ` (${NO_FFMPEG})`}`, () => {
   let clip = ''
@@ -224,13 +235,13 @@ describe.skipIf(!FOUND)(`bringing in footage with other AI services${FOUND ? '' 
 
   it('tells the renderer whether each key exists, never what it is', async () => {
     const keys = await invoke<Record<string, unknown>>('services:keys')
-    expect(keys).toEqual({ deepgram: true, assemblyai: false, gemini: true, fal: false, elevenlabs: false, openai: false })
+    expect(keys).toEqual({ deepgram: true, assemblyai: false, gemini: true, fal: false, elevenlabs: false })
     expect(JSON.stringify(keys)).not.toContain('dg-0123')
     // The keys sit sealed in their own files, beside where the Anthropic key would be.
     expect(readFileSync(join(fake.userData, 'deepgram.key')).toString()).not.toContain('dg-0123')
     expect(existsSync(join(fake.userData, 'anthropic.key'))).toBe(false)
     await invoke('services:clearKey', 'deepgram')
-    expect(await invoke('services:keys')).toEqual({ deepgram: false, assemblyai: false, gemini: true, fal: false, elevenlabs: false, openai: false })
+    expect(await invoke('services:keys')).toEqual({ deepgram: false, assemblyai: false, gemini: true, fal: false, elevenlabs: false })
   })
 
   it('switch turned off mid-job: only the DELETE that removes AssemblyAI’s copy goes out after it', async () => {
@@ -333,10 +344,12 @@ describe('planning edits', () => {
       notes: []
     })
     expect(r).toMatchObject({ ok: true, ops: [{ op: 'strike', from: 'w2', to: 'w2' }], summary: 'The um is gone.' })
-    expect(urls).toEqual(['http://127.0.0.1:11434/api/version', 'http://127.0.0.1:11434/api/chat'])
+    // Found where it runs, checked it is up, then asked: all on this Mac.
+    expect(urls.every((u) => u.startsWith('http://127.0.0.1:11434/'))).toBe(true)
+    expect(urls.at(-1)).toBe('http://127.0.0.1:11434/api/chat')
   })
 
-  it('lists the models Ollama has, or says it is not running', async () => {
+  it('lists the models Ollama or LM Studio has, or says none is running', async () => {
     vi.stubGlobal('fetch', async (url: string) =>
       url.endsWith('/api/version')
         ? new Response('{"version":"0.12.0"}')
@@ -344,11 +357,24 @@ describe('planning edits', () => {
     )
     expect(await invoke('planner:local')).toEqual({
       up: true,
+      kind: 'ollama',
+      host: 'http://127.0.0.1:11434',
       models: [{ name: 'local-8b', sizeBytes: 4_900_000_000 }]
+    })
+    // No Ollama, but LM Studio on its own port, speaking the /v1 API.
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (url === 'http://127.0.0.1:1234/v1/models') return new Response(JSON.stringify({ data: [{ id: 'qwen2.5-7b' }] }))
+      throw new TypeError('fetch failed')
+    })
+    expect(await invoke('planner:local')).toEqual({
+      up: true,
+      kind: 'v1',
+      host: 'http://127.0.0.1:1234',
+      models: [{ name: 'qwen2.5-7b', sizeBytes: 0 }]
     })
     vi.stubGlobal('fetch', async () => {
       throw new TypeError('fetch failed')
     })
-    expect(await invoke('planner:local')).toEqual({ up: false, models: [] })
+    expect(await invoke('planner:local')).toEqual({ up: false, kind: null, host: null, models: [] })
   })
 })

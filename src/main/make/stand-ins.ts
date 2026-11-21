@@ -183,12 +183,12 @@ export function wavSamples(wav: Buffer): { samples: Float32Array; rate: number }
 
 /** espeak-ng's voice for one of Cutalong's: a man's or a woman's, British or American. */
 const espeakVoice = (id: string): string =>
-  /^b[mf]_/.test(id) ? (id.startsWith('bf') ? 'en-gb+f3' : 'en-gb') : /^af_|marin|puck|kore|rachel/i.test(id) ? 'en-us+f3' : 'en-us'
+  /^b[mf]_/.test(id) ? (id.startsWith('bf') ? 'en-gb+f3' : 'en-gb') : /^af_|puck|kore|rachel/i.test(id) ? 'en-us+f3' : 'en-us'
 
 export function standInServices(ffmpeg: string, log: string): MakeServices {
   const note = (line: Record<string, unknown>): void => appendFileSync(log, `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`)
   return {
-    open: () => ({ google: true, fal: true, elevenlabs: false, openai: false }),
+    open: () => ({ google: true, fal: true, elevenlabs: false }),
     models: {
       image: { google: 'stand-in image (ffmpeg)', fal: 'stand-in image (ffmpeg)' },
       clip: { google: 'stand-in clip (ffmpeg)', fal: 'stand-in clip (ffmpeg)' }
@@ -214,10 +214,6 @@ export function standInServices(ffmpeg: string, log: string): MakeServices {
     elevenVoice: async () => null,
     gemini: async (text, voice) => {
       note({ service: 'gemini', kind: 'speech', chars: text.length })
-      return new Uint8Array(await speakWav(text, espeakVoice(voice)))
-    },
-    openai: async (text, voice) => {
-      note({ service: 'openai', kind: 'speech', chars: text.length })
       return new Uint8Array(await speakWav(text, espeakVoice(voice)))
     }
   }

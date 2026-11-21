@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { MODEL } from './planner'
 import { DescribeAnswerSchema, DESCRIBE_SYSTEM, momentLabel, type DescribeAnswer } from './vlog-prompt'
 import type { Moment, MomentKind, Vlog } from '../shared/vlog/schema'
+import { kindOf, localChat, localModels } from './local-llm'
 
 /**
  * Saying what is in each moment of a vlog, from a strip of its stills: by
@@ -137,15 +138,20 @@ export async function describeWithClaude(
   return out
 }
 
-// ---------- On this Mac, through Ollama ----------
+// ---------- On this computer, through Ollama or another local server ----------
 
 /** Names of models that see pictures, for an Ollama too old to say so itself. */
 const VISION_NAME =
-  /llava|vision|-vl\b|vl:|qwen2\.5vl|qwen2-vl|moondream|minicpm-v|gemma3|bakllava|granite3\.2-vision|mistral-small3\.[12]|llama4/i
+  /llava|vision|-vl\b|vl:|qwen2\.5-?vl|qwen2-vl|moondream|minicpm-v|gemma-?3|bakllava|granite3\.2-vision|mistral-small3\.[12]|llama4/i
 
-/** A model Ollama has that can see pictures, or null. */
+/** A model the local server has that can see pictures, or null. */
 export async function visionModel(host: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
   try {
+    // A /v1 server says nothing of what a model can do: its name has to.
+    if (kindOf(host) === 'v1') {
+      const names = (await localModels(host, fetchImpl)).map((m) => m.name)
+      return names.find((n) => VISION_NAME.test(n)) ?? null
+    }
     const tags = await fetchImpl(`${host}/api/tags`, { signal: AbortSignal.timeout(3000) })
     if (!tags.ok) return null
     const names = (((await tags.json()) as { models?: { name: string }[] }).models ?? []).map((m) => m.name)
@@ -161,7 +167,7 @@ export async function visionModel(host: string, fetchImpl: typeof fetch = fetch)
       if (!info?.capabilities && VISION_NAME.test(name)) return name
     }
   } catch {
-    // Ollama is not running.
+    // Nothing is running there.
   }
   return null
 }
@@ -192,28 +198,18 @@ export async function describeWithOllama(
       if (file) {
         out.stills += FRAMES_PER_STRIP
         const image = (await fs.readFile(file)).toString('base64')
-        const res = await fetchImpl(`${local.host}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: local.model,
-            stream: false,
-            format: LOCAL_LINE_SCHEMA,
-            options: { temperature: 0, num_ctx: 8192 },
-            messages: [
-              { role: 'system', content: DESCRIBE_SYSTEM },
-              {
-                role: 'user',
-                content: `${momentLabel(m, vlog)}\nOne line for this moment, and its kind, as JSON: ${JSON.stringify(LOCAL_LINE_SCHEMA)}`,
-                images: [image]
-              }
-            ]
-          }),
-          signal: AbortSignal.timeout(3 * 60 * 1000)
-        })
-        if (!res.ok) throw new Error(`Ollama answered ${res.status}`)
-        const json = (await res.json()) as { message?: { content?: string } }
-        const parsed = LocalLineSchema.safeParse(JSON.parse(json.message?.content ?? 'null'))
+        const text = await localChat(
+          local.host,
+          local.model,
+          {
+            system: DESCRIBE_SYSTEM,
+            user: `${momentLabel(m, vlog)}\nOne line for this moment, and its kind, as JSON: ${JSON.stringify(LOCAL_LINE_SCHEMA)}`,
+            images: [image]
+          },
+          LOCAL_LINE_SCHEMA,
+          { numCtx: 8192, timeoutMs: 3 * 60 * 1000, fetchImpl }
+        )
+        const parsed = LocalLineSchema.safeParse(JSON.parse(text || 'null'))
         if (parsed.success) keep({ moments: [{ id: m.id, ...parsed.data }] }, [m], out)
         else failed++
       }

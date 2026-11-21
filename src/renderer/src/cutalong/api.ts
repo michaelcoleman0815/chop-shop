@@ -101,6 +101,7 @@ export type CutalongApi = Pick<
   | 'updateMemory'
   | 'chooseMedia'
   | 'checkKey'
+  | 'anthropicKeyOnClipboard'
   | 'serviceKeys'
   | 'setServiceKey'
   | 'clearServiceKey'

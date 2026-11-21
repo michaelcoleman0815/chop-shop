@@ -16,6 +16,8 @@ export interface VerbatimOptions {
    * would only be heard as words that were never said.
    */
   again?: boolean
+  /** In place of the verbatim style: a stretch listened to alone for its fillers (main/filler-listen). */
+  prompt?: string
 }
 
 /**
@@ -52,7 +54,7 @@ export function whisperArgs(o: {
     '-pp'
   ]
   if (!o.verbatim) return [...args, '-oj']
-  const prompt = whisperPrompt(o.verbatim.names)
+  const prompt = o.verbatim.prompt ?? whisperPrompt(o.verbatim.names)
   return [
     ...args,
     // Each token with how sure Whisper was of it, and its aligned onset.

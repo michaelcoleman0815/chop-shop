@@ -21,6 +21,24 @@ export interface ServiceKeys {
   read(id: ServiceId): string | null
 }
 
+/**
+ * Keys for services Cutalong no longer uses, by file name: OpenAI's, from
+ * when it could read a made video's narration. Never read again, only
+ * removed, so a key saved then does not linger on the Mac.
+ */
+export const RETIRED_KEY_FILES: readonly string[] = ['openai.key']
+
+/** Removes the retired keys, quietly: once one is gone there is nothing to do, and a failure waits for the next launch. */
+export function forgetRetiredKeys(deps: KeyFileDeps): void {
+  for (const name of RETIRED_KEY_FILES) {
+    try {
+      keyFile(name, deps).clear()
+    } catch {
+      // Left for the next launch; it is never read in the meantime.
+    }
+  }
+}
+
 export function serviceKeys(deps: KeyFileDeps): ServiceKeys {
   const files = Object.fromEntries(SERVICES.map((s) => [s.id, keyFile(`${s.id}.key`, deps)])) as Record<
     ServiceId,

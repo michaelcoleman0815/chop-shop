@@ -32,7 +32,7 @@ const FAKE_DIR = mkdtempSync(join(tmpdir(), 'probe-narration-ffmpeg-'))
 const FAKE_FFMPEG = standIn(join(FAKE_DIR, exe('fake-ffmpeg')), "process.stdin.resume()\nprocess.stdin.on('end', () => process.stdout.write(Buffer.alloc(96000)))\n")
 afterAll(() => rmSync(FAKE_DIR, { recursive: true, force: true }))
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
-const can: Availability = { google: true, fal: false, elevenlabs: true, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: true, claude: true, localVoice: true }
 
 const para = (s: string, n: number): string =>
   Array.from({ length: n }, (_, i) => `In ${1950 + i}, the wildcatter of ${s} drilled well number ${i + 1} and waited for the oil to come.`).join(' ')
@@ -92,7 +92,7 @@ describe('fixed: a paid voice that stops partway', () => {
     const gate = gateFor(f.fetch, { keys: { elevenlabs: 'el-key' } })
     const images: string[] = []
     const services: MakeServices = {
-      open: () => ({ google: true, fal: false, elevenlabs: true, openai: false }),
+      open: () => ({ google: true, fal: false, elevenlabs: true }),
       models: { image: { google: 'gemini-nano-banana-2.1', fal: 'f' }, clip: { google: 'gemini-omni-1.2-flash', fal: 'k' } },
       image: async (_s, prompt) => {
         images.push(prompt)
@@ -103,8 +103,7 @@ describe('fixed: a paid voice that stops partway', () => {
       },
       elevenlabs: (voiceId, text, around, signal) => elevenSpeech(gate, voiceId, text, around, signal),
       elevenVoice: async () => null,
-      gemini: async () => new Uint8Array(),
-      openai: async () => new Uint8Array()
+      gemini: async () => new Uint8Array()
     }
     const local: LocalVoice = {
       ready: async () => true,

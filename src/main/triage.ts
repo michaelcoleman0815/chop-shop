@@ -5,6 +5,7 @@ import { keyMessage, type ClaudeKeyState } from '../shared/setup'
 import type { PlanQuestion } from '../shared/plan/commands'
 import { claude, describeError, keyDeps, MODEL } from './planner'
 import { noteKeyFailure } from './claude-key'
+import { chatLocally } from './local-llm'
 import { renderCommands, type CommandLine } from './planner-prompt'
 
 /**
@@ -136,13 +137,55 @@ export function readTriage(t: Triage, said: string): Extract<TriageResult, { ok:
   }
 }
 
-/** Asks Claude which road a message takes. */
+/**
+ * A message read with no Claude to read it: an edit, with a link as one to
+ * learn from. What a local model reads is taken when it answers in shape;
+ * this is what is left when it does not.
+ */
+export function plainTriage(input: TriageInput): Extract<TriageResult, { ok: true }> {
+  return readTriage(
+    {
+      route: 'edit',
+      reply: '',
+      link: input.link ? 'study' : 'none',
+      clip: { count: 0, minSec: 0, maxSec: 0, funny: false, topic: '' },
+      question: { text: '', options: [] }
+    },
+    input.request.trim()
+  )
+}
+
+/** A model on this computer reads which road a message takes, held to the same shape as Claude's answer. */
+export async function triageLocally(
+  input: TriageInput,
+  local: { host: string; model: string }
+): Promise<Extract<TriageResult, { ok: true }>> {
+  try {
+    const raw = await chatLocally(local.host, local.model, TRIAGE_SYSTEM, triageRequest(input), z.toJSONSchema(TriageSchema))
+    const t = TriageSchema.safeParse(raw)
+    return t.success ? readTriage(t.data, input.request.trim()) : plainTriage(input)
+  } catch {
+    // Not running, or not in shape: the message is still an edit to plan, and the planner says what is wrong.
+    return plainTriage(input)
+  }
+}
+
+/** Asks Claude which road a message takes, or the model on this computer chosen in Claude's place. */
 export async function triage(
   input: TriageInput,
-  deps: { key: () => string | null | Promise<string | null>; fetch?: typeof fetch } = { key: () => keyDeps().read() }
+  deps: {
+    key: () => string | null | Promise<string | null>
+    fetch?: typeof fetch
+    /** The local model chosen to edit with, and where it runs; null for Claude. */
+    local?: () => Promise<{ host: string; model: string } | null>
+  } = { key: () => keyDeps().read() }
 ): Promise<TriageResult> {
   const apiKey = await deps.key()
-  if (!apiKey) return { ok: false, message: keyMessage('none'), keyState: 'none' }
+  if (!apiKey) {
+    const local = deps.local ? await deps.local() : null
+    if (local) return triageLocally(input, local)
+    return { ok: false, message: keyMessage('none'), keyState: 'none' }
+  }
   // Over the platform's network, or a fetch a test stands in.
   const client = claude(apiKey, deps.fetch ? { fetch: deps.fetch } : {})
   try {

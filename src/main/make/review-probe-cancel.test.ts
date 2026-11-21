@@ -35,7 +35,7 @@ afterAll(() => {
  *    also leaves out what Claude cost.
  */
 
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
 const sentence = (i: number): string => `In ${1950 + (i % 9)} the derricks rose over town number ${i + 1} and the men worked through the night.`
 // Within the answer cap the hold sets (the stand-in planner does not read max_tokens).
@@ -91,7 +91,7 @@ function planner(phrases: string[], onCall: (n: number) => void): { parse: Parse
 
 function depsFor(o: { parse: ParseCall; images: string[]; words: TimedWord[]; dir: string; signal: AbortSignal; onImage?: (n: number) => void }): MakeRunDeps {
   const services = {
-    open: () => ({ google: true, fal: false, elevenlabs: false, openai: false }),
+    open: () => ({ google: true, fal: false, elevenlabs: false }),
     models: { image: { google: 'g', fal: 'f' }, clip: { google: 'g', fal: 'f' } },
     image: async (_s: string, p: string) => {
       o.images.push(p)

@@ -21,6 +21,7 @@ import {
   shotCost,
   shotMeant,
   wantsMake,
+  VoiceChoiceSchema,
   type Availability,
   type Brief,
   type Make,
@@ -28,8 +29,8 @@ import {
 } from './index'
 import { EditDocSchema, currentCut, resolveCut, type Cut } from '../edit'
 
-const ALL: Availability = { google: true, fal: true, elevenlabs: true, openai: true, claude: true, localVoice: true }
-const NONE: Availability = { google: false, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: false }
+const ALL: Availability = { google: true, fal: true, elevenlabs: true, claude: true, localVoice: true }
+const NONE: Availability = { google: false, fal: false, elevenlabs: false, claude: true, localVoice: false }
 
 const SCRIPT = `# Black Gold
 
@@ -450,6 +451,43 @@ describe('assembling the edit', () => {
     expect(lookFor('sepia').sepia).toBeGreaterThan(lookFor('archival').sepia as number)
     expect(lookFor('black-and-white').saturation).toBe(-1)
     expect(lookFor('clean').dust).toBeUndefined()
+  })
+})
+
+describe('a made video saved when Cutalong offered OpenAI voices', () => {
+  it('still opens, its voice read as the one on this Mac, and its narration kept as it is', () => {
+    const make = made('documentary')
+    const { doc } = assembleDoc({ id: 'made-openai', make, words: NARRATION_WORDS(make.phrases), ground: '/made/ground.png' })
+    const saved = JSON.parse(JSON.stringify(doc))
+    saved.make.brief.voice = { engine: 'openai', id: 'cedar', name: 'Cedar' }
+    saved.make.narration = { ...saved.make.narration, voice: { engine: 'openai', id: 'cedar', name: 'Cedar' }, timing: 'whisper' }
+    const opened = EditDocSchema.parse(saved)
+    expect(opened.make?.title).toBe('Black Gold')
+    expect(opened.make?.brief.voice).toEqual({ engine: 'local', id: 'am_michael', name: 'Michael' })
+    expect(opened.make?.narration).toMatchObject({ path: '/made/narration.wav', voice: { engine: 'local', id: 'am_michael' } })
+  })
+
+  it('reads each old voice as the one on this Mac that stood in its place, and one it never offered as Michael', () => {
+    expect(VoiceChoiceSchema.parse({ engine: 'openai', id: 'marin', name: 'Marin' })).toEqual({ engine: 'local', id: 'af_heart', name: 'Heart' })
+    expect(VoiceChoiceSchema.parse({ engine: 'openai', id: 'onyx', name: 'Onyx' })).toEqual({ engine: 'local', id: 'am_fenrir', name: 'Fenrir' })
+    expect(VoiceChoiceSchema.parse({ engine: 'openai', id: 'alloy', name: 'Alloy' })).toEqual({ engine: 'local', id: 'am_michael', name: 'Michael' })
+    // Any other engine it does not know is still refused.
+    expect(VoiceChoiceSchema.safeParse({ engine: 'azure', id: 'x', name: 'X' }).success).toBe(false)
+  })
+
+  it('makes it again on this Mac: the script goes nowhere else', () => {
+    const voice = VoiceChoiceSchema.parse({ engine: 'openai', id: 'cedar', name: 'Cedar' })
+    const make = made('documentary')
+    const remade = { ...make.brief, voice }
+    const q = quoteFor(remade, estimateCounts(remade, make.phrases, SCRIPT), ALL, { today: '2026-11-16', scriptWritten: true })
+    expect(q.voice).toEqual({ engine: 'local', id: 'am_michael', name: 'Michael' })
+    expect(q.sends.join(' ')).not.toMatch(/OpenAI/)
+    expect(q.sends).toContain('Michael reads the script on this Mac, so the words go nowhere else.')
+  })
+
+  it('reads an ask for OpenAI by name on this Mac, as Cutalong no longer uses it', () => {
+    const brief = readAsk('make a 2 minute documentary about the 1950s oil boom, read by OpenAI') as Brief
+    expect(brief.voice.engine).toBe('local')
   })
 })
 

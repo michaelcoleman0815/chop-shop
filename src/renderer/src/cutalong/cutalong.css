@@ -772,11 +772,11 @@ button:disabled {
 }
 
 /* In a Settings section the steps sit on its sheet, as rows, not sheets of their own. */
-.cl-section .cl-steps {
+:is(.cl-section, .cl-set-more) .cl-steps {
   gap: 0;
 }
 
-.cl-section .cl-steps > li {
+:is(.cl-section, .cl-set-more) .cl-steps > li {
   padding: var(--space-4) 0;
   background: none;
   border: 0;
@@ -785,13 +785,13 @@ button:disabled {
   box-shadow: none;
 }
 
-.cl-section .cl-steps > li:first-child {
+:is(.cl-section, .cl-set-more) .cl-steps > li:first-child {
   border-top: 0;
   padding-top: 0;
 }
 
 /* The step to do now, on a section's sheet: its number firms instead of a ring round a sheet. */
-.cl-section .cl-steps > li.now::before {
+:is(.cl-section, .cl-set-more) .cl-steps > li.now::before {
   background: var(--ink);
   color: var(--card);
   box-shadow: none;
@@ -2456,6 +2456,546 @@ button:disabled {
   flex: 1 1 260px;
 }
 
+/* ---------- Which AI edits with you: Claude or a model on this computer (components/AiChoice) ---------- */
+
+.cl-ai-options {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.cl-ai-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-page);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+}
+
+/* Picked, the card takes its block colour and an ink ring, as a version's tab does. */
+.cl-ai-option.on {
+  box-shadow: inset 0 0 0 2px var(--ink), var(--shadow-page);
+}
+
+.cl-ai-option.claude.on {
+  background: var(--block-salmon);
+}
+
+.cl-ai-option.local.on {
+  background: var(--block-green);
+}
+
+.cl-ai-option-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cl-ai-option-name {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+.cl-ai-option-what {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+/* On a block, the tag is paper. */
+.cl-ai-option.on .cl-set-tag {
+  background: var(--card);
+}
+
+.cl-local-steps {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-page);
+}
+
+.cl-local-line {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 15px;
+  line-height: 22px;
+  text-wrap: pretty;
+}
+
+@media (max-width: 640px) {
+  .cl-ai-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Settings: a list of sections beside one section's rows ---------- */
+
+/* The page measures itself, so the list folds into a row of places wherever Settings is narrow, rail open or not. */
+.cl-page:has(> .cl-settings) {
+  container: settings / inline-size;
+}
+
+.cl-settings {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  grid-template-areas:
+    'head head'
+    'nav pane';
+  column-gap: var(--space-8);
+  row-gap: var(--space-6);
+}
+
+.cl-settings-head {
+  grid-area: head;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cl-settings-head .cl-lede {
+  margin: 0;
+}
+
+.cl-settings-nav {
+  grid-area: nav;
+  align-self: start;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Search is a field in the well, like the composer's quiet cousin. */
+.cl-set-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  color: var(--muted);
+}
+
+.cl-set-search svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.cl-set-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.cl-set-search input::placeholder {
+  color: var(--muted);
+}
+
+.cl-set-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.cl-set-search:focus-within {
+  box-shadow: inset 0 0 0 1px var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+}
+
+.cl-settings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A new group of places starts a little apart, over a hairline. */
+.cl-settings-list li.gap {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.cl-set-place {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.cl-set-place.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-tab);
+}
+
+/* Each section's mark: its line icon on a small pastel block. */
+.cl-set-tile {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  color: var(--ink);
+}
+
+.cl-set-tile svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cl-set-tile.big {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.cl-set-tile.big svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cl-settings-pane {
+  grid-area: pane;
+  min-width: 0;
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.cl-set-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.cl-set-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.cl-set-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-set-subhead {
+  margin: var(--space-2) 0 0 var(--space-1);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.cl-set-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+}
+
+/* A setting: its title and line on the left, its control at the end; what it opens, under both. */
+.cl-set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-6);
+  row-gap: var(--space-4);
+  padding: 18px 22px;
+}
+
+.cl-set-row + .cl-set-row {
+  border-top: 1px solid var(--line);
+}
+
+.cl-set-text {
+  min-width: 0;
+}
+
+.cl-set-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+/* A word or two at a glance, as Claude's settings say "Local only". */
+.cl-set-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cl-set-desc {
+  margin: 2px 0 0;
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.cl-set-desc .cl-path {
+  display: block;
+  font-size: 13px;
+}
+
+.cl-set-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* A choice of a few side by side is wide: it sits under the row's words, where it has room. */
+.cl-set-row:has(> .cl-set-control > .cl-segments) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cl-set-row:has(> .cl-set-control > .cl-segments) .cl-set-control {
+  justify-content: flex-start;
+}
+
+.cl-set-more {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.cl-set-more > :is(.cl-list, .cl-field, .cl-steps, .cl-progress, form) {
+  align-self: stretch;
+}
+
+.cl-set-more .cl-aside {
+  max-width: 60ch;
+  text-wrap: pretty;
+}
+
+/* Fields under a row read as every field in Cutalong does. */
+.cl-set-more input:not([type='checkbox']):not([type='color']) {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 14px;
+  outline: none;
+}
+
+.cl-set-more input:not([type='checkbox']):not([type='color']):focus-visible {
+  border-color: var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+.cl-set-more .cl-row input:not([type='checkbox']) {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* A choice of several, as a pill with a drawn chevron. */
+/* A link drawn as a button reads as one: no underline. */
+a.cl-btn {
+  text-decoration: none;
+}
+
+.cl-select {
+  position: relative;
+  display: inline-flex;
+  max-width: 260px;
+}
+
+.cl-select select {
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 36px 0 14px;
+  border: 1px solid var(--line-mid);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cl-select::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 15px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid var(--ink-soft);
+  border-bottom: 1.6px solid var(--ink-soft);
+  translate: 0 -70%;
+  rotate: 45deg;
+  pointer-events: none;
+}
+
+.cl-select select:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.cl-select select:disabled {
+  color: var(--muted);
+  background: var(--card-2);
+  cursor: not-allowed;
+}
+
+/* While searching: sections and groups with nothing that matches step aside, and the pane says when nothing does. */
+.cl-settings-pane.finding .cl-set-section:not(:has(.cl-set-row)),
+.cl-settings-pane.finding .cl-set-group:not(:has(.cl-set-row)) {
+  display: none;
+}
+
+.cl-set-none {
+  display: none;
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.cl-settings-pane.finding:not(:has(.cl-set-row)) .cl-set-none {
+  display: block;
+}
+
+/* Licences, on a phone, read as a sheet of prose with a list. */
+.cl-set-prose {
+  padding: var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@container settings (width < 760px) {
+  .cl-settings {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'nav'
+      'pane';
+    row-gap: var(--space-5);
+  }
+
+  .cl-settings-nav {
+    position: static;
+  }
+
+  /* The places become one row that scrolls sideways, each a pill. */
+  .cl-settings-list {
+    flex-direction: row;
+    gap: var(--space-1);
+    overflow-x: auto;
+    margin: 0 calc(-1 * var(--space-2));
+    padding: 2px var(--space-2) var(--space-2);
+    scrollbar-width: none;
+  }
+
+  .cl-settings-list li.gap {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .cl-set-place {
+    width: auto;
+    padding: 0 14px 0 6px;
+    border-radius: var(--radius-pill);
+  }
+
+  .cl-set-tile {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-pill);
+  }
+
+  .cl-settings-pane {
+    max-width: none;
+  }
+}
+
+/* Narrower still, a row's control goes under its words, except a lone switch, which stays at the end. */
+@container settings (width < 520px) {
+  .cl-set-row:not(:has(> .cl-set-control > .cl-toggle:only-child)) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cl-set-row:not(:has(> .cl-set-control > .cl-toggle:only-child)) .cl-set-control {
+    justify-content: flex-start;
+  }
+
+  .cl-set-row {
+    padding: 16px 18px;
+  }
+
+  .cl-set-heading {
+    font-size: 22px;
+    line-height: 28px;
+  }
+}
+
 /* Scene effects in the preview (fx-preview.ts): the picture an effect works on,
    over the decks and under the look, and what it draws over the picture, over
    the look and under the captions. Picture pixels, never interface colour. */
@@ -2850,6 +3390,7 @@ button:disabled {
   }
 
   .cl-btn.text:hover:not(:disabled),
+  .cl-set-place:not(.on):hover,
   .cl-rail-item:hover,
   .cl-rail-project:hover {
     background: color-mix(in oklch, var(--ink) 5%, transparent);
@@ -3756,7 +4297,7 @@ button:disabled {
   color: var(--ink);
 }
 
-/* A dollar amount in Settings: a small field with its sign in front (MadeVideos). */
+/* A dollar amount in Settings: a small field with its sign in front (settings/Made). */
 .cl-dollars {
   display: inline-flex;
   align-items: center;
@@ -3779,12 +4320,6 @@ button:disabled {
   outline: none;
   font: inherit;
   font-variant-numeric: tabular-nums;
-}
-
-.cl-make-limit,
-.cl-make-auto {
-  align-items: center;
-  gap: var(--space-3);
 }
 
 /*
@@ -4031,7 +4566,8 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
-  margin-top: var(--space-6);
+  /* As far from the composer as the composer is from the question, a step more: one rhythm down the page. */
+  margin-top: var(--space-10);
 }
 
 .cl-preset {

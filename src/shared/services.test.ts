@@ -24,7 +24,9 @@ describe('the other AI services switch', () => {
   })
 
   it('names each service plainly', () => {
-    expect(SERVICES.map((s) => s.name)).toEqual(['Deepgram', 'AssemblyAI', 'Google Gemini', 'fal.ai', 'ElevenLabs', 'OpenAI'])
+    expect(SERVICES.map((s) => s.name)).toEqual(['Deepgram', 'AssemblyAI', 'Google Gemini', 'fal.ai', 'ElevenLabs'])
+    // Cutalong does not use OpenAI.
+    expect(isServiceId('openai')).toBe(false)
     expect(serviceName('gemini')).toBe('Google Gemini')
     expect(isServiceId('deepgram')).toBe(true)
     expect(isServiceId('anthropic')).toBe(false)
@@ -71,7 +73,10 @@ describe('keys pasted into the wrong field', () => {
       'That looks like an Anthropic key. It goes in the Claude section.'
     )
     expect(wrongServiceKey('gemini', 'sk-proj-abc')).toBe(
-      'That looks like an OpenAI key. Google Gemini needs its own key.'
+      'That looks like an OpenAI key. Cutalong doesn’t use OpenAI; Google Gemini needs its own key.'
+    )
+    expect(wrongServiceKey('elevenlabs', 'sk-abc')).toBe(
+      'That looks like an OpenAI key. Cutalong doesn’t use OpenAI; ElevenLabs needs its own key.'
     )
     expect(wrongServiceKey('assemblyai', 'AIzaSyabc')).toBe(
       'That looks like a Google key. AssemblyAI needs its own key.'

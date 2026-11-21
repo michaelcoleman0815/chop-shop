@@ -9,10 +9,10 @@ export default {
   // The main address, without https:// or a trailing slash.
   domain: 'cutalong.io',
 
-  // false until a signed Cutalong release exists. While it is false, every download button reads
-  // "Get notified when it's ready" and leads to the email field, /download goes there too, and no
-  // page links to the releases. true brings the download buttons back, pointing at `downloadUrl`.
-  downloadReady: false,
+  // Whether the download buttons show. False, every download button reads "Get notified when it's
+  // ready" and leads to the email field, /download goes there too, and no page links to the releases.
+  // True (the owner's call, 21 November 2026), they point at `downloadUrl`.
+  downloadReady: true,
 
   // Where every "Download for Mac" button goes once `downloadReady` is true, and where
   // cutalong.io/download redirects then (see _redirects in the build). For now, the latest GitHub release.

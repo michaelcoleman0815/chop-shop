@@ -35,7 +35,8 @@ import { buildAss } from './captions'
 import { recentProjects, createProject, openProject, saveProject, removeFromRecent, projectsDir, keepInFile, sweepPartials } from './projects'
 import type { Kept } from '../shared/make/kept'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
-import { suggestClips, listModels, OLLAMA_HOST } from './clips'
+import { suggestClips, listModels } from './clips'
+import { localHost } from './local-server'
 import { localModels, isLocalUp } from './local-llm'
 import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
 import { getSettings, saveSettings } from './store'
@@ -445,8 +446,9 @@ function registerIpc(): void {
     // so the choice of where a transcript goes is visible at the point of
     // choosing rather than buried in a setting somewhere else.
     let local: { id: string; name: string }[] = []
-    if (await isLocalUp(OLLAMA_HOST)) {
-      local = await localModels(OLLAMA_HOST)
+    const host = await localHost()
+    if (await isLocalUp(host)) {
+      local = await localModels(host)
         .then((models) =>
           models.map((m) => ({
             id: `ollama:${m.name}`,

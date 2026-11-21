@@ -11,7 +11,7 @@ import { servicesTotal } from './run'
  * changes are held to it with what the video has already cost.
  */
 
-const can: Availability = { google: true, fal: true, elevenlabs: true, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: true, elevenlabs: true, claude: true, localVoice: true }
 const sentences = (n: number): string[] =>
   Array.from({ length: n }, (_, i) => `In ${1950 + (i % 9)}, a family in Midland counted every dollar of the week, number ${i + 1}.`)
 

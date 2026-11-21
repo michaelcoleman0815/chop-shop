@@ -27,8 +27,7 @@ const HOSTS = [
   'fal.run',
   'api.fal.ai',
   'fal.media',
-  'api.elevenlabs.io',
-  'api.openai.com'
+  'api.elevenlabs.io'
 ]
 
 describe('one way out', () => {
@@ -48,6 +47,10 @@ describe('one way out', () => {
     const outside = sources(MAIN).filter((s) => !s.file.startsWith('providers'))
     for (const { file, text } of outside)
       for (const host of HOSTS) expect(`${file}: ${text.includes(host)}`).toBe(`${file}: false`)
+  })
+
+  it('has no way to OpenAI at all: Cutalong does not use it', () => {
+    for (const { file, text } of sources(MAIN)) expect(`${file}: ${/openai\.com/i.test(text)}`).toBe(`${file}: false`)
   })
 
   it('reads service keys in one place, for the gate', () => {

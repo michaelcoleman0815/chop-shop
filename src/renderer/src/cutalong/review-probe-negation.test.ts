@@ -25,7 +25,7 @@ import { draftFor } from '../../../main/make/run'
 import { useMake } from './useMake'
 import type { Msg } from './components/Message'
 
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 
 function harness() {
   const msgs = new Map<string, Partial<Msg>>()

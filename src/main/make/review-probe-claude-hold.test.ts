@@ -34,7 +34,7 @@ afterAll(() => {
  */
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 const local = { engine: 'local' as const, id: 'am_michael', name: 'Michael' }
 
 describe('Claude paid from the pictures\' share', () => {
@@ -145,7 +145,7 @@ describe('Claude paid from the pictures\' share', () => {
     }
     const images: string[] = []
     const services = {
-      open: () => ({ google: true, fal: false, elevenlabs: false, openai: false }),
+      open: () => ({ google: true, fal: false, elevenlabs: false }),
       models: { image: { google: 'g', fal: 'f' }, clip: { google: 'g', fal: 'f' } },
       image: async (_s: string, p: string) => {
         images.push(p)

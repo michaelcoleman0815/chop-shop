@@ -116,10 +116,10 @@ export function keyMessage(state: ClaudeKeyState, key?: string | null): string {
 
 /** The setup step that fixes a state, counted from 0 in the Anthropic guide; null when no step does. */
 export function fixingStep(state: ClaudeKeyState): number | null {
-  if (state === 'refused' || state === 'wrong' || state === 'no-access') return 1
-  if (state === 'no-credit' || state === 'busy') return 2
-  // The keychain could not open the saved key: pasting it again is the fix.
-  if (state === 'unreadable') return 3
+  // Turned down, or not allowed the model: a new key. The keychain could not open the saved key: copy it again.
+  if (state === 'refused' || state === 'wrong' || state === 'no-access' || state === 'unreadable') return 1
+  // Out of credit, or limited: Billing, in the first step.
+  if (state === 'no-credit' || state === 'busy') return 0
   if (state === 'none') return 0
   return null
 }
@@ -131,7 +131,7 @@ export function fixingStep(state: ClaudeKeyState): number | null {
  * model. Any other state says nothing for certain, so nothing is marked.
  */
 export function doneSteps(state: ClaudeKeyState): number {
-  if (state === 'no-credit' || state === 'busy') return 2
+  // Accepted but not allowed the model: the account and its credit are there; the key is what to change.
   if (state === 'no-access') return 1
   return 0
 }

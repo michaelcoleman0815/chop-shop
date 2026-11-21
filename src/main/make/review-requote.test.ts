@@ -37,7 +37,7 @@ const make = {
   spent: 1
 } as unknown as Make
 const doc = { id: 'doc1', sources: [{ id: 's1', path: '/m/n.wav' }], words: [], make, versions: [] } as unknown as EditDoc
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 const deps = { parse: (async () => Promise.reject(new Error('not asked'))) as ParseCall, can, brand: {}, settings: { cap: null, autoUnder: null } }
 
 /** A script of `lines` sentences of about twelve words, as Claude would return it. */

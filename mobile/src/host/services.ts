@@ -18,7 +18,7 @@ import type { PhoneSettings } from './settings'
 
 /**
  * The services a phone uses: hearing the words and judging takes. Those that
- * make a video from nothing (fal.ai, ElevenLabs, OpenAI) are the Mac's for now
+ * make a video from nothing (fal.ai, ElevenLabs) are the Mac's for now
  * (host/limits.ts): a phone keeps no key for them, so the gate sends them nothing.
  */
 export const PHONE_SERVICES: readonly ServiceId[] = SERVICES.filter(

@@ -44,8 +44,6 @@ export interface VoicePrice {
   perSecond: number
   /** Dates the price changes, and to what: a promotion ending, a rise announced. */
   from?: { date: string; perSecond?: number; perThousandChars?: number }[]
-  /** When the service stops answering for this model, if announced. */
-  shutsDown?: string
   source: string
 }
 
@@ -120,16 +118,6 @@ export const PRICES = {
       perSecond: 0.000225,
       from: [{ date: '2027-01-01', perSecond: 0.00045 }],
       source: 'https://aistudio.google.com/docs/speech-generation'
-    },
-    // https://developers.openai.com/api/docs/models/gpt-4o-mini-tts: $0.60 per 1M text tokens in and $12 per 1M
-    // audio tokens out, about $0.015 a minute of speech. Deprecated: shuts down January 6, 2027.
-    openai: {
-      model: 'gpt-4o-mini-tts',
-      name: 'OpenAI gpt-4o-mini-tts',
-      perThousandChars: 0,
-      perSecond: 0.00025,
-      shutsDown: '2027-01-06',
-      source: 'https://developers.openai.com/api/docs/guides/text-to-speech'
     }
   } satisfies Record<string, VoicePrice>,
   // The model the planner uses, with the person's own Anthropic key (src/main/planner.ts):

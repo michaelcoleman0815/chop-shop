@@ -446,6 +446,41 @@
   background-color: var(--card);
 }
 
+/* ---------- Settings: a section picked arrives; what a row opens rises under it ---------- */
+
+/*
+ * Only a section picked from the list moves: the first comes with the screen,
+ * and search results, which the keyboard brings, appear at once.
+ */
+.cl-settings-pane.moved .cl-set-section,
+.cl-set-more {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+@starting-style {
+  .cl-settings-pane.moved .cl-set-section {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+
+  .cl-set-more {
+    opacity: 0;
+    translate: 0 calc(-1 * var(--space-1) * var(--cl-travel));
+  }
+}
+
+.cl-settings-pane.finding .cl-set-more {
+  transition: none;
+}
+
+.cl-set-place {
+  transition-property: background-color, color, box-shadow;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
 /* ---------- Toast: rises in, falls away (useLingering() in motion.tsx) ---------- */
 
 .cl-toast {

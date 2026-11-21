@@ -62,7 +62,7 @@ const make = {
   clips: null,
   spent: 1
 } as unknown as Make
-const can: Availability = { google: true, fal: false, elevenlabs: false, openai: false, claude: true, localVoice: true }
+const can: Availability = { google: true, fal: false, elevenlabs: false, claude: true, localVoice: true }
 
 describe('asks of a made video', () => {
   it('reads timing and grade asks as ordinary edits, at no cost', () => {

@@ -75,10 +75,10 @@ describe('the gate', () => {
       const step = fixingStep(state)
       if (step !== null) expect(steps[step], state).toBeDefined()
     }
-    // Turned down: make a new key. No credit: Billing. The keychain could not open it: paste it again.
+    // Turned down: make a new key. No credit: Billing. The keychain could not open it: copy it again.
     expect(steps[fixingStep('refused') as number].link?.label).toBe('Open API keys')
     expect(steps[fixingStep('no-credit') as number].link?.label).toBe('Open Billing')
-    expect(steps[fixingStep('unreadable') as number].text).toBe('Paste the key here.')
+    expect(steps[fixingStep('unreadable') as number].link?.label).toBe('Open API keys')
     // Anthropic being down or out of reach is not fixed by any step.
     expect(fixingStep('down')).toBeNull()
     expect(fixingStep('offline')).toBeNull()
@@ -87,7 +87,8 @@ describe('the gate', () => {
       const done = doneSteps(state)
       if (done > 0) expect(done, state).toBeLessThanOrEqual(fixingStep(state) as number)
     }
-    expect(doneSteps('no-credit')).toBe(2)
+    // Out of credit: the first step, signing in and paying, is the one to do again.
+    expect(doneSteps('no-credit')).toBe(0)
     expect(doneSteps('no-access')).toBe(1)
     for (const state of ['none', 'wrong', 'refused', 'unreadable', 'down', 'offline'] as const) expect(doneSteps(state), state).toBe(0)
     expect(keyStatus('refused')).toEqual({ state: 'refused', message: keyMessage('refused'), confirmed: false })
@@ -116,9 +117,8 @@ describe('the steps to every key', () => {
   // Each page opened and read on the day KEYS_CHECKED says, from the service's own documentation.
   const CHECKED: Record<KeyServiceId, string[]> = {
     anthropic: [
-      'https://platform.claude.com/login',
-      'https://platform.claude.com/settings/keys',
       'https://platform.claude.com/settings/billing',
+      'https://platform.claude.com/settings/keys',
       'https://platform.claude.com/usage'
     ],
     gemini: ['https://aistudio.google.com/apikey', 'https://aistudio.google.com/projects'],
@@ -128,7 +128,6 @@ describe('the steps to every key', () => {
       'https://elevenlabs.io/app/settings/api-keys',
       'https://elevenlabs.io/app/subscription'
     ],
-    openai: ['https://platform.openai.com/api-keys', 'https://platform.openai.com/settings/organization/billing/overview'],
     deepgram: ['https://console.deepgram.com/signup', 'https://console.deepgram.com/'],
     assemblyai: ['https://www.assemblyai.com/dashboard/signup', 'https://www.assemblyai.com/dashboard/home']
   }
@@ -147,19 +146,18 @@ describe('the steps to every key', () => {
     }
   })
 
-  it('ends every guide on pasting the key, and says what the key is for', () => {
+  it('ends every guide on pasting the key, and Anthropic’s on copying it, and says what the key is for', () => {
     for (const guide of Object.values(KEY_GUIDES)) {
-      expect(guide.steps.at(-1)?.text, guide.id).toBe('Paste the key here.')
+      if (guide.id !== 'anthropic') expect(guide.steps.at(-1)?.text, guide.id).toBe('Paste the key here.')
       expect(guide.steps.length, guide.id).toBeLessThanOrEqual(4)
       expect(guide.why, guide.id).toMatch(/^[A-Z].+\.$/)
       for (const step of guide.steps) expect(step.text, guide.id).toMatch(/^[A-Z].+\.$/)
     }
-    // The Anthropic key is named for the app in the Console, and copied when it is made.
+    // Only what the person has to do themselves: sign in and pay, then make the key and copy it.
+    // The desktop app picks the copied key up; the field in the last step is for pasting it.
     expect(KEY_GUIDES.anthropic.steps.map((s) => s.text)).toEqual([
-      'Open the Anthropic Console and sign in, or sign up.',
-      'Create a key, name it Cutalong, and copy it.',
-      'Add credit under Billing, so the key can be used.',
-      'Paste the key here.'
+      'Sign in to the Anthropic Console, or sign up, and add credit.',
+      'Create a key named Cutalong, and copy it.'
     ])
   })
 

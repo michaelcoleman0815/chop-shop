@@ -1,5 +1,6 @@
 import { join } from 'path'
 import { loudnessEnvelope } from './audio-envelope'
+import { FILLER_PROMPT, listenForFillers, readSamples } from './filler-listen'
 import { platform } from './platform'
 import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
 import { voicedRegions } from '../shared/audio/voiced'
@@ -251,6 +252,35 @@ export async function transcribe(
         heard = pass.words
         if (pass.changed > 0) {
           console.log(`[stt] a second listen restored words in ${pass.changed} of ${pass.spans.length} places`)
+        }
+        // Then every um, hmm and uh still unwritten, heard in the sound and by Whisper alone (main/filler-listen).
+        onProgress(98, 'Listening for ums')
+        let m = 0
+        const fillers = await listenForFillers(heard, voiced, {
+          samples: (span) => readSamples(host.tool('ffmpeg'), wav, span),
+          listen: async (span) => {
+            const part = join(dir, `um-${++m}.wav`)
+            await extractAudio(wav, part, span.endSec - span.startSec, () => undefined, span.startSec)
+            const partPrefix = join(dir, `um-${m}`)
+            await runWhisper(
+              bin,
+              whisperArgs({
+                model,
+                modelFile,
+                wav: part,
+                prefix: partPrefix,
+                verbatim: { ...verbatim, prompt: FILLER_PROMPT },
+                threads
+              }),
+              () => undefined
+            )
+            const alone = tokensToWords(parseWhisperJson(await host.files.readText(`${partPrefix}.json`)).transcription)
+            return alone.map((w) => ({ ...w, startSec: w.startSec + span.startSec, endSec: w.endSec + span.startSec }))
+          }
+        })
+        if (fillers.length > 0) {
+          heard = [...heard, ...fillers].sort((a, b) => a.startSec - b.startSec)
+          console.log(`[stt] heard ${fillers.length} filler${fillers.length === 1 ? '' : 's'} Whisper left out`)
         }
       } catch (err) {
         console.warn('[stt] the second listen failed, keeping the first:', err instanceof Error ? err.message : err)

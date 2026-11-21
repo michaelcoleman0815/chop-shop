@@ -48,18 +48,21 @@ describe('the steps to a key', () => {
   })
 
   it('holds the field in the last step, labelled by it, and marks the step that fixes what went wrong', () => {
+    // A key Anthropic took but that cannot use the model: the account and its credit are done; make a new key.
     const html = render('anthropic', {
-      current: 2,
-      done: 2,
+      current: 1,
+      done: 1,
       paste: { id: 'cl-key', field: createElement('input', { id: 'cl-key', type: 'password' }) }
     })
-    expect(html).toContain('<h3><label for="cl-key">Paste the key here.</label></h3>')
+    expect(html).toContain('<h3><label for="cl-key">Create a key named Cutalong, and copy it.</label></h3>')
     expect(html).toContain('<div class="cl-step-field"><input id="cl-key" type="password"/></div>')
     expect(html.match(/aria-current="step"/g)).toHaveLength(1)
-    expect(html).toMatch(/<li class="now" aria-current="step"><div class="cl-step-body"><h3>Add credit under Billing/)
-    // The steps before it are done, and say so to a screen reader too.
-    expect(html.match(/<li class="done">/g)).toHaveLength(2)
-    expect(html).toContain('<h3>Create a key, name it Cutalong, and copy it.<span class="sr-only">, done</span></h3>')
+    expect(html).toMatch(/<li class="now" aria-current="step"><div class="cl-step-body"><h3><label for="cl-key">Create a key/)
+    // The step before it is done, and says so to a screen reader too.
+    expect(html.match(/<li class="done">/g)).toHaveLength(1)
+    expect(html).toContain(
+      '<h3>Sign in to the Anthropic Console, or sign up, and add credit.<span class="sr-only">, done</span></h3>'
+    )
     // Nothing marked when nothing went wrong.
     const plain = render('anthropic')
     expect(plain).not.toContain('aria-current')

@@ -20,7 +20,7 @@ export interface TimedWord {
 
 export interface MakeServices {
   /** Whether each service can be used now: the switch in Settings is on and it has its key. */
-  open(): { google: boolean; fal: boolean; elevenlabs: boolean; openai: boolean }
+  open(): { google: boolean; fal: boolean; elevenlabs: boolean }
   /** The model each service makes pictures and clips with, for the record. */
   models: { image: Record<ImageService, string>; clip: Record<ImageService, string> }
   image(
@@ -46,6 +46,4 @@ export interface MakeServices {
   elevenVoice(name: string, signal?: AbortSignal): Promise<string | null>
   /** Gemini TTS: a WAV file. */
   gemini(text: string, voice: string, style: string, signal?: AbortSignal): Promise<Uint8Array>
-  /** OpenAI speech: a WAV file. */
-  openai(text: string, voice: string, instructions: string, signal?: AbortSignal): Promise<Uint8Array>
 }

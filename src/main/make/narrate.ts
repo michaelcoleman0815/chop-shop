@@ -22,7 +22,7 @@ export const NARRATION_RATE = 48_000
 const PHRASE_GAP = 0.32
 const SECTION_GAP = 0.8
 
-/** Characters a service is given in one request: under every one's limit (OpenAI's is 4,096). */
+/** Characters a service is given in one request: well under every one's limit. */
 const MAX_CHUNK_CHARS = 2400
 
 /** How each format is read, for the voices that take directions. */
@@ -183,7 +183,7 @@ export async function narrate(
       spans.push({ phrases: [i], startSec, endSec: clock })
       report(0.3 + (0.7 * (i + 1)) / input.phrases.length, 'Narrating the script')
     }
-  } else if (voice.engine === 'elevenlabs' || voice.engine === 'gemini' || voice.engine === 'openai') {
+  } else if (voice.engine === 'elevenlabs' || voice.engine === 'gemini') {
     const chunks = chunksOf(input.phrases, input.sections)
     words = voice.engine === 'elevenlabs' ? [] : null
     let voiceId = voice.id
@@ -205,10 +205,8 @@ export async function narrate(
           audio = said.audio
           const offset = clock
           words?.push(...said.words.map((w) => ({ text: w.text, startSec: w.startSec + offset, endSec: w.endSec + offset })))
-        } else if (voice.engine === 'gemini') {
-          audio = await deps.services.gemini(chunk.text, voice.id, READING[input.format], deps.signal)
         } else {
-          audio = await deps.services.openai(chunk.text, voice.id, READING[input.format], deps.signal)
+          audio = await deps.services.gemini(chunk.text, voice.id, READING[input.format], deps.signal)
         }
       } catch (err) {
         // Cut off after it went, the section may be read and billed all the same: about 15 characters a second.

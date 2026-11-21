@@ -101,8 +101,15 @@ export interface Settings {
   otherServices?: boolean
   /** Who hears the words: 'local' is this computer; absent means the first transcription service with a key. */
   transcriber?: 'local' | 'deepgram' | 'assemblyai'
-  /** The Ollama model that plans edits on this computer. Absent or null means Claude, the default. */
+  /** The local model that plans edits on this computer. Absent or null means Claude, the default. */
   localPlanner?: string | null
+  /**
+   * Where the local AI server is: an address such as "localhost:1234". Absent
+   * or null looks for Ollama, then LM Studio, on this computer (main/local-llm).
+   */
+  localServer?: string | null
+  /** The local model that says what is in each moment of a vlog when Claude does not see the frames. Absent picks one that sees pictures. */
+  localVision?: string | null
   /**
    * A fingerprint of the Anthropic key Anthropic last accepted (main/claude-key.ts), never the key:
    * while Anthropic is busy or out of reach, that key still opens the gate.

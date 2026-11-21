@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { LOCAL_SERVERS } from './local-llm'
 
 /**
  * A vlog made the way the app makes it (main/vlog), on a planted shoot:
@@ -161,8 +162,8 @@ describe.skipIf(!ffmpeg || !ffprobe)('a vlog made the way the app makes it', () 
     expect(readdirSync(join(fake.userData, 'vlog')).filter((f) => f.endsWith('.json')).length).toBeGreaterThanOrEqual(
       truth.clips.length
     )
-    // Nothing went anywhere but to see whether Ollama is running on this Mac.
-    expect(sent.every((u) => u.startsWith('http://127.0.0.1:11434/'))).toBe(true)
+    // Nothing went anywhere but to see whether a local AI server (Ollama, then LM Studio) is running on this Mac.
+    expect(sent.every((u) => LOCAL_SERVERS.some((host) => u.startsWith(`${host}/`)))).toBe(true)
   }, 180_000)
 
   it('takes the next clips in as one new version, keeping the clips and words it had', async () => {

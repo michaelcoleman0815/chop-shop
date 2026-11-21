@@ -60,8 +60,9 @@ Cutalong runs separate jobs; each has a small character, so you watch a crew wor
 - **The living mark** (`LivingMark`): three soft shapes in the bloom colours turning over a warm core. Big above long work; small in the assistant's tile while it thinks.
 - **A brand's avatar** (`BrandAvatar`, `avatarOf(brand)`): the shape and colour picked on the Brand page (`AvatarPicker`), or one chosen from the brand's id until then. It shows in the brand's hero, the brand switch and the brand list.
 - **Composer files**: round, glossy stills that float up into the composer (`.cl-attachment` with its `.cl-poster`).
-- **Fields and steps for key setup**: `.cl-field` with `aria-invalid`, `.cl-field-msg` (`.error`, `.ok`), and `.cl-steps` (`.now` for the step that fixes what went wrong, `.done` for the ones a key Anthropic accepted shows are done). `KeySteps` draws any service's steps from `shared/setup`, and `ClaudeKeyField` is the Anthropic key's field: Start shows them until a key works (`KeySetup`), and Settings shows them while one does not.
+- **Fields and steps for key setup**: `.cl-field` with `aria-invalid`, `.cl-field-msg` (`.error`, `.ok`), and `.cl-steps` (`.now` for the step that fixes what went wrong, `.done` for the ones a key Anthropic accepted shows are done). `KeySteps` draws any service's steps from `shared/setup`, and `ClaudeKeyField` is the Anthropic key's field: Start shows them until a key works (`KeySetup`), and Settings' Anthropic key row opens them while one does not.
 - **Toasts** float at the top right under the header, on paper, and never cover the beat strip.
+- **Settings** (`screens/Settings.tsx`, sections in `screens/settings/`) is a list of sections beside one section at a time, as Claude's own settings are: Claude, Local AI, Services | Words, B-roll, Made videos | This Mac (and Licences on a phone). Each section's mark is its line icon on a pastel tile (`block()`). A setting is a `SetRow` (`settings/rows.tsx`): a title, at most a tag (`.cl-set-tag`: "Connected", "Paid", "Offline"), one or two lines of what it does or how it stands, and its control at the end: `SetSwitch`, `SetSelect` (a pill menu, for more than three choices), `SetSegments` (three or fewer, which sit under the words) or a small button. What needs room (a key's steps, a list of folders) opens under its row. Rows sit on paper cards (`SetGroup`, with a small heading when a section has more than one). Every key besides Anthropic's is under Services, the AI services behind their one switch and the stock sites after them; other sections point there with an "Open Services" button rather than holding keys of their own. Search finds any row by its words, under its section. Never put a paragraph under a switch: the long story goes where it is needed (a key's terms under its field once it is opened, a quote in the chat).
 
 ## Motion
 
@@ -83,7 +84,7 @@ A helpful editor sitting next to you: first person, plain words, exact numbers. 
 
 - `App.tsx`: the rail and one screen at a time. `useCutalong.ts` holds the session.
 - `components/`: `ui.tsx` (Mark, Button, IconButton, icons, AssistantAvatar), `Shapes.tsx` (Blob, Sticker, BrandAvatar, LivingMark), `Crew.tsx` (CrewFace, CrewAtWork, Credits), `Working`, `Composer`, `Message` (with `Facts`), `BeatStrip`, `Sidebar`, `ClipSet`, `BrandSwitch`.
-- `screens/`: Onboarding, Start, Thread, Editor, Brand and BrandRules, Library, Crew, Settings and ClaudeFrames.
+- `screens/`: Onboarding, Start, Thread, Editor, Brand and BrandRules, Library, Crew, and Settings with its sections in `screens/settings/`.
 - `firstRun.ts`: whether onboarding ran, the first export, and the setup card's steps.
 - `tokens.css` and `tokens.json`, `fonts.css` and `fonts/`, `revisions.ts`, `shapes.ts`, `crew.ts`, `facts.ts`, `working.ts`.
 - `api.ts`: the slice of the preload API Cutalong uses. Add a method there and to `mock.ts` together.
