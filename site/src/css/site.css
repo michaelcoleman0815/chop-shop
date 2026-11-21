@@ -812,3 +812,49 @@ section:last-of-type { padding-bottom: var(--section-gap); }
     .hero h1 em::before { scale: 0 1; opacity: 0; }
   }
 }
+
+/* ---------- Quiet by default (2026-11-21) ----------
+   The product is the only picture. Sections are paper divided by hairlines, not
+   pastel slabs; numbers and steps are set as type, not stickers; the hero's
+   heading is the one highlighter on the page. References: Kobbe, Granola,
+   Linear and Superlist through Uizze. */
+
+/* Proof: three figures on a ruled line, not three coloured tiles. */
+.tiles { gap: var(--space-xl); margin-bottom: var(--space-2xl); }
+.tile { min-height: 0; padding: var(--space-md) 0 0; border-radius: 0; background: none; box-shadow: none; border-top: 1.5px solid var(--color-ink); }
+.tile-number { padding-top: var(--space-md); }
+
+/* How it works: three columns under a rule, a small number above each. */
+.steps { gap: var(--space-2xl); }
+.step { padding: var(--space-md) 0 0; border-radius: 0; background: none; box-shadow: none; border-top: 1.5px solid var(--color-ink); }
+.step-n { margin: 0; font-size: var(--text-xs); color: var(--color-ink-2); letter-spacing: 0.02em; }
+.step h3 { margin-top: 0; }
+.step-sheet { background: var(--color-card); }
+
+/* What you get: one job a row, its words beside a quiet sheet of the app. */
+.bento { grid-template-columns: minmax(0, 1fr); gap: 0; border-bottom: 1px solid var(--color-rule); }
+.bento > .job { grid-column: 1 / -1; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: center; gap: var(--space-2xl); padding: var(--space-2xl) 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; border-top: 1px solid var(--color-rule); }
+.bento > .job > :last-child { padding: var(--space-xl); border-radius: var(--radius-lg); background: var(--color-card); box-shadow: inset 0 0 0 1px var(--color-rule); }
+.bento > .job .app-raw .app-reply { background: var(--color-card-2); }
+.bento > .job .app-files li, .bento > .job .app-story li { border-top-color: var(--color-rule); }
+.bento > .job .app-never { background: var(--color-card-2); }
+
+/* Your Mac and the close: paper under a rule, not green and pink slabs. */
+.mac-block, .close-block { padding: var(--space-2xl) 0 0; border-radius: 0; background: none; box-shadow: none; border-top: 1.5px solid var(--color-ink); }
+.system-out li { border-style: solid; border-width: 1px; border-color: var(--color-rule); }
+.soon-list li { border-top-color: var(--color-rule); }
+.soon-state { background: var(--color-card-2); }
+
+@media (max-width: 60rem) {
+  .bento > .job { grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); }
+}
+
+/* Real footage, from the owner's own laptop review (MVI_9293 and its B-roll, MVI_9294), not a drawn figure.
+   A tall picture in a wide frame sits whole on a blurred copy of itself, as Cutalong shows one. */
+.footage { background: var(--footage-night); overflow: hidden; }
+.footage::before, .footage::after { content: ""; position: absolute; inset: 0; background: url("../img/footage-talk.jpg") center / contain no-repeat; }
+.footage::before { inset: -12%; background-size: cover; filter: blur(22px) brightness(0.62) saturate(1.1); }
+.app-short { background: url("../img/footage-short.jpg") center 30% / cover; }
+.app-poster { background: url("../img/footage-thumb.jpg") center / cover; }
+.app-poster-light { background: url("../img/footage-broll.jpg") center / cover; }
+.app-poster-sound { background: var(--block-yellow); }

@@ -1,9 +1,16 @@
 # The Cutalong site: design
 
-The site wears the app's look, Lined Script on set (`docs/design/`; the app's tokens, v4), with the
-owner's "heavenly and alive" notes and the crew notes on top. It extends the app's system and does not replace it:
-the colours, radii, shadows and curves are the app's. What the site adds is a page scale, colour blocks, stickers, the
-living mark, two springs and the crew's characters. Tokens live in `src/css/tokens.css`.
+The site wears the app's look, Lined Script on set (`docs/design/`; the app's tokens, v4). It extends the app's
+system and does not replace it: the colours, radii, shadows and curves are the app's. Tokens live in `src/css/tokens.css`.
+
+## Quiet by default (2026-11-21)
+
+The product is the only picture. Sections are paper divided by rules, not pastel slabs; figures and steps are set as
+type, not stickers or coloured tiles; only the hero's heading wears the highlighter. No mascots, no orbs, no glossy
+spheres, no bento of colour blocks, no second slogan before the footer. Colour appears where it means something in the
+product: the revision pages (v2 on blue pages), the stage under footage, coral for the cut. References for this, through
+Uizze: Kobbe, Granola, Linear and Superlist, which all let a neutral page and the real interface carry the story. The
+crew's tokens and partials remain for the app's sake, but the page no longer shows them.
 
 ## Colour
 
@@ -19,7 +26,7 @@ pages, as they do in the app; as confident blocks they carry the sections around
 | `--color-ink-2`, `--color-muted` | 41%, 50% | 85%, 72% | Secondary text, meta |
 | `--color-cut` | #FF5A36 | #FF6E4E | The playhead, the mark, Snip. Never text |
 | `--rev-1` to `--rev-6` | white, blue, pink, yellow, green, goldenrod pages | the same hues at night | Revision pages in the product |
-| `--block-*` | the revision hues, a step bolder (v4), lavender too | quiet night tints, as in the app | The bento, the tiles, the Mac and close blocks, and the highlighter. Ink on top in both |
+| `--block-*` | the revision hues, a step bolder (v4), lavender too | quiet night tints, as in the app | The hero's highlighter. No longer section backgrounds |
 | `--color-stage`, `-2`, `-line`, `--color-on-stage`, `-soft` | ink | a deeper night | The stage: the hero window's picture and beat strip sit on it in both looks, and inside it ink and rules point at its colours |
 | `--crew-*` | blue, coral, yellow, green, pink, lavender | the same | The crew, constant in both looks, as footage is |
 
@@ -29,7 +36,7 @@ so it takes the block's hue and never reads as grey on colour.
 
 ## Type
 
-Headings are Figtree 800, tight (-0.045em), with one italic serif accent each: Source Serif 4's display italic at 440,
+Headings are Figtree 800, tight (-0.045em). The hero's alone has an italic serif accent: Source Serif 4's display italic at 440,
 set 8% larger to match Figtree's x-height, on a highlighter swipe of a block colour (`--hl`: yellow, or the section's
 own), which draws across the word as the heading arrives. Body and labels are Figtree at 17 to 18 px. What you read in the product
 (Cutalong's replies, the script, the notes in its margin) is Source Serif 4 text, as in the app. JetBrains Mono is only
