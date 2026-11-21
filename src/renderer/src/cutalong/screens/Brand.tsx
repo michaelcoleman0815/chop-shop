@@ -11,6 +11,7 @@ import { Blob, BrandAvatar } from '../components/Shapes'
 import { Button, Icon } from '../components/ui'
 import { Working } from '../components/Working'
 import { clock, isVideoFile } from '../format'
+import { loadMotionFonts } from '../graphics'
 import { collapse } from '../motion'
 import {
   avatarOf,
@@ -18,8 +19,6 @@ import {
   bloom,
   COLOUR_NAMES,
   COLOURS,
-  SHAPE_NAMES,
-  SHAPES,
   type Avatar
 } from '../shapes'
 import type { Cutalong } from '../useCutalong'
@@ -150,31 +149,13 @@ function radioKeys<T>(e: KeyboardEvent<HTMLElement>, items: readonly T[], at: nu
 }
 
 /**
- * A brand's shape and colour, picked like a sticker: every shape in the
- * brand's colour, then the colours. The avatar above morphs as you choose.
+ * A brand's colour, picked from the block colours. The avatar above, a
+ * circle with the brand's initials, takes it as you choose.
  */
 export function AvatarPicker({ value, onPick }: { value: Avatar; onPick: (a: Avatar) => void }): JSX.Element {
-  const shapeAt = SHAPES.indexOf(value.shape)
   const colourAt = COLOURS.indexOf(value.colour)
   return (
     <div className="cl-avatar-picker">
-      <div className="cl-pick-shapes" role="radiogroup" aria-label="Shape">
-        {SHAPES.map((shape) => (
-          <button
-            key={shape}
-            type="button"
-            role="radio"
-            aria-checked={shape === value.shape}
-            aria-label={SHAPE_NAMES[shape]}
-            title={SHAPE_NAMES[shape]}
-            tabIndex={shape === value.shape ? 0 : -1}
-            onClick={() => onPick({ ...value, shape })}
-            onKeyDown={(e) => radioKeys(e, SHAPES, shapeAt, (s) => onPick({ ...value, shape: s }))}
-          >
-            <Blob shape={shape} colour={value.colour} size={30} />
-          </button>
-        ))}
-      </div>
       <div className="cl-pick-colours" role="radiogroup" aria-label="Colour">
         {COLOURS.map((colour) => (
           <button
@@ -256,6 +237,8 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
     setDeleting(false)
   }, [brand.id, brand.products])
   useEffect(() => setPicking(fresh), [brand.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The graphics faces, so each one's button shows what it looks like.
+  useEffect(() => void loadMotionFonts(), [])
   const avatar = avatarOf(brand)
   // On a phone, learning a look from videos and edits is on the Mac for now (device.ts).
   const learnAway = device.away['feature:learn']
@@ -333,13 +316,13 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
             style={{ '--block': block(avatar.colour) } as CSSProperties}
             aria-labelledby="brand-name"
           >
-            <BrandAvatar avatar={avatar} size={88} className="cl-brand-hero-avatar" />
+            <BrandAvatar avatar={avatar} size={88} name={brandName(brand)} className="cl-brand-hero-avatar" />
             <div className="cl-brand-hero-text">
               <h1 className="cl-page-title" id="brand-name">
                 {brandName(brand)}
               </h1>
               <p className="cl-lede">
-                What keeps every video <span className="cl-accent">yours</span>. New edits get it automatically.
+                What keeps every video yours. New edits get it automatically.
               </p>
             </div>
             <Button small aria-expanded={picking} onClick={() => setPicking((p) => !p)}>
@@ -557,6 +540,8 @@ export function BrandPage({ app }: { app: Cutalong }): JSX.Element {
                           aria-checked={on}
                           title={f.label}
                           className={on ? 'on' : ''}
+                          // In its own face, at the buttons' weight where the face has it, and never synthesised bolder.
+                          style={{ fontFamily: `'${f.family}'`, fontWeight: Math.min(Math.max(600, f.weights[0]), f.weights[1]) }}
                           onClick={() => set({ fonts: { ...brand.fonts, [part]: f.family } })}
                         >
                           {f.family}
