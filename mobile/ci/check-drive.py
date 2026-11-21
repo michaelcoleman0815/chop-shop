@@ -182,7 +182,8 @@ print(f"  a key taken: {flow.get('keyAccepted')!r}")
 asked = flow.get("anthropic", [])
 checks = [r["status"] for r in asked if r.get("kind") == "key check"]
 if flow.get("ok"):
-    if len(setup.get("steps") or []) < 3 or not setup.get("cost"):
+    # Two steps since 07a17b3: sign in and add credit, then create a key and copy it.
+    if len(setup.get("steps") or []) < 2 or not setup.get("cost"):
         problem("without a key, Start did not show the steps to get one and what it costs")
     if checks[:2] != [401, 200]:
         problem(f"the key checks went {checks}, not a key turned down and then one taken")

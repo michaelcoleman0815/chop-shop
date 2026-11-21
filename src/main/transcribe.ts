@@ -132,7 +132,12 @@ export function whisperThreads(os: string, processors: number): number | undefin
 const ILLEGAL_INSTRUCTION = 0xc000001d
 
 /** Runs whisper to the end, reporting its progress from 0 to 100. */
-async function runWhisper(bin: string, args: string[], onProgress: (percent: number) => void): Promise<void> {
+async function runWhisper(
+  bin: string,
+  args: string[],
+  onProgress: (percent: number) => void,
+  signal?: AbortSignal
+): Promise<void> {
   let stderr = ''
   // whisper prints a line per segment, and with -ml 1 that is one per word.
   // Everything it writes is read as it comes: a pipe nobody reads fills, and
@@ -148,7 +153,8 @@ async function runWhisper(bin: string, args: string[], onProgress: (percent: num
       // whisper prints progress to stderr as it consumes the audio.
       const match = /progress\s*=\s*(\d+)%/.exec(text)
       if (match) onProgress(Number(match[1]))
-    }
+    },
+    ...(signal ? { signal } : {})
   })
   if (r.code !== 0) {
     // Its last lines whole, without the progress it printed on the way.
@@ -269,24 +275,38 @@ export async function transcribe(
         // Each stretch is a Whisper run of its own: on a phone, two hundred of them can take longer
         // than the whole recording did, so the ums take at most half as long again.
         const budget = { ...DEFAULT_FILLER_LISTEN, budgetSec: Math.max(UMS_LEAST_SEC, firstSec * UMS_SHARE) }
+        const umsEnd = Date.now() + budget.budgetSec * 1000
         const fillers = await listenForFillers(heard, voiced, {
           samples: (span) => readSamples(host.tool('ffmpeg'), wav, span),
           listen: async (span) => {
             const part = join(dir, `um-${++m}.wav`)
             await extractAudio(wav, part, span.endSec - span.startSec, () => undefined, span.startSec)
             const partPrefix = join(dir, `um-${m}`)
-            await runWhisper(
-              bin,
-              whisperArgs({
-                model,
-                modelFile,
-                wav: part,
-                prefix: partPrefix,
-                verbatim: { ...verbatim, prompt: FILLER_PROMPT },
-                threads
-              }),
-              () => undefined
-            )
+            // One guess at each step and no second tries: on a stretch this short, a phone's Whisper
+            // searching five ways at six temperatures took longer than the whole recording. And one
+            // listen that runs past the time left is stopped, so it never holds the transcript up.
+            const stop = new AbortController()
+            const timer = setTimeout(() => stop.abort(), Math.max(1000, umsEnd - Date.now()))
+            try {
+              await runWhisper(
+                bin,
+                [
+                  ...whisperArgs({
+                    model,
+                    modelFile,
+                    wav: part,
+                    prefix: partPrefix,
+                    verbatim: { ...verbatim, prompt: FILLER_PROMPT },
+                    threads
+                  }),
+                  ...['-bs', '1', '-bo', '1', '-nf']
+                ],
+                () => undefined,
+                stop.signal
+              )
+            } finally {
+              clearTimeout(timer)
+            }
             const alone = tokensToWords(parseWhisperJson(await host.files.readText(`${partPrefix}.json`)).transcription)
             return alone.map((w) => ({ ...w, startSec: w.startSec + span.startSec, endSec: w.endSec + span.startSec }))
           }
