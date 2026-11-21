@@ -1,0 +1,1315 @@
+/*
+ * Cutalong in motion.
+ *
+ * Calm and quick, and alive. Things arrive with ease-enter, and what lands
+ * (a card, a tile, a sticker, footage dropped in) lands on a spring with a
+ * hair of overshoot; things leave sooner with ease-exit and never bounce;
+ * what moves between places uses ease-standard. Only work in progress moves
+ * on its own (the living mark, the crew at work); idle is still.
+ * Only transform, opacity and paint-only properties (a clip, a dash offset)
+ * animate, so nothing is laid out again while it moves. Every duration and
+ * curve is a token; the rules are in the cutalong-ui skill under Motion, and
+ * the script that drives View Transitions and the sliding pill is motion.tsx.
+ *
+ * --cl-travel scales every distance and press. It is 0 under reduced motion,
+ * so opacity still changes and nothing travels.
+ */
+
+:root {
+  --cl-travel: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --cl-travel: 0;
+  }
+}
+
+/* ---------- Hover and press ---------- */
+
+.cl-btn,
+.cl-icon-btn,
+.cl-chip,
+.cl-link,
+.cl-lockup,
+.cl-avatar,
+.cl-rail-item,
+.cl-slash-item,
+.cl-word,
+.cl-wchip,
+.cl-menu button,
+.cl-note button,
+.cl-list li > button,
+.cl-attachment button {
+  transition-property: background-color, border-color, color, box-shadow, opacity, scale;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+/* A segment's fill never fades: the sliding pill stands in for it while it moves. */
+.cl-segments > button {
+  transition-property: color, box-shadow, scale;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+.cl-btn:active:not(:disabled),
+.cl-icon-btn:active:not(:disabled),
+.cl-chip:active,
+.cl-rail-item:active,
+.cl-wchip:active,
+.cl-segments > button:active:not(:disabled) {
+  scale: calc(1 - 0.04 * var(--cl-travel));
+}
+
+.cl-project-thumb {
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+/* ---------- Composer ---------- */
+
+.cl-composer {
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+
+/* While Cutalong works, the send arrow lifts away and the mark takes its place, marching. */
+.cl-composer .cl-icon-btn.filled {
+  position: relative;
+}
+
+.cl-composer .cl-icon-btn.filled > svg,
+.cl-send-mark {
+  transition-property: opacity, scale, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+.cl-send-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  scale: calc(1 - 0.4 * var(--cl-travel));
+  pointer-events: none;
+}
+
+.cl-composer.busy .cl-icon-btn.filled > svg {
+  opacity: 0;
+  scale: calc(1 - 0.4 * var(--cl-travel));
+  translate: 0 calc(-1 * var(--space-2) * var(--cl-travel));
+}
+
+.cl-composer.busy .cl-send-mark {
+  opacity: 1;
+  scale: 1;
+}
+
+
+/* Menus scale and fade in from the edge they open on. */
+.cl-menu:not([data-by-key]) {
+  transition-property: opacity, scale, translate;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-enter);
+}
+
+
+.cl-menu {
+  transform-origin: 100% 0;
+}
+
+@starting-style {
+  .cl-menu:not([data-by-key]) {
+    opacity: 0;
+    scale: calc(1 - 0.04 * var(--cl-travel));
+    translate: 0 calc(var(--space-1) * var(--cl-travel));
+  }
+
+  .cl-menu:not([data-by-key]) {
+    translate: 0 calc(-1 * var(--space-1) * var(--cl-travel));
+  }
+}
+
+.cl-drop {
+  transition-property: border-color, color;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+/* ---------- Messages ---------- */
+
+/*
+ * A new message arrives; one already there when its screen opens stays put
+ * (data-cl-entering is set while a screen changes). The user's bubble rises
+ * in; a reply's sentence, chips and buttons follow one another closely.
+ */
+.cl-msg-user,
+.cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-make, .cl-make-ask, .cl-actions, .cl-credits) {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+.cl-msg-body > .cl-reply {
+  transition-property: opacity, translate, filter;
+}
+
+.cl-msg-body > :nth-child(2) {
+  transition-delay: 50ms;
+}
+
+.cl-msg-body > :nth-child(3) {
+  transition-delay: 90ms;
+}
+
+.cl-msg-body > :nth-child(4) {
+  transition-delay: 120ms;
+}
+
+.cl-msg-body > :nth-child(n + 5) {
+  transition-delay: 140ms;
+}
+
+.cl-msg-assistant > .cl-assistant-avatar {
+  transition-property: opacity;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+.cl-details,
+.cl-make-script,
+.cl-make-key {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-enter);
+}
+
+@starting-style {
+  html:not([data-cl-entering]) .cl-msg-user {
+    opacity: 0;
+    translate: 0 calc(var(--space-3) * var(--cl-travel));
+  }
+
+  html:not([data-cl-entering]) .cl-msg-assistant > .cl-assistant-avatar {
+    opacity: 0;
+  }
+
+  /* The sentence comes into focus as it rises: soft, never a jolt. */
+  html:not([data-cl-entering]) .cl-msg-body > .cl-reply {
+    filter: blur(calc(2px * var(--cl-travel)));
+  }
+
+  html:not([data-cl-entering]) .cl-msg-body > :is(.cl-reply, .cl-progress, .cl-export, .cl-chips, .cl-aside, .cl-make, .cl-make-ask, .cl-actions, .cl-credits) {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+
+  .cl-details,
+  .cl-make-script,
+  .cl-make-key {
+    opacity: 0;
+    translate: 0 calc(-1 * var(--space-1) * var(--cl-travel));
+  }
+}
+
+/* Progress moves its fill rather than resizing it, so it eases on the compositor (grow() in motion.tsx). */
+.cl-progress-bar > span {
+  width: 100%;
+  transition: transform var(--duration-gentle) var(--ease-standard);
+}
+
+/* A clip's export fills its card's bar the same way. */
+.cl-clip-bar > span {
+  transition: transform var(--duration-gentle) var(--ease-standard);
+}
+
+/* Dropping or keeping a clip eases its card in or out of the foreground. */
+.cl-clip .cl-clip-open,
+.cl-clip .cl-clip-text {
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+
+/* A set of clips arrives card by card, like any list. */
+@starting-style {
+  html:not([data-cl-entering]) .cl-clip {
+    opacity: 0;
+    translate: 0 calc(var(--space-4) * var(--cl-travel));
+    scale: calc(1 - 0.04 * var(--cl-travel));
+  }
+}
+
+.cl-clip {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-settle), var(--spring-settle);
+}
+
+.cl-clip:nth-child(2) {
+  transition-delay: 45ms;
+}
+
+.cl-clip:nth-child(3) {
+  transition-delay: 80ms;
+}
+
+.cl-clip:nth-child(n + 4) {
+  transition-delay: 100ms;
+}
+
+/*
+ * The loading signal: while Cutalong works, the mark's dashed bar marches
+ * along, one dash and gap (7 + 6 of its 64 units) per loop, so the loop is
+ * seamless. It runs on the assistant beside a progress row, in the send
+ * button while busy, in a toast that counts up, and beside a key being checked.
+ */
+@keyframes cl-march {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+
+.cl-msg-assistant:has(.cl-progress) .cl-cut,
+.cl-composer.busy .cl-cut,
+.cl-toast-mark .cl-cut,
+.cl-keycheck.checking .cl-cut {
+  animation: cl-march calc(var(--duration-calm) * 4) linear infinite;
+}
+
+/* ---------- Editor ---------- */
+
+/* The strip is a size container, so the playhead moves by transform (along() in motion.tsx). */
+.cl-beats {
+  container-type: inline-size;
+}
+
+.cl-playhead {
+  left: 0;
+  will-change: transform;
+}
+
+.cl-beat {
+  transition-property: background-color, box-shadow;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+
+/* The bar under a picked stretch fades in; it follows a drag at once. */
+.cl-pick {
+  transition: opacity var(--duration-gentle) var(--ease-enter);
+}
+
+@starting-style {
+  .cl-pick {
+    opacity: 0;
+  }
+}
+
+/* Notes slide in; collapse() in motion.tsx slides them out. */
+.cl-note {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+@starting-style {
+  html:not([data-cl-entering]) .cl-note {
+    opacity: 0;
+    translate: calc(var(--space-4) * var(--cl-travel)) 0;
+  }
+
+  html:not([data-cl-entering]) .cl-notes > .cl-btn {
+    opacity: 0;
+  }
+}
+
+/* ---------- Lists: projects, presets, brand videos ---------- */
+
+/* They fade in with a short stagger as their screen opens; one added later simply fades in. */
+.cl-continue-row > .cl-project,
+.cl-list > li,
+.cl-steps > li {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-gentle), var(--duration-fast);
+  transition-timing-function: var(--ease-enter), var(--ease-enter), var(--ease-standard);
+}
+
+
+@starting-style {
+  html:not([data-cl-entering]) :is(.cl-continue-row > .cl-project, .cl-list > li, .cl-steps > li) {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+}
+
+/* ---------- The key's check (components/ClaudeKeyField.tsx) ---------- */
+
+/* What the check found arrives under the field like a reply's sentence, its icon with it; a step's number fills as it becomes the one to do, or done. */
+.cl-keycheck > :is(span:not(.cl-keycheck-mark), svg) {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+.cl-steps > li::before {
+  transition-property: background-color, box-shadow, color;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-standard);
+}
+
+@starting-style {
+  .cl-keycheck > :is(span:not(.cl-keycheck-mark), svg) {
+    opacity: 0;
+    translate: 0 calc(var(--space-1) * var(--cl-travel));
+  }
+}
+
+.cl-project:active {
+  scale: calc(1 - 0.015 * var(--cl-travel));
+}
+
+/* ---------- Segmented controls: the "on" pill slides (watchSegments() in motion.tsx) ---------- */
+
+.cl-segments {
+  position: relative;
+  isolation: isolate;
+}
+
+.cl-segments::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cl-segments.cl-sliding::before {
+  opacity: 1;
+}
+
+.cl-segments.cl-sliding > button.on {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+/* ---------- Switch ---------- */
+
+/*
+ * A checkbox in a .cl-toggle is drawn as a switch: off is a card with a
+ * hairline and a small ink-soft knob, on is ink with a card knob. The knob
+ * slides on the spring.
+ */
+.cl-toggle input[type='checkbox'] {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(var(--space-8) + var(--space-2));
+  height: var(--space-6);
+  margin: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: pointer;
+  transition-property: background-color, box-shadow;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+.cl-toggle input[type='checkbox']::before {
+  content: '';
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  width: var(--space-4);
+  height: var(--space-4);
+  border-radius: var(--radius-pill);
+  background-color: var(--ink-soft);
+  scale: 0.75;
+  transition:
+    translate var(--duration-gentle) var(--ease-enter),
+    scale var(--duration-gentle) var(--ease-enter),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.cl-toggle input[type='checkbox']:checked {
+  background-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.cl-toggle input[type='checkbox']:checked::before {
+  translate: var(--space-4) 0;
+  scale: 1;
+  background-color: var(--card);
+}
+
+/* ---------- Settings: a section picked arrives; what a row opens rises under it ---------- */
+
+/*
+ * Only a section picked from the list moves: the first comes with the screen,
+ * and search results, which the keyboard brings, appear at once.
+ */
+.cl-settings-pane.moved .cl-set-section,
+.cl-set-more {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+@starting-style {
+  .cl-settings-pane.moved .cl-set-section {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+
+  .cl-set-more {
+    opacity: 0;
+    translate: 0 calc(-1 * var(--space-1) * var(--cl-travel));
+  }
+}
+
+.cl-settings-pane.finding .cl-set-more {
+  transition: none;
+}
+
+.cl-set-place {
+  transition-property: background-color, color, box-shadow;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+/* ---------- Toast: rises in, falls away (useLingering() in motion.tsx) ---------- */
+
+.cl-toast {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+}
+
+@starting-style {
+  .cl-toast {
+    opacity: 0;
+    translate: 0 calc(-1 * var(--space-2) * var(--cl-travel));
+  }
+}
+
+.cl-toast.leaving {
+  opacity: 0;
+  translate: 0 calc(-1 * var(--space-1) * var(--cl-travel));
+  pointer-events: none;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-exit);
+}
+
+.cl-toast-mark {
+  display: inline-grid;
+  place-items: center;
+  margin-left: calc(-1 * var(--space-1));
+}
+
+/* ---------- Rail ---------- */
+
+/* The View Transition below moves the rail; its own width never animates. */
+.cl-rail {
+  transition: none;
+}
+
+/* Open, the icons sit exactly where the closed rail centres them (14px in), so they hold still as it opens. */
+.cl-rail.open {
+  padding-left: 14px;
+}
+
+/* Names and chats fade and slide in at their final size, so no text reflows as the rail opens. */
+.cl-rail :is(.label, .cl-rail-brand, .cl-rail-heading) {
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-enter);
+  transition-delay: 40ms;
+}
+
+.cl-rail-project {
+  transition-property: background-color, color, opacity, translate;
+  transition-duration: var(--duration-fast), var(--duration-fast), var(--duration-gentle), var(--duration-gentle);
+  transition-timing-function: var(--ease-standard), var(--ease-standard), var(--ease-enter), var(--ease-enter);
+  transition-delay: 0s, 0s, 60ms, 60ms;
+}
+
+@starting-style {
+  .cl-rail :is(.label, .cl-rail-brand, .cl-rail-heading, .cl-rail-project) {
+    opacity: 0;
+    translate: calc(-1 * var(--space-2) * var(--cl-travel)) 0;
+  }
+}
+
+/* ---------- View Transitions ---------- */
+
+/*
+ * motion.tsx sets data-cl-move on <html> while a transition runs: "screen",
+ * "rail" or "version". The page never becomes one big picture: it stays live
+ * underneath, and only what these rules name is captured. A large picture is
+ * only ever moved, or faded once it has stopped changing, never faded while
+ * live, so a transition stays light even without a GPU. Anything not named
+ * simply updates in place.
+ */
+html[data-cl-move] {
+  view-transition-name: none;
+}
+
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-group(*) {
+  animation-duration: var(--duration-calm);
+  animation-timing-function: var(--ease-standard);
+}
+
+@keyframes cl-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes cl-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cl-rise {
+  from {
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+}
+
+@keyframes cl-rise-in {
+  from {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+}
+
+@keyframes cl-slide-out {
+  to {
+    opacity: 0;
+    translate: calc(var(--space-4) * var(--cl-travel)) 0;
+  }
+}
+
+/* The loading signal under reduced motion: the dashed bar breathes instead of marching. */
+@keyframes cl-breathe {
+  to {
+    opacity: 0.4;
+  }
+}
+
+/*
+ * Screen changes: a calm crossfade with a slight rise. The old screen is
+ * captured once, as one opaque picture, and fades within duration-fast over
+ * the live new screen, which rises into place over duration-gentle once the
+ * old has mostly gone. The composer carries over, and footage grows into the
+ * preview, over the whole duration-calm. (data-cl-arriving is set once the
+ * old screen has been captured.)
+ */
+html[data-cl-move='screen']:not([data-cl-arriving]) .cl-main {
+  view-transition-name: cl-screen;
+  background:
+    radial-gradient(130% 70% at 50% -18%, var(--glow), transparent 64%) fixed,
+    var(--ground);
+}
+
+html[data-cl-arriving] .cl-main {
+  animation: var(--duration-gentle) var(--ease-enter) calc(var(--duration-calm) - var(--duration-gentle)) both cl-rise;
+}
+
+/* Under reduced motion nothing travels between screens: each composer leaves and arrives with its own screen. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-cl-move='screen'] .cl-composer {
+    view-transition-name: cl-composer;
+  }
+}
+
+::view-transition-old(cl-screen),
+::view-transition-old(cl-composer):only-child,
+::view-transition-old(cl-footage):only-child {
+  animation: var(--duration-fast) var(--ease-standard) both cl-fade-out;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(cl-composer):only-child,
+::view-transition-new(cl-footage):only-child {
+  animation: var(--duration-gentle) var(--ease-enter) calc(var(--duration-calm) - var(--duration-gentle)) both
+    cl-rise-in;
+  mix-blend-mode: normal;
+}
+
+/*
+ * The footage keeps its picture whole: both ends fill the moving frame, the
+ * new one fading in over the old, clipped to corners that turn from the
+ * card's into the preview's while the frame's shadow comes or goes with it.
+ */
+::view-transition-image-pair(cl-footage) {
+  overflow: hidden;
+  animation: var(--duration-calm) var(--ease-standard) both cl-footage-frame;
+}
+
+@keyframes cl-footage-frame {
+  from {
+    border-radius: var(--cl-footage-from-radius, 0);
+    box-shadow: var(--cl-footage-from-shadow, none);
+  }
+  to {
+    border-radius: var(--cl-footage-to-radius, 0);
+    box-shadow: var(--cl-footage-to-shadow, none);
+  }
+}
+
+::view-transition-old(cl-footage),
+::view-transition-new(cl-footage) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(cl-footage) {
+  animation: none;
+}
+
+::view-transition-new(cl-footage) {
+  animation: var(--duration-calm) var(--ease-standard) both cl-fade-in;
+}
+
+/*
+ * The rail: it grows or shrinks with its edge. The header and the centred
+ * columns glide as live elements (motion.tsx). In the editor the preview's
+ * well, the strip and the beats stretch, while the footage, the strip's
+ * controls and the playhead slide. Before and after are the same picture for
+ * these, so only the live one is shown.
+ */
+html[data-cl-move='rail'] .cl-rail {
+  view-transition-name: cl-rail;
+  border-right-color: transparent;
+}
+
+html[data-cl-move='rail'] :is(.cl-frame, .cl-strip > :not(.cl-beats), .cl-playhead) {
+  view-transition-name: match-element;
+  view-transition-class: cl-slide;
+}
+
+html[data-cl-move='rail'] :is(.cl-well, .cl-strip, .cl-beats) {
+  view-transition-name: match-element;
+  view-transition-class: cl-stretch;
+}
+
+::view-transition-old(*.cl-slide),
+::view-transition-old(*.cl-stretch) {
+  display: none;
+}
+
+::view-transition-new(*.cl-slide),
+::view-transition-new(*.cl-stretch) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* The rail's hairline rides its moving edge; the rail's own is hidden while it moves. */
+html[data-cl-move='rail']::view-transition-group(cl-rail) {
+  border-right: 1px solid var(--line);
+}
+
+/* The rail's pictures keep their natural size and are cropped by its moving edge, never squeezed. */
+::view-transition-image-pair(cl-rail) {
+  overflow: hidden;
+}
+
+::view-transition-old(cl-rail),
+::view-transition-new(cl-rail) {
+  width: 100%;
+  height: 100%;
+  object-fit: none;
+  object-position: 0 0;
+}
+
+::view-transition-new(*.cl-stretch) {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* A new version crossfades into the preview; applied notes slide out; the rest updates in place. */
+html[data-cl-move='version'] .cl-frame {
+  view-transition-name: cl-preview;
+}
+
+html[data-cl-move='version'] .cl-note {
+  view-transition-name: match-element;
+  view-transition-class: cl-note;
+}
+
+::view-transition-old(cl-preview),
+::view-transition-new(cl-preview) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(cl-preview) {
+  animation: none;
+}
+
+::view-transition-new(cl-preview) {
+  animation: var(--duration-calm) var(--ease-standard) both cl-fade-in;
+}
+
+::view-transition-old(*.cl-note):only-child {
+  animation: var(--duration-base) var(--ease-exit) both cl-slide-out;
+}
+
+/*
+ * Footage dropped in: the composer opens to hold it as one box, never a jump
+ * ("attach"), and closes the same way when the last file is taken out
+ * ("detach"). The box is drawn on the moving group (edge, shadow and the
+ * focus halo), so it stays crisp at every size, and it clips what is inside.
+ * Inside is one picture, kept to the box's bottom edge, which is where the
+ * words and buttons are: opening, the new one, so the row of stills is
+ * uncovered from the top while they float up inside it as always; closing,
+ * the old one, so the row goes under the top edge. In a chat the thread keeps
+ * its last picture while the box rises over it, and is uncovered live as the
+ * box goes down; on Start what sits below glides with the box. Under reduced
+ * motion it simply changes (Composer).
+ */
+html:is([data-cl-move='attach'], [data-cl-move='detach']) .cl-composer {
+  view-transition-name: cl-composer;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach']) .cl-thread-scroll {
+  view-transition-name: cl-behind;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach']) :is(.cl-start .cl-chips, .cl-continue) {
+  view-transition-name: match-element;
+  view-transition-class: cl-slide;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-group(*) {
+  animation-duration: var(--duration-gentle);
+  animation-timing-function: var(--ease-enter);
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-group(cl-composer) {
+  box-sizing: border-box;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-composer);
+  background: var(--card);
+  box-shadow: var(--shadow-composer);
+  overflow: clip;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach']):has(.cl-composer:focus-within)::view-transition-group(cl-composer) {
+  border-color: var(--ink-soft);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+}
+
+/* The picture sits on the box's own edge, under the one drawn on it, at its natural size. */
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-image-pair(cl-composer) {
+  inset: -1px;
+}
+
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-old(cl-composer),
+html:is([data-cl-move='attach'], [data-cl-move='detach'])::view-transition-new(cl-composer) {
+  inset-block: auto 0;
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html[data-cl-move='attach']::view-transition-old(cl-composer),
+html[data-cl-move='detach']::view-transition-new(cl-composer) {
+  display: none;
+}
+
+/* Behind the box, the thread as the box will leave it: opening, its last picture until covered; closing, the live one, uncovered as the box goes down. */
+html[data-cl-move='attach']::view-transition-old(cl-behind),
+html[data-cl-move='detach']::view-transition-new(cl-behind) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html[data-cl-move='attach']::view-transition-new(cl-behind),
+html[data-cl-move='detach']::view-transition-old(cl-behind) {
+  display: none;
+}
+
+/* ---------- Reduced motion: opacity still changes; nothing travels ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*) {
+    animation-name: none;
+  }
+
+  .cl-progress-bar > span {
+    transition: none;
+  }
+
+  .cl-clip-bar > span {
+    transition: none;
+  }
+
+  .cl-toggle input[type='checkbox']::before {
+    transition: background-color var(--duration-fast) var(--ease-standard);
+  }
+
+  .cl-msg-assistant:has(.cl-progress) .cl-cut,
+  .cl-composer.busy .cl-cut,
+  .cl-toast-mark .cl-cut,
+  .cl-keycheck.checking .cl-cut {
+    animation: cl-breathe calc(var(--duration-calm) * 3) var(--ease-standard) infinite alternate;
+  }
+}
+
+::view-transition-old(cl-composer) {
+  animation: 90ms var(--ease-exit) both cl-fade-out;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(cl-composer) {
+  animation: var(--duration-base) var(--ease-enter) 90ms both cl-fade-in;
+  mix-blend-mode: normal;
+}
+
+/* ---------- Heavenly and alive ---------- */
+
+/* A reply's facts settle in after its sentence, tile by tile. */
+.cl-facts > .cl-fact {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-settle), var(--spring-settle);
+  transition-delay: 60ms;
+}
+
+.cl-facts > .cl-fact:nth-child(2) {
+  transition-delay: 100ms;
+}
+
+.cl-facts > .cl-fact:nth-child(3) {
+  transition-delay: 140ms;
+}
+
+@starting-style {
+  html:not([data-cl-entering]) .cl-facts > .cl-fact {
+    opacity: 0;
+    translate: 0 calc(var(--space-3) * var(--cl-travel));
+    scale: calc(1 - 0.05 * var(--cl-travel));
+  }
+}
+
+/*
+ * Footage dropped in floats up into the composer, one still just after another (--i, from
+ * Composer.tsx). With reduced motion the composer makes room at once, so the stills start
+ * already part there (40%) rather than leaving an empty row for a moment.
+ */
+.cl-attachment {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-settle), var(--spring-settle);
+  transition-delay: calc(var(--i, 0) * 40ms);
+}
+
+@starting-style {
+  .cl-attachment {
+    opacity: calc(0.4 * (1 - var(--cl-travel)));
+    translate: 0 calc(var(--space-6) * var(--cl-travel));
+    scale: calc(1 - 0.3 * var(--cl-travel));
+  }
+}
+
+/* A sticker pops on, turning to its angle. */
+.cl-sticker {
+  transition-property: opacity, scale, rotate;
+  transition-duration: var(--duration-base), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-pop), var(--spring-pop);
+}
+
+@starting-style {
+  .cl-sticker {
+    opacity: 0;
+    scale: calc(1 - 0.6 * var(--cl-travel));
+    rotate: calc(var(--tilt) - 30deg * var(--cl-travel));
+  }
+}
+
+/*
+ * A brand's avatar morphs: the new shape pops in over the old, which holds
+ * its shape under the pop for a moment (90 ms), then softens and fades. Both
+ * stay shapes the whole way: the new one is only a touch soft as it lands, and
+ * the old one is gone (350 ms) well before the pop settles (460 ms).
+ */
+.cl-blob.arriving {
+  transition-property: opacity, scale, filter;
+  transition-duration: var(--duration-base), var(--duration-spring), var(--duration-gentle);
+  transition-timing-function: var(--ease-enter), var(--spring-pop), var(--ease-enter);
+}
+
+@starting-style {
+  .cl-blob.arriving {
+    opacity: 0;
+    scale: calc(1 - 0.22 * var(--cl-travel));
+    filter: blur(calc(2px * var(--cl-travel)));
+  }
+}
+
+.cl-blob.leaving {
+  opacity: 0;
+  scale: calc(1 - 0.08 * var(--cl-travel));
+  filter: blur(calc(4px * var(--cl-travel)));
+  transition-property: opacity, scale, filter;
+  transition-duration: var(--duration-gentle);
+  transition-timing-function: var(--ease-standard);
+  transition-delay: 90ms;
+}
+
+/*
+ * The living mark breathes and its colours slowly turn while the work runs.
+ * It only exists while something is working, so it never moves at rest.
+ */
+@keyframes cl-living-breathe {
+  from {
+    scale: 0.94;
+  }
+  to {
+    scale: 1.05;
+  }
+}
+
+@keyframes cl-living-turn {
+  to {
+    rotate: 1turn;
+  }
+}
+
+@keyframes cl-living-glow {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cl-living {
+  animation: cl-living-breathe calc(var(--duration-calm) * 10) var(--ease-breathe) infinite alternate;
+}
+
+.cl-living-turn.one {
+  animation: cl-living-turn calc(var(--duration-calm) * 48) linear infinite;
+}
+
+.cl-living-turn.two {
+  animation: cl-living-turn calc(var(--duration-calm) * 66) linear infinite reverse;
+}
+
+.cl-living-turn.three {
+  animation: cl-living-turn calc(var(--duration-calm) * 90) linear infinite;
+}
+
+.cl-living-core {
+  animation: cl-living-glow calc(var(--duration-calm) * 7) var(--ease-breathe) infinite alternate;
+}
+
+/* Long work arrives with its mark popping in to lead it. */
+.cl-progress.big > .cl-living {
+  transition-property: opacity, scale;
+  transition-duration: var(--duration-base), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-pop);
+}
+
+@starting-style {
+  html:not([data-cl-entering]) .cl-progress.big > .cl-living {
+    opacity: 0;
+    scale: calc(1 - 0.4 * var(--cl-travel));
+  }
+}
+
+/*
+ * The crew. A member pops in on a spring as their stage starts, works in
+ * their own way while it runs, and gives one small hop when they finish.
+ * A face that is not at work is still.
+ */
+.cl-crew-row {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-base), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-pop), var(--spring-pop);
+}
+
+/* Joining is an arrival; a crew already at work when its screen opens stays put. */
+@starting-style {
+  html:not([data-cl-entering]) .cl-crew-row {
+    opacity: 0;
+    translate: calc(-1 * var(--space-3) * var(--cl-travel)) 0;
+    scale: calc(1 - 0.08 * var(--cl-travel));
+  }
+}
+
+.cl-crew-row .cl-crew-line {
+  transition: color var(--duration-base) var(--ease-standard);
+}
+
+@keyframes cl-crew-breathe {
+  to {
+    scale: 1.07;
+  }
+}
+
+@keyframes cl-crew-bounce {
+  to {
+    translate: 0 -3px;
+  }
+}
+
+@keyframes cl-crew-sway {
+  from {
+    rotate: -7deg;
+  }
+  to {
+    rotate: 7deg;
+  }
+}
+
+@keyframes cl-crew-look {
+  from {
+    translate: -2px 0;
+    rotate: -4deg;
+  }
+  to {
+    translate: 2px 0;
+    rotate: 4deg;
+  }
+}
+
+@keyframes cl-crew-roll {
+  from {
+    rotate: -9deg;
+    translate: -1px 0;
+  }
+  to {
+    rotate: 9deg;
+    translate: 1px 0;
+  }
+}
+
+@keyframes cl-crew-blink {
+  0%,
+  92%,
+  100% {
+    scale: 1 1;
+  }
+  95% {
+    scale: 1 0.12;
+  }
+}
+
+@keyframes cl-crew-hop {
+  0% {
+    translate: 0 0;
+  }
+  40% {
+    translate: 0 -7px;
+    scale: 1.04;
+  }
+  72% {
+    translate: 0 0;
+    scale: 1.03 0.96;
+  }
+  100% {
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+.cl-crew-face.working[data-crew='echo'] > .cl-crew-body {
+  animation: cl-crew-breathe calc(var(--duration-calm) * 3) var(--ease-breathe) infinite alternate;
+}
+
+/* Snip's bounce is a steady, unhurried beat (748 ms each way), not a twitch. */
+.cl-crew-face.working[data-crew='snip'] > .cl-crew-body {
+  animation: cl-crew-bounce calc(var(--duration-calm) * 2.2) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='quill'] > .cl-crew-body {
+  animation: cl-crew-sway calc(var(--duration-calm) * 2.4) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='scout'] > .cl-crew-body {
+  animation: cl-crew-look calc(var(--duration-calm) * 2.6) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='tint'] > .cl-crew-body {
+  animation: cl-crew-breathe calc(var(--duration-calm) * 4) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working[data-crew='reel'] > .cl-crew-body {
+  animation: cl-crew-roll calc(var(--duration-calm) * 2) var(--ease-breathe) infinite alternate;
+}
+
+.cl-crew-face.working .cl-crew-eyes > span {
+  animation: cl-crew-blink calc(var(--duration-calm) * 11) linear infinite;
+}
+
+.cl-crew-face.working[data-crew='snip'] .cl-crew-eyes > span {
+  animation-delay: 1.3s;
+}
+
+.cl-crew-face.hop {
+  animation: cl-crew-hop calc(var(--duration-calm) + var(--duration-base)) var(--ease-enter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The living mark only breathes, in opacity; the crew only fades in and out. */
+  .cl-living {
+    animation: cl-living-glow calc(var(--duration-calm) * 9) var(--ease-breathe) infinite alternate;
+  }
+
+  /* Each turn is named with its order (.cl-living-turn.one), which outranks the class alone. */
+  .cl-living-turn,
+  .cl-living-core {
+    animation: none !important;
+  }
+
+  .cl-crew-face,
+  .cl-crew-body,
+  .cl-crew-face .cl-crew-eyes > span {
+    animation: none !important;
+  }
+}
+
+/* ---------- On set ---------- */
+
+/* The highlighter draws across its word, a beat after the heading arrives. */
+.cl-accent::before {
+  transition:
+    scale var(--duration-spring) var(--ease-enter) 140ms,
+    opacity var(--duration-gentle) var(--ease-enter) 140ms;
+}
+
+@starting-style {
+  .cl-accent::before {
+    scale: calc(1 - var(--cl-travel)) 1;
+    opacity: 0;
+  }
+}
+
+/* An onboarding step floats in, its parts one after another; the panel beside it lands. */
+.cl-onboard-say > *,
+.cl-onboard-body > :not(.cl-onboard-say) {
+  transition-property: opacity, translate, filter, scale;
+  transition-duration: var(--duration-gentle), var(--duration-gentle), var(--duration-gentle), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--ease-enter), var(--ease-enter), var(--spring-settle);
+}
+
+.cl-onboard-say > :nth-child(2) {
+  transition-delay: 50ms;
+}
+
+.cl-onboard-say > :nth-child(3) {
+  transition-delay: 90ms;
+}
+
+.cl-onboard-say > :nth-child(n + 4) {
+  transition-delay: 120ms;
+}
+
+.cl-onboard-body > :not(.cl-onboard-say) {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-settle), var(--spring-settle);
+  transition-delay: 120ms;
+}
+
+@starting-style {
+  .cl-onboard-say > * {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+
+  .cl-onboard-say > .cl-welcome {
+    filter: blur(calc(2px * var(--cl-travel)));
+  }
+
+  .cl-onboard-body > :not(.cl-onboard-say) {
+    opacity: 0;
+    translate: 0 calc(var(--space-4) * var(--cl-travel));
+    scale: calc(1 - 0.03 * var(--cl-travel));
+  }
+}
+
+/* Presets, projects and sample shoots land card by card, as clips do. */
+.cl-preset,
+.cl-continue-row > .cl-project,
+.cl-sample {
+  transition-property: opacity, translate, scale;
+  transition-duration: var(--duration-gentle), var(--duration-spring), var(--duration-spring);
+  transition-timing-function: var(--ease-enter), var(--spring-settle), var(--spring-settle);
+}
+
+:is(.cl-preset, .cl-continue-row > .cl-project, .cl-sample):nth-child(2) {
+  transition-delay: 45ms;
+}
+
+:is(.cl-preset, .cl-continue-row > .cl-project, .cl-sample):nth-child(3) {
+  transition-delay: 80ms;
+}
+
+:is(.cl-preset, .cl-continue-row > .cl-project, .cl-sample):nth-child(n + 4) {
+  transition-delay: 100ms;
+}
+
+@starting-style {
+  html:not([data-cl-entering]) :is(.cl-preset, .cl-continue-row > .cl-project, .cl-sample) {
+    opacity: 0;
+    translate: 0 calc(var(--space-4) * var(--cl-travel));
+    scale: calc(1 - 0.04 * var(--cl-travel));
+  }
+}
+
+/* A preset lifts under the pointer; the delay above is for arriving, not for this. */
+@media (hover: hover) and (pointer: fine) {
+  .cl-preset:hover {
+    transition-delay: 0ms;
+  }
+}
+
+/* The setup card rises into the rail; a step done pops its tick. */
+.cl-setup-card {
+  transition: opacity var(--duration-gentle) var(--ease-enter), translate var(--duration-gentle) var(--ease-enter);
+}
+
+.cl-tick > svg {
+  transition: scale var(--duration-spring) var(--spring-pop);
+}
+
+@starting-style {
+  .cl-setup-card {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * var(--cl-travel));
+  }
+
+  .cl-tick > svg {
+    scale: calc(1 - var(--cl-travel));
+  }
+}
+
+/* The word track's Cut or Bring back rises in once a word is marked. */
+.cl-wordtrack-bar {
+  transition: opacity var(--duration-base) var(--ease-enter), translate var(--duration-base) var(--ease-enter);
+}
+
+@starting-style {
+  .cl-wordtrack-bar {
+    opacity: 0;
+    translate: 0 calc(var(--space-1) * var(--cl-travel));
+  }
+}

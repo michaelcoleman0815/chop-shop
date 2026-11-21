@@ -1,0 +1,273 @@
+{
+  "about": "Renders the self-test runs on the phone, and make_media.py runs on the CI runner with its own ffmpeg (libx264 and libx265 for the hardware encoders) to record what each should come out as. {media}, {fonts}, {work} and {out} are folders; {h264} and {hevc} are the platform's hardware encoders. Samples are regions of the output, in its own pixels, whose mean colour is compared at time t. {exportVideo} is the app's own export video settings for the platform. pre are runs made before a render's own; files are written to {work} first, with the folders filled in; keyframesWithin, profileOnIos, faststart and bytesBetween are further checks of the output.",
+  "renders": [
+    {
+      "name": "trim-scale-crop-pad",
+      "about": "A seek and trim on the input, scale, crop and pad, the hardware H.264 encoder at a bitrate with -pix_fmt, and aac",
+      "args": ["-hide_banner", "-y", "-ss", "2.2", "-t", "3", "-i", "{media}/h264_1080p.mp4", "-vf", "scale=1280:720,crop=1280:560:0:80,pad=1280:720:0:80:color=black", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "{out}/trim-scale-crop-pad.mp4"],
+      "output": "trim-scale-crop-pad.mp4",
+      "samples": [
+        { "t": 0.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 0.5, "x": 576, "y": 10, "w": 128, "h": 50 }
+      ]
+    },
+    {
+      "name": "xfade",
+      "about": "Two trimmed inputs joined with xfade and acrossfade",
+      "args": ["-hide_banner", "-y", "-ss", "0", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-ss", "4", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-filter_complex", "[0:v]settb=1/30,fps=30[a];[1:v]settb=1/30,fps=30[b];[a][b]xfade=transition=fade:duration=1:offset=1,format=yuv420p[v];[0:a][1:a]acrossfade=d=1[aud]", "-map", "[v]", "-map", "[aud]", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/xfade.mp4"],
+      "output": "xfade.mp4",
+      "samples": [
+        { "t": 0.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 2.6, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "zscale-hdr",
+      "about": "A 10-bit HLG recording to ordinary video through zscale and tonemap, the conversion src/main/intake.ts picks for HLG",
+      "args": ["-hide_banner", "-y", "-i", "{media}/hlg_10bit.mov", "-vf", "zscale=tin=arib-std-b67:pin=bt2020:min=bt2020nc:rin=tv:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p", "-c:v", "{h264}", "-b:v", "8M", "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-c:a", "aac", "{out}/zscale-hdr.mp4"],
+      "output": "zscale-hdr.mp4",
+      "tolerance": 24,
+      "samples": [
+        { "t": 0.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 2.5, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "lut3d",
+      "about": "A 3D LUT (.cube) that swaps red and blue",
+      "args": ["-hide_banner", "-y", "-ss", "0", "-t", "3", "-i", "{media}/h264_1080p.mp4", "-vf", "lut3d=file='{media}/grade.cube':interp=tetrahedral,format=yuv420p", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/lut3d.mov"],
+      "output": "lut3d.mov",
+      "samples": [
+        { "t": 0.5, "x": 896, "y": 476, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "captions",
+      "about": "The subtitles filter with fontsdir: the three caption faces bundled in resources/fonts, drawn by libass",
+      "args": ["-hide_banner", "-y", "-ss", "7", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-vf", "scale=1280:720,subtitles='{work}/three-fonts.ass':fontsdir='{fonts}'", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/captions.mp4"],
+      "output": "captions.mp4",
+      "files": {
+        "three-fonts.ass": "[Script Info]\nScriptType: v4.00+\nWrapStyle: 0\nScaledBorderAndShadow: yes\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Chop,Archivo Black,120,&H00FFFFFF,&H0000FFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,6,0,2,100,100,80,1\nStyle: Big,Anton,140,&H0000FFFF,&H0000FFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,4,0,8,100,100,40,1\nStyle: Soft,Sora,90,&H00FF00FF,&H00FF00FF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,4,0,5,100,100,40,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:00.00,0:00:05.00,Chop,,0,0,0,,HELLO WORLD\nDialogue: 0,0:00:00.00,0:00:05.00,Big,,0,0,0,,TOP LINE\nDialogue: 0,0:00:00.00,0:00:05.00,Soft,,0,0,0,,middle\n"
+      },
+      "stderrIncludes": ["fontselect: (Archivo Black, 700, 0) -> ArchivoBlack-Regular", "fontselect: (Anton, 400, 0) -> Anton-Regular", "fontselect: (Sora, 400, 0) -> Sora-Regular"],
+      "samples": [
+        { "t": 0.5, "x": 280, "y": 545, "w": 720, "h": 80 },
+        { "t": 0.5, "x": 510, "y": 80, "w": 260, "h": 80 },
+        { "t": 0.5, "x": 540, "y": 340, "w": 200, "h": 40 },
+        { "t": 0.5, "x": 40, "y": 300, "w": 120, "h": 120 }
+      ]
+    },
+    {
+      "name": "overlay-png",
+      "about": "A PNG with alpha laid over the picture, as a logo is",
+      "args": ["-hide_banner", "-y", "-ss", "1", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-i", "{media}/logo.png", "-filter_complex", "[0:v][1:v]overlay=x=W-w-40:y=40,format=yuv420p[v]", "-map", "[v]", "-map", "0:a", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/overlay-png.mp4"],
+      "output": "overlay-png.mp4",
+      "samples": [
+        { "t": 0.5, "x": 1500, "y": 60, "w": 340, "h": 100 },
+        { "t": 0.5, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "audio-mix",
+      "about": "Speech over music: amix, sidechain ducking (sidechaincompress, as src/main/compose.ts ducks), atempo and loudnorm to -14 LUFS, to aac",
+      "args": ["-hide_banner", "-y", "-i", "{media}/speech.wav", "-stream_loop", "-1", "-i", "{media}/music.m4a", "-filter_complex", "[0:a]aresample=48000,asplit=2[sp][key];[1:a]aresample=48000,volume=-6dB[mus];[mus][key]sidechaincompress=threshold=0.02:ratio=12:attack=20:release=400[duck];[sp][duck]amix=inputs=2:duration=first:normalize=0,atempo=1.25,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[a]", "-map", "[a]", "-c:a", "aac", "-b:a", "160k", "{out}/audio-mix.m4a"],
+      "output": "audio-mix.m4a",
+      "loudness": true
+    },
+    {
+      "name": "encode-nv12",
+      "about": "The hardware H.264 encoder fed NV12 at 1080p, from filter sources",
+      "args": ["-hide_banner", "-y", "-filter_complex", "testsrc2=size=1920x1080:rate=30:duration=4[v];sine=frequency=440:duration=4:sample_rate=48000[a]", "-map", "[v]", "-map", "[a]", "-c:v", "{h264}", "-b:v", "10M", "-pix_fmt", "nv12", "-c:a", "aac", "{out}/encode-nv12.mp4"],
+      "output": "encode-nv12.mp4",
+      "tolerance": 30,
+      "samples": [
+        { "t": 2.0, "x": 0, "y": 0, "w": 1920, "h": 1080 }
+      ]
+    },
+    {
+      "name": "encode-hevc",
+      "about": "The hardware HEVC encoder, tagged hvc1 for Apple players",
+      "needs": "hevc",
+      "args": ["-hide_banner", "-y", "-ss", "0", "-t", "3", "-i", "{media}/h264_1080p.mp4", "-c:v", "{hevc}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-c:a", "aac", "{out}/encode-hevc.mp4"],
+      "output": "encode-hevc.mp4",
+      "samples": [
+        { "t": 1.5, "x": 896, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "portrait-rotation",
+      "about": "An iPhone-like HEVC portrait recording, turned upright by its rotation metadata",
+      "args": ["-hide_banner", "-y", "-i", "{media}/hevc_portrait.mov", "-vf", "scale=540:-2", "-c:v", "{h264}", "-b:v", "4M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/portrait-rotation.mp4"],
+      "output": "portrait-rotation.mp4",
+      "samples": [
+        { "t": 1.0, "x": 206, "y": 200, "w": 128, "h": 128 },
+        { "t": 1.0, "x": 206, "y": 640, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "still-webp",
+      "about": "A WebP picture decoded, scaled and written as PNG",
+      "args": ["-hide_banner", "-y", "-i", "{media}/still.webp", "-vf", "scale=320:-2", "-frames:v", "1", "-update", "1", "{out}/still-webp.png"],
+      "output": "still-webp.png",
+      "samples": [
+        { "t": 0, "x": 128, "y": 60, "w": 64, "h": 60 }
+      ]
+    },
+    {
+      "name": "still-avif",
+      "about": "An AVIF picture decoded by dav1d, written as PNG",
+      "args": ["-hide_banner", "-y", "-i", "{media}/still.avif", "-vf", "scale=320:-2", "-frames:v", "1", "-update", "1", "{out}/still-avif.png"],
+      "output": "still-avif.png",
+      "samples": [
+        { "t": 0, "x": 128, "y": 60, "w": 64, "h": 60 }
+      ]
+    },
+    {
+      "name": "still-png-to-webp",
+      "about": "A PNG picture written as WebP with libwebp",
+      "args": ["-hide_banner", "-y", "-i", "{media}/still.png", "-vf", "scale=640:-2", "-c:v", "libwebp", "-quality", "90", "-frames:v", "1", "{out}/still-png-to-webp.webp"],
+      "output": "still-png-to-webp.webp",
+      "samples": [
+        { "t": 0, "x": 256, "y": 120, "w": 128, "h": 120 }
+      ]
+    },
+    {
+      "name": "app-export",
+      "about": "The app's final export, as phase 1 records it: 1080x1920 from a landscape recording, the hardware H.264 encoder with the app's own settings (iOS: -profile:v high -b:v 12000k -g 60 -pix_fmt nv12; Android: -b:v 12000k -g 60 -pix_fmt nv12), aac at 192k, +faststart. 1080 is not a multiple of 16, so colours are read at the edges too",
+      "args": ["-hide_banner", "-y", "-ss", "1", "-t", "4", "-i", "{media}/h264_1080p.mp4", "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=nv12", "{exportVideo}", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "{out}/app-export.mp4"],
+      "output": "app-export.mp4",
+      "keyframesWithin": 2.1,
+      "profileOnIos": "High",
+      "faststart": true,
+      "samples": [
+        { "t": 0.5, "x": 476, "y": 896, "w": 128, "h": 128 },
+        { "t": 0.5, "x": 1000, "y": 100, "w": 80, "h": 200 },
+        { "t": 0.5, "x": 0, "y": 1700, "w": 80, "h": 200 },
+        { "t": 0.5, "x": 1000, "y": 1840, "w": 80, "h": 80 },
+        { "t": 2.5, "x": 476, "y": 896, "w": 128, "h": 128 },
+        { "t": 2.5, "x": 1000, "y": 1840, "w": 80, "h": 80 }
+      ]
+    },
+    {
+      "name": "chunk-mkv-pcm",
+      "about": "A chunk of a long cut as the app writes it: the hardware H.264 encoder and PCM sound in Matroska",
+      "args": ["-hide_banner", "-y", "-ss", "0", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-vf", "scale=1280:720,format=nv12", "-c:v", "{h264}", "-b:v", "8M", "-g", "60", "-c:a", "pcm_s16le", "{out}/chunk.mkv"],
+      "output": "chunk.mkv",
+      "samples": [
+        { "t": 1.5, "x": 576, "y": 296, "w": 128, "h": 128 }
+      ],
+      "loudness": true
+    },
+    {
+      "name": "chunks-joined",
+      "about": "Two such chunks joined by the concat demuxer, the picture copied and the sound to aac, +faststart",
+      "pre": [
+        ["-hide_banner", "-y", "-ss", "0", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-vf", "scale=1280:720,format=nv12", "-c:v", "{h264}", "-b:v", "8M", "-g", "60", "-c:a", "pcm_s16le", "{work}/chunk1.mkv"],
+        ["-hide_banner", "-y", "-ss", "2", "-t", "2", "-i", "{media}/h264_1080p.mp4", "-vf", "scale=1280:720,format=nv12", "-c:v", "{h264}", "-b:v", "8M", "-g", "60", "-c:a", "pcm_s16le", "{work}/chunk2.mkv"]
+      ],
+      "files": {
+        "chunks.txt": "file '{work}/chunk1.mkv'\nfile '{work}/chunk2.mkv'\n"
+      },
+      "args": ["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", "{work}/chunks.txt", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "{out}/chunks-joined.mp4"],
+      "output": "chunks-joined.mp4",
+      "faststart": true,
+      "samples": [
+        { "t": 1.0, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 3.0, "x": 576, "y": 296, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "camera-move",
+      "about": "A camera move as the phone makes one without perspective (GPL-only): scale growing frame by frame (eval=frame), then crop panning down over time, on the upright portrait recording",
+      "args": ["-hide_banner", "-y", "-i", "{media}/hevc_portrait.mov", "-filter_complex", "[0:v]scale=w='trunc(1080*(1+0.2*t/3)/2)*2':h=-2:eval=frame,crop=1080:1080:x='(iw-ow)/2':y='(ih-oh)*min(t/2.5\\,1)',setsar=1,format=yuv420p[v]", "-map", "[v]", "-map", "0:a", "-c:v", "{h264}", "-b:v", "6M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/camera-move.mp4"],
+      "output": "camera-move.mp4",
+      "tolerance": 24,
+      "samples": [
+        { "t": 0.2, "x": 476, "y": 476, "w": 128, "h": 128 },
+        { "t": 1.4, "x": 476, "y": 476, "w": 128, "h": 128 },
+        { "t": 2.8, "x": 476, "y": 476, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "blur-fill",
+      "about": "A landscape recording on a blurred, darkened copy of itself filling a portrait frame: split, scale, crop, gblur, colorchannelmixer, overlay",
+      "args": ["-hide_banner", "-y", "-ss", "0", "-t", "3", "-i", "{media}/h264_1080p.mp4", "-filter_complex", "[0:v]split=2[bgsrc][fgsrc];[bgsrc]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=30,colorchannelmixer=rr=0.5:gg=0.5:bb=0.5[bg];[fgsrc]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,format=yuv420p[v]", "-map", "[v]", "-map", "0:a", "-c:v", "{h264}", "-b:v", "8M", "-pix_fmt", "yuv420p", "-c:a", "aac", "{out}/blur-fill.mp4"],
+      "output": "blur-fill.mp4",
+      "samples": [
+        { "t": 1.5, "x": 476, "y": 896, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 476, "y": 100, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 476, "y": 1700, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "phone-filters",
+      "about": "The filters the app's phone path uses, in one graph: fps, scale, setsar, unsharp, vignette, noise, colorchannelmixer, fade, trim, setpts, settb, tpad, null; asetnsamples, highpass, lowpass, equalizer, deesser, acompressor, afftdn, pan, volume, asendcmd, astats, volumedetect, adelay, apad, atrim, afade, asetpts, anull, anoisesrc, amix, alimiter, aformat",
+      "args": ["-hide_banner", "-y", "-ss", "1", "-t", "3", "-i", "{media}/h264_1080p.mp4", "-filter_complex", "[0:v]fps=30,scale=1280:720,setsar=1,unsharp=5:5:1.0:5:5:0.0,vignette=angle=PI/5,noise=alls=8:allf=t:all_seed=7,colorchannelmixer=rr=0.9:gg=0.9:bb=0.9,fade=t=in:st=0:d=0.3,trim=duration=3,setpts=PTS-STARTPTS,settb=1/30,tpad=stop_mode=clone:stop_duration=0.5,null,format=yuv420p[v];[0:a]asetnsamples=n=1024,highpass=f=80,lowpass=f=12000,equalizer=f=1000:t=q:w=1:g=3,deesser,acompressor=threshold=0.1:ratio=3,afftdn=nf=-30,pan=stereo|c0=c0|c1=c1,volume=0.8,asendcmd=c='1.0 volume volume 0.6',astats=reset=0,volumedetect,adelay=delays=100:all=1,apad,atrim=duration=3.5,afade=t=out:st=3:d=0.5,asetpts=PTS-STARTPTS,anull[a0];anoisesrc=d=3.5:c=pink:a=0.02:r=48000:seed=42,aformat=channel_layouts=stereo[noise];[a0][noise]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.9,aformat=sample_fmts=fltp:channel_layouts=stereo:sample_rates=48000[a]", "-map", "[v]", "-map", "[a]", "-c:v", "{h264}", "-b:v", "8M", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "{out}/phone-filters.mp4"],
+      "output": "phone-filters.mp4",
+      "tolerance": 20,
+      "loudness": true,
+      "stderrIncludes": ["mean_volume:", "max_volume:", "RMS level dB:"],
+      "samples": [
+        { "t": 0.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 2.0, "x": 576, "y": 296, "w": 128, "h": 128 }
+      ]
+    },
+    {
+      "name": "alac-to-wav",
+      "about": "Apple Lossless sound, as iPhones can record it, decoded and written as 16-bit WAV",
+      "args": ["-hide_banner", "-y", "-i", "{media}/alac.m4a", "-c:a", "pcm_s16le", "{out}/alac.wav"],
+      "output": "alac.wav",
+      "loudness": true
+    },
+    {
+      "name": "opus-to-flac",
+      "about": "An Opus voice note in Ogg decoded and written as FLAC",
+      "args": ["-hide_banner", "-y", "-i", "{media}/voice.ogg", "-c:a", "flac", "{out}/voice.flac"],
+      "output": "voice.flac",
+      "loudness": true
+    },
+    {
+      "name": "encode-opus",
+      "about": "Speech to Opus in Ogg with libopus, as the app would send sound to the AI services",
+      "args": ["-hide_banner", "-y", "-i", "{media}/speech.wav", "-c:a", "libopus", "-b:a", "24k", "-application", "voip", "{out}/speech.ogg"],
+      "output": "speech.ogg",
+      "loudness": true,
+      "bytesBetween": [30000, 75000]
+    },
+    {
+      "name": "mjpeg-to-jpeg",
+      "about": "Motion JPEG video decoded, one frame written as a JPEG still (image2 and mjpeg)",
+      "args": ["-hide_banner", "-y", "-ss", "1.5", "-i", "{media}/mjpeg.avi", "-frames:v", "1", "-q:v", "3", "-update", "1", "{out}/mjpeg-frame.jpg"],
+      "output": "mjpeg-frame.jpg",
+      "samples": [
+        { "t": 0, "x": 288, "y": 148, "w": 64, "h": 64 }
+      ]
+    }
+  ],
+  "desktop": {
+    "desktop-cut": {
+      "samples": [
+        { "t": 0.05, "x": 440, "y": 700, "w": 200, "h": 200 },
+        { "t": 0.8, "x": 440, "y": 300, "w": 200, "h": 200 },
+        { "t": 2.7, "x": 440, "y": 300, "w": 200, "h": 200 },
+        { "t": 4.0, "x": 440, "y": 300, "w": 200, "h": 200 },
+        { "t": 2.0, "x": 890, "y": 60, "w": 120, "h": 40 },
+        { "t": 0.4, "x": 140, "y": 1150, "w": 800, "h": 160 }
+      ],
+      "loudness": true
+    },
+    "desktop-hdr-look": {
+      "tolerance": 24,
+      "samples": [
+        { "t": 0.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 1.5, "x": 576, "y": 296, "w": 128, "h": 128 },
+        { "t": 2.4, "x": 576, "y": 296, "w": 128, "h": 128 }
+      ],
+      "loudness": true
+    }
+  }
+}

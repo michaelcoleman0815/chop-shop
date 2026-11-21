@@ -1,0 +1,11 @@
+{
+  "appId": "app.cutalong.engine.example",
+  "appName": "Engine Test",
+  "webDir": "www",
+  "android": {
+    "webContentsDebuggingEnabled": true
+  },
+  "ios": {
+    "webContentsDebuggingEnabled": true
+  }
+}

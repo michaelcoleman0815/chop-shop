@@ -5,6 +5,7 @@ import { readApiKey } from './apikey'
 import type { SuggestedClip, Transcript } from '../shared/types'
 import { normaliseClips, transcriptLines } from './clip-shape'
 import { selectLocally } from './local-llm'
+import { localHost } from './local-server'
 
 /** Ollama's default. Nothing else listens here. */
 export const OLLAMA_HOST = 'http://127.0.0.1:11434'
@@ -152,6 +153,14 @@ as a doctrine, even when the doctrinal version is better preaching.`,
     'This is a podcast or interview with more than one speaker. Apply the interview guidance, and watch for answers that cannot stand without the question that prompted them.',
   talk:
     'This is a talk, lecture or keynote by one speaker. Expect a structured argument: prefer a single point made whole over a fragment of the through-line, and treat section transitions as boundaries rather than content.',
+  stream: `This is a livestream recording: hours of one person talking to a chat,
+often over a game. What travels: a story told whole, a question from chat
+answered well, a real reaction to something that happened on screen, and a
+claim or admission with stakes. Read a reaction with its setup: the moment
+before it is part of it. What does not travel: thanking subscribers and
+reading alerts, talk about the stream itself (settings, schedule, the
+overlay), long stretches of play with little said, and anything that only
+makes sense to someone watching live.`,
   comedy:
     'This is comedy or a performance. A bit starts at its first setup word and ends a beat after its punchline; never cut between a setup and its payoff, and never include a punchline whose setup is off-screen.'
 }
@@ -211,7 +220,7 @@ export async function suggestClips(
   if (local) {
     // "ollama:llama3.2:3b" names the runtime and the model it should load.
     const name = model.slice('ollama:'.length)
-    const raw = await selectLocally(OLLAMA_HOST, name, SYSTEM, prompt)
+    const raw = await selectLocally(await localHost(), name, SYSTEM, prompt)
     return normaliseClips(raw, transcript.words, durationSec)
   }
 

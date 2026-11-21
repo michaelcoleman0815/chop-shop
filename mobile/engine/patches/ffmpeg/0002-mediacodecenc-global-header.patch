@@ -1,0 +1,146 @@
+Cutalong's own change to FFmpeg 6.0's MediaCodec encoder
+(libavcodec/mediacodecenc.c): extradata at init when the muxer asks for a
+global header, as MP4 and Matroska do. MediaCodec gives its parameter sets
+only with its first output, after the muxer has written its header, and the
+Matroska muxer cannot write H.264 or HEVC without them: chunks of a long cut
+(Matroska with PCM sound) failed on Android. A second encoder of the same
+format now encodes one black frame first, and its parameter sets become the
+extradata, through the same crop as the stream. FFmpeg 7.1 does the same
+with a dummy frame on the encoder itself.
+
+diff --git a/libavcodec/mediacodecenc.c b/libavcodec/mediacodecenc.c
+index a92a8dc..a60c471 100644
+--- a/libavcodec/mediacodecenc.c
++++ b/libavcodec/mediacodecenc.c
+@@ -26,6 +26,7 @@
+ #include "libavutil/hwcontext_mediacodec.h"
+ #include "libavutil/imgutils.h"
+ #include "libavutil/opt.h"
++#include "libavutil/time.h"
+ 
+ #include "avcodec.h"
+ #include "bsf.h"
+@@ -146,6 +147,94 @@ static int mediacodec_init_bsf(AVCodecContext *avctx)
+     return ret;
+ }
+ 
++/*
++ * AV_CODEC_FLAG_GLOBAL_HEADER, which the MP4 and Matroska muxers ask for.
++ * MediaCodec gives its parameter sets (SPS and PPS, and a VPS for HEVC) only
++ * once it has a frame, which is after the muxer has had to write its header:
++ * Matroska cannot be written without them. So another encoder of the same
++ * format encodes one black frame first, and the parameter sets it gives
++ * become the extradata. (FFmpeg 7.1 encodes a dummy frame on the encoder
++ * itself to the same end.) Not fatal: without them the stream still carries
++ * its parameter sets in band, as before.
++ */
++static void mediacodec_generate_extradata(AVCodecContext *avctx,
++                                          FFAMediaFormat *format,
++                                          const char *codec_mime)
++{
++    MediaCodecEncContext *s = avctx->priv_data;
++    const size_t luma = (size_t)s->width * s->height;
++    const int64_t deadline = av_gettime_relative() + 3000000;
++    FFAMediaCodec *codec;
++    int queued = 0;
++
++    if (s->name)
++        codec = ff_AMediaCodec_createCodecByName(s->name, s->use_ndk_codec);
++    else
++        codec = ff_AMediaCodec_createEncoderByType(codec_mime, s->use_ndk_codec);
++    if (!codec)
++        return;
++    if (ff_AMediaCodec_configure(codec, format, NULL, NULL,
++                                 ff_AMediaCodec_getConfigureFlagEncode(codec)) ||
++        ff_AMediaCodec_start(codec))
++        goto done;
++
++    while (!avctx->extradata_size && av_gettime_relative() < deadline) {
++        FFAMediaCodecBufferInfo info = { 0 };
++        ssize_t index;
++
++        if (queued < 2) {
++            index = ff_AMediaCodec_dequeueInputBuffer(codec, 10000);
++            if (index >= 0) {
++                size_t size = 0;
++                uint8_t *buf = ff_AMediaCodec_getInputBuffer(codec, index, &size);
++                if (!queued && buf && size >= luma * 3 / 2) {
++                    /* Black, as limited range YUV 4:2:0, planar or NV12. */
++                    memset(buf, 16, luma);
++                    memset(buf + luma, 128, luma / 2);
++                    ff_AMediaCodec_queueInputBuffer(codec, index, 0, luma * 3 / 2, 0, 0);
++                } else {
++                    ff_AMediaCodec_queueInputBuffer(codec, index, 0, 0, 0,
++                                                    ff_AMediaCodec_getBufferFlagEndOfStream(codec));
++                    queued = 1;
++                }
++                queued++;
++            }
++        }
++
++        index = ff_AMediaCodec_dequeueOutputBuffer(codec, &info, 10000);
++        if (ff_AMediaCodec_infoTryAgainLater(codec, index) ||
++            ff_AMediaCodec_infoOutputFormatChanged(codec, index))
++            continue;
++        if (ff_AMediaCodec_infoOutputBuffersChanged(codec, index)) {
++            ff_AMediaCodec_cleanOutputBuffers(codec);
++            continue;
++        }
++        if (index < 0)
++            break;
++        if ((info.flags & ff_AMediaCodec_getBufferFlagCodecConfig(codec)) && info.size > 0) {
++            size_t size = 0;
++            uint8_t *buf = ff_AMediaCodec_getOutputBuffer(codec, index, &size);
++            if (buf && info.offset + info.size <= size) {
++                avctx->extradata = av_mallocz(info.size + AV_INPUT_BUFFER_PADDING_SIZE);
++                if (avctx->extradata) {
++                    memcpy(avctx->extradata, buf + info.offset, info.size);
++                    avctx->extradata_size = info.size;
++                }
++            }
++        }
++        ff_AMediaCodec_releaseOutputBuffer(codec, index, false);
++        if (info.flags & ff_AMediaCodec_getBufferFlagEndOfStream(codec))
++            break;
++    }
++
++done:
++    if (!avctx->extradata_size)
++        av_log(avctx, AV_LOG_WARNING, "MediaCodec gave no parameter sets before its first frame; "
++               "a container that needs them in its header, such as Matroska, cannot be written.\n");
++    ff_AMediaCodec_stop(codec);
++    ff_AMediaCodec_delete(codec);
++}
++
+ static av_cold int mediacodec_init(AVCodecContext *avctx)
+ {
+     const char *codec_mime = NULL;
+@@ -289,6 +378,9 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
+     if (s->pts_as_dts == -1)
+         s->pts_as_dts = avctx->max_b_frames <= 0;
+ 
++    if ((avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) && !s->window && !avctx->extradata_size)
++        mediacodec_generate_extradata(avctx, format, codec_mime);
++
+     ret = ff_AMediaCodec_getConfigureFlagEncode(s->codec);
+     ret = ff_AMediaCodec_configure(s->codec, format, s->window, NULL, ret);
+     if (ret) {
+@@ -306,6 +398,18 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
+     if (ret)
+         goto bailout;
+ 
++    /* The crop the bitstream filter writes into the SPS belongs in the
++     * extradata's SPS too. */
++    if (s->bsf && avctx->extradata_size && s->bsf->par_out->extradata_size) {
++        uint8_t *cropped = av_mallocz(s->bsf->par_out->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
++        if (cropped) {
++            memcpy(cropped, s->bsf->par_out->extradata, s->bsf->par_out->extradata_size);
++            av_free(avctx->extradata);
++            avctx->extradata = cropped;
++            avctx->extradata_size = s->bsf->par_out->extradata_size;
++        }
++    }
++
+     mediacodec_output_format(avctx);
+ 
+     s->frame = av_frame_alloc();

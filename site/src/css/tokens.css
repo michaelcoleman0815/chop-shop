@@ -1,0 +1,288 @@
+/*
+ * Cutalong site tokens: Lined Script.
+ * Colour, radius, shadow and motion are the app's own (src/renderer/src/cutalong/tokens.css on the
+ * Lined Script branch): luminous paper on a warm desk, ink, gentle revision tints, and a calm night page
+ * in dark. The owner's "heavenly and alive" notes add confident revision pastels as colour blocks (--block-*),
+ * stickers, a living mark and springs with a hair of overshoot. Headings are Figtree, bold and tight, with one
+ * italic serif accent; Source Serif 4 is what you read in the product (replies, the script, notes);
+ * JetBrains Mono is timecode and file names. The scale (space, text sizes, container) is Hallmark's.
+ */
+:root {
+  color-scheme: light dark;
+
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px;
+  --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+
+  --text-xs: 0.8125rem; --text-sm: 0.875rem; --text-ui: 0.9375rem; --text-md: 1.0625rem; --text-lg: 1.25rem;
+  --text-xl: 1.5rem; --text-2xl: 1.875rem;
+  --text-display: clamp(2.75rem, 5.4vw + 0.75rem, 6.25rem);
+  --text-section: clamp(2.25rem, 3vw + 1rem, 4.25rem);
+  --text-number: clamp(3rem, 3.4vw + 1.5rem, 4.75rem);
+  --text-title: clamp(1.375rem, 0.6vw + 1.1rem, 1.75rem);
+  --text-lead: clamp(1.1875rem, 0.4vw + 1.05rem, 1.4375rem);
+  --text-read: clamp(1.0625rem, 0.2vw + 1rem, 1.125rem);
+
+  --container: 1280px; --measure: 40rem; --gutter: 64px; --gap-columns: 32px;
+  --section-gap-s: 120px; --section-gap: 160px; --section-gap-l: 200px;
+  --nav-height: 72px;
+
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400;
+  --z-toast: 500; --z-tooltip: 600;
+
+  /* Colour. Paper and ink; coral is now (the playhead) and the mark; blue pencil picks; revisions tint pages. */
+  --color-paper: oklch(96.9% 0.006 85);          /* the desk */
+  --color-glow: oklch(99.4% 0.012 90);           /* light on the paper */
+  --color-card: oklch(99.6% 0.003 90);           /* a sheet */
+  --color-card-2: oklch(98.2% 0.005 85);
+  --color-well: oklch(94.3% 0.007 82);
+  --color-rule: oklch(90.8% 0.007 80);
+  --color-rule-mid: oklch(84% 0.008 80);
+  --color-rule-strong: oklch(64% 0.012 75);
+  --color-beat: oklch(93.2% 0.008 80);
+  --color-ink: oklch(25% 0.014 272);
+  --color-ink-2: oklch(41% 0.014 272);
+  --color-muted: oklch(50% 0.012 272);
+  --color-on-ink: oklch(99.6% 0.003 90);
+  --color-ink-hover: oklch(34% 0.016 272);
+  --color-cut: oklch(68.4% 0.2069 33.9);          /* #FF5A36 */
+  --color-pick: oklch(52% 0.13 258);
+  --color-error: oklch(52% 0.17 27);
+  --color-ok: oklch(50% 0.1 155);
+  --color-frame: oklch(15% 0.012 268);
+  --color-frame-2: oklch(27% 0.012 268);
+  --color-stage: oklch(21% 0.016 272);           /* the stage: footage and its tools, dark in both looks */
+  --color-stage-2: oklch(27% 0.016 272);
+  --color-stage-line: oklch(36% 0.016 272);
+  --color-on-stage: oklch(96% 0.006 85);
+  --color-on-stage-soft: oklch(78% 0.01 272);
+  --color-selection: oklch(89% 0.04 245);
+  --color-focus: var(--color-ink);
+  --shadow-soft: oklch(30% 0.02 272 / 0.06);
+  --shadow-deep: oklch(30% 0.03 272 / 0.2);
+  --rev-1: oklch(99.6% 0.003 90);                /* white pages, v1 */
+  --rev-2: oklch(93.8% 0.03 240);                /* blue */
+  --rev-3: oklch(94.2% 0.028 352);               /* pink */
+  --rev-4: oklch(95.8% 0.045 98);                /* yellow */
+  --rev-5: oklch(94.4% 0.034 152);               /* green */
+  --rev-6: oklch(92.8% 0.05 82);                 /* goldenrod */
+  --rev-edge: oklch(25% 0.014 272 / 0.08);
+
+  /* Colour you can feel: the revision colours as confident blocks around the video, never on it. Ink type on top. */
+  --block-blue: oklch(84% 0.1 255);
+  --block-pink: oklch(85% 0.1 350);
+  --block-yellow: oklch(91% 0.14 100);
+  --block-green: oklch(87% 0.115 148);
+  --block-gold: oklch(85% 0.125 78);
+  --block-salmon: oklch(85% 0.095 52);
+  --block-lavender: oklch(85% 0.085 300);
+  --block-edge: oklch(25% 0.014 272 / 0.07);
+  /* Secondary and quiet text on a block: the ink, thinned, so it takes the block's hue (5:1 or better on every block). */
+  --ink-on-block-2: color-mix(in oklch, var(--color-ink) 80%, transparent);
+  --ink-on-block-3: color-mix(in oklch, var(--color-ink) 68%, transparent);
+
+  /* The crew (the owner's crew notes): revision pastels, coral for Snip alone because coral is the cut. */
+  --crew-echo: oklch(83% 0.08 240);
+  --crew-snip: oklch(68.4% 0.2069 33.9);
+  --crew-quill: oklch(91% 0.12 98);
+  --crew-scout: oklch(84% 0.1 152);
+  --crew-tint: oklch(84% 0.085 352);
+  --crew-reel: oklch(82% 0.08 300);
+  --crew-eye: oklch(25% 0.014 272);
+
+  /* Footage stand-ins inside the product: the same in both looks, as footage is. */
+  --footage-night: oklch(17% 0.028 268);
+  --footage-warm: oklch(70% 0.11 62);
+  --footage-cool: oklch(46% 0.07 250);
+  --footage-desk: oklch(30% 0.03 50);
+  --footage-caption: oklch(99% 0.005 85);
+  --footage-shade: oklch(10% 0 0 / 0.55);
+  /* The drawn stand-ins: a talking head under one soft key, a softbox, and four clips with a glossy finish. */
+  --footage-lamp: oklch(34% 0.05 60 / 0.9);
+  --footage-key: oklch(84% 0.08 75 / 0.55);
+  --footage-skin: oklch(62% 0.06 55);
+  --footage-skin-shade: oklch(24% 0.03 40);
+  --footage-shirt: oklch(44% 0.05 50);
+  --footage-shirt-shade: oklch(20% 0.02 260);
+  --footage-desk-shade: oklch(18% 0.02 40);
+  --footage-softbox: oklch(92% 0.03 85);
+  --footage-softbox-edge: oklch(60% 0.03 70);
+  --footage-face: oklch(58% 0.05 60);
+  --gloss-shade: oklch(10% 0.02 268 / 0.35);
+  --gloss-light: oklch(100% 0 0 / 0.35);
+  --gloss-drop: oklch(20% 0.04 268 / 0.5);
+  --gloss-shine: oklch(100% 0 0 / 0.7);
+  --gloss-tag: oklch(10% 0 0 / 0.62);
+  --clip-1-light: oklch(66% 0.07 60);
+  --clip-1-base: oklch(48% 0.07 40);
+  --clip-2-light: oklch(78% 0.09 85);
+  --clip-2-base: oklch(52% 0.06 70);
+  --clip-2-deep: oklch(22% 0.03 50);
+  --clip-3-light: oklch(76% 0.08 128);
+  --clip-3-base: oklch(42% 0.05 140);
+  --clip-4-light: oklch(70% 0.08 20);
+  --clip-4-base: oklch(42% 0.06 10);
+
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 14px; --radius-xl: 20px; --radius-composer: 24px; --radius-stage: 28px;
+  --radius-pill: 999px;
+
+  /* Soft light under lifted paper; the colours above change with the look. */
+  --shadow-page: 0 1px 2px var(--shadow-soft), 0 12px 28px -16px var(--shadow-deep);
+  --shadow-float: 0 1px 2px var(--shadow-soft), 0 22px 48px -18px var(--shadow-deep);
+  --shadow-window: 0 1px 2px var(--shadow-soft), 0 40px 80px -32px var(--shadow-deep), 0 0 0 1px var(--rev-edge);
+  --shadow-stage: 0 2px 4px var(--shadow-soft), 0 34px 70px -30px var(--shadow-deep);
+  --shadow-composer: 0 1px 2px var(--shadow-soft), 0 18px 40px -20px var(--shadow-deep);
+
+  /* Motion. Things arrive softly and settle; they leave sooner, easing out too. Nothing overshoots. */
+  --duration-fast: 120ms; --duration-base: 180ms; --duration-gentle: 260ms; --duration-calm: 340ms;
+  --duration-float: 900ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.33, 1, 0.68, 1);
+  --spring-gentle: linear(0, 0.08 4%, 0.28 10%, 0.53 18%, 0.74 27%, 0.87 36%, 0.94 46%, 0.98 58%, 0.995 72%, 1);
+  /* Arrivals land with a hair of overshoot: cards settle, stickers pop. */
+  --spring-settle: linear(0, 0.2 8%, 0.56 18%, 0.85 30%, 1.012 44%, 1.016 52%, 1.005 66%, 1);
+  --spring-pop: linear(0, 0.18 7%, 0.54 16%, 0.9 27%, 1.05 38%, 1.07 45%, 1.03 56%, 1 68%, 0.996 82%, 1);
+  --duration-settle: 720ms;
+  --float-rise: 18px;
+
+  --font-ui: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: var(--font-ui);
+  --font-accent: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --tracking-display: -0.045em;
+  --tracking-ui: -0.005em;
+}
+
+/* Dark: a calm night page, never a void. Twice, for the system setting and for an explicit choice. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-paper: oklch(19.5% 0.018 268);
+    --color-glow: oklch(26% 0.032 262);
+    --color-card: oklch(23.5% 0.02 268);
+    --color-card-2: oklch(26.5% 0.021 268);
+    --color-well: oklch(16.5% 0.017 268);
+    --color-rule: oklch(31% 0.02 268);
+    --color-rule-mid: oklch(40% 0.02 268);
+    --color-rule-strong: oklch(54% 0.02 268);
+    --color-beat: oklch(30% 0.02 268);
+    --color-ink: oklch(94.5% 0.008 85);
+    --color-ink-2: oklch(85% 0.01 85);
+    --color-muted: oklch(72% 0.012 268);
+    --color-on-ink: oklch(19.5% 0.018 268);
+    --color-ink-hover: oklch(86% 0.01 85);
+    --color-cut: oklch(70.6% 0.191 35.4);         /* #FF6E4E */
+    --color-pick: oklch(76% 0.1 255);
+    --color-error: oklch(75% 0.13 27);
+    --color-ok: oklch(78% 0.1 155);
+    --color-frame: oklch(13% 0.012 268);
+    --color-frame-2: oklch(25% 0.012 268);
+    --color-stage: oklch(16.5% 0.016 268);
+    --color-stage-2: oklch(22% 0.018 268);
+    --color-stage-line: oklch(33% 0.018 268);
+    --color-on-stage: oklch(96% 0.006 85);
+    --color-on-stage-soft: oklch(76% 0.01 268);
+    --color-selection: oklch(38% 0.06 255);
+    --shadow-soft: oklch(5% 0.01 268 / 0.5);
+    --shadow-deep: oklch(4% 0.02 268 / 0.72);
+    --rev-1: oklch(23.5% 0.02 268);
+    --rev-2: oklch(32% 0.045 248);
+    --rev-3: oklch(32% 0.04 350);
+    --rev-4: oklch(33% 0.04 95);
+    --rev-5: oklch(32% 0.038 155);
+    --rev-6: oklch(34% 0.05 78);
+    --rev-edge: oklch(94.5% 0.008 85 / 0.08);
+    --block-blue: oklch(35% 0.06 258);
+    --block-pink: oklch(35% 0.045 350);
+    --block-yellow: oklch(40% 0.044 80);
+    --block-green: oklch(36% 0.06 152);
+    --block-gold: oklch(36% 0.045 76);
+    --block-salmon: oklch(36% 0.06 48);
+    --block-lavender: oklch(35% 0.06 300);
+    --block-edge: oklch(94.5% 0.008 85 / 0.08);
+  }
+}
+:root[data-theme="dark"] {
+  --color-paper: oklch(19.5% 0.018 268);
+  --color-glow: oklch(26% 0.032 262);
+  --color-card: oklch(23.5% 0.02 268);
+  --color-card-2: oklch(26.5% 0.021 268);
+  --color-well: oklch(16.5% 0.017 268);
+  --color-rule: oklch(31% 0.02 268);
+  --color-rule-mid: oklch(40% 0.02 268);
+  --color-rule-strong: oklch(54% 0.02 268);
+  --color-beat: oklch(30% 0.02 268);
+  --color-ink: oklch(94.5% 0.008 85);
+  --color-ink-2: oklch(85% 0.01 85);
+  --color-muted: oklch(72% 0.012 268);
+  --color-on-ink: oklch(19.5% 0.018 268);
+  --color-ink-hover: oklch(86% 0.01 85);
+  --color-cut: oklch(70.6% 0.191 35.4);
+  --color-pick: oklch(76% 0.1 255);
+  --color-error: oklch(75% 0.13 27);
+  --color-ok: oklch(78% 0.1 155);
+  --color-frame: oklch(13% 0.012 268);
+  --color-frame-2: oklch(25% 0.012 268);
+  --color-stage: oklch(16.5% 0.016 268);
+  --color-stage-2: oklch(22% 0.018 268);
+  --color-stage-line: oklch(33% 0.018 268);
+  --color-on-stage: oklch(96% 0.006 85);
+  --color-on-stage-soft: oklch(76% 0.01 268);
+  --color-selection: oklch(38% 0.06 255);
+  --shadow-soft: oklch(5% 0.01 268 / 0.5);
+  --shadow-deep: oklch(4% 0.02 268 / 0.72);
+  --rev-1: oklch(23.5% 0.02 268);
+  --rev-2: oklch(32% 0.045 248);
+  --rev-3: oklch(32% 0.04 350);
+  --rev-4: oklch(33% 0.04 95);
+  --rev-5: oklch(32% 0.038 155);
+  --rev-6: oklch(34% 0.05 78);
+  --rev-edge: oklch(94.5% 0.008 85 / 0.08);
+  --block-blue: oklch(35% 0.06 258);
+  --block-pink: oklch(35% 0.045 350);
+  --block-yellow: oklch(40% 0.044 80);
+  --block-green: oklch(36% 0.06 152);
+  --block-gold: oklch(36% 0.045 76);
+  --block-salmon: oklch(36% 0.06 48);
+  --block-lavender: oklch(35% 0.06 300);
+  --block-edge: oklch(94.5% 0.008 85 / 0.08);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* One family, three faces: the text roman and italic, and the display italic at 440 for heading accents. */
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../fonts/source-serif-4-display-italic.woff2") format("woff2");
+  font-weight: 440;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../fonts/source-serif-4-text.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../fonts/source-serif-4-text-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Figtree";
+  src: url("../fonts/figtree.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jetbrains-mono.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

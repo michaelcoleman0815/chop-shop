@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The app's privacy manifest: the APIs Apple asks a reason for that the app's
+  own code uses, the plugins built into it among them, and the engine's
+  libraries, which carry no manifest of their own. ci/privacy-apis.py checks
+  it against the built app in CI: every such API a binary in the app uses is
+  declared here or in that binary's own manifest, and nothing is declared
+  here that nothing uses.
+
+  File timestamps, C617.1: the app reads the size and dates of files in its
+  own container, the edits, exports and models it keeps there (the
+  Filesystem plugin's stat), and the engine's ffmpeg reads the files it is
+  given there (stat and fstat), all of them copied in when they are picked.
+
+  User defaults, CA92.1: the app's settings are kept in its own defaults
+  (the Preferences plugin), which only it reads.
+
+  The app tracks no one and has no tracking domains.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

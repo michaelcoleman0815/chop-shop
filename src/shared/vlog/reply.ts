@@ -1,0 +1,348 @@
+import { currentCut } from '../edit/doc'
+import { resolveCut } from '../edit/resolve'
+import type { Beat, EditDoc } from '../edit/schema'
+import { thisComputer } from '../platform'
+import { clock, seconds } from '../presets/preset'
+import { leftOut } from './carry'
+import { timeOfDay, zoneAt } from './describe'
+import type { Clip, LeftOut, Role, StoryBeat, Vlog } from './schema'
+
+/**
+ * What Cutalong says about a vlog it cut: a sentence or two on the story,
+ * up to three facts, and the scene list behind Details, with times from
+ * the cut as it plays.
+ */
+
+export interface VlogReply {
+  text: string
+  /** The first sentence: which version, how long. */
+  lead: string
+  /** The sentence on the story: what it opens on, where it goes, how it ends. */
+  story: string
+  /** One sentence for the version. */
+  summary: string
+  aside: string | null
+  chips: string[]
+  details: { label: string; value: string }[]
+}
+
+/** Why clips were left out: for one ("a pocket recording", "one too shaky"), and for several after their number. */
+const LEFT_WORDS: Record<LeftOut, [string, string]> = {
+  short: ['one too short to use', 'too short to use'],
+  pocket: ['a pocket recording', 'pocket recordings'],
+  dark: ['one too dark', 'too dark'],
+  shaky: ['one too shaky', 'too shaky'],
+  blurred: ['one out of focus', 'out of focus'],
+  duplicate: ['a near-identical take', 'near-identical takes'],
+  unreadable: ['one I could not read', 'I could not read']
+}
+
+/** For a clip named on its own: "it is too shaky", "it is a pocket recording". */
+const LEFT_ALONE: Record<LeftOut, string> = {
+  short: 'it is too short to use',
+  pocket: 'it is a pocket recording',
+  dark: 'it is too dark',
+  shaky: 'it is too shaky',
+  blurred: 'it is out of focus',
+  duplicate: 'it is a near-identical take of another clip',
+  unreadable: 'I could not read it'
+}
+
+function listOf(parts: string[]): string {
+  if (parts.length <= 1) return parts.join('')
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
+
+const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`
+const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
+
+/**
+ * What a version that told the story again could not bring along of what
+ * was done to the cut before it, in one sentence, or '' when all of it came:
+ * "The chapter “Lunch” was on a moment the new story leaves out, so I took
+ * it out; Undo brings it back."
+ */
+export function carriedNote(doc: EditDoc): string {
+  const n = doc.versions.length
+  if (n < 2) return ''
+  const lost = leftOut(doc.versions[n - 2].cut, doc.versions[n - 1].cut, doc.words)
+  if (lost.length === 0) return ''
+  const parts: string[] = []
+  const counted = new Set<string>()
+  for (const l of lost) {
+    // Chapters and graphics by name, up to three of a kind; edits by what they are, counted.
+    const kin = lost.filter((x) => x.kind === l.kind && (l.kind !== 'edit' || x.one === l.one))
+    const group = l.kind === 'edit' ? `edit:${l.one}` : l.kind
+    if (l.kind !== 'edit' && kin.length <= 3) parts.push(l.one)
+    else if (!counted.has(group)) {
+      counted.add(group)
+      parts.push(kin.length === 1 ? l.one : l.many(kin.length))
+    }
+  }
+  const several = lost.length > 1
+  const them = several ? 'them' : 'it'
+  const list = listOf(parts)
+  return lost.every((l) => l.gone)
+    ? `${capital(list)} ${several ? 'were' : 'was'} on ${several ? 'moments' : 'a moment'} the new story leaves out, so I took ${them} out; Undo brings ${them} back.`
+    : `I couldn't carry ${list} over to the new story, so I took ${them} out; Undo brings ${them} back.`
+}
+
+/** A scene's name inside a sentence: "the venue", "the morning at 9:12", "Sunday morning at 8:30". */
+export function sceneInSentence(name: string): string {
+  const time = /^(?:(.+) )?(Morning|Afternoon|Evening|Night|morning|afternoon|evening|night), (\d{1,2}:\d{2})$/.exec(
+    name
+  )
+  if (time) return `${time[1] ? `${time[1]} ` : 'the '}${time[2].toLowerCase()} at ${time[3]}`
+  return name.replace(/^The /, 'the ').replace(/^Scene /, 'scene ')
+}
+
+/** The clips left out, in one sentence: "I left out 4 clips: 2 too shaky and 2 pocket recordings." */
+export function leftOutSentence(clips: Clip[]): string {
+  const out = clips.filter((c) => c.left)
+  if (out.length === 0) return ''
+  const counts = new Map<LeftOut, number>()
+  for (const c of out) counts.set(c.left as LeftOut, (counts.get(c.left as LeftOut) ?? 0) + 1)
+  if (out.length === 1) return `I left out ${out[0].name}: ${LEFT_ALONE[out[0].left as LeftOut]}.`
+  const why = [...counts.entries()].map(([k, n]) => (n === 1 ? LEFT_WORDS[k][0] : `${n} ${LEFT_WORDS[k][1]}`))
+  return `I left out ${plural(out.length, 'clip')}: ${listOf(why)}.`
+}
+
+interface Placed {
+  beat: StoryBeat
+  outStart: number
+  outEnd: number
+}
+
+/** Each story beat with when it plays in the cut, by order: the cut is the story's beats in turn. */
+export function placedBeats(doc: EditDoc, beats: StoryBeat[]): Placed[] {
+  const cut = currentCut(doc)
+  const resolved = resolveCut(cut, doc.words, doc.sources)
+  const times = new Map(resolved.beats.map((b) => [b.id, b]))
+  const out: Placed[] = []
+  cut.beats.forEach((b, i) => {
+    const story = beats[i]
+    const r = times.get(b.id)
+    if (!story || !r || story.clip !== b.source) return
+    out.push({ beat: story, outStart: r.outStart, outEnd: r.outEnd })
+  })
+  return out
+}
+
+/** Whether a beat of a cut plays a beat of a story: the same clip, and its words or a stretch of its shot. */
+function plays(b: Beat, s: StoryBeat): boolean {
+  if (b.source !== s.clip) return false
+  if (s.from) return b.from === s.from && b.to === s.to
+  if (b.inSec === null || b.outSec === null || s.inSec === null || s.outSec === null) return false
+  return Math.min(b.outSec, s.outSec) > Math.max(b.inSec, s.inSec)
+}
+
+/**
+ * How long each part of the day plays in a cut. Each beat counts for the
+ * scene its clip is in, so a cut changed in the editor since the story was
+ * told (a shot taken out, moved or split) counts as it plays now. The tease
+ * the cut opens on is the payoff's, so it counts for no scene.
+ */
+function sceneSeconds(doc: EditDoc, story: StoryBeat[], scenes: Vlog['scenes']): Map<string, number> {
+  const cut = currentCut(doc)
+  const times = new Map(resolveCut(cut, doc.words, doc.sources).beats.map((b) => [b.id, b]))
+  // The tease: the cut's first beats, for as long as they play the story's hook, in order.
+  const hooks = story.filter((s) => s.role === 'hook')
+  let tease = 0
+  for (let h = 0; tease < cut.beats.length; tease++) {
+    let j = h
+    while (j < hooks.length && !plays(cut.beats[tease], hooks[j])) j++
+    if (j >= hooks.length) break
+    h = j + 1
+  }
+  const sceneOf = new Map(scenes.flatMap((s) => s.clips.map((c) => [c, s.id] as const)))
+  const out = new Map<string, number>()
+  cut.beats.forEach((b, i) => {
+    const r = times.get(b.id)
+    const scene = sceneOf.get(b.source)
+    if (i < tease || !r || !scene) return
+    out.set(scene, (out.get(scene) ?? 0) + r.outEnd - r.outStart)
+  })
+  return out
+}
+
+/**
+ * What an ask about parts of the day changed, a sentence for each of the
+ * biggest two: "The evening at 19:00 runs 0:16 now, up from 0:10." The
+ * tease is the payoff's, so it counts for no scene.
+ */
+export function scenesChanged(before: EditDoc, beforeBeats: StoryBeat[], after: EditDoc, vlog: Vlog, max = 2): string {
+  const was = sceneSeconds(before, beforeBeats, vlog.scenes)
+  const now = sceneSeconds(after, vlog.story.beats, vlog.scenes)
+  return vlog.scenes
+    .map((scene) => ({ scene, a: was.get(scene.id) ?? 0, b: now.get(scene.id) ?? 0 }))
+    .filter((c) => Math.abs(c.b - c.a) >= 0.5)
+    .sort((x, y) => Math.abs(y.b - y.a) - Math.abs(x.b - x.a))
+    .slice(0, max)
+    .map(({ scene, a, b }) => {
+      const name = capital(sceneInSentence(scene.name))
+      if (b < 0.5) return `${name} is out.`
+      if (a < 0.5) return `${name} is in it now, ${clock(b)} long.`
+      return `${name} runs ${clock(b)} now, ${b < a ? 'down' : 'up'} from ${clock(a)}.`
+    })
+    .join(' ')
+}
+
+/** What a beat shows, for the opening and closing words of a reply. */
+function what(vlog: Vlog, beat: StoryBeat | undefined, words: Map<string, string>): string | null {
+  if (!beat) return null
+  if (beat.from) {
+    const said = words.get(`${beat.clip}:${beat.from}`)
+    return said ? `you saying “${said}”` : 'you talking'
+  }
+  const m = vlog.moments.find((x) => x.id === beat.moment)
+  if (!m) return null
+  if (m.describedBy !== 'measurements' && m.description) return m.description
+  const scene = vlog.scenes.find((s) => s.id === beat.scene)
+  const at = vlog.clips.find((c) => c.id === beat.clip)?.at ?? null
+  const when = timeOfDay(at, zoneAt(vlog.clips, at))
+  if (m.sounds.includes('cheering')) return `the crowd cheering${when ? ` at ${when}` : ''}`
+  if (m.sounds.includes('laughter')) return `the laughter${when ? ` at ${when}` : ''}`
+  // The payoff is the day's strongest moment, and so is the tease of it; an opening asked for is of its scene.
+  if (beat.role === 'payoff' || (beat.role === 'hook' && vlog.story.hook === 'auto'))
+    return `the busiest, loudest moment of the day${when ? `, at ${when}` : ''}`
+  if (beat.role === 'hook' && scene) return `a moment from ${sceneInSentence(scene.name)}`
+  return scene ? `a quiet shot from ${sceneInSentence(scene.name)}` : 'a quiet shot'
+}
+
+/** The first few words of a sentence, by its first word's id. */
+export function openingWords(doc: EditDoc, beats: StoryBeat[]): Map<string, string> {
+  const out = new Map<string, string>()
+  const index = new Map(doc.words.map((w, i) => [w.id, i]))
+  for (const b of beats) {
+    if (!b.from || !b.to) continue
+    const a = index.get(b.from)
+    const z = index.get(b.to)
+    if (a === undefined || z === undefined) continue
+    const words = doc.words.slice(a, Math.min(z + 1, a + 7)).map((w) => w.text)
+    out.set(`${b.clip}:${b.from}`, `${words.join(' ')}${z - a + 1 > 7 ? ' …' : ''}`)
+  }
+  return out
+}
+
+/**
+ * The reply for a story: what it is in a sentence or two, three facts, and
+ * the scenes with their times behind Details. `previousSec` makes it a reply
+ * to a change ("It runs 1:52 now, down from 2:30"); `first` the first telling
+ * of a shoot, which is a later version when an edit becomes a vlog; `added`
+ * the clips that just joined it.
+ */
+export function storyReply(
+  doc: EditDoc,
+  vlog: Vlog,
+  opts: {
+    version: number
+    previousSec?: number | null
+    asked?: string | null
+    notes?: string[]
+    first?: boolean
+    added?: number
+  } = { version: 1 }
+): VlogReply {
+  const first = opts.first ?? opts.version === 1
+  const placed = placedBeats(doc, vlog.story.beats)
+  const total = resolveCut(currentCut(doc), doc.words, doc.sources).durationSec
+  const words = openingWords(doc, vlog.story.beats)
+  const used = new Set(placed.map((p) => p.beat.clip))
+  const scenesUsed = vlog.scenes.filter((s) => placed.some((p) => p.beat.scene === s.id && p.beat.role !== 'hook'))
+  const hook = placed.filter((p) => p.beat.role === 'hook')
+  const close = placed.find((p) => p.beat.role === 'close')
+  const firstScene = scenesUsed[0]
+  const lastScene = scenesUsed[scenesUsed.length - 1]
+  const opening = hook.length ? what(vlog, hook[hook.length - 1].beat, words) : null
+  const ending = close ? what(vlog, close.beat, words) : null
+
+  const parts: string[] = []
+  if (opening) parts.push(`opens on ${opening}`)
+  if (firstScene && lastScene && firstScene !== lastScene)
+    parts.push(`runs from ${sceneInSentence(firstScene.name)} to ${sceneInSentence(lastScene.name)}`)
+  else if (firstScene) parts.push(`stays with ${sceneInSentence(firstScene.name)}`)
+  if (ending) parts.push(`closes on ${ending}`)
+  const story = parts.length ? `It ${listOf(parts)}.` : ''
+  const runs =
+    opts.previousSec !== undefined && opts.previousSec !== null && Math.abs(opts.previousSec - total) >= 0.5
+      ? `It runs ${clock(total)} now, ${total < opts.previousSec ? 'down' : 'up'} from ${clock(opts.previousSec)}.`
+      : ''
+  const scenesSaid = `${plural(scenesUsed.length, 'scene')}`
+  const joined = opts.added ? `, with your ${plural(opts.added, 'new clip')}` : ''
+  const lead = first
+    ? `v${opts.version} is a ${clock(total)} vlog of your day in ${scenesSaid}.`
+    : `v${opts.version} is ready${joined}.${runs ? ` ${runs}` : ''}`
+  const text = story ? `${lead} ${story}` : lead
+  // A version's own summary; how long it runs now is added where the version is made.
+  const summary = first
+    ? `The day as a story in ${scenesSaid}, ${clock(total)} long.`
+    : opts.added
+      ? `${capital(plural(opts.added, 'new clip'))} in the day, ${clock(total)} long.`
+      : 'The story is told again.'
+
+  const details: { label: string; value: string }[] = []
+  if (hook.length) {
+    const from = hook[0].outStart
+    const to = hook[hook.length - 1].outEnd
+    details.push({
+      label: 'Opening',
+      value: `${clock(from)}–${clock(to)} · ${plural(hook.length, 'shot')}, a tease of the strongest moment`
+    })
+  }
+  scenesUsed.forEach((scene, k) => {
+    const mine = placed.filter((p) => p.beat.scene === scene.id && p.beat.role !== 'hook')
+    if (mine.length === 0) return
+    const shots = mine.filter((p) => !p.beat.from).length
+    const talk = mine.filter((p) => p.beat.from).reduce((s, p) => s + p.outEnd - p.outStart, 0)
+    const bits = [shots ? plural(shots, 'shot') : null, talk >= 0.5 ? `${seconds(talk)} of you talking` : null].filter(
+      Boolean
+    ) as string[]
+    details.push({
+      label: `${k + 1} · ${scene.name}`,
+      value: `${clock(mine[0].outStart)}–${clock(mine[mine.length - 1].outEnd)} · ${listOf(bits)}`
+    })
+  })
+  const usable = vlog.clips.filter((c) => !c.left)
+  details.push({ label: 'Clips', value: `${used.size} of the ${vlog.clips.length} you gave me are in it` })
+  const left = leftOutSentence(vlog.clips)
+  if (left) details.push({ label: 'Left out', value: left.replace(/^I left out /, '').replace(/\.$/, '') })
+  details.push({
+    label: 'Described by',
+    value:
+      vlog.described.by === 'measurements'
+        ? 'the measurements of the picture and sound'
+        : `${vlog.described.by === 'claude' ? 'Claude' : `${vlog.described.model ?? 'a model'} on ${thisComputer}`}, from ${
+            vlog.described.stills > 0 ? plural(vlog.described.stills, 'still') : 'stills it saw before'
+          }`
+  })
+  details.push({
+    label: 'Length',
+    value: vlog.story.lengthAsked
+      ? `${clock(total)}, against ${clock(vlog.story.targetSec)} asked for`
+      : `${clock(total)}, what the footage supports`
+  })
+
+  const aside = [
+    ...(opts.notes ?? []),
+    // What was done to the cut before and could not come along to this story.
+    carriedNote(doc),
+    first ? left : '',
+    vlog.described.by === 'claude' && vlog.described.stills > 0 && (first || opts.added)
+      ? `Claude looked at ${plural(vlog.described.stills, 'still')} from your footage to say what is in each moment.`
+      : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const chips = [clock(total), plural(scenesUsed.length, 'scene'), `${used.size} of ${usable.length} clips`]
+  return { text, lead, story, summary, aside: aside || null, chips, details }
+}
+
+/** "It is vertical now, 9:16." */
+export function shapeSentence(aspect: 'vertical' | 'wide' | 'square'): string {
+  return `It is ${aspect} now, ${aspect === 'vertical' ? '9:16' : aspect === 'wide' ? '16:9' : '1:1'}.`
+}
+
+/** The roles in order, for tests and the planner's view of a story. */
+export function rolesOf(beats: StoryBeat[]): Role[] {
+  return beats.map((b) => b.role)
+}

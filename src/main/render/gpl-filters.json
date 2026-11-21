@@ -1,0 +1,14 @@
+{
+  "about": "Filters an ffmpeg built without its GPL parts lacks, as a phone's is: those configure (n6.0) marks gpl, and those that need a library the phone build leaves out. A phone render must name none of them.",
+  "gpl": [
+    "blackframe", "boxblur", "boxblur_opencl", "colormatrix", "cover_rect", "cropdetect", "delogo", "eq",
+    "find_rect", "fspp", "histeq", "hqdn3d", "interlace", "kerndeint", "mcdeint", "mpdecimate", "mptestsrc",
+    "nnedi", "owdenoise", "perspective", "phase", "pp7", "pp", "pullup", "repeatfields", "sab", "signature",
+    "smartblur", "spp", "stereo3d", "super2xsai", "tinterlace", "uspp", "vaguedenoiser"
+  ],
+  "libraries": [
+    "frei0r", "frei0r_src", "rubberband", "vidstabdetect", "vidstabtransform", "zmq", "azmq", "libplacebo", "ocr",
+    "ladspa", "lv2", "sofalizer", "libvmaf", "drawtext_opencl"
+  ],
+  "encoders": ["libx264", "libx264rgb", "libx265", "libxvid", "libfdk_aac", "libopus", "libmp3lame", "libvpx", "libvpx-vp9"]
+}

@@ -1,0 +1,1032 @@
+name: Mobile
+
+# Builds the phone engines (ffmpeg 6.0, ffprobe and whisper.cpp in-process,
+# mobile/engine) for Android and iOS, and runs their self-test on an Android
+# emulator and an iPhone simulator. Then builds the app itself on those
+# engines (mobile/): a debug APK anyone can sideload and a simulator build,
+# and runs the app's own flow on the emulator and the simulator, from the
+# footage to the export, with a screenshot at every step, and then a tour of
+# the same project with the system dark.
+#
+# Once that flow has passed, the store builds go to TestFlight and to Google
+# Play's internal track, each only when its secrets are set (mobile/README.md
+# lists them); without them those jobs are skipped and say what is missing.
+#
+# The desktop app and the phone app live on one branch, so every push to it
+# proves the phones too; claude/mobile is where the phone work is tried first.
+on:
+  push:
+    branches:
+      - claude/mcp-x1yvms
+      - claude/mobile
+    # The website and the design notes are not part of either app, as for the
+    # desktop's test build: a push that only changes them builds nothing.
+    paths-ignore:
+      - 'site/**'
+      - 'docs/design/**'
+      - '.claude/**'
+      - '.impeccable/**'
+      - 'PRODUCT.md'
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  MESON_VERSION: 1.12.1
+  NODE_VERSION: 22
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      NDK_VERSION: 27.2.12479018
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nasm ninja-build autoconf automake libtool pkg-config >/dev/null
+          pipx install "meson==$MESON_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Android NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" >/dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      # Built libraries are cached apart from the engine library, which is
+      # rebuilt every time, and saved as soon as they are built: a failing
+      # test later must not throw an hour of building away.
+      - name: Restore ffmpeg and its libraries
+        id: ffmpeg-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            mobile/engine/.build/android-arm64-v8a/prefix
+            mobile/engine/.build/android-x86_64/prefix
+          key: android-ffmpeg-${{ env.NDK_VERSION }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/ffmpeg.sh', 'mobile/engine/patches/**') }}
+
+      - name: Restore whisper.cpp
+        id: whisper-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            mobile/engine/.build/android-arm64-v8a/whisper
+            mobile/engine/.build/android-x86_64/whisper
+          key: android-whisper-${{ env.NDK_VERSION }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/whisper.sh') }}
+
+      - name: Build ffmpeg, its libraries and whisper.cpp
+        run: mobile/engine/scripts/build.sh android-libs
+
+      - name: Save ffmpeg and its libraries
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            mobile/engine/.build/android-arm64-v8a/prefix
+            mobile/engine/.build/android-x86_64/prefix
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}
+
+      - name: Save whisper.cpp
+        if: steps.whisper-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            mobile/engine/.build/android-arm64-v8a/whisper
+            mobile/engine/.build/android-x86_64/whisper
+          key: ${{ steps.whisper-cache.outputs.cache-primary-key }}
+
+      - name: Build the engine library
+        run: mobile/engine/scripts/build.sh android
+
+      - name: What was built
+        run: |
+          for abi in arm64-v8a x86_64; do
+            dir=mobile/engine/android/src/main/jniLibs/$abi
+            echo "== $abi"
+            ls -l "$dir"
+            grep -E "^License:" mobile/engine/.build/android-$abi/prefix/ffmpeg-private/configure.log
+            grep -A4 "^External libraries:" mobile/engine/.build/android-$abi/prefix/ffmpeg-private/configure.log
+            echo "engine library needs:"
+            readelf -d "$dir/libcutalong_engine.so" | grep NEEDED
+            # Every library must load on 16 KB page devices.
+            for so in "$dir"/*.so; do
+              align=$(readelf -lW "$so" | awk '$1 == "LOAD" { print $NF; exit }')
+              echo "$(basename "$so"): LOAD alignment $align"
+              [ "$align" = "0x4000" ] || [ "$align" = "0x10000" ] || { echo "::error::$so is not 16 KB aligned"; exit 1; }
+            done
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-engine
+          path: mobile/engine/android/src/main/jniLibs
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS
+    runs-on: macos-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build tools
+        run: |
+          brew install nasm ninja autoconf automake libtool pkg-config >/dev/null || true
+          pipx install "meson==$MESON_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # Homebrew's libtoolize is glibtoolize; zimg's autogen.sh asks for it.
+          echo "LIBTOOLIZE=glibtoolize" >> "$GITHUB_ENV"
+          echo "XCODE_ID=$(xcodebuild -version | tr -s ' \n' '-')" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Restore ffmpeg and its libraries
+        id: ffmpeg-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            mobile/engine/.build/ios-arm64/prefix
+            mobile/engine/.build/ios-sim-arm64/prefix
+          key: ios-ffmpeg-${{ env.XCODE_ID }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/ffmpeg.sh', 'mobile/engine/patches/**') }}
+
+      - name: Restore whisper.cpp
+        id: whisper-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            mobile/engine/.build/ios-arm64/whisper
+            mobile/engine/.build/ios-sim-arm64/whisper
+          key: ios-whisper-${{ env.XCODE_ID }}-${{ hashFiles('mobile/engine/scripts/versions.env', 'mobile/engine/scripts/lib/env.sh', 'mobile/engine/scripts/lib/whisper.sh') }}
+
+      - name: Build ffmpeg, its libraries and whisper.cpp
+        run: mobile/engine/scripts/build.sh ios-libs
+
+      - name: Save ffmpeg and its libraries
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            mobile/engine/.build/ios-arm64/prefix
+            mobile/engine/.build/ios-sim-arm64/prefix
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}
+
+      - name: Save whisper.cpp
+        if: steps.whisper-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            mobile/engine/.build/ios-arm64/whisper
+            mobile/engine/.build/ios-sim-arm64/whisper
+          key: ${{ steps.whisper-cache.outputs.cache-primary-key }}
+
+      - name: Build the engine library
+        run: mobile/engine/scripts/build.sh ios
+
+      - name: What was built
+        run: |
+          ls mobile/engine/ios/Frameworks
+          grep -E "^License:" mobile/engine/.build/ios-arm64/prefix/ffmpeg-private/configure.log
+          grep -A4 "^External libraries:" mobile/engine/.build/ios-arm64/prefix/ffmpeg-private/configure.log
+          for fw in mobile/engine/ios/Frameworks/*.xcframework; do
+            name=$(basename "$fw" .xcframework)
+            for slice in "$fw"/*/; do
+              bin="$slice$name.framework/$name"
+              echo "$(basename "$slice") $name: $(lipo -archs "$bin"), $(du -h "$bin" | cut -f1)"
+            done
+          done
+          echo "engine library needs:"
+          otool -L mobile/engine/ios/Frameworks/CutalongEngineCore.xcframework/ios-arm64/CutalongEngineCore.framework/CutalongEngineCore
+          # What ios/Sources/CutalongEnginePlugin/PrivacyInfo.xcprivacy must declare.
+          echo "required-reason APIs each framework calls:"
+          for fw in mobile/engine/ios/Frameworks/*.xcframework; do
+            name=$(basename "$fw" .xcframework)
+            calls=$(nm -u "$fw/ios-arm64/$name.framework/$name" | grep -oE '^_(stat|fstat|lstat|fstatat|getattrlist|fgetattrlist|getattrlistat|getattrlistbulk|statfs|fstatfs|statvfs|fstatvfs|mach_absolute_time)(\$INODE64)?$' | sort -u | tr '\n' ' ')
+            echo "  $name: ${calls:-none}"
+          done
+
+      - name: Pack the frameworks
+        run: tar -C mobile/engine/ios -czf ios-frameworks.tar.gz Frameworks
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-engine
+          path: ios-frameworks.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  # The self-test's sample media, made with the runner's ffmpeg (libx264,
+  # libx265, libwebp, an AV1 encoder, zscale), and what each test render
+  # should come out as, from running it here first. Nothing is committed.
+  media:
+    name: Sample media
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
+      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
+      - name: ffmpeg
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -qq
+          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
+          ffmpeg -hide_banner -version | head -1
+
+      - name: Make the sample media and what each render should come out as
+        run: python3 mobile/engine/example/tools/make_media.py "$RUNNER_TEMP/media" .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: selftest-media
+          path: ${{ runner.temp }}/media
+          if-no-files-found: error
+          retention-days: 14
+
+  android-test:
+    name: Android self-test
+    needs: [android, media]
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      IMAGE: system-images;android-34;google_apis;x86_64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/engine/example/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-engine
+          path: mobile/engine/android/src/main/jniLibs
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: selftest-media
+          path: ${{ runner.temp }}/media
+
+      # The two models the app offers, base.en and small.en, downloaded and
+      # checked by ci/fetch-models.sh, and kept between runs.
+      - name: Restore the whisper models
+        id: models
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: whisper-models-${{ runner.os }}-${{ hashFiles('mobile/engine/example/ci/fetch-models.sh') }}
+
+      - name: The whisper models
+        run: mobile/engine/example/ci/fetch-models.sh "$RUNNER_TEMP/models"
+
+      - name: Save the whisper models
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: ${{ steps.models.outputs.cache-primary-key }}
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('mobile/engine/example/package-lock.json', 'mobile/engine/android/build.gradle') }}
+
+      - name: Build the test app
+        working-directory: mobile/engine/example
+        run: |
+          npm ci
+          node build.mjs "$RUNNER_TEMP/media"
+          node native.mjs android
+          cd android
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          ls -l app/build/outputs/apk/debug/
+
+      - name: Start the emulator
+        run: |
+          # The emulator needs KVM, which the runner has but does not open to it.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sdk="$ANDROID_HOME/cmdline-tools/latest/bin"
+          yes | "$sdk/sdkmanager" --install emulator platform-tools "$IMAGE" >/dev/null
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          # avdmanager writes under XDG_CONFIG_HOME on the runner, where the
+          # emulator does not look: one place for both.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | "$sdk/avdmanager" create avd --force -n selftest -k "$IMAGE" -d pixel_6
+          "$ANDROID_HOME/emulator/emulator" -list-avds
+          nohup "$ANDROID_HOME/emulator/emulator" -avd selftest -no-window -noaudio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -camera-back none -camera-front none -memory 4096 -cores 4 -partition-size 8192 \
+            > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          emulator=$!
+          # Ten minutes to boot; no open-ended wait for a device that may never come.
+          booted=""
+          for _ in $(seq 1 120); do
+            if ! kill -0 "$emulator" 2>/dev/null; then
+              tail -n 80 "$RUNNER_TEMP/emulator.log"
+              echo "::error::the emulator stopped"
+              exit 1
+            fi
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
+              booted=yes
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$booted" ]; then
+            tail -n 80 "$RUNNER_TEMP/emulator.log"
+            echo "::error::the emulator did not boot in 10 minutes"
+            exit 1
+          fi
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb shell settings put system screen_off_timeout 2147483647
+          adb shell svc power stayon true
+          adb shell input keyevent 82
+          echo "booted: $(adb shell getprop ro.build.fingerprint)"
+          echo "WebView: $(adb shell dumpsys webviewupdate | grep -m1 'Current WebView package')"
+          echo "CPU: $(adb shell grep -m1 -E '^flags' /proc/cpuinfo | tr ' ' '\n' | grep -xE 'sse4_2|avx|avx2|fma|f16c' | tr '\n' ' ')"
+
+      - name: Run the self-test on the emulator
+        run: |
+          status=0
+          SELFTEST_TIMEOUT=3600 mobile/engine/example/ci/android-selftest.sh \
+            mobile/engine/example/android/app/build/outputs/apk/debug/app-debug.apk \
+            "$RUNNER_TEMP/models" "$RUNNER_TEMP/selftest" || status=$?
+          if [ -f "$RUNNER_TEMP/selftest/selftest.json" ]; then
+            python3 mobile/engine/example/tools/check_report.py "$RUNNER_TEMP/selftest/selftest.json" || status=1
+          fi
+          exit $status
+
+      - if: always()
+        run: cp "$RUNNER_TEMP/emulator.log" "$RUNNER_TEMP/selftest/" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-selftest
+          path: ${{ runner.temp }}/selftest
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-example-apk
+          path: mobile/engine/example/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  ios-test:
+    name: iOS self-test
+    needs: [ios, media]
+    runs-on: macos-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/engine/example/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ios-engine
+          path: ${{ runner.temp }}/engine
+
+      - name: Unpack the frameworks
+        run: tar -C mobile/engine/ios -xzf "$RUNNER_TEMP/engine/ios-frameworks.tar.gz"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: selftest-media
+          path: ${{ runner.temp }}/media
+
+      # The two models the app offers, base.en and small.en, downloaded and
+      # checked by ci/fetch-models.sh, and kept between runs.
+      - name: Restore the whisper models
+        id: models
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: whisper-models-${{ runner.os }}-${{ hashFiles('mobile/engine/example/ci/fetch-models.sh') }}
+
+      - name: The whisper models
+        run: mobile/engine/example/ci/fetch-models.sh "$RUNNER_TEMP/models"
+
+      - name: Save the whisper models
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: ${{ steps.models.outputs.cache-primary-key }}
+
+      - name: Pick an iPhone simulator and boot it
+        id: sim
+        run: |
+          python3 mobile/engine/example/ci/pick-simulator.py > "$RUNNER_TEMP/sim.txt"
+          echo "udid=$(sed -n 1p "$RUNNER_TEMP/sim.txt")" >> "$GITHUB_OUTPUT"
+          echo "simulator: $(sed -n 2p "$RUNNER_TEMP/sim.txt")"
+          xcrun simctl boot "$(sed -n 1p "$RUNNER_TEMP/sim.txt")" || true
+
+      - name: Build the test app for the simulator
+        working-directory: mobile/engine/example
+        run: |
+          npm ci
+          node build.mjs "$RUNNER_TEMP/media"
+          node native.mjs ios
+          # Signed ad hoc, as Xcode signs for the simulator: no team, no profile.
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= -quiet build
+          app="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
+          ls "$app/Frameworks"
+          du -sh "$app"
+
+      - name: Run the self-test on the simulator
+        run: |
+          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+          status=0
+          SELFTEST_TIMEOUT=3600 mobile/engine/example/ci/ios-selftest.sh \
+            "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app" \
+            "$RUNNER_TEMP/models" "$RUNNER_TEMP/selftest" "${{ steps.sim.outputs.udid }}" || status=$?
+          if [ -f "$RUNNER_TEMP/selftest/selftest.json" ]; then
+            python3 mobile/engine/example/tools/check_report.py "$RUNNER_TEMP/selftest/selftest.json" || status=1
+          fi
+          exit $status
+
+      - name: Pack the simulator app
+        if: always()
+        run: |
+          app="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
+          if [ -d "$app" ]; then ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Engine-Test-simulator.zip"; fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-selftest
+          path: ${{ runner.temp }}/selftest
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-example-app
+          path: ${{ runner.temp }}/Engine-Test-simulator.zip
+          retention-days: 14
+
+  # What each phone made, measured here with the same ffmpeg that made the
+  # expectations: length, sound, picture size and colours at known moments.
+  exports:
+    name: Exports measured on the runner
+    needs: [media, android-test, ios-test]
+    if: ${{ !cancelled() && needs.media.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
+      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
+      - name: ffmpeg
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -qq
+          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: selftest-media
+          path: ${{ runner.temp }}/media
+
+      - uses: actions/download-artifact@v8
+        id: android
+        continue-on-error: true
+        with:
+          name: android-selftest
+          path: ${{ runner.temp }}/android
+
+      - uses: actions/download-artifact@v8
+        id: ios
+        continue-on-error: true
+        with:
+          name: ios-selftest
+          path: ${{ runner.temp }}/ios
+
+      - name: Android's exports
+        if: ${{ !cancelled() }}
+        run: |
+          [ "${{ steps.android.outcome }}" = success ] || { echo "::error::nothing came back from the Android self-test"; exit 1; }
+          python3 mobile/engine/example/tools/check_exports.py "$RUNNER_TEMP/android/selftest-out" "$RUNNER_TEMP/media" "$RUNNER_TEMP/android/selftest.json"
+
+      - name: iOS's exports
+        if: ${{ !cancelled() }}
+        run: |
+          [ "${{ steps.ios.outcome }}" = success ] || { echo "::error::nothing came back from the iOS self-test"; exit 1; }
+          python3 mobile/engine/example/tools/check_exports.py "$RUNNER_TEMP/ios/selftest-out" "$RUNNER_TEMP/media" "$RUNNER_TEMP/ios/selftest.json"
+
+  # The app's page, built once for both phones: with the app's own flow for
+  # CI built in (CUTALONG_DRIVE=1, mobile/src/host/drive.ts) for the APK and
+  # the simulator build, and without it for the stores. With it, the footage
+  # that flow picks, made with the runner's ffmpeg.
+  app-web:
+    name: The app's page
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - name: Build the page
+        run: |
+          # The shared code's packages. Electron and the Mac's native modules are not for a phone.
+          npm ci --ignore-scripts --no-audit --no-fund
+          cd mobile
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npx vite build --outDir "$RUNNER_TEMP/web-store" --emptyOutDir
+          CUTALONG_DRIVE=1 npx vite build --outDir "$RUNNER_TEMP/web-drive" --emptyOutDir
+          if grep -l "drive-progress" "$RUNNER_TEMP"/web-store/assets/*.js; then
+            echo "::error::the store build has the CI flow in it"
+            exit 1
+          fi
+
+      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
+      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
+      - name: ffmpeg
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -qq
+          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
+
+      - name: The footage the app's flow picks
+        run: python3 mobile/ci/make-footage.py "$RUNNER_TEMP/footage"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-web-drive
+          path: ${{ runner.temp }}/web-drive
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-web-store
+          path: ${{ runner.temp }}/web-store
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: drive-footage
+          path: ${{ runner.temp }}/footage
+          if-no-files-found: error
+          retention-days: 14
+
+  app-android:
+    name: Android app
+    needs: [android, app-web]
+    runs-on: ubuntu-latest
+    # The flow and then the dark tour, each with an export on an emulator without a GPU.
+    timeout-minutes: 130
+    env:
+      IMAGE: system-images;android-34;google_apis;x86_64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-engine
+          path: mobile/engine/android/src/main/jniLibs
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-web-drive
+          path: mobile/dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: drive-footage
+          path: ${{ runner.temp }}/footage
+
+      - name: Restore the whisper models
+        id: models
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: whisper-models-${{ runner.os }}-${{ hashFiles('mobile/engine/example/ci/fetch-models.sh') }}
+
+      - name: The whisper models
+        run: mobile/engine/example/ci/fetch-models.sh "$RUNNER_TEMP/models"
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-app-${{ hashFiles('mobile/package-lock.json', 'mobile/android/**/*.gradle', 'mobile/engine/android/build.gradle') }}
+
+      - name: Build the debug APK
+        working-directory: mobile
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync android
+          cd android
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/Cutalong-debug.apk"
+          ls -l "$RUNNER_TEMP/Cutalong-debug.apk"
+          unzip -l "$RUNNER_TEMP/Cutalong-debug.apk" | grep -E "lib/.*\.so$"
+
+      # Signed with the debug key: Android installs it from a file once
+      # installing unknown apps is allowed for the app that opens it.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cutalong-android-debug-apk
+          path: ${{ runner.temp }}/Cutalong-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Start the emulator
+        run: |
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          mobile/ci/start-emulator.sh "$IMAGE" "$RUNNER_TEMP/emulator.log"
+
+      - name: Run the app's own flow on the emulator
+        run: DRIVE_TIMEOUT=2400 mobile/ci/android-drive.sh "$RUNNER_TEMP/Cutalong-debug.apk" "$RUNNER_TEMP/models" "$RUNNER_TEMP/footage" "$RUNNER_TEMP/drive"
+
+      - name: The emulator's last lines
+        if: failure()
+        run: tail -n 80 "$RUNNER_TEMP/emulator.log" || true
+
+      - if: always()
+        run: cp "$RUNNER_TEMP/emulator.log" "$RUNNER_TEMP/drive/" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-app-drive
+          path: ${{ runner.temp }}/drive
+          retention-days: 14
+
+  app-ios:
+    name: iOS app
+    needs: [ios, app-web]
+    runs-on: macos-latest
+    timeout-minutes: 130
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ios-engine
+          path: ${{ runner.temp }}/engine
+
+      - name: Unpack the frameworks
+        run: tar -C mobile/engine/ios -xzf "$RUNNER_TEMP/engine/ios-frameworks.tar.gz"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-web-drive
+          path: mobile/dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: drive-footage
+          path: ${{ runner.temp }}/footage
+
+      - name: Restore the whisper models
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/models
+          key: whisper-models-${{ runner.os }}-${{ hashFiles('mobile/engine/example/ci/fetch-models.sh') }}
+
+      - name: The whisper models
+        run: mobile/engine/example/ci/fetch-models.sh "$RUNNER_TEMP/models"
+
+      - name: Pick an iPhone simulator and boot it
+        id: sim
+        run: |
+          python3 mobile/engine/example/ci/pick-simulator.py > "$RUNNER_TEMP/sim.txt"
+          echo "udid=$(sed -n 1p "$RUNNER_TEMP/sim.txt")" >> "$GITHUB_OUTPUT"
+          echo "simulator: $(sed -n 2p "$RUNNER_TEMP/sim.txt")"
+          # The keyboard on screen, as on a phone, for the drive's text boxes.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+          xcrun simctl boot "$(sed -n 1p "$RUNNER_TEMP/sim.txt")" || true
+
+      - name: Build the app for the simulator
+        id: build
+        working-directory: mobile
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync ios
+          # Signed ad hoc, as Xcode signs for the simulator: no team, no profile.
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= -quiet build
+          app="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
+          ls "$app/Frameworks"
+          du -sh "$app"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Cutalong-simulator.zip"
+
+      # For an Apple-silicon Mac's simulator: unzip, then drag App.app onto it.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cutalong-ios-simulator-app
+          path: ${{ runner.temp }}/Cutalong-simulator.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Run the app's own flow on the simulator
+        run: |
+          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+          DRIVE_TIMEOUT=2400 mobile/ci/ios-drive.sh "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app" \
+            "$RUNNER_TEMP/models" "$RUNNER_TEMP/footage" "$RUNNER_TEMP/drive" "${{ steps.sim.outputs.udid }}"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-app-drive
+          path: ${{ runner.temp }}/drive
+          retention-days: 14
+
+      # The APIs Apple asks a reason for, as the built app's binaries use them, against the
+      # privacy manifests in it (ios/App/App/PrivacyInfo.xcprivacy and the frameworks' own).
+      - name: The APIs Apple asks a reason for
+        if: always() && steps.build.outcome == 'success'
+        run: python3 mobile/ci/privacy-apis.py "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
+
+  # What the app made on each phone, measured here: the steps of the flow and
+  # of the dark tour, a new version from the command, the crew at the export,
+  # and each export itself (ffprobe and ffmpeg).
+  app-exports:
+    name: The app's exports measured on the runner
+    needs: [app-web, app-android, app-ios]
+    if: ${{ !cancelled() && needs.app-web.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
+      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
+      - name: ffmpeg
+        timeout-minutes: 10
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -qq
+          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: drive-footage
+          path: ${{ runner.temp }}/footage
+
+      - uses: actions/download-artifact@v8
+        id: android
+        continue-on-error: true
+        with:
+          name: android-app-drive
+          path: ${{ runner.temp }}/android
+
+      - uses: actions/download-artifact@v8
+        id: ios
+        continue-on-error: true
+        with:
+          name: ios-app-drive
+          path: ${{ runner.temp }}/ios
+
+      - name: Android
+        if: ${{ !cancelled() }}
+        run: |
+          [ "${{ steps.android.outcome }}" = success ] || { echo "::error::nothing came back from the Android app"; exit 1; }
+          python3 mobile/ci/check-drive.py "$RUNNER_TEMP/android" "$RUNNER_TEMP/footage"
+
+      - name: iOS
+        if: ${{ !cancelled() }}
+        run: |
+          [ "${{ steps.ios.outcome }}" = success ] || { echo "::error::nothing came back from the iOS app"; exit 1; }
+          python3 mobile/ci/check-drive.py "$RUNNER_TEMP/ios" "$RUNNER_TEMP/footage"
+
+  # Which store builds can be made: each needs its secrets (mobile/README.md
+  # says what each one is). Without them the store's job is skipped, and
+  # this says which are missing.
+  store-secrets:
+    name: Store secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      testflight: ${{ steps.check.outputs.testflight }}
+      play: ${{ steps.check.outputs.play }}
+    steps:
+      - id: check
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PLAY_UPLOAD_KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          PLAY_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          missing() { for name in "$@"; do [ -n "${!name}" ] || printf '%s ' "$name"; done; }
+          ios=$(missing APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_KEY_P8 APPLE_TEAM_ID)
+          play=$(missing PLAY_UPLOAD_KEYSTORE_BASE64 PLAY_UPLOAD_KEYSTORE_PASSWORD PLAY_UPLOAD_KEY_ALIAS PLAY_UPLOAD_KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON)
+          if [ -z "$ios" ]; then
+            echo "testflight=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=TestFlight is skipped::These secrets are not set: $ios"
+          fi
+          if [ -z "$play" ]; then
+            echo "play=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Google Play is skipped::These secrets are not set: $play"
+          fi
+
+  # The App Store build, signed by Xcode with the App Store Connect API key
+  # (automatic signing; the key's role must let it manage certificates and
+  # profiles) and uploaded to App Store Connect for TestFlight. The app's
+  # record, for social.brewed.cutalong, is made in App Store Connect first.
+  testflight:
+    name: TestFlight
+    needs: [ios, app-web, app-exports, store-secrets]
+    if: ${{ !cancelled() && needs.store-secrets.outputs.testflight == 'true' && needs.app-exports.result == 'success' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ios-engine
+          path: ${{ runner.temp }}/engine
+
+      - name: Unpack the frameworks
+        run: tar -C mobile/engine/ios -xzf "$RUNNER_TEMP/engine/ios-frameworks.tar.gz"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-web-store
+          path: mobile/dist
+
+      - name: Archive, sign and upload
+        working-directory: mobile
+        env:
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync ios
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          version=$(node -p "require('../package.json').version")
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Cutalong.xcarchive" "${auth[@]}" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" -quiet archive
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Cutalong.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
+          echo "::notice title=TestFlight::Cutalong $version ($BUILD_NUMBER) is uploaded; App Store Connect processes it before testers see it."
+
+      - if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+
+  # The Play build: an App Bundle signed with the upload key, released on
+  # the internal testing track by a service account with access to the app
+  # in the Play Console. The app is made there first, with its first bundle
+  # uploaded by hand (this job keeps each bundle as an artifact for that).
+  play-internal:
+    name: Google Play internal testing
+    needs: [android, app-web, app-exports, store-secrets]
+    if: ${{ !cancelled() && needs.store-secrets.outputs.play == 'true' && needs.app-exports.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-engine
+          path: mobile/engine/android/src/main/jniLibs
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-web-store
+          path: mobile/dist
+
+      - name: Build the signed bundle
+        working-directory: mobile
+        env:
+          PLAY_UPLOAD_KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          CUTALONG_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          CUTALONG_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          CUTALONG_UPLOAD_KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync android
+          export CUTALONG_UPLOAD_KEYSTORE="$RUNNER_TEMP/upload.keystore"
+          printf '%s' "$PLAY_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$CUTALONG_UPLOAD_KEYSTORE"
+          cd android
+          ./gradlew --no-daemon --stacktrace bundleRelease -PcutalongVersionCode=${{ github.run_number }}
+          cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/Cutalong-${{ github.run_number }}.aab"
+          rm -f "$CUTALONG_UPLOAD_KEYSTORE"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cutalong-play-bundle
+          path: ${{ runner.temp }}/Cutalong-${{ github.run_number }}.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Release on the internal track
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/play"
+          "$RUNNER_TEMP/play/bin/pip" install --quiet google-api-python-client==2.190.0 google-auth==2.55.0
+          "$RUNNER_TEMP/play/bin/python" mobile/ci/play-upload.py "$RUNNER_TEMP/Cutalong-${{ github.run_number }}.aab" social.brewed.cutalong internal

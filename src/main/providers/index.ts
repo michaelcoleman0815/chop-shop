@@ -1,0 +1,119 @@
+import { app, ipcMain, net, safeStorage } from 'electron'
+import { mkdtemp, rm } from 'fs/promises'
+import { join } from 'path'
+import { isServiceId, servicesOn, type KeyCheck, type ServiceId } from '../../shared/services'
+import { FFMPEG_PATH } from '../ffmpeg'
+import { getSettings, saveSettings } from '../store'
+import { checkServiceKey } from './check'
+import { createGate } from './gate'
+import { judgeExcerpts as judge, type JudgeInput, type JudgeResult } from './judge'
+import { forgetRetiredKeys, serviceKeys } from './keys'
+import { extractSpeech } from './media'
+import { cloudTranscript, type CloudResult } from './transcribe-cloud'
+import { googleClip, googleImage, googleSpeech, GOOGLE_CLIP_MODEL, GOOGLE_IMAGE_MODEL } from './google-make'
+import { falClip, falImage, FAL_CLIP_MODEL, FAL_IMAGE_MODEL } from './fal'
+import { elevenSpeech, elevenVoiceNamed } from './voices'
+import type { MakeServices } from '../make/services'
+
+export type { ClipJudgement, ExcerptClip, JudgeInput, JudgeResult } from './judge'
+
+/**
+ * Other AI services, wired to the app: keys from the keychain, the switch
+ * from Settings, and Electron's network stack (which follows the system's
+ * proxy and certificates). Everything that reaches Deepgram, AssemblyAI or
+ * Google Gemini goes through this one gate.
+ */
+
+const keyDeps = { dir: () => app.getPath('userData'), sealer: () => safeStorage }
+const keys = serviceKeys(keyDeps)
+
+const gate = createGate({
+  on: () => servicesOn(getSettings()),
+  key: (id) => keys.read(id),
+  fetch: (url, init) => net.fetch(url, init)
+})
+
+/** The words from the service the person chose, or why there are none (see transcribe-cloud.ts). */
+export function hearInCloud(
+  path: string,
+  durationSec: number,
+  progress: (stage: string, percent: number) => void
+): Promise<CloudResult> {
+  return cloudTranscript(path, durationSec, progress, {
+    gate,
+    settings: getSettings,
+    hasKey: (id) => keys.has(id),
+    extract: async (input, seconds) => {
+      const dir = await mkdtemp(join(app.getPath('temp'), 'cutalong-speech-'))
+      const cleanup = (): Promise<void> => rm(dir, { recursive: true, force: true })
+      try {
+        return { audio: await extractSpeech(FFMPEG_PATH, input, dir, seconds), cleanup }
+      } catch (err) {
+        await cleanup().catch(() => undefined)
+        throw err
+      }
+    }
+  })
+}
+
+/**
+ * Asks Google Gemini about short excerpts of the person's recordings: which
+ * take is delivered best and why, or whether a stretch has a visible problem
+ * such as focus hunting. For the take chooser's least certain decisions.
+ */
+export function judgeExcerpts(input: JudgeInput): Promise<JudgeResult> {
+  return judge(input, { gate, ffmpeg: FFMPEG_PATH, tempDir: app.getPath('temp') })
+}
+
+/**
+ * Pictures, clips and narration for videos made from nothing (main/make),
+ * every request through the same gate: nothing goes without the switch on
+ * and the service's key, and only the prompts, the script and the pictures
+ * the services made themselves are ever sent.
+ */
+export function makeServices(): MakeServices {
+  return {
+    open: () => ({
+      google: gate.open('gemini'),
+      fal: gate.open('fal'),
+      elevenlabs: gate.open('elevenlabs')
+    }),
+    models: {
+      image: { google: GOOGLE_IMAGE_MODEL, fal: FAL_IMAGE_MODEL },
+      clip: { google: GOOGLE_CLIP_MODEL, fal: FAL_CLIP_MODEL }
+    },
+    image: (service, prompt, refs, opts) =>
+      service === 'google' ? googleImage(gate, prompt, refs, opts) : falImage(gate, prompt, refs, opts),
+    clip: (service, prompt, first, opts) =>
+      service === 'google' ? googleClip(gate, prompt, first, opts) : falClip(gate, prompt, first, opts),
+    elevenlabs: (voiceId, text, around, signal) => elevenSpeech(gate, voiceId, text, around, signal),
+    elevenVoice: (name, signal) => elevenVoiceNamed(gate, name, signal),
+    gemini: (text, voice, style, signal) => googleSpeech(gate, text, voice, style, signal)
+  }
+}
+
+function asService(id: unknown): ServiceId {
+  if (!isServiceId(id)) throw new Error('That is not a service Cutalong knows.')
+  return id
+}
+
+export function registerServicesIpc(): void {
+  // At launch, once: an OpenAI key saved when Cutalong could use one is removed (keys.ts).
+  forgetRetiredKeys(keyDeps)
+  // The renderer learns whether each key exists, never what it is.
+  ipcMain.handle('services:keys', (): Record<ServiceId, boolean> => keys.all())
+  ipcMain.handle('services:setKey', (_e, id: unknown, key: unknown) =>
+    keys.set(asService(id), typeof key === 'string' ? key : '')
+  )
+  ipcMain.handle('services:clearKey', (_e, id: unknown) => keys.clear(asService(id)))
+  ipcMain.handle(
+    'services:check',
+    (_e, id: unknown): Promise<KeyCheck> => checkServiceKey(asService(id), { gate, hasKey: (s) => keys.has(s) })
+  )
+  ipcMain.handle('services:setOn', (_e, on: unknown): boolean => {
+    const next = saveSettings({ otherServices: on === true })
+    // Off stops what is already on its way too, not only what comes next.
+    if (!servicesOn(next)) gate.closeAll()
+    return servicesOn(next)
+  })
+}

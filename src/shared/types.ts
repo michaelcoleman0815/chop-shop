@@ -1,3 +1,6 @@
+import type { EditDoc } from './edit/schema'
+import type { ClipSet } from './clipping/schema'
+
 export type AspectPreset = 'original' | 'vertical' | 'square' | 'wide' | 'preset'
 
 export interface VideoMeta {
@@ -83,6 +86,61 @@ export interface Settings {
   ccliLicense: string | null
   /** CCLI Streaming Licence number. Streaming needs both. */
   ccliStreaming: string | null
+  /**
+   * A browser whose sign-in yt-dlp may borrow ("chrome", "safari", "firefox",
+   * "edge", "brave"), for videos a site will only hand to a signed-in viewer.
+   * Off until the person turns it on.
+   */
+  videoSignIn?: string | null
+  /**
+   * Whether Cutalong may send audio, and short video excerpts, to the other
+   * AI services the person has added keys for (see shared/services.ts). On
+   * unless turned off: nothing goes to a service until its key is added, and
+   * settings saved before this existed read as on.
+   */
+  otherServices?: boolean
+  /** Who hears the words: 'local' is this computer; absent means the first transcription service with a key. */
+  transcriber?: 'local' | 'deepgram' | 'assemblyai'
+  /** The local model that plans edits on this computer. Absent or null means Claude, the default. */
+  localPlanner?: string | null
+  /**
+   * Where the local AI server is: an address such as "localhost:1234". Absent
+   * or null looks for Ollama, then LM Studio, on this computer (main/local-llm).
+   */
+  localServer?: string | null
+  /** The local model that says what is in each moment of a vlog when Claude does not see the frames. Absent picks one that sees pictures. */
+  localVision?: string | null
+  /**
+   * Jump cuts hidden with a punch-in (shared/edit/jumps): the first time a change cuts a stretch out of
+   * one shot, the edit punches in on its jump cuts, wide and close in turn. Absent is on; false leaves them.
+   */
+  hideJumpCuts?: boolean
+  /**
+   * A fingerprint of the Anthropic key Anthropic last accepted (main/claude-key.ts), never the key:
+   * while Anthropic is busy or out of reach, that key still opens the gate.
+   */
+  claudeKeyAccepted?: string | null
+  /**
+   * Whether Claude may see small stills from the person's footage, to say
+   * what is in each moment of a vlog. On unless turned off, as other AI
+   * services are; nothing is sent without an Anthropic key either way.
+   */
+  claudeSeesFrames?: boolean
+  /**
+   * Whether Claude writes each export's three titles, the description's
+   * opening and its tags from the words. On unless turned off; nothing is
+   * sent without an Anthropic key either way, and without Claude they are
+   * made on this computer (main/upload-kit).
+   */
+  claudeWritesUpload?: boolean
+  /**
+   * Videos made from nothing (main/make): go ahead without asking when one
+   * costs less than this many dollars. Absent or null is off, the default:
+   * every made video is quoted and waits for the person to confirm.
+   */
+  makeAutoUnder?: number | null
+  /** The most one made video may cost, in dollars, unless the prompt says otherwise. Absent is $10. */
+  makeCap?: number | null
   /** Output size and bitrate read from an Adobe encoder preset. */
   exportPreset: {
     name: string
@@ -225,7 +283,8 @@ export interface MusicTrack {
   duck: boolean
 }
 
-export type ProjectMode = 'clip' | 'edit'
+/** clip and edit are projects from Chop Shop, which Cutalong replaced; cut is a Cutalong edit. */
+export type ProjectMode = 'clip' | 'edit' | 'cut'
 
 /** Which guidance applies. The failure modes differ by kind of recording. */
 export type ClipGenre = 'auto' | 'sermon' | 'podcast' | 'talk' | 'comedy'
@@ -272,6 +331,64 @@ export interface Project extends ProjectSummary {
   transcript: Transcript | null
   /** Editing-mode timeline. Null for clipping projects. */
   timeline: Timeline | null
+  /** The edit document of a Cutalong project. Absent from Chop Shop's old projects. */
+  edit?: EditDoc | null
+  /** The conversation that made the edit, so a chat can be picked up again. */
+  chat?: ChatMessage[]
+  /** Clips /clipping cut from long recordings, each its own edit (shared/clipping). Absent before clipping existed. */
+  clipping?: ClipSet | null
+  /**
+   * The brand chosen for this chat, by id (shared/brands), for while it has
+   * no edit and for clips; an edit names its own on each version. Absent,
+   * the default brand, as chats were before there could be more than one.
+   */
+  brand?: string | null
+}
+
+/** A button under a reply. The kinds are the renderer's to define. */
+export interface ChatAction {
+  kind: string
+  label: string
+  /** Words after the label that stay whole when a narrow column shortens it: where a B-roll choice is from. */
+  tail?: string
+  primary?: boolean
+  payload?: string
+  icon?: string
+  /** Shown only while the reply's work runs (a Stop), never once it is done. */
+  during?: boolean
+}
+
+/** One turn of a Cutalong chat, as it is kept in the project file. */
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  /**
+   * The crew who did the work behind a reply, in the order they joined, each
+   * with the last stage they reported: the reply's credits. The member ids
+   * and stages are the renderer's (src/renderer/src/cutalong/crew.ts).
+   */
+  crew?: { id: 'echo' | 'snip' | 'quill' | 'scout' | 'tint' | 'reel'; stage: string }[]
+  attachments?: { path: string; name: string }[]
+  link?: { url: string; title: string | null; meta: string | null }
+  chips?: string[]
+  details?: { label: string; value: string }[]
+  aside?: string | null
+  actions?: ChatAction[]
+  error?: boolean
+  /** An exported video, played in the chat whole. Its size and length are the file's own. */
+  video?: { path: string; name: string; width: number; height: number; durationSec: number }
+  /** The /clipping run whose clips this reply shows, as cards under it. */
+  clipRun?: number
+  /** The quote for a video made from nothing whose outline and script show under this reply (useMake). */
+  make?: string
+  /**
+   * That quote's script, kept with the reply: it was paid for, so it can still be read once the quote has
+   * gone (set aside, replaced, or from before the chat was opened again).
+   */
+  script?: { outline: string[]; sections: number[]; phrases: string[] }
+  /** Questions asked before a made video's script is written, answered under this reply (useMake). */
+  makeAsk?: string
 }
 
 export interface TimelineClip {

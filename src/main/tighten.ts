@@ -1,25 +1,5 @@
 import type { TranscriptWord, ZoomKeyframe } from '../shared/types'
-
-/**
- * Sounds people make while thinking. Deliberately conservative: "like",
- * "actually" and "literally" carry meaning often enough that cutting them
- * mangles sentences, so they are not here.
- */
-const FILLERS = new Set([
-  'um',
-  'umm',
-  'ummm',
-  'uh',
-  'uhh',
-  'uhhh',
-  'er',
-  'erm',
-  'ah',
-  'ahh',
-  'hmm',
-  'mhm',
-  'mm'
-])
+import { isFiller } from '../shared/fillers'
 
 export interface TightenOptions {
   /** Silence longer than this is cut back to padSec. */
@@ -38,10 +18,6 @@ export const DEFAULT_TIGHTEN: TightenOptions = {
 export interface Segment {
   start: number
   end: number
-}
-
-function isFiller(word: string): boolean {
-  return FILLERS.has(word.toLowerCase().replace(/[^a-z]/gi, ''))
 }
 
 /**

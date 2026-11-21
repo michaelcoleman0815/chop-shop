@@ -1,12 +1,13 @@
 import { app } from 'electron'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { signInBrowsers } from '../shared/platform'
 import type { Settings } from '../shared/types'
 
 const file = () => join(app.getPath('userData'), 'settings.json')
 
 const defaults = (): Settings => ({
-  outputDir: join(app.getPath('videos'), 'Chop Shop'),
+  outputDir: join(app.getPath('videos'), 'Cutalong'),
   bufferSeconds: 60,
   grabShortcut: 'CommandOrControl+Shift+C',
   captureSourceId: null,
@@ -24,7 +25,9 @@ const defaults = (): Settings => ({
   musicDir: null,
   ccliLicense: null,
   ccliStreaming: null,
-  exportPreset: null
+  exportPreset: null,
+  videoSignIn: null,
+  otherServices: true
 })
 
 let cache: Settings | null = null
@@ -40,6 +43,9 @@ export function getSettings(): Settings {
   } catch {
     next = base
   }
+  // A browser this computer cannot borrow a sign-in from (Chrome on Windows, chosen in an older
+  // copy) would fail every link that asks for it; it is left off instead.
+  if (next.videoSignIn && !signInBrowsers().includes(next.videoSignIn)) next = { ...next, videoSignIn: null }
   try {
     mkdirSync(next.outputDir, { recursive: true })
   } catch {

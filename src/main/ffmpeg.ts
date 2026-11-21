@@ -3,6 +3,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { buildReframeFilter } from './reframe'
+import { PROBE_ARGS, readDuration, readProbe, type SourceFacts } from './intake'
 import { buildAss, DEFAULT_CAPTION_STYLE } from './captions'
 import { buildGraphicsAss } from './graphics'
 import type { ClipGraphic } from '../shared/types'
@@ -76,6 +77,24 @@ export function outputSize(
  * executed. electron-builder unpacks them (see asarUnpack in electron-builder.yml),
  * so the path just needs rewriting to the unpacked twin.
  */
+/**
+ * The H.264 encoder of the older exports (a clip, a timeline) and the moving
+ * caption samples: the Mac's hardware encoder, and x264 on Windows, which has
+ * no VideoToolbox. Both take the bitrate asked for.
+ */
+export const H264_ENCODER: string[] =
+  process.platform === 'darwin' ? ['-c:v', 'h264_videotoolbox'] : ['-c:v', 'libx264', '-preset', 'veryfast']
+
+/**
+ * A path as a filter argument, as cut-render.ts writes one: quoted, with the
+ * colon of a Windows drive (C:) and any quote escaped for ffmpeg's second
+ * reading.
+ */
+export function filterPath(path: string): string {
+  const inner = path.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
+  return `'${inner.replace(/'/g, "'\\''")}'`
+}
+
 function unpacked(p: string): string {
   return p.includes('app.asar') ? p.replace('app.asar', 'app.asar.unpacked') : p
 }
@@ -87,9 +106,13 @@ export const FFPROBE_PATH = unpacked(
 
 export interface ProbeResult {
   durationSec: number
+  /** Shown size, after any rotation a phone recorded. */
   width: number
   height: number
+  /** The rate to render at; for a variable frame rate, the rate it was shot at. */
   fps: number
+  /** Everything intake reads: rotation, frame rate, colour encoding, sound. */
+  facts: SourceFacts
 }
 
 function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
@@ -108,26 +131,13 @@ function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: str
 }
 
 export async function probe(path: string): Promise<ProbeResult> {
-  const { stdout } = await run(FFPROBE_PATH, [
-    '-v',
-    'error',
-    '-select_streams',
-    'v:0',
-    '-show_entries',
-    'stream=width,height,avg_frame_rate:format=duration',
-    '-of',
-    'json',
-    path
-  ])
-  const json = JSON.parse(stdout)
-  const stream = json.streams?.[0] ?? {}
-  const [num, den] = String(stream.avg_frame_rate ?? '30/1').split('/').map(Number)
-  return {
-    durationSec: Number(json.format?.duration ?? 0),
-    width: Number(stream.width ?? 0),
-    height: Number(stream.height ?? 0),
-    fps: den ? Math.round((num / den) * 100) / 100 : 30
-  }
+  const { stdout } = await run(FFPROBE_PATH, [...PROBE_ARGS, path])
+  // Shown size and real frame rate: a portrait phone clip is stored
+  // landscape, and a phone that dropped frames averages under its rate.
+  const read = readProbe(JSON.parse(stdout))
+  // A browser's screen recording (WebM written live) has no length in its header.
+  const facts = read.durationSec > 0 ? read : { ...read, durationSec: await readDuration(FFPROBE_PATH, path) }
+  return { durationSec: facts.durationSec, width: facts.width, height: facts.height, fps: facts.fps, facts }
 }
 
 /**
@@ -348,8 +358,7 @@ export async function exportClip(opts: {
   if (opts.lutPath) {
     // Grading belongs to the footage; captions are drawn afterwards so they
     // keep their own colour.
-    const lut = opts.lutPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    filters.push(`lut3d=file='${lut}'`)
+    filters.push(`lut3d=file=${filterPath(opts.lutPath)}`)
   }
 
   const baseStyle = opts.captionStyle ?? opts.captions?.style ?? DEFAULT_CAPTION_STYLE
@@ -364,9 +373,9 @@ export async function exportClip(opts: {
       assPath,
       buildAss(captionWords, out.w, out.h, scaleStyle(baseStyle, scale))
     )
-    // ffmpeg filter syntax treats these as separators, so they need escaping.
-    const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    subtitles = `subtitles='${escaped}':fontsdir='${FONTS_DIR()}'`
+    // On Windows the temp folder is inside the user's own, so its name may have
+    // an apostrophe in it (C:\Users\O'Brien\AppData\Local\Temp).
+    subtitles = `subtitles=${filterPath(assPath)}:fontsdir=${filterPath(FONTS_DIR())}`
   }
 
   // Titles and bars ride a second subtitle track rather than sharing the
@@ -381,8 +390,7 @@ export async function exportClip(opts: {
       gPath,
       buildGraphicsAss(scaleGraphics(graphics, scale), out.w, out.h, outDuration)
     )
-    const gEscaped = gPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")
-    graphicsFilter = `subtitles='${gEscaped}':fontsdir='${FONTS_DIR()}'`
+    graphicsFilter = `subtitles=${filterPath(gPath)}:fontsdir=${filterPath(FONTS_DIR())}`
   }
 
   const overlays = opts.overlays ?? []
@@ -435,8 +443,7 @@ export async function exportClip(opts: {
         '-t',
         duration.toFixed(3),
         ...filterArgs,
-        '-c:v',
-        'h264_videotoolbox',
+        ...H264_ENCODER,
         '-b:v',
         opts.previewQuality
           ? '3M'

@@ -1,0 +1,298 @@
+name: Test build
+
+# A .dmg of the Cutalong work in progress, built on every push to its branch so
+# the owner can try it. It is uploaded as a workflow artifact and never
+# published as a release: every installed copy of Chop Shop updates itself from
+# GitHub Releases, so a release from here would hand unfinished work to
+# everyone who has the app.
+on:
+  push:
+    branches:
+      - claude/mcp-x1yvms
+    # The website and the design notes are not part of the app: a push that
+    # only changes them builds nothing.
+    paths-ignore:
+      - 'site/**'
+      - 'docs/design/**'
+      - '.claude/**'
+      - '.impeccable/**'
+      - 'PRODUCT.md'
+  workflow_dispatch:
+
+# A newer push makes the build in progress pointless.
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    # macos-14 jobs were cancelled before a runner was assigned (twice, with
+    # no log), so this uses GitHub's current Apple Silicon image.
+    runs-on: macos-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The same helpers the release builds, for the same reason: resources/bin
+      # is gitignored, and anything not built here is missing from the app.
+      - name: Build whisper.cpp
+        run: ./scripts/build-whisper.sh
+
+      - name: Build the Vision helper
+        run: ./scripts/build-native.sh
+
+      - name: Fetch yt-dlp
+        run: ./scripts/fetch-ytdlp.sh
+
+      - name: Fetch caption fonts
+        run: ./scripts/fetch-fonts.sh
+
+      - name: Verify bundled binaries
+        run: |
+          test -x resources/bin/whisper-cli || { echo "::error::whisper-cli missing"; exit 1; }
+          test -x resources/bin/chopshop-vision || { echo "::error::chopshop-vision missing"; exit 1; }
+          test -x resources/bin/yt-dlp || { echo "::error::yt-dlp missing"; exit 1; }
+          # Each helper must run on the oldest macOS the app opens on.
+          ./scripts/check-macos-min.sh
+          # The renderer of record: its version decides how exports behave.
+          "$(node -p "require('ffmpeg-static')")" -hide_banner -version | head -1
+
+      # A test build is only made from work that passes every check.
+      - name: Typecheck and test
+        run: |
+          npm run typecheck
+          npm test
+
+      # Signed ad hoc, not with the Developer ID: on GitHub's current Mac image
+      # electron-builder's temporary keychain will not unlock ("SecKeychainUnlock:
+      # The user name or passphrase you entered is not correct"), and a test build
+      # for the owner does not need notarizing. Never published.
+      - name: Build the app without publishing it
+        timeout-minutes: 30
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npx electron-vite build
+          npx electron-builder --mac --publish never -c.mac.identity=-
+
+      # The app holds what it runs (the built code in out, its node_modules and
+      # package.json) and nothing else of the project. A platform's files list
+      # of nothing but exclusions once packed src, docs and .claude into it.
+      - name: Check the app holds only what it runs
+        run: |
+          APP=$(ls -d release/mac-arm64/*.app | head -1)
+          npx @electron/asar list "$APP/Contents/Resources/app.asar" > "$RUNNER_TEMP/app-asar.txt"
+          TOP=$(cut -d/ -f2 "$RUNNER_TEMP/app-asar.txt" | sort -u)
+          echo "app.asar holds:" $TOP
+          EXTRA=$(echo "$TOP" | grep -vxE 'node_modules|out|package\.json' || true)
+          if [ -n "$EXTRA" ]; then
+            echo "::error::app.asar holds more than node_modules, out and package.json:" $EXTRA
+            exit 1
+          fi
+
+      # macOS opens the app on any version its Info.plist allows, so every
+      # binary inside it must run there too.
+      - name: Check the app runs on the macOS it says
+        run: ./scripts/check-macos-min.sh "$(ls -d release/mac-arm64/*.app | head -1)"
+
+      # Graphics are drawn in the export by a native module. It must be in the
+      # app, outside the asar, and load there, or every export with a graphic
+      # would fail on the owner's Mac rather than here.
+      - name: Check the graphics engine is in the app and loads
+        run: |
+          APP=$(ls -d release/mac-arm64/*.app | head -1)
+          UNPACKED="$APP/Contents/Resources/app.asar.unpacked/node_modules/@napi-rs"
+          find "$UNPACKED" -name '*.node' | grep -q . || { echo "::error::the graphics engine is missing from the app"; exit 1; }
+          node -e "const c = require(require('path').resolve(process.argv[1], 'canvas')); const v = c.createCanvas(16, 16); v.getContext('2d').fillRect(0, 0, 16, 16); console.log('graphics engine loads in the packaged app:', v.toBuffer('image/png').length, 'byte PNG')" "$UNPACKED"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cutalong-test-${{ github.run_number }}
+          path: release/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    # Windows 10 and 11 on x64: an unsigned installer for trying Cutalong on a
+    # PC. It shares nothing with the Mac job, so either can fail without
+    # stopping the other, and nothing here changes what the Mac job makes.
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      # What the build ran on and with, for reading a failure afterwards.
+      - name: Show the runner
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_OperatingSystem | Format-List Caption, Version, OSArchitecture
+          Get-CimInstance Win32_Processor | Format-List Name, NumberOfCores, NumberOfLogicalProcessors
+          "node $(node --version), npm $(npm --version)"
+          cmake --version | Select-Object -First 1
+          git --version
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -format json | ConvertFrom-Json
+          "$($vs.displayName) $($vs.catalog.productDisplayVersion) at $($vs.installationPath)"
+          "MSVC toolsets: $((Get-ChildItem "$($vs.installationPath)\VC\Tools\MSVC" -Name -ErrorAction SilentlyContinue) -join ', ')"
+          "Windows SDKs: $((Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Directory -Filter '10.*' -Name -ErrorAction SilentlyContinue) -join ', ')"
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The suite needs none of the helpers, so it runs before they are built.
+      # A failing test does not stop the job: the steps after it still show
+      # whether the app builds and runs, and the last check fails the job, so
+      # no installer is uploaded from work that fails one.
+      - name: Test
+        id: tests
+        continue-on-error: true
+        timeout-minutes: 40
+        run: npm test
+
+      # The helpers the Mac job builds, made for Windows by the scripts' Node
+      # twins: resources/bin is gitignored, and anything not made here is
+      # missing from the app.
+      - name: Build whisper.cpp
+        env:
+          WHISPER_WORK: ${{ runner.temp }}\whisper.cpp
+        run: node scripts/build-whisper.mjs
+
+      - name: Fetch yt-dlp
+        run: node scripts/fetch-ytdlp.mjs
+
+      - name: Fetch caption fonts
+        run: node scripts/fetch-fonts.mjs
+
+      # onnxruntime (the face finder) needs the Microsoft C++ runtime, which a
+      # clean Windows lacks, so the app carries it beside the module.
+      - name: Put the C++ runtime beside onnxruntime
+        run: node scripts/bundle-msvc-runtime.mjs
+
+      # Every line runs, so one failure still shows the rest; the step fails if any did.
+      - name: Verify bundled binaries
+        id: binaries
+        continue-on-error: true
+        run: |
+          fail=0
+          test -f resources/bin/whisper-cli.exe || { echo "::error::whisper-cli.exe missing"; fail=1; }
+          test -f resources/bin/yt-dlp.exe || { echo "::error::yt-dlp.exe missing"; fail=1; }
+          # Each must need only what Windows 10 and 11 have, or what sits beside it.
+          node scripts/check-windows-binaries.mjs || fail=1
+          # The renderer of record: its version and build decide how exports behave.
+          node_modules/ffmpeg-static/ffmpeg.exe -hide_banner -version || fail=1
+          node_modules/@ffprobe-installer/win32-x64/ffprobe.exe -hide_banner -version || fail=1
+          resources/bin/yt-dlp.exe --version || fail=1
+          resources/bin/whisper-cli.exe -h || fail=1
+          exit $fail
+
+      # Proof that whisper transcribes, not only that it starts: thirty seconds
+      # of the speech fixture with the tiny English model, kept between runs.
+      - uses: actions/cache@v4
+        with:
+          path: .build/models
+          key: whisper-models-tiny-en-1
+
+      - name: Check whisper transcribes
+        id: whisper
+        continue-on-error: true
+        timeout-minutes: 10
+        run: node scripts/check-whisper.mjs
+
+      # Unsigned, so SmartScreen asks before the first run (see README). Never
+      # published: --publish never, and no release is made from this workflow.
+      - name: Build the app without publishing it
+        timeout-minutes: 30
+        run: |
+          npx electron-vite build
+          npx electron-builder --win nsis --x64 --publish never
+
+      # The app holds what it runs (the built code in out, its node_modules and
+      # package.json) and nothing else of the project, as on the Mac.
+      - name: Check the app holds only what it runs
+        id: asar
+        continue-on-error: true
+        run: |
+          LIST=$(npx @electron/asar list release/win-unpacked/resources/app.asar)
+          # Each path starts with the separator, a backslash on Windows.
+          TOP=$(printf '%s\n' "$LIST" | tr -d '\r' | tr '\\' '/' | cut -d/ -f2 | sort -u)
+          echo "app.asar holds:" $TOP
+          EXTRA=$(printf '%s\n' "$TOP" | grep -vxE 'node_modules|out|package\.json' || true)
+          if [ -n "$EXTRA" ]; then
+            echo "::error::app.asar holds more than node_modules, out and package.json:" $EXTRA
+            exit 1
+          fi
+
+      - name: Check the app holds what it needs and its native modules load
+        id: contents
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          fail=0
+          ls -la release
+          node scripts/check-windows-binaries.mjs release/win-unpacked || fail=1
+          node scripts/check-windows-app.mjs release/win-unpacked || fail=1
+          exit $fail
+
+      # The app checks itself (src/main/self-check.ts): each helper run as the
+      # app runs it, Skia and onnxruntime inside Electron, a face found.
+      - name: Check the app runs
+        id: app
+        continue-on-error: true
+        timeout-minutes: 10
+        run: node scripts/self-check-app.mjs release/win-unpacked/Cutalong.exe
+
+      # Again from where the installer puts it, as a person would have it.
+      - name: Install the app and check that copy
+        id: installed
+        continue-on-error: true
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release -Filter 'Cutalong-Setup-*.exe' | Select-Object -First 1
+          "installer: $($setup.Name), $([math]::Round($setup.Length / 1MB, 1)) MB"
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Depth 1 -Filter 'Cutalong.exe' | Select-Object -First 1
+          if (-not $exe) { "::error::the installer put no Cutalong.exe under $env:LOCALAPPDATA\Programs"; exit 1 }
+          "installed in $($exe.DirectoryName)"
+          node scripts/self-check-app.mjs $exe.FullName
+          exit $LASTEXITCODE
+
+      # The checks above let the job go on when they fail, to show everything
+      # in one run; this is where their failures fail it, before any upload.
+      - name: Fail when a check failed
+        if: >-
+          steps.tests.outcome == 'failure' || steps.binaries.outcome == 'failure' ||
+          steps.whisper.outcome == 'failure' || steps.asar.outcome == 'failure' ||
+          steps.contents.outcome == 'failure' || steps.app.outcome == 'failure' ||
+          steps.installed.outcome == 'failure'
+        run: |
+          echo "::error::tests ${{ steps.tests.outcome }}, helpers ${{ steps.binaries.outcome }}, whisper ${{ steps.whisper.outcome }}, app.asar ${{ steps.asar.outcome }}, app contents ${{ steps.contents.outcome }}, the app ${{ steps.app.outcome }}, the installed app ${{ steps.installed.outcome }}"
+          exit 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cutalong-windows-test-${{ github.run_number }}
+          path: release/Cutalong-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14
