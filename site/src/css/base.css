@@ -42,9 +42,15 @@ h1 { max-width: 16ch; font-size: var(--text-display); line-height: 0.98; }
 h2 { max-width: 20ch; font-size: var(--text-section); }
 h3 { max-width: 32ch; font-size: var(--text-title); font-weight: 750; line-height: 1.15; letter-spacing: -0.03em; }
 /* One italic serif accent in a heading: the serif's x-height is smaller, so it sits a touch larger. */
+/* It wears the highlighter: one swipe of a block colour behind the word (--hl), as in the app. */
 :is(h1, h2, h3, .footer-line) em {
   font-family: var(--font-accent); font-style: italic; font-weight: 440;
-  font-size: 1.08em; letter-spacing: -0.012em; padding-right: 0.04em;
+  font-size: 1.08em; letter-spacing: -0.012em; padding: 0 0.1em; margin-left: -0.04em;
+  position: relative; isolation: isolate;
+}
+:is(h1, h2, h3, .footer-line) em::before {
+  content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 46%; bottom: 6%;
+  border-radius: 0.12em; background: var(--hl, var(--block-yellow)); rotate: -2deg; transform-origin: left center;
 }
 .lead { font-size: var(--text-lead); line-height: 1.5; max-width: 34em; color: var(--color-ink-2); }
 p { margin: 0; text-wrap: pretty; }

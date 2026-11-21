@@ -50,6 +50,11 @@
   --color-ok: oklch(50% 0.1 155);
   --color-frame: oklch(15% 0.012 268);
   --color-frame-2: oklch(27% 0.012 268);
+  --color-stage: oklch(21% 0.016 272);           /* the stage: footage and its tools, dark in both looks */
+  --color-stage-2: oklch(27% 0.016 272);
+  --color-stage-line: oklch(36% 0.016 272);
+  --color-on-stage: oklch(96% 0.006 85);
+  --color-on-stage-soft: oklch(78% 0.01 272);
   --color-selection: oklch(89% 0.04 245);
   --color-focus: var(--color-ink);
   --shadow-soft: oklch(30% 0.02 272 / 0.06);
@@ -63,12 +68,13 @@
   --rev-edge: oklch(25% 0.014 272 / 0.08);
 
   /* Colour you can feel: the revision colours as confident blocks around the video, never on it. Ink type on top. */
-  --block-blue: oklch(88.5% 0.055 240);
-  --block-pink: oklch(89% 0.052 352);
-  --block-yellow: oklch(93.5% 0.085 98);
-  --block-green: oklch(89.5% 0.062 152);
-  --block-gold: oklch(87% 0.085 82);
-  --block-salmon: oklch(88% 0.06 40);
+  --block-blue: oklch(84% 0.1 255);
+  --block-pink: oklch(85% 0.1 350);
+  --block-yellow: oklch(91% 0.14 100);
+  --block-green: oklch(87% 0.115 148);
+  --block-gold: oklch(85% 0.125 78);
+  --block-salmon: oklch(85% 0.095 52);
+  --block-lavender: oklch(85% 0.085 300);
   --block-edge: oklch(25% 0.014 272 / 0.07);
   /* Secondary and quiet text on a block: the ink, thinned, so it takes the block's hue (5:1 or better on every block). */
   --ink-on-block-2: color-mix(in oklch, var(--color-ink) 80%, transparent);
@@ -116,13 +122,14 @@
   --clip-4-light: oklch(70% 0.08 20);
   --clip-4-base: oklch(42% 0.06 10);
 
-  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 14px; --radius-xl: 20px; --radius-composer: 24px;
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 14px; --radius-xl: 20px; --radius-composer: 24px; --radius-stage: 28px;
   --radius-pill: 999px;
 
   /* Soft light under lifted paper; the colours above change with the look. */
   --shadow-page: 0 1px 2px var(--shadow-soft), 0 12px 28px -16px var(--shadow-deep);
   --shadow-float: 0 1px 2px var(--shadow-soft), 0 22px 48px -18px var(--shadow-deep);
   --shadow-window: 0 1px 2px var(--shadow-soft), 0 40px 80px -32px var(--shadow-deep), 0 0 0 1px var(--rev-edge);
+  --shadow-stage: 0 2px 4px var(--shadow-soft), 0 34px 70px -30px var(--shadow-deep);
   --shadow-composer: 0 1px 2px var(--shadow-soft), 0 18px 40px -20px var(--shadow-deep);
 
   /* Motion. Things arrive softly and settle; they leave sooner, easing out too. Nothing overshoots. */
@@ -170,6 +177,11 @@
     --color-ok: oklch(78% 0.1 155);
     --color-frame: oklch(13% 0.012 268);
     --color-frame-2: oklch(25% 0.012 268);
+    --color-stage: oklch(16.5% 0.016 268);
+    --color-stage-2: oklch(22% 0.018 268);
+    --color-stage-line: oklch(33% 0.018 268);
+    --color-on-stage: oklch(96% 0.006 85);
+    --color-on-stage-soft: oklch(76% 0.01 268);
     --color-selection: oklch(38% 0.06 255);
     --shadow-soft: oklch(5% 0.01 268 / 0.5);
     --shadow-deep: oklch(4% 0.02 268 / 0.72);
@@ -180,12 +192,13 @@
     --rev-5: oklch(32% 0.038 155);
     --rev-6: oklch(34% 0.05 78);
     --rev-edge: oklch(94.5% 0.008 85 / 0.08);
-    --block-blue: oklch(35% 0.065 248);
-    --block-pink: oklch(35% 0.062 350);
-    --block-yellow: oklch(37% 0.062 95);
-    --block-green: oklch(35% 0.058 155);
-    --block-gold: oklch(38% 0.07 78);
-    --block-salmon: oklch(36% 0.065 40);
+    --block-blue: oklch(35% 0.06 258);
+    --block-pink: oklch(35% 0.045 350);
+    --block-yellow: oklch(40% 0.044 80);
+    --block-green: oklch(36% 0.06 152);
+    --block-gold: oklch(36% 0.045 76);
+    --block-salmon: oklch(36% 0.06 48);
+    --block-lavender: oklch(35% 0.06 300);
     --block-edge: oklch(94.5% 0.008 85 / 0.08);
   }
 }
@@ -210,6 +223,11 @@
   --color-ok: oklch(78% 0.1 155);
   --color-frame: oklch(13% 0.012 268);
   --color-frame-2: oklch(25% 0.012 268);
+  --color-stage: oklch(16.5% 0.016 268);
+  --color-stage-2: oklch(22% 0.018 268);
+  --color-stage-line: oklch(33% 0.018 268);
+  --color-on-stage: oklch(96% 0.006 85);
+  --color-on-stage-soft: oklch(76% 0.01 268);
   --color-selection: oklch(38% 0.06 255);
   --shadow-soft: oklch(5% 0.01 268 / 0.5);
   --shadow-deep: oklch(4% 0.02 268 / 0.72);
@@ -220,12 +238,13 @@
   --rev-5: oklch(32% 0.038 155);
   --rev-6: oklch(34% 0.05 78);
   --rev-edge: oklch(94.5% 0.008 85 / 0.08);
-  --block-blue: oklch(35% 0.065 248);
-  --block-pink: oklch(35% 0.062 350);
-  --block-yellow: oklch(37% 0.062 95);
-  --block-green: oklch(35% 0.058 155);
-  --block-gold: oklch(38% 0.07 78);
-  --block-salmon: oklch(36% 0.065 40);
+  --block-blue: oklch(35% 0.06 258);
+  --block-pink: oklch(35% 0.045 350);
+  --block-yellow: oklch(40% 0.044 80);
+  --block-green: oklch(36% 0.06 152);
+  --block-gold: oklch(36% 0.045 76);
+  --block-salmon: oklch(36% 0.06 48);
+  --block-lavender: oklch(35% 0.06 300);
   --block-edge: oklch(94.5% 0.008 85 / 0.08);
 }
 :root[data-theme="light"] { color-scheme: light; }

@@ -774,3 +774,41 @@ section:last-of-type { padding-bottom: var(--section-gap); }
   .signup-row { flex-direction: column; }
   .footer-legal { margin-left: 0; }
 }
+
+/* ---------- On set ---------- */
+
+/*
+ * The stage, as in the app: the picture and the strip sit on a dark surface in
+ * both looks, and inside it ink, rules and paper point at the stage's colours,
+ * so the play button, the timecode and the beats need nothing of their own.
+ */
+.app-well,
+.app-strip {
+  --color-ink: var(--color-on-stage);
+  --color-ink-2: var(--color-on-stage-soft);
+  --color-muted: var(--color-on-stage-soft);
+  --color-on-ink: var(--color-stage);
+  --color-rule: var(--color-stage-line);
+  --color-card: var(--color-stage);
+  --color-well: var(--color-stage-2);
+  color: var(--color-ink);
+}
+.app-well { background: var(--color-stage); border-radius: 18px; }
+.app-strip { background: var(--color-stage); border-top: 0; border-radius: 0 0 var(--radius-xl) var(--radius-xl); }
+@media (max-width: 40rem) { .app-strip { border-radius: 0 0 var(--radius-lg) var(--radius-lg); } }
+
+/* Each section's accent takes its own colour where the section has one. */
+#proof-title { --hl: var(--block-blue); }
+#crew-title { --hl: var(--block-pink); }
+#signup-title { --hl: var(--block-yellow); }
+
+/* The highlighter draws across its word as the heading arrives; with reduced motion it is simply there. */
+@media (prefers-reduced-motion: no-preference) {
+  :is(h1, h2, h3, .footer-line) em::before {
+    transition: scale var(--duration-settle) var(--ease-enter) 180ms, opacity 260ms var(--ease-enter) 180ms;
+  }
+  .js .reveal:not(.is-in) em::before { scale: 0 1; opacity: 0; }
+  @starting-style {
+    .hero h1 em::before { scale: 0 1; opacity: 0; }
+  }
+}
