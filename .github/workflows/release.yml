@@ -73,11 +73,10 @@ jobs:
         timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Set these two repo secrets once you have an Apple Developer ID and
-          # macOS will install updates silently instead of falling back to the
-          # "open releases page" banner. Passing them through directly does not
-          # work: an empty CSC_LINK reads to electron-builder as a certificate
-          # path of "", which fails the build.
+          # The Developer ID certificate, as a base64 .p12, and its password. With
+          # them macOS installs updates by itself; without, the build is unsigned.
+          # They are read into a keychain below rather than handed to
+          # electron-builder as CSC_LINK (see there).
           CERT_B64: ${{ secrets.CSC_LINK }}
           CERT_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           # Signing alone stops the updater failing, but a freshly downloaded
@@ -90,8 +89,29 @@ jobs:
           extra=""
           if [ -n "$CERT_B64" ]; then
             echo "Signing with the configured Developer ID certificate."
-            export CSC_LINK="$CERT_B64"
-            export CSC_KEY_PASSWORD="$CERT_PASSWORD"
+            # The certificate goes into a keychain of the workflow's own, and electron-builder finds
+            # the Developer ID identity there. Handing it CSC_LINK instead fails: electron-builder
+            # 26.15 unlocks its own temporary keychain with the certificate's password rather than
+            # the keychain's ("SecKeychainUnlock: The user name or passphrase you entered is not
+            # correct"), so the import never finishes.
+            keychain="$RUNNER_TEMP/signing.keychain-db"
+            keychain_password="$(openssl rand -base64 24)"
+            p12="$RUNNER_TEMP/signing.p12"
+            printf '%s' "$CERT_B64" | base64 --decode > "$p12"
+            security create-keychain -p "$keychain_password" "$keychain"
+            # Locks after six hours rather than five minutes, so notarizing never finds it locked.
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$keychain_password" "$keychain"
+            security import "$p12" -P "$CERT_PASSWORD" -f pkcs12 -k "$keychain" -T /usr/bin/codesign -T /usr/bin/productbuild
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+            rm -f "$p12"
+            # First in the search list, with the runner's own keychains kept after it.
+            security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+            if ! security find-identity -v -p codesigning "$keychain" | grep -q "Developer ID Application"; then
+              echo "::error::The CSC_LINK certificate holds no Developer ID Application identity."
+              exit 1
+            fi
+            export CSC_KEYCHAIN="$keychain"
             # Notarization needs something validly signed to submit, so it is
             # only ever switched on alongside a certificate.
             if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
