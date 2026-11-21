@@ -3914,6 +3914,7 @@ button:disabled {
  */
 .cl-well,
 .cl-strip,
+.cl-wordtrack,
 .cl-stage {
   --ink: var(--on-stage);
   --ink-soft: var(--on-stage-soft);
@@ -4620,4 +4621,92 @@ button:disabled {
 /* A command, a timecode or a file name inside a line of interface text. */
 .cl-mono {
   font-family: var(--font-mono);
+}
+
+/* ---------- The word track: the edit's words over the strip, on a phone ---------- */
+
+/* Only where the script is out of reach: a phone, or a window as narrow as one. */
+.cl-wordtrack {
+  display: none;
+}
+
+.cl-app.phone .cl-editor .cl-wordtrack {
+  display: flex;
+  /* The strip's place in the phone's order; it comes first in the page, so it sits just above the strip. */
+  order: 2;
+}
+
+@media (max-width: 640px) {
+  .cl-editor .cl-wordtrack {
+    display: flex;
+  }
+}
+
+.cl-wordtrack {
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 18px;
+  background: var(--stage);
+  box-shadow: var(--shadow-stage);
+}
+
+.cl-wordtrack-words {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.cl-wordtrack-words::-webkit-scrollbar {
+  display: none;
+}
+
+.cl-wchip {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--stage-2);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* A new beat starts a little apart, as a new line of the script does. */
+.cl-wchip.beat-start {
+  margin-left: 8px;
+}
+
+/* A word the cut leaves out: still there, crossed out in coral, as the script shows it. */
+.cl-wchip.struck {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--coral);
+  text-decoration-thickness: 2px;
+}
+
+.cl-wchip.marked {
+  background: color-mix(in oklch, var(--pick) 55%, transparent);
+  color: var(--ink);
+}
+
+.cl-wchip.now {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.cl-wordtrack-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
 }

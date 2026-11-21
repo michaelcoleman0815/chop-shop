@@ -58,6 +58,8 @@ import {
 } from '../../../../shared/edit'
 import { CREW, memberForNote } from '../crew'
 import { changedBeats, revisionOf } from '../revisions'
+import { toggleLabel, toggleOps } from '../word-track'
+import { WordTrack } from '../components/WordTrack'
 import {
   describeSpeed,
   parseCommand,
@@ -303,6 +305,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             />
           )}
         </div>
+        <WordTrack doc={doc} resolved={resolved} time={player.time} onSeek={player.seek} onApply={app.applyOpsDirect} />
         <BeatStrip
           beats={beats}
           duration={resolved.durationSec}
@@ -1362,35 +1365,8 @@ function ScriptPanel({
       return next
     })
 
-  const apply = (): void => {
-    const index = indexWords(doc.words)
-    const ids = [...marked].sort((a, b) => (index.pos.get(a) ?? 0) - (index.pos.get(b) ?? 0))
-    const ops: Op[] = []
-    // Contiguous runs of the same kind become one op each.
-    let run: string[] = []
-    const flush = (): void => {
-      if (run.length === 0) return
-      ops.push({ op: struck.has(run[0]) ? 'unstrike' : 'strike', from: run[0], to: run[run.length - 1] })
-      run = []
-    }
-    for (const id of ids) {
-      const prev = run[run.length - 1]
-      const adjacent = prev !== undefined && (index.pos.get(id) ?? -2) === (index.pos.get(prev) ?? -9) + 1
-      if (!adjacent || struck.has(id) !== struck.has(prev)) flush()
-      run.push(id)
-    }
-    flush()
-    onApply(ops, 'Words changed.')
-  }
-
-  const cutting = [...marked].filter((id) => !struck.has(id)).length
-  const restoring = marked.size - cutting
-  const label =
-    cutting && restoring
-      ? `Cut ${cutting} and bring back ${restoring} words`
-      : cutting
-        ? `Cut ${cutting === 1 ? '1 word' : `${cutting} words`}`
-        : `Bring back ${restoring === 1 ? '1 word' : `${restoring} words`}`
+  const apply = (): void => onApply(toggleOps(doc, marked), 'Words changed.')
+  const label = toggleLabel(doc, marked)
 
   return (
     <aside className="cl-notes" aria-label="Script">

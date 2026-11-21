@@ -55,6 +55,7 @@ Cutalong runs separate jobs; each has a small character, so you watch a crew wor
 ## Components to reach for
 
 - **Revision tabs** (`Revisions` in `Editor.tsx`): the newest versions as pastel tabs; the one on screen is ringed in ink and keeps the `cl-version` class, whose text is only `v{n}`. A version made while the editor is open wears a "new" sticker beside its tab.
+- **The word track** (`WordTrack`, on a phone or a window under 640 px): the edit's words as chips on the stage, just above the beat strip. Tap a word to jump to it; hold one (or Shift-click) to mark it, then tap more; one button cuts them or brings struck ones back (`toggleOps`, shared with the script). Struck words stay, crossed out in coral; the playing word is ringed; the row follows the playhead unless it was just moved.
 - **The script** (`ScriptPanel`): numbered lines with a coverage line, an asterisk on every line the revision changed (`changedBeats()`), open notes pencilled in the margin.
 - **The living mark** (`LivingMark`): three soft shapes in the bloom colours turning over a warm core. Big above long work; small in the assistant's tile while it thinks.
 - **A brand's avatar** (`BrandAvatar`, `avatarOf(brand)`): the shape and colour picked on the Brand page (`AvatarPicker`), or one chosen from the brand's id until then. It shows in the brand's hero, the brand switch and the brand list.
