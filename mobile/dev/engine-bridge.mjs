@@ -365,9 +365,36 @@ async function serveFile(req, res, path) {
 
 const ffmpegVersion = /version (\S+)/.exec(spawnSync(FFMPEG, ['-version'], { encoding: 'utf8' }).stdout ?? '')?.[1] ?? 'unknown'
 
+/**
+ * The bridge's own addresses. Any website open in the same browser can reach
+ * 127.0.0.1 too, and the engine calls run this computer's ffmpeg with the
+ * arguments they are given (any file in, any file out), so they answer only the
+ * app's own page and tools run here.
+ */
+const OWN = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`])
+
+/** Why a request is refused, or null when it comes from the app's page or a tool on this computer. */
+function refused(req) {
+  // Another name resolving here (DNS rebinding) arrives with that name as its Host.
+  if (!OWN.has(String(req.headers.host ?? '').toLowerCase())) return 'Only 127.0.0.1 and localhost reach the engine.'
+  // A page from another site: a browser names its origin. Node, curl and Playwright's request API send none.
+  const origin = req.headers.origin
+  if (origin && !OWN.has(origin.toLowerCase().replace(/^http:\/\//, ''))) return 'Only the app’s own page reaches the engine.'
+  const site = req.headers['sec-fetch-site']
+  if (site && site !== 'same-origin' && site !== 'none') return 'Only the app’s own page reaches the engine.'
+  return null
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost')
   const path = url.pathname
+  if (path.startsWith('/engine/')) {
+    const why = refused(req)
+    if (why) {
+      log(`[refused] ${req.method} ${path} from ${req.headers.origin ?? req.headers.host ?? 'unknown'}`)
+      return send(res, 403, why)
+    }
+  }
   try {
     if (path === '/engine/lines') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })

@@ -21,6 +21,8 @@ npm run bridge -- --pick-from ~/clips
 
 Then open http://127.0.0.1:8737 in Chromium with the device toolbar at a phone's size (390×844, 412×915 or 360×740), or drive it with Playwright using `isMobile` and `hasTouch`. Rebuild after a change; the bridge serves `dist`.
 
+The engine calls (`/engine/...`) run this computer's ffmpeg with the arguments they are sent, so the bridge answers them only from its own page and from tools on this computer: the Host must be `127.0.0.1` or `localhost` on its port, and a browser request must come from that same origin. Any other website open in the browser gets 403, as does a page that points its own name at 127.0.0.1. Scripts using Node, curl or Playwright's request API send no `Origin` and keep working.
+
 Bridge options:
 
 - `--root DIR`: where the phone's Documents, Caches and Photos folders are (default `mobile/.bridge`). An export saved to Photos lands in `DIR/Photos`.
