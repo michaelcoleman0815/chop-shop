@@ -51,6 +51,7 @@ import type { Draft } from '../../shared/make/draft'
 import { draftFingerprint } from '../../shared/make/fingerprint'
 import { readAsk } from '../../shared/make/brief'
 import { scriptCost } from '../../shared/make/quote'
+import { thisComputer } from '../../shared/platform'
 import { saveSettings } from '../store'
 import { registerMakeIpc } from './index'
 
@@ -149,7 +150,7 @@ describe('a video made from one prompt', () => {
     expect(draft.quote.total).toBeLessThanOrEqual(draft.quote.cap)
     expect(r.reply?.text).toMatch(/^I'll make a 1:00 cinematic documentary about the 1950s oil boom/)
     expect(draft.quote.sends.join(' ')).toMatch(/Only the text prompts for the pictures go to Google/)
-    expect(draft.quote.sends.join(' ')).toMatch(/Nothing of your own footage leaves this Mac/)
+    expect(draft.quote.sends.join(' ')).toContain(`Nothing of your own footage leaves ${thisComputer}`)
     // Only Claude, writing the script: no picture, clip or voice service yet.
     expect(requests().map((q) => q.service)).toEqual(['claude'])
   })

@@ -41,6 +41,7 @@ import {
 } from '../../shared/make/shots'
 import type { Bible, Brief, ImageService, Make, MadeShot, Sheet, Shot, VoiceChoice } from '../../shared/make/schema'
 import { defaultVoice, voicePhrase } from '../../shared/make/voices'
+import { thisComputer } from '../../shared/platform'
 import { planShots, writeScript, type ParseCall } from './claude'
 import { acceptedJob, Budget, inTurn, MadeCache, makeOnce, NotKept, OverBudget, type MadeRequest } from './generate'
 import { ServiceError } from '../providers/gate'
@@ -470,7 +471,7 @@ async function narration(
   const price = voiceCost(voice, draft.script.length, (countWords(draft.script) / (draft.brief.format === 'documentary' ? 140 : 158)) * 60, today)
   if (price > 0 && !budget.reserve(price)) {
     reader = defaultVoice(draft.brief.format)
-    notes.push(`${voice.name} would have passed the agreed total, so ${reader.name} read it on this Mac.`)
+    notes.push(`${voice.name} would have passed the agreed total, so ${reader.name} read it on ${thisComputer}.`)
   }
   // A service's reading is spent section by section, as each arrives: one that stops partway is paid for what it read.
   let held = reader === voice ? price : 0
@@ -496,7 +497,7 @@ async function narration(
     const first = reader
     reader = defaultVoice(draft.brief.format)
     const before = paid > 0 ? ` What ${first.name} read before that cost ${dollars(paid)}, and is counted in what was spent.` : ''
-    notes.push(`${first.name} could not read it (${errText(err).replace(/[.\s]+$/, '')}), so ${reader.name} read it on this Mac.${before}`)
+    notes.push(`${first.name} could not read it (${errText(err).replace(/[.\s]+$/, '')}), so ${reader.name} read it on ${thisComputer}.${before}`)
     read = await narrate(input(reader), base)
   }
   // What the quote held over what the reading came to.

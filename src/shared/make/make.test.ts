@@ -28,6 +28,7 @@ import {
   type ShotListAnswer
 } from './index'
 import { EditDocSchema, currentCut, resolveCut, type Cut } from '../edit'
+import { thisComputer } from '../platform'
 
 const ALL: Availability = { google: true, fal: true, elevenlabs: true, claude: true, localVoice: true }
 const NONE: Availability = { google: false, fal: false, elevenlabs: false, claude: true, localVoice: false }
@@ -114,7 +115,7 @@ describe('one prompt carries the whole brief', () => {
     expect(brief.inferred).toEqual([
       'a cinematic documentary, since it is a story from the past',
       '2:00 long',
-      "Michael's free voice on this Mac",
+      `Michael's free voice on ${thisComputer}`,
       'a warm sepia archival look with grain'
     ])
   })
@@ -126,7 +127,7 @@ describe('one prompt carries the whole brief', () => {
     const man = readAsk('make a documentary about the man who sold the world') as Brief
     expect(man.topic).toBe('the man who sold the world')
     expect(man.voice.id).toBe('am_michael')
-    expect(man.inferred).toContain("Michael's free voice on this Mac")
+    expect(man.inferred).toContain(`Michael's free voice on ${thisComputer}`)
   })
 
   it('never reads a decade as a length, and reads lengths said in words', () => {
@@ -170,7 +171,7 @@ describe('one prompt carries the whole brief', () => {
   it('takes changes to a brief not yet made, and stops calling them guesses', () => {
     const brief = readAsk('make a video about the 1950s oil boom') as Brief
     const next = reviseBrief(brief, 'make it 3 minutes, black and white, with a woman reading it')
-    expect(next?.changed).toEqual(['3:00 long', "Heart's free voice on this Mac", 'the black and white look'])
+    expect(next?.changed).toEqual(['3:00 long', `Heart's free voice on ${thisComputer}`, 'the black and white look'])
     expect(next?.brief.seconds).toBe(180)
     expect(next?.brief.inferred).toEqual(['a cinematic documentary, since it is a story from the past'])
     expect(reviseBrief(brief, 'sounds good')).toBeNull()
@@ -202,8 +203,8 @@ describe('the quote', () => {
   it('says what goes where, and that the footage stays', () => {
     const q = quoteFor(brief, estimateCounts(brief, phrases, SCRIPT), ALL, { today: '2026-11-16' })
     expect(q.sends.join(' ')).toMatch(/Only the text prompts for the pictures go to Google, with the character sheet it made for each shot the character is in\./)
-    expect(q.sends).toContain('Nothing of your own footage leaves this Mac.')
-    expect(q.sends.join(' ')).toMatch(/Michael reads the script on this Mac/)
+    expect(q.sends).toContain(`Nothing of your own footage leaves ${thisComputer}.`)
+    expect(q.sends.join(' ')).toContain(`Michael reads the script on ${thisComputer}`)
   })
 
   it('cannot be made without a key for the pictures, and says so', () => {
@@ -482,7 +483,7 @@ describe('a made video saved when Cutalong offered OpenAI voices', () => {
     const q = quoteFor(remade, estimateCounts(remade, make.phrases, SCRIPT), ALL, { today: '2026-11-16', scriptWritten: true })
     expect(q.voice).toEqual({ engine: 'local', id: 'am_michael', name: 'Michael' })
     expect(q.sends.join(' ')).not.toMatch(/OpenAI/)
-    expect(q.sends).toContain('Michael reads the script on this Mac, so the words go nowhere else.')
+    expect(q.sends).toContain(`Michael reads the script on ${thisComputer}, so the words go nowhere else.`)
   })
 
   it('reads an ask for OpenAI by name on this Mac, as Cutalong no longer uses it', () => {

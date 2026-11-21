@@ -1,5 +1,6 @@
 import { createWriteStream, existsSync, promises as fs } from 'fs'
 import { join } from 'path'
+import { thisComputer } from '../../shared/platform'
 import { G2P, loadLexicon } from './g2p'
 import type { LocalVoice } from './narrate'
 
@@ -129,7 +130,7 @@ async function loadOrt(): Promise<Ort> {
     // A CommonJS package imported: its exports are named when Node can see them, else under default.
     return (m.InferenceSession ? m : m.default) as unknown as Ort
   } catch {
-    throw new Error('The voice on this Mac needs onnxruntime-node, which is missing from this build.')
+    throw new Error(`The voice on ${thisComputer} needs onnxruntime-node, which is missing from this build.`)
   }
 }
 
@@ -146,8 +147,8 @@ export function kokoroVoice(dir: string, deps: KokoroDeps): LocalVoice {
   return {
     ready,
     async prepare(voice, onProgress, signal) {
-      if (!/^[a-z]{2}_[a-z]+$/.test(voice)) throw new Error('That is not one of the voices on this Mac.')
-      if (!deps.fetch) throw new Error('The voice on this Mac is not downloaded yet.')
+      if (!/^[a-z]{2}_[a-z]+$/.test(voice)) throw new Error(`That is not one of the voices on ${thisComputer}.`)
+      if (!deps.fetch) throw new Error(`The voice on ${thisComputer} is not downloaded yet.`)
       await fs.mkdir(dir, { recursive: true })
       const [model, tokenizer, pack] = files(voice)
       // The model is most of it: 90 of every 100 parts.
@@ -157,7 +158,7 @@ export function kokoroVoice(dir: string, deps: KokoroDeps): LocalVoice {
       onProgress(1)
     },
     async speak(text, voice, signal) {
-      if (!(await ready(voice))) throw new Error('The voice on this Mac is not downloaded yet.')
+      if (!(await ready(voice))) throw new Error(`The voice on ${thisComputer} is not downloaded yet.`)
       if (signal?.aborted) throw new Error('Stopped.')
       const ort = await (deps.ort ?? loadOrt)()
       const [model, tokenizer, pack] = files(voice)
@@ -183,7 +184,7 @@ export function kokoroVoice(dir: string, deps: KokoroDeps): LocalVoice {
       }
       const out = await (await session).run(feeds)
       const wave = out.waveform ?? Object.values(out)[0]
-      if (!wave) throw new Error('The voice on this Mac read nothing.')
+      if (!wave) throw new Error(`The voice on ${thisComputer} read nothing.`)
       return { samples: Float32Array.from(wave.data as ArrayLike<number>), rate: KOKORO_RATE }
     }
   }

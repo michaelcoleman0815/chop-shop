@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { signInBrowsers } from '../shared/platform'
 import type { Settings } from '../shared/types'
 
 const file = () => join(app.getPath('userData'), 'settings.json')
@@ -42,6 +43,9 @@ export function getSettings(): Settings {
   } catch {
     next = base
   }
+  // A browser this computer cannot borrow a sign-in from (Chrome on Windows, chosen in an older
+  // copy) would fail every link that asks for it; it is left off instead.
+  if (next.videoSignIn && !signInBrowsers().includes(next.videoSignIn)) next = { ...next, videoSignIn: null }
   try {
     mkdirSync(next.outputDir, { recursive: true })
   } catch {

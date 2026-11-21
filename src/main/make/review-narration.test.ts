@@ -7,6 +7,7 @@ import type { Draft } from '../../shared/make/draft'
 import { PRICES } from '../../shared/make/prices'
 import type { Availability } from '../../shared/make/quote'
 import { phrasesAndSections } from '../../shared/make/script'
+import { thisComputer } from '../../shared/platform'
 import { elevenSpeech } from '../providers/voices'
 import { gateFor, json, scriptedFetch } from '../providers/testing'
 import { exe, standIn } from '../test-bin'
@@ -188,8 +189,8 @@ describe('a paid voice that stops partway', () => {
     expect(r.doc.make?.narration.cost).toBe(0)
     expect(r.spent).toBeGreaterThanOrEqual(billed - 1e-9)
     expect(r.spent).toBeLessThanOrEqual(draft.quote.total + 1e-9)
-    expect(r.reply.aside ?? '').toMatch(
-      /George could not read it \(ElevenLabs says the account has no credit left\), so Michael read it on this Mac\./
+    expect(r.reply.aside ?? '').toContain(
+      `George could not read it (ElevenLabs says the account has no credit left), so Michael read it on ${thisComputer}.`
     )
     expect(r.reply.aside ?? '').toContain(
       `What George read before that cost $${billed.toFixed(2)}, and is counted in what was spent.`

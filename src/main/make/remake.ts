@@ -11,6 +11,7 @@ import { clipCost, dollars, REWRITE_COST, stillCost, videoCap, type Availability
 import { promptFor } from '../../shared/make/shots'
 import { STILL_MOVES, type Brief, type ImageService, type Make, type MadeShot, type VoiceChoice } from '../../shared/make/schema'
 import { defaultVoice, voicePhrase } from '../../shared/make/voices'
+import { thisComputer } from '../../shared/platform'
 import { MODEL } from '../planner'
 import { callCost, holdFor, inputOf, maybeBilled, settle, type ParseCall } from './claude'
 import { Budget, MadeCache, makeOnce, OverBudget, type MadeRequest } from './generate'
@@ -97,7 +98,7 @@ export function quoteShot(
     ask.want ? 'What you asked for, and the shot as it was described, go to Claude to describe the new picture, with your Anthropic key.' : '',
     `Only the text prompt goes to ${IMAGE_NAME[service]}${refs ? ', with the character sheet of each character in it' : ''}.`,
     clips ? `The new still goes back to ${IMAGE_NAME[clips]} as the clip's first frame.` : '',
-    'Nothing of your own footage leaves this Mac.'
+    `Nothing of your own footage leaves ${thisComputer}.`
   ].filter(Boolean)
   const what = ask.want ? `as ${withArticle(ask.want)}` : 'as a new take of the same picture'
   const made = clips ? 'a still and a clip' : 'one still'
@@ -403,7 +404,7 @@ export async function changeFor(
         draft,
         reply: {
           text: `I'll cut the same ${make.shots.length} shots to your recording. That costs ${dollars(draft.quote.total)}.`,
-          aside: 'It stays on this Mac: I listen to it here for the words.',
+          aside: `It stays on ${thisComputer}: I listen to it here for the words.`,
           chips: [`${make.shots.length} shots`, dollars(draft.quote.total)],
           details: [{ label: 'What goes where', value: draft.quote.sends.join(' ') }]
         }
@@ -414,7 +415,7 @@ export async function changeFor(
         kind: 'record',
         reply: {
           text: "Drop your voice-over in, reading the script, and I'll cut the same shots to it. That costs nothing.",
-          aside: 'It stays on this Mac: I listen to it here for the words.',
+          aside: `It stays on ${thisComputer}: I listen to it here for the words.`,
           chips: [],
           details: []
         }

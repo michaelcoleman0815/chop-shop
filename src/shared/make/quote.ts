@@ -1,4 +1,5 @@
 import { clock } from '../presets/preset'
+import { thisComputer } from '../platform'
 import { CLAUDE_HOLD, CLAUDE_TOKENS, PRICES, PRICES_CHECKED, ROOM_TO_ANSWER, SHOTS_PER_PART, voiceRate } from './prices'
 import { countWords, wordsFor } from './script'
 import type { Brief, ImageService, Shot, Visual, VoiceChoice, VoiceEngine } from './schema'
@@ -302,7 +303,7 @@ export function voiceFor(brief: Brief, can: Availability): { voice: VoiceChoice;
   const names: Record<string, string> = { elevenlabs: 'ElevenLabs', gemini: 'Google Gemini' }
   return {
     voice: local,
-    note: `There is no ${names[engine]} key in Settings, or other AI services are off, so ${local.name} reads it on this Mac instead.`
+    note: `There is no ${names[engine]} key in Settings, or other AI services are off, so ${local.name} reads it on ${thisComputer} instead.`
   }
 }
 
@@ -374,7 +375,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
       const p = voice.engine === 'local' ? PRICES.voices.local : PRICES.voices[voice.engine]
       lines.push({
         what: `The narration, about ${clock(c.narrationSeconds)}`,
-        by: voice.engine === 'local' ? `${voice.name} on this Mac` : `${p.name}, ${voice.name}`,
+        by: voice.engine === 'local' ? `${voice.name} on ${thisComputer}` : `${p.name}, ${voice.name}`,
         cost: voiceCost(voice, c.narrationChars, c.narrationSeconds, today)
       })
     }
@@ -404,7 +405,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
       c.graphics ? `${c.graphics} ${c.graphics === 1 ? 'graphic' : 'graphics'}` : '',
       'the look, the cut and the music'
     ].filter(Boolean)
-    lines.push({ what: free.join(', '), by: 'this Mac', cost: 0 })
+    lines.push({ what: free.join(', '), by: thisComputer, cost: 0 })
     return { lines, total: round(lines.reduce((n, l) => n + l.cost, 0)) }
   }
   let built = build()
@@ -447,10 +448,10 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
   const sends: string[] = []
   if (brief.from === 'topic') sends.push('The topic goes to Claude to write the script, with your Anthropic key.')
   if (!keepShots && !keepPlan) sends.push('The script goes to Claude to plan the shots, with your Anthropic key.')
-  if (keepVoice && voice.engine === 'own') sends.push('Your recording stays on this Mac. I listened to it here for the words.')
+  if (keepVoice && voice.engine === 'own') sends.push(`Your recording stays on ${thisComputer}. I listened to it here for the words.`)
   else if (keepVoice) sends.push('The narration stays as it is.')
-  else if (voice.engine === 'local') sends.push(`${voice.name} reads the script on this Mac, so the words go nowhere else.`)
-  else if (voice.engine === 'own') sends.push('Your recording stays on this Mac. I listen to it here for the words.')
+  else if (voice.engine === 'local') sends.push(`${voice.name} reads the script on ${thisComputer}, so the words go nowhere else.`)
+  else if (voice.engine === 'own') sends.push(`Your recording stays on ${thisComputer}. I listen to it here for the words.`)
   else {
     const where = { elevenlabs: 'ElevenLabs', gemini: 'Google' }[voice.engine]
     sends.push(`The script goes to ${where} to be read aloud, with your ${where === 'Google' ? 'Gemini' : where} key.`)
@@ -462,7 +463,7 @@ export function quoteFor(brief: Brief, counts: Counts, can: Availability, opts: 
     )
     if (clipsBy && c.clips > 0) sends.push(`For each clip, the still ${IMAGE_NAME[clipsBy]} made goes back to it as the first frame.`)
   }
-  sends.push('Nothing of your own footage leaves this Mac.')
+  sends.push(`Nothing of your own footage leaves ${thisComputer}.`)
 
   // The amount to go ahead under is for the whole video: what is spent already (the script) and this
   // quote, which holds Claude's lines at the most each call may cost.

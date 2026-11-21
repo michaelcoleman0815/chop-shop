@@ -20,6 +20,25 @@ export const thisComputer = onWindows ? 'this PC' : 'this Mac'
 /** "This Mac", or "This PC" on Windows: a sentence's start, or an option's name. */
 export const ThisComputer = onWindows ? 'This PC' : 'This Mac'
 
+/** "your Mac", or "your PC" on Windows. */
+export const yourComputer = onWindows ? 'your PC' : 'your Mac'
+
+/**
+ * The browsers whose sign-in yt-dlp can borrow for a video link, by its
+ * names for them. Safari is a Mac's alone. On Windows, Chrome, Edge and
+ * Brave lock their cookies with a key only the browser itself can open
+ * (app-bound encryption), and hold the file open while they run, so only
+ * Firefox's can be read there.
+ */
+export function signInBrowsers(platform: string = platformName()): string[] {
+  return platform === 'win32'
+    ? ['firefox']
+    : ['chrome', 'safari', 'firefox', 'edge', 'brave', 'chromium', 'opera', 'vivaldi']
+}
+
+/** What Settings says of the browsers it leaves out on Windows; nothing on a Mac. */
+export const SIGN_IN_LOCKED = onWindows ? 'Chrome, Edge and Brave lock theirs on Windows, so only Firefox’s can be borrowed.' : ''
+
 /** The button that shows a file where it is kept. */
 export const SHOW_FILE = onWindows ? 'Show in File Explorer' : 'Show in Finder'
 

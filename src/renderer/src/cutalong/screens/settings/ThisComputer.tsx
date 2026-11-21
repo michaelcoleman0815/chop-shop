@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MapStatus } from '../../../../../shared/maps'
-import { onWindows } from '../../../../../shared/platform'
+import { SIGN_IN_LOCKED, signInBrowsers } from '../../../../../shared/platform'
 import type { Settings, UpdateState } from '../../../../../shared/types'
 import { api, device } from '../../api'
 import { Button } from '../../components/ui'
@@ -14,15 +14,25 @@ import { SetGroup, SetRow, SetSelect } from './rows'
 
 const phone = device.kind === 'phone'
 
+/** The browsers offered, of those this computer can borrow a sign-in from (shared/platform). */
 const BROWSERS: { id: string; label: string }[] = [
   { id: '', label: 'Off' },
-  { id: 'chrome', label: 'Chrome' },
-  // Safari is a Mac's alone.
-  ...(onWindows ? [] : [{ id: 'safari', label: 'Safari' }]),
-  { id: 'firefox', label: 'Firefox' },
-  { id: 'edge', label: 'Edge' },
-  { id: 'brave', label: 'Brave' }
+  ...[
+    { id: 'chrome', label: 'Chrome' },
+    { id: 'safari', label: 'Safari' },
+    { id: 'firefox', label: 'Firefox' },
+    { id: 'edge', label: 'Edge' },
+    { id: 'brave', label: 'Brave' }
+  ].filter((b) => signInBrowsers().includes(b.id))
 ]
+
+/** What the sign-in row says, with why on Windows it offers Firefox alone. */
+const SIGN_IN_DESC = [
+  'Some sites only hand a video to someone signed in. I can borrow the sign-in from a browser here.',
+  SIGN_IN_LOCKED
+]
+  .filter(Boolean)
+  .join(' ')
 
 function updateLine(s: UpdateState, version: string): string {
   switch (s.status) {
@@ -158,7 +168,7 @@ export function ThisComputerSection({
       {!device.away['feature:link'] && (
         <SetRow
           title="Sign-in for videos from links"
-          desc="Some sites only hand a video to someone signed in. I can borrow the sign-in from a browser here."
+          desc={SIGN_IN_DESC}
           find="browser cookies chrome safari firefox link youtube"
           control={
             <SetSelect
