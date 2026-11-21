@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { loudnessEnvelope } from './audio-envelope'
-import { FILLER_PROMPT, listenForFillers, readSamples } from './filler-listen'
+import { DEFAULT_FILLER_LISTEN, FILLER_PROMPT, listenForFillers, readSamples } from './filler-listen'
 import { platform } from './platform'
 import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
 import { voicedRegions } from '../shared/audio/voiced'
@@ -56,6 +56,14 @@ export async function downloadModel(model: WhisperModel, onProgress: (percent: n
 
 /** What ffmpeg says when a file has no sound to take, on 6.0, 6.1 and 7.0. */
 const NO_SOUND = /does not contain any stream|matches no streams/i
+
+/**
+ * How long listening for ums may take, as a share of the time writing the
+ * words down took, and at least this long: on the Android emulator two
+ * hundred short Whisper runs took over 800 s after a 394 s transcript.
+ */
+export const UMS_SHARE = 0.5
+export const UMS_LEAST_SEC = 20
 
 /** Whisper wants 16 kHz mono PCM; anything else is resampled internally anyway. */
 async function extractAudio(
@@ -223,9 +231,11 @@ export async function transcribe(
     const prefix = join(dir, 'out')
     const until = verbatim && verbatim.again !== false ? 86 : 98
     const threads = whisperThreads(host.os, host.processors)
+    const began = Date.now()
     await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads }), (p) =>
       onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
     )
+    const firstSec = (Date.now() - began) / 1000
     const json = parseWhisperJson(await host.files.readText(`${prefix}.json`))
     let heard = tokensToWords(json.transcription)
 
@@ -256,6 +266,9 @@ export async function transcribe(
         // Then every um, hmm and uh still unwritten, heard in the sound and by Whisper alone (main/filler-listen).
         onProgress(98, 'Listening for ums')
         let m = 0
+        // Each stretch is a Whisper run of its own: on a phone, two hundred of them can take longer
+        // than the whole recording did, so the ums take at most half as long again.
+        const budget = { ...DEFAULT_FILLER_LISTEN, budgetSec: Math.max(UMS_LEAST_SEC, firstSec * UMS_SHARE) }
         const fillers = await listenForFillers(heard, voiced, {
           samples: (span) => readSamples(host.tool('ffmpeg'), wav, span),
           listen: async (span) => {
@@ -277,7 +290,7 @@ export async function transcribe(
             const alone = tokensToWords(parseWhisperJson(await host.files.readText(`${partPrefix}.json`)).transcription)
             return alone.map((w) => ({ ...w, startSec: w.startSec + span.startSec, endSec: w.endSec + span.startSec }))
           }
-        })
+        }, budget)
         if (fillers.length > 0) {
           heard = [...heard, ...fillers].sort((a, b) => a.startSec - b.startSec)
           console.log(`[stt] heard ${fillers.length} filler${fillers.length === 1 ? '' : 's'} Whisper left out`)

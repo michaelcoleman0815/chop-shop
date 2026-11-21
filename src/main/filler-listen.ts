@@ -29,6 +29,12 @@ export interface FillerListenOptions {
   maxStretches: number
   /** Below this share of voiced frames, a stretch is breath or noise. */
   minVoiced: number
+  /**
+   * Seconds the listening may take, at most; the stretches after it are left
+   * as they are. Each listen is a Whisper run of its own, which on a phone
+   * can take seconds, so the transcript's own pass sets it (main/transcribe).
+   */
+  budgetSec?: number
 }
 
 export const DEFAULT_FILLER_LISTEN: FillerListenOptions = { maxStretches: 200, minVoiced: 0.5 }
@@ -49,6 +55,8 @@ export async function listenForFillers(
     /** Whisper on that span alone, with FILLER_PROMPT, its words on the span's clock. */
     listen: (span: Span) => Promise<HeardWord[]>
     rate?: number
+    /** The clock, in milliseconds. */
+    now?: () => number
   },
   opts: FillerListenOptions = DEFAULT_FILLER_LISTEN
 ): Promise<HeardWord[]> {
@@ -58,7 +66,13 @@ export async function listenForFillers(
     opts.maxStretches
   )
   const found: HeardWord[] = []
+  const now = deps.now ?? Date.now
+  const began = now()
   for (const s of stretches) {
+    if (opts.budgetSec !== undefined && (now() - began) / 1000 >= opts.budgetSec) {
+      console.log(`[stt] stopped listening for ums at ${s.startSec.toFixed(1)} s, out of time`)
+      break
+    }
     let reading
     try {
       reading = readFilledPause(await deps.samples(s), rate)

@@ -687,8 +687,10 @@ export async function drive(): Promise<void> {
     await go('Brand', '.cl-brand-hero')
     await step('brand')
 
-    // Settings' Licences: what the app is built with, with FFmpeg's licence open.
-    await go('Settings', '#set-licences')
+    // Settings' Licences: what the app is built with, with FFmpeg's licence open. Settings shows one
+    // section at a time, picked from its list.
+    const list = await go('Settings', '.cl-settings-nav')
+    ;(await until('Licences in Settings', () => button('Licences', list), 10)).click()
     const licences = await until('the licences', () => document.querySelector('#set-licences')?.closest('section'), 30)
     ;(await until('FFmpeg in the licences', () => button('Read the licence of FFmpeg'), 30)).click()
     await until(
