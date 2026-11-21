@@ -39,7 +39,9 @@ export function getUpdateState(): UpdateState {
 
 export function initUpdater(target: BrowserWindow): void {
   win = target
-  autoUpdater.autoDownload = false
+  // An update comes down by itself and goes in the next time Cutalong quits, so no one has to go
+  // looking for it in Settings. The app says once that it is ready, and offers to restart now.
+  autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   // Update problems only show up on real installs, so leave the lifecycle
   // visible in the app's stdout rather than debugging them blind.

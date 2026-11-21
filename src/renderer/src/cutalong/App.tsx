@@ -18,6 +18,11 @@ import { forgetPlace, useCutalong } from './useCutalong'
 
 const SIDEBAR_KEY = 'cutalong:sidebar-open'
 
+/** What the toast says once an update has downloaded. */
+function updateReady(version: string): string {
+  return `Cutalong ${version} is downloaded. It goes in when you quit.`
+}
+
 /**
  * As it was left; the first time, open wherever there is room for it beside
  * the screen, since its names and the setup card are how a new person finds
@@ -60,17 +65,39 @@ export default function App(): JSX.Element {
       go(value)
     }
 
-  // Toasts that report a result clear themselves; errors and progress stay.
+  // Toasts that report a result clear themselves; errors, progress and a downloaded update stay.
   // The timer starts when the toast does, not again each time the app draws.
   const { toast: shown, setToast } = app
   useEffect(() => {
-    if (!shown || shown.error || shown.text.endsWith('%')) return
+    if (!shown || shown.error || shown.restart || shown.text.endsWith('%')) return
     const t = setTimeout(() => setToast(null), 6000)
     return () => clearTimeout(t)
   }, [shown, setToast])
   // What a tool said when it stopped stays behind Details until asked for, for each new toast.
   const [toastDetails, setToastDetails] = useState(false)
   useEffect(() => setToastDetails(false), [shown])
+
+  // An update downloads by itself and goes in when Cutalong quits. Once it is down, say so once,
+  // and offer to restart into it now. A phone's app is updated by its store, not here.
+  useEffect(() => {
+    if (phone) return
+    let told = ''
+    return api.onUpdateState((s) => {
+      if (s.status !== 'ready' || s.version === told) return
+      told = s.version
+      setToast({ text: updateReady(s.version), restart: true })
+    })
+  }, [setToast])
+
+  /** Restarts into the downloaded update, unless that would stop work in progress. */
+  const restart = (): void => {
+    const making = app.make.running()
+    if (app.busy || making || app.toast?.text.endsWith('%')) {
+      setToast({ text: 'I’ll restart once the work in progress is done. The update also goes in whenever you quit.' })
+      return
+    }
+    void api.installUpdate()
+  }
 
   const browse = async (): Promise<void> => {
     const project = await api.openProject()
@@ -173,6 +200,7 @@ export default function App(): JSX.Element {
               {SHOW_FILE}
             </Button>
           )}
+          {toast.value.restart && <Button onClick={restart}>Restart to update</Button>}
           {(toast.value.details?.length ?? 0) > 0 && (
             <Button variant="text" aria-expanded={toastDetails} onClick={() => setToastDetails((o) => !o)}>
               {toastDetails ? 'Hide details' : 'Details'}

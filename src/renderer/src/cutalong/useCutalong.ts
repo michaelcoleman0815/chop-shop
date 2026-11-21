@@ -206,6 +206,8 @@ export interface Toast {
   chat?: boolean
   /** What a tool printed when it stopped, behind Details. */
   details?: { label: string; value: string }[]
+  /** An update is downloaded: the toast stays until closed, and offers to restart into it. */
+  restart?: boolean
 }
 
 /** What the notes panel says right now, when it is not just the version summary. */

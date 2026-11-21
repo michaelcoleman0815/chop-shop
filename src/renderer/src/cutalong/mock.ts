@@ -25,7 +25,7 @@ import {
   summarize,
   type InspirationStudy
 } from '../../../shared/inspiration'
-import type { Project, ProjectSummary, Settings } from '../../../shared/types'
+import type { Project, ProjectSummary, Settings, UpdateState } from '../../../shared/types'
 import {
   brandById,
   brandOfCut,
@@ -1314,7 +1314,12 @@ export function createMockApi(): CutalongApi {
     },
     updateState: async () => ({ status: 'idle' as const }),
     checkForUpdates: async () => ({ status: 'none' as const, version: '0.2.13' }),
-    onUpdateState: () => () => undefined,
+    // ?update=ready shows an update coming down a moment after launch, as an installed copy sees it.
+    onUpdateState: (cb: (s: UpdateState) => void) => {
+      if (typeof location === 'undefined' || new URLSearchParams(location.search).get('update') !== 'ready') return () => undefined
+      const t = setTimeout(() => cb({ status: 'ready', version: '0.3.1' }), 1200)
+      return () => clearTimeout(t)
+    },
     downloadUpdate: async () => undefined,
     installUpdate: async () => undefined
   }

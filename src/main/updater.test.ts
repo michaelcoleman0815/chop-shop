@@ -1,9 +1,28 @@
 import { describe, expect, it, vi } from 'vitest'
 
+const updater = vi.hoisted(() => ({
+  on: () => undefined,
+  autoDownload: false,
+  autoInstallOnAppQuit: false,
+  logger: null as unknown
+}))
 vi.mock('electron', () => ({ app: {}, shell: {}, BrowserWindow: class {} }))
-vi.mock('electron-updater', () => ({ default: { autoUpdater: { on: () => undefined } } }))
+vi.mock('electron-updater', () => ({ default: { autoUpdater: updater } }))
 
-import { updateFailure } from './updater'
+import type { BrowserWindow } from 'electron'
+import { initUpdater, updateFailure } from './updater'
+
+/**
+ * An installed copy that waits for someone to open Settings never updates. So an update
+ * downloads by itself and installs the next time the app quits.
+ */
+describe('the updater', () => {
+  it('downloads an update by itself and installs it on quit', () => {
+    initUpdater({} as BrowserWindow)
+    expect(updater.autoDownload).toBe(true)
+    expect(updater.autoInstallOnAppQuit).toBe(true)
+  })
+})
 
 /**
  * Releases are built for the Mac alone so far, so on Windows an update check
