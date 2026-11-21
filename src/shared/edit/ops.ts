@@ -453,6 +453,10 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       const { reframe: _was, ...rest } = cut
       return op.on ? { ...rest, reframe: true } : rest
     }
+    case 'punch-jumps': {
+      if (cut.punchJumps === op.on) return cut
+      return { ...cut, punchJumps: op.on }
+    }
 
     case 'brand':
       return { ...cut, brand: op.id }

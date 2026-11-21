@@ -10,6 +10,7 @@ import { sameValue } from '../edit/same'
 import type { Cut, EditDoc, Op } from '../edit/schema'
 import { beatsOnClock } from '../edit/audio'
 import { CAMERA_INFO } from '../edit/camera'
+import { describeJumps, jumpJoins } from '../edit/jumps'
 import { transitionInfo } from '../edit/transitions'
 import { describeLook, mergeLook, NAMED_LOOKS } from '../edit/look'
 import { placeChapters } from '../edit/chapters'
@@ -536,6 +537,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
           n === 1 ? 'captions show one word at a time' : `captions show ${NUMBER_WORDS[n] ?? n} words at a time`
         )
       } else if (o.set.on) said.push('captions are on')
+    } else if (o.op === 'punch-jumps') {
+      said.push(describeJumps(o.on, cut ? jumpJoins(cut, after).length : 0))
     } else if (o.op === 'aspect') {
       said.push(
         {

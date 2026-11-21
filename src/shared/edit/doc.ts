@@ -255,12 +255,13 @@ export interface CommitResult {
  * Ops a version never keeps, because the version's cut says what they set
  * and Cutalong 0.2.13 cannot open a project with an op it does not know: the
  * brand an edit is made in (Cut.brand), how pictures fill the frame
- * (Cut.fill) and the scene effects (Cut.fx). Nothing that reads a version's
+ * (Cut.fill), the scene effects (Cut.fx) and whether jump cuts punch in
+ * (Cut.punchJumps). Nothing that reads a version's
  * ops (what is learned from them, a vlog joining the next day's clips, why a
  * length cut a line) needs them, and nothing replays saved ops, since every
  * version holds its whole cut.
  */
-const UNSAVED: ReadonlySet<Op['op']> = new Set(['brand', 'fill', 'fx-add', 'fx-update', 'fx-remove'])
+const UNSAVED: ReadonlySet<Op['op']> = new Set(['brand', 'fill', 'fx-add', 'fx-update', 'fx-remove', 'punch-jumps'])
 
 /** The ops a version keeps. */
 export function savedOps(ops: Op[]): Op[] {

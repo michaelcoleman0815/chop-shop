@@ -111,6 +111,11 @@ export interface Settings {
   /** The local model that says what is in each moment of a vlog when Claude does not see the frames. Absent picks one that sees pictures. */
   localVision?: string | null
   /**
+   * Jump cuts hidden with a punch-in (shared/edit/jumps): the first time a change cuts a stretch out of
+   * one shot, the edit punches in on its jump cuts, wide and close in turn. Absent is on; false leaves them.
+   */
+  hideJumpCuts?: boolean
+  /**
    * A fingerprint of the Anthropic key Anthropic last accepted (main/claude-key.ts), never the key:
    * while Anthropic is busy or out of reach, that key still opens the gate.
    */

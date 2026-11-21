@@ -20,6 +20,8 @@ import {
   rangeName,
   rangeTimes,
   nextSourceId,
+  jumpJoins,
+  jumpOpsFor,
   openNotes,
   resolveCut,
   resummarize,
@@ -364,6 +366,7 @@ const ACTION_COMMANDS: Preset[] = [
         'Follow the speaker',
         'Keep you in the frame when it is narrower: /reframe, /reframe left, /reframe off'
       ],
+      ['jumpcuts', 'Jump cuts', 'Punch in where a cut took part of one shot out, so it reads as a cut: /jumpcuts, /jumpcuts off'],
       [
         'fill',
         'Fill',
@@ -1127,6 +1130,15 @@ export function useCutalong() {
     )
   }, [])
 
+  /** Settings' switch for hiding jump cuts (shared/edit/jumps), read again whenever the person moves between places. */
+  const hideJumps = useRef(true)
+  useEffect(() => {
+    void api.getSettings().then(
+      (s) => (hideJumps.current = s?.hideJumpCuts !== false),
+      () => undefined
+    )
+  }, [screen])
+
   const applyAsVersion = useCallback(
     (
       proposed: Op[],
@@ -1142,7 +1154,11 @@ export function useCutalong() {
       // The brand's never list holds for every change: what it rules out is left out (shared/never).
       const switched = [...proposed].reverse().find((o): o is Extract<Op, { op: 'brand' }> => o.op === 'brand')
       const owner = switched ? brandById(brandsRef.current, switched.id) : brandNow()
-      const guarded = neverGuard(currentCut(d), proposed, neverOf(owner.id), context)
+      // The first change that cuts a stretch out of one shot punches in on its jump cuts, as Settings say,
+      // unless the brand never punches in (edit/jumps).
+      const never = neverOf(owner.id)
+      const jumps = covering(never, 'punch-in') ? [] : jumpOpsFor(currentCut(d), proposed, context, hideJumps.current)
+      const guarded = neverGuard(currentCut(d), [...proposed, ...jumps], never, context)
       const ops = guarded.ops
       leftOut.current = guarded.left
       const before = resolveCut(currentCut(d), d.words, d.sources)
@@ -2928,6 +2944,44 @@ export function useCutalong() {
     [applyAsVersion, leftSentence, push]
   )
 
+  /** /jumpcuts: punch in on the jump cuts, wide and close in turn, or leave them as they are (shared/edit/jumps). */
+  const jumpCutsCommand = useCallback(
+    (rest: string, where: 'thread' | 'panel'): void => {
+      const say = (text: string, open = false): void => {
+        if (where === 'panel') setPanel({ text })
+        else
+          push({
+            role: 'assistant',
+            text,
+            actions: open ? [{ kind: 'open-editor', label: 'Open the editor', primary: true }] : undefined
+          })
+      }
+      const d = docRef.current
+      if (!d) {
+        say('Drop some footage first, then I can punch in on its jump cuts.')
+        return
+      }
+      const words = rest.trim().toLowerCase()
+      const on = /^(off|no|none|leave|stop|remove)$/.test(words) ? false : /^(on|yes|hide|punch|)$/.test(words) ? true : null
+      const cut = currentCut(d)
+      const n = jumpJoins(cut, resolveCut(cut, d.words, d.sources)).length
+      if (on === null) {
+        const now = cut.punchJumps ? 'punched in, wide and close in turn' : 'left as they are'
+        say(`This edit has ${n === 1 ? 'one jump cut' : `${n} jump cuts`}, ${now}. /jumpcuts punches in on them and /jumpcuts off leaves them.`)
+        return
+      }
+      const done = applyAsVersion([{ op: 'punch-jumps', on }], on ? 'The jump cuts punch in.' : 'The jump cuts are left as they are.')
+      if (!done) {
+        // Left out for the brand's never list, which says so; else it already was.
+        say(leftSentence() || (on ? 'The jump cuts already punch in.' : 'The jump cuts are already left as they are.'))
+        return
+      }
+      const none = on && n === 0 ? ' There are none yet: the next cut that takes part of a shot out punches in.' : ''
+      say(`v${done.n} is ready. ${done.summary}${none}`, true)
+    },
+    [applyAsVersion, leftSentence, push]
+  )
+
   /** /premiere: this version as a Premiere project on the person's own files, opened there when it can be. */
   const premiereCommand = useCallback(
     async (where: 'thread' | 'panel'): Promise<void> => {
@@ -3510,6 +3564,10 @@ export function useCutalong() {
         fillCommand(rest, where)
         return
       }
+      if (command === 'jumpcuts') {
+        jumpCutsCommand(rest, where)
+        return
+      }
       if (command === 'length') {
         await lengthCommand(rest, where)
         return
@@ -3622,6 +3680,7 @@ export function useCutalong() {
       sfxCommandRun,
       finishCommand,
       fillCommand,
+      jumpCutsCommand,
       lengthCommand,
       vlog
     ]
@@ -5131,6 +5190,7 @@ const WHOLE_NAMES: Record<string, string> = {
   length: 'A length',
   chapters: 'Chapters',
   reframe: 'Following the speaker',
+  jumpcuts: 'Punched jump cuts',
   captions: 'A caption style',
   hierarchy: 'A caption style'
 }

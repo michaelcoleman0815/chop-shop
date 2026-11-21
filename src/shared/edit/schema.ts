@@ -242,6 +242,13 @@ export const CutSchema = z.object({
   /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
   reframe: z.boolean().optional(),
   /**
+   * Jump cuts hidden with a punch-in (edit/jumps): where a cut leaves out a
+   * stretch of one shot, the picture after it is shown closer, alternating
+   * wide and close, so the jump reads as a cut. Absent, as in an edit made
+   * before it existed, leaves every jump as it is.
+   */
+  punchJumps: z.boolean().optional(),
+  /**
    * Which of the person's brands this version is made in, by id (shared/brands):
    * its captions, logo, graphics, never list and B-roll sources. Absent, as in
    * an edit made before there could be more than one, the brand from then
@@ -365,6 +372,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // Follow the speaker when the picture is cropped to a narrower frame, or keep it in the middle.
   z.object({ op: z.literal('reframe'), on: z.boolean() }),
+  // Jump cuts punched in, wide and close in turn, or left as they are (edit/jumps).
+  z.object({ op: z.literal('punch-jumps'), on: z.boolean() }),
   // The brand the edit is made in, by id (shared/brands); what that brand changes comes as other ops beside it.
   z.object({ op: z.literal('brand'), id: z.string().min(1).max(80) }),
   // How pictures of another shape fill the frame: as an edit does unless asked, on a blurred copy, between black bars, or cropped.

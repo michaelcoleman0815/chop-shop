@@ -5,12 +5,13 @@ import type { Settings } from '../../../../../shared/types'
 import { api, device } from '../../api'
 import { Button } from '../../components/ui'
 import { grow } from '../../motion'
-import { SetGroup, SetRow, SetSegments, SetSelect } from './rows'
+import { SetGroup, SetRow, SetSegments, SetSelect, SetSwitch } from './rows'
 
 /**
  * How the words are heard: by Whisper on this computer, at the size chosen
  * here, or by a transcription service with a key (under Services), which
- * hears every um and stutter and falls back to this computer when it cannot.
+ * hears every um and stutter and falls back to this computer when it cannot;
+ * and what a cut of those words does to the picture: its jump cuts punched in.
  */
 
 type Model = Settings['whisperModel']
@@ -133,6 +134,22 @@ export function WordsSection({
           </Button>
         ) : null}
       </SetRow>
+      <SetRow
+        title="Hide jump cuts"
+        desc={
+          settings?.hideJumpCuts === false
+            ? 'Where a cut takes a retake or a long pause out of one shot, the picture jumps. /jumpcuts turns this on for one video.'
+            : 'Where a cut takes a retake or a long pause out of one shot, I punch in on the next part, wide and close in turn, so the jump reads as a cut. /jumpcuts off leaves one video as it is.'
+        }
+        find="jump cut punch in zoom retake takes cut alternate"
+        control={
+          <SetSwitch
+            checked={settings?.hideJumpCuts !== false}
+            disabled={!settings}
+            onChange={(on) => void set({ hideJumpCuts: on })}
+          />
+        }
+      />
     </SetGroup>
   )
 }

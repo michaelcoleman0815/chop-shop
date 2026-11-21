@@ -20,6 +20,7 @@ import {
   gridHeard,
   indexWords,
   insetFor,
+  jumpZooms,
   levelAt,
   lookMatrix,
   openNotes,
@@ -792,6 +793,9 @@ function Deck({
   const piece = view.piece !== null ? resolved.pieces[view.piece] : undefined
   const rb = piece ? resolved.beats.find((b) => b.id === piece.beat) : undefined
   const t = rb ? cut.beats[rb.index]?.treatment : undefined
+  // Jump cuts hidden with a punch-in, wide and close in turn, as the export has them (edit/jumps).
+  const jumps = useMemo(() => jumpZooms(cut, resolved, sources), [cut, resolved, sources])
+  const zoom = (t?.zoom ?? 1) * (view.piece !== null ? (jumps[view.piece] ?? 1) : 1)
   const style = deckStyle(view.layer)
   // A beat shown as a grid (edit/grid): this deck's picture in its own box, the others and the ground over it.
   const grid = rb && t?.grid ? t.grid : null
@@ -816,7 +820,7 @@ function Deck({
   const at = runs && t?.broll ? cutawayAt(t.broll, runs.length, runs.offset) : null
   // The camera over the speaker, from the plan the export moves by.
   const source = piece ? sources.find((s) => s.id === piece.source) : undefined
-  let transform = t && t.zoom > 1.001 ? `scale(${t.zoom})` : undefined
+  let transform = t && zoom > 1.001 ? `scale(${zoom})` : undefined
   // Cropped to the frame, the picture looks where the speaker is, or where it was framed by hand (edit/reframe).
   const framing = piece && t && !t.camera ? pieceFraming(cut, t, piece, source?.subject) : null
   const objectPosition =
@@ -827,7 +831,7 @@ function Deck({
     const clock = cameraClock(resolved, rb.id, time, t.camera.word)
     if (clock) {
       const plan = cameraPlan(t.camera, clock.length, clock.wordAt, source.width / source.height, frameAspect)
-      transform = cameraTransform(viewAt(plan, clock.t), plan.fw, plan.fh, t.zoom)
+      transform = cameraTransform(viewAt(plan, clock.t), plan.fw, plan.fh, zoom)
     }
   }
   const cutawayCamera =

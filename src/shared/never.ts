@@ -588,6 +588,8 @@ function present(cut: Cut, entry: NeverItem, ctx: NeverContext): Set<string> {
   if (thing === 'music' && cut.music) keys.add(cut.music.path)
   if (thing === 'look' && cut.look) keys.add(JSON.stringify(cut.look))
   if (thing === 'captions' && cut.captions.on) keys.add('on')
+  // Jump cuts punched in (edit/jumps) are punch-ins too.
+  if (thing === 'punch-in' && cut.punchJumps) keys.add('jumps')
   return keys
 }
 
@@ -668,6 +670,9 @@ export function neverFilter(ops: Op[], never: NeverItem[], ctx: NeverContext): {
         break
       case 'fill':
         if ((op.mode === 'blur' || op.mode === 'auto') && rule('fill')) continue
+        break
+      case 'punch-jumps':
+        if (op.on && rule('punch-in')) continue
         break
       case 'captions':
         if (op.set.on === true && rule('captions')) {
@@ -800,6 +805,7 @@ export function neverStrip(cut: Cut, never: NeverItem[], ctx: NeverContext): { o
   if (cut.look && rule('look')) ops.push({ op: 'look', set: null })
   if (cut.captions.on && rule('captions')) ops.push({ op: 'captions', set: { on: false } })
   if (present(cut, 'fill', ctx).size > 0 && rule('fill')) ops.push({ op: 'fill', mode: 'crop' })
+  if (cut.punchJumps && rule('punch-in')) ops.push({ op: 'punch-jumps', on: false })
   return { ops, items: [...items] }
 }
 

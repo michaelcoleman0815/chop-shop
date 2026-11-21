@@ -30,6 +30,7 @@ import {
   transitionInfo,
   vignetteAngle,
   viewThroughAngles,
+  jumpZooms,
   type FrameKey,
   type SpeedStep,
   type Aspect,
@@ -424,16 +425,18 @@ export function segmentsFor(
 ): Segment[] {
   const beats = new Map(cut.beats.map((b) => [b.id, b]))
   const bySource = new Map(sources.map((s) => [s.id, s]))
+  // Jump cuts hidden with a punch-in, wide and close in turn (edit/jumps), as the preview shows them.
+  const jumps = jumpZooms(cut, resolved, sources)
   /** A move as this piece's picture plays it, from when the picture starts. */
   const moving = (move: Camera, beat: string, from: number, size: { width: number; height: number }): SegmentCamera => {
     const clock = cameraClock(resolved, beat, from, move.word) ?? { t: 0, length: 1, wordAt: null }
     return { move, offset: clock.t, length: clock.length, wordAt: clock.wordAt, size }
   }
-  return resolved.pieces.map((p) => {
+  return resolved.pieces.map((p, i) => {
     const beat = beats.get(p.beat)
     const source = bySource.get(p.source)
     if (!beat || !source) throw new Error(`Piece of ${p.beat} has no beat or recording behind it.`)
-    const t = beat.treatment
+    const t = jumps[i] > 1 ? { ...beat.treatment, zoom: beat.treatment.zoom * jumps[i] } : beat.treatment
     const showsCutaway = (t.frame === 'broll' || t.frame === 'split' || t.frame === 'card') && t.broll !== null
     const picture = pictureSpan(p)
     const srcSec = p.srcEnd - p.srcStart
