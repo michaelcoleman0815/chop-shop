@@ -1,4 +1,5 @@
 import type { MakeFormat, VoiceChoice, VoiceEngine } from './schema'
+import { thisComputer } from '../platform'
 
 /**
  * The voices a narration can be read in.
@@ -75,7 +76,7 @@ export function defaultVoice(format: MakeFormat, engine: VoiceEngine = 'local'):
 export function voicePhrase(voice: VoiceChoice): string {
   if (voice.engine === 'own') return 'your own recording'
   const where: Record<Exclude<VoiceEngine, 'own'>, string> = {
-    local: 'a voice that runs on this Mac, free',
+    local: `a voice that runs on ${thisComputer}, free`,
     elevenlabs: 'an ElevenLabs voice',
     gemini: 'a Google Gemini voice'
   }
@@ -85,14 +86,14 @@ export function voicePhrase(voice: VoiceChoice): string {
 /** A voice in the quote's sentence: "Michael on this Mac", "George from ElevenLabs". */
 export function voiceShort(voice: VoiceChoice): string {
   if (voice.engine === 'own') return 'your own recording'
-  const from: Record<Exclude<VoiceEngine, 'own'>, string> = { local: 'on this Mac', elevenlabs: 'from ElevenLabs', gemini: 'from Google' }
+  const from: Record<Exclude<VoiceEngine, 'own'>, string> = { local: `on ${thisComputer}`, elevenlabs: 'from ElevenLabs', gemini: 'from Google' }
   return `${voice.name} ${from[voice.engine]}`
 }
 
 /** A voice as a choice in a list of them: "Michael's free voice on this Mac", "George's voice from ElevenLabs". */
 export function voiceChosen(voice: VoiceChoice): string {
   if (voice.engine === 'own') return 'your own recording'
-  if (voice.engine === 'local') return `${voice.name}'s free voice on this Mac`
+  if (voice.engine === 'local') return `${voice.name}'s free voice on ${thisComputer}`
   return `${voice.name}'s voice ${voiceShort(voice).slice(voice.name.length + 1)}`
 }
 

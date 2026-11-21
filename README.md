@@ -2,7 +2,7 @@
 
 A video editor you talk to, for YouTube creators. Drop in a recording and say what you want: "cut this for Shorts",
 "make the hook punchier", "keep the calendar shot in colour". Cutalong cuts on the words, shows you a new version, and
-keeps every version so nothing is lost. It runs on your own Mac: your footage never leaves it.
+keeps every version so nothing is lost. It runs on your own Mac or PC: your footage never leaves it.
 
 ## What it does
 
@@ -158,13 +158,15 @@ instead of installing silently. See "Signing" below.
 
 ## Windows
 
-Cutalong also builds for Windows 10 and 11 on x64. Each push to the Cutalong branch makes a test installer beside the
-Mac's DMG, `cutalong-windows-test-<run>` in the workflow's artifacts: unsigned, never published, and never offered to
-anyone's app as an update.
+Cutalong runs on Windows 10 and 11 on x64 too, and each release carries its installer beside the Mac's DMG:
+`Cutalong-Setup-<version>-x64.exe` (for example `Cutalong-Setup-0.4.0-x64.exe`), with `latest.yml`, the file a PC's
+copy reads to update itself. Each push to the Cutalong branch also makes a test installer,
+`cutalong-windows-test-<run>` in the test build's artifacts, which is never published.
 
 **Opening it the first time.** The installer is not signed yet, so SmartScreen stops it with "Windows protected your
 PC" and "Unknown publisher". Choose **More info**, then **Run anyway**. It installs for the person who runs it, with no
-administrator, and Cutalong is then in the Start menu.
+administrator, and Cutalong is then in the Start menu. Updates after that come down and install by themselves, as on a
+Mac, and SmartScreen does not ask again: it checks what a browser downloads, not what the app does.
 
 **What is different on a PC.**
 
@@ -176,8 +178,12 @@ administrator, and Cutalong is then in the Start menu.
   edit's own export is the same ffmpeg 6.1.1 on both.
 - The API keys are encrypted for your Windows account (DPAPI) where a Mac keeps them in the keychain.
 - A link that needs a sign-in can borrow Firefox's. Chrome, Edge and Brave lock theirs on Windows, and Safari is a
-  Mac's alone.
-- There is no Windows release to update to yet, and Settings says so.
+  Mac's alone, so Settings offers Firefox only and says why.
+- Scene effects that cut out the person or the objects in the picture need Vision, which is a Mac's alone. On a PC each
+  of them does its version on the whole frame or a region, and the reply says so in a sentence.
+- A release published before Windows releases (0.3.2 and older), or one whose Windows build failed, has no
+  `latest.yml`. A PC's copy then stays on the version it has, and Settings says the newest release has no Windows
+  version yet.
 
 **Building it on a PC.** Node 20, Git, and Visual Studio 2022 or its Build Tools with "Desktop development with C++"
 (MSVC, CMake and the Windows SDK). Then, in Git Bash or PowerShell:
@@ -188,27 +194,21 @@ node scripts/build-whisper.mjs        # whisper-cli.exe: CPU with AVX2, the C ru
 node scripts/fetch-ytdlp.mjs          # yt-dlp.exe, checked against the SHA-256 pinned in the script
 node scripts/fetch-fonts.mjs
 node scripts/bundle-msvc-runtime.mjs  # the C++ runtime onnxruntime needs, put beside it
-npx electron-vite build
-npx electron-builder --win nsis --x64 --publish never
+npm run dist:win                      # typecheck, build, and the installer, unsigned and not published
 ```
 
 The installer lands in `release/` and the app, unpacked, in `release/win-unpacked`. Two checks say whether it works:
 `node scripts/check-windows-binaries.mjs` says whether every helper needs only what Windows has, and
 `node scripts/self-check-app.mjs release/win-unpacked/Cutalong.exe` opens the app in its self-check
-(`src/main/self-check.ts`), which runs each helper, Skia and the face finder inside it and says what works.
+(`src/main/self-check.ts`), which runs each helper, Skia and the face finder inside it, reads the update feed it will
+check, and says what works.
 
 **Tests.** `npm test` is the same suite as on a Mac. The programs tests stand in for (ffmpeg, whisper, yt-dlp) are small
 scripts with a `#!` line, which `src/main/test-setup.ts` hands to Node on Windows; `CUTALONG_STAND_INS=node npm test`
 does the same on a Mac or Linux. On Windows two tests of how a render killed by a signal is described are skipped,
 since Windows ends a program with a code and has no signals to tell apart.
 
-**Signing, later.** SmartScreen stops an unsigned installer that came from the internet, and stops a signed one less
-often as its signature earns a reputation. Either route works with electron-builder: Azure Trusted Signing (a monthly
-subscription; `win.azureSignOptions` in `electron-builder.yml`, with an app registration's `AZURE_TENANT_ID`,
-`AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET` as secrets), or a certificate from a certificate authority, whose key now
-has to live on a hardware token or in a cloud key store (`win.signtoolOptions`, with its own `sign` step for the cloud).
-Updating on Windows also needs a release that carries the installer and `latest.yml`, which `release.yml` does not
-make yet.
+Signing is under [Signing on Windows](#signing-on-windows).
 
 ## Shipping an update
 
@@ -219,11 +219,18 @@ To publish one:
 
 1. Bump the version: `npm version patch` (or `minor` / `major`).
 2. Push the tag: `git push --follow-tags`.
-3. `.github/workflows/release.yml` builds on macOS and publishes a GitHub Release with the DMG, ZIP
-   and `latest-mac.yml`.
+3. `.github/workflows/release.yml` makes the GitHub Release as a draft, builds on macOS and on Windows at once, and
+   publishes the release once both have uploaded: the DMG, the ZIP and `latest-mac.yml` from the Mac, and
+   `Cutalong-Setup-<version>-x64.exe`, its `.blockmap` and `latest.yml` from Windows. The tag must be `v` and the
+   version in `package.json`, which `npm version` makes it.
 
 Every running copy picks it up on its next check. `latest-mac.yml` is the file electron-updater
-actually reads, and electron-builder writes it automatically. Do not hand-edit the release assets.
+actually reads on a Mac and `latest.yml` on Windows, and electron-builder writes both. Do not hand-edit the release
+assets.
+
+The draft stays out of sight of the updater until every file is in it. If the Windows build fails, the release is
+still published for the Mac, the workflow fails to say Windows is missing, and running its windows job again adds the
+installer to the published release.
 
 Prerequisites, one time only:
 
@@ -260,6 +267,51 @@ Notarization is only attempted alongside a certificate, since Apple has to have 
 signed to accept. Set the certificate without these three and the build still succeeds, with a
 warning that the result will not open on a machine that has not seen it before. Notarization adds a
 few minutes to the release, most of it waiting on Apple.
+
+### Signing on Windows
+
+The Windows installer is unsigned until this is set up. It installs and updates all the same: SmartScreen asks once,
+before the first run of a downloaded installer ("Unknown publisher", **More info**, **Run anyway**), and
+electron-updater installs an unsigned update into an unsigned copy without asking. Signing puts a name on the
+installer in place of "Unknown publisher", and SmartScreen stops asking once enough people have run files signed with
+that name.
+
+What to buy: **Azure Artifact Signing** (Microsoft's signing service, formerly Trusted Signing), on the Basic tier,
+billed monthly to a pay-as-you-go Azure subscription (a free or trial subscription cannot use it; the current price is
+on azure.microsoft.com/pricing/details/artifact-signing). Microsoft checks who you are against a government ID (a
+business also by its records, which can take some weeks), and the certificate then says that name. A person signing
+alone has to be in the United States or Canada; a registered business can be in more countries. A certificate bought
+from a certificate authority works too, but its key has to live on a hardware token or in their cloud, which a GitHub
+runner cannot reach without its own signing step; the workflow is set up for Artifact Signing.
+
+Once it is bought, in the Azure portal:
+
+1. Register the `Microsoft.CodeSigning` resource provider on the subscription.
+2. Make an Artifact Signing account (Basic) in a region near you, and note its endpoint, such as
+   `https://eus.codesigning.azure.net` for East US.
+3. Under Identity validations, make a Public one (Individual, or Organization for a business) and finish it.
+4. Under Certificate profiles, make a **Public Trust** profile from that validation. Its subject preview shows the
+   name the certificate will carry (CN), exactly.
+5. In Microsoft Entra ID, make an app registration, give it a client secret, and give it the **Artifact Signing
+   Certificate Profile Signer** role on the signing account.
+
+Then add seven repo secrets:
+
+- `AZURE_TENANT_ID`: the directory (tenant) ID
+- `AZURE_CLIENT_ID`: the app registration's application (client) ID
+- `AZURE_CLIENT_SECRET`: its client secret's value
+- `AZURE_SIGNING_ENDPOINT`: the account's endpoint, as in step 2
+- `AZURE_SIGNING_ACCOUNT`: the Artifact Signing account's name
+- `AZURE_SIGNING_PROFILE`: the certificate profile's name
+- `WIN_PUBLISHER_NAME`: the CN from step 4, character for character (for a person, the legal name)
+
+The release's windows job turns signing on when `AZURE_CLIENT_SECRET` is set, fails if any of the other six is
+missing, signs with electron-builder's `win.azureSignOptions`, and checks the installer and the app are validly
+signed before it uploads them. With none of the seven, it builds unsigned with a warning, as now.
+
+One thing to know before turning it on: a signed copy installs only updates signed with the same publisher name, so
+`WIN_PUBLISHER_NAME` must not change afterwards. A copy installed before signing takes the first signed update without
+asking, as it takes any update.
 
 ## Layout
 

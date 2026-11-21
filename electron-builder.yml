@@ -71,8 +71,11 @@ mac:
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 
-# Windows 10 and 11 on x64, for now a test build only: unsigned, so
-# SmartScreen asks before the first run (see README).
+# Windows 10 and 11 on x64, released beside the Mac's DMG (release.yml), with
+# latest.yml for the updater. Unsigned until a signing service is set up, so
+# SmartScreen asks before the first run (see README, "Signing on Windows"):
+# release.yml adds win.azureSignOptions from its secrets when they are there,
+# and nothing here changes.
 win:
   icon: build/icon.ico
   target:

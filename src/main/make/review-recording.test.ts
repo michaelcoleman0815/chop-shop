@@ -4,6 +4,7 @@ import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { readAsk } from '../../shared/make/brief'
 import type { Availability } from '../../shared/make/quote'
+import { thisComputer } from '../../shared/platform'
 import type { ParseCall } from './claude'
 import type { LocalVoice } from './narrate'
 import { draftFor, makeVideo, type MakeRunDeps } from './run'
@@ -78,7 +79,7 @@ describe('a voice-over the person dropped in', () => {
     expect(q.counts.scenes).toBeGreaterThanOrEqual(30)
     expect(q.counts.stills).toBeGreaterThanOrEqual(30)
     expect(d.draft.brief.seconds).toBe(121)
-    expect(q.sends.join(' ')).toMatch(/Your recording stays on this Mac/)
+    expect(q.sends.join(' ')).toContain(`Your recording stays on ${thisComputer}`)
     // Without a way to hear it, it is not quoted at all, rather than quoted for one shot.
     const blind = await draftFor(brief, 'review-rec-2', {
       parse,

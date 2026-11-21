@@ -8,6 +8,7 @@ import { FFMPEG_PATH, FFPROBE_PATH } from './ffmpeg'
 import { YTDLP_PATH } from './fetch-video'
 import { FONTS_DIR, resourcePath, WHISPER_PATH } from './resources'
 import { detectFaces, FACE_MODEL_PATH, hasFaceFinder, VISION_PATH } from './track'
+import { RELEASES_URL } from './updater'
 import { makeRenderer, take } from '../shared/vision/synthetic'
 
 /**
@@ -185,7 +186,16 @@ export async function selfCheck(reportPath: string): Promise<number> {
       const file = join(process.resourcesPath, 'app-update.yml')
       if (!app.isPackaged) return 'not packaged: updates are off'
       if (!existsSync(file)) throw new Error(`no ${file}: the app could not check for updates`)
-      return file
+      // The feed must be the releases the app sends people to, or this copy never hears of the next one.
+      const text = await fs.readFile(file, 'utf8')
+      const field = (key: string): string =>
+        (new RegExp(`^${key}:[ \\t]*(\\S.*)$`, 'm').exec(text)?.[1] ?? '').trim().replace(/^['"]|['"]$/g, '')
+      const feed = `${field('provider')} ${field('owner')}/${field('repo')}`
+      const wanted = `github ${/github\.com\/([^/]+\/[^/]+)\//.exec(RELEASES_URL)?.[1] ?? ''}`
+      if (feed !== wanted) throw new Error(`${file} reads updates from ${feed}, not ${wanted}`)
+      // A signed build names its publisher, and then installs only updates signed by the same one.
+      const signed = /^publisherName:/m.test(text)
+      return `${file}: ${feed}, ${signed ? 'installing only updates signed as this copy is' : 'unsigned, so updates are not checked for a signature'}`
     })
   )
 
