@@ -1,6 +1,8 @@
 import './app-paths'
 import './platform-electron'
 import { app, shell, BrowserWindow, ipcMain, dialog, desktopCapturer, nativeTheme, systemPreferences } from 'electron'
+import { showNote } from './notify'
+import type { NoteIn } from '../shared/types'
 import { join, basename, extname } from 'path'
 import { createHash } from 'crypto'
 import { existsSync, statSync, promises as fs } from 'fs'
@@ -1154,6 +1156,8 @@ function registerIpc(): void {
     installUpdate()
   })
   ipcMain.handle('update:openPage', () => openReleasesPage())
+  // A note when long work finishes while the window is behind another app (main/notify.ts).
+  ipcMain.handle('notify:show', (_e, note: NoteIn) => showNote(mainWindow, note))
 }
 
 async function describeVideo(path: string): Promise<VideoMeta> {

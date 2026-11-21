@@ -129,6 +129,8 @@ export type CutalongApi = Pick<
   | 'onUpdateState'
   | 'downloadUpdate'
   | 'installUpdate'
+  | 'notify'
+  | 'onNotifyAnswer'
 >
 
 /**
@@ -161,8 +163,24 @@ const bridge = typeof window !== 'undefined' && !hosted ? (window as { chop?: Ch
 /** True in a plain browser, where a mock stands in for the main process. */
 export const isMock = !bridge && !hosted
 
+/**
+ * In a plain browser, `?phone` shows the phone's layout over the mock (main.tsx loads phone.css
+ * for it), so the phone's screens can be built and checked at a phone's size without the app.
+ */
+export const mockPhone =
+  isMock && typeof location !== 'undefined' && new URLSearchParams(location.search).has('phone')
+
+const MOCK_PHONE: Device = {
+  kind: 'phone',
+  here: 'this phone',
+  keychain: "this phone's Keychain",
+  reveal: null,
+  savesTo: 'Photos',
+  away: {}
+}
+
 /** The device the app runs on: the computer, or the phone that hosts it. */
-export const device: Device = hosted?.device ?? COMPUTER
+export const device: Device = hosted?.device ?? (mockPhone ? MOCK_PHONE : COMPUTER)
 
 /** How the host loads a media element as a touch would, where it needs to (CutalongHost.loadAsTouch). */
 export const loadAsTouch = hosted?.loadAsTouch

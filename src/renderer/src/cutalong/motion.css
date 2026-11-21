@@ -1313,3 +1313,26 @@ html[data-cl-move='detach']::view-transition-old(cl-behind) {
     translate: 0 calc(var(--space-1) * var(--cl-travel));
   }
 }
+
+/* ---------- Quiet by default: what moves while work runs ----------
+   The assistant's mark breathes while it thinks, and the dot of the step under
+   way pulses; nothing else moves. Under reduced motion both hold still. */
+@media (prefers-reduced-motion: no-preference) {
+  .cl-assistant-avatar.living > * {
+    animation: cl-quiet-breathe 1600ms var(--ease-breathe) infinite alternate;
+  }
+
+  .cl-steps-done > li.now .cl-step-dot {
+    animation: cl-quiet-breathe 900ms var(--ease-breathe) infinite alternate;
+  }
+}
+
+@keyframes cl-quiet-breathe {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.35;
+  }
+}

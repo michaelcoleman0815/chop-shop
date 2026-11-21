@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { onWindows, SHOW_FILE } from '../../../shared/platform'
 import { api, device } from './api'
+import { PhoneBar } from './components/PhoneBar'
 import { ScreenGuard } from './components/ScreenGuard'
 import { Sidebar, type Place } from './components/Sidebar'
 import { Button, Mark } from './components/ui'
@@ -14,6 +15,8 @@ import { SettingsPage } from './screens/Settings'
 import { Start } from './screens/Start'
 import { Thread } from './screens/Thread'
 import { exportedOnce, setupSteps, type SetupStepId } from './firstRun'
+import { markSeen } from './seen'
+import { exportNote, notifyChoice, versionNote } from './notify'
 import { forgetPlace, useCutalong } from './useCutalong'
 
 const SIDEBAR_KEY = 'cutalong:sidebar-open'
@@ -46,6 +49,8 @@ export default function App(): JSX.Element {
   const app = useMotion(useCutalong())
   const toast = useLingering(app.toast)
   const [open, setOpen] = useState(() => !phone && remembered())
+  // New edit on the phone's bar: Start, with the picker open for a shoot (Composer's pickSignal).
+  const [pick, setPick] = useState(0)
   const mac = !phone && navigator.userAgent.includes('Mac')
 
   useEffect(() => {
@@ -111,6 +116,58 @@ export default function App(): JSX.Element {
     await app.openProject(project.path)
   }
 
+  // The editor showing an edit is you watching its newest version: the home stops asking you to (home.ts).
+  const shownVersions = app.screen === 'editor' ? (app.doc?.versions.length ?? 0) : 0
+  useEffect(() => {
+    if (shownVersions === 0) return
+    const path = app.projectPath()
+    if (path) markSeen(path)
+    // app.projectPath reads a ref; the screen and the number of versions are what change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownVersions])
+
+  // A note from the system when long work finishes while you are in another app, if you said yes to them
+  // (notify.ts). A new version offers Export and Watch; a finished export just says so.
+  const lastNote = useRef<'version' | 'export' | null>(null)
+  const versionCount = app.doc?.versions.length ?? 0
+  const versionsBefore = useRef({ id: app.doc?.id ?? null, n: versionCount })
+  useEffect(() => {
+    const before = versionsBefore.current
+    versionsBefore.current = { id: app.doc?.id ?? null, n: versionCount }
+    if (phone || !app.doc || before.id !== app.doc.id || versionCount <= before.n) return
+    if (notifyChoice() !== 'on' || document.hasFocus()) return
+    lastNote.current = 'version'
+    void api.notify(versionNote(app.doc))
+    // The doc is read when the count of its versions goes up; nothing else should send a note.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versionCount, app.doc?.id])
+  const lastVideo = [...app.messages].reverse().find((m) => m.video && !m.progress)
+  const videoBefore = useRef(lastVideo?.id ?? null)
+  useEffect(() => {
+    const before = videoBefore.current
+    videoBefore.current = lastVideo?.id ?? null
+    if (phone || !lastVideo || before === lastVideo.id || before === null) return
+    if (notifyChoice() !== 'on' || document.hasFocus()) return
+    lastNote.current = 'export'
+    void api.notify(exportNote(lastVideo.video!.name, lastVideo.text))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastVideo?.id])
+  // A note clicked, or a button on it: back to the edit, or its export.
+  useEffect(
+    () =>
+      api.onNotifyAnswer((a) => {
+        if (lastNote.current === 'export') {
+          app.setScreen('thread')
+          return
+        }
+        if (a === 0) void app.exportFinal()
+        else app.setScreen('editor')
+      }),
+    // The session's functions keep their identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const work = app.work()
   // A video being made shows its stage and Stop on every page but the chat, where its own progress shows them.
   const making = app.make.running()
@@ -138,7 +195,7 @@ export default function App(): JSX.Element {
 
   return (
     <div
-      className={`cl-app${mac ? ' mac' : ''}${onWindows ? ' windows' : ''}${phone ? ' phone' : ''}${phone && open ? ' menu-open' : ''}`}
+      className={`cl-app${mac ? ' mac' : ''}${onWindows ? ' windows' : ''}${phone ? ' phone' : ''}${phone && open ? ' menu-open' : ''}${phone && (app.screen === 'start' || app.screen === 'projects' || app.screen === 'brand') ? ' barred' : ''}`}
     >
       <Sidebar
         open={open}
@@ -152,6 +209,17 @@ export default function App(): JSX.Element {
       {phone && open && (
         <button type="button" className="cl-menu-backdrop" aria-label="Close the menu" onClick={() => setOpen(false)} />
       )}
+      {phone && (app.screen === 'start' || app.screen === 'projects' || app.screen === 'brand') && (
+        <PhoneBar
+          current={app.screen === 'start' ? null : app.screen}
+          onEdits={() => app.setScreen('projects')}
+          onNew={() => {
+            app.goStart()
+            setPick((n) => n + 1)
+          }}
+          onBrand={() => app.setScreen('brand')}
+        />
+      )}
       <div className="cl-main">
         <ScreenGuard
           resetKey={`${app.screen}:${app.doc?.id ?? ''}`}
@@ -161,7 +229,7 @@ export default function App(): JSX.Element {
         >
           <BackToWork.Provider value={place && place !== 'start' && work ? { name: work.name, go: app.resume } : null}>
             <MakeRunning.Provider value={making && app.screen !== 'thread' ? { ...making, stop: () => void app.make.stop() } : null}>
-              {app.screen === 'start' && <Start app={app} />}
+              {app.screen === 'start' && <Start app={app} pick={pick} />}
               {app.screen === 'thread' && <Thread app={app} />}
               {app.screen === 'editor' && app.doc && <Editor app={app} />}
               {app.screen === 'projects' && <ProjectsPage app={app} onBrowse={() => void browse()} />}

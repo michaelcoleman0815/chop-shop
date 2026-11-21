@@ -1,22 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { device } from '../api'
-import { logCrew, memberFor, type CrewEntry, type CrewId } from '../crew'
+import { doneLine, CREW, logCrew, memberFor, type CrewEntry, type CrewId } from '../crew'
 import { elapsed } from '../format'
 import { grow } from '../motion'
 import { isThinking, workingLine } from '../working'
-import { CrewAtWork } from './Crew'
-import { LivingMark } from './Shapes'
+import { Icon } from './ui'
 
 /**
  * What Cutalong is doing right now, and for how long. A bar fills when the
  * work can say how far along it is; while Claude thinks it cannot, so the bar
  * sweeps instead of pretending to a number.
  *
- * Long work (`big`) is shown as the crew doing it: the living mark leads, and
- * under it each member the job has needed so far, the one at work saying what
- * they are doing and the ones before saying what they did, then a thin
- * progress line with the time. Quick thinking, and work in a small panel,
- * keeps the small row.
+ * Long work (`big`) is shown as a checklist of the steps it has taken so far:
+ * the one under way in its own words ("Transcribing take-3.mov"), the ones
+ * before ticked and in the past ("Transcribed take-3.mov"), then a thin
+ * progress line with the time. No characters and no orb: the work is the
+ * picture. Quick thinking, and work in a small panel, keeps the small row.
  */
 export interface Progress {
   stage: string
@@ -31,18 +30,17 @@ export function Working({
   since,
   big = false,
   crew,
-  helpers,
-  mark = 60
+  helpers
 }: {
   progress: Progress
   since?: number
-  /** Long work, shown with the living mark and the crew. */
+  /** Long work, shown as a checklist of its steps. */
   big?: boolean
   /** The crew so far, when the reply keeps it (for its credits); otherwise it is kept here. */
   crew?: CrewEntry[]
   /** Who is on it while the stage is Cutalong's own: the members notes were handed to. */
   helpers?: CrewId[]
-  /** The living mark's size. */
+  /** Kept for callers that still say how big the mark was; nothing is drawn by it now. */
   mark?: number
 }): JSX.Element {
   const now = useNow(since !== undefined)
@@ -72,16 +70,33 @@ export function Working({
   const working = new Set<CrewId>(onNotes ?? (current ? [current] : []))
 
   if (big && log.length > 0) {
+    const line = progress.line ?? workingLine(progress.stage, progress.percent, device.here)
     return (
-      <div className="cl-progress big crewed">
-        <LivingMark size={mark} />
-        <CrewAtWork
-          log={log}
-          working={working}
-          line={progress.line ?? workingLine(progress.stage, progress.percent, device.here)}
-        />
-        {/* A stage no one owns (Cutalong thinking between their turns) is said plainly. */}
-        {working.size === 0 && <span className="cl-progress-stage">{progress.stage}</span>}
+      <div className="cl-progress big stepped">
+        <ol className="cl-steps-done" aria-label="What I have done so far">
+          {log.map((e) => {
+            const at = working.has(e.id)
+            return (
+              <li key={`${e.id}-${e.stage}`} className={at ? 'now' : 'done'}>
+                <span className="cl-step-mark" aria-hidden="true">
+                  {at ? <span className="cl-step-dot" /> : <Icon.check />}
+                </span>
+                <span>{at ? e.stage : pastOf(e)}</span>
+                {!at && <span className="sr-only">, done</span>}
+              </li>
+            )
+          })}
+          {/* A stage no step owns (Cutalong thinking between steps) is said plainly. */}
+          {working.size === 0 && (
+            <li className="now">
+              <span className="cl-step-mark" aria-hidden="true">
+                <span className="cl-step-dot" />
+              </span>
+              <span>{progress.stage}</span>
+            </li>
+          )}
+        </ol>
+        {line && <span className="cl-progress-line">{line}</span>}
         <span className="cl-progress-foot">
           {bar}
           {time}
@@ -92,7 +107,6 @@ export function Working({
   if (big && !isThinking(progress.stage)) {
     return (
       <div className="cl-progress big">
-        <LivingMark size={mark} />
         <span className="cl-progress-stage">{progress.stage}</span>
         <span className="cl-progress-line">
           {progress.line ?? workingLine(progress.stage, progress.percent, device.here)}
@@ -113,7 +127,17 @@ export function Working({
   )
 }
 
-/** The crew of the work on screen, kept for as long as it shows, from the stages it reports. */
+/** A step done, in the past and in its own words: "Transcribed take-3.mov". */
+function pastOf(e: CrewEntry): string {
+  const said = doneLine(e)
+  const name = CREW[e.id].name
+  // The line names whoever did it; the checklist only says what was done.
+  if (!said.startsWith(`${name} `) || said.endsWith('did their part')) return e.stage
+  const rest = said.slice(name.length + 1)
+  return rest.charAt(0).toUpperCase() + rest.slice(1)
+}
+
+/** The steps of the work on screen, kept for as long as it shows, from the stages it reports. */
 function useCrewLog(stage: string): CrewEntry[] {
   const log = useRef<CrewEntry[]>([])
   log.current = logCrew(log.current, stage)

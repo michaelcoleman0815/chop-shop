@@ -5,12 +5,13 @@ import { Composer } from '../components/Composer'
 import { Button, Mark } from '../components/ui'
 import { when } from '../format'
 import type { Cutalong } from '../useCutalong'
+import { STILLS } from '../media'
 import { Header } from './Header'
 import { markOnboarded, onboarded } from '../firstRun'
 import { KeySetup } from './KeySetup'
 import { Onboarding } from './Onboarding'
 
-/** The presets, each shown doing what it does on a block of its own colour. */
+/** The presets, each shown doing what it does, on real footage and real words (the owner's own laptop review). */
 const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }[] = [
   {
     command: 'tighten',
@@ -18,7 +19,7 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
     tone: 'var(--block-blue)',
     pic: (
       <span className="cl-preset-pic">
-        <s>So, um, okay.</s> Grace looks like a <s>like a</s> kitchen table.
+        I was really hoping, <s>like, uh,</s> that would hold up.
       </span>
     )
   },
@@ -28,9 +29,9 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
     tone: 'var(--block-lavender)',
     pic: (
       <span className="cl-preset-pic frames">
-        <span />
-        <span />
-        <span />
+        <span style={{ '--pic': `url(${STILLS.talk1})` } as CSSProperties} />
+        <span style={{ '--pic': `url(${STILLS.talk3})` } as CSSProperties} />
+        <span style={{ '--pic': `url(${STILLS.talk2})` } as CSSProperties} />
       </span>
     )
   },
@@ -39,11 +40,11 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
     what: 'Words on screen, your style',
     tone: 'var(--block-yellow)',
     pic: (
-      <span className="cl-preset-pic caption">
+      <span className="cl-preset-pic caption" style={{ '--pic': `url(${STILLS.talk3})` } as CSSProperties}>
         <span>
-          Grace looks
+          Nine hundred
           <br />
-          <b>like a table</b>
+          <b>bucks</b>
         </span>
       </span>
     )
@@ -54,7 +55,7 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
     tone: 'var(--block-salmon)',
     pic: (
       <span className="cl-preset-pic quote">
-        <small>Opens on</small>“Grace looks like a kitchen table.”
+        <small>Opens on</small>“It feels like a really expensive Chromebook.”
       </span>
     )
   }
@@ -72,7 +73,8 @@ const SAMPLES: { name: string; tag: string; command: string; tone: string }[] = 
  * The first time, onboarding stands in for all of it; after that, until an
  * Anthropic key works, the key's steps do.
  */
-export function Start({ app }: { app: Cutalong }): JSX.Element {
+/** `pick` counts the phone bar's New edit: each time it goes up, the composer opens the picker for a shoot. */
+export function Start({ app, pick = 0 }: { app: Cutalong; pick?: number }): JSX.Element {
   // Decided once, when the launch check answers: someone already editing on
   // this computer has been through it, whatever it remembers. After that only
   // finishing onboarding changes it, so a key that starts working mid-way
@@ -89,10 +91,10 @@ export function Start({ app }: { app: Cutalong }): JSX.Element {
   if (!app.keySettled || welcomed === null) return <main className="cl-start" aria-busy="true" />
   if (!welcomed) return <Onboarding app={app} onDone={() => setWelcomed(true)} />
   if (!app.gateOpen) return <KeySetup app={app} />
-  return <Ask app={app} />
+  return <Ask app={app} pick={pick} />
 }
 
-function Ask({ app }: { app: Cutalong }): JSX.Element {
+function Ask({ app, pick }: { app: Cutalong; pick: number }): JSX.Element {
   const [seed, setSeed] = useState<{ text: string; nonce: number } | null>(null)
   return (
     <>
@@ -116,6 +118,7 @@ function Ask({ app }: { app: Cutalong }): JSX.Element {
             presets={app.presets}
             onSubmit={(text, files) => void app.submit(text, files)}
             seed={seed}
+            pickSignal={pick}
             busy={app.busy}
             // On a phone the keyboard waits for a tap, so Start shows whole.
             autoFocus={device.kind !== 'phone'}

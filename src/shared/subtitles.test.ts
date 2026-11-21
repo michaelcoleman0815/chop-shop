@@ -117,16 +117,16 @@ describe('subtitle layout', () => {
     const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'clean', position: 'chest' }, wide.width)
     const m = fakeMeasurer()
     const layout = layoutSubtitle(cueOf(['Bright', 'colours']), style, wide, m)
-    const sora = fontInfo('Sora')
-    // Clean is Sora 70 at 1080 wide, so 124 at 1920: a cell 124 tall, an em of 124 / 1.54.
-    expect(style.fontSizePx).toBe(124)
-    const em = 124 / (sora.winAscent + sora.winDescent)
-    expect(m.fonts[0]).toBe(`400 ${em.toFixed(2)}px "Sora"`)
+    const face = fontInfo('Archivo Black')
+    // Clean is Archivo Black 72 at 1080 wide, so 128 at 1920: a cell 128 tall, an em of 128 over the face's cell.
+    expect(style.fontSizePx).toBe(128)
+    const em = 128 / (face.winAscent + face.winDescent)
+    expect(m.fonts[0]).toBe(`400 ${em.toFixed(2)}px "Archivo Black"`)
     // libass does not kern, and neither does the measuring.
     expect(m.fontKerning).toBe('none')
     const [line] = layout.blocks[0].lines
     // MarginV is 1080 * (1 - 0.66), rounded: the cell's foot is 367 up from the bottom.
-    expect(line.baseline + em * sora.winDescent).toBeCloseTo(1080 - 367)
+    expect(line.baseline + em * face.winDescent).toBeCloseTo(1080 - 367)
     const first = line.runs[0]
     const last = line.runs[line.runs.length - 1]
     expect((first.x + last.x + last.width) / 2).toBeCloseTo(960)
@@ -142,12 +142,12 @@ describe('subtitle layout', () => {
     const layout = layoutSubtitle(cueOf(['Big', 'jump'], 1), style, tall, fakeMeasurer())
     const [line] = layout.blocks[0].lines
     const big = line.runs[2]
-    expect(big.font).toContain(`${((style.fontSizePx / 1.347) * 1.16).toFixed(2)}px`)
+    expect(big.font).toContain(`${((style.fontSizePx / 1.347) * style.activeScale).toFixed(2)}px`)
     expect(big.color).toBe(style.activeColor)
     expect(line.runs[0].color).toBe(style.textColor)
     // The foot stays where it was; the baseline rises by the scaled descent.
     const d = (style.fontSizePx / 1.347) * 0.312
-    expect(line.baseline).toBeCloseTo(flat.blocks[0].lines[0].baseline - d * 0.16)
+    expect(line.baseline).toBeCloseTo(flat.blocks[0].lines[0].baseline - d * (style.activeScale - 1))
   })
 
   it('breaks a line too wide for the margins at a space, then evens the lines out with the top one wider', () => {
@@ -198,6 +198,16 @@ describe('subtitle layout', () => {
     expect(big.embolden).toBe(0)
   })
 
+  it('keeps a plate look in its own colours when the brand’s text would not stand out on the plate', () => {
+    const marker = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'marker' }, 1080, { text: '#FFFFFF', accent: '#FFD400' })
+    // White on a yellow highlighter cannot be read: the look keeps its dark type.
+    expect(marker.textColor).toBe('#111111')
+    expect(marker.activeColor).toBe('#111111')
+    // Without a plate the brand's colours always reach the words.
+    const bold = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'punch' }, 1080, { text: '#FFFFFF', accent: '#FFD400' })
+    expect(bold.activeColor).toBe('#FFD400')
+  })
+
   it('puts a boxed style on a plate of its cells, the outline width out on every side', () => {
     const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'marker', position: 'top' }, wide.width, {
       text: '#101010',
@@ -205,7 +215,7 @@ describe('subtitle layout', () => {
     })
     const layout = layoutSubtitle(cueOf(['one', 'two']), style, wide, fakeMeasurer())
     const [line] = layout.blocks[0].lines
-    expect(layout.blocks[0].box).toBe('#c8f04a')
+    expect(layout.blocks[0].box).toBe('#FFE14D')
     // The brand's colours reach the words.
     expect(line.runs[0].color).toBe('#202020')
     expect(line.runs[2].color).toBe('#101010')

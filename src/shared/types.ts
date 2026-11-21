@@ -1,3 +1,4 @@
+import type { ProjectStatus } from './project-status'
 import type { EditDoc } from './edit/schema'
 import type { ClipSet } from './clipping/schema'
 
@@ -317,6 +318,11 @@ export interface ProjectSummary {
    * what you are actually deciding about.
    */
   mediaBytes: number | null
+  /**
+   * Where its edit stands (shared/project-status), kept with the row when the project is saved so
+   * Projects and the phone's home can group and describe it unopened. Absent on rows saved before.
+   */
+  status?: ProjectStatus | null
 }
 
 export interface Project extends ProjectSummary {
@@ -371,6 +377,11 @@ export interface ChatMessage {
   aside?: string | null
   actions?: ChatAction[]
   error?: boolean
+  /**
+   * A step of the work rather than an answer (taking the footage in): once a later reply is in, the
+   * thread folds it to one line with its details behind Details.
+   */
+  step?: boolean
   /** An exported video, played in the chat whole. Its size and length are the file's own. */
   video?: { path: string; name: string; width: number; height: number; durationSec: number }
   /** The /clipping run whose clips this reply shows, as cards under it. */
@@ -428,3 +439,14 @@ export interface MediaPreviews {
   /** Tiles in the filmstrip, so a pixel offset can be turned back into a time. */
   frames: number
 }
+
+/** A note from Cutalong when long work finishes while the window is behind another app (main/notify.ts). */
+export interface NoteIn {
+  title: string
+  body: string
+  /** Up to two buttons, in order. */
+  actions: string[]
+}
+
+/** How a note was answered: clicked ('open'), or one of its buttons, by its index. */
+export type NoteAnswer = 'open' | number

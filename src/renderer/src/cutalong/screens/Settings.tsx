@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { ThisComputer } from '../../../../shared/platform'
 import type { Settings } from '../../../../shared/types'
 import { api, device } from '../api'
-import { block, type ColourName } from '../shapes'
+import { type ColourName } from '../shapes'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { Licences } from './Licences'
@@ -102,7 +102,7 @@ function remembered(): SectionId {
 
 function Tile({ id, colour, big = false }: { id: SectionId; colour: ColourName; big?: boolean }): JSX.Element {
   return (
-    <span className={`cl-set-tile${big ? ' big' : ''}`} style={{ background: block(colour) }} aria-hidden="true">
+    <span className={`cl-set-tile${big ? ' big' : ''}`} data-colour={colour} aria-hidden="true">
       <svg
         viewBox="0 0 18 18"
         fill="none"

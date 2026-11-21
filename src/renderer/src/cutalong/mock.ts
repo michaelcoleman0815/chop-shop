@@ -1,3 +1,4 @@
+import { STILL_LIST } from './media'
 import { anthropicKeyIn } from '../../../shared/keys'
 import {
   addSources,
@@ -25,7 +26,8 @@ import {
   summarize,
   type InspirationStudy
 } from '../../../shared/inspiration'
-import type { Project, ProjectSummary, Settings, UpdateState } from '../../../shared/types'
+import type { ChatMessage, Project, ProjectSummary, Settings, UpdateState } from '../../../shared/types'
+import { projectStatus } from '../../../shared/project-status'
 import {
   brandById,
   brandOfCut,
@@ -80,12 +82,13 @@ import { measureRun } from '../../../shared/channel-habits'
  * the screens show the same sentences, numbers and beats the app would.
  */
 
+/** The owner's own laptop review (MVI_9293), retakes and all, so the mock's words match its footage. */
 const SCRIPT =
-  "Most people never open the settings. That's where the good stuff is. " +
-  'Here is the one I change on every camera before I shoot anything. ' +
-  'Turn off auto exposure, lock it, and your face stops pulsing every time you move. ' +
-  'It sounds small, but it is the difference between footage that looks cheap and footage that looks shot. ' +
-  'Do it today, and tell me what changed.'
+  "So I’ve had the Google Book for a day now. And I’m just going to be honest. " +
+  'It feels like a really expensive Chromebook. Like the Chromebook you had in school. ' +
+  'Like the Chromebook you had in school was maybe three or four hundred bucks, but this starts at nine hundred bucks. ' +
+  'So you get all of your phone apps. So you do get all of your phone apps. ' +
+  'But that’s kind of a problem.'
 
 function fakeWords(): { text: string; startSec: number; endSec: number }[] {
   const out: { text: string; startSec: number; endSec: number }[] = []
@@ -132,30 +135,16 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 const MOCK_KEY_STATES: ClaudeKeyState[] = ['refused', 'no-credit', 'no-access', 'busy', 'down', 'offline']
 
 /**
- * A still for a file in the browser, where there is no footage to read: a
- * soft generated gradient with a pale round shape in it, the same each time
- * for the same file. Nobody's footage, only paint.
+ * A still for a file in the browser, where there is no footage to read: one
+ * of four real stills from the owner's own footage (media/), the same
+ * each time for the same file, and /sample.mp4 beside them for playback.
  */
-function generatedStill(key: string, width: number, height: number): string {
+
+// The size is the poster's as the app asks for it; the still is cropped to it where it shows (object-fit).
+function generatedStill(key: string, _width: number, _height: number): string {
   let h = 0
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return ''
-  const hue = h % 360
-  const wash = ctx.createLinearGradient(0, 0, width, height)
-  wash.addColorStop(0, `hsl(${hue} 42% 66%)`)
-  wash.addColorStop(0.55, `hsl(${(hue + 35) % 360} 48% 56%)`)
-  wash.addColorStop(1, `hsl(${(hue + 210) % 360} 36% 26%)`)
-  ctx.fillStyle = wash
-  ctx.fillRect(0, 0, width, height)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
-  ctx.beginPath()
-  ctx.arc(width * (0.4 + ((h >> 8) % 30) / 100), height * 0.56, Math.min(width, height) * 0.26, 0, Math.PI * 2)
-  ctx.fill()
-  return canvas.toDataURL('image/jpeg', 0.82)
+  return STILL_LIST[h % STILL_LIST.length]
 }
 
 /**
@@ -414,6 +403,12 @@ function mockUploadKit(
   }
 }
 
+/** Who hears a note answered, in the browser. */
+const notifyAnswers = new Set<(a: 'open' | number) => void>()
+
+/** The mock shoot's clips and their lengths, in seconds. */
+const MOCK_LENGTHS: Record<string, number> = { 'take-3.mov': 760, 'take-4.mov': 72, 'screen-broll.mov': 28 }
+
 export function createMockApi(): CutalongApi {
   const listeners = {
     cut: new Set<(p: { stage: string; percent: number }) => void>(),
@@ -425,14 +420,41 @@ export function createMockApi(): CutalongApi {
   const projects = new Map<string, Project>()
   const now = Date.now()
   const day = 86_400_000
-  const seed: [string, number][] = [
-    ['studio-take-03', 0],
-    ['The $40 camera setup', 1],
-    ['Lighting in a small room', 4]
+  // Three edits in the three states the home groups them by: a new version to watch, notes waiting to be applied,
+  // and one exported (shared/project-status reads it from the chat, as it does on a Mac or a phone).
+  const seed: [string, number, 'watch' | 'notes' | 'exported'][] = [
+    ['Google Book review', 0, 'watch'],
+    ['The $40 camera setup', 1, 'notes'],
+    ['Lighting in a small room', 4, 'exported']
   ]
-  for (const [name, ago] of seed) {
+  for (const [name, ago, state] of seed) {
     const path = `/Users/you/Movies/Cutalong/${name}.cutalong`
-    const doc = fakeDoc(`/Users/you/Movies/${name}.mov`)
+    const made = fakeDoc(`/Users/you/Movies/${name}.mov`)
+    const first = made.versions[0]
+    const doc: EditDoc =
+      state === 'watch'
+        ? { ...made, versions: [first, { ...first, n: 2 }, { ...first, n: 3, summary: 'It opens on the Chromebook line.' }] }
+        : state === 'notes'
+          ? {
+              ...made,
+              versions: [first, { ...first, n: 2 }],
+              notes: [
+                { id: 'n1', text: 'Hold on the laptop a beat longer', beat: null, status: 'open', version: 2 },
+                { id: 'n2', text: 'Bigger captions on the price', beat: null, status: 'open', version: 2 }
+              ]
+            }
+          : made
+    const chat: ChatMessage[] =
+      state === 'exported'
+        ? [
+            {
+              id: 'x1',
+              role: 'assistant',
+              text: 'v1 is exported.',
+              video: { path: `/Users/you/Movies/${name} v1.mp4`, name: `${name} v1.mp4`, width: 1080, height: 1920, durationSec: 58 }
+            }
+          ]
+        : []
     projects.set(path, {
       id: name,
       name,
@@ -446,7 +468,8 @@ export function createMockApi(): CutalongApi {
       clips: [],
       transcript: null,
       timeline: null,
-      edit: doc
+      edit: doc,
+      chat
     })
   }
 
@@ -893,7 +916,9 @@ export function createMockApi(): CutalongApi {
     },
 
     recentProjects: async (): Promise<ProjectSummary[]> =>
-      [...projects.values()].sort((a, b) => b.openedAt.localeCompare(a.openedAt)),
+      [...projects.values()]
+        .map((p) => ({ ...p, status: projectStatus(p) }))
+        .sort((a, b) => b.openedAt.localeCompare(a.openedAt)),
     createProject: async (name, mode) => {
       const path = `/Users/you/Movies/Cutalong/${name}.cutalong`
       const project: Project = {
@@ -936,13 +961,15 @@ export function createMockApi(): CutalongApi {
       filmstripUrl: '',
       posterUrl: generatedStill(path, 320, 180),
       waveformUrl: null,
-      durationSec: 0,
+      durationSec: MOCK_LENGTHS[path.split('/').pop() ?? ''] ?? 0,
       width: 1920,
       height: 1080,
       frames: 0
     }),
     mediaPoster: async (path) => generatedStill(path, 160, 160),
-    openMedia: async () => [],
+    // A shoot of three, as a phone's picker or the Mac's dialog would hand them over, so adding one can be seen here.
+    openMedia: async () =>
+      Object.keys(MOCK_LENGTHS).map((name) => ({ path: `/Users/you/Movies/${name}`, name })),
     extendCut: async ({ doc, paths, soundPaths }) => {
       await progress(listeners.cut, ['Reading the footage', 'Transcribing', 'Listening for the cuts'])
       const sound = soundPaths ?? []
@@ -1321,6 +1348,18 @@ export function createMockApi(): CutalongApi {
       return () => clearTimeout(t)
     },
     downloadUpdate: async () => undefined,
-    installUpdate: async () => undefined
+    installUpdate: async () => undefined,
+    notify: async (note) => {
+      if (typeof Notification === 'undefined') return false
+      if (Notification.permission === 'default') await Notification.requestPermission()
+      if (Notification.permission !== 'granted') return false
+      const n = new Notification(note.title, { body: note.body })
+      n.onclick = () => notifyAnswers.forEach((cb) => cb('open'))
+      return true
+    },
+    onNotifyAnswer: (cb) => {
+      notifyAnswers.add(cb)
+      return () => notifyAnswers.delete(cb)
+    }
   }
 }

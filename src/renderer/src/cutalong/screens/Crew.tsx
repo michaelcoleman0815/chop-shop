@@ -1,20 +1,19 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState } from 'react'
 import { brandName } from '../../../../shared/brands'
 import { onWindows } from '../../../../shared/platform'
 import { api, device } from '../api'
-import { CrewFace } from '../components/Crew'
 import { Button } from '../components/ui'
-import { CREW, CREW_ORDER, crewBlock, crewLearned, willLearn, type CrewId } from '../crew'
+import { CREW, CREW_ORDER, crewLearned, type CrewId } from '../crew'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 
 /**
- * The crew as a call sheet, one row each: what they do, what they have learned about how
- * you like it (from the brand: the style learned from your videos, the habits
- * learned from your edits, your B-roll sources), and anything they need to do
- * more, with the steps. Everything on it is what is really there. Before a
- * member has learned anything, their row says what they will learn; when no
- * one has yet, the page says so once, under its lede.
+ * What I've learned, one row for each kind of work: what it covers, what I
+ * have learned about how you like it (from the brand: the style learned from
+ * your videos, the habits learned from your edits, your B-roll sources), and
+ * anything it needs, with the steps. Everything on it is what is really
+ * there. Before a row has learned anything it says what it will learn; when
+ * nothing has been learned yet, the page says so once, under its lede.
  */
 
 interface Need {
@@ -41,7 +40,7 @@ function useNeeds(): Partial<Record<CrewId, Need>> {
       if (!hasModel)
         next.echo = {
           text: `The ${MODEL_NAMES[model] ?? model} transcription model, to write words down on ${device.here}. It downloads once.`,
-          steps: ['Open Settings.', 'Under Transcription, choose Download now.']
+          steps: ['Open Settings.', 'Under Words, choose Download now.']
         }
       if (!key) {
         const kept =
@@ -52,7 +51,7 @@ function useNeeds(): Partial<Record<CrewId, Need>> {
               : 'in this computer’s keychain'
         next.quill = {
           text: `Your Anthropic key, so Claude writes your titles, descriptions and chapters. Without it, I write them on ${device.here}.`,
-          steps: ['Open Settings.', `Paste your key under Claude and save it. It stays ${kept}.`]
+          steps: ['Open Settings.', `Under Claude, add your Anthropic key. It stays ${kept}.`]
         }
       }
       if (live) setNeeds(next)
@@ -78,34 +77,28 @@ export function CrewPage({ app }: { app: Cutalong }): JSX.Element {
       </Header>
       <main className="cl-page">
         <div className="cl-page-inner wide">
-          <h1 className="cl-page-title">
-            Your <span className="cl-accent">crew</span>
-          </h1>
+          <h1 className="cl-page-title">What I’ve learned</h1>
           <p className="cl-lede">
-            They do the work while I talk with you, and each learns how you like it
-            {several ? `, here from ${brandName(app.brand)}` : ''}.
+            How you like your videos, kind of work by kind of work
+            {several ? `, for ${brandName(app.brand)}` : ''}.
             {nothingYet && (
               <span className="cl-lede-line">
                 {' '}
                 {learnAway
                   ? `Nothing learned yet. ${learnAway}`
-                  : 'Nothing learned yet: they learn from the videos on your Brand page and from how you edit.'}
+                  : 'Nothing learned yet: I learn from the videos on your Brand page and from how you edit.'}
               </span>
             )}
           </p>
-          {/* A call sheet: who is on the crew, what each does, what each knows of you and what each needs. */}
+          {/* A sheet: each kind of work, what it covers, what I know of you there and what it needs. */}
           <ul className="cl-callsheet">
             {CREW_ORDER.map((id) => {
               const m = CREW[id]
               const need = needs[id]
               return (
-                <li key={id} style={{ '--block': crewBlock(id) } as CSSProperties} aria-labelledby={`crew-${id}`}>
-                  <span className="cl-crew-tile">
-                    <CrewFace id={id} size={56} />
-                  </span>
+                <li key={id} aria-labelledby={`crew-${id}`}>
                   <div className="cl-crew-who">
-                    <h2 id={`crew-${id}`}>{m.name}</h2>
-                    <span className="cl-crew-job">{m.job}</span>
+                    <h2 id={`crew-${id}`}>{m.job}</h2>
                     <p className="cl-crew-does">{m.does}</p>
                   </div>
                   <div className="cl-crew-knows">
@@ -119,7 +112,7 @@ export function CrewPage({ app }: { app: Cutalong }): JSX.Element {
                         </ul>
                       </>
                     ) : (
-                      <p className="cl-crew-none">{willLearn(id)}</p>
+                      <p className="cl-crew-none">I’ll learn {m.watches}.</p>
                     )}
                     {need && (
                       <div className="cl-crew-need">

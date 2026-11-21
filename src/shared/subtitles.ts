@@ -39,6 +39,33 @@ export const POSITION_FRAC: Record<CaptionSpec['position'], number> = {
   bottom: 0.84
 }
 
+/** How bright a colour is to the eye (WCAG relative luminance), from #rgb or #rrggbb. */
+function lightness(hex: string): number {
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6)
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(full.slice(i, i + 2), 16) / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/** The contrast of two colours, 1 to 21. */
+export function contrastOf(a: string, b: string): number {
+  const [hi, lo] = [lightness(a), lightness(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+/**
+ * The brand's colours for a look's words, or none. A look on a plate keeps its own when the brand's text
+ * would not stand out on the plate (white on a yellow highlighter): the words have to be read.
+ */
+function brandColorsFor(base: CaptionStyle, colors: { text: string; accent: string } | null): Partial<CaptionStyle> {
+  if (!colors) return {}
+  if (base.boxColor && contrastOf(colors.text, base.boxColor) < 3) return {}
+  return { textColor: colors.text, activeColor: colors.accent }
+}
+
 /** The caption look for a spec, sized for the frame being rendered, in the brand's colours when there is one. */
 export function captionStyleFor(
   spec: CaptionSpec,
@@ -49,7 +76,7 @@ export function captionStyleFor(
   const scale = width / 1080
   return {
     ...base,
-    ...(colors ? { textColor: colors.text, activeColor: colors.accent } : {}),
+    ...brandColorsFor(base, colors),
     wordsPerGroup: spec.wordsPerScreen,
     uppercase: spec.uppercase || base.uppercase,
     positionFrac: POSITION_FRAC[spec.position],

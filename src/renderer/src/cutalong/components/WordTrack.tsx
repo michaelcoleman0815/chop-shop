@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { currentCut, type EditDoc, type Op, type Resolved } from '../../../../shared/edit'
 import { toggleLabel, toggleOps, trackWords } from '../word-track'
-import { Button } from './ui'
+import { PickTools } from './PickTools'
 
 /** How long a finger rests on a word before it marks it rather than jumping to it. */
 const HOLD_MS = 450
@@ -21,13 +21,17 @@ export function WordTrack({
   resolved,
   time,
   onSeek,
-  onApply
+  onApply,
+  onSound,
+  onNote
 }: {
   doc: EditDoc
   resolved: Resolved
   time: number
   onSeek: (sec: number) => void
   onApply: (ops: Op[], fallback: string) => void
+  onSound?: (wordId: string) => void
+  onNote?: (text: string, range: { from: string; to: string }) => void
 }): JSX.Element | null {
   // Keyed on the cut, not the doc: a note written or a save made leaves the words, and the marks, alone.
   const cut = currentCut(doc)
@@ -130,21 +134,15 @@ export function WordTrack({
         {chips}
       </div>
       {marked.size > 0 && (
-        <div className="cl-wordtrack-bar">
-          <Button variant="text" small onClick={() => setMarked(new Set())}>
-            Clear
-          </Button>
-          <Button
-            variant="primary"
-            small
-            onClick={() => {
-              onApply(toggleOps(doc, marked), 'Words changed.')
-              setMarked(new Set())
-            }}
-          >
-            {toggleLabel(doc, marked)}
-          </Button>
-        </div>
+        <PickTools
+          doc={doc}
+          resolved={resolved}
+          marked={marked}
+          onApply={onApply}
+          onSound={onSound}
+          onNote={onNote}
+          onClear={() => setMarked(new Set())}
+        />
       )}
     </section>
   )

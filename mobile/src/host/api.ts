@@ -392,6 +392,9 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     checkForUpdates: async () => ({ status: 'idle' as const }),
     onUpdateState: () => () => undefined,
     downloadUpdate: async () => undefined,
-    installUpdate: async () => undefined
+    installUpdate: async () => undefined,
+    // A phone keeps its screen on while work runs, and the work pauses when the app is put away: no notes.
+    notify: async () => false,
+    onNotifyAnswer: () => () => undefined
   }
 }

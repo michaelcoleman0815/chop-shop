@@ -24,54 +24,69 @@ const BASE: CaptionStyle = {
  * Named looks rather than a pile of sliders. Each is a whole configuration, so
  * switching preset changes size, position, colour and rhythm together, which is
  * how these actually differ in practice.
+ *
+ * Drawn from what short-form captions do now (watched 2026-11-21 on YouTube
+ * Shorts: talking heads like Alex Hormozi and The Diary Of A CEO, brand clips
+ * like Red Bull's): two to four words at a time, a heavy face, white with a
+ * hard dark edge and a drop shadow so they read on any picture, and the word
+ * being said picked out by colour or size, never by a gimmick. Only the faces
+ * the export carries (resources/fonts): Archivo Black for weight, Anton for
+ * condensed size, Sora for a quiet subtitle. The first is the one a person
+ * sees first; Clean is also the default (DEFAULT_CAPTIONS).
  */
 export const CAPTION_PRESETS: CaptionPreset[] = [
   {
-    id: 'feature',
-    name: 'Feature',
+    id: 'clean',
+    name: 'Clean',
     style: {
       ...BASE,
-      // One word carries the frame; the sentence finishes quietly beneath it.
-      wordsPerGroup: 5,
-      fontFamily: 'Anton',
-      fontSizePx: 112,
-      positionFrac: 0.42,
-      textColor: '#ffffff',
-      activeColor: '#ffffff',
+      // The talking-head look: three words in sentence case, heavy, white, a thin edge and a drop shadow.
+      wordsPerGroup: 3,
+      fontFamily: 'Archivo Black',
+      fontSizePx: 72,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
       outlineColor: '#000000',
       outlinePx: 3,
-      shadowPx: 0,
+      shadowPx: 5,
       uppercase: false,
-      activeScale: 1,
-      second: {
-        fontFamily: 'Sora',
-        fontSizePx: 42,
-        textColor: '#ffffff',
-        outlineColor: '#000000',
-        outlinePx: 2,
-        shadowPx: 3,
-        uppercase: false,
-        bold: true,
-        gapPx: 96
-      }
+      activeScale: 1
     }
   },
   {
-    id: 'marker',
-    name: 'Marker',
+    id: 'punch',
+    name: 'Bold',
     style: {
       ...BASE,
-      // A highlighter pen: one word at a time on a block of colour, dark text.
-      wordsPerGroup: 1,
-      fontSizePx: 78,
-      positionFrac: 0.28,
-      textColor: '#16151a',
-      activeColor: '#16151a',
-      outlinePx: 12,
-      shadowPx: 0,
-      uppercase: false,
-      activeScale: 1,
-      boxColor: '#c8f04a'
+      // Loud and short: three words in capitals, the one being said in yellow and a touch bigger.
+      wordsPerGroup: 3,
+      fontFamily: 'Archivo Black',
+      fontSizePx: 92,
+      textColor: '#FFFFFF',
+      activeColor: '#FFD400',
+      outlineColor: '#000000',
+      outlinePx: 9,
+      shadowPx: 5,
+      uppercase: true,
+      activeScale: 1.1
+    }
+  },
+  {
+    id: 'karaoke',
+    name: 'Word lights up',
+    style: {
+      ...BASE,
+      // Every word white, the one being said lit green and popped, so the eye follows the voice.
+      wordsPerGroup: 3,
+      fontFamily: 'Archivo Black',
+      fontSizePx: 84,
+      textColor: '#FFFFFF',
+      activeColor: '#3EE07A',
+      outlineColor: '#000000',
+      outlinePx: 8,
+      shadowPx: 4,
+      uppercase: true,
+      activeScale: 1.12
     }
   },
   {
@@ -79,37 +94,83 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     name: 'Headline',
     style: {
       ...BASE,
-      // Condensed and enormous, sitting high like a cover line.
+      // Two words, condensed and enormous, like a cover line.
       wordsPerGroup: 2,
       fontFamily: 'Anton',
-      fontSizePx: 132,
-      positionFrac: 0.68,
-      textColor: '#ffffff',
-      activeColor: '#ffffff',
+      fontSizePx: 150,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
       outlineColor: '#000000',
-      outlinePx: 4,
-      shadowPx: 0,
+      outlinePx: 6,
+      shadowPx: 6,
       uppercase: true,
       activeScale: 1
     }
   },
   {
-    id: 'plate',
-    name: 'Plate',
+    id: 'feature',
+    name: 'One big word',
     style: {
       ...BASE,
-      // One word on a solid block, centred. The plate does the legibility work,
-      // so there is no outline and no per-word colour change.
-      wordsPerGroup: 1,
-      fontSizePx: 86,
-      positionFrac: 0.5,
-      textColor: '#ffffff',
-      activeColor: '#ffffff',
-      outlinePx: 14,
+      // The word being said carries the frame; the rest of its line runs small beneath it.
+      wordsPerGroup: 4,
+      fontFamily: 'Anton',
+      fontSizePx: 170,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
+      outlineColor: '#000000',
+      outlinePx: 6,
+      shadowPx: 6,
+      uppercase: false,
+      activeScale: 1,
+      second: {
+        fontFamily: 'Sora',
+        fontSizePx: 64,
+        textColor: '#FFFFFF',
+        outlineColor: '#000000',
+        outlinePx: 4,
+        shadowPx: 4,
+        uppercase: false,
+        bold: true,
+        gapPx: 100
+      }
+    }
+  },
+  {
+    id: 'plate',
+    name: 'Boxed',
+    style: {
+      ...BASE,
+      // White capitals on a black plate: the plate does the legibility work, so no outline and no colour change.
+      wordsPerGroup: 3,
+      fontFamily: 'Archivo Black',
+      fontSizePx: 70,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
+      outlinePx: 16,
       shadowPx: 0,
       uppercase: true,
       activeScale: 1,
-      boxColor: '#08080b'
+      boxColor: '#0B0B0E'
+    }
+  },
+  {
+    id: 'marker',
+    name: 'Marker',
+    style: {
+      ...BASE,
+      // Two words in dark type on a yellow highlighter, in sentence case.
+      wordsPerGroup: 2,
+      fontFamily: 'Archivo Black',
+      fontSizePx: 74,
+      textColor: '#111111',
+      activeColor: '#111111',
+      outlineColor: '#111111',
+      outlinePx: 14,
+      shadowPx: 0,
+      uppercase: false,
+      activeScale: 1,
+      boxColor: '#FFE14D'
     }
   },
   {
@@ -117,33 +178,30 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     name: 'Stack',
     style: {
       ...BASE,
-      // Two lines of heavy uppercase with the spoken line picked out in yellow,
-      // over a hard black edge that survives any background.
-      wordsPerGroup: 5,
-      fontSizePx: 74,
-      positionFrac: 0.34,
-      textColor: '#ffffff',
-      activeColor: '#ffd400',
+      // Four words on two lines of heavy capitals, the one being said in yellow.
+      wordsPerGroup: 4,
+      fontFamily: 'Archivo Black',
+      fontSizePx: 80,
+      textColor: '#FFFFFF',
+      activeColor: '#FFD400',
       outlineColor: '#000000',
       outlinePx: 9,
-      shadowPx: 0,
+      shadowPx: 4,
       uppercase: true,
       activeScale: 1.05
     }
   },
   {
     id: 'sentence',
-    name: 'Sentence',
+    name: 'Subtitle',
     style: {
       ...BASE,
-      // Sentence case, no shouting, sitting low. For talking heads where the
-      // face is the subject and the words are support.
-      wordsPerGroup: 4,
+      // Whole phrases in sentence case, sitting low: for when the face is the subject and the words support it.
+      wordsPerGroup: 6,
       fontFamily: 'Sora',
-      fontSizePx: 46,
-      positionFrac: 0.17,
-      textColor: '#ffffff',
-      activeColor: '#ffffff',
+      fontSizePx: 50,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
       outlineColor: '#000000',
       outlinePx: 3,
       shadowPx: 3,
@@ -153,60 +211,21 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     }
   },
   {
-    id: 'chop',
-    name: 'Chop Shop',
-    style: BASE
-  },
-  {
-    id: 'punch',
-    name: 'Punch',
-    style: {
-      ...BASE,
-      wordsPerGroup: 3,
-      fontSizePx: 104,
-      positionFrac: 0.62,
-      outlinePx: 12,
-      activeScale: 1.16
-    }
-  },
-  {
     id: 'lower',
     name: 'Lower third',
     style: {
       ...BASE,
       wordsPerGroup: 6,
-      fontSizePx: 62,
-      positionFrac: 0.86,
+      fontSizePx: 64,
       outlinePx: 6,
+      shadowPx: 3,
       activeScale: 1.0
     }
   },
   {
-    id: 'clean',
-    name: 'Clean',
-    style: {
-      ...BASE,
-      fontFamily: 'Sora',
-      fontSizePx: 70,
-      uppercase: false,
-      activeColor: '#F2F1EE',
-      outlinePx: 6,
-      activeScale: 1.0,
-      shadowPx: 4
-    }
-  },
-  {
-    id: 'karaoke',
-    name: 'Karaoke',
-    style: {
-      ...BASE,
-      wordsPerGroup: 5,
-      fontSizePx: 76,
-      positionFrac: 0.78,
-      textColor: '#8B8880',
-      activeColor: '#F2F1EE',
-      activeScale: 1.12
-    }
+    id: 'chop',
+    name: 'Chop Shop',
+    style: BASE
   }
 ]
 

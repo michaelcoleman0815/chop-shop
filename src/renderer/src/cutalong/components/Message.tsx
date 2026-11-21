@@ -3,12 +3,12 @@ import { isImagePath } from '../../../../shared/assets'
 import type { ChatMessage } from '../../../../shared/types'
 import { mediaUrlFor, openingFrame } from '../api'
 import { isAudioFile } from '../format'
-import { Credits } from './Crew'
 import { Poster } from './Poster'
 import { factParts, MAX_FACTS, tileColours } from '../facts'
 import { block } from '../shapes'
-import { AssistantAvatar, Button } from './ui'
+import { AssistantAvatar, Button, Icon } from './ui'
 import { Working, type Progress } from './Working'
+import type { PreflightCard } from '../preflight'
 
 /**
  * One turn in a thread. The user's words sit in an ink bubble on the right;
@@ -57,6 +57,8 @@ export interface Msg extends Omit<ChatMessage, 'actions'> {
   progress?: Progress | null
   /** When that work started, for the stopwatch beside it. Never saved. */
   since?: number
+  /** The card before long work on new footage (components/PreFlight): what was asked, then what was chosen. */
+  preflight?: PreflightCard
 }
 
 /** Past this many, the rest of a drop folds into one tile until asked for. */
@@ -176,6 +178,78 @@ export function UserMessage({ msg }: { msg: Msg }): JSX.Element {
   )
 }
 
+/**
+ * A question with its answers as choices: one picked at a time, and one button
+ * that sends it as your reply (the 'say' action). The first answer is the one
+ * Cutalong suggests, so it starts picked.
+ */
+function Choose({ options, onPick }: { options: Action[]; onPick: (a: Action) => void }): JSX.Element {
+  const [at, setAt] = useState(0)
+  return (
+    <fieldset className="cl-choose">
+      <legend className="sr-only">Pick an answer</legend>
+      {options.map((o, i) => (
+        <label key={`${o.label}|${o.payload ?? ''}`} className={`cl-choose-opt${i === at ? ' on' : ''}`}>
+          <input type="radio" name={`choose-${options[0].label}`} checked={i === at} onChange={() => setAt(i)} />
+          <span className="cl-choose-dot" aria-hidden="true" />
+          <span className="cl-choose-text">{o.label}</span>
+        </label>
+      ))}
+      <div className="cl-actions">
+        <Button variant="primary" onClick={() => onPick(options[at])}>
+          Go with this one
+        </Button>
+      </div>
+    </fieldset>
+  )
+}
+
+/**
+ * A step of the work once the next reply is in (taking the footage in): one
+ * line with a tick, and what it said and found behind Details.
+ */
+export function StepLine({ msg }: { msg: Msg }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const said = msg.text.replace(/^Got it\.\s*/, '')
+  const more = !!(msg.aside || msg.chips?.length || msg.details?.length)
+  return (
+    <div className="cl-msg-step">
+      <span className="cl-step-mark" aria-hidden="true">
+        <Icon.check />
+      </span>
+      <div className="cl-msg-step-body">
+        <p className="cl-msg-step-line">
+          {said}
+          {more && (
+            <>
+              {' '}
+              <button type="button" className="cl-link inline" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+                {open ? 'Hide details' : 'Details'}
+              </button>
+            </>
+          )}
+        </p>
+        {open && (
+          <div className="cl-msg-step-more">
+            {msg.aside && <p className="cl-aside">{msg.aside}</p>}
+            {(msg.chips?.length ?? 0) > 0 && <Facts facts={msg.chips ?? []} seed={msg.id} />}
+            {msg.details && (
+              <dl className="cl-details">
+                {msg.details.map((d) => (
+                  <div key={d.label} style={{ display: 'contents' }}>
+                    <dt>{d.label}</dt>
+                    <dd>{d.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** `children` is what the reply shows under its sentence: the clips a /clipping run found. */
 export function AssistantMessage({
   msg,
@@ -187,6 +261,9 @@ export function AssistantMessage({
   children?: ReactNode
 }): JSX.Element {
   const [open, setOpen] = useState(false)
+  const now = (msg.actions ?? []).filter((a) => !!a.during === !!msg.progress)
+  const asks = now.filter((a) => a.kind === 'say')
+  const shown = asks.length >= 2 ? now.filter((a) => a.kind !== 'say') : now
   return (
     <div className="cl-msg-assistant" aria-live={msg.progress ? 'polite' : undefined}>
       <AssistantAvatar working={!!msg.progress} />
@@ -217,11 +294,12 @@ export function AssistantMessage({
         )}
         {!msg.progress && msg.aside && <p className="cl-aside">{msg.aside}</p>}
         {/* Who did the work, then what it made: a clip set reads as what Reel found. */}
-        {!msg.progress && <Credits crew={msg.crew} />}
         {!msg.progress && children}
-        {(msg.actions ?? []).some((a) => !!a.during === !!msg.progress) && (
+        {/* Two answers or more to a question: picked as choices, sent with one button. */}
+        {!msg.progress && asks.length >= 2 && <Choose options={asks} onPick={onAction} />}
+        {shown.length > 0 && (
           <div className="cl-actions">
-            {msg.actions!.filter((a) => !!a.during === !!msg.progress).map((a) => (
+            {shown.map((a) => (
               <Button
                 key={`${a.kind}|${a.label}|${a.tail ?? ''}|${a.payload ?? ''}`}
                 variant={a.primary ? 'primary' : 'secondary'}
