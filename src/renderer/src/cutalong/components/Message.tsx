@@ -65,6 +65,7 @@ const FILES_SHOWN = 8
 function kindOf(name: string): string {
   if (isImagePath(name)) return 'Image'
   if (isAudioFile(name)) return 'Audio'
+  if (/\.(xml|prproj)$/i.test(name)) return 'Premiere sequence'
   return 'Footage'
 }
 

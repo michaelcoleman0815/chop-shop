@@ -193,6 +193,7 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
       }
     },
     openPremiere: async () => ({ ok: false as const, message: ON_THE_MAC.premiere }),
+    importPremiere: async () => ({ ok: false as const, message: ON_THE_MAC.premiere }),
     lineUpCamera: async () => ({ ok: false as const, message: ON_THE_MAC.angle }),
     listenPovs: async () => ({ ok: false as const, message: ON_THE_MAC.povs }),
     chooseCamera: async () => null,

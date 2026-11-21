@@ -94,6 +94,27 @@ const api = {
       }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:prepare', input),
+  /**
+   * A Premiere sequence, exported as Final Cut Pro XML, into a new edit: a
+   * copy of its picture and sound to play here, every second of it in the
+   * cut, so what is asked for goes back onto it (main: premiere:import).
+   */
+  importPremiere: (req: {
+    path: string
+    brand?: string | null
+  }): Promise<
+    | {
+        ok: true
+        doc: EditDoc
+        mediaUrl: string
+        warning: string | null
+        notice?: string | null
+        details?: { label: string; value: string }[]
+        /** What was read from the sequence. */
+        read: { name: string; durationSec: number; clips: number; files: number; missing: string[]; drawn: number }
+      }
+    | { ok: false; message: string }
+  > => ipcRenderer.invoke('premiere:import', req),
   /** More footage for an edit under way: talking clips on the end, better sound under every clip. */
   extendCut: (req: {
     doc: EditDoc
@@ -186,7 +207,15 @@ const api = {
   openPremiere: (req: {
     doc: EditDoc
   }): Promise<
-    | { ok: true; xmlPath: string; srtPath: string | null; opened: string | null; facts: PremiereFacts }
+    | {
+        ok: true
+        xmlPath: string
+        srtPath: string | null
+        opened: string | null
+        facts: PremiereFacts
+        /** Set when the edit went back onto the Premiere sequence it was made from: its name. */
+        sequence?: string
+      }
     | { ok: false; message: string }
   > => ipcRenderer.invoke('cut:premiere', req),
   renderCut: (req: {

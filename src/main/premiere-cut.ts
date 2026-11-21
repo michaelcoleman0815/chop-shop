@@ -15,7 +15,8 @@ import {
   TRANSITION_INFO,
   type Cut,
   type EditDoc,
-  type Resolved
+  type Resolved,
+  type SfxKind
 } from '../shared/edit'
 import { describeSpeed, seconds, type PremiereFacts } from '../shared/presets'
 import { isImagePath } from '../shared/assets'
@@ -406,36 +407,58 @@ interface Placed extends PremiereClip {
   channel?: number
 }
 
-/** The project as xmeml, for Premiere's File > Import. */
-export function buildPremiereXml(plan: PremierePlan, media: Map<string, PremiereMedia>): string {
-  const rate = sequenceRate(plan.fps)
+/** A sequence's clips written as xmeml, with ids that start with the writer's prefix. */
+interface XmemlWriter {
+  rate: { timebase: number; ntsc: boolean; fps: number }
+  frame: (sec: number) => number
+  place: (clips: PremiereClip[], kind: 'video' | 'audio', track: number, channel?: number) => Placed[]
+  trackXml: (items: Placed[], pad: string, extra?: string[], attrs?: string) => string
+  /** One side of a stereo pair: two tracks, left and right, as Premiere writes them. */
+  pairXml: (items: Placed[], side: 0 | 1, pad: string) => string
+  markerXml: (m: PremiereMarker, pad: string) => string
+}
+
+/**
+ * Writes clips as xmeml at a sequence's rate. Every id starts with `prefix`,
+ * so tracks added to a sequence Premiere wrote never take one of its ids.
+ */
+function xmemlWriter(opts: {
+  fps: number
+  durationSec: number
+  media: Map<string, PremiereMedia>
+  prefix?: string
+}): XmemlWriter {
+  const { media } = opts
+  const prefix = opts.prefix ?? ''
+  const rate = sequenceRate(opts.fps)
   const frame = (sec: number): number => Math.max(0, Math.round(sec * rate.fps + 1e-6))
   const tick = Math.round(TICKS_PER_SEC / rate.fps)
   let next = 1
   const fileIds = new Map<string, string>()
   const written = new Set<string>()
   const fileId = (path: string): string => {
-    if (!fileIds.has(path)) fileIds.set(path, `file-${fileIds.size + 1}`)
+    if (!fileIds.has(path)) fileIds.set(path, `${prefix}file-${fileIds.size + 1}`)
     return fileIds.get(path) as string
   }
 
-  const place = (clips: PremiereClip[], kind: 'video' | 'audio', track: number, channel?: number): Placed[] =>
-    clips.map((c, i) => ({ ...c, id: `clipitem-${next++}`, kind, track, index: i + 1, channel }))
-
-  const v1 = place(plan.picture, 'video', 1)
-  const v2 = place(plan.cutaways, 'video', 2)
-  const audio: Placed[][] = []
-  // The voice always has its pair; the music and each lane of sounds when there is any.
-  for (const clips of [plan.voice, plan.music, ...plan.sounds].filter((c, i) => i === 0 || c.length > 0)) {
-    const left = audio.length + 1
-    audio.push(place(clips, 'audio', left, 1), place(clips, 'audio', left + 1, 2))
-  }
-
   // A picture and its own sound are linked: Premiere moves them together.
-  const groups = new Map<number, Placed[]>()
-  for (const p of [...v1, ...audio.flat()]) {
-    if (p.group === undefined) continue
-    groups.set(p.group, [...(groups.get(p.group) ?? []), p])
+  const placed: Placed[] = []
+  let groups: Map<number, Placed[]> | null = null
+  const place = (clips: PremiereClip[], kind: 'video' | 'audio', track: number, channel?: number): Placed[] => {
+    const items = clips.map((c, i) => ({ ...c, id: `${prefix}clipitem-${next++}`, kind, track, index: i + 1, channel }))
+    placed.push(...items)
+    groups = null
+    return items
+  }
+  const groupOf = (group: number): Placed[] | undefined => {
+    if (!groups) {
+      groups = new Map()
+      for (const p of placed) {
+        if (p.group === undefined) continue
+        groups.set(p.group, [...(groups.get(p.group) ?? []), p])
+      }
+    }
+    return groups.get(group)
   }
 
   const fileXml = (path: string, pad: string): string => {
@@ -450,11 +473,11 @@ export function buildPremiereXml(plan: PremierePlan, media: Map<string, Premiere
       `${pad}\t<pathurl>${xml(pathUrl(path.replace(/\\/g, '/')))}</pathurl>`,
       rateXml(rate, `${pad}\t`),
       // A still lasts as long as it is asked to.
-      `${pad}\t<duration>${frame(m?.video?.still ? Math.max(m.durationSec, plan.durationSec) : (m?.durationSec ?? 0))}</duration>`,
+      `${pad}\t<duration>${frame(m?.video?.still ? Math.max(m.durationSec, opts.durationSec) : (m?.durationSec ?? 0))}</duration>`,
       `${pad}\t<media>`
     ]
     if (m?.video) {
-      const own = sequenceRate(m.video.fps || plan.fps)
+      const own = sequenceRate(m.video.fps || opts.fps)
       lines.push(
         `${pad}\t\t<video>`,
         `${pad}\t\t\t<samplecharacteristics>`,
@@ -524,7 +547,7 @@ export function buildPremiereXml(plan: PremierePlan, media: Map<string, Premiere
     ].join('\n')
 
   const linkXml = (p: Placed, pad: string): string[] => {
-    const group = p.group === undefined ? undefined : groups.get(p.group)
+    const group = p.group === undefined ? undefined : groupOf(p.group)
     if (!group || group.length < 2) return []
     return group.flatMap((g) => [
       `${pad}<link>`,
@@ -548,7 +571,7 @@ export function buildPremiereXml(plan: PremierePlan, media: Map<string, Premiere
     if (still) return 0
     const o = p.origin
     if (p.kind === 'audio') return Math.max(0, o.srcStart + (start / rate.fps - o.outStart))
-    const own = sequenceRate(media.get(p.path)?.video?.fps || plan.fps).fps
+    const own = sequenceRate(media.get(p.path)?.video?.fps || opts.fps).fps
     return Math.max(0, Math.ceil(o.srcStart * own - 1e-6) / own + (start - frame(o.outStart)) / rate.fps)
   }
 
@@ -611,15 +634,40 @@ export function buildPremiereXml(plan: PremierePlan, media: Map<string, Premiere
       `${pad}</track>`
     ].join('\n')
 
-  const markerXml = (m: PremiereMarker): string =>
+  const pairXml = (items: Placed[], side: 0 | 1, pad: string): string =>
+    trackXml(
+      items,
+      pad,
+      [`<outputchannelindex>${side + 1}</outputchannelindex>`],
+      ` premiereTrackType="Stereo" currentExplodedTrackIndex="${side}" totalExplodedTrackCount="2"`
+    )
+
+  const markerXml = (m: PremiereMarker, pad: string): string =>
     [
-      `\t\t<marker>`,
-      `\t\t\t<name>${xml(m.name)}</name>`,
-      `\t\t\t<comment>${xml(m.comment)}</comment>`,
-      `\t\t\t<in>${frame(m.atSec)}</in>`,
-      `\t\t\t<out>-1</out>`,
-      `\t\t</marker>`
+      `${pad}<marker>`,
+      `${pad}\t<name>${xml(m.name)}</name>`,
+      `${pad}\t<comment>${xml(m.comment)}</comment>`,
+      `${pad}\t<in>${frame(m.atSec)}</in>`,
+      `${pad}\t<out>-1</out>`,
+      `${pad}</marker>`
     ].join('\n')
+
+  return { rate, frame, place, trackXml, pairXml, markerXml }
+}
+
+/** The project as xmeml, for Premiere's File > Import. */
+export function buildPremiereXml(plan: PremierePlan, media: Map<string, PremiereMedia>): string {
+  const w = xmemlWriter({ fps: plan.fps, durationSec: plan.durationSec, media })
+  const { rate, frame } = w
+
+  const v1 = w.place(plan.picture, 'video', 1)
+  const v2 = w.place(plan.cutaways, 'video', 2)
+  const audio: Placed[][] = []
+  // The voice always has its pair; the music and each lane of sounds when there is any.
+  for (const clips of [plan.voice, plan.music, ...plan.sounds].filter((c, i) => i === 0 || c.length > 0)) {
+    const left = audio.length + 1
+    audio.push(w.place(clips, 'audio', left, 1), w.place(clips, 'audio', left + 1, 2))
+  }
 
   const sequence = [
     `\t<sequence id="sequence-1" explodedTracks="true">`,
@@ -640,8 +688,8 @@ export function buildPremiereXml(plan: PremierePlan, media: Map<string, Premiere
     `\t\t\t\t\t\t<colordepth>24</colordepth>`,
     `\t\t\t\t\t</samplecharacteristics>`,
     `\t\t\t\t</format>`,
-    trackXml(v1, '\t\t\t\t'),
-    ...(v2.length ? [trackXml(v2, '\t\t\t\t')] : []),
+    w.trackXml(v1, '\t\t\t\t'),
+    ...(v2.length ? [w.trackXml(v2, '\t\t\t\t')] : []),
     `\t\t\t</video>`,
     `\t\t\t<audio>`,
     `\t\t\t\t<numOutputChannels>2</numOutputChannels>`,
@@ -652,17 +700,10 @@ export function buildPremiereXml(plan: PremierePlan, media: Map<string, Premiere
     `\t\t\t\t\t</samplecharacteristics>`,
     `\t\t\t\t</format>`,
     // A stereo pair is two tracks, left and right, as Premiere writes them.
-    ...audio.map((items, i) =>
-      trackXml(
-        items,
-        '\t\t\t\t',
-        [`<outputchannelindex>${(i % 2) + 1}</outputchannelindex>`],
-        ` premiereTrackType="Stereo" currentExplodedTrackIndex="${i % 2}" totalExplodedTrackCount="2"`
-      )
-    ),
+    ...audio.map((items, i) => w.pairXml(items, (i % 2) as 0 | 1, '\t\t\t\t')),
     `\t\t\t</audio>`,
     `\t\t</media>`,
-    ...plan.markers.map(markerXml),
+    ...plan.markers.map((m) => w.markerXml(m, '\t\t')),
     `\t\t<timecode>`,
     rateXml(rate, '\t\t\t'),
     `\t\t\t<string>00:00:00:00</string>`,
@@ -680,6 +721,31 @@ export function buildPremiereXml(plan: PremierePlan, media: Map<string, Premiere
     '</xmeml>',
     ''
   ].join('\n')
+}
+
+/**
+ * What an edit adds to the Premiere sequence it was made from, as xmeml for
+ * addToXmeml (shared/premiere): its cutaways on a track above the sequence's
+ * own, its music and each lane of its sounds on stereo pairs below the
+ * sequence's own, and its markers. Every id starts "cutalong-", so none can
+ * be one Premiere already used.
+ */
+export function premiereAdditions(
+  plan: PremierePlan,
+  media: Map<string, PremiereMedia>,
+  sequence: { videoTracks: number; audioTracks: number }
+): { video: string[]; audio: string[]; markers: string[] } {
+  const w = xmemlWriter({ fps: plan.fps, durationSec: plan.durationSec, media, prefix: 'cutalong-' })
+  const video = plan.cutaways.length ? [w.trackXml(w.place(plan.cutaways, 'video', sequence.videoTracks + 1), '')] : []
+  const audio: string[] = []
+  for (const clips of [plan.music, ...plan.sounds].filter((c) => c.length > 0)) {
+    const left = sequence.audioTracks + audio.length + 1
+    audio.push(
+      w.pairXml(w.place(clips, 'audio', left, 1), 0, ''),
+      w.pairXml(w.place(clips, 'audio', left + 1, 2), 1, '')
+    )
+  }
+  return { video, audio, markers: plan.markers.map((m) => w.markerXml(m, '')) }
 }
 
 /** The captions as SRT, page by page as the export shows them, for Premiere's captions track. */
@@ -742,13 +808,61 @@ export async function writePremiere(
   doc: EditDoc,
   opts: { ffmpeg: string; xmlPath: string; sfxDir: string }
 ): Promise<{ xmlPath: string; srtPath: string | null; facts: PremiereFacts }> {
+  const name = basename(opts.xmlPath).replace(/\.xml$/i, '')
+  const { plan, media, cut, resolved, segments } = await premierePlanFor(doc, { ...opts, name })
+  await fs.mkdir(dirname(opts.xmlPath), { recursive: true })
+  await fs.writeFile(opts.xmlPath, buildPremiereXml(plan, media))
+  // Beats whose captions are off are left out, as the export leaves them.
+  const srtPath = await writeCaptions(cut, resolved, dirname(opts.xmlPath), name)
+  const showsCutaway = new Set(resolved.pieces.filter((_, i) => segments[i].broll).map((p) => p.beat))
+  return {
+    xmlPath: opts.xmlPath,
+    srtPath,
+    facts: {
+      cuts: plan.picture.length,
+      recordings: new Set(plan.picture.map((c) => c.path)).size,
+      cutaways: showsCutaway.size,
+      music: plan.music.length > 0,
+      sounds: plan.sounds.flat().length,
+      markers: plan.markers.length,
+      leftOut: plan.leftOut
+    }
+  }
+}
+
+/** The captions beside a project as "<name> captions.srt", when anything is said; its path, or null. */
+export async function writeCaptions(cut: Cut, resolved: Resolved, dir: string, name: string): Promise<string | null> {
+  const srt = captionsSrt(captionedWords(cut, resolved), cut.captions)
+  if (!srt) return null
+  const path = join(dir, `${name} captions.srt`)
+  await fs.writeFile(path, srt)
+  return path
+}
+
+/**
+ * The edit's current version planned for Premiere, with every file it plays
+ * read: built-in sound effects are made into sfxDir first, as the export
+ * makes them. The frame is the edit's own unless `frame` gives another.
+ */
+export async function premierePlanFor(
+  doc: EditDoc,
+  opts: {
+    ffmpeg: string
+    sfxDir: string
+    name: string
+    frame?: { width: number; height: number }
+    /** How a file's facts are read, and a built-in sound made: ffmpeg's, unless given (as tests give them). */
+    readMedia?: (path: string) => Promise<PremiereMedia>
+    makeSound?: (kind: SfxKind) => Promise<string>
+  }
+): Promise<{ plan: PremierePlan; media: Map<string, PremiereMedia>; cut: Cut; resolved: Resolved; segments: Segment[] }> {
   const cut = currentCut(doc)
   const resolved = resolveCut(cut, doc.words, doc.sources)
   const first = doc.sources.find((s) => s.id === resolved.pieces[0]?.source) ?? doc.sources[0]
   if (!first || resolved.pieces.length === 0) throw new Error('The edit has nothing in it to open yet.')
   const media = new Map<string, PremiereMedia>()
   const read = async (path: string): Promise<PremiereMedia> => {
-    if (!media.has(path)) media.set(path, await premiereMedia(opts.ffmpeg, path))
+    if (!media.has(path)) media.set(path, await (opts.readMedia ?? ((p) => premiereMedia(opts.ffmpeg, p)))(path))
     return media.get(path) as PremiereMedia
   }
   const sources = []
@@ -771,7 +885,8 @@ export async function writePremiere(
   const sfxFiles = new Map<string, string>()
   for (const p of placeSfx(cut.beats, resolved)) {
     const kind = p.sfx.kind
-    if (kind && !sfxFiles.has(kind)) sfxFiles.set(kind, await makeSfx(opts.ffmpeg, kind, opts.sfxDir))
+    if (kind && !sfxFiles.has(kind))
+      sfxFiles.set(kind, await (opts.makeSound ?? ((k) => makeSfx(opts.ffmpeg, k, opts.sfxDir)))(kind))
     const path = kind ? sfxFiles.get(kind) : p.sfx.path
     if (path) await read(path)
   }
@@ -789,10 +904,9 @@ export async function writePremiere(
     const item = byId.get(i.id)
     return item ? [{ start: i.start, title: graphicTitle(item) }] : []
   })
-  const size = frameSize(cut.aspect, first)
-  const name = basename(opts.xmlPath).replace(/\.xml$/i, '')
+  const size = opts.frame ?? frameSize(cut.aspect, first)
   const plan = planPremiere({
-    name,
+    name: opts.name,
     cut,
     resolved,
     segments,
@@ -804,26 +918,7 @@ export async function writePremiere(
     sfxFiles,
     graphics
   })
-  await fs.mkdir(dirname(opts.xmlPath), { recursive: true })
-  await fs.writeFile(opts.xmlPath, buildPremiereXml(plan, media))
-  // Beats whose captions are off are left out, as the export leaves them.
-  const srt = captionsSrt(captionedWords(cut, resolved), cut.captions)
-  const srtPath = srt ? join(dirname(opts.xmlPath), `${name} captions.srt`) : null
-  if (srt && srtPath) await fs.writeFile(srtPath, srt)
-  const showsCutaway = new Set(resolved.pieces.filter((_, i) => segments[i].broll).map((p) => p.beat))
-  return {
-    xmlPath: opts.xmlPath,
-    srtPath,
-    facts: {
-      cuts: plan.picture.length,
-      recordings: new Set(plan.picture.map((c) => c.path)).size,
-      cutaways: showsCutaway.size,
-      music: plan.music.length > 0,
-      sounds: plan.sounds.flat().length,
-      markers: plan.markers.length,
-      leftOut: plan.leftOut
-    }
-  }
+  return { plan, media, cut, resolved, segments }
 }
 
 /** Where Premiere Pro is installed, the newest first; null when it is not. */

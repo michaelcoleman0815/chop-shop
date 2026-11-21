@@ -517,6 +517,8 @@ export function useCutalong() {
   const [study, setStudy] = useState<InspirationStudy | null>(null)
   const [saved, setSaved] = useState<Preset[]>([])
   const [recent, setRecent] = useState<ProjectSummary[]>([])
+  // Whether the launch's list of projects has answered, so first run is not decided before it does.
+  const [recentSettled, setRecentSettled] = useState(false)
   const [busy, setBusy] = useState(false)
   // Read by goStart and openProject, which must not leave work half-finished.
   const busyRef = useRef(false)
@@ -756,6 +758,7 @@ export function useCutalong() {
       .recentProjects()
       .then((rows) => setRecent(rows.filter((r) => r.mode === 'cut')))
       .catch(() => undefined)
+      .finally(() => setRecentSettled(true))
   }, [])
 
   /**
@@ -987,11 +990,9 @@ export function useCutalong() {
       .listPresets()
       .then(setSaved)
       .catch(() => undefined)
-    void api
-      .recentProjects()
-      .then((rows) => setRecent(rows.filter((r) => r.mode === 'cut')))
-      .catch(() => undefined)
-  }, [])
+    // The launch's list of projects, which first run waits on (recentSettled).
+    refreshRecent()
+  }, [refreshRecent])
 
   /** Opens a saved chat: its thread when it has one, else straight into the editor. */
   const openProject = useCallback(async (path: string, prefer: 'thread' | 'editor' = 'thread', at: 'launch' | null = null): Promise<void> => {
@@ -4214,6 +4215,63 @@ export function useCutalong() {
     [addMaterial, ensureProject, extend, joinSession, persist, push, sortFiles, startEdit]
   )
 
+  /**
+   * A Premiere sequence dropped in, as Premiere exports it (Final Cut Pro
+   * XML): a new edit of a copy of its picture and sound, every second of it
+   * in the cut, so what is asked for goes back onto it with its cuts where
+   * they are (main/premiere-import). Words dropped with it are the first ask.
+   */
+  const takePremiere = useCallback(
+    async (file: Attachment, words: string): Promise<void> => {
+      if (docRef.current) {
+        push({
+          role: 'assistant',
+          text: `${file.name} is a Premiere sequence, and it starts an edit of its own. Start a new edit and drop it there.`
+        })
+        return
+      }
+      const id = push({ role: 'assistant', text: '', progress: { stage: 'Reading the sequence', percent: 0 } })
+      const off = api.onCutProgress((p) => patch(id, { progress: p }))
+      const r = await api.importPremiere({ path: file.path, brand: brandNow().id })
+      off()
+      if (!r.ok) {
+        patch(id, { progress: null, text: `I couldn't open ${file.name}. ${r.message}`, error: true })
+        return
+      }
+      setDoc(r.doc)
+      setMediaUrl(r.mediaUrl)
+      const read = r.read
+      const count = (n: number, one: string): string => `${n} ${n === 1 ? one : `${one}s`}`
+      const beats = currentCut(r.doc).beats.length
+      const heard = r.doc.words.length ? `, ${count(r.doc.words.length, 'word')} in ${count(beats, 'beat')}` : ''
+      const text = `Got it. ${read.name} runs ${clock(read.durationSec)}: ${count(read.clips, 'clip')} from ${count(read.files, 'file')}${heard}. Your cuts stay where they are; what I add goes on tracks of its own, and /premiere sends it back.`
+      const one = read.missing.length === 1
+      const aside =
+        [
+          read.missing.length
+            ? `I couldn't find ${listOf(read.missing)} on this computer, so ${one ? 'it is' : 'they are'} black here; ${one ? 'it stays' : 'they stay'} in the sequence as ${one ? 'it is' : 'they are'}.`
+            : '',
+          read.drawn
+            ? `${read.drawn === 1 ? 'A title or graphic is' : `${read.drawn} titles and graphics are`} drawn in Premiere, so ${read.drawn === 1 ? 'it isn’t' : 'they aren’t'} shown here; the sequence keeps ${read.drawn === 1 ? 'it' : 'them'}.`
+            : '',
+          r.notice ?? '',
+          r.warning ?? ''
+        ]
+          .filter(Boolean)
+          .join(' ') || null
+      patch(id, {
+        progress: null,
+        text,
+        aside,
+        details: r.details,
+        actions: [{ kind: 'open-editor', label: 'Open the editor', primary: !words }]
+      })
+      intakeId.current = id
+      if (words) await planWords(words, { first: true })
+    },
+    [brandNow, patch, planWords, push, setDoc]
+  )
+
   const submit = useCallback(
     async (text: string, attachments: Attachment[]): Promise<void> => {
       const link = findLink(text)
@@ -4266,6 +4324,12 @@ export function useCutalong() {
       setBusy(true)
       try {
         // A video made from nothing, a quote or questions waiting, or the voice-over one waits for (useMake).
+        // A Premiere sequence, exported as XML (or its project, which says how to export one).
+        const sequence = attachments.find((a) => /\.(xml|prproj)$/i.test(a.name))
+        if (sequence && !command) {
+          await takePremiere(sequence, words)
+          return
+        }
         if (await make.handle(text, command, attachments)) return
         const before = docRef.current
         // Words with footage or a link, or before there is an edit: Claude reads them first, for what to make.
@@ -4442,6 +4506,7 @@ export function useCutalong() {
       stripNever,
       studyLink,
       takeIn,
+      takePremiere,
       vlog
     ]
   )
@@ -4932,6 +4997,7 @@ export function useCutalong() {
     study,
     presets,
     recent,
+    recentSettled,
     busy,
     toast,
     setToast,

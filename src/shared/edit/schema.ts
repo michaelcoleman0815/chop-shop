@@ -24,6 +24,7 @@ import { FxItemSchema, FxOpSchemas } from '../fx/schema'
 import { MouthModeSchema } from '../vision/mode'
 import { VlogSchema } from '../vlog/schema'
 import { MakeSchema } from '../make/schema'
+import { PremiereOriginSchema } from '../premiere/origin'
 
 /**
  * The edit as data.
@@ -486,7 +487,14 @@ export const EditDocSchema = z.object({
    * what it changes. One that cannot be read is dropped rather than keeping
    * the edit from opening.
    */
-  make: MakeSchema.optional().catch(undefined)
+  make: MakeSchema.optional().catch(undefined),
+  /**
+   * The Premiere sequence this edit was made from (shared/premiere): its cuts
+   * stay as Premiere has them, and what is added goes back as tracks of its
+   * own. One that cannot be read is dropped rather than keeping the edit from
+   * opening.
+   */
+  premiere: PremiereOriginSchema.optional().catch(undefined)
 })
 export type EditDoc = z.infer<typeof EditDocSchema>
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
-import type { EditDoc, Op, Resolved } from '../../../../shared/edit'
+import { currentCut, type EditDoc, type Op, type Resolved } from '../../../../shared/edit'
 import { toggleLabel, toggleOps, trackWords } from '../word-track'
 import { Button } from './ui'
 
@@ -29,15 +29,19 @@ export function WordTrack({
   onSeek: (sec: number) => void
   onApply: (ops: Op[], fallback: string) => void
 }): JSX.Element | null {
-  const words = useMemo(() => trackWords(doc), [doc])
+  // Keyed on the cut, not the doc: a note written or a save made leaves the words, and the marks, alone.
+  const cut = currentCut(doc)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const words = useMemo(() => trackWords(doc), [cut, doc.words])
   const timing = useMemo(() => new Map(resolved.words.map((w) => [w.id, w])), [resolved])
   const [marked, setMarked] = useState<Set<string>>(new Set())
-  // A new version is a new set of words to mark.
-  useEffect(() => setMarked(new Set()), [doc])
+  // A new version, or another one shown, is a new set of words to mark.
+  useEffect(() => setMarked(new Set()), [cut])
 
   const track = useRef<HTMLDivElement>(null)
   const moved = useRef(0)
-  const hold = useRef<{ timer: number; held: boolean } | null>(null)
+  const hold = useRef<{ id: string; timer: number; held: boolean } | null>(null)
+  const followed = useRef<string | null>(null)
 
   const toggle = (id: string): void =>
     setMarked((prev) => {
@@ -49,7 +53,7 @@ export function WordTrack({
 
   const down = (id: string) => (e: PointerEvent): void => {
     if (e.button !== 0) return
-    const state = { timer: 0, held: false }
+    const state = { id, timer: 0, held: false }
     state.timer = window.setTimeout(() => {
       state.held = true
       toggle(id)
@@ -60,7 +64,8 @@ export function WordTrack({
     if (hold.current) window.clearTimeout(hold.current.timer)
   }
   const click = (id: string, shift: boolean): void => {
-    const held = hold.current?.held
+    // Only a hold on this very word swallows its click: a key pressed later is a tap.
+    const held = hold.current?.id === id && hold.current.held
     hold.current = null
     if (held) return
     const at = timing.get(id)
@@ -90,7 +95,7 @@ export function WordTrack({
         </button>
       )),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [words, marked, timing]
+    [words, marked, timing, onSeek]
   )
 
   // The playing word: ringed, and kept in view. Done on the chips themselves,
@@ -104,6 +109,9 @@ export function WordTrack({
     const el = box.querySelector<HTMLElement>(`[data-w="${CSS.escape(nowId)}"]`)
     if (!el) return
     el.classList.add('now')
+    // Follow only when the playing word changes, not when marks are drawn again (Cut, Clear).
+    if (followed.current === nowId) return
+    followed.current = nowId
     if (Date.now() - moved.current < LEAVE_BE_MS) return
     const left = el.offsetLeft - box.clientWidth / 2 + el.offsetWidth / 2
     const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches

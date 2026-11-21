@@ -16,6 +16,7 @@ import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
 import { findSounds, makeAllSfx, readSound } from './sfx'
 import { findPremiere, openInPremiere, writePremiere } from './premiere-cut'
+import { importPremiere, returnName, writePremiereReturn } from './premiere-import'
 import { renderCutMotion } from './motion-render'
 import { renderEditFx } from './fx-ipc'
 import { captureLink } from './page-shot'
@@ -211,6 +212,21 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   )
 
   /**
+   * A Premiere sequence, exported from Premiere as xmeml, into a new edit:
+   * a copy of its picture and sound to play here, heard as any footage is,
+   * with every second of it in the cut (main/premiere-import).
+   */
+  ipcMain.handle('premiere:import', (e, req: { path: string; brand?: string | null }) =>
+    importPremiere(
+      macWork,
+      req,
+      (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }),
+      deps.mediaUrlFor,
+      join(app.getPath('userData'), 'premiere')
+    )
+  )
+
+  /**
    * The current version as a Premiere project beside the exports, cut on the
    * person's own files, with the captions beside it as SRT; Premiere opens it
    * when it is on this computer.
@@ -223,8 +239,12 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
     try {
       const n = currentVersion(doc).n
       // Its captions go beside it as "<name> captions.srt", so that name has to be free too.
-      xmlPath = await freePath(getSettings().outputDir, `${safeName(doc.title)} v${n}`, '.xml', [' captions.srt'])
-      const written = await writePremiere(doc, { ffmpeg: FFMPEG_PATH, xmlPath, sfxDir: sfxDir() })
+      // An edit of a Premiere sequence goes back onto that sequence, its cuts as they were.
+      const name = doc.premiere ? returnName(doc) : `${safeName(doc.title)} v${n}`
+      xmlPath = await freePath(getSettings().outputDir, name, '.xml', [' captions.srt'])
+      const written = doc.premiere
+        ? await writePremiereReturn(doc, { ffmpeg: FFMPEG_PATH, xmlPath, sfxDir: sfxDir() })
+        : await writePremiere(doc, { ffmpeg: FFMPEG_PATH, xmlPath, sfxDir: sfxDir() })
       const premiere = await findPremiere()
       if (premiere) openInPremiere(premiere, xmlPath)
       return {

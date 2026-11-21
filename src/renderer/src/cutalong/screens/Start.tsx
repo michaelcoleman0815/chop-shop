@@ -79,12 +79,13 @@ export function Start({ app }: { app: Cutalong }): JSX.Element {
   // does not cut the steps short.
   const [welcomed, setWelcomed] = useState<boolean | null>(() => (onboarded() ? true : null))
   useEffect(() => {
-    if (welcomed !== null || !app.keySettled) return
+    // Both launch answers first, the key and the projects: either can come back before the other.
+    if (welcomed !== null || !app.keySettled || !app.recentSettled) return
     const settled = app.gateOpen && app.recent.length > 0
     if (settled) markOnboarded()
     setWelcomed(settled)
-  }, [welcomed, app.keySettled, app.gateOpen, app.recent.length])
-  // The launch check takes a moment: nothing is drawn until it answers, so neither screen flashes.
+  }, [welcomed, app.keySettled, app.recentSettled, app.gateOpen, app.recent.length])
+  // The launch checks take a moment: nothing is drawn until they answer, so no screen flashes.
   if (!app.keySettled || welcomed === null) return <main className="cl-start" aria-busy="true" />
   if (!welcomed) return <Onboarding app={app} onDone={() => setWelcomed(true)} />
   if (!app.gateOpen) return <KeySetup app={app} />

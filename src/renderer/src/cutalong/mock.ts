@@ -37,6 +37,7 @@ import {
   type Brands
 } from '../../../shared/brands'
 import { creditLines } from '../../../shared/assets'
+import { coverWholeTimeline, movedSentence, timelineMoves } from '../../../shared/premiere/round-trip'
 import { chaptersOf, chaptersReply } from '../../../shared/presets'
 import { fillDescription, isShort, writeLocally, type UploadKit } from '../../../shared/upload'
 import { groupWords } from '../../../shared/words'
@@ -556,6 +557,47 @@ export function createMockApi(): CutalongApi {
       if (sound.length) doc.sources[0] = { ...doc.sources[0], audio: { path: sound[0], offsetSec: 3.42 } }
       return { ok: true as const, doc, mediaUrl: '/sample.mp4', warning: null, lined, notice: syncNotice(late) }
     },
+    // A Premiere sequence as if read from its xmeml: a wide take, its copy made, every second of it in the cut.
+    importPremiere: async ({ path }) => {
+      if (/\.prproj$/i.test(path))
+        return {
+          ok: false as const,
+          message:
+            'Premiere keeps its projects in a format of its own. In Premiere, pick the sequence, then File > Export > Final Cut Pro XML, and drop that here.'
+        }
+      await progress(listeners.cut, [
+        'Reading the sequence',
+        'Rendering a copy of your sequence to play here',
+        'Rendering a copy of your sequence to play here',
+        'Transcribing',
+        'Listening for the cuts'
+      ])
+      const name = path.split('/').pop()!.replace(/\.[^.]+$/, '')
+      const covered = coverWholeTimeline(fakeDoc(`/Users/you/Library/Cutalong/premiere/${name} wide.mp4`))
+      const durationSec = covered.sources[0].durationSec
+      const doc = {
+        ...covered,
+        title: name,
+        premiere: {
+          xmlPath: `/Users/you/Library/Cutalong/premiere/${name}.xml`,
+          originalPath: path,
+          name,
+          fps: 29.97002997002997,
+          width: 1920,
+          height: 1080,
+          durationSec,
+          clips: 14,
+          files: 4
+        }
+      }
+      return {
+        ok: true as const,
+        doc,
+        mediaUrl: '/sample.mp4',
+        warning: null,
+        read: { name, durationSec, clips: 14, files: 4, missing: [], drawn: 1 }
+      }
+    },
     planSession: async ({ request, paths }) => {
       await progress(listeners.cut, ['Looking through your footage', 'Working out which file is which'])
       const name = (p: string): string => p.split('/').pop() as string
@@ -662,6 +704,9 @@ export function createMockApi(): CutalongApi {
     listenPovs: async () => ({ ok: true as const, maps: {} }),
     openPremiere: async ({ doc }) => {
       await progress(listeners.cut, ['Writing the Premiere project'])
+      // An edit of a Premiere sequence goes back onto it, or says why it can't.
+      const moved = doc.premiere ? timelineMoves(doc) : null
+      if (moved) return { ok: false as const, message: movedSentence(moved) }
       const n = doc.versions[doc.versions.length - 1].n
       const cut = doc.versions[doc.versions.length - 1].cut
       const resolved = resolveCut(cut, doc.words, doc.sources)
@@ -673,15 +718,18 @@ export function createMockApi(): CutalongApi {
         count(cut.beats.filter((b) => b.treatment.speed !== undefined || b.treatment.ramp).length, 'speed change'),
         count(cut.motion.length, 'graphic')
       ].filter((x): x is string => x !== null)
-      const base = `/Users/you/Movies/Cutalong/${doc.title} v${n}`
+      const base = doc.premiere
+        ? `/Users/you/Movies/Cutalong/${doc.premiere.name} (Cutalong) v${n}`
+        : `/Users/you/Movies/Cutalong/${doc.title} v${n}`
       return {
         ok: true as const,
         xmlPath: `${base}.xml`,
-        srtPath: resolved.words.length ? `${base} captions.srt` : null,
+        srtPath: resolved.words.length && (!doc.premiere || cut.captions.on) ? `${base} captions.srt` : null,
         opened: 'Adobe Premiere Pro 2026',
+        ...(doc.premiere ? { sequence: doc.premiere.name } : {}),
         facts: {
-          cuts: resolved.pieces.length,
-          recordings: new Set(resolved.pieces.map((p) => p.source)).size,
+          cuts: doc.premiere ? doc.premiere.clips : resolved.pieces.length,
+          recordings: doc.premiere ? doc.premiere.files : new Set(resolved.pieces.map((p) => p.source)).size,
           cutaways: cut.beats.filter((b) => b.treatment.broll && b.treatment.frame !== 'speaker').length,
           music: !!cut.music,
           sounds: cut.beats.reduce((sum, b) => sum + (b.sfx?.length ?? 0), 0),
