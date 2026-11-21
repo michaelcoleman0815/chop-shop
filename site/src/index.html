@@ -16,102 +16,50 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
 <header class="slab">
   <div class="container slab-row">
     {{> lockup}}
-    <nav class="nav" aria-label="On this page">
-      <a href="#proof">A real run</a>
-      <a href="#how">How it works</a>
-      <a href="#makes">What you get</a>
-      <a href="#mac">Your Mac</a>
-      <a href="#questions">Questions</a>
-    </nav>
-    {{#downloadReady}}<a class="btn btn-quiet slab-action" href="{{downloadUrl}}">Download</a>{{/downloadReady}}
+    {{#downloadReady}}<a class="btn btn-quiet slab-action" href="{{downloadUrl}}" data-get="short">Download</a>{{/downloadReady}}
     {{^downloadReady}}<a class="btn btn-quiet slab-action" href="#signup" data-notify="header">Get notified</a>{{/downloadReady}}
   </div>
 </header>
 
 <main id="main">
   <section class="hero" aria-labelledby="hero-title">
-    <div class="container intro">
-      <h1 id="hero-title">The video editor you <em>talk&nbsp;to</em></h1>
-      <p class="lead">Drop in your footage, say what you want, and it&nbsp;edits.</p>
-      <div class="hero-actions">
-        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
-        {{^downloadReady}}<a class="btn btn-primary" href="#signup" data-notify="hero">Get notified when it’s ready</a>{{/downloadReady}}
-        <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>
-      </div>
-    </div>
-  </section>
-
-  <div class="stage">
-    <div class="container hero-stage">
-      <figure class="demo" data-loop>
-        <div class="window demo-slot" data-slot="hero-loop" data-kind="product" role="img"
-          aria-label="Cutalong’s editor on a laptop review. You type /takes. It finds the retakes and keeps the best take of each line, then answers: v2 is ready, it runs 1:21 now, down from 1:35; I kept the best take of 4 lines and removed 4 other takes, 2 false starts, the set-up talk and 1.1 seconds of dead air. In the script the earlier takes are struck through, the beat strip closes up, and v2 arrives on blue pages."
-          data-alt="A 10 to 20 second loop of the redesigned app at 2400 by 1240: an ask typed beside the script, the lines struck, the strip closing up, v2 on blue pages">
-          <div class="app app-window" aria-hidden="true">
-            <div class="app-bar">
-              <span class="app-title">Google Book, day one</span>
-              <span class="app-versions"><span class="app-ver app-ver-1">v1</span><span class="app-ver app-ver-2">v2</span></span>
-              <span class="app-bar-end"><span class="app-text-btn">Undo</span><span class="app-pill">Export</span></span>
-            </div>
-            <div class="app-body">
-              <div class="app-well">
-                <div class="app-frame">
-                  <span class="footage"></span>
-                  <span class="app-burn"><span class="burn-1">a really expensive</span><span class="burn-2">Chromebook</span></span>
-                </div>
-              </div>
-              <div class="app-side">
-                <div class="app-status">
-                  <span class="app-tile">{{> mark-tile}}<span class="app-tile-living"></span></span>
-                  <div class="app-status-body">
-                    <div class="app-working">
-                      <p class="app-crew-row app-crew-echo"><span class="app-crew-say"><span class="say-busy">Finding the retakes</span><span class="say-done">Found 4 other takes</span></span></p>
-                      <p class="app-crew-row app-crew-snip"><span class="app-crew-say"><span class="say-busy">Keeping the best of each</span><span class="say-done">Kept the best takes</span></span></p>
-                    </div>
-                    <div class="app-said">
-                      <p class="app-reply">v2 is ready. It runs 1:21 now, down from 1:35. I kept the best take of 4 lines and removed 4 other takes, 2 false starts, the set-up talk and 1.1&nbsp;s of dead&nbsp;air.</p>
-                      <p class="app-rev-chip"><i></i>v2, on blue pages</p>
-                    </div>
-                  </div>
-                </div>
-                <p class="app-script-head">The script</p>
-                <ol class="app-script">
-                  <li><span class="n">9</span><span class="w">So I’ve had the Google Book for a day now.</span></li>
-                  <li><span class="n">10</span><span class="w">And I’m just going to be honest.</span></li>
-                  <li><span class="n">11</span><span class="w">It feels like a really expensive Chromebook.</span></li>
-                  <li class="cut s1"><span class="n">12</span><span class="w" data-text="Like the Chromebook you had in school.">Like the Chromebook you had in school.</span></li>
-                  <li><span class="n">13</span><span class="w">Like the Chromebook you had in school was maybe three or four hundred bucks,</span></li>
-                  <li><span class="n">14</span><span class="w">but this, this right here is over,</span></li>
-                  <li><span class="n">15</span><span class="w">but this starts at nine hundred bucks.</span></li>
-                  <li class="cut s2"><span class="n">26</span><span class="w" data-text="So you get all of your phone apps.">So you get all of your phone apps.</span></li>
-                  <li><span class="n">27</span><span class="w">So you do get all of your phone apps.</span></li>
-                  <li><span class="n">28</span><span class="w">But that’s kind of a problem.</span></li>
-                  <li><span class="n">29</span><span class="w">I edit my videos in Premiere</span></li>
-                </ol>
-                <div class="app-composer">
-                  <span class="app-composer-text"><span class="app-typed">/takes</span><span class="app-placeholder">Add a note, or type /</span></span>
-                  <span class="app-send">{{> icon-up}}</span>
-                </div>
-              </div>
-            </div>
-            <div class="app-strip">
-              <span class="app-play">{{> icon-play}}</span>
-              <span class="app-tc"><span>0:24</span><span class="app-tc-of"> / <span class="app-tc-total"><span class="tc-1">1:35</span><span class="tc-2">1:21</span></span></span></span>
-              <span class="app-beats">
-                <i></i><i class="cut"></i><i class="cut"></i><i></i><i></i><i></i><i></i><i class="cut"></i><i class="cut"></i><i class="cut"></i><i class="cut"></i>
-                <i></i><i></i><i></i><i class="cut"></i><i class="cut"></i><i></i><i></i><i class="cut"></i><i></i><i></i>
-                <b class="app-playhead"></b>
-              </span>
-            </div>
-          </div>
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <h1 id="hero-title">The video editor you <em>talk&nbsp;to</em></h1>
+        <p class="lead">Drop in your footage, say what you want, and it&nbsp;edits.</p>
+        <div class="get" data-get-box>
+          {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}" data-get="long" data-releases="{{downloadUrl}}">Download for Mac</a>
+          <p class="get-note" data-get-note>For Macs with Apple silicon, on macOS&nbsp;14 or&nbsp;later.</p>
+          <a class="get-also" href="{{downloadUrl}}" data-get-also hidden>Download for Mac anyway</a>{{/downloadReady}}
+          {{^downloadReady}}<a class="btn btn-primary" href="#signup" data-notify="hero">Get notified when it’s ready</a>
+          <p class="get-note">For Macs with Apple silicon, on macOS&nbsp;14 or&nbsp;later.</p>{{/downloadReady}}
         </div>
-        <figcaption class="demo-foot">
-          <span class="demo-note">A real run of <span class="mono">/takes</span> on a laptop review: its own footage and words, and Cutalong’s own struck lines and&nbsp;reply.</span>
-          <button class="loop-toggle" type="button" data-loop-toggle aria-label="Pause the example">{{> icon-pause}}</button>
-        </figcaption>
+      </div>
+
+      <figure class="take" aria-labelledby="take-note">
+        <div class="take-film">
+          <video class="take-video" src="{{asset media/takes-v2.mp4}}" poster="{{asset media/takes-v2.jpg}}" width="720" height="1280" muted loop playsinline preload="metadata" data-take
+            aria-label="The first 17 seconds of v2 of a laptop review: “So I’ve had the Google Book for a day now. And I’m just going to be honest, it feels like a really expensive Chromebook. Like the Chromebook you had in school was maybe three or four hundred bucks, but this, this right here is over, but this starts at nine hundred bucks.”"></video>
+          <button class="take-sound" type="button" aria-pressed="false" data-take-sound hidden>{{> icon-sound}}<span data-take-sound-label>Sound on</span></button>
+        </div>
+        <div class="take-talk">
+          <p class="take-ask"><span class="mono">/takes</span></p>
+          <p class="take-reply">v2 is ready. It runs 1:21 now, down from 1:35. I kept the best take of 4 lines and removed 4 other takes, 2 false starts, the set-up talk and 1.1&nbsp;s of dead&nbsp;air.</p>
+          <p class="take-head">The script, v2</p>
+          <ol class="take-script">
+            <li><span class="n">9</span><span class="w">So I’ve had the Google Book for a day now.</span></li>
+            <li><span class="n">10</span><span class="w">And I’m just going to be honest.</span></li>
+            <li><span class="n">11</span><span class="w">It feels like a really expensive Chromebook.</span></li>
+            <li class="cut"><span class="n">12</span><span class="w"><s>Like the Chromebook you had in school.</s></span></li>
+            <li><span class="n">13</span><span class="w">Like the Chromebook you had in school was maybe three or four hundred bucks,</span></li>
+            <li><span class="n">14</span><span class="w">but this, this right here is over,</span></li>
+            <li><span class="n">15</span><span class="w">but this starts at nine hundred bucks.</span></li>
+          </ol>
+        </div>
+        <figcaption class="take-note" id="take-note">A real run of <span class="mono">/takes</span> on a laptop review: the footage, the words and the reply are its own. Line 12 was said twice, so v2 plays it&nbsp;once.</figcaption>
       </figure>
     </div>
-  </div>
+  </section>
 
   <section class="proof" id="proof" aria-labelledby="proof-title">
     <div class="container">
@@ -352,8 +300,11 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
           {{^downloadReady}}<h2 id="signup-title">Hear when it’s&nbsp;ready</h2>
           <p class="lead">Cutalong is being finished now. Leave your address for one email, the day you can download&nbsp;it.</p>{{/downloadReady}}
           {{#downloadReady}}<h2 id="signup-title">Start with the footage you&nbsp;have</h2>
-          <a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>
-          <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>{{/downloadReady}}
+          <div class="get" data-get-box>
+            <a class="btn btn-primary" href="{{downloadUrl}}" data-get="long">Download for Mac</a>
+            <p class="get-note" data-get-note>For Macs with Apple silicon, on macOS&nbsp;14 or&nbsp;later.</p>
+            <a class="get-also" href="{{downloadUrl}}" data-get-also hidden>Download for Mac anyway</a>
+          </div>{{/downloadReady}}
           <form class="signup" action="{{signupAction}}" method="post" data-signup="{{signupState}}" novalidate>
             <label for="signup">{{^downloadReady}}Your email address{{/downloadReady}}{{#downloadReady}}Hear when these ship{{/downloadReady}}</label>
             <div class="signup-row">
