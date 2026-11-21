@@ -20,6 +20,10 @@ asarUnpack:
   # Kokoro, the voice that reads on this Mac, runs on onnxruntime's native binary.
   - '**/node_modules/onnxruntime-node/**'
 
+# Makes every program in the app runnable by everyone, not only its owner, so it still runs after
+# an update, which macOS's updater installs as root (scripts/after-pack.cjs).
+afterPack: scripts/after-pack.cjs
+
 extraResources:
   - from: resources/bin
     to: bin

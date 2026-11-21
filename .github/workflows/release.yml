@@ -127,6 +127,21 @@ jobs:
           fi
           npm run release -- $extra
 
+      # macOS's updater installs an update as root, so a program only its owner may run fails with
+      # EACCES once the app has updated itself (ffprobe ships that way). scripts/after-pack.cjs
+      # fixes them; this stops a release that still has one.
+      - name: Check every program in the app can be run after an update
+        run: |
+          shopt -s nullglob
+          apps=(release/mac-arm64/*.app)
+          [ ${#apps[@]} -gt 0 ] || { echo "::error::no built app found under release/mac-arm64"; exit 1; }
+          closed=$(find "${apps[@]}" -type f -perm -u+x ! -perm -o+x)
+          if [ -n "$closed" ]; then
+            echo "$closed"
+            echo "::error::these programs can only be run by their owner, and stop working after an update"
+            exit 1
+          fi
+
       # Notarization can report success while the ticket fails to attach, which
       # looks fine until the first machine without a cached result opens it.
       - name: Verify notarization
