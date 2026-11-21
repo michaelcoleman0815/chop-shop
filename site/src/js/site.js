@@ -31,8 +31,9 @@ document.querySelectorAll('[data-take]').forEach((video) => {
 })
 
 // ---- The download: the one for the visitor's computer, or a plain answer when Cutalong doesn't run there yet.
-// Without script every button is "Download for Mac" to the releases page. With it, a Mac gets the .dmg itself,
-// a phone can send the link to its Mac, and Windows, Linux and an Intel Mac hear that it is Mac-only for now.
+// Without script every button is "Download for Mac" to the releases page. With it, a Mac gets the .dmg itself
+// and a Windows PC the installer, once the latest release carries one; a phone can send the link to its
+// computer; Linux, a Chromebook and an Intel Mac hear where it runs.
 const getBoxes = document.querySelectorAll('[data-get-box]')
 const getLinks = document.querySelectorAll('a[data-get]')
 if (getLinks.length) {
@@ -68,20 +69,27 @@ if (getLinks.length) {
     return 'other'
   }
 
-  // The latest release's .dmg, straight from GitHub, so a Mac downloads in one click instead of landing on a list.
-  const latestDmg = async () => {
+  // The latest release, straight from GitHub, so the download is one click instead of a list of files.
+  const latestRelease = async () => {
     const repo = /github\.com\/([^/]+\/[^/]+)/.exec(releases)?.[1]
     if (!repo) return null
     try {
       const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } })
-      if (!r.ok) return null
-      const release = await r.json()
-      const dmg = release.assets?.find((a) => /arm64\.dmg$/i.test(a.name)) || release.assets?.find((a) => /\.dmg$/i.test(a.name))
-      return dmg ? { url: dmg.browser_download_url, version: String(release.tag_name || '').replace(/^v/, ''), mb: Math.round(dmg.size / 1e6) } : null
+      return r.ok ? await r.json() : null
     } catch {
       return null
     }
   }
+  /** The release's file for this computer: the Apple silicon .dmg, or the Windows installer (not its blockmap). */
+  const fileFor = (release, device) => {
+    const assets = release?.assets ?? []
+    const pick = device === 'windows'
+      ? assets.find((a) => /setup.*x64\.exe$/i.test(a.name)) || assets.find((a) => /\.exe$/i.test(a.name))
+      : assets.find((a) => /arm64\.dmg$/i.test(a.name)) || assets.find((a) => /\.dmg$/i.test(a.name))
+    return pick ? { url: pick.browser_download_url, version: String(release.tag_name || '').replace(/^v/, ''), mb: Math.round(pick.size / 1e6) } : null
+  }
+  // Unsigned, Windows asks before the first run: the page says what to press (site.config.mjs windowsSigned).
+  const winSigned = document.querySelector('[data-win-signed]')?.dataset.winSigned === 'true'
 
   const NAMES = { iphone: 'iPhone', ipad: 'iPad', android: 'Android', windows: 'Windows', linux: 'Linux', chromebook: 'Chromebook' }
   const site = location.origin + '/download'
@@ -97,8 +105,21 @@ if (getLinks.length) {
 
   deviceOf().then(async (device) => {
     document.documentElement.dataset.device = device
+    const release = device === 'iphone' || device === 'ipad' || device === 'android' ? null : await latestRelease()
+    const exe = device === 'windows' ? fileFor(release, 'windows') : null
+    if (exe) {
+      // A Windows PC, and a release that has its installer.
+      getLinks.forEach((a) => {
+        a.href = exe.url
+        a.textContent = a.dataset.get === 'long' ? 'Download for Windows' : 'Download'
+      })
+      getBoxes.forEach((box) =>
+        setNote(box, `Version ${exe.version}, ${exe.mb} MB. For Windows 10 and 11, 64-bit.${winSigned ? '' : ' Windows may ask before it first opens: choose More info, then Run anyway.'}`)
+      )
+      return
+    }
     if (device === 'mac' || device === 'intel-mac' || device === 'other') {
-      const dmg = await latestDmg()
+      const dmg = fileFor(release, 'mac')
       if (dmg) getLinks.forEach((a) => (a.href = dmg.url))
       document.querySelectorAll('[data-get-also]').forEach((a) => dmg && (a.href = dmg.url))
       const facts = dmg ? `Version ${dmg.version}, ${dmg.mb} MB. ` : ''
@@ -128,7 +149,9 @@ if (getLinks.length) {
     getBoxes.forEach((box) => {
       setNote(box, phone
         ? `Cutalong runs on a Mac. The ${NAMES[device]} app is on its way: leave your email below to hear when.`
-        : `Cutalong runs on a Mac for now, so there is nothing to download for ${NAMES[device] || 'this computer'} yet.`)
+        : device === 'windows'
+          ? 'The Windows version is on its way: leave your email below to hear when it is ready.'
+          : `Cutalong runs on a Mac${release && fileFor(release, 'windows') ? ' and on Windows' : ''} for now, so there is nothing to download for ${NAMES[device] || 'this computer'} yet.`)
       showAlso(box)
     })
   })
