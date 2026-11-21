@@ -62,7 +62,7 @@ The project is set up with:
 - **Root directory:** `site`
 - **Build command:** `npm run build` (Pages runs `npm install` first; there is nothing to install)
 - **Build output directory:** `dist`
-- **Production branch:** `claude/mcp-x1yvms`
+- **Production branch:** `main` (other branches build as previews)
 
 `_headers` (security headers, long caching for hashed assets, and `noindex` on the `pages.dev` addresses) and
 `_redirects` (`/download`) are written into `dist/` by the build. Pages serves `404.html` for unknown addresses, and

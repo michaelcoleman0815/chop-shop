@@ -35,6 +35,13 @@ export interface XmemlClip {
   file: XmemlFile | null
   /** For sound: which of the file's channels it plays, from 1. */
   channel: number | null
+  /**
+   * Its Basic Motion, when Premiere wrote one: scale in percent of the
+   * picture's own size, and where its centre is moved to, in fractions of the
+   * frame's width on both axes (a real export's values come out as whole
+   * pixels that way), right and down. Null is 100% in the middle.
+   */
+  motion: { scale: number; centerX: number; centerY: number } | null
 }
 
 export interface XmemlTrack {
@@ -186,7 +193,8 @@ export function parseXmeml(text: string): XmemlSequence | null {
           shownStart: numberOf(item, 'start', -1) < 0 && prev ? Math.max(start, cutIn(prev)) : start,
           shownEnd: numberOf(item, 'end', -1) < 0 && next ? Math.min(end, cutIn(next)) : end,
           file,
-          channel: source ? numberOf(source, 'trackindex', 1) : null
+          channel: source ? numberOf(source, 'trackindex', 1) : null,
+          motion: basicMotion(item)
         })
       })
       return { enabled: textOf(track, 'enabled') === null || isTrue(textOf(track, 'enabled')), clips }
@@ -217,6 +225,30 @@ export function parseXmeml(text: string): XmemlSequence | null {
       audio: audioEl
     }
   }
+}
+
+/**
+ * A clip's Basic Motion: its scale and centre, from the first keyframe when
+ * they move. Rotation and the anchor are left out: a preview does not need them.
+ */
+function basicMotion(item: XmlNode): XmemlClip['motion'] {
+  for (const filter of childrenOf(item, 'filter')) {
+    const effect = childOf(filter, 'effect')
+    if (textOf(effect, 'effectid') !== 'basic' || textOf(filter, 'enabled') === 'FALSE') continue
+    const param = (id: string): XmlNode | null => {
+      const p = childrenOf(effect, 'parameter').find((x) => textOf(x, 'parameterid') === id) ?? null
+      return childOf(p, 'value') ?? childOf(childOf(p, 'keyframe'), 'value')
+    }
+    const scale = param('scale')
+    const center = param('center')
+    const percent = scale ? Number(scale.text.trim()) : 100
+    return {
+      scale: Number.isFinite(percent) && percent > 0 ? percent : 100,
+      centerX: numberOf(center, 'horiz', 0),
+      centerY: numberOf(center, 'vert', 0)
+    }
+  }
+  return null
 }
 
 /** Every file the sequence plays, once each, in the order it first plays them. */

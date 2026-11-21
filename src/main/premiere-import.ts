@@ -35,6 +35,13 @@ export interface ProxyPicture {
   inSec: number
   /** Faster than 1 when Premiere plays the clip sped up. */
   speed: number
+  /**
+   * As Premiere places it (Basic Motion): this many times its own decoded
+   * size, which is upright when the file says it is turned, and moved this far
+   * from the middle, in the copy's pixels.
+   */
+  scale: number
+  offset: { x: number; y: number }
 }
 
 /** A sound in the proxy's mix, on the sequence's clock. */
@@ -121,12 +128,16 @@ export function proxyPlan(seq: XmemlSequence, missing: Set<string> = new Set()):
     }
     const clip = s.clip as XmemlClip
     const speed = usable ? speedOf(clip) : 1
+    const motion = usable ? clip.motion : null
+    const width = even(seq.width)
     picture.push({
       startFrame: s.a,
       frames: s.b - s.a,
       path: usable,
       inSec: usable ? (clip.in + (s.a - clip.start) * speed) / seq.fps : 0,
-      speed
+      speed,
+      scale: ((motion?.scale ?? 100) / 100) * shrink,
+      offset: { x: (motion?.centerX ?? 0) * width, y: (motion?.centerY ?? 0) * width }
     })
   }
 
@@ -193,7 +204,21 @@ export async function renderProxy(
   await fs.mkdir(work, { recursive: true })
   try {
     const { width: w, height: h, rate } = plan
-    const fit = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1`
+    /**
+     * A file's picture as Premiere places it: scaled from its own size, on a black frame
+     * the size of the sequence, its middle moved by the offset. Past the file's end the
+     * frame stays black, so a clip that runs out still fills its frames.
+     */
+    const placed = (p: ProxyPicture, before: string): string[] => {
+      // Quoted in the graph, so its comma needs no escape.
+      const size = (d: 'iw' | 'ih'): string => `max(2,trunc(${d}*${p.scale.toFixed(6)}/2)*2)`
+      const graph = [
+        `color=c=black:s=${w}x${h}:r=${rate}[bg]`,
+        `[0:v]${before}fps=${rate},scale=w='${size('iw')}':h='${size('ih')}',setsar=1[fg]`,
+        `[bg][fg]overlay=x='(W-w)/2+${p.offset.x.toFixed(2)}':y='(H-h)/2+${p.offset.y.toFixed(2)}':eof_action=pass,format=yuv420p[v]`
+      ].join(';')
+      return ['-filter_complex', graph, '-map', '[v]']
+    }
     const encode = ['-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', rate]
     const list: string[] = []
     for (const [i, p] of plan.picture.entries()) {
@@ -202,12 +227,10 @@ export async function renderProxy(
       if (!p.path) {
         await run(ffmpeg, ['-f', 'lavfi', '-i', `color=c=black:s=${w}x${h}:r=${rate}`, ...frames, ...encode, seg])
       } else if (isImagePath(p.path)) {
-        await run(ffmpeg, ['-loop', '1', '-framerate', rate, '-i', p.path, '-vf', `${fit},format=yuv420p`, ...frames, ...encode, seg])
+        await run(ffmpeg, ['-loop', '1', '-framerate', rate, '-i', p.path, ...placed(p, ''), ...frames, ...encode, seg])
       } else {
         const speed = p.speed === 1 ? '' : `setpts=(PTS-STARTPTS)/${p.speed},`
-        // Padded past the file's end with black, so a clip that runs out still fills its frames.
-        const vf = `${speed}fps=${rate},${fit},tpad=stop=-1:stop_mode=add:color=black,format=yuv420p`
-        await run(ffmpeg, ['-ss', p.inSec.toFixed(6), '-i', p.path, '-vf', vf, ...frames, ...encode, seg])
+        await run(ffmpeg, ['-ss', p.inSec.toFixed(6), '-i', p.path, ...placed(p, speed), ...frames, ...encode, seg])
       }
       list.push(`file '${seg.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
       progress(Math.round(((i + 1) / plan.picture.length) * 70))
@@ -347,7 +370,11 @@ export async function importPremiere(
 
     const r = await prepareCut(host, { paths: [proxy], brand: req.brand ?? null }, progress, mediaUrlFor)
     if (!r.ok) return r
-    const clips = [...seq.video, ...seq.audio].reduce((n, t) => n + t.clips.length, 0)
+    // Counted as a person counts them: the pieces of picture, titles included; for a sequence with
+    // only sound, its pieces of sound, a stereo pair once.
+    const pictures = seq.video.reduce((n, t) => n + t.clips.length, 0)
+    const sounds = new Set(seq.audio.flatMap((t) => t.clips.map((c) => `${c.file?.id}|${c.start}|${c.end}|${c.in}`))).size
+    const clips = pictures || sounds
     const covered = coverWholeTimeline(r.doc)
     const source = covered.sources[0]
     const doc: EditDoc = {

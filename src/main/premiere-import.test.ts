@@ -163,6 +163,9 @@ describe('a Premiere sequence, read', () => {
     // A file written in full once is named by its id after that.
     expect(c.file?.path).toBe('/Volumes/Shoot/Day 1/A001.mov')
     expect(c.file).toBe(a.file)
+    // Its Basic Motion is read; one without any is at 100% in the middle, as Premiere places it.
+    expect(c.motion).toEqual({ scale: 120, centerX: 0, centerY: 0 })
+    expect(a.motion).toBeNull()
   })
 
   it('knows a disabled clip, a title and which channel each sound plays', () => {
@@ -171,6 +174,25 @@ describe('a Premiere sequence, read', () => {
     expect([title.kind, title.file]).toEqual(['generatoritem', null])
     expect(broll.file?.path).toBe('/Volumes/Shoot/Day 1/C001.mov')
     expect(seq.audio.map((t) => t.clips[0].channel)).toEqual([1, 2, 1, 2])
+  })
+
+  it('places a picture by its scale and centre, the centre in fractions of the frame’s width', () => {
+    // As a real Premiere export wrote it: 113%, moved 9 px left and 47 px up in a 1080 x 1920 frame.
+    const real = `<xmeml version="4"><sequence><name>S</name><duration>60</duration><rate><timebase>60</timebase><ntsc>TRUE</ntsc></rate>
+      <media><video><format><samplecharacteristics><width>1080</width><height>1920</height></samplecharacteristics></format>
+      <track><clipitem id="clipitem-7"><name>MVI.MP4</name><enabled>TRUE</enabled><start>0</start><end>60</end><in>632</in><out>692</out>
+      <file id="file-1"><name>MVI.MP4</name><pathurl>file://localhost/Raw/MVI.MP4</pathurl></file>
+      <filter><effect><name>Basic Motion</name><effectid>basic</effectid>
+        <parameter authoringApp="PremierePro"><parameterid>scale</parameterid><value>113</value></parameter>
+        <parameter authoringApp="PremierePro"><parameterid>center</parameterid><value><horiz>-0.00833334</horiz><vert>-0.0435185</vert></value></parameter>
+      </effect></filter></clipitem></track></video><audio/></media></sequence></xmeml>`
+    const one = parseXmeml(real) as XmemlSequence
+    expect(one.video[0].clips[0].motion).toEqual({ scale: 113, centerX: -0.00833334, centerY: -0.0435185 })
+    const [p] = proxyPlan(one).picture
+    expect(p.scale).toBeCloseTo(1.13, 6)
+    // Whole pixels both ways, as Premiere's Position shows them.
+    expect(p.offset.x).toBeCloseTo(-9, 3)
+    expect(p.offset.y).toBeCloseTo(-47, 3)
   })
 
   it('reads a file’s address on a Mac, on Windows and on a server', () => {
@@ -200,6 +222,8 @@ describe('a Premiere sequence, read', () => {
     expect(plan.picture[1].inSec * FPS).toBeCloseTo(100, 6)
     expect(plan.picture[3].inSec * FPS).toBeCloseTo(200, 6)
     expect(plan.drawn).toBe(1)
+    // The second A clip is at 120%, on both sides of the cutaway over it.
+    expect(plan.picture.map((p) => p.scale)).toEqual([1, 1, 1.2, 1, 1.2])
     expect(plan.sound.map((s) => s.path.split('/').pop())).toEqual(['A001.mov', 'Bed.wav', 'B001.mov', 'A001.mov'])
     // A file that is not on this computer is black, and not heard.
     const without = proxyPlan(seq, new Set(['/Volumes/Shoot/Day 1/C001.mov']))
@@ -358,9 +382,14 @@ describe.skipIf(!FFMPEG)('a copy of the sequence to play here', () => {
   }, 120_000)
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
-  /** Which recording, and which of its frames mod 256, a frame of the copy shows. */
+  /**
+   * Which recording, and which of its frames mod 256, a frame of the copy shows. The
+   * recordings are 320 x 180 in a 1920 x 1080 frame, at their own size as Premiere
+   * places them, so this reads the middle.
+   */
+  const middle = { x: 0.47, y: 0.47, w: 0.06, h: 0.06 }
   const shown = (frame: number): { clip: string; n: number } => {
-    const [r, g, b] = frameColour(FFMPEG as string, proxy, (frame + 0.5) / FPS)
+    const [r, g, b] = frameColour(FFMPEG as string, proxy, (frame + 0.5) / FPS, middle)
     const clip = b > 160 ? 'B' : b > 80 ? 'C' : 'A'
     return { clip, n: Math.round((r - 8) / 16) + 16 * Math.round((g - 8) / 16) }
   }
@@ -388,6 +417,16 @@ describe.skipIf(!FFMPEG)('a copy of the sequence to play here', () => {
       expect(s.clip, `frame ${frame}`).toBe(clip)
       expect(near(s.n, n), `frame ${frame} shows ${s.n}, not ${n % 256}`).toBe(true)
     }
+  })
+
+  it('shows each picture at the size Premiere gives it, on black', () => {
+    // Just inside the left edge of a picture at 120%, and outside one at 100%.
+    const edge = { x: 0.403, y: 0.48, w: 0.01, h: 0.04 }
+    const at = (frame: number): number => frameColour(FFMPEG as string, proxy, (frame + 0.5) / FPS, edge)[2]
+    expect(at(340)).toBeGreaterThan(30)
+    expect(at(100)).toBeLessThan(15)
+    // The corner is black: a picture is never stretched to fill the frame.
+    expect(frameColour(FFMPEG as string, proxy, 100.5 / FPS, { x: 0, y: 0, w: 0.1, h: 0.1 })[2]).toBeLessThan(15)
   })
 
   it('plays each clip’s sound where it is on the timeline, over the music', () => {
