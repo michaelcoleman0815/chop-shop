@@ -153,7 +153,7 @@ function radioKeys<T>(e: KeyboardEvent<HTMLElement>, items: readonly T[], at: nu
  * A brand's shape and colour, picked like a sticker: every shape in the
  * brand's colour, then the colours. The avatar above morphs as you choose.
  */
-function AvatarPicker({ value, onPick }: { value: Avatar; onPick: (a: Avatar) => void }): JSX.Element {
+export function AvatarPicker({ value, onPick }: { value: Avatar; onPick: (a: Avatar) => void }): JSX.Element {
   const shapeAt = SHAPES.indexOf(value.shape)
   const colourAt = COLOURS.indexOf(value.colour)
   return (

@@ -181,6 +181,7 @@ import {
 import { momentsFor } from '../../../shared/broll/moment'
 import type { ChatMessage, Project, ProjectSummary } from '../../../shared/types'
 import { api, device, mediaUrlFor } from './api'
+import { markExported } from './firstRun'
 import { offerReply, pickedAside, swapWords, webWaits, type BrollPick, type BrollWebAsk, type BrollWhere } from './broll'
 import type { Attachment } from './components/Composer'
 import type { Action, Msg } from './components/Message'
@@ -4756,6 +4757,8 @@ export function useCutalong() {
         return
       }
       rememberKeep(d)
+      // The rail's setup card asks for one export; this is it.
+      markExported()
       // A clip's export is kept on its card, as Export all's are.
       if (clipping.isClip(d)) clipping.exported(d.id, { path: r.outputPath, version: n, at: new Date().toISOString() })
       const name = fileName(r.outputPath)

@@ -33,6 +33,11 @@
   --pick: oklch(52% 0.13 258);
   --error: oklch(52% 0.17 27);
   --ok: oklch(50% 0.1 155);
+  --stage: oklch(21% 0.016 272);
+  --stage-2: oklch(27% 0.016 272);
+  --stage-line: oklch(36% 0.016 272);
+  --on-stage: oklch(96% 0.006 85);
+  --on-stage-soft: oklch(78% 0.01 272);
   --frame: oklch(15% 0.012 268);
   --frame-2: oklch(27% 0.012 268);
   --selection: oklch(89% 0.04 245);
@@ -45,13 +50,13 @@
   --rev-5: oklch(94.4% 0.034 152);
   --rev-6: oklch(92.8% 0.05 82);
   --rev-7: oklch(94.2% 0.03 50);
-  --block-blue: oklch(85% 0.075 255);
-  --block-pink: oklch(86% 0.08 350);
-  --block-yellow: oklch(92% 0.11 100);
-  --block-green: oklch(88% 0.09 148);
-  --block-gold: oklch(86% 0.1 78);
-  --block-salmon: oklch(86% 0.075 52);
-  --block-lavender: oklch(86% 0.06 300);
+  --block-blue: oklch(84% 0.1 255);
+  --block-pink: oklch(85% 0.1 350);
+  --block-yellow: oklch(91% 0.14 100);
+  --block-green: oklch(87% 0.115 148);
+  --block-gold: oklch(85% 0.125 78);
+  --block-salmon: oklch(85% 0.095 52);
+  --block-lavender: oklch(85% 0.085 300);
   --bloom-blue: oklch(68% 0.14 258);
   --bloom-pink: oklch(70% 0.15 352);
   --bloom-yellow: oklch(83% 0.16 95);
@@ -83,6 +88,7 @@
   --radius-card: 14px;
   --radius-composer: 24px;
   --radius-pill: 999px;
+  --radius-stage: 28px;
 
   /* Shadow: soft light under lifted paper. The colours above change with the theme. */
   --shadow-composer: 0 1px 2px var(--shadow-soft), 0 18px 40px -20px var(--shadow-deep);
@@ -90,6 +96,7 @@
   --shadow-tab: 0 1px 3px var(--shadow-soft);
   --shadow-page: 0 1px 2px var(--shadow-soft), 0 12px 28px -16px var(--shadow-deep);
   --shadow-float: 0 1px 2px var(--shadow-soft), 0 22px 48px -18px var(--shadow-deep);
+  --shadow-stage: 0 2px 4px var(--shadow-soft), 0 34px 70px -30px var(--shadow-deep);
 
   /*
    * Motion. Things arrive softly and settle, landing on a gentle spring with a
@@ -133,6 +140,11 @@
     --pick: oklch(76% 0.1 255);
     --error: oklch(75% 0.13 27);
     --ok: oklch(78% 0.1 155);
+    --stage: oklch(16.5% 0.016 268);
+    --stage-2: oklch(22% 0.018 268);
+    --stage-line: oklch(33% 0.018 268);
+    --on-stage: oklch(96% 0.006 85);
+    --on-stage-soft: oklch(76% 0.01 268);
     --frame: oklch(13% 0.012 268);
     --frame-2: oklch(25% 0.012 268);
     --selection: oklch(38% 0.06 255);
@@ -145,13 +157,13 @@
     --rev-5: oklch(32% 0.038 155);
     --rev-6: oklch(34% 0.05 78);
     --rev-7: oklch(33% 0.04 45);
-    --block-blue: oklch(34% 0.06 258);
-    --block-pink: oklch(34.5% 0.04 350);
-    --block-yellow: oklch(39% 0.038 80);
-    --block-green: oklch(35% 0.055 152);
-    --block-gold: oklch(35% 0.042 75);
-    --block-salmon: oklch(35% 0.06 48);
-    --block-lavender: oklch(34% 0.06 300);
+    --block-blue: oklch(35% 0.06 258);
+    --block-pink: oklch(35% 0.045 350);
+    --block-yellow: oklch(40% 0.044 80);
+    --block-green: oklch(36% 0.06 152);
+    --block-gold: oklch(36% 0.045 76);
+    --block-salmon: oklch(36% 0.06 48);
+    --block-lavender: oklch(35% 0.06 300);
     --bloom-blue: oklch(74% 0.12 258);
     --bloom-pink: oklch(76% 0.12 352);
     --bloom-yellow: oklch(86% 0.13 95);
@@ -185,6 +197,11 @@
   --pick: oklch(76% 0.1 255);
   --error: oklch(75% 0.13 27);
   --ok: oklch(78% 0.1 155);
+  --stage: oklch(16.5% 0.016 268);
+  --stage-2: oklch(22% 0.018 268);
+  --stage-line: oklch(33% 0.018 268);
+  --on-stage: oklch(96% 0.006 85);
+  --on-stage-soft: oklch(76% 0.01 268);
   --frame: oklch(13% 0.012 268);
   --frame-2: oklch(25% 0.012 268);
   --selection: oklch(38% 0.06 255);
@@ -197,13 +214,13 @@
   --rev-5: oklch(32% 0.038 155);
   --rev-6: oklch(34% 0.05 78);
   --rev-7: oklch(33% 0.04 45);
-  --block-blue: oklch(34% 0.06 258);
-  --block-pink: oklch(34.5% 0.04 350);
-  --block-yellow: oklch(39% 0.038 80);
-  --block-green: oklch(35% 0.055 152);
-  --block-gold: oklch(35% 0.042 75);
-  --block-salmon: oklch(35% 0.06 48);
-  --block-lavender: oklch(34% 0.06 300);
+  --block-blue: oklch(35% 0.06 258);
+  --block-pink: oklch(35% 0.045 350);
+  --block-yellow: oklch(40% 0.044 80);
+  --block-green: oklch(36% 0.06 152);
+  --block-gold: oklch(36% 0.045 76);
+  --block-salmon: oklch(36% 0.06 48);
+  --block-lavender: oklch(35% 0.06 300);
   --bloom-blue: oklch(74% 0.12 258);
   --bloom-pink: oklch(76% 0.12 352);
   --bloom-yellow: oklch(86% 0.13 95);

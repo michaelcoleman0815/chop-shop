@@ -602,7 +602,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 15vh var(--space-8) var(--space-16);
+  padding: 9vh var(--space-8) var(--space-16);
 }
 
 .cl-start-inner {
@@ -616,10 +616,10 @@ button:disabled {
 
 .cl-title {
   margin: 0 0 var(--space-3);
-  font-size: 58px;
-  line-height: 60px;
+  font-size: 68px;
+  line-height: 68px;
   font-weight: 800;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.05em;
   text-align: center;
   text-wrap: balance;
 }
@@ -633,6 +633,25 @@ button:disabled {
   font-size: 1.06em;
   letter-spacing: -0.02em;
   margin-right: 0.03em;
+  /* The highlighter: one swipe of a block colour behind the word (--hl: the version's, else yellow). */
+  position: relative;
+  isolation: isolate;
+  padding: 0 0.1em;
+  margin-left: -0.04em;
+}
+
+.cl-accent::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  right: 0;
+  top: 46%;
+  bottom: 6%;
+  border-radius: 0.12em;
+  background: var(--hl, var(--block-yellow));
+  rotate: -2deg;
+  transform-origin: left center;
 }
 
 /* The mark greets you on Start, the screen's one coral thing; with the rail open, the rail's mark is enough. */
@@ -1336,8 +1355,9 @@ button:disabled {
 .cl-well {
   position: relative;
   min-height: 0;
-  background: var(--well);
-  border-radius: var(--radius-composer);
+  background: var(--stage);
+  border-radius: var(--radius-stage);
+  box-shadow: var(--shadow-stage);
   display: grid;
   place-items: center;
   padding: var(--space-6);
@@ -1787,10 +1807,10 @@ button:disabled {
 
 .cl-strip {
   flex: 0 0 auto;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-page);
+  background: var(--stage);
+  border: 0;
+  border-radius: 22px;
+  box-shadow: var(--shadow-stage);
   padding: 12px 16px;
   display: flex;
   align-items: center;
@@ -3882,4 +3902,722 @@ button:disabled {
 
 .cl-make-own::placeholder {
   color: var(--muted);
+}
+
+/* ---------- On set: the stage ---------- */
+
+/*
+ * The stage is a scope as well as a surface: inside it ink, lines and paper
+ * point at the stage's own tokens, so a button, a beat or a ring set on it
+ * needs no rules of its own. Footage and the tools that act on it live here;
+ * words stay on paper.
+ */
+.cl-well,
+.cl-strip,
+.cl-stage {
+  --ink: var(--on-stage);
+  --ink-soft: var(--on-stage-soft);
+  --muted: var(--on-stage-soft);
+  --card: var(--stage);
+  --card-2: var(--stage-2);
+  --well: var(--stage-2);
+  --line: var(--stage-line);
+  --line-mid: var(--stage-line);
+  --beat: var(--stage-2);
+  --pick: var(--bloom-blue);
+  color: var(--ink);
+}
+
+.cl-stage {
+  background: var(--stage);
+  border-radius: var(--radius-stage);
+  box-shadow: var(--shadow-stage);
+}
+
+/* ---------- On set: the rail's setup card ---------- */
+
+/* Until setup is done, a card at the rail's foot says what is left; each step is a button to it. */
+.cl-setup-card {
+  -webkit-app-region: no-drag;
+  margin-top: var(--space-4);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--shadow-page);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cl-setup-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-setup-card-head span:last-child {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-setup-bar {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--well);
+  overflow: hidden;
+}
+
+.cl-setup-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--ink);
+  transform-origin: left center;
+  transition: transform var(--duration-spring) var(--spring-settle);
+}
+
+.cl-setup-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  text-align: left;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.cl-setup-step.done {
+  color: var(--muted);
+}
+
+.cl-tick {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+}
+
+.cl-setup-step.done .cl-tick {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--card);
+}
+
+.cl-setup-step.now .cl-tick {
+  border-color: var(--ink);
+}
+
+.cl-setup-step.now {
+  font-weight: 600;
+}
+
+/* ---------- On set: Start ---------- */
+
+/* The presets, shown doing what they do: a pastel block each, its command under the picture. */
+.cl-presets {
+  width: 100%;
+  max-width: 900px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: var(--space-6);
+}
+
+.cl-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--tone, var(--block-blue));
+  color: var(--ink);
+  text-align: left;
+}
+
+.cl-preset-pic {
+  height: 78px;
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 12px;
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.cl-preset-pic s {
+  color: var(--muted);
+  text-decoration-color: var(--coral);
+  text-decoration-thickness: 2px;
+}
+
+/* Three vertical frames side by side: shorts. */
+.cl-preset-pic.frames {
+  background: transparent;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cl-preset-pic.frames span,
+.cl-preset-pic.caption {
+  background: linear-gradient(160deg, var(--frame-2), var(--frame));
+}
+
+.cl-preset-pic.frames span {
+  height: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 8px;
+}
+
+/* A caption on a frame: the picture's own white, as the export draws it. */
+.cl-preset-pic.caption {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 16px;
+  line-height: 18px;
+  text-transform: uppercase;
+  color: white;
+}
+
+.cl-preset-pic.caption b {
+  color: var(--bloom-yellow);
+  font-weight: 800;
+}
+
+.cl-preset-pic.quote {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font-style: italic;
+}
+
+.cl-preset-pic.quote small {
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cl-preset-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.cl-preset-what {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-preset:hover {
+    translate: 0 calc(-2px * var(--cl-travel));
+  }
+}
+
+/* A project is its still on the stage, with its name under it on the stage too. */
+.cl-project.cl-stage {
+  padding: 10px;
+  gap: 10px;
+  border-radius: 24px;
+}
+
+.cl-project.cl-stage .cl-project-thumb {
+  border: 0;
+  border-radius: 16px;
+  background-color: var(--stage-2);
+}
+
+.cl-project.cl-stage > span:last-child {
+  padding: 0 6px 4px;
+}
+
+.cl-project-version {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--block-blue);
+  color: var(--on-bloom);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* Sample shoots for a first cut: three stills on the stage, each with Try it. */
+.cl-samples {
+  width: 100%;
+  max-width: 900px;
+  margin-top: var(--space-12);
+}
+
+.cl-samples-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.cl-samples-head h2 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 26px;
+}
+
+.cl-samples-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cl-samples-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.cl-sample {
+  padding: 10px;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cl-sample-pic {
+  position: relative;
+  height: 132px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, var(--frame-2), var(--frame));
+}
+
+.cl-sample-pic .cl-project-version {
+  background: var(--tone, var(--block-blue));
+}
+
+.cl-sample-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 6px 4px;
+}
+
+/* ---------- On set: onboarding ---------- */
+
+/* Onboarding is one thing at a time: the rail waits until it is done. */
+.cl-app:has(.cl-onboard) .cl-rail {
+  display: none;
+}
+
+.cl-onboard {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-10) var(--space-8);
+}
+
+.cl-onboard-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cl-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cl-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 6px;
+  background: var(--line-mid);
+  transition: background-color var(--duration-base) var(--ease-standard);
+}
+
+.cl-dots i.past {
+  background: var(--ink);
+}
+
+.cl-dots i.now {
+  width: 22px;
+  background: var(--ink);
+}
+
+.cl-onboard-body {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+  gap: var(--space-12);
+  align-items: center;
+}
+
+.cl-onboard-body.one {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 760px;
+}
+
+.cl-onboard-say {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
+
+.cl-welcome {
+  margin: 0;
+  font-size: 96px;
+  line-height: 92px;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+
+.cl-welcome.step {
+  font-size: 72px;
+  line-height: 70px;
+}
+
+.cl-onboard-lede {
+  margin: 0;
+  max-width: 34em;
+  font-size: 19px;
+  line-height: 29px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.cl-onboard-note {
+  margin: 0;
+  max-width: 40em;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+}
+
+.cl-onboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cl-onboard-foot {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The welcome's picture of a cut: a script with its struck lines and the strip under it, on the stage. */
+.cl-demo {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cl-demo-script {
+  background: var(--stage-2);
+  border-radius: 18px;
+  padding: 22px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cl-demo-script header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cl-demo-script header span:last-child {
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--block-blue);
+  color: var(--on-bloom);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.cl-demo-script p {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 27px;
+}
+
+.cl-demo-script p > span:first-child {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-demo-script s {
+  color: var(--muted);
+  text-decoration-color: var(--coral);
+  text-decoration-thickness: 2px;
+}
+
+.cl-demo-strip {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  height: 40px;
+}
+
+.cl-demo-strip span:not(.cl-playhead) {
+  border-radius: 8px;
+  background: var(--stage-2);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cl-demo-strip span.on:not(.cl-playhead) {
+  background: var(--block-blue);
+  color: var(--on-bloom);
+}
+
+.cl-demo-strip .cl-playhead {
+  left: 22%;
+}
+
+/* A step's side panel: a block of colour, paper inside it. */
+.cl-onboard-block {
+  border-radius: 24px;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--tone, var(--block-pink));
+  color: var(--ink);
+}
+
+.cl-onboard-block .cl-kicker,
+.cl-kicker {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.cl-onboard-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-onboard-list li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 0;
+  border-top: 1px solid color-mix(in oklch, var(--on-bloom) 12%, transparent);
+}
+
+.cl-onboard-list li:first-child {
+  border-top: 0;
+}
+
+.cl-onboard-list b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-onboard-list span {
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink-soft);
+}
+
+.cl-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-top: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bloom, var(--bloom-blue));
+}
+
+.cl-onboard-paper {
+  border-radius: 16px;
+  background: var(--card);
+  padding: 16px;
+}
+
+.cl-signin {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cl-signin .cl-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.cl-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cl-or::before,
+.cl-or::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+.cl-brand-preview {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.cl-brand-preview strong {
+  display: block;
+  font-size: 40px;
+  line-height: 42px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+
+/* Videos to learn from, on the stage: each a still, its name and what is happening to it. */
+.cl-teach {
+  padding: 22px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  min-height: 320px;
+}
+
+.cl-teach-slot {
+  border-radius: 18px;
+  border: 2px dashed var(--stage-line);
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cl-teach-video {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cl-teach-video > span:first-child {
+  flex: 1 1 auto;
+  min-height: 160px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, var(--frame-2), var(--frame));
+}
+
+.cl-teach-video b {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1000px) {
+  .cl-onboard-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cl-welcome {
+    font-size: 72px;
+    line-height: 70px;
+  }
+
+  .cl-presets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* A command, a timecode or a file name inside a line of interface text. */
+.cl-mono {
+  font-family: var(--font-mono);
 }

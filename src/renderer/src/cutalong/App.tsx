@@ -13,16 +13,24 @@ import { PresetsPage, ProjectsPage } from './screens/Library'
 import { SettingsPage } from './screens/Settings'
 import { Start } from './screens/Start'
 import { Thread } from './screens/Thread'
+import { exportedOnce, setupSteps, type SetupStepId } from './firstRun'
 import { forgetPlace, useCutalong } from './useCutalong'
 
 const SIDEBAR_KEY = 'cutalong:sidebar-open'
 
+/**
+ * As it was left; the first time, open wherever there is room for it beside
+ * the screen, since its names and the setup card are how a new person finds
+ * their way. Narrow, an open rail covers the screen, so it starts closed.
+ */
 function remembered(): boolean {
   try {
-    return localStorage.getItem(SIDEBAR_KEY) === '1'
+    const kept = localStorage.getItem(SIDEBAR_KEY)
+    if (kept !== null) return kept === '1'
   } catch {
-    return false
+    // Without storage it starts as the window's width suggests.
   }
+  return window.innerWidth >= 1100
 }
 
 /** On a phone the rail is a menu over the screen: it starts closed, and closes once a place is picked. */
@@ -89,6 +97,18 @@ export default function App(): JSX.Element {
       ? app.screen
       : null
 
+  const steps = setupSteps({
+    keyWorks: app.gateOpen,
+    named: app.brand.name.trim().length > 0,
+    edits: app.recent.length,
+    exported: exportedOnce()
+  })
+  const toStep = (id: SetupStepId): void => {
+    if (id === 'channel') app.setScreen('brand')
+    else if (id === 'export' && app.doc) app.setScreen('editor')
+    else app.goStart()
+  }
+
   return (
     <div
       className={`cl-app${mac ? ' mac' : ''}${onWindows ? ' windows' : ''}${phone ? ' phone' : ''}${phone && open ? ' menu-open' : ''}`}
@@ -100,6 +120,7 @@ export default function App(): JSX.Element {
         onGo={went((p: Place) => (p === 'start' ? app.goStart() : app.setScreen(p)))}
         recent={app.recent}
         onOpenProject={went((path: string) => void app.openProject(path))}
+        setup={{ steps, onStep: went(toStep) }}
       />
       {phone && open && (
         <button type="button" className="cl-menu-backdrop" aria-label="Close the menu" onClick={() => setOpen(false)} />

@@ -1,10 +1,12 @@
 import type { ProjectSummary } from '../../../../shared/types'
 import { device } from '../api'
+import type { SetupStep, SetupStepId } from '../firstRun'
 import { Mark } from './ui'
 
 /**
  * The rail down the left: a new edit, projects, your brand, presets, and at
- * the bottom settings. Collapsed it is icons; open it adds names and recent edits.
+ * the bottom settings. Collapsed it is icons; open it adds names, recent edits
+ * and, until setup is done, a card saying what is left.
  */
 
 export type Place = 'start' | 'projects' | 'brand' | 'presets' | 'crew' | 'settings'
@@ -82,7 +84,8 @@ export function Sidebar({
   current,
   onGo,
   recent,
-  onOpenProject
+  onOpenProject,
+  setup
 }: {
   open: boolean
   onToggle: () => void
@@ -90,7 +93,9 @@ export function Sidebar({
   onGo: (place: Place) => void
   recent: ProjectSummary[]
   onOpenProject: (path: string) => void
+  setup?: { steps: SetupStep[]; onStep: (id: SetupStepId) => void }
 }): JSX.Element {
+  const left = setup?.steps.filter((s) => !s.done) ?? []
   return (
     <nav className={`cl-rail${open ? ' open' : ''}`} aria-label="Cutalong">
       <div className="cl-rail-top">
@@ -138,6 +143,7 @@ export function Sidebar({
         </div>
       )}
       <span className="spacer" />
+      {open && setup && left.length > 0 && <SetupCard steps={setup.steps} onStep={setup.onStep} />}
       <button
         type="button"
         className={`cl-rail-item${current === 'settings' ? ' on' : ''}`}
@@ -150,5 +156,50 @@ export function Sidebar({
         {open && <span className="label">Settings</span>}
       </button>
     </nav>
+  )
+}
+
+/** What setup still asks for: a count, a bar, and each step left as a button to it. */
+function SetupCard({ steps, onStep }: { steps: SetupStep[]; onStep: (id: SetupStepId) => void }): JSX.Element {
+  const done = steps.filter((s) => s.done).length
+  const next = steps.find((s) => !s.done)
+  return (
+    <section className="cl-setup-card" aria-label="Set up Cutalong">
+      <div className="cl-setup-card-head">
+        <span>Set up Cutalong</span>
+        <span>
+          {done} of {steps.length}
+        </span>
+      </div>
+      <div className="cl-setup-bar" aria-hidden="true">
+        <i style={{ transform: `scaleX(${done / steps.length})` }} />
+      </div>
+      {steps.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          className={`cl-setup-step${s.done ? ' done' : s === next ? ' now' : ''}`}
+          disabled={s.done}
+          onClick={() => onStep(s.id)}
+        >
+          <span className="cl-tick" aria-hidden="true">
+            {s.done && (
+              <svg width="10" height="10" viewBox="0 0 12 12">
+                <path
+                  d="M2.5 6.2 5 8.5l4.5-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </span>
+          {s.label}
+          {s.done && <span className="sr-only">, done</span>}
+        </button>
+      ))}
+    </section>
   )
 }
