@@ -36,6 +36,21 @@ export default {
   // Vision helper are built for macOS 14, so transcription cannot start on anything older.
   requires: 'macOS 14 Sonoma or later, on a Mac with Apple silicon',
 
+  // What Cutalong does, in the page's own words, for search engines and AI answers: the structured data's
+  // featureList and llms.txt read this list. Keep each item to what the app really does today.
+  features: [
+    'Cuts the retakes and keeps the best take of each line (/takes)',
+    'Takes out pauses and false starts (/tighten)',
+    'Cuts to the length you ask for, within 1.5 seconds of a minute',
+    'Makes vertical Shorts with captions (/shorts, /captions)',
+    'Finds the moments that stand on their own in a stream, a service or a podcast (/clipping)',
+    'Turns a day of clips into a vlog, told in the order it was shot',
+    'Learns your channel’s brand: your logo, your caption style and how you talk',
+    'Writes the upload kit: captions as .srt and .vtt, a description with chapters, titles and tags',
+    'Transcribes with whisper.cpp and renders with ffmpeg on your Mac; your footage never leaves it',
+    'Plans edits with Claude on your own Anthropic key, or with a free model in Ollama or LM Studio'
+  ],
+
   // The crew: one small character per real job, with the names and colours the app uses (the owner's crew notes).
   // The names are proposals the owner can change here; the page reads them from nowhere else.
   // `line` is what each says for itself in "Meet your crew"; keep it to work the app really does.

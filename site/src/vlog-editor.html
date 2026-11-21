@@ -1,0 +1,80 @@
+<!--page
+title: Edit a vlog from a day of clips automatically, Cutalong
+socialTitle: A day of clips, told as a story
+crumb: Vlogs from a day of clips
+description: Drop a day of clips and say /vlog. Cutalong puts them in the order you shot them, leaves out the shaky and dark ones, and tells the day as a story.
+card: img/og-vlog-editor.png
+cardAlt: A day of clips, told as a story, with /vlog, beside the day it cut: a tease of the laughter at 13:40, the café at 8:40, up the ridge at 12:15, the estuary at dusk at 19:30, and a close.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+{{> head}}
+</head>
+<body>
+{{> doc-top}}
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="container intro">
+      <h1 id="hero-title">A day of clips, told as a&nbsp;<em>story</em></h1>
+      <p class="lead job-lead">Drop the day and say <span class="mono">/vlog</span>. I put the clips in the order you shot them, leave out the shaky and dark ones, and tell the day as a&nbsp;story.</p>
+      <div class="hero-actions">
+        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
+        {{^downloadReady}}<a class="btn btn-primary" href="{{page index}}#signup">Get notified when it’s ready</a>{{/downloadReady}}
+        <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="makes" aria-labelledby="run-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="run-title">How it tells a&nbsp;day</h2>
+      </div>
+      <div class="bento">
+        <article class="job job-vlog reveal" aria-labelledby="job-day">
+          <div class="job-copy">
+            <h3 id="job-day">A tease, the day in order, a&nbsp;close</h3>
+            <p>It opens on a tease of the best moment, tells the day by the clock, and closes on your sign&#8209;off or a quiet last&nbsp;shot.</p>
+          </div>
+          <ol class="app app-story" aria-label="The vlog: the day told as tease, scenes in order and close">
+            <li><span class="mono">Tease</span><span>The laughter at 13:40</span></li>
+            <li><span class="mono">8:40</span><span>The café</span></li>
+            <li><span class="mono">12:15</span><span>Up the ridge</span></li>
+            <li><span class="mono">19:30</span><span>The estuary at dusk</span></li>
+            <li><span class="mono">Close</span><span>You, saying it was the best day</span></li>
+          </ol>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="questions" id="questions" aria-labelledby="questions-title">
+    <div class="container questions-grid">
+      <h2 id="questions-title" class="reveal">Questions</h2>
+      <div class="qa reveal">
+        <details>
+          <summary>How does it know the order?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>From the time each clip was recorded. A second camera’s clips are lined up to the first one’s&nbsp;clock.</p>
+        </details>
+        <details>
+          <summary>What does it leave out?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Clips too dark, shaky or blurred to use, and the same shot taken twice, where it keeps the better&nbsp;one.</p>
+        </details>
+        <details>
+          <summary>Can I set the length?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Yes. Say <span class="mono">/vlog 8 min</span>.</p>
+        </details>
+        <details>
+          <summary>Does Claude see my footage?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Three small stills from each moment, unless you turn off “See frames from your footage” in Settings. Never the footage&nbsp;itself.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  {{> jobs-list}}
+</main>
+{{> doc-foot}}
+</body>
+</html>

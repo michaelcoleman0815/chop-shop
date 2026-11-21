@@ -1,14 +1,15 @@
 <!--page
-title: Cutalong, the video editor you talk to
-description: Cutalong is a Mac video editor for YouTube creators. Drop in your footage, say what you want, and it edits, on your own Mac.
+title: Cutalong, the AI video editor you talk to, on your Mac
+socialTitle: Cutalong, the video editor you talk to
+description: Drop in your footage, say what you want, and Cutalong edits: it cuts retakes and pauses, adds captions and makes Shorts. For YouTube creators, on your Mac.
+card: img/og.png
+twitterCard: img/twitter.png
+cardAlt: The words The video editor you talk to, beside a still from a laptop review captioned Chromebook, the ask /takes, and Cutalong’s reply: v2 is ready. It runs 1:21 now, down from 1:35.
 -->
 <!doctype html>
 <html lang="en">
 <head>
 {{> head}}
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Cutalong","applicationCategory":"MultimediaApplication","operatingSystem":"{{requires}}","description":"{{description}}","url":"{{url index}}",{{#downloadReady}}"downloadUrl":"{{downloadUrl}}",{{/downloadReady}}"publisher":{"@type":"Person","name":"{{owner}}"}}
-</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -219,6 +220,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
           <div class="job-copy">
             <h3 id="job-raw">Raw footage to a finished video</h3>
             <p>Retakes and pauses go, the better sound lines up, and it cuts to the length you ask for, within 1.5&nbsp;seconds of a minute or 4 of&nbsp;ten.</p>
+            <p class="job-more"><a href="{{page cut-retakes}}">Cutting retakes</a><a href="{{page remove-pauses}}">Pauses and ums</a><a href="{{page youtube-shorts}}">Making Shorts</a></p>
           </div>
           <div class="job-art" data-slot="job-raw" data-kind="product" data-alt="The redesigned editor with a command applied, 2400 by 1500">
             <div class="app app-raw" aria-hidden="true">
@@ -236,6 +238,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
             <ul class="job-list">
               <li>It leaves out the worship set, the announcements and the sponsor&nbsp;read</li>
             </ul>
+            <p class="job-more"><a href="{{page clip-long-videos}}">Clipping long recordings</a></p>
           </div>
           <ul class="app app-files" data-slot="job-clips" data-kind="product" data-alt="The clips /clipping found, with their lengths, 2400 by 1500" aria-hidden="true">
             <li><span>The testimony that stands on its own</span><span class="mono">0:41</span></li>
@@ -249,6 +252,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
           <div class="job-copy">
             <h3 id="job-vlog">A day of clips to a vlog</h3>
             <p>Drop the day and say “make a vlog”. It reads the clock each clip was shot on, leaves out the shaky, dark and repeated ones, and tells the day as a&nbsp;story.</p>
+            <p class="job-more"><a href="{{page vlog-editor}}">Editing a vlog</a></p>
           </div>
           <ol class="app app-story" data-slot="job-vlog" data-kind="product" data-alt="The redesigned app's vlog: the day told as tease, scenes in order and close, 2400 by 1500" aria-hidden="true">
             <li><span class="mono">Tease</span><span>The laughter at 13:40</span></li>
@@ -381,6 +385,7 @@ description: Cutalong is a Mac video editor for YouTube creators. Drop in your f
 
 <footer class="footer">
   <div class="container">
+    {{> footer-jobs}}
     <div class="footer-row">
       {{> lockup}}
       <ul class="footer-links">

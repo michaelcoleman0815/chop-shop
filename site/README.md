@@ -28,8 +28,38 @@ npm run preview      # writes .preview/: a self-contained copy with relative .ht
 ```
 
 The build needs Node 22 or later (`.node-version` pins what Cloudflare uses). It fills the templates in `src/`, puts a
-content hash in every asset's name, and writes `sitemap.xml`, `robots.txt`, `site.webmanifest`, `_headers` and
-`_redirects` from the config. The preview has no Function, so its form says it is not connected.
+content hash in every asset's name, and writes `sitemap.xml`, `robots.txt`, `llms.txt`, `site.webmanifest`, `_headers`
+and `_redirects` from the config. The preview has no Function, so its form says it is not connected.
+
+## Search and link previews
+
+Each page's `<!--page -->` block at the top of its file holds what search and a shared link show:
+
+| Key | What it is |
+| --- | --- |
+| `title` | The search result's title, and the browser tab's. The build stops if it is over 65 characters. |
+| `description` | The search result's text and the shared link's. The build stops unless it is 50 to 160 characters. |
+| `socialTitle` | The title a shared link shows, where it differs from `title` (optional). |
+| `card`, `twitterCard` | The link-preview image: 1200 × 630 for Open Graph (iMessage, Slack, WhatsApp, LinkedIn, Facebook, Discord), and 1200 × 600 for X where it has its own (optional; else `card`). |
+| `cardAlt` | What the card shows, in words. |
+
+From them and the config the build writes, for every page but the 404:
+
+- **The tags**: the canonical link, `robots` (which lets search show the large image and a full snippet), Open Graph
+  and X cards. The 404 is `noindex`, with no canonical.
+- **Structured data**: one linked schema.org graph per page. The site, its publisher, the app (its requirements, the
+  version from the repository's `package.json`, and `features` from the config), and the page. The landing page is
+  also an FAQ built from its own Questions. A question whose answer still holds a blank for the owner (the price) is
+  left out until it is filled in.
+- **`sitemap.xml`**, each page dated by its last commit, not by the build. **`robots.txt`** lets every crawler in,
+  search engines and AI search alike, but not `/api/`. **`llms.txt`** is the site in plain Markdown for AI
+  assistants: the description, what it does, the Questions and the pages.
+
+`npm test` builds the site and checks all of it. Once the site is live, try a link at
+[opengraph.xyz](https://www.opengraph.xyz) or in a message to yourself, and add the site to
+[Google Search Console](https://search.google.com/search-console) and
+[Bing Webmaster Tools](https://www.bing.com/webmasters) with its `sitemap.xml`. Bing's index also feeds ChatGPT search
+and Copilot.
 
 ## Where the config values are
 
@@ -45,6 +75,7 @@ Everything you might change is in [`site.config.mjs`](site.config.mjs):
 | `contactEmail` | The address in the footer, the legal drafts and the list's replies. | `hello@cutalong.io` |
 | `owner` | The name in the footer and the legal drafts. | from `electron-builder.yml` |
 | `requires` | What the current release needs, for the structured data. | macOS 14 or later, Apple silicon |
+| `features` | What the app does, in the page's own words: the structured data's feature list and `llms.txt` read it. Keep each to what the app does today. | ten, from /takes to the upload kit |
 | `crew` | The crew's names and the one line each says for itself under “Meet your crew”. The hero's working rows and credit line use the names too. They are proposals: rename one here and every page follows. Keep each line to work the app really does. | Echo, Snip, Quill, Scout, Tint, Reel |
 
 The form's `action` also feeds the content security policy's `form-action`, so a provider's address works without
@@ -179,10 +210,11 @@ display italic at weight 440 for the accents. `src/fonts/SourceSerif4-OFL.txt` i
 ## Images, checks and tests
 
 ```bash
-npm run images       # redraws the favicons, app icons and social cards from the mark (needs Playwright)
+npm run images       # redraws the favicons, app icons and link-preview cards (needs Playwright)
+npm run images -- --cards   # only the cards: og.png, twitter.png, og-privacy.png and og-terms.png
 npm run shapes       # redraws the living mark, the sticker edge, the avatar shapes and the crew
 npm run check        # screenshots at 1440, 1024, 768 and 390, light and dark, and a keyboard pass (needs Playwright)
-npm test             # the list's Function: valid, invalid, missing, honeypot, a KV failure, with a fake KV
+npm test             # what search and previews read from the built site, and the list's Function with a fake KV
 npm run test:e2e     # the form against the real Function under wrangler pages dev (needs Playwright; runs Wrangler with npx)
 ```
 

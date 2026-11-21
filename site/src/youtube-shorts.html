@@ -1,0 +1,80 @@
+<!--page
+title: Make YouTube Shorts with captions from your videos, Cutalong
+socialTitle: Turn a video into a Short
+crumb: YouTube Shorts
+description: Say /shorts and Cutalong makes your video vertical, cuts to a new shot every 2.5 seconds and captions it two words at a time. On your Mac.
+card: img/og-youtube-shorts.png
+cardAlt: Turn a video into a Short, with /shorts, beside a vertical frame from a laptop review captioned nine hundred bucks, under the ask: make it vertical and add captions.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+{{> head}}
+</head>
+<body>
+{{> doc-top}}
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="container intro">
+      <h1 id="hero-title">Turn a video into a&nbsp;<em>Short</em></h1>
+      <p class="lead job-lead">Say <span class="mono">/shorts</span>. I make it vertical, cut to a new shot every 2.5&nbsp;seconds, and caption it two words at a&nbsp;time.</p>
+      <div class="hero-actions">
+        {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}">Download for Mac</a>{{/downloadReady}}
+        {{^downloadReady}}<a class="btn btn-primary" href="{{page index}}#signup">Get notified when it’s ready</a>{{/downloadReady}}
+        <p class="hero-note">For Apple silicon Macs on macOS&nbsp;14 or&nbsp;later</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="makes" aria-labelledby="run-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="run-title">Or ask in your own&nbsp;words</h2>
+      </div>
+      <div class="bento">
+        <article class="job job-raw reveal" aria-labelledby="job-short">
+          <div class="job-copy">
+            <h3 id="job-short">Vertical, captioned, loud enough</h3>
+            <p>Either way it comes out 9:16, captioned, with the sound at −14&nbsp;LUFS, the level YouTube plays&nbsp;at.</p>
+          </div>
+          <div class="job-art" role="img" aria-label="The ask, make it vertical and add captions, and the reply: v3 is ready, it is vertical now, 9:16, and captions show three words at a time, beside a vertical frame captioned nine hundred bucks.">
+            <div class="app app-raw" aria-hidden="true">
+              <p class="app-bubble">Make it vertical and add captions</p>
+              <p class="app-reply">v3 is ready. It is vertical now, 9:16, and captions show three words at a time.</p>
+              <span class="app-short"><span class="app-short-cap">nine hundred bucks</span></span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="questions" id="questions" aria-labelledby="questions-title">
+    <div class="container questions-grid">
+      <h2 id="questions-title" class="reveal">Questions</h2>
+      <div class="qa reveal">
+        <details>
+          <summary>Does it keep it under a minute?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>It tells you. If the cut runs over 60 seconds, it says by how much and asks what to drop, or picks for you if you&nbsp;ask.</p>
+        </details>
+        <details>
+          <summary>Can I make several Shorts from one video?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Yes, with <span class="mono">/clipping</span>. It finds the moments that stand on their own and makes each a vertical, captioned&nbsp;clip.</p>
+        </details>
+        <details>
+          <summary>Can I change the captions?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Yes. Pick Subtitles, Hierarchy or Boxed, or set your channel’s own: how many words at a time, where they sit and their&nbsp;colours.</p>
+        </details>
+        <details>
+          <summary>Does it upload to YouTube?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>No. It exports the Short with its captions, a description, three titles and tags beside it, ready for you to&nbsp;upload.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  {{> jobs-list}}
+</main>
+{{> doc-foot}}
+</body>
+</html>
