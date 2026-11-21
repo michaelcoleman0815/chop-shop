@@ -89,7 +89,8 @@ export function pathFromUrl(url: string): string | null {
     }
   }
   const path = (m[2] ?? '/').split('/').map(decode).join('/')
-  if (/^\/[A-Za-z]:(\/|$)/.test(path)) return path.slice(1).replace(/\//g, '\\')
+  // A drive, after which the slashes lean either way: Premiere encodes forward ones, other tools backslashes.
+  if (/^\/[A-Za-z]:([\\/]|$)/.test(path)) return path.slice(1).replace(/\//g, '\\')
   if (host && host !== 'localhost') return `\\\\${host}${path.replace(/\//g, '\\')}`
   return path
 }

@@ -28,6 +28,8 @@ void (async () => {
   }
   const { mountCutalong } = await import('../../src/renderer/src/cutalong/main')
   await import('../../src/renderer/src/cutalong/phone.css')
+  // A CI run starts at Start, past the welcome a first launch shows.
+  if (drive) await drive.beforeMount()
   mountCutalong(ReactDOM.createRoot(root))
   if (drive) void drive.drive()
 })()

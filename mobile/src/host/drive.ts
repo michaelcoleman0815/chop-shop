@@ -77,6 +77,17 @@ function readPlan(): Promise<Plan | null> {
   return planRead
 }
 
+/**
+ * Before the app is drawn: a run with a plan starts past first run, at Start, where its
+ * steps begin. The welcome and onboarding are a person's first launch, not this flow.
+ */
+export async function beforeMount(): Promise<void> {
+  if (!(await readPlan())) return
+  // Loaded here, once the phone's host is in place: the app's api module picks its host as it loads.
+  const { markOnboarded } = await import('../../../src/renderer/src/cutalong/firstRun')
+  markOnboarded()
+}
+
 /** Anthropic as the drive stands in for it, once a plan is read: down for the dark tour. */
 let standIn: StandIn | null = null
 

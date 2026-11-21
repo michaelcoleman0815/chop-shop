@@ -177,6 +177,8 @@ describe('a Premiere sequence, read', () => {
     expect(pathFromUrl('file://localhost/Volumes/Shoot/Day%201/A001.mov')).toBe('/Volumes/Shoot/Day 1/A001.mov')
     expect(pathFromUrl('file:///Users/me/a.mov')).toBe('/Users/me/a.mov')
     expect(pathFromUrl('file://localhost/C%3a/Clips/A%20B.mov')).toBe('C:\\Clips\\A B.mov')
+    // One written by another tool with the backslashes encoded reads the same.
+    expect(pathFromUrl('file://localhost/C%3A%5CClips%5CA%20B.mov')).toBe('C:\\Clips\\A B.mov')
     expect(pathFromUrl('file://server/share/a.mov')).toBe('\\\\server\\share\\a.mov')
     // As the Premiere export writes one, and back.
     expect(pathFromUrl(pathUrl('/Users/me/Día 1/take #2.mov'))).toBe('/Users/me/Día 1/take #2.mov')
@@ -343,9 +345,11 @@ describe.skipIf(!FFMPEG)('a copy of the sequence to play here', () => {
     coded('C001.mov', 9, 120, null)
     const { execFileSync } = await import('child_process')
     execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000:duration=20', join(dir, 'Bed.wav')])
-    const text = ORIGINAL.replace(/file:\/\/localhost\/Volumes\/Shoot\/Day%201/g, pathUrl(dir)).replace(
+    // As the Premiere export writes a folder's address, a Windows one too: forward slashes, the drive encoded.
+    const url = pathUrl(dir.replace(/\\/g, '/'))
+    const text = ORIGINAL.replace(/file:\/\/localhost\/Volumes\/Shoot\/Day%201/g, url).replace(
       /file:\/\/localhost\/Volumes\/Shoot\/Music/g,
-      pathUrl(dir)
+      url
     )
     writeFileSync(join(dir, 'sequence.xml'), text)
     const seq = parseXmeml(text) as XmemlSequence
