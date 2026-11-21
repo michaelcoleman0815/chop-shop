@@ -7,7 +7,10 @@ on:
 
 jobs:
   mac:
-    runs-on: macos-14
+    # GitHub retired its macos-14 machines, and a job asking for one is cancelled before it starts.
+    # The oldest macOS the app opens on is held by the build scripts (MACOSX_DEPLOYMENT_TARGET) and
+    # checked below (check-macos-min.sh), not by the machine it is built on.
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
