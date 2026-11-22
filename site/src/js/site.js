@@ -2,7 +2,7 @@
 
 const reduce = matchMedia('(prefers-reduced-motion: reduce)')
 
-// ---- The hero's take: the real v2, playing without sound while it can be seen. Sound is one press away;
+// ---- The hero's take: the laptop review's Short, playing without sound while it can be seen. Sound is one press away;
 // with reduced motion it waits, with the player's own controls, until it is played.
 document.querySelectorAll('[data-take]').forEach((video) => {
   const sound = video.parentElement.querySelector('[data-take-sound]')
