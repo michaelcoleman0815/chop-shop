@@ -10,6 +10,9 @@ import { FONTS_DIR, resourcePath, WHISPER_PATH } from './resources'
 import { detectFaces, FACE_MODEL_PATH, hasFaceFinder, VISION_PATH } from './track'
 import { RELEASES_URL } from './updater'
 import { makeRenderer, take } from '../shared/vision/synthetic'
+import { applyOps, createDoc, currentCut, resolveCut, wordsFromTranscript } from '../shared/edit'
+import { renderCut } from './cut-render'
+import { renderCutLayers } from './layers-render'
 
 /**
  * The packaged app checking itself, for the build that makes it. Started
@@ -56,6 +59,111 @@ async function faceClip(path: string): Promise<{ durationSec: number }> {
     ff.stdin.end()
   })
   return { durationSec }
+}
+
+/** One frame's colour over a region, as fractions of the frame, read back with this ffmpeg. */
+function colourAt(path: string, sec: number, x: number, y: number, w: number, h: number): number[] {
+  const r = spawnSync(
+    FFMPEG_PATH,
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-ss', sec.toFixed(3), '-i', path, '-frames:v', '1'],
+      ...['-vf', `crop=iw*${w}:ih*${h}:iw*${x}:ih*${y},scale=in_color_matrix=bt709:in_range=tv,format=gbrp,scale=1:1:flags=area,format=rgb24`, '-f', 'rawvideo', '-']
+    ],
+    { timeout: 60_000 }
+  )
+  return [...(r.stdout ?? Buffer.alloc(0)).subarray(0, 3)]
+}
+
+/** How loud a tone is in a stretch of a file's sound, in dB, through a narrow band around it. */
+function toneDb(path: string, sec: number, length: number, hz: number): number {
+  const r = spawnSync(
+    FFMPEG_PATH,
+    [
+      ...['-hide_banner', '-ss', sec.toFixed(3), '-t', length.toFixed(3), '-i', path, '-map', '0:a:0'],
+      ...['-af', `bandpass=f=${hz}:width_type=q:w=12,bandpass=f=${hz}:width_type=q:w=12,volumedetect`, '-f', 'null', '-']
+    ],
+    { encoding: 'utf8', timeout: 60_000 }
+  )
+  const m = /mean_volume:\s*(-?[\d.]+) dB/.exec(r.stderr ?? '')
+  return m ? Number(m[1]) : -120
+}
+
+/**
+ * A short edit with layer tracks exported the way the app exports one: a red
+ * solid over the left half of the picture, a title in the app's own font, and
+ * a sound clip mixed with the voice, each read back from the file.
+ */
+async function layersExport(): Promise<string> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'cutalong-self-check-layers-'))
+  try {
+    const W = 320
+    const H = 180
+    const base = join(dir, 'base.mp4')
+    const sound = join(dir, 'ding.wav')
+    const run = (args: string[]): void => {
+      const r = spawnSync(FFMPEG_PATH, ['-hide_banner', '-loglevel', 'error', '-y', ...args], { encoding: 'utf8', timeout: 60_000 })
+      if (r.status !== 0) throw new Error(r.stderr?.trim() || `ffmpeg exited with ${r.status}`)
+    }
+    run([
+      ...['-f', 'lavfi', '-i', `color=c=0x808080:s=${W}x${H}:r=30:d=3`, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=3'],
+      ...['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', base]
+    ])
+    run(['-f', 'lavfi', '-i', 'sine=f=2500:sample_rate=48000:d=2', sound])
+    const source = { id: 's1', path: base, durationSec: 3, width: W, height: H, fps: 30 }
+    const words = wordsFromTranscript(
+      ['one', 'two', 'three', 'four', 'five'].map((text, i) => ({ text, startSec: 0.2 + i * 0.5, endSec: 0.6 + i * 0.5 })),
+      's1'
+    )
+    const doc = createDoc({ id: 'self-check', title: 'Layers', source, words })
+    const r = applyOps(
+      currentCut(doc),
+      [
+        { op: 'aspect', aspect: 'original' },
+        { op: 'captions', set: { on: false } },
+        { op: 'loudness', lufs: null },
+        { op: 'clip-add', kind: 'solid', color: '#FF0000', from: 'start+1', to: '1.5s', transform: { scale: 0.5, x: W * 0.25, y: H / 2 } },
+        { op: 'clip-add', kind: 'text', text: { value: 'LAYERS', size: 24 }, from: 'start+1', to: '1.5s', transform: { y: H * 0.2 } },
+        { op: 'clip-add', kind: 'sound', src: sound, from: 'start+0.5', to: '1s', volume: -6 }
+      ],
+      { words: doc.words, sources: doc.sources }
+    )
+    if (r.rejected.length) throw new Error(r.rejected.map((x) => x.reason).join(' '))
+    const resolved = resolveCut(r.cut, doc.words, doc.sources)
+    const sources = doc.sources.map((s) => ({ ...s, hasAudio: true }))
+    const started = Date.now()
+    const layers = await renderCutLayers({
+      cut: r.cut,
+      resolved,
+      words: doc.words,
+      sources,
+      quality: 'final',
+      ffmpeg: FFMPEG_PATH,
+      workDir: join(dir, 'layers'),
+      fontsDir: FONTS_DIR()
+    })
+    const out = await renderCut(r.cut, resolved, sources, {
+      ffmpeg: FFMPEG_PATH,
+      outputPath: join(dir, 'out.mp4'),
+      workDir: join(dir, 'work'),
+      quality: 'final',
+      fontsDir: FONTS_DIR(),
+      layers
+    })
+    const near = (c: number[], want: number[]): boolean => c.length === 3 && c.every((v, i) => Math.abs(v - want[i]) <= 24)
+    const red = colourAt(out, 1.6, 0.05, 0.4, 0.15, 0.2)
+    const grey = colourAt(out, 0.5, 0.05, 0.4, 0.15, 0.2)
+    if (!near(red, [255, 0, 0])) throw new Error(`the solid is not over the picture: ${red.join(',')} at 1.6 s`)
+    if (!near(grey, [128, 128, 128])) throw new Error(`the picture is not as it was before the solid: ${grey.join(',')}`)
+    // The title's white letters lift the top middle of the frame while it shows.
+    const lit = colourAt(out, 1.6, 0.3, 0.12, 0.4, 0.16)
+    if (!(lit[0] > grey[0] + 8)) throw new Error(`no title drawn: ${lit.join(',')} against ${grey.join(',')}`)
+    const during = toneDb(out, 0.7, 0.6, 2500)
+    const after = toneDb(out, 2.2, 0.6, 2500)
+    if (!(during > -40 && during - after > 20)) throw new Error(`the sound clip is not in the mix: ${during} dB while it plays, ${after} dB after`)
+    return `${layers.overlays.length} overlay, ${layers.sounds.length} sound, in ${Date.now() - started} ms: red ${red.join(',')}, title ${lit.join(',')}, the sound at ${during.toFixed(1)} dB`
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
 }
 
 async function check(name: string, run: () => Promise<string> | string): Promise<Check> {
@@ -145,6 +253,7 @@ export async function selfCheck(reportPath: string): Promise<number> {
       return `drew a ${png.length} byte PNG with Skia`
     })
   )
+  add(await check('layer tracks', layersExport))
   add(
     await check('face finder', async () => {
       if (!hasFaceFinder())
