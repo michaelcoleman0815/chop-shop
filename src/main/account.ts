@@ -85,10 +85,13 @@ async function call(path: string, init: { method: string; body?: unknown; token?
     return { status: 0, body: { ok: false, reason: 'offline', message: 'I couldn’t reach your account. Check the connection.' } }
   }
   const body = (await res.json().catch(() => null)) as Reply | null
-  return {
-    status: res.status,
-    body: body ?? { ok: false, reason: 'unreadable', message: 'Your account answered with something I couldn’t read.' }
-  }
+  if (body) return { status: res.status, body }
+  // A site without the account's Function yet answers with a page, not JSON.
+  const message =
+    res.status === 404 || res.status === 405
+      ? 'Accounts aren’t switched on yet.'
+      : 'Your account answered with something I couldn’t read.'
+  return { status: res.status, body: { ok: false, reason: 'unreadable', message } }
 }
 
 const said = (body: Reply, fallback: string): string => (typeof body.message === 'string' ? body.message : fallback)
