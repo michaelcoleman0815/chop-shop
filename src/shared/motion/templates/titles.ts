@@ -277,8 +277,11 @@ function sermonHook(ctx: BuildContext, style: 'title' | 'card', place: 'top' | '
   const u = frame.u
   const hook = (item.text[0] ?? '').trim()
   const sub = (item.text[1] ?? '').trim()
-  const width = frame.width - frame.safe.left - frame.safe.right
-  const cx = frame.safe.left + width / 2
+  // Centred on the frame, as the captions under it are, not on the safe area: a vertical frame keeps more
+  // clear on the right for the like and share column, whose middle is 4.5% left of the frame's. Both hooks
+  // sit above that column, so they take the same margin on each side, the left's.
+  const width = frame.width - 2 * frame.safe.left
+  const cx = frame.width / 2
   const card = style === 'card'
   // The title's foot sits above a square that starts at 19% of the frame; elsewhere as the banner places it.
   const y =
@@ -308,7 +311,7 @@ function sermonHook(ctx: BuildContext, style: 'title' | 'card', place: 'top' | '
         : { shadow: { color: 'rgba(0, 0, 0, 0.55)', blur: 16 * u, y: 3 * u } },
       align: 'center',
       valign,
-      maxWidth: width * (card ? 0.98 : 0.9),
+      maxWidth: width * (card ? 0.88 : 0.9),
       balance: true,
       plate: card
         ? { color: '#FFFFFF', radius: 10 * u, padX: 26 * u, padY: 14 * u, scaleY: keys([0, 0, 'snap'], [0.24, 1]) }
