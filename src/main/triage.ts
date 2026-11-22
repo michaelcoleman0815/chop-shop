@@ -25,8 +25,8 @@ Routes:
 - vlog: tell a day's clips as a story: a vlog, a day in the life, a trip, from many short clips.
 - clipping: cut many short clips, each its own video, from one or more long recordings: a stream, a church service, a sermon, a podcast, an interview, when the person asks for clips, reels, shorts, TikToks or highlights from it ("turn this into clips", "make reels out of this", "clip this sermon").
 - grid: play two to four videos dropped in at once, side by side in a grid with a label on each, when the person asks for a grid, a 2x2 or the videos side by side.
-- wait: there is no footage yet and no edit open, and the words ask for something to be made: say in one sentence that you will do it when the footage comes ("Drop your footage and I'll make it a Short with captions.").
-- answer: a question about Cutalong or what it can do, or talk that asks for nothing to be made: answer in at most three sentences, from what the <commands> block says Cutalong can do. When there is no footage yet, end by saying what to drop.
+- wait: there is no footage yet, no edit open and nothing made in this chat, and the words ask for something to be made: say in one sentence that you will do it when the footage comes ("Drop your footage and I'll make it a Short with captions.").
+- answer: a question, or talk that asks for nothing to be made: reply as one side of a conversation, in at most three sentences. Read the message in the light of the <chat> block (what was just said) and the <made> block (what this chat already holds, such as clips from a sermon), and answer what the person actually asked, from what the <commands> block says Cutalong can do. When they mention something you have no record of, such as a setting they changed or something they connected, say plainly that you cannot see it from here and ask what they hope it will change. When you cannot tell what they mean, say what you think they mean and ask. Say what to drop only when nothing is made yet and they want something made; never tell them to drop footage when the chat already holds what they are talking about.
 
 A link in the message is one of: study (a video whose style the person likes, to cut theirs like it), material (footage to use in their edit, such as B-roll or an excerpt), page (a web page to show on screen as a screenshot), cards (videos to show on screen as YouTube shows them, a card each with its thumbnail, title and views, read from their pages without downloading them), or none when there is no link.
 
@@ -66,6 +66,10 @@ export interface TriageInput {
   link: string | null
   hasEdit: boolean
   commands?: CommandLine[]
+  /** The last few turns of the chat, oldest first, so a message reads as part of the conversation. */
+  chat?: { role: 'user' | 'assistant'; text: string }[]
+  /** What this chat already holds, a line each: the clips made in it, the edit open. */
+  made?: string[]
 }
 
 export type TriageResult =
@@ -89,7 +93,22 @@ const clock = (sec: number): string => {
 
 const kind = (f: TriageFile): string => (f.video ? 'video' : f.audio ? 'sound only' : 'not a recording')
 
-/** What Claude is sent: the files as measured, the link, whether an edit is open, the commands, and the words. */
+/** What the chat already holds, for a message about it ("make the third one shorter", "will that help?"). */
+function madeBlock(made: string[]): string {
+  const lines = made.map((m) => m.replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 12)
+  return lines.length ? `<made>\n${lines.join('\n')}\n</made>` : ''
+}
+
+/** The turns just before the message, the message itself left out: the conversation it belongs to. */
+function chatBlock(chat: { role: 'user' | 'assistant'; text: string }[], request: string): string {
+  const turns = chat
+    .filter((t) => t.text.trim() && t.text.trim() !== request.trim())
+    .slice(-8)
+    .map((t) => `${t.role === 'user' ? 'Person' : 'Cutalong'}: ${t.text.replace(/\s+/g, ' ').trim().slice(0, 400)}`)
+  return turns.length ? `<chat>\n${turns.join('\n')}\n</chat>` : ''
+}
+
+/** What Claude is sent: the files as measured, the link, whether an edit is open, the commands, what the chat holds, the conversation, and the words. */
 export function triageRequest(input: TriageInput): string {
   const files = input.files.length
     ? input.files
@@ -104,6 +123,8 @@ export function triageRequest(input: TriageInput): string {
     `<link>${input.link ?? 'none'}</link>`,
     `<edit>${input.hasEdit ? 'an edit is open in this chat' : 'no edit yet'}</edit>`,
     renderCommands(input.commands ?? []),
+    madeBlock(input.made ?? []),
+    chatBlock(input.chat ?? [], input.request),
     `<request>\n${input.request.trim()}\n</request>`
   ]
     .filter(Boolean)

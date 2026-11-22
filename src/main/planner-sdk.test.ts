@@ -58,6 +58,19 @@ const text = (t: string) => () =>
     usage: { input_tokens: 1, output_tokens: 1 }
   })
 
+/** Claude calling the plan tool with the plan. */
+const called = (plan: unknown) => () =>
+  respond({
+    id: 'msg_plan',
+    type: 'message',
+    role: 'assistant',
+    model: MODEL,
+    content: [{ type: 'tool_use', id: 'toolu_plan', name: 'plan', input: plan }],
+    stop_reason: 'tool_use',
+    stop_sequence: null,
+    usage: { input_tokens: 1, output_tokens: 1 }
+  })
+
 const PLAN = {
   ops: [
     { op: 'run', command: 'tighten', rest: '', note: '' },
@@ -91,12 +104,46 @@ describe('planning through the SDK', () => {
     expect(body.output_config.effort).toBe('medium')
   })
 
-  it('does not take a plan that breaks the schema, such as a command with a slot missing', async () => {
-    const broken = { ...PLAN, ops: [{ op: 'take', line: 'g1' }] }
-    const r = await planEdit({ doc: talk(), request: 'x', notes: [] }, { fetch: standIn(text(JSON.stringify(broken))).fetch })
-    expect(r.ok).toBe(false)
-    expect(!r.ok && r.message).toMatch(/structured output/i)
-    expect(!r.ok && r.keyState).toBeUndefined()
+  it('hands the plan over as an ordinary tool, since its schema is past what the API compiles into a grammar', async () => {
+    const claude = standIn(called(PLAN))
+    const r = await planEdit({ doc: talk(), request: 'tighten it', notes: [] }, { fetch: claude.fetch })
+    expect(r.ok && r.steps).toHaveLength(3)
+    const body = claude.sent[0] as {
+      tools: { name: string; strict?: boolean; input_schema: unknown }[]
+      tool_choice: unknown
+      output_config: Record<string, unknown>
+      system: { text: string }[]
+    }
+    expect(body.tools.map((t) => t.name)).toEqual(['plan'])
+    expect(body.tools[0].strict).toBeUndefined()
+    expect(JSON.stringify(body.tools[0].input_schema)).toContain('bring-back')
+    expect(body.tool_choice).toEqual({ type: 'auto' })
+    expect(body.output_config).toEqual({ effort: 'medium' })
+    expect(body.system[body.system.length - 1].text).toMatch(/calling the plan tool once/)
+  })
+
+  it('leaves out an op it cannot read and says so, and puts back the empty slots an op left out', async () => {
+    const plan = {
+      ...PLAN,
+      ops: [
+        { op: 'teleport', to: 'the moon' },
+        // The command's empty slots left out: they are put back, as a grammar would have made them write them.
+        { op: 'run', command: 'tighten' },
+        { op: 'aspect', aspect: 'vertical' }
+      ]
+    }
+    const r = await planEdit({ doc: talk(), request: 'x', notes: [] }, { fetch: standIn(called(plan)).fetch })
+    expect(r.ok && r.steps).toEqual([
+      { command: { op: 'run', command: 'tighten', rest: '', note: '' } },
+      { ops: [{ op: 'aspect', aspect: 'vertical' }] }
+    ])
+    expect(r.ok && r.needs).toContain('One change I planned came back in a shape I couldn’t use. Ask again and I’ll redo it.')
+  })
+
+  it('takes a plan written out as JSON when the tool was not called, and nothing when there is no plan', async () => {
+    expect((await planEdit({ doc: talk(), request: 'x', notes: [] }, { fetch: standIn(text(JSON.stringify(PLAN))).fetch })).ok).toBe(true)
+    const none = await planEdit({ doc: talk(), request: 'x', notes: [] }, { fetch: standIn(text('I could not do that.')).fetch })
+    expect(none).toMatchObject({ ok: false, message: 'The plan came back in a shape I could not read. Try again.' })
   })
 
   it('sends nothing without a key, and says each failure as the gate reads it', async () => {

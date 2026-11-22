@@ -5,7 +5,7 @@ import { BrandSwitch } from '../components/BrandSwitch'
 import { ClipSet } from '../components/ClipSet'
 import { KeptScript, MakeBrief } from '../components/MakeBrief'
 import { MakeQuestions } from '../components/MakeQuestions'
-import { Button, Icon, IconButton } from '../components/ui'
+import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { prefersReducedMotion } from '../motion'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
@@ -66,6 +66,8 @@ export function Thread({ app }: { app: Cutalong }): JSX.Element {
                 </AssistantMessage>
               )
             )}
+            {/* Writing back: from the moment a message is sent until the reply, or a step of work, appears. */}
+            {app.busy && app.messages[app.messages.length - 1]?.role === 'user' && <Typing />}
             <div ref={end} />
           </div>
         </div>
@@ -79,5 +81,21 @@ export function Thread({ app }: { app: Cutalong }): JSX.Element {
         </div>
       </main>
     </>
+  )
+}
+
+/** Cutalong writing a reply: its mark breathing, as it does while it thinks, and three dots where the words will be. */
+function Typing(): JSX.Element {
+  return (
+    <div className="cl-msg-assistant cl-typing" role="status" aria-label="Cutalong is writing a reply">
+      <AssistantAvatar working />
+      <div className="cl-msg-body">
+        <span className="cl-typing-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+      </div>
+    </div>
   )
 }

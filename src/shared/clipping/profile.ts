@@ -65,6 +65,8 @@ export interface ClipProfile {
 /** One of the looks a set of clips takes in turn. */
 export interface ClipLook {
   name: string
+  /** The look in a few plain words, for the clip's version: "a square picture on black". */
+  says: string
   captions: Partial<CaptionSpec>
   zoom?: number
   zoomAt?: number
@@ -116,6 +118,7 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     looks: [
       {
         name: 'square',
+        says: 'a square picture on black',
         captions: { preset: 'sermon-box', wordsPerScreen: 3, position: 'bottom', uppercase: false },
         box: SQUARE_BOX,
         // From the top of a square window, chest-up, past the stream's scripture; less made larger than full frame.
@@ -126,6 +129,7 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
       },
       {
         name: 'feature',
+        says: 'full frame, dark and warm',
         captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },
         zoom: 1.45,
         zoomAt: 0,
@@ -134,6 +138,7 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
       },
       {
         name: 'hook card',
+        says: 'full frame, in the room’s own colour',
         captions: { preset: 'sermon-quiet', wordsPerScreen: 3, position: 'middle', uppercase: false },
         zoom: 1.45,
         zoomAt: 0,
@@ -143,6 +148,7 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
       },
       {
         name: 'one word',
+        says: 'full frame, dark and cool',
         captions: { preset: 'sermon-word', wordsPerScreen: 1, position: 'middle', uppercase: true },
         zoom: 1.45,
         zoomAt: 0,
@@ -151,6 +157,7 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
       },
       {
         name: 'red line',
+        says: 'full frame in black and white',
         captions: { preset: 'sermon-red', wordsPerScreen: 3, position: 'middle', uppercase: false },
         zoom: 1.45,
         zoomAt: 0,
@@ -159,6 +166,7 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
       },
       {
         name: 'portrait',
+        says: 'a tall picture on black',
         captions: { preset: 'sermon-build', wordsPerScreen: 8, position: 'chest', uppercase: true },
         // Elevation's: a 4:5 picture on black in the middle of the frame, the sentence building over the chest.
         box: { aspect: 0.8, top: 0.148 },

@@ -386,6 +386,8 @@ describe('landed lines', () => {
     1080,
     { text: '#FFFFFF', accent: '#FFD84D' }
   )
+  // A look that sets the landed line big in a heavier face (no sermon look does any more: see the next test).
+  const landing = { ...sermon, keyFont: 'Inter ExtraBold', keyScale: 1.9 }
   const words = (texts: string[], keys: number[] = []): TranscriptWord[] =>
     said(texts).map((w, i) => (keys.includes(i) ? { ...w, key: true } : w))
 
@@ -429,18 +431,34 @@ describe('landed lines', () => {
     expect(sermon.keyColor).toBe('#FFD84D')
   })
 
+  it('keeps one face and size through a sermon clip: only the key words change, to yellow', () => {
+    for (const preset of ['sermon', 'sermon-red', 'sermon-box']) {
+      const look = captionStyleFor({ on: true, wordsPerScreen: 3, position: 'middle', preset, uppercase: false }, 1080)
+      expect(look.keyFont, preset).toBeUndefined()
+      expect(look.keyScale ?? 1, preset).toBe(1)
+    }
+    const frame = { width: 1080, height: 1920 }
+    const cues = styleCues(words(['Look', 'at', 'the', 'flag', 'and', 'he', 'still', 'sits', 'down.'], [7, 8]), sermon)
+    const runs = cues.flatMap((c) => layoutSubtitle(c, sermon, frame, fakeMeasurer()).blocks.flatMap((b) => b.lines.flatMap((l) => l.runs)))
+    expect(new Set(runs.map((r) => r.font)).size).toBe(1)
+    const keyed = cues.find((c) => c.words.some((w) => w.key))!
+    const keyRuns = layoutSubtitle(keyed, sermon, frame, fakeMeasurer()).blocks.flatMap((b) => b.lines.flatMap((l) => l.runs))
+    expect(keyRuns.filter((r) => r.text.trim() === 'sits' || r.text.trim() === 'down.').every((r) => r.color === '#FFD84D')).toBe(true)
+    expect(keyRuns.filter((r) => r.text.trim() === 'still').every((r) => r.color === '#FFFFFF')).toBe(true)
+  })
+
   it('sets a screen with a key word big in the heavy face, the key words in yellow on their own line', () => {
-    const cues = styleCues(words(['He', 'still', 'sits', 'down.'], [2, 3]), sermon)
-    expect(cues.every((c) => landsLine(c, sermon))).toBe(true)
-    const layout = layoutSubtitle(cues[3], sermon, { width: 1080, height: 1920 }, fakeMeasurer())
+    const cues = styleCues(words(['He', 'still', 'sits', 'down.'], [2, 3]), landing)
+    expect(cues.every((c) => landsLine(c, landing))).toBe(true)
+    const layout = layoutSubtitle(cues[3], landing, { width: 1080, height: 1920 }, fakeMeasurer())
     const lines = layout.blocks[0].lines.map((l) => l.runs.filter((r) => r.text.trim()))
     expect(lines.map((l) => l.map((r) => r.text).join(' '))).toEqual(['He still', 'sits down.'])
     expect(lines[1].every((r) => r.color === '#FFD84D')).toBe(true)
     expect(lines[0].every((r) => r.color === '#FFFFFF')).toBe(true)
     expect(lines[0][0].font).toContain('Inter ExtraBold')
     // A screen with no key word stays small and white.
-    const plain = styleCues(words(['and', 'he', 'said']), sermon)
-    expect(landsLine(plain[0], sermon)).toBe(false)
+    const plain = styleCues(words(['and', 'he', 'said']), landing)
+    expect(landsLine(plain[0], landing)).toBe(false)
   })
 
   it('never shows a dash Whisper wrote at a turn, punctuation kept or not', () => {

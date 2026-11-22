@@ -52,7 +52,7 @@ import {
 import type { SuggestedClip, Transcript, TranscriptWord } from '../shared/types'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { withoutSoundNotes } from './whisper-parse'
-import { sermonPad } from './pads'
+import { sermonPad, type BedMood } from './pads'
 import { keyWordsFor } from './key-words'
 import { presetById } from '../shared/caption-presets'
 import type { CaptionSpec } from '../shared/edit/schema'
@@ -129,12 +129,12 @@ export interface ClippingTools {
   /** Where what was heard and measured is kept, by file. */
   cacheDir: string
   /** The nth clip's bed, for a kind of clip that has one (main/pads); absent lays none. */
-  pad?: (n: number) => Promise<{ path: string; durationSec: number; lufs: number | null } | null>
+  pad?: (n: number, mood?: BedMood) => Promise<{ path: string; durationSec: number; lufs: number | null } | null>
   /**
    * The words each clip's speaker leans on, by index, for captions that pick them out, and each clip's hook,
    * for looks that put one on screen (main/key-words).
    */
-  keyWords?: (clips: string[][]) => Promise<{ keys: number[][]; hooks: string[]; opens?: number[] }>
+  keyWords?: (clips: string[][]) => Promise<{ keys: number[][]; hooks: string[]; opens?: number[]; moods?: BedMood[] }>
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
@@ -314,7 +314,7 @@ export function defaultTools(): ClippingTools {
     suggest: suggestClips,
     brand: readBrand,
     cacheDir: join(app.getPath('userData'), 'clipping'),
-    pad: (n) => sermonPad(join(app.getPath('userData'), 'pads'), n, FFMPEG_PATH),
+    pad: (n, mood) => sermonPad(join(app.getPath('userData'), 'pads'), n, FFMPEG_PATH, mood),
     keyWords: keyWordsFor
   }
 }
@@ -748,7 +748,10 @@ export async function findClips(
       ...(subject ? { subject } : {})
     }
     const laughter = (r.facts.sounds ?? []).filter((s) => s.kind === 'laughter')
-    const music = r.plan.profile.bed && tools.pad ? await tools.pad(k).catch(() => null) : null
+    // The bed in the mood the clip's words call for (main/key-words), curious where nobody was asked.
+    const mood = marks?.moods?.[k] ?? 'curious'
+    const made = r.plan.profile.bed && tools.pad ? await tools.pad(k, mood).catch(() => null) : null
+    const music = made ? { ...made, mood } : null
     const doc = clipDoc({
       id: randomUUID(),
       title: p.title || basename(p.path, extname(p.path)),

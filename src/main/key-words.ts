@@ -1,6 +1,7 @@
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
 import { readApiKey } from './apikey'
+import { BED_MOODS, type BedMood } from './pads'
 import { claude, MODEL } from './planner'
 
 /**
@@ -20,11 +21,19 @@ What to mark: the clip's two to four strongest lines, and in each only the word 
 
 Also choose where each clip opens ("open", a word number): the first word of the strongest line in its first few sentences that a stranger can follow cold, the claim itself rather than the run-up to it. For "And, but if you will study religion, religion kills people, God saves people" that is the second "religion". 0 when the clip already opens on that line. It must start a sentence or a clause (after a full stop or a comma), within the first quarter of the clip, and never leave out what the rest of the clip needs.
 
-Also write each clip's hook: the line on screen that makes a stranger stop scrolling, from what the clip itself says: the promise, the turn, the claim, the moment of the story ("The Doctors Said She'd Never Recover", "Religion Never Points You To God"). Title case, at most eight words, no emoji, no quotation marks, no full stop. Never a question to the viewer, never clickbait the clip does not pay off.`
+Also write each clip's hook: the line on screen that makes a stranger stop scrolling, from what the clip itself says: the promise, the turn, the claim, the moment of the story ("The Doctors Said She'd Never Recover", "Religion Never Points You To God"). Title case, at most eight words, no emoji, no quotation marks, no full stop. Never a question to the viewer, never clickbait the clip does not pay off.
+
+Also choose each clip's mood, for the music under it: "tense" for a warning, a confrontation or a hard truth said hard ("Religion kills people"); "hopeful" for a promise or a victory that lands, or comfort; "curious" for everything else: a story building, a question opened, teaching. Most clips are curious. Never hopeful under a clip that is fierce.`
 
 export const KeyWordsSchema = z.object({
   clips: z.array(
-    z.object({ clip: z.number().int(), words: z.array(z.number().int()), hook: z.string(), open: z.number().int() })
+    z.object({
+      clip: z.number().int(),
+      words: z.array(z.number().int()),
+      hook: z.string(),
+      open: z.number().int(),
+      mood: z.enum(BED_MOODS)
+    })
   )
 })
 export type KeyWords = z.infer<typeof KeyWordsSchema>
@@ -42,6 +51,8 @@ export interface ClipMarks {
   hooks: string[]
   /** The word each clip opens on, by index; 0 keeps its start. */
   opens: number[]
+  /** What each clip's music should feel like. */
+  moods: BedMood[]
 }
 
 /** A hook as it goes on screen: one line, no quotes or closing full stop, eight words at most. */
@@ -86,12 +97,18 @@ export function readKeyWords(answer: KeyWords, clips: string[][]): ClipMarks {
     const open = answer.clips.find((c) => c.clip === n)?.open ?? 0
     return open > 0 && open < Math.floor(words.length / 4) ? open : 0
   })
-  return { keys, hooks, opens }
+  const moods = clips.map((_, n): BedMood => answer.clips.find((c) => c.clip === n)?.mood ?? 'curious')
+  return { keys, hooks, opens, moods }
 }
 
 /** The key words and hook of each clip; none when there is no Claude to ask. */
 export async function keyWordsFor(clips: string[][]): Promise<ClipMarks> {
-  const none: ClipMarks = { keys: clips.map(() => []), hooks: clips.map(() => ''), opens: clips.map(() => 0) }
+  const none: ClipMarks = {
+    keys: clips.map(() => []),
+    hooks: clips.map(() => ''),
+    opens: clips.map(() => 0),
+    moods: clips.map((): BedMood => 'curious')
+  }
   const apiKey = readApiKey()
   if (!apiKey || clips.length === 0) return none
   try {

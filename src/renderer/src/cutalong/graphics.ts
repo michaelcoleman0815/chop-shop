@@ -8,6 +8,7 @@ import interUrl from '../../../../resources/fonts/Inter-SemiBold.ttf?url'
 import interHeavyUrl from '../../../../resources/fonts/Inter-ExtraBold.ttf?url'
 import bebasUrl from '../../../../resources/fonts/BebasNeue-Regular.ttf?url'
 import {
+  forgetMeasures,
   logoLookup,
   marksFrom,
   MOTION_FONTS,
@@ -37,7 +38,10 @@ const URLS: Record<string, string> = {
 
 let fonts: Promise<void> | null = null
 
-/** Loads the motion faces once. Resolves even if one fails, so the canvas still draws. */
+/**
+ * Loads the motion faces once. Resolves even if one fails, so the canvas still draws, and only once the measures
+ * taken before the faces were in are forgotten, so the redraw that follows lays the words out in them.
+ */
 export function loadMotionFonts(): Promise<void> {
   if (fonts) return fonts
   if (typeof document === 'undefined' || typeof FontFace === 'undefined') return Promise.resolve()
@@ -54,7 +58,10 @@ export function loadMotionFonts(): Promise<void> {
         console.warn(`[motion] could not load ${f.family}:`, err)
       }
     })
-  ).then(() => undefined)
+  ).then(() => {
+    // Anything drawn while they loaded was measured in the fallback face: measure again in these.
+    forgetMeasures()
+  })
   return fonts
 }
 

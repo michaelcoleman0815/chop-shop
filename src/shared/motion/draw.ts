@@ -82,8 +82,8 @@ interface DrawState {
   softening?: boolean
 }
 
-// One measuring cache per canvas, kept while the canvas lives.
-const measurers = new WeakMap<object, ReturnType<typeof measurer>>()
+// One measuring cache per canvas, kept while the canvas lives, until the faces change (forgetMeasures).
+let measurers = new WeakMap<object, ReturnType<typeof measurer>>()
 function measurerFor(ctx: Ctx): ReturnType<typeof measurer> {
   let m = measurers.get(ctx)
   if (!m) {
@@ -94,7 +94,18 @@ function measurerFor(ctx: Ctx): ReturnType<typeof measurer> {
 }
 
 /** Layouts of static text, per canvas and per layer. */
-const layouts = new WeakMap<object, WeakMap<TextLayer, TextBlock>>()
+let layouts = new WeakMap<object, WeakMap<TextLayer, TextBlock>>()
+
+/**
+ * Forgets every width measured and every text laid out, on every canvas. A canvas that drew before a face had
+ * loaded measured the fallback face, narrower than the real one, and kept those widths, so once the face came in
+ * its words were drawn wider than the gaps left for them and ran into each other. The editor calls this when its
+ * faces have loaded, so the next frame measures the faces it draws with.
+ */
+export function forgetMeasures(): void {
+  measurers = new WeakMap()
+  layouts = new WeakMap()
+}
 
 /** Whether a layer is on screen at t. */
 export function isActive(layer: Layer, t: number): boolean {

@@ -17,8 +17,8 @@ describe('the words a preacher leans on', () => {
     const read = readKeyWords(
       {
         clips: [
-          { clip: 0, words: [8, 0, 1, 1, 40, -1, 7, 11, 10], hook: '"God Can Restore What You Lost."', open: 2 },
-          { clip: 1, words: [2, 3, 4], hook: 'We Are More Than Conquerors Through Him Who Loved Us', open: 3 }
+          { clip: 0, words: [8, 0, 1, 1, 40, -1, 7, 11, 10], hook: '"God Can Restore What You Lost."', open: 2, mood: 'hopeful' },
+          { clip: 1, words: [2, 3, 4], hook: 'We Are More Than Conquerors Through Him Who Loved Us', open: 3, mood: 'tense' }
         ]
       },
       clips
@@ -28,18 +28,20 @@ describe('the words a preacher leans on', () => {
     expect(read.keys[1]).toEqual([2, 3, 4])
     // A fifth run is left out, and a run stops at four words.
     const many = readKeyWords(
-      { clips: [{ clip: 0, words: [0, 1, 2, 3, 4, 5, 7, 9, 11, 12], hook: '', open: 0 }] },
+      { clips: [{ clip: 0, words: [0, 1, 2, 3, 4, 5, 7, 9, 11, 12], hook: '', open: 0, mood: 'curious' }] },
       [Array.from({ length: 14 }, (_, i) => `w${i}`)]
     )
     expect(many.keys[0]).toEqual([0, 1, 2, 3, 7, 9, 11, 12])
     // An opening within the first quarter is kept; one later is not (five words: the first word only).
     expect(read.opens).toEqual([2, 0])
+    // Each clip's mood for its music, as Claude chose it.
+    expect(read.moods).toEqual(['hopeful', 'tense'])
     // Hooks lose their quotes and full stop, and stop at eight words.
     expect(read.hooks).toEqual(['God Can Restore What You Lost', 'We Are More Than Conquerors Through Him Who'])
   })
 
-  it('leaves a clip Claude said nothing of with none', () => {
-    expect(readKeyWords({ clips: [] }, clips)).toEqual({ keys: [[], []], hooks: ['', ''], opens: [0, 0] })
+  it('leaves a clip Claude said nothing of with none, and curious music', () => {
+    expect(readKeyWords({ clips: [] }, clips)).toEqual({ keys: [[], []], hooks: ['', ''], opens: [0, 0], moods: ['curious', 'curious'] })
     expect(cleanHook('  Healed   in  a kitchen. ')).toBe('Healed in a kitchen')
   })
 })

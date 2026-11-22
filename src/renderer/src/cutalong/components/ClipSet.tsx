@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { currentCut, resolveCut } from '../../../../shared/edit'
 import {
   clipsOfRun,
@@ -9,17 +9,17 @@ import {
   type Clip,
   type ClipSet as ClipSetData
 } from '../../../../shared/clipping'
-import { api } from '../api'
 import { clock } from '../format'
 import { grow } from '../motion'
 import { block, COLOURS, type ColourName } from '../shapes'
 import type { Cutalong } from '../useCutalong'
+import { ClipStill } from './ClipStill'
 import { Button } from './ui'
 import { Working } from './Working'
 
 /**
- * The clips one /clipping run found, as cards under its reply: each with its
- * poster frame, title, length and opening line, a way into the editor, and a
+ * The clips one /clipping run found, as cards under its reply: each with a
+ * still of its edit, title, length and opening line, a way into the editor, and a
  * way to keep or drop it. The newest set carries Export all, the one primary
  * button; while it runs, every card shows its own progress.
  */
@@ -69,23 +69,6 @@ function exportLabel(set: ClipSetData | null): string {
   return `Export all ${kept.length}${again ? ' again' : ''}`
 }
 
-/** A clip's still: its first moment, framed the way the short is. */
-function useClipPoster(clip: Clip): string | null {
-  const [src, setSrc] = useState<string | null>(null)
-  const at = clip.startSec + Math.min(1.5, (clip.endSec - clip.startSec) / 4)
-  useEffect(() => {
-    let live = true
-    api
-      .clipPoster(clip.source, at, 'vertical')
-      .then((url) => live && setSrc(url || null))
-      .catch(() => undefined)
-    return () => {
-      live = false
-    }
-  }, [clip.source, at])
-  return src
-}
-
 function ClipCard({
   clip,
   app,
@@ -100,7 +83,6 @@ function ClipCard({
   /** The card's pastel: colour around the clip's still, never on it. */
   tone: ColourName
 }): JSX.Element {
-  const src = useClipPoster(clip)
   const [ready, setReady] = useState(false)
   // Its length now: as it was found, or as it was left in the editor.
   const length = resolveCut(currentCut(clip.doc), clip.doc.words, clip.doc.sources).durationSec
@@ -117,7 +99,8 @@ function ClipCard({
         disabled={!clip.kept}
       >
         <span className={`cl-poster cl-clip-poster${ready ? ' ready' : ''}`} aria-hidden="true">
-          {src && <img src={src} alt="" draggable={false} onLoad={() => setReady(true)} />}
+          {/* The clip as its edit shows it, not a raw frame: its crop, its colour, its hook and its caption. */}
+          <ClipStill doc={clip.doc} brand={app.chatBrand} onReady={() => setReady(true)} />
           {running && (
             <span className="cl-clip-bar">
               <span style={grow(Math.max(4, job?.percent ?? 0))} />

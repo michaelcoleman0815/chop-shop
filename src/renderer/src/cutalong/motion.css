@@ -1313,3 +1313,31 @@ html[data-cl-move='detach']::view-transition-old(cl-behind) {
     translate: 0 calc(var(--space-1) * var(--cl-travel));
   }
 }
+
+/* Writing a reply: the three dots breathe one after another, as the mark breathes; under reduced motion they hold still. */
+@keyframes cl-typing {
+  0%,
+  70%,
+  100% {
+    opacity: 0.35;
+    translate: 0 0;
+  }
+  35% {
+    opacity: 1;
+    translate: 0 calc(-0.5 * var(--space-1) * var(--cl-travel));
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cl-typing-dots span {
+    animation: cl-typing calc(var(--duration-calm) * 4) var(--ease-breathe) infinite;
+  }
+
+  .cl-typing-dots span:nth-child(2) {
+    animation-delay: calc(var(--duration-calm) * 0.45);
+  }
+
+  .cl-typing-dots span:nth-child(3) {
+    animation-delay: calc(var(--duration-calm) * 0.9);
+  }
+}

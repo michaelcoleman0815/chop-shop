@@ -11,7 +11,7 @@ import {
   type Source
 } from '../edit/schema'
 import { describePlan } from '../presets/plan'
-import type { ClipProfile } from './profile'
+import type { ClipLook, ClipProfile } from './profile'
 import type { TimedWord } from './sentences'
 
 /**
@@ -46,7 +46,7 @@ export interface ClipDocInput {
   /** How long the clip runs on past its last word: the laugh at a punchline, kept whole. */
   tailSec?: number
   /** The bed under it, where the kind of clip has one: a pad made for it (main/pads), with its facts. */
-  music?: { path: string; durationSec?: number; lufs?: number | null }
+  music?: { path: string; durationSec?: number; lufs?: number | null; mood?: string }
   /** Its place in the set, which picks its turn among the looks its kind takes (ClipProfile.looks). */
   variant?: number
   /** The line that hooks a stranger, for a look that puts one on screen. */
@@ -125,6 +125,50 @@ function clipBeats(input: ClipDocInput, words: ReturnType<typeof wordsFromTransc
   return out
 }
 
+/** A clip's turn among the looks its kind takes, by its place in the set; null for a kind with one look. */
+function turnOf(input: Pick<ClipDocInput, 'profile' | 'variant'>): ClipLook | null {
+  const looks = input.profile.looks ?? []
+  return looks.length > 0 ? looks[(((input.variant ?? 0) % looks.length) + looks.length) % looks.length] : null
+}
+
+/** How each caption look reads, in plain words. */
+const CAPTIONS_SAY: Record<string, string> = {
+  sermon: 'captions three words at a time',
+  'sermon-red': 'captions three words at a time',
+  'sermon-box': 'captions three words at a time under the picture',
+  'sermon-quiet': 'small lower-case captions',
+  'sermon-word': 'one word at a time',
+  'sermon-word-tall': 'one tall word at a time',
+  'sermon-build': 'the sentence building as it is said',
+  'sermon-serif': 'one word at a time in a serif'
+}
+
+/**
+ * What the person reads about a finished clip: its look in a sentence, the way an editor would say it, not a
+ * list of settings ("exposure -0.5, contrast +0.25"). Null for a kind of clip without looks, which says its ops.
+ */
+export function clipSummary(
+  input: Pick<ClipDocInput, 'profile' | 'variant' | 'hook' | 'music' | 'captions'>,
+  keyed: boolean
+): string | null {
+  const turn = turnOf(input)
+  if (!turn) return null
+  const parts = [turn.says]
+  const hook = input.hook?.trim()
+  if (turn.hook && hook) parts.push(turn.hook.style === 'card' ? `opening on a “${hook}” card` : `with “${hook}” above it`)
+  const preset = String((input.captions?.preset ?? turn.captions.preset) || '')
+  const captions = CAPTIONS_SAY[preset] ?? 'captions'
+  const key = turn.captions.preset === 'sermon-red' ? 'red' : 'yellow'
+  // Only the looks that colour the key words say so.
+  const colours = ['sermon', 'sermon-red', 'sermon-box', 'sermon-build'].includes(preset)
+  parts.push(keyed && colours ? `${captions}, the words leaned on in ${key}` : captions)
+  if (input.music && input.profile.bed) {
+    const mood = input.music.mood === 'tense' || input.music.mood === 'hopeful' ? input.music.mood : 'curious'
+    parts.push(`a quiet ${mood === 'curious' ? 'ambient' : mood} bed under the voice`)
+  }
+  return `A finished short: ${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}.`
+}
+
 /** The ops that make a clip a finished short. */
 export function finishClipOps(
   input: Pick<ClipDocInput, 'profile' | 'captions' | 'reframe' | 'music' | 'variant' | 'hook'>,
@@ -134,8 +178,7 @@ export function finishClipOps(
 ): Op[] {
   const ops: Op[] = []
   // This clip's turn among the looks its kind takes, so no two in a row look alike.
-  const looks = input.profile.looks ?? []
-  const turn = looks.length > 0 ? looks[(((input.variant ?? 0) % looks.length) + looks.length) % looks.length] : null
+  const turn = turnOf(input)
   if (cut.aspect !== 'vertical') ops.push({ op: 'aspect', aspect: 'vertical' })
   ops.push({
     op: 'captions',
@@ -247,8 +290,9 @@ export function clipDoc(input: ClipDocInput): EditDoc {
   const trial = commit(doc, ops, '', { at })
   if (trial.applied.length === 0) return doc
   const after = resolveCut(currentCut(trial.doc), doc.words, doc.sources)
-  const said = describePlan(trial.applied, before, after, currentCut(trial.doc))
-  const summary = said ? `A finished short. ${said}` : 'A finished short.'
+  // Its look in plain words; a kind without looks says what its ops did.
+  const said = clipSummary(input, keys.length > 0) ?? describePlan(trial.applied, before, after, currentCut(trial.doc))
+  const summary = said.startsWith('A finished short') ? said : said ? `A finished short. ${said}` : 'A finished short.'
   const versions = trial.doc.versions.map((v, i) => (i === trial.doc.versions.length - 1 ? { ...v, summary } : v))
   return { ...trial.doc, versions }
 }

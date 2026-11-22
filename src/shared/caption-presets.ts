@@ -137,16 +137,15 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     style: {
       ...BASE,
       // Lecrae's Shorts (docs/research/sermon-clips.md, "The owner's next three"): three words at a time at
-      // most, small and clean in Inter, as said, punctuation and all, over the chest. The line the preacher
-      // lands is set big in the heavy face, its key words in yellow on a line of their own.
+      // most, small and clean in Inter, as said, punctuation and all, over the chest. The words the preacher
+      // lands on turn yellow in the same face and size, so the clip keeps one look from start to end: a line
+      // set big in a heavier face read as a second style dropped into the clip (the owner, 21 November 2026).
       steady: true,
       wordsPerGroup: 3,
       fontFamily: 'Inter SemiBold',
       fontSizePx: 54,
       letterEm: 0.58,
       keyColor: '#FFD84D',
-      keyFont: 'Inter ExtraBold',
-      keyScale: 1.9,
       positionFrac: 0.52,
       textColor: '#ffffff',
       activeColor: '#ffffff',
@@ -162,8 +161,9 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     name: 'Sermon red',
     style: {
       ...BASE,
-      // The landed line in red, as Lecrae lands "That ain't / biblical": otherwise the Sermon look, three
-      // words at a time in Inter. The red is the look's own, whatever accent the brand brings.
+      // The words landed on in red, as Lecrae lands "That ain't biblical": otherwise the Sermon look, three
+      // words at a time in Inter, one face and size throughout. The red is the look's own, whatever accent
+      // the brand brings.
       steady: true,
       wordsPerGroup: 3,
       fontFamily: 'Inter SemiBold',
@@ -171,8 +171,6 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       letterEm: 0.58,
       keyColor: '#FF3B30',
       ownKey: true,
-      keyFont: 'Inter ExtraBold',
-      keyScale: 1.9,
       positionFrac: 0.52,
       textColor: '#ffffff',
       activeColor: '#ffffff',

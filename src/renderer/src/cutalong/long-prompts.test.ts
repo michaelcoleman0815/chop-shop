@@ -687,15 +687,15 @@ describe('whole prompts, planned by Claude and carried out', () => {
     const result = await carry(c)
     const { offered, before, after, reply, editor, sent } = result
 
-    // What Claude was sent: the commands it can choose, the prompt as written, and the plan's schema.
+    // What Claude was sent: the commands it can choose, the prompt as written, and the plan's schema as its tool.
     expect(sent.model).toBe(MODEL)
     const content = (sent.messages as { content: { text: string }[] }[])[0].content.map((b) => b.text)
     expect(content[0]).toMatch(/^<commands>\n/)
     expect(content[0]).toContain('shorts: ')
     expect(content[content.length - 1]).toContain(`<request>\n${c.prompt}\n</request>`)
-    const format = (sent.output_config as { format: { type: string; schema: unknown } }).format
-    expect(format.type).toBe('json_schema')
-    expect(JSON.stringify(format.schema)).toContain('bring-back')
+    const tools = sent.tools as { name: string; input_schema: unknown }[]
+    expect(tools.map((t) => t.name)).toEqual(['plan'])
+    expect(JSON.stringify(tools[0].input_schema)).toContain('bring-back')
 
     // Each step reached its executor, in the order Claude gave.
     expect(editor.reached).toEqual(c.reached)

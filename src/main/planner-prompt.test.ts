@@ -818,9 +818,9 @@ describe('the planner request', () => {
     expect(none.icon).toBe('')
   })
 
-  it('keeps the plan’s schema inside the limits of structured output', () => {
-    // Claude's structured output allows at most 24 optional and 16 union-typed
-    // parameters in all, and no recursion. Every slot of a graphic is required for this.
+  it('keeps the plan’s schema flat: few optional or union-typed slots, and no references', () => {
+    // A grammar made from it (a model on this computer, planner-local) stays small, and Claude reads every
+    // slot as required. Every slot of a graphic is required for this.
     const schema = (betaZodOutputFormat(PlanSchema) as unknown as { schema: unknown }).schema
     let optional = 0
     let unions = 0

@@ -5246,3 +5246,18 @@ a.cl-btn {
   align-items: center;
   gap: var(--space-2);
 }
+
+/* Cutalong writing a reply (Thread): three dots where the words will be, one reply line tall so nothing jumps. */
+.cl-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 29px;
+}
+
+.cl-typing-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}

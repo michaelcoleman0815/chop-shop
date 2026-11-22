@@ -333,6 +333,108 @@ export const PlanSchema = z.object({
 export type Plan = z.infer<typeof PlanSchema>
 export type PlannerOp = z.infer<typeof PlannerOpSchema>
 
+/**
+ * The tool Claude hands the plan over with. The plan's schema has outgrown what the API will compile into a
+ * grammar for structured output (it takes about the first nine ops of fifty), so the plan goes as an ordinary
+ * tool: Claude sees the whole schema and keeps to it, and readPlan checks every op here instead.
+ */
+export const PLAN_TOOL = 'plan'
+export const PLAN_TOOL_DESCRIPTION =
+  'Hand over the plan: the edit operations in the order they run, the one-sentence summary, the reply, the ids of the notes carried out, what is needed from the person, B-roll wanted and a question. Every field is required, and every slot of an op; an empty string or list means none.'
+export const PLAN_TOOL_INSTRUCTION = `Answer by calling the ${PLAN_TOOL} tool once, with the whole plan in it, and write nothing else.`
+const { $schema: _draft, ...planInput } = z.toJSONSchema(PlanSchema) as Record<string, unknown>
+/** The plan's JSON schema as a tool's input schema. */
+export const PLAN_TOOL_SCHEMA = planInput as { type: 'object' } & Record<string, unknown>
+
+/** Each op's own JSON schema, by name: what its slots are, to fill the empty ones left out. */
+const OP_SLOTS = new Map(
+  (PlannerOpSchema.options as z.ZodObject[]).map((o) => {
+    const json = z.toJSONSchema(o) as { properties?: Record<string, { type?: string; enum?: unknown[] }>; required?: string[] }
+    return [String((o.shape.op as z.ZodLiteral).value), json] as const
+  })
+)
+
+/** An op with the empty slots it left out put back: '' for a string that may be empty, [] for a list. */
+function withSlots(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
+  const op = raw as Record<string, unknown>
+  const json = OP_SLOTS.get(String(op.op))
+  if (!json?.properties) return raw
+  const filled = { ...op }
+  for (const key of json.required ?? []) {
+    if (key in filled) continue
+    const slot = json.properties[key]
+    if (slot?.type === 'array') filled[key] = []
+    else if (slot?.type === 'string' && (!slot.enum || slot.enum.includes(''))) filled[key] = ''
+  }
+  return filled
+}
+
+/**
+ * A plan as Claude handed it over, read without a grammar to hold it to the schema. A plan that fits is taken as
+ * it is. Otherwise each op is checked on its own, with the empty slots it left out put back; an op that still does
+ * not fit is left out and counted, so the rest of the plan still happens and the person hears that some did not.
+ * Null when there is no plan to read at all.
+ */
+export function readPlan(input: unknown): { plan: Plan; unread: number } | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const whole = PlanSchema.safeParse(input)
+  if (whole.success) return { plan: whole.data, unread: 0 }
+  const o = input as Record<string, unknown>
+  if (!Array.isArray(o.ops) && typeof o.reply !== 'string') return null
+  const text = (v: unknown): string => (typeof v === 'string' ? v : '')
+  const texts = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [])
+  const ops: PlannerOp[] = []
+  let unread = 0
+  for (const raw of Array.isArray(o.ops) ? o.ops : []) {
+    const op = PlannerOpSchema.safeParse(withSlots(raw))
+    if (op.success) ops.push(op.data)
+    else unread++
+  }
+  const question = o.question && typeof o.question === 'object' ? (o.question as Record<string, unknown>) : {}
+  const broll = z.array(z.object({ beat: z.string(), search: z.string() })).safeParse(o.brollWanted)
+  return {
+    plan: {
+      ops,
+      summary: text(o.summary),
+      reply: text(o.reply),
+      notesHandled: texts(o.notesHandled),
+      needs: texts(o.needs),
+      ...(broll.success ? { brollWanted: broll.data } : {}),
+      question: { text: text(question.text), options: texts(question.options) }
+    },
+    unread
+  }
+}
+
+/** What the person hears about changes that came back in a shape that could not be used. */
+export function unreadNote(unread: number): string {
+  return unread === 1
+    ? 'One change I planned came back in a shape I couldn’t use. Ask again and I’ll redo it.'
+    : `${unread} changes I planned came back in a shape I couldn’t use. Ask again and I’ll redo them.`
+}
+
+/**
+ * The plan in a reply: the plan tool's input, or failing that a plan written out as JSON in its text, so a reply
+ * that writes the plan instead of calling the tool still counts. Undefined when there is neither.
+ */
+export function planHandedOver(content: { type: string; name?: string; input?: unknown; text?: string }[]): unknown {
+  const call = content.find((b) => b.type === 'tool_use' && b.name === PLAN_TOOL)
+  if (call) return call.input
+  const said = content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join('\n')
+  const from = said.indexOf('{')
+  const to = said.lastIndexOf('}')
+  if (from < 0 || to <= from) return undefined
+  try {
+    return JSON.parse(said.slice(from, to + 1))
+  } catch {
+    return undefined
+  }
+}
+
 /** Settings named one at a time, as the fields of a change. */
 const fieldsOf = (set: { key: string; value: number }[]): Record<string, number> =>
   Object.fromEntries(set.map((s) => [s.key, s.value]))

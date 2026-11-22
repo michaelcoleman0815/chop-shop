@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { followObjects, type Track } from './plan-follow'
 import { platform } from './platform'
 import { claudeKeyStatus, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
@@ -37,11 +36,17 @@ import {
 import { takesOf } from '../shared/raw/plan'
 import {
   fromPlannerOp,
+  PLAN_TOOL,
+  PLAN_TOOL_DESCRIPTION,
+  PLAN_TOOL_INSTRUCTION,
+  PLAN_TOOL_SCHEMA,
+  planHandedOver,
   PLANNER_SYSTEM,
-  PlanSchema,
+  readPlan,
   renderCommands,
   renderRequest,
   renderTranscript,
+  unreadNote,
   withRealIcons,
   type CommandLine,
   type Plan,
@@ -150,7 +155,7 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
   const commands = renderCommands(input.commands ?? [])
 
   try {
-    const response = await client.beta.messages.parse({
+    const response = await client.beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
       // If this model declines, the API retries the request on a fallback
@@ -158,7 +163,14 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       thinking: { type: 'adaptive' },
-      system: [{ type: 'text', text: PLANNER_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      system: [
+        { type: 'text', text: PLANNER_SYSTEM },
+        { type: 'text', text: PLAN_TOOL_INSTRUCTION, cache_control: { type: 'ephemeral' } }
+      ],
+      // The plan goes as a tool, not as structured output: its schema is past what the API compiles into a
+      // grammar, so every op is checked here instead (planner-prompt readPlan).
+      tools: [{ name: PLAN_TOOL, description: PLAN_TOOL_DESCRIPTION, input_schema: PLAN_TOOL_SCHEMA }],
+      tool_choice: { type: 'auto' },
       messages: [
         {
           role: 'user',
@@ -184,7 +196,7 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
           ]
         }
       ],
-      output_config: { effort: 'medium', format: betaZodOutputFormat(PlanSchema) }
+      output_config: { effort: 'medium' }
     })
 
     if (response.stop_reason === 'refusal') {
@@ -193,8 +205,9 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
     if (response.stop_reason === 'max_tokens') {
       return { ok: false, message: 'That was too much to plan in one go. Try fewer notes at a time.' }
     }
-    const plan = response.parsed_output
-    if (!plan) return { ok: false, message: 'The plan came back in a shape I could not read. Try again.' }
+    const read = readPlan(planHandedOver(response.content))
+    if (!read) return { ok: false, message: 'The plan came back in a shape I could not read. Try again.' }
+    const plan = read.unread ? { ...read.plan, needs: [...read.plan.needs, unreadNote(read.unread)] } : read.plan
     // Icons Lucide does not have become the closest one it does.
     return offerTrackedPlan(doc, { ...plan, ops: await withRealIcons(plan.ops) }, input.notes, input.commands)
   } catch (err) {

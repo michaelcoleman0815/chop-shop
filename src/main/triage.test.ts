@@ -100,6 +100,30 @@ describe('reading a message before its footage', () => {
     expect(triageRequest({ ...INPUT, files: [], commands: [] })).toMatch(/^<files>\nnone\n<\/files>\n\n<link>none<\/link>\n\n<edit>no edit yet<\/edit>\n\n<request>/)
   })
 
+  it('sends the conversation so far and what the chat holds, so a message reads as part of it', () => {
+    const sent = triageRequest({
+      ...INPUT,
+      request: 'in the settings',
+      made: ['5 clips made in this chat from service.mp4: “Stop Just Hanging On”, “Religion Kills People”'],
+      chat: [
+        { role: 'user', text: 'make reels out of this' },
+        { role: 'assistant', text: 'I found 5 clips in the service.' },
+        { role: 'user', text: 'just connected more things, will it help?' },
+        { role: 'user', text: 'in the settings' }
+      ]
+    })
+    expect(sent).toContain('<made>\n5 clips made in this chat from service.mp4: “Stop Just Hanging On”, “Religion Kills People”\n</made>')
+    // The turns before it, oldest first, the message itself only once, in the request.
+    expect(sent).toContain(
+      '<chat>\nPerson: make reels out of this\nCutalong: I found 5 clips in the service.\nPerson: just connected more things, will it help?\n</chat>'
+    )
+    expect(sent.match(/in the settings/g)).toHaveLength(1)
+    expect(sent.indexOf('<chat>')).toBeLessThan(sent.indexOf('<request>'))
+    // Claude is told to answer in the conversation, and never to ask for footage the chat already holds.
+    expect(TRIAGE_SYSTEM).toMatch(/one side of a conversation/)
+    expect(TRIAGE_SYSTEM).toMatch(/never tell them to drop footage when the chat already holds/)
+  })
+
   it('takes Claude’s reading as /clipping takes its words: no count is any, no shortest is half the longest', () => {
     expect(readTriage(READ, INPUT.request)).toEqual({
       ok: true,

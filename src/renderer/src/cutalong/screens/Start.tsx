@@ -196,9 +196,11 @@ export function ProjectCard({ project, onOpen }: { project: ProjectSummary; onOp
   useEffect(() => {
     if (!project.primaryMedia) return
     let live = true
+    // One frame, which takes a second, not the whole preview: its filmstrip and waveform take minutes on a long
+    // recording, and a service's card stayed blank until they were done.
     api
-      .mediaPreviews(project.primaryMedia)
-      .then((p) => live && setPoster(p.posterUrl))
+      .mediaPoster(project.primaryMedia)
+      .then((url) => live && setPoster(url))
       .catch(() => undefined)
     return () => {
       live = false

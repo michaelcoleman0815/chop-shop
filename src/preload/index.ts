@@ -547,6 +547,10 @@ const api = {
     link: string | null
     hasEdit: boolean
     commands?: { command: string; summary: string }[]
+    /** The last few turns of the chat, so the message reads as part of the conversation. */
+    chat?: { role: 'user' | 'assistant'; text: string }[]
+    /** What the chat already holds, a line each. */
+    made?: string[]
   }): Promise<
     | {
         ok: true

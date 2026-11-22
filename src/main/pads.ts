@@ -3,19 +3,23 @@ import { join } from 'path'
 import { trackLoudness } from './music'
 
 /**
- * Worship beds, made here: the slow chords most sermon clips sit on
+ * Sermon beds, made here: the slow ambient chords most sermon clips sit on
  * (docs/research/sermon-clips.md: a bed in 24 of 54, nearly all soft keys
  * and pads about 12 dB under the voice, no drums, no swell; the popular
  * clips' beds change chord every few seconds, which a held drone does not).
  * Made by Cutalong itself, so no service can claim or mute a church's clip.
  *
- * The progression worship sets lean on, I V vi IV, four seconds a chord, each
- * chord a pad of open voicings (a low root, then add9 and sus colours in the
- * middle) swelling in over a second and a half and letting go over two, so
- * one chord breathes into the next. Over it, a felt piano: a note or two of
- * each chord, struck softly and left to ring. Every note is three slightly
- * detuned voices of a warm wave, through a soft low-pass and a long reverb.
- * Same key, same file: the timing is seeded, so a bed is made once and kept.
+ * Three moods, chosen for each clip from what it says (main/key-words): curious,
+ * the most of them, open and unresolved, suspended chords and a raised fourth
+ * with a glass tone now and then, so it leans forward without cheering; tense,
+ * for a warning or a hard truth said hard, minor and low over a slow pulse; and
+ * hopeful, for a promise that lands, warm and major, but slow. No plucked or
+ * struck notes and no pop progression: a bright I V vi IV with a piano over it
+ * read as a cheerful corporate guitar under a preacher being fierce (the owner,
+ * 21 November 2026). Eight seconds a chord, each a pad of open voicings swelling
+ * in and letting go slowly, every note three slightly detuned voices of a warm
+ * wave, through a soft low-pass and a long reverb. Same key and mood, same file:
+ * the timing is seeded, so a bed is made once and kept.
  */
 
 const RATE = 44100
@@ -28,22 +32,69 @@ const KEY_ORDER = ['C', 'G', 'D', 'A', 'F', 'Eb']
 export const PAD_SECONDS = 120
 
 /** How long each chord holds. */
-export const CHORD_SECONDS = 4
+export const CHORD_SECONDS = 8
 
-/**
- * I, V, vi, IV, in semitones from the key's root in octave 3: the bass note, the pad's voices (kept
- * close, so the chords move by step), and the piano's two notes an octave above them.
- */
-const PROGRESSION: { bass: number; pad: number[]; piano: number[] }[] = [
-  // I add9: root, fifth, ninth, third.
-  { bass: -12, pad: [0, 7, 14, 16], piano: [19, 26] },
-  // V sus: its root, its fifth, its fourth, its fifth again.
-  { bass: -17, pad: [2, 7, 12, 14], piano: [19, 26] },
-  // vi7: the third, the root, the fifth, the seventh.
-  { bass: -15, pad: [0, 4, 9, 16], piano: [16, 21] },
-  // IV maj9: its root, its third, its fifth, its seventh.
-  { bass: -19, pad: [0, 5, 9, 16], piano: [17, 24] }
-]
+/** What a clip's bed feels like. */
+export const BED_MOODS = ['curious', 'tense', 'hopeful'] as const
+export type BedMood = (typeof BED_MOODS)[number]
+
+/** A chord: the bass note and the pad's voices, in semitones from the key's root in octave 3. */
+interface Chord {
+  bass: number
+  pad: number[]
+}
+
+interface Bed {
+  chords: Chord[]
+  /** The low-pass: the lower, the darker. */
+  cutoff: number
+  /** The glass tones now and then, in semitones from the root; none for a tense bed. */
+  glints: number[]
+  /** A slow pulse in the bass, like a held breath. */
+  pulse: boolean
+}
+
+const BEDS: Record<BedMood, Bed> = {
+  curious: {
+    cutoff: 1900,
+    glints: [26, 31, 33, 38],
+    pulse: false,
+    chords: [
+      // I sus2: root, fifth, ninth, fifth.
+      { bass: -12, pad: [0, 7, 14, 19] },
+      // I add9 with the raised fourth: the lift that asks a question.
+      { bass: -12, pad: [2, 7, 14, 18] },
+      // vi sus2.
+      { bass: -15, pad: [4, 9, 11, 16] },
+      // IV sus2.
+      { bass: -19, pad: [5, 7, 12, 17] }
+    ]
+  },
+  tense: {
+    cutoff: 1200,
+    glints: [],
+    pulse: true,
+    chords: [
+      // i add9, then bVI maj7, iv add9 and v: the minor key's own way down, never resolving bright.
+      { bass: -12, pad: [0, 3, 7, 14] },
+      { bass: -16, pad: [3, 7, 8, 12] },
+      { bass: -19, pad: [5, 8, 12, 14] },
+      { bass: -17, pad: [2, 7, 10, 14] }
+    ]
+  },
+  hopeful: {
+    cutoff: 2200,
+    glints: [24, 28, 31, 36],
+    pulse: false,
+    chords: [
+      // I add9, IV maj9, vi7, V sus: warm, and slow enough to stay out of the way.
+      { bass: -12, pad: [0, 7, 14, 16] },
+      { bass: -19, pad: [0, 5, 9, 16] },
+      { bass: -15, pad: [0, 4, 9, 16] },
+      { bass: -17, pad: [2, 7, 12, 14] }
+    ]
+  }
+}
 
 const hz = (midi: number): number => 440 * 2 ** ((midi - 69) / 12)
 
@@ -57,13 +108,18 @@ function seeded(seed: number): () => number {
 }
 
 /** The bed's samples, left and right, peaking at half full scale. */
-export function padSamples(key: string, seconds = PAD_SECONDS): { left: Float32Array; right: Float32Array } {
+export function padSamples(
+  key: string,
+  seconds = PAD_SECONDS,
+  mood: BedMood = 'curious'
+): { left: Float32Array; right: Float32Array } {
   const root = PAD_KEYS[key]
   if (root === undefined) throw new Error(`No pad in ${key}.`)
+  const bed = BEDS[mood]
   const n = Math.round(seconds * RATE)
   const left = new Float32Array(n)
   const right = new Float32Array(n)
-  const rand = seeded(root * 7919)
+  const rand = seeded(root * 7919 + BED_MOODS.indexOf(mood) * 104729)
 
   // The warm wave, as a table read with linear interpolation.
   const SIZE = 4096
@@ -100,8 +156,8 @@ export function padSamples(key: string, seconds = PAD_SECONDS): { left: Float32A
     }
   }
 
-  const ATTACK = 1.5
-  const RELEASE = 2
+  const ATTACK = 2.5
+  const RELEASE = 3
   const hold = CHORD_SECONDS
   const smooth = (x: number): number => {
     const e = Math.min(1, Math.max(0, x))
@@ -111,18 +167,29 @@ export function padSamples(key: string, seconds = PAD_SECONDS): { left: Float32A
   const padGain = (t: number): number => smooth(t / ATTACK) * (t <= hold ? 1 : smooth(1 - (t - hold) / RELEASE))
   const chords = Math.ceil(seconds / hold) + 1
   for (let c = 0; c < chords; c++) {
-    const chord = PROGRESSION[c % PROGRESSION.length]
+    const chord = bed.chords[c % bed.chords.length]
     // Each chord comes in a little before its bar, so it is full on the change.
     const from = Math.round((c * hold - ATTACK * 0.5) * RATE)
     const to = Math.round(((c + 1) * hold + RELEASE) * RATE)
     voice(root + chord.bass, 0.34, from, to, padGain)
     chord.pad.forEach((p, i) => voice(root + p, [0.5, 0.46, 0.34, 0.28][i], from, to, padGain))
-    // The piano: the first note on the change, the second a beat and a half later, struck softly.
-    chord.piano.forEach((p, i) => {
-      const at = Math.round((c * hold + i * 1.5 + rand() * 0.04) * RATE)
-      const strike = (t: number): number => Math.min(1, t / 0.006) * Math.exp(-t / 1.6)
-      voice(root + p, 0.22, at, at + Math.round(6 * RATE), strike)
-    })
+    // A tense bed's pulse: a low swell every two seconds, the second of each pair softer, like a held breath.
+    if (bed.pulse) {
+      for (let beat = 0; beat < hold / 2; beat++) {
+        const at = Math.round((c * hold + beat * 2 + 0.5) * RATE)
+        const swell = (t: number): number => smooth(t / 0.12) * Math.exp(-t / 0.45)
+        voice(root + chord.bass, beat % 2 === 0 ? 0.42 : 0.26, at, at + Math.round(2 * RATE), swell)
+      }
+    }
+  }
+  // Now and then a glass tone high over it, fading in rather than struck, every three to six seconds.
+  if (bed.glints.length) {
+    const glow = (t: number): number => smooth(t / 0.5) * Math.exp(-t / 2.4)
+    for (let t = 3 + rand() * 2; t < seconds - 4; t += 3 + rand() * 3) {
+      const note = bed.glints[Math.floor(rand() * bed.glints.length)]
+      const at = Math.round(t * RATE)
+      voice(root + note, 0.13, at, at + Math.round(7 * RATE), glow)
+    }
   }
 
   // Soft: a gentle low-pass, so nothing in it is bright enough to compete with a voice.
@@ -131,8 +198,8 @@ export function padSamples(key: string, seconds = PAD_SECONDS): { left: Float32A
     let y = 0
     for (let i = 0; i < x.length; i++) x[i] = y += a * (x[i] - y)
   }
-  lowPass(left, 2400)
-  lowPass(right, 2400)
+  lowPass(left, bed.cutoff)
+  lowPass(right, bed.cutoff)
 
   // A long hall (a Schroeder reverb: four damped combs, then two all-passes), a little different on each side.
   const reverb = (x: Float32Array, spread: number): Float32Array => {
@@ -213,31 +280,32 @@ export function wavBytes(left: Float32Array, right: Float32Array): Buffer {
 }
 
 /** Bumped when the sound of a pad changes, so a kept one is made again. */
-const PAD_VERSION = 2
+const PAD_VERSION = 3
 
 /**
- * The pad for the nth clip of a set, made the first time and kept in `dir`, with how long it runs and how
- * loud it was made, so a bed of it sits where any track would.
+ * The bed for the nth clip of a set, in the mood its words call for, made the first time and kept in `dir`,
+ * with how long it runs and how loud it was made, so a bed of it sits where any track would.
  */
 export async function sermonPad(
   dir: string,
   n: number,
-  ffmpeg: string
-): Promise<{ path: string; key: string; durationSec: number; lufs: number | null }> {
+  ffmpeg: string,
+  mood: BedMood = 'curious'
+): Promise<{ path: string; key: string; mood: BedMood; durationSec: number; lufs: number | null }> {
   const key = KEY_ORDER[((n % KEY_ORDER.length) + KEY_ORDER.length) % KEY_ORDER.length]
-  const path = join(dir, `pad-${key}-v${PAD_VERSION}.wav`)
+  const path = join(dir, `pad-${mood}-${key}-v${PAD_VERSION}.wav`)
   const facts = `${path}.json`
   try {
     const kept = JSON.parse(await fs.readFile(facts, 'utf8')) as { lufs: number | null }
     await fs.stat(path)
-    return { path, key, durationSec: PAD_SECONDS, lufs: kept.lufs }
+    return { path, key, mood, durationSec: PAD_SECONDS, lufs: kept.lufs }
   } catch {
     // Not made yet, or made by an earlier version: made now.
   }
   await fs.mkdir(dir, { recursive: true })
-  const { left, right } = padSamples(key)
+  const { left, right } = padSamples(key, PAD_SECONDS, mood)
   await fs.writeFile(path, wavBytes(left, right))
   const lufs = await trackLoudness(ffmpeg, path)
-  await fs.writeFile(facts, JSON.stringify({ key, lufs }))
-  return { path, key, durationSec: PAD_SECONDS, lufs }
+  await fs.writeFile(facts, JSON.stringify({ key, mood, lufs }))
+  return { path, key, mood, durationSec: PAD_SECONDS, lufs }
 }

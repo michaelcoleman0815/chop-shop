@@ -70,7 +70,7 @@ export const PLAN_COMMANDS = [
   {
     op: 'music-track',
     teach:
-      'put a music bed under the video from the person’s Music folder, a track whose name has these words, or "" to let them choose a file: {"op":"music-track","find":"upbeat"}. Change its level afterwards with the music op.',
+      'put a music bed under the video from the person’s Music folder, a track whose name has these words, or "" to let them choose a file: {"op":"music-track","find":"ambient"}. Choose words that fit what is said: never upbeat or bright under something fierce, solemn or sad. Change its level afterwards with the music op.',
     slots: { find: z.string() }
   },
   {

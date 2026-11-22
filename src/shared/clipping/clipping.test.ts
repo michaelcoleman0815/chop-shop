@@ -479,7 +479,7 @@ describe('a clip as an edit', () => {
     // Chest-up from the top of the picture, past a stream's scripture banner, and graded low-key and muted.
     expect(cut.beats.every((b) => b.treatment.zoom === 1.43 && b.treatment.zoomAt === 0)).toBe(true)
     expect(cut.look).toMatchObject({ exposure: -0.5, saturation: -0.45 })
-    // The next takes the next: full frame, the line landed big; then the quiet captions under a hook card.
+    // The next takes the next: full frame, the key words in yellow; then the quiet captions under a hook card.
     const second = currentCut(clipDoc({ id: 'c2', title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant: 1 }))
     expect(second.captions.preset).toBe('sermon')
     expect(second.box).toBeUndefined()
@@ -501,7 +501,22 @@ describe('a clip as an edit', () => {
     expect(new Set(grades).size).toBe(6)
     expect(third.motion.map((m) => [m.kind, m.style, m.to, m.text[0]])).toEqual([['banner', 'card', '4s', 'Grace Found Her']])
     expect(cut.tighten).toEqual({ maxGapSec: 0.4, padSec: 0.1, fillers: false })
-    expect(currentVersion(doc).summary).toMatch(/^A finished short\. It's vertical now/)
+    // Said as an editor would say it, not as a list of settings.
+    expect(currentVersion(doc).summary).toBe('A finished short: a square picture on black and captions three words at a time under the picture.')
+    const said = clipDoc({
+      id: 'c4',
+      title: 'Grace',
+      source,
+      words: words.map((w, i) => (i === 3 ? { ...w, key: true } : w)),
+      profile: CLIP_PROFILES.church,
+      variant: 2,
+      hook: 'Grace Found Her',
+      music: { path: '/pad.wav', durationSec: 120, lufs: -20, mood: 'tense' }
+    })
+    expect(currentVersion(said).summary).toBe(
+      'A finished short: full frame, in the room’s own colour, opening on a “Grace Found Her” card, small lower-case captions and a quiet tense bed under the voice.'
+    )
+    expect(currentVersion(said).summary).not.toMatch(/exposure|contrast|dB|follows you/)
     expect(undoTarget(doc)).toBe(1)
     expect(doc.profile).toBe('church')
     expect(doc.words.map((w) => w.text).join(' ')).toMatch(/^In the winter.*grace looks like\.$/)

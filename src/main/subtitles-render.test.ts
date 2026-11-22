@@ -128,14 +128,15 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       active: 1
     },
     // The sentence building over two lines, the words not said yet holding their places, two in the accent.
-    // The line landed: the heavy face, big, the key words yellow on a line of their own after a hard break.
+    // The words landed on in yellow, in the look's own face and size.
     {
-      name: 'sermon landed, vertical',
+      name: 'sermon key words, vertical',
       spec: { preset: 'sermon', position: 'middle', wordsPerScreen: 3 },
       size: TALL,
-      words: ['He', 'still', 'sits', 'down.'],
-      active: 3,
-      keys: [2, 3]
+      words: ['still', 'sits', 'down.'],
+      active: 2,
+      keys: [1, 2],
+      shared: 0.92
     },
     {
       name: 'sermon, vertical',
@@ -160,12 +161,13 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       active: 0
     },
     {
-      name: 'sermon red landed, vertical',
+      name: 'sermon red key word, vertical',
       spec: { preset: 'sermon-red', position: 'middle', wordsPerScreen: 3 },
       size: TALL,
       words: ["That", "ain't", 'biblical.'],
       active: 2,
-      keys: [2]
+      keys: [2],
+      shared: 0.92
     },
     {
       name: 'sermon quiet, vertical',

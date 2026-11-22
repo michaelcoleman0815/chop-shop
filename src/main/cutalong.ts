@@ -463,6 +463,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
         link: string | null
         hasEdit: boolean
         commands?: CommandLine[]
+        chat?: { role: 'user' | 'assistant'; text: string }[]
+        made?: string[]
       }
     ) => {
       const files = await Promise.all(
@@ -473,7 +475,15 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       )
       // With no key, the model on this computer chosen in Claude's place reads it (main/local-llm).
       return triage(
-        { request: req.request, files, link: req.link, hasEdit: req.hasEdit, commands: req.commands },
+        {
+          request: req.request,
+          files,
+          link: req.link,
+          hasEdit: req.hasEdit,
+          commands: req.commands,
+          chat: req.chat,
+          made: req.made
+        },
         {
           key: () => keyDeps().read(),
           local: async () => {

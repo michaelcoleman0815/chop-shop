@@ -4118,12 +4118,31 @@ export function useCutalong() {
    */
   const readAsk = useCallback(
     async (words: string, files: Attachment[], link: string | null) => {
+      // What the chat already holds, so a message about it reads as one ("will that help?", "the third one").
+      const clips = clipping.set?.clips ?? []
+      const from = [...new Set(clips.map((c) => c.source.split(/[\\/]/).pop() ?? c.source))]
+      const made = [
+        ...(clips.length
+          ? [
+              `${clips.length} clip${clips.length === 1 ? '' : 's'} made in this chat from ${from.join(', ')}: ${clips
+                .map((c) => `“${c.title}”${c.kept ? '' : ' (dropped)'}`)
+                .join(', ')}`
+            ]
+          : []),
+        ...(docRef.current ? [`An edit open: “${docRef.current.title}”, at v${currentVersion(docRef.current).n}`] : [])
+      ]
       const r = await api.triage({
         request: words,
         files: files.map((f) => ({ path: f.path, name: f.name })),
         link,
         hasEdit: docRef.current !== null,
-        commands: presetsRef.current.map((p) => ({ command: p.command, summary: p.summary }))
+        commands: presetsRef.current.map((p) => ({ command: p.command, summary: p.summary })),
+        // The conversation so far, so the message is read as part of it rather than on its own.
+        chat: messagesRef.current
+          .filter((m) => !m.progress && m.text.trim())
+          .slice(-9)
+          .map((m) => ({ role: m.role === 'user' ? ('user' as const) : ('assistant' as const), text: m.text })),
+        made
       })
       if (r.ok) return r
       noteKey(r.keyState)
@@ -4135,7 +4154,7 @@ export function useCutalong() {
       })
       return null
     },
-    [noteKey, push]
+    [clipping.set, noteKey, push]
   )
 
   /** Sorts what was dropped in: which files are the talking, which has the better sound, which are B-roll. */
