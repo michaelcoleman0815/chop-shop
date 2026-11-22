@@ -252,6 +252,38 @@ export interface OverlaySpan {
   durationSec: number
 }
 
+/**
+ * A clip on a layer track that sounds (shared/tracks): a sound, or a video's own
+ * sound, from `inSec` into its file at its speed, placed at `startSec` for
+ * `durationSec` of the edit, at its gain, its level moving along `keys` (output
+ * seconds) when it has them.
+ */
+export interface ClipSoundOptions {
+  path: string
+  startSec: number
+  durationSec: number
+  inSec: number
+  speed: number
+  gainDb: number
+  keys: LevelKey[]
+}
+
+/** atempo steps for a speed: each between 0.5 and 2, multiplying to it. */
+export function tempoSteps(speed: number): number[] {
+  const steps: number[] = []
+  let s = speed
+  while (s > 2 + 1e-9) {
+    steps.push(2)
+    s /= 2
+  }
+  while (s < 0.5 - 1e-9) {
+    steps.push(0.5)
+    s /= 0.5
+  }
+  if (Math.abs(s - 1) > 1e-6) steps.push(s)
+  return steps
+}
+
 export interface GraphOptions {
   width: number
   height: number
@@ -260,6 +292,10 @@ export interface GraphOptions {
   logo?: LogoMark | null
   /** Motion graphics, over the captions and under the logo. */
   overlays?: OverlaySpan[] | null
+  /** The layer tracks' pictures (main/layers-render), over the effects and under the captions. */
+  layers?: OverlaySpan[] | null
+  /** The layer tracks' sounds, mixed with the finished voice like the sound effects. */
+  sounds?: ClipSoundOptions[]
   /**
    * Scene effects (main/fx-render): their picture work on the joined picture
    * before the look, and what they draw over it after the look and under the
@@ -1296,6 +1332,17 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(...drawn.chains)
     vOut = drawn.out
   }
+  // ---- Layer tracks (src/main/layers-render.ts) ----
+  // Placed on the output's frames by count, as the graphics are, under the captions.
+  for (const [i, o] of (opts.layers ?? []).entries()) {
+    inputs.push('-i', o.path)
+    const k = next++
+    const first = Math.round(o.startSec * fps)
+    chains.push(`[${k}:v]${TO_YUVA},settb=1/${fps},setpts=N+${first}[ly${i}]`)
+    chains.push(`[${vOut}][ly${i}]overlay=0:0:eof_action=pass[vly${i}]`)
+    vOut = `vly${i}`
+  }
+  // ---- end of layer tracks ----
   if (opts.assPath) {
     // Straight onto the picture, tagged BT.709: 7.0 colours captions by the tag, and on 6.0 and 6.1, which
     // colour them with BT.601, the file's colours were moved to land on BT.709 (main/captions). A colour no
@@ -1431,6 +1478,31 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       `[${aOut}]${labels.join('')}amix=inputs=${labels.length + 1}:duration=first:normalize=0,${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[asfx]`
     )
     aOut = 'asfx'
+  }
+  const clipSounds = (opts.sounds ?? []).filter((c) => c.durationSec > 0.01 && c.startSec < totalSec)
+  if (clipSounds.length > 0) {
+    // The layer tracks' sounds: each from its point in its file, at its speed,
+    // to the sample where it lands, at its level (moving along its keys, which
+    // count in the edit's seconds once it is in place); mixed like the effects,
+    // after the voice's loudness is set.
+    const labels: string[] = []
+    for (const [i, c] of clipSounds.entries()) {
+      inputs.push('-ss', fixed(Math.max(0, c.inSec)), '-t', fixed(c.durationSec * c.speed + 0.25), '-i', c.path)
+      const k = next++
+      const tempo = tempoSteps(c.speed).map((s) => `atempo=${s.toFixed(6)}`)
+      const level =
+        c.keys.length > 0 ? `asetnsamples=n=480,${bedVolume(c.gainDb, c.keys)}` : `volume=${c.gainDb.toFixed(2)}dB`
+      chains.push(
+        `[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS${tempo.length ? `,${tempo.join(',')}` : ''},` +
+          `atrim=duration=${exact(c.durationSec)},adelay=delays=${Math.round(c.startSec * 48000)}S:all=1,asetpts=N/SR/TB,${level},` +
+          `apad,atrim=duration=${exact(totalSec)}[clip${i}]`
+      )
+      labels.push(`[clip${i}]`)
+    }
+    chains.push(
+      `[${aOut}]${labels.join('')}amix=inputs=${labels.length + 1}:duration=first:normalize=0,${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[aclips]`
+    )
+    aOut = 'aclips'
   }
   const bed = opts.music
   if (bed) {
@@ -1570,6 +1642,8 @@ export interface RenderCutOptions {
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
   /** Motion graphics from renderCutMotion, laid over the joined picture in the last pass. */
   overlays?: OverlaySpan[] | null
+  /** The layer tracks from renderCutLayers: pictures under the captions, and sounds mixed in. */
+  layers?: { overlays: OverlaySpan[]; sounds: ClipSoundOptions[] } | null
   /** Scene effects from renderCutFx (main/fx-render), worked into the joined picture in the last pass. */
   fx?: GraphOptions['fx']
   /** Where the built-in sound effects are kept once made; the work folder when absent. */
@@ -1990,6 +2064,8 @@ export async function renderCut(
     outputPath: opts.outputPath,
     logo: opts.brand?.logo ?? null,
     overlays: opts.overlays ?? null,
+    layers: opts.layers?.overlays ?? null,
+    sounds: opts.layers?.sounds ?? [],
     fx: opts.fx ?? null
   }
   // One pass over several pieces holds pictures it has not reached yet: the

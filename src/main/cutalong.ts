@@ -21,6 +21,7 @@ import { findSounds, makeAllSfx, readSound } from './sfx'
 import { findPremiere, openInPremiere, writePremiere } from './premiere-cut'
 import { importPremiere, returnName, writePremiereReturn } from './premiere-import'
 import { renderCutMotion } from './motion-render'
+import { renderCutLayers } from './layers-render'
 import { renderEditFx } from './fx-ipc'
 import { captureLink } from './page-shot'
 import { loadIcons, loadLogos } from './motion-icons'
@@ -126,6 +127,8 @@ export const macWork: WorkHost = {
     return (await findSpeakers(FFMPEG_PATH, path, words)).words
   },
   motion: (input) => renderCutMotion({ ...input, icons: loadIcons, logos: loadLogos }),
+  // The layer tracks, drawn by the same compositor (main/layers-render).
+  layers: (input) => renderCutLayers(input),
   // Scene effects, from the cut-outs this Mac makes with Vision (main/fx-ipc).
   fx: (input) => renderEditFx(input),
   // Several players' views of one gaming session, lined up by ear (main/session-povs).

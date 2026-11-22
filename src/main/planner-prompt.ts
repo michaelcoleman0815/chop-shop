@@ -25,6 +25,7 @@ import {
 import { chaptersOf, clock, describeCamera, describeSpeed, seconds } from '../shared/presets'
 import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from '../shared/motion'
 import { FX_PLANNER_OPS, fromFxPlannerOp, fxGuide, fxLines } from '../shared/fx/planner'
+import { TRACK_PLANNER_OPS, fromTrackPlannerOp, tracksGuide, tracksLines } from '../shared/tracks/planner'
 import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { renderPovs } from '../shared/pov/choose'
@@ -108,6 +109,8 @@ Ops apply in order, and a later op sees the ids an earlier split created. Use on
 ${graphicsGuide()}
 
 ${fxGuide()}
+
+${tracksGuide()}
 
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
@@ -314,6 +317,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) }),
   // Scene effects (shared/fx/planner), every slot required in the same way.
   ...FX_PLANNER_OPS,
+  // Layer tracks, clips, keys and trims (shared/tracks/planner), the same way; deep settings travel in spec.
+  ...TRACK_PLANNER_OPS,
   // Cutalong's own commands (shared/plan/commands.ts), run by the editor in the order given.
   ...planCommandSchemas()
 ])
@@ -506,6 +511,16 @@ export function fromPlannerOp(op: PlannerOp): unknown {
     case 'fx-update':
     case 'fx-remove':
       return fromFxPlannerOp(op)
+    case 'track':
+    case 'clip-add':
+    case 'clip-update':
+    case 'clip-trim':
+    case 'clip-split':
+    case 'clip-remove':
+    case 'key-set':
+    case 'key-remove':
+    case 'trim':
+      return fromTrackPlannerOp(op)
     default:
       return op
   }
@@ -737,6 +752,8 @@ export function renderRequest(
   if (graphics.length > 0) parts.push('<graphics>', ...graphics, '</graphics>')
   const effects = fxLines(cut, resolved, doc.words)
   if (effects.length > 0) parts.push('<effects>', ...effects, '</effects>')
+  const layered = tracksLines(cut, resolved, doc.words)
+  if (layered.length > 0) parts.push('<tracks>', ...layered, '</tracks>')
   if (doc.assets.length > 0) {
     // Where each piece already shows, so the planner neither repeats nor forgets one.
     const shows = new Map<string, string[]>()

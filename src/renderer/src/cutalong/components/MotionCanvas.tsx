@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { renderFrame, type IconNode, type Layer, type LogoMark, type MotionScene } from '../../../../shared/motion'
+import { renderFrame, type DrawResources, type IconNode, type Layer, type LogoMark, type MotionScene } from '../../../../shared/motion'
 import type { Asset } from '../../../../shared/edit'
 import { mediaUrlFor } from '../api'
 import { loadIconNodes, loadLogoMarks, loadMotionFonts, loadPicture } from '../graphics'
@@ -32,13 +32,21 @@ export function MotionCanvas({
   assets,
   time,
   width,
-  height
+  height,
+  video,
+  redraw = 0,
+  className = 'cl-motion'
 }: {
   scene: MotionScene
   assets: Asset[]
   time: number
   width: number
   height: number
+  /** Video layers' frames (the layer tracks' clips, from useClipMedia). */
+  video?: DrawResources['video']
+  /** Changes when a video frame arrives, so the frame is drawn again with it. */
+  redraw?: number
+  className?: string
 }): JSX.Element | null {
   const canvas = useRef<HTMLCanvasElement>(null)
   // Bumped when a face, the icons or an image finishes loading, so the frame redraws with it.
@@ -112,12 +120,12 @@ export function MotionCanvas({
       scene.layers,
       scene.size,
       { width: pw, height: ph },
-      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map }
+      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map, video }
     )
     // The moment drawn, for anyone checking the preview against the export.
     el.dataset.time = time.toFixed(4)
-  }, [scene, time, width, height, loaded, icons, logos, pictures, map])
+  }, [scene, time, width, height, loaded, icons, logos, pictures, map, video, redraw])
 
   if (scene.layers.length === 0) return null
-  return <canvas ref={canvas} className="cl-motion" style={{ width, height }} aria-hidden="true" />
+  return <canvas ref={canvas} className={className} style={{ width, height }} aria-hidden="true" />
 }

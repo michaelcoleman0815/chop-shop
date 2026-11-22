@@ -49,6 +49,7 @@ import {
   windowShare,
   type BeatPick,
   type Camera,
+  type Cut,
   type EditDoc,
   type Fit,
   type Look,
@@ -79,6 +80,7 @@ import {
   template,
   themeFrom,
   type MotionItem,
+  type Layer,
   type MotionScene,
   type MotionTheme
 } from '../../../../shared/motion'
@@ -92,6 +94,12 @@ import { fitHeight } from '../components/Composer'
 import { GraphicPanel } from '../components/GraphicPanel'
 import { boxStyle, GridPanels, gridViewFor } from '../components/GridPanels'
 import { MotionCanvas } from '../components/MotionCanvas'
+import { clipSpan, mediaOf, resolveClip, soundingClips, trackLayers, tracksOf, type Placed, type TrackClip } from '../../../../shared/tracks'
+import { isKeyed, type Anim } from '../../../../shared/anim'
+import { ClipPanel } from '../components/ClipPanel'
+import { Lanes, type Lane, type Snap } from '../components/Lanes'
+import { timelineFor } from '../../../../shared/motion/timing'
+import { useClipMedia } from '../useClipMedia'
 import { RegionPicker } from '../components/RegionPicker'
 import { Subtitles } from '../components/Subtitles'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
@@ -155,6 +163,17 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
     [cut, resolved, doc.words, doc.sources, doc.assets, app.chatBrand]
   )
 
+  // The layer tracks on the output clock: their pictures as the compositor's layers, and what sounds.
+  const layers = useMemo(() => {
+    if (tracksOf(cut).length === 0) return { scene: null, sounding: [] }
+    const tl = timelineFor(cut, resolved, doc.words)
+    const media = mediaOf(doc.assets, doc.sources)
+    return {
+      scene: { ...scene, layers: trackLayers(cut, tl, scene.size, media), items: [] },
+      sounding: soundingClips(tracksOf(cut), tl, media)
+    }
+  }, [cut, resolved, doc.words, doc.assets, doc.sources, scene])
+
   const beats: StripBeat[] = useMemo(() => {
     const byId = new Map(cut.beats.map((b) => [b.id, b]))
     const into = new Map((resolved.transitions ?? []).map((t) => [t.beat, t.kind]))
@@ -178,6 +197,31 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   }, [resolved, cut.beats, doc])
 
   const nowBeat = beatAt(resolved, player.time) ?? resolved.beats[resolved.beats.length - 1]
+
+  // The layer tracks in the strip: lanes over and under the beats, a clip picked in them, and the ops they make.
+  const tracks = tracksOf(cut)
+  const [lanesOn, setLanesOn] = useState(() => tracksOf(currentCut(doc)).length > 0)
+  const [clipId, setClipId] = useState<string | null>(null)
+  const clock = useMemo(() => timelineFor(cut, resolved, doc.words), [cut, resolved, doc.words])
+  const media = useMemo(() => mediaOf(doc.assets, doc.sources), [doc.assets, doc.sources])
+  const lanes = useMemo(() => lanesOf(tracks, clock, media, doc.assets), [tracks, clock, media, doc.assets])
+  const snaps = useMemo(() => snapsOf(resolved, lanes), [resolved, lanes])
+  const pickedClip: TrackClip | null = tracks.flatMap((t) => t.clips).find((c) => c.id === clipId) ?? null
+  useEffect(() => {
+    if (clipId && !pickedClip) setClipId(null)
+  }, [clipId, pickedClip])
+  const clipOps = (ops: Op[], said: string): void => app.applyOpsDirect(ops, said)
+  const moveClip = (id: string, from: string, endSec: number): void => {
+    const clip = tracks.flatMap((t) => t.clips).find((c) => c.id === id)
+    if (!clip) return
+    // A clip that ends on an anchor of its own keeps its length by ending where it now ends; a length stays a length.
+    const to = clip.to.trim() && !/^\d+(\.\d+)?\s?s$/.test(clip.to.trim()) ? { to: `start+${endSec.toFixed(2)}` } : {}
+    clipOps([{ op: 'clip-move', clip: id, from, ...to } as Op], 'One clip moves.')
+  }
+  const trimBeat = (beatId: string, edgeName: 'in' | 'out', by: number): void => {
+    const op = beatTrim(cut, doc.words, doc.sources, beatId, edgeName, by)
+    if (op) clipOps([op], edgeName === 'in' ? 'A beat starts somewhere else.' : 'A beat ends somewhere else.')
+  }
 
   // A stretch picked on the strip: notes and commands act on its beats until it is let go.
   const [pick, setPick] = useState<BeatPick | null>(null)
@@ -274,6 +318,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             onRegion={(box) => selected && app.updateGraphic(selected.id, { box })}
             theme={theme}
             captionColors={captionColors}
+            layers={layers}
           />
           {side === 'script' ? (
             <ScriptPanel
@@ -285,6 +330,16 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             />
           ) : side === 'takes' ? (
             <TakesPanel app={app} doc={doc} resolved={resolved} onSeek={player.seek} />
+          ) : pickedClip ? (
+            <ClipPanel
+              clip={pickedClip}
+              span={clipSpan(clock, resolveClip(pickedClip, media))}
+              frame={scene.size}
+              time={player.time}
+              onOps={clipOps}
+              onSeek={player.seek}
+              onClose={() => setClipId(null)}
+            />
           ) : selected ? (
             <GraphicPanel
               item={selected}
@@ -327,9 +382,56 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           }}
           onMark={(id) => {
             setSide('notes')
+            setClipId(null)
             app.selectGraphic(id === selected?.id ? null : id)
             const at = scene.items.find((i) => i.id === id)
             if (at && id !== selected?.id) player.seek(Math.min(at.end - 0.05, at.at + 0.4))
+          }}
+          onTrimBeat={trimBeat}
+          layers={{
+            on: lanesOn,
+            toggle: () => setLanesOn((on) => !on),
+            above: (
+              <Lanes
+                lanes={lanes.filter((l) => l.kind === 'picture').reverse()}
+                duration={resolved.durationSec}
+                time={player.time}
+                selected={clipId}
+                snaps={snaps}
+                onSelect={(id) => {
+                  setClipId(id)
+                  if (id) {
+                    setSide('notes')
+                    app.selectGraphic(null)
+                  }
+                }}
+                onMove={moveClip}
+                onTrim={(id, e, to) => clipOps([{ op: 'clip-trim', clip: id, edge: e, to } as Op], 'One clip is trimmed.')}
+                onRemove={(id) => clipOps([{ op: 'clip-remove', clips: [id] } as Op], 'One clip is gone.')}
+                onSplit={(id, at) => clipOps([{ op: 'clip-split', clip: id, at } as Op], 'One clip is split.')}
+              />
+            ),
+            below: (
+              <Lanes
+                lanes={lanes.filter((l) => l.kind === 'sound')}
+                duration={resolved.durationSec}
+                time={player.time}
+                selected={clipId}
+                snaps={snaps}
+                onSelect={(id) => {
+                  setClipId(id)
+                  if (id) {
+                    setSide('notes')
+                    app.selectGraphic(null)
+                  }
+                }}
+                onMove={moveClip}
+                onTrim={(id, e, to) => clipOps([{ op: 'clip-trim', clip: id, edge: e, to } as Op], 'One clip is trimmed.')}
+                onRemove={(id) => clipOps([{ op: 'clip-remove', clips: [id] } as Op], 'One clip is gone.')}
+                onSplit={(id, at) => clipOps([{ op: 'clip-split', clip: id, at } as Op], 'One clip is split.')}
+              />
+            ),
+            add: <AddMenu doc={doc} time={player.time} onAdd={clipOps} />
           }}
         />
       </main>
@@ -338,6 +440,9 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
 }
 
 const ASPECT: Record<string, number> = { vertical: 9 / 16, square: 1, wide: 16 / 9 }
+
+/** No layer tracks, kept as one value so the clips' media are not remade each frame. */
+const NO_LAYERS: Layer[] = []
 
 function Preview({
   doc,
@@ -353,8 +458,11 @@ function Preview({
   selected,
   onRegion,
   theme,
-  captionColors
+  captionColors,
+  layers
 }: {
+  /** The layer tracks: what they draw over the picture, and what sounds. */
+  layers: { scene: MotionScene | null; sounding: Placed[] }
   doc: EditDoc
   resolved: Resolved
   /** The cut as the decks play it, with beats shown through other cameras. */
@@ -377,6 +485,8 @@ function Preview({
   const well = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
   const cut = currentCut(doc)
+  // The layer tracks' videos and sounds, kept on the player's moment.
+  const clips = useClipMedia(layers.scene?.layers ?? NO_LAYERS, layers.sounding, time, playing)
   // Scene effects, drawn as the export draws them (fx-preview): the picture's inside the decks, the rest over the look.
   const decksBox = useRef<HTMLDivElement>(null)
   const fxPicture = useRef<HTMLCanvasElement>(null)
@@ -499,6 +609,18 @@ function Preview({
           <div className="cl-bigword" style={{ fontSize: Math.round(box.h * 0.1) }}>
             {big.text.replace(/[^\p{L}\p{N}'’-]/gu, '')}
           </div>
+        )}
+        {layers.scene && (
+          <MotionCanvas
+            className="cl-motion cl-layers"
+            scene={layers.scene}
+            assets={doc.assets}
+            time={time}
+            width={box.w}
+            height={box.h}
+            video={clips.frame}
+            redraw={clips.version}
+          />
         )}
         <Subtitles
           cue={showBig ? null : cue}
@@ -1547,5 +1669,120 @@ function TakesPanel({
       )}
       <p className="cl-project-meta">Pick a take to hear it in the cut. Each change is a version you can undo.</p>
     </aside>
+  )
+}
+
+// ---------- Layer tracks in the strip ----------
+
+/** The settings that can carry keys, as a clip holds them. */
+function animsOf(c: TrackClip): (Anim<number> | undefined)[] {
+  return [c.opacity, c.volume, ...Object.values(c.transform ?? {}), ...Object.values(c.crop ?? {})] as (Anim<number> | undefined)[]
+}
+
+/** What a clip is called in its lane: its name, a title's words, a file's name. */
+function clipLabel(c: TrackClip, assets: EditDoc['assets']): string {
+  if (c.name) return c.name
+  if (c.kind === 'text') return c.text?.value ?? 'Title'
+  if (c.kind === 'solid') return 'Colour'
+  const asset = assets.find((a) => a.id === c.src)
+  return asset?.title ?? (c.src ?? '').split(/[\\/]/).pop() ?? c.kind
+}
+
+/** Every track as a lane, each clip where it plays and its keys along it. */
+function lanesOf(tracks: ReturnType<typeof tracksOf>, tl: ReturnType<typeof timelineFor>, media: ReturnType<typeof mediaOf>, assets: EditDoc['assets'] = []): Lane[] {
+  return tracks.map((t) => ({
+    id: t.id,
+    name: t.name,
+    kind: t.kind,
+    hidden: t.hidden,
+    mute: t.mute,
+    locked: t.locked,
+    clips: t.clips.flatMap((c) => {
+      const span = clipSpan(tl, resolveClip(c, media))
+      if (!span) return []
+      const keys = new Set<number>()
+      for (const a of animsOf(c)) if (isKeyed(a)) for (const k of a.keys) keys.add(span.start + k.t)
+      return [{ id: c.id, label: clipLabel(c, assets), kind: c.kind, start: span.start, end: span.end, keys: [...keys].sort((x, y) => x - y) }]
+    })
+  }))
+}
+
+/** Where a move or a trim can land: every word's start and end, every beat's, and the other clips' ends. */
+function snapsOf(resolved: Resolved, lanes: Lane[]): Snap[] {
+  const out: Snap[] = []
+  for (const w of resolved.words) out.push({ t: w.outStart, anchor: w.id }, { t: w.outEnd, anchor: `${w.id}.end` })
+  for (const b of resolved.beats) out.push({ t: b.outStart, anchor: b.id }, { t: b.outEnd, anchor: `${b.id}.end` })
+  for (const l of lanes) for (const c of l.clips) out.push({ t: c.start, anchor: `start+${c.start.toFixed(2)}` }, { t: c.end, anchor: `start+${c.end.toFixed(2)}` })
+  return out
+}
+
+/**
+ * A beat's edge dragged by seconds, as a trim: onto the word whose start (or
+ * end) is nearest where the edge was dragged to, in the beat's recording; a
+ * beat that is a stretch of a recording moves its in or out point by the drag.
+ */
+function beatTrim(cut: Cut, words: EditDoc['words'], sources: EditDoc['sources'], beatId: string, edge: 'in' | 'out', by: number): Op | null {
+  const beat = cut.beats.find((b) => b.id === beatId)
+  if (!beat) return null
+  if (beat.from !== null && beat.to !== null) {
+    const ref = words.find((w) => w.id === (edge === 'in' ? beat.from : beat.to))
+    if (!ref) return null
+    const target = (edge === 'in' ? ref.startSec : ref.endSec) + by
+    let best = ref
+    for (const w of words) {
+      if (w.source !== beat.source) continue
+      const d = Math.abs((edge === 'in' ? w.startSec : w.endSec) - target)
+      if (d < Math.abs((edge === 'in' ? best.startSec : best.endSec) - target)) best = w
+    }
+    return best.id === ref.id ? null : ({ op: 'trim', beat: beatId, edge, word: best.id } as Op)
+  }
+  const length = sources.find((s) => s.id === beat.source)?.durationSec ?? Infinity
+  const sec = edge === 'in' ? Math.max(0, (beat.inSec ?? 0) + by) : Math.min(length, (beat.outSec ?? length) + by)
+  return { op: 'trim', beat: beatId, edge, sec: Math.round(sec * 1000) / 1000 } as Op
+}
+
+/** Adds a title, a colour or a piece of the edit's material to the tracks, at the playhead. */
+function AddMenu({ doc, time, onAdd }: { doc: EditDoc; time: number; onAdd: (ops: Op[], said: string) => void }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const at = time < 0.005 ? 'start' : `start+${time.toFixed(2)}`
+  const add = (op: Record<string, unknown>, said: string): void => {
+    setOpen(false)
+    onAdd([{ op: 'clip-add', from: at, ...op } as Op], said)
+  }
+  const material = doc.assets.filter((a) => a.kind === 'video' || a.kind === 'image' || a.kind === 'audio')
+  return (
+    <span className="cl-menu-anchor">
+      <button type="button" className="cl-strip-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        Add
+      </button>
+      {open && (
+        <div className="cl-menu up" role="menu" onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
+          <button type="button" role="menuitem" onClick={() => add({ kind: 'text', text: { value: 'Title' }, to: '3s' }, 'A title goes over the edit.')}>
+            A title
+            <span className="meta">Words over the picture, at the playhead</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => add({ kind: 'solid', color: '#000000', opacity: 0.5, to: '3s' }, 'A colour goes over the edit.')}>
+            A colour
+            <span className="meta">A tint over the whole frame</span>
+          </button>
+          {material.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              role="menuitem"
+              onClick={() =>
+                add(
+                  { kind: a.kind === 'audio' ? 'sound' : a.kind, src: a.id, ...(a.kind === 'image' ? { to: '4s' } : {}), ...(a.durationSec ? { fileSec: a.durationSec } : {}) },
+                  a.kind === 'audio' ? 'A sound plays under the edit.' : `${a.kind === 'image' ? 'A picture' : 'A video'} goes over the edit.`
+                )
+              }
+            >
+              {a.title}
+              <span className="meta">{a.kind === 'audio' ? 'Sound' : a.kind === 'image' ? 'Picture' : 'Video'}, on a {a.kind === 'audio' ? 'sound' : 'picture'} track</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   )
 }

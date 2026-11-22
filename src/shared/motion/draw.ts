@@ -21,6 +21,8 @@ import { drawMap } from '../maps/paint'
 import type {
   Anim,
   Animator,
+  BlendMode,
+  Crop,
   DrawResources,
   Effects,
   Fill,
@@ -33,7 +35,8 @@ import type {
   Size,
   Stroke,
   TextLayer,
-  Transform
+  Transform,
+  VideoLayer
 } from './types'
 
 /**
@@ -155,7 +158,37 @@ function applyTransform(ctx: Ctx, s: Sampled): void {
   if (s.ax || s.ay) ctx.translate(-s.ax, -s.ay)
 }
 
+/** Canvas2D's names for the blend modes: the same in the browser and on Skia. */
+const COMPOSITE: Record<BlendMode, GlobalCompositeOperation> = {
+  normal: 'source-over',
+  multiply: 'multiply',
+  screen: 'screen',
+  overlay: 'overlay',
+  darken: 'darken',
+  lighten: 'lighten',
+  'color-dodge': 'color-dodge',
+  'color-burn': 'color-burn',
+  'hard-light': 'hard-light',
+  'soft-light': 'soft-light',
+  difference: 'difference',
+  exclusion: 'exclusion',
+  hue: 'hue',
+  saturation: 'saturation',
+  color: 'color',
+  luminosity: 'luminosity',
+  add: 'lighter'
+}
+
+/** A layer mixed with what is under it by its blend mode, or drawn plainly. */
 function drawLayer(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st: DrawState): void {
+  if (!layer.blend || layer.blend === 'normal' || !isActive(layer, t)) return drawPlain(ctx, layer, t, parentOpacity, st)
+  ctx.save()
+  ctx.globalCompositeOperation = COMPOSITE[layer.blend]
+  drawPlain(ctx, layer, t, parentOpacity, st)
+  ctx.restore()
+}
+
+function drawPlain(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st: DrawState): void {
   if (!isActive(layer, t)) return
   const local = t - layer.start
   const length = layer.end - layer.start
@@ -219,6 +252,9 @@ function drawKind(
     case 'map':
       drawMap(ctx, layer, local, length, opacity, st.res.map)
       break
+    case 'video':
+      drawVideoLayer(ctx, layer, local, length, opacity, st)
+      break
   }
 }
 
@@ -231,7 +267,7 @@ function drawKind(
  */
 function localExtent(layer: Layer, local: number, length: number): [number, number, number, number] | null {
   let box: { x: number; y: number; w: number; h: number }
-  if (layer.kind === 'image') box = { x: -layer.w / 2, y: -layer.h / 2, w: layer.w, h: layer.h }
+  if (layer.kind === 'image' || layer.kind === 'video') box = { x: -layer.w / 2, y: -layer.h / 2, w: layer.w, h: layer.h }
   else if (layer.kind === 'shape') box = bounds(shapeCmds(layer.shape))
   else return null
   const fx = layer.effects
@@ -683,6 +719,12 @@ function drawImageLayer(
     drawFallback(ctx, layer)
     return
   }
+  if (layer.crop && !layer.tile) {
+    withEffects(ctx, layer.effects, (pass) => {
+      if (pass !== 'glow') drawPicture(ctx, img, iw, ih, layer.w, layer.h, layer.fit ?? 'contain', layer.crop, local, length)
+    })
+    return
+  }
   // On a tile, a picture fills it; otherwise it fits as asked.
   const cover = layer.tile !== undefined || layer.fit === 'cover'
   const k = cover ? Math.max(layer.w / iw, layer.h / ih) : Math.min(layer.w / iw, layer.h / ih)
@@ -780,10 +822,74 @@ function drawFallback(ctx: Ctx, layer: ImageLayer): void {
 }
 
 function imageSize(img: CanvasImageSource): { width: number; height: number } {
-  const i = img as { naturalWidth?: number; naturalHeight?: number; width?: unknown; height?: unknown }
-  const w = i.naturalWidth || (typeof i.width === 'number' ? i.width : 0)
-  const h = i.naturalHeight || (typeof i.height === 'number' ? i.height : 0)
+  const i = img as {
+    naturalWidth?: number
+    naturalHeight?: number
+    videoWidth?: number
+    videoHeight?: number
+    width?: unknown
+    height?: unknown
+  }
+  const w = i.naturalWidth || i.videoWidth || (typeof i.width === 'number' ? i.width : 0)
+  const h = i.naturalHeight || i.videoHeight || (typeof i.height === 'number' ? i.height : 0)
   return { width: w, height: h }
+}
+
+// ---------- Video, and cropped pictures ----------
+
+const share = (v: number): number => (v <= 0 ? 0 : v >= 1 ? 1 : v)
+
+/**
+ * A picture cut by `crop` and fitted into w by h around the origin: contain
+ * shows all of it, cover fills the box and is cut to it, fill stretches it.
+ */
+function drawPicture(
+  ctx: Ctx,
+  img: CanvasImageSource,
+  iw: number,
+  ih: number,
+  w: number,
+  h: number,
+  fit: 'contain' | 'cover' | 'fill',
+  crop: Crop | undefined,
+  local: number,
+  length: number
+): void {
+  const l = share(num(crop?.left, local, length, 0))
+  const r = share(num(crop?.right, local, length, 0))
+  const t = share(num(crop?.top, local, length, 0))
+  const b = share(num(crop?.bottom, local, length, 0))
+  if (l + r >= 0.999 || t + b >= 0.999) return
+  const sx = iw * l
+  const sy = ih * t
+  const sw = iw * (1 - l - r)
+  const sh = ih * (1 - t - b)
+  let dw = w
+  let dh = h
+  if (fit !== 'fill') {
+    const k = fit === 'cover' ? Math.max(w / sw, h / sh) : Math.min(w / sw, h / sh)
+    dw = sw * k
+    dh = sh * k
+  }
+  ctx.save()
+  if (fit === 'cover') {
+    ctx.beginPath()
+    ctx.rect(-w / 2, -h / 2, w, h)
+    ctx.clip()
+  }
+  ctx.drawImage(img, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh)
+  ctx.restore()
+}
+
+function drawVideoLayer(ctx: Ctx, layer: VideoLayer, local: number, length: number, opacity: number, st: DrawState): void {
+  const img = st.res.video?.(layer, local)
+  if (!img) return
+  const { width: iw, height: ih } = imageSize(img)
+  if (!iw || !ih) return
+  ctx.globalAlpha = opacity
+  withEffects(ctx, layer.effects, (pass) => {
+    if (pass !== 'glow') drawPicture(ctx, img, iw, ih, layer.w, layer.h, layer.fit ?? 'contain', layer.crop, local, length)
+  })
 }
 
 // ---------- Text ----------

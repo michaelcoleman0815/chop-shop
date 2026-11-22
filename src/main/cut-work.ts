@@ -10,7 +10,8 @@ import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { placeFile } from './export-paths'
 import { claudeWriter, writeUploadKit } from './upload-kit'
 import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
-import { renderCut, type GraphOptions, type OverlaySpan, type RenderSource } from './cut-render'
+import { renderCut, type ClipSoundOptions, type GraphOptions, type OverlaySpan, type RenderSource } from './cut-render'
+import type { CutLayersInput } from './layers-render'
 import type { Encoder } from './render/encoder'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
@@ -107,6 +108,11 @@ export interface WorkHost {
   }) => Promise<Watched>
   /** Draws the cut's motion graphics to overlay files; empty overlays when it has none. */
   motion(input: CutMotionInput): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }>
+  /**
+   * The cut's layer tracks for the export (main/layers-render): their pictures as
+   * overlay files and the clips that sound. Absent where they are not drawn yet.
+   */
+  layers?: (input: CutLayersInput) => Promise<{ overlays: OverlaySpan[]; sounds: ClipSoundOptions[] }>
   /**
    * The cut's scene effects for the export, from the cut-outs this computer can
    * make (main/fx-ipc); null when it has none. Absent where they are not drawn.
@@ -438,7 +444,25 @@ export async function renderEdit(
           onProgress: (f) => progress(share + f * 0.15)
         })
       : null
-    const before = share + (fx ? 0.15 : 0)
+    const afterFx = share + (fx ? 0.15 : 0)
+    // The layer tracks: their pictures drawn the same way, their sounds placed for the mix.
+    const hasLayers = (cut.tracks ?? []).some((t) => t.clips.length > 0)
+    const layers =
+      hasLayers && host.layers
+        ? await host.layers({
+            cut,
+            resolved,
+            words: doc.words,
+            sources,
+            assets: doc.assets,
+            quality: req.quality,
+            ffmpeg: host.ffmpeg(),
+            workDir: join(workDir, 'layers'),
+            fontsDir: host.fontsDir(),
+            onProgress: (f) => progress(afterFx + f * 0.25)
+          })
+        : null
+    const before = afterFx + (layers ? 0.25 : 0)
     const pass = subtitlePass(cut, resolved, motion.scene)
     // The subtitles leave out what a card holds back; the music and the sounds still follow every word.
     await renderCut(pass.cut, resolved, sources, {
@@ -449,6 +473,7 @@ export async function renderEdit(
       fontsDir: host.fontsDir(),
       brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
       overlays: motion.overlays,
+      layers,
       fx,
       captionWords: pass.resolved.words,
       // A grid's panels show material, on a ground in the brand's look.

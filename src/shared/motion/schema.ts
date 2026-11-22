@@ -115,16 +115,17 @@ export type MotionRow = z.infer<typeof MotionRowSchema>
 // ---------- Hand-built layers ----------
 
 const n = z.number().finite()
-const EaseSchema = z.union([
+export const EaseSchema = z.union([
   z.enum(EASE_NAMES),
   z.object({ bezier: z.tuple([n, n, n, n]) }),
   z.object({ spring: z.number().min(0).max(0.95) })
 ])
-const ColorSchema = z.string().max(64)
-const keyOf = <T extends z.ZodType>(v: T) =>
+export const ColorSchema = z.string().max(64)
+export const keyOf = <T extends z.ZodType>(v: T) =>
   z.object({ t: n, v, ease: EaseSchema.optional(), from: z.enum(['start', 'end']).optional() })
 const AnimNum = z.union([n, z.object({ keys: z.array(keyOf(n)).min(1).max(64) })])
 const AnimColor = z.union([ColorSchema, z.object({ keys: z.array(keyOf(ColorSchema)).min(1).max(64) })])
+export { AnimNum as AnimNumSchema, AnimColor as AnimColorSchema }
 const FillSchema = z.union([
   AnimColor,
   z.object({
@@ -142,7 +143,7 @@ const StrokeSchema = z.object({
   cap: z.enum(['butt', 'round', 'square']).optional(),
   join: z.enum(['miter', 'round', 'bevel']).optional()
 })
-const TransformSchema = z.object({
+export const TransformSchema = z.object({
   x: AnimNum.optional(),
   y: AnimNum.optional(),
   anchorX: AnimNum.optional(),

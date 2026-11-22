@@ -52,6 +52,39 @@ export interface Key<V> {
 /** A value, or keyframes for it. */
 export type Anim<V> = V | { keys: Key<V>[] }
 
+/**
+ * How a layer mixes with what is drawn under it, by Canvas2D's compositing names
+ * (and so the same in the preview and the export). `add` is Canvas's `lighter`.
+ */
+export const BLEND_MODES = [
+  'normal',
+  'multiply',
+  'screen',
+  'overlay',
+  'darken',
+  'lighten',
+  'color-dodge',
+  'color-burn',
+  'hard-light',
+  'soft-light',
+  'difference',
+  'exclusion',
+  'hue',
+  'saturation',
+  'color',
+  'luminosity',
+  'add'
+] as const
+export type BlendMode = (typeof BLEND_MODES)[number]
+
+/** How much of a picture is cut from each side, as shares of its width or height, 0 to 1. */
+export interface Crop {
+  left?: Anim<number>
+  top?: Anim<number>
+  right?: Anim<number>
+  bottom?: Anim<number>
+}
+
 /** #RRGGBB, #RRGGBBAA, or rgb()/rgba(). */
 export type Color = string
 
@@ -149,6 +182,8 @@ interface Base<T> {
   mask?: Mask
   /** Drawn under the person in the frame, once a person matte is available. */
   behind?: boolean
+  /** How it mixes with what is under it; normal when absent. */
+  blend?: BlendMode
   /**
    * Real motion blur: while the layer moves, it is drawn at `samples` moments
    * across `shutter` seconds centred on the frame and averaged, so a fast move
@@ -341,13 +376,36 @@ export interface ImageLayer<T = number> extends Base<T> {
   fallback?: { text: string; family: string }
   w: number
   h: number
-  fit?: 'contain' | 'cover'
+  /** Fill stretches the picture to the box (with a crop, or for a clip on a track). */
+  fit?: 'contain' | 'cover' | 'fill'
   /** Icon stroke colour. */
   color?: Anim<Color>
   /** Icon stroke width, in the icon's 24-unit grid. */
   strokeWidth?: number
   /** Icons draw on like strokes. */
   trim?: { start?: Anim<number>; end?: Anim<number> }
+  /** Cut from a picture's sides before it is fitted. */
+  crop?: Crop
+}
+
+/**
+ * A video playing in the frame: a clip on one of the edit's layer tracks
+ * (shared/tracks). Centred on the origin, w by h, fitted like an image. Its
+ * frame at a moment comes from DrawResources.video: a <video> element in the
+ * editor, frames decoded by ffmpeg in the export.
+ */
+export interface VideoLayer<T = number> extends Base<T> {
+  kind: 'video'
+  /** The file, on this computer. */
+  src: string
+  /** Where in the file it starts, in seconds. */
+  in: number
+  /** 2 plays twice as fast; 1 when absent. */
+  speed?: number
+  w: number
+  h: number
+  fit?: 'contain' | 'cover' | 'fill'
+  crop?: Crop
 }
 
 export interface GroupLayer<T = number> extends Base<T> {
@@ -361,7 +419,7 @@ export interface MapLayer<T = number> extends Base<T> {
   map: MapPaint
 }
 
-export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | GroupLayer<T> | MapLayer<T>
+export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | GroupLayer<T> | MapLayer<T> | VideoLayer<T>
 
 /** A Lucide icon: element name and attributes, as lucide-static ships them. */
 export type IconNode = [string, Record<string, string | number>]
@@ -385,6 +443,8 @@ export interface DrawResources {
   createCanvas?: (width: number, height: number) => { getContext(kind: '2d'): CanvasRenderingContext2D | null }
   /** The map data and the satellite tiles loaded so far, for map layers. */
   map?: MapResources
+  /** A video layer's frame, `local` seconds into the layer; null when it is not ready. */
+  video?: (layer: VideoLayer, local: number) => CanvasImageSource | null
 }
 
 export interface Size {

@@ -11,8 +11,10 @@ import {
   type Layer,
   type LogoMark,
   type MotionScene,
-  type Size
+  type Size,
+  type VideoLayer
 } from '../shared/motion'
+import type { VideoFrames } from './video-frames'
 import { frameRate, frameSize, type OverlaySpan } from './cut-render'
 import { mapResourcesFor, usesMap } from './map-data'
 import { sceneForCut, type CutMotionInput } from './motion-scene'
@@ -66,8 +68,21 @@ export interface MotionRenderOptions {
   logos?: (slug: string) => LogoMark | undefined
   /** Map data and satellite tiles, for map graphics. */
   map?: MapResources
+  /** Video clips' frames, for the layer tracks' video layers (main/video-frames). */
+  video?: VideoFrames
+  /** The overlay files' names start with this: "motion" unless said. */
+  prefix?: string
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
+}
+
+/** Every video layer, inside groups too. */
+function videoLayersOf(layers: Layer[], out: VideoLayer[] = []): VideoLayer[] {
+  for (const l of layers) {
+    if (l.kind === 'video') out.push(l)
+    else if (l.kind === 'group') videoLayersOf(l.children, out)
+  }
+  return out
 }
 
 /** The stretches to draw, merged until there are few enough for the final pass. */
@@ -123,8 +138,10 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
     logos: opts.logos,
     map: opts.map,
     // Scratch canvases, for motion blur.
-    createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>
+    createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>,
+    ...(opts.video ? { video: (layer: VideoLayer, local: number) => opts.video?.frame(layer, local) ?? null } : {})
   }
+  const videos = opts.video ? videoLayersOf(layers) : []
 
   const { width, height, fps } = opts
   const frames = spans.map((s) => {
@@ -139,20 +156,25 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
   const out: OverlaySpan[] = []
   let done = 0
 
-  for (let i = 0; i < spans.length; i++) {
-    const { first, count } = frames[i]
-    const path = join(opts.workDir, `motion-${String(i).padStart(3, '0')}.mov`)
-    await encode(opts.ffmpeg, path, width, height, fps, opts.signal, async (write) => {
-      for (let n = 0; n < count; n++) {
-        const t = (first + n) / fps
-        renderFrame(ctx, t, layers, opts.design, { width, height }, resources)
-        const pixels = ctx.getImageData(0, 0, width, height).data
-        await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength))
-        done++
-        if (done % 10 === 0) opts.onProgress?.(done / total)
-      }
-    })
-    out.push({ path, startSec: first / fps, durationSec: count / fps })
+  try {
+    for (let i = 0; i < spans.length; i++) {
+      const { first, count } = frames[i]
+      const path = join(opts.workDir, `${opts.prefix ?? 'motion'}-${String(i).padStart(3, '0')}.mov`)
+      await encode(opts.ffmpeg, path, width, height, fps, opts.signal, async (write) => {
+        for (let n = 0; n < count; n++) {
+          const t = (first + n) / fps
+          if (videos.length) await opts.video?.prepare(t, videos)
+          renderFrame(ctx, t, layers, opts.design, { width, height }, resources)
+          const pixels = ctx.getImageData(0, 0, width, height).data
+          await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength))
+          done++
+          if (done % 10 === 0) opts.onProgress?.(done / total)
+        }
+      })
+      out.push({ path, startSec: first / fps, durationSec: count / fps })
+    }
+  } finally {
+    opts.video?.close()
   }
   opts.onProgress?.(1)
   return out

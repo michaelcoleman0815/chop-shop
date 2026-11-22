@@ -1954,6 +1954,297 @@ button:disabled {
   cursor: pointer;
 }
 
+/* ---------- Layer tracks in the strip (components/Lanes) ---------- */
+
+/* With the lanes showing, the strip holds them above and below its beats, on the same clock. */
+.cl-stack {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cl-stack > .cl-beats {
+  flex: 0 0 auto;
+}
+
+.cl-strip-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.cl-strip-toggle {
+  border: 1px solid var(--line-mid);
+  background: transparent;
+  color: var(--ink);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.cl-strip-toggle.on {
+  background: var(--ink);
+  color: var(--card);
+  border-color: var(--ink);
+}
+
+.cl-menu.up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.cl-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cl-lane {
+  position: relative;
+  height: 28px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cl-lane.off {
+  opacity: 0.45;
+}
+
+.cl-lane-name {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.cl-lclip {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 6px;
+  display: flex;
+  align-items: center;
+  border-radius: 5px;
+  /* The stage's second tone, the same in both themes: a clip reads apart from the lane and from the beats' tints. */
+  background: var(--card-2);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.cl-lclip.sound {
+  background: transparent;
+}
+
+.cl-lclip.on {
+  border-color: var(--pick);
+  box-shadow: 0 0 0 2px var(--pick);
+}
+
+.cl-lclip[data-dragging] {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+
+.cl-lane.locked .cl-lclip {
+  cursor: default;
+}
+
+.cl-lclip-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* Either end: grab it to trim. */
+.cl-lclip-edge {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 7px;
+  cursor: ew-resize;
+}
+
+.cl-lclip-key {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  transform: rotate(45deg);
+  background: var(--ink-soft);
+  pointer-events: none;
+}
+
+/* A beat's ends, while the lanes show: grab one to trim the edit itself. */
+.cl-beat {
+  position: relative;
+}
+
+.cl-beat-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 1;
+}
+
+.cl-beat-edge.in {
+  left: 0;
+}
+
+.cl-beat-edge.out {
+  right: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-lclip-edge:hover,
+  .cl-beat-edge:hover {
+    background: var(--line-strong);
+  }
+
+  .cl-strip-toggle:hover {
+    border-color: var(--ink);
+  }
+}
+
+/* ---------- A clip's settings (components/ClipPanel) ---------- */
+
+.cl-clip-panel .cl-notes-scroll {
+  overflow-x: hidden;
+}
+
+.cl-number-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cl-number-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The key at the playhead: a diamond, filled when there is one. */
+.cl-key-toggle {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  transform: rotate(45deg);
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cl-key-toggle.on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.cl-key-toggle:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cl-keyrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -4px 0 6px;
+}
+
+.cl-keyrow-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--card-2);
+}
+
+.cl-keyrow-key {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  padding: 0;
+  transform: rotate(45deg);
+  border: 0;
+  border-radius: 1px;
+  background: var(--ink-soft);
+  cursor: pointer;
+}
+
+.cl-keyrow-key.on {
+  background: var(--ink);
+}
+
+.cl-keyrow-now {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 1.5px;
+  background: var(--pick);
+  pointer-events: none;
+}
+
+/* A setting chosen from a list (a blend, an ease): drawn as the fields are, with the same halo. */
+.cl-clip-panel select {
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  padding: 10px 34px 10px 14px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%),
+    linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  outline: none;
+  cursor: pointer;
+}
+
+.cl-clip-panel select:focus-visible {
+  border-color: var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+.cl-clip-panel select.cl-keyrow-ease {
+  flex: 0 0 auto;
+  max-width: 45%;
+  padding: 6px 30px 6px 12px;
+  font-size: 12.5px;
+}
+
 .cl-mark:focus-visible {
   opacity: 0.7;
 }
