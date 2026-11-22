@@ -208,6 +208,8 @@ export interface CaptionStyle {
   build?: boolean
   /** The colour of the words marked key (TranscriptWord.key), which keep it while they show. */
   keyColor?: string
+  /** The key colour is the look's own (red, say) and stays whatever accent a brand brings. */
+  ownKey?: boolean
   /**
    * The line a preacher lands, set big: a screen holding a key word is set in this face at `keyScale` times
    * the size, its key words in the key colour on a line of their own, as Lecrae's Shorts land "He still /

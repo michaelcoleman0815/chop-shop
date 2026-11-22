@@ -486,6 +486,18 @@ describe('a clip as an edit', () => {
       clipDoc({ id: 'c3', title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant: 2, hook: 'Grace Found Her' })
     )
     expect(third.captions.preset).toBe('sermon-quiet')
+    // Then one word at a time on a cold picture, a red line on black and white, and a 4:5 picture with the
+    // sentence building: no two of the six alike in picture, captions or frame.
+    const turn = (variant: number): ReturnType<typeof currentCut> =>
+      currentCut(clipDoc({ id: `t${variant}`, title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant }))
+    expect(turn(3).captions.preset).toBe('sermon-word')
+    expect(turn(3).look?.temperature).toBeLessThan(0)
+    expect(turn(4).captions.preset).toBe('sermon-red')
+    expect(turn(4).look?.saturation).toBe(-1)
+    expect(turn(5).box).toEqual({ aspect: 0.8, top: 0.148 })
+    expect(turn(6).captions.preset).toBe('sermon-box')
+    const grades = [0, 1, 2, 3, 4, 5].map((v) => JSON.stringify(turn(v).look))
+    expect(new Set(grades).size).toBe(6)
     expect(third.motion.map((m) => [m.kind, m.style, m.to, m.text[0]])).toEqual([['banner', 'card', '4s', 'Grace Found Her']])
     expect(cut.tighten).toEqual({ maxGapSec: 0.4, padSec: 0.1, fillers: false })
     expect(currentVersion(doc).summary).toMatch(/^A finished short\. It's vertical now/)

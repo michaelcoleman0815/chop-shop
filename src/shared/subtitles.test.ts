@@ -391,6 +391,25 @@ describe('landed lines', () => {
     expect(landedGroups(after, 3).map((g) => g.map((x) => x.text).join(' '))).toEqual(['Amen.', 'Religion kills', 'people.'])
   })
 
+  it('keeps a look’s own red under a brand with a yellow accent', () => {
+    const red = captionStyleFor(
+      { on: true, wordsPerScreen: 3, position: 'middle', preset: 'sermon-red', uppercase: false },
+      1080,
+      { text: '#FFFFFF', accent: '#FFD84D' }
+    )
+    expect(red.keyColor).toBe('#FF3B30')
+  })
+
+  it('sets one word at a time in tall capitals, no punctuation', () => {
+    const word = captionStyleFor({ on: true, wordsPerScreen: 1, position: 'middle', preset: 'sermon-word', uppercase: true }, 1080)
+    const cues = styleCues(words(['Just', 'be', 'a', 'good', 'believer.']), word)
+    // Shown in capitals, so a sentence's own capital is let go with its punctuation.
+    expect(cues.map((c) => c.words.map((w) => w.text))).toEqual([['just'], ['be'], ['a'], ['good'], ['believer']])
+    expect(word.fontFamily).toBe('Bebas Neue')
+    // A long word still fits between the margins.
+    expect(fitFontPx(['GLORIFYING'], word, 1080)).toBe(word.fontSizePx)
+  })
+
   it('never picks out the word being said, whatever accent the brand brings', () => {
     expect(sermon.activeColor).toBe('#FFFFFF')
     expect(sermon.keyColor).toBe('#FFD84D')

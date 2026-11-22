@@ -158,6 +158,55 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     }
   },
   {
+    id: 'sermon-red',
+    name: 'Sermon red',
+    style: {
+      ...BASE,
+      // The landed line in red, as Lecrae lands "That ain't / biblical": otherwise the Sermon look, three
+      // words at a time in Inter. The red is the look's own, whatever accent the brand brings.
+      steady: true,
+      wordsPerGroup: 3,
+      fontFamily: 'Inter SemiBold',
+      fontSizePx: 54,
+      letterEm: 0.58,
+      keyColor: '#FF3B30',
+      ownKey: true,
+      keyFont: 'Inter ExtraBold',
+      keyScale: 1.9,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-word',
+    name: 'Sermon one word',
+    style: {
+      ...BASE,
+      // 2819 Church's Shorts: one word at a time, as said, in tall condensed capitals, big and white in the
+      // middle of the frame. No punctuation, nothing picked out.
+      wordsPerGroup: 1,
+      fontFamily: 'Bebas Neue',
+      fontSizePx: 230,
+      // Bebas Neue's capitals run about 0.36 of the size each: a longer word fits by shrinking.
+      letterEm: 0.3,
+      plain: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 4,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
     id: 'sermon-quiet',
     name: 'Sermon quiet',
     style: {

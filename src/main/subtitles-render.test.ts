@@ -146,6 +146,21 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       shared: 0.92
     },
     {
+      name: 'sermon one word, vertical',
+      spec: { preset: 'sermon-word', position: 'middle', wordsPerScreen: 1, uppercase: true },
+      size: TALL,
+      words: ['Believer.'],
+      active: 0
+    },
+    {
+      name: 'sermon red landed, vertical',
+      spec: { preset: 'sermon-red', position: 'middle', wordsPerScreen: 3 },
+      size: TALL,
+      words: ["That", "ain't", 'biblical.'],
+      active: 2,
+      keys: [2]
+    },
+    {
       name: 'sermon quiet, vertical',
       spec: { preset: 'sermon-quiet', position: 'middle', wordsPerScreen: 3 },
       size: TALL,

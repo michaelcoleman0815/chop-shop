@@ -159,7 +159,8 @@ export function finishClipOps(
   if (turn?.box) ops.push({ op: 'box', set: turn.box })
   if (zoom && zoom > 1.001)
     ops.push({ op: 'treat', beats: cut.beats.map((b) => b.id), set: { zoom, ...(zoomAt !== undefined ? { zoomAt } : {}) } })
-  if (input.profile.look) ops.push({ op: 'look', set: input.profile.look, replace: true })
+  const grade = turn?.look ?? input.profile.look
+  if (grade) ops.push({ op: 'look', set: grade, replace: true })
   // The hook on screen, where the look has one and there are words for it.
   const hook = input.hook?.trim()
   if (turn?.hook && hook) {

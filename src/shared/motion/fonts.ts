@@ -119,6 +119,20 @@ export const MOTION_FONTS: MotionFont[] = [
     label: 'Inter ExtraBold, a heavy clean sans'
   },
   {
+    // SIL Open Font License 1.1, resources/fonts/BebasNeue-OFL.txt. Tall condensed capitals: the one-word
+    // sermon captions, as 2819 Church sets its Shorts.
+    family: 'Bebas Neue',
+    file: 'BebasNeue-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.7,
+    ascent: 0.9,
+    descent: 0.3,
+    // OS/2 usWinAscent 950 and usWinDescent 350 of 1000 units, read from the file.
+    winAscent: 0.95,
+    winDescent: 0.35,
+    label: 'Bebas Neue, tall condensed capitals'
+  },
+  {
     // Igino Marini's revival of the Fell types (SIL Open Font License): the vintage map's lettering.
     family: 'IM Fell English',
     file: 'IMFellEnglish-Regular.ttf',

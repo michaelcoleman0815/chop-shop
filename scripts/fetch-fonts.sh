@@ -25,6 +25,9 @@ fetch "Cinzel-OFL.txt"    "$BASE/ofl/cinzel/OFL.txt"
 # A bold display serif, one word at a time: the sermon look (The Life Church's own Shorts).
 fetch "DMSerifDisplay-Regular.ttf" "$BASE/ofl/dmserifdisplay/DMSerifDisplay-Regular.ttf"
 fetch "DMSerifDisplay-OFL.txt"     "$BASE/ofl/dmserifdisplay/OFL.txt"
+# Tall condensed capitals, one word at a time: the sermon look 2819 Church posts. SIL Open Font License 1.1.
+fetch "BebasNeue-Regular.ttf" "$BASE/ofl/bebasneue/BebasNeue-Regular.ttf"
+fetch "BebasNeue-OFL.txt"     "$BASE/ofl/bebasneue/OFL.txt"
 # The sermon captions and hook titles: Inter's static SemiBold and ExtraBold, whose family names are their own,
 # from the type's own release. SIL Open Font License 1.1, kept beside them.
 if [ ! -s "$DEST/Inter-SemiBold.ttf" ] || [ ! -s "$DEST/Inter-ExtraBold.ttf" ]; then

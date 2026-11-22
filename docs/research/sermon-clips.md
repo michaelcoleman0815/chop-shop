@@ -141,16 +141,20 @@ Lecrae's Deep End clips (NncJ8uBv9XI, Yp7Az1j5GHw) and The Life Church of Athens
 
 ## What Cutalong does with it
 
-A set of clips takes three looks in turn (`ClipProfile.looks` in `src/shared/clipping/profile.ts`):
+A set of clips takes six looks in turn (`ClipProfile.looks` in `src/shared/clipping/profile.ts`). With only
+three, and one grade and one font across them, the owner saw "mostly just one style". So each look now differs
+from the others in picture, captions, accent and frame:
 
-1. **Square:** the speaker as a square on black (`Cut.box`, `src/shared/edit/box.ts`). Claude's hook sits above
-   it in white Inter ExtraBold, title case, for the whole clip (banner style `title`). Captions run beneath it,
-   three words at a time, key words yellow (`sermon-box`). From a 720p stream the square is made about 2.1 times
-   larger, where full frame is 3.8, so it is the sharpest of the three.
-2. **Feature:** full frame, three words at a time in Inter SemiBold. A screen holding a key word is the landed
-   line: Inter ExtraBold at 1.9 times the size, its key words yellow on their own line (`sermon`).
-3. **Hook card:** full frame, Claude's hook on a white card for four seconds (banner style `card`), then quiet
-   lower-case captions three at a time (`sermon-quiet`).
+| Look | Picture | Captions | Frame |
+|---|---|---|---|
+| Square | low-key and muted | three words beneath it in Inter, key words yellow (`sermon-box`); Claude's hook above it (banner `title`) | a square on black (`Cut.box`) |
+| Feature | dark warm brown, as Lecrae's | three words in Inter; the landed line big, its key words yellow on their own line (`sermon`) | full |
+| Hook card | the room as it looks, barely darkened, as The Life Church's | Claude's hook on a white card for four seconds (banner `card`), then lower-case words (`sermon-quiet`) | full |
+| One word | dark, cold navy, nearly no colour, as 2819 Church's | one word at a time in tall Bebas Neue capitals (`sermon-word`) | full |
+| Red line | black and white, hard and grainy | as Feature, but the landed line in red, the only colour on screen (`sermon-red`) | full |
+| Portrait | dark and muted teal, as Elevation's | the sentence building in capitals, key words yellow (`sermon-build`) | a 4:5 picture on black |
+
+The square is the sharpest from a 720p stream: it is made about 2.1 times larger, where full frame is 3.8.
 
 Claude marks the key words and writes each clip's hook in one call for the set (`src/main/key-words.ts`).
 

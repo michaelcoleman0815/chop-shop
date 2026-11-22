@@ -193,9 +193,9 @@ describe('clipping a long recording, start to finish', () => {
     if (!off.ok) throw new Error(off.message)
     // In turn, so no two in a row look alike: the square, the landed line, the quiet captions under a card.
     expect(off.clips.map((c) => currentCut(c.doc).captions.preset)).toEqual(
-      ['sermon-box', 'sermon', 'sermon-quiet', 'sermon-box', 'sermon', 'sermon-quiet'].slice(0, off.clips.length)
+      ['sermon-box', 'sermon', 'sermon-quiet', 'sermon-word', 'sermon-red', 'sermon-build'].slice(0, off.clips.length)
     )
-    for (const c of off.clips) expect(currentCut(c.doc).captions).toMatchObject({ on: true, wordsPerScreen: 3 })
+    for (const c of off.clips) expect(currentCut(c.doc).captions.on).toBe(true)
     expect(off.reply.chips).toContain('Captions on')
   })
 

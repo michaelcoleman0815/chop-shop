@@ -6,6 +6,7 @@ import fellUrl from '../../../../resources/fonts/IMFellEnglish-Regular.ttf?url'
 import serifUrl from '../../../../resources/fonts/DMSerifDisplay-Regular.ttf?url'
 import interUrl from '../../../../resources/fonts/Inter-SemiBold.ttf?url'
 import interHeavyUrl from '../../../../resources/fonts/Inter-ExtraBold.ttf?url'
+import bebasUrl from '../../../../resources/fonts/BebasNeue-Regular.ttf?url'
 import {
   logoLookup,
   marksFrom,
@@ -30,7 +31,8 @@ const URLS: Record<string, string> = {
   'IMFellEnglish-Regular.ttf': fellUrl,
   'DMSerifDisplay-Regular.ttf': serifUrl,
   'Inter-SemiBold.ttf': interUrl,
-  'Inter-ExtraBold.ttf': interHeavyUrl
+  'Inter-ExtraBold.ttf': interHeavyUrl,
+  'BebasNeue-Regular.ttf': bebasUrl
 }
 
 let fonts: Promise<void> | null = null

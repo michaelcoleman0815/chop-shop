@@ -11,6 +11,13 @@ import { profileById } from '../raw/profiles'
  * (docs/research/raw-footage.md, section 5).
  */
 
+/**
+ * Low-key and muted, as the popular clips are graded (measured: mean luma 40 to 75 of 255, saturation 4 to 13,
+ * where a service's stream runs near 125 and 19): darker, more contrast, much less colour, warm skin, a deep
+ * vignette, and a little sharpening and grain against the softness of a stream made larger.
+ */
+const MOODY: Look = { exposure: -0.5, contrast: 0.25, saturation: -0.45, temperature: 0.12, vignette: 0.65, sharpen: 0.25, grain: 0.12 }
+
 export type ClipProfileId = 'church' | 'podcast' | 'livestream' | 'talk'
 
 export interface ClipProfile {
@@ -65,6 +72,8 @@ export interface ClipLook {
   box?: Box
   /** The clip's hook on screen: a title above a boxed picture for the whole clip, or a white card for its first seconds. */
   hook?: { style: 'title' | 'card'; place: 'top' | 'middle'; sec: number | null }
+  /** Its own grade (edit/look), in place of the profile's. */
+  look?: Look
 }
 
 /** The cutting profile's tightening, as a clip takes it. */
@@ -100,19 +109,10 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     // scripture and lower thirds across the bottom 30%, which this leaves out.
     zoom: 1.45,
     zoomAt: 0,
-    // Low-key and muted, as the popular clips are graded (measured: mean luma 40 to 75 of 255, saturation 4 to 13,
-    // where a service's stream runs near 125 and 19): darker, more contrast, much less colour, warm skin, a deep
-    // vignette, and a little sharpening and grain against the softness of a stream made larger.
-    look: {
-      exposure: -0.5,
-      contrast: 0.25,
-      saturation: -0.45,
-      temperature: 0.12,
-      vignette: 0.65,
-      sharpen: 0.25,
-      grain: 0.12
-    },
-    // In turn: a square on black under its hook; full frame with the line landed big; full frame under a hook card.
+    // Low-key and muted, where a look has no grade of its own.
+    look: MOODY,
+    // In turn, six looks as unlike each other as the churches' own reels are: each its own picture, captions,
+    // accent and frame (docs/research/sermon-clips.md, "What Cutalong does with it").
     looks: [
       {
         name: 'square',
@@ -121,20 +121,50 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
         // From the top of a square window, chest-up, past the stream's scripture; less made larger than full frame.
         zoom: 1.43,
         zoomAt: 0,
-        hook: { style: 'title', place: 'top', sec: null }
+        hook: { style: 'title', place: 'top', sec: null },
+        look: MOODY
       },
       {
         name: 'feature',
         captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },
         zoom: 1.45,
-        zoomAt: 0
+        zoomAt: 0,
+        // Lecrae's: dark and warm brown.
+        look: { exposure: -0.45, contrast: 0.28, saturation: -0.3, temperature: 0.3, vignette: 0.6, sharpen: 0.25, grain: 0.1 }
       },
       {
         name: 'hook card',
         captions: { preset: 'sermon-quiet', wordsPerScreen: 3, position: 'middle', uppercase: false },
         zoom: 1.45,
         zoomAt: 0,
-        hook: { style: 'card', place: 'middle', sec: 4 }
+        hook: { style: 'card', place: 'middle', sec: 4 },
+        // The Life Church's own: the room as it looks, a little warm, barely darkened.
+        look: { exposure: -0.12, contrast: 0.14, saturation: -0.12, temperature: 0.1, vignette: 0.35, sharpen: 0.25, grain: 0.06 }
+      },
+      {
+        name: 'one word',
+        captions: { preset: 'sermon-word', wordsPerScreen: 1, position: 'middle', uppercase: true },
+        zoom: 1.45,
+        zoomAt: 0,
+        // 2819 Church's: dark, cold navy, nearly no colour.
+        look: { exposure: -0.55, contrast: 0.3, saturation: -0.65, temperature: -0.35, vignette: 0.7, sharpen: 0.25, grain: 0.14 }
+      },
+      {
+        name: 'red line',
+        captions: { preset: 'sermon-red', wordsPerScreen: 3, position: 'middle', uppercase: false },
+        zoom: 1.45,
+        zoomAt: 0,
+        // Black and white, hard and grainy, so the red line is the only colour on screen.
+        look: { exposure: -0.3, contrast: 0.35, saturation: -1, vignette: 0.6, sharpen: 0.25, grain: 0.2 }
+      },
+      {
+        name: 'portrait',
+        captions: { preset: 'sermon-build', wordsPerScreen: 8, position: 'chest', uppercase: true },
+        // Elevation's: a 4:5 picture on black in the middle of the frame, the sentence building over the chest.
+        box: { aspect: 0.8, top: 0.148 },
+        zoom: 1.43,
+        zoomAt: 0,
+        look: { exposure: -0.5, contrast: 0.25, saturation: -0.5, temperature: -0.08, tint: -0.1, vignette: 0.55, sharpen: 0.25, grain: 0.12 }
       }
     ]
   },

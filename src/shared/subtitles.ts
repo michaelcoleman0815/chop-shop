@@ -56,7 +56,7 @@ export function captionStyleFor(
           textColor: colors.text,
           activeColor: base.plain || base.steady ? colors.text : colors.accent,
           // A look that marks the words leant on marks them in the brand's accent.
-          ...(base.keyColor ? { keyColor: colors.accent } : {})
+          ...(base.keyColor && !base.ownKey ? { keyColor: colors.accent } : {})
         }
       : {}),
     wordsPerGroup: spec.wordsPerScreen,
