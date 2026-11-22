@@ -76,7 +76,7 @@ test('an address already on the list keeps its first record and gets the same re
 
 test('only the known parts of the page are kept as where it came from', async () => {
   const kv = fakeKV()
-  for (const source of ['hero', 'header', 'close', 'soon', 'link']) {
+  for (const source of ['hero', 'header', 'close', 'soon', 'link', 'iphone', 'windows', 'android']) {
     await call(post({ email: `${source}@example.com`, source }), { SIGNUPS: kv })
     assert.equal(JSON.parse(kv.store.get(`${source}@example.com`).value).source, source)
   }

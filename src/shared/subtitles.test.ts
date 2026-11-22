@@ -1,3 +1,4 @@
+import { CAPTION_PRESETS } from './caption-presets'
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import { fileURLToPath } from 'url'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -12,7 +13,16 @@ import {
   subtitleCues,
   subtitleWords,
   type SubtitleCue,
-  type TextMeasurer
+  type TextMeasurer,
+  fitFontPx,
+  plainWords,
+  buildGroups,
+  BUILD_HOLD_SEC,
+  shownWords,
+  landedGroups,
+  styleCues,
+  landsLine,
+  CAPTION_HOLD_SEC
 } from './subtitles'
 import type { CaptionStyle, TranscriptWord } from './types'
 import type { CaptionSpec } from './edit'
@@ -74,12 +84,24 @@ describe('subtitle cues', () => {
       ['four.', 0],
       ['five', 0]
     ])
-    // Held to the next word's start, and the group's last word to its own end.
+    // Held to the next word's start, the group's last word too, so nothing blinks off between groups.
     expect(cues[0]).toMatchObject({ start: 1, end: 1.4 })
-    expect(cues[2].end).toBeCloseTo(2.1)
-    // A word too short to show still shows for a twentieth of a second.
+    expect(cues[2].end).toBeCloseTo(2.2)
+    // The last word stays a moment after it is said.
+    expect(cues[4].end).toBeCloseTo(cues[4].words[0].endSec + CAPTION_HOLD_SEC)
+    // A pause of more than CAPTION_JOIN_SEC clears the screen, CAPTION_HOLD_SEC after the word.
+    const paused = subtitleCues([...said(['Amen.']), { text: 'Next', startSec: 3, endSec: 3.3 }], 3)
+    expect(paused[0].end).toBeCloseTo(1.3 + CAPTION_HOLD_SEC)
+    // Before a card or a beat without captions, the caption ends with its word.
+    const before = shownWords(
+      [{ id: 'w1', text: 'Grace.', outStart: 1, outEnd: 1.3 }],
+      {},
+      [{ id: 'w1' }, { id: 'w2' }]
+    )
+    expect(subtitleCues([...before, ...said(['After'], 1.5)], 3)[0].end).toBeCloseTo(1.3)
+    // A word too short to show still shows for a twentieth of a second, and stays its moment after.
     const blink = subtitleCues([{ text: 'a', startSec: 1, endSec: 1.01 }], 3)
-    expect(blink[0].end).toBeCloseTo(1.05)
+    expect(blink[0].end).toBeCloseTo(1.01 + CAPTION_HOLD_SEC)
   })
 
   it('picks the cue on screen as libass does, to the hundredth: from its start, up to its end', () => {
@@ -88,8 +110,8 @@ describe('subtitle cues', () => {
     expect(subtitleAt(cues, 1)?.active).toBe(0)
     expect(subtitleAt(cues, 1.399)?.active).toBe(0)
     expect(subtitleAt(cues, 1.4)?.active).toBe(1)
-    // Between "three." (out at 2.1) and "four" (in at 2.2) nothing is on screen.
-    expect(subtitleAt(cues, 2.15)).toBeNull()
+    // Between "three." (out at 2.1) and "four" (in at 2.2) "three." stays: no blink.
+    expect(subtitleAt(cues, 2.15)?.words[0].text).toBe('one')
     expect(subtitleAt(cues, 2.2)?.words[0].text).toBe('four')
   })
 
@@ -321,5 +343,184 @@ describe('subtitle drawing', () => {
         expect(alpha / 255).toBeCloseTo(SHADOW_ALPHA, 1)
       }
     }
+  })
+})
+
+describe('the sermon serif look', () => {
+  const sermon = CAPTION_PRESETS.find((p) => p.id === 'sermon-serif')!.style
+  it('sets a long word smaller so it stays inside the frame, and a short one at full size', () => {
+    expect(fitFontPx(['whenever'], sermon, 1080)).toBe(sermon.fontSizePx)
+    const long = fitFontPx(['understanding'], sermon, 1080)
+    expect(long).toBeLessThan(sermon.fontSizePx)
+    // Thirteen letters at the face's width fill no more than the frame less its margins.
+    expect(13 * (sermon.letterEm ?? 0) * long).toBeLessThanOrEqual(1080 * 0.84)
+  })
+
+  it('stays white under a brand with a yellow accent: a look with no highlight keeps none', () => {
+    const style = captionStyleFor(
+      { on: true, wordsPerScreen: 1, position: 'middle', preset: 'sermon-serif', uppercase: false },
+      1080,
+      { text: '#FFFFFF', accent: '#FFD84D' }
+    )
+    expect(style.activeColor).toBe('#FFFFFF')
+    // A look that picks the word out in a colour takes the brand's.
+    const loud = captionStyleFor(
+      { on: true, wordsPerScreen: 3, position: 'chest', preset: 'punch', uppercase: true },
+      1080,
+      { text: '#FFFFFF', accent: '#FFD84D' }
+    )
+    expect(loud.activeColor).toBe('#FFD84D')
+  })
+})
+
+describe('plain one-word captions', () => {
+  it('shows each word bare, lower-casing only a capital a sentence gave it', () => {
+    const said = ['So', 'religion', 'kills', 'people,', 'and', 'God', 'saves', 'people.', 'Religion', 'never', 'says?"', 'I', 'know.', '"And', 'Jesus', 'wept."']
+    const shown = plainWords(said.map((text) => ({ text, startSec: 0, endSec: 0 }))).map((w) => w.text)
+    expect(shown).toEqual(['so', 'religion', 'kills', 'people', 'and', 'God', 'saves', 'people', 'religion', 'never', 'says', 'I', 'know', 'and', 'Jesus', 'wept'])
+  })
+})
+
+describe('built captions', () => {
+  const sermon = captionStyleFor(
+    { on: true, wordsPerScreen: 8, position: 'chest', preset: 'sermon-build', uppercase: true },
+    1080,
+    { text: '#FFFFFF', accent: '#FFD84D' }
+  )
+
+  it('breaks a sentence where the speaker does: at its end, at a pause, at a comma once it has words, at eight', () => {
+    const words = said(['Even', 'if', 'you', 'were', 'the', 'one', 'who', 'let', 'go.', 'God', 'is', 'not', 'done,', 'and', 'he', 'restores.'])
+    expect(buildGroups(words, 8).map((g) => g.map((w) => w.text).join(' '))).toEqual([
+      'Even if you were the one who let',
+      'go.',
+      'God is not done, and he restores.'
+    ])
+    // A pause of more than six tenths of a second clears the screen.
+    const paused = [...said(['When', 'I', 'pray']), { text: 'everything', startSec: 3, endSec: 3.4 }]
+    expect(buildGroups(paused, 8).map((g) => g.length)).toEqual([3, 1])
+  })
+
+  it('never shows a dash or a stray mark as a word', () => {
+    const cues = subtitleCues(said(['-', 'I', 'was', 'preaching', '...', 'there.']), 8, true, true)
+    expect(cues.map((c) => c.words[c.active].text)).toEqual(['I', 'was', 'preaching', 'there'])
+  })
+
+  it('shows each word from when it is said and holds the sentence a moment after its last', () => {
+    const words = [...said(['We', 'are', 'more', 'than', 'conquerors.']), ...said(['Amen.'], 6)]
+    const cues = subtitleCues(words, 8, true, true)
+    expect(cues.map((c) => c.active)).toEqual([0, 1, 2, 3, 4, 0])
+    const last = cues[4]
+    expect(last.end).toBeCloseTo(words[4].endSec + BUILD_HOLD_SEC, 5)
+    // Plain: no punctuation on screen, and no capital a sentence gave.
+    expect(last.words.map((w) => w.text)).toEqual(['we', 'are', 'more', 'than', 'conquerors'])
+    // The next sentence starting sooner than the hold cuts it short.
+    const close = [...said(['He', 'is', 'risen.']), ...said(['Amen.'], 2.15)]
+    const held = subtitleCues(close, 8, true, true)[2]
+    expect(held.end).toBeCloseTo(2.15, 5)
+  })
+
+  it('lays the sentence out whole and draws only the words said, the key ones in the accent', () => {
+    expect(sermon.build).toBe(true)
+    expect(sermon.keyColor).toBe('#FFD84D')
+    expect(sermon.activeColor).toBe('#FFFFFF')
+    const words = shownWords(
+      [
+        { id: 'w1', text: 'More', outStart: 1, outEnd: 1.3 },
+        { id: 'w2', text: 'than', outStart: 1.4, outEnd: 1.6 },
+        { id: 'w3', text: 'conquerors', outStart: 1.7, outEnd: 2.2 },
+        { id: 'w4', text: 'through', outStart: 2.3, outEnd: 2.5 },
+        { id: 'w5', text: 'him', outStart: 2.6, outEnd: 2.8 }
+      ],
+      { keys: ['w1', 'w2', 'w3'] }
+    )
+    const cues = subtitleCues(words, sermon.wordsPerGroup, true, true)
+    const frame = { width: 1080, height: 1920 }
+    const early = layoutSubtitle(cues[1], sermon, frame, fakeMeasurer())
+    const late = layoutSubtitle(cues[4], sermon, frame, fakeMeasurer())
+    const runs = (l: typeof early): { text: string; x: number; color: string; hidden?: boolean }[] =>
+      l.blocks[0].lines.flatMap((line) => line.runs).filter((r) => r.text.trim())
+    // Every word has its place from the first, so nothing moves as the sentence fills in.
+    expect(runs(early).map((r) => r.x)).toEqual(runs(late).map((r) => r.x))
+    expect(runs(early).map((r) => !!r.hidden)).toEqual([false, false, true, true, true])
+    expect(runs(late).map((r) => r.color)).toEqual(['#FFD84D', '#FFD84D', '#FFD84D', '#FFFFFF', '#FFFFFF'])
+    // What is drawn is what is said: the words not said yet are outside the bounds.
+    expect(early.bounds.w).toBeLessThan(late.bounds.w)
+  })
+})
+
+describe('landed lines', () => {
+  const sermon = captionStyleFor(
+    { on: true, wordsPerScreen: 3, position: 'middle', preset: 'sermon', uppercase: false },
+    1080,
+    { text: '#FFFFFF', accent: '#FFD84D' }
+  )
+  const words = (texts: string[], keys: number[] = []): TranscriptWord[] =>
+    said(texts).map((w, i) => (keys.includes(i) ? { ...w, key: true } : w))
+
+  it('shows three words at a time, as said, and lets a key run finish its screen', () => {
+    const w = words(['Look', 'at', 'the', 'flag', 'and', 'he', 'still', 'sits', 'down.', 'Every', 'week.'], [7, 8])
+    // The landed line starts two words before its key run, so it reads as a phrase: "he still / sits down."
+    expect(landedGroups(w, 3).map((g) => g.map((x) => x.text).join(' '))).toEqual([
+      'Look at the',
+      'flag and',
+      'he still sits down.',
+      'Every week.'
+    ])
+    // Never across a sentence's end.
+    const after = words(['Amen.', 'Religion', 'kills', 'people.'], [2])
+    expect(landedGroups(after, 3).map((g) => g.map((x) => x.text).join(' '))).toEqual(['Amen.', 'Religion kills', 'people.'])
+  })
+
+  it('keeps a look’s own red under a brand with a yellow accent', () => {
+    const red = captionStyleFor(
+      { on: true, wordsPerScreen: 3, position: 'middle', preset: 'sermon-red', uppercase: false },
+      1080,
+      { text: '#FFFFFF', accent: '#FFD84D' }
+    )
+    expect(red.keyColor).toBe('#FF3B30')
+  })
+
+  it('sets one word at a time in clean heavy capitals, no punctuation', () => {
+    const word = captionStyleFor({ on: true, wordsPerScreen: 1, position: 'middle', preset: 'sermon-word', uppercase: true }, 1080)
+    const cues = styleCues(words(['Just', 'be', 'a', 'good', 'believer.']), word)
+    // Shown in capitals, so a sentence's own capital is let go with its punctuation.
+    expect(cues.map((c) => c.words.map((w) => w.text))).toEqual([['just'], ['be'], ['a'], ['good'], ['believer']])
+    expect(word.fontFamily).toBe('Inter ExtraBold')
+    // The tall condensed version stays a look of its own.
+    expect(captionStyleFor({ on: true, wordsPerScreen: 1, position: 'middle', preset: 'sermon-word-tall', uppercase: true }, 1080).fontFamily).toBe('Bebas Neue')
+    // A long word still fits between the margins.
+    expect(fitFontPx(['GLORIFYING'], word, 1080)).toBe(word.fontSizePx)
+  })
+
+  it('never picks out the word being said, whatever accent the brand brings', () => {
+    expect(sermon.activeColor).toBe('#FFFFFF')
+    expect(sermon.keyColor).toBe('#FFD84D')
+  })
+
+  it('sets a screen with a key word big in the heavy face, the key words in yellow on their own line', () => {
+    const cues = styleCues(words(['He', 'still', 'sits', 'down.'], [2, 3]), sermon)
+    expect(cues.every((c) => landsLine(c, sermon))).toBe(true)
+    const layout = layoutSubtitle(cues[3], sermon, { width: 1080, height: 1920 }, fakeMeasurer())
+    const lines = layout.blocks[0].lines.map((l) => l.runs.filter((r) => r.text.trim()))
+    expect(lines.map((l) => l.map((r) => r.text).join(' '))).toEqual(['He still', 'sits down.'])
+    expect(lines[1].every((r) => r.color === '#FFD84D')).toBe(true)
+    expect(lines[0].every((r) => r.color === '#FFFFFF')).toBe(true)
+    expect(lines[0][0].font).toContain('Inter ExtraBold')
+    // A screen with no key word stays small and white.
+    const plain = styleCues(words(['and', 'he', 'said']), sermon)
+    expect(landsLine(plain[0], sermon)).toBe(false)
+  })
+
+  it('never shows a dash Whisper wrote at a turn, punctuation kept or not', () => {
+    expect(styleCues(words(['-', 'I', 'was', 'preaching.']), sermon).map((c) => c.words[c.active].text)).toEqual([
+      'I',
+      'was',
+      'preaching.'
+    ])
+  })
+
+  it('writes a quiet look in lower case', () => {
+    const quiet = captionStyleFor({ on: true, wordsPerScreen: 3, position: 'middle', preset: 'sermon-quiet', uppercase: false }, 1080)
+    expect(styleCues(words(['She', 'Was', 'healed.']), quiet)[0].words.map((w) => w.text)).toEqual(['she', 'was', 'healed.'])
   })
 })

@@ -1,9 +1,10 @@
 // The edit's schema as Cutalong 0.2.13 shipped it (commit 391798b), word for
-// word below this comment but for one import, kept for the tests alone: what
+// word below this comment but for two imports, kept for the tests alone: what
 // this build saves must still open in the version before, which someone may go
 // back to. 0.2.13 drops a field it does not know, and cannot read an op it does
-// not know at all. The modules it imports are as they were then, but the vlog's
-// schema, which has changed since and is 0.2.13's own in schema-0.2.13-vlog.ts.
+// not know at all. The modules it imports are as they were then, but two that
+// have changed since: the vlog's schema, 0.2.13's own in schema-0.2.13-vlog.ts,
+// and a beat's transition, 0.2.13's own just below (it had no look).
 // Do not edit it to match the app.
 
 import { z } from 'zod'
@@ -21,13 +22,19 @@ import {
   MAX_TRANSITION_SEC,
   MIN_TRANSITION_SEC,
   SplitEditSchema,
-  TRANSITION_KINDS,
-  TransitionSchema
+  TRANSITION_KINDS
 } from './transitions'
 import { AudioMapSchema } from '../audio/map'
 import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 import { MouthModeSchema } from '../vision/mode'
 import { VlogSchema } from './schema-0.2.13-vlog'
+
+// A beat's transition as 0.2.13 read it (transitions.ts at 391798b): it knows no look, and drops one.
+const TransitionSchema = z.object({
+  kind: z.enum(TRANSITION_KINDS),
+  /** How long the two beats overlap, in seconds. */
+  sec: z.number().min(MIN_TRANSITION_SEC).max(MAX_TRANSITION_SEC)
+})
 
 /**
  * The edit as data.

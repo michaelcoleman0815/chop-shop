@@ -1,3 +1,4 @@
+import { BoxSchema } from './box'
 import { z } from 'zod'
 import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
@@ -14,8 +15,8 @@ import {
   MAX_SPLIT_EDIT_SEC,
   MAX_TRANSITION_SEC,
   MIN_TRANSITION_SEC,
+  ALL_TRANSITION_KINDS,
   SplitEditSchema,
-  TRANSITION_KINDS,
   TransitionSchema
 } from './transitions'
 import { AudioMapSchema } from '../audio/map'
@@ -141,6 +142,11 @@ export const TreatmentSchema = z.object({
   // would fill a default into every partial and reset the field.)
   /** Playback speed of the whole beat, sound and picture: 2 is twice as fast. Pitch is kept. */
   speed: z.number().min(MIN_SPEED).max(MAX_SPEED).optional(),
+  /**
+   * Where a punch-in sits up and down the picture: 0 keeps the top edge, 1 the foot. Absent is the middle.
+   * From the top, a punch-in keeps heads and leaves out a stream's lower thirds.
+   */
+  zoomAt: z.number().min(0).max(1).optional(),
   /** Easing from full speed into `speed` at the start, and back at the end. */
   ramp: RampSchema.nullable().optional(),
   /** A freeze frame: the picture holds where a word ends while the sound waits. */
@@ -156,7 +162,9 @@ export const TreatmentSchema = z.object({
   /** Two to four pictures at once in a grid, each with a label, instead of the frame above (edit/grid). */
   grid: GridSchema.nullable().optional(),
   /** False hides the captions while this beat plays (over a title, a screen recording); absent follows the video's. */
-  captions: z.boolean().optional()
+  captions: z.boolean().optional(),
+  /** A shaky handheld shot held still in the export, the picture cropped in a little to hide the edges it moves. */
+  steady: z.boolean().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -194,7 +202,10 @@ export const CaptionSpecSchema = z.object({
   position: z.enum(CAPTION_POSITIONS),
   /** A caption look from shared/caption-presets, or one the graphics draw (shared/motion/captions). */
   preset: z.string().min(1),
-  uppercase: z.boolean()
+  uppercase: z.boolean(),
+  // Added later, so optional: absent is no word picked out.
+  /** Words set in the look's key colour, by id: the ones the speaker leans on. */
+  keys: z.array(z.string()).optional()
 })
 export type CaptionSpec = z.infer<typeof CaptionSpecSchema>
 
@@ -242,6 +253,13 @@ export const CutSchema = z.object({
   /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
   reframe: z.boolean().optional(),
   /**
+   * Jump cuts hidden with a punch-in (edit/jumps): where a cut leaves out a
+   * stretch of one shot, the picture after it is shown closer, alternating
+   * wide and close, so the jump reads as a cut. Absent, as in an edit made
+   * before it existed, leaves every jump as it is.
+   */
+  punchJumps: z.boolean().optional(),
+  /**
    * Which of the person's brands this version is made in, by id (shared/brands):
    * its captions, logo, graphics, never list and B-roll sources. Absent, as in
    * an edit made before there could be more than one, the brand from then
@@ -265,7 +283,13 @@ export const CutSchema = z.object({
    * them: a version's ops never carry the fx ops, so 0.2.13, which drops
    * this field, still opens the edit (without them).
    */
-  fx: z.array(FxItemSchema).max(60).optional()
+  fx: z.array(FxItemSchema).max(60).optional(),
+  /**
+   * The picture as a box on black inside the frame (edit/box): a square in a
+   * 9:16 video, the hook above it and the captions below. Absent fills the
+   * frame. Only the cut says it: a version's ops never carry a box (edit/doc).
+   */
+  box: BoxSchema.optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -317,7 +341,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('transition'),
     beats: z.array(beatId).min(1),
-    kind: z.enum(['cut', ...TRANSITION_KINDS]),
+    kind: z.enum(['cut', ...ALL_TRANSITION_KINDS]),
     sec: z.number().min(MIN_TRANSITION_SEC).max(MAX_TRANSITION_SEC).optional()
   }),
   z.object({
@@ -365,10 +389,14 @@ export const OpSchema = z.discriminatedUnion('op', [
   }),
   // Follow the speaker when the picture is cropped to a narrower frame, or keep it in the middle.
   z.object({ op: z.literal('reframe'), on: z.boolean() }),
+  // Jump cuts punched in, wide and close in turn, or left as they are (edit/jumps).
+  z.object({ op: z.literal('punch-jumps'), on: z.boolean() }),
   // The brand the edit is made in, by id (shared/brands); what that brand changes comes as other ops beside it.
   z.object({ op: z.literal('brand'), id: z.string().min(1).max(80) }),
   // How pictures of another shape fill the frame: as an edit does unless asked, on a blurred copy, between black bars, or cropped.
   z.object({ op: z.literal('fill'), mode: FillSchema }),
+  // The picture as a box on black inside the frame, as a square in a 9:16 video; null fills the frame again.
+  z.object({ op: z.literal('box'), set: BoxSchema.nullable() }),
   // Where beats are centred when cropped, by hand; null follows the speaker or the middle again.
   z.object({ op: z.literal('framing'), beats: z.array(beatId).min(1), x: z.number().min(0).max(1).nullable() }),
   // Which camera beats show, and how; null shows their own recording again.

@@ -16,6 +16,8 @@ import interExtraBold from '../../../resources/fonts/Inter-ExtraBold.ttf?url'
 import bebasNeueRegular from '../../../resources/fonts/BebasNeue-Regular.ttf?url'
 import tikTokSansExtraBold from '../../../resources/fonts/TikTokSans-ExtraBold.ttf?url'
 import tikTokSansBlack from '../../../resources/fonts/TikTokSans-Black.ttf?url'
+import dmSerifDisplay from '../../../resources/fonts/DMSerifDisplay-Regular.ttf?url'
+import interSemiBold from '../../../resources/fonts/Inter-SemiBold.ttf?url'
 import { createPhoneApi } from './api'
 import { Engine } from './engine'
 import { BRIDGE } from './engine-web'
@@ -49,7 +51,9 @@ const FONTS: Record<string, string> = {
   'Inter-ExtraBold.ttf': interExtraBold,
   'BebasNeue-Regular.ttf': bebasNeueRegular,
   'TikTokSans-ExtraBold.ttf': tikTokSansExtraBold,
-  'TikTokSans-Black.ttf': tikTokSansBlack
+  'TikTokSans-Black.ttf': tikTokSansBlack,
+  'DMSerifDisplay-Regular.ttf': dmSerifDisplay,
+  'Inter-SemiBold.ttf': interSemiBold
 }
 
 /** Keys in the iOS Keychain or the Android Keystore (in a browser, the plugin's own stand-in). */

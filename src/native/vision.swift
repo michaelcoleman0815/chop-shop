@@ -25,6 +25,11 @@ struct Face: Codable {
 struct Sample: Codable {
     let t: Double
     let faces: [Face]
+    /**
+     * Everyone Vision sees, faced or not, upper bodies: a person seen from behind has a body here and no face
+     * among the faces, which is how a shot over the congregation's shoulders is known.
+     */
+    let people: [Face]
 }
 
 func fail(_ message: String) -> Never {
@@ -35,6 +40,9 @@ func fail(_ message: String) -> Never {
 let args = CommandLine.arguments
 if args.count >= 2 && (args[1] == "--masks" || args[1] == "--masks-check") {
     runMasks(Array(args.dropFirst()))
+}
+if args.count >= 2 && args[1] == "--track" {
+    runTrack(Array(args.dropFirst()))
 }
 guard args.count >= 2 else { fail("usage: chopshop-vision <video> [startSec] [durationSec] [samplesPerSec]") }
 
@@ -71,19 +79,21 @@ while t < duration {
     }
 
     let request = VNDetectFaceRectanglesRequest()
+    let humans = VNDetectHumanRectanglesRequest()
     let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
-    try? handler.perform([request])
+    try? handler.perform([request, humans])
 
-    let faces: [Face] = (request.results ?? []).map { observation in
-        let box = observation.boundingBox
-        // Vision's origin is bottom-left; flip so y grows downward.
+    // Vision's origin is bottom-left; flip so y grows downward.
+    func flipped(_ box: CGRect) -> Face {
         return Face(x: Double(box.origin.x),
                     y: Double(1.0 - box.origin.y - box.height),
                     w: Double(box.width),
                     h: Double(box.height))
     }
+    let faces: [Face] = (request.results ?? []).map { flipped($0.boundingBox) }
+    let people: [Face] = (humans.results ?? []).map { flipped($0.boundingBox) }
 
-    samples.append(Sample(t: t, faces: faces))
+    samples.append(Sample(t: t, faces: faces, people: people))
     t += step
 }
 
@@ -299,4 +309,149 @@ func runMasks(_ a: [String]) -> Never {
         samples.append(MaskSample(t: at, masks: outs))
     }
     emit(MaskTrack(width: width, height: height, samples: samples))
+}
+
+// MARK: - Following an object
+//
+// --track follows one object through a stretch of a video, for a graphic to
+// stay on it: a phone held up, a product turned in the hand. Given no box, it
+// picks the object itself on the first frame: of what objectness saliency
+// says stands out, not a face and not most of the picture, the one nearest a
+// hand when a hand is in shot, else the biggest. Then Vision's object tracker
+// follows it frame by frame. Boxes are fractions of the picture, top-left
+// origin; a frame where the tracker loses it has none.
+
+struct TrackSample: Codable {
+    let t: Double
+    let box: [Double]?
+    let c: Double
+}
+
+struct TrackResult: Codable {
+    /** How the object was chosen: given, hand (nearest a hand) or salient (the biggest that stands out). */
+    let found: String
+    let start: [Double]
+    let width: Int
+    let height: Int
+    let samples: [TrackSample]
+}
+
+/** A box with its origin flipped from Vision's bottom-left to the top-left. */
+func topLeft(_ r: CGRect) -> [Double] {
+    return [Double(r.origin.x), Double(1 - r.origin.y - r.height), Double(r.width), Double(r.height)]
+}
+
+func area(_ r: CGRect) -> CGFloat { return max(0, r.width) * max(0, r.height) }
+
+/** The object to follow on this frame, in Vision's coordinates, and how it was chosen. */
+func findObject(_ image: CGImage) -> (CGRect, String)? {
+    let saliency = VNGenerateObjectnessBasedSaliencyImageRequest()
+    let faces = VNDetectFaceRectanglesRequest()
+    let hands = VNDetectHumanHandPoseRequest()
+    hands.maximumHandCount = 2
+    let handler = VNImageRequestHandler(cgImage: image, orientation: .up, options: [:])
+    try? handler.perform([saliency, faces, hands])
+    let objects = (saliency.results?.first)?.salientObjects?.map { $0.boundingBox } ?? []
+    let faceBoxes = faces.results?.map { $0.boundingBox } ?? []
+    // Not a face, not the whole person or most of the picture, and big enough to put something on.
+    let candidates = objects.filter { box in
+        let a = area(box)
+        if a > 0.6 || a < 0.004 { return false }
+        return !faceBoxes.contains { f in area(box.intersection(f)) > 0.4 * a }
+    }
+    guard !candidates.isEmpty else { return nil }
+    // Where the hands are: the middle of each hand's points Vision is sure of.
+    var handPoints: [CGPoint] = []
+    for observation in hands.results ?? [] {
+        guard let points = try? observation.recognizedPoints(.all) else { continue }
+        let sure = points.values.filter { $0.confidence > 0.3 }
+        guard !sure.isEmpty else { continue }
+        let x = sure.map { $0.location.x }.reduce(0, +) / CGFloat(sure.count)
+        let y = sure.map { $0.location.y }.reduce(0, +) / CGFloat(sure.count)
+        handPoints.append(CGPoint(x: x, y: y))
+    }
+    if !handPoints.isEmpty {
+        let near = candidates.min { a, b in
+            let da = handPoints.map { hypot($0.x - a.midX, $0.y - a.midY) }.min() ?? 9
+            let db = handPoints.map { hypot($0.x - b.midX, $0.y - b.midY) }.min() ?? 9
+            return da < db
+        }
+        if let near = near { return (near, "hand") }
+    }
+    let biggest = candidates.max { area($0) < area($1) }!
+    return (biggest, "salient")
+}
+
+func runTrack(_ a: [String]) -> Never {
+    guard a.count >= 5 else {
+        fail("usage: chopshop-vision --track <video> <startSec> <durationSec> <samplesPerSec> [x y w h]")
+    }
+    let url = URL(fileURLWithPath: a[1])
+    let start = Double(a[2]) ?? 0
+    let wanted = Double(a[3]) ?? 0
+    let rate = max(1, min(30, Double(a[4]) ?? 15))
+    let given: [Double]? = a.count >= 9 ? [a[5], a[6], a[7], a[8]].compactMap { Double($0) } : nil
+
+    let asset = AVURLAsset(url: url)
+    let total = CMTimeGetSeconds(asset.duration)
+    guard total.isFinite, total > 0 else { fail("could not read duration") }
+    let duration = wanted > 0 ? min(wanted, total - start) : total - start
+    guard duration > 0 else { fail("range is outside the video") }
+
+    let generator = AVAssetImageGenerator(asset: asset)
+    generator.appliesPreferredTrackTransform = true
+    // Each frame read as asked: the tracker compares one with the next.
+    let slack = CMTime(seconds: 0.5 / rate, preferredTimescale: 600)
+    generator.requestedTimeToleranceBefore = slack
+    generator.requestedTimeToleranceAfter = slack
+    generator.maximumSize = CGSize(width: 960, height: 960)
+
+    var samples: [TrackSample] = []
+    var observation: VNDetectedObjectObservation? = nil
+    var startBox: [Double] = []
+    var found = "given"
+    var width = 0
+    var height = 0
+    let sequence = VNSequenceRequestHandler()
+    var n = 0
+    while Double(n) / rate <= duration + 1e-6 {
+        let t = Double(n) / rate
+        n += 1
+        guard let image = try? generator.copyCGImage(at: CMTime(seconds: start + t, preferredTimescale: 600), actualTime: nil)
+        else {
+            // A frame that will not decode is a moment the object is not seen, so every sample keeps its time.
+            if observation != nil { samples.append(TrackSample(t: t, box: nil, c: 0)) }
+            continue
+        }
+        width = image.width
+        height = image.height
+        guard let last = observation else {
+            // The first frame: the box given, or the object found on it.
+            if let g = given, g.count == 4 {
+                let r = CGRect(x: g[0], y: 1 - g[1] - g[3], width: g[2], height: g[3])
+                observation = VNDetectedObjectObservation(boundingBox: r)
+                startBox = g
+            } else if let (r, how) = findObject(image) {
+                observation = VNDetectedObjectObservation(boundingBox: r)
+                startBox = topLeft(r)
+                found = how
+            } else {
+                fail("there is nothing in the picture to follow")
+            }
+            samples.append(TrackSample(t: t, box: startBox, c: 1))
+            continue
+        }
+        let request = VNTrackObjectRequest(detectedObjectObservation: last)
+        request.trackingLevel = .accurate
+        try? sequence.perform([request], on: image)
+        guard let next = request.results?.first as? VNDetectedObjectObservation else {
+            samples.append(TrackSample(t: t, box: nil, c: 0))
+            continue
+        }
+        observation = next
+        // Below this the tracker is guessing: the frame says it lost the object.
+        let sure = Double(next.confidence) >= 0.3
+        samples.append(TrackSample(t: t, box: sure ? topLeft(next.boundingBox) : nil, c: Double(next.confidence)))
+    }
+    emit(TrackResult(found: found, start: startBox, width: width, height: height, samples: samples))
 }

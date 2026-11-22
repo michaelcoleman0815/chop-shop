@@ -64,9 +64,14 @@ export function contrastOf(a: string, b: string): number {
  */
 function brandColorsFor(base: CaptionStyle, colors: { text: string; accent: string } | null): Partial<CaptionStyle> {
   if (!colors) return {}
-  if (base.activeColor.toLowerCase() === base.textColor.toLowerCase()) return {}
   if (base.boxColor && contrastOf(colors.text, base.boxColor) < 3) return {}
-  return { textColor: colors.text, activeColor: colors.accent }
+  // A look that marks the words leant on marks them in the brand's accent, unless the key colour is its own.
+  const key = base.keyColor && !base.ownKey ? { keyColor: colors.accent } : {}
+  // A plain look keeps every word in the brand's text colour, rather than painting each one in the accent as
+  // it is said.
+  if (base.plain || base.steady) return { textColor: colors.text, activeColor: colors.text, ...key }
+  if (base.activeColor.toLowerCase() === base.textColor.toLowerCase()) return key
+  return { textColor: colors.text, activeColor: colors.accent, ...key }
 }
 
 /** The caption look for a spec, sized for the frame being rendered, in the brand's colours when there is one. */
@@ -117,6 +122,30 @@ export function subtitleWords(
   return words.length === resolved.words.length ? resolved : { ...resolved, words }
 }
 
+/** The words a caption shows, in output time, with the ones the spec marks key (CaptionSpec.keys) marked. */
+export function shownWords(
+  words: { id: string; text: string; outStart: number; outEnd: number }[],
+  spec: Pick<CaptionSpec, 'keys'>,
+  /** Every word the edit plays, shown or not: a word followed by one not shown clears as it ends (until). */
+  all: { id: string }[] = words
+): TranscriptWord[] {
+  const keys = new Set(spec.keys ?? [])
+  const shown = new Set(words.map((w) => w.id))
+  const at = new Map(all.map((w, i) => [w.id, i]))
+  return words.map((w) => {
+    const i = at.get(w.id)
+    const next = i === undefined ? undefined : all[i + 1]
+    return {
+      text: w.text,
+      startSec: w.outStart,
+      endSec: w.outEnd,
+      ...(keys.has(w.id) ? { key: true } : {}),
+      // A card or a beat without captions may start before its first word does: the caption ends with its word.
+      ...(next && !shown.has(next.id) ? { until: w.outEnd } : {})
+    }
+  })
+}
+
 /** One subtitle event: a group of words on screen while one of them is said. */
 export interface SubtitleCue {
   /** Output seconds. */
@@ -132,16 +161,163 @@ export interface SubtitleCue {
  * group with that word picked out, and held until the next word starts so the
  * line never flickers off between words.
  */
-export function subtitleCues(words: TranscriptWord[], perGroup: number): SubtitleCue[] {
+/** Names that keep their capital wherever they fall: a plain caption still writes God, not god. */
+const KEEPS_CAPITAL = /^(I|I'm|I'll|I've|I'd|God|God's|Jesus|Jesus'|Christ|Lord|Lord's|Holy|Spirit|Father|Bible|Amen)$/
+
+/**
+ * The words as a plain caption shows them, one at a time (the church's own clips): no punctuation hanging
+ * off a word ("And," is "and"), and a capital only where the word has one, not where a sentence began.
+ */
+export function plainWords<T extends { text: string }>(words: T[]): T[] {
+  return words.map((w, i) => {
+    const bare = w.text.trim().replace(/^["'“”‘’(«\[]+/, '').replace(/[.,!?;:"“”’)»\]…—-]+$/, '')
+    if (!bare) return w
+    const after = i === 0 || /[.!?…]["'”’)]*$/.test(words[i - 1].text.trim())
+    const text = after && /^[A-Z][a-z]/.test(bare) && !KEEPS_CAPITAL.test(bare) ? bare[0].toLowerCase() + bare.slice(1) : bare
+    return { ...w, text }
+  })
+}
+
+export function subtitleCues(words: TranscriptWord[], perGroup: number, plain = false, build = false): SubtitleCue[] {
+  // A plain caption shows words, never a dash or a stray mark Whisper wrote at a turn.
+  if (plain) words = words.filter((w) => SAYS.test(w.text))
+  if (build) return buildCues(words, perGroup, plain)
+  if (plain) words = plainWords(words)
+  return cuesOf(groupWords(words, perGroup))
+}
+
+/** A pause between words this long or shorter keeps the caption up: the next one replaces it, with no blink. */
+export const CAPTION_JOIN_SEC = 1.2
+
+/** How long a caption stays after its last word when a longer pause follows, before the screen clears. */
+export const CAPTION_HOLD_SEC = 0.6
+
+/**
+ * The cues of groups of words: one per word, each up from when it is said until the next word starts, so a
+ * caption never blinks off between words, or between one group and the next. Only a real pause, longer than
+ * CAPTION_JOIN_SEC, clears the screen, CAPTION_HOLD_SEC after the last word.
+ */
+function cuesOf(groups: TranscriptWord[][]): SubtitleCue[] {
   const cues: SubtitleCue[] = []
-  for (const group of groupWords(words, perGroup)) {
+  groups.forEach((group, g) => {
+    const after = groups[g + 1]?.[0]
     for (let i = 0; i < group.length; i++) {
       const word = group[i]
-      const end = i === group.length - 1 ? word.endSec : group[i + 1].startSec
+      const next = i < group.length - 1 ? group[i + 1] : after
+      const held = !next
+        ? word.endSec + CAPTION_HOLD_SEC
+        : next.startSec - word.endSec <= CAPTION_JOIN_SEC
+          ? next.startSec
+          : word.endSec + CAPTION_HOLD_SEC
+      // Never on into a card or a beat without captions.
+      const end = Math.min(held, Math.max(word.until ?? Infinity, word.endSec))
       cues.push({ start: word.startSec, end: Math.max(end, word.startSec + 0.05), words: group, active: i })
     }
-  }
+  })
   return cues
+}
+
+/** A word with something in it to say: a letter or a digit. */
+const SAYS = /[\p{L}\p{N}]/u
+
+/** How long a built sentence stays up after its last word before a pause clears it (CAPTION_HOLD_SEC). */
+export const BUILD_HOLD_SEC = 0.6
+
+/**
+ * A built caption's groups (CaptionStyle.build): a sentence, or as much of one as fits, broken where the
+ * speaker breaks it: at its end, at a pause, and at a comma once the lines have some words on them. Read
+ * with the punctuation still on, then shown without it when the look is plain.
+ */
+export function buildGroups<T extends TranscriptWord>(words: T[], perGroup: number): T[][] {
+  const groups: T[][] = []
+  let current: T[] = []
+  const most = Math.max(1, perGroup)
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    current.push(w)
+    const text = w.text.trim()
+    const next = words[i + 1]
+    const gap = next ? next.startSec - w.endSec : 0
+    const ends = /[.!?…]["'”’)\]]*$/.test(text)
+    const pause = /[,;:—–-]["'”’)\]]*$/.test(text) && current.length >= Math.ceil(most * 0.6)
+    if (current.length >= most || ends || pause || gap > 0.6 || !next) {
+      groups.push(current)
+      current = []
+    }
+  }
+  return groups
+}
+
+/** A built caption's cues: each word from when it is said, its group whole behind it, held at the end. */
+function buildCues(words: TranscriptWord[], perGroup: number, plain: boolean): SubtitleCue[] {
+  const shown = plain ? plainWords(words) : words
+  const at = new Map(words.map((w, i) => [w, i]))
+  return cuesOf(buildGroups(words, perGroup).map((g) => g.map((w) => shown[at.get(w) as number])))
+}
+
+/**
+ * A landed line's groups (CaptionStyle.keyFont): a few words at a time, except that a run of key words
+ * finishes the screen it starts on, so the line it lands is whole: "He still sits down." is one screen.
+ */
+export function landedGroups<T extends TranscriptWord>(words: T[], perGroup: number): T[][] {
+  const groups: T[][] = []
+  let current: T[] = []
+  const most = Math.max(1, perGroup)
+  const ends = (w: T): boolean => /[.!?…]["'”’)\]]*$/.test(w.text.trim())
+  // A landed line starts at most two words before its key run, never across a sentence's end or a pause,
+  // and the count never breaks it from there to the run's last word.
+  const leads = new Set<number>()
+  const landing = new Set<number>()
+  for (let s = 0; s < words.length; s++) {
+    if (!words[s].key || (s > 0 && words[s - 1].key)) continue
+    let lead = s
+    while (lead > s - 2 && lead > 0 && !ends(words[lead - 1]) && words[lead].startSec - words[lead - 1].endSec <= 0.6) lead--
+    let last = s
+    while (last + 1 < words.length && words[last + 1].key) last++
+    leads.add(lead)
+    for (let k = lead; k <= last; k++) landing.add(k)
+  }
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    if (leads.has(i) && current.length > 0) {
+      groups.push(current)
+      current = []
+    }
+    current.push(w)
+    const next = words[i + 1]
+    const gap = next ? next.startSec - w.endSec : 0
+    const landed = !!w.key && !next?.key
+    const full = current.length >= most && !landing.has(i)
+    if (ends(w) || gap > 0.6 || landed || full || current.length >= most + 3 || !next) {
+      groups.push(current)
+      current = []
+    }
+  }
+  return groups
+}
+
+/** Whether a cue is set as a landed line: big, in the key face, its key words on their own line. */
+export function landsLine(cue: SubtitleCue, style: Pick<CaptionStyle, 'keyFont'>): boolean {
+  return !!style.keyFont && cue.words.some((w) => w.key)
+}
+
+/** The cues of a caption look, as the export burns them and the preview draws them. */
+export function styleCues(
+  words: TranscriptWord[],
+  style: Pick<CaptionStyle, 'wordsPerGroup' | 'plain' | 'build' | 'keyFont' | 'lowercase'>
+): SubtitleCue[] {
+  // Words only: never a dash or a stray mark Whisper wrote at a turn, whatever the look.
+  const spoken = words.filter((w) => SAYS.test(w.text))
+  const said = style.lowercase ? spoken.map((w) => ({ ...w, text: w.text.toLowerCase() })) : spoken
+  if (!style.keyFont) return subtitleCues(said, style.wordsPerGroup, style.plain === true, style.build === true)
+  const shown = style.plain ? plainWords(said) : said
+  return cuesOf(landedGroups(shown, style.wordsPerGroup))
+}
+
+/** The size a landed line is set at: the key face at its scale, smaller where its longest word would not fit. */
+export function landedFontPx(words: string[], style: CaptionStyle, frameWidth: number): number {
+  const big = Math.round(style.fontSizePx * (style.keyScale ?? 1.8))
+  return fitFontPx(words, { ...style, fontSizePx: big, activeScale: 1 }, frameWidth)
 }
 
 /** A time as the ASS file holds it: whole hundredths of a second. */
@@ -183,6 +359,8 @@ export interface SubtitleRun {
   descent: number
   /** How far its ink reaches from the pen: left, right, up and down. */
   ink: { left: number; right: number; up: number; down: number }
+  /** A word of a built caption not said yet: it keeps its place on the line and draws nothing. */
+  hidden?: boolean
 }
 
 export interface SubtitleLine {
@@ -241,6 +419,9 @@ interface Piece {
   scale: number
   /** Another face for this word (the word being said, in a heavier weight); the look's own when absent. */
   family?: string
+  hidden?: boolean
+  /** Starts a line of its own, as \N does in the export. */
+  breakBefore?: boolean
 }
 
 /**
@@ -301,16 +482,52 @@ export function layoutSubtitle(
         )
       )
     }
+  } else if (landsLine(cue, style)) {
+    // The line landed: the key face, big, the key words in the key colour from the first of them on a line of their own.
+    const first = cue.words.findIndex((w) => w.key)
+    blocks.push(
+      block(
+        cue.words.map((w, i) => ({
+          text: upper(w.text, style.uppercase),
+          color: w.key && style.keyColor ? style.keyColor : style.textColor,
+          scale: 1,
+          ...(i === first && i > 0 ? { breakBefore: true } : {})
+        })),
+        {
+          ...lookOf(
+            style,
+            landedFontPx(
+              cue.words.map((w) => w.text),
+              style,
+              frame.width
+            )
+          ),
+          family: style.keyFont as string
+        },
+        area,
+        measure
+      )
+    )
   } else {
     blocks.push(
       block(
         cue.words.map((w, i) => ({
           text: upper(w.text, style.uppercase),
-          color: i === cue.active ? style.activeColor : style.textColor,
+          color:
+            w.key && style.keyColor ? style.keyColor : i === cue.active ? style.activeColor : style.textColor,
           scale: i === cue.active ? style.activeScale : 1,
-          family: i === cue.active ? style.activeFontFamily : undefined
+          family: i === cue.active ? style.activeFontFamily : undefined,
+          // A built caption shows the words said so far, the rest keeping their places.
+          ...(style.build && i > cue.active ? { hidden: true } : {})
         })),
-        lookOf(style),
+        lookOf(
+          style,
+          fitFontPx(
+            cue.words.map((w) => w.text),
+            style,
+            frame.width
+          )
+        ),
         area,
         measure
       )
@@ -319,10 +536,23 @@ export function layoutSubtitle(
   return { blocks, bounds: boundsOf(blocks) }
 }
 
-function lookOf(style: CaptionStyle): Look {
+/**
+ * The size a cue's words are set at: the style's, or smaller when its longest word would run past the
+ * margins (8% each side). Estimated from the face's average letter width (letterEm), the same way here
+ * and in the export (main/captions), so the preview and the file agree.
+ */
+export function fitFontPx(words: string[], style: CaptionStyle, frameWidth: number): number {
+  if (!style.letterEm) return style.fontSizePx
+  const longest = words.reduce((m, w) => Math.max(m, [...(style.uppercase ? w.toUpperCase() : w)].length), 0)
+  const room = frameWidth * 0.84
+  const wide = longest * style.letterEm * style.fontSizePx * Math.max(1, style.activeScale) * (style.uppercase ? 1.2 : 1)
+  return wide > room ? Math.max(8, Math.floor((style.fontSizePx * room) / wide)) : style.fontSizePx
+}
+
+function lookOf(style: CaptionStyle, size = style.fontSizePx): Look {
   return {
     family: style.fontFamily,
-    size: style.fontSizePx,
+    size,
     outlineColor: style.boxColor ?? style.outlineColor,
     outlinePx: style.outlinePx,
     shadowPx: style.shadowPx,
@@ -383,16 +613,17 @@ function block(
   const lines: number[][] = []
   for (let i = 0; i < words.length; i++) {
     const line = lines[lines.length - 1]
-    if (line && reach(line[0], i) < area.width) line.push(i)
+    if (line && !words[i].breakBefore && reach(line[0], i) < area.width) line.push(i)
     else lines.push([i])
   }
-  // Then even them out: the last word of a line moves down while that brings the two lines closer.
+  // Then even them out: the last word of a line moves down while that brings the two lines closer. A line
+  // a hard break began keeps its first word, as libass evens only the breaks it made itself.
   for (let moved = true; moved; ) {
     moved = false
     for (let k = 1; k < lines.length; k++) {
       const a = lines[k - 1]
       const b = lines[k]
-      if (a.length < 2) continue
+      if (a.length < 2 || words[b[0]].breakBefore) continue
       const last = a[a.length - 1]
       const before = Math.abs(reach(a[0], last) - reach(b[0], b[b.length - 1]))
       const after = Math.abs(reach(a[0], a[a.length - 2]) - reach(last, b[b.length - 1]))
@@ -417,7 +648,8 @@ function block(
           color: w.color,
           ascent: em * face.winAscent,
           descent: em * face.winDescent,
-          ink: space.ink
+          ink: space.ink,
+          ...(w.hidden ? { hidden: true } : {})
         })
         x += space.width
       }
@@ -429,7 +661,8 @@ function block(
         color: w.color,
         ascent: faceOf(w.family).em * faceOf(w.family).face.winAscent * w.scale,
         descent: faceOf(w.family).em * faceOf(w.family).face.winDescent * w.scale,
-        ink: w.ink
+        ink: w.ink,
+        ...(w.hidden ? { hidden: true } : {})
       })
       x += w.width
     })
@@ -483,7 +716,7 @@ function boundsOf(blocks: SubtitleBlock[]): SubtitleLayout['bounds'] {
   for (const b of blocks) {
     for (const line of b.lines) {
       for (const r of line.runs) {
-        if (!b.box && !r.text.trim()) continue
+        if (r.hidden || (!b.box && !r.text.trim())) continue
         const e = b.box ? plateOf(r, line.baseline, b.outlinePx) : inkOf(r, line.baseline, b)
         const spread = SOFT_SPREAD * b.shadowBlur
         x0 = Math.min(x0, e.x0, e.x0 + b.shadowPx - spread)
@@ -514,7 +747,7 @@ export function drawSubtitle(ctx: Ctx, layout: SubtitleLayout, scale: number, ma
     ctx.setTransform(scale, 0, 0, scale, 0, 0)
     if (b.box) {
       ctx.fillStyle = b.box
-      for (const line of b.lines) for (const r of line.runs) fillPlate(ctx, plateOf(r, line.baseline, b.outlinePx))
+      for (const line of b.lines) for (const r of line.runs) if (!r.hidden) fillPlate(ctx, plateOf(r, line.baseline, b.outlinePx))
     } else if (b.outlinePx > 0) {
       ctx.strokeStyle = b.outlineColor
       ctx.lineWidth = 2 * b.outlinePx + b.embolden
@@ -554,7 +787,7 @@ function prepare(ctx: Ctx): void {
 function eachGlyphRun(b: SubtitleBlock, draw: (r: SubtitleRun, x: number, y: number) => void): void {
   for (const line of b.lines) {
     for (const r of line.runs) {
-      if (r.text.trim()) draw(r, r.x + b.embolden / 2, line.baseline - b.embolden / 2)
+      if (r.text.trim() && !r.hidden) draw(r, r.x + b.embolden / 2, line.baseline - b.embolden / 2)
     }
   }
 }
@@ -568,7 +801,7 @@ function silhouette(ctx: Ctx, b: SubtitleBlock, color: string): void {
   ctx.fillStyle = color
   ctx.strokeStyle = color
   if (b.box) {
-    for (const line of b.lines) for (const r of line.runs) fillPlate(ctx, plateOf(r, line.baseline, b.outlinePx))
+    for (const line of b.lines) for (const r of line.runs) if (!r.hidden) fillPlate(ctx, plateOf(r, line.baseline, b.outlinePx))
     return
   }
   const width = 2 * b.outlinePx + b.embolden

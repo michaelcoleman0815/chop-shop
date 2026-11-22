@@ -12,8 +12,9 @@
 import config from '../../site.config.mjs'
 
 // Where on the page an address came from: the button that led to the field, the field itself ("soon"),
-// or a link straight to it ("link", which is where /download goes before there is a release).
-const SOURCES = ['hero', 'header', 'close', 'soon', 'link']
+// or a link straight to it ("link", which is where /download goes before there is a release). On a device
+// Cutalong doesn't run on yet, the button says so and names the device, so the list knows what people wait for.
+const SOURCES = ['hero', 'header', 'close', 'soon', 'link', 'iphone', 'ipad', 'android', 'windows', 'linux', 'chromebook', 'other']
 
 // The honeypot: a field people never see, so only a bot fills it in.
 const TRAP = 'website'

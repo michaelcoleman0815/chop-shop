@@ -1,4 +1,5 @@
 import { detectProvider } from '../keys'
+import { yourComputer } from '../platform'
 import type { BrollKind } from './types'
 
 /**
@@ -36,7 +37,7 @@ export const BROLL_KEYS: readonly BrollKeyService[] = [
     keyName: 'API key',
     steps: [
       'Sign in at pexels.com (an account is free), then open pexels.com/api.',
-      'Choose Your API Key, say what it is for (a video editor on your Mac is enough) and agree to the terms.',
+      `Choose Your API Key, say what it is for (a video editor on ${yourComputer} is enough) and agree to the terms.`,
       'Copy the key it shows and paste it here.'
     ],
     limits: 'Free: 200 searches an hour and 20,000 a month.',
@@ -92,7 +93,7 @@ export const BROLL_KEYS: readonly BrollKeyService[] = [
     keyName: 'Client secret/Api key',
     steps: [
       'Sign in at freesound.org (an account is free), then open freesound.org/apiv2/apply.',
-      'Fill in the short form; a video editor on your Mac is enough of a description.',
+      `Fill in the short form; a video editor on ${yourComputer} is enough of a description.`,
       'Copy the Client secret/Api key from the list of your keys and paste it here.'
     ],
     limits: 'Free: 60 searches a minute and 2,000 a day.',

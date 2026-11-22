@@ -388,6 +388,8 @@ const api = {
     avoid?: { path: string; startSec: number; endSec: number }[]
     /** The chat's brand, by id. */
     brand?: string | null
+    /** Shorter than this, a recording is not clipped and nothing is heard: a recording dropped in with no words. */
+    minSec?: number
   }): Promise<
     | ({ ok: true; reply: ClipsReply } & ClipsFound)
     | { ok: false; message: string; details?: { label: string; value: string }[] }

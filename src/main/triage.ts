@@ -23,7 +23,7 @@ export const TRIAGE_SYSTEM = `You read a message a video creator sent to Cutalon
 Routes:
 - edit: cut one video from footage of someone talking: a YouTube video, a Short, a review, a talk, a tutorial. Most messages with footage are this, however much else they ask for.
 - vlog: tell a day's clips as a story: a vlog, a day in the life, a trip, from many short clips.
-- clipping: cut many short clips, each its own video, from one or more long recordings: a stream, a church service, a sermon, a podcast, an interview, when the person asks for clips, shorts or highlights from it.
+- clipping: cut many short clips, each its own video, from one or more long recordings: a stream, a church service, a sermon, a podcast, an interview, when the person asks for clips, reels, shorts, TikToks or highlights from it ("turn this into clips", "make reels out of this", "clip this sermon").
 - grid: play two to four videos dropped in at once, side by side in a grid with a label on each, when the person asks for a grid, a 2x2 or the videos side by side.
 - wait: there is no footage yet and no edit open, and the words ask for something to be made: say in one sentence that you will do it when the footage comes ("Drop your footage and I'll make it a Short with captions.").
 - answer: a question about Cutalong or what it can do, or talk that asks for nothing to be made: answer in at most three sentences, from what the <commands> block says Cutalong can do. When there is no footage yet, end by saying what to drop.
@@ -143,9 +143,11 @@ export function readTriage(t: Triage, said: string): Extract<TriageResult, { ok:
  * this is what is left when it does not.
  */
 export function plainTriage(input: TriageInput): Extract<TriageResult, { ok: true }> {
+  // Many short videos asked for in so many words, of footage long enough to give them: the clips, not one edit.
+  const clipping = MANY_CLIPS.test(input.request) && (input.hasEdit || input.files.some(longEnough))
   return readTriage(
     {
-      route: 'edit',
+      route: clipping ? 'clipping' : 'edit',
       reply: '',
       link: input.link ? 'study' : 'none',
       clip: { count: 0, minSec: 0, maxSec: 0, funny: false, topic: '' },
@@ -154,6 +156,12 @@ export function plainTriage(input: TriageInput): Extract<TriageResult, { ok: tru
     input.request.trim()
   )
 }
+
+/** Many short videos, asked for by name: clips, reels, shorts, TikToks, highlights; "clip this sermon". */
+const MANY_CLIPS = /\b(clips|reels|shorts|tik ?toks|highlights|snippets)\b|\bclip (?:this|it|these|them|the)\b/i
+
+/** A recording long enough to cut clips from (shared/clipping MIN_RECORDING_SEC), or one not yet measured. */
+const longEnough = (f: TriageFile): boolean => (f.video || f.audio) && (f.durationSec === null || f.durationSec >= 120)
 
 /** A model on this computer reads which road a message takes, held to the same shape as Claude's answer. */
 export async function triageLocally(

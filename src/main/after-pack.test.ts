@@ -17,7 +17,8 @@ describe('the packed app’s programs', () => {
   let dir = ''
   afterEach(() => rm(dir, { recursive: true, force: true }))
 
-  it('can be run by everyone, wherever they are, and nothing else changes', async () => {
+  // Permission bits are the Mac's and Linux's: Windows keeps none, and the hook runs only for the Mac build.
+  it.skipIf(process.platform === 'win32')('can be run by everyone, wherever they are, and nothing else changes', async () => {
     dir = await mkdtemp(join(tmpdir(), 'after-pack-'))
     await mkdir(join(dir, 'node_modules', 'probe'), { recursive: true })
     const probe = join(dir, 'node_modules', 'probe', 'ffprobe')

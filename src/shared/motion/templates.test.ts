@@ -277,6 +277,38 @@ describe('titles', () => {
     expect(box(5)[3]).toBe(0)
   })
 
+  it('centres the sermon hooks on the frame, as the captions are, not on the safe area', () => {
+    for (const style of ['card', 'title'] as const) {
+      const scene = sceneOf(
+        docWith('vertical', [
+          {
+            op: 'motion-add',
+            kind: 'banner',
+            from: 'start',
+            to: '4s',
+            text: ['He Wasn’t Talking About Heaven'],
+            style,
+            place: style === 'card' ? 'middle' : 'top'
+          }
+        ])
+      )
+      const f = draw(scene, 1.5)
+      // The rows the words or the card cover, then how far they reach either side.
+      let left = 1080
+      let right = 0
+      for (let y = 200; y < 1000; y += 4)
+        for (let x = 0; x < 1080; x += 2) {
+          const [r, g, b, a] = f.at(x, y)
+          if (a > 200 && r > 230 && g > 230 && b > 230) {
+            left = Math.min(left, x)
+            right = Math.max(right, x)
+          }
+        }
+      expect(right, style).toBeGreaterThan(left)
+      expect(Math.abs((left + right) / 2 - 540), style).toBeLessThan(8)
+    }
+  })
+
   it('closes on an end card over the last two seconds, the picture dimmed', () => {
     const scene = sceneOf(
       docWith('wide', [

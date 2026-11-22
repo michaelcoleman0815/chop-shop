@@ -681,7 +681,7 @@ describe('the planner request', () => {
     const slots = { to: '', items: [], values: [], icon: '', place: '', color: '', fx: [] }
     const plan = PlanSchema.parse({
       ops: [
-        { op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], box: [], style: 'spec', ...slots },
+        { op: 'motion-add', kind: 'callout', from: 'w9', text: ['Settings'], box: [], style: 'spec', pin: '', ...slots },
         { op: 'motion-update', id: 'm1', from: '', text: [], box: [0.5, 0.4], style: '', ...slots },
         { op: 'motion-remove', ids: ['m1'] }
       ],
@@ -719,7 +719,7 @@ describe('the planner request', () => {
     expect(renderRequest(doc, 'Pop my app logo', [], '', [], ['Field Notes App'])).toContain(
       '<brand-logos>\nField Notes App\n</brand-logos>'
     )
-    const slots = { to: '', text: [], values: [], icon: '', box: [], place: '', color: '', fx: [] }
+    const slots = { to: '', text: [], values: [], icon: '', box: [], place: '', color: '', fx: [], pin: '' }
     const plan = PlanSchema.parse({
       ops: [
         {
@@ -759,7 +759,7 @@ describe('the planner request', () => {
     expect(renderRequest(doc, 'Show the page when I mention it', [])).toContain(
       'a1 image 860x4300, a page: Example Domain | not in the cut yet'
     )
-    const slots = { to: '', items: [], values: [], icon: '', box: [], place: '', color: '', fx: [] }
+    const slots = { to: '', items: [], values: [], icon: '', box: [], place: '', color: '', fx: [], pin: '' }
     const plan = PlanSchema.parse({
       ops: [
         { op: 'motion-add', kind: 'screenshot', from: 'w3', text: ['a1'], style: 'rise', ...slots },
@@ -875,7 +875,7 @@ describe('a busy edit', () => {
     const ops = BUSY_EXAMPLE.ops.map((o) => {
       if (o.op !== 'motion-add') return o
       const call = fullCall(o)
-      return { op: o.op, kind: o.kind, ...call, items: (call.items as object[]).map((r) => ({ ...row, ...r })) }
+      return { op: o.op, kind: o.kind, ...call, items: (call.items as object[]).map((r) => ({ ...row, ...r })), pin: '' }
     })
     const offered = offerPlan(doc, PlanSchema.parse({ ops, summary: 's', reply: 'r', notesHandled: [], needs: [], question: NO_QUESTION }), [])
     if (!offered.ok) throw new Error('expected a plan')

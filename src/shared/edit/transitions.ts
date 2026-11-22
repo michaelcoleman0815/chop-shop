@@ -32,7 +32,7 @@ export interface TransitionInfo {
    * a wipe or slide as a clip or a move from one side, an iris, a zoom, or a
    * blur. Exact shapes are the export's job.
    */
-  preview: 'fade' | 'dip' | 'wipe' | 'slide' | 'cover' | 'iris' | 'zoom' | 'blur' | 'whip'
+  preview: 'fade' | 'dip' | 'wipe' | 'slide' | 'cover' | 'iris' | 'zoom' | 'blur' | 'whip' | 'glitch' | 'rgb' | 'vhs'
   /** For dips: the colour passed through. */
   color?: 'black' | 'white'
   /** For wipes, slides, covers and whips: where the new picture comes from. */
@@ -69,11 +69,36 @@ export const TRANSITION_INFO = {
   'doors-open': { xfade: 'vertopen', label: 'doors opening', defaultSec: 0.6, preview: 'iris' },
   pixelate: { xfade: 'pixelize', label: 'a pixelate', defaultSec: 0.5, preview: 'blur' },
   blur: { xfade: 'hblur', label: 'a blur', defaultSec: 0.5, preview: 'blur' },
-  squeeze: { xfade: 'squeezeh', label: 'a squeeze', defaultSec: 0.5, preview: 'zoom' }
+  squeeze: { xfade: 'squeezeh', label: 'a squeeze', defaultSec: 0.5, preview: 'zoom' },
+  // The looks (TRANSITION_LOOKS): each is a dissolve under its own damage, drawn over the meeting.
+  glitch: { xfade: 'fade', label: 'a glitch', defaultSec: 0.3, preview: 'glitch' },
+  'rgb-split': { xfade: 'fade', label: 'an RGB split', defaultSec: 0.4, preview: 'rgb' },
+  vhs: { xfade: 'fade', label: 'a VHS glitch', defaultSec: 0.5, preview: 'vhs' }
 } as const satisfies Record<string, TransitionInfo>
 
+/** Every transition the edit can show, the looks included. */
 export type TransitionKind = keyof typeof TRANSITION_INFO
-export const TRANSITION_KINDS = Object.keys(TRANSITION_INFO) as [TransitionKind, ...TransitionKind[]]
+
+/**
+ * Transitions Cutalong 0.2.13 does not know. An edit keeps one as a
+ * dissolve with the look beside it (TransitionSchema.look), so 0.2.13, which
+ * drops a field it does not know, opens the edit and shows a dissolve there,
+ * and a version never keeps the op that set one (edit/doc savedOps).
+ */
+export const TRANSITION_LOOKS = ['glitch', 'rgb-split', 'vhs'] as const
+export type TransitionLook = (typeof TRANSITION_LOOKS)[number]
+
+export const isTransitionLook = (kind: string): kind is TransitionLook =>
+  (TRANSITION_LOOKS as readonly string[]).includes(kind)
+
+/** The transitions an edit saves by name: every one but the looks, as 0.2.13 knows them. */
+export const TRANSITION_KINDS = Object.keys(TRANSITION_INFO).filter((k) => !isTransitionLook(k)) as [
+  Exclude<TransitionKind, TransitionLook>,
+  ...Exclude<TransitionKind, TransitionLook>[]
+]
+
+/** Every transition an op or the planner may name, the looks included. */
+export const ALL_TRANSITION_KINDS = Object.keys(TRANSITION_INFO) as [TransitionKind, ...TransitionKind[]]
 
 /** A frame at 25 fps, the shortest a transition can be and still be seen. */
 export const MIN_TRANSITION_SEC = 0.04
@@ -82,9 +107,21 @@ export const MAX_TRANSITION_SEC = 3
 export const TransitionSchema = z.object({
   kind: z.enum(TRANSITION_KINDS),
   /** How long the two beats overlap, in seconds. */
-  sec: z.number().min(MIN_TRANSITION_SEC).max(MAX_TRANSITION_SEC)
+  sec: z.number().min(MIN_TRANSITION_SEC).max(MAX_TRANSITION_SEC),
+  /** A look over the dissolve `kind` names (TRANSITION_LOOKS): what shows, where it is set. */
+  look: z.enum(TRANSITION_LOOKS).optional()
 })
 export type Transition = z.infer<typeof TransitionSchema>
+
+/** What a beat's transition shows: its look, or the transition it names. */
+export function shownTransition(t: Transition): TransitionKind {
+  return t.look ?? t.kind
+}
+
+/** A transition as a beat keeps it: a look is kept as a dissolve with the look beside it. */
+export function keptTransition(kind: TransitionKind, sec: number): Transition {
+  return isTransitionLook(kind) ? { kind: 'dissolve', sec, look: kind } : { kind, sec }
+}
 
 /** The longest a J or L cut moves the picture's edit point off the sound's. */
 export const MAX_SPLIT_EDIT_SEC = 3
@@ -151,7 +188,21 @@ const ALIASES: Record<string, TransitionKind> = {
   pixelate: 'pixelate',
   pixelize: 'pixelate',
   blur: 'blur',
-  squeeze: 'squeeze'
+  squeeze: 'squeeze',
+  glitch: 'glitch',
+  glitchy: 'glitch',
+  digital: 'glitch',
+  datamosh: 'glitch',
+  rgb: 'rgb-split',
+  'rgb-split': 'rgb-split',
+  'colour-split': 'rgb-split',
+  'color-split': 'rgb-split',
+  chromatic: 'rgb-split',
+  'chromatic-aberration': 'rgb-split',
+  vhs: 'vhs',
+  tape: 'vhs',
+  'vhs-glitch': 'vhs',
+  retro: 'vhs'
 }
 
 /**

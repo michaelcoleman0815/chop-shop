@@ -20,6 +20,7 @@ import {
   gridHeard,
   indexWords,
   insetFor,
+  jumpZooms,
   levelAt,
   lookMatrix,
   openNotes,
@@ -29,6 +30,7 @@ import {
   pieceRate,
   pieceTime,
   pictureFit,
+  boxRect,
   noteBeats,
   pickedBeats,
   pipBox,
@@ -81,7 +83,7 @@ import {
   type MotionTheme
 } from '../../../../shared/motion'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
-import { captionStyleFor, subtitleAt, subtitleCues, subtitleWords } from '../../../../shared/subtitles'
+import { captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords } from '../../../../shared/subtitles'
 import { isImagePath } from '../../../../shared/assets'
 import { api, MEDIA_CORS, mediaUrlFor } from '../api'
 import { CaptionSheet } from '../components/CaptionSheet'
@@ -167,7 +169,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         words: doc.words,
         size: designSize(cut.aspect, doc.sources[0]),
         theme: themeFrom(app.chatBrand),
-        assets: doc.assets
+        assets: doc.assets,
+        pictures: doc.sources
       }),
     [cut, resolved, doc.words, doc.sources, doc.assets, app.chatBrand]
   )
@@ -473,10 +476,7 @@ function Preview({
     // Captions the graphics draw are on the motion canvas instead.
     if (!cut.captions.on || drawsCaptions(cut.captions)) return []
     const words = subtitleWords(cut, resolved, scene).words
-    return subtitleCues(
-      words.map((w) => ({ text: w.text, startSec: w.outStart, endSec: w.outEnd })),
-      captionStyle.wordsPerGroup
-    )
+    return styleCues(shownWords(words, cut.captions, resolved.words), captionStyle)
   }, [cut, resolved, scene, captionStyle])
   const cue = subtitleAt(cues, time)
   const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined
@@ -831,7 +831,7 @@ function Deck({
   sources,
   time,
   playing,
-  frameAspect,
+  frameAspect: frameWhole,
   theme
 }: {
   videoRef: RefObject<HTMLVideoElement>
@@ -852,6 +852,18 @@ function Deck({
   const piece = view.piece !== null ? resolved.pieces[view.piece] : undefined
   const rb = piece ? resolved.beats.find((b) => b.id === piece.beat) : undefined
   const t = rb ? cut.beats[rb.index]?.treatment : undefined
+  // The speaker as a box on black (edit/box), as the export sets it: the picture is the box, its shape the box's.
+  const boxed = cut.box && t && t.frame === 'speaker' && !t.camera && !t.broll && !t.grid && !t.angle ? cut.box : null
+  const frameAspect = boxed ? boxed.aspect : frameWhole
+  const boxAt = useMemo(() => {
+    if (!boxed) return null
+    const height = 1080 / frameWhole
+    const r = boxRect(boxed, { width: 1080, height })
+    return { top: `${(r.y / height) * 100}%`, bottom: `${((height - r.y - r.height) / height) * 100}%` }
+  }, [boxed, frameWhole])
+  // Jump cuts hidden with a punch-in, wide and close in turn, as the export has them (edit/jumps).
+  const jumps = useMemo(() => jumpZooms(cut, resolved, sources), [cut, resolved, sources])
+  const zoom = (t?.zoom ?? 1) * (view.piece !== null ? (jumps[view.piece] ?? 1) : 1)
   const style = deckStyle(view.layer)
   // A beat shown as a grid (edit/grid): this deck's picture in its own box, the others and the ground over it.
   const grid = rb && t?.grid ? t.grid : null
@@ -876,7 +888,9 @@ function Deck({
   const at = runs && t?.broll ? cutawayAt(t.broll, runs.length, runs.offset) : null
   // The camera over the speaker, from the plan the export moves by.
   const source = piece ? sources.find((s) => s.id === piece.source) : undefined
-  let transform = t && t.zoom > 1.001 ? `scale(${t.zoom})` : undefined
+  let transform = t && zoom > 1.001 ? `scale(${zoom})` : undefined
+  // A punch-in from the top or the foot of the picture, where the beat says (zoomAt), as the export crops it.
+  let transformOrigin = transform && t?.zoomAt !== undefined ? `50% ${t.zoomAt * 100}%` : undefined
   // Cropped to the frame, the picture looks where the speaker is, or where it was framed by hand (edit/reframe).
   const framing = piece && t && !t.camera ? pieceFraming(cut, t, piece, source?.subject) : null
   const objectPosition =
@@ -887,7 +901,8 @@ function Deck({
     const clock = cameraClock(resolved, rb.id, time, t.camera.word)
     if (clock) {
       const plan = cameraPlan(t.camera, clock.length, clock.wordAt, source.width / source.height, frameAspect)
-      transform = cameraTransform(viewAt(plan, clock.t), plan.fw, plan.fh, t.zoom)
+      transform = cameraTransform(viewAt(plan, clock.t), plan.fw, plan.fh, zoom)
+      transformOrigin = undefined
     }
   }
   const cutawayCamera =
@@ -909,8 +924,16 @@ function Deck({
         )
       : 'cover'
   return (
-    <div className="cl-deck" style={style.wrapper} data-dip={style.dip} aria-hidden={!view.layer}>
-      <div className={`cl-deck-picture${fit === 'black' ? ' bars' : ''}`} style={style.picture}>
+    <div
+      className="cl-deck"
+      style={boxAt ? { ...style.wrapper, background: '#000000' } : style.wrapper}
+      data-dip={style.dip}
+      aria-hidden={!view.layer}
+    >
+      <div
+        className={`cl-deck-picture${fit === 'black' ? ' bars' : ''}`}
+        style={boxAt ? { ...style.picture, ...boxAt } : style.picture}
+      >
         {fit === 'blur' && <Backdrop of={videoRef} aspect={frameAspect} bw={!!t?.bw} transform={transform} />}
         <video
           ref={videoRef}
@@ -919,7 +942,7 @@ function Deck({
           preload="auto"
           style={{
             filter: t?.bw ? 'grayscale(1)' : undefined,
-            ...(ownBox ?? { transform, objectPosition, objectFit: fit === 'cover' ? undefined : 'contain' })
+            ...(ownBox ?? { transform, transformOrigin, objectPosition, objectFit: fit === 'cover' ? undefined : 'contain' })
           }}
         />
         <audio ref={soundRef} preload="auto" aria-hidden="true" />

@@ -3,7 +3,7 @@ import { applyOps, type OpContext } from './edit/ops'
 import { cutawayFit, frameShape, pictureFit } from './edit/fill'
 import type { Asset, Beat, Cut, EditDoc, Op, Source, Treatment, Word } from './edit/schema'
 import { SFX_KINDS, type Sfx } from './edit/sfx'
-import { parseTransition, type TransitionKind } from './edit/transitions'
+import { parseTransition, shownTransition, type TransitionKind } from './edit/transitions'
 import { MOTION_KINDS, type MotionKind } from './motion/schema'
 
 /**
@@ -100,6 +100,8 @@ const MOTION_NAMES: Record<string, string> = {
 /** The family a transition belongs to on the list: every whip is a whip pan. */
 export function transitionFamily(kind: TransitionKind): string {
   if (kind.startsWith('dip-')) return 'dip'
+  // The looks are one family: "never glitches" rules out the RGB split and the VHS tape too.
+  if (kind === 'rgb-split' || kind === 'vhs') return 'glitch'
   if (kind.startsWith('smooth-') || kind === 'clock') return 'wipe'
   if (kind === 'squeeze') return 'zoom'
   if (kind === 'doors-open' || kind.startsWith('circle-')) return 'circle'
@@ -566,8 +568,8 @@ function present(cut: Cut, entry: NeverItem, ctx: NeverContext): Set<string> {
     if (thing === 'sfx')
       for (const s of b.sfx ?? [])
         if (covers(sfxItem(s))) keys.add(s.word ? `${s.word}|sfx|${s.kind ?? s.path}` : `@${b.id}|sfx|${s.kind ?? s.path}`)
-    if (thing === 'transition' && b.transition && covers(`transition:${transitionFamily(b.transition.kind)}`))
-      keys.add(`@${b.id}|${b.transition.kind}`)
+    if (thing === 'transition' && b.transition && covers(`transition:${transitionFamily(shownTransition(b.transition))}`))
+      keys.add(`@${b.id}|${shownTransition(b.transition)}`)
     if (thing === 'punch-in') {
       if (t.zoom > 1.001) over('zoom')
       if (t.camera?.kind === 'punch-in') over('camera|punch-in', t.camera.word)
@@ -588,6 +590,8 @@ function present(cut: Cut, entry: NeverItem, ctx: NeverContext): Set<string> {
   if (thing === 'music' && cut.music) keys.add(cut.music.path)
   if (thing === 'look' && cut.look) keys.add(JSON.stringify(cut.look))
   if (thing === 'captions' && cut.captions.on) keys.add('on')
+  // Jump cuts punched in (edit/jumps) are punch-ins too.
+  if (thing === 'punch-in' && cut.punchJumps) keys.add('jumps')
   return keys
 }
 
@@ -668,6 +672,9 @@ export function neverFilter(ops: Op[], never: NeverItem[], ctx: NeverContext): {
         break
       case 'fill':
         if ((op.mode === 'blur' || op.mode === 'auto') && rule('fill')) continue
+        break
+      case 'punch-jumps':
+        if (op.on && rule('punch-in')) continue
         break
       case 'captions':
         if (op.set.on === true && rule('captions')) {
@@ -778,7 +785,7 @@ export function neverStrip(cut: Cut, never: NeverItem[], ctx: NeverContext): { o
           ops: [{ op: 'sfx', beats: [b.id], add: null }, ...keep.map((s): Op => ({ op: 'sfx', beats: [b.id], add: s }))]
         })
     }
-    if (b.transition && rule(`transition:${transitionFamily(b.transition.kind)}`)) hard.push(b.id)
+    if (b.transition && rule(`transition:${transitionFamily(shownTransition(b.transition))}`)) hard.push(b.id)
     if (t.zoom > 1.001 && rule('punch-in')) wide.push(b.id)
     if (t.camera && rule(t.camera.kind === 'punch-in' ? 'punch-in' : 'camera')) still.push(b.id)
     if (t.broll?.camera && rule(t.broll.camera.kind === 'punch-in' ? 'punch-in' : 'camera')) stillCutaway.push(b.id)
@@ -800,6 +807,7 @@ export function neverStrip(cut: Cut, never: NeverItem[], ctx: NeverContext): { o
   if (cut.look && rule('look')) ops.push({ op: 'look', set: null })
   if (cut.captions.on && rule('captions')) ops.push({ op: 'captions', set: { on: false } })
   if (present(cut, 'fill', ctx).size > 0 && rule('fill')) ops.push({ op: 'fill', mode: 'crop' })
+  if (cut.punchJumps && rule('punch-in')) ops.push({ op: 'punch-jumps', on: false })
   return { ops, items: [...items] }
 }
 

@@ -1,4 +1,6 @@
-import type { TightenSpec } from '../edit/schema'
+import type { CaptionSpec, TightenSpec } from '../edit/schema'
+import type { Look } from '../edit/look'
+import { SQUARE_BOX, type Box } from '../edit/box'
 import { profileById } from '../raw/profiles'
 
 /**
@@ -8,6 +10,13 @@ import { profileById } from '../raw/profiles'
  * tightening; the lengths are the ones that travel for each kind of moment
  * (docs/research/raw-footage.md, section 5).
  */
+
+/**
+ * Low-key and muted, as the popular clips are graded (measured: mean luma 40 to 75 of 255, saturation 4 to 13,
+ * where a service's stream runs near 125 and 19): darker, more contrast, much less colour, warm skin, a deep
+ * vignette, and a little sharpening and grain against the softness of a stream made larger.
+ */
+const MOODY: Look = { exposure: -0.5, contrast: 0.25, saturation: -0.45, temperature: 0.12, vignette: 0.65, sharpen: 0.25, grain: 0.12 }
 
 export type ClipProfileId = 'church' | 'podcast' | 'livestream' | 'talk'
 
@@ -32,6 +41,39 @@ export interface ClipProfile {
   keepsLaughter: boolean
   /** The guidance the clip finder's prompt has for it (main/clips GENRE_NOTE). */
   genre: string
+  /** How its clips are captioned, unless the brand has a look of its own. */
+  captions?: Partial<CaptionSpec>
+  /** A soft bed under each clip, made for it (main/pads), and where it sits against the voice. */
+  bed?: { levelDb: number; duckDb: number }
+  /** A closer frame on every beat: 1.2 is chest-up where the crop alone shows the speaker waist-up. */
+  zoom?: number
+  /**
+   * Where that closer frame sits, from the top of the picture (0) to its foot (1); absent, the middle.
+   * From the top, it keeps heads and leaves out the foot of the picture, where a stream lays its
+   * lower thirds and scripture.
+   */
+  zoomAt?: number
+  /** A grade over the picture (edit/look). */
+  look?: Look
+  /**
+   * Looks a set of clips takes in turn, so no two in a row look alike, as the churches the owner follows post
+   * theirs: each its own captions, framing and hook. A look's settings stand in for the profile's.
+   */
+  looks?: ClipLook[]
+}
+
+/** One of the looks a set of clips takes in turn. */
+export interface ClipLook {
+  name: string
+  captions: Partial<CaptionSpec>
+  zoom?: number
+  zoomAt?: number
+  /** The picture as a box on black inside the frame (edit/box). */
+  box?: Box
+  /** The clip's hook on screen: a title above a boxed picture for the whole clip, or a white card for its first seconds. */
+  hook?: { style: 'title' | 'card'; place: 'top' | 'middle'; sec: number | null }
+  /** Its own grade (edit/look), in place of the profile's. */
+  look?: Look
 }
 
 /** The cutting profile's tightening, as a clip takes it. */
@@ -46,16 +88,85 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     id: 'church',
     name: 'the service',
     label: 'Sermon',
+    // Measured on 54 popular sermon clips (docs/research/sermon-clips.md): the bold-caption kind runs a
+    // median 62 s, stories longer; pauses over a quarter-second are cut, and applause, laughter and
+    // "that's right" stay.
     minSec: 30,
-    maxSec: 60,
-    targetSec: 48,
+    maxSec: 90,
+    targetSec: 60,
     minutesPerClip: 3,
     maxClips: 10,
-    // The cutting profile's own line: prayer pauses stay, and only long silences go.
-    keepPauseSec: 1.5,
-    tighten: tightenOf('church', { maxGapSec: 1.5, padSec: 0.2, fillers: false }),
+    keepPauseSec: 0.4,
+    tighten: { maxGapSec: 0.4, padSec: 0.1, fillers: false },
     keepsLaughter: true,
-    genre: 'sermon'
+    genre: 'sermon',
+    // Lecrae's Shorts: three words at a time in Inter, the line he lands big and yellow.
+    captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },
+    // A soft bed of slow worship chords, about 12 dB under the voice as the popular clips sit, dipping a little
+    // more while he preaches.
+    bed: { levelDb: -13, duckDb: 5 },
+    // Chest-up, as the popular clips are framed, from the top of the picture: a service's stream lays its
+    // scripture and lower thirds across the bottom 30%, which this leaves out.
+    zoom: 1.45,
+    zoomAt: 0,
+    // Low-key and muted, where a look has no grade of its own.
+    look: MOODY,
+    // In turn, six looks as unlike each other as the churches' own reels are: each its own picture, captions,
+    // accent and frame (docs/research/sermon-clips.md, "What Cutalong does with it").
+    looks: [
+      {
+        name: 'square',
+        captions: { preset: 'sermon-box', wordsPerScreen: 3, position: 'bottom', uppercase: false },
+        box: SQUARE_BOX,
+        // From the top of a square window, chest-up, past the stream's scripture; less made larger than full frame.
+        zoom: 1.43,
+        zoomAt: 0,
+        hook: { style: 'title', place: 'top', sec: null },
+        look: MOODY
+      },
+      {
+        name: 'feature',
+        captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },
+        zoom: 1.45,
+        zoomAt: 0,
+        // Lecrae's: dark and warm brown.
+        look: { exposure: -0.45, contrast: 0.28, saturation: -0.3, temperature: 0.3, vignette: 0.6, sharpen: 0.25, grain: 0.1 }
+      },
+      {
+        name: 'hook card',
+        captions: { preset: 'sermon-quiet', wordsPerScreen: 3, position: 'middle', uppercase: false },
+        zoom: 1.45,
+        zoomAt: 0,
+        hook: { style: 'card', place: 'middle', sec: 4 },
+        // The Life Church's own: the room as it looks, a little warm, barely darkened.
+        look: { exposure: -0.12, contrast: 0.14, saturation: -0.12, temperature: 0.1, vignette: 0.35, sharpen: 0.25, grain: 0.06 }
+      },
+      {
+        name: 'one word',
+        captions: { preset: 'sermon-word', wordsPerScreen: 1, position: 'middle', uppercase: true },
+        zoom: 1.45,
+        zoomAt: 0,
+        // One word at a time in clean heavy capitals, as Rodney Howard-Browne's Shorts; dark, cold navy.
+        look: { exposure: -0.55, contrast: 0.3, saturation: -0.65, temperature: -0.35, vignette: 0.7, sharpen: 0.25, grain: 0.14 }
+      },
+      {
+        name: 'red line',
+        captions: { preset: 'sermon-red', wordsPerScreen: 3, position: 'middle', uppercase: false },
+        zoom: 1.45,
+        zoomAt: 0,
+        // Black and white, hard and grainy, so the red line is the only colour on screen.
+        look: { exposure: -0.3, contrast: 0.35, saturation: -1, vignette: 0.6, sharpen: 0.25, grain: 0.2 }
+      },
+      {
+        name: 'portrait',
+        captions: { preset: 'sermon-build', wordsPerScreen: 8, position: 'chest', uppercase: true },
+        // Elevation's: a 4:5 picture on black in the middle of the frame, the sentence building over the chest.
+        box: { aspect: 0.8, top: 0.148 },
+        zoom: 1.43,
+        zoomAt: 0,
+        look: { exposure: -0.5, contrast: 0.25, saturation: -0.5, temperature: -0.08, tint: -0.1, vignette: 0.55, sharpen: 0.25, grain: 0.12 }
+      }
+    ]
   },
   podcast: {
     id: 'podcast',

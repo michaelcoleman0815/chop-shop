@@ -385,13 +385,26 @@ export async function drive(): Promise<void> {
   ): Promise<{ field: HTMLTextAreaElement; seen: Record<string, unknown> }> => {
     const field = await until(name, () => document.querySelector<HTMLTextAreaElement>(selector), 20)
     field.scrollIntoView({ block: 'nearest' })
-    field.focus()
-    // An iPhone raises the keyboard for the page's focus; Android, for a tap or when asked.
-    await Keyboard.show().catch(() => undefined)
-    await until(`the keyboard for ${name}`, () => keyboard > 0, 10).catch(() =>
-      keep(`the keyboard did not come up for ${name}`)
-    )
-    await sleep(800)
+    // An iPhone raises the keyboard for the page's focus; Android, for a tap or when asked. On the
+    // iPhone simulator it once came up for Start's box and went straight down again, with the box
+    // still there (5105ede), so the box is focused again until the keyboard comes up and stays.
+    let up = false
+    for (let tries = 1; tries <= 3 && !up; tries++) {
+      if (tries > 1) {
+        keep(`the keyboard for ${name} did not stay up, try ${tries}`)
+        field.blur()
+        await sleep(500)
+      }
+      field.focus()
+      await Keyboard.show().catch(() => undefined)
+      up = await until(`the keyboard for ${name}`, () => keyboard > 0, tries < 3 ? 5 : 10).then(
+        () => true,
+        () => false
+      )
+      await sleep(800)
+      up = up && keyboard > 0 && document.activeElement === field
+    }
+    if (!up) keep(`the keyboard did not come up for ${name}`)
     const empty = measure(field)
     await step(`${name}-typing`)
     type(field, SEVEN_LINES)
@@ -687,8 +700,10 @@ export async function drive(): Promise<void> {
     await go('Brand', '.cl-brand-hero')
     await step('brand')
 
-    // Settings' Licences: what the app is built with, with FFmpeg's licence open.
-    await go('Settings', '#set-licences')
+    // Settings' Licences: what the app is built with, with FFmpeg's licence open. Settings shows one
+    // section at a time, picked from its list.
+    const list = await go('Settings', '.cl-settings-nav')
+    ;(await until('Licences in Settings', () => button('Licences', list), 10)).click()
     const licences = await until('the licences', () => document.querySelector('#set-licences')?.closest('section'), 30)
     ;(await until('FFmpeg in the licences', () => button('Read the licence of FFmpeg'), 30)).click()
     await until(

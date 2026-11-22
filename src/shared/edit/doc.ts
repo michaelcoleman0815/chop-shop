@@ -2,6 +2,7 @@ import { picturesIn } from '../motion/apply'
 import { applyOps, type OpsResult } from './ops'
 import { pickedBeats } from './range'
 import { sameValue } from './same'
+import { isTransitionLook } from './transitions'
 import {
   DEFAULT_CAPTIONS,
   DEFAULT_LOUDNESS,
@@ -255,21 +256,25 @@ export interface CommitResult {
  * Ops a version never keeps, because the version's cut says what they set
  * and Cutalong 0.2.13 cannot open a project with an op it does not know: the
  * brand an edit is made in (Cut.brand), how pictures fill the frame
- * (Cut.fill) and the scene effects (Cut.fx). Nothing that reads a version's
+ * (Cut.fill), the picture as a box (Cut.box), the scene effects (Cut.fx) and whether jump cuts punch in
+ * (Cut.punchJumps). Nothing that reads a version's
  * ops (what is learned from them, a vlog joining the next day's clips, why a
  * length cut a line) needs them, and nothing replays saved ops, since every
  * version holds its whole cut.
  */
-const UNSAVED: ReadonlySet<Op['op']> = new Set(['brand', 'fill', 'fx-add', 'fx-update', 'fx-remove'])
+const UNSAVED: ReadonlySet<Op['op']> = new Set(['brand', 'fill', 'box', 'fx-add', 'fx-update', 'fx-remove', 'punch-jumps'])
+
+/** Whether a version never keeps this op: one above, or a transition to a look 0.2.13 cannot name. */
+const unsaved = (o: Op): boolean => UNSAVED.has(o.op) || (o.op === 'transition' && isTransitionLook(o.kind))
 
 /** The ops a version keeps. */
 export function savedOps(ops: Op[]): Op[] {
-  return ops.some((o) => UNSAVED.has(o.op)) ? ops.filter((o) => !UNSAVED.has(o.op)) : ops
+  return ops.some(unsaved) ? ops.filter((o) => !unsaved(o)) : ops
 }
 
 /** An edit as it is saved: no version keeps an op it never keeps, even one saved before that was so. */
 export function withSavedOps(doc: EditDoc): EditDoc {
-  if (!doc.versions.some((v) => v.ops.some((o) => UNSAVED.has(o.op)))) return doc
+  if (!doc.versions.some((v) => v.ops.some(unsaved))) return doc
   return { ...doc, versions: doc.versions.map((v) => ({ ...v, ops: savedOps(v.ops) })) }
 }
 

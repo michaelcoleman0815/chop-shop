@@ -71,6 +71,28 @@ describe('listening for the fillers Whisper left out', () => {
     expect(listened).toHaveLength(2)
   })
 
+  it('stops when its time is up, keeping what it found by then', async () => {
+    // Each listen takes two seconds on this clock; there are three seconds to spend.
+    let clock = 0
+    const listened: number[] = []
+    const found = await listenForFillers(
+      words,
+      voiced,
+      {
+        samples: async (s) => sound('moving', s.endSec - s.startSec),
+        listen: async (span) => {
+          listened.push(span.startSec)
+          clock += 2000
+          return [word('Hmm.', span.startSec + 0.1, span.endSec - 0.1)]
+        },
+        now: () => clock
+      },
+      { maxStretches: 200, minVoiced: 0.5, budgetSec: 3 }
+    )
+    expect(listened).toHaveLength(2)
+    expect(found.map((w) => w.text)).toEqual(['hmm', 'hmm'])
+  })
+
   it('takes nothing where Whisper hears a real word or more than one sound', async () => {
     const found = await listenForFillers([word('So', 0, 0.4), word('then', 1.6, 2.0)], [{ startSec: 0, endSec: 2.1 }], {
       samples: async (s) => sound('moving', s.endSec - s.startSec),

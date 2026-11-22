@@ -32,6 +32,10 @@ export default {
   // Taken from the copyright line in electron-builder.yml.
   owner: 'Michael Coleman',
 
+  // Whether the Windows installer is signed (README, "Signing on Windows"). Unsigned, Windows asks before it
+  // first opens, and the download buttons say what to press. Set true once the release workflow signs it.
+  windowsSigned: false,
+
   // What the current release needs. electron-builder builds arm64 only; the shipped whisper-cli and
   // Vision helper are built for macOS 14, so transcription cannot start on anything older.
   requires: 'macOS 14 Sonoma or later, on a Mac with Apple silicon',

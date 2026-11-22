@@ -110,7 +110,12 @@ describe.skipIf(!FFMPEG)('exporting map shots', () => {
       const doc = commit(
         createDoc({ id: 'm', title: 'Map', source, words: words() }),
         // Early in the cut, so the clip runs on after the map is gone.
-        [{ op: 'aspect', aspect: 'wide' }, { op: 'motion-add', kind: 'map', from: 'w3', to: '5s', text: [query], style }],
+        // The map alone over the clip: no captions, which would cross the middle of a wide frame.
+        [
+          { op: 'aspect', aspect: 'wide' },
+          { op: 'captions', set: { on: false } },
+          { op: 'motion-add', kind: 'map', from: 'w3', to: '5s', text: [query], style }
+        ],
         'Map.'
       ).doc
       const out = await exportWith(doc, [{ ...source, hasAudio: true }], style)

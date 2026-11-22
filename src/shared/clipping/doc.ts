@@ -45,6 +45,12 @@ export interface ClipDocInput {
   reframe?: boolean
   /** How long the clip runs on past its last word: the laugh at a punchline, kept whole. */
   tailSec?: number
+  /** The bed under it, where the kind of clip has one: a pad made for it (main/pads), with its facts. */
+  music?: { path: string; durationSec?: number; lufs?: number | null }
+  /** Its place in the set, which picks its turn among the looks its kind takes (ClipProfile.looks). */
+  variant?: number
+  /** The line that hooks a stranger, for a look that puts one on screen. */
+  hook?: string
   at?: string
 }
 
@@ -120,13 +126,72 @@ function clipBeats(input: ClipDocInput, words: ReturnType<typeof wordsFromTransc
 }
 
 /** The ops that make a clip a finished short. */
-export function finishClipOps(input: Pick<ClipDocInput, 'profile' | 'captions' | 'reframe'>, cut: Cut): Op[] {
+export function finishClipOps(
+  input: Pick<ClipDocInput, 'profile' | 'captions' | 'reframe' | 'music' | 'variant' | 'hook'>,
+  cut: Cut,
+  /** The words the speaker leans on, by id, for a caption look that picks them out. */
+  keys: string[] = []
+): Op[] {
   const ops: Op[] = []
+  // This clip's turn among the looks its kind takes, so no two in a row look alike.
+  const looks = input.profile.looks ?? []
+  const turn = looks.length > 0 ? looks[(((input.variant ?? 0) % looks.length) + looks.length) % looks.length] : null
   if (cut.aspect !== 'vertical') ops.push({ op: 'aspect', aspect: 'vertical' })
-  ops.push({ op: 'captions', set: { on: true, wordsPerScreen: 2, position: 'chest', ...(input.captions ?? {}) } })
+  ops.push({
+    op: 'captions',
+    // The brand's own look, whole, when it has one; otherwise the look clips of this kind wear.
+    set: {
+      on: true,
+      wordsPerScreen: 2,
+      position: 'chest',
+      ...(input.captions && Object.keys(input.captions).length > 0
+        ? input.captions
+        : (turn?.captions ?? input.profile.captions ?? {})),
+      ...(keys.length > 0 ? { keys } : {})
+    }
+  })
   if (input.profile.tighten) ops.push({ op: 'tighten', set: input.profile.tighten })
   if (cut.loudness !== DEFAULT_LOUDNESS) ops.push({ op: 'loudness', lufs: DEFAULT_LOUDNESS })
   if (input.reframe) ops.push({ op: 'reframe', on: true })
+  // Closer, and graded, where the kind of clip asks for it.
+  const zoom = turn?.zoom ?? input.profile.zoom
+  const zoomAt = turn ? turn.zoomAt : input.profile.zoomAt
+  if (turn?.box) ops.push({ op: 'box', set: turn.box })
+  if (zoom && zoom > 1.001)
+    ops.push({ op: 'treat', beats: cut.beats.map((b) => b.id), set: { zoom, ...(zoomAt !== undefined ? { zoomAt } : {}) } })
+  const grade = turn?.look ?? input.profile.look
+  if (grade) ops.push({ op: 'look', set: grade, replace: true })
+  // The hook on screen, where the look has one and there are words for it.
+  const hook = input.hook?.trim()
+  if (turn?.hook && hook) {
+    ops.push({
+      op: 'motion-add',
+      kind: 'banner',
+      from: 'start',
+      to: turn.hook.sec === null ? 'end' : `${turn.hook.sec}s`,
+      text: [hook],
+      style: turn.hook.style,
+      place: turn.hook.place
+    } as Op)
+  }
+  // A sermon's soft bed, where the profile lays one and a pad was made for it.
+  const bed = input.profile.bed
+  if (bed && input.music) {
+    const { path, durationSec, lufs } = input.music
+    ops.push({
+      op: 'music',
+      set: {
+        path,
+        levelDb: bed.levelDb,
+        duckDb: bed.duckDb,
+        inSec: 0,
+        fadeInSec: 1.5,
+        fadeOutSec: 2,
+        ...(durationSec ? { durationSec } : {}),
+        ...(typeof lufs === 'number' ? { lufs } : {})
+      }
+    })
+  }
   return ops
 }
 
@@ -134,6 +199,9 @@ export function clipDoc(input: ClipDocInput): EditDoc {
   const at = input.at ?? new Date().toISOString()
   const source: Source = { ...input.source, id: 's1' }
   const words = wordsFromTranscript(input.words, 's1')
+  // The words marked key, found again among the doc's words by when they start and what they say.
+  const keyed = new Set(input.words.filter((w) => w.key).map((w) => `${Math.max(0, w.startSec)}|${w.text.trim()}`))
+  const keys = keyed.size ? words.filter((w) => keyed.has(`${w.startSec}|${w.text}`)).map((w) => w.id) : []
   const beats: Beat[] =
     words.length > 0
       ? clipBeats(input, words)
@@ -174,7 +242,7 @@ export function clipDoc(input: ClipDocInput): EditDoc {
     preset: null,
     ...(cutting ? { profile: cutting } : {})
   }
-  const ops = finishClipOps(input, cut)
+  const ops = finishClipOps(input, cut, keys)
   const before = resolveCut(cut, doc.words, doc.sources)
   const trial = commit(doc, ops, '', { at })
   if (trial.applied.length === 0) return doc

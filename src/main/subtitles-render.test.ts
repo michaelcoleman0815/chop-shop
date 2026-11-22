@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DEFAULT_CAPTIONS, type CaptionSpec } from '../shared/edit'
 import { MOTION_FONTS } from '../shared/motion'
-import { captionStyleFor, drawSubtitle, layoutSubtitle, subtitleCues, type TextMeasurer } from '../shared/subtitles'
+import { captionStyleFor, drawSubtitle, layoutSubtitle, styleCues, type TextMeasurer } from '../shared/subtitles'
 import { buildAss } from './captions'
 import { filterArg, findFfmpeg } from './test-media'
 
@@ -78,7 +78,19 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
   const TALL: [number, number] = [1080, 1920]
   const THREE = ['Bright', 'colours', 'everywhere.']
   const FIVE = ['Bright', 'colours', 'all', 'over', 'everywhere.']
-  type Case = { name: string; spec: Partial<CaptionSpec>; size: [number, number]; words: string[]; active: number }
+  type Case = {
+    name: string
+    spec: Partial<CaptionSpec>
+    size: [number, number]
+    words: string[]
+    active: number
+    keys?: number[]
+    /**
+     * Pixels both must share. Small text (under about 60 px) is mostly the soft edge of its letters, where
+     * libass and Skia antialias a little differently, so it shares fewer while sitting in the same place.
+     */
+    shared?: number
+  }
   const cases: Case[] = [
     { name: 'clean, wide', spec: { preset: 'clean', position: 'chest' }, size: WIDE, words: THREE, active: 2 },
     { name: 'clean, vertical', spec: { preset: 'clean', position: 'chest' }, size: TALL, words: THREE, active: 1 },
@@ -122,6 +134,62 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       size: TALL,
       words: FIVE,
       active: 1
+    },
+    // The sentence building over two lines, the words not said yet holding their places, two in the accent.
+    // The line landed: the heavy face, big, the key words yellow on a line of their own after a hard break.
+    {
+      name: 'sermon landed, vertical',
+      spec: { preset: 'sermon', position: 'middle', wordsPerScreen: 3 },
+      size: TALL,
+      words: ['He', 'still', 'sits', 'down.'],
+      active: 3,
+      keys: [2, 3]
+    },
+    {
+      name: 'sermon, vertical',
+      spec: { preset: 'sermon', position: 'middle', wordsPerScreen: 3 },
+      size: TALL,
+      words: ['to', 'the', 'flag.'],
+      active: 1,
+      shared: 0.92
+    },
+    {
+      name: 'sermon one word tall, vertical',
+      spec: { preset: 'sermon-word-tall', position: 'middle', wordsPerScreen: 1, uppercase: true },
+      size: TALL,
+      words: ['Believer.'],
+      active: 0
+    },
+    {
+      name: 'sermon one word, vertical',
+      spec: { preset: 'sermon-word', position: 'middle', wordsPerScreen: 1, uppercase: true },
+      size: TALL,
+      words: ['Believer.'],
+      active: 0
+    },
+    {
+      name: 'sermon red landed, vertical',
+      spec: { preset: 'sermon-red', position: 'middle', wordsPerScreen: 3 },
+      size: TALL,
+      words: ["That", "ain't", 'biblical.'],
+      active: 2,
+      keys: [2]
+    },
+    {
+      name: 'sermon quiet, vertical',
+      spec: { preset: 'sermon-quiet', position: 'middle', wordsPerScreen: 3 },
+      size: TALL,
+      words: ['She', 'was', 'healed.'],
+      active: 1,
+      shared: 0.92
+    },
+    {
+      name: 'sermon build, vertical',
+      spec: { preset: 'sermon-build', position: 'chest', wordsPerScreen: 8, uppercase: true },
+      size: TALL,
+      words: ['Even', 'if', 'you', 'were', 'the', 'one', 'who', 'let', 'go.'],
+      active: 5,
+      keys: [0, 1]
     }
   ]
 
@@ -129,8 +197,13 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
     it(`draws ${c.name} where libass burns it`, () => {
       const [w, h] = c.size
       const style = captionStyleFor({ ...DEFAULT_CAPTIONS, ...c.spec }, w)
-      const words = c.words.map((text, i) => ({ text, startSec: 0.5 + i * 0.6, endSec: 1 + i * 0.6 }))
-      const cue = subtitleCues(words, style.wordsPerGroup).find((q) => q.active === c.active)
+      const words = c.words.map((text, i) => ({
+        text,
+        startSec: 0.5 + i * 0.6,
+        endSec: 1 + i * 0.6,
+        ...(c.keys?.includes(i) ? { key: true } : {})
+      }))
+      const cue = styleCues(words, style).find((q) => q.active === c.active)
       if (!cue) throw new Error('no cue')
       // libass, through the export's own subtitle file.
       const ass = join(dir, 'captions.ass')
@@ -178,7 +251,7 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       expect(boxA[2], 'libass drew something').toBeGreaterThan(0)
       const worst = Math.max(...boxA.map((v, i) => Math.abs(v - boxB[i])))
       expect(worst, `libass ${boxA}, preview ${boxB}`).toBeLessThanOrEqual(2)
-      expect(shared(a, b)).toBeGreaterThan(0.95)
+      expect(shared(a, b)).toBeGreaterThan(c.shared ?? 0.95)
     })
   }
 })

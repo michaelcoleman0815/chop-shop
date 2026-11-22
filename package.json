@@ -1,6 +1,6 @@
 {
   "name": "chop-shop",
-  "version": "0.3.2",
+  "version": "0.3.5",
   "description": "Cutalong: a video editor you talk to. Cuts on the words, captions, B-roll and your brand, on your own Mac.",
   "main": "./out/main/index.js",
   "author": "Michael Coleman",
@@ -15,6 +15,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run check:ipc",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "release": "npm run build && electron-builder --mac --publish always",
     "postinstall": "electron-builder install-app-deps && node scripts/prepare-electron.mjs",
     "check:ipc": "node scripts/check-ipc.mjs",

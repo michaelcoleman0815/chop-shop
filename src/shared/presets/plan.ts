@@ -10,12 +10,14 @@ import { sameValue } from '../edit/same'
 import type { Cut, EditDoc, Op } from '../edit/schema'
 import { beatsOnClock } from '../edit/audio'
 import { CAMERA_INFO } from '../edit/camera'
+import { describeJumps, jumpJoins } from '../edit/jumps'
 import { transitionInfo } from '../edit/transitions'
 import { describeLook, mergeLook, NAMED_LOOKS } from '../edit/look'
 import { placeChapters } from '../edit/chapters'
 import { LAYOUT_INFO } from '../edit/angles'
 import { describeFraming } from '../edit/reframe'
 import { describeFill } from '../edit/fill'
+import { describeBox } from '../edit/box'
 import { describeSfx } from './sfx'
 import { syncSeconds } from './angles'
 import { clock, seconds, type StyleSpec } from './preset'
@@ -536,6 +538,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
           n === 1 ? 'captions show one word at a time' : `captions show ${NUMBER_WORDS[n] ?? n} words at a time`
         )
       } else if (o.set.on) said.push('captions are on')
+    } else if (o.op === 'punch-jumps') {
+      said.push(describeJumps(o.on, cut ? jumpJoins(cut, after).length : 0))
     } else if (o.op === 'aspect') {
       said.push(
         {
@@ -569,6 +573,8 @@ export function describePlan(ops: Op[], before: Resolved, after: Resolved, cut: 
       said.push(o.on ? 'the picture follows you' : 'the picture keeps the middle')
     } else if (o.op === 'fill') {
       said.push(describeFill(o.mode))
+    } else if (o.op === 'box') {
+      said.push(o.set ? `the picture is ${describeBox(o.set)} on black` : 'the picture fills the frame')
     } else if (o.op === 'framing') {
       const { who, one } = whoOf(o.beats, after)
       said.push(

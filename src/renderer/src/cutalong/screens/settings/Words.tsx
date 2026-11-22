@@ -5,21 +5,28 @@ import type { Settings } from '../../../../../shared/types'
 import { api, device } from '../../api'
 import { Button } from '../../components/ui'
 import { grow } from '../../motion'
-import { SetGroup, SetRow, SetSegments, SetSelect } from './rows'
+import { SetGroup, SetRow, SetSegments, SetSelect, SetSwitch } from './rows'
 
 /**
  * How the words are heard: by Whisper on this computer, at the size chosen
  * here, or by a transcription service with a key (under Services), which
- * hears every um and stutter and falls back to this computer when it cannot.
+ * hears every um and stutter and falls back to this computer when it cannot;
+ * and what a cut of those words does to the picture: its jump cuts punched in.
  */
 
 type Model = Settings['whisperModel']
 
+/**
+ * The sizes offered. Most accurate is Whisper large-v3 turbo: on a sermon it wrote the same words as the
+ * medium model, in two thirds of the time, from a third of the download. Medium stays for anyone who
+ * chose it before, named for what it is, and goes from the list once they choose another.
+ */
 const MODELS: { id: Model; label: string }[] = [
   { id: 'base.en', label: 'Fast' },
   { id: 'small.en', label: 'Balanced' },
-  { id: 'medium.en', label: 'Most accurate' }
+  { id: 'large-v3-turbo', label: 'Most accurate' }
 ].filter((m) => !device.models || device.models.includes(m.id as Model)) as { id: Model; label: string }[]
+const OLDER: { id: Model; label: string } = { id: 'medium.en', label: 'Medium' }
 
 function megabytes(mb: number): string {
   return mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb} MB`
@@ -67,7 +74,8 @@ export function WordsSection({
   }
 
   const model = settings?.whisperModel ?? 'small.en'
-  const modelName = MODELS.find((m) => m.id === model)?.label ?? model
+  const offered = model === OLDER.id ? [...MODELS, OLDER] : MODELS
+  const modelName = offered.find((m) => m.id === model)?.label ?? model
   const size = sizes[model]
   const hearers = on ? TRANSCRIBERS.filter((t) => keys[t.id]) : []
   const hearer = chosenTranscriber(settings, (id) => Boolean(keys[id]))
@@ -114,7 +122,7 @@ export function WordsSection({
         control={
           <SetSegments
             value={model}
-            options={MODELS}
+            options={offered}
             disabled={!settings || download !== null}
             onChange={(id) => void set({ whisperModel: id })}
           />
@@ -133,6 +141,22 @@ export function WordsSection({
           </Button>
         ) : null}
       </SetRow>
+      <SetRow
+        title="Hide jump cuts"
+        desc={
+          settings?.hideJumpCuts === false
+            ? 'Where a cut takes a retake or a long pause out of one shot, the picture jumps. /jumpcuts turns this on for one video.'
+            : 'Where a cut takes a retake or a long pause out of one shot, I punch in on the next part, wide and close in turn, so the jump reads as a cut. /jumpcuts off leaves one video as it is.'
+        }
+        find="jump cut punch in zoom retake takes cut alternate"
+        control={
+          <SetSwitch
+            checked={settings?.hideJumpCuts !== false}
+            disabled={!settings}
+            onChange={(on) => void set({ hideJumpCuts: on })}
+          />
+        }
+      />
     </SetGroup>
   )
 }

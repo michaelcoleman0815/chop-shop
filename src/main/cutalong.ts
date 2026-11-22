@@ -4,6 +4,7 @@ import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { FFMPEG_PATH, FFPROBE_PATH, probe } from './ffmpeg'
 import { FONTS_DIR, helperScript } from './resources'
+import { signInBrowsers } from '../shared/platform'
 import { getSettings, saveSettings } from './store'
 import { hasModel, transcribe } from './transcribe'
 import { fetchVideo, YTDLP_PATH } from './fetch-video'
@@ -660,7 +661,7 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   })
 
   ipcMain.handle('settings:videoSignIn', (_e, browser: string | null) => {
-    const allowed = ['chrome', 'safari', 'firefox', 'edge', 'brave', 'chromium', 'opera', 'vivaldi']
+    const allowed = signInBrowsers()
     return saveSettings({ videoSignIn: browser && allowed.includes(browser) ? browser : null }).videoSignIn ?? null
   })
 

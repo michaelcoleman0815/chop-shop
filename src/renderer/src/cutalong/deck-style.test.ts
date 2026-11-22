@@ -118,3 +118,26 @@ describe('how a deck is drawn', () => {
     expect(at('circle-open', 0.5, 'in').wrapper.clipPath).toBe('circle(37.5% at 50% 50%)')
   })
 })
+
+describe('the looks in the preview', () => {
+  const at = (kind: 'glitch' | 'rgb-split' | 'vhs', side: 'in' | 'out', progress: number): ReturnType<typeof deckStyle> =>
+    deckStyle({ piece: 0, srcSec: 0, volume: 1, visible: true, transition: { kind, side, progress } })
+
+  it('draw a valid filter at every moment, and nothing extra at the ends', () => {
+    for (const kind of ['glitch', 'rgb-split', 'vhs'] as const) {
+      for (let p = 0; p <= 1.0001; p += 0.05) {
+        const f = String(at(kind, 'in', p).wrapper.filter ?? 'none')
+        expect(f, `${kind} at ${p.toFixed(2)}`).not.toMatch(/^none ./)
+        expect(f).not.toMatch(/NaN/)
+      }
+      expect(at(kind, 'in', 0).wrapper.filter, kind).toBe(kind === 'vhs' ? 'saturate(1.00) contrast(1.00)' : 'none')
+    }
+  })
+
+  it('flicker a glitch: the old picture holds, the two trade frames, then the new one holds', () => {
+    const seen = [0.1, 0.3, 0.32, 0.34, 0.36, 0.5, 0.8].map((p) => at('glitch', 'in', p).picture.opacity)
+    expect(seen[0]).toBe(0)
+    expect(new Set(seen.slice(1, 6))).toEqual(new Set([0, 1]))
+    expect(seen[6]).toBe(1)
+  })
+})

@@ -6,6 +6,7 @@ import { basename, extname, join } from 'path'
 import { FFMPEG_PATH, probe } from './ffmpeg'
 import { getSettings } from './store'
 import { downloadModel, hasModel, transcribe } from './transcribe'
+import type { WhisperModel } from './whisper-args'
 import { listenFrames } from './audio-map'
 import { loudnessEnvelope } from './audio-envelope'
 import { readAnalysis } from './analysis-cache'
@@ -24,7 +25,7 @@ import { detectShots } from './shots'
 import { buildAudioMap, type Frames } from '../shared/audio/map'
 import { snapWords, type Envelope } from '../shared/audio/snap'
 import { brandStyle, type Brand } from '../shared/brand'
-import { commit, currentCut, subjectFrom, type Source, type Subject, type Word } from '../shared/edit'
+import { commit, crowdShare, currentCut, subjectFrom, type Source, type Subject, type Word } from '../shared/edit'
 import {
   clipDoc,
   clipsReply,
@@ -34,8 +35,11 @@ import {
   readClipAsk,
   recordingNames,
   shapePicks,
+  startsClause,
+  strongOpening,
   wordsToRead,
   type ClipAsk,
+  type ClipProfile,
   type ClipsFound,
   type ClipsReply,
   type FoundClip,
@@ -47,6 +51,11 @@ import {
 } from '../shared/clipping'
 import type { SuggestedClip, Transcript, TranscriptWord } from '../shared/types'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
+import { withoutSoundNotes } from './whisper-parse'
+import { sermonPad } from './pads'
+import { keyWordsFor } from './key-words'
+import { presetById } from '../shared/caption-presets'
+import type { CaptionSpec } from '../shared/edit/schema'
 
 /**
  * /clipping, the main process's half: many short clips from long
@@ -74,6 +83,11 @@ export interface ClipFindRequest {
   avoid?: { path: string; startSec: number; endSec: number }[]
   /** The chat's brand, by id (shared/brands): its kind of video and caption look. The default when absent. */
   brand?: string | null
+  /**
+   * Shorter than this, a recording counts as short and nothing is heard: a recording dropped in with no
+   * words is clipped only when it is long, and anything shorter is edited as it always was.
+   */
+  minSec?: number
 }
 
 export type ClipFindResult =
@@ -114,14 +128,35 @@ export interface ClippingTools {
   brand: () => Promise<Brand>
   /** Where what was heard and measured is kept, by file. */
   cacheDir: string
+  /** The nth clip's bed, for a kind of clip that has one (main/pads); absent lays none. */
+  pad?: (n: number) => Promise<{ path: string; durationSec: number; lufs: number | null } | null>
+  /**
+   * The words each clip's speaker leans on, by index, for captions that pick them out, and each clip's hook,
+   * for looks that put one on screen (main/key-words).
+   */
+  keyWords?: (clips: string[][]) => Promise<{ keys: number[][]; hooks: string[]; opens?: number[] }>
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
+/** From this long, a recording is heard for its clips on the small model, whatever Settings choose for edits. */
+export const FAST_HEARING_SEC = 10 * 60
+
+/**
+ * The model a recording is heard with for its clips. Always one guess at each step (main/whisper-args
+ * greedy). On an hour's service the medium model's search took about as long as the service itself; the
+ * small model with one guess took an eighth of that and wrote the same words on a sermon (measured on the
+ * owner's own Sunday service), so a long recording takes it when it is there. A smaller choice stays.
+ */
+export function clippingModel(chosen: WhisperModel, durationSec: number, haveSmall: boolean): WhisperModel {
+  const large = chosen === 'medium.en' || chosen === 'large-v3-turbo'
+  return large && durationSec >= FAST_HEARING_SEC && haveSmall ? 'small.en' : chosen
+}
+
 // ---------- Kept from before ----------
 
 /** Bumped when what is kept changes shape, so an old file is measured again. */
-const CACHE_VERSION = 1
+const CACHE_VERSION = 2
 
 interface Kept {
   v: number
@@ -253,23 +288,34 @@ export function defaultTools(): ClippingTools {
     },
     transcribe: async (path, durationSec, progress) => {
       const { whisperModel } = getSettings()
-      if (!(await hasModel(whisperModel))) await downloadModel(whisperModel, () => undefined)
-      const heard: Transcript = await transcribe(path, whisperModel, durationSec, (p, stage) => {
-        if (stage === 'Transcribing') progress(Math.max(0, Math.min(1, (p - 12) / 86)))
-      })
+      const model = clippingModel(whisperModel, durationSec, await hasModel('small.en'))
+      if (!(await hasModel(model))) await downloadModel(model, () => undefined)
+      const heard: Transcript = await transcribe(
+        path,
+        model,
+        durationSec,
+        (p, stage) => {
+          if (stage === 'Transcribing') progress(Math.max(0, Math.min(1, (p - 12) / 86)))
+        },
+        0,
+        undefined,
+        { greedy: true, align: true }
+      )
       return heard.words
     },
     listen: async (path, words) => soundsOf(await listenFrames(FFMPEG_PATH, path), words),
     frozen: (path, durationSec) => frozenStretches(FFMPEG_PATH, path, durationSec),
     envelope: (path, startSec, durationSec) => loudnessEnvelope(FFMPEG_PATH, path, { startSec, durationSec }),
     faces: hasFaceFinder()
-      ? (path, startSec, durationSec) => detectFaces(path, startSec, durationSec, 2)
+      ? (path, startSec, durationSec) => detectFaces(path, startSec, durationSec, FACE_HZ)
       : null,
     shots: (path, startSec, durationSec) => detectShots(path, startSec, durationSec).catch(() => []),
     engine: chooseEngine,
     suggest: suggestClips,
     brand: readBrand,
-    cacheDir: join(app.getPath('userData'), 'clipping')
+    cacheDir: join(app.getPath('userData'), 'clipping'),
+    pad: (n) => sermonPad(join(app.getPath('userData'), 'pads'), n, FFMPEG_PATH),
+    keyWords: keyWordsFor
   }
 }
 
@@ -310,6 +356,8 @@ async function pickWithModel(
 ): Promise<{ startSec: number; endSec: number; title: string; hook: string; reason: string; score: number }[]> {
   const words = wordsToRead(facts.words, plan.regions)
   const size = CHUNK_WORDS[engine.by]
+  // A couple more than are wanted, so a moment filmed through the crowd can give way to one filmed from the front.
+  const want = plan.count + SPARE_PICKS
   const parts: TranscriptWord[][] = []
   for (let i = 0; i < words.length; i += size) parts.push(words.slice(i, i + size))
   const model = engine.by === 'local' ? `ollama:${engine.model}` : (engine.model ?? MODEL)
@@ -328,7 +376,7 @@ async function pickWithModel(
   const picked: SuggestedClip[] = []
   for (const part of parts) {
     const share = part.length / Math.max(1, words.length)
-    const maxClips = Math.max(1, Math.round(plan.count * share + 0.49))
+    const maxClips = Math.max(1, Math.round(want * share + 0.49))
     const transcript: Transcript = { words: part, text: part.map((w) => w.text).join(' '), language: 'en' }
     picked.push(
       ...(await tools.suggest(
@@ -349,10 +397,31 @@ async function pickWithModel(
     regions: plan.regions,
     bounds: plan.bounds,
     avoid
-  }).slice(0, plan.count)
+  }).slice(0, want)
 }
 
+/**
+ * How often the face finder looks, a second: often enough to keep up with a service's camera operator
+ * panning after a preacher who walks, in a clip's close vertical window.
+ */
+export const FACE_HZ = 4
+
+/** Moments picked beyond the count, to choose between on what the picture shows. */
+const SPARE_PICKS = 4
+
+/** A clip filmed through the crowd for this share of it or more is one the popular clips would not post. */
+export const CROWD_SHARE = 0.3
+
+/** Clips filmed through the crowd make up a set this small (the five a sermon should give), and no larger. */
+const FEWEST_CLIPS = 5
+
 // ---------- Clips as edits ----------
+
+/** Whether a clip's captions pick out the words leant on: the brand's look when it has one, else the profile's. */
+export function keyedCaptions(profile: ClipProfile, brandCaptions: Partial<CaptionSpec>): boolean {
+  const preset = (Object.keys(brandCaptions).length > 0 ? brandCaptions : (profile.captions ?? {})).preset
+  return !!preset && !!presetById(preset).style.keyColor
+}
 
 /** A clip's words, moved onto their sound, so tightening cuts land a hair before each onset. */
 async function snapped(tools: ClippingTools, path: string, words: TranscriptWord[]): Promise<TranscriptWord[]> {
@@ -384,18 +453,19 @@ async function speakerIn(
   path: string,
   startSec: number,
   endSec: number
-): Promise<Subject | null> {
-  if (!tools.faces) return null
+): Promise<{ subject: Subject | null; crowd: number }> {
+  if (!tools.faces) return { subject: null, crowd: 0 }
   const from = Math.max(0, startSec - 0.5)
   const length = endSec - from + 0.5
   try {
     const samples = await tools.faces(path, from, length)
-    if (!samples.some((s) => s.faces.length > 0)) return null
-    const subject = subjectFrom(samples, length, 2, from)
+    const crowd = crowdShare(samples)
+    if (!samples.some((s) => s.faces.length > 0)) return { subject: null, crowd }
+    const subject = subjectFrom(samples, length, FACE_HZ, from)
     const cuts = (await tools.shots(path, from, length)).map((t) => Math.round((from + t) * 1000) / 1000)
-    return cuts.length > 0 ? { ...subject, cuts } : subject
+    return { subject: cuts.length > 0 ? { ...subject, cuts } : subject, crowd }
   } catch {
-    return null
+    return { subject: null, crowd: 0 }
   }
 }
 
@@ -454,10 +524,11 @@ export async function findClips(
     const kept = await readKept(tools.cacheDir, path)
     let cached = false
 
-    // A recording that is a short already: nothing to hear, and the reply says why.
-    if (meta.durationSec < MIN_RECORDING_SEC) {
+    // A recording that is a short already, or under the bar this request set: nothing to hear, and the reply says why.
+    if (meta.durationSec < Math.max(MIN_RECORDING_SEC, req.minSec ?? 0)) {
       const facts: RecordingFacts = { path, durationSec: meta.durationSec, words: [] }
-      read.push({ facts, plan: planRecording(facts, ask, niche), meta, cached })
+      const plan = planRecording(facts, ask, niche)
+      read.push({ facts, plan: { ...plan, none: 'short' }, meta, cached })
       before += share
       continue
     }
@@ -520,7 +591,8 @@ export async function findClips(
     const facts: RecordingFacts = {
       path,
       durationSec: meta.durationSec,
-      words,
+      // Heard before sound notes were taken out, a kept transcript has them still.
+      words: withoutSoundNotes(words),
       ...(sounds ? { sounds } : {}),
       ...(frozen ? { frozen } : {}),
       ...(loudness ? { loudness } : {})
@@ -553,6 +625,9 @@ export async function findClips(
     hook: string
     reason: string
     score: number
+    /** The clip's first and last words in the recording's words, where the fitting said (shared/clipping/shape). */
+    fromWord?: number
+    toWord?: number
   }
   const picks: Pick[] = []
   for (const r of read) {
@@ -581,20 +656,86 @@ export async function findClips(
   }
   picks.sort((a, b) => b.score - a.score || a.startSec - b.startSec)
 
+  // Where the speaker is in each, and how much of it is filmed through the crowd: the count each recording
+  // wants, from the front first, best first; a moment filmed through the crowd only where there are not enough.
+  const looked: { pick: Pick; subject: Subject | null; crowd: number }[] = []
+  if (picks.length > 0 && tools.faces) progress({ stage: 'Looking at each moment', percent: 95 })
+  for (const p of picks) looked.push({ pick: p, ...(await time('watching', () => speakerIn(tools, p.path, p.startSec, p.endSec))) })
+  const chosen: typeof looked = []
+  let throughCrowd = 0
+  for (const r of read) {
+    const own = looked.filter((l) => l.pick.path === r.facts.path)
+    const front = own.filter((l) => l.crowd < CROWD_SHARE)
+    // Where they fill the set, the least crowded first: a moment the crowd blocks now and then over one it hides.
+    const crowded = own.filter((l) => l.crowd >= CROWD_SHARE).sort((a, b) => a.crowd - b.crowd || b.pick.score - a.pick.score)
+    // Filmed through the crowd only to make up a handful, never to make up the count.
+    const enough = Math.min(r.plan.count, Math.max(front.length, FEWEST_CLIPS))
+    const taken = [...front, ...crowded].slice(0, enough)
+    // Counted only where the moment would have made the set on its words alone.
+    const top = own.slice(0, r.plan.count)
+    throughCrowd += crowded.filter((l) => top.includes(l) && !taken.includes(l)).length
+    chosen.push(...taken)
+  }
+  chosen.sort((a, b) => b.pick.score - a.pick.score || a.pick.startSec - b.pick.startSec)
+  picks.splice(0, picks.length, ...chosen.map((c) => c.pick))
+  if (throughCrowd > 0)
+    notes.push(
+      `I left out ${throughCrowd === 1 ? 'a moment' : `${throughCrowd} moments`} filmed mostly from behind the congregation.`
+    )
+
   // Each moment as its own edit.
   const captions = brand.autoApply ? (brandStyle(brand).captions ?? {}) : {}
   const brandCaptions = brand.autoApply && Object.keys(captions).length > 0
   const clips: FoundClip[] = []
   let followed = 0
+  // Each clip's words, moved onto their sound.
+  const said: { inside: TranscriptWord[]; words: TranscriptWord[] }[] = []
+  for (const p of picks) {
+    const r = read.find((x) => x.facts.path === p.path)!
+    // By word where the fitting said which: Whisper can squeeze a sentence's last words onto one instant,
+    // and a word starting where the clip ends would be let in by its time.
+    const inside =
+      p.fromWord !== undefined && p.toWord !== undefined
+        ? r.facts.words.slice(p.fromWord, p.toWord + 1)
+        : r.facts.words.filter((w) => w.startSec >= p.startSec - 0.01 && w.endSec <= p.endSec + 0.01)
+    said.push({ inside, words: await time('making clips', () => snapped(tools, p.path, inside)) })
+  }
+  // The words each preacher leans on, for captions that set them in the accent, and each clip's hook, for
+  // looks that put one on screen: one ask for the set.
+  const profileOf = (p: Pick): ClipProfile => read.find((x) => x.facts.path === p.path)!.plan.profile
+  const asking = picks.some(
+    (p) => keyedCaptions(profileOf(p), captions) || (profileOf(p).looks ?? []).some((l) => l.hook)
+  )
+  const marks =
+    asking && tools.keyWords && engine.by === 'claude'
+      ? await time('making clips', () => tools.keyWords!(said.map((c) => c.words.map((w) => w.text)))).catch(
+          () => null
+        )
+      : null
+  const keys = marks?.keys ?? []
   for (const [k, p] of picks.entries()) {
     progress({
       stage: `Making the clips (${k + 1} of ${picks.length})`,
       percent: 96 + Math.round((k / Math.max(1, picks.length)) * 4)
     })
     const r = read.find((x) => x.facts.path === p.path)!
-    const inside = r.facts.words.filter((w) => w.startSec >= p.startSec - 0.01 && w.endSec <= p.endSec + 0.01)
-    const words = await time('making clips', () => snapped(tools, p.path, inside))
-    const subject = await time('making clips', () => speakerIn(tools, p.path, p.startSec, p.endSec))
+    // Opening on the line itself, not the run-up or the filler before it ("And, but if…"), so long as what
+    // is left is still a clip.
+    const all = said[k].words
+    const asked = marks?.opens?.[k] ?? 0
+    let from = strongOpening(all, asked > 0 && startsClause(all, asked) ? asked : 0)
+    const left = (i: number): number => (all.length ? all[all.length - 1].endSec - (all[i]?.startSec ?? 0) : 0)
+    if (from > 0 && left(from) < Math.min(r.plan.bounds.minSec, 0.8 * left(0))) from = strongOpening(all, 0)
+    if (from > 0 && left(from) < Math.min(r.plan.bounds.minSec, 0.8 * left(0))) from = 0
+    const inside = said[k].inside.slice(from)
+    const marked = new Set((keys[k] ?? []).map((i) => i - from).filter((i) => i >= 0))
+    // Opened mid-sentence, the first word takes the capital a sentence would give it.
+    const capital = (t: string): string => t.replace(/\p{Ll}/u, (c) => c.toUpperCase())
+    const words = all
+      .slice(from)
+      .map((w, i) => (i === 0 && from > 0 ? { ...w, text: capital(w.text) } : w))
+      .map((w, i) => (marked.has(i) ? { ...w, key: true } : w))
+    const subject = chosen[k].subject
     if (subject) followed++
     const source: Omit<Source, 'id'> = {
       path: p.path,
@@ -607,6 +748,7 @@ export async function findClips(
       ...(subject ? { subject } : {})
     }
     const laughter = (r.facts.sounds ?? []).filter((s) => s.kind === 'laughter')
+    const music = r.plan.profile.bed && tools.pad ? await tools.pad(k).catch(() => null) : null
     const doc = clipDoc({
       id: randomUUID(),
       title: p.title || basename(p.path, extname(p.path)),
@@ -616,11 +758,15 @@ export async function findClips(
       laughter,
       captions,
       reframe: !!subject,
+      ...(music ? { music } : {}),
+      // Its turn among the looks, and its hook: Claude's, or its title where there was no Claude to ask.
+      variant: k,
+      hook: marks?.hooks[k] || p.title,
       tailSec: Math.max(0, p.endSec - (inside[inside.length - 1]?.endSec ?? p.endSec))
     })
     clips.push({
       source: p.path,
-      startSec: p.startSec,
+      startSec: from > 0 && inside[0] ? inside[0].startSec : p.startSec,
       endSec: p.endSec,
       title: doc.title,
       hook: p.hook,

@@ -94,7 +94,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       wordsPerGroup: 2,
       fontFamily: INTER_EXTRA,
       // The big word's capitals about 8% of the frame's width tall, the line above about two thirds of that.
-      fontSizePx: 180,
+      fontSizePx: 152,
       textColor: '#FFFFFF',
       activeColor: '#FFFFFF',
       outlineColor: '#000000',
@@ -113,10 +113,10 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
         shadowBlur: 12,
         uppercase: false,
         // Tucked right onto the big word, as the reference sets it. A line's cell carries the face's whole ascent
-        // over its capitals and its descent under its baseline, so a gap of 0 would leave about 75 px of air
+        // over its capitals and its descent under its baseline, so a gap of 0 would leave about 55 px of air
         // between the small line's baseline and the big capitals. This brings it to about a quarter of a capital,
         // the closest it goes with a small line's tail (y, g) still clear of a big tall letter (h, B) under it.
-        gapPx: -48,
+        gapPx: -30,
         above: true
       }
     }
@@ -207,7 +207,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       // Black bold words on a white plate: how podcast clips put a question or a claim on screen.
       wordsPerGroup: 3,
       fontFamily: INTER_EXTRA,
-      fontSizePx: 104,
+      fontSizePx: 88,
       textColor: '#111111',
       activeColor: '#111111',
       outlineColor: '#FFFFFF',
@@ -254,6 +254,196 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       outlinePx: 0,
       shadowPx: 3,
       shadowBlur: 10,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon',
+    name: 'Sermon',
+    style: {
+      ...BASE,
+      // Lecrae's Shorts (docs/research/sermon-clips.md, "The owner's next three"): three words at a time at
+      // most, small and clean in Inter, as said, punctuation and all, over the chest. The line the preacher
+      // lands is set big in the heavy face, its key words in yellow on a line of their own.
+      steady: true,
+      wordsPerGroup: 3,
+      fontFamily: 'Inter SemiBold',
+      fontSizePx: 54,
+      letterEm: 0.58,
+      keyColor: '#FFD84D',
+      keyFont: 'Inter ExtraBold',
+      keyScale: 1.9,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-red',
+    name: 'Sermon red',
+    style: {
+      ...BASE,
+      // The landed line in red, as Lecrae lands "That ain't / biblical": otherwise the Sermon look, three
+      // words at a time in Inter. The red is the look's own, whatever accent the brand brings.
+      steady: true,
+      wordsPerGroup: 3,
+      fontFamily: 'Inter SemiBold',
+      fontSizePx: 54,
+      letterEm: 0.58,
+      keyColor: '#FF3B30',
+      ownKey: true,
+      keyFont: 'Inter ExtraBold',
+      keyScale: 1.9,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-word',
+    name: 'Sermon one word',
+    style: {
+      ...BASE,
+      // Rodney Howard-Browne's Shorts (the owner's reference): one word at a time, as said, in clean heavy
+      // capitals at the middle of the frame, white with a soft shadow, about 57 px tall on a 1080 × 1920 frame.
+      // No punctuation, nothing picked out.
+      wordsPerGroup: 1,
+      fontFamily: 'Inter ExtraBold',
+      fontSizePx: 96,
+      letterEm: 0.6,
+      plain: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-word-tall',
+    name: 'Sermon one word, tall',
+    style: {
+      ...BASE,
+      // 2819 Church's Shorts: one word at a time in tall condensed capitals, big and white in the middle.
+      wordsPerGroup: 1,
+      fontFamily: 'Bebas Neue',
+      fontSizePx: 230,
+      // Bebas Neue's capitals run about 0.36 of the size each: a longer word fits by shrinking.
+      letterEm: 0.3,
+      plain: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 4,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-quiet',
+    name: 'Sermon quiet',
+    style: {
+      ...BASE,
+      // The Life Church's newest Shorts: small lower-case words, three at a time, as said, under a hook card.
+      steady: true,
+      wordsPerGroup: 3,
+      fontFamily: 'Inter SemiBold',
+      fontSizePx: 48,
+      letterEm: 0.56,
+      lowercase: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-box',
+    name: 'Sermon square',
+    style: {
+      ...BASE,
+      // Under a square picture on black: three words at a time, white on the black, the key words in yellow.
+      steady: true,
+      wordsPerGroup: 3,
+      fontFamily: 'Inter SemiBold',
+      fontSizePx: 58,
+      letterEm: 0.58,
+      keyColor: '#FFD84D',
+      positionFrac: 0.84,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 0,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-build',
+    name: 'Sermon build',
+    style: {
+      ...BASE,
+      // Elevation's Shorts: the sentence building word by word as it is said, up to three lines, then clearing;
+      // the words leant on in yellow.
+      wordsPerGroup: 8,
+      fontFamily: 'Inter ExtraBold',
+      fontSizePx: 60,
+      letterEm: 0.6,
+      plain: true,
+      build: true,
+      keyColor: '#FFD84D',
+      positionFrac: 0.66,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 2,
+      shadowPx: 3,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-serif',
+    name: 'Sermon serif',
+    style: {
+      ...BASE,
+      // The Life Church's own Shorts (docs/research/sermon-clips.md, "The church's own clips"): one word at a
+      // time in a bold display serif, as said, white with a soft shadow and the thinnest dark edge, over the
+      // preacher's chest. No highlight: the word on screen is the word being said.
+      wordsPerGroup: 1,
+      fontFamily: 'DM Serif Display',
+      // About 70% of the frame for a word like "whenever", as the church's own clips set it.
+      fontSizePx: 180,
+      // DM Serif Display's lower case averages 0.515 em (measured from the font): a longer word fits by shrinking.
+      letterEm: 0.52,
+      plain: true,
+      positionFrac: 0.5,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 2,
+      shadowPx: 5,
       uppercase: false,
       activeScale: 1
     }

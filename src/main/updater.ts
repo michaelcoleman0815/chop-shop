@@ -21,14 +21,16 @@ function push(state: UpdateState): void {
 }
 
 /**
- * An update check's failure, said plainly. Releases are built for the Mac
- * alone so far, so on Windows the check finds no latest.yml to read: that
- * is no fault, and it says so instead of the updater's HTTP error.
+ * An update check's failure, said plainly. A release carries Windows'
+ * installer and latest.yml beside the Mac's files, but one made before
+ * Windows releases (0.3.2 and older), or one whose Windows build failed,
+ * has none: on Windows the check then finds no latest.yml to read. That is
+ * no fault of this copy, and it says so instead of the updater's HTTP error.
  */
 export function updateFailure(err: unknown, platform = process.platform): string {
   const text = err instanceof Error ? err.message : String(err)
   if (platform === 'win32' && /latest\.yml/.test(text) && /404|cannot find/i.test(text)) {
-    return 'There is no Windows release to update to yet.'
+    return 'The newest release has no Windows version yet.'
   }
   return text
 }

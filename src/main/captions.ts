@@ -1,6 +1,6 @@
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { CAPTION_PRESETS } from '../shared/caption-presets'
-import { subtitleCues } from '../shared/subtitles'
+import { fitFontPx, landedFontPx, landsLine, styleCues } from '../shared/subtitles'
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = CAPTION_PRESETS[0].style
 
@@ -43,6 +43,7 @@ export function bt601Equivalent(hex: string): string | null {
 export function bt601Style(style: CaptionStyle): CaptionStyle | null {
   const text = bt601Equivalent(style.textColor)
   const active = bt601Equivalent(style.activeColor)
+  const key = style.keyColor ? bt601Equivalent(style.keyColor) : null
   const outline = bt601Equivalent(style.outlineColor)
   const box = style.boxColor ? bt601Equivalent(style.boxColor) : null
   const tier = style.second
@@ -50,6 +51,7 @@ export function bt601Style(style: CaptionStyle): CaptionStyle | null {
   const tierOutline = tier ? bt601Equivalent(tier.outlineColor) : null
   if (!text || !active || !outline) return null
   if (style.boxColor && !box) return null
+  if (style.keyColor && !key) return null
   if (tier && (!tierText || !tierOutline)) return null
   return {
     ...style,
@@ -57,6 +59,7 @@ export function bt601Style(style: CaptionStyle): CaptionStyle | null {
     activeColor: active,
     outlineColor: outline,
     boxColor: style.boxColor ? box : style.boxColor,
+    ...(style.keyColor && key ? { keyColor: key } : {}),
     second: tier && tierText && tierOutline ? { ...tier, textColor: tierText, outlineColor: tierOutline } : tier
   }
 }
@@ -177,6 +180,7 @@ export function buildAss(
   ]
 
   const active = assColor(style.activeColor)
+  const key = style.keyColor ? assColor(style.keyColor) : null
   const scalePct = Math.round(style.activeScale * 100)
   const events: string[] = []
   const marginX = Math.round(width * 0.08)
@@ -207,8 +211,9 @@ export function buildAss(
     const l = marginX + soft.px
     const r = Math.max(0, marginX - soft.px)
     const v = Math.max(0, soft.marginV - soft.px)
-    events.push(`Dialogue: ${line},${from},${until},${name},,${l},${r},${v},,{${under}}${shade.split('{\\r}').join(`{\\r${under}}`)}`)
-    events.push(`Dialogue: ${2 + line},${from},${until},${name},,0,0,0,,{\\shad0}${text.split('{\\r}').join('{\\r\\shad0}')}`)
+    // Every reset, bare or carrying codes of its own ({\r\fs90}), brings the shadow's codes back.
+    events.push(`Dialogue: ${line},${from},${until},${name},,${l},${r},${v},,{${under}}${shade.split('{\\r').join(`{\\r${under}`)}`)
+    events.push(`Dialogue: ${2 + line},${from},${until},${name},,0,0,0,,{\\shad0}${text.split('{\\r').join('{\\r\\shad0')}`)
   }
   const softOf = (blur: number | undefined, px: number, v: number): { blur: number; px: number; marginV: number } | null =>
     blur ? { blur, px, marginV: v } : null
@@ -219,7 +224,7 @@ export function buildAss(
     : marginV
 
   // One event per word (shared/subtitles, which the editor's preview draws from too).
-  for (const cue of subtitleCues(words, style.wordsPerGroup)) {
+  for (const cue of styleCues(words, style)) {
     const word = cue.words[cue.active]
     const from = assTime(cue.start)
     const until = assTime(cue.end)
@@ -236,19 +241,56 @@ export function buildAss(
       continue
     }
 
+    if (landsLine(cue, style)) {
+      // The line landed: the key face, big, the key words in the key colour from the first of them on a line
+      // of their own (shared/subtitles layoutSubtitle).
+      const size = landedFontPx(
+        cue.words.map((w) => w.text),
+        style,
+        width
+      )
+      const face = `\\fn${style.keyFont}\\fs${size}`
+      const first = cue.words.findIndex((w) => w.key)
+      const landed = (colour: boolean): string =>
+        cue.words
+          .map((w, j) => {
+            const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
+            const said = w.key && key && colour ? `{\\c${key}}${text}{\\r${face}}` : text
+            return j === 0 ? said : `${j === first ? '\\N' : ' '}${said}`
+          })
+          .join('')
+      dialogue(from, until, 'Chop', `{${face}}${landed(true)}`, `{${face}}${landed(false)}`, softOf(style.shadowBlur, style.shadowPx, marginV))
+      continue
+    }
+
+    // A word too wide for the frame is set smaller, as the preview sets it (shared/subtitles fitFontPx),
+    // and stays smaller past every reset.
+    const size = fitFontPx(
+      cue.words.map((w) => w.text),
+      style,
+      width
+    )
+    const fs = size < style.fontSizePx ? `\\fs${size}` : ''
+    const fit = fs ? `{${fs}}` : ''
+    const reset = `{\\r${fs}}`
+    // With `colour` false, the line for a soft shadow: the same words and faces, no colours.
     const lineOf = (colour: boolean): string =>
       cue.words
         .map((w, j) => {
           const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
-          if (j !== cue.active) return text
-          const scale = style.activeScale === 1 ? '' : `\\fscx${scalePct}\\fscy${scalePct}`
-          const face = style.activeFontFamily ? `\\fn${style.activeFontFamily}` : ''
-          const codes = `${colour ? `\\c${active}` : ''}${face}${scale}`
-          return codes ? `{${codes}}${text}{\\r}` : text
+          // A built caption's words not said yet keep their places, unseen, outline and shadow too.
+          if (style.build && j > cue.active) return `{\\alpha&HFF&}${text}${reset}`
+          const said = j === cue.active
+          const tint = !colour ? null : w.key && key ? key : said ? active : null
+          const scale = said && style.activeScale !== 1 ? `\\fscx${scalePct}\\fscy${scalePct}` : ''
+          // The word being said in its own face, a heavier weight, as talking-head captions pick it out.
+          const face = said && style.activeFontFamily ? `\\fn${style.activeFontFamily}` : ''
+          const codes = `${tint ? `\\c${tint}` : ''}${face}${scale}`
+          return codes ? `{${codes}}${text}${reset}` : text
         })
         .join(' ')
 
-    dialogue(from, until, 'Chop', lineOf(true), lineOf(false), softOf(style.shadowBlur, style.shadowPx, marginV))
+    dialogue(from, until, 'Chop', `${fit}${lineOf(true)}`, `${fit}${lineOf(false)}`, softOf(style.shadowBlur, style.shadowPx, marginV))
   }
 
   return [...header, ...events].join('\n') + '\n'

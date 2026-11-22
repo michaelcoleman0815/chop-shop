@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react'
-import { thisComputer } from '../../../../shared/platform'
+import { thisComputer, yourComputer } from '../../../../shared/platform'
 import { PROFILES, type CuttingProfile } from '../../../../shared/raw/profiles'
 import { costLine, keyGuide, keyMessage } from '../../../../shared/setup'
 import { api, device, isMock } from '../api'
@@ -124,8 +124,8 @@ function Welcome({ onNext }: { onNext: () => void }): JSX.Element {
           </Button>
         </div>
         <p className="cl-onboard-note">
-          Runs on {device.here}. Claude reads what you ask, through your own Anthropic key, so you pay Anthropic for
-          what you use.
+          Runs on {device.kind === 'phone' ? device.here : yourComputer}. Claude reads what you ask, through your own
+          Anthropic key, so you pay Anthropic for what you use.
         </p>
       </div>
       <div className="cl-stage cl-demo" aria-hidden="true">

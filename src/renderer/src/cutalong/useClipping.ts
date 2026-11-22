@@ -194,7 +194,7 @@ export function useClipping(deps: ClippingDeps) {
    * long, the funny parts, a topic.
    */
   const run = useCallback(
-    async (files: Attachment[], ask: string, words = false, asked?: ClipAsk): Promise<boolean> => {
+    async (files: Attachment[], ask: string, words = false, asked?: ClipAsk, minSec?: number): Promise<boolean> => {
       const { push, patch } = d.current
       const dropped = recordingsOf(files)
       const own = d.current.docRef.current && !isClip(d.current.docRef.current) ? d.current.docRef.current : null
@@ -235,7 +235,8 @@ export function useClipping(deps: ClippingDeps) {
             ...(asked ? { asked } : {}),
             known,
             avoid: avoidRanges(current()),
-            brand: d.current.brand?.() ?? null
+            brand: d.current.brand?.() ?? null,
+            ...(minSec ? { minSec } : {})
           })
         )
       } finally {

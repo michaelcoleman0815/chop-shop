@@ -13,8 +13,11 @@ import {
   wordsFromTranscript,
   type Cut,
   type EditDoc,
-  type Resolved
+  type Resolved,
+  type TransitionKind
 } from './index'
+import { EditDocSchema as SHIPPED_0_2_13 } from './schema-0.2.13'
+import { transitionFamily } from '../never'
 
 const SOURCE = { id: 's1', path: '/footage/take.mov', durationSec: 20, width: 1080, height: 1920, fps: 30 }
 
@@ -234,5 +237,53 @@ describe('reading a transition from words', () => {
     expect(parseTransition('zoom in')).toBe('zoom')
     expect(parseTransition('hard cut')).toBe('cut')
     expect(parseTransition('banana')).toBeNull()
+  })
+
+  it('knows the looks by the words people use for them', () => {
+    expect(parseTransition('glitch')).toBe('glitch')
+    expect(parseTransition('a digital glitch')).toBe('glitch')
+    expect(parseTransition('rgb split')).toBe('rgb-split')
+    expect(parseTransition('chromatic aberration')).toBe('rgb-split')
+    expect(parseTransition('VHS')).toBe('vhs')
+    expect(parseTransition('tape')).toBe('vhs')
+  })
+})
+
+describe('the looks: glitch, RGB split and VHS', () => {
+  it('are kept as a dissolve with the look beside it, and play as the look', () => {
+    const doc = makeDoc()
+    const cut = apply(doc, [{ op: 'transition', beats: ['b2'], kind: 'glitch', sec: 0.3 }])
+    expect(cut.beats[1].transition).toEqual({ kind: 'dissolve', sec: 0.3, look: 'glitch' })
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    expect(resolved.transitions?.map((t) => t.kind)).toEqual(['glitch'])
+    expect(resolved.pieces.find((p) => p.transition)?.transition?.kind).toBe('glitch')
+    // A look with no length named takes its own.
+    const vhs = apply(doc, [{ op: 'transition', beats: ['b2'], kind: 'vhs' }])
+    expect(vhs.beats[1].transition).toEqual({ kind: 'dissolve', sec: 0.5, look: 'vhs' })
+    // Another transition over it replaces the look; a hard cut takes it away.
+    expect(apply(doc, [{ op: 'transition', beats: ['b2'], kind: 'whip-left' }], vhs).beats[1].transition).toEqual({
+      kind: 'whip-left',
+      sec: 0.3
+    })
+    expect(apply(doc, [{ op: 'transition', beats: ['b2'], kind: 'cut' }], vhs).beats[1].transition).toBeUndefined()
+  })
+
+  it('open in 0.2.13 as a dissolve, and no saved version keeps the op 0.2.13 cannot read', () => {
+    const doc = commit(makeDoc(), [{ op: 'transition', beats: ['b2'], kind: 'rgb-split', sec: 0.4 }], 'x').doc
+    const saved = JSON.parse(JSON.stringify(doc))
+    expect(saved.versions.flatMap((v: { ops: unknown[] }) => v.ops)).toEqual([])
+    const there = SHIPPED_0_2_13.safeParse(saved)
+    expect(there.success ? [] : there.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`)).toEqual([])
+    if (there.success) expect(there.data.versions[1].cut.beats[1].transition).toEqual({ kind: 'dissolve', sec: 0.4 })
+    // Here the look reads back whole.
+    expect(currentCut(EditDocSchema.parse(saved)).beats[1].transition).toEqual({ kind: 'dissolve', sec: 0.4, look: 'rgb-split' })
+  })
+
+  it('are one family for the things a channel never uses', () => {
+    expect(['glitch', 'rgb-split', 'vhs'].map((k) => transitionFamily(k as TransitionKind))).toEqual([
+      'glitch',
+      'glitch',
+      'glitch'
+    ])
   })
 })

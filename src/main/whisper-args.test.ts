@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'fs'
 import { describe, expect, it } from 'vitest'
-import { whisperArgs } from './whisper-args'
+import { WHISPER_MODELS, whisperArgs } from './whisper-args'
 import { VERBATIM_STYLE } from '../shared/raw/prompt'
 
 const base = { model: 'small.en' as const, modelFile: '/m/ggml-small.en.bin', wav: '/t/audio.wav', prefix: '/t/out' }
@@ -77,5 +77,38 @@ describe('whisper-cli arguments', () => {
   it.skipIf(!existsSync(cli))('uses only flags the built whisper-cli parses', () => {
     const source = readFileSync(cli, 'utf8')
     for (const flag of KNOWN) expect(source.includes(`"${flag}"`), flag).toBe(true)
+  })
+})
+
+describe('hearing a long recording fast', () => {
+  it('asks for one guess at each step only when told to', () => {
+    const base = { model: 'small.en' as const, modelFile: '/m/small.bin', wav: '/t/a.wav', prefix: '/t/out' }
+    expect(whisperArgs(base)).not.toContain('-bs')
+    const fast = whisperArgs({ ...base, greedy: true })
+    expect(fast.slice(fast.indexOf('-bs'), fast.indexOf('-bs') + 4)).toEqual(['-bs', '1', '-bo', '1'])
+  })
+})
+
+describe('large-v3 turbo', () => {
+  it('reads its 5-bit file and aligns words with its own preset', () => {
+    expect(WHISPER_MODELS['large-v3-turbo'].file).toBe('ggml-large-v3-turbo-q5_0.bin')
+    const args = whisperArgs({
+      model: 'large-v3-turbo',
+      modelFile: '/m/turbo.bin',
+      wav: '/t/a.wav',
+      prefix: '/t/out',
+      verbatim: { names: [] }
+    })
+    expect(args[args.indexOf('--dtw') + 1]).toBe('large.v3.turbo')
+  })
+})
+
+describe('aligned words for clips', () => {
+  it('asks for the full JSON and the model’s alignment when told to align', () => {
+    const base = { model: 'small.en' as const, modelFile: '/m/small.bin', wav: '/t/a.wav', prefix: '/t/out' }
+    const args = whisperArgs({ ...base, greedy: true, align: true })
+    expect(args).toContain('-ojf')
+    expect(args.slice(args.indexOf('--dtw'), args.indexOf('--dtw') + 3)).toEqual(['--dtw', 'small.en', '-nfa'])
+    expect(whisperArgs(base)).not.toContain('--dtw')
   })
 })

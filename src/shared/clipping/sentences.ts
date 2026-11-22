@@ -9,6 +9,8 @@ export interface TimedWord {
   text: string
   startSec: number
   endSec: number
+  /** A word the speaker leans on, which a caption look may pick out (shared/types TranscriptWord). */
+  key?: boolean
 }
 
 export interface Sentence {
@@ -25,7 +27,7 @@ export interface Sentence {
   gapAfter: number
 }
 
-const ENDS = /[.!?…]["'”’)\]]*$/
+export const ENDS = /[.!?…]["'”’)\]]*$/
 /** Past this, a sentence has gone on without punctuation long enough to be two. */
 const MAX_WORDS = 40
 /** A pause this long ends a sentence even when the recogniser wrote no full stop. */

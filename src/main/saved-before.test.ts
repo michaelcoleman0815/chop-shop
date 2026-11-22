@@ -23,6 +23,7 @@ vi.mock('electron', () => ({
 import { readApiKey } from './apikey'
 import { getSettings } from './store'
 import { chosenTranscriber, servicesOn } from '../shared/services'
+import { onWindows } from '../shared/platform'
 import { currentCut, EditDocSchema, resolveCut } from '../shared/edit'
 
 const root = mkdtempSync(join(tmpdir(), 'cutalong-before-'))
@@ -66,7 +67,8 @@ describe('files saved before other AI services', () => {
     expect(servicesOn(s)).toBe(true)
     expect(s.transcriber).toBeUndefined()
     expect(s.whisperModel).toBe('base.en')
-    expect(s.videoSignIn).toBe('chrome')
+    // Chrome's sign-in cannot be borrowed on Windows (shared/platform), so there it is left off.
+    expect(s.videoSignIn).toBe(onWindows ? null : 'chrome')
     expect(s.outputDir).toBe(SETTINGS_0_2_13.outputDir)
     // With no service key saved yet, the words are still heard on this computer.
     expect(chosenTranscriber(s, () => false)).toBeNull()

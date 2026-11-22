@@ -75,6 +75,7 @@ const WHOLE = new Set<Op['op']>([
   'chapters',
   'sync',
   'reframe',
+  'punch-jumps',
   'fill'
 ])
 

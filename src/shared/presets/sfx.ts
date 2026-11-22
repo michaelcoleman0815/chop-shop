@@ -2,7 +2,7 @@ import { currentCut } from '../edit/doc'
 import { resolveCut, type Resolved } from '../edit/resolve'
 import type { EditDoc, Op } from '../edit/schema'
 import { SFX_INFO, SFX_KINDS, sfxName, type Sfx, type SfxKind } from '../edit/sfx'
-import { TRANSITION_INFO } from '../edit/transitions'
+import { shownTransition, TRANSITION_INFO } from '../edit/transitions'
 
 /**
  * The /sfx command: a built-in sound on the beat under the playhead, or on
@@ -71,7 +71,7 @@ export function sfxCommand(doc: EditDoc, rest: string, beat: string | null, at: 
   if (/^(transitions?|whooshes)$/.test(words)) {
     // A whoosh belongs on a transition that moves: a whip, a push, a slide, a zoom. A dissolve or a dip is quiet.
     const MOVES = new Set(['whip', 'slide', 'cover', 'zoom'])
-    const moving = cut.beats.filter((b) => b.transition && MOVES.has(TRANSITION_INFO[b.transition.kind].preview))
+    const moving = cut.beats.filter((b) => b.transition && MOVES.has(TRANSITION_INFO[shownTransition(b.transition)].preview))
     const fresh = moving.filter((b) => !(b.sfx ?? []).some((s) => s.kind === 'whoosh' && !s.word))
     if (moving.length === 0) return { say: 'There is no moving transition for a whoosh. /transition whip adds one.' }
     if (fresh.length === 0) return { say: 'Every moving transition already has a whoosh.' }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyOps, commit, createDoc, currentCut, resolveCut, wordsFromTranscript, type EditDoc } from '.'
-import { frameAt, pieceFraming, planReframe, subjectFrom, windowShare, type Subject } from './reframe'
+import { crowdShare, DEFAULT_REFRAME, frameAt, pieceFraming, planReframe, subjectFrom, windowShare, type Subject } from './reframe'
 import { describePlan, reframeCommand } from '../presets'
 
 const face = (cx: number, w = 0.1): { x: number; y: number; w: number; h: number } => ({
@@ -97,6 +97,18 @@ describe('a beat’s framing', () => {
     expect(pieceFraming({ reframe: false }, cut.beats[0].treatment, p1, subject)).toBeNull()
   })
 
+  it('follows a step it would let go when the beat is punched in, as the window it shows is narrower', () => {
+    // The speaker steps 0.05 of the picture to the right: inside the wide window's slack, outside the punched-in one's.
+    const stepped: Subject = { hz: 2, x: Array.from({ length: 12 }, (_, i) => (i < 2 ? 0.4 : 0.45)) }
+    const doc = commit(talk(), [{ op: 'reframe', on: true }], 'x').doc
+    const cut = currentCut(doc)
+    const piece = resolveCut(cut, doc.words, doc.sources).pieces[0]
+    const xs = (zoom: number): number[] =>
+      pieceFraming(cut, { ...cut.beats[0].treatment, zoom }, piece, stepped)!.map((k) => k.x)
+    expect(Math.max(...xs(1))).toBeCloseTo(0.4, 6)
+    expect(Math.max(...xs(1.45))).toBeGreaterThan(0.42)
+  })
+
   it('reads /reframe, and says what changed', () => {
     const bare = talk()
     expect(reframeCommand(bare, '', 'b1')).toEqual({
@@ -159,5 +171,50 @@ describe('following the speaker through a switched feed', () => {
     expect(planReframe(subject)[0]).toEqual({ t: 3600, x: 0.3 })
     // A subject from before clipping, with no start, reads from the recording's start as always.
     expect(planReframe({ hz: 2, x: [0.3] })[0]).toEqual({ t: 0, x: 0.3 })
+  })
+})
+
+describe('filmed through the crowd', () => {
+  const body = (h: number): { h: number } => ({ h })
+  it('is the share of moments with two or more people close to the camera', () => {
+    const front = { people: [body(0.88)] }
+    const back = { people: [body(0.95), body(0.9), body(0.4)] }
+    expect(crowdShare([front, front, back, back])).toBe(0.5)
+    // A singer small behind the preacher is not a crowd; nor is a helper that saw no one.
+    expect(crowdShare([{ people: [body(0.9), body(0.3)] }, { people: [] }, {}])).toBe(0)
+    expect(crowdShare([])).toBe(0)
+  })
+})
+
+describe('a speaker turned away', () => {
+  const face = (x: number) => ({ x: x - 0.04, y: 0.2, w: 0.08, h: 0.15 })
+  const body = (x: number, h = 0.62) => ({ x: x - 0.12, y: 0.1, w: 0.24, h })
+  it('is followed by the body nearest where the face was, once a face has been seen', () => {
+    const subject = subjectFrom(
+      [
+        { t: 0, faces: [face(0.6)], people: [body(0.6)] },
+        // Turned away, walking left: no face, and a smaller figure at the keys behind him.
+        { t: 0.5, faces: [], people: [body(0.45), body(0.9, 0.3)] },
+        { t: 1, faces: [], people: [body(0.35), body(0.9, 0.3)] },
+        { t: 1.5, faces: [face(0.3)], people: [body(0.3)] }
+      ],
+      2
+    )
+    expect(subject.x).toEqual([0.6, 0.45, 0.35, 0.3])
+    // Before any face, a body is no one in particular.
+    expect(subjectFrom([{ t: 0, faces: [], people: [body(0.5)] }], 1).x).toEqual([null, null])
+  })
+})
+
+describe('a close follow', () => {
+  it('keeps up with a speaker walking across the picture, where the calm one holds and glides behind', () => {
+    // Walking left a tenth of the picture a second, sampled four times a second.
+    const walking: Subject = { hz: 4, x: Array.from({ length: 16 }, (_, i) => 0.7 - i * 0.025) }
+    const lag = (keys: ReturnType<typeof planReframe>): number =>
+      Math.max(...walking.x.map((x, i) => Math.abs(frameAt(keys, i / 4) - (x as number))))
+    const close = planReframe(walking, { ...DEFAULT_REFRAME, deadzone: 0.02, smoothing: 1, close: true })
+    const calm = planReframe(walking, DEFAULT_REFRAME)
+    expect(lag(close)).toBeLessThan(0.03)
+    expect(lag(calm)).toBeGreaterThan(0.06)
   })
 })

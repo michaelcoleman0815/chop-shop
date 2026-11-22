@@ -5,7 +5,7 @@ import { fillMode } from './fill'
 import { mergeLook } from './look'
 import type { Sfx } from './sfx'
 import { indexWords, type WordIndex } from './resolve'
-import { MIN_TRANSITION_SEC, TRANSITION_INFO } from './transitions'
+import { keptTransition, MIN_TRANSITION_SEC, TRANSITION_INFO } from './transitions'
 import {
   DEFAULT_PAD_IN,
   DEFAULT_PAD_OUT,
@@ -286,7 +286,7 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         beats[i] =
           op.kind === 'cut'
             ? { ...beat, ...(beats[i].splitEdit ? { splitEdit: beats[i].splitEdit } : {}) }
-            : { ...beat, transition: { kind: op.kind, sec: op.sec ?? TRANSITION_INFO[op.kind].defaultSec } }
+            : { ...beat, transition: keptTransition(op.kind, op.sec ?? TRANSITION_INFO[op.kind].defaultSec) }
       }
       return { ...cut, beats }
     }
@@ -453,9 +453,18 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       const { reframe: _was, ...rest } = cut
       return op.on ? { ...rest, reframe: true } : rest
     }
+    case 'punch-jumps': {
+      if (cut.punchJumps === op.on) return cut
+      return { ...cut, punchJumps: op.on }
+    }
 
     case 'brand':
       return { ...cut, brand: op.id }
+
+    case 'box': {
+      const { box: _was, ...rest } = cut
+      return op.set ? { ...rest, box: op.set } : rest
+    }
 
     case 'fill':
       // Said outright, auto too: a cut that says nothing was made before the fill, and is cropped.

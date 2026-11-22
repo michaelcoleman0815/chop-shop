@@ -1,10 +1,10 @@
 import { join } from 'path'
 import { loudnessEnvelope } from './audio-envelope'
-import { FILLER_PROMPT, listenForFillers, readSamples } from './filler-listen'
+import { DEFAULT_FILLER_LISTEN, FILLER_PROMPT, listenForFillers, readSamples } from './filler-listen'
 import { platform } from './platform'
 import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
 import { voicedRegions } from '../shared/audio/voiced'
-import { whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
+import { WHISPER_MODELS, whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
 import type { Transcript, TranscriptWord } from '../shared/types'
 import type { ToolSaid } from '../shared/failure'
 
@@ -19,15 +19,16 @@ export type { VerbatimOptions, WhisperModel }
 const MODEL_SIZES: Record<WhisperModel, number> = {
   'base.en': 148,
   'small.en': 488,
-  'medium.en': 1533
+  'medium.en': 1533,
+  'large-v3-turbo': 574
 }
 
 /** Where whisper.cpp publishes its models. */
 export const MODEL_URL = (model: WhisperModel): string =>
-  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`
+  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_MODELS[model].file}`
 
 export function modelPath(model: WhisperModel): string {
-  return join(platform().paths.userData(), 'models', `ggml-${model}.bin`)
+  return join(platform().paths.userData(), 'models', WHISPER_MODELS[model].file)
 }
 
 export function modelSizeMb(model: WhisperModel): number {
@@ -56,6 +57,14 @@ export async function downloadModel(model: WhisperModel, onProgress: (percent: n
 
 /** What ffmpeg says when a file has no sound to take, on 6.0, 6.1 and 7.0. */
 const NO_SOUND = /does not contain any stream|matches no streams/i
+
+/**
+ * How long listening for ums may take, as a share of the time writing the
+ * words down took, and at least this long: on the Android emulator two
+ * hundred short Whisper runs took over 800 s after a 394 s transcript.
+ */
+export const UMS_SHARE = 0.5
+export const UMS_LEAST_SEC = 20
 
 /** Whisper wants 16 kHz mono PCM; anything else is resampled internally anyway. */
 async function extractAudio(
@@ -124,7 +133,12 @@ export function whisperThreads(os: string, processors: number): number | undefin
 const ILLEGAL_INSTRUCTION = 0xc000001d
 
 /** Runs whisper to the end, reporting its progress from 0 to 100. */
-async function runWhisper(bin: string, args: string[], onProgress: (percent: number) => void): Promise<void> {
+async function runWhisper(
+  bin: string,
+  args: string[],
+  onProgress: (percent: number) => void,
+  signal?: AbortSignal
+): Promise<void> {
   let stderr = ''
   // whisper prints a line per segment, and with -ml 1 that is one per word.
   // Everything it writes is read as it comes: a pipe nobody reads fills, and
@@ -140,7 +154,8 @@ async function runWhisper(bin: string, args: string[], onProgress: (percent: num
       // whisper prints progress to stderr as it consumes the audio.
       const match = /progress\s*=\s*(\d+)%/.exec(text)
       if (match) onProgress(Number(match[1]))
-    }
+    },
+    ...(signal ? { signal } : {})
   })
   if (r.code !== 0) {
     // Its last lines whole, without the progress it printed on the way.
@@ -187,7 +202,9 @@ export async function transcribe(
    * here — everything downstream addresses the original recording.
    */
   startSec = 0,
-  verbatim?: VerbatimOptions
+  verbatim?: VerbatimOptions,
+  /** One guess at each step, and word onsets aligned (main/whisper-args): a long recording heard for its clips. */
+  fast: { greedy?: boolean; align?: boolean } = {}
 ): Promise<Transcript> {
   const host = platform()
   const bin = host.tool('whisper')
@@ -223,9 +240,11 @@ export async function transcribe(
     const prefix = join(dir, 'out')
     const until = verbatim && verbatim.again !== false ? 86 : 98
     const threads = whisperThreads(host.os, host.processors)
-    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads }), (p) =>
+    const began = Date.now()
+    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads, ...fast }), (p) =>
       onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
     )
+    const firstSec = (Date.now() - began) / 1000
     const json = parseWhisperJson(await host.files.readText(`${prefix}.json`))
     let heard = tokensToWords(json.transcription)
 
@@ -256,28 +275,45 @@ export async function transcribe(
         // Then every um, hmm and uh still unwritten, heard in the sound and by Whisper alone (main/filler-listen).
         onProgress(98, 'Listening for ums')
         let m = 0
+        // Each stretch is a Whisper run of its own: on a phone, two hundred of them can take longer
+        // than the whole recording did, so the ums take at most half as long again.
+        const budget = { ...DEFAULT_FILLER_LISTEN, budgetSec: Math.max(UMS_LEAST_SEC, firstSec * UMS_SHARE) }
+        const umsEnd = Date.now() + budget.budgetSec * 1000
         const fillers = await listenForFillers(heard, voiced, {
           samples: (span) => readSamples(host.tool('ffmpeg'), wav, span),
           listen: async (span) => {
             const part = join(dir, `um-${++m}.wav`)
             await extractAudio(wav, part, span.endSec - span.startSec, () => undefined, span.startSec)
             const partPrefix = join(dir, `um-${m}`)
-            await runWhisper(
-              bin,
-              whisperArgs({
-                model,
-                modelFile,
-                wav: part,
-                prefix: partPrefix,
-                verbatim: { ...verbatim, prompt: FILLER_PROMPT },
-                threads
-              }),
-              () => undefined
-            )
+            // One guess at each step and no second tries: on a stretch this short, a phone's Whisper
+            // searching five ways at six temperatures took longer than the whole recording. And one
+            // listen that runs past the time left is stopped, so it never holds the transcript up.
+            const stop = new AbortController()
+            const timer = setTimeout(() => stop.abort(), Math.max(1000, umsEnd - Date.now()))
+            try {
+              await runWhisper(
+                bin,
+                [
+                  ...whisperArgs({
+                    model,
+                    modelFile,
+                    wav: part,
+                    prefix: partPrefix,
+                    verbatim: { ...verbatim, prompt: FILLER_PROMPT },
+                    threads
+                  }),
+                  ...['-bs', '1', '-bo', '1', '-nf']
+                ],
+                () => undefined,
+                stop.signal
+              )
+            } finally {
+              clearTimeout(timer)
+            }
             const alone = tokensToWords(parseWhisperJson(await host.files.readText(`${partPrefix}.json`)).transcription)
             return alone.map((w) => ({ ...w, startSec: w.startSec + span.startSec, endSec: w.endSec + span.startSec }))
           }
-        })
+        }, budget)
         if (fillers.length > 0) {
           heard = [...heard, ...fillers].sort((a, b) => a.startSec - b.startSec)
           console.log(`[stt] heard ${fillers.length} filler${fillers.length === 1 ? '' : 's'} Whisper left out`)

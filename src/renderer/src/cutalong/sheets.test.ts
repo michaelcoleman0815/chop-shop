@@ -9,6 +9,7 @@ import {
   type EditDoc
 } from '../../../shared/edit'
 import { sfxCommand } from '../../../shared/presets'
+import { CAPTION_JOIN_SEC } from '../../../shared/subtitles'
 import {
   bareWord,
   captionCueAt,
@@ -107,11 +108,12 @@ describe('captions in your words', () => {
     const here = captionCueAt(cut, resolved, 2, at.outStart + 0.01)!
     expect(here.words.map((w) => w.text)).toEqual(['This', 'is'])
     expect(here.active).toBe(1)
-    // In the pause between two sentences: the caption that comes next.
+    // In a short pause between two sentences the caption just said stays up until the next, as the export
+    // holds it (shared/subtitles CAPTION_JOIN_SEC).
     const gap = (resolved.words[3].outEnd + resolved.words[4].outStart) / 2
-    const next = captionCueAt(cut, resolved, 2, gap)
-    expect(next && next.words[0].text).toBe('This')
-    expect(next && next.start).toBeCloseTo(resolved.words[4].outStart, 9)
+    expect(resolved.words[4].outStart - resolved.words[3].outEnd).toBeLessThanOrEqual(CAPTION_JOIN_SEC)
+    const held = captionCueAt(cut, resolved, 2, gap)
+    expect(held && held.words.map((w) => w.text)).toEqual(['part', '1.'])
     // Past the end: the first.
     expect(captionCueAt(cut, resolved, 4, 999)?.words.map((w) => w.text)).toEqual(['This', 'is', 'part', '1.'])
     // At the very start, a full group with a word after the first being said, so two-line looks show both lines.

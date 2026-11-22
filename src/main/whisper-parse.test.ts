@@ -13,8 +13,7 @@ import {
   secondPassSpans,
   tokensToWords,
   type HeardWord,
-  type WhisperJson
-} from './whisper-parse'
+  type WhisperJson, withoutSoundNotes } from './whisper-parse'
 
 /**
  * Reading whisper-cli's output, and the second listen, on recorded runs of
@@ -145,5 +144,15 @@ describe('the second listen', () => {
     expect(after.recall).toBeGreaterThan(before.recall)
     expect(after.recall).toBeGreaterThanOrEqual(0.95)
     expect(after.precision).toBeGreaterThanOrEqual(0.95)
+  })
+})
+
+describe('sound notes', () => {
+  const w = (text: string) => ({ text, startSec: 0, endSec: 0 })
+  it('takes out what Whisper heard that was not said, split over words or not, and nothing that was', () => {
+    const heard = ['He', 'never', 'sleeps.', '(gentle', 'music)', 'He', '(audience', 'chattering)', 'never', '[APPLAUSE]', '♪', 'slumbers.']
+    expect(withoutSoundNotes(heard.map(w)).map((x) => x.text)).toEqual(['He', 'never', 'sleeps.', 'He', 'never', 'slumbers.'])
+    // An opening bracket with no close near it is left as it was.
+    expect(withoutSoundNotes(['(well', 'I', 'said', 'so'].map(w)).map((x) => x.text)).toEqual(['(well', 'I', 'said', 'so'])
   })
 })

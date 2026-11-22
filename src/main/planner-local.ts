@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { EditDocSchema } from '../shared/edit'
 import { thisComputer } from '../shared/platform'
 import { chatLocally, isLocalUp } from './local-llm'
-import { offerPlan, type PlanEditResult, type PlanInput } from './planner'
+import { offerTrackedPlan, type PlanEditResult, type PlanInput } from './planner'
 import { PLANNER_SYSTEM, PlanSchema, renderCommands, renderRequest, renderTranscript, withRealIcons } from './planner-prompt'
 
 /**
@@ -62,5 +62,5 @@ export async function planEditLocally(input: PlanInput, local: { host: string; m
       message: `${local.model} sent back a plan in a shape I could not read. Try again, or plan with Claude.`
     }
   }
-  return offerPlan(doc, { ...plan.data, ops: await withRealIcons(plan.data.ops) }, input.notes, input.commands)
+  return offerTrackedPlan(doc, { ...plan.data, ops: await withRealIcons(plan.data.ops) }, input.notes, input.commands)
 }

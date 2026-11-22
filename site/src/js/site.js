@@ -2,49 +2,160 @@
 
 const reduce = matchMedia('(prefers-reduced-motion: reduce)')
 
-// ---- The hero's loop: it runs only while seen, stops on hover, focus or the button, and never under reduced motion.
-// It starts at its own end (the state the page shows without script), so nothing jumps when it takes over.
-document.querySelectorAll('[data-loop]').forEach((el) => {
-  const button = el.querySelector('[data-loop-toggle]')
-  const label = el.querySelector('[data-loop-label]')
-  // It waits for the visitor's first scroll, pointer move, touch or key, so a page left alone stays still and readable.
-  const state = { seen: false, engaged: false, hover: false, focus: false, held: false }
+// ---- The hero's take: the real v2, playing without sound while it can be seen. Sound is one press away;
+// with reduced motion it waits, with the player's own controls, until it is played.
+document.querySelectorAll('[data-take]').forEach((video) => {
+  const sound = video.parentElement.querySelector('[data-take-sound]')
+  const label = sound?.querySelector('[data-take-sound-label]')
+  const still = () => reduce.matches
+  let seen = false
   const sync = () => {
-    if (reduce.matches) {
-      el.classList.remove('is-live', 'is-running')
+    video.controls = still()
+    if (sound) sound.hidden = still()
+    if (still()) return
+    if (seen) video.play().catch(() => {})
+    else video.pause()
+  }
+  sound?.addEventListener('click', () => {
+    video.muted = !video.muted
+    if (!video.muted) video.play().catch(() => {})
+    sound.setAttribute('aria-pressed', String(!video.muted))
+    if (label) label.textContent = video.muted ? 'Sound on' : 'Sound off'
+  })
+  new IntersectionObserver(([entry]) => {
+    seen = entry.isIntersecting
+    sync()
+  }, { threshold: 0.35 }).observe(video)
+  reduce.addEventListener('change', sync)
+  sync()
+})
+
+// ---- The download: the one for the visitor's computer, or a plain answer when Cutalong doesn't run there yet.
+// Without script every button is "Download for Mac" to the releases page. With it, a Mac gets the .dmg itself
+// and a Windows PC the installer, once the latest release carries one; a phone can send the link to its
+// computer; Linux, a Chromebook and an Intel Mac hear where it runs.
+const getBoxes = document.querySelectorAll('[data-get-box]')
+const getLinks = document.querySelectorAll('a[data-get]')
+if (getLinks.length) {
+  const releases = document.querySelector('[data-releases]')?.dataset.releases || getLinks[0].href
+  const ua = navigator.userAgent
+  const touch = navigator.maxTouchPoints > 1
+
+  // Apple silicon or Intel, where the browser will say: Chrome by its architecture hint, others by the graphics
+  // chip's name. Safari says only "Apple GPU" either way, so that one stays unknown.
+  const appleSilicon = async () => {
+    try {
+      const hints = await navigator.userAgentData?.getHighEntropyValues?.(['architecture'])
+      if (hints?.architecture) return hints.architecture === 'arm'
+    } catch {}
+    try {
+      const gl = document.createElement('canvas').getContext('webgl')
+      const info = gl?.getExtension('WEBGL_debug_renderer_info')
+      const chip = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : ''
+      if (/Apple M\d/i.test(chip)) return true
+      if (/Intel|AMD|Radeon|NVIDIA/i.test(chip)) return false
+    } catch {}
+    return null
+  }
+
+  const deviceOf = async () => {
+    if (/iPhone|iPod/.test(ua)) return 'iphone'
+    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && touch)) return 'ipad'
+    if (/Android/.test(ua)) return 'android'
+    if (/CrOS/.test(ua)) return 'chromebook'
+    if (/Windows/.test(ua)) return 'windows'
+    if (/Macintosh|Mac OS X/.test(ua)) return (await appleSilicon()) === false ? 'intel-mac' : 'mac'
+    if (/Linux|X11/.test(ua)) return 'linux'
+    return 'other'
+  }
+
+  // The latest release, straight from GitHub, so the download is one click instead of a list of files.
+  const latestRelease = async () => {
+    const repo = /github\.com\/([^/]+\/[^/]+)/.exec(releases)?.[1]
+    if (!repo) return null
+    try {
+      const r = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } })
+      return r.ok ? await r.json() : null
+    } catch {
+      return null
+    }
+  }
+  /** The release's file for this computer: the Apple silicon .dmg, or the Windows installer (not its blockmap). */
+  const fileFor = (release, device) => {
+    const assets = release?.assets ?? []
+    const pick = device === 'windows'
+      ? assets.find((a) => /setup.*x64\.exe$/i.test(a.name)) || assets.find((a) => /\.exe$/i.test(a.name))
+      : assets.find((a) => /arm64\.dmg$/i.test(a.name)) || assets.find((a) => /\.dmg$/i.test(a.name))
+    return pick ? { url: pick.browser_download_url, version: String(release.tag_name || '').replace(/^v/, ''), mb: Math.round(pick.size / 1e6) } : null
+  }
+  // Unsigned, Windows asks before the first run: the page says what to press (site.config.mjs windowsSigned).
+  const winSigned = document.querySelector('[data-win-signed]')?.dataset.winSigned === 'true'
+
+  const NAMES = { iphone: 'iPhone', ipad: 'iPad', android: 'Android', windows: 'Windows', linux: 'Linux', chromebook: 'Chromebook' }
+  const site = location.origin + '/download'
+
+  const setNote = (box, text) => {
+    const note = box.querySelector('[data-get-note]')
+    if (note) note.textContent = text
+  }
+  const showAlso = (box) => {
+    const also = box.querySelector('[data-get-also]')
+    if (also) also.hidden = false
+  }
+
+  deviceOf().then(async (device) => {
+    document.documentElement.dataset.device = device
+    const release = device === 'iphone' || device === 'ipad' || device === 'android' ? null : await latestRelease()
+    const exe = device === 'windows' ? fileFor(release, 'windows') : null
+    if (exe) {
+      // A Windows PC, and a release that has its installer.
+      getLinks.forEach((a) => {
+        a.href = exe.url
+        a.textContent = a.dataset.get === 'long' ? 'Download for Windows' : 'Download'
+      })
+      getBoxes.forEach((box) =>
+        setNote(box, `Version ${exe.version}, ${exe.mb} MB. For Windows 10 and 11, 64-bit.${winSigned ? '' : ' Windows may ask before it first opens: choose More info, then Run anyway.'}`)
+      )
       return
     }
-    if (state.seen && state.engaged) el.classList.add('is-live')
-    const run = state.seen && state.engaged && !state.hover && !state.focus && !state.held
-    el.classList.toggle('is-running', run)
-    el.querySelectorAll('video').forEach((v) => (run ? v.play().catch(() => {}) : v.pause()))
-    if (button) {
-      button.toggleAttribute('data-held', state.held)
-      if (label) label.textContent = state.held ? 'Play' : 'Pause'
-      button.setAttribute('aria-label', state.held ? 'Play the example' : 'Pause the example')
+    if (device === 'mac' || device === 'intel-mac' || device === 'other') {
+      const dmg = fileFor(release, 'mac')
+      if (dmg) getLinks.forEach((a) => (a.href = dmg.url))
+      document.querySelectorAll('[data-get-also]').forEach((a) => dmg && (a.href = dmg.url))
+      const facts = dmg ? `Version ${dmg.version}, ${dmg.mb} MB. ` : ''
+      getBoxes.forEach((box) =>
+        setNote(box, device === 'intel-mac'
+          ? 'This Mac looks like it has an Intel chip. Cutalong needs a Mac with Apple silicon (M1 or later), on macOS 14 or later.'
+          : `${facts}For Macs with Apple silicon, on macOS 14 or later.`)
+      )
+      return
     }
-  }
-  button?.addEventListener('click', () => {
-    state.held = !state.held
-    sync()
+    const phone = device === 'iphone' || device === 'ipad' || device === 'android'
+    getLinks.forEach((a) => {
+      const long = a.dataset.get === 'long'
+      if (phone && navigator.share) {
+        // On a phone the useful thing is the link on the Mac: the share sheet sends it there (AirDrop, Messages, mail).
+        a.textContent = long ? 'Send the download to your Mac' : 'Send to Mac'
+        a.addEventListener('click', (e) => {
+          e.preventDefault()
+          navigator.share({ title: 'Cutalong for Mac', url: site }).catch(() => {})
+        })
+      } else {
+        a.textContent = long ? `Tell me when it’s on ${NAMES[device] || 'my computer'}` : 'Get notified'
+        a.href = '#signup'
+        a.dataset.notify = device
+      }
+    })
+    getBoxes.forEach((box) => {
+      setNote(box, phone
+        ? `Cutalong runs on a Mac. The ${NAMES[device]} app is on its way: leave your email below to hear when.`
+        : device === 'windows'
+          ? 'The Windows version is on its way: leave your email below to hear when it is ready.'
+          : `Cutalong runs on a Mac${release && fileFor(release, 'windows') ? ' and on Windows' : ''} for now, so there is nothing to download for ${NAMES[device] || 'this computer'} yet.`)
+      showAlso(box)
+    })
   })
-  const plate = el.querySelector('[data-slot]') || el
-  plate.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { state.hover = true; sync() } })
-  plate.addEventListener('pointerleave', () => { state.hover = false; sync() })
-  el.addEventListener('focusin', (e) => { if (e.target !== button) { state.focus = true; sync() } })
-  el.addEventListener('focusout', () => { state.focus = false; sync() })
-  new IntersectionObserver(([entry]) => {
-    state.seen = entry.isIntersecting
-    sync()
-  }, { threshold: 0.35 }).observe(el)
-  reduce.addEventListener('change', sync)
-  const engage = () => {
-    if (state.engaged) return
-    state.engaged = true
-    sync()
-  }
-  for (const type of ['scroll', 'pointermove', 'touchstart', 'keydown']) addEventListener(type, engage, { once: true, passive: true })
-})
+}
 
 // ---- The header takes a hairline once the page has moved under it.
 const slab = document.querySelector('.slab')
@@ -101,12 +212,12 @@ document.querySelectorAll('form[data-signup]').forEach((form) => {
 
   // Each "Get notified" button leads to the field, and the list keeps which one it was.
   // The link's own jump does the scrolling; focusing here, inside the tap, is what brings up a phone's keyboard.
-  document.querySelectorAll('a[data-notify]').forEach((a) =>
-    a.addEventListener('click', () => {
-      if (source) source.value = a.dataset.notify
-      input.focus({ preventScroll: true })
-    })
-  )
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest?.('a[data-notify]')
+    if (!a) return
+    if (source) source.value = a.dataset.notify
+    input.focus({ preventScroll: true })
+  })
   if (source && location.hash === '#signup') source.value = 'link'
 
   form.addEventListener('submit', async (e) => {

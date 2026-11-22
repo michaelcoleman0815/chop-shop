@@ -6,7 +6,7 @@ import type { Cut, EditDoc, Resolved } from '../shared/edit'
 import { drawsCaptions, type MotionScene, type TextLayer } from '../shared/motion'
 import { chaptersOf, chaptersReply, clock } from '../shared/presets'
 import { profileById, suggestProfile } from '../shared/raw/profiles'
-import type { TranscriptWord } from '../shared/types'
+import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import {
   checkWriting,
   fillDescription,
@@ -21,7 +21,7 @@ import {
   type UploadKit,
   type UploadWriting
 } from '../shared/upload'
-import { groupWords } from '../shared/words'
+import { shownWords, styleCues } from '../shared/subtitles'
 import { assTime } from './captions'
 import { captionStyleFor } from './cut-render'
 import { besidePath, writeBeside } from './export-paths'
@@ -63,20 +63,25 @@ function assSeconds(sec: number): number {
 }
 
 /**
- * The pages the subtitle pass burns in (main/captions buildAss): the words in
- * groups as groupWords makes them, each on screen from its first word until
- * its last word ends, at least 0.05 s a word, at the hundredth the file holds.
+ * The pages the subtitle pass burns in (main/captions buildAss): the cues the look makes
+ * (shared/subtitles styleCues), one page a group, from its first word until the cue of its last word ends,
+ * at the hundredth the file holds. The same groups and times as burned in, so the file never disagrees.
  */
-export function subtitleCues(words: TranscriptWord[], perGroup: number, uppercase: boolean): Cue[] {
-  return groupWords(words, perGroup).map((group) => {
-    let end = 0
-    group.forEach((word, i) => {
-      const until = i === group.length - 1 ? word.endSec : group[i + 1].startSec
-      end = Math.max(end, assSeconds(Math.max(until, word.startSec + 0.05)))
-    })
-    const text = group.map((w) => (uppercase ? w.text.toUpperCase() : w.text)).join(' ')
-    return { start: assSeconds(group[0].startSec), end, text }
-  })
+export function subtitleCues(words: TranscriptWord[], style: CaptionStyle): Cue[] {
+  const pages: Cue[] = []
+  let group: TranscriptWord[] | null = null
+  for (const cue of styleCues(words, style)) {
+    const end = assSeconds(cue.end)
+    const page = pages[pages.length - 1]
+    if (page && cue.words === group) {
+      page.end = Math.max(page.end, end)
+      continue
+    }
+    group = cue.words
+    const text = cue.words.map((w) => (style.uppercase ? w.text.toUpperCase() : w.text)).join(' ')
+    pages.push({ start: assSeconds(cue.start), end, text })
+  }
+  return pages
 }
 
 /**
@@ -127,13 +132,10 @@ export function exportCues(input: Pick<KitInput, 'cut' | 'resolved' | 'pass' | '
   if (drawsCaptions(input.cut.captions)) return { cues: drawnCues(input.scene), burned: true }
   const burned = input.pass.cut.captions.on
   const from = burned ? input.pass : { cut: input.cut, resolved: input.resolved }
-  const words: TranscriptWord[] = from.resolved.words.map((w) => ({
-    text: w.text,
-    startSec: w.outStart,
-    endSec: w.outEnd
-  }))
+  // The words as burned in, the ones the speaker leans on marked, so the groups are the burned ones.
+  const words = shownWords(from.resolved.words, from.cut.captions, input.resolved.words)
   const style = captionStyleFor(from.cut.captions, input.width, null)
-  return { cues: subtitleCues(words, style.wordsPerGroup, style.uppercase), burned }
+  return { cues: subtitleCues(words, style), burned }
 }
 
 /** The request for Claude: what kind of video, the brand, the chapters and the words as they play. */

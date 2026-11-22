@@ -16,6 +16,13 @@ export interface DeckStyle {
 
 const pct = (n: number): string => `${Math.round(n * 1000) / 10}%`
 
+/** The colours pulled apart, as CSS can: a red ghost one way and a blue one the other. Empty at zero. */
+const rgbSplit = (px: number): string =>
+  px < 0.5 ? '' : `drop-shadow(${px.toFixed(1)}px 0 0 rgb(255 0 60 / 0.55)) drop-shadow(${(-px).toFixed(1)}px 0 0 rgb(0 160 255 / 0.55))`
+
+/** CSS filters joined, or none. */
+const filters = (...parts: string[]): string => parts.filter(Boolean).join(' ') || 'none'
+
 export function deckStyle(layer: Layer | null): DeckStyle {
   // An idle deck, or one whose sound plays under another's picture (a J or L cut).
   if (!layer || !layer.visible) return { wrapper: { visibility: 'hidden' }, picture: {} }
@@ -76,6 +83,27 @@ export function deckStyle(layer: Layer | null): DeckStyle {
       wrapper.filter = `blur(${Math.round((coming ? 1 - p : p) * 14)}px)`
       if (coming) picture.opacity = p
       break
+    case 'glitch': {
+      // The pictures flicker into each other through the middle, jumping sideways, colours pulled apart.
+      const harm = Math.sin(p * Math.PI)
+      const flick = p < 0.25 ? 0 : p > 0.7 ? 1 : Math.floor(p * 24) % 2
+      if (coming) picture.opacity = flick
+      const jump = (Math.floor(p * 31) % 3) - 1
+      wrapper.transform = `translateX(${(jump * harm * 2.5).toFixed(2)}%)`
+      wrapper.filter = filters(rgbSplit(harm * 8))
+      break
+    }
+    case 'rgb':
+      if (coming) picture.opacity = p
+      wrapper.filter = filters(rgbSplit(Math.sin(p * Math.PI) * 10))
+      break
+    case 'vhs': {
+      const harm = Math.sin(p * Math.PI)
+      if (coming) picture.opacity = p
+      wrapper.filter = filters(rgbSplit(harm * 4), `saturate(${(1 - harm * 0.3).toFixed(2)})`, `contrast(${(1 + harm * 0.15).toFixed(2)})`)
+      wrapper.transform = `translateX(${(Math.sin(p * 60) * harm * 0.6).toFixed(2)}%)`
+      break
+    }
   }
   return dip ? { wrapper, picture, dip } : { wrapper, picture }
 }

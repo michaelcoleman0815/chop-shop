@@ -6,7 +6,31 @@ on:
       - 'v*'
 
 jobs:
+  # The release is made first, as a draft, and each platform uploads into it.
+  # electron-builder runs one publisher per target, and when the release does
+  # not exist yet they race to create it: the loser's uploads vanish and the
+  # release ends up missing latest-mac.yml, which silently breaks updates for
+  # everyone already installed. With the Mac and Windows jobs side by side the
+  # same race is between jobs. Made here, up front, every publisher only ever
+  # uploads. And as a draft it is invisible to the updater (electron-updater
+  # reads GitHub's latest release) until the publish job below has seen every
+  # file in it, so no copy of the app finds a release without its update file.
+  draft:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Make the release as a draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # A run again of the same tag finds the release already there, drafted or published, and leaves it.
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+
   mac:
+    needs: draft
     # GitHub retired its macos-14 machines, and a job asking for one is cancelled before it starts.
     # The oldest macOS the app opens on is held by the build scripts (MACOSX_DEPLOYMENT_TARGET) and
     # checked below (check-macos-min.sh), not by the machine it is built on.
@@ -52,18 +76,8 @@ jobs:
             test -s "resources/fonts/$font.ttf" || { echo "::error::font $font missing"; exit 1; }
           done
 
-      # electron-builder runs one publisher per target, and when the release
-      # does not exist yet they race to create it: the loser's uploads vanish
-      # and the release ends up missing latest-mac.yml, which silently breaks
-      # updates for everyone already installed. Creating it up front means both
-      # publishers only ever upload.
-      - name: Ensure the release exists
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
-
+      # The release was made as a draft by the job before this one, so the
+      # DMG's and the ZIP's publishers only upload into it (see there).
       - name: Build and publish
         id: build
         # Notarization waits on Apple with no timeout of its own, so a stalled
@@ -165,8 +179,11 @@ jobs:
           done
 
       # A release missing any of these looks fine on the releases page and is
-      # broken for every updater that reads it.
-      - name: Verify the published assets
+      # broken for every updater that reads it. electron-builder also skips its
+      # upload, with only a warning, into a release published over two hours
+      # before (a run again of an old tag), so what it says it uploaded is not
+      # taken on trust.
+      - name: Verify the uploaded assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -178,3 +195,226 @@ jobs:
               exit 1
             }
           done
+
+  windows:
+    needs: draft
+    # Windows 10 and 11 on x64: the NSIS installer, its blockmap (for
+    # downloading only what changed) and latest.yml, the file electron-updater
+    # reads on Windows. Built and checked the way the test build is
+    # (test-build.yml, which also runs the tests on Windows), and uploaded only
+    # once every check has passed: an installer that does not run, offered as
+    # an update, would reach every PC that has the app.
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      # latest.yml describes package.json's version, and is uploaded under the tag: they must agree.
+      - name: Check the tag is the app's version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          [ "v$version" = "$GITHUB_REF_NAME" ] || {
+            echo "::error::the tag $GITHUB_REF_NAME is not v$version, the version in package.json"
+            exit 1
+          }
+
+      - run: npm ci
+
+      # The helpers the Mac job builds, made for Windows by the scripts' Node
+      # twins: resources/bin is gitignored, and anything not made here is
+      # missing from the app, and the feature that needs it fails quietly.
+      - name: Build whisper.cpp
+        env:
+          WHISPER_WORK: ${{ runner.temp }}\whisper.cpp
+        run: node scripts/build-whisper.mjs
+
+      - name: Fetch yt-dlp
+        run: node scripts/fetch-ytdlp.mjs
+
+      - name: Fetch caption fonts
+        run: node scripts/fetch-fonts.mjs
+
+      # onnxruntime (the face finder, and the voice that reads on this PC)
+      # needs the Microsoft C++ runtime, which a clean Windows lacks, so the
+      # app carries it beside the module.
+      - name: Put the C++ runtime beside onnxruntime
+        run: node scripts/bundle-msvc-runtime.mjs
+
+      - name: Verify bundled binaries
+        run: |
+          test -f resources/bin/whisper-cli.exe || { echo "::error::whisper-cli.exe missing"; exit 1; }
+          test -f resources/bin/yt-dlp.exe || { echo "::error::yt-dlp.exe missing"; exit 1; }
+          # Each must need only what Windows 10 and 11 have, or what sits beside it.
+          node scripts/check-windows-binaries.mjs
+          # A preset naming a font that is absent does not fail the render:
+          # libass substitutes silently and the style comes out wrong.
+          for font in ArchivoBlack-Regular Sora Anton-Regular; do
+            test -s "resources/fonts/$font.ttf" || { echo "::error::font $font missing"; exit 1; }
+          done
+
+      # Proof that whisper transcribes, not only that it starts.
+      - uses: actions/cache@v4
+        with:
+          path: .build/models
+          key: whisper-models-tiny-en-1
+
+      - name: Check whisper transcribes
+        timeout-minutes: 10
+        run: node scripts/check-whisper.mjs
+
+      # Unsigned unless the signing secrets are set (README, "Signing on
+      # Windows"): then electron-builder signs the app, its helpers and the
+      # installer with Azure Artifact Signing, and the app it makes installs
+      # only updates signed by the same publisher from then on.
+      - name: Build the installer
+        id: build
+        timeout-minutes: 45
+        env:
+          # An app registration allowed to sign (the "Artifact Signing
+          # Certificate Profile Signer" role), read by Microsoft's signing module.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          # Where the signing account is, its name, its certificate profile,
+          # and the name on the certificate, exactly as it is there.
+          SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          SIGNING_PUBLISHER: ${{ secrets.WIN_PUBLISHER_NAME }}
+        run: |
+          sign=()
+          if [ -n "$AZURE_CLIENT_SECRET" ]; then
+            for name in AZURE_TENANT_ID AZURE_CLIENT_ID SIGNING_ENDPOINT SIGNING_ACCOUNT SIGNING_PROFILE SIGNING_PUBLISHER; do
+              [ -n "${!name}" ] || { echo "::error::signing on Windows needs $name's secret as well (README, Signing on Windows)"; exit 1; }
+            done
+            echo "Signing with Azure Artifact Signing as $SIGNING_PUBLISHER."
+            sign=(
+              "-c.win.azureSignOptions.endpoint=$SIGNING_ENDPOINT"
+              "-c.win.azureSignOptions.codeSigningAccountName=$SIGNING_ACCOUNT"
+              "-c.win.azureSignOptions.certificateProfileName=$SIGNING_PROFILE"
+              "-c.win.azureSignOptions.publisherName=$SIGNING_PUBLISHER"
+            )
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No Windows signing configured; the installer is unsigned, and SmartScreen asks before it first runs."
+          fi
+          # What npm run dist:win does, with electron-builder run by Node itself: npm would hand the
+          # signing options to cmd.exe, and a publisher's name has a space in it.
+          npm run build
+          node node_modules/electron-builder/cli.js --win nsis --x64 --publish never "${sign[@]}"
+          ls -la release
+
+      - name: Check the installer and the app are signed
+        if: steps.build.outputs.signed == 'true'
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem release -Filter 'Cutalong-Setup-*.exe' | Select-Object -First 1).FullName
+          foreach ($file in @($setup, 'release\win-unpacked\Cutalong.exe')) {
+            $s = Get-AuthenticodeSignature $file
+            "${file}: $($s.Status), $($s.SignerCertificate.Subject)"
+            if ($s.Status -ne 'Valid') { "::error::$file is not validly signed: $($s.StatusMessage)"; exit 1 }
+          }
+
+      # The app holds what it runs (the built code in out, its node_modules and
+      # package.json) and nothing else of the project, as on the Mac.
+      - name: Check the app holds only what it runs
+        run: |
+          LIST=$(npx @electron/asar list release/win-unpacked/resources/app.asar)
+          # Each path starts with the separator, a backslash on Windows.
+          TOP=$(printf '%s\n' "$LIST" | tr -d '\r' | tr '\\' '/' | cut -d/ -f2 | sort -u)
+          echo "app.asar holds:" $TOP
+          EXTRA=$(printf '%s\n' "$TOP" | grep -vxE 'node_modules|out|package\.json' || true)
+          if [ -n "$EXTRA" ]; then
+            echo "::error::app.asar holds more than node_modules, out and package.json:" $EXTRA
+            exit 1
+          fi
+
+      - name: Check the app holds what it needs and its native modules load
+        timeout-minutes: 10
+        run: |
+          node scripts/check-windows-binaries.mjs release/win-unpacked
+          node scripts/check-windows-app.mjs release/win-unpacked
+
+      # The app checks itself (src/main/self-check.ts): each helper run as the
+      # app runs it, Skia and onnxruntime inside Electron, a face found, and
+      # the update feed this copy will read.
+      - name: Check the app runs
+        timeout-minutes: 10
+        run: node scripts/self-check-app.mjs release/win-unpacked/Cutalong.exe
+
+      # Again from where the installer puts it, as a person would have it.
+      - name: Install the app and check that copy
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release -Filter 'Cutalong-Setup-*.exe' | Select-Object -First 1
+          "installer: $($setup.Name), $([math]::Round($setup.Length / 1MB, 1)) MB"
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Depth 1 -Filter 'Cutalong.exe' | Select-Object -First 1
+          if (-not $exe) { "::error::the installer put no Cutalong.exe under $env:LOCALAPPDATA\Programs"; exit 1 }
+          "installed in $($exe.DirectoryName)"
+          node scripts/self-check-app.mjs $exe.FullName
+          exit $LASTEXITCODE
+
+      - name: Upload the installer and latest.yml to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          setup="release/Cutalong-Setup-$version-x64.exe"
+          for file in "$setup" "$setup.blockmap" release/latest.yml; do
+            test -s "$file" || { echo "::error::$file was not built"; exit 1; }
+          done
+          cat release/latest.yml
+          # latest.yml names the installer every PC will download; another name there is a 404 for all of them.
+          grep -qF "Cutalong-Setup-$version-x64.exe" release/latest.yml || {
+            echo "::error::release/latest.yml does not name Cutalong-Setup-$version-x64.exe"
+            exit 1
+          }
+          gh release upload "$GITHUB_REF_NAME" "$setup" "$setup.blockmap" release/latest.yml --clobber
+
+  publish:
+    needs: [mac, windows]
+    # Every copy of the app on a Mac updates from here, so a Windows build that
+    # failed does not hold the Mac's back: the release is published for the
+    # Mac, PCs stay on the version they have (Settings says the newest release
+    # has no Windows version yet), and this job fails to say so. Running the
+    # windows job again adds Windows to the published release, and runs this
+    # job again after it.
+    if: ${{ always() && needs.mac.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check every file is there, then publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          WINDOWS: ${{ needs.windows.result }}
+        run: |
+          assets=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')
+          echo "$assets"
+          for required in latest-mac.yml .dmg -mac.zip; do
+            echo "$assets" | grep -q -- "$required" || { echo "::error::release $GITHUB_REF_NAME is missing $required"; exit 1; }
+          done
+          version="${GITHUB_REF_NAME#v}"
+          windows=ok
+          for required in latest.yml "Cutalong-Setup-$version-x64.exe" "Cutalong-Setup-$version-x64.exe.blockmap"; do
+            echo "$assets" | grep -qxF -- "$required" || { echo "::error::release $GITHUB_REF_NAME is missing $required"; windows=missing; }
+          done
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+          if [ "$WINDOWS" != success ] || [ "$windows" != ok ]; then
+            echo "::error::$GITHUB_REF_NAME is published for the Mac only (the windows job: $WINDOWS). Run the windows job again to add the Windows installer to it."
+            exit 1
+          fi
+          echo "$GITHUB_REF_NAME is published for the Mac and Windows."

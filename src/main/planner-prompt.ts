@@ -17,7 +17,8 @@ import {
   resolveCut,
   SFX_KINDS,
   sfxName,
-  TRANSITION_KINDS,
+  ALL_TRANSITION_KINDS,
+  shownTransition,
   type EditDoc,
   type Note
 } from '../shared/edit'
@@ -54,7 +55,7 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - An edit can be cut from several recordings, in the order they were shot. Each <source> names its file. When it says sound="...", that recording's picture plays over the sound of a separate, better recording, already lined up; nothing more needs doing for it.
 - The cut is an ordered list of beats. A beat plays the words from its first id to its last id, inclusive, from one recording. Beats play in list order, so moving a beat moves that moment in the video.
 - Struck words are inside a beat but cut out of it. Words in no beat are not in the video.
-- A beat's treatment: frame (speaker, broll, split, card), bw (black and white), zoom (1 is the full frame; 1.08 to 1.2 is a punch-in), bigWord (the id of one word in that beat shown big on screen), broll (a cutaway from the material: {"asset":"a1","inSec":0} shows material a1 from that second, muted, over the beat's sound), captions (false hides the captions while the beat plays, true shows them again).
+- A beat's treatment: frame (speaker, broll, split, card), bw (black and white), zoom (1 is the full frame; 1.08 to 1.2 is a punch-in), bigWord (the id of one word in that beat shown big on screen), broll (a cutaway from the material: {"asset":"a1","inSec":0} shows material a1 from that second, muted, over the beat's sound), captions (false hides the captions while the beat plays, true shows them again), steady (true holds a shaky handheld shot still in the export, cropping in a little; for a wobbly phone shot or cutaway, not for a steady talking head).
 
 ## Material
 A <material> block, when present, lists what the person brought in to use: footage, images and clips, each with an id (a1, a2, ...), its length and where the cut already shows it.
@@ -76,7 +77,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
 - {"op":"aspect","aspect":"vertical"}: vertical, wide, square or original.
 - {"op":"loudness","lufs":-14}.
-- {"op":"transition","beats":["b4"],"kind":"dissolve","sec":0.5}: how a beat comes in from the one before. Kinds: dissolve, dip-to-black, dip-to-white, flash, whip-left, whip-right, push-left, push-right, push-up, push-down, slide-left, slide-right, slide-up, slide-down, wipe-left, wipe-right, wipe-up, wipe-down, smooth-left, smooth-right, smooth-up, smooth-down, zoom, circle-open, circle-close, clock, doors-open, pixelate, blur, squeeze. sec is 0.04 to 3, or 0 for the usual length. The first beat has nothing before it, so it cannot have one.
+- {"op":"transition","beats":["b4"],"kind":"dissolve","sec":0.5}: how a beat comes in from the one before. Kinds: dissolve, dip-to-black, dip-to-white, flash, whip-left, whip-right, push-left, push-right, push-up, push-down, slide-left, slide-right, slide-up, slide-down, wipe-left, wipe-right, wipe-up, wipe-down, smooth-left, smooth-right, smooth-up, smooth-down, zoom, circle-open, circle-close, clock, doors-open, pixelate, blur, squeeze, and the looks: glitch (the pictures flicker into each other, rows torn and colours pulled apart, for an energetic or techy beat), rgb-split (a dissolve with red and blue pulled apart) and vhs (tape noise, scanlines and a rolling band, for a retro or archival beat). sec is 0.04 to 3, or 0 for the usual length. The first beat has nothing before it, so it cannot have one.
 - {"op":"transition","beats":["b4","b7"],"kind":"cut","sec":0}: back to a hard cut.
 - {"op":"fade","inSec":0.5,"outSec":1,"color":"black"}: fade the whole video in from, and out to, black or white. 0 turns that end off, and an end you are not changing keeps the length the settings give it.
 - {"op":"jcut","beats":["b5"],"sec":0.3}: a J cut into b5. Its sound starts on time but the picture before stays 0.3 s longer, so the next line is heard before it is seen. Coming back from B-roll to the speaker, this reads naturally.
@@ -160,6 +161,7 @@ Never write an id (w12, s2w4, b3, s1, a2) in the summary, the reply or needs; th
 const TreatmentSet = z.object({
   frame: z.enum(['speaker', 'broll', 'split', 'card']).optional(),
   bw: z.boolean().optional(),
+  steady: z.boolean().optional(),
   zoom: z.number().optional(),
   bigWord: z.string().nullable().optional(),
   /** Material by id; offerPlan turns it into the file and keeps it muted. */
@@ -230,7 +232,7 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('transition'),
     beats: z.array(z.string()),
-    kind: z.enum(['cut', ...TRANSITION_KINDS]),
+    kind: z.enum(['cut', ...ALL_TRANSITION_KINDS]),
     sec: z.number()
   }),
   z.object({ op: z.literal('fade'), inSec: z.number(), outSec: z.number(), color: z.enum(['black', 'white']) }),
@@ -297,7 +299,14 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     panels: z.array(z.object({ show: z.string(), label: z.string(), inSec: z.number() })),
     sound: z.enum(['', 'music', '1', '2', '3', '4'])
   }),
-  z.object({ op: z.literal('motion-add'), kind: z.enum(GRAPHIC_KINDS), ...graphicSlots() }),
+  z.object({
+    op: z.literal('motion-add'),
+    kind: z.enum(GRAPHIC_KINDS),
+    ...graphicSlots(),
+    // "object" pins it to what the speaker holds up in that beat (main/plan-follow). Not the
+    // graphic's own follow, which is the path itself.
+    pin: z.enum(['', 'object'])
+  }),
   z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
   z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) }),
   // Scene effects (shared/fx/planner), every slot required in the same way.
@@ -382,6 +391,11 @@ export function fromPlannerOp(op: PlannerOp): unknown {
         ...(op.regions.length > 0 ? { regions: op.regions } : {})
       }
       return { op: op.op, beats: op.beats, move, ...of }
+    }
+    case 'motion-add': {
+      // Following an object is the planner's to do once the plan is dry-run (offerTrackedPlan).
+      const { pin: _pin, ...call } = op
+      return call
     }
     case 'fx-add':
     case 'fx-update':
@@ -562,9 +576,10 @@ export function renderRequest(
     const look = [
       t.frame,
       t.bw ? 'bw' : null,
+      t.steady ? 'steadied' : null,
       t.zoom > 1.001 ? `zoom ${t.zoom.toFixed(2)}` : null,
       t.bigWord ? `big word ${t.bigWord}` : null,
-      beat.transition ? `comes in with ${beat.transition.kind} ${seconds(beat.transition.sec)}` : null,
+      beat.transition ? `comes in with ${shownTransition(beat.transition)} ${seconds(beat.transition.sec)}` : null,
       beat.splitEdit ? `${beat.splitEdit.kind.toUpperCase()} cut in, ${seconds(beat.splitEdit.sec)}` : null,
       t.speed !== undefined || t.ramp ? `speed ${describeSpeed(t.speed ?? 1, t.ramp)}` : null,
       t.broll && (t.broll.speed !== undefined || t.broll.ramp)

@@ -195,7 +195,10 @@ register({
 
 // ---------- Hook banner ----------
 
-const BANNER_STYLES = ['box', 'accent', 'outline'] as const
+const BANNER_STYLES = ['box', 'accent', 'outline', 'title', 'card'] as const
+
+/** The face the sermon hooks are set in (shared/motion/fonts): title case, never shouted. */
+const HOOK_FACE = 'Inter ExtraBold'
 
 function banner(ctx: BuildContext): Layer[] {
   const { frame, theme, item, span } = ctx
@@ -215,6 +218,7 @@ function banner(ctx: BuildContext): Layer[] {
         ? frame.height * 0.42
         : frame.height - frame.safe.bottom - 24 * u
   const valign = place === 'top' ? 'top' : place === 'middle' ? 'middle' : 'bottom'
+  if (style === 'title' || style === 'card') return sermonHook(ctx, style, place)
   const outline = style === 'outline'
   const plateColor = style === 'accent' ? accent : '#FFFFFF'
   const ink = outline ? theme.text : inkOn(plateColor, theme)
@@ -262,11 +266,83 @@ function banner(ctx: BuildContext): Layer[] {
   ]
 }
 
+/**
+ * The sermon hooks, set in Inter in title case. title: white words with a soft shadow, their foot just above
+ * a square picture (edit/box, its top at 19% of the frame) at the top, for the whole clip. card: dark words
+ * on a white card, The Life Church's opening line, gone after a few seconds.
+ */
+function sermonHook(ctx: BuildContext, style: 'title' | 'card', place: 'top' | 'middle' | 'bottom'): Layer[] {
+  const { frame, theme, item, span } = ctx
+  const { start, end } = span
+  const u = frame.u
+  const hook = (item.text[0] ?? '').trim()
+  const sub = (item.text[1] ?? '').trim()
+  // Centred on the frame, as the captions under it are, not on the safe area: a vertical frame keeps more
+  // clear on the right for the like and share column, whose middle is 4.5% left of the frame's. Both hooks
+  // sit above that column, so they take the same margin on each side, the left's.
+  const width = frame.width - 2 * frame.safe.left
+  const cx = frame.width / 2
+  const card = style === 'card'
+  // The title's foot sits above a square that starts at 19% of the frame; elsewhere as the banner places it.
+  const y =
+    place === 'top'
+      ? card
+        ? frame.safe.top + 24 * u
+        : frame.height * 0.17
+      : place === 'middle'
+        ? frame.height * 0.42
+        : frame.height - frame.safe.bottom - 24 * u
+  const valign = place === 'top' ? (card ? 'top' : 'bottom') : place === 'middle' ? 'middle' : 'bottom'
+  const ink = card ? '#111111' : '#FFFFFF'
+  const spans: Span[] = [{ text: hook }]
+  if (sub) spans.push({ text: `\n${sub}`, scale: 0.6, color: card ? '#444444' : 'rgba(255, 255, 255, 0.78)' })
+  return [
+    {
+      kind: 'text',
+      start,
+      end,
+      text: '',
+      spans,
+      // As big as the references set them: the card's words about 6% of the frame's width, the title's a little more.
+      font: { family: HOOK_FACE, size: (card ? 78 : 84) * u, uppercase: false, lineHeight: 1.12 },
+      fill: ink,
+      effects: card
+        ? { shadow: { color: 'rgba(0, 0, 0, 0.28)', blur: 22 * u, y: 6 * u } }
+        : { shadow: { color: 'rgba(0, 0, 0, 0.55)', blur: 16 * u, y: 3 * u } },
+      align: 'center',
+      valign,
+      maxWidth: width * (card ? 0.88 : 0.9),
+      balance: true,
+      plate: card
+        ? { color: '#FFFFFF', radius: 10 * u, padX: 26 * u, padY: 14 * u, scaleY: keys([0, 0, 'snap'], [0.24, 1]) }
+        : undefined,
+      animators: [
+        {
+          by: 'word',
+          delay: card ? 0.12 : 0.05,
+          stagger: 0.05,
+          duration: 0.34,
+          ease: 'snap',
+          from: { y: 18 * u, opacity: 0 },
+          clip: card
+        }
+      ],
+      transform: {
+        x: cx,
+        y,
+        anchorY: 0,
+        opacity: { keys: [{ t: 0, v: 1 }, ...tail([0.2, 1, 'ease-in'], [0, 0])] },
+        scale: { keys: [{ t: 0, v: 1 }, ...tail([0.2, 1, 'ease-in'], [0, 0.97])] }
+      }
+    }
+  ]
+}
+
 register({
   kind: 'banner',
   title: 'Hook banner',
   about:
-    'States the payoff at the top of the frame from the first frame and is gone by about five seconds: text is the hook in a few words, then an optional smaller line. box is a white box with dark capitals.',
+    'States the payoff at the top of the frame from the first frame and is gone by about five seconds: text is the hook in a few words, then an optional smaller line. box is a white box with dark capitals. title is white words in title case above a square picture, for the whole clip; card is dark words in title case on a white card.',
   styles: BANNER_STYLES,
   places: ['top', 'middle', 'bottom'],
   length: 5,

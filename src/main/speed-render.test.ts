@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -15,9 +16,11 @@ import {
 } from '../shared/edit'
 import { renderCut, type RenderSource } from './cut-render'
 import {
+  AS_PLAYED,
   audioSeconds,
   countFrames,
   findFfmpeg,
+  makeClip,
   frameColour,
   makeBurstClip,
   makeColourClip,
@@ -148,6 +151,51 @@ describe.skipIf(!FFMPEG)('rendering speed, freeze frames and reverse', () => {
     // atempo keeps the pitch: red's 440 Hz, not the octave above it.
     expect(toneLevel(ffmpeg, out, 0.1, 0.5, 440)).toBeGreaterThan(toneLevel(ffmpeg, out, 0.1, 0.5, 880) + 20)
     expect(toneLevel(ffmpeg, out, 2.3, 0.5, 770)).toBeGreaterThan(toneLevel(ffmpeg, out, 2.3, 0.5, 1540) + 20)
+  })
+
+  it('glides through slow motion in a final export: the frames between are made, none repeat', async () => {
+    // Every frame its own colour, so a repeated frame shows as two equal colours in a row.
+    const coded = makeClip(
+      ffmpeg,
+      join(dir, 'coded.mp4'),
+      `color=black:s=320x180:r=30:d=3,format=rgb24,geq=r='8+16*mod(N,16)':g='8+16*mod(floor(N/16),16)':b=120`,
+      null
+    )
+    const source = { id: 's1', path: coded, durationSec: 3, width: 320, height: 180, fps: 30 }
+    const base = createDoc({ id: 'c', title: 'C', source, words: [] })
+    const r = applyOps(
+      currentCut(base),
+      [
+        { op: 'remove', beats: ['b1'] },
+        { op: 'insert', to: 0, beat: { source: 's1', inSec: 0.5, outSec: 2.5 } },
+        { op: 'speed', beats: ['b1'], speed: 0.5 },
+        { op: 'aspect', aspect: 'original' },
+        { op: 'loudness', lufs: null }
+      ],
+      { words: base.words, sources: base.sources }
+    )
+    expect(r.rejected).toEqual([])
+    const resolved = resolveCut(r.cut, base.words, base.sources)
+    const repeats = async (quality: 'final' | 'preview'): Promise<number> => {
+      const out = await renderCut(r.cut, resolved, [{ ...source, hasAudio: false }], {
+        ffmpeg,
+        outputPath: join(dir, `glide-${quality}.mp4`),
+        workDir: join(dir, `work-glide-${quality}`),
+        quality
+      })
+      const raw = execFileSync(
+        ffmpeg,
+        ['-hide_banner', '-loglevel', 'error', '-i', out, '-vf', `${AS_PLAYED},scale=1:1:flags=area,format=rgb24`, '-f', 'rawvideo', '-'],
+        { maxBuffer: 1 << 22 }
+      )
+      let same = 0
+      for (let i = 3; i + 2 < raw.length; i += 3)
+        if (Math.abs(raw[i] - raw[i - 3]) + Math.abs(raw[i + 1] - raw[i - 2]) < 2) same++
+      return same / (raw.length / 3 - 1)
+    }
+    // A preview repeats every other frame; the export makes the ones between.
+    expect(await repeats('preview')).toBeGreaterThan(0.35)
+    expect(await repeats('final')).toBeLessThan(0.08)
   })
 
   it('eases into slow motion and back, the picture and sound where the steps put them', async () => {
