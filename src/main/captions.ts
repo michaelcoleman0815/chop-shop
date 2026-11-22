@@ -1,6 +1,6 @@
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { CAPTION_PRESETS } from '../shared/caption-presets'
-import { subtitleCues } from '../shared/subtitles'
+import { fitFontPx, landedFontPx, landsLine, styleCues } from '../shared/subtitles'
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = CAPTION_PRESETS[0].style
 
@@ -43,6 +43,7 @@ export function bt601Equivalent(hex: string): string | null {
 export function bt601Style(style: CaptionStyle): CaptionStyle | null {
   const text = bt601Equivalent(style.textColor)
   const active = bt601Equivalent(style.activeColor)
+  const key = style.keyColor ? bt601Equivalent(style.keyColor) : null
   const outline = bt601Equivalent(style.outlineColor)
   const box = style.boxColor ? bt601Equivalent(style.boxColor) : null
   const tier = style.second
@@ -50,6 +51,7 @@ export function bt601Style(style: CaptionStyle): CaptionStyle | null {
   const tierOutline = tier ? bt601Equivalent(tier.outlineColor) : null
   if (!text || !active || !outline) return null
   if (style.boxColor && !box) return null
+  if (style.keyColor && !key) return null
   if (tier && (!tierText || !tierOutline)) return null
   return {
     ...style,
@@ -57,6 +59,7 @@ export function bt601Style(style: CaptionStyle): CaptionStyle | null {
     activeColor: active,
     outlineColor: outline,
     boxColor: style.boxColor ? box : style.boxColor,
+    ...(style.keyColor && key ? { keyColor: key } : {}),
     second: tier && tierText && tierOutline ? { ...tier, textColor: tierText, outlineColor: tierOutline } : tier
   }
 }
@@ -174,11 +177,12 @@ export function buildAss(
   ]
 
   const active = assColor(style.activeColor)
+  const key = style.keyColor ? assColor(style.keyColor) : null
   const scalePct = Math.round(style.activeScale * 100)
   const events: string[] = []
 
   // One event per word (shared/subtitles, which the editor's preview draws from too).
-  for (const cue of subtitleCues(words, style.wordsPerGroup)) {
+  for (const cue of styleCues(words, style)) {
     const word = cue.words[cue.active]
     const from = assTime(cue.start)
     const until = assTime(cue.end)
@@ -192,16 +196,50 @@ export function buildAss(
       continue
     }
 
+    if (landsLine(cue, style)) {
+      // The line landed: the key face, big, the key words in the key colour from the first of them on a line
+      // of their own (shared/subtitles layoutSubtitle).
+      const size = landedFontPx(
+        cue.words.map((w) => w.text),
+        style,
+        width
+      )
+      const face = `\\fn${style.keyFont}\\fs${size}`
+      const first = cue.words.findIndex((w) => w.key)
+      const landed = cue.words
+        .map((w, j) => {
+          const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
+          const said = w.key && key ? `{\\c${key}}${text}{\\r${face}}` : text
+          return j === 0 ? said : `${j === first ? '\\N' : ' '}${said}`
+        })
+        .join('')
+      events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,{${face}}${landed}`)
+      continue
+    }
+
+    // A word too wide for the frame is set smaller, as the preview sets it (shared/subtitles fitFontPx),
+    // and stays smaller past every reset.
+    const size = fitFontPx(
+      cue.words.map((w) => w.text),
+      style,
+      width
+    )
+    const fs = size < style.fontSizePx ? `\\fs${size}` : ''
+    const fit = fs ? `{${fs}}` : ''
+    const reset = `{\\r${fs}}`
     const line = cue.words
       .map((w, j) => {
         const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
-        if (j !== cue.active) return text
-        const scale = style.activeScale === 1 ? '' : `\\fscx${scalePct}\\fscy${scalePct}`
-        return `{\\c${active}${scale}}${text}{\\r}`
+        // A built caption's words not said yet keep their places, unseen, outline and shadow too.
+        if (style.build && j > cue.active) return `{\\alpha&HFF&}${text}${reset}`
+        const colour = w.key && key ? key : j === cue.active ? active : null
+        const scale = j === cue.active && style.activeScale !== 1 ? `\\fscx${scalePct}\\fscy${scalePct}` : ''
+        if (!colour && !scale) return text
+        return `{${colour ? `\\c${colour}` : ''}${scale}}${text}${reset}`
       })
       .join(' ')
 
-    events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${line}`)
+    events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${fit}${line}`)
   }
 
   return [...header, ...events].join('\n') + '\n'

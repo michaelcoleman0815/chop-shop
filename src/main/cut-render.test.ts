@@ -175,8 +175,15 @@ describe('render arguments', () => {
     }
     expect(graph(seg({ treatment: { ...DEFAULT_TREATMENT, bw: true } }))).toContain('hue=s=0')
     expect(graph(seg({ treatment: { ...DEFAULT_TREATMENT, zoom: 1.2 } }))).toContain(
-      'crop=trunc(iw/1.2000/2)*2:trunc(ih/1.2000/2)*2'
+      'crop=trunc(iw/1.2000/2)*2:trunc(ih/1.2000/2)*2,scale'
     )
+    // From the top, keeping heads and leaving out the foot of the picture, where a stream lays its scripture.
+    expect(graph(seg({ treatment: { ...DEFAULT_TREATMENT, zoom: 1.45, zoomAt: 0 } }))).toContain(
+      'crop=trunc(iw/1.4500/2)*2:trunc(ih/1.4500/2)*2:x=(iw-ow)/2:y=trunc((ih-oh)*0.0000/2)*2,scale'
+    )
+    // A box on black: the speaker cropped to a square, following them, then set at its height in the tall frame.
+    expect(graph(seg({ box: { width: 540, height: 540, y: 182 } }))).toContain('crop=540:540')
+    expect(graph(seg({ box: { width: 540, height: 540, y: 182 } }))).toContain(',pad=540:960:0:182:black,')
     expect(graph(seg({ hasAudio: false }))).toContain('anullsrc=r=48000:cl=stereo')
     expect(graph(seg())).toContain('loudnorm=I=-14')
     const split = graph(

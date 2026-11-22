@@ -461,6 +461,11 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
     case 'brand':
       return { ...cut, brand: op.id }
 
+    case 'box': {
+      const { box: _was, ...rest } = cut
+      return op.set ? { ...rest, box: op.set } : rest
+    }
+
     case 'fill':
       // Said outright, auto too: a cut that says nothing was made before the fill, and is cropped.
       return fillMode(cut) === op.mode ? cut : { ...cut, fill: op.mode }

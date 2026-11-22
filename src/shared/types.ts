@@ -75,7 +75,7 @@ export interface Settings {
    */
   bufferFit: 'cover' | 'contain'
   autoCheckUpdates: boolean
-  whisperModel: 'base.en' | 'small.en' | 'medium.en'
+  whisperModel: 'base.en' | 'small.en' | 'medium.en' | 'large-v3-turbo'
   maxSuggestedClips: number
   clipModel: string
   captionPreset: string
@@ -164,6 +164,8 @@ export interface TranscriptWord {
   text: string
   startSec: number
   endSec: number
+  /** A word the caption sets in its key colour (CaptionStyle.keyColor): one the speaker leans on. */
+  key?: boolean
 }
 
 export interface Transcript {
@@ -189,6 +191,32 @@ export interface CaptionStyle {
   activeScale: number
   /** Faux-bold, for families that ship only one weight. */
   bold?: boolean
+  /**
+   * How wide the face's letters run on average, in ems, so a word too wide for the frame is set smaller
+   * until it fits (shared/subtitles fitFontPx). Absent leaves every word at its size.
+   */
+  letterEm?: number
+  /** Never picks out the word being said, whatever accent a brand brings: the word on screen is the one said. */
+  plain?: boolean
+  /** Never picks out the word being said either, but keeps the words as said, punctuation and capitals. */
+  steady?: boolean
+  /**
+   * Builds the sentence as it is said: each group is laid out whole from its first word, and a word shows
+   * from the moment it is said until the group clears, so the lines fill in place and never move. The
+   * group holds a moment after its last word. The big churches' Shorts.
+   */
+  build?: boolean
+  /** The colour of the words marked key (TranscriptWord.key), which keep it while they show. */
+  keyColor?: string
+  /**
+   * The line a preacher lands, set big: a screen holding a key word is set in this face at `keyScale` times
+   * the size, its key words in the key colour on a line of their own, as Lecrae's Shorts land "He still /
+   * sits down." Absent, key words only take the key colour.
+   */
+  keyFont?: string
+  keyScale?: number
+  /** Every word in lower case, as The Life Church sets its quiet captions. */
+  lowercase?: boolean
   /**
    * Fills a solid plate behind the words instead of outlining them. The outline
    * width becomes the plate's padding, which is how ASS BorderStyle 3 works.

@@ -14,6 +14,8 @@ export interface Face {
 export interface VisionSample {
   t: number
   faces: Face[]
+  /** Everyone the Mac's Vision sees, faced or not (upper bodies); absent from YuNet and older helpers. */
+  people?: Face[]
 }
 
 export interface TrackPoint {

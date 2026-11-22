@@ -490,7 +490,8 @@ export function createMockApi(): CutalongApi {
   const models: Record<string, { mb: number; has: boolean }> = {
     'base.en': { mb: 148, has: true },
     'small.en': { mb: 488, has: true },
-    'medium.en': { mb: 1533, has: false }
+    'medium.en': { mb: 1533, has: false },
+    'large-v3-turbo': { mb: 574, has: false }
   }
   const aiListeners = new Set<(p: { stage: string; percent: number }) => void>()
   const mapListeners = new Set<(p: { percent: number }) => void>()

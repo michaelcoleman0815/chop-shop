@@ -1,3 +1,4 @@
+import { BoxSchema } from './box'
 import { z } from 'zod'
 import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
@@ -141,6 +142,11 @@ export const TreatmentSchema = z.object({
   // would fill a default into every partial and reset the field.)
   /** Playback speed of the whole beat, sound and picture: 2 is twice as fast. Pitch is kept. */
   speed: z.number().min(MIN_SPEED).max(MAX_SPEED).optional(),
+  /**
+   * Where a punch-in sits up and down the picture: 0 keeps the top edge, 1 the foot. Absent is the middle.
+   * From the top, a punch-in keeps heads and leaves out a stream's lower thirds.
+   */
+  zoomAt: z.number().min(0).max(1).optional(),
   /** Easing from full speed into `speed` at the start, and back at the end. */
   ramp: RampSchema.nullable().optional(),
   /** A freeze frame: the picture holds where a word ends while the sound waits. */
@@ -194,7 +200,10 @@ export const CaptionSpecSchema = z.object({
   position: z.enum(CAPTION_POSITIONS),
   /** A caption look from shared/caption-presets, or one the graphics draw (shared/motion/captions). */
   preset: z.string().min(1),
-  uppercase: z.boolean()
+  uppercase: z.boolean(),
+  // Added later, so optional: absent is no word picked out.
+  /** Words set in the look's key colour, by id: the ones the speaker leans on. */
+  keys: z.array(z.string()).optional()
 })
 export type CaptionSpec = z.infer<typeof CaptionSpecSchema>
 
@@ -272,7 +281,13 @@ export const CutSchema = z.object({
    * them: a version's ops never carry the fx ops, so 0.2.13, which drops
    * this field, still opens the edit (without them).
    */
-  fx: z.array(FxItemSchema).max(60).optional()
+  fx: z.array(FxItemSchema).max(60).optional(),
+  /**
+   * The picture as a box on black inside the frame (edit/box): a square in a
+   * 9:16 video, the hook above it and the captions below. Absent fills the
+   * frame. Only the cut says it: a version's ops never carry a box (edit/doc).
+   */
+  box: BoxSchema.optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -378,6 +393,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('brand'), id: z.string().min(1).max(80) }),
   // How pictures of another shape fill the frame: as an edit does unless asked, on a blurred copy, between black bars, or cropped.
   z.object({ op: z.literal('fill'), mode: FillSchema }),
+  // The picture as a box on black inside the frame, as a square in a 9:16 video; null fills the frame again.
+  z.object({ op: z.literal('box'), set: BoxSchema.nullable() }),
   // Where beats are centred when cropped, by hand; null follows the speaker or the middle again.
   z.object({ op: z.literal('framing'), beats: z.array(beatId).min(1), x: z.number().min(0).max(1).nullable() }),
   // Which camera beats show, and how; null shows their own recording again.

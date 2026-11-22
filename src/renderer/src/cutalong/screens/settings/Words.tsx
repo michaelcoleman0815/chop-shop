@@ -16,11 +16,17 @@ import { SetGroup, SetRow, SetSegments, SetSelect, SetSwitch } from './rows'
 
 type Model = Settings['whisperModel']
 
+/**
+ * The sizes offered. Most accurate is Whisper large-v3 turbo: on a sermon it wrote the same words as the
+ * medium model, in two thirds of the time, from a third of the download. Medium stays for anyone who
+ * chose it before, named for what it is, and goes from the list once they choose another.
+ */
 const MODELS: { id: Model; label: string }[] = [
   { id: 'base.en', label: 'Fast' },
   { id: 'small.en', label: 'Balanced' },
-  { id: 'medium.en', label: 'Most accurate' }
+  { id: 'large-v3-turbo', label: 'Most accurate' }
 ].filter((m) => !device.models || device.models.includes(m.id as Model)) as { id: Model; label: string }[]
+const OLDER: { id: Model; label: string } = { id: 'medium.en', label: 'Medium' }
 
 function megabytes(mb: number): string {
   return mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb} MB`
@@ -68,7 +74,8 @@ export function WordsSection({
   }
 
   const model = settings?.whisperModel ?? 'small.en'
-  const modelName = MODELS.find((m) => m.id === model)?.label ?? model
+  const offered = model === OLDER.id ? [...MODELS, OLDER] : MODELS
+  const modelName = offered.find((m) => m.id === model)?.label ?? model
   const size = sizes[model]
   const hearers = on ? TRANSCRIBERS.filter((t) => keys[t.id]) : []
   const hearer = chosenTranscriber(settings, (id) => Boolean(keys[id]))
@@ -115,7 +122,7 @@ export function WordsSection({
         control={
           <SetSegments
             value={model}
-            options={MODELS}
+            options={offered}
             disabled={!settings || download !== null}
             onChange={(id) => void set({ whisperModel: id })}
           />

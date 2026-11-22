@@ -12,7 +12,7 @@ vi.mock('./apikey', () => ({ readApiKey: () => null, hasApiKey: () => false }))
 
 import { keyMessage } from '../shared/setup'
 import { MODEL } from './planner'
-import { readTriage, triage, TRIAGE_SYSTEM, triageRequest, type Triage, type TriageInput } from './triage'
+import { plainTriage, readTriage, triage, TRIAGE_SYSTEM, triageRequest, type Triage, type TriageInput } from './triage'
 
 /**
  * Claude reads a message before any footage is (main/triage.ts): which road
@@ -66,6 +66,21 @@ const failed = (status: number, type: string, text: string) => () =>
   message({ type: 'error', error: { type, message: text }, request_id: 'req_test' }, status)
 
 describe('reading a message before its footage', () => {
+  it('takes clips, reels and shorts of a long recording to /clipping even without Claude, and one short to an edit', () => {
+    const service = { name: 'Sunday Experience.mp4', durationSec: 4149, video: true, audio: true }
+    const ask = (request: string, files = [service]): string =>
+      plainTriage({ request, files, link: null, hasEdit: false }).route
+    expect(ask('turn this into clips')).toBe('clipping')
+    expect(ask('make reels out of this')).toBe('clipping')
+    expect(ask('Make TikToks from the sermon')).toBe('clipping')
+    expect(ask('clip this sermon')).toBe('clipping')
+    // One short, or a short recording, is an edit as it always was.
+    expect(ask('make this a short')).toBe('edit')
+    expect(ask('make reels out of this', [{ ...service, durationSec: 40 }])).toBe('edit')
+    expect(ask('tighten it up')).toBe('edit')
+  })
+
+
   it('sends each file as its name, length and kind, never what is in it, with the commands and the words', () => {
     const sent = triageRequest({
       ...INPUT,

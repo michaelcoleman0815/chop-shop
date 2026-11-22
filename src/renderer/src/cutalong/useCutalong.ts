@@ -146,7 +146,7 @@ import {
 } from '../../../shared/raw'
 import { withHabits } from '../../../shared/learn/habits'
 import { onWindows, SHOW_FILE } from '../../../shared/platform'
-import { vlogOfClip, withDoc } from '../../../shared/clipping'
+import { profileNamed, vlogOfClip, withDoc } from '../../../shared/clipping'
 import { detectProvider } from '../../../shared/keys'
 import {
   blockedSentence,
@@ -438,6 +438,12 @@ async function iconData(): Promise<{ tags: Record<string, string[]>; nodes: Reco
 
 let counter = 0
 const uid = (): string => `m${Date.now().toString(36)}${(counter++).toString(36)}`
+
+/** The kinds of video whose long recordings are clipped when dropped in with no words (shared/raw/profiles). */
+const CLIPPED_NICHES: ReadonlySet<string> = new Set(['church', 'podcast', 'livestream'])
+
+/** A recording dropped in with no words is clipped only when it runs at least this long: a sermon, not a short. */
+const BARE_CLIP_MIN_SEC = 10 * 60
 
 /** What placing material asks the planner, when the person dropped it in without a word. */
 const PLACE_MATERIAL = 'Put the material I just brought in where it fits what I am saying.'
@@ -4443,6 +4449,21 @@ export function useCutalong() {
         if (
           clipAsk !== null &&
           (await clipping.run(attachments, clipAsk, route?.route === 'clipping', route?.route === 'clipping' ? route.clip : undefined))
+        )
+          return
+        // A service, a podcast or a stream dropped into a new chat with no words: its clips, as /clipping makes
+        // them. Known by its file's name ("Sunday Experience" at a church, "Episode 12") or by the kind of
+        // video the brand makes; shorter than BARE_CLIP_MIN_SEC, or anything else, is edited as it always was.
+        if (
+          clipAsk === null &&
+          !command &&
+          !text.trim() &&
+          !before &&
+          recordingsIn.length > 0 &&
+          !device.away['feature:clipping'] &&
+          (profileNamed(recordingsIn.map((a) => a.name.replace(/[_.-]+/g, ' ')).join(' ')) !== null ||
+            CLIPPED_NICHES.has(brandNow().niche)) &&
+          (await clipping.run(attachments, '', true, undefined, BARE_CLIP_MIN_SEC))
         )
           return
         const recordings = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))

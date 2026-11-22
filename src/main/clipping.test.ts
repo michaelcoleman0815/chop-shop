@@ -58,6 +58,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 import {
   chooseEngine,
+  clippingModel,
   clipsInBrand,
   findClips,
   frozenStretches,
@@ -168,7 +169,7 @@ describe('clipping a long recording, start to finish', () => {
       expect(clip!.doc.title).toBe(clip!.title)
       const len = resolveCut(cut, clip!.doc.words, clip!.doc.sources).durationSec
       expect(len).toBeGreaterThan(25)
-      expect(len).toBeLessThanOrEqual(60)
+      expect(len).toBeLessThanOrEqual(90)
     }
     expect(r.timings.map((t) => t.step)).toEqual(['transcribing', 'listening', 'watching', 'finding', 'making clips'])
   })
@@ -187,11 +188,96 @@ describe('clipping a long recording, start to finish', () => {
         uppercase: true
       })
     expect(r.reply.chips).toContain('Captions in your brand')
-    // A brand that waits to be asked leaves the captions as a short's own.
+    // A brand that waits to be asked leaves the captions as a short's own: a service's clips wear the sermon look.
     const off = await findClips(req, tools({ brand: async () => ({ ...brand, autoApply: false }) }), quiet)
     if (!off.ok) throw new Error(off.message)
-    for (const c of off.clips) expect(currentCut(c.doc).captions).toMatchObject({ on: true, preset: 'clean' })
+    // In turn, so no two in a row look alike: the square, the landed line, the quiet captions under a card.
+    expect(off.clips.map((c) => currentCut(c.doc).captions.preset)).toEqual(
+      ['sermon-box', 'sermon', 'sermon-quiet', 'sermon-box', 'sermon', 'sermon-quiet'].slice(0, off.clips.length)
+    )
+    for (const c of off.clips) expect(currentCut(c.doc).captions).toMatchObject({ on: true, wordsPerScreen: 3 })
     expect(off.reply.chips).toContain('Captions on')
+  })
+
+  it('sets the words each preacher leans on in the accent, asked of Claude once for the whole set', async () => {
+    const span = momentSpan(factsOf(SERVICE).timeline, SERVICE.moments[0])
+    const asked: string[][][] = []
+    const r = await findClips(
+      { paths: ['/rec/Sunday service.mp4'], ask: '' },
+      tools({
+        engine: async () => ({ by: 'claude', model: MODEL }),
+        suggest: async () => [{ ...span, title: 'Grace', hook: '', reason: '', score: 90 }],
+        keyWords: async (clips) => {
+          asked.push(clips)
+          return { keys: clips.map(() => [0, 2]), hooks: clips.map(() => 'Grace Found Her First') }
+        }
+      }),
+      quiet
+    )
+    if (!r.ok) throw new Error(r.message)
+    expect(asked).toHaveLength(1)
+    expect(r.clips.length).toBeGreaterThan(0)
+    for (const c of r.clips) {
+      const cut = currentCut(c.doc)
+      // The first clip of a set takes the first look, the square under its hook.
+      expect(cut.captions.preset).toBe('sermon-box')
+      expect(cut.captions.keys).toEqual([c.doc.words[0].id, c.doc.words[2].id])
+      expect(cut.box).toEqual({ aspect: 1, top: 0.19 })
+      expect(cut.motion.map((m) => [m.kind, m.style, m.text[0]])).toEqual([['banner', 'title', 'Grace Found Her First']])
+    }
+  })
+
+  it('leaves out a moment filmed through the crowd for a spare filmed from the front', async () => {
+    const timeline = factsOf(SERVICE).timeline
+    const [a, b] = [momentSpan(timeline, SERVICE.moments[0]), momentSpan(timeline, SERVICE.moments[1])]
+    const body = (x: number): { x: number; y: number; w: number; h: number } => ({ x, y: 0, w: 0.3, h: 0.95 })
+    const r = await findClips(
+      {
+        paths: ['/rec/Sunday service.mp4'],
+        ask: 'one clip',
+        asked: { said: 'one clip', count: 1, length: null, funny: false, topic: null, single: false, profile: null }
+      },
+      tools({
+        engine: async () => ({ by: 'claude', model: MODEL }),
+        // The better moment, filmed from the back of the room; the spare, from the front.
+        suggest: async () => [
+          { ...a, title: 'From the back', hook: '', reason: '', score: 95 },
+          { ...b, title: 'From the front', hook: '', reason: '', score: 80 }
+        ],
+        faces: async (_path, from, length) =>
+          Array.from({ length: Math.ceil(length * 2) }, (_, i) => {
+            const back = Math.abs(from - (a.startSec - 0.5)) < 1
+            return {
+              t: i / 2,
+              faces: [{ x: 0.45, y: 0.2, w: 0.08, h: 0.15 }],
+              people: back ? [body(0), body(0.4), body(0.7)] : [body(0.4)]
+            }
+          })
+      }),
+      quiet
+    )
+    if (!r.ok) throw new Error(r.message)
+    expect(r.clips.map((c) => c.title)).toEqual(['From the front'])
+    expect(r.notes.join(' ')).toMatch(/left out a moment filmed mostly from behind the congregation/)
+    // With fewer moments filmed from the front than the set holds (five at most), one through the crowd fills it.
+    const many = await findClips(
+      { paths: ['/rec/Sunday service.mp4'], ask: '' },
+      tools({
+        engine: async () => ({ by: 'claude', model: MODEL }),
+        suggest: async () =>
+          SERVICE.moments.slice(0, 5).map((m, i) => ({ ...momentSpan(timeline, m), title: `M${i}`, hook: '', reason: '', score: 90 - i })),
+        faces: async (_path, from, length) =>
+          Array.from({ length: Math.ceil(length * 2) }, (_, i) => ({
+            t: i / 2,
+            faces: [{ x: 0.45, y: 0.2, w: 0.08, h: 0.15 }],
+            people: Math.abs(from - (a.startSec - 0.5)) < 1 ? [body(0), body(0.4)] : [body(0.4)]
+          }))
+      }),
+      quiet
+    )
+    if (!many.ok) throw new Error(many.message)
+    expect(many.clips.map((c) => c.title)).toEqual(['M0', 'M1', 'M2'])
+    expect(many.notes.join(' ')).not.toMatch(/behind the congregation/)
   })
 
   it('makes every clip in the chat’s brand, without what its never list rules out', async () => {
@@ -230,6 +316,43 @@ describe('clipping a long recording, start to finish', () => {
       expect(second.recordings[0].cached).toBe(true)
       expect(second.timings.map((t) => t.step)).not.toContain('transcribing')
     }
+  })
+
+  it('takes a recording under the bar a bare drop sets as short, and hears nothing of it', async () => {
+    // A sermon dropped in with no words is clipped only when it runs ten minutes or more (useCutalong).
+    const counted = { transcribe: 0, listen: 0, frozen: 0 }
+    const service = factsOf(SERVICE).durationSec
+    const under = await findClips(
+      { paths: ['/rec/Sunday service.mp4'], ask: '', minSec: service + 60 },
+      tools({}, counted),
+      quiet
+    )
+    expect(under.ok && under.clips.length).toBe(0)
+    expect(under.ok && under.recordings.every((x) => x.none === 'short')).toBe(true)
+    expect(counted.transcribe).toBe(0)
+    // Over the bar, the same service is clipped as /clipping clips it.
+    const over = await findClips({ paths: ['/rec/Sunday service.mp4'], ask: '', minSec: 60 }, tools({}, counted), quiet)
+    expect(over.ok && over.clips.length).toBeGreaterThan(0)
+  })
+
+  it('lays a soft bed under each of a service’s clips, a different pad each, and none under a podcast’s', async () => {
+    const made: number[] = []
+    const pad = async (n: number) => {
+      made.push(n)
+      return { path: `/pads/pad-${n}.wav`, durationSec: 120, lufs: -16.7 }
+    }
+    const service = await findClips({ paths: ['/rec/Sunday service.mp4'], ask: '' }, tools({ pad }), quiet)
+    if (!service.ok) throw new Error(service.message)
+    expect(service.clips.length).toBeGreaterThan(0)
+    service.clips.forEach((c, k) => {
+      const music = currentCut(c.doc).music
+      expect(music).toMatchObject({ path: `/pads/pad-${k}.wav`, levelDb: -13, duckDb: 5, lufs: -16.7 })
+    })
+    made.length = 0
+    const podcast = await findClips({ paths: ['/rec/Long Table 41.mp4'], ask: '' }, tools({ pad }), quiet)
+    if (!podcast.ok) throw new Error(podcast.message)
+    for (const c of podcast.clips) expect(currentCut(c.doc).music ?? null).toBeNull()
+    expect(made).toEqual([])
   })
 
   it('uses the words an edit already heard, without transcribing again', async () => {
@@ -511,5 +634,19 @@ describe.skipIf(!findFfmpeg())('a frozen picture, found by ffmpeg', () => {
       expect(found[1].startSec).toBeLessThan(62.5)
       expect(found[1].endSec).toBe(95)
     })
+  })
+})
+
+describe('the model a recording is heard with for its clips', () => {
+  it('hears a long recording on the small model when Settings choose medium, and keeps a smaller choice', () => {
+    const hour = 69 * 60
+    expect(clippingModel('medium.en', hour, true)).toBe('small.en')
+    expect(clippingModel('large-v3-turbo', hour, true)).toBe('small.en')
+    expect(clippingModel('large-v3-turbo', 5 * 60, true)).toBe('large-v3-turbo')
+    // Short, or with no small model on this computer: as chosen.
+    expect(clippingModel('medium.en', 5 * 60, true)).toBe('medium.en')
+    expect(clippingModel('medium.en', hour, false)).toBe('medium.en')
+    expect(clippingModel('base.en', hour, true)).toBe('base.en')
+    expect(clippingModel('small.en', hour, true)).toBe('small.en')
   })
 })

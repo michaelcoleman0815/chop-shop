@@ -25,7 +25,8 @@ interface Need {
 const MODEL_NAMES: Record<string, string> = {
   'base.en': 'Fast',
   'small.en': 'Balanced',
-  'medium.en': 'Most accurate'
+  'medium.en': 'Medium',
+  'large-v3-turbo': 'Most accurate'
 }
 
 /** What the crew needs, from the device as it is: the transcription model, and the Claude key. */

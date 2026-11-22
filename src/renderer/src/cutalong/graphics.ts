@@ -3,6 +3,9 @@ import archivoUrl from '../../../../resources/fonts/ArchivoBlack-Regular.ttf?url
 import soraUrl from '../../../../resources/fonts/Sora.ttf?url'
 import cinzelUrl from '../../../../resources/fonts/Cinzel.ttf?url'
 import fellUrl from '../../../../resources/fonts/IMFellEnglish-Regular.ttf?url'
+import serifUrl from '../../../../resources/fonts/DMSerifDisplay-Regular.ttf?url'
+import interUrl from '../../../../resources/fonts/Inter-SemiBold.ttf?url'
+import interHeavyUrl from '../../../../resources/fonts/Inter-ExtraBold.ttf?url'
 import {
   logoLookup,
   marksFrom,
@@ -24,7 +27,10 @@ const URLS: Record<string, string> = {
   'ArchivoBlack-Regular.ttf': archivoUrl,
   'Sora.ttf': soraUrl,
   'Cinzel.ttf': cinzelUrl,
-  'IMFellEnglish-Regular.ttf': fellUrl
+  'IMFellEnglish-Regular.ttf': fellUrl,
+  'DMSerifDisplay-Regular.ttf': serifUrl,
+  'Inter-SemiBold.ttf': interUrl,
+  'Inter-ExtraBold.ttf': interHeavyUrl
 }
 
 let fonts: Promise<void> | null = null

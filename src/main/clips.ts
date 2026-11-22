@@ -128,7 +128,9 @@ The shape of a preached moment. A story starts at its first concrete detail
 and ends at the meaning the speaker states out loud; both have to be inside
 the clip, and cutting into the middle of an illustration is the most common
 way a sermon clip fails. A point being made and then applied is one moment,
-not two. Scripture read aloud and then explained is one moment; scripture read
+not two. Where the moment is a point rather than a story, start on the claim
+itself, not the run-up to it, and end on the sentence that lands it: most of
+the most-watched sermon clips open on their strongest line with no setup. Scripture read aloud and then explained is one moment; scripture read
 without the explanation is not.
 
 What travels, strongest first: testimony, especially disclosed struggle or

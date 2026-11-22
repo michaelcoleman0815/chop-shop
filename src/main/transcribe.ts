@@ -4,7 +4,7 @@ import { DEFAULT_FILLER_LISTEN, FILLER_PROMPT, listenForFillers, readSamples } f
 import { platform } from './platform'
 import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
 import { voicedRegions } from '../shared/audio/voiced'
-import { whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
+import { WHISPER_MODELS, whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
 import type { Transcript, TranscriptWord } from '../shared/types'
 import type { ToolSaid } from '../shared/failure'
 
@@ -19,15 +19,16 @@ export type { VerbatimOptions, WhisperModel }
 const MODEL_SIZES: Record<WhisperModel, number> = {
   'base.en': 148,
   'small.en': 488,
-  'medium.en': 1533
+  'medium.en': 1533,
+  'large-v3-turbo': 574
 }
 
 /** Where whisper.cpp publishes its models. */
 export const MODEL_URL = (model: WhisperModel): string =>
-  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`
+  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_MODELS[model].file}`
 
 export function modelPath(model: WhisperModel): string {
-  return join(platform().paths.userData(), 'models', `ggml-${model}.bin`)
+  return join(platform().paths.userData(), 'models', WHISPER_MODELS[model].file)
 }
 
 export function modelSizeMb(model: WhisperModel): number {
@@ -201,7 +202,9 @@ export async function transcribe(
    * here — everything downstream addresses the original recording.
    */
   startSec = 0,
-  verbatim?: VerbatimOptions
+  verbatim?: VerbatimOptions,
+  /** One guess at each step, and word onsets aligned (main/whisper-args): a long recording heard for its clips. */
+  fast: { greedy?: boolean; align?: boolean } = {}
 ): Promise<Transcript> {
   const host = platform()
   const bin = host.tool('whisper')
@@ -238,7 +241,7 @@ export async function transcribe(
     const until = verbatim && verbatim.again !== false ? 86 : 98
     const threads = whisperThreads(host.os, host.processors)
     const began = Date.now()
-    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads }), (p) =>
+    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads, ...fast }), (p) =>
       onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
     )
     const firstSec = (Date.now() - began) / 1000

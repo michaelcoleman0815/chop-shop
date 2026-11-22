@@ -132,6 +132,125 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     }
   },
   {
+    id: 'sermon',
+    name: 'Sermon',
+    style: {
+      ...BASE,
+      // Lecrae's Shorts (docs/research/sermon-clips.md, "The owner's next three"): three words at a time at
+      // most, small and clean in Inter, as said, punctuation and all, over the chest. The line the preacher
+      // lands is set big in the heavy face, its key words in yellow on a line of their own.
+      steady: true,
+      wordsPerGroup: 3,
+      fontFamily: 'Inter SemiBold',
+      fontSizePx: 54,
+      letterEm: 0.58,
+      keyColor: '#FFD84D',
+      keyFont: 'Inter ExtraBold',
+      keyScale: 1.9,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-quiet',
+    name: 'Sermon quiet',
+    style: {
+      ...BASE,
+      // The Life Church's newest Shorts: small lower-case words, three at a time, as said, under a hook card.
+      steady: true,
+      wordsPerGroup: 3,
+      fontFamily: 'Inter SemiBold',
+      fontSizePx: 48,
+      letterEm: 0.56,
+      lowercase: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-box',
+    name: 'Sermon square',
+    style: {
+      ...BASE,
+      // Under a square picture on black: three words at a time, white on the black, the key words in yellow.
+      steady: true,
+      wordsPerGroup: 3,
+      fontFamily: 'Inter SemiBold',
+      fontSizePx: 58,
+      letterEm: 0.58,
+      keyColor: '#FFD84D',
+      positionFrac: 0.84,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 0,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-build',
+    name: 'Sermon build',
+    style: {
+      ...BASE,
+      // Elevation's Shorts: the sentence building word by word as it is said, up to three lines, then clearing;
+      // the words leant on in yellow.
+      wordsPerGroup: 8,
+      fontFamily: 'Inter ExtraBold',
+      fontSizePx: 60,
+      letterEm: 0.6,
+      plain: true,
+      build: true,
+      keyColor: '#FFD84D',
+      positionFrac: 0.66,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 2,
+      shadowPx: 3,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-serif',
+    name: 'Sermon serif',
+    style: {
+      ...BASE,
+      // The Life Church's own Shorts (docs/research/sermon-clips.md, "The church's own clips"): one word at a
+      // time in a bold display serif, as said, white with a soft shadow and the thinnest dark edge, over the
+      // preacher's chest. No highlight: the word on screen is the word being said.
+      wordsPerGroup: 1,
+      fontFamily: 'DM Serif Display',
+      // About 70% of the frame for a word like "whenever", as the church's own clips set it.
+      fontSizePx: 180,
+      // DM Serif Display's lower case averages 0.515 em (measured from the font): a longer word fits by shrinking.
+      letterEm: 0.52,
+      plain: true,
+      positionFrac: 0.5,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 2,
+      shadowPx: 5,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
     id: 'sentence',
     name: 'Sentence',
     style: {

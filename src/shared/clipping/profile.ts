@@ -1,4 +1,6 @@
-import type { TightenSpec } from '../edit/schema'
+import type { CaptionSpec, TightenSpec } from '../edit/schema'
+import type { Look } from '../edit/look'
+import { SQUARE_BOX, type Box } from '../edit/box'
 import { profileById } from '../raw/profiles'
 
 /**
@@ -32,6 +34,37 @@ export interface ClipProfile {
   keepsLaughter: boolean
   /** The guidance the clip finder's prompt has for it (main/clips GENRE_NOTE). */
   genre: string
+  /** How its clips are captioned, unless the brand has a look of its own. */
+  captions?: Partial<CaptionSpec>
+  /** A soft bed under each clip, made for it (main/pads), and where it sits against the voice. */
+  bed?: { levelDb: number; duckDb: number }
+  /** A closer frame on every beat: 1.2 is chest-up where the crop alone shows the speaker waist-up. */
+  zoom?: number
+  /**
+   * Where that closer frame sits, from the top of the picture (0) to its foot (1); absent, the middle.
+   * From the top, it keeps heads and leaves out the foot of the picture, where a stream lays its
+   * lower thirds and scripture.
+   */
+  zoomAt?: number
+  /** A grade over the picture (edit/look). */
+  look?: Look
+  /**
+   * Looks a set of clips takes in turn, so no two in a row look alike, as the churches the owner follows post
+   * theirs: each its own captions, framing and hook. A look's settings stand in for the profile's.
+   */
+  looks?: ClipLook[]
+}
+
+/** One of the looks a set of clips takes in turn. */
+export interface ClipLook {
+  name: string
+  captions: Partial<CaptionSpec>
+  zoom?: number
+  zoomAt?: number
+  /** The picture as a box on black inside the frame (edit/box). */
+  box?: Box
+  /** The clip's hook on screen: a title above a boxed picture for the whole clip, or a white card for its first seconds. */
+  hook?: { style: 'title' | 'card'; place: 'top' | 'middle'; sec: number | null }
 }
 
 /** The cutting profile's tightening, as a clip takes it. */
@@ -46,16 +79,64 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     id: 'church',
     name: 'the service',
     label: 'Sermon',
+    // Measured on 54 popular sermon clips (docs/research/sermon-clips.md): the bold-caption kind runs a
+    // median 62 s, stories longer; pauses over a quarter-second are cut, and applause, laughter and
+    // "that's right" stay.
     minSec: 30,
-    maxSec: 60,
-    targetSec: 48,
+    maxSec: 90,
+    targetSec: 60,
     minutesPerClip: 3,
     maxClips: 10,
-    // The cutting profile's own line: prayer pauses stay, and only long silences go.
-    keepPauseSec: 1.5,
-    tighten: tightenOf('church', { maxGapSec: 1.5, padSec: 0.2, fillers: false }),
+    keepPauseSec: 0.4,
+    tighten: { maxGapSec: 0.4, padSec: 0.1, fillers: false },
     keepsLaughter: true,
-    genre: 'sermon'
+    genre: 'sermon',
+    // Lecrae's Shorts: three words at a time in Inter, the line he lands big and yellow.
+    captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },
+    // A soft bed of slow worship chords, about 12 dB under the voice as the popular clips sit, dipping a little
+    // more while he preaches.
+    bed: { levelDb: -13, duckDb: 5 },
+    // Chest-up, as the popular clips are framed, from the top of the picture: a service's stream lays its
+    // scripture and lower thirds across the bottom 30%, which this leaves out.
+    zoom: 1.45,
+    zoomAt: 0,
+    // Low-key and muted, as the popular clips are graded (measured: mean luma 40 to 75 of 255, saturation 4 to 13,
+    // where a service's stream runs near 125 and 19): darker, more contrast, much less colour, warm skin, a deep
+    // vignette, and a little sharpening and grain against the softness of a stream made larger.
+    look: {
+      exposure: -0.5,
+      contrast: 0.25,
+      saturation: -0.45,
+      temperature: 0.12,
+      vignette: 0.65,
+      sharpen: 0.25,
+      grain: 0.12
+    },
+    // In turn: a square on black under its hook; full frame with the line landed big; full frame under a hook card.
+    looks: [
+      {
+        name: 'square',
+        captions: { preset: 'sermon-box', wordsPerScreen: 3, position: 'bottom', uppercase: false },
+        box: SQUARE_BOX,
+        // From the top of a square window, chest-up, past the stream's scripture; less made larger than full frame.
+        zoom: 1.43,
+        zoomAt: 0,
+        hook: { style: 'title', place: 'top', sec: null }
+      },
+      {
+        name: 'feature',
+        captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },
+        zoom: 1.45,
+        zoomAt: 0
+      },
+      {
+        name: 'hook card',
+        captions: { preset: 'sermon-quiet', wordsPerScreen: 3, position: 'middle', uppercase: false },
+        zoom: 1.45,
+        zoomAt: 0,
+        hook: { style: 'card', place: 'middle', sec: 4 }
+      }
+    ]
   },
   podcast: {
     id: 'podcast',

@@ -22,7 +22,7 @@ export interface Device {
    */
   away: Record<string, string>
   /** The transcription models offered here, smallest first; all of them when absent. */
-  models?: ('base.en' | 'small.en' | 'medium.en')[]
+  models?: ('base.en' | 'small.en' | 'medium.en' | 'large-v3-turbo')[]
   /**
    * Where the licences of what the app is built with are, on a device that
    * carries them inside the app (a phone, mobile/public/licences), and the

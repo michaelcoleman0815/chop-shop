@@ -1,6 +1,18 @@
 import { contextBudget, whisperPrompt } from '../shared/raw/prompt'
 
-export type WhisperModel = 'base.en' | 'small.en' | 'medium.en'
+export type WhisperModel = 'base.en' | 'small.en' | 'medium.en' | 'large-v3-turbo'
+
+/**
+ * Each model's file in whisper.cpp's model repository, and the alignment preset whisper-cli knows it by
+ * for word onsets (--dtw). Turbo is the large-v3 model with four decoder layers instead of thirty-two,
+ * kept here in its 5-bit form: a third of the full file's size, the same words on the GPU.
+ */
+export const WHISPER_MODELS: Record<WhisperModel, { file: string; dtw: string }> = {
+  'base.en': { file: 'ggml-base.en.bin', dtw: 'base.en' },
+  'small.en': { file: 'ggml-small.en.bin', dtw: 'small.en' },
+  'medium.en': { file: 'ggml-medium.en.bin', dtw: 'medium.en' },
+  'large-v3-turbo': { file: 'ggml-large-v3-turbo-q5_0.bin', dtw: 'large.v3.turbo' }
+}
 
 /**
  * Raw footage: write down what was said, fillers, false starts and retakes
@@ -32,6 +44,17 @@ export function whisperArgs(o: {
   verbatim?: VerbatimOptions
   /** Threads, where whisper runs on the CPU (Windows); whisper-cli's own four when absent. */
   threads?: number
+  /**
+   * One guess at each step instead of five: about two and a half times faster on the medium model, and on
+   * clear speech the same words (main/clipping hears a long recording this way). Edits keep the search.
+   */
+  greedy?: boolean
+  /**
+   * Word onsets from the attention alignment, as the verbatim pass has them. Without it a word's time is
+   * Whisper's guess from its segment, which on a sermon clip put half the captions a quarter-second or
+   * more early and the worst nearly six; with it, within a tenth of a second, for a third more time.
+   */
+  align?: boolean
 }): string[] {
   const args = [
     ...(o.threads ? ['-t', String(o.threads)] : []),
@@ -51,9 +74,10 @@ export function whisperArgs(o: {
     '-sow',
     // --print-progress is the only way to see how far along a long file is.
     // -np would suppress it along with everything else.
-    '-pp'
+    '-pp',
+    ...(o.greedy ? ['-bs', '1', '-bo', '1'] : [])
   ]
-  if (!o.verbatim) return [...args, '-oj']
+  if (!o.verbatim) return o.align ? [...args, '-ojf', '--dtw', WHISPER_MODELS[o.model].dtw, '-nfa'] : [...args, '-oj']
   const prompt = o.verbatim.prompt ?? whisperPrompt(o.verbatim.names)
   return [
     ...args,
@@ -71,7 +95,7 @@ export function whisperArgs(o: {
     // attention on by default, and whisper.cpp quietly turns the alignment
     // off when it is on; that is why an earlier -dtw trial changed nothing.
     '--dtw',
-    o.model,
+    WHISPER_MODELS[o.model].dtw,
     '-nfa'
   ]
 }

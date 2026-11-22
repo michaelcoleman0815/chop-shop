@@ -42,7 +42,11 @@ export type Subject = z.infer<typeof SubjectSchema>
  * of it was looked at; their times are counted from there.
  */
 export function subjectFrom(
-  samples: { t: number; faces: { x: number; y: number; w: number; h: number }[] }[],
+  samples: {
+    t: number
+    faces: { x: number; y: number; w: number; h: number }[]
+    people?: { x: number; y: number; w: number; h: number }[]
+  }[],
   durationSec: number,
   hz = 2,
   from = 0
@@ -51,17 +55,42 @@ export function subjectFrom(
   let previous: number | null = null
   for (const s of [...samples].sort((a, b) => a.t - b.t)) {
     const i = Math.round(s.t * hz)
-    if (i < 0 || i >= x.length || s.faces.length === 0) continue
-    const best = s.faces
+    // With no face, a speaker turned away is still a body: the nearest one standing as tall as a speaker does.
+    const bodies = (s.people ?? []).filter((p) => p.h >= SPEAKER_BODY)
+    const seen: { x: number; y: number; w: number; h: number }[] =
+      s.faces.length > 0 ? s.faces : previous !== null ? bodies : []
+    if (i < 0 || i >= x.length || seen.length === 0) continue
+    const faced = seen === s.faces
+    const best: { c: number; score: number } = seen
       .map((f) => {
         const c = f.x + f.w / 2
-        return { c, score: f.w * f.h - (previous === null ? 0 : Math.abs(c - previous) * 0.05) }
+        const away = previous === null ? 0 : Math.abs(c - previous)
+        // A face by its size, staying with the one it was on worth a little; a body by how near it stands.
+        return { c, score: faced ? f.w * f.h - away * 0.05 : -away }
       })
       .reduce((a, b) => (b.score > a.score ? b : a))
     previous = best.c
     x[i] = Math.min(1, Math.max(0, Math.round(best.c * 1e4) / 1e4))
   }
   return from > 0 ? { hz, x, from } : { hz, x }
+}
+
+/** A body this tall, as a share of the picture's height, is the speaker's where no face is seen. */
+const SPEAKER_BODY = 0.45
+
+/** A body this tall, as a share of the picture's height, stands between the camera and the room. */
+const NEAR_BODY = 0.6
+
+/**
+ * How much of a stretch is filmed through the crowd: the share of samples with two or more people standing
+ * close to the camera, as a service's camera at the back of the room sees the preacher between the
+ * shoulders of the congregation. From the front the preacher is one body; a people count Vision did not
+ * give (YuNet, an older helper) is none.
+ */
+export function crowdShare(samples: { people?: { h: number }[] }[]): number {
+  if (samples.length === 0) return 0
+  const crowded = samples.filter((s) => (s.people ?? []).filter((p) => p.h >= NEAR_BODY).length >= 2).length
+  return crowded / samples.length
 }
 
 /** A point the window passes through: its centre at a moment of the recording. */
@@ -79,6 +108,12 @@ export interface ReframeOptions {
   cutOver: number
   /** Samples averaged either side, so one stray detection does not move the window. */
   smoothing: number
+  /**
+   * Keeps up sample by sample instead of holding and gliding, as a camera operator does on a close shot:
+   * the window moves whenever the speaker is further than the slack from where it looks, reaching each
+   * sample as it comes. For a punched-in window, which a walking preacher leaves before a glide lands.
+   */
+  close?: boolean
 }
 
 export const DEFAULT_REFRAME: ReframeOptions = { deadzone: 0.06, glideSec: 0.6, cutOver: 0.3, smoothing: 2 }
@@ -134,6 +169,12 @@ export function planReframe(subject: Subject, opts: ReframeOptions = DEFAULT_REF
       continue
     }
     if (t < busyUntil || Math.abs(x - at) <= opts.deadzone) continue
+    if (opts.close && Math.abs(x - at) < opts.cutOver) {
+      // Close: from where it was a sample ago to where the speaker is now.
+      keys.push({ t: Math.max(t - step, keys[keys.length - 1].t + 1e-6), x: at }, { t, x })
+      at = x
+      continue
+    }
     // A glide never runs on past the next camera cut.
     const nextCut = cuts[shots[i]] ?? Infinity
     if (Math.abs(x - at) >= opts.cutOver || t + 2e-3 >= nextCut) {
@@ -190,14 +231,24 @@ export function windowShare(x: number, picture: { width: number; height: number 
  */
 export function pieceFraming(
   cut: { reframe?: boolean },
-  treatment: { framing?: number | null },
+  treatment: { framing?: number | null; zoom?: number },
   piece: Piece,
   subject: Subject | undefined,
   opts: ReframeOptions = DEFAULT_REFRAME
 ): FrameKey[] | null {
   if (typeof treatment.framing === 'number') return [{ t: 0, x: treatment.framing }]
   if (!cut.reframe || !subject) return null
-  const path = planReframe(subject, opts)
+  // A beat punched in shows a narrower window: the speaker may stray only as far within it before it moves,
+  // and it keeps up sooner, or a preacher who walks is out of it before it follows.
+  const zoom = treatment.zoom ?? 1
+  const close: ReframeOptions = {
+    ...opts,
+    deadzone: opts.deadzone / zoom / 2,
+    glideSec: opts.glideSec / zoom,
+    smoothing: Math.max(1, Math.round(opts.smoothing / zoom)),
+    close: true
+  }
+  const path = planReframe(subject, zoom > 1.001 ? close : opts)
   const pic = piece.picture ?? piece
   if (piece.reverse || piece.hold !== undefined) return [{ t: 0, x: frameAt(path, pic.srcStart) }]
   const steps = piece.steps ?? [{ srcSec: piece.srcEnd - piece.srcStart, speed: 1 }]

@@ -1,6 +1,6 @@
 import type { Region } from './schema'
 import { overlapWith } from './leave-out'
-import type { Sentence, TimedWord } from './sentences'
+import { ENDS, type Sentence, type TimedWord } from './sentences'
 
 /**
  * Holds picked moments to the rules every clip keeps, whoever picked them:
@@ -30,6 +30,14 @@ export interface ShapeContext {
 
 /** A gap this long inside a clip is two moments, or dead air. */
 const MAX_INNER_GAP = 6
+
+/**
+ * At most this many words of another sentence at either end are a fragment: dropped rather than kept, so
+ * a clip neither opens on the tail of the last thought ("you're wrong. But if you…") nor stops on the
+ * first word of the next ("I represent heaven. I"). A longer piece is the sentence the clip is in, and is
+ * finished instead, inside the bounds.
+ */
+const FRAGMENT_WORDS = 4
 
 /** The index of the first word starting at or after `t`, or -1. */
 function firstWordFrom(words: TimedWord[], t: number): number {
@@ -90,7 +98,7 @@ function clearSpans(regions: Region[], a: number, b: number): { a: number; b: nu
 export function fitPick(
   p: { startSec: number; endSec: number },
   ctx: ShapeContext
-): { startSec: number; endSec: number } | null {
+): { startSec: number; endSec: number; fromWord: number; toWord: number } | null {
   const { words, sentences, regions, bounds } = ctx
   if (words.length === 0 || sentences.length === 0) return null
   let a = Math.min(p.startSec, p.endSec)
@@ -119,6 +127,10 @@ export function fitPick(
     return false
   }
 
+  // Opening on the last few words of the sentence before: those go first, before the length is measured.
+  const tailOf = sentences[sentenceOf(sentences, first)]
+  if (tailOf.from < first && tailOf.to - first + 1 <= FRAGMENT_WORDS && tailOf.to + 1 <= last) first = tailOf.to + 1
+
   // Too long: back to the last sentence that ends inside the bounds, else the last word that does.
   if (len() > bounds.maxSec) {
     const limit = words[first].startSec + bounds.maxSec
@@ -146,8 +158,49 @@ export function fitPick(
       first = prev.from
     }
   }
+  // On whole sentences: a clip starts where a sentence starts and ends where one ends, when the bounds allow.
+  const fits = (f: number, l: number): boolean => {
+    const n = words[l].endSec - words[f].startSec
+    return l >= f && n >= bounds.minSec - 0.01 && n <= bounds.maxSec + 0.01
+  }
+  const opening = sentences[sentenceOf(sentences, first)]
+  if (opening.from < first) {
+    const back = opening.from
+    const ahead = opening.i + 1 < sentences.length ? sentences[opening.i + 1].from : -1
+    const tail = opening.to - first + 1
+    for (const f of tail <= FRAGMENT_WORDS ? [ahead, back] : [back, ahead]) {
+      if (f < 0 || f > last) continue
+      if (f < first ? blocked(f, first) : false) continue
+      if (fits(f, last)) {
+        first = f
+        break
+      }
+    }
+  }
+  const closing = sentences[sentenceOf(sentences, last)]
+  // A few words with no full stop, cut off by a pause, are the start of a sentence never finished
+  // ("…I represent heaven. I"): the clip ends at the full stop before them.
+  const unfinished =
+    closing.to === last &&
+    closing.from > first &&
+    last - closing.from + 1 <= FRAGMENT_WORDS &&
+    !ENDS.test(words[last].text.trim()) &&
+    ENDS.test(words[closing.from - 1].text.trim())
+  if (closing.to > last || unfinished) {
+    const on = closing.to
+    const before = closing.from - 1
+    const head = last - closing.from + 1
+    for (const l of head <= FRAGMENT_WORDS ? [before, on] : [on, before]) {
+      if (l < first || l >= words.length) continue
+      if (l > last ? blocked(last, l) : false) continue
+      if (fits(first, l)) {
+        last = l
+        break
+      }
+    }
+  }
   if (len() < bounds.minSec - 0.01 || len() > bounds.maxSec + 0.01) return null
-  return { startSec: words[first].startSec, endSec: words[last].endSec }
+  return { startSec: words[first].startSec, endSec: words[last].endSec, fromWord: first, toWord: last }
 }
 
 const overlap = (x: { startSec: number; endSec: number }, y: { startSec: number; endSec: number }): number =>

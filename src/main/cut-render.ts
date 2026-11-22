@@ -49,7 +49,8 @@ import {
 import { LABEL_FADE } from '../shared/motion/grid-plate'
 import type { MotionTheme } from '../shared/motion/theme'
 import { prepareGrids } from './grid-render'
-import { captionStyleFor } from '../shared/subtitles'
+import { captionStyleFor, shownWords } from '../shared/subtitles'
+import { boxRect } from '../shared/edit/box'
 import type { TranscriptWord } from '../shared/types'
 import type { ToolSaid } from '../shared/failure'
 import { bt601Style, buildAss } from './captions'
@@ -211,6 +212,12 @@ export interface Segment {
    * (edit/fill). Absent: cropped to fill it.
    */
   fill?: 'blur' | 'black'
+  /**
+   * The speaker's picture as a box on black inside the frame (edit/box), in
+   * the frame's pixels: cropped to the box's shape where it follows the
+   * speaker, then set at its height.
+   */
+  box?: { width: number; height: number; y: number }
 }
 
 /**
@@ -534,7 +541,11 @@ export function cameraSegments(
     const source = bySource.get(p.source)
     const framing = beat ? pieceFraming(cut, beat.treatment, p, source?.subject) : null
     if (framing) segments[i].framing = framing
-    if (frame && beat) {
+    // A box on black, for the speaker's own picture: a cutaway, a second camera or a camera move fills the frame.
+    const plain = !segments[i].broll && !segments[i].inset && !segments[i].noPicture
+    if (frame && beat && cut.box && beat.treatment.frame === 'speaker' && !beat.treatment.camera && plain) {
+      segments[i].box = boxRect(cut.box, frame)
+    } else if (frame && beat) {
       const fit = pictureFit(cut, beat, source && pictured(source) ? source : null, frame)
       if (fit !== 'cover' && !segments[i].noPicture) segments[i].fill = fit
       const b = segments[i].broll
@@ -688,8 +699,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // A punch-in rarely crops to exactly the frame's shape (1080/1.12 is 964.3), so
     // scaling it back up stretches the pixels a hair; square them again, or the
     // join refuses pieces whose pixel shapes differ and the export fails.
+    // From the top or the foot where the beat says (zoomAt), keeping heads; otherwise the middle.
+    const at = t?.zoomAt
+    const y = at !== undefined ? `:x=(iw-ow)/2:y=trunc((ih-oh)*${at.toFixed(4)}/2)*2` : ''
     if (zoom && z > 1.001)
-      f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2,scale=${w}:${h},setsar=1`
+      f += `,crop=trunc(iw/${z.toFixed(4)}/2)*2:trunc(ih/${z.toFixed(4)}/2)*2${y},scale=${w}:${h},setsar=1`
     if (t?.bw) f += ',hue=s=0'
     return f
   }
@@ -976,6 +990,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         chains.push(`${other()}${look(box.width, box.height, t, false)}[${v}p]`)
         chains.push(`[${v}m][${v}p]overlay=x=${box.x}:y=${box.y},format=yuv420p,${AS_BT709},${frames}[${v}]`)
       }
+    } else if (s.box && !s.camera) {
+      // The speaker as a box on black: cropped to the box, following them, then set at its height in the frame.
+      const b = s.box
+      chains.push(
+        `${speaker()}${look(b.width, b.height, t, true, aim)},pad=${W}:${H}:0:${b.y}:black,format=yuv420p,${AS_BT709},${frames}[${v}]`
+      )
     } else {
       const fill = s.fill ? { fit: s.fill, name: `${v}fs` } : undefined
       chains.push(
@@ -1763,11 +1783,7 @@ export async function renderCut(
   let captionsInRgb = false
   const shown = opts.captionWords ?? resolved.words
   if (cut.captions.on && shown.length > 0) {
-    const words: TranscriptWord[] = shown.map((w) => ({
-      text: w.text,
-      startSec: w.outStart,
-      endSec: w.outEnd
-    }))
+    const words: TranscriptWord[] = shownWords(shown, cut.captions)
     const style = captionStyleFor(cut.captions, width, opts.brand?.colors ?? null)
     // libass colours captions in YUV, with BT.709 on 7.0 and BT.601 on 6.0 and 6.1, where the colours are
     // moved to the ones BT.601 turns into BT.709's values. Going through RGB instead is exact everywhere

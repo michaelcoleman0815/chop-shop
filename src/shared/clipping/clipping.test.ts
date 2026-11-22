@@ -373,6 +373,61 @@ describe('reading what is asked', () => {
   })
 })
 
+describe('a clip on whole sentences', () => {
+  // Sentences of a sermon, each word 0.3 s with a 0.1 s gap, and 0.5 s between sentences.
+  const lines = [
+    'And if you think it is about rules then you are wrong.',
+    'But if you will study religion religion kills people.',
+    'God saves people and religion never points you to God.',
+    'Religion points you to religion and that is all it does.',
+    'I do not want what you believe at all.',
+    'I want what the word of God says about me.',
+    'I represent heaven.',
+    'I am a diplomat in this earth and I speak for him.'
+  ]
+  const words: { text: string; startSec: number; endSec: number }[] = []
+  let t = 0
+  for (const line of lines) {
+    for (const w of line.split(' ')) {
+      words.push({ text: w, startSec: t, endSec: t + 0.3 })
+      t += 0.4
+    }
+    t += 0.5
+  }
+  const sentences = sentencesOf(words)
+  const ctx = { words, sentences, regions: [], bounds: { minSec: 10, maxSec: 24 } }
+  const at = (text: string, from = 0): number => words.findIndex((w, i) => i >= from && w.text === text)
+
+  it('drops the tail of the last thought it would open on, and the first word of the next it would stop on', () => {
+    // Picked from "you are wrong." to "…heaven. I", as Claude picked the Athens clip.
+    const fit = fitPick({ startSec: words[at('you', 5)].startSec, endSec: words[at('I', at('heaven.'))].endSec }, ctx)!
+    expect(fit.startSec).toBe(words[at('But')].startSec)
+    expect(fit.endSec).toBe(words[at('heaven.')].endSec)
+  })
+
+  it('says which words, so a sentence squeezed onto one instant is cut after its last word', () => {
+    // Whisper put "heaven." and the next sentence's "I" on one instant, as it did at the end of an Athens clip.
+    const squeezed = words.map((x) => ({ ...x }))
+    const heaven = squeezed.findIndex((x) => x.text === 'heaven.')
+    squeezed[heaven + 1] = { ...squeezed[heaven + 1], startSec: squeezed[heaven].endSec, endSec: squeezed[heaven].endSec }
+    const fit = fitPick(
+      { startSec: squeezed[at('But')].startSec, endSec: squeezed[heaven].endSec },
+      { ...ctx, words: squeezed, sentences: sentencesOf(squeezed), bounds: { minSec: 10, maxSec: 30 } }
+    )!
+    expect(squeezed[fit.toWord].text).toBe('heaven.')
+    // By time alone, the squeezed "I" would have come in with it.
+    const byTime = squeezed.filter((w) => w.startSec >= fit.startSec - 0.01 && w.endSec <= fit.endSec + 0.01)
+    expect(byTime[byTime.length - 1].text).toBe('I')
+    expect(squeezed.slice(fit.fromWord, fit.toWord + 1).at(-1)!.text).toBe('heaven.')
+  })
+
+  it('finishes the sentence it would stop in the middle of, when the length allows', () => {
+    const end = at('word')
+    const fit = fitPick({ startSec: words[at('But')].startSec, endSec: words[end].endSec }, ctx)!
+    expect(fit.endSec).toBe(words[at('me.')].endSec)
+  })
+})
+
 describe('holding picked moments to the rules', () => {
   const facts = factsOf(SERVICE)
   const plan = planRecording(facts, ask, null)
@@ -384,7 +439,7 @@ describe('holding picked moments to the rules', () => {
     expect(fit).not.toBeNull()
     expect(facts.words.some((w) => w.startSec === fit!.startSec)).toBe(true)
     expect(facts.words.some((w) => w.endSec === fit!.endSec)).toBe(true)
-    expect(fit!.endSec - fit!.startSec).toBeLessThanOrEqual(60)
+    expect(fit!.endSec - fit!.startSec).toBeLessThanOrEqual(CLIP_PROFILES.church.maxSec)
   })
 
   it('never reaches into what was left out, and drops what lies inside it', () => {
@@ -417,15 +472,41 @@ describe('a clip as an edit', () => {
     expect(doc.versions[0].summary).toBe('The moment as it was said, split into beats.')
     const cut = currentCut(doc)
     expect(cut.aspect).toBe('vertical')
-    expect(cut.captions).toMatchObject({ on: true, wordsPerScreen: 2, position: 'chest' })
-    expect(cut.tighten).toEqual({ maxGapSec: 1.5, padSec: 0.2, fillers: false })
+    // The first clip of a set takes the first look: a square on black, three words at a time beneath it.
+    expect(cut.captions).toMatchObject({ on: true, preset: 'sermon-box', wordsPerScreen: 3, position: 'bottom' })
+    expect(cut.box).toEqual({ aspect: 1, top: 0.19 })
+    // Chest-up from the top of the picture, past a stream's scripture banner, and graded low-key and muted.
+    expect(cut.beats.every((b) => b.treatment.zoom === 1.43 && b.treatment.zoomAt === 0)).toBe(true)
+    expect(cut.look).toMatchObject({ exposure: -0.5, saturation: -0.45 })
+    // The next takes the next: full frame, the line landed big; then the quiet captions under a hook card.
+    const second = currentCut(clipDoc({ id: 'c2', title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant: 1 }))
+    expect(second.captions.preset).toBe('sermon')
+    expect(second.box).toBeUndefined()
+    const third = currentCut(
+      clipDoc({ id: 'c3', title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant: 2, hook: 'Grace Found Her' })
+    )
+    expect(third.captions.preset).toBe('sermon-quiet')
+    expect(third.motion.map((m) => [m.kind, m.style, m.to, m.text[0]])).toEqual([['banner', 'card', '4s', 'Grace Found Her']])
+    expect(cut.tighten).toEqual({ maxGapSec: 0.4, padSec: 0.1, fillers: false })
     expect(currentVersion(doc).summary).toMatch(/^A finished short\. It's vertical now/)
     expect(undoTarget(doc)).toBe(1)
     expect(doc.profile).toBe('church')
     expect(doc.words.map((w) => w.text).join(' ')).toMatch(/^In the winter.*grace looks like\.$/)
   })
 
-  it('keeps the pauses in a prayer, which a podcast would cut', () => {
+  it('sets the words the speaker leans on in the accent, by id', () => {
+    const words = [
+      { text: 'More', startSec: 1, endSec: 1.3, key: true },
+      { text: 'than', startSec: 1.4, endSec: 1.6, key: true },
+      { text: 'enough.', startSec: 1.7, endSec: 2.2 }
+    ]
+    const doc = clipDoc({ id: 'k', title: 'Enough', source, words, profile: CLIP_PROFILES.church })
+    expect(currentCut(doc).captions.keys).toEqual(['w1', 'w2'])
+    const plain = clipDoc({ id: 'n', title: 'Enough', source, words: words.map(({ key: _k, ...w }) => w), profile: CLIP_PROFILES.church })
+    expect(currentCut(plain).captions.keys).toBeUndefined()
+  })
+
+  it('cuts the pauses down to the words, as the most-watched sermon clips do', () => {
     const facts = factsOf(SERVICE)
     const prayer = facts.timeline.words.filter((w) => w.tag === 'prayer')
     const pauses = (profile: (typeof CLIP_PROFILES)[keyof typeof CLIP_PROFILES]): number[] => {
@@ -438,9 +519,9 @@ describe('a clip as an edit', () => {
       .map((w, i) => w.startSec - prayer[i].endSec)
       .filter((g) => g > 1)
     expect(planted.length).toBeGreaterThanOrEqual(5)
-    // Every pause of the prayer plays whole in a service's clip...
-    expect(pauses(CLIP_PROFILES.church).filter((g) => g > 1.2).length).toBe(planted.length)
-    // ...and a podcast's tightening would take them down to the words.
+    // Silences over a quarter-second are cut in nearly every popular sermon clip (docs/research/sermon-clips.md),
+    // so a service's clip takes even a prayer's pauses down to the words, as a podcast's does.
+    expect(Math.max(...pauses(CLIP_PROFILES.church))).toBeLessThan(0.7)
     expect(Math.max(...pauses(CLIP_PROFILES.podcast))).toBeLessThan(0.7)
   })
 
@@ -536,7 +617,7 @@ describe('what /clipping says', () => {
 
   it('says when a recording is too short to clip, or has nobody talking in it', () => {
     expect(clipsReply({ ...base, recordings: [rec('/s/a.mp4', { durationSec: 48, none: 'short' })] }, false).text).toBe(
-      "a.mp4 runs 0:48, too short to cut clips from: a clip runs 0:30 to 1:00, so it would be nearly the whole thing. Drop it without /clipping and I'll edit it as it is."
+      "a.mp4 runs 0:48, too short to cut clips from: a clip runs 0:30 to 1:30, so it would be nearly the whole thing. Drop it without /clipping and I'll edit it as it is."
     )
     expect(clipsReply({ ...base, recordings: [rec('/s/b.mp4', { none: 'speechless' })] }, false).text).toBe(
       'I heard nobody talking in b.mp4, so there is nothing to clip: clips are cut on what is said.'

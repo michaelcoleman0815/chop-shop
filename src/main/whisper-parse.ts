@@ -105,7 +105,33 @@ export function tokensToWords(segments: WhisperSegment[]): HeardWord[] {
     w.endSec = Math.min(Math.max(w.endSec, w.startSec + 0.1), Math.max(ceiling, w.startSec + 0.02))
   }
 
-  return words.map(({ text, startSec, endSec, p }) => ({ text, startSec, endSec, p }))
+  return withoutSoundNotes(words.map(({ text, startSec, endSec, p }) => ({ text, startSec, endSec, p })))
+}
+
+/**
+ * Whisper writes what it hears that is not speech as words in brackets: "(gentle music)", "[applause]",
+ * "(audience chattering)", "♪". One word a segment splits a note across several words, so a run from an
+ * opening bracket to its closing one goes, at most eight words long. Nobody says a bracket, so nothing
+ * spoken is lost, and no caption shows "(GENTLE MUSIC)".
+ */
+export function withoutSoundNotes<T extends { text: string }>(words: T[]): T[] {
+  const out: T[] = []
+  for (let i = 0; i < words.length; i++) {
+    const text = words[i].text.trim()
+    if (/^[♪♫]+$/.test(text)) continue
+    const open = /^[([]/.exec(text)
+    if (open) {
+      const close = open[0] === '(' ? ')' : ']'
+      let j = i
+      while (j < words.length && j - i < 8 && !words[j].text.trim().replace(/[.,!?]+$/, '').endsWith(close)) j++
+      if (j < words.length && j - i < 8) {
+        i = j
+        continue
+      }
+    }
+    out.push(words[i])
+  }
+  return out
 }
 
 /** A stretch of a recording, in seconds. */

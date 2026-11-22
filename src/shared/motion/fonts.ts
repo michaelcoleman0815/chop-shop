@@ -78,6 +78,47 @@ export const MOTION_FONTS: MotionFont[] = [
     label: 'Cinzel, Roman capitals'
   },
   {
+    // SIL Open Font License 1.1, resources/fonts/DMSerifDisplay-OFL.txt. A bold display serif: the sermon
+    // captions, one word at a time, as The Life Church sets its own Shorts.
+    family: 'DM Serif Display',
+    file: 'DMSerifDisplay-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.66,
+    ascent: 1.036,
+    descent: 0.335,
+    // OS/2 usWinAscent 1036 and usWinDescent 335 of 1000 units, read from the file.
+    winAscent: 1.036,
+    winDescent: 0.335,
+    label: 'DM Serif Display, a bold display serif'
+  },
+  {
+    // SIL Open Font License 1.1, resources/fonts/Inter-OFL.txt. The static SemiBold, whose family is its own
+    // name, so libass never reaches for another Inter on the computer. The sermon captions: small, clean and
+    // in sentence case, as Lecrae's and The Life Church's Shorts set them.
+    family: 'Inter SemiBold',
+    file: 'Inter-SemiBold.ttf',
+    weights: [400, 400],
+    cap: 0.7275,
+    ascent: 0.96875,
+    descent: 0.2412,
+    // OS/2 usWinAscent 1984 and usWinDescent 494 of 2048 units, read from the file.
+    winAscent: 0.96875,
+    winDescent: 0.2412,
+    label: 'Inter SemiBold, a clean sans'
+  },
+  {
+    // The same family's ExtraBold (Inter-OFL.txt): the line a preacher lands, set big, and the hook titles.
+    family: 'Inter ExtraBold',
+    file: 'Inter-ExtraBold.ttf',
+    weights: [400, 400],
+    cap: 0.7275,
+    ascent: 0.96875,
+    descent: 0.2412,
+    winAscent: 0.96875,
+    winDescent: 0.2412,
+    label: 'Inter ExtraBold, a heavy clean sans'
+  },
+  {
     // Igino Marini's revival of the Fell types (SIL Open Font License): the vintage map's lettering.
     family: 'IM Fell English',
     file: 'IMFellEnglish-Regular.ttf',

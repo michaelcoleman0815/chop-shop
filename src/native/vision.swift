@@ -25,6 +25,11 @@ struct Face: Codable {
 struct Sample: Codable {
     let t: Double
     let faces: [Face]
+    /**
+     * Everyone Vision sees, faced or not, upper bodies: a person seen from behind has a body here and no face
+     * among the faces, which is how a shot over the congregation's shoulders is known.
+     */
+    let people: [Face]
 }
 
 func fail(_ message: String) -> Never {
@@ -71,19 +76,21 @@ while t < duration {
     }
 
     let request = VNDetectFaceRectanglesRequest()
+    let humans = VNDetectHumanRectanglesRequest()
     let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
-    try? handler.perform([request])
+    try? handler.perform([request, humans])
 
-    let faces: [Face] = (request.results ?? []).map { observation in
-        let box = observation.boundingBox
-        // Vision's origin is bottom-left; flip so y grows downward.
+    // Vision's origin is bottom-left; flip so y grows downward.
+    func flipped(_ box: CGRect) -> Face {
         return Face(x: Double(box.origin.x),
                     y: Double(1.0 - box.origin.y - box.height),
                     w: Double(box.width),
                     h: Double(box.height))
     }
+    let faces: [Face] = (request.results ?? []).map { flipped($0.boundingBox) }
+    let people: [Face] = (humans.results ?? []).map { flipped($0.boundingBox) }
 
-    samples.append(Sample(t: t, faces: faces))
+    samples.append(Sample(t: t, faces: faces, people: people))
     t += step
 }
 
