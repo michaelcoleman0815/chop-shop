@@ -163,7 +163,10 @@ export function buildAss(
             '2',
             Math.round(width * 0.08),
             Math.round(width * 0.08),
-            Math.max(0, marginV - style.second.gapPx),
+            // Under the big word, or above it: over the big line's cell, which is the font size tall.
+            style.second.above
+              ? marginV + style.fontSizePx + style.second.gapPx
+              : Math.max(0, marginV - style.second.gapPx),
             '1'
           ].join(',')
         ]
@@ -176,6 +179,44 @@ export function buildAss(
   const active = assColor(style.activeColor)
   const scalePct = Math.round(style.activeScale * 100)
   const events: string[] = []
+  const marginX = Math.round(width * 0.08)
+  /**
+   * One line of a cue. With a soft shadow it is two events: underneath, the words again in the shadow's
+   * translucent black with no outline, blurred (libass blurs the fill when there is no outline) and moved down
+   * and right by the shadow's distance through the event's own margins; on top, the words as they are, with no
+   * shadow of their own. `shade` is the line without its colour codes, so the shadow stays black.
+   *
+   * Each line of a cue (`line`: 0 the big one, 1 the second) has layers of its own, every shadow under every
+   * line's words. libass pushes apart events on one layer whose boxes overlap, and a second line set tight on
+   * the big word overlaps its cell, so on a shared layer it would be moved off where it was put.
+   */
+  const dialogue = (
+    from: string,
+    until: string,
+    name: string,
+    text: string,
+    shade: string,
+    soft: { blur: number; px: number; marginV: number } | null,
+    line: 0 | 1 = 0
+  ): void => {
+    if (!soft) {
+      events.push(`Dialogue: ${2 + line},${from},${until},${name},,0,0,0,,${text}`)
+      return
+    }
+    const under = `\\1c&H000000&\\1a&H64&\\bord0\\shad0\\blur${soft.blur}`
+    const l = marginX + soft.px
+    const r = Math.max(0, marginX - soft.px)
+    const v = Math.max(0, soft.marginV - soft.px)
+    events.push(`Dialogue: ${line},${from},${until},${name},,${l},${r},${v},,{${under}}${shade.split('{\\r}').join(`{\\r${under}}`)}`)
+    events.push(`Dialogue: ${2 + line},${from},${until},${name},,0,0,0,,{\\shad0}${text.split('{\\r}').join('{\\r\\shad0}')}`)
+  }
+  const softOf = (blur: number | undefined, px: number, v: number): { blur: number; px: number; marginV: number } | null =>
+    blur ? { blur, px, marginV: v } : null
+  const tierV = style.second
+    ? style.second.above
+      ? marginV + style.fontSizePx + style.second.gapPx
+      : Math.max(0, marginV - style.second.gapPx)
+    : marginV
 
   // One event per word (shared/subtitles, which the editor's preview draws from too).
   for (const cue of subtitleCues(words, style.wordsPerGroup)) {
@@ -185,23 +226,29 @@ export function buildAss(
 
     if (style.second) {
       const big = escapeAss(style.uppercase ? word.text.toUpperCase() : word.text)
-      const restWords = cue.words.filter((_, j) => j !== cue.active).map((w) => w.text)
+      // Under the big word, the rest of its group; above it, only the words already said (shared/subtitles).
+      const restWords = cue.words
+        .filter((_, j) => (style.second?.above ? j < cue.active : j !== cue.active))
+        .map((w) => w.text)
       const rest = escapeAss(style.second.uppercase ? restWords.join(' ').toUpperCase() : restWords.join(' '))
-      events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${big}`)
-      if (rest) events.push(`Dialogue: 0,${from},${until},Chop2,,0,0,0,,${rest}`)
+      dialogue(from, until, 'Chop', big, big, softOf(style.shadowBlur, style.shadowPx, marginV))
+      if (rest) dialogue(from, until, 'Chop2', rest, rest, softOf(style.second.shadowBlur, style.second.shadowPx, tierV), 1)
       continue
     }
 
-    const line = cue.words
-      .map((w, j) => {
-        const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
-        if (j !== cue.active) return text
-        const scale = style.activeScale === 1 ? '' : `\\fscx${scalePct}\\fscy${scalePct}`
-        return `{\\c${active}${scale}}${text}{\\r}`
-      })
-      .join(' ')
+    const lineOf = (colour: boolean): string =>
+      cue.words
+        .map((w, j) => {
+          const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
+          if (j !== cue.active) return text
+          const scale = style.activeScale === 1 ? '' : `\\fscx${scalePct}\\fscy${scalePct}`
+          const face = style.activeFontFamily ? `\\fn${style.activeFontFamily}` : ''
+          const codes = `${colour ? `\\c${active}` : ''}${face}${scale}`
+          return codes ? `{${codes}}${text}{\\r}` : text
+        })
+        .join(' ')
 
-    events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${line}`)
+    dialogue(from, until, 'Chop', lineOf(true), lineOf(false), softOf(style.shadowBlur, style.shadowPx, marginV))
   }
 
   return [...header, ...events].join('\n') + '\n'

@@ -114,9 +114,10 @@ describe('captions in your words', () => {
     expect(next && next.start).toBeCloseTo(resolved.words[4].outStart, 9)
     // Past the end: the first.
     expect(captionCueAt(cut, resolved, 4, 999)?.words.map((w) => w.text)).toEqual(['This', 'is', 'part', '1.'])
-    // At the very start, the moment with the strongest word being said.
+    // At the very start, a full group with a word after the first being said, so two-line looks show both lines.
     const start = captionCueAt(cut, resolved, 2, 0)!
-    expect(start.words[start.active].text).toBe('This')
+    expect(start.words).toHaveLength(2)
+    expect(start.active).toBe(1)
   })
 
   it('has nothing to show when every beat has its captions off', () => {
@@ -137,7 +138,7 @@ describe('captions in your words', () => {
     // Headline is in capitals whatever is asked.
     expect(describeCaptions(pick)).toBe('Headline, at the bottom, 2 words a screen, in capitals')
     expect(describeCaptions({ ...pick, preset: 'sentence', position: 'chest', wordsPerScreen: 1 })).toBe(
-      'Subtitle, at chest height, 1 word a screen'
+      'Podcast, at chest height, 1 word a screen'
     )
   })
 })

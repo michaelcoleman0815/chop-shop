@@ -25,50 +25,121 @@ const BASE: CaptionStyle = {
  * switching preset changes size, position, colour and rhythm together, which is
  * how these actually differ in practice.
  *
- * Drawn from what short-form captions do now (watched 2026-11-21 on YouTube
- * Shorts: talking heads like Alex Hormozi and The Diary Of A CEO, brand clips
- * like Red Bull's): two to four words at a time, a heavy face, white with a
- * hard dark edge and a drop shadow so they read on any picture, and the word
- * being said picked out by colour or size, never by a gimmick. Only the faces
- * the export carries (resources/fonts): Archivo Black for weight, Anton for
- * condensed size, Sora for a quiet subtitle. The first is the one a person
- * sees first; Clean is also the default (DEFAULT_CAPTIONS).
+ * Each is a whole style taken from short-form video as it is captioned now,
+ * measured frame by frame on YouTube Shorts (2026-11-21): the face and its
+ * weight, the case, how big against the frame's width, how many words at once,
+ * a soft shadow or a hard outline, a plate or none, and how the word being said
+ * stands out. Sizes are for a frame 1080 wide (captionStyleFor scales them).
+ * Only the faces the export carries (resources/fonts, shared/motion/fonts),
+ * each a single weight under the name its file gives itself.
  */
+const MONTSERRAT = 'Montserrat Thin ExtraBold'
+const MONTSERRAT_BLACK = 'Montserrat Thin Black'
+const INTER = 'Inter'
+const INTER_EXTRA = 'Inter ExtraBold'
+const TIKTOK_BLACK = 'TikTok Sans Light Black'
+const TIKTOK = 'TikTok Sans Light ExtraBold'
+
 export const CAPTION_PRESETS: CaptionPreset[] = [
   {
     id: 'clean',
-    name: 'Clean',
+    name: 'Talking head',
     style: {
       ...BASE,
-      // The talking-head look: three words in sentence case, heavy, white, a thin edge and a drop shadow.
-      wordsPerGroup: 3,
-      fontFamily: 'Archivo Black',
-      fontSizePx: 72,
+      // Two words, big, heavy geometric sans in sentence case, white, no outline, a soft shadow. The word being
+      // said is the same white a weight heavier. As Alex Hormozi's shorts are captioned.
+      wordsPerGroup: 2,
+      fontFamily: MONTSERRAT,
+      activeFontFamily: MONTSERRAT_BLACK,
+      // Lower-case letters about 6% of the frame's width tall, as measured.
+      fontSizePx: 150,
       textColor: '#FFFFFF',
       activeColor: '#FFFFFF',
       outlineColor: '#000000',
-      outlinePx: 3,
-      shadowPx: 5,
+      outlinePx: 0,
+      shadowPx: 4,
+      shadowBlur: 14,
       uppercase: false,
       activeScale: 1
     }
   },
   {
-    id: 'punch',
-    name: 'Bold',
+    id: 'sentence',
+    name: 'Podcast',
     style: {
       ...BASE,
-      // Loud and short: three words in capitals, the one being said in yellow and a touch bigger.
+      // Three words in a plain bold grotesque, sentence case, white, a soft shadow and nothing else. As podcast
+      // clips like Chris Williamson's are captioned.
       wordsPerGroup: 3,
-      fontFamily: 'Archivo Black',
-      fontSizePx: 92,
+      fontFamily: INTER,
+      // Lower-case letters about 3.4% of the frame's width tall.
+      fontSizePx: 96,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      shadowBlur: 12,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'feature',
+    name: 'Interview',
+    style: {
+      ...BASE,
+      // The word being said huge, the word said before it small on the line above, both white with a soft shadow.
+      // As The Diary Of A CEO's clips are captioned.
+      wordsPerGroup: 2,
+      fontFamily: INTER_EXTRA,
+      // The big word's capitals about 8% of the frame's width tall, the line above about two thirds of that.
+      fontSizePx: 180,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 4,
+      shadowBlur: 16,
+      uppercase: false,
+      activeScale: 1,
+      second: {
+        fontFamily: INTER,
+        fontSizePx: 110,
+        textColor: '#FFFFFF',
+        outlineColor: '#000000',
+        outlinePx: 0,
+        shadowPx: 3,
+        shadowBlur: 12,
+        uppercase: false,
+        // Tucked right onto the big word, as the reference sets it. A line's cell carries the face's whole ascent
+        // over its capitals and its descent under its baseline, so a gap of 0 would leave about 75 px of air
+        // between the small line's baseline and the big capitals. This brings it to about a quarter of a capital,
+        // the closest it goes with a small line's tail (y, g) still clear of a big tall letter (h, B) under it.
+        gapPx: -48,
+        above: true
+      }
+    }
+  },
+  {
+    id: 'punch',
+    name: 'Loud',
+    style: {
+      ...BASE,
+      // Three words in the heaviest geometric capitals, white, the word being said yellow, a thin black edge and
+      // a hard shadow. As brand and challenge shorts are captioned (Red Bull's).
+      wordsPerGroup: 3,
+      fontFamily: MONTSERRAT_BLACK,
+      // Capitals about 5% of the frame's width tall.
+      fontSizePx: 118,
       textColor: '#FFFFFF',
       activeColor: '#FFD400',
       outlineColor: '#000000',
-      outlinePx: 9,
+      outlinePx: 5,
       shadowPx: 5,
+      shadowBlur: 0,
       uppercase: true,
-      activeScale: 1.1
+      activeScale: 1
     }
   },
   {
@@ -76,17 +147,37 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     name: 'Word lights up',
     style: {
       ...BASE,
-      // Every word white, the one being said lit green and popped, so the eye follows the voice.
+      // Every word white, the one being said green and a touch bigger, so the eye follows the voice.
       wordsPerGroup: 3,
-      fontFamily: 'Archivo Black',
-      fontSizePx: 84,
+      fontFamily: TIKTOK_BLACK,
+      fontSizePx: 86,
       textColor: '#FFFFFF',
       activeColor: '#3EE07A',
       outlineColor: '#000000',
-      outlinePx: 8,
-      shadowPx: 4,
+      outlinePx: 6,
+      shadowPx: 0,
+      shadowBlur: 0,
       uppercase: true,
-      activeScale: 1.12
+      activeScale: 1.08
+    }
+  },
+  {
+    id: 'stack',
+    name: 'Outlined',
+    style: {
+      ...BASE,
+      // White in sentence case with a black stroke and no shadow: the text a phone's own editor puts on a video.
+      wordsPerGroup: 4,
+      fontFamily: TIKTOK,
+      fontSizePx: 80,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
+      outlineColor: '#000000',
+      outlinePx: 7,
+      shadowPx: 0,
+      shadowBlur: 0,
+      uppercase: false,
+      activeScale: 1
     }
   },
   {
@@ -94,64 +185,38 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     name: 'Headline',
     style: {
       ...BASE,
-      // Two words, condensed and enormous, like a cover line.
+      // Two words in tall condensed capitals, like a cover line.
       wordsPerGroup: 2,
-      fontFamily: 'Anton',
-      fontSizePx: 150,
+      fontFamily: 'Bebas Neue',
+      fontSizePx: 190,
       textColor: '#FFFFFF',
       activeColor: '#FFFFFF',
       outlineColor: '#000000',
-      outlinePx: 6,
-      shadowPx: 6,
+      outlinePx: 0,
+      shadowPx: 5,
+      shadowBlur: 18,
       uppercase: true,
       activeScale: 1
     }
   },
   {
-    id: 'feature',
-    name: 'One big word',
+    id: 'plate',
+    name: 'Title plate',
     style: {
       ...BASE,
-      // The word being said carries the frame; the rest of its line runs small beneath it.
-      wordsPerGroup: 4,
-      fontFamily: 'Anton',
-      fontSizePx: 170,
-      textColor: '#FFFFFF',
-      activeColor: '#FFFFFF',
-      outlineColor: '#000000',
-      outlinePx: 6,
-      shadowPx: 6,
+      // Black bold words on a white plate: how podcast clips put a question or a claim on screen.
+      wordsPerGroup: 3,
+      fontFamily: INTER_EXTRA,
+      fontSizePx: 104,
+      textColor: '#111111',
+      activeColor: '#111111',
+      outlineColor: '#FFFFFF',
+      outlinePx: 18,
+      shadowPx: 0,
+      shadowBlur: 0,
       uppercase: false,
       activeScale: 1,
-      second: {
-        fontFamily: 'Sora',
-        fontSizePx: 64,
-        textColor: '#FFFFFF',
-        outlineColor: '#000000',
-        outlinePx: 4,
-        shadowPx: 4,
-        uppercase: false,
-        bold: true,
-        gapPx: 100
-      }
-    }
-  },
-  {
-    id: 'plate',
-    name: 'Boxed',
-    style: {
-      ...BASE,
-      // White capitals on a black plate: the plate does the legibility work, so no outline and no colour change.
-      wordsPerGroup: 3,
-      fontFamily: 'Archivo Black',
-      fontSizePx: 70,
-      textColor: '#FFFFFF',
-      activeColor: '#FFFFFF',
-      outlinePx: 16,
-      shadowPx: 0,
-      uppercase: true,
-      activeScale: 1,
-      boxColor: '#0B0B0E'
+      boxColor: '#FFFFFF'
     }
   },
   {
@@ -159,67 +224,38 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     name: 'Marker',
     style: {
       ...BASE,
-      // Two words in dark type on a yellow highlighter, in sentence case.
+      // Two words of dark type on a yellow highlighter.
       wordsPerGroup: 2,
-      fontFamily: 'Archivo Black',
-      fontSizePx: 74,
+      fontFamily: MONTSERRAT,
+      fontSizePx: 76,
       textColor: '#111111',
       activeColor: '#111111',
       outlineColor: '#111111',
       outlinePx: 14,
       shadowPx: 0,
+      shadowBlur: 0,
       uppercase: false,
       activeScale: 1,
       boxColor: '#FFE14D'
     }
   },
   {
-    id: 'stack',
-    name: 'Stack',
-    style: {
-      ...BASE,
-      // Four words on two lines of heavy capitals, the one being said in yellow.
-      wordsPerGroup: 4,
-      fontFamily: 'Archivo Black',
-      fontSizePx: 80,
-      textColor: '#FFFFFF',
-      activeColor: '#FFD400',
-      outlineColor: '#000000',
-      outlinePx: 9,
-      shadowPx: 4,
-      uppercase: true,
-      activeScale: 1.05
-    }
-  },
-  {
-    id: 'sentence',
+    id: 'lower',
     name: 'Subtitle',
     style: {
       ...BASE,
-      // Whole phrases in sentence case, sitting low: for when the face is the subject and the words support it.
+      // Whole phrases, small and low, for when the face is the subject and the words only support it.
       wordsPerGroup: 6,
-      fontFamily: 'Sora',
-      fontSizePx: 50,
+      fontFamily: INTER,
+      fontSizePx: 56,
       textColor: '#FFFFFF',
       activeColor: '#FFFFFF',
       outlineColor: '#000000',
-      outlinePx: 3,
+      outlinePx: 0,
       shadowPx: 3,
+      shadowBlur: 10,
       uppercase: false,
-      activeScale: 1,
-      bold: true
-    }
-  },
-  {
-    id: 'lower',
-    name: 'Lower third',
-    style: {
-      ...BASE,
-      wordsPerGroup: 6,
-      fontSizePx: 64,
-      outlinePx: 6,
-      shadowPx: 3,
-      activeScale: 1.0
+      activeScale: 1
     }
   },
   {

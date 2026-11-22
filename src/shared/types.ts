@@ -186,6 +186,16 @@ export interface CaptionStyle {
   /** Faux-bold, for families that ship only one weight. */
   bold?: boolean
   /**
+   * The word being said set in another face: a heavier weight of the same family, so it stands out by weight
+   * rather than colour, as talking-head captions do.
+   */
+  activeFontFamily?: string
+  /**
+   * A soft shadow: the words' shape blurred by this many pixels and moved down and right by shadowPx, under
+   * words with or without an outline. Absent or 0, the shadow is hard, as before.
+   */
+  shadowBlur?: number
+  /**
    * Fills a solid plate behind the words instead of outlining them. The outline
    * width becomes the plate's padding, which is how ASS BorderStyle 3 works.
    */
@@ -230,8 +240,12 @@ export interface CaptionTier {
   shadowPx: number
   uppercase: boolean
   bold?: boolean
-  /** Distance from the big line's baseline down to this one. */
+  /** Distance from the big line's baseline down to this one; with `above`, from this line's foot up to the big line's top. */
   gapPx: number
+  /** This line sits above the big word instead of under it: the words before, then the one being said. */
+  above?: boolean
+  /** A soft shadow, as the big line's (CaptionStyle.shadowBlur). */
+  shadowBlur?: number
 }
 
 export interface ZoomKeyframe {

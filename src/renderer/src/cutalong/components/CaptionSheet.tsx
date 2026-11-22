@@ -93,7 +93,8 @@ export function CaptionSheet({
       ? CAPTION_PRESETS.map((p) => ({
           key: p.id,
           label: p.name,
-          pick: { ...pick, preset: p.id },
+          // A look brings its own number of words a screen: it is part of the style. Words can change it after.
+          pick: { ...pick, preset: p.id, wordsPerScreen: p.style.wordsPerGroup },
           now: spec.on && spec.preset === p.id
         }))
       : tab === 'where'

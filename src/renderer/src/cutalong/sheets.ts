@@ -147,15 +147,16 @@ export function captionCueAt(
 }
 
 /**
- * The cue that shows a look best: a full group (as many words as a screen holds, or three), with the
- * longest word being said, in the first two thirds of the edit; the earliest on a tie.
+ * The cue that shows a look best: a full group (as many words as a screen holds, or three), a word after
+ * the first being said, the longest one, in the first two thirds of the edit; the earliest on a tie.
  */
 export function strongestCue(cues: SubtitleCue[]): SubtitleCue {
   const until = cues[cues.length - 1].end * (2 / 3)
   const most = Math.max(...cues.map((c) => c.words.length))
   const full = Math.min(most, 3)
   const letters = (c: SubtitleCue): number => c.words[c.active]?.text.replace(/[^\p{L}\p{N}]/gu, '').length ?? 0
-  const score = (c: SubtitleCue): number => (c.words.length >= full ? 100 : 0) + letters(c)
+  // A spoken word after the first, so a look with a line of words already said above it shows both lines.
+  const score = (c: SubtitleCue): number => (c.words.length >= full ? 100 : 0) + (c.active > 0 ? 50 : 0) + letters(c)
   let best = cues[0]
   for (const c of cues) {
     if (c.start > until) break

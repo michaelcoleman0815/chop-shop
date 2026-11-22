@@ -1,7 +1,7 @@
 import { presetById } from './caption-presets'
 import { captionedWords, type Resolved } from './edit/resolve'
 import type { CaptionSpec } from './edit/schema'
-import { fontInfo, fontString, type MotionScene } from './motion'
+import { fontInfo, fontString, fontWeight, type MotionScene } from './motion'
 import type { CaptionStyle, TranscriptWord } from './types'
 import { groupWords } from './words'
 
@@ -57,11 +57,14 @@ export function contrastOf(a: string, b: string): number {
 }
 
 /**
- * The brand's colours for a look's words, or none. A look on a plate keeps its own when the brand's text
- * would not stand out on the plate (white on a yellow highlighter): the words have to be read.
+ * The brand's colours for a look's words, or none. Only a look that picks the word being said out in a colour
+ * takes the brand's: one that does it by weight or size (white throughout, as talking-head captions are) keeps
+ * its own, since that is the style. A look on a plate keeps its own when the brand's text would not stand out on
+ * the plate (white on a yellow highlighter): the words have to be read.
  */
 function brandColorsFor(base: CaptionStyle, colors: { text: string; accent: string } | null): Partial<CaptionStyle> {
   if (!colors) return {}
+  if (base.activeColor.toLowerCase() === base.textColor.toLowerCase()) return {}
   if (base.boxColor && contrastOf(colors.text, base.boxColor) < 3) return {}
   return { textColor: colors.text, activeColor: colors.accent }
 }
@@ -83,11 +86,13 @@ export function captionStyleFor(
     fontSizePx: Math.max(8, Math.round(base.fontSizePx * scale)),
     outlinePx: Math.max(1, Math.round(base.outlinePx * scale)),
     shadowPx: Math.round(base.shadowPx * scale),
+    shadowBlur: base.shadowBlur ? Math.max(1, Math.round(base.shadowBlur * scale)) : base.shadowBlur,
     second: base.second
       ? {
           ...base.second,
           fontSizePx: Math.max(8, Math.round(base.second.fontSizePx * scale)),
-          gapPx: Math.round(base.second.gapPx * scale)
+          gapPx: Math.round(base.second.gapPx * scale),
+          shadowBlur: base.second.shadowBlur ? Math.max(1, Math.round(base.second.shadowBlur * scale)) : base.second.shadowBlur
         }
       : base.second
   }
@@ -191,6 +196,8 @@ export interface SubtitleBlock {
   outlineColor: string
   outlinePx: number
   shadowPx: number
+  /** A soft shadow's blur, in frame pixels; 0 for a hard one. */
+  shadowBlur: number
   /** The plate's colour, for a boxed style. */
   box: string | null
   /** libass's bold for a face of one weight: each glyph this much wider, in pixels. */
@@ -206,6 +213,16 @@ export interface SubtitleLayout {
 /** The shadow's colour without a box: ASS's &H64000000, black at 155/255. */
 export const SHADOW_ALPHA = 155 / 255
 
+/**
+ * A soft shadow's blur as the canvas draws it, against libass's \\blur of the same number: a CSS blur's number is
+ * its standard deviation, and libass's \\blur N spreads as one of about 0.9 N. Measured against libass in
+ * main/subtitles-render.test.ts, where 0.85 to 1.0 all match it.
+ */
+export const SOFT_SIGMA = 0.9
+
+/** How far a soft shadow visibly spreads beyond the shape, per pixel of blur. */
+const SOFT_SPREAD = 1
+
 interface Look {
   family: string
   /** The cell, in pixels: what the style calls its font size. */
@@ -213,6 +230,7 @@ interface Look {
   outlineColor: string
   outlinePx: number
   shadowPx: number
+  shadowBlur: number
   bold: boolean
   box: string | null
 }
@@ -221,6 +239,8 @@ interface Piece {
   text: string
   color: string
   scale: number
+  /** Another face for this word (the word being said, in a heavier weight); the look's own when absent. */
+  family?: string
 }
 
 /**
@@ -249,7 +269,10 @@ export function layoutSubtitle(
         measure
       )
     )
-    const rest = cue.words.filter((_, i) => i !== cue.active).map((w) => w.text)
+    // Under the big word, the rest of its group; above it, only the words already said, so it reads top to bottom.
+    const rest = cue.words
+      .filter((_, i) => (style.second?.above ? i < cue.active : i !== cue.active))
+      .map((w) => w.text)
     if (rest.length > 0) {
       const tier = style.second
       const text = upper(rest.join(' '), tier.uppercase)
@@ -262,10 +285,18 @@ export function layoutSubtitle(
             outlineColor: tier.outlineColor,
             outlinePx: tier.outlinePx,
             shadowPx: tier.shadowPx,
+            shadowBlur: tier.shadowBlur ?? 0,
             bold: tier.bold === true,
             box: null
           },
-          { ...area, foot: frame.height - Math.max(0, marginV - tier.gapPx) },
+          // Under the big word its baseline is gapPx below the big line's; above it, its foot is gapPx over the
+          // big line's cell, which is the style's font size tall.
+          {
+            ...area,
+            foot: tier.above
+              ? frame.height - (marginV + style.fontSizePx + tier.gapPx)
+              : frame.height - Math.max(0, marginV - tier.gapPx)
+          },
           measure
         )
       )
@@ -276,7 +307,8 @@ export function layoutSubtitle(
         cue.words.map((w, i) => ({
           text: upper(w.text, style.uppercase),
           color: i === cue.active ? style.activeColor : style.textColor,
-          scale: i === cue.active ? style.activeScale : 1
+          scale: i === cue.active ? style.activeScale : 1,
+          family: i === cue.active ? style.activeFontFamily : undefined
         })),
         lookOf(style),
         area,
@@ -294,6 +326,7 @@ function lookOf(style: CaptionStyle): Look {
     outlineColor: style.boxColor ?? style.outlineColor,
     outlinePx: style.outlinePx,
     shadowPx: style.shadowPx,
+    shadowBlur: style.boxColor ? 0 : (style.shadowBlur ?? 0),
     bold: style.bold === true,
     box: style.boxColor ?? null
   }
@@ -308,8 +341,18 @@ function block(
 ): SubtitleBlock {
   const face = fontInfo(look.family)
   const em = look.size / (face.winAscent + face.winDescent)
-  const measured = (text: string, scale: number): { width: number; ink: SubtitleRun['ink']; font: string } => {
-    const font = fontString({ family: face.family, weight: 400 }, em * scale)
+  // A word in another face (\fn in the export) keeps the size: libass sets its cell, not its em, to the font size.
+  const faceOf = (family?: string): { face: typeof face; em: number } => {
+    const f = family ? fontInfo(family) : face
+    return { face: f, em: look.size / (f.winAscent + f.winDescent) }
+  }
+  const measured = (
+    text: string,
+    scale: number,
+    family?: string
+  ): { width: number; ink: SubtitleRun['ink']; font: string } => {
+    const own = faceOf(family)
+    const font = fontString({ family: own.face.family, weight: fontWeight(own.face.family) }, own.em * scale)
     measure.font = font
     if ('fontKerning' in measure) measure.fontKerning = 'none'
     const m = measure.measureText(text)
@@ -325,7 +368,7 @@ function block(
     }
   }
   const space = measured(' ', 1)
-  const words = pieces.map((p) => ({ ...p, ...measured(p.text, p.scale) }))
+  const words = pieces.map((p) => ({ ...p, ...measured(p.text, p.scale, p.family) }))
   // Where each word starts with the event on one line, which is where libass measures its breaks.
   const at: number[] = []
   let pen = 0
@@ -384,8 +427,8 @@ function block(
         width: w.width,
         font: w.font,
         color: w.color,
-        ascent: em * face.winAscent * w.scale,
-        descent: em * face.winDescent * w.scale,
+        ascent: faceOf(w.family).em * faceOf(w.family).face.winAscent * w.scale,
+        descent: faceOf(w.family).em * faceOf(w.family).face.winDescent * w.scale,
         ink: w.ink
       })
       x += w.width
@@ -409,6 +452,7 @@ function block(
     outlineColor: look.outlineColor,
     outlinePx: look.outlinePx,
     shadowPx: look.shadowPx,
+    shadowBlur: look.shadowBlur,
     box: look.box,
     // Faces here have one weight (Sora's file opens at its regular), so bold is libass's own.
     embolden: look.bold ? em / 64 : 0
@@ -441,10 +485,11 @@ function boundsOf(blocks: SubtitleBlock[]): SubtitleLayout['bounds'] {
       for (const r of line.runs) {
         if (!b.box && !r.text.trim()) continue
         const e = b.box ? plateOf(r, line.baseline, b.outlinePx) : inkOf(r, line.baseline, b)
-        x0 = Math.min(x0, e.x0)
-        y0 = Math.min(y0, e.y0)
-        x1 = Math.max(x1, e.x1 + b.shadowPx)
-        y1 = Math.max(y1, e.y1 + b.shadowPx)
+        const spread = SOFT_SPREAD * b.shadowBlur
+        x0 = Math.min(x0, e.x0, e.x0 + b.shadowPx - spread)
+        y0 = Math.min(y0, e.y0, e.y0 + b.shadowPx - spread)
+        x1 = Math.max(x1, e.x1 + b.shadowPx + spread)
+        y1 = Math.max(y1, e.y1 + b.shadowPx + spread)
       }
     }
   }
@@ -544,6 +589,10 @@ function drawShadow(ctx: Ctx, b: SubtitleBlock, scale: number, makeCanvas?: Make
     silhouette(ctx, b, b.box)
     return
   }
+  if (b.shadowBlur > 0) {
+    drawSoftShadow(ctx, b, scale, makeCanvas)
+    return
+  }
   const area = boundsOf([{ ...b, shadowPx: 0 }])
   const x = Math.floor(area.x * scale) - 1
   const y = Math.floor(area.y * scale) - 1
@@ -566,4 +615,35 @@ function drawShadow(ctx: Ctx, b: SubtitleBlock, scale: number, makeCanvas?: Make
   ctx.globalAlpha = SHADOW_ALPHA
   ctx.drawImage(made as unknown as CanvasImageSource, x + b.shadowPx * scale, y + b.shadowPx * scale)
   ctx.globalAlpha = 1
+}
+
+/**
+ * A soft shadow, as the export's shadow layer draws it (main/captions.ts): the words' fill alone, blurred, at the
+ * shadow's alpha, moved down and right. Drawn on its own canvas with room for the blur, then laid down blurred.
+ */
+function drawSoftShadow(ctx: Ctx, b: SubtitleBlock, scale: number, makeCanvas?: MakeCanvas): void {
+  const flat: SubtitleBlock = { ...b, outlinePx: 0, shadowPx: 0, shadowBlur: 0 }
+  const pad = Math.ceil(3 * b.shadowBlur * scale) + 2
+  const area = boundsOf([flat])
+  const x = Math.floor(area.x * scale) - pad
+  const y = Math.floor(area.y * scale) - pad
+  const w = Math.ceil(area.w * scale) + 2 * pad
+  const h = Math.ceil(area.h * scale) + 2 * pad
+  const made = w > 0 && h > 0 ? makeCanvas?.(w, h) : undefined
+  const off = made?.getContext('2d')
+  ctx.save()
+  ctx.globalAlpha = SHADOW_ALPHA
+  ctx.filter = `blur(${(SOFT_SIGMA * b.shadowBlur * scale).toFixed(2)}px)`
+  if (!made || !off) {
+    ctx.setTransform(scale, 0, 0, scale, b.shadowPx * scale, b.shadowPx * scale)
+    silhouette(ctx, flat, '#000000')
+    ctx.restore()
+    return
+  }
+  prepare(off)
+  off.setTransform(scale, 0, 0, scale, -x, -y)
+  silhouette(off, flat, '#000000')
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.drawImage(made as unknown as CanvasImageSource, x + b.shadowPx * scale, y + b.shadowPx * scale)
+  ctx.restore()
 }

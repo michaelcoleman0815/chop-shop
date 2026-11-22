@@ -9,6 +9,13 @@ import type { CutalongHost } from '../../../src/renderer/src/cutalong/api'
 import anton from '../../../resources/fonts/Anton-Regular.ttf?url'
 import archivo from '../../../resources/fonts/ArchivoBlack-Regular.ttf?url'
 import sora from '../../../resources/fonts/Sora.ttf?url'
+import montserratExtraBold from '../../../resources/fonts/Montserrat-ExtraBold.ttf?url'
+import montserratBlack from '../../../resources/fonts/Montserrat-Black.ttf?url'
+import interBold from '../../../resources/fonts/Inter-Bold.ttf?url'
+import interExtraBold from '../../../resources/fonts/Inter-ExtraBold.ttf?url'
+import bebasNeueRegular from '../../../resources/fonts/BebasNeue-Regular.ttf?url'
+import tikTokSansExtraBold from '../../../resources/fonts/TikTokSans-ExtraBold.ttf?url'
+import tikTokSansBlack from '../../../resources/fonts/TikTokSans-Black.ttf?url'
 import { createPhoneApi } from './api'
 import { Engine } from './engine'
 import { BRIDGE } from './engine-web'
@@ -35,7 +42,14 @@ declare const __APP_COMMIT__: string
 const FONTS: Record<string, string> = {
   'Anton-Regular.ttf': anton,
   'ArchivoBlack-Regular.ttf': archivo,
-  'Sora.ttf': sora
+  'Sora.ttf': sora,
+  'Montserrat-ExtraBold.ttf': montserratExtraBold,
+  'Montserrat-Black.ttf': montserratBlack,
+  'Inter-Bold.ttf': interBold,
+  'Inter-ExtraBold.ttf': interExtraBold,
+  'BebasNeue-Regular.ttf': bebasNeueRegular,
+  'TikTokSans-ExtraBold.ttf': tikTokSansExtraBold,
+  'TikTokSans-Black.ttf': tikTokSansBlack
 }
 
 /** Keys in the iOS Keychain or the Android Keystore (in a browser, the plugin's own stand-in). */
