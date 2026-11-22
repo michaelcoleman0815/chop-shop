@@ -13,8 +13,19 @@ import {
   subtitleCues,
   subtitleWords,
   type SubtitleCue,
-  type TextMeasurer, fitFontPx, plainWords, buildGroups, BUILD_HOLD_SEC, shownWords, landedGroups, styleCues, landsLine, CAPTION_HOLD_SEC } from './subtitles'
-import type { TranscriptWord } from './types'
+  type TextMeasurer,
+  fitFontPx,
+  plainWords,
+  buildGroups,
+  BUILD_HOLD_SEC,
+  shownWords,
+  landedGroups,
+  styleCues,
+  landsLine,
+  CAPTION_HOLD_SEC
+} from './subtitles'
+import type { CaptionStyle, TranscriptWord } from './types'
+import type { CaptionSpec } from './edit'
 
 /**
  * Burned-in captions as the export draws them and the preview copies: the
@@ -124,21 +135,24 @@ describe('subtitle cues', () => {
 describe('subtitle layout', () => {
   const wide = { width: 1920, height: 1080 }
   const tall = { width: 1080, height: 1920 }
+  /** Chop Shop's own style at a frame's width, for testing the layout itself. */
+  const fixed = (position: CaptionSpec['position'], width: number): CaptionStyle =>
+    captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'chop', position }, width)
 
   it("sizes a caption by the face's cell and stands its line on MarginV, centred between the margins", () => {
-    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'clean', position: 'chest' }, wide.width)
+    const style = { ...fixed('chest', wide.width), uppercase: false, shadowPx: 6, activeScale: 1 }
     const m = fakeMeasurer()
     const layout = layoutSubtitle(cueOf(['Bright', 'colours']), style, wide, m)
-    const sora = fontInfo('Sora')
-    // Clean is Sora 70 at 1080 wide, so 124 at 1920: a cell 124 tall, an em of 124 / 1.54.
-    expect(style.fontSizePx).toBe(124)
-    const em = 124 / (sora.winAscent + sora.winDescent)
-    expect(m.fonts[0]).toBe(`400 ${em.toFixed(2)}px "Sora"`)
+    const face = fontInfo('Archivo Black')
+    // Chop Shop is Archivo Black 84 at 1080 wide, so 149 at 1920: a cell 149 tall, an em of 149 over the face's cell.
+    expect(style.fontSizePx).toBe(149)
+    const em = 149 / (face.winAscent + face.winDescent)
+    expect(m.fonts[0]).toBe(`400 ${em.toFixed(2)}px "Archivo Black"`)
     // libass does not kern, and neither does the measuring.
     expect(m.fontKerning).toBe('none')
     const [line] = layout.blocks[0].lines
     // MarginV is 1080 * (1 - 0.66), rounded: the cell's foot is 367 up from the bottom.
-    expect(line.baseline + em * sora.winDescent).toBeCloseTo(1080 - 367)
+    expect(line.baseline + em * face.winDescent).toBeCloseTo(1080 - 367)
     const first = line.runs[0]
     const last = line.runs[line.runs.length - 1]
     expect((first.x + last.x + last.width) / 2).toBeCloseTo(960)
@@ -149,21 +163,21 @@ describe('subtitle layout', () => {
   })
 
   it('scales the word being said from its pen, which makes its line a taller cell', () => {
-    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'punch', position: 'bottom' }, tall.width)
+    const style = fixed('bottom', tall.width)
     const flat = layoutSubtitle(cueOf(['Big', 'jump']), { ...style, activeScale: 1 }, tall, fakeMeasurer())
     const layout = layoutSubtitle(cueOf(['Big', 'jump'], 1), style, tall, fakeMeasurer())
     const [line] = layout.blocks[0].lines
     const big = line.runs[2]
-    expect(big.font).toContain(`${((style.fontSizePx / 1.347) * 1.16).toFixed(2)}px`)
+    expect(big.font).toContain(`${((style.fontSizePx / 1.347) * style.activeScale).toFixed(2)}px`)
     expect(big.color).toBe(style.activeColor)
     expect(line.runs[0].color).toBe(style.textColor)
     // The foot stays where it was; the baseline rises by the scaled descent.
     const d = (style.fontSizePx / 1.347) * 0.312
-    expect(line.baseline).toBeCloseTo(flat.blocks[0].lines[0].baseline - d * 0.16)
+    expect(line.baseline).toBeCloseTo(flat.blocks[0].lines[0].baseline - d * (style.activeScale - 1))
   })
 
   it('breaks a line too wide for the margins at a space, then evens the lines out with the top one wider', () => {
-    const style = { ...captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'stack', position: 'middle' }, tall.width) }
+    const style = { ...fixed('middle', tall.width), fontSizePx: 74 }
     // The margins leave 1080 - 2 * 86 = 908 pixels; each character is half an em of 54.9 here.
     const layout = layoutSubtitle(
       cueOf(['AAAAAAAA', 'BBBBBBBB', 'CC', 'DDDD', 'EEEEEEEEE']),
@@ -190,10 +204,14 @@ describe('subtitle layout', () => {
   })
 
   it('draws the second tier under the word being said, gapPx below its foot', () => {
-    const style = captionStyleFor(
+    const feature = captionStyleFor(
       { ...DEFAULT_CAPTIONS, preset: 'feature', position: 'middle', wordsPerScreen: 5 },
       wide.width
     )
+    const style: CaptionStyle = {
+      ...feature,
+      second: { ...feature.second!, fontFamily: 'Sora', bold: true, above: false, gapPx: 96 }
+    }
     const layout = layoutSubtitle(cueOf(['one', 'two', 'three'], 1), style, wide, fakeMeasurer())
     expect(layout.blocks).toHaveLength(2)
     const [big, rest] = layout.blocks
@@ -210,14 +228,63 @@ describe('subtitle layout', () => {
     expect(big.embolden).toBe(0)
   })
 
+  it('draws the second tier above the big word, its foot gapPx over the big line’s cell', () => {
+    const style = captionStyleFor(
+      { ...DEFAULT_CAPTIONS, preset: 'feature', position: 'chest', wordsPerScreen: 3 },
+      tall.width
+    )
+    const tier = style.second as NonNullable<typeof style.second>
+    expect(tier.above).toBe(true)
+    const layout = layoutSubtitle(cueOf(['they', 'were', 'Jewish'], 2), style, tall, fakeMeasurer())
+    const [big, rest] = layout.blocks
+    expect(big.lines[0].runs.map((r) => r.text)).toEqual(['Jewish'])
+    // Above, only the words already said; with the first word being said, it stands alone.
+    expect(rest.lines[0].runs.filter((r) => r.text.trim()).map((r) => r.text)).toEqual(['they', 'were'])
+    expect(layoutSubtitle(cueOf(['they', 'were'], 0), style, tall, fakeMeasurer()).blocks).toHaveLength(1)
+    const marginV = Math.round(1920 * (1 - 0.66))
+    const inter = fontInfo(tier.fontFamily)
+    const em2 = tier.fontSizePx / (inter.winAscent + inter.winDescent)
+    // The small line's foot is the big cell's top less the gap; the big line stands on MarginV as ever.
+    expect(rest.lines[0].baseline + em2 * inter.winDescent).toBeCloseTo(1920 - (marginV + style.fontSizePx + tier.gapPx))
+    const face = fontInfo(style.fontFamily)
+    const em = style.fontSizePx / (face.winAscent + face.winDescent)
+    expect(big.lines[0].baseline + em * face.winDescent).toBeCloseTo(1920 - marginV)
+    expect(rest.lines[0].baseline).toBeLessThan(big.lines[0].baseline - style.fontSizePx * 0.5)
+  })
+
+  it('sets the word being said in its own face, at the same cell, with the others in the look’s', () => {
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'clean', position: 'chest', wordsPerScreen: 2 }, tall.width)
+    expect(style.activeFontFamily).toBeTruthy()
+    const layout = layoutSubtitle(cueOf(['the', 'task'], 1), style, tall, fakeMeasurer())
+    const runs = layout.blocks[0].lines[0].runs
+    expect(runs[0].font).toContain(`"${style.fontFamily}"`)
+    expect(runs[2].font).toContain(`"${style.activeFontFamily}"`)
+    // Montserrat's weights share their metrics, so the line keeps its cell.
+    expect(runs[2].ascent + runs[2].descent).toBeCloseTo(style.fontSizePx)
+  })
+
+  it('keeps a plate look in its own colours when the brand’s text would not stand out on the plate', () => {
+    const marker = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'marker' }, 1080, { text: '#FFFFFF', accent: '#FFD400' })
+    // White on a yellow highlighter cannot be read: the look keeps its dark type.
+    expect(marker.textColor).toBe('#111111')
+    expect(marker.activeColor).toBe('#111111')
+    // Without a plate the brand's colours always reach the words.
+    const bold = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'punch' }, 1080, { text: '#FFFFFF', accent: '#FFD400' })
+    expect(bold.activeColor).toBe('#FFD400')
+  })
+
+  it('keeps a look that picks its word out by weight in its own colours, whatever the brand’s', () => {
+    const talking = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'clean' }, 1080, { text: '#FFFFFF', accent: '#FFD400' })
+    expect(talking.activeColor).toBe('#FFFFFF')
+  })
+
   it('puts a boxed style on a plate of its cells, the outline width out on every side', () => {
-    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'marker', position: 'top' }, wide.width, {
-      text: '#101010',
-      accent: '#202020'
-    })
+    const marker = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'marker', position: 'top' }, wide.width)
+    // A plate look with a colour accent, so the brand's colours reach its words.
+    const style: CaptionStyle = { ...marker, textColor: '#101010', activeColor: '#202020' }
     const layout = layoutSubtitle(cueOf(['one', 'two']), style, wide, fakeMeasurer())
     const [line] = layout.blocks[0].lines
-    expect(layout.blocks[0].box).toBe('#c8f04a')
+    expect(layout.blocks[0].box).toBe('#FFE14D')
     // The brand's colours reach the words.
     expect(line.runs[0].color).toBe('#202020')
     expect(line.runs[2].color).toBe('#101010')
@@ -250,7 +317,7 @@ describe('subtitle drawing', () => {
   }
 
   it('draws inside the laid-out bounds, at any scale, with the shadow laid down once', () => {
-    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'clean', position: 'chest' }, 1920)
+    const style = { ...captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'chop', position: 'chest' }, 1920), shadowPx: 6 }
     for (const scale of [1, 0.5]) {
       const w = 1920 * scale
       const h = 1080 * scale
@@ -296,12 +363,13 @@ describe('the sermon serif look', () => {
       { text: '#FFFFFF', accent: '#FFD84D' }
     )
     expect(style.activeColor).toBe('#FFFFFF')
-    const marker = captionStyleFor(
-      { on: true, wordsPerScreen: 3, position: 'chest', preset: 'stack', uppercase: true },
+    // A look that picks the word out in a colour takes the brand's.
+    const loud = captionStyleFor(
+      { on: true, wordsPerScreen: 3, position: 'chest', preset: 'punch', uppercase: true },
       1080,
       { text: '#FFFFFF', accent: '#FFD84D' }
     )
-    expect(marker.activeColor).toBe('#FFD84D')
+    expect(loud.activeColor).toBe('#FFD84D')
   })
 })
 

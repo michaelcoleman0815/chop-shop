@@ -40,3 +40,16 @@ if [ ! -s "$DEST/Inter-SemiBold.ttf" ] || [ ! -s "$DEST/Inter-ExtraBold.ttf" ]; 
 else
   echo "have Inter"
 fi
+
+# The caption faces short-form video is set in (watched 2026-11-21), one static weight a file, from Google Fonts'
+# own static instances (its CSS API hands a plain client .ttf files): Montserrat and TikTok Sans, and Inter's Bold
+# under its plain family name (the type's own release gives the SemiBold and ExtraBold above). Each is SIL Open
+# Font License 1.1, kept beside it.
+css() { curl -fsSL "https://fonts.googleapis.com/css?family=$1" | grep -oE 'https://fonts.gstatic.com/[^)]+' | head -1; }
+fetch "Montserrat-ExtraBold.ttf"  "$(css Montserrat:800)"
+fetch "Montserrat-Black.ttf"      "$(css Montserrat:900)"
+fetch "Inter-Bold.ttf"            "$(css Inter:700)"
+fetch "TikTokSans-ExtraBold.ttf"  "$(css TikTok+Sans:800)"
+fetch "TikTokSans-Black.ttf"      "$(css TikTok+Sans:900)"
+fetch "Montserrat-OFL.txt"        "$BASE/ofl/montserrat/OFL.txt"
+fetch "TikTokSans-OFL.txt"        "$BASE/ofl/tiktoksans/OFL.txt"

@@ -1,0 +1,247 @@
+/*
+ * Two first-run steps (screens/Onboarding.tsx), quiet as the rest: what you
+ * make, as tiles of paper with a hairline, the picked one ringed in ink; and
+ * where your footage goes, as rows on one sheet, each with a line icon on the
+ * well. Paper, ink and hairlines only: no pastel fills, no coral. Values are
+ * tokens; the steps' layout is the .cl-onboard rules in cutalong.css.
+ */
+
+/* ---------- What do you make? ---------- */
+
+.cl-onboard-body.cl-make {
+  max-width: 880px;
+}
+
+.cl-make-tiles {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.cl-make-tile {
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow var(--duration-fast) var(--ease-standard),
+    scale var(--duration-fast) var(--ease-standard);
+}
+
+.cl-make-tile svg {
+  width: 20px;
+  height: 20px;
+  margin-bottom: var(--space-2);
+  color: var(--ink-soft);
+}
+
+.cl-make-name {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+.cl-make-what {
+  font-size: 13.5px;
+  line-height: 19px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+/* Picked: ringed in ink, as a version's tab is; nothing fills. */
+.cl-make-tile[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.cl-make-tile[aria-pressed='true'] svg {
+  color: var(--ink);
+}
+
+.cl-make-tile:active {
+  scale: calc(1 - 0.02 * var(--cl-travel));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-make-tile:hover:not([aria-pressed='true']) {
+    box-shadow: inset 0 0 0 1px var(--line-mid);
+  }
+}
+
+@media (max-width: 640px) {
+  .cl-make-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ---------- Your footage stays yours ---------- */
+
+/* One sheet of paper; the rows' hairlines run edge to edge inside its padding. */
+.cl-onboard-block.cl-trust {
+  gap: 0;
+  padding: var(--space-2) var(--space-6);
+}
+
+.cl-trust .cl-onboard-list li {
+  gap: var(--space-4);
+  padding: var(--space-5) 0;
+  border-top-color: var(--line);
+}
+
+.cl-trust .cl-onboard-list b {
+  margin-bottom: 2px;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cl-trust .cl-onboard-list div > span {
+  display: block;
+  font-size: 14.5px;
+  line-height: 22px;
+  text-wrap: pretty;
+}
+
+/* A plain line icon on the well, as Settings marks its sections. */
+.cl-trust-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--well);
+  color: var(--ink-soft);
+}
+
+.cl-trust-mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---------- On a phone ---------- */
+
+.cl-app.phone .cl-make-tiles {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.cl-app.phone .cl-make-tile {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.cl-app.phone .cl-make-what {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cl-app.phone .cl-onboard-block.cl-trust {
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-card);
+}
+
+.cl-app.phone .cl-trust .cl-onboard-list li {
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+}
+
+.cl-app.phone .cl-trust-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+.cl-app.phone .cl-trust-mark svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* On a phone every first-run step starts at the top, under the dots, with a phone's heading; nothing floats mid-screen. */
+.cl-app.phone .cl-onboard {
+  gap: var(--space-5);
+  padding: calc(var(--safe-top) + var(--space-4)) var(--space-4) calc(var(--safe-bottom) + var(--space-4));
+}
+
+.cl-app.phone .cl-onboard-body {
+  flex: 0 0 auto;
+  align-items: start;
+  align-content: start;
+  gap: var(--space-5);
+}
+
+.cl-app.phone .cl-onboard-say {
+  gap: var(--space-4);
+}
+
+.cl-app.phone .cl-welcome {
+  font-size: 44px;
+  line-height: 44px;
+  letter-spacing: -0.045em;
+}
+
+.cl-app.phone .cl-onboard-foot {
+  margin-top: auto;
+}
+
+/* "What do you make?" on a phone: compact tiles, each line kept to two, so all eight fit above the button. */
+.cl-app.phone .cl-make-tiles {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.cl-app.phone .cl-make-tile {
+  padding: var(--space-3);
+  gap: 2px;
+}
+
+.cl-app.phone .cl-make-tile svg {
+  margin-bottom: var(--space-1);
+}
+
+.cl-app.phone .cl-make-name {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.cl-app.phone .cl-make-what {
+  font-size: 13px;
+  line-height: 18px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Every step's buttons stay at the foot of the phone, within the thumb's reach, over the content as it scrolls. */
+.cl-app.phone .cl-onboard-foot {
+  position: sticky;
+  bottom: calc(-1 * (var(--safe-bottom) + var(--space-4)));
+  z-index: 2;
+  margin: 0 calc(-1 * var(--space-4)) calc(-1 * (var(--safe-bottom) + var(--space-4)));
+  padding: var(--space-5) var(--space-4) calc(var(--safe-bottom) + var(--space-4));
+  background: linear-gradient(180deg, transparent, var(--ground) 32%);
+}
+
+.cl-app.phone .cl-onboard-foot .cl-onboard-actions {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.cl-app.phone .cl-onboard-foot .cl-btn.primary {
+  flex: 1;
+  max-width: 260px;
+  height: 52px;
+  font-size: 16px;
+}

@@ -58,7 +58,7 @@ import {
   type Source,
   type Treatment
 } from '../../../../shared/edit'
-import { CREW, memberForNote } from '../crew'
+import { memberForNote } from '../crew'
 import { changedBeats, revisionOf } from '../revisions'
 import { toggleLabel, toggleOps } from '../word-track'
 import { WordTrack } from '../components/WordTrack'
@@ -86,6 +86,9 @@ import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../.
 import { captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords } from '../../../../shared/subtitles'
 import { isImagePath } from '../../../../shared/assets'
 import { api, MEDIA_CORS, mediaUrlFor } from '../api'
+import { CaptionSheet } from '../components/CaptionSheet'
+import { PickTools } from '../components/PickTools'
+import { SoundSheet } from '../components/SoundSheet'
 import { Backdrop } from '../components/Backdrop'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
 import { fitHeight } from '../components/Composer'
@@ -94,8 +97,6 @@ import { boxStyle, GridPanels, gridViewFor } from '../components/GridPanels'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { RegionPicker } from '../components/RegionPicker'
 import { Subtitles } from '../components/Subtitles'
-import { CrewFace } from '../components/Crew'
-import { Sticker } from '../components/Shapes'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
@@ -135,6 +136,23 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   const theme = useMemo(() => themeFrom(app.chatBrand), [app.chatBrand])
   const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
   const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
+  // The sounds sheet, open on a word (from the word pick's tools), and the captions sheet.
+  const [soundFor, setSoundFor] = useState<string | null>(null)
+  const [captioning, setCaptioning] = useState(false)
+  // The still the captions sheet draws on: the first recording's poster.
+  const [still, setStill] = useState<string | null>(null)
+  const firstSource = doc.sources[0]?.path ?? null
+  useEffect(() => {
+    if (!captioning || !firstSource) return
+    let live = true
+    api
+      .mediaPreviews(firstSource)
+      .then((p) => live && setStill(p.posterUrl))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [captioning, firstSource])
   const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
   // Captions take the colours of the brand this version is made in, where the export gives them those:
   // when that brand applies itself.
@@ -249,6 +267,14 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         >
           Script
         </Button>
+        {/* On a phone, an icon, so the header keeps to its two rows (home.css). */}
+        <Button variant="text" className="cl-captions-open" aria-label="Captions" onClick={() => setCaptioning(true)}>
+          <span className="cl-captions-word">Captions</span>
+          <svg className="cl-captions-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3" y="5.5" width="18" height="13" rx="3" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M10.4 10.2a2.2 2.2 0 1 0 0 3.6M16.4 10.2a2.2 2.2 0 1 0 0 3.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </Button>
         {/* One filled button a view: while notes wait to be applied, applying them is it. */}
         <Button
           variant={openNotes(doc).length > 0 ? 'secondary' : 'primary'}
@@ -259,6 +285,30 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
           Export
         </Button>
       </Header>
+      {soundFor && (
+        <SoundSheet
+          doc={doc}
+          wordId={soundFor}
+          onAdd={(op) => {
+            app.applyOpsDirect([op], 'Sound added.')
+            setSoundFor(null)
+          }}
+          onClose={() => setSoundFor(null)}
+        />
+      )}
+      {captioning && (
+        <CaptionSheet
+          doc={doc}
+          atSec={player.time}
+          still={still}
+          colors={captionColors}
+          onUse={(op) => {
+            app.applyOpsDirect([op], 'Captions changed.')
+            setCaptioning(false)
+          }}
+          onClose={() => setCaptioning(false)}
+        />
+      )}
       <main className="cl-editor" style={{ '--rev': revisionOf(version.n).colour } as CSSProperties}>
         <div className="cl-editor-body">
           <Preview
@@ -284,6 +334,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               resolved={resolved}
               onSeek={player.seek}
               onApply={app.applyOpsDirect}
+              onSound={setSoundFor}
+              onNote={(text, range) => app.addNote(text, range.from, range)}
             />
           ) : side === 'takes' ? (
             <TakesPanel app={app} doc={doc} resolved={resolved} onSeek={player.seek} />
@@ -308,7 +360,15 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             />
           )}
         </div>
-        <WordTrack doc={doc} resolved={resolved} time={player.time} onSeek={player.seek} onApply={app.applyOpsDirect} />
+        <WordTrack
+          doc={doc}
+          resolved={resolved}
+          time={player.time}
+          onSeek={player.seek}
+          onApply={app.applyOpsDirect}
+          onSound={setSoundFor}
+          onNote={(text, range) => app.addNote(text, range.from, range)}
+        />
         <BeatStrip
           beats={beats}
           duration={resolved.durationSec}
@@ -1131,7 +1191,6 @@ function NotesPanel({
         {notes.length > 0 && (
           <ol className="cl-note-list">
             {notes.map((n, i) => {
-              const who = memberForNote(n.text)
               return (
                 <li key={n.id} className="cl-note">
                   <span className="cl-note-n">{i + 1}</span>
@@ -1139,11 +1198,6 @@ function NotesPanel({
                     {n.text}
                     <span className="cl-note-meta">
                       {(n.beat || n.range) && <span className="cl-project-meta">{where(n)}</span>}
-                      {/* The member the note is handed to, by what it asks for. */}
-                      <span className="cl-note-crew" title={`${CREW[who].name} will take this note`}>
-                        <CrewFace id={who} size={16} />
-                        {CREW[who].name}
-                      </span>
                     </span>
                   </span>
                   <button
@@ -1334,9 +1388,7 @@ function Revisions({ doc, onShow }: { doc: EditDoc; onShow: (n: number) => void 
               v{v.n}
             </button>
             {fresh && (
-              <Sticker shape="burst" colour="yellow" size={30} tilt={12} className="cl-rev-new">
-                new
-              </Sticker>
+              <span className="cl-rev-new">new</span>
             )}
           </span>
         )
@@ -1350,13 +1402,17 @@ function ScriptPanel({
   time,
   resolved,
   onSeek,
-  onApply
+  onApply,
+  onSound,
+  onNote
 }: {
   doc: EditDoc
   time: number
   resolved: Resolved
   onSeek: (sec: number) => void
   onApply: (ops: Op[], fallback: string) => void
+  onSound: (wordId: string) => void
+  onNote: (text: string, range: { from: string; to: string }) => void
 }): JSX.Element {
   const cut = currentCut(doc)
   const struck = useMemo(() => new Set(cut.removed), [cut.removed])
@@ -1387,9 +1443,6 @@ function ScriptPanel({
       else next.add(id)
       return next
     })
-
-  const apply = (): void => onApply(toggleOps(doc, marked), 'Words changed.')
-  const label = toggleLabel(doc, marked)
 
   return (
     <aside className="cl-notes" aria-label="Script">
@@ -1439,9 +1492,15 @@ function ScriptPanel({
         {cut.beats.every((b) => b.from === null) && <p className="muted">No words in this edit yet.</p>}
       </div>
       {marked.size > 0 && (
-        <Button variant="primary" small onClick={apply}>
-          {label}
-        </Button>
+        <PickTools
+          doc={doc}
+          resolved={resolved}
+          marked={marked}
+          onApply={onApply}
+          onSound={onSound}
+          onNote={onNote}
+          onClear={() => setMarked(new Set())}
+        />
       )}
       <p className="cl-project-meta">
         Click words to mark them. Double-click a word to jump to it. {clock(resolved.durationSec)} in the cut.

@@ -1,3 +1,4 @@
+import type { ProjectStatus } from './project-status'
 import type { EditDoc } from './edit/schema'
 import type { ClipSet } from './clipping/schema'
 
@@ -197,6 +198,16 @@ export interface CaptionStyle {
   /** Faux-bold, for families that ship only one weight. */
   bold?: boolean
   /**
+   * The word being said set in another face: a heavier weight of the same family, so it stands out by weight
+   * rather than colour, as talking-head captions do.
+   */
+  activeFontFamily?: string
+  /**
+   * A soft shadow: the words' shape blurred by this many pixels and moved down and right by shadowPx, under
+   * words with or without an outline. Absent or 0, the shadow is hard, as before.
+   */
+  shadowBlur?: number
+  /**
    * How wide the face's letters run on average, in ems, so a word too wide for the frame is set smaller
    * until it fits (shared/subtitles fitFontPx). Absent leaves every word at its size.
    */
@@ -269,8 +280,12 @@ export interface CaptionTier {
   shadowPx: number
   uppercase: boolean
   bold?: boolean
-  /** Distance from the big line's baseline down to this one. */
+  /** Distance from the big line's baseline down to this one; with `above`, from this line's foot up to the big line's top. */
   gapPx: number
+  /** This line sits above the big word instead of under it: the words before, then the one being said. */
+  above?: boolean
+  /** A soft shadow, as the big line's (CaptionStyle.shadowBlur). */
+  shadowBlur?: number
 }
 
 export interface ZoomKeyframe {
@@ -357,6 +372,11 @@ export interface ProjectSummary {
    * what you are actually deciding about.
    */
   mediaBytes: number | null
+  /**
+   * Where its edit stands (shared/project-status), kept with the row when the project is saved so
+   * Projects and the phone's home can group and describe it unopened. Absent on rows saved before.
+   */
+  status?: ProjectStatus | null
 }
 
 export interface Project extends ProjectSummary {
@@ -411,6 +431,11 @@ export interface ChatMessage {
   aside?: string | null
   actions?: ChatAction[]
   error?: boolean
+  /**
+   * A step of the work rather than an answer (taking the footage in): once a later reply is in, the
+   * thread folds it to one line with its details behind Details.
+   */
+  step?: boolean
   /** An exported video, played in the chat whole. Its size and length are the file's own. */
   video?: { path: string; name: string; width: number; height: number; durationSec: number }
   /** The /clipping run whose clips this reply shows, as cards under it. */
@@ -468,3 +493,14 @@ export interface MediaPreviews {
   /** Tiles in the filmstrip, so a pixel offset can be turned back into a time. */
   frames: number
 }
+
+/** A note from Cutalong when long work finishes while the window is behind another app (main/notify.ts). */
+export interface NoteIn {
+  title: string
+  body: string
+  /** Up to two buttons, in order. */
+  actions: string[]
+}
+
+/** How a note was answered: clicked ('open'), or one of its buttons, by its index. */
+export type NoteAnswer = 'open' | number

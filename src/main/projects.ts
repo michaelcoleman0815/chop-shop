@@ -4,6 +4,7 @@ import { join, basename, dirname, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
 import { projectName } from '../shared/project-name'
 import { upgradeProject } from '../shared/project-upgrade'
+import { projectStatus } from '../shared/project-status'
 import { freshVideo, keepInProject, renumber, type Kept } from '../shared/make/kept'
 import { EditDocSchema, type EditDoc } from '../shared/edit'
 import type { ChatMessage, Project, ProjectMode, ProjectSummary } from '../shared/types'
@@ -132,7 +133,8 @@ function summarise(project: Project): ProjectSummary {
     createdAt: project.createdAt,
     openedAt: project.openedAt,
     primaryMedia: project.media[0] ?? null,
-    mediaBytes: null
+    mediaBytes: null,
+    status: projectStatus(project)
   }
 }
 

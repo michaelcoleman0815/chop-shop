@@ -54,8 +54,7 @@ const ICONS: Record<Place | 'toggle', JSX.Element> = {
   ),
   crew: (
     <svg {...stroke}>
-      <path d="M12 4.5c4.4 0 7.5 3.1 7.5 7.3 0 4.3-3.2 7.7-7.5 7.7s-7.5-3.4-7.5-7.7c0-4.2 3.1-7.3 7.5-7.3Z" />
-      <path d="M10 10.5v1.6M14 10.5v1.6" />
+      <path d="M7 4.5h10v15l-5-3.6-5 3.6z" />
     </svg>
   ),
   settings: (
@@ -75,7 +74,7 @@ const PLACES: { place: Place; label: string }[] = [
   { place: 'projects', label: 'Projects' },
   { place: 'brand', label: 'Brand' },
   { place: 'presets', label: 'Presets' },
-  { place: 'crew', label: 'Crew' }
+  { place: 'crew', label: 'Learned' }
 ].filter((p) => !device.away[`feature:${p.place}`]) as { place: Place; label: string }[]
 
 export function Sidebar({

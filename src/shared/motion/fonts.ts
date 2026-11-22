@@ -143,6 +143,65 @@ export const MOTION_FONTS: MotionFont[] = [
     winAscent: 1854 / 2048,
     winDescent: 744 / 2048,
     label: 'IM Fell English, an old-style serif'
+  },
+  // The caption faces short-form video is set in (watched 2026-11-21), from Google Fonts' static instances, each
+  // under the SIL Open Font License beside it in resources/fonts. Each file is one weight with a family name of its
+  // own (the name the file gives itself, which is what libass matches), so the export never picks the wrong weight.
+  // Inter ExtraBold and Bebas Neue, which the looks set too, are above, with the sermon faces.
+  {
+    family: 'Montserrat Thin ExtraBold',
+    file: 'Montserrat-ExtraBold.ttf',
+    weights: [800, 800],
+    cap: 0.7,
+    ascent: 0.968,
+    descent: 0.251,
+    winAscent: 1109 / 1000,
+    winDescent: 453 / 1000,
+    label: 'Montserrat ExtraBold, a heavy geometric sans'
+  },
+  {
+    family: 'Montserrat Thin Black',
+    file: 'Montserrat-Black.ttf',
+    weights: [900, 900],
+    cap: 0.7,
+    ascent: 0.968,
+    descent: 0.251,
+    winAscent: 1109 / 1000,
+    winDescent: 453 / 1000,
+    label: 'Montserrat Black, the heaviest geometric sans'
+  },
+  {
+    family: 'Inter',
+    file: 'Inter-Bold.ttf',
+    weights: [700, 700],
+    cap: 0.728,
+    ascent: 0.969,
+    descent: 0.241,
+    winAscent: 2269 / 2048,
+    winDescent: 660 / 2048,
+    label: 'Inter Bold, a plain grotesque'
+  },
+  {
+    family: 'TikTok Sans Light ExtraBold',
+    file: 'TikTokSans-ExtraBold.ttf',
+    weights: [800, 800],
+    cap: 0.705,
+    ascent: 1.0,
+    descent: 0.3,
+    winAscent: 1118 / 1000,
+    winDescent: 242 / 1000,
+    label: 'TikTok Sans ExtraBold, TikTok’s own'
+  },
+  {
+    family: 'TikTok Sans Light Black',
+    file: 'TikTokSans-Black.ttf',
+    weights: [900, 900],
+    cap: 0.705,
+    ascent: 1.0,
+    descent: 0.3,
+    winAscent: 1118 / 1000,
+    winDescent: 242 / 1000,
+    label: 'TikTok Sans Black, TikTok’s heaviest'
   }
 ]
 

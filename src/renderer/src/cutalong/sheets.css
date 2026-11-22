@@ -1,0 +1,353 @@
+/*
+ * The sound and caption sheets (components/SoundSheet.tsx, components/CaptionSheet.tsx),
+ * inside the shared sheet (home.css). Quiet by default: paper and hairlines,
+ * the pick ringed in ink, footage on the stage, nothing in colour of its own.
+ * What only a phone needs is under .cl-app.phone.
+ */
+
+/* ---------- A sound on a word ---------- */
+
+.cl-sound-where {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-sound-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-sound-h {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cl-sound-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-thumb);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cl-sound-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 8px 6px 10px;
+}
+
+.cl-sound-row + .cl-sound-row {
+  border-top: 1px solid var(--line);
+}
+
+.cl-sound-play {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line-mid);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.cl-sound-play:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.cl-sound-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 44px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+/* The pick is ringed in ink, as the version on screen is. */
+.cl-sound-pick.on {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.cl-sound-name {
+  max-width: 100%;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-sound-about {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-sound-about.error {
+  color: var(--error);
+}
+
+.cl-sound-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cl-sound-search .cl-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.cl-sound-search .cl-field input {
+  width: 100%;
+  height: 40px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.cl-sound-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.cl-sound-lands {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-sound-play:not(:disabled):hover {
+    background: var(--card-2);
+  }
+
+  .cl-sound-pick:not(.on):hover {
+    box-shadow: inset 0 0 0 1px var(--line-mid);
+  }
+}
+
+/* ---------- Captions in your words ---------- */
+
+.cl-capsheet-tabs {
+  flex: none;
+}
+
+.cl-capsheet-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cl-capsheet-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+/* A card is as wide as its frame's shape allows: narrow for a vertical cut, wide for a wide one. */
+.cl-capgrid {
+  --capcard-min: 200px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--capcard-min), 1fr));
+  gap: var(--space-3);
+}
+
+.cl-capgrid.tall {
+  --capcard-min: 164px;
+}
+
+.cl-capgrid.across {
+  --capcard-min: 210px;
+}
+
+.cl-capcard {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The still on the stage, with the caption over it. The pick is ringed in ink. */
+.cl-capcard-frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-thumb);
+  background: var(--stage);
+  box-shadow: 0 0 0 0 var(--ink);
+  transition: box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.cl-capcard-frame img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+
+.cl-capcard.on .cl-capcard-frame {
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 4px var(--ink);
+}
+
+.cl-capcard:focus-visible {
+  outline: none;
+}
+
+.cl-capcard:focus-visible .cl-capcard-frame {
+  outline: 2px solid var(--ink);
+  outline-offset: 5px;
+}
+
+.cl-capcard-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.cl-capcard-name {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-capcard:not(.on) .cl-capcard-name {
+  color: var(--ink-soft);
+}
+
+.cl-capcard-now {
+  flex: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+
+.cl-capsheet-caps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.cl-capsheet-caps-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-capsheet-caps .cl-segments button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.cl-capsheet-caps-hint {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cl-capsheet-sum {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-capcard:not(.on):hover .cl-capcard-frame {
+    box-shadow:
+      0 0 0 2px var(--card),
+      0 0 0 3px var(--line-strong);
+  }
+
+  .cl-capcard:not(.on):hover .cl-capcard-name {
+    color: var(--ink);
+  }
+}
+
+/* ---------- On a phone ---------- */
+
+.cl-app.phone .cl-sound-row {
+  padding: 6px 6px 6px 8px;
+}
+
+.cl-app.phone .cl-sound-play {
+  width: 44px;
+  height: 44px;
+}
+
+.cl-app.phone .cl-sound-search .cl-field input {
+  height: 44px;
+  /* At 16 px, a field does not zoom the page when it takes focus. */
+  font-size: 16px;
+}
+
+.cl-app.phone .cl-capgrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.cl-app.phone .cl-capgrid.across {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cl-app.phone .cl-capsheet-tabs button {
+  height: 40px;
+}

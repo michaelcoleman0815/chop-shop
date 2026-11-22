@@ -23,7 +23,7 @@ describe('caption colours for a subtitle filter that speaks BT.601', () => {
 
   it('moves a colour to the one whose BT.601 values are its BT.709 ones, and leaves greys alone', () => {
     // The presets' colours, the default brand's and a brand orange.
-    for (const hex of ['#FF6076', '#c8f04a', '#ffd400', '#FFD84D', '#FF5A1F', '#F2F1EE', '#16151A', '#8B8880']) {
+    for (const hex of ['#FF6076', '#FFE14D', '#ffd400', '#FFD84D', '#FF5A1F', '#F2F1EE', '#16151A', '#8B8880']) {
       const moved = bt601Equivalent(hex) as string
       expect(moved, hex).toMatch(/^#[0-9a-f]{6}$/)
       const want = ycbcr(hex, 0.2126, 0.0722)
@@ -44,16 +44,18 @@ describe('caption colours for a subtitle filter that speaks BT.601', () => {
   })
 
   it('moves every colour of a look: text, the word being said, outline, box and the second line', () => {
-    const brand = { text: '#FFFFFF', accent: '#FF5A1F' }
-    const marker = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'marker' }, 1920, brand)
-    const moved = bt601Style(marker)
-    expect(moved).toMatchObject({
-      textColor: bt601Equivalent('#FFFFFF'),
+    const brand = { text: '#14110F', accent: '#FF5A1F' }
+    // A look with a colour accent takes the brand's colours; every colour moves.
+    const loud = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'punch' }, 1920, brand)
+    expect(bt601Style(loud)).toMatchObject({
+      textColor: bt601Equivalent('#14110F'),
       activeColor: bt601Equivalent('#FF5A1F'),
-      outlineColor: bt601Equivalent(marker.outlineColor),
-      boxColor: bt601Equivalent('#c8f04a'),
-      fontSizePx: marker.fontSizePx
+      outlineColor: bt601Equivalent(loud.outlineColor),
+      fontSizePx: loud.fontSizePx
     })
+    // A plate's colour moves too.
+    const marker = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'marker' }, 1920, brand)
+    expect(bt601Style(marker)).toMatchObject({ boxColor: bt601Equivalent('#FFE14D'), fontSizePx: marker.fontSizePx })
     const feature = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'feature' }, 1080)
     const tier = feature.second as NonNullable<typeof feature.second>
     expect(bt601Style({ ...feature, second: { ...tier, textColor: '#FF5A1F' } })?.second?.textColor).toBe(

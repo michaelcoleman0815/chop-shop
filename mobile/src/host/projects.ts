@@ -2,6 +2,7 @@ import { join, basename, dirname } from 'path'
 import { platform } from '../../../src/main/platform'
 import { projectName } from '../../../src/shared/project-name'
 import { upgradeProject } from '../../../src/shared/project-upgrade'
+import { projectStatus } from '../../../src/shared/project-status'
 import type { EditDoc } from '../../../src/shared/edit'
 import type { ChatMessage, Project, ProjectMode, ProjectSummary } from '../../../src/shared/types'
 
@@ -49,7 +50,8 @@ function summarise(project: Project): ProjectSummary {
     createdAt: project.createdAt,
     openedAt: project.openedAt,
     primaryMedia: project.media[0] ?? null,
-    mediaBytes: null
+    mediaBytes: null,
+    status: projectStatus(project)
   }
 }
 

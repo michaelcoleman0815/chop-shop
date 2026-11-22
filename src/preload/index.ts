@@ -27,6 +27,7 @@ import type { Brand } from '../shared/brand'
 import type { AudioMap } from '../shared/audio/map'
 import type { VideoRun } from '../shared/channel-habits'
 import type { Brands } from '../shared/brands'
+import type { NoteAnswer, NoteIn } from '../shared/types'
 import type { UploadKit } from '../shared/upload'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
@@ -802,6 +803,14 @@ const api = {
     const handler = (_e: unknown, s: UpdateState): void => cb(s)
     ipcRenderer.on('update:state', handler)
     return () => ipcRenderer.removeListener('update:state', handler)
+  },
+  /** Shows a note while the window is behind another app; false where notes cannot be shown. */
+  notify: (note: NoteIn): Promise<boolean> => ipcRenderer.invoke('notify:show', note),
+  /** A note was clicked ('open') or one of its buttons pressed (its index). */
+  onNotifyAnswer: (cb: (a: NoteAnswer) => void): (() => void) => {
+    const handler = (_e: unknown, a: NoteAnswer): void => cb(a)
+    ipcRenderer.on('notify:answer', handler)
+    return () => ipcRenderer.removeListener('notify:answer', handler)
   },
   onGrabRequested: (cb: () => void): (() => void) => {
     const handler = (): void => cb()

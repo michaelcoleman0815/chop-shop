@@ -186,6 +186,7 @@ import { api, device, mediaUrlFor } from './api'
 import { markExported } from './firstRun'
 import { offerReply, pickedAside, swapWords, webWaits, type BrollPick, type BrollWebAsk, type BrollWhere } from './broll'
 import type { Attachment } from './components/Composer'
+import { withChoice, type PreflightChoice } from './preflight'
 import type { Action, Msg } from './components/Message'
 import type { Progress } from './components/Working'
 import { logCrew } from './crew'
@@ -1023,6 +1024,7 @@ export function useCutalong() {
     // The chat already open is not read again from disk: whatever is running
     // in it, and anything said since it was last saved, would be lost. Asked
     // for again, it also takes over from another chat still being opened.
+    if (path !== projectRef.current?.path) dropPreflight()
     if (path === projectRef.current?.path) {
       switchSeq.current += 1
       switching.current = false
@@ -1111,8 +1113,56 @@ export function useCutalong() {
     if (projectRef.current) rememberPlace(projectRef.current.path, screen)
   }, [screen])
 
+  /**
+   * The card before long work on new footage, while it waits for Start the cut: its message and how to
+   * answer the submit waiting on it. Leaving the chat lets it go (null), so nothing waits for ever.
+   */
+  const preflightWait = useRef<{ id: string; resolve: (c: PreflightChoice | null) => void } | null>(null)
+  const dropPreflight = (): void => {
+    preflightWait.current?.resolve(null)
+    preflightWait.current = null
+  }
+  const preflightOpen = (id: string): boolean => preflightWait.current?.id === id
+  /** Shows the card under the footage and waits for Start the cut (or for the person to leave: null). */
+  const askFirst = useCallback(
+    async (files: Attachment[], ask: string): Promise<PreflightChoice | null> => {
+      // How long the footage is, as the host measures it, for what a plan on it costs.
+      const lengths = await Promise.all(
+        files.map((f) =>
+          api
+            .mediaPreviews(f.path)
+            .then((p) => p.durationSec)
+            .catch(() => 0)
+        )
+      )
+      const total = lengths.reduce((sum, n) => sum + n, 0)
+      dropPreflight()
+      return new Promise((resolve) => {
+        const id = push({
+          role: 'assistant',
+          text: '',
+          preflight: { ask, files: files.map((f) => ({ path: f.path, name: f.name })), minutes: total > 0 ? total / 60 : null }
+        })
+        preflightWait.current = { id, resolve }
+      })
+    },
+    // push is the session's own and keeps its identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+  const startCut = useCallback((choice: PreflightChoice): void => {
+    const w = preflightWait.current
+    if (!w) return
+    preflightWait.current = null
+    setMessages((ms) => ms.map((m) => (m.id === w.id && m.preflight ? { ...m, preflight: { ...m.preflight, choice } } : m)))
+    w.resolve(choice)
+  }, [])
+
   /** The chat being worked on, if there is one, for a way back to it. */
   const work = (): { name: string } | null => (projectRef.current ? { name: projectRef.current.name } : null)
+
+  /** Where the chat being worked on is kept, for the home to know which row it is. */
+  const projectPath = (): string | null => projectRef.current?.path ?? null
 
   /** Back to the chat or editor the person left for another place on the rail. */
   const resume = useCallback((): void => {
@@ -1289,7 +1339,9 @@ export function useCutalong() {
         aside: [noticed, r.warning ?? ''].filter(Boolean).join(' ') || null,
         chips: r.intake?.facts.length ? r.intake.facts : undefined,
         details: r.details,
-        actions
+        actions,
+        // A step of the work: once the next reply is in, the thread shows it as one line (Thread.tsx).
+        step: true
       })
       intakeId.current = id
       return true
@@ -4359,9 +4411,10 @@ export function useCutalong() {
             .trim()
         : text
       const waiting = !typed && !command && attachments.length > 0 ? waitingWords.current : null
-      const words = waiting ?? typed
+      // Changed on the card before long work, when the person changes what they asked there.
+      let words = waiting ?? typed
       // What the person said about their files, without a leading /command.
-      const said = command && !ACTION_NAMES.has(command.command) ? command.rest : words
+      let said = command && !ACTION_NAMES.has(command.command) ? command.rest : words
       setScreen('thread')
       const recordingsIn = attachments.filter((a) => isVideoFile(a.name) || isAudioFile(a.name))
       const userText = link ? typed || 'Make it feel like this' : text
@@ -4484,7 +4537,19 @@ export function useCutalong() {
           if (made && stripDoc(made, neverOf(brandNow().id)).ops.length > 0) stripNever('thread')
         } else if (gridded) {
           // The grid's own reply says what it made.
-        } else if (recordings.length > 0) await takeIn(recordings, said)
+        } else if (recordings.length > 0) {
+          // New footage with words for a new edit: the card before long work, and nothing runs until Start
+          // the cut. What was asked may change there; the shape and captions chosen are set on v1.
+          const first = !before && !command && route?.route === 'edit' && !!words
+          const chosen = first ? await askFirst(recordings, words) : null
+          if (first && !chosen) return
+          if (chosen) {
+            words = chosen.ask
+            said = chosen.ask
+          }
+          await takeIn(recordings, said)
+          if (chosen && docRef.current) setDoc(withChoice(docRef.current, chosen))
+        }
         // The edit began with this message: its words shape the version it was made with. A grid made from the
         // files is already a version of its own, with its own summary, so what Claude does with the words
         // (labels, whose sound) is the next one rather than added onto it.
@@ -5040,6 +5105,7 @@ export function useCutalong() {
       setToast({ text: busyText('start') })
       return
     }
+    dropPreflight()
     // A chat being opened gives way to the new one.
     switchSeq.current += 1
     switching.current = false
@@ -5095,6 +5161,9 @@ export function useCutalong() {
     setScreen: showScreen,
     goStart,
     work,
+    projectPath,
+    preflightOpen,
+    startCut,
     resume,
     messages,
     doc,

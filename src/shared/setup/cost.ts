@@ -52,8 +52,11 @@ export const TYPICAL_PLAN = {
 
 const tokens = (chars: number, perToken: number): number => Math.round(chars / perToken)
 
-/** The tokens of a typical plan request, by part, and of reading its message first. */
-export function typicalTokens(): {
+/**
+ * The tokens of a typical plan request, by part, and of reading its message first. The transcript
+ * grows with the footage: `minutes` scales it from the 10 minutes measured.
+ */
+export function typicalTokens(minutes: number = TYPICAL_PLAN.minutes): {
   cached: number
   request: number
   output: { low: number; high: number }
@@ -64,16 +67,19 @@ export function typicalTokens(): {
     cached:
       tokens(chars.instructions, perToken.instructions) +
       tokens(chars.commands, perToken.commands) +
-      tokens(chars.transcript, perToken.transcript),
+      tokens((chars.transcript * Math.max(0, minutes)) / TYPICAL_PLAN.minutes, perToken.transcript),
     request: tokens(chars.request, perToken.request),
     output: TYPICAL_PLAN.outputTokens,
     triage: { input: tokens(chars.triage, perToken.triage), output: TYPICAL_PLAN.triageOutputTokens }
   }
 }
 
-/** What a typical plan costs, in dollars: a follow-up read from the cache, and a first plan written to it. */
-export function planCost(): { low: number; high: number } {
-  const t = typicalTokens()
+/**
+ * What a typical plan costs, in dollars: a follow-up read from the cache, and a first plan written to it.
+ * For `minutes` of footage, 10 unless said.
+ */
+export function planCost(minutes: number = TYPICAL_PLAN.minutes): { low: number; high: number } {
+  const t = typicalTokens(minutes)
   const p = PLANNER_PRICE
   const per = (n: number, price: number): number => (n * price) / 1_000_000
   return {
@@ -122,4 +128,14 @@ export function costLine(): string {
 export function planCostLine(): string {
   const { low, high } = planCost()
   return `A plan on a ${TYPICAL_PLAN.minutes}-minute video costs about ${cents(low)} to ${cents(high)} cents at Anthropic’s prices on ${spoken(PLANNER_PRICE.read)}.`
+}
+
+/**
+ * A plan on this much footage, in words, for the card before long work starts: "about 7 to 49 cents".
+ * The same reckoning as costLine, at the prices it names; what is spent shows on the Console.
+ */
+export function planCostFor(minutes: number): string {
+  const { low, high } = planCost(minutes)
+  if (high >= 1) return `about $${low.toFixed(2)} to $${high.toFixed(2)}`
+  return `about ${cents(low)} to ${cents(high)} cents`
 }

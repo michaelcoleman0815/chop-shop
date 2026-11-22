@@ -214,8 +214,12 @@ describe('render arguments', () => {
     expect(graph).toContain(`[vlogo]${AS_BT709}[vout]`)
     expect(args).toContain('[vout]')
     expect(args.join(' ')).toContain('-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv')
-    const style = captionStyleFor({ ...DEFAULT_CAPTIONS }, 1080, { text: '#FAFAFA', accent: '#FF5A36' })
+    // A look that picks the word being said out in a colour takes the brand's; the default picks it out by
+    // weight, white throughout as talking-head captions are, and keeps its own.
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'punch' }, 1080, { text: '#FAFAFA', accent: '#FF5A36' })
     expect([style.textColor, style.activeColor]).toEqual(['#FAFAFA', '#FF5A36'])
+    const plain = captionStyleFor({ ...DEFAULT_CAPTIONS }, 1080, { text: '#FAFAFA', accent: '#FF5A36' })
+    expect([plain.textColor, plain.activeColor]).toEqual(['#FFFFFF', '#FFFFFF'])
   })
 
   it('sizes frames by shape and keeps frame rates standard', () => {

@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import { namesCommand, slashQuery, suggestCommands, type Preset } from '../../../../shared/presets'
 import { api, device } from '../api'
 import { prefersReducedMotion, viewTransition } from '../motion'
+import { AddShoot } from './AddShoot'
 import { Poster } from './Poster'
 import { Icon, IconButton, Mark } from './ui'
 
@@ -24,7 +25,8 @@ export function Composer({
   seed,
   busy = false,
   autoFocus = false,
-  menuBelow = false
+  menuBelow = false,
+  pickSignal = 0
 }: {
   placeholder: string
   presets: Preset[]
@@ -35,6 +37,8 @@ export function Composer({
   autoFocus?: boolean
   /** Open the slash menu below the composer instead of above it. */
   menuBelow?: boolean
+  /** Each time this goes up, the picker opens for a shoot (the phone bar's New edit). */
+  pickSignal?: number
 }): JSX.Element {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -154,10 +158,27 @@ export function Composer({
     add([...e.dataTransfer.files])
   }
 
+  // Two clips or more picked at once open the shoot sheet first, numbered with their lengths (AddShoot).
+  const [shoot, setShoot] = useState<Attachment[] | null>(null)
   const browse = async (): Promise<void> => {
     const picked = await api.openMedia()
-    if (picked.length) changeFiles(withNew(picked))
+    if (picked.length === 0) return
+    if (shoot) {
+      setShoot((s) => [...(s ?? []), ...picked.filter((p) => !(s ?? []).some((f) => f.path === p.path))])
+      return
+    }
+    if (picked.length >= 2) setShoot(picked)
+    else changeFiles(withNew(picked))
   }
+  // The phone bar's New edit: the picker, once per press. The first render is not a press.
+  const pressed = useRef(pickSignal)
+  useEffect(() => {
+    if (pickSignal === pressed.current) return
+    pressed.current = pickSignal
+    void browse()
+    // browse reads the latest files when it runs; only a new press opens it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickSignal])
 
   const canSend = !busy && (text.trim().length > 0 || attachments.length > 0)
 
@@ -243,6 +264,18 @@ export function Composer({
           </span>
         </IconButton>
       </div>
+      {shoot && (
+        <AddShoot
+          files={shoot}
+          onMore={() => void browse()}
+          onClose={() => setShoot(null)}
+          onAdd={(chosen) => {
+            setShoot(null)
+            changeFiles(withNew(chosen))
+            area.current?.focus()
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -1,5 +1,4 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { LivingMark } from './Shapes'
 
 /**
  * The small pieces every screen uses, drawn to the design system: pills for
@@ -38,12 +37,12 @@ export function Lockup({ onClick }: { onClick?: () => void }): JSX.Element {
 /**
  * The assistant's tile: the mark on a small sheet of paper. Only the newest
  * reply shows it (cutalong.css), so the mark's coral is on screen once. While
- * the reply is still being thought out, the mark is the small living blob.
+ * the reply is still being thought out, the mark breathes (motion.css), the one thing moving.
  */
 export function AssistantAvatar({ working = false }: { working?: boolean }): JSX.Element {
   return (
     <span className={`cl-assistant-avatar${working ? ' living' : ''}`} aria-hidden="true">
-      {working ? <LivingMark size={30} /> : <Mark size={20} />}
+      <Mark size={20} />
     </span>
   )
 }

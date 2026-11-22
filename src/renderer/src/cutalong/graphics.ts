@@ -7,6 +7,11 @@ import serifUrl from '../../../../resources/fonts/DMSerifDisplay-Regular.ttf?url
 import interUrl from '../../../../resources/fonts/Inter-SemiBold.ttf?url'
 import interHeavyUrl from '../../../../resources/fonts/Inter-ExtraBold.ttf?url'
 import bebasUrl from '../../../../resources/fonts/BebasNeue-Regular.ttf?url'
+import montserratExtraBoldUrl from '../../../../resources/fonts/Montserrat-ExtraBold.ttf?url'
+import montserratBlackUrl from '../../../../resources/fonts/Montserrat-Black.ttf?url'
+import interBoldUrl from '../../../../resources/fonts/Inter-Bold.ttf?url'
+import tikTokSansExtraBoldUrl from '../../../../resources/fonts/TikTokSans-ExtraBold.ttf?url'
+import tikTokSansBlackUrl from '../../../../resources/fonts/TikTokSans-Black.ttf?url'
 import {
   logoLookup,
   marksFrom,
@@ -32,7 +37,12 @@ const URLS: Record<string, string> = {
   'DMSerifDisplay-Regular.ttf': serifUrl,
   'Inter-SemiBold.ttf': interUrl,
   'Inter-ExtraBold.ttf': interHeavyUrl,
-  'BebasNeue-Regular.ttf': bebasUrl
+  'BebasNeue-Regular.ttf': bebasUrl,
+  'Montserrat-ExtraBold.ttf': montserratExtraBoldUrl,
+  'Montserrat-Black.ttf': montserratBlackUrl,
+  'Inter-Bold.ttf': interBoldUrl,
+  'TikTokSans-ExtraBold.ttf': tikTokSansExtraBoldUrl,
+  'TikTokSans-Black.ttf': tikTokSansBlackUrl
 }
 
 let fonts: Promise<void> | null = null

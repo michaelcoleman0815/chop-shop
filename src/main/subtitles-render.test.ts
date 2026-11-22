@@ -119,7 +119,15 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       words: FIVE.slice(0, 4),
       active: 0
     },
-    // One word big, the rest of its group small under it.
+    // A soft shadow under words with no outline, the word being said in a heavier face.
+    { name: 'talking head, vertical', spec: { preset: 'clean', position: 'chest', wordsPerScreen: 2 }, size: TALL, words: ['Bright', 'colours'], active: 1 },
+    { name: 'podcast, vertical', spec: { preset: 'sentence', position: 'chest' }, size: TALL, words: THREE, active: 0 },
+    // A hard edge and shadow in the heaviest capitals, and condensed capitals with a soft shadow.
+    { name: 'loud, vertical', spec: { preset: 'punch', position: 'chest' }, size: TALL, words: THREE, active: 1 },
+    { name: 'headline, vertical', spec: { preset: 'headline', position: 'middle', wordsPerScreen: 2 }, size: TALL, words: ['Bright', 'colours'], active: 0 },
+    // Black words on a white plate.
+    { name: 'title plate, wide', spec: { preset: 'plate', position: 'top' }, size: WIDE, words: THREE, active: 1 },
+    // One word big, the words before it small above it, tucked into the big line's cell (libass must not push it off).
     {
       name: 'feature, vertical',
       spec: { preset: 'feature', position: 'middle', wordsPerScreen: 5 },

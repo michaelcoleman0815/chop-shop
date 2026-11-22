@@ -1,5 +1,6 @@
-import { useEffect, useState, type CSSProperties, type DragEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react'
 import { thisComputer, yourComputer } from '../../../../shared/platform'
+import { PROFILES, type CuttingProfile } from '../../../../shared/raw/profiles'
 import { costLine, keyGuide, keyMessage } from '../../../../shared/setup'
 import { api, device, isMock } from '../api'
 import { AiOptions, canRunLocal, ClaudeSteps, LocalSteps, type AiPick } from '../components/AiChoice'
@@ -13,18 +14,21 @@ import { AvatarPicker } from './Brand'
 import { Header } from './Header'
 
 /**
- * The first run, one step a screen: what Cutalong does, an account, the
- * Anthropic key, your channel, and a few of your videos to learn from. Then
- * Start, where the rail's setup card carries on until the first export.
+ * The first run, one step a screen: what Cutalong does, an account, what you
+ * make, where your footage goes, the Anthropic key, your channel, and a few of
+ * your videos to learn from. Then Start, where the rail's setup card carries
+ * on until the first export.
  *
  * The account step is drawn but not yet wired to a service, so it shows only
  * in the browser mock; the app skips it until accounts exist.
  */
-type Step = 'welcome' | 'account' | 'key' | 'channel' | 'teach'
+type Step = 'welcome' | 'account' | 'make' | 'trust' | 'key' | 'channel' | 'teach'
 
 const STEPS: Step[] = [
   'welcome',
   ...(isMock ? (['account'] as const) : []),
+  'make',
+  'trust',
   'key',
   'channel',
   // Learning a look from videos is on the Mac for now (device.ts).
@@ -65,6 +69,8 @@ export function Onboarding({ app, onDone }: { app: Cutalong; onDone: () => void 
         </div>
         {step === 'welcome' && <Welcome onNext={next} />}
         {step === 'account' && <Account onNext={next} />}
+        {step === 'make' && <Make app={app} />}
+        {step === 'trust' && <Trust />}
         {step === 'key' && <Key app={app} onNext={next} />}
         {step === 'channel' && <Channel app={app} />}
         {step === 'teach' && <Teach app={app} />}
@@ -118,8 +124,8 @@ function Welcome({ onNext }: { onNext: () => void }): JSX.Element {
           </Button>
         </div>
         <p className="cl-onboard-note">
-          Runs on {yourComputer}. Claude reads what you ask, through your own Anthropic key, so you pay Anthropic for
-          what you use.
+          Runs on {device.kind === 'phone' ? device.here : yourComputer}. Claude reads what you ask, through your own
+          Anthropic key, so you pay Anthropic for what you use.
         </p>
       </div>
       <div className="cl-stage cl-demo" aria-hidden="true">
@@ -129,37 +135,33 @@ function Welcome({ onNext }: { onNext: () => void }): JSX.Element {
             <span>0:41 of pauses out</span>
           </header>
           <p>
-            <span>1</span>
-            <s>Okay so, um, is this on? Right.</s>
+            <span>1</span>So I’ve had the Google Book for a day now.
           </p>
           <p>
-            <span>2</span>Grace looks like a kitchen table.
+            <span>2</span>And I’m just going to be honest.
           </p>
           <p>
-            <span>3</span>
-            <span>
-              Somebody pulls out a chair <s>for, for</s> for you
-            </span>
+            <span>3</span>It feels like a really expensive Chromebook.
           </p>
           <p>
-            <span>4</span>before you have earned it.
+            <span>4</span>
+            <s>Like the Chromebook you had in school.</s>
           </p>
           <p>
-            <span>5</span>
-            <s>Let me try that again.</s>
+            <span>5</span>Like the Chromebook you had in school was maybe three or four hundred bucks,
           </p>
           <p>
-            <span>6</span>That is the whole sermon, really.
+            <span>6</span>but this starts at nine hundred bucks.
           </p>
         </div>
         <div className="cl-demo-strip">
-          <span className="on" style={{ flex: 2 }}>
-            Hook
+          <span style={{ flex: 2 }}>Day one</span>
+          <span style={{ flex: 2 }}>Honest</span>
+          <span className="on" style={{ flex: 3 }}>
+            Chromebook
           </span>
-          <span style={{ flex: 3 }}>Kitchen table</span>
-          <span style={{ flex: 2 }}>Chair</span>
-          <span style={{ flex: 3 }}>Earned</span>
-          <span style={{ flex: 2 }}>Close</span>
+          <span style={{ flex: 3 }}>$900</span>
+          <span style={{ flex: 2 }}>The catch</span>
           <span className="cl-playhead" />
         </div>
       </div>
@@ -173,7 +175,7 @@ function Account({ onNext }: { onNext: () => void }): JSX.Element {
     <div className="cl-onboard-body">
       <div className="cl-onboard-say">
         <h1 className="cl-welcome step">
-          Make your <span className="cl-accent" style={{ '--hl': 'var(--block-lavender)' } as CSSProperties}>account</span>.
+          Make your account.
         </h1>
         <p className="cl-onboard-lede">So your brands, presets and chats are there on your phone too. The cutting still happens on your Mac.</p>
         <div className="cl-signin">
@@ -228,6 +230,190 @@ function Account({ onNext }: { onNext: () => void }): JSX.Element {
   )
 }
 
+/** A plain line icon, drawn as Settings draws its marks: an 18-unit box, one stroke, no fill. */
+function LineIcon({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 18 18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  )
+}
+
+/** Each kind of video's mark on its tile, by cutting profile. */
+const KIND_ICONS: Record<string, ReactNode> = {
+  'talking-head': (
+    <>
+      <circle cx="9" cy="6.5" r="3" />
+      <path d="M3.5 15.5c.8-2.9 3-4.5 5.5-4.5s4.7 1.6 5.5 4.5" />
+    </>
+  ),
+  tech: (
+    <>
+      <rect x="3" y="4" width="12" height="8" rx="1.5" />
+      <path d="M1.5 14.5h15" />
+    </>
+  ),
+  podcast: (
+    <>
+      <rect x="6.5" y="2" width="5" height="8.5" rx="2.5" />
+      <path d="M4 8.5a5 5 0 0 0 10 0M9 13.5V16M6.5 16h5" />
+    </>
+  ),
+  gaming: (
+    <>
+      <rect x="2" y="5.5" width="14" height="8" rx="4" />
+      <path d="M5.75 8v3M4.25 9.5h3" />
+      <circle cx="11.75" cy="8.75" r=".45" />
+      <circle cx="13.25" cy="10.25" r=".45" />
+    </>
+  ),
+  livestream: (
+    <>
+      <circle cx="9" cy="9" r="1.5" />
+      <path d="M6 6a4.25 4.25 0 0 0 0 6M12 6a4.25 4.25 0 0 1 0 6M3.6 3.6a7.6 7.6 0 0 0 0 10.8M14.4 3.6a7.6 7.6 0 0 1 0 10.8" />
+    </>
+  ),
+  church: <path d="M9 1.5v4M7.25 3.25h3.5M3.5 16V9.5L9 6l5.5 3.5V16M2 16h14M7.5 16v-2.75a1.5 1.5 0 0 1 3 0V16" />,
+  vlog: (
+    <>
+      <rect x="2" y="5" width="10" height="8" rx="2" />
+      <path d="m12 8.25 4-2.25v6l-4-2.25" />
+    </>
+  ),
+  asmr: (
+    <>
+      <path d="M3 12V9a6 6 0 0 1 12 0v3" />
+      <rect x="2" y="11" width="3.5" height="5" rx="1.5" />
+      <rect x="12.5" y="11" width="3.5" height="5" rx="1.5" />
+    </>
+  )
+}
+
+/** What a profile's cut does, from its own line: "I cut it as a podcast: pauses up to 0.6 s…" → "Pauses up to 0.6 s…". */
+function cutLine(p: CuttingProfile): string {
+  const what = p.says.replace(/^[^:]*:\s*/, '')
+  return what.charAt(0).toUpperCase() + what.slice(1)
+}
+
+/**
+ * What you make most: one cutting profile, saved to the brand's niche as the
+ * Brand page saves it, the moment it is picked. Picking it again takes it
+ * back, so the words decide; Next goes on either way.
+ */
+function Make({ app }: { app: Cutalong }): JSX.Element {
+  const brand = app.brand
+  const pick = (id: string): void => app.saveBrand({ ...brand, niche: brand.niche === id ? '' : id })
+  return (
+    <div className="cl-onboard-body one cl-make">
+      <div className="cl-onboard-say">
+        <h1 className="cl-welcome step">What do you make?</h1>
+        <p className="cl-onboard-lede">
+          Pick what you make most. I cut it the way that kind of video is cut. You can change it on your Brand page.
+        </p>
+      </div>
+      <div className="cl-make-tiles" role="group" aria-label="What you make">
+        {PROFILES.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className="cl-make-tile"
+            aria-pressed={brand.niche === p.id}
+            onClick={() => pick(p.id)}
+          >
+            {KIND_ICONS[p.id] && <LineIcon>{KIND_ICONS[p.id]}</LineIcon>}
+            <span className="cl-make-name">{p.name}</span>
+            <span className="cl-make-what">{cutLine(p)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Where your footage goes, as the code has it: transcribed and cut on the
+ * device; Claude reads the words through your own key (and, on a computer, a
+ * vlog's stills unless that is off); other services only once their key is
+ * added; the key kept in the device's keychain.
+ */
+function Trust(): JSX.Element {
+  const phone = device.kind === 'phone'
+  const rows: { id: string; icon: ReactNode; label: string; line: string }[] = [
+    {
+      id: 'here',
+      icon: phone ? (
+        <>
+          <rect x="5" y="2" width="8" height="14" rx="2" />
+          <path d="M8 13.5h2" />
+        </>
+      ) : (
+        <>
+          <rect x="3" y="3.5" width="12" height="8.5" rx="1.5" />
+          <path d="M1.5 14.5h15" />
+        </>
+      ),
+      label: `Cut on ${device.here}`,
+      line: `I transcribe your footage and cut it here, and it stays ${phone ? 'in the app' : 'where you keep it'}.`
+    },
+    {
+      id: 'claude',
+      icon: <path d="M3 5h12M3 9h12M3 13h7" />,
+      label: 'Claude reads the words',
+      line:
+        'It reads what you ask, the transcript, and the files’ names and lengths, through your own Anthropic key, and never the video or the sound.' +
+        (phone ? '' : ' For a vlog it also sees three small stills of each moment, unless you turn that off in Settings.')
+    },
+    {
+      id: 'services',
+      icon: <path d="M6.5 2.5V6M11.5 2.5V6M4.5 6h9v2.5a4.5 4.5 0 0 1-9 0V6ZM9 13v2.5" />,
+      label: 'Other services only if you add them',
+      line: 'Deepgram or AssemblyAI hear the sound, and Gemini sees short clips, only once you add a key for them in Settings.'
+    },
+    {
+      id: 'key',
+      icon: (
+        <>
+          <circle cx="6" cy="9" r="3.2" />
+          <path d="M9.2 9H16M13.5 9v2.5M15.8 9v2" />
+        </>
+      ),
+      label: `Your key stays in ${device.keychain}`,
+      line: 'I only ever send it to Anthropic.'
+    }
+  ]
+  return (
+    <div className="cl-onboard-body">
+      <div className="cl-onboard-say">
+        <h1 className="cl-welcome step">Your footage stays yours.</h1>
+        <p className="cl-onboard-lede">Here is what I do with it, and what leaves {device.here}.</p>
+      </div>
+      <div className="cl-onboard-block cl-trust">
+        <ul className="cl-onboard-list" role="list">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <span className="cl-trust-mark" aria-hidden="true">
+                <LineIcon>{r.icon}</LineIcon>
+              </span>
+              <div>
+                <b>{r.label}</b>
+                <span>{r.line}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 /** Which AI edits with you: Claude's two steps to a key, or a model on this computer; moving on once one works. */
 function Key({ app, onNext }: { app: Cutalong; onNext: () => void }): JSX.Element {
   const guide = keyGuide('anthropic')
@@ -237,11 +423,11 @@ function Key({ app, onNext }: { app: Cutalong; onNext: () => void }): JSX.Elemen
       <div className="cl-onboard-say">
         {canRunLocal ? (
           <h1 className="cl-welcome step">
-            First, choose an <span className="cl-accent" style={{ '--hl': 'var(--block-pink)' } as CSSProperties}>AI</span>.
+            First, choose an AI.
           </h1>
         ) : (
           <h1 className="cl-welcome step">
-            First, an Anthropic <span className="cl-accent" style={{ '--hl': 'var(--block-pink)' } as CSSProperties}>key</span>.
+            First, an Anthropic key.
           </h1>
         )}
         <p className="cl-onboard-lede">
@@ -292,7 +478,7 @@ function Channel({ app }: { app: Cutalong }): JSX.Element {
     <div className="cl-onboard-body">
       <div className="cl-onboard-say">
         <h1 className="cl-welcome step">
-          Who is this <span className="cl-accent" style={{ '--hl': 'var(--block-green)' } as CSSProperties}>for</span>?
+          Who is this for?
         </h1>
         <p className="cl-onboard-lede">
           One brand per channel. What you set here rides along on every edit: your look, your captions, the words you
@@ -313,7 +499,7 @@ function Channel({ app }: { app: Cutalong }): JSX.Element {
       <div className="cl-onboard-block" style={{ '--tone': block(avatar.colour) } as CSSProperties}>
         <span className="cl-kicker">How it shows up</span>
         <div className="cl-brand-preview">
-          <BrandAvatar avatar={avatar} size={84} />
+          <BrandAvatar avatar={avatar} size={84} name={name} />
           <div>
             <strong>{name.trim() || 'Your channel'}</strong>
             <span className="cl-onboard-note" style={{ color: 'var(--ink-soft)' }}>
@@ -346,7 +532,7 @@ function Teach({ app }: { app: Cutalong }): JSX.Element {
     <div className="cl-onboard-body one" style={{ maxWidth: 1180 }}>
       <div className="cl-onboard-say">
         <h1 className="cl-welcome step">
-          Show me what you’ve <span className="cl-accent" style={{ '--hl': 'var(--block-gold)' } as CSSProperties}>made</span>.
+          Show me what you’ve made.
         </h1>
         <p className="cl-onboard-lede">
           Up to three videos you’ve posted. I learn your pace, your captions and your look from them. You can skip
