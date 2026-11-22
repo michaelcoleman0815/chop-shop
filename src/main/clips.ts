@@ -5,6 +5,7 @@ import { readApiKey } from './apikey'
 import type { SuggestedClip, Transcript } from '../shared/types'
 import { normaliseClips, transcriptLines } from './clip-shape'
 import { selectLocally } from './local-llm'
+import { localHost } from './local-server'
 
 /** Ollama's default. Nothing else listens here. */
 export const OLLAMA_HOST = 'http://127.0.0.1:11434'
@@ -127,7 +128,9 @@ The shape of a preached moment. A story starts at its first concrete detail
 and ends at the meaning the speaker states out loud; both have to be inside
 the clip, and cutting into the middle of an illustration is the most common
 way a sermon clip fails. A point being made and then applied is one moment,
-not two. Scripture read aloud and then explained is one moment; scripture read
+not two. Where the moment is a point rather than a story, start on the claim
+itself, not the run-up to it, and end on the sentence that lands it: most of
+the most-watched sermon clips open on their strongest line with no setup. Scripture read aloud and then explained is one moment; scripture read
 without the explanation is not.
 
 What travels, strongest first: testimony, especially disclosed struggle or
@@ -152,6 +155,14 @@ as a doctrine, even when the doctrinal version is better preaching.`,
     'This is a podcast or interview with more than one speaker. Apply the interview guidance, and watch for answers that cannot stand without the question that prompted them.',
   talk:
     'This is a talk, lecture or keynote by one speaker. Expect a structured argument: prefer a single point made whole over a fragment of the through-line, and treat section transitions as boundaries rather than content.',
+  stream: `This is a livestream recording: hours of one person talking to a chat,
+often over a game. What travels: a story told whole, a question from chat
+answered well, a real reaction to something that happened on screen, and a
+claim or admission with stakes. Read a reaction with its setup: the moment
+before it is part of it. What does not travel: thanking subscribers and
+reading alerts, talk about the stream itself (settings, schedule, the
+overlay), long stretches of play with little said, and anything that only
+makes sense to someone watching live.`,
   comedy:
     'This is comedy or a performance. A bit starts at its first setup word and ends a beat after its punchline; never cut between a setup and its payoff, and never include a punchline whose setup is off-screen.'
 }
@@ -211,7 +222,7 @@ export async function suggestClips(
   if (local) {
     // "ollama:llama3.2:3b" names the runtime and the model it should load.
     const name = model.slice('ollama:'.length)
-    const raw = await selectLocally(OLLAMA_HOST, name, SYSTEM, prompt)
+    const raw = await selectLocally(await localHost(), name, SYSTEM, prompt)
     return normaliseClips(raw, transcript.words, durationSec)
   }
 

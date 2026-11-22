@@ -1,0 +1,348 @@
+<!--page
+title: Cutalong, the video editor you talk to
+description: Cutalong is a Mac video editor for YouTube creators. Drop in your footage, say what you want, and it edits, on your own Mac.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+{{> head}}
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Cutalong","applicationCategory":"MultimediaApplication","operatingSystem":"{{requires}}","description":"{{description}}","url":"{{url index}}",{{#downloadReady}}"downloadUrl":"{{downloadUrl}}",{{/downloadReady}}"publisher":{"@type":"Person","name":"{{owner}}"}}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="slab">
+  <div class="container slab-row">
+    {{> lockup}}
+    {{#downloadReady}}<a class="btn btn-quiet slab-action" href="{{downloadUrl}}" data-get="short">Download</a>{{/downloadReady}}
+    {{^downloadReady}}<a class="btn btn-quiet slab-action" href="#signup" data-notify="header">Get notified</a>{{/downloadReady}}
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <h1 id="hero-title">The video editor you <em>talk&nbsp;to</em></h1>
+        <p class="lead">Drop in your footage, say what you want, and it&nbsp;edits.</p>
+        <div class="get" data-get-box>
+          {{#downloadReady}}<a class="btn btn-primary" href="{{downloadUrl}}" data-get="long" data-releases="{{downloadUrl}}" data-win-signed="{{windowsSigned}}">Download for Mac</a>
+          <p class="get-note" data-get-note>For Macs with Apple silicon, on macOS&nbsp;14 or&nbsp;later.</p>
+          <a class="get-also" href="{{downloadUrl}}" data-get-also hidden>Download for Mac anyway</a>{{/downloadReady}}
+          {{^downloadReady}}<a class="btn btn-primary" href="#signup" data-notify="hero">Get notified when it’s ready</a>
+          <p class="get-note">For Macs with Apple silicon, on macOS&nbsp;14 or&nbsp;later.</p>{{/downloadReady}}
+        </div>
+      </div>
+
+      <figure class="take" aria-labelledby="take-note">
+        <div class="take-film">
+          <video class="take-video" src="{{asset media/takes-v2.mp4}}" poster="{{asset media/takes-v2.jpg}}" width="720" height="1280" muted loop playsinline preload="metadata" data-take
+            aria-label="The first 17 seconds of v2 of a laptop review: “So I’ve had the Google Book for a day now. And I’m just going to be honest, it feels like a really expensive Chromebook. Like the Chromebook you had in school was maybe three or four hundred bucks, but this, this right here is over, but this starts at nine hundred bucks.”"></video>
+          <button class="take-sound" type="button" aria-pressed="false" data-take-sound hidden>{{> icon-sound}}<span data-take-sound-label>Sound on</span></button>
+        </div>
+        <div class="take-talk">
+          <p class="take-ask"><span class="mono">/takes</span></p>
+          <p class="take-reply">v2 is ready. It runs 1:21 now, down from 1:35. I kept the best take of 4 lines and removed 4 other takes, 2 false starts, the set-up talk and 1.1&nbsp;s of dead&nbsp;air.</p>
+          <p class="take-head">The script, v2</p>
+          <ol class="take-script">
+            <li><span class="n">9</span><span class="w">So I’ve had the Google Book for a day now.</span></li>
+            <li><span class="n">10</span><span class="w">And I’m just going to be honest.</span></li>
+            <li><span class="n">11</span><span class="w">It feels like a really expensive Chromebook.</span></li>
+            <li class="cut"><span class="n">12</span><span class="w"><s>Like the Chromebook you had in school.</s></span></li>
+            <li><span class="n">13</span><span class="w">Like the Chromebook you had in school was maybe three or four hundred bucks,</span></li>
+            <li><span class="n">14</span><span class="w">but this, this right here is over,</span></li>
+            <li><span class="n">15</span><span class="w">but this starts at nine hundred bucks.</span></li>
+          </ol>
+        </div>
+        <figcaption class="take-note" id="take-note">A real run of <span class="mono">/takes</span> on a laptop review: the footage, the words and the reply are its own. Line 12 was said twice, so v2 plays it&nbsp;once.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="proof" id="proof" aria-labelledby="proof-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="proof-title">It cuts the retakes and keeps what you&nbsp;meant</h2>
+        <p class="lead">On a test recording with retakes planted the way creators make them, the retake cut struck every planted take and nothing that was meant to&nbsp;stay.</p>
+      </div>
+      <ul class="tiles">
+        <li class="tile reveal"><p class="tile-label">Running time</p><p class="tile-number num">0:39</p><p class="tile-note">down from <span class="num">1:13</span></p></li>
+        <li class="tile reveal"><p class="tile-label">Struck</p><p class="tile-number num">10</p><p class="tile-note">7 other takes and 3 false&nbsp;starts</p></li>
+        <li class="tile reveal"><p class="tile-label">Cut by mistake</p><p class="tile-number num">0</p><p class="tile-note">“Never, never” and “again and again” both&nbsp;stayed</p></li>
+      </ul>
+      <div class="proof-grid">
+        <figure class="proof-page reveal" aria-label="The script after the cut, with the retakes struck through and pencilled notes in the margin: the false starts and earlier takes are struck; the take that plays and the lines said twice on purpose stay.">
+          <p class="page-head"><span>The script, v2</span><span class="page-rev">Blue pages</span></p>
+          <ol class="script" aria-hidden="true">
+            <li><span class="n">4</span><span class="w">Let’s start with the camera.</span></li>
+            <li><span class="n">5</span><span class="w">I’ve been using this phone <s>for three ye…</s></span><span class="note">a false start</span></li>
+            <li><span class="n">6</span><span class="w">for three years now, and the battery still lasts all day.</span></li>
+            <li class="cut"><span class="n">9</span><span class="w"><s>The RTX 5090 is the fastest graphics ca…</s></span><span class="note">three false starts</span></li>
+            <li class="cut"><span class="n">10</span><span class="w"><s>The RTX 5090 is the fa…</s></span></li>
+            <li class="cut"><span class="n">11</span><span class="w"><s>ugh.</s></span></li>
+            <li class="cut"><span class="n">12</span><span class="w"><s>The RTX 5090 is the fastest graphics card you can b…</s></span></li>
+            <li class="cut"><span class="n">13</span><span class="w"><s>The RTX 5090 is the fastest graphics card you can buy right now.</s></span><span class="note">an earlier take</span></li>
+            <li class="keep"><span class="n">14</span><span class="w">The RTX 5090 is the fastest graphics card you can buy right now.</span><span class="note">the take that plays</span></li>
+            <li class="cut"><span class="n">15</span><span class="w"><s>This laptop has the best battery I’ve tested this year.</s></span></li>
+            <li><span class="n">16</span><span class="w">This laptop has the best battery life I’ve tested all year.</span></li>
+            <li class="keep"><span class="n">17</span><span class="w">Never, never buy a laptop with eight gigabytes of memory.</span><span class="note">said twice on purpose</span></li>
+            <li><span class="n">18</span><span class="w">I tested it again and again and again.</span></li>
+          </ol>
+        </figure>
+        <div class="proof-aside reveal">
+          <p class="proof-reply"><span class="proof-mark">{{> mark-tile}}</span>“v2 is ready. I kept the best take of 4 lines and removed 7 other takes, 3 false starts and 2.0&nbsp;s of dead air. It runs 0:39, down from&nbsp;1:13.”</p>
+          <details class="method">
+            <summary>How this was measured</summary>
+            <p>An 85&#8209;second test recording made for Cutalong’s own checks. A speech synthesiser read a tech review with the intro redone at the end, one line said five times, sentences broken off, a groan and a laugh. Cutalong’s transcription wrote it down with the app’s own prompt settings, <span class="mono">/takes</span> cut it, and the cut was scored word by word against the log of what was planted. The lines are shown as they were said. It is one recording, not an average, and real speech is&nbsp;messier.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <section class="how" id="how" aria-labelledby="how-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="how-title">Drop it, say it, refine&nbsp;it</h2>
+      </div>
+      <ol class="steps">
+        <li class="step reveal">
+          <p class="step-n mono" aria-hidden="true">01</p>
+          <h3>Drop every file from the shoot</h3>
+          <p>Talking takes, the better microphone and the B&#8209;roll. It sorts them, lines the better sound up with the picture, and writes down every word, on your&nbsp;Mac.</p>
+          <div class="step-sheet" data-slot="step-drop" data-kind="product" data-alt="The redesigned app sorting a dropped shoot into talking, better sound and B-roll, 1200 by 900">
+            <div class="app app-drop" aria-hidden="true">
+              <p class="app-group">Talking</p>
+              <p class="app-file"><span class="app-poster"></span><span class="app-name mono">MVI_9293.MP4</span><span class="app-len mono">4:49</span></p>
+              <p class="app-group">Better sound</p>
+              <p class="app-file"><span class="app-poster app-poster-sound">{{> icon-wave}}</span><span class="app-name mono">lav-mic.wav</span><span class="app-len mono">in sync</span></p>
+              <p class="app-group">B&#8209;roll</p>
+              <p class="app-file"><span class="app-poster app-poster-light"></span><span class="app-name mono">MVI_9294.MP4</span><span class="app-len mono">0:10</span></p>
+            </div>
+          </div>
+        </li>
+        <li class="step reveal">
+          <p class="step-n mono" aria-hidden="true">02</p>
+          <h3>Say what you want</h3>
+          <p>In your own words, or with a slash command. Every answer is a new version, on the next colour of page, so nothing is&nbsp;lost.</p>
+          <div class="step-sheet" data-slot="step-say" data-kind="product" data-alt="The redesigned app's composer with the slash menu open, 1200 by 900">
+            <div class="app app-say" aria-hidden="true">
+              <ul class="app-menu">
+                <li class="on"><span class="mono">/takes</span><span>The best take of each line</span></li>
+                <li><span class="mono">/tighten</span><span>Pauses and ums out</span></li>
+                <li><span class="mono">/shorts</span><span>Vertical, with captions</span></li>
+                <li><span class="mono">/length</span><span>To the length you say</span></li>
+              </ul>
+              <p class="app-composer-say"><span class="mono">/t</span><span class="app-send">{{> icon-up}}</span></p>
+            </div>
+          </div>
+        </li>
+        <li class="step reveal">
+          <p class="step-n mono" aria-hidden="true">03</p>
+          <h3>Refine it on the script</h3>
+          <p>Pick a stretch on the strip or the script, pencil a note in the margin, and apply your notes as the next&nbsp;version.</p>
+          <div class="step-sheet" data-slot="step-refine" data-kind="product" data-alt="The redesigned app's script with a note pencilled in the margin and the notes applied as v3, 1200 by 900">
+            <div class="app app-refine" aria-hidden="true">
+              <p class="app-line picked"><span class="n">15</span>But this starts at nine hundred bucks.</p>
+              <p class="app-margin"><b>1</b>Cut to the laptop’s screen here</p>
+              <p class="app-line"><span class="n">16</span>Dang, man, I was really hoping, like, uh, that would-</p>
+              <p class="app-apply"><span class="app-ver app-ver-3">v3</span>Apply 2 notes as v3</p>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="makes" id="makes" aria-labelledby="makes-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="makes-title">From any recording to the&nbsp;upload</h2>
+      </div>
+      <div class="bento">
+        <article class="job job-raw reveal" aria-labelledby="job-raw">
+          <div class="job-copy">
+            <h3 id="job-raw">Raw footage to a finished video</h3>
+            <p>Retakes and pauses go, the better sound lines up, and it cuts to the length you ask for, within 1.5&nbsp;seconds of a minute or 4 of&nbsp;ten.</p>
+          </div>
+          <div class="job-art" data-slot="job-raw" data-kind="product" data-alt="The redesigned editor with a command applied, 2400 by 1500">
+            <div class="app app-raw" aria-hidden="true">
+              <p class="app-bubble">Make it vertical and add captions</p>
+              <p class="app-reply">v3 is ready. It is vertical now, 9:16, and captions show three words at a time.</p>
+              <span class="app-short"><span class="app-short-cap">nine hundred bucks</span></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="job job-clips reveal" aria-labelledby="job-clips">
+          <div class="job-copy">
+            <h3 id="job-clips">Long recordings to clips</h3>
+            <p><span class="mono">/clipping</span> finds the moments that stand on their own in a stream, a service or a podcast, and makes each a vertical, captioned&nbsp;edit.</p>
+            <ul class="job-list">
+              <li>It leaves out the worship set, the announcements and the sponsor&nbsp;read</li>
+            </ul>
+          </div>
+          <ul class="app app-files" data-slot="job-clips" data-kind="product" data-alt="The clips /clipping found, with their lengths, 2400 by 1500" aria-hidden="true">
+            <li><span>The testimony that stands on its own</span><span class="mono">0:41</span></li>
+            <li><span>The question from the back row</span><span class="mono">0:58</span></li>
+            <li><span>Why the youth group meets on Tuesdays</span><span class="mono">0:33</span></li>
+            <li><span>The closing story</span><span class="mono">0:52</span></li>
+          </ul>
+        </article>
+
+        <article class="job job-vlog reveal" aria-labelledby="job-vlog">
+          <div class="job-copy">
+            <h3 id="job-vlog">A day of clips to a vlog</h3>
+            <p>Drop the day and say “make a vlog”. It reads the clock each clip was shot on, leaves out the shaky, dark and repeated ones, and tells the day as a&nbsp;story.</p>
+          </div>
+          <ol class="app app-story" data-slot="job-vlog" data-kind="product" data-alt="The redesigned app's vlog: the day told as tease, scenes in order and close, 2400 by 1500" aria-hidden="true">
+            <li><span class="mono">Tease</span><span>The laughter at 13:40</span></li>
+            <li><span class="mono">8:40</span><span>The café</span></li>
+            <li><span class="mono">12:15</span><span>Up the ridge</span></li>
+            <li><span class="mono">19:30</span><span>The estuary at dusk</span></li>
+            <li><span class="mono">Close</span><span>You, saying it was the best day</span></li>
+          </ol>
+        </article>
+
+        <article class="job job-brand reveal" aria-labelledby="job-brand">
+          <div class="job-copy">
+            <h3 id="job-brand">Your channel’s brand</h3>
+            <p>One brand per channel: your logo, your caption style and how you talk, learned from videos you have already made. A never list keeps out what you never&nbsp;use.</p>
+          </div>
+          <div class="app app-brand" data-slot="job-brand" data-kind="product" data-alt="The redesigned app's Brand page, 2400 by 1500" aria-hidden="true">
+            <p class="app-brand-name">Lighting at home</p>
+            <p class="app-never"><span>Never</span>whooshes on this channel</p>
+          </div>
+        </article>
+
+        <article class="job job-upload reveal" aria-labelledby="job-upload">
+          <div class="job-copy">
+            <h3 id="job-upload">Ready to upload</h3>
+            <p>Beside every export: captions as <span class="mono">.srt</span> and <span class="mono">.vtt</span>, a description with chapters, three titles and 10 to 15 tags, written from your&nbsp;words.</p>
+          </div>
+          <ul class="app app-files" data-slot="job-upload" data-kind="product" data-alt="The files beside an export, 2400 by 1500" aria-hidden="true">
+            <li><span class="mono">three-lights.mp4</span><span>0:59</span></li>
+            <li><span class="mono">three-lights.srt</span><span>captions</span></li>
+            <li><span class="mono">description.txt</span><span>with chapters</span></li>
+            <li><span class="mono">titles-and-tags.txt</span><span>3 titles, 12 tags</span></li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="mac" id="mac" aria-labelledby="mac-title">
+    <div class="container">
+      <div class="mac-block">
+        <div class="mac-copy reveal">
+          <h2 id="mac-title">Your footage never leaves your&nbsp;Mac</h2>
+          <dl class="facts">
+            <div><dt>The work happens here</dt><dd><span class="mono">whisper.cpp</span> writes down the words and <span class="mono">ffmpeg</span> renders, both on your&nbsp;Mac.</dd></div>
+            <div><dt>Claude, or a model on your Mac</dt><dd>Claude plans the best edits, billed to your own Anthropic account. A free model in Ollama or LM Studio keeps even the words&nbsp;here.</dd></div>
+            <div><dt>What Claude sees</dt><dd>Your words and the edit, plus three small stills from each vlog moment unless you switch them&nbsp;off.</dd></div>
+          </dl>
+        </div>
+        <figure class="system reveal" aria-label="What runs where: footage, transcription and rendering stay on your Mac. Anthropic gets the words and the edit when you plan with Claude, GitHub answers the update check, and other services get nothing unless you add their keys.">
+          <div class="system-mac">
+            <p class="system-name">Your Mac</p>
+            <ul class="system-parts">
+              <li>Your footage</li>
+              <li><span class="mono">whisper.cpp</span>, the words</li>
+              <li><span class="mono">ffmpeg</span>, the cut</li>
+              <li>Your projects and brands</li>
+            </ul>
+          </div>
+          <ol class="system-out">
+            <li><span class="system-wire">The words and the edit, with Claude</span><span class="system-node">Anthropic</span></li>
+            <li><span class="system-wire">The update check</span><span class="system-node">GitHub</span></li>
+            <li><span class="system-wire">Only with your keys</span><span class="system-node system-node-off">Other services</span></li>
+          </ol>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="questions" id="questions" aria-labelledby="questions-title">
+    <div class="container questions-grid">
+      <h2 id="questions-title" class="reveal">Questions</h2>
+      <div class="qa reveal">
+        <details>
+          <summary>Do I need an API key?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>No. You choose: Claude, with your own Anthropic key, which plans the best edits, or a free model on your Mac in Ollama or LM Studio. Cutalong walks you through either in two&nbsp;steps.</p>
+        </details>
+        <details>
+          <summary>What does it cost?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>With Claude, what it does is billed to your own Anthropic account, at Anthropic’s prices, so you pay for what you use. A model on your Mac costs&nbsp;nothing. Cutalong’s own price: <span class="fill" data-fill="price">to be set by the owner</span>.</p>
+        </details>
+        <details>
+          <summary>What does Claude see?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>The words of your recording and the edit, never the footage. For a vlog it also sees three small stills from each moment, unless you turn off “Let Claude see frames from my footage” in&nbsp;Settings.</p>
+        </details>
+        <details>
+          <summary>Does it work offline?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Yes, with a model on your Mac. Once the transcription model has downloaded, transcription, planning, slash commands, the editor and export all run with no connection. With Claude, turning a sentence into an edit needs the&nbsp;internet.</p>
+        </details>
+        <details>
+          <summary>Which Macs does it run on?<span class="qa-plus" aria-hidden="true"></span></summary>
+          <p>Macs with Apple silicon on macOS 14 Sonoma or later. The transcription and vision helpers are built for macOS&nbsp;14.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="close" id="soon" aria-labelledby="signup-title">
+    <div class="container">
+      <div class="close-block">
+        <div class="close-copy reveal">
+          {{^downloadReady}}<h2 id="signup-title">Hear when it’s&nbsp;ready</h2>
+          <p class="lead">Cutalong is being finished now. Leave your address for one email, the day you can download&nbsp;it.</p>{{/downloadReady}}
+          {{#downloadReady}}<h2 id="signup-title">Start with the footage you&nbsp;have</h2>
+          <div class="get" data-get-box>
+            <a class="btn btn-primary" href="{{downloadUrl}}" data-get="long">Download for Mac</a>
+            <p class="get-note" data-get-note>For Macs with Apple silicon, on macOS&nbsp;14 or&nbsp;later.</p>
+            <a class="get-also" href="{{downloadUrl}}" data-get-also hidden>Download for Mac anyway</a>
+          </div>{{/downloadReady}}
+          <form class="signup" action="{{signupAction}}" method="post" data-signup="{{signupState}}" novalidate>
+            <label for="signup">{{^downloadReady}}Your email address{{/downloadReady}}{{#downloadReady}}Hear when these ship{{/downloadReady}}</label>
+            <div class="signup-row">
+              <input id="signup" name="{{signupField}}" type="email" autocomplete="email" inputmode="email" enterkeyhint="send" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="254" required aria-describedby="signup-help">
+              <button class="btn btn-primary" type="submit" {{signupDisabled}}>Tell me</button>
+            </div>
+            <p class="signup-help" id="signup-help" data-signup-help aria-live="polite">{{^downloadReady}}One email when it’s ready, and nothing&nbsp;else.{{/downloadReady}}{{#downloadReady}}One email for each of these, and nothing&nbsp;else.{{/downloadReady}}</p>
+            <input type="hidden" name="source" value="soon" data-signup-source>
+            <p class="signup-trap" aria-hidden="true"><label>Leave this empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label></p>
+          </form>
+        </div>
+        <div class="soon reveal" aria-labelledby="soon-title">
+          <h3 id="soon-title">Also being built</h3>
+          <ul class="soon-list">
+            <li><span>Phone apps for iPhone and Android</span><span class="soon-state">Coming soon</span></li>
+            <li><span>Documentaries and animated explainers from a prompt</span><span class="soon-state">Coming soon</span></li>
+            <li><span>Map documentaries, told place by place</span><span class="soon-state">Coming soon</span></li>
+            <li><span>Talking-head graphics, and a 2×2 grid of speakers</span><span class="soon-state">Coming soon</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="footer-row">
+      {{> lockup}}
+      <ul class="footer-links">
+        <li><a href="{{page privacy}}">Privacy</a></li>
+        <li><a href="{{page terms}}">Terms</a></li>
+        {{#downloadReady}}<li><a href="{{downloadUrl}}">Releases on GitHub</a></li>{{/downloadReady}}
+        <li><a href="mailto:{{contactEmail}}">{{contactEmail}}</a></li>
+      </ul>
+      <p class="footer-legal">© {{year}} {{owner}}</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

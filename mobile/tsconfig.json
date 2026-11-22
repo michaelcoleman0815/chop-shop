@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vite/client"],
+    "paths": { "path": ["./src/shims/path.ts"] }
+  },
+  "include": ["src/**/*", "../src/renderer/src/cutalong/**/*", "../src/preload/*.d.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/testing.ts", "../src/**/*.test.ts"]
+}

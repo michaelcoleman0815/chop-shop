@@ -31,6 +31,7 @@ try {
       `--alias:electron=${join(root, 'tests/electron-stub.cjs')}`,
       '--external:@ffprobe-installer/ffprobe',
       '--external:ffmpeg-static',
+      '--external:onnxruntime-node',
       `--outfile=${bundle}`,
       '--log-level=warning'
     ],

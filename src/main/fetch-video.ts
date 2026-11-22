@@ -2,9 +2,10 @@ import { app } from 'electron'
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
 import { promises as fs } from 'fs'
-import { join } from 'path'
-import { resourcePath } from './resources'
+import { isAbsolute, join } from 'path'
+import { binPath, helperScript } from './resources'
 import { FFMPEG_PATH } from './ffmpeg'
+import { YTDLP_ENV } from './assets'
 
 /**
  * Pulls a recording from a URL so a link can be clipped without downloading it
@@ -12,11 +13,13 @@ import { FFMPEG_PATH } from './ffmpeg'
  * because the bundled one is the only copy the app can rely on.
  */
 
-export const YTDLP_PATH = (): string => resourcePath('bin', 'yt-dlp')
+export const YTDLP_PATH = (): string => binPath('yt-dlp')
 
 export interface FetchedVideo {
   path: string
   title: string
+  /** The channel's handle (@name) when the host has one. */
+  channel: string | null
 }
 
 export async function fetchVideo(
@@ -28,24 +31,28 @@ export async function fetchVideo(
    * workflow: on the upstream a church typically has, the download is measured
    * in hours. yt-dlp can ask the host for a range instead.
    */
-  range?: { startSec: number; endSec: number }
+  range?: { startSec: number; endSec: number },
+  /** A browser whose sign-in yt-dlp may use, for videos that need one. */
+  signInFrom?: string | null
 ): Promise<FetchedVideo> {
   const bin = YTDLP_PATH()
   if (!existsSync(bin)) {
-    throw new Error('yt-dlp is missing from this build. Run scripts/fetch-ytdlp.sh.')
+    throw new Error(`yt-dlp is missing from this build. Run ${helperScript('fetch-ytdlp')}.`)
   }
 
-  const dir = join(app.getPath('videos'), 'Chop Shop', 'Downloads')
+  const dir = join(app.getPath('videos'), 'Cutalong', 'Downloads')
   await fs.mkdir(dir, { recursive: true })
 
   return new Promise<FetchedVideo>((resolve, reject) => {
     let resolved: string | null = null
     let title = ''
+    let channel: string | null = null
     let stderr = ''
 
-    const child = spawn(bin, [
+    const args = [
       '--no-playlist',
       '--newline',
+      ...(signInFrom ? ['--cookies-from-browser', signInFrom] : []),
       ...(range
         ? [
             '--download-sections',
@@ -70,17 +77,24 @@ export async function fetchVideo(
       'after_move:%(filepath)s',
       '--print',
       'before_dl:TITLE %(title)s',
+      '--print',
+      'before_dl:CHANNEL %(uploader_id)s',
       '-o',
       join(dir, '%(title).120B [%(id)s].%(ext)s'),
       url
-    ])
+    ]
+    const child = spawn(bin, args, { env: YTDLP_ENV })
 
     child.stdout.on('data', (d) => {
       for (const line of d.toString().split('\n')) {
         const text = line.trim()
         if (!text) continue
         if (text.startsWith('TITLE ')) title = text.slice(6)
-        else if (text.startsWith('/')) resolved = text
+        else if (text.startsWith('CHANNEL ')) {
+          // yt-dlp prints NA for a field the host does not have.
+          const handle = text.slice(8).trim()
+          channel = handle && handle !== 'NA' ? handle : null
+        } else if (isAbsolute(text)) resolved = text
       }
     })
 
@@ -99,7 +113,7 @@ export async function fetchVideo(
         return reject(new Error(last.replace(/^ERROR:\s*/, '')))
       }
       if (!resolved) return reject(new Error('The download finished but produced no file.'))
-      resolve({ path: resolved, title: title || 'Downloaded video' })
+      resolve({ path: resolved, title: title || 'Downloaded video', channel })
     })
   })
 }

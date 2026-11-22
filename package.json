@@ -1,7 +1,7 @@
 {
   "name": "chop-shop",
-  "version": "0.2.13",
-  "description": "Chop Shop - clip long videos and grab the last N seconds of anything on screen.",
+  "version": "0.3.5",
+  "description": "Cutalong: a video editor you talk to. Cuts on the words, captions, B-roll and your brand, on your own Mac.",
   "main": "./out/main/index.js",
   "author": "Michael Coleman",
   "license": "UNLICENSED",
@@ -15,24 +15,33 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run check:ipc",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "release": "npm run build && electron-builder --mac --publish always",
     "postinstall": "electron-builder install-app-deps && node scripts/prepare-electron.mjs",
     "check:ipc": "node scripts/check-ipc.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "regress": "node scripts/regress.mjs",
-    "eval:clips": "node scripts/eval-clips.mjs"
+    "eval:clips": "node scripts/eval-clips.mjs",
+    "eval:learn": "node scripts/eval-learn.mjs",
+    "fixtures:learn": "node scripts/make-learn-fixtures.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@napi-rs/canvas": "^1.1.0",
     "electron-updater": "^6.3.9",
     "ffmpeg-static": "^5.2.0",
+    "onnxruntime-node": "^1.31.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@fontsource-variable/figtree": "^5.3.0",
     "@fontsource/archivo-black": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/sora": "^5.3.0",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
@@ -41,9 +50,12 @@
     "electron": "^44.0.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
+    "lucide-static": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "simple-icons": "16.36.0",
     "typescript": "^5.5.3",
-    "vite": "^5.3.4"
+    "vite": "^5.3.4",
+    "vitest": "^2.1.9"
   }
 }

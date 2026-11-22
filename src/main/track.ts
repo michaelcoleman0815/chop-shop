@@ -1,5 +1,7 @@
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
+import { findFaces } from './face-finder'
+import { FFMPEG_PATH } from './ffmpeg'
 import { resourcePath } from './resources'
 
 export interface Face {
@@ -12,6 +14,8 @@ export interface Face {
 export interface VisionSample {
   t: number
   faces: Face[]
+  /** Everyone the Mac's Vision sees, faced or not (upper bodies); absent from YuNet and older helpers. */
+  people?: Face[]
 }
 
 export interface TrackPoint {
@@ -22,12 +26,29 @@ export interface TrackPoint {
 
 export const VISION_PATH = (): string => resourcePath('bin', 'chopshop-vision')
 
+/** YuNet, the face finder where there is no Vision helper (main/face-finder.ts). */
+export const FACE_MODEL_PATH = (): string => resourcePath('faces', 'face_detection_yunet_2026may.onnx')
+
+/** Whether this computer can find faces: with the Vision helper on a Mac, with YuNet on Windows. */
+export function hasFaceFinder(): boolean {
+  return existsSync(process.platform === 'win32' ? FACE_MODEL_PATH() : VISION_PATH())
+}
+
+/**
+ * Where the faces are over a stretch of a recording, a few times a second:
+ * the Mac's Vision helper, or on Windows YuNet with the same answer.
+ */
 export async function detectFaces(
   sourcePath: string,
   startSec: number,
   durationSec: number,
   samplesPerSec = 2
 ): Promise<VisionSample[]> {
+  if (process.platform === 'win32') {
+    if (!existsSync(FACE_MODEL_PATH())) throw new Error('The face finder is missing from this build.')
+    const tools = { ffmpeg: FFMPEG_PATH, model: FACE_MODEL_PATH() }
+    return findFaces(sourcePath, startSec, durationSec, samplesPerSec, tools)
+  }
   const bin = VISION_PATH()
   if (!existsSync(bin)) throw new Error('chopshop-vision is missing. Run scripts/build-native.sh.')
 
@@ -49,6 +70,46 @@ export async function detectFaces(
   })
 
   return JSON.parse(json) as VisionSample[]
+}
+
+/** An object followed through a stretch of a recording (the Vision helper's --track). */
+export interface TrackedObject {
+  /** How it was chosen: given, nearest a hand, or the biggest thing that stands out. */
+  found: 'given' | 'hand' | 'salient'
+  samples: { t: number; box: [number, number, number, number] | null; c: number }[]
+}
+
+/**
+ * One object followed through a stretch of a recording, `samplesPerSec` times
+ * a second, as boxes in fractions of the picture: the one in `box` on the
+ * first frame, or else the one the helper picks there (the thing held up
+ * nearest a hand, or the biggest thing that stands out). The Mac only: on
+ * Windows, or with a helper from before following, it says so.
+ */
+export async function trackObject(
+  sourcePath: string,
+  startSec: number,
+  durationSec: number,
+  samplesPerSec = 12,
+  box?: [number, number, number, number]
+): Promise<TrackedObject> {
+  if (process.platform !== 'darwin') throw new Error('Following an object needs the Mac’s Vision.')
+  const bin = VISION_PATH()
+  if (!existsSync(bin)) throw new Error('chopshop-vision is missing. Run scripts/build-native.sh.')
+  const args = ['--track', sourcePath, startSec.toFixed(3), durationSec.toFixed(3), String(samplesPerSec)]
+  if (box) args.push(...box.map((v) => v.toFixed(4)))
+  const json = await new Promise<string>((resolve, reject) => {
+    const child = spawn(bin, args)
+    let out = ''
+    let err = ''
+    child.stdout.on('data', (d) => (out += d.toString()))
+    child.stderr.on('data', (d) => (err += d.toString()))
+    child.on('error', reject)
+    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(err.trim() || `vision exit ${code}`))))
+  })
+  const r = JSON.parse(json) as TrackedObject
+  if (!Array.isArray(r.samples) || r.samples.length === 0) throw new Error('The helper followed nothing.')
+  return { found: r.found, samples: r.samples }
 }
 
 export interface TrackOptions {

@@ -1,5 +1,5 @@
 appId: social.brewed.chopshop
-productName: Chop Shop
+productName: Cutalong
 copyright: Copyright © 2026 Michael Coleman
 
 directories:
@@ -11,27 +11,57 @@ files:
   - package.json
   - '!**/{.eslintrc,.editorconfig,.prettierrc,tsconfig*.json}'
 
-# The ffmpeg/ffprobe binaries cannot be executed from inside app.asar.
+# The ffmpeg/ffprobe binaries cannot be executed from inside app.asar, and
+# Skia's native module (motion graphics in the export) cannot load from it.
 asarUnpack:
   - '**/node_modules/ffmpeg-static/**'
   - '**/node_modules/@ffprobe-installer/**'
+  - '**/node_modules/@napi-rs/canvas*/**'
+  # Kokoro, the voice that reads on this Mac, runs on onnxruntime's native binary.
+  - '**/node_modules/onnxruntime-node/**'
+
+# Makes every program in the app runnable by everyone, not only its owner, so it still runs after
+# an update, which macOS's updater installs as root (scripts/after-pack.cjs).
+afterPack: scripts/after-pack.cjs
 
 extraResources:
   - from: resources/bin
     to: bin
   - from: resources/fonts
     to: fonts
+  - from: resources/voices
+    to: voices
+  # The small satellite pictures every map starts from; the export reads them here.
+  - from: resources/maps
+    to: maps
 
 mac:
   category: public.app-category.video
+  # The oldest macOS the app opens on. The helpers in resources/bin are built
+  # for this same version (scripts/macos-min.sh reads it from here), and CI
+  # checks every bundled binary against it (scripts/check-macos-min.sh).
+  minimumSystemVersion: "14.0"
   icon: build/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    NSMicrophoneUsageDescription: Chop Shop mixes your microphone into buffered clips when you enable it.
-    NSCameraUsageDescription: Not used. Present only because Chromium requests media permissions as a pair.
+  # onnxruntime-node ships its native binaries for every platform (about 295 MB). The Mac app
+  # keeps darwin arm64's only, for Kokoro, the voice that reads on this Mac (a Mac finds faces
+  # with Vision, not with the runtime).
+  #
+  # A platform's files list must hold something besides exclusions:
+  # electron-builder 26 reads a list of nothing but '!' lines as everything
+  # else, and packs the whole project (src, docs, .build) into the app. So
+  # each names package.json, which the app holds anyway.
+  files:
+    - filter:
+        - package.json
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/x64/**'
+        # The binding loads @rpath/libonnxruntime.1.dylib; the package also carries a second, identical copy under its full version.
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/arm64/libonnxruntime.1.*.*.dylib'
   target:
     - target: dmg
       arch: [arm64]
@@ -40,6 +70,45 @@ mac:
 
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
+
+# Windows 10 and 11 on x64, released beside the Mac's DMG (release.yml), with
+# latest.yml for the updater. Unsigned until a signing service is set up, so
+# SmartScreen asks before the first run (see README, "Signing on Windows"):
+# release.yml adds win.azureSignOptions from its secrets when they are there,
+# and nothing here changes.
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  # The face finder's runtime (main/face-finder.ts) loads from beside
+  # app.asar, as Skia's does.
+  asarUnpack:
+    - '**/node_modules/onnxruntime-node/**'
+  # onnxruntime-node carries every platform's binaries (about 295 MB). Windows
+  # keeps x64's, with the Microsoft C++ runtime CI puts beside them
+  # (scripts/bundle-msvc-runtime.mjs), and leaves out DirectML and its shader
+  # compiler, which only the GPU runtime loads: faces are found on the CPU.
+  # With package.json first, as the Mac's (see there).
+  files:
+    - filter:
+        - package.json
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/x64/DirectML.dll'
+        - '!**/node_modules/onnxruntime-node/bin/napi-v*/win32/x64/dxcompiler.dll'
+  extraResources:
+    # YuNet, the face finder where there is no Vision (resources/faces/LICENSE).
+    - from: resources/faces
+      to: faces
+
+# Installs for the person who runs it, with no administrator, into their own
+# programs folder, and keeps their projects and settings when it is removed.
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
 
 publish:
   provider: github

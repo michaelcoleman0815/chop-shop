@@ -1,98 +1,70 @@
-import { spawn } from 'child_process'
-import { promises as fs, createWriteStream, existsSync } from 'fs'
 import { join } from 'path'
-import { app, net } from 'electron'
-import { FFMPEG_PATH } from './ffmpeg'
-import { WHISPER_PATH } from './resources'
-import { tokensToWords } from './whisper-parse'
+import { loudnessEnvelope } from './audio-envelope'
+import { DEFAULT_FILLER_LISTEN, FILLER_PROMPT, listenForFillers, readSamples } from './filler-listen'
+import { platform } from './platform'
+import { parseWhisperJson, secondPass, tokensToWords } from './whisper-parse'
+import { voicedRegions } from '../shared/audio/voiced'
+import { WHISPER_MODELS, whisperArgs, type VerbatimOptions, type WhisperModel } from './whisper-args'
 import type { Transcript, TranscriptWord } from '../shared/types'
+import type { ToolSaid } from '../shared/failure'
 
-export type WhisperModel = 'base.en' | 'small.en' | 'medium.en'
+export type { VerbatimOptions, WhisperModel }
+
+/**
+ * Transcription with whisper.cpp, on the machine itself: a program on a Mac,
+ * built into the app on a phone. The arguments, the reading of what it
+ * writes and the second listen are the same on both (platform.ts).
+ */
 
 const MODEL_SIZES: Record<WhisperModel, number> = {
   'base.en': 148,
   'small.en': 488,
-  'medium.en': 1533
+  'medium.en': 1533,
+  'large-v3-turbo': 574
 }
 
+/** Where whisper.cpp publishes its models. */
+export const MODEL_URL = (model: WhisperModel): string =>
+  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_MODELS[model].file}`
+
 export function modelPath(model: WhisperModel): string {
-  return join(app.getPath('userData'), 'models', `ggml-${model}.bin`)
+  return join(platform().paths.userData(), 'models', WHISPER_MODELS[model].file)
 }
 
 export function modelSizeMb(model: WhisperModel): number {
   return MODEL_SIZES[model]
 }
 
-export function hasModel(model: WhisperModel): boolean {
-  return existsSync(modelPath(model))
+export async function hasModel(model: WhisperModel): Promise<boolean> {
+  return (await platform().files.stat(modelPath(model))) !== null
 }
 
 /**
  * Fetches a model from the whisper.cpp model repository, reporting 0-100.
  *
- * Resumes a partial file rather than restarting it. These are hundreds of
- * megabytes and the download only lives as long as the app does, so quitting
- * mid-transfer is normal and should not cost the whole thing.
+ * Resumes a partial file rather than restarting it where the platform can.
+ * These are hundreds of megabytes and the download only lives as long as the
+ * app does, so quitting mid-transfer is normal and should not cost the whole thing.
  */
-export async function downloadModel(
-  model: WhisperModel,
-  onProgress: (percent: number) => void
-): Promise<string> {
+export async function downloadModel(model: WhisperModel, onProgress: (percent: number) => void): Promise<string> {
   const dest = modelPath(model)
-  if (existsSync(dest)) return dest
-  await fs.mkdir(join(app.getPath('userData'), 'models'), { recursive: true })
-
-  const url = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`
-  const tmp = `${dest}.part`
-
-  let have = 0
-  try {
-    have = (await fs.stat(tmp)).size
-  } catch {
-    have = 0
-  }
-
-  const response = await net.fetch(url, have > 0 ? { headers: { Range: `bytes=${have}-` } } : {})
-  if (!response.ok || !response.body) {
-    throw new Error(`Model download failed: HTTP ${response.status}`)
-  }
-
-  // A server that ignores the range header sends 200 and the whole file, so the
-  // partial has to be discarded rather than appended to.
-  const resuming = response.status === 206
-  if (!resuming) have = 0
-
-  const remaining = Number(response.headers.get('content-length') ?? 0)
-  const total = have + remaining
-  let received = have
-
-  const out = createWriteStream(tmp, resuming ? { flags: 'a' } : { flags: 'w' })
-  const reader = response.body.getReader()
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    received += value.byteLength
-    out.write(Buffer.from(value))
-    if (total > 0) onProgress(Math.min(99, Math.round((received / total) * 100)))
-  }
-  await new Promise<void>((resolve, reject) => {
-    out.end(() => resolve())
-    out.on('error', reject)
-  })
-
-  const finalSize = (await fs.stat(tmp)).size
-  if (total > 0 && finalSize < total) {
-    // Leave the partial in place so the next attempt can pick up where this
-    // one stopped.
-    throw new Error(
-      `Model download incomplete: ${Math.round(finalSize / 1e6)} of ${Math.round(total / 1e6)} MB.`
-    )
-  }
-
-  await fs.rename(tmp, dest)
+  if (await hasModel(model)) return dest
+  await platform().files.mkdir(join(platform().paths.userData(), 'models'))
+  await platform().download(MODEL_URL(model), dest, onProgress)
   onProgress(100)
   return dest
 }
+
+/** What ffmpeg says when a file has no sound to take, on 6.0, 6.1 and 7.0. */
+const NO_SOUND = /does not contain any stream|matches no streams/i
+
+/**
+ * How long listening for ums may take, as a share of the time writing the
+ * words down took, and at least this long: on the Android emulator two
+ * hundred short Whisper runs took over 800 s after a 394 s transcript.
+ */
+export const UMS_SHARE = 0.5
+export const UMS_LEAST_SEC = 20
 
 /** Whisper wants 16 kHz mono PCM; anything else is resampled internally anyway. */
 async function extractAudio(
@@ -102,8 +74,10 @@ async function extractAudio(
   onProgress: (percent: number) => void,
   startSec = 0
 ): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(FFMPEG_PATH, [
+  let stderr = ''
+  const r = await platform().run(
+    platform().tool('ffmpeg'),
+    [
       '-hide_banner',
       '-loglevel',
       'error',
@@ -125,23 +99,96 @@ async function extractAudio(
       '-c:a',
       'pcm_s16le',
       wavPath
-    ])
-    let stderr = ''
-    child.stdout.on('data', (d) => {
-      for (const line of d.toString().split('\n')) {
-        const [key, value] = line.split('=')
-        if (key === 'out_time_ms' && durationSec > 0) {
-          const done = Number(value) / 1_000_000
-          onProgress(Math.max(0, Math.min(100, (done / durationSec) * 100)))
+    ],
+    {
+      onStdout: (text) => {
+        for (const line of text.split('\n')) {
+          const [key, value] = line.split('=')
+          if (key === 'out_time_ms' && durationSec > 0) {
+            const done = Number(value) / 1_000_000
+            onProgress(Math.max(0, Math.min(100, (done / durationSec) * 100)))
+          }
         }
-      }
-    })
-    child.stderr.on('data', (d) => (stderr += d.toString()))
-    child.on('error', reject)
-    child.on('close', (code) =>
-      code === 0 ? resolve() : reject(new Error(stderr.trim() || `ffmpeg exit ${code}`))
-    )
+      },
+      onStderr: (text) => (stderr += text)
+    }
+  )
+  if (r.code !== 0) throw new Error(stderr.trim() || `ffmpeg exit ${r.code}`)
+}
+
+/**
+ * Threads for whisper where it runs on the CPU, as on Windows: about one a
+ * core (half the processors Windows counts, which counts each core twice),
+ * no fewer than whisper-cli's own four where there are four, and at most
+ * eight. Its default of four leaves most of a newer PC idle. A Mac's
+ * whisper runs on its GPU and keeps the default, and a phone's is built in
+ * with its own. `os` is the platform's, as Node names it.
+ */
+export function whisperThreads(os: string, processors: number): number | undefined {
+  if (os !== 'win32') return undefined
+  return Math.max(Math.min(4, processors), Math.min(8, Math.floor(processors / 2)))
+}
+
+/** How Windows reports a program that ran an instruction the processor does not have. */
+const ILLEGAL_INSTRUCTION = 0xc000001d
+
+/** Runs whisper to the end, reporting its progress from 0 to 100. */
+async function runWhisper(
+  bin: string,
+  args: string[],
+  onProgress: (percent: number) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  let stderr = ''
+  // whisper prints a line per segment, and with -ml 1 that is one per word.
+  // Everything it writes is read as it comes: a pipe nobody reads fills, and
+  // the process blocks forever at 0% CPU, which looks exactly like a hang.
+  const host = platform()
+  const r = await host.run(bin, args, {
+    onStdout: (text) => {
+      const match = /progress\s*=\s*(\d+)%/.exec(text)
+      if (match) onProgress(Number(match[1]))
+    },
+    onStderr: (text) => {
+      stderr = (stderr + text).slice(-8000)
+      // whisper prints progress to stderr as it consumes the audio.
+      const match = /progress\s*=\s*(\d+)%/.exec(text)
+      if (match) onProgress(Number(match[1]))
+    },
+    ...(signal ? { signal } : {})
   })
+  if (r.code !== 0) {
+    // Its last lines whole, without the progress it printed on the way.
+    const lines = stderr
+      .split('\n')
+      .map((l) => l.trimEnd())
+      .filter((l) => l.trim() && !/progress\s*=\s*\d+%/.test(l))
+    const said = lines.slice(-12).join('\n') || `whisper-cli exited with code ${r.code}.`
+    console.warn(`[stt] whisper stopped with code ${r.code}:\n${said}`)
+    // whisper-cli for Windows is built for processors with AVX2, from about 2013 on.
+    if (host.os === 'win32' && r.code !== null && r.code >>> 0 === ILLEGAL_INSTRUCTION) {
+      const why =
+        'This PC’s processor is too old for the transcription model: it needs AVX2, which processors from before about 2013 lack.'
+      throw new WhisperFailed(said, why)
+    }
+    throw new WhisperFailed(said)
+  }
+}
+
+/**
+ * Whisper stopped with an error. The message is a sentence anyone can read;
+ * what whisper printed (a model that would not load, a file it could not
+ * open) is kept in `said`, for Details (shared/failure).
+ */
+export class WhisperFailed extends Error implements ToolSaid {
+  readonly tool = 'whisper'
+  constructor(
+    readonly said: string,
+    message = 'The transcription model stopped before it finished.'
+  ) {
+    super(message)
+    this.name = 'WhisperFailed'
+  }
 }
 
 export async function transcribe(
@@ -154,84 +201,134 @@ export async function transcribe(
    * window, so its timings start at zero and are shifted back onto the source
    * here — everything downstream addresses the original recording.
    */
-  startSec = 0
+  startSec = 0,
+  verbatim?: VerbatimOptions,
+  /** One guess at each step, and word onsets aligned (main/whisper-args): a long recording heard for its clips. */
+  fast: { greedy?: boolean; align?: boolean } = {}
 ): Promise<Transcript> {
-  const bin = WHISPER_PATH()
-  if (!existsSync(bin)) {
-    throw new Error('whisper-cli is missing. Run scripts/build-whisper.sh.')
+  const host = platform()
+  const bin = host.tool('whisper')
+  // A computer runs whisper-cli from the app's resources; a phone has it built in.
+  if (host.kind === 'computer' && !(await host.files.stat(bin))) {
+    // What builds it, as helperScript in resources.ts says: its script on a Mac, its Node twin on Windows.
+    const script = host.os === 'win32' ? 'node scripts/build-whisper.mjs' : 'scripts/build-whisper.sh'
+    throw new Error(`whisper-cli is missing. Run ${script}.`)
   }
   const modelFile = modelPath(model)
-  if (!existsSync(modelFile)) {
+  if (!(await host.files.stat(modelFile))) {
     throw new Error(`Model ${model} is not downloaded yet.`)
   }
 
-  const dir = await fs.mkdtemp(join(app.getPath('temp'), 'chopshop-stt-'))
+  const dir = await host.files.tempDir('chopshop-stt-')
   try {
     const wav = join(dir, 'audio.wav')
-    await extractAudio(
-      videoPath,
-      wav,
-      durationSec,
-      (p) => onProgress(Math.round(p * 0.12), 'Extracting audio'),
-      startSec
-    )
+    try {
+      await extractAudio(
+        videoPath,
+        wav,
+        durationSec,
+        (p) => onProgress(Math.round(p * 0.12), 'Extracting audio'),
+        startSec
+      )
+    } catch (err) {
+      // A recording with no sound track has no words: none heard, rather than ffmpeg's own lines as the reply.
+      if (err instanceof Error && NO_SOUND.test(err.message)) return { words: [], text: '', language: 'en' }
+      throw err
+    }
 
     onProgress(12, 'Transcribing')
     const prefix = join(dir, 'out')
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(bin, [
-        '-m',
-        modelFile,
-        '-f',
-        wav,
-        '-oj',
-        '-of',
-        prefix,
-        // One token per segment is what yields real per-word timings; without it
-        // whisper spreads words evenly across a whole segment.
-        '-ml',
-        '1',
-        // A token is not a word: alone, -ml 1 cuts "epileptic" into "epile" and
-        // "ptic", and each fragment becomes its own caption. Splitting on word
-        // boundaries instead is what makes word-level captions read as speech.
-        // (-dtw was measured here too and changed no timing at all, so it is
-        // not worth the memory it costs.)
-        '-sow',
-        // --print-progress is the only way to see how far along a long file is.
-        // -np would suppress it along with everything else.
-        '-pp'
-      ])
-      let stderr = ''
-      // whisper prints a line per segment, and with -ml 1 that is one per word.
-      // Nothing reading stdout means the 64KB pipe fills and the process blocks
-      // forever at 0% CPU, which looks exactly like a hang.
-      child.stdout.on('data', (d) => {
-        const match = /progress\s*=\s*(\d+)%/.exec(d.toString())
-        if (match) onProgress(12 + Math.round(Number(match[1]) * 0.86), 'Transcribing')
-      })
-      child.stderr.on('data', (d) => {
-        const text = d.toString()
-        stderr += text
-        // whisper prints progress to stderr as it consumes the audio.
-        const match = /progress\s*=\s*(\d+)%/.exec(text)
-        if (match) onProgress(12 + Math.round(Number(match[1]) * 0.86), 'Transcribing')
-      })
-      child.on('error', reject)
-      child.on('close', (code) =>
-        code === 0 ? resolve() : reject(new Error(stderr.trim().slice(-400) || `whisper exit ${code}`))
-      )
-    })
+    const until = verbatim && verbatim.again !== false ? 86 : 98
+    const threads = whisperThreads(host.os, host.processors)
+    const began = Date.now()
+    await runWhisper(bin, whisperArgs({ model, modelFile, wav, prefix, verbatim, threads, ...fast }), (p) =>
+      onProgress(12 + Math.round(p * ((until - 12) / 100)), 'Transcribing')
+    )
+    const firstSec = (Date.now() - began) / 1000
+    const json = parseWhisperJson(await host.files.readText(`${prefix}.json`))
+    let heard = tokensToWords(json.transcription)
 
-    const json = JSON.parse(await fs.readFile(`${prefix}.json`, 'utf8'))
-    const windowWords = tokensToWords(json.transcription ?? [])
-    const words =
-      startSec > 0
-        ? windowWords.map((w) => ({
-            text: w.text,
-            startSec: w.startSec + startSec,
-            endSec: w.endSec + startSec
-          }))
-        : windowWords
+    if (verbatim && verbatim.again !== false && heard.length > 0) {
+      // Listen again, alone, wherever there is voiced sound no word accounts
+      // for: a take Whisper skipped, or swallowed into one stretched word.
+      onProgress(until, 'Listening again')
+      try {
+        const voiced = voicedRegions(await loudnessEnvelope(host.tool('ffmpeg'), wav))
+        let n = 0
+        const pass = await secondPass(heard, voiced, async (span) => {
+          const part = join(dir, `again-${++n}.wav`)
+          await extractAudio(wav, part, span.endSec - span.startSec, () => undefined, span.startSec)
+          const partPrefix = join(dir, `again-${n}`)
+          await runWhisper(
+            bin,
+            whisperArgs({ model, modelFile, wav: part, prefix: partPrefix, verbatim, threads }),
+            () => undefined
+          )
+          const again = tokensToWords(parseWhisperJson(await host.files.readText(`${partPrefix}.json`)).transcription)
+          onProgress(Math.min(98, until + n), 'Listening again')
+          return again.map((w) => ({ ...w, startSec: w.startSec + span.startSec, endSec: w.endSec + span.startSec }))
+        })
+        heard = pass.words
+        if (pass.changed > 0) {
+          console.log(`[stt] a second listen restored words in ${pass.changed} of ${pass.spans.length} places`)
+        }
+        // Then every um, hmm and uh still unwritten, heard in the sound and by Whisper alone (main/filler-listen).
+        onProgress(98, 'Listening for ums')
+        let m = 0
+        // Each stretch is a Whisper run of its own: on a phone, two hundred of them can take longer
+        // than the whole recording did, so the ums take at most half as long again.
+        const budget = { ...DEFAULT_FILLER_LISTEN, budgetSec: Math.max(UMS_LEAST_SEC, firstSec * UMS_SHARE) }
+        const umsEnd = Date.now() + budget.budgetSec * 1000
+        const fillers = await listenForFillers(heard, voiced, {
+          samples: (span) => readSamples(host.tool('ffmpeg'), wav, span),
+          listen: async (span) => {
+            const part = join(dir, `um-${++m}.wav`)
+            await extractAudio(wav, part, span.endSec - span.startSec, () => undefined, span.startSec)
+            const partPrefix = join(dir, `um-${m}`)
+            // One guess at each step and no second tries: on a stretch this short, a phone's Whisper
+            // searching five ways at six temperatures took longer than the whole recording. And one
+            // listen that runs past the time left is stopped, so it never holds the transcript up.
+            const stop = new AbortController()
+            const timer = setTimeout(() => stop.abort(), Math.max(1000, umsEnd - Date.now()))
+            try {
+              await runWhisper(
+                bin,
+                [
+                  ...whisperArgs({
+                    model,
+                    modelFile,
+                    wav: part,
+                    prefix: partPrefix,
+                    verbatim: { ...verbatim, prompt: FILLER_PROMPT },
+                    threads
+                  }),
+                  ...['-bs', '1', '-bo', '1', '-nf']
+                ],
+                () => undefined,
+                stop.signal
+              )
+            } finally {
+              clearTimeout(timer)
+            }
+            const alone = tokensToWords(parseWhisperJson(await host.files.readText(`${partPrefix}.json`)).transcription)
+            return alone.map((w) => ({ ...w, startSec: w.startSec + span.startSec, endSec: w.endSec + span.startSec }))
+          }
+        }, budget)
+        if (fillers.length > 0) {
+          heard = [...heard, ...fillers].sort((a, b) => a.startSec - b.startSec)
+          console.log(`[stt] heard ${fillers.length} filler${fillers.length === 1 ? '' : 's'} Whisper left out`)
+        }
+      } catch (err) {
+        console.warn('[stt] the second listen failed, keeping the first:', err instanceof Error ? err.message : err)
+      }
+    }
+
+    // whisper can let the last word run on past the end of the sound: no word ends after the audio does.
+    const length = durationSec > 0 ? durationSec : Infinity
+    const words: TranscriptWord[] = heard.map((w) => {
+      const end = Math.min(w.endSec, length)
+      return { text: w.text, startSec: Math.min(w.startSec, end) + startSec, endSec: end + startSec }
+    })
     onProgress(100, 'Done')
 
     return {
@@ -240,6 +337,6 @@ export async function transcribe(
       language: json.result?.language ?? 'en'
     }
   } finally {
-    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    await host.files.remove(dir).catch(() => undefined)
   }
 }

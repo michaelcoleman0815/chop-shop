@@ -1,0 +1,399 @@
+import { spawn } from 'child_process'
+import { promises as fs } from 'fs'
+import { basename, extname, join } from 'path'
+import { clampExcerpt, defaultExcerpt, type Range } from '../shared/assets'
+import type { NewAsset } from './asset-file'
+import { uploadedOn } from '../shared/motion/figures'
+import { probeMedia } from './inspiration/measure'
+import { channelSearchUrl, orderFound, readSources, type FoundClip } from '../shared/broll-sources'
+
+/**
+ * Brings material into an edit: files already on disk, images from links,
+ * short excerpts of videos at links (YouTube and anything else yt-dlp reads),
+ * search results to choose B-roll from, and icons the renderer draws.
+ *
+ * Only the stretch that will be used is fetched from a video, at no more than
+ * 1080p, and it keeps its title, channel and link so the export can credit
+ * it. The binaries arrive as arguments, so the tests run without Electron.
+ */
+
+export type { NewAsset } from './asset-file'
+
+export interface AssetTools {
+  ffmpeg: string
+  ytdlp: string
+  /** Where fetched material is kept for this edit. */
+  dir: string
+  /** A browser whose sign-in yt-dlp may use, for videos that ask for one. */
+  signInFrom?: string | null
+  signal?: AbortSignal
+}
+
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024
+const MAX_HEIGHT = 1080
+
+/**
+ * yt-dlp's surroundings. On Windows its Python writes to a pipe in the
+ * system's old code page, where a title or a path in another script comes
+ * out as question marks and the file it names cannot be found: there it is
+ * told to write UTF-8.
+ */
+export const YTDLP_ENV: NodeJS.ProcessEnv | undefined =
+  process.platform === 'win32' ? { ...process.env, PYTHONIOENCODING: 'utf-8' } : undefined
+
+function run(bin: string, args: string[], signal?: AbortSignal, onLine?: (line: string) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, args, { signal, env: YTDLP_ENV })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (d) => {
+      const text = d.toString()
+      stdout += text
+      if (onLine) for (const line of text.split('\n')) if (line.trim()) onLine(line.trim())
+    })
+    child.stderr.on('data', (d) => {
+      const text = d.toString()
+      stderr = (stderr + text).slice(-6000)
+      if (onLine) for (const line of text.split('\n')) if (line.trim()) onLine(line.trim())
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) resolve(stdout)
+      else reject(new Error(explain(stderr) ?? `${basename(bin)} exited with ${code}`))
+    })
+  })
+}
+
+/** yt-dlp's failures, as something a person can act on. */
+export function explain(stderr: string): string | null {
+  const last =
+    stderr
+      .trim()
+      .split('\n')
+      .reverse()
+      .find((l) => /ERROR/.test(l)) ?? stderr.trim().split('\n').pop()
+  if (!last) return null
+  // Chrome and the browsers built on it lock their sign-in away from other programs on Windows.
+  if (/could not copy .*cookie database|failed to decrypt with dpapi|app-bound encryption/i.test(stderr)) {
+    return 'That browser keeps its sign-in locked on Windows, so it can’t be borrowed. Firefox’s can: choose it in Settings.'
+  }
+  if (/sign in to confirm|not a bot|login required|cookies/i.test(stderr)) {
+    return 'The site wants a signed-in browser before it will hand this over.'
+  }
+  if (/private video|video unavailable|has been removed/i.test(stderr)) return 'That video is private or gone.'
+  if (/unsupported url/i.test(stderr)) return 'I can’t fetch from that site.'
+  return last.replace(/^ERROR:\s*(\[[^\]]+\]\s*)?/, '')
+}
+
+export { importFile } from './asset-file'
+
+const IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/bmp': 'bmp'
+}
+
+const slug = (s: string): string =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'asset'
+
+/** An image at a link, downloaded into the edit's folder. */
+export async function fetchImage(url: string, tools: Pick<AssetTools, 'ffmpeg' | 'dir' | 'signal'>): Promise<NewAsset> {
+  const res = await fetch(url, { signal: tools.signal, redirect: 'follow' })
+  if (!res.ok) throw new Error(`The image link answered ${res.status}.`)
+  const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+  const ext = IMAGE_TYPES[type]
+  if (!ext)
+    throw new Error(type.startsWith('image/') ? `${type} images are not supported yet.` : 'That link is not an image.')
+  const declared = Number(res.headers.get('content-length') ?? 0)
+  if (declared > MAX_IMAGE_BYTES) throw new Error('That image is over 25 MB.')
+  const bytes = Buffer.from(await res.arrayBuffer())
+  if (bytes.length > MAX_IMAGE_BYTES) throw new Error('That image is over 25 MB.')
+  await fs.mkdir(tools.dir, { recursive: true })
+  const name = slug(basename(new URL(url).pathname, extname(new URL(url).pathname)))
+  const path = join(tools.dir, `${name}-${Date.now().toString(36)}.${ext}`)
+  await fs.writeFile(path, bytes)
+  const info = await probeMedia(tools.ffmpeg, path)
+  return {
+    kind: 'image',
+    path,
+    title: name,
+    durationSec: null,
+    width: info.width,
+    height: info.height,
+    origin: { type: 'link', url, author: new URL(url).hostname, license: null, range: null }
+  }
+}
+
+/** A PNG the renderer drew (an icon), saved into the edit's folder. */
+export async function saveImage(
+  bytes: Buffer,
+  name: string,
+  origin: NewAsset['origin'],
+  tools: Pick<AssetTools, 'ffmpeg' | 'dir'>
+): Promise<NewAsset> {
+  if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) throw new Error('That image could not be saved.')
+  await fs.mkdir(tools.dir, { recursive: true })
+  const path = join(tools.dir, `${slug(name)}-${Date.now().toString(36)}.png`)
+  await fs.writeFile(path, bytes)
+  const info = await probeMedia(tools.ffmpeg, path)
+  return { kind: 'image', path, title: name, durationSec: null, width: info.width, height: info.height, origin }
+}
+
+const signIn = (from?: string | null): string[] => (from ? ['--cookies-from-browser', from] : [])
+
+/** The yt-dlp arguments that fetch only one stretch of a video, at no more than 1080p. */
+export function excerptArgs(
+  url: string,
+  range: Range,
+  outTemplate: string,
+  opts: { ffmpeg: string; signInFrom?: string | null; maxHeight?: number }
+): string[] {
+  const h = opts.maxHeight ?? MAX_HEIGHT
+  return [
+    '--no-playlist',
+    '--newline',
+    '--download-sections',
+    `*${range.startSec.toFixed(2)}-${range.endSec.toFixed(2)}`,
+    // Without this the excerpt starts at the keyframe before it, seconds early.
+    '--force-keyframes-at-cuts',
+    '-f',
+    `bv*[height<=${h}][ext=mp4]+ba[ext=m4a]/b[height<=${h}][ext=mp4]/bv*[height<=${h}]+ba/b[height<=${h}]/b`,
+    '--merge-output-format',
+    'mp4',
+    '--ffmpeg-location',
+    opts.ffmpeg,
+    ...signIn(opts.signInFrom),
+    '--progress-template',
+    'PCT %(progress._percent_str)s',
+    '--print',
+    'after_move:FILE %(filepath)s',
+    '-o',
+    outTemplate,
+    url
+  ]
+}
+
+export interface VideoInfo {
+  title: string
+  author: string | null
+  durationSec: number | null
+}
+
+/**
+ * A name to credit, never an address: archive.org gives the account that
+ * uploaded an item, an e-mail address, as its uploader.
+ */
+function creditName(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const name = value.trim()
+  return name && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name) ? name : null
+}
+
+/** Title, channel and length, from yt-dlp's info JSON. */
+export function parseInfo(json: string): VideoInfo {
+  const d = JSON.parse(json) as Record<string, unknown>
+  const handle = typeof d.uploader_id === 'string' && d.uploader_id.startsWith('@') ? d.uploader_id : null
+  // The channel, else who uploaded it, else who made it (archive.org's creator, like "NASA TV").
+  const creators = Array.isArray(d.creators) ? (d.creators.map(creditName).find((n) => n !== null) ?? null) : null
+  const author = handle ?? creditName(d.channel) ?? creditName(d.uploader) ?? creators ?? creditName(d.creator)
+  return {
+    title: typeof d.title === 'string' ? d.title : 'Video',
+    author,
+    durationSec: typeof d.duration === 'number' ? d.duration : null
+  }
+}
+
+/** A short excerpt of a video at a link, with what is needed to credit it. */
+export async function fetchExcerpt(
+  url: string,
+  range: Range | null,
+  tools: AssetTools,
+  onProgress: (percent: number) => void = () => undefined
+): Promise<NewAsset> {
+  const info = parseInfo(
+    await run(tools.ytdlp, ['-J', '--no-playlist', ...signIn(tools.signInFrom), url], tools.signal)
+  )
+  const stretch = range ? clampExcerpt(range, info.durationSec) : defaultExcerpt(info.durationSec ?? 30)
+  await fs.mkdir(tools.dir, { recursive: true })
+  const out = join(tools.dir, `${slug(info.title)}-${Math.round(stretch.startSec)}s-%(id)s.%(ext)s`)
+  let file: string | null = null
+  await run(tools.ytdlp, excerptArgs(url, stretch, out, tools), tools.signal, (line) => {
+    const pct = /PCT\s+([\d.]+)%/.exec(line)
+    if (pct) onProgress(Math.round(Number(pct[1])))
+    if (line.startsWith('FILE ')) file = line.slice(5).trim()
+  })
+  if (!file) throw new Error('The download finished but left no file.')
+  const probe = await probeMedia(tools.ffmpeg, file)
+  return {
+    kind: 'video',
+    path: file,
+    title: info.title,
+    durationSec: probe.durationSec,
+    width: probe.width,
+    height: probe.height,
+    origin: { type: 'video', url, author: info.author, license: null, range: stretch }
+  }
+}
+
+/** What a video card shows, read from a link without downloading the video. */
+export interface VideoCardInfo {
+  url: string
+  title: string
+  /** The channel, by handle when it has one. */
+  channel: string | null
+  views: number | null
+  /** When it went up, as an ISO date. */
+  uploaded: string | null
+  durationSec: number | null
+  /** The best thumbnail to show at card size, or null when it has none. */
+  thumbnail: string | null
+}
+
+/**
+ * A video card's facts from yt-dlp's info JSON (-J): its title, channel,
+ * views, upload date and the thumbnail nearest 1280 wide. yt-dlp reads all
+ * of it from the page; the video itself is never fetched.
+ */
+export function parseVideoCard(json: string, url: string): VideoCardInfo {
+  const d = JSON.parse(json) as Record<string, unknown>
+  const info = parseInfo(json)
+  const thumbs = Array.isArray(d.thumbnails)
+    ? (d.thumbnails as { url?: unknown; width?: unknown; height?: unknown }[]).filter(
+        (t): t is { url: string; width?: number; height?: number } => typeof t.url === 'string'
+      )
+    : []
+  // Card size wants about 640 to 1280 across; the widest within that, else whatever there is.
+  const sized = thumbs
+    .filter((t) => typeof t.width === 'number' && t.width >= 320 && t.width <= 1280)
+    .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))
+  const thumbnail = sized[0]?.url ?? (typeof d.thumbnail === 'string' ? d.thumbnail : (thumbs[thumbs.length - 1]?.url ?? null))
+  const uploaded = uploadedOn(d.upload_date, d.timestamp)
+  return {
+    url: typeof d.webpage_url === 'string' ? d.webpage_url : url,
+    title: info.title,
+    channel: info.author,
+    views: typeof d.view_count === 'number' && Number.isFinite(d.view_count) ? d.view_count : null,
+    uploaded: uploaded ? uploaded.toISOString() : null,
+    durationSec: info.durationSec,
+    thumbnail
+  }
+}
+
+/**
+ * A video's card from its link: its facts from yt-dlp, and its thumbnail
+ * brought into the edit as a picture, credited to the video and its channel.
+ * A thumbnail that will not come leaves the card without one, never failing it.
+ */
+export async function fetchVideoCard(
+  url: string,
+  tools: AssetTools
+): Promise<{ card: VideoCardInfo; thumbnail: NewAsset | null }> {
+  const json = await run(tools.ytdlp, ['-J', '--no-playlist', '--skip-download', ...signIn(tools.signInFrom), url], tools.signal)
+  const card = parseVideoCard(json, url)
+  let thumbnail: NewAsset | null = null
+  if (card.thumbnail) {
+    try {
+      const image = await fetchImage(card.thumbnail, tools)
+      thumbnail = {
+        ...image,
+        title: card.title,
+        origin: { type: 'link', url: card.url, author: card.channel, license: null, range: null }
+      }
+    } catch (err) {
+      console.warn('[assets] no thumbnail for', url, err instanceof Error ? err.message : err)
+    }
+  }
+  return { card, thumbnail }
+}
+
+export type Candidate = FoundClip
+
+/**
+ * Search results from yt-dlp's flat playlist JSON, with the channel each is
+ * from. A channel's own search lists its videos with the channel said once,
+ * at the top, so that fills in what an entry leaves out.
+ */
+export function parseSearch(json: string): Candidate[] {
+  const d = JSON.parse(json) as { entries?: Record<string, unknown>[] } & Record<string, unknown>
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+  return (d.entries ?? []).flatMap((e) => {
+    const url =
+      typeof e.url === 'string' ? e.url : typeof e.id === 'string' ? `https://www.youtube.com/watch?v=${e.id}` : null
+    if (!url || typeof e.title !== 'string') return []
+    const author = str(e.channel) ?? str(e.uploader) ?? str(d.channel) ?? str(d.uploader)
+    const handle = [e.uploader_id, d.uploader_id].map(str).find((h) => h?.startsWith('@')) ?? null
+    const channelId = str(e.channel_id) ?? str(d.channel_id)
+    const channelUrl = str(e.channel_url) ?? str(e.uploader_url) ?? str(d.channel_url) ?? str(d.uploader_url)
+    return [
+      {
+        url,
+        title: e.title,
+        author,
+        durationSec: typeof e.duration === 'number' ? e.duration : null,
+        // The channel, as far as yt-dlp says it.
+        ...(channelId ? { channelId } : {}),
+        ...(channelUrl ? { channelUrl } : {}),
+        ...(handle ? { handle } : {})
+      }
+    ]
+  })
+}
+
+/** Preferred channels searched for one query: each is a call to YouTube, so a few, in the order listed. */
+export const PREFERRED_SEARCHES = 4
+
+/**
+ * Videos to choose B-roll from, without downloading any of them. The
+ * brand's preferred channels are searched first and what they have comes
+ * first; nothing from a blocked channel or website comes back.
+ */
+export async function searchVideos(
+  query: string,
+  tools: AssetTools,
+  count = 5,
+  lists: { prefer: string[]; block: string[] } = { prefer: [], block: [] }
+): Promise<{
+  results: (Candidate & { preferred: boolean })[]
+  blocked: number
+  /** Preferred channels that answered the search with something; `tried` of them were asked. */
+  looked: number
+  tried: number
+}> {
+  const q = query.replace(/[\r\n]+/g, ' ').trim()
+  if (!q) return { results: [], blocked: 0, looked: 0, tried: 0 }
+  const prefer = readSources(lists.prefer).sources
+  const block = readSources(lists.block).sources
+  const channels = prefer
+    .map((s) => channelSearchUrl(s, q))
+    .filter((u): u is string => !!u)
+    .slice(0, PREFERRED_SEARCHES)
+  // Long videos are rarely good B-roll and slow to scrub; prefer short ones.
+  const shortest = (list: Candidate[]): Candidate[] =>
+    [...list].sort((a, b) => (a.durationSec ?? 600) - (b.durationSec ?? 600))
+  const preferredRuns: Candidate[][] = []
+  for (const url of channels) {
+    const json = await run(
+      tools.ytdlp,
+      ['--flat-playlist', '-J', '--playlist-end', '3', ...signIn(tools.signInFrom), url],
+      tools.signal
+    ).catch(() => null)
+    preferredRuns.push(json ? shortest(parseSearch(json)) : [])
+  }
+  // More from the general search when some are going to be left out.
+  const wanted = count + (block.length ? 5 : 0)
+  const json = await run(
+    tools.ytdlp,
+    ['--flat-playlist', '-J', ...signIn(tools.signInFrom), `ytsearch${wanted}:${q}`],
+    tools.signal
+  )
+  const ordered = orderFound(preferredRuns, shortest(parseSearch(json)), { prefer, block })
+  // A channel was looked in only when it answered: one yt-dlp could not search, or that had nothing, was not.
+  const looked = preferredRuns.filter((found) => found.length > 0).length
+  return { results: ordered.results.slice(0, count), blocked: ordered.blocked, looked, tried: channels.length }
+}

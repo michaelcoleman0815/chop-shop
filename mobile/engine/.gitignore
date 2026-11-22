@@ -1,0 +1,6 @@
+# Built by scripts/build.sh, never committed: sources, intermediate builds,
+# and the libraries and frameworks the plugin ships.
+.build/
+android/src/main/jniLibs/
+ios/Frameworks/
+node_modules/

@@ -1,0 +1,76 @@
+<!--page
+title: Privacy, Cutalong
+description: How Cutalong and this site handle your footage, your keys and your information. A draft for review.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+{{> head}}
+</head>
+<body>
+{{> doc-top}}
+<main id="main" class="doc">
+  <div class="container doc-grid">
+    <article class="doc-body" aria-labelledby="doc-title">
+      <h1 id="doc-title">Privacy</h1>
+      <p class="doc-draft" role="note"><strong>Draft for review.</strong> This policy is a draft for the owner to review with a lawyer before it takes effect. It is not legal advice.</p>
+      <p class="doc-meta">Last updated: <span class="fill" data-fill="date">date it takes effect</span></p>
+
+      <p>Cutalong is a video editor for the Mac, made by {{owner}}. In this policy “I” means him, the person who publishes Cutalong and this site, and “you” means you. Questions go to <a href="mailto:{{contactEmail}}">{{contactEmail}}</a>.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>Your footage stays on your Mac. Cutalong transcribes it with whisper.cpp and renders it with ffmpeg, both on your Mac.</li>
+        <li>I never receive your footage, your projects, your keys or anything you type. Cutalong has no account and sends nothing to me.</li>
+        <li>Cutalong talks to other services only with keys you add: Claude through your own Anthropic key, and optional services through theirs.</li>
+        <li>Neither the app nor this site uses analytics, tracking or advertising.</li>
+        <li>If you leave your email address on this site, it is stored on Cloudflare, used only to tell you {{^downloadReady}}when Cutalong is ready{{/downloadReady}}{{#downloadReady}}when the things listed on the home page ship{{/downloadReady}}, and deleted when you ask.</li>
+      </ul>
+
+      <h2>What stays on your Mac</h2>
+      <p>Your footage, the words transcribed from it, your edits and every version of them, your brands, presets and never lists, and what Cutalong learns about how you edit are all stored in the app’s folder on your Mac. You can see, change or forget what it has learned on the Brand page, and you can delete all of it by deleting that folder.</p>
+      <p>To play your files in the editor, Cutalong runs a small web server that only your Mac can reach (127.0.0.1), behind a token made each time it starts.</p>
+
+      <h2>Your keys</h2>
+      <p>Your Anthropic API key, and any key you add for another service, is sealed with your Mac’s keychain and stored on your Mac. Each key is sent only to the service it belongs to, and never to me.</p>
+
+      <h2>What goes to Anthropic</h2>
+      <p>When you have added your Anthropic key, Cutalong sends Claude what it needs to turn your words into edits: the transcript, the edit, and what you ask for. It never sends your footage. Two settings send a little more, and each can be switched off in Settings:</p>
+      <ul>
+        <li><strong>Let Claude see frames from my footage.</strong> For a vlog, Claude sees three small stills from each moment, to say what is in it. This is on unless you turn it off.</li>
+        <li><strong>Let Claude write titles, descriptions and tags.</strong> At export, Claude reads the words of the video to write three titles, the description’s opening and the tags. This is on unless you turn it off; without it, they are made on your Mac.</li>
+      </ul>
+      <p>Anthropic handles these requests as your provider, under your agreement with Anthropic and its privacy policy, and bills your account for them.</p>
+
+      <h2>Optional services, only with your keys</h2>
+      <p>Nothing is sent to these until you add a key for them, and one switch in Settings turns them all off.</p>
+      <ul>
+        <li><strong>Deepgram and AssemblyAI</strong> hear the sound of a recording, to transcribe every word. When AssemblyAI has finished, Cutalong asks it to delete what it still holds from that job.</li>
+        <li><strong>Google Gemini</strong> sees short excerpts of a recording, with their sound, to judge a take.</li>
+        <li><strong>Artlist</strong> is searched for music, with credentials your Artlist account manager gives you.</li>
+      </ul>
+      <p>Each of these handles what it receives under its own terms and privacy policy. A model you run on your Mac through Ollama keeps everything on your Mac.</p>
+
+      <h2>Other requests from your Mac</h2>
+      <ul>
+        <li><strong>Links you paste,</strong> and <span class="mono">/broll</span> searches, are fetched from the site they point to (YouTube, for example), which sees the request come from your Mac.</li>
+        <li><strong>The transcription model</strong> downloads from Hugging Face the first time it is needed.</li>
+        <li><strong>The update check</strong> reads the latest release from GitHub Releases 4 seconds after Cutalong opens and every 6 hours after that. An update downloads only when you choose to download it.</li>
+      </ul>
+      <p>These sites see your IP address and what was asked for, as any website does, under their own policies.</p>
+
+      <h2>This website</h2>
+      <p>This site is a set of static pages hosted on Cloudflare Pages, with one small program, also on Cloudflare, that takes the email form. Cloudflare handles each request, and may keep the IP address and request details in its logs, under Cloudflare’s privacy policy. The site sets no cookies, runs no analytics, and loads no fonts or scripts from anyone else.{{#downloadReady}} The download link goes to GitHub Releases.{{/downloadReady}}</p>
+      <p>If you leave your email address in the form on the home page, it is stored on Cloudflare, in Workers KV under my Cloudflare account, with the time you left it and which part of the page took you to the form. Nothing else is kept with it. It is used only to tell you {{^downloadReady}}when Cutalong is ready{{/downloadReady}}{{#downloadReady}}when the things listed there ship{{/downloadReady}}. To have it removed, write to <a href="mailto:{{contactEmail}}">{{contactEmail}}</a> and I will delete it.</p>
+
+      <h2>Your choices</h2>
+      <p>You can turn off each setting above, remove any key, or delete Cutalong’s folder to remove everything it stored. For anything this site or the list holds about you, write to <a href="mailto:{{contactEmail}}">{{contactEmail}}</a> and I will answer within 30 days.</p>
+
+      <h2>Changes</h2>
+      <p>If this policy changes, the new version will be posted here with its date.</p>
+    </article>
+  </div>
+</main>
+{{> doc-foot}}
+</body>
+</html>

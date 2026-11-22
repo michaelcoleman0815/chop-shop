@@ -7,9 +7,17 @@
  * and nothing compared the two sides. TypeScript cannot catch it: both halves
  * type-check perfectly while the channel simply does not exist at runtime.
  */
-import { readFileSync } from 'fs'
+import { readFileSync, readdirSync } from 'fs'
+import { join } from 'path'
+import { fileURLToPath } from 'url'
 
-const main = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
+// Handlers are registered from more than one module, so every main-process
+// source counts; tests do not register anything.
+const mainDir = fileURLToPath(new URL('../src/main/', import.meta.url))
+const sources = readdirSync(mainDir, { recursive: true })
+  .map(String)
+  .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.endsWith('.d.ts'))
+const main = sources.map((f) => readFileSync(join(mainDir, f), 'utf8')).join('\n')
 const preload = readFileSync(new URL('../src/preload/index.ts', import.meta.url), 'utf8')
 
 const registered = new Set([...main.matchAll(/ipcMain\.handle\(\s*'([^']+)'/g)].map((m) => m[1]))

@@ -1,0 +1,167 @@
+import type { Font } from './types'
+
+/**
+ * The faces motion graphics can use: the ones bundled in resources/fonts,
+ * which the export registers with Skia and the editor loads from the same
+ * files. Nothing else is allowed, because a face the other side lacks would
+ * fall back to something else and the preview would stop matching the export.
+ *
+ * Vertical metrics are fixed numbers per face (measured from the files at
+ * 100 px), so line positions never depend on what a canvas reports.
+ */
+
+export interface MotionFont {
+  family: string
+  file: string
+  /** Weights the file has. A single weight is never synthesised bolder. */
+  weights: [number, number]
+  /** Cap height, ascent and descent as fractions of the size. */
+  cap: number
+  ascent: number
+  descent: number
+  /**
+   * The face's Windows ascent and descent (OS/2 usWinAscent and usWinDescent)
+   * as fractions of the size. libass sizes burned-in captions by them: a
+   * caption's font size is their sum (shared/subtitles).
+   */
+  winAscent: number
+  winDescent: number
+  /** For the brand page. */
+  label: string
+}
+
+export const MOTION_FONTS: MotionFont[] = [
+  {
+    family: 'Archivo Black',
+    file: 'ArchivoBlack-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.69,
+    ascent: 0.88,
+    descent: 0.21,
+    winAscent: 1.035,
+    winDescent: 0.312,
+    label: 'Archivo Black, heavy and wide'
+  },
+  {
+    family: 'Anton',
+    file: 'Anton-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.86,
+    ascent: 1.18,
+    descent: 0.33,
+    winAscent: 2876 / 2048,
+    winDescent: 674 / 2048,
+    label: 'Anton, tall and condensed'
+  },
+  {
+    family: 'Sora',
+    file: 'Sora.ttf',
+    weights: [100, 800],
+    cap: 0.73,
+    ascent: 0.97,
+    descent: 0.29,
+    winAscent: 1.22,
+    winDescent: 0.32,
+    label: 'Sora, a clean sans'
+  },
+  {
+    // SIL Open Font License 1.1, resources/fonts/Cinzel-OFL.txt. For engraved documentary titles.
+    family: 'Cinzel',
+    file: 'Cinzel.ttf',
+    weights: [400, 900],
+    cap: 0.71,
+    ascent: 0.98,
+    descent: 0.37,
+    // OS/2 usWinAscent 976 and usWinDescent 372 of 1000 units, read from the file.
+    winAscent: 0.976,
+    winDescent: 0.372,
+    label: 'Cinzel, Roman capitals'
+  },
+  {
+    // SIL Open Font License 1.1, resources/fonts/DMSerifDisplay-OFL.txt. A bold display serif: the sermon
+    // captions, one word at a time, as The Life Church sets its own Shorts.
+    family: 'DM Serif Display',
+    file: 'DMSerifDisplay-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.66,
+    ascent: 1.036,
+    descent: 0.335,
+    // OS/2 usWinAscent 1036 and usWinDescent 335 of 1000 units, read from the file.
+    winAscent: 1.036,
+    winDescent: 0.335,
+    label: 'DM Serif Display, a bold display serif'
+  },
+  {
+    // SIL Open Font License 1.1, resources/fonts/Inter-OFL.txt. The static SemiBold, whose family is its own
+    // name, so libass never reaches for another Inter on the computer. The sermon captions: small, clean and
+    // in sentence case, as Lecrae's and The Life Church's Shorts set them.
+    family: 'Inter SemiBold',
+    file: 'Inter-SemiBold.ttf',
+    weights: [400, 400],
+    cap: 0.7275,
+    ascent: 0.96875,
+    descent: 0.2412,
+    // OS/2 usWinAscent 1984 and usWinDescent 494 of 2048 units, read from the file.
+    winAscent: 0.96875,
+    winDescent: 0.2412,
+    label: 'Inter SemiBold, a clean sans'
+  },
+  {
+    // The same family's ExtraBold (Inter-OFL.txt): the line a preacher lands, set big, and the hook titles.
+    family: 'Inter ExtraBold',
+    file: 'Inter-ExtraBold.ttf',
+    weights: [400, 400],
+    cap: 0.7275,
+    ascent: 0.96875,
+    descent: 0.2412,
+    winAscent: 0.96875,
+    winDescent: 0.2412,
+    label: 'Inter ExtraBold, a heavy clean sans'
+  },
+  {
+    // SIL Open Font License 1.1, resources/fonts/BebasNeue-OFL.txt. Tall condensed capitals: the one-word
+    // sermon captions, as 2819 Church sets its Shorts.
+    family: 'Bebas Neue',
+    file: 'BebasNeue-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.7,
+    ascent: 0.9,
+    descent: 0.3,
+    // OS/2 usWinAscent 950 and usWinDescent 350 of 1000 units, read from the file.
+    winAscent: 0.95,
+    winDescent: 0.35,
+    label: 'Bebas Neue, tall condensed capitals'
+  },
+  {
+    // Igino Marini's revival of the Fell types (SIL Open Font License): the vintage map's lettering.
+    family: 'IM Fell English',
+    file: 'IMFellEnglish-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.69,
+    ascent: 0.91,
+    descent: 0.36,
+    winAscent: 1854 / 2048,
+    winDescent: 744 / 2048,
+    label: 'IM Fell English, an old-style serif'
+  }
+]
+
+export const FONT_FAMILIES = MOTION_FONTS.map((f) => f.family)
+
+const FALLBACK = MOTION_FONTS[2]
+
+export function fontInfo(family: string): MotionFont {
+  return MOTION_FONTS.find((f) => f.family === family) ?? FALLBACK
+}
+
+/** A weight the face really has: single-weight faces always draw at their own weight. */
+export function fontWeight(family: string, weight = 400): number {
+  const [lo, hi] = fontInfo(family).weights
+  return Math.round(Math.min(hi, Math.max(lo, weight)))
+}
+
+/** The CSS font shorthand for a size. Unknown families draw in Sora. */
+export function fontString(font: Pick<Font, 'family' | 'weight'>, size: number): string {
+  const info = fontInfo(font.family)
+  return `${fontWeight(info.family, font.weight)} ${Math.max(0.5, size).toFixed(2)}px "${info.family}"`
+}

@@ -1,0 +1,491 @@
+/*
+ * Cutalong on a phone (mobile/), over cutalong.css. Only the phone app loads
+ * this, and every rule is scoped to .cl-app.phone, so the Mac's layout never
+ * changes. Portrait first, one thing per screen: the rail is a menu behind a
+ * button in the top corner, the editor stacks the preview, the beat strip and
+ * the notes as a sheet. Everything keeps clear of the notch and the home
+ * indicator, nothing to touch is under 44 px, and nothing needs a pointer to
+ * hover. Values are the tokens in tokens.css, light and dark, so the night
+ * page needs nothing of its own; under 640 px cutalong.css's own phone-width
+ * rules (the editor's two-row header, the type sizes) apply here too, and
+ * what is below only changes what a phone needs beyond them.
+ */
+
+.cl-app.phone {
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+  --bar: 56px;
+  --gutter: var(--space-4);
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cl-app.phone :is(button, a, input, textarea) {
+  touch-action: manipulation;
+}
+
+/* ---------- The rail, as a menu ---------- */
+
+.cl-app.phone .cl-rail {
+  -webkit-app-region: no-drag;
+  position: fixed;
+  z-index: 40;
+  top: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  flex: none;
+  padding: calc(var(--safe-top) + 6px) 0 0 calc(var(--safe-left) + 8px);
+  border-right: 0;
+  background: transparent;
+  overflow: visible;
+  transition: none;
+}
+
+/* Closed, only the menu button shows. */
+.cl-app.phone .cl-rail:not(.open) > :not(.cl-rail-top) {
+  display: none;
+}
+
+.cl-app.phone .cl-rail-top {
+  margin: 0;
+}
+
+.cl-app.phone .cl-rail.open {
+  bottom: 0;
+  width: min(304px, 86vw);
+  align-items: stretch;
+  gap: 4px;
+  padding: calc(var(--safe-top) + 6px) var(--space-3) calc(var(--safe-bottom) + var(--space-3))
+    calc(var(--safe-left) + 8px);
+  background: var(--ground);
+  border-right: 1px solid var(--line);
+  box-shadow: var(--shadow-float);
+  overflow-y: auto;
+}
+
+.cl-app.phone .cl-rail-item,
+.cl-app.phone .cl-rail.open .cl-rail-item {
+  min-height: 44px;
+}
+
+.cl-app.phone .cl-rail.open .cl-rail-item {
+  height: 48px;
+  font-size: 16px;
+}
+
+.cl-app.phone .cl-rail-project {
+  min-height: 44px;
+  font-size: 15px;
+}
+
+.cl-app.phone .cl-rail-item:active,
+.cl-app.phone .cl-rail-project:active {
+  background: color-mix(in oklch, var(--ink) 5%, transparent);
+}
+
+.cl-app.phone .cl-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  border: 0;
+  padding: 0;
+  background: color-mix(in oklch, var(--ink) 18%, transparent);
+}
+
+/* ---------- The column and its header ---------- */
+
+.cl-app.phone .cl-main {
+  padding-top: var(--safe-top);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* Each screen's header wraps under the menu button: its title on the first
+   row, and its tools, after the spacer, on a second row of their own. */
+.cl-app.phone .cl-header {
+  -webkit-app-region: no-drag;
+  height: auto;
+  min-height: var(--bar);
+  flex-wrap: wrap;
+  row-gap: 0;
+  column-gap: var(--space-1);
+  padding: 6px var(--gutter) 6px var(--space-2);
+}
+
+.cl-app.phone .cl-header::before {
+  content: '';
+  flex: 0 0 52px;
+  height: 44px;
+}
+
+/* The title gives up its room first, with an ellipsis; the spacer takes what is left. */
+.cl-app.phone .cl-header .cl-heading {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.cl-app.phone .cl-header .spacer {
+  flex: 1 1 0;
+}
+
+/* The editor's header is two rows (cutalong.css under 640 px): the title takes the first row's
+   room, so Export sits at its end, and the revision tabs scroll in the second beside the tools. */
+.cl-app.phone .cl-header:has(> .cl-revisions) > .cl-heading {
+  flex: 1 1 0;
+}
+
+.cl-app.phone .cl-header > .cl-btn.text:first-of-type {
+  max-width: calc(100% - 60px);
+}
+
+.cl-app.phone .cl-header > .cl-btn.text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Back to a chat with a long title: the title ends in an ellipsis. */
+.cl-app.phone .cl-back-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Controls a thumb can hit ---------- */
+
+.cl-app.phone .cl-btn,
+.cl-app.phone .cl-btn.small,
+.cl-app.phone .cl-btn.text {
+  height: 44px;
+  min-width: 44px;
+}
+
+.cl-app.phone .cl-icon-btn {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+}
+
+.cl-app.phone .cl-chip {
+  height: 44px;
+  padding: 0 16px;
+}
+
+.cl-app.phone .cl-segments button {
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.cl-app.phone .cl-slash-item {
+  min-height: 44px;
+}
+
+.cl-app.phone .cl-attachment button {
+  width: 32px;
+  height: 32px;
+}
+
+.cl-app.phone .cl-btn.text:active:not(:disabled) {
+  background: color-mix(in oklch, var(--ink) 5%, transparent);
+}
+
+/* Text fields at 16 px, so a phone does not zoom into them. */
+.cl-app.phone input,
+.cl-app.phone textarea {
+  font-size: 16px;
+}
+
+/* ---------- Start ---------- */
+
+.cl-app.phone .cl-start {
+  justify-content: flex-start;
+  padding: 6vh var(--gutter) calc(var(--safe-bottom) + var(--space-6));
+}
+
+.cl-app.phone .cl-title {
+  font-size: 40px;
+  line-height: 44px;
+  margin-bottom: 0;
+}
+
+.cl-app.phone .cl-start-inner {
+  gap: var(--space-4);
+}
+
+.cl-app.phone .cl-continue {
+  margin-top: var(--space-8);
+}
+
+.cl-app.phone .cl-continue-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.cl-app.phone .cl-continue-row > :nth-child(3) {
+  display: none;
+}
+
+.cl-app.phone .cl-project .cl-heading {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+/* The key's field takes the step's whole width, under its number as well, so "Paste a new key to
+   replace this one" fits it at 16 px. */
+.cl-app.phone .cl-setup .cl-step-field {
+  margin-left: calc(-32px - var(--space-4));
+}
+
+/* ---------- The composer ---------- */
+
+/*
+ * The text boxes are one thin 48 px line that grows to six (cutalong.css), their 40 px buttons
+ * 4 px inside the round ends. The phone's 44 px buttons would make the line taller and part
+ * those circles from the ends, so here they are 40 px and reach 44 px to a finger, inside the box.
+ */
+.cl-app.phone :is(.cl-composer, .cl-note-input) .cl-icon-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
+}
+
+.cl-app.phone :is(.cl-composer, .cl-note-input) .cl-icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}
+
+.cl-app.phone .cl-slash {
+  left: 0;
+  right: 0;
+  max-height: 44vh;
+  overflow-y: auto;
+}
+
+.cl-app.phone .cl-slash-item .summary {
+  white-space: normal;
+}
+
+/* ---------- The thread ---------- */
+
+.cl-app.phone .cl-thread-scroll {
+  padding: var(--space-3) var(--gutter) var(--space-6);
+}
+
+.cl-app.phone .cl-thread-column {
+  gap: var(--space-6);
+}
+
+.cl-app.phone .cl-thread-foot {
+  padding: 0 var(--space-3) calc(var(--safe-bottom) + var(--space-3));
+}
+
+.cl-app.phone .cl-msg-user {
+  max-width: 88%;
+}
+
+.cl-app.phone .cl-reply {
+  font-size: 17px;
+  line-height: 27px;
+  max-width: none;
+}
+
+/*
+ * Fact tiles share the row by what they hold, each at least as wide as its
+ * number, so a long one (1080×1920) never breaks inside itself; one that does
+ * not fit beside the others takes a row of its own.
+ */
+.cl-app.phone .cl-facts {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.cl-app.phone .cl-fact {
+  flex: 1 1 auto;
+  min-width: 112px;
+}
+
+/* Long work: the living mark over the crew's rows, which take the column. */
+.cl-app.phone .cl-progress.big > .cl-living {
+  --size: 48px;
+}
+
+.cl-app.phone .cl-export .cl-frame {
+  max-width: 100%;
+}
+
+/* ---------- The editor: preview, beats, then the notes as a sheet ---------- */
+
+.cl-app.phone .cl-editor {
+  gap: var(--space-2);
+  padding: 0 var(--space-3) 0;
+}
+
+.cl-app.phone .cl-editor-body {
+  display: contents;
+}
+
+.cl-app.phone .cl-editor .cl-well {
+  order: 1;
+  flex: 0 0 auto;
+  height: min(46dvh, 460px);
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+}
+
+.cl-app.phone .cl-editor .cl-strip {
+  order: 2;
+  padding: 6px 10px;
+  gap: 10px;
+  border-radius: var(--radius-pill);
+}
+
+.cl-app.phone .cl-editor .cl-beats {
+  height: 36px;
+}
+
+.cl-app.phone .cl-editor .cl-timecode {
+  font-size: 12px;
+}
+
+.cl-app.phone .cl-editor .cl-notes {
+  order: 3;
+  flex: 1 1 auto;
+  min-height: 160px;
+  margin: 0 calc(-1 * var(--space-3));
+  padding: var(--space-4) var(--gutter) calc(var(--safe-bottom) + var(--space-3));
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  border-bottom: 0;
+  box-shadow: var(--shadow-float);
+  gap: var(--space-3);
+}
+
+/* On a short phone the preview gives the notes some of its room. */
+@media (max-height: 760px) {
+  .cl-app.phone .cl-editor .cl-well {
+    height: 40dvh;
+  }
+}
+
+/*
+ * Writing a note, the keyboard takes half the screen: the note box keeps all its lines above it,
+ * the notes step aside while it is written, and the preview takes the room that is left.
+ */
+.cl-app.phone .cl-editor:has(.cl-note-input textarea:focus) .cl-well {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+
+.cl-app.phone .cl-editor:has(.cl-note-input textarea:focus) .cl-notes {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.cl-app.phone .cl-editor:has(.cl-note-input textarea:focus) .cl-notes-scroll {
+  display: none;
+}
+
+.cl-app.phone .cl-sline {
+  grid-template-columns: 22px minmax(0, 1fr) 12px;
+  column-gap: 8px;
+}
+
+/* ---------- Pages: projects, presets, settings ---------- */
+
+.cl-app.phone .cl-page {
+  padding: var(--space-2) var(--gutter) calc(var(--safe-bottom) + var(--space-8));
+}
+
+.cl-app.phone .cl-page-title {
+  font-size: 32px;
+  line-height: 36px;
+}
+
+.cl-app.phone .cl-section .cl-row input {
+  min-width: 0;
+  flex: 1 1 100%;
+}
+
+.cl-app.phone .cl-path {
+  overflow-wrap: anywhere;
+}
+
+/* A switch is its whole row: the label takes the tap. */
+.cl-app.phone .cl-toggle {
+  display: flex;
+  min-height: 44px;
+}
+
+.cl-app.phone .cl-toggle input {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---------- The toast, full width under the header ---------- */
+
+.cl-app.phone .cl-toast {
+  left: 12px;
+  right: 12px;
+  top: calc(var(--safe-top) + 64px);
+  max-width: none;
+  flex-wrap: wrap;
+  padding: 10px 10px 10px 18px;
+}
+
+.cl-app.phone .cl-toast > span:not(.cl-toast-mark) {
+  flex: 1 1 60%;
+  min-width: 0;
+}
+
+/* ---------- Licences, at the end of Settings ---------- */
+
+/* A licence opens under its name, the whole width of the row; a long name wraps beside Read. */
+.cl-app.phone .cl-licences .cl-list li {
+  flex-wrap: wrap;
+}
+
+.cl-app.phone .cl-licences .cl-list-main {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+}
+
+.cl-app.phone .cl-licence,
+.cl-app.phone .cl-licence-packages {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.cl-app.phone .cl-licence {
+  max-height: 360px;
+  overflow: auto;
+  padding: var(--space-4);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.cl-app.phone .cl-licence p {
+  margin: 0 0 var(--space-3);
+}
+
+/* ---------- Motion ---------- */
+
+/* The menu's shade fades in under it, as menus appear. */
+.cl-app.phone .cl-menu-backdrop {
+  transition: opacity var(--duration-base) var(--ease-enter);
+}
+
+@starting-style {
+  .cl-app.phone .cl-menu-backdrop {
+    opacity: 0;
+  }
+}

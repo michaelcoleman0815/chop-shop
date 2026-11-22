@@ -1,0 +1,5248 @@
+/*
+ * Cutalong.
+ *
+ * Lined Script, heavenly and alive. The transcript is the edit, so it reads
+ * like a script: paper on a luminous desk, replies in a serif at an easy
+ * measure, versions as revision pages. Colour you can feel sits around the
+ * footage, never on it: the revision colours as gentle page tints, confident
+ * pastel blocks and deeper blooms for shapes. Coral is the cut (the playhead,
+ * the mark, Snip) and nothing else. A crew of small characters shows the work
+ * while one voice talks. One thing per screen. Every value comes from tokens.css.
+ */
+
+/* Hallmark · dropped setOpen(false) if (b.id · the brand switch's items close the menu with close(), which also gives focus back to its button */
+/* Hallmark · dropped setAttachments((prev) => prev.fi · a file's remove button goes through changeFiles(), so taking out the last one closes the composer as one box */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /* A soft light falls on the desk from above; the night page keeps a little moonlight. */
+  background:
+    radial-gradient(130% 70% at 50% -18%, var(--glow), transparent 64%),
+    var(--ground);
+  color: var(--ink);
+  caret-color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  font-kerning: normal;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  scrollbar-color: var(--line-mid) transparent;
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--ink);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* ---------- Shell ---------- */
+
+.cl-app {
+  height: 100%;
+  display: flex;
+}
+
+.cl-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-header {
+  -webkit-app-region: drag;
+  flex: 0 0 auto;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-8);
+}
+
+.cl-header button,
+.cl-header a,
+.cl-header input {
+  -webkit-app-region: no-drag;
+}
+
+.cl-header .spacer,
+.spacer {
+  flex: 1 1 auto;
+}
+
+.cl-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 21px;
+  line-height: 24px;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+}
+
+/* Back to the chat being worked on, from a page: a long name ends in an ellipsis rather than off the edge. */
+.cl-back-to-work {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cl-back-to-work > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A video being made while its progress is out of sight: what it is, its stage, and its Stop. */
+.cl-running {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cl-running > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-running-stage {
+  margin-left: var(--space-2);
+  color: var(--muted);
+}
+
+.cl-heading {
+  font-size: 19px;
+  line-height: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* ---------- Buttons ---------- */
+
+.cl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 46px;
+  padding: 0 22px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    opacity 120ms ease;
+}
+
+.cl-btn.small {
+  height: 40px;
+  padding: 0 18px;
+}
+
+.cl-btn.primary {
+  background: var(--ink);
+  color: var(--card);
+}
+
+
+.cl-btn.secondary {
+  background: var(--card);
+  border-color: var(--line-mid);
+  color: var(--ink);
+}
+
+
+.cl-btn.text {
+  height: 40px;
+  padding: 0 14px;
+  background: transparent;
+}
+
+
+.cl-btn.text.on {
+  background: var(--card);
+  box-shadow: var(--shadow-tab);
+}
+
+/* Disabled says so three ways: a paler fill, muted words and the cursor. */
+.cl-btn:disabled,
+.cl-btn.primary:disabled {
+  background: var(--card-2);
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.cl-btn.text:disabled {
+  background: transparent;
+  border-color: transparent;
+}
+
+.cl-btn img {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.cl-btn .cmd {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.cl-icon-btn {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-mid);
+  background: var(--card);
+  color: var(--ink);
+  padding: 0;
+}
+
+
+.cl-icon-btn.filled {
+  border: 0;
+  background: var(--ink);
+  color: var(--card);
+}
+
+.cl-icon-btn.filled:disabled {
+  background: var(--well);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.cl-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  border: 0;
+  background: var(--ink-soft);
+  color: var(--card);
+  font-size: 13px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.cl-menu-anchor {
+  position: relative;
+}
+
+.cl-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  min-width: 240px;
+  max-width: min(360px, calc(100vw - 48px));
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 6px;
+  box-shadow: var(--shadow-float);
+}
+
+.cl-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.cl-menu button:focus-visible {
+  background: var(--card-2);
+  outline-offset: -2px;
+}
+
+.cl-menu .meta {
+  display: block;
+  font-size: 12.5px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
+/* ---------- Chips ---------- */
+
+.cl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.cl-chip {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-mid);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-soft);
+}
+
+
+/* A fact is a pastel tile: a big number, a small label under it. Colour you can feel, never on footage. */
+.cl-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 196px));
+  gap: var(--space-2);
+}
+
+.cl-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-radius: 18px;
+  background: var(--block, var(--card));
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-fact-n {
+  font-size: 34px;
+  line-height: 38px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.cl-fact-label {
+  font-size: 13.5px;
+  line-height: 18px;
+  color: color-mix(in oklch, var(--ink) 80%, var(--block, var(--card)));
+  overflow-wrap: anywhere;
+}
+
+/* A fact with no number in it is a short phrase, set to fill the tile. */
+.cl-fact.phrase {
+  justify-content: flex-end;
+  min-height: 74px;
+  font-size: 16.5px;
+  line-height: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.cl-link {
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Composer ---------- */
+
+.cl-composer {
+  position: relative;
+  width: 100%;
+  background: var(--card);
+  /* A field's edge (3:1) and a soft fall of light under it; focus adds a halo, never a heavy ring. */
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-composer);
+  /*
+   * One thin line at rest, taller only as the words need. The 40px buttons sit 4px inside
+   * the edge, so while it is one line (48px) their circles share a centre with its round
+   * ends: 20 + 4 = 24, the composer's radius.
+   */
+  padding: 3px;
+  box-shadow: var(--shadow-composer);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Where you type is always ready, so its focus is soft: a firmer edge and a halo of blue pencil, never a heavy ring. */
+.cl-composer:focus-within {
+  border-color: var(--ink-soft);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+.cl-composer.dropping {
+  border-color: var(--pick);
+  outline: 2px dashed var(--pick);
+  outline-offset: 3px;
+}
+
+/* The words: one line beside the buttons, growing a line at a time (Composer.tsx) up to six, then scrolling. */
+.cl-composer textarea,
+.cl-note-input textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font-size: 17px;
+  line-height: 26px;
+  height: 40px;
+  min-height: 40px;
+  max-height: 170px;
+  padding: 7px 0;
+}
+
+/* The hint stays on the one line, so the box is thin at rest at any width; a long hint trails off. */
+.cl-composer textarea::placeholder,
+.cl-note-input textarea::placeholder {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Add, the words, send: the buttons stay on the last line as the words grow. */
+.cl-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+/* Files waiting to be sent: they wrap, and a big drop scrolls rather than pushing the text away. */
+/* Files waiting to be sent, as round stills: they wrap, and a big drop scrolls rather than pushing the text away. */
+.cl-composer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-2);
+  max-height: 184px;
+  overflow-y: auto;
+  padding: 12px 12px 8px;
+}
+
+.cl-attachment {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 76px;
+  font-size: 11.5px;
+  line-height: 15px;
+  color: var(--ink-soft);
+}
+
+.cl-attachment .cl-poster {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line), 0 10px 18px -10px var(--shadow-deep);
+}
+
+/* The gloss: light caught at the top of a bubble and a little shade at its foot. */
+.cl-attachment .cl-poster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 55% at 32% 20%, var(--gloss), transparent 70%),
+    radial-gradient(120% 80% at 50% 115%, var(--gloss-shade), transparent 60%);
+  box-shadow: inset 0 0 0 1px var(--gloss-edge);
+}
+
+.cl-attachment-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-attachment button {
+  position: absolute;
+  top: -5px;
+  right: 2px;
+  border: 0;
+  background: var(--card);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--ink-soft);
+  box-shadow: 0 0 0 1px var(--line-mid), var(--shadow-tab);
+}
+
+.cl-slash {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 10px);
+  z-index: 10;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 6px;
+  box-shadow: var(--shadow-float);
+}
+
+.cl-slash.below {
+  bottom: auto;
+  top: calc(100% + 10px);
+}
+
+.cl-slash-item {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  border: 0;
+  background: transparent;
+  border-radius: 14px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.cl-slash-item.on {
+  background: var(--card-2);
+}
+
+.cl-slash-item .mono {
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+
+.cl-slash-item .summary {
+  color: var(--muted);
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Start ---------- */
+
+.cl-start {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 9vh var(--space-8) var(--space-16);
+}
+
+.cl-start-inner {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.cl-title {
+  margin: 0 0 var(--space-3);
+  font-size: 68px;
+  line-height: 68px;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* One word of a display heading in the serif's italic: the heading's voice. Lifted a hair to sit with the sans. */
+.cl-accent {
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.06em;
+  letter-spacing: -0.02em;
+  margin-right: 0.03em;
+  /* The highlighter: one swipe of a block colour behind the word (--hl: the version's, else yellow). */
+  position: relative;
+  isolation: isolate;
+  padding: 0 0.1em;
+  margin-left: -0.04em;
+}
+
+.cl-accent::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  right: 0;
+  top: 46%;
+  bottom: 6%;
+  border-radius: 0.12em;
+  background: var(--hl, var(--block-yellow));
+  rotate: -2deg;
+  transform-origin: left center;
+}
+
+/* The mark greets you on Start, the screen's one coral thing; with the rail open, the rail's mark is enough. */
+.cl-rail.open ~ .cl-main .cl-start-mark {
+  visibility: hidden;
+}
+
+.cl-start-mark {
+  display: grid;
+  place-items: center;
+  margin-bottom: calc(-1 * var(--space-2));
+}
+
+.cl-start .cl-chips {
+  justify-content: center;
+}
+
+.cl-continue {
+  width: 100%;
+  max-width: 900px;
+  margin-top: var(--space-12);
+}
+
+.cl-continue-head {
+  margin: 0 0 var(--space-3);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cl-continue-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.cl-project {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  min-width: 0;
+}
+
+/* Its width said outright: an older Android web view does not stretch a box that keeps an aspect
+   ratio, and drew this one as a dot. */
+.cl-project-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-thumb);
+  background: var(--well) center / cover no-repeat;
+  border: 1px solid var(--line);
+}
+
+
+.cl-project-meta {
+  font-size: 12.5px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
+/* ---------- Setup: Start, until an Anthropic key works ---------- */
+
+/* Start's screen and measure, with the steps where the composer would be. */
+.cl-setup {
+  padding-top: 9vh;
+}
+
+.cl-setup-inner {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  container-type: inline-size;
+}
+
+/* Tight under the title it explains. */
+.cl-setup-why {
+  margin: calc(-1 * var(--space-4)) auto 0;
+  max-width: 46ch;
+  text-align: center;
+  text-wrap: balance;
+  font-size: 17px;
+  line-height: 26px;
+  color: var(--ink-soft);
+}
+
+/* A step of the key's (components/KeySteps.tsx, on .cl-steps): what to do, the page it happens on, the field. */
+.cl-step-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cl-step-body h3 {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* A page opened in the browser: a secondary pill, the arrow saying it leaves Cutalong. */
+.cl-step-link {
+  text-decoration: none;
+}
+
+.cl-step-link > svg {
+  color: var(--muted);
+}
+
+.cl-step-field {
+  align-self: stretch;
+}
+
+/* In a Settings section the steps sit on its sheet, as rows, not sheets of their own. */
+:is(.cl-section, .cl-set-more) .cl-steps {
+  gap: 0;
+}
+
+:is(.cl-section, .cl-set-more) .cl-steps > li {
+  padding: var(--space-4) 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:is(.cl-section, .cl-set-more) .cl-steps > li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* The step to do now, on a section's sheet: its number firms instead of a ring round a sheet. */
+:is(.cl-section, .cl-set-more) .cl-steps > li.now::before {
+  background: var(--ink);
+  color: var(--card);
+  box-shadow: none;
+}
+
+/* The field and its button, side by side. */
+.cl-key-paste {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.cl-key-paste input {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* As tall as the button beside it. */
+  height: 46px;
+}
+
+.cl-key-paste.small input {
+  height: 40px;
+}
+
+/* While the check runs, the mark marches beside its line. */
+.cl-keycheck-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.cl-keycheck-again {
+  align-self: flex-start;
+}
+
+.cl-key-kept {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cl-setup-cost {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+/* A footnote's measure: short lines, under the steps' full width. */
+.cl-setup-cost p {
+  margin: 0;
+  max-width: 50ch;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* A link inside a sentence: the sentence's size, nothing added around it. */
+.cl-link.inline {
+  height: auto;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Narrow: the button goes under the field. */
+@container (max-width: 520px) {
+  .cl-key-paste {
+    flex-wrap: wrap;
+  }
+
+  .cl-key-paste .cl-btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---------- Thread ---------- */
+
+.cl-thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-thread-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-8) var(--space-8);
+}
+
+.cl-thread-column {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.cl-thread-foot {
+  flex: 0 0 auto;
+  padding: 0 var(--space-8) var(--space-6);
+}
+
+.cl-thread-foot .cl-composer {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.cl-msg-user {
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: 460px;
+}
+
+/* Your words: the interface face on a soft tint, so the replies' serif is what reads as the page. */
+.cl-bubble {
+  background: var(--well);
+  color: var(--ink);
+  border-radius: 20px 20px 6px 20px;
+  padding: 11px 18px;
+  font-size: 16px;
+  line-height: 24px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Everything dropped in with a message, each a still of itself. */
+.cl-files {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+
+.cl-file {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 136px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.cl-file .cl-poster {
+  width: 136px;
+  height: 77px;
+  border-radius: var(--radius-thumb);
+  border: 1px solid var(--line);
+}
+
+.cl-file-name {
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-file-more {
+  cursor: pointer;
+}
+
+.cl-file-more .cl-poster {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+
+/* A file's still: grey until the frame is ready, then the frame fades in. */
+.cl-poster {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--well);
+  color: var(--muted);
+}
+
+.cl-poster img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--duration-gentle) var(--ease-standard);
+}
+
+.cl-poster.ready img {
+  opacity: 1;
+}
+
+.cl-linkcard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 100%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  padding: 8px 16px 8px 8px;
+}
+
+.cl-linkcard-thumb {
+  width: 34px;
+  height: 60px;
+  flex: 0 0 34px;
+  border-radius: 9px;
+  background: var(--well);
+}
+
+.cl-linkcard-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.cl-linkcard-text strong {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-linkcard-text span {
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-msg-assistant {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  max-width: 680px;
+}
+
+/* The assistant's tile: the mark on a small sheet of paper, beside the newest reply only. */
+.cl-assistant-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: var(--radius-tile);
+  background: var(--card);
+  box-shadow: var(--shadow-tab), inset 0 0 0 1px var(--line);
+  display: grid;
+  place-items: center;
+}
+
+.cl-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 3px;
+  min-width: 0;
+}
+
+/* What the assistant says is set to be read: a serif at an easy measure, wrapped with care. */
+.cl-reply {
+  margin: 0;
+  max-width: 36em;
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: 18px;
+  line-height: 29px;
+  letter-spacing: -0.003em;
+  text-wrap: pretty;
+  hanging-punctuation: first;
+  font-variant-numeric: proportional-nums;
+}
+
+.cl-aside {
+  margin: 0;
+  max-width: 36em;
+  font-size: 14.5px;
+  line-height: 22px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.cl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A long choice ends in an ellipsis before it outgrows a phone's column; where it is from stays whole after it, a space away. */
+.cl-actions > .cl-btn {
+  max-width: 100%;
+}
+
+.cl-btn-tail {
+  flex: none;
+  margin-inline-start: calc(var(--space-1) - var(--space-2));
+}
+
+.cl-progress {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.cl-progress-stage {
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The stopwatch: tabular, so the row does not shuffle as seconds tick. It keeps its room while it waits for its first second. */
+.cl-progress-time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cl-progress-time.waiting {
+  visibility: hidden;
+}
+
+
+/* Progress is a pencil line: thin, ink on a faint rule. */
+.cl-progress-bar {
+  width: 160px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+  overflow: hidden;
+}
+
+.cl-progress-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+  border-radius: inherit;
+  transition: width 200ms ease;
+}
+
+/* No percent to show: a short fill sweeps across, so it never looks stuck. */
+.cl-progress-bar.unknown > span {
+  width: 36%;
+  animation: cl-sweep calc(var(--duration-calm) * 3) var(--ease-standard) infinite;
+}
+
+@keyframes cl-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(280%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-progress-bar.unknown > span {
+    width: 100%;
+    animation: cl-pulse calc(var(--duration-calm) * 3) var(--ease-standard) infinite alternate;
+  }
+}
+
+@keyframes cl-pulse {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 0.7;
+  }
+}
+
+.cl-details {
+  display: grid;
+  /* A long value (what /clipping left out, how long each step took) wraps inside the card. */
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--space-6);
+  row-gap: 6px;
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.cl-details dt {
+  color: var(--muted);
+}
+
+.cl-details dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  /* A value of several lines (a description, the files beside an export, a tool's output) keeps its lines. */
+  white-space: pre-wrap;
+}
+
+/* ---------- Clips from a long recording ---------- */
+
+.cl-clipset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cl-clips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--space-3);
+}
+
+.cl-clip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 10px 10px 12px;
+  border-radius: 20px;
+  background: var(--block, var(--card));
+}
+
+.cl-clip-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-thumb);
+  cursor: pointer;
+}
+
+.cl-clip-open:disabled {
+  cursor: default;
+}
+
+.cl-clip-open:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+/* A clip's still, framed the way the short is. */
+/* A clip's still, framed the way the short is: the colour stops at its edge. */
+.cl-clip-poster {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px var(--shadow-soft);
+}
+
+.cl-clip-bar {
+  position: absolute;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: var(--space-2);
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--beat);
+  overflow: hidden;
+}
+
+.cl-clip-bar > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--ink);
+  border-radius: inherit;
+}
+
+.cl-clip-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.cl-clip-title {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cl-clip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--ink-soft);
+}
+
+.cl-clip-hook {
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  line-height: 21px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cl-clip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: auto;
+}
+
+.cl-clip-actions .cl-btn.small {
+  height: 34px;
+  padding: 0 14px;
+}
+
+/* A dropped clip stays in the set, quieter, so it can be kept again. */
+.cl-clip.dropped .cl-clip-open,
+.cl-clip.dropped .cl-clip-text {
+  opacity: 0.45;
+}
+
+/* ---------- Editor ---------- */
+
+.cl-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 0 var(--space-8) var(--space-6);
+}
+
+.cl-editor-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  /* The video keeps the room: the notes take a fair share and no more. */
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 28vw, 400px);
+  gap: var(--space-6);
+}
+
+.cl-well {
+  position: relative;
+  min-height: 0;
+  background: var(--stage);
+  border-radius: var(--radius-stage);
+  box-shadow: var(--shadow-stage);
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  overflow: hidden;
+}
+
+.cl-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--frame);
+  box-shadow: var(--shadow-frame);
+  max-height: 100%;
+  max-width: 100%;
+}
+
+.cl-frame video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform-origin: 50% 50%;
+}
+
+/* An export, played whole in the chat, in the preview's frame. */
+.cl-export {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+
+.cl-export .cl-frame video {
+  object-fit: contain;
+}
+
+.cl-export-name {
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-frame-empty {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, var(--frame-2), var(--frame));
+}
+
+/* One recording's picture in the preview. Two take turns, and inside a
+   transition both show, styled per moment by deck-style.ts. Their stacking
+   stays inside .cl-decks, so captions and big words always draw over them. */
+.cl-decks,
+.cl-deck,
+.cl-deck-picture {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.cl-decks {
+  isolation: isolate;
+}
+
+/* Inside a dip the outgoing picture fades through the dip's own colour. These
+   are picture colours, as in the export, not interface colours. */
+.cl-deck[data-dip='black'] {
+  background: #000000;
+}
+
+.cl-deck[data-dip='white'] {
+  background: #ffffff;
+}
+
+/* A picture of another shape shown whole (edit/fill): on its own blurred copy,
+   drawn small by Backdrop and scaled up behind it, or between black bars.
+   Picture colours, as in the export. */
+.cl-backdrop {
+  position: absolute;
+  pointer-events: none;
+}
+
+.cl-deck-picture.bars,
+.cl-cutaway.bars {
+  background: #000000;
+}
+
+/* A look over the picture, as the export grades it: the colour is an SVG
+   filter on the decks, the vignette and grain lie over them, and captions
+   draw over all three. Their colours are the picture's, not the interface's. */
+.cl-look-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.cl-look-vignette,
+.cl-look-grain,
+.cl-film {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Old film's canvases fill the frame; the soft one is drawn small and scaled up, as the export scales it. */
+.cl-film {
+  width: 100%;
+  height: 100%;
+}
+
+/* Larger than the frame, so it can jump about while the video plays. */
+.cl-look-grain {
+  inset: -50%;
+  mix-blend-mode: overlay;
+  animation: cl-grain 0.32s steps(1) infinite paused;
+}
+
+.cl-look-grain[data-playing] {
+  animation-play-state: running;
+}
+
+@keyframes cl-grain {
+  0% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(-13%, 7%);
+  }
+  50% {
+    transform: translate(9%, -11%);
+  }
+  75% {
+    transform: translate(-6%, 12%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-look-grain[data-playing] {
+    animation-play-state: paused;
+  }
+}
+
+/* The burned-in captions, drawn as the export draws them (components/Subtitles). */
+.cl-subtitles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* What a beat cuts to. Captions and big words sit above it. */
+.cl-cutaway {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.cl-cutaway img,
+.cl-cutaway video {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cl-cutaway.split {
+  bottom: 50%;
+}
+
+.cl-cutaway.card {
+  background: var(--ground);
+  display: grid;
+  place-items: center;
+}
+
+.cl-cutaway.card img,
+.cl-cutaway.card video {
+  width: 60%;
+  height: 60%;
+  object-fit: contain;
+}
+
+.cl-bigword {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 38%;
+  text-align: center;
+  color: #ffffff;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* Motion graphics: the export's own drawing, over the picture and the captions. */
+.cl-motion {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Placing a callout: the region it points at, drawn over the picture while it is selected. */
+.cl-region {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.cl-region-box {
+  position: absolute;
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.cl-region-point {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+/* A selected graphic's controls, in place of the notes. */
+.cl-graphic-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.cl-graphic-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cl-graphic > .cl-btn.text {
+  align-self: flex-start;
+}
+
+/* The notes and the script are a sheet of paper resting on the desk. */
+.cl-notes {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+  padding: var(--space-5) var(--space-6);
+  gap: var(--space-4);
+}
+
+/* The panel's controls keep their size; only the scrolling part gives way. */
+.cl-notes > .cl-btn,
+.cl-notes > .cl-note-input,
+.cl-notes > p {
+  flex-shrink: 0;
+}
+
+.cl-notes-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cl-notes .cl-msg-assistant .cl-reply {
+  font-size: 15.5px;
+  line-height: 24px;
+}
+
+.cl-note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-note-list > :last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+/* A note is pencilled: no box, a hairline above, the words in the serif's italic. */
+.cl-note {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--line);
+}
+
+.cl-note-n {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--rev, var(--rev-4));
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: grid;
+  place-items: center;
+}
+
+.cl-note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15.5px;
+  line-height: 23px;
+  color: var(--ink);
+}
+
+.cl-note-text .cl-project-meta {
+  font-family: var(--font-sans);
+  font-style: normal;
+}
+
+.cl-note-text .cl-project-meta {
+  display: block;
+}
+
+.cl-note button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+}
+
+/* A line said more than once: its name, its takes, and which one plays. */
+.cl-take {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.cl-take .cl-segments button {
+  width: auto;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 10px;
+  color: var(--ink-soft);
+}
+
+.cl-take .cl-segments button.on {
+  color: var(--ink);
+}
+
+/* The stretch a note or a command will act on, above the box. */
+.cl-picked {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: calc(-1 * var(--space-2));
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-soft);
+}
+
+.cl-picked .mono {
+  color: var(--ink);
+}
+
+/* The editor's note box: the composer's thin line, without the add button. */
+.cl-note-input {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-composer);
+  background: var(--card);
+  padding: 3px 3px 3px 18px;
+  position: relative;
+}
+
+.cl-note-input:focus-within {
+  border-color: var(--ink-soft);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+
+.cl-script {
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: 16.5px;
+  line-height: 27px;
+}
+
+.cl-script p {
+  margin: 0 0 var(--space-2);
+}
+
+.cl-word {
+  border: 0;
+  background: transparent;
+  padding: 0 1px;
+  border-radius: 4px;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+
+.cl-word.struck {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-soft);
+  text-decoration-thickness: 1.5px;
+}
+
+.cl-word.pending {
+  background: var(--selection);
+}
+
+.cl-word.now {
+  box-shadow: inset 0 -2px 0 var(--ink);
+}
+
+/* ---------- Beat strip ---------- */
+
+.cl-strip {
+  flex: 0 0 auto;
+  background: var(--stage);
+  border: 0;
+  border-radius: 22px;
+  box-shadow: var(--shadow-stage);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cl-strip .cl-icon-btn {
+  width: 42px;
+  height: 42px;
+  flex-basis: 42px;
+}
+
+.cl-timecode {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.cl-beats {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: 3px;
+  height: 34px;
+  cursor: pointer;
+}
+
+/* A beat wears the colour of the revision on screen; the one playing is ink. */
+.cl-beat {
+  flex: 1 1 0;
+  min-width: 3px;
+  border: 0;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--rev, var(--beat));
+  color: var(--card);
+  font-size: 11.5px;
+  font-weight: 600;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  /* Its label shows only where a few letters of it fit (below): a sliver of a word ("Mc") says nothing. */
+  container-type: inline-size;
+}
+
+.cl-beat-label {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@container (max-width: 40px) {
+  .cl-beat-label {
+    display: none;
+  }
+}
+
+
+.cl-beat.on {
+  background: var(--ink);
+}
+
+.cl-beat.bw {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 4px,
+    color-mix(in oklch, var(--ink) 8%, transparent) 4px 5px
+  );
+}
+
+/* A beat that comes in with a transition joins the one before it instead of
+   standing apart, so the strip reads a soft join where there is no cut. */
+.cl-beat.joined {
+  margin-left: -3px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background-image: linear-gradient(90deg, color-mix(in oklch, var(--ink) 14%, transparent), transparent 12px);
+}
+
+.cl-beat.bw.joined {
+  background-image:
+    linear-gradient(90deg, color-mix(in oklch, var(--ink) 14%, transparent), transparent 12px),
+    repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in oklch, var(--ink) 8%, transparent) 4px 5px);
+}
+
+.cl-beat:has(+ .cl-beat.joined) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* A stretch picked for a note or a command: a quiet ring on each beat and a
+   bar under them, in ink-soft. Coral stays the playhead's. */
+.cl-beat.picked {
+  box-shadow: inset 0 0 0 1.5px var(--pick);
+}
+
+.cl-beat.on.picked {
+  box-shadow: inset 0 0 0 2px var(--pick), inset 0 0 0 3px var(--card);
+}
+
+/* The stretch picked for a note: blue pencil under the beats. Coral stays the playhead's. */
+.cl-pick {
+  position: absolute;
+  bottom: -8px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--pick);
+  pointer-events: none;
+}
+
+/* Graphics on the cut: thin bars over the beats they cover. */
+.cl-mark {
+  position: absolute;
+  height: 6px;
+  min-width: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ink-soft);
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.cl-mark:focus-visible {
+  opacity: 0.7;
+}
+
+.cl-mark.on {
+  background: var(--ink);
+  opacity: 1;
+}
+
+.cl-playhead {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--coral);
+  pointer-events: none;
+}
+
+/* ---------- Status ---------- */
+
+.cl-toast {
+  position: fixed;
+  top: 84px;
+  right: 24px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(460px, calc(100vw - 48px));
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 8px 8px 8px 18px;
+  font-size: 14px;
+  box-shadow: var(--shadow-float);
+}
+
+.cl-toast .cl-btn {
+  height: 34px;
+  padding: 0 14px;
+  background: var(--card-2);
+  border-color: var(--line-mid);
+  color: var(--ink);
+}
+
+/* What a tool said when it stopped, opened from the toast: its lines under the sentence. */
+.cl-toast.open {
+  flex-wrap: wrap;
+  width: min(560px, calc(100vw - 48px));
+  max-width: none;
+  padding-bottom: 12px;
+}
+
+/* The sentence takes the room the buttons leave, so they stay beside it. */
+.cl-toast.open > span {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.cl-toast .cl-details {
+  flex-basis: 100%;
+  margin-right: 12px;
+}
+
+
+.cl-empty {
+  margin: auto;
+  max-width: 420px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* A screen that failed to draw: the sentence in ink, a way back, the error behind Details. */
+.cl-fault {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+}
+
+.cl-fault .cl-reply {
+  color: var(--ink);
+}
+
+.cl-fault .cl-actions {
+  justify-content: center;
+  align-items: center;
+}
+
+.cl-fault .cl-aside {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Rail ---------- */
+
+.cl-rail {
+  -webkit-app-region: drag;
+  flex: 0 0 72px;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 0;
+  border-right: 1px solid var(--line);
+  /* The desk's light shows through the rail; open over a narrow window it becomes a sheet. */
+  background: transparent;
+  overflow: hidden;
+}
+
+/* The window has no titlebar on a Mac; the traffic lights sit in the rail's top corner. */
+.cl-app.mac .cl-rail {
+  padding-top: 52px;
+}
+
+/*
+ * On Windows the window's own minimise, maximise and close sit over its top
+ * right corner (main/index.ts windowFrame); the header keeps clear of them.
+ * The titlebar-area values say where they are, and their width without them.
+ */
+.cl-app.windows .cl-header {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + var(--space-3));
+}
+
+.cl-rail.open {
+  flex-basis: 248px;
+  width: 248px;
+  align-items: stretch;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.cl-rail button {
+  -webkit-app-region: no-drag;
+}
+
+.cl-rail-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* The toggle stays its own size, so the lockup beside it shows when the rail is open. */
+.cl-rail.open .cl-rail-top .cl-rail-item {
+  width: 44px;
+  flex: 0 0 44px;
+  justify-content: center;
+  padding: 0;
+}
+
+.cl-rail-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+}
+
+.cl-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-rail.open .cl-rail-item {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 12px;
+}
+
+
+.cl-rail-item.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-tab);
+}
+
+.cl-rail-recent {
+  margin-top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.cl-rail-heading {
+  padding: 0 12px 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cl-rail-project {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* ---------- Pages: projects, brand, presets ---------- */
+
+.cl-page {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-8) var(--space-12);
+}
+
+.cl-page-inner {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.cl-page-inner.wide {
+  max-width: 1000px;
+}
+
+.cl-page-title {
+  margin: 0;
+  font-size: 40px;
+  line-height: 44px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.cl-lede {
+  margin: -12px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* A second line of a lede, said once for the whole page. */
+.cl-lede-line {
+  display: block;
+  margin-top: var(--space-1);
+}
+
+.cl-section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cl-section h2 {
+  margin: 0;
+  text-wrap: balance;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cl-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-field > span:first-child {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-field-hint {
+  font-size: 13px;
+  margin-top: calc(var(--space-2) * -1);
+}
+
+/* What a control in a field's row is for, beside it: "Headings [Archivo Black | Anton | Sora]". */
+.cl-row-label {
+  min-width: 140px;
+  font-size: 14px;
+}
+
+.cl-field input:not([type='color']):not([type='checkbox']),
+.cl-field textarea {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 14px;
+  outline: none;
+  resize: vertical;
+}
+
+/* The same soft halo as the composer, drawn as an outline so it shows at once. */
+.cl-field input:not([type='color']):not([type='checkbox']):focus-visible,
+.cl-field textarea:focus-visible {
+  border-color: var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+/* The browser's own placeholder grey is too faint on the ground. */
+.cl-field input::placeholder,
+.cl-field textarea::placeholder {
+  color: var(--muted);
+}
+
+/* A sentence under a setting reads at a comfortable measure, not the card's whole width. */
+.cl-section > p.cl-aside,
+.cl-field > p.cl-aside {
+  max-width: 56ch;
+  text-wrap: pretty;
+}
+
+.cl-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cl-segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  align-self: flex-start;
+}
+
+.cl-segments button {
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.cl-segments button.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-tab);
+}
+
+.cl-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+}
+
+.cl-swatch input {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: none;
+  cursor: pointer;
+}
+
+.cl-caption-sample {
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: var(--frame);
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.cl-logo-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--ground);
+}
+
+.cl-drop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-6);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-thumb);
+  color: var(--muted);
+}
+
+.cl-drop.dropping {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* A link to one of the brand's videos, beside its button: the field takes the room. */
+.cl-brand-link .cl-field {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.cl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.cl-list li:first-child {
+  border-top: 0;
+}
+
+.cl-list-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+}
+
+.cl-list-main .cl-project-meta {
+  font-weight: 400;
+}
+
+.cl-list-cmd {
+  flex: 0 0 120px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.cl-list li > button:not(.cl-btn) {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+}
+
+.cl-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: 600;
+}
+
+.cl-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ink);
+}
+
+/* What I've learned: statements read as sentences, and one at a time is reworded in place. */
+.cl-memory .cl-list-main {
+  font-weight: 400;
+}
+
+.cl-memory-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Settings */
+.cl-field .cl-row input:not([type='color']) {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.cl-path {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.cl-section .cl-row > .cl-aside,
+.cl-section .cl-row > .cl-reply {
+  flex: 1 1 260px;
+}
+
+/* ---------- Which AI edits with you: Claude or a model on this computer (components/AiChoice) ---------- */
+
+.cl-ai-options {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.cl-ai-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-page);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+}
+
+/* Picked, the card takes its block colour and an ink ring, as a version's tab does. */
+.cl-ai-option.on {
+  box-shadow: inset 0 0 0 2px var(--ink), var(--shadow-page);
+}
+
+.cl-ai-option.claude.on {
+  background: var(--block-salmon);
+}
+
+.cl-ai-option.local.on {
+  background: var(--block-green);
+}
+
+.cl-ai-option-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cl-ai-option-name {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+.cl-ai-option-what {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+/* On a block, the tag is paper. */
+.cl-ai-option.on .cl-set-tag {
+  background: var(--card);
+}
+
+.cl-local-steps {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-page);
+}
+
+.cl-local-line {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 15px;
+  line-height: 22px;
+  text-wrap: pretty;
+}
+
+@media (max-width: 640px) {
+  .cl-ai-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Settings: a list of sections beside one section's rows ---------- */
+
+/* The page measures itself, so the list folds into a row of places wherever Settings is narrow, rail open or not. */
+.cl-page:has(> .cl-settings) {
+  container: settings / inline-size;
+}
+
+.cl-settings {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  grid-template-areas:
+    'head head'
+    'nav pane';
+  column-gap: var(--space-8);
+  row-gap: var(--space-6);
+}
+
+.cl-settings-head {
+  grid-area: head;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cl-settings-head .cl-lede {
+  margin: 0;
+}
+
+.cl-settings-nav {
+  grid-area: nav;
+  align-self: start;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Search is a field in the well, like the composer's quiet cousin. */
+.cl-set-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  color: var(--muted);
+}
+
+.cl-set-search svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.cl-set-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.cl-set-search input::placeholder {
+  color: var(--muted);
+}
+
+.cl-set-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.cl-set-search:focus-within {
+  box-shadow: inset 0 0 0 1px var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+}
+
+.cl-settings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A new group of places starts a little apart, over a hairline. */
+.cl-settings-list li.gap {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.cl-set-place {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.cl-set-place.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-tab);
+}
+
+/* Each section's mark: its line icon on a small pastel block. */
+.cl-set-tile {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  color: var(--ink);
+}
+
+.cl-set-tile svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cl-set-tile.big {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.cl-set-tile.big svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cl-settings-pane {
+  grid-area: pane;
+  min-width: 0;
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.cl-set-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.cl-set-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.cl-set-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-set-subhead {
+  margin: var(--space-2) 0 0 var(--space-1);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.cl-set-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+}
+
+/* A setting: its title and line on the left, its control at the end; what it opens, under both. */
+.cl-set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-6);
+  row-gap: var(--space-4);
+  padding: 18px 22px;
+}
+
+.cl-set-row + .cl-set-row {
+  border-top: 1px solid var(--line);
+}
+
+.cl-set-text {
+  min-width: 0;
+}
+
+.cl-set-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+/* A word or two at a glance, as Claude's settings say "Local only". */
+.cl-set-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cl-set-desc {
+  margin: 2px 0 0;
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.cl-set-desc .cl-path {
+  display: block;
+  font-size: 13px;
+}
+
+.cl-set-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* A choice of a few side by side is wide: it sits under the row's words, where it has room. */
+.cl-set-row:has(> .cl-set-control > .cl-segments) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cl-set-row:has(> .cl-set-control > .cl-segments) .cl-set-control {
+  justify-content: flex-start;
+}
+
+.cl-set-more {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.cl-set-more > :is(.cl-list, .cl-field, .cl-steps, .cl-progress, form) {
+  align-self: stretch;
+}
+
+.cl-set-more .cl-aside {
+  max-width: 60ch;
+  text-wrap: pretty;
+}
+
+/* Fields under a row read as every field in Cutalong does. */
+.cl-set-more input:not([type='checkbox']):not([type='color']) {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 14px;
+  outline: none;
+}
+
+.cl-set-more input:not([type='checkbox']):not([type='color']):focus-visible {
+  border-color: var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+.cl-set-more .cl-row input:not([type='checkbox']) {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* A choice of several, as a pill with a drawn chevron. */
+/* A link drawn as a button reads as one: no underline. */
+a.cl-btn {
+  text-decoration: none;
+}
+
+.cl-select {
+  position: relative;
+  display: inline-flex;
+  max-width: 260px;
+}
+
+.cl-select select {
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 36px 0 14px;
+  border: 1px solid var(--line-mid);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cl-select::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 15px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid var(--ink-soft);
+  border-bottom: 1.6px solid var(--ink-soft);
+  translate: 0 -70%;
+  rotate: 45deg;
+  pointer-events: none;
+}
+
+.cl-select select:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.cl-select select:disabled {
+  color: var(--muted);
+  background: var(--card-2);
+  cursor: not-allowed;
+}
+
+/* While searching: sections and groups with nothing that matches step aside, and the pane says when nothing does. */
+.cl-settings-pane.finding .cl-set-section:not(:has(.cl-set-row)),
+.cl-settings-pane.finding .cl-set-group:not(:has(.cl-set-row)) {
+  display: none;
+}
+
+.cl-set-none {
+  display: none;
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.cl-settings-pane.finding:not(:has(.cl-set-row)) .cl-set-none {
+  display: block;
+}
+
+/* Licences, on a phone, read as a sheet of prose with a list. */
+.cl-set-prose {
+  padding: var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@container settings (width < 760px) {
+  .cl-settings {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'nav'
+      'pane';
+    row-gap: var(--space-5);
+  }
+
+  .cl-settings-nav {
+    position: static;
+  }
+
+  /* The places become one row that scrolls sideways, each a pill. */
+  .cl-settings-list {
+    flex-direction: row;
+    gap: var(--space-1);
+    overflow-x: auto;
+    margin: 0 calc(-1 * var(--space-2));
+    padding: 2px var(--space-2) var(--space-2);
+    scrollbar-width: none;
+  }
+
+  .cl-settings-list li.gap {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .cl-set-place {
+    width: auto;
+    padding: 0 14px 0 6px;
+    border-radius: var(--radius-pill);
+  }
+
+  .cl-set-tile {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-pill);
+  }
+
+  .cl-settings-pane {
+    max-width: none;
+  }
+}
+
+/* Narrower still, a row's control goes under its words, except a lone switch, which stays at the end. */
+@container settings (width < 520px) {
+  .cl-set-row:not(:has(> .cl-set-control > .cl-toggle:only-child)) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cl-set-row:not(:has(> .cl-set-control > .cl-toggle:only-child)) .cl-set-control {
+    justify-content: flex-start;
+  }
+
+  .cl-set-row {
+    padding: 16px 18px;
+  }
+
+  .cl-set-heading {
+    font-size: 22px;
+    line-height: 28px;
+  }
+}
+
+/* Scene effects in the preview (fx-preview.ts): the picture an effect works on,
+   over the decks and under the look, and what it draws over the picture, over
+   the look and under the captions. Picture pixels, never interface colour. */
+.cl-fx-picture,
+.cl-fx-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.cl-fx-picture {
+  z-index: 3;
+}
+
+/* The picture's own decks, the whole frame or the half beside another camera. */
+.cl-decks-main {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Another camera of the same moment, beside the picture or in a box over it. */
+.cl-inset {
+  position: absolute;
+  overflow: hidden;
+}
+
+/* A beat shown as a grid (GridPanels): each panel in its box, the ground and labels drawn over them. */
+.cl-grid,
+.cl-grid-plate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cl-grid-panel {
+  position: absolute;
+  overflow: hidden;
+}
+
+.cl-grid-panel img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---------- Lined Script ---------- */
+
+/* A long brand name gives way before the header does. */
+.cl-menu-anchor > .cl-btn {
+  max-width: 260px;
+}
+
+.cl-btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* With the rail open, its list of chats already offers the rest; Start keeps the newest card. */
+.cl-rail.open ~ .cl-main .cl-start .cl-continue-row > :nth-child(n + 2) {
+  visibility: hidden;
+}
+
+/* While Cutalong works, the send button stays ink and its mark marches: busy, not disabled. */
+.cl-composer.busy .cl-icon-btn.filled:disabled {
+  background: var(--ink);
+  color: var(--card);
+  cursor: progress;
+}
+
+/* Only the newest reply carries the assistant's tile, so the mark is on screen once. */
+.cl-msg-assistant:has(~ .cl-msg-assistant) > .cl-assistant-avatar {
+  visibility: hidden;
+}
+
+/* One filled button per view: when a newer reply arrives, an older reply's primary steps down. */
+.cl-msg-assistant:has(~ .cl-msg-assistant) .cl-btn.primary:not(:disabled) {
+  background: var(--card);
+  border-color: var(--line-mid);
+  color: var(--ink);
+}
+
+.cl-section .cl-reply {
+  font-size: 16.5px;
+  line-height: 26px;
+}
+
+/* Versions are revision pages: a tab for each, in the colour film scripts use for that revision. */
+.cl-revisions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  /* Room on the right for a new version's sticker to sit on its tab's corner. */
+  padding: 0 var(--space-4) 0 var(--space-1);
+}
+
+.cl-rev {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.cl-rev-tab {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--block, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 9%, transparent);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The revision on screen sits forward, like the top page of the stack. */
+/* The revision on screen sits forward, ringed in ink, like the top page of the stack. */
+.cl-rev-tab.cl-version {
+  box-shadow:
+    inset 0 0 0 2px var(--ink),
+    var(--shadow-tab);
+}
+
+/* A version made while you watched wears a sticker on its tab's corner. */
+.cl-rev-new {
+  position: absolute;
+  top: -14px;
+  right: -13px;
+  z-index: 1;
+}
+
+.cl-rev-more {
+  align-self: center;
+  margin-right: var(--space-1);
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* The script: a number and a coverage line in the margin, the words, and an asterisk where the revision changed them. */
+.cl-sline {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 14px;
+  column-gap: var(--space-3);
+  padding: 3px 0;
+}
+
+.cl-sline-n {
+  position: relative;
+  padding-right: 10px;
+  text-align: right;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  line-height: 27px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-sline-n::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 7px;
+  bottom: -7px;
+  width: 1.5px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+
+.cl-sline.now .cl-sline-n::after {
+  background: var(--ink);
+}
+
+.cl-sline.picked .cl-sline-n::after {
+  width: 3px;
+  right: -1px;
+  background: var(--pick);
+}
+
+.cl-sline p {
+  margin: 0;
+}
+
+.cl-sline .cl-margin-note {
+  margin: 2px 0 8px;
+}
+
+.cl-sline-star {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 27px;
+  color: var(--ink-soft);
+}
+
+/* A note in the margin: pencilled in the serif's italic beside the line it is about. */
+.cl-margin-note {
+  grid-column: 2 / 4;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 2px 0 8px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink-soft);
+}
+
+.cl-margin-note b {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--rev-4);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: inline-grid;
+  place-items: center;
+}
+
+.cl-script-key {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+/* A brand's page says whose brand it is, and the switch between brands stays in reach while you scroll. */
+.cl-brand-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 calc(-1 * var(--space-2));
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-card);
+  background: color-mix(in oklch, var(--ground) 88%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.cl-brand-bar .cl-brand-note {
+  flex-basis: 100%;
+}
+
+/* Fields say what is wrong beside them, with an icon as well as the colour (for key setup and the rest). */
+.cl-field.error input,
+.cl-field.error textarea,
+.cl-field input[aria-invalid='true'],
+.cl-field textarea[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.cl-field-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+}
+
+.cl-field-msg.error {
+  color: var(--error);
+}
+
+.cl-field-msg.ok {
+  color: var(--ok);
+}
+
+.cl-field-msg svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+/* Numbered steps, each a sheet, for anything done in order (getting an Anthropic key). */
+.cl-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  counter-reset: cl-step;
+}
+
+.cl-steps > li {
+  counter-increment: cl-step;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+}
+
+.cl-steps > li::before {
+  content: counter(cl-step);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1.5px var(--ink-soft);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-steps > li.now {
+  border-color: var(--ink);
+}
+
+.cl-steps > li.done::before {
+  background: var(--ok);
+  color: var(--card);
+  box-shadow: none;
+}
+
+.cl-steps h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+.cl-steps p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* Narrow windows keep the video big: the open rail floats over the screen, and the notes give way first. */
+@media (max-width: 1180px) {
+  /* The phone build (.cl-app.phone) has its own drawer; this is for desktop windows. */
+  .cl-app:not(.phone) .cl-rail.open {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    background: var(--ground);
+    box-shadow: var(--shadow-float);
+  }
+
+  .cl-app:not(.phone) .cl-rail.open ~ .cl-main {
+    margin-left: 72px;
+  }
+
+  .cl-header {
+    padding: 0 var(--space-5);
+  }
+
+  .cl-editor {
+    padding: 0 var(--space-5) var(--space-5);
+  }
+
+  .cl-editor-body {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: var(--space-4);
+  }
+}
+
+/* Hover belongs to a pointer: on touch it would stick after a tap. */
+@media (hover: hover) and (pointer: fine) {
+  .cl-btn.primary:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--ink) 86%, var(--card));
+  }
+
+  .cl-btn.secondary:hover:not(:disabled),
+  .cl-icon-btn:hover:not(:disabled) {
+    border-color: var(--line-strong);
+  }
+
+  .cl-btn.text:hover:not(:disabled),
+  .cl-set-place:not(.on):hover,
+  .cl-rail-item:hover,
+  .cl-rail-project:hover {
+    background: color-mix(in oklch, var(--ink) 5%, transparent);
+    color: var(--ink);
+  }
+
+  .cl-menu button:hover,
+  .cl-word:hover {
+    background: var(--card-2);
+  }
+
+  .cl-chip:hover {
+    border-color: var(--line-strong);
+    color: var(--ink);
+  }
+
+  .cl-project:hover .cl-project-thumb {
+    border-color: var(--line-mid);
+  }
+
+  .cl-file-more:hover .cl-poster {
+    background: var(--beat);
+  }
+
+  .cl-beat:hover:not(.on) {
+    background-color: color-mix(in oklch, var(--rev, var(--beat)) 86%, var(--ink));
+  }
+
+  .cl-mark:hover {
+    opacity: 0.7;
+  }
+
+  .cl-rev-tab:hover:not(.cl-version) {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 30%, transparent);
+  }
+
+  .cl-pick-shapes button:hover:not([aria-checked='true']),
+  .cl-pick-colours button:hover:not([aria-checked='true']) {
+    background: color-mix(in oklch, var(--card) 85%, transparent);
+  }
+
+  .cl-attachment button:hover {
+    color: var(--ink);
+  }
+}
+
+/* ---------- Heavenly and alive: shapes, the living mark, the crew ---------- */
+
+/* A shape in its bloom colour (components/Shapes.tsx). */
+.cl-blob {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+.cl-blob path {
+  fill: var(--bloom);
+}
+
+/* A sticker: a word or a number on a shape, pressed on at a slight angle. */
+.cl-sticker {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--size);
+  height: var(--size);
+  rotate: var(--tilt);
+  pointer-events: none;
+}
+
+.cl-sticker > .cl-blob {
+  grid-area: 1 / 1;
+  filter: drop-shadow(0 2px 3px var(--shadow-soft));
+}
+
+.cl-sticker-text {
+  grid-area: 1 / 1;
+  position: relative;
+  color: var(--on-bloom);
+  font-size: 10.5px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+/* A brand's avatar: two pictures stacked while one morphs into the other. */
+.cl-avatar-blob {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+}
+
+.cl-avatar-blob > .cl-blob {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+}
+
+.cl-seg-blob {
+  margin-right: 2px;
+}
+
+.cl-segments button:has(.cl-seg-blob) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cl-menu button:has(> .cl-menu-blob) {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: var(--space-3);
+  align-items: center;
+}
+
+.cl-menu button > .cl-menu-blob {
+  grid-row: span 2;
+}
+
+.cl-menu button:has(> .cl-menu-blob) .meta {
+  grid-column: 2;
+}
+
+/* The living mark: three soft shapes in the bloom colours over a warm core (motion.css breathes it). */
+.cl-living {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+}
+
+.cl-living-turn {
+  position: absolute;
+  inset: 4%;
+  display: block;
+}
+
+.cl-living-turn svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: blur(calc(var(--size) * 0.05));
+}
+
+.cl-living::before {
+  content: '';
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in oklch, var(--bloom-pink) 26%, transparent), transparent 74%);
+}
+
+.cl-living-turn.one {
+  inset: 8%;
+}
+
+.cl-living-turn.one path {
+  fill: var(--bloom-pink);
+}
+
+.cl-living-turn.two {
+  inset: 2% 2% 16% 16%;
+  opacity: 0.8;
+}
+
+.cl-living-turn.two path {
+  fill: var(--bloom-lavender);
+}
+
+.cl-living-turn.three {
+  inset: 30% 30% 0 0;
+  opacity: 0.6;
+}
+
+.cl-living-turn.three path {
+  fill: var(--bloom-blue);
+}
+
+.cl-living-core {
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 46% 40%,
+    var(--halo),
+    color-mix(in oklch, var(--coral) 40%, transparent) 58%,
+    transparent 74%
+  );
+  filter: blur(calc(var(--size) * 0.04));
+}
+
+.cl-assistant-avatar.living {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Long work: the living mark leads, then the crew, then a thin line and the time. */
+.cl-progress.big {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.cl-progress.big > .cl-living {
+  margin-bottom: var(--space-2);
+}
+
+.cl-progress.big > .cl-progress-stage {
+  font-size: 20px;
+  line-height: 27px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.cl-progress-line {
+  max-width: 34em;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 25px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.cl-progress-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.cl-progress.big .cl-progress-bar {
+  width: 220px;
+}
+
+.cl-msg-assistant:has(> .cl-msg-body > .cl-progress.big) > .cl-assistant-avatar {
+  visibility: hidden;
+}
+
+/* ---------- The crew ---------- */
+
+/* A member: a shape in their colour, with two eyes (components/Crew.tsx). */
+.cl-crew-face {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+}
+
+/* What works (motion.css): the shape and its eyes, filling the face, which itself only hops. */
+.cl-crew-body {
+  position: absolute;
+  inset: 0;
+}
+
+.cl-crew-face svg {
+  display: block;
+  overflow: visible;
+}
+
+.cl-crew-eyes > span {
+  position: absolute;
+  top: var(--eye-y);
+  width: 9%;
+  height: 14%;
+  border-radius: 50%;
+  background: var(--on-bloom);
+}
+
+.cl-crew-eyes > span:first-child {
+  left: var(--eye-x);
+}
+
+.cl-crew-eyes > span:last-child {
+  right: var(--eye-x);
+}
+
+.cl-crew {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Each row sized to its own words, so a done mark sits beside its line and stays put when another line changes. */
+.cl-crew-row {
+  display: grid;
+  grid-template-columns: 34px auto auto;
+  justify-content: start;
+  column-gap: var(--space-3);
+  align-items: start;
+}
+
+.cl-crew-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 6px;
+}
+
+.cl-crew-line {
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.cl-crew-row.done .cl-crew-line {
+  color: var(--muted);
+}
+
+.cl-crew-plain {
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  line-height: 23px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.cl-crew-done {
+  padding-top: 9px;
+  color: var(--ok);
+}
+
+/* Who did the work, under a reply: quiet, like credits at the end of a film. */
+.cl-credits {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 40em;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* Each face whole, a little apart: a credit is one name each. */
+.cl-credits-faces {
+  display: inline-flex;
+  flex: none;
+  gap: var(--space-1);
+}
+
+.cl-credits-line {
+  min-width: 0;
+  padding-top: 1px;
+  text-wrap: pretty;
+}
+
+/* A note says who will take it. */
+.cl-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-3);
+}
+
+.cl-note-crew {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
+/* The Crew page: a call sheet, one row per member, each with their own pastel tile. */
+.cl-callsheet {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-8);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+}
+
+.cl-callsheet > li {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: var(--space-3) var(--space-6);
+  align-items: start;
+  padding: var(--space-6) 0;
+  border-top: 1px solid var(--line);
+}
+
+.cl-callsheet > li:first-child {
+  border-top: 0;
+}
+
+.cl-crew-tile {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 26px;
+  background: var(--block);
+}
+
+.cl-crew-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cl-crew-who h2 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.cl-crew-job {
+  font-size: 13.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cl-crew-does {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 25px;
+  text-wrap: pretty;
+}
+
+.cl-crew-knows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.cl-crew-knows h3 {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 18px;
+  font-weight: 700;
+}
+
+.cl-crew-learned {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.cl-crew-learned li {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--block) 60%, var(--card));
+  font-size: 13.5px;
+  line-height: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-crew-none,
+.cl-crew-need p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.cl-crew-need {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.cl-crew-need ol {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+@media (max-width: 1100px) {
+  .cl-callsheet > li {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .cl-crew-tile {
+    width: 72px;
+    height: 72px;
+    border-radius: 22px;
+  }
+
+  .cl-crew-knows {
+    grid-column: 2;
+  }
+}
+
+/* ---------- The Brand page: the brand's own block and avatar ---------- */
+
+.cl-brand-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5) var(--space-6);
+  padding: var(--space-6) var(--space-8) var(--space-6) var(--space-6);
+  border-radius: 28px;
+  background: var(--block);
+  color: var(--ink);
+}
+
+.cl-brand-hero-avatar {
+  filter: drop-shadow(0 10px 14px var(--shadow-soft));
+}
+
+.cl-brand-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.cl-brand-hero .cl-page-title {
+  overflow-wrap: anywhere;
+}
+
+.cl-brand-hero .cl-lede {
+  margin: 0;
+  font-size: 16px;
+  line-height: 23px;
+  color: color-mix(in oklch, var(--ink) 80%, var(--block));
+}
+
+.cl-avatar-picker {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+}
+
+.cl-pick-shapes,
+.cl-pick-colours {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.cl-pick-shapes {
+  max-width: 360px;
+}
+
+.cl-pick-shapes button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--card) 55%, transparent);
+  display: grid;
+  place-items: center;
+}
+
+.cl-pick-colours button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+
+/* The avatar's colour, a dot in its picker button; the Brand page's colour fields use .cl-swatch as a label. */
+.cl-pick-colours .cl-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bloom);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 14%, transparent);
+}
+
+.cl-pick-shapes button[aria-checked='true'],
+.cl-pick-colours button[aria-checked='true'] {
+  background: var(--card);
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+/* ---------- Empty, in colour ---------- */
+
+.cl-empty-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 560px;
+  padding: var(--space-8);
+  border-radius: 28px;
+  background: var(--block);
+  color: var(--ink);
+}
+
+.cl-empty-shape {
+  margin-bottom: var(--space-3);
+}
+
+.cl-empty-title {
+  margin: 0;
+  font-size: 32px;
+  line-height: 36px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.cl-empty-line {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: color-mix(in oklch, var(--ink) 80%, var(--block));
+}
+
+/* An older reply's tiles settle to a calmer tint: the newest reply is the one alive. */
+.cl-msg-assistant:has(~ .cl-msg-assistant) .cl-fact {
+  background: color-mix(in oklch, var(--block, var(--card)) 45%, var(--card-2));
+}
+
+/*
+ * A window the width of a phone: only a browser gets this narrow (the Mac
+ * window stops at 960 px, and the phone app, .cl-app.phone, has its own
+ * layout in phone.css). The rail becomes a bar of icons along the bottom,
+ * margins come in to the gutter, and everything else stacks.
+ */
+@media (max-width: 640px) {
+  .cl-app:not(.phone) {
+    flex-direction: column-reverse;
+  }
+
+  .cl-app:not(.phone) .cl-rail,
+  .cl-app:not(.phone) .cl-rail.open {
+    position: static;
+    flex: 0 0 auto;
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+    gap: 0;
+    padding: 6px var(--space-2) calc(6px + env(safe-area-inset-bottom, 0px));
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    background: var(--ground);
+    box-shadow: none;
+  }
+
+  .cl-app:not(.phone) .cl-rail :is(.cl-rail-top, .cl-rail-recent, .label, .spacer) {
+    display: none;
+  }
+
+  .cl-app:not(.phone) .cl-rail.open ~ .cl-main {
+    margin-left: 0;
+  }
+
+  /* The screen scrolls inside itself, so the bar stays put and nothing scrolls the page away. */
+  .cl-app:not(.phone) .cl-main {
+    min-height: 0;
+  }
+
+  .cl-header {
+    height: 56px;
+    padding: 0 var(--space-4);
+  }
+
+  /*
+   * The editor's header in two rows: back, the title and Export, then the
+   * revision tabs and the tools. Focus follows the rows as they read.
+   */
+  .cl-header:has(> .cl-revisions) {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding-block: var(--space-1);
+    reading-flow: flex-visual;
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-icon-btn {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-heading {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-export {
+    order: 1;
+  }
+
+  /* The break between the rows, and the little room between them. */
+  .cl-header:has(> .cl-revisions)::after {
+    content: '';
+    order: 2;
+    flex-basis: 100%;
+    height: var(--space-1);
+  }
+
+  .cl-header > .cl-revisions {
+    order: 3;
+    /* It takes what the tools leave, so they never wrap to a third row. */
+    flex: 1 1 0;
+    min-width: 0;
+    /* More tabs than fit scroll sideways; the sticker sits inside its tab, so nothing is cut off. */
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: var(--space-1);
+    margin: calc(-1 * var(--space-1));
+  }
+
+  /* The tabs take the room the tools leave. */
+  .cl-header:has(> .cl-revisions) > .spacer {
+    display: none;
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-btn.text {
+    order: 5;
+    height: 34px;
+    padding: 0 var(--space-3);
+  }
+
+  .cl-header:has(> .cl-revisions) > .cl-btn.small {
+    height: 36px;
+    padding: 0 var(--space-4);
+  }
+
+  .cl-rev:has(> .cl-rev-new) > .cl-rev-tab {
+    padding-right: var(--space-10);
+  }
+
+  .cl-rev > .cl-rev-new {
+    position: absolute;
+    top: 1px;
+    right: var(--space-1);
+  }
+
+  .cl-start {
+    padding: 6vh var(--space-4) var(--space-8);
+  }
+
+  .cl-title {
+    font-size: 40px;
+    line-height: 44px;
+  }
+
+  .cl-continue-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cl-thread-scroll {
+    padding: var(--space-4) var(--space-4) var(--space-6);
+  }
+
+  .cl-thread-column {
+    gap: var(--space-8);
+  }
+
+  .cl-thread-foot {
+    padding: 0 var(--space-3) var(--space-3);
+  }
+
+  .cl-msg-assistant {
+    gap: var(--space-3);
+  }
+
+  .cl-msg-user {
+    max-width: 85%;
+  }
+
+  .cl-reply {
+    font-size: 17px;
+    line-height: 27px;
+  }
+
+  .cl-facts {
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  }
+
+  .cl-fact-n {
+    font-size: 27px;
+    line-height: 32px;
+  }
+
+  .cl-clips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cl-page {
+    padding: var(--space-3) var(--space-4) var(--space-10);
+  }
+
+  .cl-page-title {
+    font-size: 32px;
+    line-height: 36px;
+  }
+
+  .cl-brand-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--space-5);
+  }
+
+  .cl-brand-hero > .cl-btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .cl-section {
+    padding: var(--space-5);
+  }
+
+  .cl-editor {
+    gap: var(--space-3);
+    padding: 0 var(--space-3) var(--space-3);
+    overflow-y: auto;
+  }
+
+  /*
+   * The picture above, the notes below, each with a set share of the height:
+   * the preview sizes itself to its well, so the well's height must not hang
+   * on what is in the notes.
+   */
+  .cl-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+
+  .cl-callsheet {
+    padding: 0 var(--space-4);
+  }
+
+  .cl-callsheet > li {
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .cl-crew-tile {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+  }
+
+  .cl-crew-tile > .cl-crew-face {
+    scale: 0.72;
+  }
+}
+
+/* A made video's quote: its outline, its script behind a link, how to get a missing key (MakeBrief). */
+.cl-make {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.cl-make > .cl-field {
+  align-self: stretch;
+}
+
+.cl-make-outline,
+.cl-make-key ol {
+  margin: 0;
+  padding-left: var(--space-6);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--muted);
+}
+
+.cl-make-key {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+}
+
+.cl-make-key ol {
+  color: var(--ink);
+}
+
+/* A dollar amount in Settings: a small field with its sign in front (settings/Made). */
+.cl-dollars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--ground);
+  padding: 6px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-dollars:focus-within {
+  border-color: var(--ink);
+}
+
+.cl-dollars input {
+  width: 4.5em;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A made video's script, read as the pages of a shooting script (MakeBrief):
+ * the editor's own .cl-script type, each part's heading set as a scene
+ * heading, and each line numbered in the margin as the shot it becomes,
+ * beside a coverage rule. Tokens only, so it follows the editor's script panel.
+ */
+.cl-make-script {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.cl-make-page {
+  align-self: stretch;
+  padding: var(--space-4) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  max-height: 22rem;
+  overflow-y: auto;
+  text-wrap: pretty;
+}
+
+.cl-make-slug {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cl-make-page section:first-child .cl-make-slug {
+  margin-top: 0;
+}
+
+.cl-make-line {
+  position: relative;
+  padding-left: var(--space-8);
+}
+
+/* The shot number in the margin, and the coverage rule beside the line. */
+.cl-make-line::before {
+  content: attr(data-shot);
+  position: absolute;
+  left: 0;
+  width: var(--space-4);
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-make-line::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--space-6) - 1px);
+  top: var(--space-1);
+  bottom: var(--space-1);
+  border-left: 1px solid var(--line);
+}
+
+/* The questions asked before a made video is written (MakeQuestions): options as pills, your own words beside them. */
+.cl-make-ask {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.cl-make-question {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-make-question legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cl-make-question .cl-row {
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.cl-pill[aria-checked='true'] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.cl-make-own {
+  min-width: 12rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.cl-make-own:focus-visible {
+  border-color: var(--ink);
+}
+
+.cl-make-own::placeholder {
+  color: var(--muted);
+}
+
+/* ---------- On set: the stage ---------- */
+
+/*
+ * The stage is a scope as well as a surface: inside it ink, lines and paper
+ * point at the stage's own tokens, so a button, a beat or a ring set on it
+ * needs no rules of its own. Footage and the tools that act on it live here;
+ * words stay on paper.
+ */
+.cl-well,
+.cl-strip,
+.cl-wordtrack,
+.cl-stage {
+  --ink: var(--on-stage);
+  --ink-soft: var(--on-stage-soft);
+  --muted: var(--on-stage-soft);
+  --card: var(--stage);
+  --card-2: var(--stage-2);
+  --well: var(--stage-2);
+  --line: var(--stage-line);
+  --line-mid: var(--stage-line);
+  --beat: var(--stage-2);
+  --pick: var(--bloom-blue);
+  color: var(--ink);
+}
+
+.cl-stage {
+  background: var(--stage);
+  border-radius: var(--radius-stage);
+  box-shadow: var(--shadow-stage);
+}
+
+/* ---------- On set: the rail's setup card ---------- */
+
+/* Until setup is done, a card at the rail's foot says what is left; each step is a button to it. */
+.cl-setup-card {
+  -webkit-app-region: no-drag;
+  margin-top: var(--space-4);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--shadow-page);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cl-setup-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-setup-card-head span:last-child {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-setup-bar {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--well);
+  overflow: hidden;
+}
+
+.cl-setup-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--ink);
+  transform-origin: left center;
+  transition: transform var(--duration-spring) var(--spring-settle);
+}
+
+.cl-setup-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  text-align: left;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.cl-setup-step.done {
+  color: var(--muted);
+}
+
+.cl-tick {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+}
+
+.cl-setup-step.done .cl-tick {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--card);
+}
+
+.cl-setup-step.now .cl-tick {
+  border-color: var(--ink);
+}
+
+.cl-setup-step.now {
+  font-weight: 600;
+}
+
+/* ---------- On set: Start ---------- */
+
+/* The presets, shown doing what they do: a pastel block each, its command under the picture. */
+.cl-presets {
+  width: 100%;
+  max-width: 900px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  /* As far from the composer as the composer is from the question, a step more: one rhythm down the page. */
+  margin-top: var(--space-10);
+}
+
+.cl-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--tone, var(--block-blue));
+  color: var(--ink);
+  text-align: left;
+}
+
+.cl-preset-pic {
+  height: 78px;
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px 12px;
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.cl-preset-pic s {
+  color: var(--muted);
+  text-decoration-color: var(--coral);
+  text-decoration-thickness: 2px;
+}
+
+/* Three vertical frames side by side: shorts. */
+.cl-preset-pic.frames {
+  background: transparent;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cl-preset-pic.frames span,
+.cl-preset-pic.caption {
+  background: linear-gradient(160deg, var(--frame-2), var(--frame));
+}
+
+.cl-preset-pic.frames span {
+  height: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 8px;
+}
+
+/* A caption on a frame: the picture's own white, as the export draws it. */
+.cl-preset-pic.caption {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 16px;
+  line-height: 18px;
+  text-transform: uppercase;
+  color: white;
+}
+
+.cl-preset-pic.caption b {
+  color: var(--bloom-yellow);
+  font-weight: 800;
+}
+
+.cl-preset-pic.quote {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font-style: italic;
+}
+
+.cl-preset-pic.quote small {
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cl-preset-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.cl-preset-what {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-preset:hover {
+    translate: 0 calc(-2px * var(--cl-travel));
+  }
+}
+
+/* A project is its still on the stage, with its name under it on the stage too. */
+.cl-project.cl-stage {
+  padding: 10px;
+  gap: 10px;
+  border-radius: 24px;
+}
+
+.cl-project.cl-stage .cl-project-thumb {
+  border: 0;
+  border-radius: 16px;
+  background-color: var(--stage-2);
+}
+
+.cl-project.cl-stage > span:last-child {
+  padding: 0 6px 4px;
+}
+
+.cl-project-version {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--block-blue);
+  color: var(--on-bloom);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* Sample shoots for a first cut: three stills on the stage, each with Try it. */
+.cl-samples {
+  width: 100%;
+  max-width: 900px;
+  margin-top: var(--space-12);
+}
+
+.cl-samples-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.cl-samples-head h2 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 26px;
+}
+
+.cl-samples-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cl-samples-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.cl-sample {
+  padding: 10px;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cl-sample-pic {
+  position: relative;
+  height: 132px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, var(--frame-2), var(--frame));
+}
+
+.cl-sample-pic .cl-project-version {
+  background: var(--tone, var(--block-blue));
+}
+
+.cl-sample-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 6px 4px;
+}
+
+/* ---------- On set: onboarding ---------- */
+
+/* Onboarding is one thing at a time: the rail waits until it is done. */
+.cl-app:has(.cl-onboard) .cl-rail {
+  display: none;
+}
+
+.cl-onboard {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-10) var(--space-8);
+}
+
+.cl-onboard-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cl-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cl-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 6px;
+  background: var(--line-mid);
+  transition: background-color var(--duration-base) var(--ease-standard);
+}
+
+.cl-dots i.past {
+  background: var(--ink);
+}
+
+.cl-dots i.now {
+  width: 22px;
+  background: var(--ink);
+}
+
+.cl-onboard-body {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+  gap: var(--space-12);
+  align-items: center;
+}
+
+.cl-onboard-body.one {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 760px;
+}
+
+.cl-onboard-say {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
+
+.cl-welcome {
+  margin: 0;
+  font-size: 96px;
+  line-height: 92px;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+
+.cl-welcome.step {
+  font-size: 72px;
+  line-height: 70px;
+}
+
+.cl-onboard-lede {
+  margin: 0;
+  max-width: 34em;
+  font-size: 19px;
+  line-height: 29px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.cl-onboard-note {
+  margin: 0;
+  max-width: 40em;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+}
+
+.cl-onboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cl-onboard-foot {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The welcome's picture of a cut: a script with its struck lines and the strip under it, on the stage. */
+.cl-demo {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cl-demo-script {
+  background: var(--stage-2);
+  border-radius: 18px;
+  padding: 22px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cl-demo-script header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cl-demo-script header span:last-child {
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--block-blue);
+  color: var(--on-bloom);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.cl-demo-script p {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 27px;
+}
+
+.cl-demo-script p > span:first-child {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-demo-script s {
+  color: var(--muted);
+  text-decoration-color: var(--coral);
+  text-decoration-thickness: 2px;
+}
+
+.cl-demo-strip {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  height: 40px;
+}
+
+.cl-demo-strip span:not(.cl-playhead) {
+  border-radius: 8px;
+  background: var(--stage-2);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cl-demo-strip span.on:not(.cl-playhead) {
+  background: var(--block-blue);
+  color: var(--on-bloom);
+}
+
+.cl-demo-strip .cl-playhead {
+  left: 22%;
+}
+
+/* A step's side panel: a block of colour, paper inside it. */
+.cl-onboard-block {
+  border-radius: 24px;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--tone, var(--block-pink));
+  color: var(--ink);
+}
+
+.cl-onboard-block .cl-kicker,
+.cl-kicker {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.cl-onboard-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-onboard-list li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 0;
+  border-top: 1px solid color-mix(in oklch, var(--on-bloom) 12%, transparent);
+}
+
+.cl-onboard-list li:first-child {
+  border-top: 0;
+}
+
+.cl-onboard-list b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-onboard-list span {
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink-soft);
+}
+
+.cl-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-top: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bloom, var(--bloom-blue));
+}
+
+.cl-onboard-paper {
+  border-radius: 16px;
+  background: var(--card);
+  padding: 16px;
+}
+
+.cl-signin {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cl-signin .cl-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.cl-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cl-or::before,
+.cl-or::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+.cl-brand-preview {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.cl-brand-preview strong {
+  display: block;
+  font-size: 40px;
+  line-height: 42px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+
+/* Videos to learn from, on the stage: each a still, its name and what is happening to it. */
+.cl-teach {
+  padding: 22px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  min-height: 320px;
+}
+
+.cl-teach-slot {
+  border-radius: 18px;
+  border: 2px dashed var(--stage-line);
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cl-teach-video {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cl-teach-video > span:first-child {
+  flex: 1 1 auto;
+  min-height: 160px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, var(--frame-2), var(--frame));
+}
+
+.cl-teach-video b {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1000px) {
+  .cl-onboard-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cl-welcome {
+    font-size: 72px;
+    line-height: 70px;
+  }
+
+  .cl-presets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* A command, a timecode or a file name inside a line of interface text. */
+.cl-mono {
+  font-family: var(--font-mono);
+}
+
+/* ---------- The word track: the edit's words over the strip, on a phone ---------- */
+
+/* Only where the script is out of reach: a phone, or a window as narrow as one. */
+.cl-wordtrack {
+  display: none;
+}
+
+.cl-app.phone .cl-editor .cl-wordtrack {
+  display: flex;
+  /* The strip's place in the phone's order; it comes first in the page, so it sits just above the strip. */
+  order: 2;
+}
+
+@media (max-width: 640px) {
+  .cl-editor .cl-wordtrack {
+    display: flex;
+  }
+}
+
+.cl-wordtrack {
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 18px;
+  background: var(--stage);
+  box-shadow: var(--shadow-stage);
+}
+
+.cl-wordtrack-words {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.cl-wordtrack-words::-webkit-scrollbar {
+  display: none;
+}
+
+.cl-wchip {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--stage-2);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* A new beat starts a little apart, as a new line of the script does. */
+.cl-wchip.beat-start {
+  margin-left: 8px;
+}
+
+/* A word the cut leaves out: still there, crossed out in coral, as the script shows it. */
+.cl-wchip.struck {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--coral);
+  text-decoration-thickness: 2px;
+}
+
+.cl-wchip.marked {
+  background: color-mix(in oklch, var(--pick) 55%, transparent);
+  color: var(--ink);
+}
+
+.cl-wchip.now {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.cl-wordtrack-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+}
