@@ -40,7 +40,7 @@ export function ClaudeSection({
         tag={working ? 'Connected' : undefined}
         desc={
           working
-            ? `Claude reads what you ask and plans each edit. The key stays on ${device.here} and only ever goes to Anthropic.`
+            ? `Claude reads what you ask and plans each edit. The key is locked on ${device.here}, and in your account when you sign in, and is only ever sent to Anthropic.`
             : app.localAi
               ? `${app.localAi} edits with you now, on ${device.here}. With a key, Claude plans better.`
               : anthropic.why

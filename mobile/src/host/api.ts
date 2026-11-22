@@ -12,6 +12,7 @@ import { findFocus } from '../../../src/main/focus'
 import { importFile } from '../../../src/main/asset-file'
 import { brandOfDoc, readBrand, readBrands, saveBrand, saveBrands } from '../../../src/main/brand-store'
 import { removePreset, savedPresets, savePreset } from '../../../src/main/preset-store'
+import { accountStatus, requestCode, signOut, syncAccount, verifyCode } from '../../../src/main/account'
 import { createProject, openProject, recentProjects, saveProject } from './projects'
 import { sceneForCut } from '../../../src/main/motion-scene'
 import { phoneEncoder } from '../../../src/main/render/encoder'
@@ -372,6 +373,12 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
       else await platform().secrets.remove('anthropic')
     },
     clearApiKey: () => platform().secrets.remove('anthropic'),
+    // The account, the same work as on the Mac (src/main/account), over the phone's own network and Keychain.
+    accountStatus: () => accountStatus(),
+    accountRequestCode: (email) => requestCode(email),
+    accountVerify: (email, code) => verifyCode(email, code),
+    accountSignOut: () => signOut(),
+    accountSync: () => syncAccount(),
     provider: async () => detectProvider(await key()),
     getSettings: async () => parts.settings.current(),
     setSettings: (patch) => parts.settings.set(patch),

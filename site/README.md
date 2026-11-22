@@ -146,6 +146,34 @@ To remove an address on request, delete it under **KV Pairs**, or run
 If you send the ready email through a mailing service, importing the list gives that service the addresses: name it in
 the Privacy draft first.
 
+## Accounts
+
+The app signs in at `/api/account` (`functions/api/account/[[path]].js`) with a six-digit code emailed to the address,
+no password, and keeps each account's keys, settings, brands and presets there, so every copy of Cutalong signed in to
+it (the Mac, Windows, the phone) has them without typing them in again. The app's side is `src/main/account.ts`.
+Codes and session tokens are kept only as SHA-256 hashes; each account's vault is encrypted with `VAULT_KEY` (AES-GCM)
+before it is stored, so the stored copy reads as nothing without it. A code works for ten minutes and five tries, an
+address gets five codes an hour, and a session lasts a year or until the app signs out.
+
+### Switch them on, once
+
+1. **Create the namespace.** In **Workers KV**, create `cutalong-accounts` (or
+   `npx wrangler@4.156.2 kv namespace create cutalong-accounts`), and bind it to the Pages project as `ACCOUNTS`
+   (**Settings → Bindings → Add → KV namespace**), as for the email list above.
+2. **Make the vault key.** Run `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` and add
+   the line it prints as an encrypted variable named `VAULT_KEY` (**Settings → Variables and Secrets → Add**, type
+   **Secret**). Keep a copy somewhere safe: without it the stored vaults cannot be read, and a new key means everyone's
+   things are typed in once more.
+3. **Let it send email.** Make a [Resend](https://resend.com) account, add `cutalong.io` under **Domains** and the DNS
+   records it lists to the domain's DNS on Cloudflare, then create an API key with sending access and add it as a
+   Secret named `RESEND_API_KEY`. The codes come from `Cutalong <sign-in@cutalong.io>`; a Secret named `MAIL_FROM`
+   sends them from another address on a verified domain.
+4. **Redeploy**, as for the email list.
+5. **Try it.** In Cutalong's Settings, open **Account**, type your address, and sign in with the code that arrives.
+
+Until then, signing in says “Accounts aren’t switched on yet” and keeps nothing. Name Resend and the account storage
+in the Privacy draft before anyone else signs in.
+
 ## Real visuals
 
 The app is being redesigned, so the page shows HTML stand-ins of the app inside slots. Each slot is an element with

@@ -24,6 +24,7 @@ import type {
 import type { Asset, EditDoc, Note, Op, Region, Source, Subject } from '../shared/edit'
 import type { InspirationFacts, InspirationStudy } from '../shared/inspiration'
 import type { Brand } from '../shared/brand'
+import type { AccountStatus } from '../shared/account'
 import type { AudioMap } from '../shared/audio/map'
 import type { VideoRun } from '../shared/channel-habits'
 import type { Brands } from '../shared/brands'
@@ -623,6 +624,18 @@ const api = {
     name: string
   }): Promise<{ ok: true; outputPath: string } | { ok: false; message: string }> =>
     ipcRenderer.invoke('buffer:grab', payload),
+
+  // The account (main/account): an emailed code to sign in, then keys, settings, brands and presets sync.
+  accountStatus: (): Promise<AccountStatus> => ipcRenderer.invoke('account:status'),
+  accountRequestCode: (email: string): Promise<{ ok: true } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('account:code', email),
+  accountVerify: (
+    email: string,
+    code: string
+  ): Promise<{ ok: true; status: AccountStatus } | { ok: false; message: string }> =>
+    ipcRenderer.invoke('account:verify', email, code),
+  accountSignOut: (): Promise<AccountStatus> => ipcRenderer.invoke('account:signOut'),
+  accountSync: (): Promise<AccountStatus> => ipcRenderer.invoke('account:sync'),
 
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('ai:hasKey'),
   setApiKey: (key: string): Promise<void> => ipcRenderer.invoke('ai:setKey', key),

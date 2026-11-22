@@ -1,4 +1,5 @@
 import { anthropicKeyIn } from '../../../shared/keys'
+import { accountEmail, type AccountStatus } from '../../../shared/account'
 import {
   addSources,
   createDoc,
@@ -463,6 +464,7 @@ export function createMockApi(): CutalongApi {
   }
 
   let key: string | null = null
+  let account: AccountStatus = { email: null, syncedAt: null, problem: null }
   const serviceKeys: Partial<Record<ServiceId, string>> = {}
   let settings: Settings = {
     outputDir: '/Users/you/Movies/Cutalong',
@@ -1276,6 +1278,25 @@ export function createMockApi(): CutalongApi {
     },
     clearApiKey: async () => {
       key = null
+    },
+    // The account, standing in: any address takes the code 123456, and a sync takes a moment.
+    accountStatus: async () => account,
+    accountRequestCode: async (email) => {
+      await sleep(500)
+      return accountEmail(email) ? { ok: true as const } : { ok: false as const, message: 'That address looks incomplete. Write it as name@example.com.' }
+    },
+    accountVerify: async (email, code) => {
+      await sleep(600)
+      if (code !== '123456') return { ok: false as const, message: 'That code isn’t the one I sent. Check the email and try again.' }
+      account = { email: accountEmail(email), syncedAt: new Date().toISOString(), problem: null }
+      // As a real account would, it brings the key typed in on another device.
+      key ??= 'sk-ant-api03-from-your-account'
+      return { ok: true as const, status: account }
+    },
+    accountSignOut: async () => (account = { email: null, syncedAt: null, problem: null }),
+    accountSync: async () => {
+      await sleep(700)
+      return (account = { ...account, syncedAt: new Date().toISOString() })
     },
     provider: async () => detectProvider(key),
     getSettings: async () => settings,

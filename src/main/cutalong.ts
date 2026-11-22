@@ -52,6 +52,7 @@ import { neverForBrand, preferencesForPlanner, registerMemoryIpc } from './memor
 import { neverForPlanner } from '../shared/never'
 import { brandInSentence } from '../shared/brands'
 import { registerClippingIpc } from './clipping'
+import { accountStatus, requestCode, signOut, startAccountSync, syncAccount, verifyCode } from './account'
 import { registerVlogIpc } from './vlog'
 import { registerMakeIpc } from './make'
 import { registerShowcaseIpc } from './showcase'
@@ -682,6 +683,14 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
 
   // Other AI services: keys, the switch, and key checks (providers/index.ts).
   registerServicesIpc()
+
+  // The account: sign in with an emailed code, and keys, settings, brands and presets sync (main/account).
+  ipcMain.handle('account:status', () => accountStatus())
+  ipcMain.handle('account:code', (_e, email: string) => requestCode(String(email ?? '')))
+  ipcMain.handle('account:verify', (_e, email: string, code: string) => verifyCode(String(email ?? ''), String(code ?? '')))
+  ipcMain.handle('account:signOut', () => signOut())
+  ipcMain.handle('account:sync', () => syncAccount())
+  startAccountSync()
 
   ipcMain.handle('presets:list', () => savedPresets())
   ipcMain.handle('presets:save', (_e, preset: unknown) => savePreset(preset))

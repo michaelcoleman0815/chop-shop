@@ -6,6 +6,7 @@ import { block, type ColourName } from '../shapes'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { Licences } from './Licences'
+import { AccountSection } from './settings/Account'
 import { BrollSection } from './settings/Broll'
 import { ClaudeSection } from './settings/Claude'
 import { LocalAiSection } from './settings/LocalAi'
@@ -19,10 +20,12 @@ import { WordsSection } from './settings/Words'
  * Settings, as a few sections in a list beside one section at a time: each
  * setting a row that says what it is in a title and a line, with its control
  * at the end. Search finds a setting in any section. Everything here belongs
- * to this computer rather than to an edit, and saves as it is changed.
+ * to this computer rather than to an edit, and saves as it is changed; signed
+ * in to an account, the keys and the settings that mean the same anywhere go
+ * to the other devices too (main/account).
  */
 
-type SectionId = 'claude' | 'local' | 'services' | 'words' | 'broll' | 'made' | 'device' | 'licences'
+type SectionId = 'account' | 'claude' | 'local' | 'services' | 'words' | 'broll' | 'made' | 'device' | 'licences'
 
 const phone = device.kind === 'phone'
 /** "This Mac", "This PC", or on a phone "This phone". */
@@ -30,6 +33,12 @@ const here = phone ? device.here.charAt(0).toUpperCase() + device.here.slice(1) 
 
 /** Each section's mark: a line icon on a pastel tile of its own colour. */
 const ICONS: Record<SectionId, ReactNode> = {
+  account: (
+    <>
+      <circle cx="9" cy="6.5" r="3" />
+      <path d="M3.5 15.5c.8-2.9 3-4.5 5.5-4.5s4.7 1.6 5.5 4.5" />
+    </>
+  ),
   claude: <path d="M3.5 4.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H8l-3.5 2.5V13.5h-1A1.5 1.5 0 0 1 2 12V6a1.5 1.5 0 0 1 1.5-1.5Z" />,
   local: (
     <>
@@ -76,6 +85,7 @@ interface Section {
 
 const SECTIONS: Section[] = (
   [
+    { id: 'account', label: 'Account', colour: 'blue', group: 0, show: true },
     { id: 'claude', label: 'Claude', colour: 'salmon', group: 0, show: true },
     // A phone plans with Claude: it has no local AI server to run models on.
     { id: 'local', label: 'Local AI', colour: 'green', group: 0, show: !phone },
@@ -144,6 +154,8 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
 
   const body = (id: SectionId): ReactNode => {
     switch (id) {
+      case 'account':
+        return <AccountSection onSynced={app.refreshFromAccount} />
       case 'claude':
         return <ClaudeSection app={app} settings={settings} onSettings={setSettings} />
       case 'local':
@@ -175,7 +187,7 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
         <div className="cl-settings">
           <div className="cl-settings-head">
             <h1 className="cl-page-title">Settings</h1>
-            <p className="cl-lede">Everything here stays on {device.here}, and saves as you change it.</p>
+            <p className="cl-lede">Saves as you change it. Signed in to an account, it is on your other devices too.</p>
           </div>
           <nav className="cl-settings-nav" aria-label="Settings">
             <label className="cl-set-search">

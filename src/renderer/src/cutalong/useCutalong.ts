@@ -4999,6 +4999,21 @@ export function useCutalong() {
       .finally(() => void checkClaudeKey(true))
   }, [checkClaudeKey])
 
+  /**
+   * What a sync with the account brought in (main/account): the brands, the presets and the Anthropic key as they
+   * are now, so a new install that signs in is ready without starting again.
+   */
+  const refreshFromAccount = useCallback(async (): Promise<void> => {
+    const [list, presets] = await Promise.all([api.getBrands().catch(() => null), api.listPresets().catch(() => null)])
+    if (list) {
+      rememberVoices(list)
+      brandsRef.current = list
+      setBrands(list)
+    }
+    if (presets) setSaved(presets)
+    await checkClaudeKey(true)
+  }, [checkClaudeKey])
+
   /** Edits with a model on this computer from now on, or with Claude again when null. */
   const chooseLocalAi = useCallback(async (model: string | null): Promise<void> => {
     const s = await api.setSettings({ localPlanner: model })
@@ -5154,6 +5169,7 @@ export function useCutalong() {
     keySettled,
     keySaved,
     checkClaudeKey,
+    refreshFromAccount,
     saveClaudeKey,
     removeClaudeKey,
     graphic,

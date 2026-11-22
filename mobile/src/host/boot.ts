@@ -1,4 +1,5 @@
 import { Capacitor, CapacitorHttp, WebView } from '@capacitor/core'
+import { startAccountSync } from '../../../src/main/account'
 import { Preferences } from '@capacitor/preferences'
 import { FileTransfer } from '@capacitor/file-transfer'
 import { KeepAwake } from '@capacitor-community/keep-awake'
@@ -158,6 +159,9 @@ export async function startPhone(options: StartOptions = {}): Promise<CutalongHo
   await copyFonts(files, fonts)
   const settings = await loadSettings(preferences, platform.paths.exports())
   shared.use(settings)
+  // Signed in to an account, the phone syncs its keys, settings, brands and presets with the other copies
+  // (src/main/account): now, then every few minutes.
+  startAccountSync()
   // Other AI services are reached by the phone itself; in a browser on the bridge, by the page.
   const services = await phoneServices({
     settings,
