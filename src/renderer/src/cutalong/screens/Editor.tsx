@@ -415,7 +415,7 @@ function Preview({
     // Captions the graphics draw are on the motion canvas instead.
     if (!cut.captions.on || drawsCaptions(cut.captions)) return []
     const words = subtitleWords(cut, resolved, scene).words
-    return styleCues(shownWords(words, cut.captions), captionStyle)
+    return styleCues(shownWords(words, cut.captions, resolved.words), captionStyle)
   }, [cut, resolved, scene, captionStyle])
   const cue = subtitleAt(cues, time)
   const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined

@@ -1783,7 +1783,7 @@ export async function renderCut(
   let captionsInRgb = false
   const shown = opts.captionWords ?? resolved.words
   if (cut.captions.on && shown.length > 0) {
-    const words: TranscriptWord[] = shownWords(shown, cut.captions)
+    const words: TranscriptWord[] = shownWords(shown, cut.captions, resolved.words)
     const style = captionStyleFor(cut.captions, width, opts.brand?.colors ?? null)
     // libass colours captions in YUV, with BT.709 on 7.0 and BT.601 on 6.0 and 6.1, where the colours are
     // moved to the ones BT.601 turns into BT.709's values. Going through RGB instead is exact everywhere

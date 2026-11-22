@@ -13,7 +13,7 @@ import {
   subtitleCues,
   subtitleWords,
   type SubtitleCue,
-  type TextMeasurer, fitFontPx, plainWords, buildGroups, BUILD_HOLD_SEC, shownWords, landedGroups, styleCues, landsLine } from './subtitles'
+  type TextMeasurer, fitFontPx, plainWords, buildGroups, BUILD_HOLD_SEC, shownWords, landedGroups, styleCues, landsLine, CAPTION_HOLD_SEC } from './subtitles'
 import type { TranscriptWord } from './types'
 
 /**
@@ -73,12 +73,24 @@ describe('subtitle cues', () => {
       ['four.', 0],
       ['five', 0]
     ])
-    // Held to the next word's start, and the group's last word to its own end.
+    // Held to the next word's start, the group's last word too, so nothing blinks off between groups.
     expect(cues[0]).toMatchObject({ start: 1, end: 1.4 })
-    expect(cues[2].end).toBeCloseTo(2.1)
-    // A word too short to show still shows for a twentieth of a second.
+    expect(cues[2].end).toBeCloseTo(2.2)
+    // The last word stays a moment after it is said.
+    expect(cues[4].end).toBeCloseTo(cues[4].words[0].endSec + CAPTION_HOLD_SEC)
+    // A pause of more than CAPTION_JOIN_SEC clears the screen, CAPTION_HOLD_SEC after the word.
+    const paused = subtitleCues([...said(['Amen.']), { text: 'Next', startSec: 3, endSec: 3.3 }], 3)
+    expect(paused[0].end).toBeCloseTo(1.3 + CAPTION_HOLD_SEC)
+    // Before a card or a beat without captions, the caption ends with its word.
+    const before = shownWords(
+      [{ id: 'w1', text: 'Grace.', outStart: 1, outEnd: 1.3 }],
+      {},
+      [{ id: 'w1' }, { id: 'w2' }]
+    )
+    expect(subtitleCues([...before, ...said(['After'], 1.5)], 3)[0].end).toBeCloseTo(1.3)
+    // A word too short to show still shows for a twentieth of a second, and stays its moment after.
     const blink = subtitleCues([{ text: 'a', startSec: 1, endSec: 1.01 }], 3)
-    expect(blink[0].end).toBeCloseTo(1.05)
+    expect(blink[0].end).toBeCloseTo(1.01 + CAPTION_HOLD_SEC)
   })
 
   it('picks the cue on screen as libass does, to the hundredth: from its start, up to its end', () => {
@@ -87,8 +99,8 @@ describe('subtitle cues', () => {
     expect(subtitleAt(cues, 1)?.active).toBe(0)
     expect(subtitleAt(cues, 1.399)?.active).toBe(0)
     expect(subtitleAt(cues, 1.4)?.active).toBe(1)
-    // Between "three." (out at 2.1) and "four" (in at 2.2) nothing is on screen.
-    expect(subtitleAt(cues, 2.15)).toBeNull()
+    // Between "three." (out at 2.1) and "four" (in at 2.2) "three." stays: no blink.
+    expect(subtitleAt(cues, 2.15)?.words[0].text).toBe('one')
     expect(subtitleAt(cues, 2.2)?.words[0].text).toBe('four')
   })
 

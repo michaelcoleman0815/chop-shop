@@ -97,15 +97,25 @@ export function subtitleWords(
 /** The words a caption shows, in output time, with the ones the spec marks key (CaptionSpec.keys) marked. */
 export function shownWords(
   words: { id: string; text: string; outStart: number; outEnd: number }[],
-  spec: Pick<CaptionSpec, 'keys'>
+  spec: Pick<CaptionSpec, 'keys'>,
+  /** Every word the edit plays, shown or not: a word followed by one not shown clears as it ends (until). */
+  all: { id: string }[] = words
 ): TranscriptWord[] {
   const keys = new Set(spec.keys ?? [])
-  return words.map((w) => ({
-    text: w.text,
-    startSec: w.outStart,
-    endSec: w.outEnd,
-    ...(keys.has(w.id) ? { key: true } : {})
-  }))
+  const shown = new Set(words.map((w) => w.id))
+  const at = new Map(all.map((w, i) => [w.id, i]))
+  return words.map((w) => {
+    const i = at.get(w.id)
+    const next = i === undefined ? undefined : all[i + 1]
+    return {
+      text: w.text,
+      startSec: w.outStart,
+      endSec: w.outEnd,
+      ...(keys.has(w.id) ? { key: true } : {}),
+      // A card or a beat without captions may start before its first word does: the caption ends with its word.
+      ...(next && !shown.has(next.id) ? { until: w.outEnd } : {})
+    }
+  })
 }
 
 /** One subtitle event: a group of words on screen while one of them is said. */
@@ -145,21 +155,44 @@ export function subtitleCues(words: TranscriptWord[], perGroup: number, plain = 
   if (plain) words = words.filter((w) => SAYS.test(w.text))
   if (build) return buildCues(words, perGroup, plain)
   if (plain) words = plainWords(words)
+  return cuesOf(groupWords(words, perGroup))
+}
+
+/** A pause between words this long or shorter keeps the caption up: the next one replaces it, with no blink. */
+export const CAPTION_JOIN_SEC = 1.2
+
+/** How long a caption stays after its last word when a longer pause follows, before the screen clears. */
+export const CAPTION_HOLD_SEC = 0.6
+
+/**
+ * The cues of groups of words: one per word, each up from when it is said until the next word starts, so a
+ * caption never blinks off between words, or between one group and the next. Only a real pause, longer than
+ * CAPTION_JOIN_SEC, clears the screen, CAPTION_HOLD_SEC after the last word.
+ */
+function cuesOf(groups: TranscriptWord[][]): SubtitleCue[] {
   const cues: SubtitleCue[] = []
-  for (const group of groupWords(words, perGroup)) {
+  groups.forEach((group, g) => {
+    const after = groups[g + 1]?.[0]
     for (let i = 0; i < group.length; i++) {
       const word = group[i]
-      const end = i === group.length - 1 ? word.endSec : group[i + 1].startSec
+      const next = i < group.length - 1 ? group[i + 1] : after
+      const held = !next
+        ? word.endSec + CAPTION_HOLD_SEC
+        : next.startSec - word.endSec <= CAPTION_JOIN_SEC
+          ? next.startSec
+          : word.endSec + CAPTION_HOLD_SEC
+      // Never on into a card or a beat without captions.
+      const end = Math.min(held, Math.max(word.until ?? Infinity, word.endSec))
       cues.push({ start: word.startSec, end: Math.max(end, word.startSec + 0.05), words: group, active: i })
     }
-  }
+  })
   return cues
 }
 
 /** A word with something in it to say: a letter or a digit. */
 const SAYS = /[\p{L}\p{N}]/u
 
-/** How long a built sentence stays up after its last word, unless the next one starts sooner. */
+/** How long a built sentence stays up after its last word before a pause clears it (CAPTION_HOLD_SEC). */
 export const BUILD_HOLD_SEC = 0.6
 
 /**
@@ -191,19 +224,7 @@ export function buildGroups<T extends TranscriptWord>(words: T[], perGroup: numb
 function buildCues(words: TranscriptWord[], perGroup: number, plain: boolean): SubtitleCue[] {
   const shown = plain ? plainWords(words) : words
   const at = new Map(words.map((w, i) => [w, i]))
-  const groups = buildGroups(words, perGroup).map((g) => g.map((w) => shown[at.get(w) as number]))
-  const cues: SubtitleCue[] = []
-  groups.forEach((group, g) => {
-    const after = groups[g + 1]?.[0]
-    for (let i = 0; i < group.length; i++) {
-      const word = group[i]
-      const last = i === group.length - 1
-      const hold = Math.min(after ? after.startSec : Infinity, word.endSec + BUILD_HOLD_SEC)
-      const end = last ? Math.max(word.endSec, hold) : group[i + 1].startSec
-      cues.push({ start: word.startSec, end: Math.max(end, word.startSec + 0.05), words: group, active: i })
-    }
-  })
-  return cues
+  return cuesOf(buildGroups(words, perGroup).map((g) => g.map((w) => shown[at.get(w) as number])))
 }
 
 /**
@@ -262,15 +283,7 @@ export function styleCues(
   const said = style.lowercase ? spoken.map((w) => ({ ...w, text: w.text.toLowerCase() })) : spoken
   if (!style.keyFont) return subtitleCues(said, style.wordsPerGroup, style.plain === true, style.build === true)
   const shown = style.plain ? plainWords(said) : said
-  const cues: SubtitleCue[] = []
-  for (const group of landedGroups(shown, style.wordsPerGroup)) {
-    for (let i = 0; i < group.length; i++) {
-      const word = group[i]
-      const end = i === group.length - 1 ? word.endSec : group[i + 1].startSec
-      cues.push({ start: word.startSec, end: Math.max(end, word.startSec + 0.05), words: group, active: i })
-    }
-  }
-  return cues
+  return cuesOf(landedGroups(shown, style.wordsPerGroup))
 }
 
 /** The size a landed line is set at: the key face at its scale, smaller where its longest word would not fit. */
