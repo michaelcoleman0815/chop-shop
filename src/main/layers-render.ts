@@ -1,10 +1,10 @@
-import { isKeyed, num } from '../shared/anim'
 import type { Resolved } from '../shared/edit/resolve'
 import type { Cut, Source, Word } from '../shared/edit/schema'
 import { timelineFor } from '../shared/motion/timing'
 import type { VideoLayer } from '../shared/motion/types'
 import { mediaOf, soundingClips, trackLayers, tracksOf } from '../shared/tracks'
 import { frameRate, frameSize, type ClipSoundOptions, type OverlaySpan } from './cut-render'
+import { clipSounds } from './layer-sounds'
 import { renderMotion } from './motion-render'
 import { decodeSize, videoFacts, videoFrames, type VideoFacts } from './video-frames'
 
@@ -73,21 +73,7 @@ export async function renderCutLayers(input: CutLayersInput): Promise<{ overlays
         })
       : []
 
-  const sounds: ClipSoundOptions[] = []
-  for (const p of sounding) {
-    if (!p.clip.src) continue
-    // A video with no sound in its file has none to give.
-    if (p.clip.kind === 'video' && !facts.get(p.clip.src)?.hasAudio) continue
-    const volume = p.clip.volume
-    sounds.push({
-      path: p.clip.src,
-      startSec: p.start,
-      durationSec: p.end - p.start,
-      inSec: p.clip.in,
-      speed: p.clip.speed,
-      gainDb: isKeyed(volume) ? 0 : num(volume, 0, p.end - p.start, 0),
-      keys: isKeyed(volume) ? volume.keys.map((k) => ({ t: p.start + k.t, db: k.v })) : []
-    })
-  }
+  // Every sounding video's file was read above.
+  const sounds = await clipSounds(input, async (path) => facts.get(path)?.hasAudio ?? false)
   return { overlays, sounds }
 }

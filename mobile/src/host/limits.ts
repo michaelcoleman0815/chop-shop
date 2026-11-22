@@ -31,7 +31,8 @@ export const ON_THE_MAC = {
   study: 'Learning a style from a video is on the Mac for now.',
   make: 'Videos made from nothing are on the Mac for now. Here I cut your own footage.',
   film: 'Film dust, light leaks and flicker are drawn on the Mac for now. Gate weave and the looks work here.',
-  follow: 'Pinning a graphic to what you hold up is on the Mac for now, so it stays where it is.'
+  follow: 'Pinning a graphic to what you hold up is on the Mac for now, so it stays where it is.',
+  layers: 'Clips over the picture are exported on the Mac for now. Sound clips export here.'
 } as const
 
 /** Slash commands that are on the Mac for now, with what the phone says when one is typed. */
