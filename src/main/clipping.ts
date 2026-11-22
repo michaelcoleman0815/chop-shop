@@ -49,7 +49,7 @@ import {
   type RecordingPlan,
   type SoundStretch
 } from '../shared/clipping'
-import { CLOSE_PROMPT, heardClosely } from '../shared/clipping/restarts'
+import { CLOSE_PROMPT, cutsOnPauses, heardClosely } from '../shared/clipping/restarts'
 import type { SuggestedClip, Transcript, TranscriptWord } from '../shared/types'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { withoutSoundNotes } from './whisper-parse'
@@ -436,8 +436,17 @@ export function keyedCaptions(profile: ClipProfile, brandCaptions: Partial<Capti
   return !!preset && !!presetById(preset).style.keyColor
 }
 
-/** A clip's words, moved onto their sound, so tightening cuts land a hair before each onset. */
-async function snapped(tools: ClippingTools, path: string, words: TranscriptWord[]): Promise<TranscriptWord[]> {
+/**
+ * A clip's words, moved onto their sound, so tightening cuts land a hair before each onset; and where its kind of
+ * clip cuts restarts, the cut after each one moved into the pause before the word kept, and the clip opened in the
+ * breath before its first word (shared/clipping/restarts cutsOnPauses).
+ */
+async function snapped(
+  tools: ClippingTools,
+  path: string,
+  words: TranscriptWord[],
+  restarts = false
+): Promise<TranscriptWord[]> {
   if (words.length === 0) return words
   const from = Math.max(0, words[0].startSec - 1)
   const to = words[words.length - 1].endSec + 1
@@ -450,7 +459,12 @@ async function snapped(tools: ClippingTools, path: string, words: TranscriptWord
       startSec: Math.max(0, w.startSec - from),
       endSec: Math.max(0, w.endSec - from)
     }))
-    return snapWords(local, env).map((w) => ({ text: w.text, startSec: w.startSec + from, endSec: w.endSec + from }))
+    const onSound = snapWords(local, env)
+    return (restarts ? cutsOnPauses(onSound, env) : onSound).map((w) => ({
+      text: w.text,
+      startSec: w.startSec + from,
+      endSec: w.endSec + from
+    }))
   } catch {
     return words
   }
@@ -738,7 +752,8 @@ export async function findClips(
       progress({ stage: `Listening closely to each moment (${k + 1} of ${picks.length})`, percent: 95 })
       inside = await time('making clips', () => closely(tools, p.path, r.meta.durationSec, first))
     }
-    said.push({ inside, words: await time('making clips', () => snapped(tools, p.path, inside)) })
+    const restarts = !!r.plan.profile.restarts
+    said.push({ inside, words: await time('making clips', () => snapped(tools, p.path, inside, restarts)) })
   }
   // The words each preacher leans on, for captions that set them in the accent, and each clip's hook, for
   // looks that put one on screen: one ask for the set.

@@ -1,3 +1,4 @@
+import { levels, type Envelope } from '../audio/snap'
 import { endsSentence, FUNCTION_WORDS, GRAMMATICAL_DOUBLES, isFiller, lcs, normWord } from '../raw/text'
 
 /**
@@ -157,7 +158,9 @@ export function heardClosely<T extends Said>(first: T[], close: T[]): T[] | null
     }
     return best
   }
-  let lo = close.findIndex((w) => same(w, head))
+  // Not on a broken-off copy of it where it was heard whole: that is the sentence before ending on the same word.
+  let lo = close.findIndex((w) => same(w, head) && !brokenOff(w.text))
+  if (lo < 0) lo = close.findIndex((w) => same(w, head))
   if (lo < 0) lo = nearest(head)
   let hi = -1
   for (let i = close.length - 1; i >= 0 && hi < 0; i--) if (same(close[i], tail)) hi = i
@@ -173,4 +176,90 @@ export function heardClosely<T extends Said>(first: T[], close: T[]): T[] | null
     const end = twin ? Math.min(w.endSec, Math.max(twin.endSec, w.startSec + 0.06)) : Math.min(w.endSec, w.startSec + longest(w.text))
     return end === w.endSec ? w : { ...w, endSec: end }
   })
+}
+
+/** A pause a cut can land in: this long or longer under the speech threshold. A stop inside a word is shorter. */
+const PAUSE_SEC = 0.05
+/** How far a restart's cut moves to land in a pause. Whisper's word edges were measured up to 0.27 s out. */
+const REACH_SEC = 0.3
+/** The pause a clip opens in: longer than a stop inside a word ("reli-gion"), as the breath before a line is. */
+const OPENING_PAUSE_SEC = 0.1
+/** How far before its first word, as Whisper placed it, a clip may open. */
+const OPENING_REACH_SEC = 0.35
+
+/**
+ * The words with each cut a restart makes moved into a pause in the sound. Whisper's edges for words said
+ * without a pause between can be a quarter of a second out, and a strike cuts where they say: a word kept after a
+ * restart lost its first syllable ("God's will to- that she was" played as "God's will, she was"). So the cut
+ * after a restart lands at the end of the last pause before the word kept, within reach and after the last word
+ * struck has begun; the struck words give way. With no pause there, the cut stays where Whisper put it. The cut
+ * before a restart stays too: moved on, it brought back what he broke off, and no word kept was found clipped
+ * there.
+ *
+ * And the clip opens in the breath before its first word, where Whisper started it late: a sentence's first word
+ * after a pause was measured starting 0.27 s before Whisper said. Times are on the envelope's clock.
+ */
+export function cutsOnPauses<T extends Said>(words: T[], env: Envelope): T[] {
+  if (words.length === 0 || env.db.length === 0 || env.hopSec <= 0) return words
+  const struck = new Set(restartsIn(words))
+  const { threshold } = levels(env)
+  const pauses: { a: number; b: number }[] = []
+  let from = -1
+  for (let f = 0; f <= env.db.length; f++) {
+    const quiet = f < env.db.length && env.db[f] < threshold
+    if (quiet && from < 0) from = f
+    if (!quiet && from >= 0) {
+      if ((f - from) * env.hopSec >= PAUSE_SEC) pauses.push({ a: from * env.hopSec, b: f * env.hopSec })
+      from = -1
+    }
+  }
+  const out = words.map((w) => ({ ...w }))
+  // The opening: the last breath before the first word, within reach.
+  if (!struck.has(0)) {
+    const first = out[0]
+    const breath = [...pauses]
+      .reverse()
+      .find(
+        (q) =>
+          q.b - q.a >= OPENING_PAUSE_SEC && q.b <= first.startSec + 0.02 && q.b >= first.startSec - OPENING_REACH_SEC
+      )
+    if (breath) first.startSec = Math.min(first.startSec, Math.max(breath.a, breath.b - 0.02))
+  }
+  if (struck.size === 0) return out.some((w, i) => w.startSec !== words[i].startSec) ? out : words
+  const runs: [number, number][] = []
+  for (const i of [...struck].sort((x, y) => x - y)) {
+    const last = runs[runs.length - 1]
+    if (last && last[1] === i - 1) last[1] = i
+    else runs.push([i, i])
+  }
+  for (const [i, j] of runs) {
+    const before = i > 0 ? out[i - 1] : null
+    const after = j + 1 < out.length ? out[j + 1] : null
+    let right = after ? after.startSec : Infinity
+    if (after) {
+      // The last pause before the word kept, after the last word struck has begun: any earlier, and what he
+      // broke off would play again with the word kept.
+      const floor = before ? before.endSec + 0.02 : -Infinity
+      const p = [...pauses]
+        .reverse()
+        .find(
+          (q) =>
+            q.a <= after.startSec + 0.02 &&
+            q.b >= after.startSec - REACH_SEC &&
+            q.a >= floor &&
+            q.b - 0.02 >= out[j].startSec
+        )
+      // At the pause's end, a hair before the sound: the pause itself goes with the restart.
+      if (p) {
+        right = Math.max(floor, Math.min(Math.max(p.a, p.b - 0.02), after.startSec))
+        after.startSec = Math.min(after.startSec, right)
+      }
+    }
+    const left = before ? before.endSec : -Infinity
+    for (let k = i; k <= j; k++) {
+      out[k].startSec = Math.min(Math.max(out[k].startSec, left), right)
+      out[k].endSec = Math.min(Math.max(out[k].endSec, out[k].startSec), right)
+    }
+  }
+  return out
 }

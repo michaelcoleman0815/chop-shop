@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { currentCut, currentVersion, resolveCut } from '../edit'
 import { clipDoc } from './doc'
 import { CLIP_PROFILES } from './profile'
-import { heardClosely, restartsIn } from './restarts'
+import { cutsOnPauses, heardClosely, restartsIn } from './restarts'
 
 /**
  * The lines are the owner's own Sunday service, as the close hearing wrote them (docs/research/sermon-clips.md,
@@ -179,3 +179,57 @@ describe('a sermon clip with restarts', () => {
   })
 })
 
+
+describe('a restart cut', () => {
+  /** An envelope at 10 ms a frame: speech at -20 dB, the given stretches quiet at -60, and the room after it. */
+  function sound(lengthSec: number, quiet: [number, number][]): { hopSec: number; db: Float32Array } {
+    const db = new Float32Array(Math.round(lengthSec * 100) + 200).fill(-60)
+    db.fill(-20, 0, Math.round(lengthSec * 100))
+    for (const [a, b] of quiet) for (let f = Math.round(a * 100); f < Math.round(b * 100); f++) db[f] = -60
+    return { hopSec: 0.01, db }
+  }
+  const at = (text: string, startSec: number, endSec: number): Said => ({ text, startSec, endSec })
+
+  it('lands in the last pause before the word kept, so none of it is lost', () => {
+    // "religion" is said from 0.86 s, after a pause; Whisper put it at 1.13 s, a stop inside the word at 1.12.
+    const words = [at('religion-', 0.71, 1.13), at('religion', 1.13, 1.63), at('kills', 1.63, 2.1)]
+    const env = sound(3, [[0.72, 0.84], [1.12, 1.14], [1.65, 1.7]])
+    const cut = cutsOnPauses(words, env)
+    expect(cut[1].startSec).toBeCloseTo(0.82)
+    expect(cut[0].endSec).toBeCloseTo(0.82)
+    // The words after are untouched.
+    expect(cut[2]).toEqual(words[2])
+  })
+
+  it('leaves the cut before a restart where Whisper put it', () => {
+    const words = [at('Well,', 0.9, 1.3), at('we-', 1.3, 1.55), at('we', 1.62, 1.85), at('can’t', 1.85, 2.2)]
+    const cut = cutsOnPauses(words, sound(3, [[0.5, 0.88], [1.4, 1.46], [1.56, 1.61]]))
+    expect(cut[0].endSec).toBe(1.3)
+    expect(cut[2].startSec).toBeCloseTo(1.59)
+  })
+
+  it('never holds a long pause inside a word kept, where the tightening could not cut it', () => {
+    // "will", then 1.7 s of quiet, then "to- that she was".
+    const words = [at('will', 0.5, 0.8), at('to-', 2.6, 2.75), at('that', 2.75, 3.0), at('she', 3.0, 3.3)]
+    const cut = cutsOnPauses(words, sound(4, [[0.85, 2.55], [2.78, 2.84]]))
+    expect(cut[0].endSec).toBe(0.8)
+    expect(cut[2].startSec).toBeCloseTo(2.75)
+  })
+
+  it('stays where Whisper put it with no pause in reach, and leaves a clip without restarts alone', () => {
+    const words = [at('Well', 1.0, 1.3), at('we-', 1.3, 1.55), at('we', 1.55, 1.85), at('can’t', 1.85, 2.2)]
+    expect(cutsOnPauses(words, sound(3, []))).toEqual(words)
+    const plain = [at('we', 1.3, 1.55), at('can’t', 1.55, 2.2)]
+    expect(cutsOnPauses(plain, sound(3, [[1.5, 1.6]]))).toBe(plain)
+  })
+
+  it('opens the clip in the breath before its first word, not in a stop inside it', () => {
+    // "Religion" said from 0.86 s, after a breath; Whisper started it at 1.13 s, by the stop at 1.10 to 1.16.
+    const words = [at('Religion', 1.13, 1.63), at('kills', 1.63, 2.1)]
+    const opened = cutsOnPauses(words, sound(3, [[0.72, 0.86], [1.1, 1.16]]))
+    expect(opened[0].startSec).toBeCloseTo(0.84)
+    expect(opened[1]).toEqual(words[1])
+    // With only the stop in reach, it opens where Whisper said.
+    expect(cutsOnPauses(words, sound(3, [[0.2, 0.5], [1.1, 1.16]]))).toBe(words)
+  })
+})
