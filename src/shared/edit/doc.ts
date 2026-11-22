@@ -30,7 +30,7 @@ import {
 
 /** Gives transcript words stable ids for a doc. */
 export function wordsFromTranscript(
-  words: { text: string; startSec: number; endSec: number }[],
+  words: { text: string; startSec: number; endSec: number; speaker?: number }[],
   source: string,
   prefix = 'w'
 ): Word[] {
@@ -42,7 +42,8 @@ export function wordsFromTranscript(
       source,
       text: w.text.trim(),
       startSec: Math.max(0, w.startSec),
-      endSec: Math.max(w.startSec, w.endSec)
+      endSec: Math.max(w.startSec, w.endSec),
+      ...(w.speaker === undefined ? {} : { speaker: w.speaker })
     }))
 }
 

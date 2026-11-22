@@ -56,7 +56,9 @@ export const WordSchema = z.object({
   stillBefore: z.tuple([z.number(), z.number()]).optional(),
   stillAfter: z.tuple([z.number(), z.number()]).optional(),
   /** Said while the mouth on screen was still: someone off camera. */
-  offCamera: z.boolean().optional()
+  offCamera: z.boolean().optional(),
+  /** Who says it: 0, 1, 2... in the order the speakers are first heard (shared/speakers). Absent when not told apart. */
+  speaker: z.number().int().nonnegative().optional()
 })
 export type Word = z.infer<typeof WordSchema>
 

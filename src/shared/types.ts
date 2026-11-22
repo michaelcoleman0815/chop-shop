@@ -166,6 +166,8 @@ export interface TranscriptWord {
   endSec: number
   /** A word the caption sets in its key colour (CaptionStyle.keyColor): one the speaker leans on. */
   key?: boolean
+  /** Who says it: 0, 1, 2... in the order the speakers are first heard (shared/speakers). Absent when not told apart. */
+  speaker?: number
   /**
    * When a caption showing it must be gone by, output seconds: as the word ends, where a card or a beat
    * without captions follows, so a caption held between words never runs on into either.
