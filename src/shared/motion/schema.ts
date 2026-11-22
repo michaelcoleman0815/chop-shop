@@ -375,13 +375,31 @@ const slots = {
   fx: z.array(z.string().max(16)).max(6).default([])
 }
 
+/**
+ * A path a graphic follows: an object tracked through its recording (the
+ * Mac's Vision helper, main/track trackObject), so a graphic put on a phone
+ * held up moves with the phone. Boxes are x, y, width, height as fractions of
+ * the recording's picture, one every `step` seconds of the recording from
+ * `at`; null where the object was lost. The graphic is drawn where its call
+ * puts it at its start and moves as the object moves from there.
+ */
+export const FollowSchema = z.object({
+  source: z.string().min(1),
+  at: z.number().min(0),
+  step: z.number().positive().max(1),
+  boxes: z.array(z.array(z.number()).length(4).nullable()).min(1).max(3600)
+})
+export type Follow = z.infer<typeof FollowSchema>
+
 export const MotionCallSchema = z.object({
   kind: MotionKindSchema,
   from: AnchorRefSchema,
   to: EndRefSchema.default(''),
   ...slots,
   /** Hand-built layers, for kind layers. */
-  layers: z.array(LayerInputSchema).max(100).default([])
+  layers: z.array(LayerInputSchema).max(100).default([]),
+  /** An object the graphic moves with. No default: absent stays where it is put. */
+  follow: FollowSchema.optional()
 })
 export type MotionCall = z.infer<typeof MotionCallSchema>
 export type MotionCallInput = z.input<typeof MotionCallSchema>

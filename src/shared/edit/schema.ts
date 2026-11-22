@@ -15,8 +15,8 @@ import {
   MAX_SPLIT_EDIT_SEC,
   MAX_TRANSITION_SEC,
   MIN_TRANSITION_SEC,
+  ALL_TRANSITION_KINDS,
   SplitEditSchema,
-  TRANSITION_KINDS,
   TransitionSchema
 } from './transitions'
 import { AudioMapSchema } from '../audio/map'
@@ -162,7 +162,9 @@ export const TreatmentSchema = z.object({
   /** Two to four pictures at once in a grid, each with a label, instead of the frame above (edit/grid). */
   grid: GridSchema.nullable().optional(),
   /** False hides the captions while this beat plays (over a title, a screen recording); absent follows the video's. */
-  captions: z.boolean().optional()
+  captions: z.boolean().optional(),
+  /** A shaky handheld shot held still in the export, the picture cropped in a little to hide the edges it moves. */
+  steady: z.boolean().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -339,7 +341,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('transition'),
     beats: z.array(beatId).min(1),
-    kind: z.enum(['cut', ...TRANSITION_KINDS]),
+    kind: z.enum(['cut', ...ALL_TRANSITION_KINDS]),
     sec: z.number().min(MIN_TRANSITION_SEC).max(MAX_TRANSITION_SEC).optional()
   }),
   z.object({

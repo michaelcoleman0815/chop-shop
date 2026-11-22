@@ -1,6 +1,7 @@
 import { captionedWords, type Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
 import { captionLayers, facesNear, type CaptionCover, type FaceSample } from './captions'
+import { followPath, type FollowPicture } from './follow'
 import type { MotionItem, MotionKind } from './schema'
 import { template } from './templates'
 import { TIMING } from './templates/kit'
@@ -51,6 +52,15 @@ export interface SceneInput {
   emphasis?: Record<string, number>
   /** The edit's pictures, for graphics that show one at its own shape. */
   assets?: { id: string; kind: string; width: number | null; height: number | null }[]
+  /** The edit's recordings with their sizes, for graphics that follow an object in one (motion/follow). */
+  pictures?: FollowPicture[]
+}
+
+/** What a graphic that follows an object needs to find it on screen. */
+interface FollowContext {
+  cut: Cut
+  resolved: Resolved
+  pictures: FollowPicture[]
 }
 
 /** Builds every graphic in the cut. Never throws on a bad call: it is hidden instead. */
@@ -59,8 +69,9 @@ export function buildScene(input: SceneInput): MotionScene {
   const tl = timelineFor(input.cut, input.resolved, input.words)
   const items: SceneItem[] = []
   const hidden: MotionScene['hidden'] = []
+  const following: FollowContext = { cut: input.cut, resolved: input.resolved, pictures: input.pictures ?? [] }
   for (const item of input.cut.motion ?? []) {
-    const built = buildItem(item, tl, frame, input.theme, input.faces, input.assets ?? [])
+    const built = buildItem(item, tl, frame, input.theme, input.faces, input.assets ?? [], following)
     if ('reason' in built) hidden.push({ id: item.id, reason: built.reason })
     else items.push(built)
   }
@@ -72,7 +83,7 @@ export function buildScene(input: SceneInput): MotionScene {
     const card = cards.find((c) => c.start > built.start + 0.05 && c.start < built.end)
     const item = card ? (input.cut.motion ?? []).find((m) => m.id === built.id) : undefined
     if (!card || !item) return
-    const again = buildItem(item, tl, frame, input.theme, input.faces, input.assets ?? [], card.start + TIMING.exit)
+    const again = buildItem(item, tl, frame, input.theme, input.faces, input.assets ?? [], following, card.start + TIMING.exit)
     if (!('reason' in again)) items[n] = again
   })
   const covers: CaptionCover[] = items.flatMap((i) => (i.covers ? [{ start: i.start, end: i.end, kind: i.covers }] : []))
@@ -111,6 +122,7 @@ function buildItem(
   theme: MotionTheme,
   faces: FaceSample[] | undefined,
   assets: NonNullable<SceneInput['assets']>,
+  following: FollowContext,
   /** Gone by this time on the output clock, whatever its call says (a card took the screen). */
   until?: number
 ): SceneItem | { reason: string } {
@@ -121,10 +133,17 @@ function buildItem(
   const whole = spanFor(tl, item.from, item.to, tpl.length, tpl.lead)
   if (!whole) return { reason: 'What it was on is no longer in the cut.' }
   const span = until !== undefined && until < whole.end ? { ...whole, end: Math.max(whole.start + 0.1, until) } : whole
+  // An object to move with: where it is when the graphic lands, and how it moves from there.
+  const path = item.follow
+    ? followPath({ follow: item.follow, ...following, frame, at: span.at, start: span.start, end: span.end })
+    : null
+  // A graphic that points at something, told nothing to point at, points at the object.
+  const pointsAt = path && item.box.length === 0 && tpl.fields?.some((f) => f.slot === 'box')
+  const call = pointsAt && path ? { ...item, box: [...path.land] } : item
   let layers: Layer[]
   try {
     layers = tpl.build({
-      item,
+      item: call,
       frame,
       theme,
       span,
@@ -138,6 +157,18 @@ function buildItem(
     })
   } catch (err) {
     return { reason: `It could not be drawn: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  // The whole graphic moves with the object, its own animation inside the move.
+  if (path && [...path.x, ...path.y].some((k) => Math.abs(k.v) > 0.5)) {
+    layers = [
+      {
+        kind: 'group',
+        start: span.start,
+        end: span.end,
+        transform: { x: { keys: path.x }, y: { keys: path.y } },
+        children: layers
+      }
+    ]
   }
   const covers = tpl.coversFor ? tpl.coversFor(item) : tpl.covers
   return { id: item.id, kind: item.kind, at: span.at, start: span.start, end: span.end, layers, ...(covers ? { covers } : {}) }

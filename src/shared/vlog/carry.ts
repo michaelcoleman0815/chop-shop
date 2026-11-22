@@ -9,7 +9,7 @@ import {
   type Word
 } from '../edit/schema'
 import type { Sfx } from '../edit/sfx'
-import { TRANSITION_INFO } from '../edit/transitions'
+import { shownTransition, TRANSITION_INFO } from '../edit/transitions'
 import { graphicName } from '../motion/describe'
 import { parseAnchor, parseLength, type MotionItem } from '../motion/schema'
 
@@ -145,7 +145,7 @@ function beatOps(target: Beat, olds: Beat[], index: WordIndex, struck: Set<strin
   const last = olds[olds.length - 1]
   // How it comes in belongs to the start of the moment.
   if (first.transition)
-    ops.push({ op: 'transition', beats: [target.id], kind: first.transition.kind, sec: first.transition.sec })
+    ops.push({ op: 'transition', beats: [target.id], kind: shownTransition(first.transition), sec: first.transition.sec })
   else if (first.splitEdit)
     ops.push({ op: first.splitEdit.kind === 'j' ? 'jcut' : 'lcut', beats: [target.id], sec: first.splitEdit.sec })
   const padIn = first.padIn !== roomIn(first) ? first.padIn : undefined
@@ -280,7 +280,7 @@ export function leftOut(before: Cut, after: Cut, words: Word[]): Lost[] {
   for (const old of before.beats) {
     const now = moments.get(old.id)
     if (old.transition) {
-      const label = TRANSITION_INFO[old.transition.kind].label.replace(/^an? /, '')
+      const label = TRANSITION_INFO[shownTransition(old.transition)].label.replace(/^an? /, '')
       if (!now || !same(now.transition, old.transition)) edit(named(`the ${label}`, pluralOf(label)), !now)
     } else if (old.splitEdit && (!now || !same(now.splitEdit, old.splitEdit))) {
       const kind = old.splitEdit.kind === 'j' ? 'J' : 'L'

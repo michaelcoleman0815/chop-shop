@@ -148,6 +148,23 @@ describe.skipIf(!FFMPEG)('rendering transitions', () => {
     }
   })
 
+  it('renders the looks, glitch, RGB split and VHS, to their length, damage only where the two meet', async () => {
+    for (const kind of ['glitch', 'rgb-split', 'vhs'] as const) {
+      const cut = withOps([{ op: 'transition', beats: ['b2'], kind }])
+      const { out, total } = await render(cut, `look-${kind}`)
+      expect(countFrames(ffmpeg, out), kind).toBe(Math.round(total * 30))
+      const t = resolveCut(cut, doc.words, doc.sources).transitions?.[0]
+      expect(t?.kind).toBe(kind)
+      // Clean red well before it, clean blue well after: no damage leaks past the meeting.
+      const [rb, , bb] = frameColour(ffmpeg, out, (t?.outStart ?? 0) - 0.4)
+      const [ra, , ba] = frameColour(ffmpeg, out, (t?.outEnd ?? 0) + 0.4)
+      expect(rb, `${kind} before`).toBeGreaterThan(200)
+      expect(bb, `${kind} before`).toBeLessThan(40)
+      expect(ba, `${kind} after`).toBeGreaterThan(200)
+      expect(ra, `${kind} after`).toBeLessThan(40)
+    }
+  })
+
   it('renders the same cut in passes and in one, transitions and all', async () => {
     const cut = withOps([
       { op: 'insert', to: 2, beat: { source: 's1', inSec: 0.6, outSec: 1.4 } },

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
+import { followObjects, type Track } from './plan-follow'
 import { platform } from './platform'
 import { claudeKeyStatus, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
 import {
@@ -195,7 +196,7 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
     const plan = response.parsed_output
     if (!plan) return { ok: false, message: 'The plan came back in a shape I could not read. Try again.' }
     // Icons Lucide does not have become the closest one it does.
-    return offerPlan(doc, { ...plan, ops: await withRealIcons(plan.ops) }, input.notes, input.commands)
+    return offerTrackedPlan(doc, { ...plan, ops: await withRealIcons(plan.ops) }, input.notes, input.commands)
   } catch (err) {
     const keyState = noteKeyFailure(err, keyDeps())
     return {
@@ -220,7 +221,34 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
  * mean nothing to them.
  */
 export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[], commands?: CommandLine[]): PlanEditResult {
+  return offered(doc, plan, notes, commands).result
+}
+
+/**
+ * A plan as it is offered, its graphics pinned to an object following that
+ * object: found and followed in the recording once the plan is dry-run
+ * (main/plan-follow), so each one follows it where the plan leaves it.
+ */
+export async function offerTrackedPlan(
+  doc: EditDoc,
+  plan: Plan,
+  notes: Note[],
+  commands?: CommandLine[],
+  track?: Track
+): Promise<PlanEditResult> {
+  const { result, pinned } = offered(doc, plan, notes, commands)
+  return pinned.length ? followObjects(doc, result, pinned, track) : result
+}
+
+/** offerPlan, with the plan's ops (by index) that are graphics pinned to an object. */
+function offered(
+  doc: EditDoc,
+  plan: Plan,
+  notes: Note[],
+  commands?: CommandLine[]
+): { result: PlanEditResult; pinned: number[] } {
   const unknown: string[] = []
+  const pinned: number[] = []
   const context = { words: doc.words, sources: doc.sources, assets: doc.assets }
   const named = commands ? new Set(commands.map((c) => c.command)) : null
   let cut = currentCut(doc)
@@ -264,6 +292,7 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[], commands?: Co
     cut = r.cut
     applied.push(...r.applied)
     run.push(...r.applied)
+    if (raw.op === 'motion-add' && raw.pin === 'object') pinned.push(applied.length - 1)
   }
   flush()
   const handled = new Set(notes.map((n) => n.id))
@@ -273,7 +302,7 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[], commands?: Co
     console.warn('[planner] left out:', reasons, unknown.length ? `unknown material ${unknown.join(', ')}` : '')
   const edits = reasons.length - strays + unknown.length
   const options = plan.question.options.map((o) => plain(o)).filter(Boolean).slice(0, 4)
-  return {
+  const result: PlanEditResult = {
     ok: true,
     ops: applied,
     steps,
@@ -300,6 +329,7 @@ export function offerPlan(doc: EditDoc, plan: Plan, notes: Note[], commands?: Co
       .slice(0, 3)
       .map((w) => ({ beat: w.beat, search: w.search.trim() }))
   }
+  return { result, pinned }
 }
 
 /** An edit op as the planner wrote it, as the edit takes it; null for a cutaway to material the edit does not have. */

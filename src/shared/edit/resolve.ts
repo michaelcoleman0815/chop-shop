@@ -2,7 +2,7 @@ import { isFiller } from '../fillers'
 import { cutInAt, cutOutAt } from '../vision/cuts'
 import type { Beat, Cut, Source, Word } from './schema'
 import { outLength, outToSrc, sliceSteps, srcToOut, stepsForSource, type SpeedStep } from './timing'
-import { MIN_TRANSITION_SEC, type TransitionKind } from './transitions'
+import { MIN_TRANSITION_SEC, shownTransition, type TransitionKind } from './transitions'
 
 /**
  * Turns a cut into what actually plays: pieces of source in output order, and
@@ -502,7 +502,8 @@ function moveEditPoint(p: Piece, q: Piece, kind: 'j' | 'l', sec: number, sources
  */
 function overlapAt(p: Draft, q: Draft, index: WordIndex, sources: Map<string, Source>): void {
   const asked = q.beat.transition?.sec ?? 0
-  const kind = q.beat.transition?.kind
+  // What plays: a look kept as a dissolve plays as the look.
+  const kind = q.beat.transition ? shownTransition(q.beat.transition) : undefined
   if (!kind) return
   const lenP = playsFor(p)
   const lenQ = playsFor(q)

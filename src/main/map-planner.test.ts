@@ -68,7 +68,7 @@ describe('a map asked for in words', () => {
   })
 
   it('is offered as Claude plans it: the map on the word that names the place', () => {
-    const map = { op: 'motion-add', kind: 'map', from: 'w7', to: '', text: ['Iceland'], items: [], values: [], box: [], icon: '', style: '', place: '', color: '', fx: [] }
+    const map = { op: 'motion-add', kind: 'map', from: 'w7', to: '', text: ['Iceland'], items: [], values: [], box: [], icon: '', style: '', place: '', color: '', fx: [], pin: '' }
     const r = offerPlan(doc, plan([map]), [])
     if (!r.ok) throw new Error(r.message)
     expect(r.ops).toEqual([expect.objectContaining({ op: 'motion-add', kind: 'map', from: 'w7', text: ['Iceland'] })])

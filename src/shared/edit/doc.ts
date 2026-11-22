@@ -2,6 +2,7 @@ import { picturesIn } from '../motion/apply'
 import { applyOps, type OpsResult } from './ops'
 import { pickedBeats } from './range'
 import { sameValue } from './same'
+import { isTransitionLook } from './transitions'
 import {
   DEFAULT_CAPTIONS,
   DEFAULT_LOUDNESS,
@@ -263,14 +264,17 @@ export interface CommitResult {
  */
 const UNSAVED: ReadonlySet<Op['op']> = new Set(['brand', 'fill', 'box', 'fx-add', 'fx-update', 'fx-remove', 'punch-jumps'])
 
+/** Whether a version never keeps this op: one above, or a transition to a look 0.2.13 cannot name. */
+const unsaved = (o: Op): boolean => UNSAVED.has(o.op) || (o.op === 'transition' && isTransitionLook(o.kind))
+
 /** The ops a version keeps. */
 export function savedOps(ops: Op[]): Op[] {
-  return ops.some((o) => UNSAVED.has(o.op)) ? ops.filter((o) => !UNSAVED.has(o.op)) : ops
+  return ops.some(unsaved) ? ops.filter((o) => !unsaved(o)) : ops
 }
 
 /** An edit as it is saved: no version keeps an op it never keeps, even one saved before that was so. */
 export function withSavedOps(doc: EditDoc): EditDoc {
-  if (!doc.versions.some((v) => v.ops.some((o) => UNSAVED.has(o.op)))) return doc
+  if (!doc.versions.some((v) => v.ops.some(unsaved))) return doc
   return { ...doc, versions: doc.versions.map((v) => ({ ...v, ops: savedOps(v.ops) })) }
 }
 

@@ -151,7 +151,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         words: doc.words,
         size: designSize(cut.aspect, doc.sources[0]),
         theme: themeFrom(app.chatBrand),
-        assets: doc.assets
+        assets: doc.assets,
+        pictures: doc.sources
       }),
     [cut, resolved, doc.words, doc.sources, doc.assets, app.chatBrand]
   )

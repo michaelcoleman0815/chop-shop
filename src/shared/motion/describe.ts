@@ -144,8 +144,9 @@ function fitsGuide(): string[] {
 export function graphicsGuide(): string {
   const list = templates().filter((t) => t.kind !== 'layers')
   if (list.length === 0) return ''
+  // A graphic added names what it is pinned to as well: nothing, in the examples.
   const op = (head: Record<string, unknown>, call: Record<string, unknown>): string =>
-    JSON.stringify({ ...head, ...fullCall(call) })
+    JSON.stringify({ ...head, ...fullCall(call), ...(head.op === 'motion-add' ? { pin: '' } : {}) })
   return [
     '## Graphics',
     'Graphics are drawn over the picture, in the brand’s colours and fonts. Each one is a call to a template. Write every slot; an empty slot takes the template’s own default.',
@@ -161,6 +162,7 @@ export function graphicsGuide(): string {
       return `- ${t.kind}: ${t.about} Styles: ${styles.join(', ')}, the first by default.${places.length ? ` Places: ${places.join(', ')}.` : ''}`
     }),
     'Put a graphic on the word it is about, so it lands as the word is said. Keep its text short, about six words a line. Leave color empty unless the request names one. You cannot see the picture, so never guess where something is in the frame: leave box empty, and say in the reply that the person can drag it into place.',
+    'A motion-add also takes pin: "object" pins the graphic to the thing the speaker holds up or shows in the beat it lands on (a phone, a product, a page), so it moves as the thing moves: Cutalong finds it in the picture and follows it on a Mac. A callout or a box pinned to an object points at it, so leave its box empty. Pin only when the words show something held up ("this one", "look at this"), on the speaker’s own picture, not over a cutaway or a card. Leave pin empty otherwise.',
     ...(template('chips') && template('counter') && template('video-cards') ? fitsGuide() : []),
     ...(template('market') && template('screenshot') && template('device') ? busyGuide() : [])
   ].join('\n')
@@ -187,7 +189,8 @@ export function graphicsLines(cut: Cut, resolved: Resolved, words: Word[]): stri
       m.style ? `style ${m.style}` : null,
       m.place ? `place ${m.place}` : null,
       m.color ? `color ${m.color}` : null,
-      m.fx.length ? `fx ${m.fx.join(' ')}` : null
+      m.fx.length ? `fx ${m.fx.join(' ')}` : null,
+      m.follow ? 'pinned to an object' : null
     ].filter(Boolean)
     return `${m.id} ${m.kind} [${when}] from ${m.from}${m.to ? ` to ${m.to}` : ''}${slots.length ? ` | ${slots.join(' | ')}` : ''}`
   })

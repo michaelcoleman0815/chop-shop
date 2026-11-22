@@ -56,7 +56,8 @@ export function sceneForCut(
     theme: themeFrom(input.brand),
     faces: input.faces,
     emphasis: input.emphasis,
-    assets: input.assets
+    assets: input.assets,
+    pictures: input.sources
   })
 }
 

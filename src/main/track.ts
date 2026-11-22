@@ -72,6 +72,46 @@ export async function detectFaces(
   return JSON.parse(json) as VisionSample[]
 }
 
+/** An object followed through a stretch of a recording (the Vision helper's --track). */
+export interface TrackedObject {
+  /** How it was chosen: given, nearest a hand, or the biggest thing that stands out. */
+  found: 'given' | 'hand' | 'salient'
+  samples: { t: number; box: [number, number, number, number] | null; c: number }[]
+}
+
+/**
+ * One object followed through a stretch of a recording, `samplesPerSec` times
+ * a second, as boxes in fractions of the picture: the one in `box` on the
+ * first frame, or else the one the helper picks there (the thing held up
+ * nearest a hand, or the biggest thing that stands out). The Mac only: on
+ * Windows, or with a helper from before following, it says so.
+ */
+export async function trackObject(
+  sourcePath: string,
+  startSec: number,
+  durationSec: number,
+  samplesPerSec = 12,
+  box?: [number, number, number, number]
+): Promise<TrackedObject> {
+  if (process.platform !== 'darwin') throw new Error('Following an object needs the Mac’s Vision.')
+  const bin = VISION_PATH()
+  if (!existsSync(bin)) throw new Error('chopshop-vision is missing. Run scripts/build-native.sh.')
+  const args = ['--track', sourcePath, startSec.toFixed(3), durationSec.toFixed(3), String(samplesPerSec)]
+  if (box) args.push(...box.map((v) => v.toFixed(4)))
+  const json = await new Promise<string>((resolve, reject) => {
+    const child = spawn(bin, args)
+    let out = ''
+    let err = ''
+    child.stdout.on('data', (d) => (out += d.toString()))
+    child.stderr.on('data', (d) => (err += d.toString()))
+    child.on('error', reject)
+    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(err.trim() || `vision exit ${code}`))))
+  })
+  const r = JSON.parse(json) as TrackedObject
+  if (!Array.isArray(r.samples) || r.samples.length === 0) throw new Error('The helper followed nothing.')
+  return { found: r.found, samples: r.samples }
+}
+
 export interface TrackOptions {
   /** Ignore movement smaller than this share of the frame. */
   deadzone: number

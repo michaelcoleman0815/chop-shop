@@ -592,6 +592,83 @@ const fixed = (n: number): string => n.toFixed(3)
 const exact = (n: number): string => n.toFixed(6)
 
 /**
+ * A shaky shot held still (Treatment.steady): deshake follows the picture's
+ * shake and moves each frame back, clamping what it uncovers, and the middle
+ * is kept, cropped in a little, so no moving edge shows. deshake is in every
+ * ffmpeg, a phone's LGPL build too, in one pass.
+ */
+export const STEADY = 'deshake=rx=32:ry=32:edge=clamp,crop=trunc(iw*0.92/2)*2:trunc(ih*0.92/2)*2,'
+
+/** Slowed below this, a picture's repeated frames show: a final export makes the frames between. */
+export const SMOOTH_BELOW = 0.8
+
+/**
+ * Frames made between a slowed picture's own, by motion compensation, at the
+ * output rate. minterpolate places them by each frame's time, so it follows a
+ * ramp as it slows and speeds up. Only for a final export on a computer: it is
+ * slow, and a phone's battery and a preview's wait are worth more.
+ */
+export function smoothSlow(steps: SpeedStep[], quality: Quality, fps: number, on = platform().kind === 'computer'): string {
+  if (!on || quality === 'preview') return ''
+  if (Math.min(...steps.map((s) => s.speed)) >= SMOOTH_BELOW) return ''
+  return `minterpolate=fps=${fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,`
+}
+
+/**
+ * A look transition (edit/transitions TRANSITION_LOOKS) between two pictures
+ * exactly its length, each starting at zero: the pictures meet, and damage is
+ * drawn over the meeting that is worst in the middle and gone at both ends.
+ * Everything here is in every ffmpeg, a phone's LGPL build too.
+ *
+ * - glitch: the pictures flicker into each other frame by frame through the
+ *   middle, bands of rows torn sideways and the colours pulled apart.
+ * - rgb: a dissolve with the red and blue pulled apart.
+ * - vhs: a dissolve with tape noise, scanlines, colour bleeding sideways, a
+ *   wobble and a rolling tracking band.
+ */
+export function lookTransition(look: 'glitch' | 'rgb' | 'vhs', duration: number, W: number, H: number, fps: number): string {
+  const d = exact(duration)
+  // How bad it is: 0 at both ends, 1 in the middle (T is the meeting's own clock).
+  const s = `sin(PI*T/${d})`
+  const fade = `xfade=transition=fade:duration=${d}:offset=0`
+  if (look === 'rgb') {
+    const k = `${exact(W / 28)}*${s}`
+    return `${fade},format=gbrp,geq=r='r(X+${k},Y)':g='g(X,Y)':b='b(X-${k},Y)'`
+  }
+  if (look === 'glitch') {
+    // xfade's progress P runs from 1 to 0: the old picture holds a quarter, the new one the last third.
+    const frames = Math.max(2, Math.round(duration * fps))
+    const flicker =
+      `xfade=transition=custom:duration=${d}:offset=0:` +
+      `expr='if(lt(1-P,0.25),A,if(gt(1-P,0.7),B,if(mod(floor((1-P)*${frames}),2),A,B)))'`
+    const band = Math.max(8, Math.round(H / 14))
+    // A band of rows is torn when its number and the frame's make a pattern that changes every frame.
+    const torn = `gt(mod(floor(Y/${band})*37+floor(T*${fps})*11,7),4)`
+    const side = `if(mod(floor(Y/${band}),2),1,-1)`
+    const tear = `${torn}*${side}*${exact(W / 15)}*${s}`
+    const k = `${exact(W / 45)}*${s}`
+    return (
+      `${flicker},format=gbrp,` +
+      `geq=r='r(X+${tear}+${k},Y)':g='g(X+${tear},Y)':b='b(X+${tear}-${k},Y)',` +
+      `noise=alls=14:allf=t:enable='between(t,${exact(duration * 0.2)},${exact(duration * 0.75)})'`
+    )
+  }
+  // VHS, from filters that cost little: the colours bleed sideways, scanlines and tape noise come
+  // over the middle, and a pale tracking band rolls down the picture once.
+  const mid = (from: number, to: number): string => `enable='between(t,${exact(duration * from)},${exact(duration * to)})'`
+  const bleed = Math.max(2, Math.round(W / 160))
+  const band = Math.max(4, Math.round(H / 18))
+  return (
+    `${fade},` +
+    `rgbashift=rh=${bleed}:bh=-${bleed}:${mid(0.1, 0.9)},` +
+    `rgbashift=rh=${bleed * 2}:bh=-${bleed * 2}:${mid(0.3, 0.7)},` +
+    `drawgrid=w=iw:h=2:t=1:color=black@0.3:${mid(0.1, 0.9)},` +
+    `drawbox=x=0:y='mod(t/${d}*${H}*1.4,${H})':w=iw:h=${band}:color=white@0.14:t=fill:${mid(0.05, 0.95)},` +
+    `hue=s=0.8,noise=alls=22:allf=t:${mid(0.1, 0.9)}`
+  )
+}
+
+/**
  * Where a slide's new picture sits, `q` (an expression from 0 to 1) of the way
  * through, as overlay positions: it comes in from `from` over the old picture
  * and ends covering it, as xfade's coverleft, coverright, coverup and
@@ -752,9 +829,14 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const exactly = (frames: number, padSec = 1): string =>
     `tpad=stop_mode=clone:stop_duration=${fixed(padSec)},trim=end_frame=${frames},setpts=PTS-STARTPTS,settb=1/${fps}`
 
-  /** Retimes a picture through its speed steps, on a clock that starts at zero. */
+  /**
+   * Retimes a picture through its speed steps, on a clock that starts at zero.
+   * Slowed so far that its frames would visibly repeat, a final export on a
+   * computer makes the frames in between from the motion either side
+   * (smoothSlow): slow motion that glides rather than steps.
+   */
   const retime = (steps: SpeedStep[] | undefined): string =>
-    changesSpeed(steps) ? `setpts=PTS-STARTPTS,${speedPts(steps)},` : ''
+    changesSpeed(steps) ? `setpts=PTS-STARTPTS,${speedPts(steps)},${smoothSlow(steps, opts.quality, fps)}` : ''
 
   /** Labels n..1 down to 0: slices played backwards join latest first. */
   const latestFirst = (n: number, prefix: string): string =>
@@ -831,6 +913,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     const v = `v${k}`
     const a = `a${k}`
     const t = s.treatment
+    // A shaky shot held still, whichever picture the beat shows.
+    const steady = t?.steady ? STEADY : ''
     // Held on its last frame for as long as the beat needs: a cutaway shorter
     // than its beat, or a recording whose picture stops before its sound, would
     // otherwise come up short and pull every later picture ahead of its sound.
@@ -855,7 +939,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         `${sourcePicture(input(s.path, s.startSec, HOLD_READ_SEC), s.convert)}trim=end_frame=1,setpts=PTS-STARTPTS,`
     } else if (s.reverse) {
       const back = backwards(s.path, s.startSec, soundSrc, `${v}s`, s.convert)
-      speaker = () => `${back.picture()}${retime(s.steps)}`
+      speaker = () => `${back.picture()}${steady}${retime(s.steps)}`
       if (s.audio) sound = linedSound(s.audio, s.startSec, soundSrc, true, a)
       else if (s.hasAudio) {
         back.inputs.forEach((n, i) =>
@@ -870,7 +954,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       // The picture alone from this input, the sound from the recording it is lined up with: read
       // from the frame the editor shows where this segment's first output frame falls (onGrid).
       const main = input(s.path, pic.startSec + onGrid(k), pic.srcSec)
-      speaker = () => `${sourcePicture(main, s.convert)}${retime(pic.steps)}`
+      speaker = () => `${sourcePicture(main, s.convert)}${steady}${retime(pic.steps)}`
       sound = linedSound(s.audio, s.startSec, soundSrc, false, a)
     } else {
       // One input covers both the sound and the picture; each is cut from it.
@@ -882,7 +966,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       const cutPicture = differs(pic.startSec, pic.srcSec)
         ? `trim=start=${exact(pic.startSec - inStart)}:duration=${exact(pic.srcSec)},setpts=PTS-STARTPTS,`
         : ''
-      speaker = () => `${sourcePicture(main, s.convert)}${cutPicture}${retime(pic.steps)}`
+      speaker = () => `${sourcePicture(main, s.convert)}${cutPicture}${steady}${retime(pic.steps)}`
       if (s.hasAudio) {
         const cutSound = differs(s.startSec, soundSrc)
           ? `atrim=start=${exact(s.startSec - inStart)}:duration=${exact(soundSrc)},asetpts=PTS-STARTPTS,`
@@ -903,8 +987,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       if (b.hold)
         return `${sourcePicture(input(b.path, b.startSec, HOLD_READ_SEC), b.convert)}trim=end_frame=1,setpts=PTS-STARTPTS,`
       const reads = b.steps ? srcLength(b.steps) : showFor
-      if (b.reverse) return `${backwards(b.path, b.startSec, reads, `${v}c`, b.convert).picture()}${retime(b.steps)}`
-      return `${sourcePicture(input(b.path, b.startSec, reads), b.convert)}${retime(b.steps)}`
+      if (b.reverse) return `${backwards(b.path, b.startSec, reads, `${v}c`, b.convert).picture()}${steady}${retime(b.steps)}`
+      return `${sourcePicture(input(b.path, b.startSec, reads), b.convert)}${steady}${retime(b.steps)}`
     }
 
     if (t === null) {
@@ -1115,6 +1199,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
           chains.push(
             `[${c}under][${c}over]${xfade(info.xfade)},gblur=sigma=${sigma}:sigmaV=0:enable='between(t,${exact(duration * 0.15)},${exact(duration * 0.85)})',format=yuv420p[${c}meet]`
           )
+        } else if (info.preview === 'glitch' || info.preview === 'rgb' || info.preview === 'vhs') {
+          chains.push(`[${c}under][${c}over]${lookTransition(info.preview, duration, W, H, fps)},format=yuv420p[${c}meet]`)
         } else {
           chains.push(`[${c}under][${c}over]${xfade(info.xfade)},format=yuv420p[${c}meet]`)
         }
