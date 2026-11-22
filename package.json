@@ -1,6 +1,6 @@
 {
   "name": "chop-shop",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Cutalong: a video editor you talk to. Cuts on the words, captions, B-roll and your brand, on your own Mac.",
   "main": "./out/main/index.js",
   "author": "Michael Coleman",
