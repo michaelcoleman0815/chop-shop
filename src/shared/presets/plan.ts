@@ -459,7 +459,8 @@ function describeCameraOp(o: Extract<Op, { op: 'camera' }>, after: Resolved, cut
 
 /** "the voice is cleaned up", "the bed is Bright pulse, 120 BPM", "the music dips 9 dB under speech". */
 function describeSound(o: Extract<Op, { op: 'voice' | 'music' }>, cut: Cut | null): string[] {
-  if (o.op === 'voice') return [o.polish > 0 ? 'the voice is cleaned up' : 'the voice is back as recorded']
+  if (o.op === 'voice')
+    return [o.polish > 0 ? 'the voice is cleaned up' : o.room ? 'the room under the voice is taken down' : 'the voice is back as recorded']
   if (o.set === null) return ['the music is out']
   const said: string[] = []
   const m = cut?.music

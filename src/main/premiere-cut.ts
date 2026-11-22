@@ -356,7 +356,7 @@ export function planPremiere(input: PremiereInput): PremierePlan {
     input.graphics.length ? plural(input.graphics.length, 'graphic') : null,
     cut.fade && (cut.fade.inSec > 0 || cut.fade.outSec > 0) ? 'the fades' : null,
     music.length && bed ? musicLeftOut(bed) : null,
-    cut.voice && cut.voice.polish > 0 ? 'the voice polish' : null,
+    cut.voice && (cut.voice.polish > 0 || cut.voice.room) ? 'the voice polish' : null,
     cut.loudness !== null ? 'the loudness' : null
   ].filter((x): x is string => x !== null)
 

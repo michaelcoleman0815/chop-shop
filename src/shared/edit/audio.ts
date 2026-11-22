@@ -11,7 +11,14 @@ import { z } from 'zod'
 
 /** How much clean-up the voice gets: 0 is none, 1 the most. */
 export const VoiceSchema = z.object({
-  polish: z.number().min(0).max(1)
+  polish: z.number().min(0).max(1),
+  /**
+   * A voice in a room, as a sermon is: the room under it is taken down by as
+   * much as turning the voice up would let it be heard, from a print of the
+   * room the render finds in the pauses, and the pauses that are only room
+   * are dipped (main/render/levels). Absent leaves the room as recorded.
+   */
+  room: z.boolean().optional()
 })
 export type Voice = z.infer<typeof VoiceSchema>
 

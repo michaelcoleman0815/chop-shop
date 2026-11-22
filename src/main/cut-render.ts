@@ -58,7 +58,8 @@ import { probeMedia } from './inspiration/measure'
 import { makeSfx } from './sfx'
 import { heardFrom } from '../shared/vision/offset'
 import { captionMatrix, colorConversion, hasZscale, liveChannel } from './intake'
-import { bedVolume, limiter, voicePolish } from './render/audio'
+import { bedVolume, limiter, roomClean, voiceFinish, voicePolish, type RoomClean } from './render/audio'
+import { measureSound, pauseKeys, planSound, printRuns, writePrint, type SoundSpan } from './render/levels'
 import { cropMove, perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
 import { platform } from './platform'
@@ -280,6 +281,10 @@ export interface GraphOptions {
   fade?: Fade | null
   /** Voice clean-up, from 0 to 1, over the whole sound before any music goes under it. */
   voice?: number
+  /** The room under the voice taken down first, by as much as it would be heard (render/levels). */
+  room?: RoomClean | null
+  /** The voice's level after loudness is set: the pauses that are only room dipped (render/levels pauseKeys). */
+  pauses?: LevelKey[]
   /** A music bed under everything. */
   music?: BedOptions | null
   /** A look over the whole picture, before captions and the logo. */
@@ -1359,9 +1364,22 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   // fails the export. A bed still plays over a silent cut.
   const sounds = segments.some((s) => !!s.audio || s.hasAudio)
   let aOut = 'acat'
+  if (sounds && opts.room) {
+    // The print of the room, when there is one, is an input of its own, so
+    // nothing waits on the cut's sound for it.
+    let print: number | null = null
+    if (opts.room.print) {
+      inputs.push('-i', opts.room.print.path)
+      print = next++
+    }
+    chains.push(...roomClean(opts.room, 'acat', 'aroom', totalSec, print))
+    aOut = 'aroom'
+  }
   if (sounds && opts.voice && opts.voice > 0) {
     // Polishing takes the delay it adds back off the front; padding keeps the length exact.
-    chains.push(`[acat]${voicePolish(opts.voice)},apad,atrim=duration=${exact(totalSec)}[avoice]`)
+    // Where the room was taken down already, polish does the rest of its work and not that again.
+    const polish = opts.room ? voiceFinish(opts.voice) : voicePolish(opts.voice)
+    chains.push(`[${aOut}]${polish},apad,atrim=duration=${exact(totalSec)}[avoice]`)
     aOut = 'avoice'
   }
   if (sounds && opts.loudness !== null) {
@@ -1374,6 +1392,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       `[${aOut}]apad=pad_dur=3.2,loudnorm=I=${opts.loudness}:TP=-1.5:LRA=11,aresample=48000,atrim=duration=${exact(totalSec)}[aloud]`
     )
     aOut = 'aloud'
+  }
+  if (sounds && opts.pauses && opts.pauses.length > 0) {
+    // After loudness, which holds its gain through a pause: in 5 ms frames, so the ramps are smooth.
+    chains.push(`[${aOut}]asetnsamples=n=240,${bedVolume(0, opts.pauses)}[apause]`)
+    aOut = 'apause'
   }
   const effects = opts.sfx ?? []
   if (effects.length > 0) {
@@ -1779,6 +1802,37 @@ function chunkList(names: string[], lengths: number[]): string {
   )
 }
 
+/**
+ * Where each segment's sound is read from and where it lands on the output
+ * clock, for measuring it (render/levels). A freeze frame has none; sound
+ * lined up from another recording is read from there.
+ */
+export function soundSpans(segments: Segment[]): SoundSpan[] {
+  const spans = segmentSpans(segments)
+  const out: SoundSpan[] = []
+  segments.forEach((s, k) => {
+    const path = s.audio?.path ?? (s.hasAudio ? s.path : null)
+    // Backwards sound is left out: its levels would land the wrong way round on the clock.
+    if (!path || s.hold || s.reverse) return
+    const srcSec = s.srcSec ?? s.durationSec
+    const from = s.startSec + (s.audio?.offsetSec ?? 0)
+    // Where the other recording starts after the stretch does, the stretch starts late by as much.
+    const lead = Math.max(0, -from)
+    if (srcSec - lead <= 0) return
+    // Output seconds per second read: speed makes them differ.
+    const pace = s.durationSec / srcSec
+    out.push({
+      path,
+      startSec: Math.max(0, from),
+      srcSec: srcSec - lead,
+      outStart: spans[k].outStart + lead * pace,
+      outSec: (srcSec - lead) * pace,
+      ...(s.soundChannel === undefined ? {} : { channel: s.soundChannel })
+    })
+  })
+  return out
+}
+
 /** Renders a cut to a file and returns its path. */
 export async function renderCut(
   cut: Cut,
@@ -1865,6 +1919,21 @@ export async function renderCut(
   const progress = opts.onProgress ?? (() => undefined)
   await platform().files.mkdir(opts.workDir)
 
+  // How loud the voice and the room are, before the render sets either:
+  // so it never turns a voice up more than MOST_BOOST_DB, and a voice in a
+  // room (a sermon) has the room taken down by as much as it would be heard.
+  const wantsRoom = !!cut.voice?.room
+  const heardAt = segments.some((s) => !!s.audio || s.hasAudio) && (cut.loudness !== null || wantsRoom)
+  const levels = heardAt ? await measureSound(opts.ffmpeg, soundSpans(segments), opts.signal).catch(() => null) : null
+  const plan = planSound(cut.loudness, levels, wantsRoom)
+  let room: RoomClean | null = null
+  if (plan.clean && levels) {
+    const printPath = join(opts.workDir, 'room-print.wav')
+    const samples = await writePrint(opts.ffmpeg, printRuns(levels), printPath, opts.signal).catch(() => null)
+    room = { ...plan.clean, print: samples ? { path: printPath, samples } : null }
+  }
+  const pauses = levels && plan.dipDb > 0 ? pauseKeys(resolved.words, levels, plan.dipDb, total) : []
+
   let assPath: string | null = null
   let captionsInRgb = false
   const shown = opts.captionWords ?? resolved.words
@@ -1892,10 +1961,12 @@ export async function renderCut(
   const finishing = {
     assPath,
     captionsInRgb,
-    loudness: cut.loudness,
+    loudness: plan.lufs,
     fade: cut.fade ?? null,
     voice: cut.voice?.polish ?? 0,
-    music: cut.music ? bedFor(cut.music, resolved, cut.loudness) : null,
+    room,
+    pauses,
+    music: cut.music ? bedFor(cut.music, resolved, plan.lufs) : null,
     look: cut.look ?? null,
     lutKind: cut.look?.lut ? await lutKindOf(cut.look.lut.path) : undefined,
     film:

@@ -651,6 +651,7 @@ export function renderRequest(
   // A vlog is told as a story, and asks of its story go to the vlog command.
   if (doc.vlog) settings.push('a vlog told as a story')
   if (cut.voice && cut.voice.polish > 0) settings.push(`voice polish ${cut.voice.polish}`)
+  if (cut.voice?.room) settings.push('the room under the voice taken down, by as much as it would be heard')
   if (cut.look) settings.push(`look ${describeLook(cut.look)}`)
   if (cut.reframe) settings.push('follows the speaker')
   // An edit made before the fill says none, and is cropped.

@@ -44,6 +44,11 @@ export interface ClipProfile {
    * never points"), as a church's editor cuts them (shared/clipping/restarts).
    */
   restarts?: boolean
+  /**
+   * A voice in a room: the room taken down by as much as turning the voice up would let it be heard, and the
+   * pauses that are only room dipped (edit/audio Voice.room, main/render/levels).
+   */
+  room?: boolean
   /** The guidance the clip finder's prompt has for it (main/clips GENRE_NOTE). */
   genre: string
   /** How its clips are captioned, unless the brand has a look of its own. */
@@ -109,6 +114,8 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     tighten: { maxGapSec: 0.4, padSec: 0.1, fillers: false },
     keepsLaughter: true,
     restarts: true,
+    // A service is recorded from across a room, often quietly: turned up to -14 LUFS, the air handling comes up too.
+    room: true,
     genre: 'sermon',
     // Lecrae's Shorts: three words at a time in Inter, the line he lands big and yellow.
     captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },

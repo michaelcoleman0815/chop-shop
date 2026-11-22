@@ -166,6 +166,20 @@ Released as 0.3.7, the owner heard the first clip lose half its first word, and 
 
 The edit's finished version strikes what he broke off (`restartsIn`): a word with a dash, back to where he starts the line again; a few words said twice straight away ("you ever, you ever studied", "as he is, as he is present"); and a few grammar words broken off at a comma ("we just, we can't"). What he says twice on purpose stays: a word three times or more ("this, this, this, this, this and this", "no, no, no"), a line said again after a full stop ("He did. He did."), and anything longer ("it's gonna be one of those days, it's gonna be one of those days"). The first version, the moment as it was said, keeps every word, and in the script the struck words show crossed out, so each is a click from coming back.
 
+## Quiet sermons
+
+A service is often recorded from across the room, and quietly. Every clip is set to -14 LUFS, the loudness YouTube plays Shorts at (YouTube turns a louder video down but never a quieter one up), with peaks held at -1.5 dB true peak. The owner asked whether it turns a quiet sermon up, with a limit. It did turn it up, with no limit, and the room came up with the voice.
+
+Measured on two test sermons made with the Mac's own voice (no one's recording): a normal passage at -33 LUFS, a soft one 12 dB under it and a loud one, over pink noise as a room makes it. loudnorm turned the normal passage up 19 dB, the soft one 25 dB (it lifts a stretch quieter than the rest by up to about 5 dB more than the whole, and holds that gain through the pause after), and the loud one 15 dB. In a quiet room, at -72 dB, the room ended at -48 to -55 dB; in a room with air handling, at -55 dB, at -30 to -37 dB, which is heard in every pause.
+
+What Cutalong does now (`src/main/render/levels.ts`):
+
+- **No more than 24 dB up.** Before a cut renders, the sound it keeps is measured (`measureSound`): its loudness, and the room, the level of its quietest tenth in 50 ms windows. A voice too quiet to reach the target in 24 dB is turned up 24 dB and left quieter than the target (`planSound`). This holds for every cut with a loudness target, not only sermons.
+- **The room taken down by as much as it would be heard.** A sermon clip's voice is a voice in a room (`room` on the church profile, `Voice.room` on the edit). Where the room would sit once turned up with the voice, plus the 5 dB loudnorm adds after a quiet stretch, is set against -60 dB, 46 dB under a voice at -14 LUFS, and afftdn takes out up to 18 dB of the difference. afftdn listening as it goes took 1.5 dB off the room in a test, whatever it was asked for; given a print of the room first, it took 11. So the render finds the longest stretches that are only room (`printRuns`), up to 1.5 s, puts them in a file, plays the file through afftdn ahead of the cut's sound so it learns the noise from it, and takes the print off again with afftdn's 25 ms (`roomClean` in `src/main/render/audio.ts`). The print is an input of its own, so nothing waits on the cut's sound for it.
+- **The pauses that are only room dipped.** Where the room would still be heard past what the clean takes, up to 8 dB more comes off each pause between words, from 0.06 s after one word to 0.03 s before the next (`pauseKeys`): a pause of 0.2 s is long enough, and a clip's are 0.2 to 0.3 s. A pause is dipped only where every 50 ms of it measured as room, so a breath, laughter or an amen in it is left alone.
+
+Through the real export, on the test sermons cut as a clip is (pauses of 0.2 to 0.3 s), the pauses came out 10 to 19 dB quieter in the quiet room (-48 to -57 dB before, -62 to -72 after) and 5 to 15 dB quieter in the noisy one (-31 to -40 before, -36 to -55 after); the voice stayed at the target and every word where it was (`src/main/room-render.test.ts`). The pauses that came down least, 5 to 8 dB, came down by the clean alone: the dip left them, as something in them measured louder than the room.
+
 ## What Cutalong does with it
 
 A set of clips takes six looks in turn (`ClipProfile.looks` in `src/shared/clipping/profile.ts`). With only

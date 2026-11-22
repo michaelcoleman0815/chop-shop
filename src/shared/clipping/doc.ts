@@ -216,6 +216,7 @@ export function finishClipOps(
   })
   if (input.profile.tighten) ops.push({ op: 'tighten', set: input.profile.tighten })
   if (cut.loudness !== DEFAULT_LOUDNESS) ops.push({ op: 'loudness', lufs: DEFAULT_LOUDNESS })
+  if (input.profile.room && !cut.voice?.room) ops.push({ op: 'voice', polish: cut.voice?.polish ?? 0, room: true })
   if (input.reframe) ops.push({ op: 'reframe', on: true })
   // Closer, and graded, where the kind of clip asks for it.
   const zoom = turn?.zoom ?? input.profile.zoom

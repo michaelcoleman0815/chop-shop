@@ -31,13 +31,25 @@ export function limiter(limit: number): string {
  * target is set afterwards, so polish never changes how loud it ends up.
  */
 export function voicePolish(strength: number): string {
+  return `${voiceClean(strength)},${voiceFinish(strength)}`
+}
+
+/** Polish's first part: rumble out, and hiss and hum taken down as afftdn hears them going along. */
+export function voiceClean(strength: number): string {
   const k = Math.min(1, Math.max(0, strength))
   return [
     'highpass=f=80:poles=2',
     // afftdn hands its sound back 25 ms late (measured on ffmpeg 6.1); those
     // 25 ms come off the front so the words stay on their captions.
     `afftdn=nr=${n(6 + 12 * k, 1)}:nf=-50:tn=1`,
-    `atrim=start=${AFFTDN_DELAY_SEC},asetpts=PTS-STARTPTS`,
+    `atrim=start=${AFFTDN_DELAY_SEC},asetpts=PTS-STARTPTS`
+  ].join(',')
+}
+
+/** Polish's second part: esses softened, the level evened, the tone shaped, peaks caught. */
+export function voiceFinish(strength: number): string {
+  const k = Math.min(1, Math.max(0, strength))
+  return [
     `deesser=i=${n(0.5 + 0.2 * k, 2)}:m=0.5:f=0.5:s=o`,
     // A threshold of -24 dB, as ffmpeg wants it: a linear level.
     `acompressor=threshold=0.063:ratio=${n(2 + 2 * k, 2)}:attack=15:release=200:makeup=${n(1 + k, 2)}`,
@@ -45,6 +57,41 @@ export function voicePolish(strength: number): string {
     `equalizer=f=4000:t=q:w=0.9:g=${n(1 + 2 * k, 2)}`,
     limiter(0.95)
   ].join(',')
+}
+
+/** A room taken down (render/levels planSound), and the print of it afftdn learns the noise from. */
+export interface RoomClean {
+  reduceDb: number
+  floorDb: number
+  /** The print (render/levels writePrint): a file of the room alone, and its length in samples. Null: afftdn listens as it goes. */
+  print: { path: string; samples: number } | null
+}
+
+/**
+ * The chains that take a room down, from the sound labelled `from` to `to`:
+ * rumble out, then afftdn. With a print, the print plays first, afftdn learns
+ * the noise from it (sample_noise, sent by asendcmd while it plays), and the
+ * print comes off again with afftdn's 25 ms, so the words stay on their
+ * captions and the first word is cleaned as well as the last. `printInput` is
+ * the print's input number. Padded or trimmed to `totalSec` exactly.
+ */
+export function roomClean(room: RoomClean, from: string, to: string, totalSec: number, printInput: number | null): string[] {
+  const nr = `nr=${n(room.reduceDb, 1)}:nf=${n(room.floorDb, 1)}`
+  const length = `apad,atrim=duration=${n(totalSec)}[${to}]`
+  if (!room.print || printInput === null) {
+    return [
+      `[${from}]highpass=f=80:poles=2,afftdn=${nr}:tn=1,atrim=start=${AFFTDN_DELAY_SEC},asetpts=PTS-STARTPTS,${length}`
+    ]
+  }
+  const s = room.print.samples
+  // Sampling stops a hair before the print ends, so not a sample of the voice gets into it.
+  const stop = Math.max(0, s / 48000 - 0.002)
+  return [
+    `[${printInput}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=end_sample=${s},asetpts=PTS-STARTPTS[${to}p]`,
+    `[${to}p][${from}]concat=n=2:v=0:a=1,highpass=f=80:poles=2,` +
+      `asendcmd=c='0 afftdn@room sn start; ${n(stop)} afftdn@room sn stop',afftdn@room=${nr},` +
+      `atrim=start_sample=${s + Math.round(AFFTDN_DELAY_SEC * 48000)},asetpts=PTS-STARTPTS,${length}`
+  ]
 }
 
 /**

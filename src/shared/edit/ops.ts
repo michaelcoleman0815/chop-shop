@@ -517,7 +517,8 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
 
     case 'voice': {
       const { voice: _v, ...rest } = cut
-      return op.polish > 0 ? { ...rest, voice: { polish: op.polish } } : rest
+      const room = op.room ?? cut.voice?.room ?? false
+      return op.polish > 0 || room ? { ...rest, voice: { polish: op.polish, ...(room ? { room: true } : {}) } } : rest
     }
 
     case 'music': {
