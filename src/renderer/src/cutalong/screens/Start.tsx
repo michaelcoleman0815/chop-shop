@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import type { ProjectSummary } from '../../../../shared/types'
 import { api, device } from '../api'
 import { Composer } from '../components/Composer'
-import { Button, Mark } from '../components/ui'
+import { Mark } from '../components/ui'
 import { when } from '../format'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
@@ -60,17 +60,13 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
   }
 ]
 
-/** Shoots to try a first cut on, before your own. */
-const SAMPLES: { name: string; tag: string; command: string; tone: string }[] = [
-  { name: 'A talking head with retakes', tag: '3 takes', command: 'tighten', tone: 'var(--block-blue)' },
-  { name: 'A Sunday sermon', tag: '28 min', command: 'shorts', tone: 'var(--block-yellow)' },
-  { name: 'A day out, for a vlog', tag: '14 clips', command: 'vlog', tone: 'var(--block-green)' }
-]
-
 /**
- * One question, one composer, the presets, and your projects on the stage.
- * The first time, onboarding stands in for all of it; after that, until an
- * Anthropic key works, the key's steps do.
+ * One question and the composer, and nothing else: the owner found the
+ * presets, projects and samples around them too much to take in on opening
+ * the app ("what are we editing today?" is all it needs to ask). The presets
+ * are a slash away in the composer and shown on the Presets page; projects
+ * are in the rail. The first time, onboarding stands in for it; after that,
+ * until an Anthropic key works, the key's steps do.
  */
 export function Start({ app }: { app: Cutalong }): JSX.Element {
   // Decided once, when the launch check answers: someone already editing on
@@ -93,101 +89,52 @@ export function Start({ app }: { app: Cutalong }): JSX.Element {
 }
 
 function Ask({ app }: { app: Cutalong }): JSX.Element {
-  const [seed, setSeed] = useState<{ text: string; nonce: number } | null>(null)
+  // On a phone the composer sits at the foot, under the thumb, so its preset menu opens upward.
+  const phone = device.kind === 'phone'
   return (
     <>
       <Header>
         <span className="spacer" />
       </Header>
-      <main className="cl-start">
+      <main className="cl-start calm">
         <div className="cl-start-inner">
           <span className="cl-start-mark" aria-hidden="true">
             <Mark size={44} />
           </span>
           <h1 className="cl-title">
-            What are we <span className="cl-accent">making</span>?
+            What are we <span className="cl-accent">editing</span> today?
           </h1>
+        </div>
+        <div className="cl-start-composer">
           <Composer
-            placeholder={
-              device.kind === 'phone'
-                ? 'Add footage with +, or type /'
-                : 'Drop footage, paste a video you like, or type /'
-            }
+            placeholder={phone ? 'Add a video, or ask' : 'Drop a video, or say what you need'}
             presets={app.presets}
             onSubmit={(text, files) => void app.submit(text, files)}
-            seed={seed}
             busy={app.busy}
             // On a phone the keyboard waits for a tap, so Start shows whole.
-            autoFocus={device.kind !== 'phone'}
-            menuBelow
+            autoFocus={!phone}
+            menuBelow={!phone}
           />
         </div>
-        <div className="cl-presets" aria-label="Presets">
-          {PRESETS.map((p) => (
-            <button
-              key={p.command}
-              type="button"
-              className="cl-preset"
-              style={{ '--tone': p.tone } as CSSProperties}
-              onClick={() => setSeed({ text: `/${p.command} `, nonce: Date.now() })}
-            >
-              {p.pic}
-              <span>
-                <span className="cl-preset-name">/{p.command}</span>
-                <span className="cl-preset-what">{p.what}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-        {app.recent.length > 0 ? (
-          <section className="cl-continue" aria-labelledby="cl-continue-head">
-            <h2 className="cl-continue-head" id="cl-continue-head">
-              Pick up where you left off
-            </h2>
-            <div className="cl-continue-row">
-              {app.recent.slice(0, 3).map((p) => (
-                <ProjectCard key={p.path} project={p} onOpen={() => void app.openProject(p.path, 'editor')} />
-              ))}
-            </div>
-          </section>
-        ) : (
-          <section className="cl-samples" aria-labelledby="cl-samples-head">
-            <div className="cl-samples-head">
-              <h2 id="cl-samples-head">Nothing to hand? Try it on one of mine</h2>
-              <p>Edits on a sample run on your key, like any other.</p>
-            </div>
-            <div className="cl-samples-row">
-              {SAMPLES.map((x, i) => (
-                <div key={x.name} className="cl-stage cl-sample">
-                  <span className="cl-sample-pic" aria-hidden="true">
-                    <span className="cl-project-version" style={{ '--tone': x.tone } as CSSProperties}>
-                      {x.tag}
-                    </span>
-                  </span>
-                  <div className="cl-sample-foot">
-                    <span>
-                      <span className="cl-heading" style={{ display: 'block' }}>
-                        {x.name}
-                      </span>
-                      <span className="cl-project-meta">
-                        Try <span className="cl-mono">/{x.command}</span>
-                      </span>
-                    </span>
-                    <Button
-                      variant={i === 0 ? 'primary' : 'secondary'}
-                      small
-                      onClick={() => app.setToast({ text: 'Sample shoots are not in this build yet.' })}
-                    >
-                      Try it
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
       </main>
     </>
+  )
+}
+
+/** The presets, each shown doing what it does, for the Presets page. */
+export function PresetCards(): JSX.Element {
+  return (
+    <div className="cl-presets" aria-label="What the presets do">
+      {PRESETS.map((p) => (
+        <div key={p.command} className="cl-preset" style={{ '--tone': p.tone } as CSSProperties}>
+          {p.pic}
+          <span>
+            <span className="cl-preset-name">/{p.command}</span>
+            <span className="cl-preset-what">{p.what}</span>
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 

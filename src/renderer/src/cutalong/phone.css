@@ -215,6 +215,20 @@
   gap: var(--space-4);
 }
 
+/* The question in the middle, the composer at the foot under the thumb, as a chat app has it. */
+.cl-app.phone .cl-start.calm {
+  justify-content: space-between;
+}
+
+.cl-app.phone .cl-start.calm .cl-start-inner {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.cl-app.phone .cl-start-composer {
+  margin-top: var(--space-4);
+}
+
 .cl-app.phone .cl-continue {
   margin-top: var(--space-8);
 }

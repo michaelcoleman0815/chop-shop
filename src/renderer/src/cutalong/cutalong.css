@@ -669,6 +669,23 @@ button:disabled {
   justify-content: center;
 }
 
+/* The calm Start: the question and the composer in the middle of the window, and nothing else. */
+.cl-start.calm {
+  justify-content: center;
+  padding-bottom: 14vh;
+}
+
+/* The question on one line where the window has room for it; the composer keeps its own width under it. */
+.cl-start.calm .cl-start-inner {
+  max-width: 1040px;
+}
+
+.cl-start-composer {
+  width: 100%;
+  max-width: 680px;
+  margin-top: var(--space-8);
+}
+
 .cl-continue {
   width: 100%;
   max-width: 900px;

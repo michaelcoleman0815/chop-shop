@@ -19,7 +19,7 @@ import { anthropicStandIn, type StandIn } from './standin'
  * system dark, adds "tour": "dark" to the plan and starts the app again,
  * and the tour, with the key saved and Anthropic down, asks for a change in
  * the thread (the gate stays open for a key accepted before), then opens the
- * same project from Start's card: the editor, the crew at another export in
+ * same project from its card on the Projects page: the editor, the crew at another export in
  * the thread, the thread with it in, the Crew page and Brand.
  *
  * On Start, in the thread and in the editor's note box the drive types with
@@ -720,7 +720,8 @@ export async function drive(): Promise<void> {
   }
 
   // The same project after dark: what a person sees at night. The app opens where it was left, on
-  // the project's thread; Start is in the menu, and the project's card there opens the editor.
+  // the project's thread; Start is in the menu (one question and the composer), and the project's card
+  // on the Projects page opens the editor.
   async function darkTour(): Promise<void> {
     // A web view that does not pass the system's dark on is a finding; the pages are still shown dark.
     const followsSystem = matchMedia('(prefers-color-scheme: dark)').matches
@@ -750,11 +751,12 @@ export async function drive(): Promise<void> {
     await step('thread-down')
     if (!document.querySelector('.cl-start')) await go('New edit', '.cl-start')
     report.whileDown = { reply: answered, gateOpen, startOpen: !document.querySelector('.cl-setup') }
-    const card = await until('the project on Start', () => document.querySelector<HTMLButtonElement>('.cl-project'), 30)
+    await step('start')
+    const card = (await go('Projects', '.cl-project')) as HTMLButtonElement
     // The card's picture, across the card: an older web view drew it as a dot.
     const thumb = card.querySelector<HTMLElement>('.cl-project-thumb')
     await until("the card's picture", () => thumb?.style.backgroundImage, 20).catch(() =>
-      keep("the project's card on Start had no picture")
+      keep("the project's card had no picture")
     )
     const box = thumb?.getBoundingClientRect()
     report.cardPicture = {
@@ -762,7 +764,6 @@ export async function drive(): Promise<void> {
       width: Math.round(box?.width ?? 0),
       height: Math.round(box?.height ?? 0)
     }
-    await step('start')
     card.click()
     await editor()
     await step('editor')

@@ -6,7 +6,7 @@ import { collapse } from '../motion'
 import { block } from '../shapes'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
-import { ProjectCard } from './Start'
+import { PresetCards, ProjectCard } from './Start'
 
 /** Every Cutalong edit on this computer, newest first. */
 export function ProjectsPage({ app, onBrowse }: { app: Cutalong; onBrowse: () => void }): JSX.Element {
@@ -64,6 +64,7 @@ export function PresetsPage({ app }: { app: Cutalong }): JSX.Element {
             Your <span className="cl-accent">presets</span>
           </h1>
           <p className="cl-lede">Type any of these after a slash, in the composer or in a note.</p>
+          <PresetCards />
           <ul className="cl-list">
             {presets.map((p) => (
               <li key={p.command}>
