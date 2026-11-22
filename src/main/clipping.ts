@@ -35,6 +35,8 @@ import {
   readClipAsk,
   recordingNames,
   shapePicks,
+  startsClause,
+  strongOpening,
   wordsToRead,
   type ClipAsk,
   type ClipProfile,
@@ -132,7 +134,7 @@ export interface ClippingTools {
    * The words each clip's speaker leans on, by index, for captions that pick them out, and each clip's hook,
    * for looks that put one on screen (main/key-words).
    */
-  keyWords?: (clips: string[][]) => Promise<{ keys: number[][]; hooks: string[] }>
+  keyWords?: (clips: string[][]) => Promise<{ keys: number[][]; hooks: string[]; opens?: number[] }>
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
@@ -717,9 +719,22 @@ export async function findClips(
       percent: 96 + Math.round((k / Math.max(1, picks.length)) * 4)
     })
     const r = read.find((x) => x.facts.path === p.path)!
-    const inside = said[k].inside
-    const marked = new Set(keys[k] ?? [])
-    const words = said[k].words.map((w, i) => (marked.has(i) ? { ...w, key: true } : w))
+    // Opening on the line itself, not the run-up or the filler before it ("And, but if…"), so long as what
+    // is left is still a clip.
+    const all = said[k].words
+    const asked = marks?.opens?.[k] ?? 0
+    let from = strongOpening(all, asked > 0 && startsClause(all, asked) ? asked : 0)
+    const left = (i: number): number => (all.length ? all[all.length - 1].endSec - (all[i]?.startSec ?? 0) : 0)
+    if (from > 0 && left(from) < Math.min(r.plan.bounds.minSec, 0.8 * left(0))) from = strongOpening(all, 0)
+    if (from > 0 && left(from) < Math.min(r.plan.bounds.minSec, 0.8 * left(0))) from = 0
+    const inside = said[k].inside.slice(from)
+    const marked = new Set((keys[k] ?? []).map((i) => i - from).filter((i) => i >= 0))
+    // Opened mid-sentence, the first word takes the capital a sentence would give it.
+    const capital = (t: string): string => t.replace(/\p{Ll}/u, (c) => c.toUpperCase())
+    const words = all
+      .slice(from)
+      .map((w, i) => (i === 0 && from > 0 ? { ...w, text: capital(w.text) } : w))
+      .map((w, i) => (marked.has(i) ? { ...w, key: true } : w))
     const subject = chosen[k].subject
     if (subject) followed++
     const source: Omit<Source, 'id'> = {
@@ -751,7 +766,7 @@ export async function findClips(
     })
     clips.push({
       source: p.path,
-      startSec: p.startSec,
+      startSec: from > 0 && inside[0] ? inside[0].startSec : p.startSec,
       endSec: p.endSec,
       title: doc.title,
       hook: p.hook,

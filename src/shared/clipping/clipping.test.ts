@@ -1,3 +1,4 @@
+import { startsClause, strongOpening } from './opening'
 import { describe, expect, it } from 'vitest'
 import { currentCut, currentVersion, resolveCut, undoTarget } from '../edit'
 import { PLANTED, PODCAST, SERVICE, STREAM, type Planted } from './fixtures'
@@ -721,5 +722,30 @@ describe('what /clipping says', () => {
         ['/c/e/y.mp4', 'e/y.mp4']
       ])
     )
+  })
+})
+
+describe('a clip’s opening', () => {
+  const w = (text: string): { text: string } => ({ text })
+  const line = (s: string): { text: string }[] => s.split(' ').map(w)
+  it('skips the filler a breath opens with, and stops at the first word that means something', () => {
+    expect(strongOpening(line('And, but if you will study religion'))).toBe(2)
+    expect(strongOpening(line('And so this is what my sister-in-law said'))).toBe(2)
+    expect(strongOpening(line('Um, you know, God is good'))).toBe(3)
+    expect(strongOpening(line('- I was preaching in New Orleans'))).toBe(1)
+    expect(strongOpening(line('Religion kills people'))).toBe(0)
+    // From where Claude said to open, the same.
+    expect(strongOpening(line('if you will study religion, so religion kills people'), 5)).toBe(6)
+  })
+
+  it('never strips more than a few words, and never runs off the end', () => {
+    expect(strongOpening(line('and and and and and and and grace'))).toBe(6)
+    expect(strongOpening(line('and so um'))).toBe(0)
+  })
+
+  it('knows where a clause starts', () => {
+    const words = line('And, but if you will study religion, religion kills people')
+    expect(startsClause(words, 7)).toBe(true)
+    expect(startsClause(words, 5)).toBe(false)
   })
 })

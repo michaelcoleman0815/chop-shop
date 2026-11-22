@@ -190,6 +190,10 @@ the "Sermon build" preset, now in Inter ExtraBold. What else carried over:
 - **Pauses:** cut over 0.4 s; laughter and applause stay.
 - **Sentences:** every clip opens and ends on a whole sentence (`fitPick` in `src/shared/clipping/shape.ts`).
 - **Opening:** the clip finder is told to open on the claim itself where the moment is a point, not a story.
+  Claude then chooses where each clip opens, at a clause start in its first quarter, so it opens on the line
+  rather than the run-up: "Religion kills people, God saves people", not "And, but if you will study religion".
+  The filler a breath opens with (and, but, so, um, uh, well, you know) is always dropped
+  (`src/shared/clipping/opening.ts`), and a clip is never left shorter than its kind's least length.
 - **What a stream can't give:** a 720p stream made 1.45× closer is soft beside a cinema camera's 4K. The camera's
   own files, or a 1080p export of the stream, close most of that gap.
 

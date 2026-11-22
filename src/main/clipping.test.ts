@@ -209,7 +209,7 @@ describe('clipping a long recording, start to finish', () => {
         suggest: async () => [{ ...span, title: 'Grace', hook: '', reason: '', score: 90 }],
         keyWords: async (clips) => {
           asked.push(clips)
-          return { keys: clips.map(() => [0, 2]), hooks: clips.map(() => 'Grace Found Her First') }
+          return { keys: clips.map(() => [0, 2]), hooks: clips.map(() => 'Grace Found Her First'), opens: clips.map(() => 0) }
         }
       }),
       quiet
@@ -225,6 +225,33 @@ describe('clipping a long recording, start to finish', () => {
       expect(cut.box).toEqual({ aspect: 1, top: 0.19 })
       expect(cut.motion.map((m) => [m.kind, m.style, m.text[0]])).toEqual([['banner', 'title', 'Grace Found Her First']])
     }
+  })
+
+  it('opens each clip on the line Claude chose, past the filler, never short of a clip', async () => {
+    const span = momentSpan(factsOf(SERVICE).timeline, SERVICE.moments[0])
+    let opened: string[][] = []
+    const r = await findClips(
+      { paths: ['/rec/Sunday service.mp4'], ask: '' },
+      tools({
+        engine: async () => ({ by: 'claude', model: MODEL }),
+        suggest: async () => [{ ...span, title: 'Grace', hook: '', reason: '', score: 90 }],
+        keyWords: async (clips) => {
+          opened = clips
+          // The second sentence of each, as Claude would pick a stronger line a little way in.
+          const opens = clips.map((c) => c.findIndex((t, i) => i > 0 && /[.!?]$/.test(c[i - 1])))
+          return { keys: clips.map(() => []), hooks: clips.map(() => ''), opens }
+        }
+      }),
+      quiet
+    )
+    if (!r.ok) throw new Error(r.message)
+    const words = opened[0]
+    const second = words.findIndex((t, i) => i > 0 && /[.!?]$/.test(words[i - 1]))
+    const doc = r.clips[0].doc
+    // Opened on the chosen sentence, or kept whole where that would leave too little.
+    const cap = (t: string): string => t.replace(/\p{Ll}/u, (c) => c.toUpperCase())
+    expect([cap(words[second]), words[0]]).toContain(doc.words[0].text)
+    if (doc.words[0].text === cap(words[second])) expect(r.clips[0].startSec).toBeGreaterThan(span.startSec)
   })
 
   it('leaves out a moment filmed through the crowd for a spare filmed from the front', async () => {
