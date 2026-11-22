@@ -67,7 +67,7 @@ On a phone, Settings ends with Licences (`src/renderer/src/cutalong/screens/Lice
 
 ## Store builds
 
-When the flow has passed on both phones, the same workflow builds for TestFlight and for Google Play's internal testing track, each only when its secrets are set in the repository (Settings, Secrets and variables, Actions). Without them those jobs are skipped, and the Store secrets job says which are missing. The app id is `social.brewed.cutalong`; the version is the one in the root `package.json` and the build number is the workflow's run number.
+When the flow has passed on both phones for a version tag (the `v0.3.9` that also makes the Mac and Windows release), the same workflow builds for TestFlight and for Google Play's internal testing track, so each release reaches every platform; a push to the branch builds and tests the phones without uploading. Each store build runs only when its secrets are set in the repository (Settings, Secrets and variables, Actions). Without them those jobs are skipped, and the Store secrets job says which are missing. The app id is `social.brewed.cutalong`; the version is the one in the root `package.json` and the build number is the workflow's run number.
 
 TestFlight:
 

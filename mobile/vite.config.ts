@@ -103,6 +103,9 @@ function phoneWords(): Plugin {
  * (src/main/grid-render.ts) and film's dust, leaks and flicker
  * (src/main/render/film.ts). On the phone they are on the Mac for now, and the
  * render reaches stand-ins that say so (src/shims/grid-render.ts, film.ts).
+ * So does following what the speaker holds up (src/main/track.ts, the Mac's
+ * Vision helper started as a process), which the planner reaches through
+ * src/main/plan-follow.ts (src/shims/track.ts).
  */
 function phoneStandIns(): Plugin {
   const swaps = [
@@ -115,6 +118,11 @@ function phoneStandIns(): Plugin {
       name: /(^|\/)film(\.ts)?$/,
       computer: resolve(root, 'src/main/render/film.ts'),
       phone: resolve(here, 'src/shims/film.ts')
+    },
+    {
+      name: /(^|\/)track(\.ts)?$/,
+      computer: resolve(root, 'src/main/track.ts'),
+      phone: resolve(here, 'src/shims/track.ts')
     }
   ]
   return {
