@@ -331,6 +331,8 @@ export interface BedOptions {
   keys: LevelKey[]
   fadeInSec: number
   fadeOutSec: number
+  /** Where it ends, fading out to it, when it stops before the video does (under a cold open only). */
+  untilSec?: number
 }
 
 const even = (n: number): number => Math.max(2, Math.round(n / 2) * 2)
@@ -1437,11 +1439,13 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // turned down, and peaks the bed adds are caught.
     inputs.push('-stream_loop', '-1', '-ss', fixed(bed.inSec), '-t', fixed(totalSec + 1), '-i', bed.path)
     const m = next++
+    // A bed that stops early (under a cold open) fades out to its end, and silence carries it to the video's.
+    const ends = Math.min(totalSec, bed.untilSec ?? totalSec)
+    const out = Math.min(bed.fadeOutSec, ends)
     const fades = [
-      bed.fadeInSec > 0 ? `afade=t=in:st=0:d=${exact(Math.min(bed.fadeInSec, totalSec))}` : null,
-      bed.fadeOutSec > 0
-        ? `afade=t=out:st=${exact(Math.max(0, totalSec - bed.fadeOutSec))}:d=${exact(Math.min(bed.fadeOutSec, totalSec))}`
-        : null
+      bed.fadeInSec > 0 ? `afade=t=in:st=0:d=${exact(Math.min(bed.fadeInSec, ends))}` : null,
+      out > 0 ? `afade=t=out:st=${exact(Math.max(0, ends - out))}:d=${exact(out)}` : null,
+      ends < totalSec ? `atrim=duration=${exact(ends)},apad,atrim=duration=${exact(totalSec)}` : null
     ].filter(Boolean)
     chains.push(
       `[${m}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=duration=${exact(totalSec)},asetpts=PTS-STARTPTS,` +
@@ -1679,15 +1683,19 @@ const TYPICAL_TRACK_LUFS = -14
  * target, whatever loudness the track was mastered at, dipping under the
  * words where they fall.
  */
-export function bedFor(music: Music, resolved: Resolved, loudness: number | null): BedOptions {
+export function bedFor(music: Music, resolved: Resolved, loudness: number | null, cut?: Pick<Cut, 'beats'>): BedOptions {
   const voice = loudness ?? -14
+  // Under a cold open only, unless it was set to play under everything: to the end of the cold open's last moment.
+  const lastOpen = music.coldOpenOnly === false ? undefined : [...(cut?.beats ?? [])].reverse().find((b) => b.coldOpen)
+  const untilSec = lastOpen ? resolved.beats.find((b) => b.id === lastOpen.id)?.outEnd : undefined
   return {
     path: music.path,
     inSec: music.inSec,
     gainDb: voice + music.levelDb - (music.lufs ?? TYPICAL_TRACK_LUFS),
     keys: duckingKeys(resolved.words, music.duckDb, resolved.durationSec),
     fadeInSec: music.fadeInSec,
-    fadeOutSec: music.fadeOutSec
+    fadeOutSec: music.fadeOutSec,
+    ...(untilSec !== undefined ? { untilSec } : {})
   }
 }
 
@@ -1966,7 +1974,7 @@ export async function renderCut(
     voice: cut.voice?.polish ?? 0,
     room,
     pauses,
-    music: cut.music ? bedFor(cut.music, resolved, plan.lufs) : null,
+    music: cut.music ? bedFor(cut.music, resolved, plan.lufs, cut) : null,
     look: cut.look ?? null,
     lutKind: cut.look?.lut ? await lutKindOf(cut.look.lut.path) : undefined,
     film:

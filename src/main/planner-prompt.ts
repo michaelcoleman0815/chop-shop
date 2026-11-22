@@ -72,6 +72,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"split","beat":"b4","at":"w31"}: split before a word, which must be inside the beat and not its first word. The second half gets the next free id.
 - {"op":"join","beat":"b4"}: join a beat with the one after it. Only when they sit together in the recording.
 - {"op":"insert","to":2,"beat":{"source":"s1","from":"w40","to":"w52"}}: bring words back as a new beat.
+- {"op":"cold-open","bites":[{"from":"w812","to":"w830"},{"from":"w120","to":"w131"}]}: a cold open, as a podcast's: these moments, in this order, played first, ahead of the conversation they come from, cut close, with a white flash on every third cut and a dip to black into the conversation. A music bed plays under the cold open only. Again, it replaces the cold open there was; "bites":[] takes it out.
 - {"op":"treat","beats":["b2","b5"],"set":{"bw":true}}: set treatment fields. A bigWord set names exactly one beat.
 - {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest; "preset":"boxed" for drawn captions a few words at a time with the word being said in a solid box of the brand's accent; "preset":"clean" goes back to plain subtitles.
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
@@ -122,6 +123,7 @@ ${fxGuide()}
 - Add sound effects only when asked, sparingly: a whoosh through a whip or push transition, a hit on a hard cut to something new, a riser into a new section, a pop on a big word. Never one on every cut.
 - Switch to another camera only when asked, or when asked for variety: at a change of thought, never mid-sentence, and back to the recording often enough that it stays the main view. "pip" and "side" suit a reaction or a second person.
 - Show videos in a grid only when asked, or when the words set finished videos or takes side by side ("here are four edits of the same clip"). A grid covers its whole beat, as a cutaway does, so split first and give it only the words that show them.
+- Make a cold open only when asked for one (a cold open, a hook or a teaser for a podcast or an interview). Choose 6 to 12 bites from across the whole recording, 3 to 8 s each and most 4 to 6, 30 to 90 s in all, each a whole phrase. Open on the guest's most surprising claim with no context. Then go back and forth: a one-line question from the host, then the answer, so each bite is set up by the one before. Rise as it goes: the premise, then numbers and credentials, then the personal or the taboo. End on a question left hanging, or a line that makes the viewer need the next minute. Never use a bite that only makes sense with what came before it in the recording. Where the transcript says who speaks (S1, S2, a source with speakers="2"), the host is usually the one asking.
 - Make chapters only when asked. Start one where the subject changes, and name it in two to five words for what that part is about, never a whole sentence.
 - Leave the colour alone unless asked. For tech and product videos, "clean" keeps colour true; save warm, cool, cinematic and vintage for when someone asks for a mood.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
@@ -209,6 +211,7 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     to: z.number(),
     beat: z.object({ source: z.string(), from: z.string(), to: z.string() })
   }),
+  z.object({ op: z.literal('cold-open'), bites: z.array(z.object({ from: z.string(), to: z.string() })) }),
   z.object({ op: z.literal('treat'), beats: z.array(z.string()), set: TreatmentSet }),
   z.object({
     op: z.literal('captions'),
@@ -528,22 +531,32 @@ export function renderTranscript(doc: EditDoc): string {
     const angle = (currentCut(doc).angles ?? []).find((a) => a.source === source.id)
     const camera = angle ? ` camera-of="${angle.of}" offset="${angle.offsetSec.toFixed(2)}"` : ''
     const found = source.subject ? ' speaker="found"' : ''
+    const voices = new Set(doc.words.filter((w) => w.source === source.id && w.speaker !== undefined).map((w) => w.speaker)).size
+    const told = voices > 1 ? ` speakers="${voices}"` : ''
     lines.push(
-      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}${camera}${found}>`
+      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}${camera}${found}${told}>`
     )
     const words = doc.words.filter((w) => w.source === source.id)
-    // One line per sentence keeps it readable without losing a single id.
+    // One line per sentence keeps it readable without losing a single id. Where the voices are told apart
+    // (shared/speakers), a line starts with who says it, and a new speaker starts a new line.
     let line: string[] = []
     let start = words[0]?.startSec ?? 0
-    for (const w of words) {
-      if (line.length === 0) start = w.startSec
-      line.push(`${w.id} ${w.text}`)
-      if (/[.!?]["')\]]*$/.test(w.text) || line.length >= 24) {
-        lines.push(`[${time(start)}] ${line.join(' | ')}`)
-        line = []
-      }
+    let who: number | undefined
+    const flush = (): void => {
+      if (line.length === 0) return
+      lines.push(`[${time(start)}]${who === undefined ? '' : ` S${who + 1}:`} ${line.join(' | ')}`)
+      line = []
     }
-    if (line.length) lines.push(`[${time(start)}] ${line.join(' | ')}`)
+    for (const w of words) {
+      if (line.length > 0 && w.speaker !== undefined && w.speaker !== who) flush()
+      if (line.length === 0) {
+        start = w.startSec
+        who = w.speaker
+      }
+      line.push(`${w.id} ${w.text}`)
+      if (/[.!?]["')\]]*$/.test(w.text) || line.length >= 24) flush()
+    }
+    flush()
     lines.push('</source>')
   }
   // Who spoke off camera is a fact about the footage, so it is cached with it.

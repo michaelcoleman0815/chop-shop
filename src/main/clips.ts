@@ -151,8 +151,13 @@ do not end on one and do not start after one. And prefer a moment that states
 the human problem in ordinary words over one that assumes the vocabulary, so
 a passage about anxiety at three in the morning outranks the same idea framed
 as a doctrine, even when the doctrinal version is better preaching.`,
-  podcast:
-    'This is a podcast or interview with more than one speaker. Apply the interview guidance, and watch for answers that cannot stand without the question that prompted them.',
+  podcast: `This is a podcast or interview with more than one speaker. Apply the interview guidance,
+and watch for answers that cannot stand without the question that prompted them. The most-watched podcast
+clips open most often on the question itself, short and pointed ("Are you scared to leave the country?"),
+with the answer's payoff landing inside about three seconds of it; next on the guest's claim or payoff said
+first, then on a story's first concrete sentence. Start on the first word of that question or line, with no
+run-up. A clip may end on the punchline or on the laugh that follows it: here laughter is part of the
+moment.`,
   talk:
     'This is a talk, lecture or keynote by one speaker. Expect a structured argument: prefer a single point made whole over a fragment of the through-line, and treat section transitions as boundaries rather than content.',
   stream: `This is a livestream recording: hours of one person talking to a chat,

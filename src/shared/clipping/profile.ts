@@ -266,7 +266,26 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     keepPauseSec: 0.6,
     tighten: tightenOf('podcast', { maxGapSec: 0.6, padSec: 0.08, fillers: false }),
     keepsLaughter: true,
-    genre: 'podcast'
+    genre: 'podcast',
+    // As the most-watched podcast clips are set (docs/research/podcasts.md): two or three words at a time in
+    // heavy capitals with a thick edge, mid-frame; no zooms, which few of them use.
+    captions: { preset: 'plate', wordsPerScreen: 2, position: 'middle', uppercase: true },
+    looks: [
+      {
+        name: 'headline',
+        says: 'the headline across the top',
+        captions: { preset: 'plate', wordsPerScreen: 2, position: 'middle', uppercase: true },
+        // The headline over the opening, as The Diary of a CEO, Club Shay Shay and Shawn Ryan put one on every clip.
+        hook: { style: 'title', place: 'top', sec: 3 }
+      },
+      {
+        name: 'card',
+        says: 'a headline card, then small captions',
+        // Colin & Samir's way: the headline mid-frame for the first seconds, then small captions under it.
+        captions: { preset: 'clean', wordsPerScreen: 3, position: 'middle', uppercase: false },
+        hook: { style: 'card', place: 'middle', sec: 3 }
+      }
+    ]
   },
   livestream: {
     id: 'livestream',

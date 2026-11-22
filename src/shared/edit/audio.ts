@@ -41,7 +41,12 @@ export const MusicSchema = z.object({
   /** Its tempo, in beats per minute, where it is steady. */
   bpm: z.number().positive().optional(),
   /** Every beat, in seconds of the track. */
-  beats: z.array(z.number().min(0)).max(20000).optional()
+  beats: z.array(z.number().min(0)).max(20000).optional(),
+  /**
+   * Under the cold open only (op cold-open), fading out where the conversation starts, as a podcast's is.
+   * Absent, it is, when the edit has a cold open; false plays it under everything.
+   */
+  coldOpenOnly: z.boolean().optional()
 })
 export type Music = z.infer<typeof MusicSchema>
 

@@ -13,6 +13,13 @@
 export const MERGE_SIMILARITY = 0.45
 /** A speaker heard for less than this share of the measured speech is folded into the nearest. */
 const SLIVER = 0.03
+/**
+ * A speaker heard for less than this share who sounds at least FOLD_SIMILARITY like a bigger one is that one
+ * in another voice: a comic's impressions and quips, a laugh, a shout (6 minutes of a real podcast split one
+ * guest into five).
+ */
+const MINOR = 0.15
+const FOLD_SIMILARITY = 0.25
 
 export interface Voiced {
   /** The fingerprint, any length, any scale. */
@@ -91,6 +98,19 @@ export function clusterVoices(items: Voiced[], opts: { speakers?: number; simila
       const home = others.reduce((a, b) => (between(g, a) >= between(g, b) ? a : b))
       groups = groups.filter((x) => x !== g && x !== home).concat([[...home, ...g]])
       small = groups.filter((x) => weight(x) / total < SLIVER)
+    }
+    // A minor voice that sounds enough like a bigger one is folded into it, the smallest first.
+    for (;;) {
+      const minor = groups.filter((g) => weight(g) / total < MINOR).sort((a, b) => weight(a) - weight(b))
+      const fold = minor
+        .map((g) => {
+          const bigger = groups.filter((x) => x !== g && weight(x) > weight(g))
+          const home = bigger.length ? bigger.reduce((a, b) => (between(g, a) >= between(g, b) ? a : b)) : null
+          return home && between(g, home) >= FOLD_SIMILARITY ? { g, home } : null
+        })
+        .find((f) => f !== null)
+      if (!fold) break
+      groups = groups.filter((x) => x !== fold.g && x !== fold.home).concat([[...fold.home, ...fold.g]])
     }
   }
   // Named in order of who is heard first.

@@ -90,6 +90,12 @@ export function applyOp(cut: Cut, op: Op, context: OpContext): Cut {
   return step(cut, OpSchema.parse(op), makeCtx(context))
 }
 
+/** A cold open's bites are cut close, each running into the next. */
+const COLD_PAD_IN = 0.04
+const COLD_PAD_OUT = 0.08
+/** Out of a cold open and into the conversation: a short dip to black. */
+const COLD_DIP_SEC = 0.5
+
 function step(cut: Cut, op: Op, ctx: Ctx): Cut {
   switch (op.op) {
     case 'remove': {
@@ -250,6 +256,32 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         beats[i] = { ...beats[i], treatment }
       }
       return { ...cut, beats }
+    }
+
+    case 'cold-open': {
+      // The cold open there was goes; the conversation's first beat can have no way in, with nothing before it.
+      const body = cut.beats.filter((b) => !b.coldOpen)
+      const strip = (b: Beat): Beat => {
+        const { transition: _t, ...rest } = b
+        return rest
+      }
+      if (op.bites.length === 0) return { ...cut, beats: body.map((b, i) => (i === 0 ? strip(b) : b)) }
+      if (body.length === 0) throw new OpError('There is no conversation to open on.')
+      let n = Number(/^b(\d+)$/.exec(nextBeatId(cut))?.[1] ?? cut.beats.length + 1)
+      const opened = op.bites.map((bite, i): Beat => {
+        const [a] = wordRange(ctx, bite.from, bite.to)
+        const beat = buildBeat({ source: ctx.index.words[a].source, from: bite.from, to: bite.to }, `b${n++}`, ctx)
+        return {
+          ...beat,
+          // Cut close: a cold open runs bite into bite.
+          padIn: COLD_PAD_IN,
+          padOut: COLD_PAD_OUT,
+          coldOpen: true,
+          ...(i > 0 && i % 3 === 0 ? { transition: keptTransition('flash', TRANSITION_INFO.flash.defaultSec) } : {})
+        }
+      })
+      const [first, ...rest] = body
+      return { ...cut, beats: [...opened, { ...strip(first), transition: keptTransition('dip-to-black', COLD_DIP_SEC) }, ...rest] }
     }
 
     case 'insert': {

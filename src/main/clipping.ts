@@ -20,6 +20,10 @@ import { localHost } from './local-server'
 import { isLocalUp, localModels } from './local-llm'
 import { claudeErrorText, MODEL } from './planner'
 import { detectFaces, hasFaceFinder, type VisionSample } from './track'
+import { downloadSpeakerModel, findSpeakers } from './speakers'
+import { displaySize, measureMouth } from './mouth'
+import { linkFaces, planCrops } from '../shared/vision/faces'
+import { seatsOfSpeakers, subjectOfSpeakers, type MouthFrames } from '../shared/speakers/seats'
 import { NO_FACE_FINDER, thisComputer } from '../shared/platform'
 import { detectShots } from './shots'
 import { buildAudioMap, type Frames } from '../shared/audio/map'
@@ -128,6 +132,16 @@ export interface ClippingTools {
   envelope: (path: string, startSec: number, durationSec: number) => Promise<Envelope>
   /** The face finder, on a Mac; null where there is none. */
   faces: ((path: string, startSec: number, durationSec: number) => Promise<VisionSample[]>) | null
+  /**
+   * Who says each word, 0, 1, 2... (main/speakers), for a recording of more than one voice; null where it
+   * can't say. Absent, nobody is told apart.
+   */
+  speakers?: (path: string, words: TranscriptWord[], progress: (fraction: number) => void) => Promise<(number | null)[]>
+  /**
+   * Each face's mouth, frame by frame, over a stretch (main/mouth), from face samples timed from `startSec`.
+   * Absent or null, a clip follows the largest face rather than whoever is talking.
+   */
+  mouth?: (path: string, samples: VisionSample[], startSec: number, durationSec: number) => Promise<MouthFrames | null>
   shots: (path: string, startSec: number, durationSec: number) => Promise<number[]>
   /** Who picks the moments. */
   engine: () => Promise<{ by: Picker; model: string | null }>
@@ -323,6 +337,19 @@ export function defaultTools(): ClippingTools {
       ? (path, startSec, durationSec) => detectFaces(path, startSec, durationSec, FACE_HZ)
       : null,
     shots: (path, startSec, durationSec) => detectShots(path, startSec, durationSec).catch(() => []),
+    speakers: async (path, words, progress) => {
+      await downloadSpeakerModel()
+      return (await findSpeakers(FFMPEG_PATH, path, words, { onProgress: progress })).words
+    },
+    mouth: async (path, samples, startSec, durationSec) => {
+      const meta = await probe(path)
+      const frame = await displaySize(FFMPEG_PATH, path, { width: meta.width, height: meta.height })
+      const fps = meta.fps > 0 ? meta.fps : 30
+      const plan = planCrops(linkFaces(samples.map((s) => ({ t: s.t + startSec, faces: s.faces }))), { ...frame, fps })
+      if (plan.slots.length < 2) return null
+      const raw = await measureMouth(FFMPEG_PATH, path, plan, { fps, startSec, durationSec })
+      return { times: raw.times, slots: raw.slots }
+    },
     engine: chooseEngine,
     suggest: suggestClips,
     brand: readBrand,
@@ -500,7 +527,8 @@ async function speakerIn(
   tools: ClippingTools,
   path: string,
   startSec: number,
-  endSec: number
+  endSec: number,
+  words: TranscriptWord[] = []
 ): Promise<{ subject: Subject | null; crowd: number }> {
   if (!tools.faces) return { subject: null, crowd: 0 }
   const from = Math.max(0, startSec - 0.5)
@@ -509,11 +537,47 @@ async function speakerIn(
     const samples = await tools.faces(path, from, length)
     const crowd = crowdShare(samples)
     if (!samples.some((s) => s.faces.length > 0)) return { subject: null, crowd }
-    const subject = subjectFrom(samples, length, FACE_HZ, from)
     const cuts = (await tools.shots(path, from, length)).map((t) => Math.round((from + t) * 1000) / 1000)
-    return { subject: cuts.length > 0 ? { ...subject, cuts } : subject, crowd }
+    const subject = (await followTalk(tools, path, samples, from, length, words)) ?? subjectFrom(samples, length, FACE_HZ, from)
+    const all = [...new Set([...(subject.cuts ?? []), ...cuts])].sort((a, b) => a - b)
+    return { subject: all.length > 0 ? { ...subject, cuts: all } : subject, crowd }
   } catch {
     return { subject: null, crowd: 0 }
+  }
+}
+
+/** Two or more people in one shot this share of the time is a wide shot of them, as a podcast filmed wide is. */
+const TOGETHER_SHARE = 0.4
+/** Each of two speakers heard for at least this long in a clip, or it isn't a conversation worth following. */
+const LEAST_TALK_SEC = 3
+
+/**
+ * The frame on whoever is talking, for a clip of two or more people filmed in one shot whose words say who
+ * speaks (shared/speakers/seats): which face is whose from their mouths, then the frame on the speaker's,
+ * cutting as the floor changes hands. Null where that can't be done, and the clip follows the largest face.
+ */
+async function followTalk(
+  tools: ClippingTools,
+  path: string,
+  samples: VisionSample[],
+  from: number,
+  length: number,
+  words: TranscriptWord[]
+): Promise<Subject | null> {
+  if (!tools.mouth) return null
+  const said = words.filter((w) => w.speaker !== undefined && w.endSec > from && w.startSec < from + length)
+  const talk = new Map<number, number>()
+  for (const w of said) talk.set(w.speaker as number, (talk.get(w.speaker as number) ?? 0) + w.endSec - w.startSec)
+  if ([...talk.values()].filter((sec) => sec >= LEAST_TALK_SEC).length < 2) return null
+  if (samples.filter((s) => s.faces.length >= 2).length < TOGETHER_SHARE * samples.length) return null
+  try {
+    const frames = await tools.mouth(path, samples, from, length)
+    if (!frames) return null
+    const seats = seatsOfSpeakers(frames, said)
+    return subjectOfSpeakers(samples, said, seats, length, FACE_HZ, from)
+  } catch (err) {
+    console.warn('[clipping] could not tell whose face is whose', message(err))
+    return null
   }
 }
 
@@ -645,7 +709,21 @@ export async function findClips(
       ...(frozen ? { frozen } : {}),
       ...(loudness ? { loudness } : {})
     }
-    const plan = await time('finding', async () => planRecording(facts, ask, niche))
+    let plan = await time('finding', async () => planRecording(facts, ask, niche))
+    // A podcast's voices told apart, so its clips can follow whoever is talking; kept with the words.
+    if (plan.profile.id === 'podcast' && tools.speakers && !words.some((w) => w.speaker !== undefined)) {
+      progress({ stage: `Telling the voices apart in ${name}${of}`, percent: at(0.95) })
+      try {
+        const heard = words
+        const who = await time('telling voices apart', () => (tools.speakers as NonNullable<ClippingTools['speakers']>)(path, heard, () => undefined))
+        words = heard.map((w, i) => (who[i] === null || who[i] === undefined ? w : { ...w, speaker: who[i] as number }))
+        await writeKept(tools.cacheDir, path, { v: CACHE_VERSION, durationSec: meta.durationSec, words, sounds, loudness, frozen })
+        facts.words = withoutSoundNotes(words)
+        plan = planRecording(facts, ask, niche)
+      } catch (err) {
+        console.warn('[clipping] could not tell the voices apart in', name, message(err))
+      }
+    }
     read.push({ facts, plan, meta, cached })
     before += share
   }
@@ -708,7 +786,12 @@ export async function findClips(
   // wants, from the front first, best first; a moment filmed through the crowd only where there are not enough.
   const looked: { pick: Pick; subject: Subject | null; crowd: number }[] = []
   if (picks.length > 0 && tools.faces) progress({ stage: 'Looking at each moment', percent: 95 })
-  for (const p of picks) looked.push({ pick: p, ...(await time('watching', () => speakerIn(tools, p.path, p.startSec, p.endSec))) })
+  const wordsOf = new Map(read.map((r) => [r.facts.path, r.facts.words]))
+  for (const p of picks)
+    looked.push({
+      pick: p,
+      ...(await time('watching', () => speakerIn(tools, p.path, p.startSec, p.endSec, wordsOf.get(p.path) ?? [])))
+    })
   const chosen: typeof looked = []
   let throughCrowd = 0
   for (const r of read) {

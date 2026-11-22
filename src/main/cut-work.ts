@@ -1,4 +1,5 @@
 import { basename, extname, join } from 'path'
+import { suggestProfile } from '../shared/raw/profiles'
 import { platform } from './platform'
 import { thisComputer } from '../shared/platform'
 import { downloadModel, hasModel, transcribe, type WhisperModel } from './transcribe'
@@ -90,6 +91,11 @@ export interface WorkHost {
     durationSec: number,
     progress: (stage: string, percent: number) => void
   ) => Promise<{ service: string; transcript: Transcript } | { service: null; note: string | null }>
+  /**
+   * Who says each word (main/speakers), for a recording of a conversation; null where it can't say. Absent,
+   * nobody is told apart (a phone, for now).
+   */
+  speakers?: (path: string, words: Word[]) => Promise<(number | null)[]>
   /** Watching the speaker's mouth, with the Mac's face finder. */
   watch?: (input: {
     source: Source
@@ -723,6 +729,17 @@ export async function readFootage(
         ;({ source, words: clip } = w)
         if (w.map) maps[source.id] = w.map
         if (w.seen) watched.push({ name: basename(path), source, words: clip })
+      }
+      // A conversation's voices told apart (shared/speakers), so a cold open can go question to answer and the
+      // picture can follow whoever is talking.
+      if (host.speakers && clip.length > 0 && (mouth.niche === 'podcast' || suggestProfile(clip)?.profile.id === 'podcast')) {
+        step('Telling the voices apart', 99)
+        try {
+          const who = await host.speakers(path, clip)
+          clip = clip.map((w, i) => (who[i] === null || who[i] === undefined ? w : { ...w, speaker: who[i] as number }))
+        } catch (err) {
+          console.warn('[cut] could not tell the voices apart:', message(err))
+        }
       }
       words.push(...clip)
     } catch (err) {

@@ -1,4 +1,5 @@
 import { app, clipboard, dialog, ipcMain, type WebContents } from 'electron'
+import { downloadSpeakerModel, findSpeakers } from './speakers'
 import { anthropicKeyIn } from '../shared/keys'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
@@ -120,6 +121,10 @@ export const macWork: WorkHost = {
   fontsDir: () => FONTS_DIR(),
   hearInCloud: (path, durationSec, progress) => hearInCloud(path, durationSec, progress),
   watch: (input) => watchClip(input, detectFaces, FFMPEG_PATH),
+  speakers: async (path, words) => {
+    await downloadSpeakerModel()
+    return (await findSpeakers(FFMPEG_PATH, path, words)).words
+  },
   motion: (input) => renderCutMotion({ ...input, icons: loadIcons, logos: loadLogos }),
   // Scene effects, from the cut-outs this Mac makes with Vision (main/fx-ipc).
   fx: (input) => renderEditFx(input),

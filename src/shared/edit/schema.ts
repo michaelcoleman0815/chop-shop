@@ -191,7 +191,9 @@ export const BeatSchema = z.object({
   /** A J or L cut into this beat: its picture and its sound change at different moments. */
   splitEdit: SplitEditSchema.optional(),
   /** Sound effects on this beat's moment or on its words (edit/sfx). */
-  sfx: z.array(SfxSchema).max(12).optional()
+  sfx: z.array(SfxSchema).max(12).optional(),
+  /** One of the moments of a cold open: played first, ahead of the conversation it comes from (op cold-open). */
+  coldOpen: z.boolean().optional()
 })
 export type Beat = z.infer<typeof BeatSchema>
 
@@ -383,6 +385,13 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('look'), set: LookPatchSchema.nullable(), replace: z.boolean().optional() }),
   // A music bed, or changes to it; null takes it out.
   z.object({ op: z.literal('music'), set: MusicSchema.partial().nullable() }),
+  // A cold open: these moments, in this order, played first, ahead of the conversation they come from, with a white
+  // flash on every third cut and a dip to black into the conversation. Again, it replaces the cold open there was;
+  // with no bites, it takes the cold open out (edit/cold-open).
+  z.object({
+    op: z.literal('cold-open'),
+    bites: z.array(z.object({ from: wordId, to: wordId })).max(16)
+  }),
   // Another camera of a recording, lined up by offsetSec; of null takes the camera out of the edit.
   z.object({
     op: z.literal('sync'),
