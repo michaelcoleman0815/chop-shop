@@ -51,10 +51,9 @@ export interface SpeakerOrt {
 
 async function loadOrt(): Promise<SpeakerOrt> {
   try {
-    // A runtime dependency with a native binary, loaded only when it is first needed.
-    const name = 'onnxruntime-node'
-    const m = (await import(/* @vite-ignore */ name)) as { default?: unknown; InferenceSession?: unknown }
-    return (m.InferenceSession ? m : m.default) as unknown as SpeakerOrt
+    // A runtime dependency with a native binary, loaded only when it is first needed. Required, as the face
+    // finder requires it: its native binding loads from beside app.asar, and a require finds it from anywhere.
+    return require('onnxruntime-node') as SpeakerOrt
   } catch {
     throw new Error('Telling the speakers apart needs onnxruntime-node, which is missing from this build.')
   }
