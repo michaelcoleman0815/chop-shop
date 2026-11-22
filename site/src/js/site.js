@@ -103,9 +103,8 @@ if (getLinks.length) {
     if (also) also.hidden = false
   }
 
-  deviceOf().then(async (device) => {
-    document.documentElement.dataset.device = device
-    const release = device === 'iphone' || device === 'ipad' || device === 'android' ? null : await latestRelease()
+  /** The buttons and notes for a computer it runs on, from a release; false when this computer isn't one of those. */
+  const offer = (device, release) => {
     const exe = device === 'windows' ? fileFor(release, 'windows') : null
     if (exe) {
       // A Windows PC, and a release that has its installer.
@@ -116,7 +115,7 @@ if (getLinks.length) {
       getBoxes.forEach((box) =>
         setNote(box, `Version ${exe.version}, ${exe.mb} MB. For Windows 10 and 11, 64-bit.${winSigned ? '' : ' Windows may ask before it first opens: choose More info, then Run anyway.'}`)
       )
-      return
+      return true
     }
     if (device === 'mac' || device === 'intel-mac' || device === 'other') {
       const dmg = fileFor(release, 'mac')
@@ -128,8 +127,52 @@ if (getLinks.length) {
           ? 'This Mac looks like it has an Intel chip. Cutalong needs a Mac with Apple silicon (M1 or later), on macOS 14 or later.'
           : `${facts}For Macs with Apple silicon, on macOS 14 or later.`)
       )
-      return
+      return true
     }
+    return false
+  }
+
+  // A tab left open keeps the release it was opened with, so a release out since then would never reach it, and a
+  // visitor who comes back hours later downloads an old version. The page asks GitHub again when the tab is come
+  // back to, and before a download from a lookup more than five minutes old. When GitHub doesn't answer, the
+  // buttons keep what they have and the page doesn't ask again for another five minutes.
+  const STALE_MS = 5 * 60 * 1000
+  const LOOKUP_WAIT_MS = 4000
+  let lookedAt = 0
+  let asking = null
+  const stale = () => Date.now() - lookedAt >= STALE_MS
+  const freshen = (device) => {
+    if (!stale()) return Promise.resolve()
+    asking ??= latestRelease()
+      .then((release) => {
+        lookedAt = Date.now()
+        if (release) offer(device, release)
+      })
+      .finally(() => (asking = null))
+    return asking
+  }
+  const keepFresh = (device) => {
+    const check = () => document.visibilityState === 'visible' && freshen(device)
+    document.addEventListener('visibilitychange', check)
+    addEventListener('focus', check)
+    addEventListener('pageshow', (e) => e.persisted && check())
+    document.querySelectorAll('a[data-get], a[data-get-also]').forEach((a) =>
+      a.addEventListener('click', (e) => {
+        // A plain click on an old lookup waits for a fresh one, at most a few seconds, then downloads what it says.
+        if (!stale() || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        Promise.race([freshen(device), new Promise((done) => setTimeout(done, LOOKUP_WAIT_MS))]).then(() =>
+          location.assign(a.href)
+        )
+      })
+    )
+  }
+
+  deviceOf().then(async (device) => {
+    document.documentElement.dataset.device = device
+    const release = device === 'iphone' || device === 'ipad' || device === 'android' ? null : await latestRelease()
+    lookedAt = Date.now()
+    if (offer(device, release)) return keepFresh(device)
     const phone = device === 'iphone' || device === 'ipad' || device === 'android'
     getLinks.forEach((a) => {
       const long = a.dataset.get === 'long'
