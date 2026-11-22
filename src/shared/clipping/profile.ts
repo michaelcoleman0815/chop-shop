@@ -146,7 +146,7 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
         captions: { preset: 'sermon-word', wordsPerScreen: 1, position: 'middle', uppercase: true },
         zoom: 1.45,
         zoomAt: 0,
-        // 2819 Church's: dark, cold navy, nearly no colour.
+        // One word at a time in clean heavy capitals, as Rodney Howard-Browne's Shorts; dark, cold navy.
         look: { exposure: -0.55, contrast: 0.3, saturation: -0.65, temperature: -0.35, vignette: 0.7, sharpen: 0.25, grain: 0.14 }
       },
       {

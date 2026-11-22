@@ -188,8 +188,30 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     name: 'Sermon one word',
     style: {
       ...BASE,
-      // 2819 Church's Shorts: one word at a time, as said, in tall condensed capitals, big and white in the
-      // middle of the frame. No punctuation, nothing picked out.
+      // Rodney Howard-Browne's Shorts (the owner's reference): one word at a time, as said, in clean heavy
+      // capitals at the middle of the frame, white with a soft shadow, about 57 px tall on a 1080 × 1920 frame.
+      // No punctuation, nothing picked out.
+      wordsPerGroup: 1,
+      fontFamily: 'Inter ExtraBold',
+      fontSizePx: 96,
+      letterEm: 0.6,
+      plain: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'sermon-word-tall',
+    name: 'Sermon one word, tall',
+    style: {
+      ...BASE,
+      // 2819 Church's Shorts: one word at a time in tall condensed capitals, big and white in the middle.
       wordsPerGroup: 1,
       fontFamily: 'Bebas Neue',
       fontSizePx: 230,

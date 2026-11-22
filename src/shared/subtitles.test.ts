@@ -400,12 +400,14 @@ describe('landed lines', () => {
     expect(red.keyColor).toBe('#FF3B30')
   })
 
-  it('sets one word at a time in tall capitals, no punctuation', () => {
+  it('sets one word at a time in clean heavy capitals, no punctuation', () => {
     const word = captionStyleFor({ on: true, wordsPerScreen: 1, position: 'middle', preset: 'sermon-word', uppercase: true }, 1080)
     const cues = styleCues(words(['Just', 'be', 'a', 'good', 'believer.']), word)
     // Shown in capitals, so a sentence's own capital is let go with its punctuation.
     expect(cues.map((c) => c.words.map((w) => w.text))).toEqual([['just'], ['be'], ['a'], ['good'], ['believer']])
-    expect(word.fontFamily).toBe('Bebas Neue')
+    expect(word.fontFamily).toBe('Inter ExtraBold')
+    // The tall condensed version stays a look of its own.
+    expect(captionStyleFor({ on: true, wordsPerScreen: 1, position: 'middle', preset: 'sermon-word-tall', uppercase: true }, 1080).fontFamily).toBe('Bebas Neue')
     // A long word still fits between the margins.
     expect(fitFontPx(['GLORIFYING'], word, 1080)).toBe(word.fontSizePx)
   })

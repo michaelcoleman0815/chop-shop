@@ -146,6 +146,13 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       shared: 0.92
     },
     {
+      name: 'sermon one word tall, vertical',
+      spec: { preset: 'sermon-word-tall', position: 'middle', wordsPerScreen: 1, uppercase: true },
+      size: TALL,
+      words: ['Believer.'],
+      active: 0
+    },
+    {
       name: 'sermon one word, vertical',
       spec: { preset: 'sermon-word', position: 'middle', wordsPerScreen: 1, uppercase: true },
       size: TALL,

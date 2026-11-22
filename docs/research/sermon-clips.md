@@ -150,7 +150,7 @@ from the others in picture, captions, accent and frame:
 | Square | low-key and muted | three words beneath it in Inter, key words yellow (`sermon-box`); Claude's hook above it (banner `title`) | a square on black (`Cut.box`) |
 | Feature | dark warm brown, as Lecrae's | three words in Inter; the landed line big, its key words yellow on their own line (`sermon`) | full |
 | Hook card | the room as it looks, barely darkened, as The Life Church's | Claude's hook on a white card for four seconds (banner `card`), then lower-case words (`sermon-quiet`) | full |
-| One word | dark, cold navy, nearly no colour, as 2819 Church's | one word at a time in tall Bebas Neue capitals (`sermon-word`) | full |
+| One word | dark, cold navy, nearly no colour | one word at a time in clean heavy Inter capitals, about 57 px tall, at the middle, as Rodney Howard-Browne's Shorts (s4ZSnKLhnIk) set them (`sermon-word`); 2819 Church's tall Bebas Neue version is `sermon-word-tall` | full |
 | Red line | black and white, hard and grainy | as Feature, but the landed line in red, the only colour on screen (`sermon-red`) | full |
 | Portrait | dark and muted teal, as Elevation's | the sentence building in capitals, key words yellow (`sermon-build`) | a 4:5 picture on black |
 
