@@ -58,7 +58,7 @@ import {
   type Source,
   type Treatment
 } from '../../../../shared/edit'
-import { CREW, memberForNote } from '../crew'
+import { memberForNote } from '../crew'
 import { changedBeats, revisionOf } from '../revisions'
 import { toggleLabel, toggleOps } from '../word-track'
 import { WordTrack } from '../components/WordTrack'
@@ -94,8 +94,6 @@ import { boxStyle, GridPanels, gridViewFor } from '../components/GridPanels'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { RegionPicker } from '../components/RegionPicker'
 import { Subtitles } from '../components/Subtitles'
-import { CrewFace } from '../components/Crew'
-import { Sticker } from '../components/Shapes'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
@@ -1131,7 +1129,6 @@ function NotesPanel({
         {notes.length > 0 && (
           <ol className="cl-note-list">
             {notes.map((n, i) => {
-              const who = memberForNote(n.text)
               return (
                 <li key={n.id} className="cl-note">
                   <span className="cl-note-n">{i + 1}</span>
@@ -1139,11 +1136,6 @@ function NotesPanel({
                     {n.text}
                     <span className="cl-note-meta">
                       {(n.beat || n.range) && <span className="cl-project-meta">{where(n)}</span>}
-                      {/* The member the note is handed to, by what it asks for. */}
-                      <span className="cl-note-crew" title={`${CREW[who].name} will take this note`}>
-                        <CrewFace id={who} size={16} />
-                        {CREW[who].name}
-                      </span>
                     </span>
                   </span>
                   <button
@@ -1334,9 +1326,7 @@ function Revisions({ doc, onShow }: { doc: EditDoc; onShow: (n: number) => void 
               v{v.n}
             </button>
             {fresh && (
-              <Sticker shape="burst" colour="yellow" size={30} tilt={12} className="cl-rev-new">
-                new
-              </Sticker>
+              <span className="cl-rev-new">new</span>
             )}
           </span>
         )

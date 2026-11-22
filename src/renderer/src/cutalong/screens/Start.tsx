@@ -5,12 +5,13 @@ import { Composer } from '../components/Composer'
 import { Mark } from '../components/ui'
 import { when } from '../format'
 import type { Cutalong } from '../useCutalong'
+import { STILLS } from '../media'
 import { Header } from './Header'
 import { markOnboarded, onboarded } from '../firstRun'
 import { KeySetup } from './KeySetup'
 import { Onboarding } from './Onboarding'
 
-/** The presets, each shown doing what it does on a block of its own colour. */
+/** The presets, each shown doing what it does, on real footage and real words (the owner's own laptop review). */
 const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }[] = [
   {
     command: 'tighten',
@@ -18,7 +19,7 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
     tone: 'var(--block-blue)',
     pic: (
       <span className="cl-preset-pic">
-        <s>So, um, okay.</s> Grace looks like a <s>like a</s> kitchen table.
+        I was really hoping, <s>like, uh,</s> that would hold up.
       </span>
     )
   },
@@ -28,9 +29,9 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
     tone: 'var(--block-lavender)',
     pic: (
       <span className="cl-preset-pic frames">
-        <span />
-        <span />
-        <span />
+        <span style={{ '--pic': `url(${STILLS.talk1})` } as CSSProperties} />
+        <span style={{ '--pic': `url(${STILLS.talk3})` } as CSSProperties} />
+        <span style={{ '--pic': `url(${STILLS.talk2})` } as CSSProperties} />
       </span>
     )
   },
@@ -39,11 +40,11 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
     what: 'Words on screen, your style',
     tone: 'var(--block-yellow)',
     pic: (
-      <span className="cl-preset-pic caption">
+      <span className="cl-preset-pic caption" style={{ '--pic': `url(${STILLS.talk3})` } as CSSProperties}>
         <span>
-          Grace looks
+          Nine hundred
           <br />
-          <b>like a table</b>
+          <b>bucks</b>
         </span>
       </span>
     )
@@ -54,7 +55,7 @@ const PRESETS: { command: string; what: string; tone: string; pic: JSX.Element }
     tone: 'var(--block-salmon)',
     pic: (
       <span className="cl-preset-pic quote">
-        <small>Opens on</small>“Grace looks like a kitchen table.”
+        <small>Opens on</small>“It feels like a really expensive Chromebook.”
       </span>
     )
   }

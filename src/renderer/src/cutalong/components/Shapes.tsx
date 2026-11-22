@@ -1,20 +1,21 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
 import { bloom, shapePath, type Avatar, type ColourName, type ShapeName } from '../shapes'
 
 /**
- * Shapes with character, drawn from shapes.ts: a blob, a sticker with a word
- * or a number on it, a brand's avatar that morphs when its shape or colour is
- * picked, and the living mark that breathes while Cutalong works on something
- * big. Every one of them moves only by transform, opacity and filter.
+ * Marks drawn in code: a brand's colour as a plain dot, a brand's avatar as
+ * a circle with its initials, and two older pieces (a sticker, the living
+ * mark) kept for what still imports them. Since "quiet by default"
+ * (2026-11-21) a brand is no longer an organic shape: the shape it saved is
+ * kept in its data and simply not drawn.
  */
 
 export function Blob({
-  shape,
   colour,
   size,
   className = ''
 }: {
-  shape: ShapeName
+  /** Saved with the brand, no longer drawn: a brand is a dot of its colour. */
+  shape?: ShapeName
   colour: ColourName
   size: number
   className?: string
@@ -28,7 +29,7 @@ export function Blob({
       aria-hidden="true"
       style={{ '--bloom': bloom(colour) } as CSSProperties}
     >
-      <path d={shapePath(shape)} />
+      <circle cx="50" cy="50" r="46" />
     </svg>
   )
 }
@@ -66,65 +67,45 @@ export function Sticker({
   )
 }
 
-interface Layer extends Avatar {
-  key: number
-  leaving: boolean
-}
-
 /**
- * A brand's own avatar. When its shape or colour changes, the new one pops
- * in over the old, which softens and fades: a morph made of two pictures, so
- * it stays on the compositor. Changed again mid-way, it moves on from where
- * it is: the one popping in starts to leave from there, and the one already
- * leaving keeps fading rather than vanishing.
+ * A brand's own avatar: a circle in its colour with its initials, as a
+ * channel's mark is drawn anywhere else. A colour picked again simply takes
+ * the new colour, on the same short transition as any fill.
  */
 export function BrandAvatar({
   avatar,
   size,
+  name = '',
   className = ''
 }: {
   avatar: Avatar
   size: number
-  /** The brand's name, for when the avatar draws its initials; this one draws the shape alone. */
+  /** The brand's name, for its initials; none draws the plain circle. */
   name?: string
   className?: string
 }): JSX.Element {
-  const [layers, setLayers] = useState<Layer[]>(() => [{ ...avatar, key: 0, leaving: false }])
-  const timer = useRef<number | null>(null)
-
-  useEffect(() => {
-    setLayers((now) => {
-      const top = now[now.length - 1]
-      if (top.shape === avatar.shape && top.colour === avatar.colour) return now
-      // Picked again mid-morph: the shape still fading keeps fading under the two new layers.
-      const fading = now.slice(0, -1).filter((l) => l.leaving).slice(-1)
-      return [...fading, { ...top, leaving: true }, { ...avatar, key: top.key + 1, leaving: false }]
-    })
-  }, [avatar.shape, avatar.colour])
-
-  // The old picture goes once it has faded.
-  useEffect(() => {
-    if (layers.length < 2) return
-    if (timer.current) window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => setLayers((now) => now.filter((l) => !l.leaving)), 420)
-    return () => {
-      if (timer.current) window.clearTimeout(timer.current)
-    }
-  }, [layers])
-
+  const letters = initialsOf(name)
   return (
-    <span className={`cl-avatar-blob ${className}`} style={{ width: size, height: size }} aria-hidden="true">
-      {layers.map((l) => (
-        <Blob
-          key={l.key}
-          shape={l.shape}
-          colour={l.colour}
-          size={size}
-          className={l.leaving ? 'leaving' : l.key > 0 ? 'arriving' : ''}
-        />
-      ))}
+    <span
+      className={`cl-brand-avatar ${className}`}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.38), '--bloom': bloom(avatar.colour) } as CSSProperties}
+      aria-hidden="true"
+    >
+      {letters}
     </span>
   )
+}
+
+/** Up to two initials from a name: "Lighting at home" is "LH", "studio" is "S". */
+function initialsOf(name: string): string {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter((w) => /^\p{L}/u.test(w) && !/^(a|an|the|at|of|and|in|on|for|to)$/i.test(w))
+  return words
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('')
 }
 
 /**

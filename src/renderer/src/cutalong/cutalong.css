@@ -5264,6 +5264,148 @@ a.cl-btn {
   gap: var(--space-2);
 }
 
+/* ---------- Quiet by default (2026-11-21) ----------
+   Colour only where it means something: a version's revision colour, the
+   stage under footage, coral for the cut. Everything else is paper and
+   hairlines. No characters and no orb: the work is the picture. */
+
+/* Facts, presets, a brand's hero, an empty page, onboarding panels and clips: paper, not pastel blocks. */
+.cl-fact,
+.cl-empty-block,
+.cl-clip {
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cl-fact-label {
+  color: var(--ink-soft);
+}
+
+.cl-preset,
+.cl-brand-hero,
+.cl-onboard-block {
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-page);
+}
+
+/* What I've learned: each kind of work as a row on one sheet, no tile of a character. */
+.cl-callsheet > li {
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+}
+
+.cl-crew-who h2 {
+  font-size: 20px;
+  line-height: 26px;
+  letter-spacing: -0.02em;
+}
+
+/* Long work: a checklist of its steps, the one under way in ink, the ones done ticked. */
+.cl-msg-assistant:has(> .cl-msg-body > .cl-progress.big) > .cl-assistant-avatar {
+  visibility: visible;
+}
+
+.cl-steps-done {
+  list-style: none;
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-steps-done > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 15.5px;
+  line-height: 22px;
+  color: var(--ink-soft);
+}
+
+.cl-steps-done > li.now {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.cl-step-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--ok);
+}
+
+.cl-step-mark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cl-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+}
+
+/* A version made while you watched: "new" in small type beside its tab, not a sticker. */
+.cl-rev-new {
+  position: static;
+  align-self: center;
+  margin-left: var(--space-1);
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 18px;
+  font-weight: 650;
+}
+
+/* A brand is a dot of its colour; its avatar a circle with its initials (components/Shapes.tsx). */
+.cl-blob circle {
+  fill: var(--bloom);
+}
+
+.cl-brand-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--bloom);
+  color: var(--on-bloom);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  transition: background-color var(--duration-base) var(--ease-standard);
+}
+
+/* Settings' section marks: a line icon on the well, not a pastel tile. */
+.cl-set-tile {
+  background: var(--well);
+  color: var(--ink-soft);
+}
+
+/* The presets show real footage: three real frames for /shorts, a real frame under /captions' words. */
+.cl-preset-pic.frames span {
+  background: var(--stage) var(--pic) center 28% / cover;
+}
+
+.cl-preset-pic.caption {
+  background-color: var(--stage);
+  background-image: linear-gradient(180deg, oklch(12% 0.02 270 / 0.15), oklch(12% 0.02 270 / 0.62)), var(--pic);
+  background-size: cover;
+  background-position: center 32%;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 0.45);
+}
+
+/* Words sit at chest height, as captions do, so the face above them shows. */
+.cl-preset-pic.caption {
+  place-items: end center;
+  padding-bottom: 10px;
+  background-position: center 31%;
+}
+
 /* Cutalong writing a reply (Thread): three dots where the words will be, one reply line tall so nothing jumps. */
 .cl-typing-dots {
   display: inline-flex;

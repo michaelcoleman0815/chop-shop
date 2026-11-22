@@ -1,6 +1,5 @@
 import type { CSSProperties } from 'react'
 import { api, device } from '../api'
-import { Blob } from '../components/Shapes'
 import { Button } from '../components/ui'
 import { collapse } from '../motion'
 import { block } from '../shapes'
@@ -19,7 +18,7 @@ export function ProjectsPage({ app, onBrowse }: { app: Cutalong; onBrowse: () =>
         <div className="cl-page-inner wide">
           <div className="cl-row" style={{ justifyContent: 'space-between' }}>
             <h1 className="cl-page-title">
-              Your <span className="cl-accent">projects</span>
+              Your projects
             </h1>
             {/* A phone keeps its projects in the app: there is no file to open. */}
             {device.kind !== 'phone' && (
@@ -30,9 +29,8 @@ export function ProjectsPage({ app, onBrowse }: { app: Cutalong; onBrowse: () =>
           </div>
           {app.recent.length === 0 ? (
             <div className="cl-empty-block" style={{ '--block': block('blue') } as CSSProperties}>
-              <Blob shape="flower" colour="blue" size={64} className="cl-empty-shape" />
               <p className="cl-empty-title">
-                Nothing <span className="cl-accent">yet</span>
+                Nothing yet
               </p>
               <p className="cl-empty-line">Start a new edit and it shows up here.</p>
             </div>
@@ -61,7 +59,7 @@ export function PresetsPage({ app }: { app: Cutalong }): JSX.Element {
       <main className="cl-page">
         <div className="cl-page-inner">
           <h1 className="cl-page-title">
-            Your <span className="cl-accent">presets</span>
+            Your presets
           </h1>
           <p className="cl-lede">Type any of these after a slash, in the composer or in a note.</p>
           <PresetCards />

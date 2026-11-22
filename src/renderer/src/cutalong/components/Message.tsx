@@ -3,7 +3,6 @@ import { isImagePath } from '../../../../shared/assets'
 import type { ChatMessage } from '../../../../shared/types'
 import { mediaUrlFor, openingFrame } from '../api'
 import { isAudioFile } from '../format'
-import { Credits } from './Crew'
 import { Poster } from './Poster'
 import { factParts, MAX_FACTS, tileColours } from '../facts'
 import { block } from '../shapes'
@@ -217,7 +216,6 @@ export function AssistantMessage({
         )}
         {!msg.progress && msg.aside && <p className="cl-aside">{msg.aside}</p>}
         {/* Who did the work, then what it made: a clip set reads as what Reel found. */}
-        {!msg.progress && <Credits crew={msg.crew} />}
         {!msg.progress && children}
         {(msg.actions ?? []).some((a) => !!a.during === !!msg.progress) && (
           <div className="cl-actions">

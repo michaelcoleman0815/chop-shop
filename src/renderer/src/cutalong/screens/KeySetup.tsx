@@ -49,11 +49,11 @@ export function KeySetup({ app }: { app: Cutalong }): JSX.Element {
           </span>
           {canRunLocal ? (
             <h1 className="cl-title">
-              First, choose an <span className="cl-accent">AI</span>
+              First, choose an AI
             </h1>
           ) : (
             <h1 className="cl-title">
-              First, an Anthropic <span className="cl-accent">key</span>
+              First, an Anthropic key
             </h1>
           )}
           <p className="cl-setup-why">

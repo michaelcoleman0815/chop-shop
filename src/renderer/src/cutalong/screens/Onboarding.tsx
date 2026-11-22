@@ -173,7 +173,7 @@ function Account({ onNext }: { onNext: () => void }): JSX.Element {
     <div className="cl-onboard-body">
       <div className="cl-onboard-say">
         <h1 className="cl-welcome step">
-          Make your <span className="cl-accent" style={{ '--hl': 'var(--block-lavender)' } as CSSProperties}>account</span>.
+          Make your account.
         </h1>
         <p className="cl-onboard-lede">So your brands, presets and chats are there on your phone too. The cutting still happens on your Mac.</p>
         <div className="cl-signin">
@@ -237,11 +237,11 @@ function Key({ app, onNext }: { app: Cutalong; onNext: () => void }): JSX.Elemen
       <div className="cl-onboard-say">
         {canRunLocal ? (
           <h1 className="cl-welcome step">
-            First, choose an <span className="cl-accent" style={{ '--hl': 'var(--block-pink)' } as CSSProperties}>AI</span>.
+            First, choose an AI.
           </h1>
         ) : (
           <h1 className="cl-welcome step">
-            First, an Anthropic <span className="cl-accent" style={{ '--hl': 'var(--block-pink)' } as CSSProperties}>key</span>.
+            First, an Anthropic key.
           </h1>
         )}
         <p className="cl-onboard-lede">
@@ -292,7 +292,7 @@ function Channel({ app }: { app: Cutalong }): JSX.Element {
     <div className="cl-onboard-body">
       <div className="cl-onboard-say">
         <h1 className="cl-welcome step">
-          Who is this <span className="cl-accent" style={{ '--hl': 'var(--block-green)' } as CSSProperties}>for</span>?
+          Who is this for?
         </h1>
         <p className="cl-onboard-lede">
           One brand per channel. What you set here rides along on every edit: your look, your captions, the words you
@@ -313,7 +313,7 @@ function Channel({ app }: { app: Cutalong }): JSX.Element {
       <div className="cl-onboard-block" style={{ '--tone': block(avatar.colour) } as CSSProperties}>
         <span className="cl-kicker">How it shows up</span>
         <div className="cl-brand-preview">
-          <BrandAvatar avatar={avatar} size={84} />
+          <BrandAvatar avatar={avatar} size={84} name={name} />
           <div>
             <strong>{name.trim() || 'Your channel'}</strong>
             <span className="cl-onboard-note" style={{ color: 'var(--ink-soft)' }}>
@@ -346,7 +346,7 @@ function Teach({ app }: { app: Cutalong }): JSX.Element {
     <div className="cl-onboard-body one" style={{ maxWidth: 1180 }}>
       <div className="cl-onboard-say">
         <h1 className="cl-welcome step">
-          Show me what you’ve <span className="cl-accent" style={{ '--hl': 'var(--block-gold)' } as CSSProperties}>made</span>.
+          Show me what you’ve made.
         </h1>
         <p className="cl-onboard-lede">
           Up to three videos you’ve posted. I learn your pace, your captions and your look from them. You can skip
