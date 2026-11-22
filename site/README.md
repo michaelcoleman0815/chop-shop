@@ -62,7 +62,7 @@ The project is set up with:
 - **Root directory:** `site`
 - **Build command:** `npm run build` (Pages runs `npm install` first; there is nothing to install)
 - **Build output directory:** `dist`
-- **Production branch:** `main` (other branches build as previews)
+- **Production branch:** `claude/mcp-x1yvms` (other branches build as previews)
 
 `_headers` (security headers, long caching for hashed assets, and `noindex` on the `pages.dev` addresses) and
 `_redirects` (`/download`) are written into `dist/` by the build. Pages serves `404.html` for unknown addresses, and
@@ -164,7 +164,7 @@ copies saving at once never lose each other's changes. The Function makes its ta
 
 1. **Create the database.** In **D1** (under Storage & databases), create `cutalong-accounts` (or
    `npx wrangler@4.156.2 d1 create cutalong-accounts`), and bind it to the Pages project as `ACCOUNTS_DB`
-   (**Settings → Bindings → Add → D1 database**).
+   (**Settings → Bindings → Add → D1 database**). Done on 22 November 2026, for Production.
 2. **Make the vault key.** Run `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` and add
    the line it prints as an encrypted variable named `VAULT_KEY` (**Settings → Variables and Secrets → Add**, type
    **Secret**). Keep a copy somewhere safe: without it the stored vaults cannot be read, and a new key means everyone's
@@ -176,7 +176,7 @@ copies saving at once never lose each other's changes. The Function makes its ta
 4. **Limit guessing by sender too.** Under the domain's **Security → WAF → Rate limiting rules**, add one for requests
    whose path is `/api/account/verify` or `/api/account/code`: 20 requests a minute from one IP, then block for ten
    minutes. The Function already limits each email address; this limits each sender.
-5. **Redeploy**, as for the email list. The site deploys from `main`, so the Function goes live once it is merged there.
+5. **Redeploy**, as for the email list. The Function is live from the production branch's latest deployment.
 6. **Try it.** In Cutalong's Settings, open **Account**, type your address, and sign in with the code that arrives.
 
 Until then, signing in says “Accounts aren’t switched on yet” and keeps nothing. Name Resend and the account storage
