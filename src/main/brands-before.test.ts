@@ -128,7 +128,9 @@ function project0213(recording: string, path: string): object {
           ],
           removed: [],
           tighten: null,
-          captions: { on: true, wordsPerScreen: 3, position: 'bottom', preset: 'clean', uppercase: false },
+          // A look that picks the word being said out in a colour (0.2.13 had it too), so the brand's shows: the
+          // talking-head look picks it out by weight, white throughout, and keeps its own.
+          captions: { on: true, wordsPerScreen: 3, position: 'bottom', preset: 'punch', uppercase: false },
           aspect: 'original',
           loudness: -14
         }

@@ -40,10 +40,10 @@ export function exportedVersion(chat: ChatMessage[] | undefined): number | null 
   return newest
 }
 
-/** The project's status, or null while it has no edit yet. */
+/** The project's status, or null while it has no edit yet, or one with no version in it (a file cut short). */
 export function projectStatus(project: Pick<Project, 'edit' | 'chat'>): ProjectStatus | null {
   const doc = project.edit
-  if (!doc) return null
+  if (!doc?.versions?.length) return null
   const version = currentVersion(doc)
   let durationSec: number | null = null
   try {

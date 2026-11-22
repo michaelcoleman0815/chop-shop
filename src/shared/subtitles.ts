@@ -64,13 +64,20 @@ export function contrastOf(a: string, b: string): number {
  */
 function brandColorsFor(base: CaptionStyle, colors: { text: string; accent: string } | null): Partial<CaptionStyle> {
   if (!colors) return {}
-  if (base.boxColor && contrastOf(colors.text, base.boxColor) < 3) return {}
   // A look that marks the words leant on marks them in the brand's accent, unless the key colour is its own.
   const key = base.keyColor && !base.ownKey ? { keyColor: colors.accent } : {}
+  const picksByColour = base.activeColor.toLowerCase() !== base.textColor.toLowerCase()
+  if (base.boxColor) {
+    // On a plate the words have to be read: the brand's colours only where they stand out on it.
+    if (contrastOf(colors.text, base.boxColor) < 3) return key
+    const accent = picksByColour && contrastOf(colors.accent, base.boxColor) >= 3
+    return { textColor: colors.text, activeColor: accent ? colors.accent : colors.text, ...key }
+  }
   // A plain look keeps every word in the brand's text colour, rather than painting each one in the accent as
   // it is said.
   if (base.plain || base.steady) return { textColor: colors.text, activeColor: colors.text, ...key }
-  if (base.activeColor.toLowerCase() === base.textColor.toLowerCase()) return key
+  // One that picks the word out by weight or size, white throughout, keeps its own.
+  if (!picksByColour) return key
   return { textColor: colors.text, activeColor: colors.accent, ...key }
 }
 

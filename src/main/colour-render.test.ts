@@ -16,7 +16,7 @@ import {
   type EditDoc,
   type Source
 } from '../shared/edit'
-import { MOTION_FONTS } from '../shared/motion'
+import { fontInfo, MOTION_FONTS } from '../shared/motion'
 import { captionStyleFor, layoutSubtitle, subtitleCues, type TextMeasurer } from '../shared/subtitles'
 import { renderCut, type RenderSource } from './cut-render'
 import { captionMatrix } from './intake'
@@ -231,7 +231,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
       to: 'end',
       layers: [{ kind: 'shape', shape: { type: 'rect', w: 300, h: 200 }, fill: BRAND, transform: { x: 1560, y: 700 } }]
     }
-    // The marker captions: one word at a time on a lime block.
+    // The marker captions: dark words on a yellow block.
     const { doc, cut } = docWith([block, { op: 'captions', set: { on: true, preset: 'marker', position: 'top' } }])
     const logo = join(dir, 'logo.png')
     ffmpegRun(ffmpeg, [
@@ -255,7 +255,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
       h: 180
     })
     // The caption's block: its padding above the word, which no letter reaches.
-    const marker = { fontSizePx: Math.round((78 * W) / 1080), outlinePx: Math.round((12 * W) / 1080) }
+    const marker = { fontSizePx: Math.round((76 * W) / 1080), outlinePx: Math.round((14 * W) / 1080) }
     const lineTop = Math.round(H * 0.22) - marker.fontSizePx
     const caption = seen(ffmpeg, out, 1.5, {
       x: W / 2 - 20,
@@ -266,7 +266,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
     console.log('over', { graphic, logo: logoAt, caption })
     expect(off(graphic, hex(BRAND))).toBeLessThanOrEqual(3)
     expect(off(logoAt, hex(BRAND))).toBeLessThanOrEqual(3)
-    expect(off(caption, hex('#c8f04a'))).toBeLessThanOrEqual(4)
+    expect(off(caption, hex('#FFE14D'))).toBeLessThanOrEqual(4)
   }, 180_000)
 
   it('knows which matrix this ffmpeg colours captions with, so captions can skip RGB', async () => {
@@ -278,8 +278,8 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
   })
 
   it('burns a caption colour BT.601 cannot name in its exact colour too', async () => {
-    // Pure red words on the marker's lime plate. On 6.0 and 6.1 red has no stand-in, so the captions are
-    // burned in RGB; on 7.0 they go straight onto the picture.
+    // Pure red words on the marker's yellow plate (a brand's red reads on it). On 6.0 and 6.1 red has no
+    // stand-in, so the captions are burned in RGB; on 7.0 they go straight onto the picture.
     const said = wordsFromTranscript([{ text: 'IIII', startSec: 0.3, endSec: 2.6 }], 's1')
     const { doc, cut } = docWith(
       [{ op: 'captions', set: { on: true, preset: 'marker', position: 'top' } }],
@@ -296,10 +296,11 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
     const line = layoutSubtitle(cue, style, { width: W, height: H }, ctx).blocks[0].lines[0]
     const run = line.runs[0]
     ctx.font = run.font
-    const em = style.fontSizePx / 1.347
+    const face = fontInfo(style.fontFamily)
+    const em = style.fontSizePx / (face.winAscent + face.winDescent)
     const letter = seen(ffmpeg, out, 1.5, {
       x: Math.round(run.x + ctx.measureText('I').width / 2 - 4),
-      y: Math.round(line.baseline - 0.69 * em * 0.5 - 8),
+      y: Math.round(line.baseline - face.cap * em * 0.5 - 8),
       w: 8,
       h: 16
     })
@@ -311,7 +312,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
     })
     console.log('red caption', { letter, plate })
     expect(off(letter, hex('#FF0000'))).toBeLessThanOrEqual(4)
-    expect(off(plate, hex('#c8f04a'))).toBeLessThanOrEqual(4)
+    expect(off(plate, hex('#FFE14D'))).toBeLessThanOrEqual(4)
   }, 120_000)
 
   it('grades a look on the RGB the preview grades', async () => {

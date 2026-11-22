@@ -296,7 +296,8 @@ describe.skipIf(!FFMPEG)('exporting graphics', () => {
       }
       const doc = commit(
         createDoc({ id: 'm', title: 'Motion', source, words: words() }),
-        [{ op: 'aspect', aspect: shape }, centred],
+        // The graphic alone over the clip: no captions, which would cross the middle of a wide frame.
+        [{ op: 'aspect', aspect: shape }, { op: 'captions', set: { on: false } }, centred],
         'Square.'
       ).doc
       const out = await exportWith(doc, [{ ...source, hasAudio: true }], shape)
