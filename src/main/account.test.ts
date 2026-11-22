@@ -5,7 +5,7 @@ import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // The account's own server code, as Cloudflare runs it at cutalong.io (site/functions/api/account).
 // @ts-expect-error a plain JavaScript Function with no types
-import { onRequest } from '../../site/functions/api/account/[[path]].js'
+import { onRequest, SQL } from '../../site/functions/api/account/[[path]].js'
 import { accountStatus, requestCode, signOut, syncAccount, verifyCode } from './account'
 import { readBrands, saveBrands } from './brand-store'
 import { setPlatform, type Platform, type PlatformSecrets } from './platform'
@@ -18,13 +18,93 @@ import { BUILT_IN_PRESETS } from '../shared/presets'
  * code, with its storage and its email in memory: what the owner types into one is in the other.
  */
 
-const kv = new Map<string, string>()
+/**
+ * D1 as the account's server uses it, statement by statement (site/functions/api/account, SQL), in memory: the app's
+ * tests run on Node 20, which has no SQLite of its own. The server's own tests run its statements on SQLite itself.
+ */
+function memoryD1() {
+  type Row = Record<string, unknown>
+  const codes = new Map<string, { hash: string; tries: number; expires: number }>()
+  const sent = new Map<string, { hour_count: number; hour_from: number; day_count: number; day_from: number }>()
+  const sessions = new Map<string, { email: string; expires: number }>()
+  const vaults = new Map<string, { iv: string; data: string; updated_at: string }>()
+  const exec = (sql: string, a: any[]): { row: Row | null; changes: number } => {
+    switch (sql) {
+      case SQL.countSent: {
+        const [email, now, hourAgo, dayAgo] = a
+        const r = sent.get(email)
+        const next = r
+          ? {
+              hour_count: r.hour_from < hourAgo ? 1 : r.hour_count + 1,
+              hour_from: r.hour_from < hourAgo ? now : r.hour_from,
+              day_count: r.day_from < dayAgo ? 1 : r.day_count + 1,
+              day_from: r.day_from < dayAgo ? now : r.day_from
+            }
+          : { hour_count: 1, hour_from: now, day_count: 1, day_from: now }
+        sent.set(email, next)
+        return { row: next, changes: 1 }
+      }
+      case SQL.putCode:
+        codes.set(a[0], { hash: a[1], tries: 0, expires: a[2] })
+        return { row: null, changes: 1 }
+      case SQL.useTry: {
+        const c = codes.get(a[0])
+        if (!c || c.tries >= a[1] || c.expires <= a[2]) return { row: null, changes: 0 }
+        c.tries++
+        return { row: { hash: c.hash }, changes: 1 }
+      }
+      case SQL.codeState: {
+        const c = codes.get(a[0])
+        return { row: c ? { tries: c.tries, expires: c.expires } : null, changes: 0 }
+      }
+      case SQL.takeCode:
+        return codes.get(a[0])?.hash === a[1] && codes.delete(a[0]) ? { row: null, changes: 1 } : { row: null, changes: 0 }
+      case SQL.dropCode:
+        return { row: null, changes: codes.delete(a[0]) ? 1 : 0 }
+      case SQL.putSession:
+        sessions.set(a[0], { email: a[1], expires: a[2] })
+        return { row: null, changes: 1 }
+      case SQL.session: {
+        const x = sessions.get(a[0])
+        return { row: x && x.expires > a[1] ? { email: x.email } : null, changes: 0 }
+      }
+      case SQL.dropSession:
+        return { row: null, changes: sessions.delete(a[0]) ? 1 : 0 }
+      case SQL.vault:
+        return { row: vaults.get(a[0]) ?? null, changes: 0 }
+      case SQL.firstVault:
+        if (vaults.has(a[0])) return { row: null, changes: 0 }
+        vaults.set(a[0], { iv: a[1], data: a[2], updated_at: a[3] })
+        return { row: null, changes: 1 }
+      case SQL.nextVault:
+        if (vaults.get(a[0])?.updated_at !== a[4]) return { row: null, changes: 0 }
+        vaults.set(a[0], { iv: a[1], data: a[2], updated_at: a[3] })
+        return { row: null, changes: 1 }
+      default:
+        if ((SQL.schema as string[]).includes(sql)) return { row: null, changes: 0 }
+        throw new Error(`A statement the account does not run: ${sql}`)
+    }
+  }
+  const prepare = (sql: string) => {
+    let args: unknown[] = []
+    const bound = {
+      bind: (...a: unknown[]) => {
+        args = a
+        return bound
+      },
+      first: async () => exec(sql, args).row,
+      run: async () => ({ success: true, meta: { changes: exec(sql, args).changes } })
+    }
+    return bound
+  }
+  return { prepare, batch: async (list: { run: () => Promise<unknown> }[]) => Promise.all(list.map((x) => x.run())), sessions }
+}
+
+let db = memoryD1()
 const mails: { to: string[]; subject: string }[] = []
 const env = {
-  ACCOUNTS: {
-    get: async (k: string, type?: string) => (kv.has(k) ? (type === 'json' ? JSON.parse(kv.get(k)!) : kv.get(k)) : null),
-    put: async (k: string, v: string) => void kv.set(k, v),
-    delete: async (k: string) => void kv.delete(k)
+  get ACCOUNTS_DB() {
+    return db
   },
   RESEND_API_KEY: 're_test',
   VAULT_KEY: Buffer.alloc(32, 3).toString('base64')
@@ -82,7 +162,7 @@ function copy(): Copy {
 async function signIn(c: Copy, email = 'pastor@lifechurch.example'): Promise<void> {
   setPlatform(c.host)
   expect(await requestCode(email)).toEqual({ ok: true })
-  const code = /\b(\d{6})\b/.exec(mails[mails.length - 1].subject)![1]
+  const code = /\b(\d{8})\b/.exec(mails[mails.length - 1].subject)![1]
   const r = await verifyCode(email, code)
   expect(r.ok).toBe(true)
 }
@@ -90,7 +170,7 @@ async function signIn(c: Copy, email = 'pastor@lifechurch.example'): Promise<voi
 const preset = (command: string) => ({ ...BUILT_IN_PRESETS[0], command, title: `Mine ${command}`, builtIn: false })
 
 beforeEach(() => {
-  kv.clear()
+  db = memoryD1()
   mails.length = 0
   // The server sends its emails with the Worker's own fetch.
   vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => network(input, init))
@@ -166,7 +246,7 @@ describe('an account', () => {
     expect((await signOut()).email).toBe(null)
     expect(await mac.secrets.get('anthropic')).toBe('sk-ant-api03-mac')
     expect(await mac.secrets.get('account')).toBe(null)
-    expect([...kv.keys()].some((k) => k.startsWith('session:'))).toBe(false)
+    expect(db.sessions.size).toBe(0)
   })
 
   it('says so when the code is wrong, or the address is not one', async () => {
@@ -174,7 +254,7 @@ describe('an account', () => {
     setPlatform(mac.host)
     expect(await requestCode('nope')).toMatchObject({ ok: false })
     await requestCode('a@b.co')
-    expect(await verifyCode('a@b.co', '000000')).toEqual({ ok: false, message: 'That code isn’t the one I sent. Check the email and try again.' })
+    expect(await verifyCode('a@b.co', '00000000')).toEqual({ ok: false, message: 'That code isn’t the one I sent. Check the email and try again.' })
     expect(await fs.readFile(join(mac.dir, 'account.json'), 'utf8').catch(() => null)).toBe(null)
   })
 })

@@ -108,7 +108,7 @@ export function SignIn({ onStatus }: { onStatus: (s: AccountStatus) => void }): 
         title="Your account"
         desc={
           sent
-            ? `I sent a six-digit code to ${sent}. It works for ten minutes.`
+            ? `I sent an eight-digit code to ${sent}. It works for ten minutes.`
             : 'Sign in, and your keys, settings, brands and presets follow you to every copy of Cutalong: a Mac, a PC, your phone. Your footage stays where it is.'
         }
         find="account sign in sync email login"
@@ -120,14 +120,14 @@ export function SignIn({ onStatus }: { onStatus: (s: AccountStatus) => void }): 
                 id="set-account-code"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                placeholder="123456"
+                placeholder="12345678"
                 value={code}
-                maxLength={6}
+                maxLength={8}
                 aria-invalid={problem ? true : undefined}
                 aria-describedby="set-account-line"
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && code.length === 6) void verify()
+                  if (e.key === 'Enter' && code.length === 8) void verify()
                 }}
               />
             ) : (
@@ -146,7 +146,7 @@ export function SignIn({ onStatus }: { onStatus: (s: AccountStatus) => void }): 
               />
             )}
             {sent ? (
-              <Button variant="primary" small disabled={busy || code.length !== 6} onClick={() => void verify()}>
+              <Button variant="primary" small disabled={busy || code.length !== 8} onClick={() => void verify()}>
                 {busy ? 'Signing in' : 'Sign in'}
               </Button>
             ) : (

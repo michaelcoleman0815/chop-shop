@@ -1,7 +1,7 @@
 // /api/account/*: Cutalong accounts. Sign in with an emailed code, and the app keeps its keys, settings, brands
 // and presets here, so every copy (the Mac, Windows, the phone) has them without typing them in again.
 //
-//   POST /api/account/code     { email }            emails a six-digit code, good for ten minutes
+//   POST /api/account/code     { email }            emails an eight-digit code, good for ten minutes
 //   POST /api/account/verify   { email, code }      a session token for the app, good for a year
 //   GET  /api/account/vault    Bearer token         the account's vault, or null before the first sync
 //   PUT  /api/account/vault    Bearer token         { vault, base }: saved when base is the time it was read at;
@@ -10,7 +10,10 @@
 //
 // Cloudflare Pages runs this file as a Function, beside functions/api/signup.js. It needs, in the Pages project's
 // settings (README.md, "Accounts"):
-//   ACCOUNTS        a Workers KV namespace: codes, sessions and vaults
+//   ACCOUNTS_DB     a D1 database: codes, sessions and vaults, in the tables SQL.schema makes on first use. A
+//                   database, not KV: a try at a code is counted in the same statement that reads it, so no number
+//                   of guesses sent at once gets past the limit, and a vault is saved only if no other copy saved
+//                   since it was read
 //   RESEND_API_KEY  a Resend key, for the emails with the codes, from a domain verified there
 //   VAULT_KEY       32 random bytes, base64: vaults are kept encrypted with it (AES-GCM), so the stored copy
 //                   reads as nothing without it
@@ -27,7 +30,60 @@ const CODE_SEC = 600
 const SESSION_SEC = 365 * 86400
 const MAX_TRIES = 5
 const CODES_PER_HOUR = 5
+const CODES_PER_DAY = 20
+const CODE_DIGITS = 8
 const MAX_BODY = 512 * 1024
+
+// Every statement the account runs, in one place: D1's SQLite. Times are milliseconds since 1970, but a vault's
+// updated_at, which is an ISO time the app sends back as the base of its next save.
+export const SQL = {
+  schema: [
+    'CREATE TABLE IF NOT EXISTS codes (email TEXT PRIMARY KEY, hash TEXT NOT NULL, tries INTEGER NOT NULL, expires INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS sent (email TEXT PRIMARY KEY, hour_count INTEGER NOT NULL, hour_from INTEGER NOT NULL, day_count INTEGER NOT NULL, day_from INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, email TEXT NOT NULL, expires INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS vaults (email TEXT PRIMARY KEY, iv TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL)'
+  ],
+  // A code sent, counted this hour and this day in one statement: ?1 email, ?2 now, ?3 an hour ago, ?4 a day ago.
+  countSent:
+    'INSERT INTO sent (email, hour_count, hour_from, day_count, day_from) VALUES (?1, 1, ?2, 1, ?2) ' +
+    'ON CONFLICT(email) DO UPDATE SET ' +
+    'hour_count = CASE WHEN sent.hour_from < ?3 THEN 1 ELSE sent.hour_count + 1 END, ' +
+    'hour_from = CASE WHEN sent.hour_from < ?3 THEN ?2 ELSE sent.hour_from END, ' +
+    'day_count = CASE WHEN sent.day_from < ?4 THEN 1 ELSE sent.day_count + 1 END, ' +
+    'day_from = CASE WHEN sent.day_from < ?4 THEN ?2 ELSE sent.day_from END ' +
+    'RETURNING hour_count, day_count',
+  putCode:
+    'INSERT INTO codes (email, hash, tries, expires) VALUES (?1, ?2, 0, ?3) ' +
+    'ON CONFLICT(email) DO UPDATE SET hash = ?2, tries = 0, expires = ?3',
+  // One try used up, in the same statement that hands back the code to compare: ?1 email, ?2 the limit, ?3 now.
+  useTry: 'UPDATE codes SET tries = tries + 1 WHERE email = ?1 AND tries < ?2 AND expires > ?3 RETURNING hash',
+  codeState: 'SELECT tries, expires FROM codes WHERE email = ?1',
+  // The code used once: only the request that deletes it signs in.
+  takeCode: 'DELETE FROM codes WHERE email = ?1 AND hash = ?2',
+  dropCode: 'DELETE FROM codes WHERE email = ?1',
+  putSession: 'INSERT INTO sessions (hash, email, expires) VALUES (?1, ?2, ?3)',
+  session: 'SELECT email FROM sessions WHERE hash = ?1 AND expires > ?2',
+  dropSession: 'DELETE FROM sessions WHERE hash = ?1',
+  vault: 'SELECT iv, data, updated_at FROM vaults WHERE email = ?1',
+  // A first vault, only where there is none; then a save only over the one it was merged with.
+  firstVault: 'INSERT INTO vaults (email, iv, data, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(email) DO NOTHING',
+  nextVault: 'UPDATE vaults SET iv = ?2, data = ?3, updated_at = ?4 WHERE email = ?1 AND updated_at = ?5'
+}
+
+const made = new WeakMap()
+/** The tables, made once for each database the Function is handed. */
+function tables(db) {
+  if (!made.has(db)) {
+    made.set(
+      db,
+      db.batch(SQL.schema.map((q) => db.prepare(q))).catch((err) => {
+        made.delete(db)
+        throw err
+      })
+    )
+  }
+  return made.get(db)
+}
 
 const APP_ORIGINS = ['capacitor://localhost', 'https://localhost', 'http://localhost', `https://${config.domain}`]
 
@@ -75,8 +131,11 @@ export async function onRequest({ request, env = {}, params = {} }) {
   const fail = (reason, extra = {}) => reply(SAY[reason][0], { ok: false, reason, message: SAY[reason][1], ...extra })
 
   const path = (Array.isArray(params.path) ? params.path : [params.path].filter(Boolean)).join('/')
-  const kv = env.ACCOUNTS
-  if (!kv || !env.VAULT_KEY) return fail('not-connected')
+  const db = env.ACCOUNTS_DB
+  if (!db || !env.VAULT_KEY) return fail('not-connected')
+  await tables(db)
+  const now = Date.now()
+  const q = (sql, ...args) => db.prepare(sql).bind(...args)
 
   let body = null
   if (request.method === 'POST' || request.method === 'PUT') {
@@ -95,15 +154,10 @@ export async function onRequest({ request, env = {}, params = {} }) {
     if (!env.RESEND_API_KEY) return fail('not-connected')
     const email = address(body.email)
     if (!email) return fail('invalid')
-    const rateKey = `rate:${email}`
-    const sent = Number((await kv.get(rateKey)) || 0)
-    if (sent >= CODES_PER_HOUR) return fail('too-many')
-    await kv.put(rateKey, String(sent + 1), { expirationTtl: 3600 })
-    const code = sixDigits()
-    const expires = Date.now() + CODE_SEC * 1000
-    await kv.put(`code:${email}`, JSON.stringify({ hash: await sha256(`${email}:${code}`), tries: 0, expires }), {
-      expirationTtl: CODE_SEC
-    })
+    const sent = await q(SQL.countSent, email, now, now - 3600_000, now - 86_400_000).first()
+    if (sent.hour_count > CODES_PER_HOUR || sent.day_count > CODES_PER_DAY) return fail('too-many')
+    const code = digits(CODE_DIGITS)
+    await q(SQL.putCode, email, await sha256(`${email}:${code}`), now + CODE_SEC * 1000).run()
     const mailed = await sendCode(env, email, code)
     if (!mailed) return fail('not-sent')
     return reply(200, { ok: true })
@@ -114,61 +168,53 @@ export async function onRequest({ request, env = {}, params = {} }) {
     const email = address(body.email)
     if (!email) return fail('invalid')
     const said = String(body.code ?? '').replace(/\D/g, '')
-    const key = `code:${email}`
-    const kept = await kv.get(key, 'json')
-    if (!kept || kept.expires < Date.now()) return fail('expired')
-    if (kept.tries >= MAX_TRIES) {
-      await kv.delete(key)
+    // The try is used up before the code is compared, in one statement: guesses sent all at once each take one.
+    const kept = await q(SQL.useTry, email, MAX_TRIES, now).first()
+    if (!kept) {
+      const state = await q(SQL.codeState, email).first()
+      if (!state || state.expires <= now) return fail('expired')
+      await q(SQL.dropCode, email).run()
       return fail('too-many-tries')
     }
-    if ((await sha256(`${email}:${said}`)) !== kept.hash) {
-      const left = Math.max(60, Math.ceil((kept.expires - Date.now()) / 1000))
-      await kv.put(key, JSON.stringify({ ...kept, tries: kept.tries + 1 }), { expirationTtl: left })
-      return fail('wrong')
-    }
-    await kv.delete(key)
+    if ((await sha256(`${email}:${said}`)) !== kept.hash) return fail('wrong')
+    const taken = await q(SQL.takeCode, email, kept.hash).run()
+    if (!taken.meta || taken.meta.changes !== 1) return fail('expired')
     const token = randomToken()
-    await kv.put(`session:${await sha256(token)}`, JSON.stringify({ email, created: new Date().toISOString() }), {
-      expirationTtl: SESSION_SEC
-    })
+    await q(SQL.putSession, await sha256(token), email, now + SESSION_SEC * 1000).run()
     return reply(200, { ok: true, token, email })
   }
 
   // Everything else is the signed-in account's.
   const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('Authorization') || '')
-  const sessionKey = bearer ? `session:${await sha256(bearer[1])}` : null
-  const session = sessionKey ? await kv.get(sessionKey, 'json') : null
+  const sessionHash = bearer ? await sha256(bearer[1]) : null
+  const session = sessionHash ? await q(SQL.session, sessionHash, now).first() : null
   if (!session) return fail('signed-out')
 
   if (path === 'signout') {
     if (request.method !== 'POST') return fail('method')
-    await kv.delete(sessionKey)
+    await q(SQL.dropSession, sessionHash).run()
     return reply(200, { ok: true })
   }
 
   if (path === 'vault') {
-    const vaultKey = `vault:${session.email}`
-    const kept = await kv.get(vaultKey, 'json')
-    if (request.method === 'GET') {
-      if (!kept) return reply(200, { ok: true, email: session.email, vault: null, updatedAt: null })
-      return reply(200, { ok: true, email: session.email, vault: await open(env, kept), updatedAt: kept.updatedAt })
+    const read = async () => {
+      const kept = await q(SQL.vault, session.email).first()
+      return kept ? { vault: await open(env, kept), updatedAt: kept.updated_at } : { vault: null, updatedAt: null }
     }
+    if (request.method === 'GET') return reply(200, { ok: true, email: session.email, ...(await read()) })
     if (request.method !== 'PUT') return fail('method')
-    const base = body.base ?? null
-    if ((kept?.updatedAt ?? null) !== base) {
-      // Another copy saved since this one read: it merges the newer vault and sends again.
-      return reply(409, {
-        ok: false,
-        reason: 'conflict',
-        vault: kept ? await open(env, kept) : null,
-        updatedAt: kept?.updatedAt ?? null
-      })
-    }
     if (!body.vault || typeof body.vault !== 'object') return fail('not-json')
-    let updatedAt = new Date().toISOString()
-    if (kept && updatedAt <= kept.updatedAt) updatedAt = new Date(Date.parse(kept.updatedAt) + 1).toISOString()
-    await kv.put(vaultKey, JSON.stringify({ ...(await seal(env, body.vault)), updatedAt }))
-    return reply(200, { ok: true, updatedAt })
+    const base = typeof body.base === 'string' ? body.base : null
+    // Later than the base it was merged with, so every save reads as newer than the one before.
+    let updatedAt = new Date(now).toISOString()
+    if (base && updatedAt <= base) updatedAt = new Date(Date.parse(base) + 1).toISOString()
+    const sealed = await seal(env, body.vault)
+    const saved = base
+      ? await q(SQL.nextVault, session.email, sealed.iv, sealed.data, updatedAt, base).run()
+      : await q(SQL.firstVault, session.email, sealed.iv, sealed.data, updatedAt).run()
+    if (saved.meta && saved.meta.changes === 1) return reply(200, { ok: true, updatedAt })
+    // Another copy saved since this one read: it merges the newer vault and sends again.
+    return reply(409, { ok: false, reason: 'conflict', ...(await read()) })
   }
 
   return fail('not-found')
@@ -179,10 +225,16 @@ function address(given) {
   return email.length <= 254 && ADDRESS.test(email) ? email : null
 }
 
-function sixDigits() {
-  const n = new Uint32Array(1)
-  crypto.getRandomValues(n)
-  return String(n[0] % 1_000_000).padStart(6, '0')
+/** A code of n digits, from the system's random numbers, each digit as likely as any other. */
+function digits(n) {
+  let out = ''
+  const byte = new Uint8Array(1)
+  while (out.length < n) {
+    crypto.getRandomValues(byte)
+    // 250 and up would make 0 to 5 likelier than 6 to 9.
+    if (byte[0] < 250) out += String(byte[0] % 10)
+  }
+  return out
 }
 
 function randomToken() {
@@ -241,7 +293,7 @@ async function open(env, kept) {
 
 async function sendCode(env, email, code) {
   const from = env.MAIL_FROM || `Cutalong <sign-in@${config.domain}>`
-  const text = `Your Cutalong code is ${code}.\n\nType it into Cutalong to sign in. It works for ten minutes.\n\nIf you didn’t ask for it, you can ignore this email.`
+  const text = `Your Cutalong code is ${code}.\n\nType it into Cutalong to sign in. It works for ten minutes.\n\nIf you didn’t ask for it, you can ignore this email: nobody can sign in without it.`
   const html = `<p>Your Cutalong code is</p><p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p><p>Type it into Cutalong to sign in. It works for ten minutes.</p><p style="color:#777">If you didn’t ask for it, you can ignore this email.</p>`
   try {
     const res = await fetch('https://api.resend.com/emails', {

@@ -1279,7 +1279,7 @@ export function createMockApi(): CutalongApi {
     clearApiKey: async () => {
       key = null
     },
-    // The account, standing in: any address takes the code 123456, and a sync takes a moment.
+    // The account, standing in: any address takes the code 12345678, and a sync takes a moment.
     accountStatus: async () => account,
     accountRequestCode: async (email) => {
       await sleep(500)
@@ -1287,7 +1287,7 @@ export function createMockApi(): CutalongApi {
     },
     accountVerify: async (email, code) => {
       await sleep(600)
-      if (code !== '123456') return { ok: false as const, message: 'That code isn’t the one I sent. Check the email and try again.' }
+      if (code !== '12345678') return { ok: false as const, message: 'That code isn’t the one I sent. Check the email and try again.' }
       account = { email: accountEmail(email), syncedAt: new Date().toISOString(), problem: null }
       // As a real account would, it brings the key typed in on another device.
       key ??= 'sk-ant-api03-from-your-account'

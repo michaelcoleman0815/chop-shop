@@ -148,18 +148,23 @@ the Privacy draft first.
 
 ## Accounts
 
-The app signs in at `/api/account` (`functions/api/account/[[path]].js`) with a six-digit code emailed to the address,
-no password, and keeps each account's keys, settings, brands and presets there, so every copy of Cutalong signed in to
-it (the Mac, Windows, the phone) has them without typing them in again. The app's side is `src/main/account.ts`.
-Codes and session tokens are kept only as SHA-256 hashes; each account's vault is encrypted with `VAULT_KEY` (AES-GCM)
-before it is stored, so the stored copy reads as nothing without it. A code works for ten minutes and five tries, an
-address gets five codes an hour, and a session lasts a year or until the app signs out.
+The app signs in at `/api/account` (`functions/api/account/[[path]].js`) with an eight-digit code emailed to the
+address, no password, and keeps each account's keys, settings, brands and presets there, so every copy of Cutalong
+signed in to it (the Mac, Windows, the phone) has them without typing them in again. The app's side is
+`src/main/account.ts`. Codes and session tokens are kept only as SHA-256 hashes; each account's vault is encrypted
+with `VAULT_KEY` (AES-GCM) before it is stored, so the stored copy reads as nothing without it. A code works for ten
+minutes and five tries, used once; an address gets five codes an hour and twenty a day; a session lasts a year or
+until the app signs out.
+
+The store is a D1 database, not KV: a try at a code is counted in the same statement that reads the code, so no
+number of guesses sent at once gets more than five, and a vault is only saved over the one the app merged with, so two
+copies saving at once never lose each other's changes. The Function makes its tables on first use (`SQL.schema`).
 
 ### Switch them on, once
 
-1. **Create the namespace.** In **Workers KV**, create `cutalong-accounts` (or
-   `npx wrangler@4.156.2 kv namespace create cutalong-accounts`), and bind it to the Pages project as `ACCOUNTS`
-   (**Settings → Bindings → Add → KV namespace**), as for the email list above.
+1. **Create the database.** In **D1** (under Storage & databases), create `cutalong-accounts` (or
+   `npx wrangler@4.156.2 d1 create cutalong-accounts`), and bind it to the Pages project as `ACCOUNTS_DB`
+   (**Settings → Bindings → Add → D1 database**).
 2. **Make the vault key.** Run `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` and add
    the line it prints as an encrypted variable named `VAULT_KEY` (**Settings → Variables and Secrets → Add**, type
    **Secret**). Keep a copy somewhere safe: without it the stored vaults cannot be read, and a new key means everyone's
@@ -168,11 +173,17 @@ address gets five codes an hour, and a session lasts a year or until the app sig
    records it lists to the domain's DNS on Cloudflare, then create an API key with sending access and add it as a
    Secret named `RESEND_API_KEY`. The codes come from `Cutalong <sign-in@cutalong.io>`; a Secret named `MAIL_FROM`
    sends them from another address on a verified domain.
-4. **Redeploy**, as for the email list.
-5. **Try it.** In Cutalong's Settings, open **Account**, type your address, and sign in with the code that arrives.
+4. **Limit guessing by sender too.** Under the domain's **Security → WAF → Rate limiting rules**, add one for requests
+   whose path is `/api/account/verify` or `/api/account/code`: 20 requests a minute from one IP, then block for ten
+   minutes. The Function already limits each email address; this limits each sender.
+5. **Redeploy**, as for the email list. The site deploys from `main`, so the Function goes live once it is merged there.
+6. **Try it.** In Cutalong's Settings, open **Account**, type your address, and sign in with the code that arrives.
 
 Until then, signing in says “Accounts aren’t switched on yet” and keeps nothing. Name Resend and the account storage
 in the Privacy draft before anyone else signs in.
+
+The Function's tests run its statements on SQLite itself, so they need Node 22 or later
+(`node --test tests/account.test.mjs`).
 
 ## Real visuals
 
