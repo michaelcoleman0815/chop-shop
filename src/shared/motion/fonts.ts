@@ -132,6 +132,59 @@ export const MOTION_FONTS: MotionFont[] = [
     winDescent: 0.35,
     label: 'Bebas Neue, tall condensed capitals'
   },
+  // The faces of the owner's six reference reels (docs/research/sermon-clips.md, "The owner's six reels,
+  // 22 November"), each SIL Open Font License 1.1 with its licence beside it in resources/fonts. Metrics read
+  // from the files.
+  {
+    // Rodrigo Fuenzalida's Instrument Serif: a condensed display serif, set in capitals as one stage reel sets
+    // its words, small and white at the middle of the frame.
+    family: 'Instrument Serif',
+    file: 'InstrumentSerif-Regular.ttf',
+    weights: [400, 400],
+    cap: 0.72,
+    ascent: 0.99,
+    descent: 0.31,
+    winAscent: 0.99,
+    winDescent: 0.31,
+    label: 'Instrument Serif, a condensed display serif'
+  },
+  {
+    // Its italic, by the name its file gives it whole: the whispered one-word captions, and the key words the
+    // editorial look swaps in.
+    family: 'Instrument Serif Italic',
+    file: 'InstrumentSerif-Italic.ttf',
+    weights: [400, 400],
+    cap: 0.72,
+    ascent: 0.99,
+    descent: 0.31,
+    winAscent: 0.99,
+    winDescent: 0.31,
+    label: 'Instrument Serif Italic, an editorial italic'
+  },
+  {
+    // Instrument Sans at Bold, a static instance: tightly set grotesque capitals and the editorial lines.
+    family: 'Instrument Sans Bold',
+    file: 'InstrumentSans-Bold.ttf',
+    weights: [400, 400],
+    cap: 0.72,
+    ascent: 0.97,
+    descent: 0.25,
+    winAscent: 0.986,
+    winDescent: 0.35,
+    label: 'Instrument Sans Bold, a tight grotesque'
+  },
+  {
+    // Archivo at width 125 and weight 900, a static instance: very wide, very heavy capitals.
+    family: 'Archivo Expanded Black',
+    file: 'ArchivoExpanded-Black.ttf',
+    weights: [400, 400],
+    cap: 0.686,
+    ascent: 0.878,
+    descent: 0.21,
+    winAscent: 1.1,
+    winDescent: 0.41,
+    label: 'Archivo Expanded Black, wide heavy capitals'
+  },
   {
     // Igino Marini's revival of the Fell types (SIL Open Font License): the vintage map's lettering.
     family: 'IM Fell English',

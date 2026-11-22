@@ -63,7 +63,8 @@ export function captionStyleFor(
     uppercase: spec.uppercase || base.uppercase,
     positionFrac: POSITION_FRAC[spec.position],
     fontSizePx: Math.max(8, Math.round(base.fontSizePx * scale)),
-    outlinePx: Math.max(1, Math.round(base.outlinePx * scale)),
+    // A look with no outline has none, rather than a pixel of black round thin letters; a plate keeps its padding.
+    outlinePx: base.outlinePx > 0 || base.boxColor ? Math.max(1, Math.round(base.outlinePx * scale)) : 0,
     shadowPx: Math.round(base.shadowPx * scale),
     second: base.second
       ? {
@@ -376,6 +377,8 @@ interface Piece {
   text: string
   color: string
   scale: number
+  /** Set in another face at its own size, as a key word in the editorial look (CaptionStyle.keyFace). */
+  face?: { family: string; size: number }
   hidden?: boolean
   /** Starts a line of its own, as \N does in the export. */
   breakBefore?: boolean
@@ -391,7 +394,7 @@ export function layoutSubtitle(
   frame: { width: number; height: number },
   measure: TextMeasurer
 ): SubtitleLayout {
-  const marginX = Math.round(frame.width * 0.08)
+  const marginX = captionMarginX(style, frame.width)
   const marginV = Math.round(frame.height * (1 - style.positionFrac))
   const area = { left: marginX, width: frame.width - 2 * marginX, foot: frame.height - marginV }
   const upper = (text: string, on: boolean): string => (on ? text.toUpperCase() : text)
@@ -455,24 +458,24 @@ export function layoutSubtitle(
       )
     )
   } else {
+    const size = fitFontPx(
+      cue.words.map((w) => w.text),
+      style,
+      frame.width
+    )
     blocks.push(
       block(
         cue.words.map((w, i) => ({
           text: upper(w.text, style.uppercase),
           color:
             w.key && style.keyColor ? style.keyColor : i === cue.active ? style.activeColor : style.textColor,
-          scale: i === cue.active ? style.activeScale : 1,
+          scale: i === cue.active && !(w.key && style.keyFace) ? style.activeScale : 1,
+          // A key word in the editorial look: its own face, bigger, where it is said (keyFace).
+          ...(w.key && style.keyFace ? { face: { family: style.keyFace, size: keyFacePx(style, size) } } : {}),
           // A built caption shows the words said so far, the rest keeping their places.
           ...(style.build && i > cue.active ? { hidden: true } : {})
         })),
-        lookOf(
-          style,
-          fitFontPx(
-            cue.words.map((w) => w.text),
-            style,
-            frame.width
-          )
-        ),
+        lookOf(style, size),
         area,
         measure
       )
@@ -489,9 +492,19 @@ export function layoutSubtitle(
 export function fitFontPx(words: string[], style: CaptionStyle, frameWidth: number): number {
   if (!style.letterEm) return style.fontSizePx
   const longest = words.reduce((m, w) => Math.max(m, [...(style.uppercase ? w.toUpperCase() : w)].length), 0)
-  const room = frameWidth * 0.84
+  const room = frameWidth - 2 * captionMarginX(style, frameWidth)
   const wide = longest * style.letterEm * style.fontSizePx * Math.max(1, style.activeScale) * (style.uppercase ? 1.2 : 1)
   return wide > room ? Math.max(8, Math.floor((style.fontSizePx * room) / wide)) : style.fontSizePx
+}
+
+/** The margin each side of a caption's lines, in pixels: 8% of the frame, or what its column leaves (wrapFrac). */
+export function captionMarginX(style: Pick<CaptionStyle, 'wrapFrac'>, frameWidth: number): number {
+  return Math.round(frameWidth * (style.wrapFrac ? (1 - style.wrapFrac) / 2 : 0.08))
+}
+
+/** The size a key word is set at in its own face (keyFace), from the size the rest of its line is set at. */
+export function keyFacePx(style: Pick<CaptionStyle, 'keyScale'>, size: number): number {
+  return Math.round(size * (style.keyScale ?? 1.5))
 }
 
 function lookOf(style: CaptionStyle, size = style.fontSizePx): Look {
@@ -515,8 +528,19 @@ function block(
 ): SubtitleBlock {
   const face = fontInfo(look.family)
   const em = look.size / (face.winAscent + face.winDescent)
-  const measured = (text: string, scale: number): { width: number; ink: SubtitleRun['ink']; font: string } => {
-    const font = fontString({ family: face.family, weight: 400 }, em * scale)
+  /** A piece's face and em: the block's, or its own (a key word in the editorial look). */
+  const faceOf = (p?: Piece['face']): { face: typeof face; em: number } => {
+    if (!p) return { face, em }
+    const own = fontInfo(p.family)
+    return { face: own, em: p.size / (own.winAscent + own.winDescent) }
+  }
+  const measured = (
+    text: string,
+    scale: number,
+    own?: Piece['face']
+  ): { width: number; ink: SubtitleRun['ink']; font: string } => {
+    const set = faceOf(own)
+    const font = fontString({ family: set.face.family, weight: 400 }, set.em * scale)
     measure.font = font
     if ('fontKerning' in measure) measure.fontKerning = 'none'
     const m = measure.measureText(text)
@@ -532,7 +556,7 @@ function block(
     }
   }
   const space = measured(' ', 1)
-  const words = pieces.map((p) => ({ ...p, ...measured(p.text, p.scale) }))
+  const words = pieces.map((p) => ({ ...p, ...measured(p.text, p.scale, p.face) }))
   // Where each word starts with the event on one line, which is where libass measures its breaks.
   const at: number[] = []
   let pen = 0
@@ -587,14 +611,15 @@ function block(
         })
         x += space.width
       }
+      const set = faceOf(w.face)
       runs.push({
         text: w.text,
         x,
         width: w.width,
         font: w.font,
         color: w.color,
-        ascent: em * face.winAscent * w.scale,
-        descent: em * face.winDescent * w.scale,
+        ascent: set.em * set.face.winAscent * w.scale,
+        descent: set.em * set.face.winDescent * w.scale,
         ink: w.ink,
         ...(w.hidden ? { hidden: true } : {})
       })

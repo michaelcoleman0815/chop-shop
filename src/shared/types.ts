@@ -222,6 +222,14 @@ export interface CaptionStyle {
    */
   keyFont?: string
   keyScale?: number
+  /**
+   * The key words set in this face at `keyScale` times the size, where they are said in the line and on its
+   * baseline: the editorial look, a small sans line with its names and numbers swapped into a big italic serif.
+   * Unlike keyFont, nothing moves to a line of its own and the rest of the line keeps its face.
+   */
+  keyFace?: string
+  /** How much of the frame's width a line may run across, centred: a narrow column. 0.84 (8% margins) when absent. */
+  wrapFrac?: number
   /** Every word in lower case, as The Life Church sets its quiet captions. */
   lowercase?: boolean
   /**

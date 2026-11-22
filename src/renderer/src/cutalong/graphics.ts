@@ -7,6 +7,10 @@ import serifUrl from '../../../../resources/fonts/DMSerifDisplay-Regular.ttf?url
 import interUrl from '../../../../resources/fonts/Inter-SemiBold.ttf?url'
 import interHeavyUrl from '../../../../resources/fonts/Inter-ExtraBold.ttf?url'
 import bebasUrl from '../../../../resources/fonts/BebasNeue-Regular.ttf?url'
+import instrumentSerifUrl from '../../../../resources/fonts/InstrumentSerif-Regular.ttf?url'
+import instrumentItalicUrl from '../../../../resources/fonts/InstrumentSerif-Italic.ttf?url'
+import instrumentSansUrl from '../../../../resources/fonts/InstrumentSans-Bold.ttf?url'
+import archivoWideUrl from '../../../../resources/fonts/ArchivoExpanded-Black.ttf?url'
 import {
   forgetMeasures,
   logoLookup,
@@ -33,7 +37,11 @@ const URLS: Record<string, string> = {
   'DMSerifDisplay-Regular.ttf': serifUrl,
   'Inter-SemiBold.ttf': interUrl,
   'Inter-ExtraBold.ttf': interHeavyUrl,
-  'BebasNeue-Regular.ttf': bebasUrl
+  'BebasNeue-Regular.ttf': bebasUrl,
+  'InstrumentSerif-Regular.ttf': instrumentSerifUrl,
+  'InstrumentSerif-Italic.ttf': instrumentItalicUrl,
+  'InstrumentSans-Bold.ttf': instrumentSansUrl,
+  'ArchivoExpanded-Black.ttf': archivoWideUrl
 }
 
 let fonts: Promise<void> | null = null

@@ -1,6 +1,6 @@
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { CAPTION_PRESETS } from '../shared/caption-presets'
-import { fitFontPx, landedFontPx, landsLine, styleCues } from '../shared/subtitles'
+import { captionMarginX, fitFontPx, keyFacePx, landedFontPx, landsLine, styleCues } from '../shared/subtitles'
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = CAPTION_PRESETS[0].style
 
@@ -137,8 +137,8 @@ export function buildAss(
       style.outlinePx,
       style.shadowPx,
       '2',
-      Math.round(width * 0.08),
-      Math.round(width * 0.08),
+      captionMarginX(style, width),
+      captionMarginX(style, width),
       marginV,
       '1'
     ].join(','),
@@ -227,15 +227,18 @@ export function buildAss(
     const fs = size < style.fontSizePx ? `\\fs${size}` : ''
     const fit = fs ? `{${fs}}` : ''
     const reset = `{\\r${fs}}`
+    // A key word in the editorial look is set in its own face, bigger, where it is said (keyFace).
+    const keyFace = style.keyFace ? `\\fn${style.keyFace}\\fs${keyFacePx(style, size)}` : ''
     const line = cue.words
       .map((w, j) => {
         const text = escapeAss(style.uppercase ? w.text.toUpperCase() : w.text)
+        const own = w.key && keyFace ? keyFace : ''
         // A built caption's words not said yet keep their places, unseen, outline and shadow too.
-        if (style.build && j > cue.active) return `{\\alpha&HFF&}${text}${reset}`
+        if (style.build && j > cue.active) return `{\\alpha&HFF&${own}}${text}${reset}`
         const colour = w.key && key ? key : j === cue.active ? active : null
-        const scale = j === cue.active && style.activeScale !== 1 ? `\\fscx${scalePct}\\fscy${scalePct}` : ''
-        if (!colour && !scale) return text
-        return `{${colour ? `\\c${colour}` : ''}${scale}}${text}${reset}`
+        const scale = j === cue.active && style.activeScale !== 1 && !own ? `\\fscx${scalePct}\\fscy${scalePct}` : ''
+        if (!colour && !scale && !own) return text
+        return `{${colour ? `\\c${colour}` : ''}${scale}${own}}${text}${reset}`
       })
       .join(' ')
 

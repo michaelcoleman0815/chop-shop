@@ -139,6 +139,31 @@ Lecrae's Deep End clips (NncJ8uBv9XI, Yp7Az1j5GHw) and The Life Church of Athens
   Doctors Said She'd Never Recover"). The captions under it are small lower-case words, three at a time.
 - **Elevation** (from the first six): the picture is a 4:5 box on black inside the 9:16 frame.
 
+## The owner's six reels, 22 November
+
+Six more vertical sermon reels the owner likes, every caption change measured frame by frame on the 720 × 1280 files (the sizes below are cap heights at 1080 × 1920). What they share is restraint: wide stage shots from a live camera, few cuts or none, no hook text on screen, and small, still captions that change with each word or two, with no pop, no highlight and nothing round them. Each has one face.
+
+| Reel | Captions | Cutting and picture |
+|---|---|---|
+| "He shows us" | One word, heavy grotesque capitals (Helvetica Bold), off-white #F0F0E7, cap 72 px, low on the chest (0.64 of the height); punctuation gone, apostrophes kept; blink off at breaths | Two angles, 3 angle cuts and 3 bare jump cuts in 56 s; warm soft film grade, highlights rolled off, red halation, softened edges |
+| "Our hearts are ready" | One word (up to three short ones), white italic Didone serif, cap 54 px, dead centre; as said, punctuation kept; held a second, then blank in each pause | Black-and-white slow-motion worship B-roll under a voice, 5 hard cuts and one 1.5 s dissolve, slow push-ins, fade to black |
+| "If I have nothing" | One or two words, tight Helvetica Bold capitals, cap 45 px, dead centre; commas and quotes kept; blank in pauses | 12 handheld shots averaging 5.9 s, focus pulls into cuts, a 4-frame white flash in, a film-burn flicker out; low-key, cream highlights |
+| "I came to save a life" | One or two words, very wide heavy capitals (Druk Wide), cap 50 px, dead centre, set smaller rather than wrapped | 18 long live-camera stage shots averaging 7.9 s, 5 jump cuts; cool blue LED wall, crushed blacks; fade to black |
+| "Planted in the house" | One or two words, condensed serif capitals, cap 64 px, dead centre, letters touching; punctuation gone | One uncut 78 s stage take, live pans and pushes; low-key teal and orange; a 0.4 s orange film burn to end |
+| "Not every delay" | Sans lines (Instrument Sans Bold, sentence case, punctuation kept) in a column half the frame wide at 0.70 of the height, filling in word by word in place; names, numbers and theme words swapped into an italic serif at 1.5 times on the same baseline | One orbiting handheld take, no cuts; matte, lifted, muted grade |
+
+Cutalong carries them as six caption looks (Film, one word; Whisper; Stage capitals; Wide capitals; Serif capitals; Editorial) in four free faces bundled under the SIL Open Font License (Instrument Serif and its italic, Instrument Sans Bold, Archivo Expanded Black), and as six picture looks that take turns with the first six in a set of clips: a warm film grade, black and white with a fade out, a matte muted picture, a cool stage and a low warm one, and a white flash in. All keep the chest-up crop from the top of the picture rather than the reels' wide shots: wider, a church stream's scripture along the foot of the frame comes into the clip. None puts a hook on screen, as none of these reels does. The editorial look's italic words are the ones Claude marks as leaned on.
+
+## Restarts
+
+Played back, the six sample clips from the owner's own Sunday service had the preacher "stuttering": lines broken off and begun again, which a church's editor cuts and the reels above never let through. Heard closely, there were 18 of them in the six, such as "religion never- religion never points you to God", "we- we just- we can't find it", "I don't want- I don't want what you believe", "and so he was in- in that- in that place", and "till his blood became- or his sweat became".
+
+The words did not have them. An hour's service is heard fast for its moments (the small model, one guess at each step, no prompt), and that hearing smooths a restart into one line: the words say "religion never points" while the sound says it twice, so nothing knew to cut it, and the captions did not show it either.
+
+So each moment picked is heard again, closely, before it is made into an edit (`closely` in `src/main/clipping.ts`), on the same model with a prompt that writes broken-off words with a dash (`CLOSE_PROMPT` in `src/shared/clipping/restarts.ts`). On the six clips the small model with that prompt marked the restarts with dashes; the large turbo model wrote most of them with commas, and medium was two to three times slower. Heard closely, a minute of the service took 4 to 9 s on the owner's Mac. The close hearing's words stand in for the first only where they agree: at least 80% of the words first heard are heard again, and no more than half as many again. Its words also run on into the pause after them ("Nah." held 4.3 s, "20," 6.5 s), and in a service the band or the room fills that pause, so the sound does not pull them back; held, the pauses were hidden from the tightening and two clips came out 5 and 10 s longer. So a word heard both times keeps the end the first hearing gave it, and a word only heard closely runs no longer than its letters take to say. With that, five of the six clips came out 3 to 7 s shorter, by their restarts, and the sixth the same length: it now plays the "20" of "Ephesians 6:20", which the first cut had clipped.
+
+The edit's finished version strikes what he broke off (`restartsIn`): a word with a dash, back to where he starts the line again; a few words said twice straight away ("you ever, you ever studied", "as he is, as he is present"); and a few grammar words broken off at a comma ("we just, we can't"). What he says twice on purpose stays: a word three times or more ("this, this, this, this, this and this", "no, no, no"), a line said again after a full stop ("He did. He did."), and anything longer ("it's gonna be one of those days, it's gonna be one of those days"). The first version, the moment as it was said, keeps every word, and in the script the struck words show crossed out, so each is a click from coming back.
+
 ## What Cutalong does with it
 
 A set of clips takes six looks in turn (`ClipProfile.looks` in `src/shared/clipping/profile.ts`). With only

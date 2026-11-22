@@ -49,6 +49,7 @@ import {
   type RecordingPlan,
   type SoundStretch
 } from '../shared/clipping'
+import { CLOSE_PROMPT, heardClosely } from '../shared/clipping/restarts'
 import type { SuggestedClip, Transcript, TranscriptWord } from '../shared/types'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { withoutSoundNotes } from './whisper-parse'
@@ -116,6 +117,12 @@ export interface ClippingTools {
     path: string,
     words: TranscriptWord[]
   ) => Promise<{ sounds: SoundStretch[]; loudness: { hopSec: number; db: number[] } }>
+  /**
+   * A stretch heard again closely, with what was broken off written so (shared/clipping/restarts
+   * CLOSE_PROMPT), on the recording's clock; on the model the recording was heard with for its clips, so the
+   * words read as they did. Absent, a clip keeps the words first heard.
+   */
+  hear?: (path: string, startSec: number, durationSec: number, recordingSec: number) => Promise<TranscriptWord[]>
   /** Where the picture holds still for at least `minSec`. */
   frozen: (path: string, durationSec: number) => Promise<{ startSec: number; endSec: number }[]>
   envelope: (path: string, startSec: number, durationSec: number) => Promise<Envelope>
@@ -304,6 +311,12 @@ export function defaultTools(): ClippingTools {
       return heard.words
     },
     listen: async (path, words) => soundsOf(await listenFrames(FFMPEG_PATH, path), words),
+    hear: async (path, startSec, durationSec, recordingSec) => {
+      const model = clippingModel(getSettings().whisperModel, recordingSec, await hasModel('small.en'))
+      if (!(await hasModel(model))) return []
+      const verbatim = { names: [], again: false, prompt: CLOSE_PROMPT }
+      return (await transcribe(path, model, durationSec, () => undefined, startSec, verbatim)).words
+    },
     frozen: (path, durationSec) => frozenStretches(FFMPEG_PATH, path, durationSec),
     envelope: (path, startSec, durationSec) => loudnessEnvelope(FFMPEG_PATH, path, { startSec, durationSec }),
     faces: hasFaceFinder()
@@ -439,6 +452,27 @@ async function snapped(tools: ClippingTools, path: string, words: TranscriptWord
     }))
     return snapWords(local, env).map((w) => ({ text: w.text, startSec: w.startSec + from, endSec: w.endSec + from }))
   } catch {
+    return words
+  }
+}
+
+/**
+ * A clip's words heard again closely, where its kind of clip cuts the lines broken off and begun again
+ * (ClipProfile.restarts): a long recording is heard fast for its moments, and that hearing smooths "religion
+ * never- religion never points" into one line, so the restart is in the sound but not in the words. The words
+ * first heard stay where the close hearing fails or disagrees with them.
+ */
+async function closely(tools: ClippingTools, path: string, recordingSec: number, words: TranscriptWord[]): Promise<TranscriptWord[]> {
+  if (!tools.hear || words.length === 0) return words
+  const from = Math.max(0, words[0].startSec - 0.5)
+  const to = words[words.length - 1].endSec + 0.5
+  try {
+    const close = withoutSoundNotes(await tools.hear(path, from, to - from, recordingSec))
+    const heard = heardClosely(words, close)
+    if (!heard) console.warn('[clipping] the close hearing disagreed with the first; keeping the first')
+    return heard ?? words
+  } catch (err) {
+    console.warn('[clipping] could not hear a clip again:', message(err))
     return words
   }
 }
@@ -690,14 +724,20 @@ export async function findClips(
   let followed = 0
   // Each clip's words, moved onto their sound.
   const said: { inside: TranscriptWord[]; words: TranscriptWord[] }[] = []
-  for (const p of picks) {
+  for (const [k, p] of picks.entries()) {
     const r = read.find((x) => x.facts.path === p.path)!
     // By word where the fitting said which: Whisper can squeeze a sentence's last words onto one instant,
     // and a word starting where the clip ends would be let in by its time.
-    const inside =
+    const first =
       p.fromWord !== undefined && p.toWord !== undefined
         ? r.facts.words.slice(p.fromWord, p.toWord + 1)
         : r.facts.words.filter((w) => w.startSec >= p.startSec - 0.01 && w.endSec <= p.endSec + 0.01)
+    // Heard again closely where its restarts are cut, so they are in its words to cut.
+    let inside = first
+    if (r.plan.profile.restarts && tools.hear) {
+      progress({ stage: `Listening closely to each moment (${k + 1} of ${picks.length})`, percent: 95 })
+      inside = await time('making clips', () => closely(tools, p.path, r.meta.durationSec, first))
+    }
     said.push({ inside, words: await time('making clips', () => snapped(tools, p.path, inside)) })
   }
   // The words each preacher leans on, for captions that set them in the accent, and each clip's hook, for

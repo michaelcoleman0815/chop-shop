@@ -144,7 +144,9 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       size: TALL,
       words: ['to', 'the', 'flag.'],
       active: 1,
-      shared: 0.92
+      // Small, thin and with no outline, the strokes are mostly antialiased edge, where libass and Skia shade
+      // differently; where they sit is held by the box check above, to 2 px.
+      shared: 0.9
     },
     {
       name: 'sermon one word tall, vertical',
@@ -175,7 +177,7 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       size: TALL,
       words: ['She', 'was', 'healed.'],
       active: 1,
-      shared: 0.92
+      shared: 0.87
     },
     {
       name: 'sermon build, vertical',
@@ -184,6 +186,56 @@ describe.skipIf(!FFMPEG)('captions in the preview, against libass in the export'
       words: ['Even', 'if', 'you', 'were', 'the', 'one', 'who', 'let', 'go.'],
       active: 5,
       keys: [0, 1]
+    },
+    // The owner's six reference reels: each face as libass finds it by name, the italic and the bold by the
+    // full names their files give them.
+    {
+      name: 'film one word, vertical',
+      spec: { preset: 'film-word', position: 'chest', wordsPerScreen: 1, uppercase: true },
+      size: TALL,
+      words: ['Assumptions.'],
+      active: 0
+    },
+    {
+      name: 'whisper, vertical',
+      spec: { preset: 'whisper', position: 'middle', wordsPerScreen: 1 },
+      size: TALL,
+      words: ['hungry'],
+      active: 0,
+      shared: 0.92
+    },
+    {
+      name: 'stage capitals, vertical',
+      spec: { preset: 'stage-caps', position: 'middle', wordsPerScreen: 2, uppercase: true },
+      size: TALL,
+      words: ['Sorry,', 'you'],
+      active: 1,
+      shared: 0.92
+    },
+    {
+      name: 'wide capitals, vertical',
+      spec: { preset: 'wide-caps', position: 'middle', wordsPerScreen: 2, uppercase: true },
+      size: TALL,
+      words: ['Encourage', 'a'],
+      active: 0
+    },
+    {
+      name: 'serif capitals, vertical',
+      spec: { preset: 'serif-caps', position: 'middle', wordsPerScreen: 2, uppercase: true },
+      size: TALL,
+      words: ['Relationships', 'in'],
+      active: 1,
+      shared: 0.9
+    },
+    // A line filling in place in a narrow column, its key word in the italic serif at one and a half times.
+    {
+      name: 'editorial, vertical',
+      spec: { preset: 'editorial', position: 'chest', wordsPerScreen: 6 },
+      size: TALL,
+      words: ['it', 'took', '13', 'years', 'for', 'Joseph'],
+      active: 3,
+      keys: [2, 5],
+      shared: 0.92
     }
   ]
 

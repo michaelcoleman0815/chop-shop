@@ -39,6 +39,11 @@ export interface ClipProfile {
   tighten: TightenSpec | null
   /** Laughter in a pause stays, whatever its length. */
   keepsLaughter: boolean
+  /**
+   * Each clip heard again closely and the lines he broke off and began again cut ("religion never- religion
+   * never points"), as a church's editor cuts them (shared/clipping/restarts).
+   */
+  restarts?: boolean
   /** The guidance the clip finder's prompt has for it (main/clips GENRE_NOTE). */
   genre: string
   /** How its clips are captioned, unless the brand has a look of its own. */
@@ -76,6 +81,8 @@ export interface ClipLook {
   hook?: { style: 'title' | 'card'; place: 'top' | 'middle'; sec: number | null }
   /** Its own grade (edit/look), in place of the profile's. */
   look?: Look
+  /** Into its first frame and out of its last: a white flash in, a fade to black at the end (edit fade). */
+  fade?: { inSec?: number; outSec?: number; color?: 'black' | 'white' }
 }
 
 /** The cutting profile's tightening, as a clip takes it. */
@@ -101,6 +108,7 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     keepPauseSec: 0.4,
     tighten: { maxGapSec: 0.4, padSec: 0.1, fillers: false },
     keepsLaughter: true,
+    restarts: true,
     genre: 'sermon',
     // Lecrae's Shorts: three words at a time in Inter, the line he lands big and yellow.
     captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },
@@ -113,8 +121,10 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     zoomAt: 0,
     // Low-key and muted, where a look has no grade of its own.
     look: MOODY,
-    // In turn, six looks as unlike each other as the churches' own reels are: each its own picture, captions,
-    // accent and frame (docs/research/sermon-clips.md, "What Cutalong does with it").
+    // In turn, twelve looks as unlike each other as the churches' own reels are: each its own picture, captions,
+    // accent and frame (docs/research/sermon-clips.md, "What Cutalong does with it" and "The owner's six reels,
+    // 22 November"). The six from the owner's own reels come between the first six, so a set of five or more
+    // shows both kinds.
     looks: [
       {
         name: 'square',
@@ -128,6 +138,15 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
         look: MOODY
       },
       {
+        name: 'film',
+        says: 'full frame with a warm film look',
+        // "He shows us": one heavy off-white word at a time low on the chest, a soft warm film grade, no hook.
+        captions: { preset: 'film-word', wordsPerScreen: 1, position: 'chest', uppercase: true },
+        zoom: 1.45,
+        zoomAt: 0,
+        look: { exposure: -0.15, contrast: -0.08, saturation: -0.08, temperature: 0.22, lift: 0.04, vignette: 0.5, sharpen: 0.15, grain: 0.06 }
+      },
+      {
         name: 'feature',
         says: 'full frame, dark and warm',
         captions: { preset: 'sermon', wordsPerScreen: 3, position: 'middle', uppercase: false },
@@ -135,6 +154,17 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
         zoomAt: 0,
         // Lecrae's: dark and warm brown.
         look: { exposure: -0.45, contrast: 0.28, saturation: -0.3, temperature: 0.3, vignette: 0.6, sharpen: 0.25, grain: 0.1 }
+      },
+      {
+        name: 'wide',
+        says: 'full frame, cool and sharp',
+        // "I came to save a life": wide heavy capitals at the middle over a cool, contrasty stage, out to black at
+        // the end. Chest-up from the top like the rest: a wider crop shows a stream's scripture across the foot.
+        captions: { preset: 'wide-caps', wordsPerScreen: 2, position: 'middle', uppercase: true },
+        zoom: 1.45,
+        zoomAt: 0,
+        look: { exposure: -0.2, contrast: 0.3, saturation: 0.05, temperature: -0.28, vignette: 0.4, sharpen: 0.2 },
+        fade: { outSec: 0.7 }
       },
       {
         name: 'hook card',
@@ -147,6 +177,17 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
         look: { exposure: -0.12, contrast: 0.14, saturation: -0.12, temperature: 0.1, vignette: 0.35, sharpen: 0.25, grain: 0.06 }
       },
       {
+        name: 'whisper',
+        says: 'full frame in black and white',
+        // The worship reel: low-key black and white, one small italic word at a time at the middle, fading to
+        // black at the end.
+        captions: { preset: 'whisper', wordsPerScreen: 1, position: 'middle', uppercase: false },
+        zoom: 1.45,
+        zoomAt: 0,
+        look: { exposure: -0.35, contrast: 0.35, saturation: -1, temperature: 0.06, vignette: 0.55, sharpen: 0.2, grain: 0.1 },
+        fade: { outSec: 1.2 }
+      },
+      {
         name: 'one word',
         says: 'full frame, dark and cool',
         captions: { preset: 'sermon-word', wordsPerScreen: 1, position: 'middle', uppercase: true },
@@ -154,6 +195,16 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
         zoomAt: 0,
         // One word at a time in clean heavy capitals, as Rodney Howard-Browne's Shorts; dark, cold navy.
         look: { exposure: -0.55, contrast: 0.3, saturation: -0.65, temperature: -0.35, vignette: 0.7, sharpen: 0.25, grain: 0.14 }
+      },
+      {
+        name: 'editorial',
+        says: 'full frame, matte and muted',
+        // "Not every delay": a matte, lifted, muted picture under small sans lines that fill in word by word,
+        // the words leaned on in a big italic serif.
+        captions: { preset: 'editorial', wordsPerScreen: 6, position: 'chest', uppercase: false },
+        zoom: 1.45,
+        zoomAt: 0,
+        look: { exposure: -0.05, contrast: -0.2, saturation: -0.5, temperature: 0.05, lift: 0.1, vignette: 0.2, sharpen: 0.2 }
       },
       {
         name: 'red line',
@@ -165,6 +216,15 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
         look: { exposure: -0.3, contrast: 0.35, saturation: -1, vignette: 0.6, sharpen: 0.25, grain: 0.2 }
       },
       {
+        name: 'serif stage',
+        says: 'full frame, low and warm',
+        // "Planted in the house": condensed serif capitals at the middle over a low-key, warm stage.
+        captions: { preset: 'serif-caps', wordsPerScreen: 2, position: 'middle', uppercase: true },
+        zoom: 1.45,
+        zoomAt: 0,
+        look: { exposure: -0.35, contrast: 0.22, saturation: 0.1, temperature: 0.12, tint: -0.06, lift: 0.04, vignette: 0.55, sharpen: 0.2 }
+      },
+      {
         name: 'portrait',
         says: 'a tall picture on black',
         captions: { preset: 'sermon-build', wordsPerScreen: 8, position: 'chest', uppercase: true },
@@ -173,6 +233,17 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
         zoom: 1.43,
         zoomAt: 0,
         look: { exposure: -0.5, contrast: 0.25, saturation: -0.5, temperature: -0.08, tint: -0.1, vignette: 0.55, sharpen: 0.25, grain: 0.12 }
+      },
+      {
+        name: 'stage',
+        says: 'full frame, opening on a white flash',
+        // "If I have nothing": tiny tight capitals at the middle, a low-key picture with cream highlights, in
+        // from a flash of white.
+        captions: { preset: 'stage-caps', wordsPerScreen: 2, position: 'middle', uppercase: true },
+        zoom: 1.45,
+        zoomAt: 0,
+        look: { exposure: -0.3, contrast: 0.12, saturation: -0.1, temperature: 0.15, lift: 0.03, vignette: 0.5, sharpen: 0.2 },
+        fade: { inSec: 0.2, color: 'white' }
       }
     ]
   },

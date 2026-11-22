@@ -479,26 +479,47 @@ describe('a clip as an edit', () => {
     // Chest-up from the top of the picture, past a stream's scripture banner, and graded low-key and muted.
     expect(cut.beats.every((b) => b.treatment.zoom === 1.43 && b.treatment.zoomAt === 0)).toBe(true)
     expect(cut.look).toMatchObject({ exposure: -0.5, saturation: -0.45 })
-    // The next takes the next: full frame, the key words in yellow; then the quiet captions under a hook card.
-    const second = currentCut(clipDoc({ id: 'c2', title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant: 1 }))
+    // The owner's own reels' looks come between the first six: one heavy off-white word on a warm film grade, with
+    // no hook on screen, as those reels have none.
+    const turn = (variant: number): ReturnType<typeof currentCut> =>
+      currentCut(clipDoc({ id: `t${variant}`, title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant }))
+    expect(turn(1).captions).toMatchObject({ preset: 'film-word', wordsPerScreen: 1, position: 'chest' })
+    expect(turn(1).look?.temperature).toBeGreaterThan(0)
+    expect(turn(1).motion).toEqual([])
+    // Then full frame, the key words in yellow; then the quiet captions under a hook card.
+    const second = turn(2)
     expect(second.captions.preset).toBe('sermon')
     expect(second.box).toBeUndefined()
     const third = currentCut(
-      clipDoc({ id: 'c3', title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant: 2, hook: 'Grace Found Her' })
+      clipDoc({ id: 'c3', title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant: 4, hook: 'Grace Found Her' })
     )
     expect(third.captions.preset).toBe('sermon-quiet')
-    // Then one word at a time on a cold picture, a red line on black and white, and a 4:5 picture with the
-    // sentence building: no two of the six alike in picture, captions or frame.
-    const turn = (variant: number): ReturnType<typeof currentCut> =>
-      currentCut(clipDoc({ id: `t${variant}`, title: 'Grace', source, words, profile: CLIP_PROFILES.church, variant }))
-    expect(turn(3).captions.preset).toBe('sermon-word')
-    expect(turn(3).look?.temperature).toBeLessThan(0)
-    expect(turn(4).captions.preset).toBe('sermon-red')
-    expect(turn(4).look?.saturation).toBe(-1)
-    expect(turn(5).box).toEqual({ aspect: 0.8, top: 0.148 })
-    expect(turn(6).captions.preset).toBe('sermon-box')
-    const grades = [0, 1, 2, 3, 4, 5].map((v) => JSON.stringify(turn(v).look))
-    expect(new Set(grades).size).toBe(6)
+    // Wide heavy capitals on a cool stage, out to black; one italic word at a time in black and white. Every look
+    // keeps the chest-up crop from the top: any wider shows a stream's scripture across the foot.
+    expect(turn(3).captions.preset).toBe('wide-caps')
+    for (let v = 0; v < 12; v++)
+      expect(turn(v).beats.every((b) => (b.treatment.zoom ?? 1) >= 1.43 && b.treatment.zoomAt === 0), `look ${v}`).toBe(true)
+    expect(turn(3).fade).toMatchObject({ outSec: 0.7, color: 'black' })
+    expect(turn(5).captions.preset).toBe('whisper')
+    expect(turn(5).look?.saturation).toBe(-1)
+    expect(turn(5).fade?.outSec).toBe(1.2)
+    // One word at a time on a cold picture; the editorial lines on a matte picture.
+    expect(turn(6).captions.preset).toBe('sermon-word')
+    expect(turn(6).look?.temperature).toBeLessThan(0)
+    expect(turn(7).captions).toMatchObject({ preset: 'editorial', wordsPerScreen: 6 })
+    expect(turn(7).look?.lift).toBeGreaterThan(0)
+    // A red line on black and white; serif capitals on a low, warm stage; a 4:5 picture with the sentence
+    // building; tight capitals in from a flash of white; and round again to the square.
+    expect(turn(8).captions.preset).toBe('sermon-red')
+    expect(turn(8).look?.saturation).toBe(-1)
+    expect(turn(9).captions.preset).toBe('serif-caps')
+    expect(turn(10).box).toEqual({ aspect: 0.8, top: 0.148 })
+    expect(turn(11).captions.preset).toBe('stage-caps')
+    expect(turn(11).fade).toMatchObject({ inSec: 0.2, color: 'white' })
+    expect(turn(12).captions.preset).toBe('sermon-box')
+    // No two of the twelve alike in picture.
+    const grades = Array.from({ length: 12 }, (_, v) => JSON.stringify(turn(v).look))
+    expect(new Set(grades).size).toBe(12)
     expect(third.motion.map((m) => [m.kind, m.style, m.to, m.text[0]])).toEqual([['banner', 'card', '4s', 'Grace Found Her']])
     expect(cut.tighten).toEqual({ maxGapSec: 0.4, padSec: 0.1, fillers: false })
     // Said as an editor would say it, not as a list of settings.
@@ -509,7 +530,7 @@ describe('a clip as an edit', () => {
       source,
       words: words.map((w, i) => (i === 3 ? { ...w, key: true } : w)),
       profile: CLIP_PROFILES.church,
-      variant: 2,
+      variant: 4,
       hook: 'Grace Found Her',
       music: { path: '/pad.wav', durationSec: 120, lufs: -20, mood: 'tense' }
     })

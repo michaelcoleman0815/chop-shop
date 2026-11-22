@@ -319,6 +319,147 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       activeScale: 1
     }
   },
+  // The owner's six reference reels (docs/research/sermon-clips.md, "The owner's six reels, 22 November"): small,
+  // still captions that change with each word or two, no pop and no highlight, each in a face of its own. Sizes
+  // are the measured cap heights on a 720 × 1280 reel, at 1080 × 1920; a caption's size is its face's Windows
+  // ascent and descent, as libass sets it (shared/motion/fonts).
+  {
+    id: 'film-word',
+    name: 'Film, one word',
+    style: {
+      ...BASE,
+      // "He shows us": one heavy capital word at a time, off-white like the film look's highlights, low on the
+      // chest, no outline or shadow; punctuation gone, apostrophes kept. Cap height 72 px.
+      wordsPerGroup: 1,
+      fontFamily: 'Inter ExtraBold',
+      fontSizePx: 120,
+      letterEm: 0.58,
+      plain: true,
+      positionFrac: 0.66,
+      textColor: '#F0F0E7',
+      activeColor: '#F0F0E7',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 0,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'whisper',
+    name: 'Whisper',
+    style: {
+      ...BASE,
+      // The worship reel: one small italic serif word at a time, as said, punctuation and all, white at the dead
+      // middle, nothing round it, like whispered subtitles. Cap height 54 px.
+      wordsPerGroup: 1,
+      fontFamily: 'Instrument Serif Italic',
+      fontSizePx: 98,
+      letterEm: 0.33,
+      steady: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 0,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'stage-caps',
+    name: 'Stage capitals',
+    style: {
+      ...BASE,
+      // "If I have nothing": tiny, tight grotesque capitals, one or two words, commas and quotes kept, white at
+      // the middle over a moving stage camera. Cap height 45 px.
+      wordsPerGroup: 2,
+      fontFamily: 'Instrument Sans Bold',
+      fontSizePx: 84,
+      letterEm: 0.48,
+      steady: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 0,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'wide-caps',
+    name: 'Wide capitals',
+    style: {
+      ...BASE,
+      // "I came to save a life": one or two words in very wide, very heavy capitals at the middle, set smaller
+      // rather than wrapped when they run long. Cap height 50 px.
+      wordsPerGroup: 2,
+      fontFamily: 'Archivo Expanded Black',
+      fontSizePx: 109,
+      letterEm: 0.64,
+      plain: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 0,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'serif-caps',
+    name: 'Serif capitals',
+    style: {
+      ...BASE,
+      // "Planted in the house": one or two words in condensed serif capitals, letters close, white at the dead
+      // middle over one long stage shot. Cap height 64 px.
+      wordsPerGroup: 2,
+      fontFamily: 'Instrument Serif',
+      fontSizePx: 116,
+      letterEm: 0.38,
+      plain: true,
+      positionFrac: 0.52,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 0,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'editorial',
+    name: 'Editorial',
+    style: {
+      ...BASE,
+      // "Not every delay": small sans lines in a narrow column on the chest, filling in place word by word, the
+      // names, numbers and themes swapped into a 1.5× italic serif on the same baseline. As said, punctuation
+      // kept. Cap height 45 px.
+      wordsPerGroup: 6,
+      fontFamily: 'Instrument Sans Bold',
+      fontSizePx: 84,
+      letterEm: 0.3,
+      steady: true,
+      build: true,
+      keyFace: 'Instrument Serif Italic',
+      keyScale: 1.5,
+      wrapFrac: 0.5,
+      positionFrac: 0.66,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 0,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
   {
     id: 'sentence',
     name: 'Sentence',

@@ -191,9 +191,10 @@ describe('clipping a long recording, start to finish', () => {
     // A brand that waits to be asked leaves the captions as a short's own: a service's clips wear the sermon look.
     const off = await findClips(req, tools({ brand: async () => ({ ...brand, autoApply: false }) }), quiet)
     if (!off.ok) throw new Error(off.message)
-    // In turn, so no two in a row look alike: the square, the landed line, the quiet captions under a card.
+    // In turn, so no two in a row look alike: the square, one heavy word on film, the key words in yellow, wide
+    // capitals, the quiet captions under a card, one italic word in black and white.
     expect(off.clips.map((c) => currentCut(c.doc).captions.preset)).toEqual(
-      ['sermon-box', 'sermon', 'sermon-quiet', 'sermon-word', 'sermon-red', 'sermon-build'].slice(0, off.clips.length)
+      ['sermon-box', 'film-word', 'sermon', 'wide-caps', 'sermon-quiet', 'whisper'].slice(0, off.clips.length)
     )
     for (const c of off.clips) expect(currentCut(c.doc).captions.on).toBe(true)
     expect(off.reply.chips).toContain('Captions on')
@@ -380,6 +381,41 @@ describe('clipping a long recording, start to finish', () => {
     if (!podcast.ok) throw new Error(podcast.message)
     for (const c of podcast.clips) expect(currentCut(c.doc).music ?? null).toBeNull()
     expect(made).toEqual([])
+  })
+
+  it('hears each of a service’s clips again closely, and cuts the words he broke off', async () => {
+    const asked: { startSec: number; recordingSec: number }[] = []
+    // Heard again, the words as first heard, with a broken-off "the-" in the first pause long enough for one.
+    const hear: ClippingTools['hear'] = async (path, startSec, durationSec, recordingSec) => {
+      asked.push({ startSec, recordingSec })
+      const words = factsOf(PATHS[path] ?? SERVICE).words.filter((w) => w.startSec >= startSec && w.endSec <= startSec + durationSec)
+      const at = words.findIndex((w, i) => i > 3 && words[i + 1] && words[i + 1].startSec - w.endSec > 0.3)
+      const gap = words[at].endSec + 0.05
+      return [...words.slice(0, at + 1), { text: 'the-', startSec: gap, endSec: gap + 0.15 }, ...words.slice(at + 1)]
+    }
+    const r = await findClips({ paths: ['/rec/Sunday service.mp4'], ask: '' }, tools({ hear }), quiet)
+    if (!r.ok) throw new Error(r.message)
+    expect(asked).toHaveLength(r.clips.length)
+    expect(asked.every((a) => a.recordingSec === factsOf(SERVICE).durationSec)).toBe(true)
+    for (const c of r.clips) {
+      const broken = c.doc.words.find((w) => w.text === 'the-')
+      expect(broken).toBeDefined()
+      // Struck in the finished short, said in the moment as it was.
+      expect(currentCut(c.doc).removed).toContain(broken!.id)
+      expect(c.doc.versions[0].cut.removed).toEqual([])
+      expect(c.doc.versions[c.doc.versions.length - 1].summary).toContain('one false start cut')
+    }
+    // A podcast's clips are not heard again; and where hearing fails, the words first heard stay.
+    const podcast = await findClips({ paths: ['/rec/Long Table 41.mp4'], ask: '' }, tools({ hear }), quiet)
+    expect(podcast.ok && podcast.clips.length).toBe(3)
+    expect(asked).toHaveLength(r.clips.length)
+    const failing = await findClips(
+      { paths: ['/rec/Sunday service.mp4'], ask: '' },
+      tools({ hear: async () => Promise.reject(new Error('whisper stopped')) }),
+      quiet
+    )
+    if (!failing.ok) throw new Error(failing.message)
+    expect(failing.clips.map((c) => c.doc.words.length)).toEqual(r.clips.map((c) => c.doc.words.length - 1))
   })
 
   it('uses the words an edit already heard, without transcribing again', async () => {
