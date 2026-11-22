@@ -26,6 +26,7 @@ import { chaptersOf, clock, describeCamera, describeSpeed, seconds } from '../sh
 import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from '../shared/motion'
 import { FX_PLANNER_OPS, fromFxPlannerOp, fxGuide, fxLines } from '../shared/fx/planner'
 import { TRACK_PLANNER_OPS, fromTrackPlannerOp, tracksGuide, tracksLines } from '../shared/tracks/planner'
+import { familyGuides, familyIndex } from './planner-guides'
 import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { renderPovs } from '../shared/pov/choose'
@@ -111,7 +112,7 @@ ${graphicsGuide()}
 ${fxGuide()}
 
 ${tracksGuide()}
-
+${familyIndex() ? `\n${familyIndex()}\n` : ''}
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
 - A <chat> block, when present, is what was said just before the request: read a short answer ("yes", "the second one", a button's words) in its light.
@@ -754,6 +755,8 @@ export function renderRequest(
   if (effects.length > 0) parts.push('<effects>', ...effects, '</effects>')
   const layered = tracksLines(cut, resolved, doc.words)
   if (layered.length > 0) parts.push('<tracks>', ...layered, '</tracks>')
+  // The full guide of each family this ask or this cut needs (planner-guides.ts).
+  parts.push(...familyGuides([request, ...notes.map((n) => n.text)].join('\n'), cut))
   if (doc.assets.length > 0) {
     // Where each piece already shows, so the planner neither repeats nor forgets one.
     const shows = new Map<string, string[]>()
