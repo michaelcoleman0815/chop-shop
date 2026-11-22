@@ -34,6 +34,8 @@ export interface Stretch {
   words: number[]
   startSec: number
   endSec: number
+  /** Which unbroken run of speech it is a piece of: pieces of one run were cut apart mid-sentence. */
+  run: number
 }
 
 const endsSentence = (text: string): boolean => /[.?!…]["”’)\]]*$/.test(text.trim())
@@ -48,11 +50,11 @@ export function stretchesOf(words: SpokenWord[]): Stretch[] {
     else runs[runs.length - 1].push(i)
   })
   const out: Stretch[] = []
-  for (const run of runs) {
+  runs.forEach((run, r) => {
     const sec = words[run[run.length - 1]].endSec - words[run[0]].startSec
     if (sec <= LONGEST_SEC) {
-      out.push({ words: run, startSec: words[run[0]].startSec, endSec: words[run[run.length - 1]].endSec })
-      continue
+      out.push({ words: run, startSec: words[run[0]].startSec, endSec: words[run[run.length - 1]].endSec, run: r })
+      return
     }
     // Into pieces of about PIECE_SEC, each ending on a word.
     const pieces = Math.max(2, Math.round(sec / PIECE_SEC))
@@ -62,7 +64,7 @@ export function stretchesOf(words: SpokenWord[]): Stretch[] {
     for (const i of run) {
       piece.push(i)
       if (words[i].endSec - from >= each) {
-        out.push({ words: piece, startSec: words[piece[0]].startSec, endSec: words[i].endSec })
+        out.push({ words: piece, startSec: words[piece[0]].startSec, endSec: words[i].endSec, run: r })
         piece = []
         from = words[i].endSec
       }
@@ -71,12 +73,12 @@ export function stretchesOf(words: SpokenWord[]): Stretch[] {
       const last = out[out.length - 1]
       // A tail too short to stand alone joins the piece before it, when that piece is this run's.
       const tail = words[piece[piece.length - 1]].endSec - words[piece[0]].startSec
-      if (tail < LEAST_SEC && last && run.includes(last.words[0])) {
+      if (tail < LEAST_SEC && last && last.run === r) {
         last.words.push(...piece)
         last.endSec = words[piece[piece.length - 1]].endSec
-      } else out.push({ words: piece, startSec: words[piece[0]].startSec, endSec: words[piece[piece.length - 1]].endSec })
+      } else out.push({ words: piece, startSec: words[piece[0]].startSec, endSec: words[piece[piece.length - 1]].endSec, run: r })
     }
-  }
+  })
   return out
 }
 
@@ -139,6 +141,12 @@ export function speakersOf(
     if (lb !== null && lb === la && near(before, stretches[i]) && near(stretches[i], after) && (label[i] === null || sure[i] < SURE_MARGIN))
       label[i] = lb
     else if (label[i] === null) label[i] = lb ?? la
+  }
+  // Nobody takes over for one piece in the middle of a sentence another is saying with no pause either side:
+  // a piece of one unbroken run between two of the same run and the same speaker is theirs.
+  for (let i = 1; i + 1 < stretches.length; i++) {
+    const [a, b, c] = [stretches[i - 1], stretches[i], stretches[i + 1]]
+    if (a.run === b.run && b.run === c.run && label[i - 1] === label[i + 1] && label[i - 1] !== null) label[i] = label[i - 1]
   }
   const byWord: (number | null)[] = words.map(() => null)
   stretches.forEach((s, i) => s.words.forEach((w) => (byWord[w] = label[i])))

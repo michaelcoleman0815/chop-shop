@@ -132,6 +132,17 @@ describe('who says each word', () => {
     expect(result.talkSec.map((t) => Number(t.toFixed(2)))).toEqual([3, 4.05])
   })
 
+  it('keeps the middle of an unbroken sentence with whoever says the rest of it', () => {
+    const r = rng(17)
+    // The host's long sentence is cut into three pieces; the middle one sounds like the guest (a raised voice).
+    const words = said([Array.from({ length: 20 }, (_, i) => `w${i}`), ['and', 'so', 'it', 'goes'], ['and', 'there', 'it', 'is']])
+    const stretches = stretchesOf(words)
+    expect(stretches.filter((s) => s.run === 0).length).toBe(3)
+    const prints = stretches.map((s, i) => voice(s.run === 0 && i !== 1 ? 0 : 1, 0.1, r))
+    const result = speakersOf(words, stretches, prints)
+    expect(result.words).toEqual(words.map((_, i) => (i < 20 ? 0 : 1)))
+  })
+
   it('gives a stretch too short to fingerprint to the speaker on both sides of it', () => {
     const r = rng(13)
     const words = said([['a', 'long', 'enough', 'line'], ['uh'], ['and', 'it', 'goes', 'on']], 0.4)
