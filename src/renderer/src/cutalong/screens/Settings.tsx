@@ -7,9 +7,8 @@ import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { Licences } from './Licences'
 import { AccountSection } from './settings/Account'
+import { AiSection } from './settings/Ai'
 import { BrollSection } from './settings/Broll'
-import { ClaudeSection } from './settings/Claude'
-import { LocalAiSection } from './settings/LocalAi'
 import { MadeSection } from './settings/Made'
 import { SettingsFind } from './settings/rows'
 import { ServicesSection } from './settings/Services'
@@ -25,7 +24,7 @@ import { WordsSection } from './settings/Words'
  * to the other devices too (main/account).
  */
 
-type SectionId = 'account' | 'claude' | 'local' | 'services' | 'words' | 'broll' | 'made' | 'device' | 'licences'
+type SectionId = 'account' | 'ai' | 'services' | 'words' | 'broll' | 'made' | 'device' | 'licences'
 
 const phone = device.kind === 'phone'
 /** "This Mac", "This PC", or on a phone "This phone". */
@@ -39,13 +38,7 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M3.5 15.5c.8-2.9 3-4.5 5.5-4.5s4.7 1.6 5.5 4.5" />
     </>
   ),
-  claude: <path d="M3.5 4.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H8l-3.5 2.5V13.5h-1A1.5 1.5 0 0 1 2 12V6a1.5 1.5 0 0 1 1.5-1.5Z" />,
-  local: (
-    <>
-      <rect x="4.5" y="4.5" width="9" height="9" rx="2" />
-      <path d="M7 2v2.5M11 2v2.5M7 13.5V16M11 13.5V16M2 7h2.5M2 11h2.5M13.5 7H16M13.5 11H16" />
-    </>
-  ),
+  ai: <path d="M3.5 4.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H8l-3.5 2.5V13.5h-1A1.5 1.5 0 0 1 2 12V6a1.5 1.5 0 0 1 1.5-1.5Z" />,
   services: (
     <>
       <circle cx="6" cy="9" r="3.2" />
@@ -86,9 +79,8 @@ interface Section {
 const SECTIONS: Section[] = (
   [
     { id: 'account', label: 'Account', colour: 'blue', group: 0, show: true },
-    { id: 'claude', label: 'Claude', colour: 'salmon', group: 0, show: true },
-    // A phone plans with Claude: it has no local AI server to run models on.
-    { id: 'local', label: 'Local AI', colour: 'green', group: 0, show: !phone },
+    // Which AI edits with you, Claude or a model on this computer, and what it needs (settings/Ai).
+    { id: 'ai', label: 'AI', colour: 'salmon', group: 0, show: true },
     { id: 'services', label: 'Services', colour: 'lavender', group: 0, show: true },
     { id: 'words', label: 'Words', colour: 'blue', group: 1, show: true },
     { id: 'broll', label: 'B-roll', colour: 'yellow', group: 1, show: !device.away['feature:broll'] },
@@ -103,11 +95,13 @@ const REMEMBERED = 'cutalong:settings-section'
 function remembered(): SectionId {
   try {
     const kept = localStorage.getItem(REMEMBERED)
+    // Claude and Local AI were two sections before they were one.
+    if (kept === 'claude' || kept === 'local') return 'ai'
     if (SECTIONS.some((s) => s.id === kept)) return kept as SectionId
   } catch {
-    // Storage may be off: Claude it is.
+    // Storage may be off: the AI it is.
   }
-  return 'claude'
+  return 'ai'
 }
 
 function Tile({ id, colour, big = false }: { id: SectionId; colour: ColourName; big?: boolean }): JSX.Element {
@@ -156,10 +150,8 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
     switch (id) {
       case 'account':
         return <AccountSection onSynced={app.refreshFromAccount} />
-      case 'claude':
-        return <ClaudeSection app={app} settings={settings} onSettings={setSettings} />
-      case 'local':
-        return <LocalAiSection settings={settings} onSettings={setSettings} onPlanner={app.chooseLocalAi} />
+      case 'ai':
+        return <AiSection app={app} settings={settings} onSettings={setSettings} />
       case 'services':
         return <ServicesSection settings={settings} onSettings={setSettings} />
       case 'words':
@@ -169,7 +161,13 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
       case 'made':
         return <MadeSection settings={settings} onSettings={setSettings} />
       case 'device':
-        return <ThisComputerSection settings={settings} onSettings={setSettings} />
+        return (
+          <ThisComputerSection
+            settings={settings}
+            onSettings={setSettings}
+            onChangelog={() => app.setScreen('changelog')}
+          />
+        )
       case 'licences':
         return device.licences ? <Licences where={device.licences} version={version} /> : null
     }
