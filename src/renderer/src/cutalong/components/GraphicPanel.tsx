@@ -189,7 +189,7 @@ if (typeof document !== 'undefined') {
  * version starts a transition, and a click that finished during it was lost
  * (typing a name, then picking a style, kept the name and dropped the style).
  */
-function whenSettled(run: () => void): void {
+export function whenSettled(run: () => void): void {
   if (!pressed) {
     run()
     return

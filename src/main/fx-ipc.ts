@@ -4,9 +4,10 @@ import { currentCut, EditDocSchema, resolveCut, type Cut, type Resolved, type So
 import { effectsOf, type CutoutKind, type CutoutTrack } from '../shared/fx'
 import { designSize } from '../shared/motion'
 import { frameRate } from './cut-render'
-import { cutoutNeeds, findCutouts, visionHelper, type CutoutHelper } from './cutout'
+import { cutoutNeeds, findCutouts, visionHelper, type CutoutHelper, type CutoutNeed } from './cutout'
 import { FFMPEG_PATH } from './ffmpeg'
 import { fxSceneFor, renderCutFx, type CutFx } from './fx-render'
+import { matteNeeds } from './matte-cutouts'
 import { VISION_PATH } from './track'
 
 /**
@@ -38,11 +39,15 @@ export async function cutoutsFor(
   sources: Source[],
   signal?: AbortSignal
 ): Promise<{ tracks: CutoutTrack[]; missing: CutoutKind[] }> {
-  if (effectsOf(cut).length === 0) return { tracks: [], missing: [] }
   const first = firstSource(resolved, sources)
   if (!first) return { tracks: [], missing: [] }
-  const scene = fxSceneFor({ cut, resolved, words, sources }, designSize(cut.aspect, first), frameRate(first.fps ?? 30))
-  const needs = cutoutNeeds(cut, resolved, sources, scene.plans)
+  const needs: CutoutNeed[] = []
+  if (effectsOf(cut).length > 0) {
+    const scene = fxSceneFor({ cut, resolved, words, sources }, designSize(cut.aspect, first), frameRate(first.fps ?? 30))
+    needs.push(...cutoutNeeds(cut, resolved, sources, scene.plans))
+  }
+  // The layer tracks' mattes, and graphics drawn behind the person (main/matte-cutouts).
+  needs.push(...matteNeeds(cut, resolved, words, sources))
   if (needs.length === 0) return { tracks: [], missing: [] }
   const can = await cutoutHelper().can()
   const kept = new Map<string, CutoutTrack>()
@@ -62,6 +67,12 @@ export async function cutoutsFor(
     }
   }
   return { tracks: [...kept.values()], missing: [...missing] }
+}
+
+/** The cut-outs an edit's mattes want, for the export's layers and graphics; none when nothing is cut to one. */
+export async function matteCutoutsFor(input: { cut: Cut; resolved: Resolved; words: Word[]; sources: Source[] }): Promise<CutoutTrack[]> {
+  if (matteNeeds(input.cut, input.resolved, input.words, input.sources).length === 0) return []
+  return (await cutoutsFor(input.cut, input.resolved, input.words, input.sources)).tracks
 }
 
 /** An export's scene effects, as cut-render reads them; null when the edit has none. */

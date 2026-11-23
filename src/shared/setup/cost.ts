@@ -40,8 +40,8 @@ export const PLANNER_PRICE = {
 
 export const TYPICAL_PLAN = {
   minutes: 10,
-  measured: '2026-11-17',
-  chars: { instructions: 62161, commands: 5243, transcript: 20136, request: 8946, triage: 8933 },
+  measured: '2026-11-22',
+  chars: { instructions: 75392, commands: 5752, transcript: 20136, request: 8946, triage: 10127 },
   /** Characters per token, as reckoned above. */
   perToken: { instructions: 3, commands: 3, transcript: 2.3, request: 2.3, triage: 3 },
   /** The plan and Claude's thinking, from a short note to a long prompt. */

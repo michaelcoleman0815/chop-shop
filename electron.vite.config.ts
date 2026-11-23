@@ -7,7 +7,13 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        // The app's bridge, and the export's 3D page's one channel (main/three-render.ts).
+        input: { index: resolve('src/preload/index.ts'), three: resolve('src/preload/three.ts') }
+      }
+    }
   },
   renderer: {
     resolve: {
@@ -15,6 +21,12 @@ export default defineConfig({
         '@': resolve('src/renderer/src')
       }
     },
-    plugins: [react()]
+    plugins: [react()],
+    build: {
+      rollupOptions: {
+        // The app, and the page the export draws 3D clips in (renderer/three.html).
+        input: { index: resolve('src/renderer/index.html'), three: resolve('src/renderer/three.html') }
+      }
+    }
   }
 })

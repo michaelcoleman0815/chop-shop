@@ -263,7 +263,32 @@ export interface CommitResult {
  * length cut a line) needs them, and nothing replays saved ops, since every
  * version holds its whole cut.
  */
-const UNSAVED: ReadonlySet<Op['op']> = new Set(['brand', 'fill', 'box', 'fx-add', 'fx-update', 'fx-remove', 'punch-jumps'])
+const UNSAVED: ReadonlySet<Op['op']> = new Set<Op['op']>([
+  'brand',
+  'fill',
+  'box',
+  'fx-add',
+  'fx-update',
+  'fx-remove',
+  'punch-jumps',
+  // Layer tracks, and the trim that moves a beat's edge: ops 0.2.13 does not know.
+  'track-add',
+  'track-update',
+  'track-remove',
+  'clip-add',
+  'clip-update',
+  'clip-move',
+  'clip-trim',
+  'clip-split',
+  'clip-remove',
+  'key-set',
+  'key-remove',
+  'trim',
+  // An expression on a clip's setting (shared/anim/expr).
+  'clip-expr',
+  // The mixer (Cut.voiceMix, Cut.musicMix, Track.mix): an op 0.2.13 does not know.
+  'mix'
+])
 
 /** Whether a version never keeps this op: one above, or a transition to a look 0.2.13 cannot name. */
 const unsaved = (o: Op): boolean => UNSAVED.has(o.op) || (o.op === 'transition' && isTransitionLook(o.kind))

@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import { createHash } from 'crypto'
 import { existsSync, promises as fs } from 'fs'
 import { join } from 'path'
-import { pictureSpan, type Cut, type Resolved, type Source } from '../shared/edit'
+import { pictureSpan, srcTimeAt, type Cut, type Resolved, type Source } from '../shared/edit'
 import { cutoutFor, effectsOf, followObjects, type CutoutKind, type CutoutSample, type CutoutTrack } from '../shared/fx'
 
 /**
@@ -213,20 +213,41 @@ export interface CutoutNeed {
  * side, merged per recording and kind.
  */
 export function cutoutNeeds(cut: Cut, resolved: Resolved, sources: Source[], spans: { id: string; start: number; end: number }[]): CutoutNeed[] {
-  const wants: CutoutNeed[] = []
+  const wanted: { kind: CutoutKind; start: number; end: number }[] = []
   for (const item of effectsOf(cut)) {
     const span = spans.find((s) => s.id === item.id)
     if (!span) continue
     const kind = cutoutFor(item)
-    if (!kind) continue
+    if (kind) wanted.push({ kind, start: span.start, end: span.end })
+  }
+  return stretchesFor(cut, resolved, sources, wanted)
+}
+
+/**
+ * The stretches of the recordings that stretches of the edit show, a
+ * little either side, merged per recording and kind: what to cut out for
+ * whatever wants a kind of cut-out over a stretch (an effect, a matte).
+ */
+export function stretchesFor(
+  cut: Cut,
+  resolved: Resolved,
+  sources: Source[],
+  wanted: { kind: CutoutKind; start: number; end: number }[],
+  /** Only what the stretch itself shows of each piece, rather than the whole piece. */
+  exact = false
+): CutoutNeed[] {
+  const wants: CutoutNeed[] = []
+  for (const { kind, ...span } of wanted) {
     for (const p of resolved.pieces) {
       const pic = pictureSpan(p)
       if (pic.outEnd <= span.start || pic.outStart >= span.end) continue
       const beat = cut.beats.find((b) => b.id === p.beat)
       const source = sources.find((s) => s.id === p.source)
       if (!beat || !source || beat.treatment.frame !== 'speaker') continue
-      const lo = Math.min(pic.srcStart, pic.srcEnd)
-      const hi = Math.max(pic.srcStart, pic.srcEnd)
+      const a = exact ? srcTimeAt(p, Math.max(span.start, pic.outStart)) : pic.srcStart
+      const b = exact ? srcTimeAt(p, Math.min(span.end, pic.outEnd) - 1e-6) : pic.srcEnd
+      const lo = Math.min(a, b)
+      const hi = Math.max(a, b)
       wants.push({ path: source.path, kind, from: Math.max(0, lo - 0.25), to: Math.min(source.durationSec || hi + 0.25, hi + 0.25) })
     }
   }

@@ -1,10 +1,13 @@
 import { addMotion, removeMotion, updateMotion, type MotionOpContext, type MotionResult } from '../motion/apply'
 import { addFx, removeFx, updateFx, type FxResult } from '../fx/apply'
+import { applyTrackOp, type TrackResult } from '../tracks/apply'
+import { applyMixOp } from '../mix/apply'
+import { timelineFor } from '../motion/timing'
 import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
 import { fillMode } from './fill'
 import { mergeLook } from './look'
 import type { Sfx } from './sfx'
-import { indexWords, type WordIndex } from './resolve'
+import { indexWords, resolveCut, type WordIndex } from './resolve'
 import { keptTransition, MIN_TRANSITION_SEC, TRANSITION_INFO } from './transitions'
 import {
   DEFAULT_PAD_IN,
@@ -50,6 +53,8 @@ interface Ctx {
   pictures: Set<string> | null
   /** Material a grid panel can show (footage and pictures), or null when the caller did not say. */
   material: Set<string> | null
+  /** Every asset id, or null when the caller did not say. */
+  assetIds: Set<string> | null
 }
 
 function makeCtx(ctx: OpContext): Ctx {
@@ -59,7 +64,8 @@ function makeCtx(ctx: OpContext): Ctx {
     pictures: ctx.assets ? new Set(ctx.assets.filter((a) => a.kind === 'image').map((a) => a.id)) : null,
     material: ctx.assets
       ? new Set(ctx.assets.filter((a) => a.kind === 'image' || a.kind === 'video').map((a) => a.id))
-      : null
+      : null,
+    assetIds: ctx.assets ? new Set(ctx.assets.map((a) => a.id)) : null
   }
 }
 
@@ -212,6 +218,29 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       const joined: Beat = { ...beat, to: next.to, padOut: next.padOut, ...(kept.length ? { sfx: kept } : {}) }
       const beats = [...cut.beats]
       beats.splice(at, 2, joined)
+      return { ...cut, beats }
+    }
+
+    case 'trim': {
+      const at = findBeat(cut, op.beat)
+      const beat = cut.beats[at]
+      const beats = [...cut.beats]
+      if (beat.from !== null && beat.to !== null) {
+        if (!op.word) throw new OpError(`${beat.id} is cut on words; say which word it should ${op.edge === 'in' ? 'start' : 'end'} on.`)
+        const from = op.edge === 'in' ? op.word : beat.from
+        const to = op.edge === 'out' ? op.word : beat.to
+        const [a] = wordRange(ctx, from, to)
+        if (ctx.index.words[a].source !== beat.source) throw new OpError(`${op.word} is in another recording than ${beat.id}.`)
+        beats[at] = { ...beat, from, to }
+        return { ...cut, beats }
+      }
+      if (op.sec === undefined) throw new OpError(`${beat.id} is a stretch of its recording; say the second to trim it to.`)
+      const inSec = op.edge === 'in' ? op.sec : (beat.inSec ?? 0)
+      const outSec = op.edge === 'out' ? op.sec : (beat.outSec ?? ctx.sources.get(beat.source)?.durationSec ?? op.sec)
+      const length = ctx.sources.get(beat.source)?.durationSec
+      if (outSec - inSec < 0.05) throw new OpError(`${beat.id} would be gone: its in point would pass its out point.`)
+      if (length !== undefined && outSec > length + 1e-3) throw new OpError(`${beat.id} cannot run past the end of its recording.`)
+      beats[at] = { ...beat, inSec, outSec }
       return { ...cut, beats }
     }
 
@@ -602,7 +631,38 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
     }
     case 'fx-remove':
       return fxCut(removeFx(cut, op.ids))
+    // Layer tracks. The checks live in shared/tracks.
+    case 'track-add':
+    case 'track-update':
+    case 'track-remove':
+    case 'clip-add':
+    case 'clip-update':
+    case 'clip-move':
+    case 'clip-trim':
+    case 'clip-split':
+    case 'clip-remove':
+    case 'key-set':
+    case 'key-remove':
+    case 'clip-expr':
+      return tracksCut(
+        applyTrackOp(cut, op, {
+          ...motionContext(cut, ctx),
+          hasMedia: (id) => ctx.sources.has(id) || (ctx.assetIds ? ctx.assetIds.has(id) : true),
+          timeline: () => {
+            const words = ctx.index.words
+            return timelineFor(cut, resolveCut(cut, words, [...ctx.sources.values()]), words)
+          }
+        })
+      )
+    // The mixer. The checks live in shared/mix.
+    case 'mix':
+      return tracksCut(applyMixOp(cut, op))
   }
+}
+
+function tracksCut(result: TrackResult): Cut {
+  if (!result.ok) throw new OpError(result.reason)
+  return result.cut
 }
 
 function fxCut(result: FxResult): Cut {
