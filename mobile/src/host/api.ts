@@ -338,6 +338,8 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     // Nothing is cut out of a picture here: that is the Mac's Vision.
     fxCan: async () => ({ person: false, objects: false }),
     fxCutouts: async () => ({ tracks: [], missing: [] }),
+    // Following needs the Mac's Vision.
+    followClips: async () => ({ ops: [], said: 'Following something in the picture needs Cutalong on a Mac, so it stays where it is put.' }),
     setVideoSignIn: async () => null,
     getBrand: () => readBrand(),
     saveBrand: (brand) => saveBrand(brand),

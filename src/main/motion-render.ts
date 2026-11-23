@@ -20,6 +20,9 @@ import { frameRate, frameSize, type OverlaySpan } from './cut-render'
 import { mapResourcesFor, usesMap } from './map-data'
 import { sceneForCut, type CutMotionInput } from './motion-scene'
 import type { MapResources } from '../shared/maps'
+import type { CutoutTrack } from '../shared/fx'
+import { drawsBehind } from '../shared/tracks/mattes'
+import { exportMattes } from './matte-cutouts'
 
 /**
  * Motion graphics for the export: the same scene the editor draws, painted
@@ -71,6 +74,8 @@ export interface MotionRenderOptions {
   map?: MapResources
   /** Video clips' frames, for the layer tracks' video layers (main/video-frames). */
   video?: VideoFrames
+  /** The person and objects as mattes, from the cut-outs (main/matte-cutouts), for layers cut to them or drawn behind the person. */
+  mattes?: DrawResources['mattes']
   /** The overlay files' names start with this: "motion" unless said. */
   prefix?: string
   /** The stretches to draw, instead of every stretch something is on screen. */
@@ -154,7 +159,8 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
     map: opts.map,
     // Scratch canvases, for motion blur.
     createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>,
-    ...(opts.video ? { video: (layer: VideoLayer, local: number) => opts.video?.frame(layer, local) ?? null } : {})
+    ...(opts.video ? { video: (layer: VideoLayer, local: number) => opts.video?.frame(layer, local) ?? null } : {}),
+    ...(opts.mattes ? { mattes: opts.mattes } : {})
   }
   const videos = opts.video ? videoLayersOf(layers) : []
 
@@ -258,7 +264,9 @@ function encode(
 export { sceneForCut, subtitleCut, subtitlePass, type CutMotionInput } from './motion-scene'
 
 /** Renders a cut's graphics to overlay files for renderCut. Empty when the cut has none. */
-export async function renderCutMotion(input: CutMotionInput): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }> {
+export async function renderCutMotion(
+  input: CutMotionInput & { /** The cut-outs made for graphics drawn behind the person (main/matte-cutouts). */ cutouts?: CutoutTrack[] }
+): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }> {
   const scene = sceneForCut(input)
   if (scene.layers.length === 0) return { overlays: [], scene }
   const first = input.sources.find((s) => s.id === input.resolved.pieces[0]?.source) ?? input.sources[0]
@@ -279,6 +287,7 @@ export async function renderCutMotion(input: CutMotionInput): Promise<{ overlays
     map: usesMap(scene.layers)
       ? await mapResourcesFor(scene.layers, { design: scene.size, pixels: { width, height }, fps: frameRate(first.fps) })
       : undefined,
+    mattes: drawsBehind(scene.layers) ? await exportMattes(input.cut, input.resolved, input.sources, input.cutouts) : undefined,
     onProgress: input.onProgress,
     signal: input.signal
   })

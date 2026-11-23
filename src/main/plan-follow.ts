@@ -13,7 +13,14 @@ import { trackObject, type TrackedObject } from './track'
  * one sentence saying so.
  */
 
-export type Track = (path: string, startSec: number, durationSec: number, samplesPerSec?: number) => Promise<TrackedObject>
+export type Track = (
+  path: string,
+  startSec: number,
+  durationSec: number,
+  samplesPerSec?: number,
+  /** Where the object is on the first frame, as shares of the picture; found there when absent. */
+  box?: [number, number, number, number]
+) => Promise<TrackedObject>
 
 /** Boxes a second: as often as the drawn path is keyed, near enough. */
 export const FOLLOW_RATE = 12

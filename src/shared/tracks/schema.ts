@@ -5,6 +5,7 @@ import { BLEND_MODES } from '../motion/types'
 import { GradeSchema } from './grade'
 import { BusMixSchema } from '../mix/schema'
 import { ParticleSpecSchema } from '../particles/schema'
+import { ROTO_CHANGE, ROTO_FIELDS } from './roto'
 
 /**
  * Layer tracks: what the edit stacks over its own picture and mixes under its
@@ -121,7 +122,9 @@ export const ClipFieldsSchema = z.object({
   /** An adjustment clip's grade, over everything under it while it plays. */
   grade: GradeSchema.optional(),
   /** Particles: a preset and what changes from it (shared/particles); `src` is the picture an image sprite draws. */
-  particles: ParticleSpecSchema.optional()
+  particles: ParticleSpecSchema.optional(),
+  /** Masks, a track matte, a chroma key and following an object (tracks/roto). */
+  ...ROTO_FIELDS
 })
 export type ClipFields = z.infer<typeof ClipFieldsSchema>
 
@@ -152,13 +155,16 @@ const Id = z.string().min(1).max(16)
  * A clip's settings, any of them, with no defaults: zod 4 fills a default in
  * even where `.partial()` made the field optional, so a change to one setting
  * put every other defaulted one back (a blend went back to normal when the
- * opacity changed). Only what a change says, it changes.
+ * opacity changed). Only what a change says, it changes; and a matte, key or
+ * follow may be null, which takes it off (tracks/roto).
  */
-const ClipChangeSchema = z.object(
-  Object.fromEntries(
-    Object.entries(ClipFieldsSchema.omit({ kind: true }).shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? v.unwrap() : v).optional()])
-  )
-) as unknown as ReturnType<ReturnType<typeof ClipFieldsSchema.omit<{ kind: true }>>['partial']>
+const ClipChangeSchema = (
+  z.object(
+    Object.fromEntries(
+      Object.entries(ClipFieldsSchema.omit({ kind: true }).shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? v.unwrap() : v).optional()])
+    )
+  ) as unknown as ReturnType<ReturnType<typeof ClipFieldsSchema.omit<{ kind: true }>>['partial']>
+).extend(ROTO_CHANGE)
 
 export const TrackOpSchemas = [
   z.object({

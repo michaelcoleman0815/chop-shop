@@ -69,7 +69,7 @@ export function useClipMedia(
       const el = document.createElement(w.kind)
       el.preload = 'auto'
       if (el instanceof HTMLVideoElement) el.playsInline = true
-      // Read with CORS, as the decks are, so an adjustment clip over its frames can read them and the mixer may hear it.
+      // Read with CORS, as the decks are, so an adjustment clip or a chroma key can read its frames and the mixer may hear it.
       if (MEDIA_CORS) el.crossOrigin = MEDIA_CORS
       el.addEventListener('seeked', bump)
       el.addEventListener('loadeddata', bump)

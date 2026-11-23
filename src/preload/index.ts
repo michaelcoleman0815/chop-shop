@@ -664,6 +664,9 @@ const api = {
   fxCan: (): Promise<{ person: boolean; objects: boolean }> => ipcRenderer.invoke('fx:can'),
   fxCutouts: (doc: unknown): Promise<{ tracks: CutoutTrack[]; missing: CutoutKind[] }> =>
     ipcRenderer.invoke('fx:cutouts', { doc }),
+  // Clips and masks that follow an object: followed by Vision, and the ops that put their paths on.
+  followClips: (doc: unknown, ops: unknown[] = []): Promise<{ ops: unknown[]; said: string }> =>
+    ipcRenderer.invoke('layers:follow', { doc, ops }),
 
   analyze: (
     videoPath: string,

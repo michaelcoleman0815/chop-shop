@@ -94,12 +94,14 @@ import { fitHeight } from '../components/Composer'
 import { GraphicPanel } from '../components/GraphicPanel'
 import { boxStyle, GridPanels, gridViewFor } from '../components/GridPanels'
 import { MotionCanvas } from '../components/MotionCanvas'
-import { clipSpan, mediaOf, resolveClip, soundingClips, trackLayers, tracksOf, type Placed, type TrackClip } from '../../../../shared/tracks'
+import { clipSpan, drawsBehind, mediaOf, resolveClip, soundingClips, trackLayers, tracksOf, type Placed, type TrackClip } from '../../../../shared/tracks'
 import { needsBase } from '../../../../shared/tracks/compositing'
 import { particleTitle } from '../../../../shared/particles/presets'
 import { isKeyed, type Anim } from '../../../../shared/anim'
 import { ClipPanel } from '../components/ClipPanel'
 import { Scopes } from '../components/Scopes'
+import { MaskDraw } from '../components/MaskDraw'
+import type { RotoEdit, RotoProps } from '../components/RotoFields'
 import { Lanes, type Lane, type Snap } from '../components/Lanes'
 import { timelineFor } from '../../../../shared/motion/timing'
 import { useClipMedia } from '../useClipMedia'
@@ -112,6 +114,7 @@ import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
 import { useFxRender, useFxScene } from '../fx-preview'
 import { captureLayerBase, useDeckFrames } from '../layer-base'
+import { useMattes } from '../mattes-preview'
 import { grainTile } from '../grain'
 import { FilmOver, filmFps } from '../components/FilmOver'
 import { weaveTransform } from '../../../../shared/edit/film'
@@ -175,7 +178,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
     const tl = timelineFor(cut, resolved, doc.words)
     const media = mediaOf(doc.assets, doc.sources)
     return {
-      scene: { ...scene, layers: trackLayers(cut, tl, scene.size, media), items: [] },
+      // Clips and masks that follow an object in the edit's picture are placed through the cut (shared/tracks/roto-layers).
+      scene: { ...scene, layers: trackLayers(cut, tl, scene.size, media, { cut, resolved, pictures: doc.sources }), items: [] },
       sounding: soundingClips(tracksOf(cut), tl, media)
     }
   }, [cut, resolved, doc.words, doc.assets, doc.sources, scene])
@@ -217,6 +221,27 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
     if (clipId && !pickedClip) setClipId(null)
   }, [clipId, pickedClip])
   const clipOps = (ops: Op[], said: string): void => app.applyOpsDirect(ops, said)
+  // A mask drawn or moved, or a key's colour picked, on the preview for the picked clip (components/MaskDraw).
+  const [roto, setRoto] = useState<RotoEdit | null>(null)
+  useEffect(() => {
+    if (roto && roto.clip !== pickedClip?.id) setRoto(null)
+  }, [roto, pickedClip])
+  const rotoProps: RotoProps = {
+    edit: roto,
+    onEdit: setRoto,
+    others: tracks
+      .filter((t) => t.kind === 'picture')
+      .flatMap((t) => t.clips)
+      .filter((c) => c.id !== pickedClip?.id)
+      .map((c) => ({ id: c.id, label: `${c.name ?? (c.kind === 'text' && c.text ? c.text.value.slice(0, 24) : c.kind)} (${c.id})` })),
+    // Followed by Vision with the ops that ask it, applied together as one change (main/clip-follow).
+    onFollow: async (ask) => {
+      const found = await api.followClips(doc, ask)
+      if (found.ops.length === 0) return found.said || 'I could not find what to follow there.'
+      clipOps([...ask, ...(found.ops as Op[])], 'It follows what is under it.')
+      return found.said
+    }
+  }
   const moveClip = (id: string, from: string, endSec: number): void => {
     const clip = tracks.flatMap((t) => t.clips).find((c) => c.id === id)
     if (!clip) return
@@ -328,6 +353,11 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             theme={theme}
             captionColors={captionColors}
             layers={layers}
+            roto={
+              roto && pickedClip
+                ? { edit: roto, clip: pickedClip, span: clipSpan(clock, resolveClip(pickedClip, media)), onOps: clipOps, onEdit: setRoto }
+                : null
+            }
           />
           {side === 'script' ? (
             <ScriptPanel
@@ -350,6 +380,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               onOps={clipOps}
               onSeek={player.seek}
               onClose={() => setClipId(null)}
+              roto={rotoProps}
             />
           ) : selected ? (
             <GraphicPanel
@@ -470,10 +501,13 @@ function Preview({
   onRegion,
   theme,
   captionColors,
-  layers
+  layers,
+  roto
 }: {
   /** The layer tracks: what they draw over the picture, and what sounds. */
   layers: { scene: MotionScene | null; sounding: Placed[] }
+  /** A clip's mask being drawn or moved, or its key's colour picked, over the picture. */
+  roto: { edit: RotoEdit; clip: TrackClip; span: { start: number; end: number } | null; onOps: (ops: Op[], said: string) => void; onEdit: (e: RotoEdit | null) => void } | null
   doc: EditDoc
   resolved: Resolved
   /** The cut as the decks play it, with beats shown through other cameras. */
@@ -514,6 +548,9 @@ function Preview({
   const [unreadable, setUnreadable] = useState(false)
   const onUnreadable = useCallback(() => setUnreadable(true), [])
   const deckFrames = useDeckFrames(decks, (layers.scene?.layers ?? NO_LAYERS).some(needsBase))
+  // The person and objects as mattes, for clips cut to them and graphics behind the person (mattes-preview).
+  const behind = useMemo(() => drawsBehind(scene.layers), [scene])
+  const mattes = useMattes(doc, resolved, behind)
   const source = doc.sources[0]
   const ratio = ASPECT[cut.aspect] ?? (source.width > 0 && source.height > 0 ? source.width / source.height : 16 / 9)
 
@@ -644,6 +681,8 @@ function Preview({
             redraw={clips.version + deckFrames}
             base={layerBase}
             onUnreadable={onUnreadable}
+            mattes={mattes}
+            keySize={playing ? 640 : 1280}
           />
         )}
         <Subtitles
@@ -654,7 +693,17 @@ function Preview({
           width={box.w}
           height={box.h}
         />
-        <MotionCanvas scene={scene} assets={doc.assets} time={time} width={box.w} height={box.h} />
+        <MotionCanvas scene={scene} assets={doc.assets} time={time} width={box.w} height={box.h} mattes={mattes} />
+        {roto && (
+          <MaskDraw
+            {...roto}
+            layer={layers.scene?.layers.find((l) => l.id === roto.clip.id)}
+            time={time}
+            design={scene.size}
+            box={box}
+            frame={clips.frame}
+          />
+        )}
         {selected && template(selected.kind)?.fields.some((f) => f.slot === 'box') && (
           <RegionPicker item={selected} onPick={onRegion} />
         )}

@@ -20,6 +20,8 @@ import { layoutText, measurer, type TextBlock, type WordBox } from './layout'
 import { drawAdjustment } from './adjust'
 import { drawMap } from '../maps/paint'
 import { drawParticles } from '../particles/draw'
+import { keyedPicture } from './chroma'
+import { drawCut, isCut } from './roto'
 import type {
   Anim,
   Animator,
@@ -57,7 +59,7 @@ type Pass = 'glow' | 'shadow' | 'plain'
 
 /** Draws every layer active at t. The caller sets the transform from design pixels to the canvas. */
 export function drawFrame(ctx: Ctx, t: number, layers: Layer[], size: Size, resources: DrawResources = {}): void {
-  const state: DrawState = { res: resources, size, measure: measurerFor(ctx) }
+  const state: DrawState = { res: resources, size, measure: measurerFor(ctx), layers, base: ctx.getTransform() }
   for (const layer of layers) drawLayer(ctx, layer, t, 1, state)
 }
 
@@ -87,6 +89,13 @@ interface DrawState {
   smearing?: boolean
   /** Drawing a blurred layer onto its own small canvas, where a blur inside it uses the filter. */
   softening?: boolean
+  /** The frame's layers, and the transform they are drawn under, for a matte taken from one of them (shared/motion/roto). */
+  layers?: Layer[]
+  base?: DOMMatrix
+  /** The layer being drawn whole, to be cut to its masks and matte after. */
+  cutting?: Layer
+  /** The layer being drawn as another's matte, which is all it is drawn as. */
+  asMatte?: Layer
 }
 
 // One measuring cache per canvas, kept while the canvas lives, until the faces change (forgetMeasures).
@@ -197,11 +206,30 @@ function drawLayer(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st:
 
 function drawPlain(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st: DrawState): void {
   if (!isActive(layer, t)) return
+  if (layer.asMatte && st.asMatte !== layer) return
   const local = t - layer.start
   const length = layer.end - layer.start
   const tf = sampleTransform(layer.transform, local, length)
   const opacity = parentOpacity * tf.opacity
   if (opacity <= 0.002 || Math.abs(tf.sx) < 1e-4 || Math.abs(tf.sy) < 1e-4) return
+
+  // Masks and a matte: drawn whole on a canvas of its own, cut there, and laid on (shared/motion/roto).
+  if (st.cutting !== layer && st.res.createCanvas && isCut(layer, st.res)) {
+    const cut = drawCut({
+      ctx,
+      layer,
+      t,
+      local,
+      length,
+      res: st.res,
+      layers: st.layers ?? [],
+      base: st.base ?? ctx.getTransform(),
+      ownTransform: (c) => applyTransform(c, tf),
+      drawWhole: (c) => drawPlain(c, layer, t, parentOpacity, { ...st, cutting: layer, measure: measurerFor(c) }),
+      drawMatte: (c, source) => drawLayer(c, source, t, 1, { ...st, asMatte: source, cutting: undefined, measure: measurerFor(c) })
+    })
+    if (cut) return
+  }
 
   if (layer.behind && st.res.matte && st.res.createCanvas) {
     drawBehind(ctx, layer, t, parentOpacity, st)
@@ -729,6 +757,18 @@ function drawImageLayer(
     drawFallback(ctx, layer)
     return
   }
+  if (layer.key) {
+    // The key's colour taken out first (shared/motion/chroma), kept for the next frame.
+    const keyed = keyedPicture(img, iw, ih, layer.key, st.res.createCanvas, st.res.keySize, true)
+    if (keyed !== img) {
+      withEffects(ctx, layer.effects, (pass) => {
+        if (pass === 'glow') return
+        const k = imageSize(keyed)
+        drawPicture(ctx, keyed, k.width, k.height, layer.w, layer.h, layer.fit ?? 'contain', layer.crop, local, length)
+      })
+      return
+    }
+  }
   if (layer.crop && !layer.tile) {
     withEffects(ctx, layer.effects, (pass) => {
       if (pass !== 'glow') drawPicture(ctx, img, iw, ih, layer.w, layer.h, layer.fit ?? 'contain', layer.crop, local, length)
@@ -892,9 +932,13 @@ function drawPicture(
 }
 
 function drawVideoLayer(ctx: Ctx, layer: VideoLayer, local: number, length: number, opacity: number, st: DrawState): void {
-  const img = st.res.video?.(layer, local)
-  if (!img) return
-  const { width: iw, height: ih } = imageSize(img)
+  const frame = st.res.video?.(layer, local)
+  if (!frame) return
+  const shown = imageSize(frame)
+  if (!shown.width || !shown.height) return
+  // The key's colour taken out of this frame (shared/motion/chroma), at a working size where the preview asks.
+  const img = layer.key ? keyedPicture(frame, shown.width, shown.height, layer.key, st.res.createCanvas, st.res.keySize, false) : frame
+  const { width: iw, height: ih } = img === frame ? shown : imageSize(img)
   if (!iw || !ih) return
   ctx.globalAlpha = opacity
   withEffects(ctx, layer.effects, (pass) => {

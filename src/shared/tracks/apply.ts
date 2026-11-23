@@ -5,6 +5,7 @@ import type { Timeline } from '../motion/timing'
 import { trackExprProblem, withExpr } from './compositing'
 import { continuedParticles } from '../particles/presets'
 import { isMediaId } from './media'
+import { withoutCleared, type ClipFollow, type ClipMatte, type ChromaKey } from './roto'
 import { clipSpan, timeOf, tracksOf } from './resolve'
 import {
   KINDS_ON,
@@ -50,7 +51,7 @@ type Op =
     }
   | { op: 'track-remove'; track: string }
   | ({ op: 'clip-add'; track?: string } & ClipFields)
-  | ({ op: 'clip-update'; clip: string } & Partial<Omit<ClipFields, 'kind'>>)
+  | ({ op: 'clip-update'; clip: string } & Partial<Omit<ClipFields, 'kind' | 'matte' | 'key' | 'follow'>> & ClipCleared)
   | { op: 'clip-move'; clip: string; track?: string; from?: string; to?: string }
   | { op: 'clip-trim'; clip: string; edge: 'in' | 'out' | 'slip'; to?: string; by?: number }
   | { op: 'clip-split'; clip: string; at: string }
@@ -58,6 +59,9 @@ type Op =
   | { op: 'key-set'; clip: string; prop: KeyedProp; t: number; v: number; ease?: Ease }
   | { op: 'key-remove'; clip: string; prop: KeyedProp; t: number }
   | { op: 'clip-expr'; clip: string; prop: KeyedProp; expr: string }
+
+/** A matte, key or follow, or null to take it off. */
+type ClipCleared = { matte?: ClipMatte | null; key?: ChromaKey | null; follow?: ClipFollow | null }
 
 class Refused extends Error {}
 const refuse = (reason: string): never => {
@@ -296,7 +300,8 @@ function step(tracks: Track[], op: Op, ctx: TrackOpContext): Track[] {
       const was = tracks[at.t].clips[at.c]
       // Particles change setting by setting, unless a preset is named, which starts afresh from it.
       if (change.particles && !change.particles.preset) change.particles = { ...was.particles, ...change.particles }
-      const clip = wholeClip(TrackClipSchema.parse({ ...was, ...change, id: was.id, kind: was.kind }), ctx)
+      // A matte, key or follow set to null comes off (tracks/roto).
+      const clip = wholeClip(TrackClipSchema.parse(withoutCleared({ ...was, ...change, id: was.id, kind: was.kind })), ctx)
       return replaceClip(tracks, at, clip)
     }
 

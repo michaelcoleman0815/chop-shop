@@ -29,11 +29,22 @@ import { api } from './api'
  * look and under the captions and graphics, as in the export.
  */
 
-/** A mask PNG as one value per pixel, decoded without colour management so it is the file's own grey. */
-async function loadMask(url: string): Promise<Mask | null> {
+/**
+ * A mask PNG as one value per pixel, decoded without colour management so it
+ * is the file's own grey. Loaded as a picture, which the page's content
+ * security policy lets come from the media server (img-src), where a fetch
+ * would be refused (it allows connections to the page's own origin only).
+ */
+export async function loadMask(url: string): Promise<Mask | null> {
   try {
-    const blob = await (await fetch(url)).blob()
-    const bitmap = await createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image()
+      if (!url.startsWith('data:')) i.crossOrigin = 'anonymous'
+      i.onload = () => resolve(i)
+      i.onerror = () => reject(new Error(`could not load ${url}`))
+      i.src = url
+    })
+    const bitmap = await createImageBitmap(img, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
     const canvas = document.createElement('canvas')
     canvas.width = bitmap.width
     canvas.height = bitmap.height

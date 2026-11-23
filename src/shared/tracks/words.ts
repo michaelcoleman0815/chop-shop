@@ -1,3 +1,5 @@
+import { onlyRoto, rotoPhrases } from './roto-words'
+
 /**
  * Clauses for describePlan (shared/presets/plan): what a plan did to the
  * layer tracks, in the app's voice. "a video goes over the edit", "one clip
@@ -29,7 +31,8 @@ export function trackPhrases(ops: OpLike[]): string[] {
             : `${NOUN[String(o.kind)] ?? 'a clip'} goes over the edit`
       )
   else if (added.length > 2) said.push(`${count(added.length, 'clip', 'clips')} go on the tracks`)
-  const changed = of('clip-update').length + of('clip-move').length
+  // Masks, mattes, keys and following are said by their own clauses (tracks/roto-words).
+  const changed = of('clip-update').filter((o) => !onlyRoto(o)).length + of('clip-move').length
   if (changed > 0) said.push(`${count(changed, 'clip', 'clips')} ${changed === 1 ? 'changes' : 'change'}`)
   const trimmed = of('clip-trim').length + of('trim').length
   if (trimmed > 0) said.push(`${count(trimmed, 'edge is', 'edges are')} trimmed`)
@@ -50,5 +53,6 @@ export function trackPhrases(ops: OpLike[]): string[] {
   if (tracks > 0) said.push(`${count(tracks, 'track is', 'tracks are')} added`)
   const restacked = of('track-update').length + of('track-remove').length
   if (restacked > 0) said.push(`${count(restacked, 'track changes', 'tracks change')}`)
+  said.push(...rotoPhrases(ops))
   return said
 }

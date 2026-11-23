@@ -2,6 +2,7 @@ import type { Cut } from '../shared/edit'
 import { COMPOSITING_INDEX, compositingGuide, wantsCompositing } from '../shared/tracks/compositing-planner'
 import { MIX_INDEX, mixGuide, wantsMix } from '../shared/mix/planner'
 import { hasParticles, PARTICLE_ASK, PARTICLES_INDEX, particlesGuide } from '../shared/particles/planner'
+import { ROTO_GUIDE } from './roto-guide'
 
 /**
  * The families of ops whose full guide is long and needed only now and then:
@@ -34,7 +35,9 @@ export const FAMILY_GUIDES: FamilyGuide[] = [
   // The mixer (shared/mix/planner).
   { name: 'mixer', index: MIX_INDEX, wanted: wantsMix, guide: mixGuide },
   // Particles (shared/particles/planner).
-  { name: 'particles', index: PARTICLES_INDEX, wanted: (ask, cut) => PARTICLE_ASK.test(ask) || hasParticles(cut), guide: particlesGuide }
+  { name: 'particles', index: PARTICLES_INDEX, wanted: (ask, cut) => PARTICLE_ASK.test(ask) || hasParticles(cut), guide: particlesGuide },
+  // Masks, mattes, keying and following (main/roto-guide).
+  ROTO_GUIDE
 ]
 
 /** The always-on lines, under a heading, or nothing while there are no families. */

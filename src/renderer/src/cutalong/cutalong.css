@@ -6268,3 +6268,123 @@ a.cl-btn {
     line-height: 15px;
   }
 }
+
+/* ---------- Masks, mattes, keys and following on a clip (components/RotoFields, MaskDraw) ---------- */
+
+.cl-roto-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cl-roto-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.cl-roto-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* One mask: paper with a hairline; blue pencil while its points are being moved on the picture. */
+.cl-roto-mask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  background: var(--card);
+}
+
+.cl-roto-mask.on {
+  border-color: var(--pick);
+}
+
+.cl-roto-mask-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-roto-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.cl-roto-pair > * {
+  min-width: 0;
+}
+
+.cl-roto-hex {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Over the picture while a mask is drawn or moved, or a key's colour picked. */
+.cl-roto {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.cl-roto-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The path in the stage's own light, over a shadow of the stage so it reads on any footage. */
+.cl-roto-under {
+  fill: none;
+  stroke: var(--stage);
+  stroke-width: 3.5;
+  stroke-opacity: 0.55;
+}
+
+.cl-roto-line {
+  fill: color-mix(in oklch, var(--pick) 14%, transparent);
+  stroke: var(--on-stage);
+  stroke-width: 1.5;
+}
+
+.cl-roto-point {
+  fill: var(--on-stage);
+  stroke: var(--stage);
+  stroke-width: 1.5;
+}
+
+.cl-roto-point.on {
+  fill: var(--pick);
+}
+
+/* The first point, once there are enough to close the shape on it. */
+.cl-roto-point.first {
+  stroke: var(--pick);
+  stroke-width: 3;
+}
+
+/* A key's diamond reaches past its box when turned: room for it, so the clip panel never scrolls sideways. */
+.cl-clip-panel .cl-key-toggle {
+  margin-inline: 3px;
+}
+
+/* A mask's own choices sit in a narrow card: smaller segments, so three fit on one line, and its text buttons at the start. */
+.cl-roto-mask .cl-segments button {
+  height: 30px;
+  padding: 0 10px;
+}
+
+.cl-roto-mask > .cl-btn {
+  align-self: flex-start;
+}

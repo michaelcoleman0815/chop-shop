@@ -8,6 +8,8 @@ import { liftParticles, particleSlots, particleWords } from '../particles/planne
 import type { ParticleSpec } from '../particles/schema'
 import { BLEND_MODES, EASE_NAMES } from '../motion/types'
 import { clipSpan, tracksOf } from './resolve'
+import { ROTO_CHANGE, withoutCleared } from './roto'
+import { rotoBits } from './roto-words'
 import { ClipFieldsSchema, CLIP_KINDS, KEYED_PROPS, type TrackClip } from './schema'
 
 /**
@@ -72,6 +74,8 @@ type PlannerTrackOp = z.infer<(typeof TRACK_PLANNER_OPS)[number]>
 
 /** What `spec` may carry: any of a clip's settings, the deep ones (transform, crop, a title's style) included. */
 const SpecSchema = ClipFieldsSchema.omit({ kind: true }).partial().extend({
+  // Masks, a matte, a key and following (tracks/roto); null takes a matte, key or follow off.
+  ...ROTO_CHANGE,
   text: z
     .object({
       value: z.string().optional(),
@@ -145,7 +149,8 @@ export function fromTrackPlannerOp(op: PlannerTrackOp): unknown {
         ...(op.blend ? { blend: op.blend } : {}),
         ...(op.opacity > 0 && op.opacity < 1 ? { opacity: op.opacity } : {}),
         ...(op.volume !== 0 ? { volume: op.volume } : {}),
-        ...rest,
+        // Nothing to take off a clip that is new.
+        ...withoutCleared(rest),
         ...(op.kind === 'particles' ? { particles: particleSlots(op, rest.particles) } : {})
       }
     }
@@ -211,6 +216,7 @@ function described(clip: TrackClip, length: number): string {
     if (grade.length) bits.push(`grade ${grade.map(([k, v]) => `${k} ${v}`).join(' ')}`)
   }
   if (clip.kind === 'particles') bits.push(particleWords(clip.particles))
+  bits.push(...rotoBits(clip))
   const anims: [string, unknown][] = [
     ['opacity', clip.opacity],
     ['volume', clip.volume],

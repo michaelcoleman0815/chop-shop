@@ -195,6 +195,41 @@ export type Geometry =
   /** SVG path data. */
   | { type: 'path'; d: string }
 
+/**
+ * A mask a layer is cut to (shared/motion/roto): a closed Bezier path in the
+ * layer's own pixels, softened, grown or shrunk, and combined with the masks
+ * before it. Points are [x, y, inX, inY, outX, outY], handles as offsets.
+ */
+export interface LayerMask {
+  path: Anim<number[][]>
+  mode: 'add' | 'subtract' | 'intersect'
+  invert?: boolean
+  /** How soft its edge is, in design pixels. */
+  feather?: Anim<number>
+  /** Grown by this many design pixels, or shrunk below 0. */
+  expand?: Anim<number>
+  opacity?: Anim<number>
+  /** Where the path's own origin is in the layer's pixels. */
+  origin?: { x: number; y: number }
+  /** Its own movement inside the layer's, from the origin. */
+  transform?: Transform
+}
+
+/** A track matte: the layer shows only where it says (person, objects, object:<n>, clip:<id>), or everywhere but there. */
+export interface LayerMatte {
+  from: string
+  mode: 'alpha' | 'luma'
+  invert?: boolean
+}
+
+/** A colour taken out of a picture (shared/motion/chroma). Each setting is 0 to 1. */
+export interface ChromaKey {
+  colour: Color
+  tolerance: number
+  softness: number
+  spill: number
+}
+
 /** A clip region in the layer's own pixels, with its own movement. */
 export interface Mask {
   shape: Geometry
@@ -213,6 +248,12 @@ interface Base<T> {
   mask?: Mask
   /** Drawn under the person in the frame, once a person matte is available. */
   behind?: boolean
+  /** Cut to these, in order (shared/motion/roto). */
+  masks?: LayerMask[]
+  /** Shown only where a matte says. */
+  matte?: LayerMatte
+  /** Only another layer's matte (its id named by a matte's clip:<id>): not drawn itself. */
+  asMatte?: boolean
   /** How it mixes with what is under it; normal when absent. */
   blend?: BlendMode
   /**
@@ -401,6 +442,8 @@ export interface ShapeLayer<T = number> extends Base<T> {
 /** An image from the edit's material, or a Lucide icon drawn as vectors. Centred on the origin, w by h. */
 export interface ImageLayer<T = number> extends Base<T> {
   kind: 'image'
+  /** A colour taken out of the picture. */
+  key?: ChromaKey
   asset?: string
   icon?: string
   /** A brand mark from Simple Icons, by slug, in the brand's own colour. */
@@ -433,6 +476,8 @@ export interface ImageLayer<T = number> extends Base<T> {
  */
 export interface VideoLayer<T = number> extends Base<T> {
   kind: 'video'
+  /** A colour taken out of the picture. */
+  key?: ChromaKey
   /** The file, on this computer. */
   src: string
   /** Where in the file it starts, in seconds. */
@@ -503,6 +548,15 @@ export interface DrawResources {
   base?: CanvasImageSource | null
   /** Told when an adjustment layer cannot read the picture under it (a page reading media it may not), which leaves it ungraded. */
   unreadable?: (why: string) => void
+  /**
+   * A matte at output time t, at about this size, white where it is: the
+   * person, every object, or one object (object:<n>), from the cut-outs;
+   * null when there is none. A layer drawn behind the person uses the person's
+   * when `matte` is not given.
+   */
+  mattes?: (from: string, t: number, width: number, height: number) => CanvasImageSource | null
+  /** The longest side a chroma key is worked at, for a preview that must keep up; the picture's own size when absent. */
+  keySize?: number
 }
 
 export interface Size {

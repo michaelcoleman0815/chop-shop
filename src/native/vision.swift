@@ -318,13 +318,17 @@ func runMasks(_ a: [String]) -> Never {
 // picks the object itself on the first frame: of what objectness saliency
 // says stands out, not a face and not most of the picture, the one nearest a
 // hand when a hand is in shot, else the biggest. Then Vision's object tracker
-// follows it frame by frame. Boxes are fractions of the picture, top-left
-// origin; a frame where the tracker loses it has none.
+// follows it frame by frame, and each frame its box is measured again, so
+// its size follows the object as it nears or goes (below). Boxes are
+// fractions of the picture, top-left origin; a frame where it is lost has
+// none.
 
 struct TrackSample: Codable {
     let t: Double
     let box: [Double]?
     let c: Double
+    /** Its size against the box it started in: 2 is twice as wide and tall. Absent where it was lost. */
+    let s: Double?
 }
 
 struct TrackResult: Codable {
@@ -333,8 +337,148 @@ struct TrackResult: Codable {
     let start: [Double]
     let width: Int
     let height: Int
+    /** The boxes' sizes are measured, frame by frame; a helper from before kept the first box's size throughout. */
+    let sized: Bool
     let samples: [TrackSample]
 }
+
+// MARK: - Measuring its size
+//
+// Vision's tracker follows where an object goes but keeps the box it was
+// given: an object brought nearer the camera outgrows it and the tracker loses
+// it. So each frame the box is measured again by matching the object's own
+// picture (a small grey patch taken on the first frame, and slowly updated
+// while the match is good) over a few sizes and places around where the
+// tracker and the frame before put it. The best match is the box, and its
+// size against the first box is the scale.
+
+/** A frame in grey, 0 to 1, top row first. */
+struct Luma {
+    let w: Int
+    let h: Int
+    let px: [Float]
+}
+
+func lumaOf(_ image: CGImage) -> Luma? {
+    let w = image.width
+    let h = image.height
+    guard w > 0, h > 0 else { return nil }
+    var bytes = [UInt8](repeating: 0, count: w * h)
+    let drawn = bytes.withUnsafeMutableBytes { buf -> Bool in
+        guard let ctx = CGContext(
+            data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { return false }
+        ctx.interpolationQuality = .low
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return true
+    }
+    guard drawn else { return nil }
+    return Luma(w: w, h: h, px: bytes.map { (b: UInt8) -> Float in Float(b) / 255 })
+}
+
+/** The measuring's constants. Statics, since top-level lets are not set yet when --track runs (it runs before them). */
+enum Measure {
+    /** Samples across a patch, each way. */
+    static let patch = 24
+    /** Below this the patch is not the object any more. */
+    static let same: Float = 0.55
+}
+
+func sampleGrey(_ g: Luma, _ x: Double, _ y: Double) -> Float {
+    let fx = min(max(x, 0), Double(g.w - 1))
+    let fy = min(max(y, 0), Double(g.h - 1))
+    let x0 = Int(fx)
+    let y0 = Int(fy)
+    let x1 = min(x0 + 1, g.w - 1)
+    let y1 = min(y0 + 1, g.h - 1)
+    let ax = Float(fx - Double(x0))
+    let ay = Float(fy - Double(y0))
+    let a: Float = g.px[y0 * g.w + x0]
+    let b: Float = g.px[y0 * g.w + x1]
+    let c: Float = g.px[y1 * g.w + x0]
+    let d: Float = g.px[y1 * g.w + x1]
+    let top: Float = a + (b - a) * ax
+    let bottom: Float = c + (d - c) * ax
+    return top + (bottom - top) * ay
+}
+
+/** The picture inside a box (fractions, top-left origin) as a patch with its mean taken off and its length 1; nil when flat or tiny. */
+func patchOf(_ g: Luma, _ box: [Double]) -> [Float]? {
+    let bx = box[0] * Double(g.w)
+    let by = box[1] * Double(g.h)
+    let bw = box[2] * Double(g.w)
+    let bh = box[3] * Double(g.h)
+    if bw < 6 || bh < 6 { return nil }
+    var out = [Float](repeating: 0, count: Measure.patch * Measure.patch)
+    var sum: Float = 0
+    let n = Double(Measure.patch)
+    for j in 0..<Measure.patch {
+        let y: Double = by + (Double(j) + 0.5) / n * bh - 0.5
+        for i in 0..<Measure.patch {
+            let x: Double = bx + (Double(i) + 0.5) / n * bw - 0.5
+            let v = sampleGrey(g, x, y)
+            out[j * Measure.patch + i] = v
+            sum += v
+        }
+    }
+    return unit(out, mean: sum / Float(out.count))
+}
+
+func unit(_ v: [Float], mean: Float) -> [Float]? {
+    var c = v
+    var norm: Float = 0
+    for i in 0..<c.count {
+        c[i] -= mean
+        norm += c[i] * c[i]
+    }
+    norm = norm.squareRoot()
+    if norm < 1e-3 { return nil }
+    for i in 0..<c.count { c[i] /= norm }
+    return c
+}
+
+/** How alike two patches are: 1 the same, 0 unrelated. */
+func likeness(_ a: [Float], _ b: [Float]) -> Float {
+    var d: Float = 0
+    for i in 0..<a.count { d += a[i] * b[i] }
+    return d
+}
+
+/**
+ * The box that best matches the object's patch near each of `seeds`: the
+ * same shape, a little bigger or smaller, a little to any side, searched
+ * coarsely and then finely around the best. Its likeness comes with it.
+ */
+func measure(_ g: Luma, _ template: [Float], seeds: [[Double]]) -> ([Double], Float)? {
+    var best: ([Double], Float)? = nil
+    func trial(_ box: [Double]) {
+        guard box[2] > 0.004, box[3] > 0.004, box[2] < 1.5, box[3] < 1.5, let p = patchOf(g, box) else { return }
+        let score = likeness(template, p)
+        if best == nil || score > best!.1 { best = (box, score) }
+    }
+    for (pass, step) in [0.06, 0.02].enumerated() {
+        let around: [[Double]] = pass == 0 ? seeds : (best.map { [$0.0] } ?? [])
+        for seed in around {
+            let cx = seed[0] + seed[2] / 2
+            let cy = seed[1] + seed[3] / 2
+            for si in -3...3 {
+                let k = 1 + Double(si) * step
+                let w = seed[2] * k
+                let h = seed[3] * k
+                for dy in -3...3 {
+                    for dx in -3...3 {
+                        let x: Double = cx + Double(dx) * step * seed[2] - w / 2
+                        let y: Double = cy + Double(dy) * step * seed[3] - h / 2
+                        trial([x, y, w, h])
+                    }
+                }
+            }
+        }
+    }
+    return best
+}
+
 
 /** A box with its origin flipped from Vision's bottom-left to the top-left. */
 func topLeft(_ r: CGRect) -> [Double] {
@@ -413,18 +557,26 @@ func runTrack(_ a: [String]) -> Never {
     var width = 0
     var height = 0
     let sequence = VNSequenceRequestHandler()
+    // The object's own picture, and where it was last measured.
+    var template: [Float]? = nil
+    var lastBox: [Double]? = nil
     var n = 0
+    /** Its size against the box it started in. */
+    func scaleOf(_ box: [Double]) -> Double {
+        return startBox.count == 4 && startBox[2] > 0 ? box[2] / startBox[2] : 1
+    }
     while Double(n) / rate <= duration + 1e-6 {
         let t = Double(n) / rate
         n += 1
         guard let image = try? generator.copyCGImage(at: CMTime(seconds: start + t, preferredTimescale: 600), actualTime: nil)
         else {
             // A frame that will not decode is a moment the object is not seen, so every sample keeps its time.
-            if observation != nil { samples.append(TrackSample(t: t, box: nil, c: 0)) }
+            if observation != nil { samples.append(TrackSample(t: t, box: nil, c: 0, s: nil)) }
             continue
         }
         width = image.width
         height = image.height
+        let frame = lumaOf(image)
         guard let last = observation else {
             // The first frame: the box given, or the object found on it.
             if let g = given, g.count == 4 {
@@ -438,20 +590,52 @@ func runTrack(_ a: [String]) -> Never {
             } else {
                 fail("there is nothing in the picture to follow")
             }
-            samples.append(TrackSample(t: t, box: startBox, c: 1))
+            if let f = frame { template = patchOf(f, startBox) }
+            lastBox = startBox
+            samples.append(TrackSample(t: t, box: startBox, c: 1, s: 1))
             continue
         }
         let request = VNTrackObjectRequest(detectedObjectObservation: last)
         request.trackingLevel = .accurate
         try? sequence.perform([request], on: image)
-        guard let next = request.results?.first as? VNDetectedObjectObservation else {
-            samples.append(TrackSample(t: t, box: nil, c: 0))
+        let next = request.results?.first as? VNDetectedObjectObservation
+        if let next = next { observation = next }
+        // Below this the tracker is guessing: the frame says it lost the object.
+        let trackerSure = next.map { Double($0.confidence) >= 0.3 } ?? false
+        let tracked = next.map { topLeft($0.boundingBox) }
+        // Measured again around where the tracker puts it and where it was, at the size it last had.
+        var seeds: [[Double]] = []
+        if let tb = tracked, let lb = lastBox {
+            let x: Double = tb[0] + tb[2] / 2 - lb[2] / 2
+            let y: Double = tb[1] + tb[3] / 2 - lb[3] / 2
+            seeds.append([x, y, lb[2], lb[3]])
+        }
+        if let lb = lastBox { seeds.append(lb) }
+        if let f = frame, let tpl = template, let (box, score) = measure(f, tpl, seeds: seeds), score >= Measure.same {
+            lastBox = box
+            // The object's picture drifts with the light and its turning: a good match teaches it a little.
+            if score > 0.75, let p = patchOf(f, box), let blended = unit(zip(tpl, p).map { (a: Float, b: Float) -> Float in a * 0.85 + b * 0.15 }, mean: 0) {
+                template = blended
+            }
+            if !trackerSure {
+                // The tracker lost it where the match did not: it starts again from the match.
+                observation = VNDetectedObjectObservation(boundingBox: CGRect(x: box[0], y: 1 - box[1] - box[3], width: box[2], height: box[3]))
+            }
+            let sure: Double = next.map { Double($0.confidence) } ?? 0
+            samples.append(TrackSample(t: t, box: box, c: max(Double(score), sure), s: scaleOf(box)))
             continue
         }
-        observation = next
-        // Below this the tracker is guessing: the frame says it lost the object.
-        let sure = Double(next.confidence) >= 0.3
-        samples.append(TrackSample(t: t, box: sure ? topLeft(next.boundingBox) : nil, c: Double(next.confidence)))
+        // No match: the tracker's word for where it is, at the size it last had, when the tracker is sure.
+        if trackerSure, let tb = tracked {
+            let lb = lastBox ?? tb
+            let x: Double = tb[0] + tb[2] / 2 - lb[2] / 2
+            let y: Double = tb[1] + tb[3] / 2 - lb[3] / 2
+            let box: [Double] = [x, y, lb[2], lb[3]]
+            lastBox = box
+            samples.append(TrackSample(t: t, box: box, c: Double(next!.confidence), s: scaleOf(box)))
+        } else {
+            samples.append(TrackSample(t: t, box: nil, c: next.map { Double($0.confidence) } ?? 0, s: nil))
+        }
     }
-    emit(TrackResult(found: found, start: startBox, width: width, height: height, samples: samples))
+    emit(TrackResult(found: found, start: startBox, width: width, height: height, sized: true, samples: samples))
 }
