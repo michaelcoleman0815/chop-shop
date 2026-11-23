@@ -283,7 +283,9 @@ const UNSAVED: ReadonlySet<Op['op']> = new Set<Op['op']>([
   'clip-remove',
   'key-set',
   'key-remove',
-  'trim'
+  'trim',
+  // An expression on a clip's setting (shared/anim/expr).
+  'clip-expr'
 ])
 
 /** Whether a version never keeps this op: one above, or a transition to a look 0.2.13 cannot name. */

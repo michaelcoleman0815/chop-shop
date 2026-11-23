@@ -49,8 +49,22 @@ export interface Key<V> {
   from?: 'start' | 'end'
 }
 
-/** A value, or keyframes for it. */
-export type Anim<V> = V | { keys: Key<V>[] }
+/**
+ * Where an expression runs (shared/anim/expr): the clip's place, and another
+ * clip's setting `local` seconds into this one. Set when a clip becomes a
+ * layer (tracks/layers); never saved.
+ */
+export interface ExprBinding {
+  index: number
+  clip?: (name: string, path: string, local: number) => number | number[] | null
+}
+
+/**
+ * A value, or keyframes for it. An expression (shared/anim/expr) may ride on
+ * the keys, or on no keys at all, and gives the value instead, reading the
+ * keys' own as `value`.
+ */
+export type Anim<V> = V | { keys: Key<V>[]; expr?: string; bind?: ExprBinding }
 
 /**
  * How a layer mixes with what is drawn under it, by Canvas2D's compositing names
@@ -87,6 +101,22 @@ export interface Crop {
 
 /** #RRGGBB, #RRGGBBAA, or rgb()/rgba(). */
 export type Color = string
+
+/** What an adjustment layer grades with, and the box it grades inside. */
+export interface Adjustment {
+  exposure?: number
+  contrast?: number
+  saturation?: number
+  temperature?: number
+  tint?: number
+  lift?: number
+  vignette?: number
+  /** Design pixels. */
+  blur?: number
+  w: number
+  h: number
+  crop?: Crop
+}
 
 export interface Gradient {
   gradient: 'linear' | 'radial'
@@ -184,6 +214,12 @@ interface Base<T> {
   behind?: boolean
   /** How it mixes with what is under it; normal when absent. */
   blend?: BlendMode
+  /**
+   * An adjustment layer (shared/motion/adjust): it draws nothing of its own
+   * and grades everything drawn under it instead, inside its box (w by h,
+   * centred on its origin, cut by its crop), by its opacity.
+   */
+  adjust?: Adjustment
   /**
    * Real motion blur: while the layer moves, it is drawn at `samples` moments
    * across `shutter` seconds centred on the frame and averaged, so a fast move
@@ -445,6 +481,14 @@ export interface DrawResources {
   map?: MapResources
   /** A video layer's frame, `local` seconds into the layer; null when it is not ready. */
   video?: (layer: VideoLayer, local: number) => CanvasImageSource | null
+  /**
+   * The edit's own picture at this moment, drawn first by renderFrame, so a
+   * blend mode or an adjustment layer works on it too; the layers are a
+   * see-through overlay when absent.
+   */
+  base?: CanvasImageSource | null
+  /** Told when an adjustment layer cannot read the picture under it (a page reading media it may not), which leaves it ungraded. */
+  unreadable?: (why: string) => void
 }
 
 export interface Size {

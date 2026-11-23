@@ -26,6 +26,7 @@ import { chaptersOf, clock, describeCamera, describeSpeed, seconds } from '../sh
 import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from '../shared/motion'
 import { FX_PLANNER_OPS, fromFxPlannerOp, fxGuide, fxLines } from '../shared/fx/planner'
 import { TRACK_PLANNER_OPS, fromTrackPlannerOp, tracksGuide, tracksLines } from '../shared/tracks/planner'
+import { COMPOSITING_PLANNER_OPS } from '../shared/tracks/compositing-planner'
 import { familyGuides, familyIndex } from './planner-guides'
 import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
@@ -320,6 +321,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   ...FX_PLANNER_OPS,
   // Layer tracks, clips, keys and trims (shared/tracks/planner), the same way; deep settings travel in spec.
   ...TRACK_PLANNER_OPS,
+  // An expression on a clip's setting (shared/tracks/compositing-planner), taken by the edit as it is written.
+  ...COMPOSITING_PLANNER_OPS,
   // Cutalong's own commands (shared/plan/commands.ts), run by the editor in the order given.
   ...planCommandSchemas()
 ])

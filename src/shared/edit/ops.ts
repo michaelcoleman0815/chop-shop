@@ -632,6 +632,7 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
     case 'clip-remove':
     case 'key-set':
     case 'key-remove':
+    case 'clip-expr':
       return tracksCut(
         applyTrackOp(cut, op, {
           ...motionContext(cut, ctx),

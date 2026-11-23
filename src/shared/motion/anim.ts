@@ -1,5 +1,6 @@
+import { parseExpr, runExpr, type ExprEnv, type ExprValue } from '../anim/expr'
 import { ease } from './ease'
-import type { Anim, Color, Key } from './types'
+import type { Anim, Color, ExprBinding, Key } from './types'
 
 /**
  * Reading animated values at a moment. Keyframe times count from the layer's
@@ -39,25 +40,84 @@ function bracket<V>(keys: Key<V>[], local: number, length: number): { a: Key<V>;
   return { a: last, b: last, p: 0 }
 }
 
+function keyedNum(keys: Key<number>[], local: number, length: number, fallback: number): number {
+  if (keys.length === 0) return fallback
+  const { a: k0, b: k1, p } = bracket(keys, local, length)
+  return k0.v + (k1.v - k0.v) * p
+}
+
+function keyedColor(keys: Key<Color>[], local: number, length: number, fallback: Color): Color {
+  if (keys.length === 0) return fallback
+  const { a: k0, b: k1, p } = bracket(keys, local, length)
+  return p <= 0 ? k0.v : p >= 1 ? k1.v : mixColor(k0.v, k1.v, p)
+}
+
+/** The expression riding on keys, if any. */
+export function exprOf(a: Anim<unknown> | undefined): string | undefined {
+  return isKeyed(a) ? (a as { expr?: string }).expr : undefined
+}
+
+const warned = new Set<string>()
+
+/**
+ * An expression's value at a moment, given what the keys say then. One that
+ * cannot run gives the keys' value, and says why once.
+ */
+function sampleExpr<V>(
+  a: { keys: Key<V>[]; expr?: string; bind?: ExprBinding },
+  value: ExprValue,
+  keyed: (t: number) => ExprValue,
+  local: number,
+  length: number
+): ExprValue {
+  const parsed = parseExpr(a.expr as string)
+  if (!parsed.ok) return value
+  const bind = a.bind
+  const env: ExprEnv = {
+    time: local,
+    value,
+    index: bind?.index ?? 0,
+    duration: length,
+    keys: a.keys.length > 1 ? { times: a.keys.map((k) => keyTime(k, length)), at: keyed } : undefined,
+    clip: bind?.clip ? (name, path) => bind.clip?.(name, path, local) ?? null : undefined
+  }
+  const r = runExpr(parsed.expr, env)
+  if (r.ok) return r.value
+  if (!warned.has(r.reason) && warned.size < 50) {
+    warned.add(r.reason)
+    console.warn(`[expr] ${r.reason}`)
+  }
+  return value
+}
+
 export function num(a: Anim<number> | undefined, local: number, length: number, fallback = 0): number {
   if (a === undefined) return fallback
   if (!isKeyed(a)) return a
-  if (a.keys.length === 0) return fallback
-  const { a: k0, b: k1, p } = bracket(a.keys, local, length)
-  return k0.v + (k1.v - k0.v) * p
+  const value = keyedNum(a.keys, local, length, fallback)
+  if (!exprOf(a)) return value
+  const v = sampleExpr(a, value, (t) => keyedNum(a.keys, t, length, fallback), local, length)
+  return Array.isArray(v) ? (v[0] ?? value) : v
+}
+
+/** A colour as an expression reads it: red, green, blue and alpha, each 0 to 1. */
+const colorVec = (c: Color): number[] => {
+  const [r, g, b, al] = parseColor(c)
+  return [r / 255, g / 255, b / 255, al]
 }
 
 export function color(a: Anim<Color> | undefined, local: number, length: number, fallback = '#ffffff'): Color {
   if (a === undefined) return fallback
   if (!isKeyed(a)) return a
-  if (a.keys.length === 0) return fallback
-  const { a: k0, b: k1, p } = bracket(a.keys, local, length)
-  return p <= 0 ? k0.v : p >= 1 ? k1.v : mixColor(k0.v, k1.v, p)
+  const value = keyedColor(a.keys, local, length, fallback)
+  if (!exprOf(a)) return value
+  const v = sampleExpr(a, colorVec(value), (t) => colorVec(keyedColor(a.keys, t, length, fallback)), local, length)
+  if (!Array.isArray(v)) return formatColor([v * 255, v * 255, v * 255, 1])
+  return formatColor([(v[0] ?? 0) * 255, (v[1] ?? 0) * 255, (v[2] ?? 0) * 255, v[3] ?? 1])
 }
 
-/** Whether a value changes at all over the layer's life. */
+/** Whether a value changes at all over the layer's life: an expression may move it however many keys it has. */
 export function moves(a: Anim<unknown> | undefined): boolean {
-  return isKeyed(a) && a.keys.length > 1
+  return isKeyed(a) && (a.keys.length > 1 || !!exprOf(a))
 }
 
 export type RGBA = [number, number, number, number]

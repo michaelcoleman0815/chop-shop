@@ -123,8 +123,15 @@ export const EaseSchema = z.union([
 export const ColorSchema = z.string().max(64)
 export const keyOf = <T extends z.ZodType>(v: T) =>
   z.object({ t: n, v, ease: EaseSchema.optional(), from: z.enum(['start', 'end']).optional() })
-const AnimNum = z.union([n, z.object({ keys: z.array(keyOf(n)).min(1).max(64) })])
-const AnimColor = z.union([ColorSchema, z.object({ keys: z.array(keyOf(ColorSchema)).min(1).max(64) })])
+/** An expression on a setting (shared/anim/expr): read and checked by the op that sets it. */
+const ExprText = z.string().min(1).max(400)
+/** Keys, or an expression with or without keys under it: never neither. */
+const keyed = <T extends z.ZodType>(v: T) =>
+  z
+    .object({ keys: z.array(keyOf(v)).max(64), expr: ExprText.optional() })
+    .refine((a) => a.keys.length > 0 || a.expr !== undefined, { message: 'Keys need at least one key, or an expression.' })
+const AnimNum = z.union([n, keyed(n)])
+const AnimColor = z.union([ColorSchema, keyed(ColorSchema)])
 export { AnimNum as AnimNumSchema, AnimColor as AnimColorSchema }
 const FillSchema = z.union([
   AnimColor,

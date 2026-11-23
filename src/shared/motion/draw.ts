@@ -17,6 +17,7 @@ import {
   type Cmd
 } from './geometry'
 import { layoutText, measurer, type TextBlock, type WordBox } from './layout'
+import { drawAdjustment } from './adjust'
 import { drawMap } from '../maps/paint'
 import type {
   Anim,
@@ -70,6 +71,8 @@ export function renderFrame(
 ): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, pixels.width, pixels.height)
+  // The edit's own picture first, when the layers blend with it or grade it.
+  if (resources.base) ctx.drawImage(resources.base, 0, 0, pixels.width, pixels.height)
   ctx.setTransform(pixels.width / design.width, 0, 0, pixels.height / design.height, 0, 0)
   drawFrame(ctx, t, layers, design, resources)
   ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -181,6 +184,9 @@ const COMPOSITE: Record<BlendMode, GlobalCompositeOperation> = {
 
 /** A layer mixed with what is under it by its blend mode, or drawn plainly. */
 function drawLayer(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st: DrawState): void {
+  // An adjustment layer grades what is drawn under it (motion/adjust).
+  if (layer.adjust)
+    return drawAdjustment(ctx, layer, layer.adjust, t, parentOpacity, { res: st.res, sampleTransform, applyTransform, pixelScale, composite: COMPOSITE })
   if (!layer.blend || layer.blend === 'normal' || !isActive(layer, t)) return drawPlain(ctx, layer, t, parentOpacity, st)
   ctx.save()
   ctx.globalCompositeOperation = COMPOSITE[layer.blend]

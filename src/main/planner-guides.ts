@@ -1,4 +1,5 @@
 import type { Cut } from '../shared/edit'
+import { COMPOSITING_INDEX, compositingGuide, wantsCompositing } from '../shared/tracks/compositing-planner'
 
 /**
  * The families of ops whose full guide is long and needed only now and then:
@@ -25,7 +26,10 @@ export interface FamilyGuide {
 }
 
 /** Every family, in the order their guides are sent. Each family's branch adds its one entry here. */
-export const FAMILY_GUIDES: FamilyGuide[] = []
+export const FAMILY_GUIDES: FamilyGuide[] = [
+  // Blends over the edit, adjustment clips and expressions (shared/tracks/compositing-planner).
+  { name: 'compositing', index: COMPOSITING_INDEX, wanted: wantsCompositing, guide: compositingGuide }
+]
 
 /** The always-on lines, under a heading, or nothing while there are no families. */
 export function familyIndex(families: FamilyGuide[] = FAMILY_GUIDES): string {

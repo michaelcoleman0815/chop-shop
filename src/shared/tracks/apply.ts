@@ -2,6 +2,7 @@ import { isKeyed, num, type Anim, type Ease, type Key } from '../anim'
 import type { Cut } from '../edit/schema'
 import { parseAnchor, parseLength } from '../motion/schema'
 import type { Timeline } from '../motion/timing'
+import { trackExprProblem, withExpr } from './compositing'
 import { isMediaId } from './media'
 import { clipSpan, timeOf, tracksOf } from './resolve'
 import {
@@ -55,6 +56,7 @@ type Op =
   | { op: 'clip-remove'; clips: string[] }
   | { op: 'key-set'; clip: string; prop: KeyedProp; t: number; v: number; ease?: Ease }
   | { op: 'key-remove'; clip: string; prop: KeyedProp; t: number }
+  | { op: 'clip-expr'; clip: string; prop: KeyedProp; expr: string }
 
 class Refused extends Error {}
 const refuse = (reason: string): never => {
@@ -154,13 +156,16 @@ function withKey(anim: NumAnim, t: number, v: number, ease?: Ease): Anim<number>
   if (!isKeyed(anim)) return { keys: [key] }
   const keys = anim.keys.filter((k) => Math.abs(k.t - t) > SAME_KEY)
   keys.push(key)
-  return { keys: keys.sort((a, b) => a.t - b.t) }
+  // An expression on the keys stays on them.
+  return { ...anim, keys: keys.sort((a, b) => a.t - b.t) }
 }
 
 function withoutKey(anim: NumAnim, t: number): NumAnim {
   if (!isKeyed(anim)) return refuse(`There is no key at ${t} s to take off.`)
   const keys = anim.keys.filter((k) => Math.abs(k.t - t) > SAME_KEY)
   if (keys.length === anim.keys.length) return refuse(`There is no key at ${t} s to take off.`)
+  const expr = (anim as { expr?: string }).expr
+  if (expr) return { keys, expr }
   return keys.length === 0 ? undefined : { keys }
 }
 
@@ -168,7 +173,10 @@ function withoutKey(anim: NumAnim, t: number): NumAnim {
 function shiftKeys(anim: NumAnim, by: number, length: number): NumAnim {
   if (!isKeyed(anim)) return anim
   const keys = anim.keys.map((k) => ({ ...k, t: k.t - by })).filter((k) => k.t > SAME_KEY)
-  return { keys: [{ t: 0, v: num(anim, by, length) }, ...keys] }
+  const expr = (anim as { expr?: string }).expr
+  // The value the keys give there, not the expression's: the expression rides on into the second half.
+  const at = num({ keys: anim.keys }, by, length)
+  return anim.keys.length === 0 ? anim : { ...(expr ? { expr } : {}), keys: [{ t: 0, v: at }, ...keys] }
 }
 
 const KEYED_ALL: KeyedProp[] = [
@@ -194,7 +202,13 @@ const KEYED_ALL: KeyedProp[] = [
 
 export function applyTrackOp(cut: Cut, op: Op, ctx: TrackOpContext): TrackResult {
   try {
-    return { ok: true, cut: { ...cut, tracks: step(tracksOf(cut), op, ctx) } }
+    const tracks = step(tracksOf(cut), op, ctx)
+    // Expressions that would not read, or would read each other in a circle, are refused with the op that made them so.
+    if (op.op === 'clip-expr' || op.op === 'clip-add' || op.op === 'clip-update' || op.op === 'clip-split') {
+      const problem = trackExprProblem(tracks, tracksOf(cut))
+      if (problem) refuse(problem)
+    }
+    return { ok: true, cut: { ...cut, tracks } }
   } catch (err) {
     if (err instanceof Refused) return { ok: false, reason: err.message }
     throw err
@@ -349,6 +363,16 @@ function step(tracks: Track[], op: Op, ctx: TrackOpContext): Track[] {
       unlocked(tracks[at.t])
       const clip = tracks[at.t].clips[at.c]
       return replaceClip(tracks, at, setProp(clip, op.prop, withoutKey(getProp(clip, op.prop), op.t)))
+    }
+
+    case 'clip-expr': {
+      const at = findClip(tracks, op.clip)
+      unlocked(tracks[at.t])
+      const clip = tracks[at.t].clips[at.c]
+      if (op.prop === 'volume' && clip.kind !== 'sound' && clip.kind !== 'video') refuse(`${aClip(clip.kind)} has no sound to set.`)
+      if (!op.expr.trim() && !(getProp(clip, op.prop) as { expr?: string } | undefined)?.expr)
+        refuse(`${clip.id} has no expression on ${op.prop} to take off.`)
+      return replaceClip(tracks, at, setProp(clip, op.prop, withExpr(getProp(clip, op.prop), op.expr)))
     }
   }
 }

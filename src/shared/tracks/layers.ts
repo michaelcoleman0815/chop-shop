@@ -1,5 +1,6 @@
 import type { Layer, Size } from '../motion/types'
 import type { Timeline } from '../motion/timing'
+import { bindExprs } from './compositing'
 import type { ClipMedia } from './media'
 import { placeClips, tracksOf, type Placed } from './resolve'
 import type { Track, TrackClip } from './schema'
@@ -55,6 +56,16 @@ export function layerFor(p: Placed, design: Size): Layer | null {
       }
     case 'solid':
       return { ...base, kind: 'shape', shape: { type: 'rect', w: W, h: H }, fill: clip.color ?? '#000000' }
+    case 'adjustment': {
+      // A box the size of the frame that draws nothing and grades what is under it (shared/motion/adjust).
+      const { blur, ...look } = clip.grade ?? {}
+      return {
+        ...base,
+        kind: 'shape',
+        shape: { type: 'rect', w: W, h: H },
+        adjust: { ...look, ...(blur ? { blur } : {}), w: W, h: H, ...(clip.crop ? { crop: clip.crop } : {}) }
+      }
+    }
     case 'sound':
       return null
   }
@@ -62,9 +73,11 @@ export function layerFor(p: Placed, design: Size): Layer | null {
 
 /** Every picture clip that plays, as layers in stacking order. */
 export function trackLayers(cut: { tracks?: Track[] }, tl: Timeline, design: Size, media?: Map<string, ClipMedia>): Layer[] {
-  return placeClips(tracksOf(cut), tl, 'picture', media)
-    .map((p) => layerFor(p, design))
-    .filter((l): l is Layer => l !== null)
+  const placed = placeClips(tracksOf(cut), tl, 'picture', media)
+  const pairs = placed.map((p) => ({ p, layer: layerFor(p, design) }))
+  // Expressions learn their clip's place and the clips they read (shared/tracks/compositing).
+  bindExprs(pairs, design)
+  return pairs.map((x) => x.layer).filter((l): l is Layer => l !== null)
 }
 
 /** The files the picture clips show, by kind, for the places that load them. */

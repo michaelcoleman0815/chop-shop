@@ -14,6 +14,7 @@ import {
   type Size,
   type VideoLayer
 } from '../shared/motion'
+import type { BaseFrames } from './base-frames'
 import type { VideoFrames } from './video-frames'
 import { frameRate, frameSize, type OverlaySpan } from './cut-render'
 import { mapResourcesFor, usesMap } from './map-data'
@@ -72,6 +73,10 @@ export interface MotionRenderOptions {
   video?: VideoFrames
   /** The overlay files' names start with this: "motion" unless said. */
   prefix?: string
+  /** The stretches to draw, instead of every stretch something is on screen. */
+  spans?: { start: number; end: number }[]
+  /** The edit's own picture for each frame drawn, laid under the layers (main/base-frames). */
+  base?: BaseFrames
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
 }
@@ -114,9 +119,18 @@ function usesLogos(layers: Layer[]): boolean {
   return layers.some((l) => (l.kind === 'image' && !!l.logo) || (l.kind === 'group' && usesLogos(l.children)))
 }
 
+/** The output frames whose time falls inside each span, on the output's own grid. */
+export function spanFrames(spans: { start: number; end: number }[], fps: number): { first: number; count: number }[] {
+  return spans.map((s) => {
+    const first = Math.ceil(s.start * fps - 1e-6)
+    const last = Math.max(first, Math.ceil(s.end * fps - 1e-6) - 1)
+    return { first, count: last - first + 1 }
+  })
+}
+
 /** Draws every active stretch of the layers into its own overlay file. */
 export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): Promise<OverlaySpan[]> {
-  const spans = overlaySpans(layers, opts.duration)
+  const spans = opts.spans ?? overlaySpans(layers, opts.duration)
   if (spans.length === 0) return []
   registerMotionFonts(opts.fontsDir)
   await fs.mkdir(opts.workDir, { recursive: true })
@@ -144,12 +158,7 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
   const videos = opts.video ? videoLayersOf(layers) : []
 
   const { width, height, fps } = opts
-  const frames = spans.map((s) => {
-    // Frames whose time falls inside the span, on the output's own grid.
-    const first = Math.ceil(s.start * fps - 1e-6)
-    const last = Math.max(first, Math.ceil(s.end * fps - 1e-6) - 1)
-    return { first, count: last - first + 1 }
-  })
+  const frames = spanFrames(spans, fps)
   const total = frames.reduce((n, f) => n + f.count, 0)
   const canvas = createCanvas(width, height)
   const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D
@@ -164,6 +173,8 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
         for (let n = 0; n < count; n++) {
           const t = (first + n) / fps
           if (videos.length) await opts.video?.prepare(t, videos)
+          // The picture under the layers, for blends and adjustments that work on it.
+          if (opts.base) resources.base = (await opts.base.advance(first + n)) ? opts.base.canvas : null
           renderFrame(ctx, t, layers, opts.design, { width, height }, resources)
           const pixels = ctx.getImageData(0, 0, width, height).data
           await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength))

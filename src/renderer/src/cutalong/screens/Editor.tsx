@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import {
   beatAt,
   beatLabel,
@@ -95,6 +95,7 @@ import { GraphicPanel } from '../components/GraphicPanel'
 import { boxStyle, GridPanels, gridViewFor } from '../components/GridPanels'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { clipSpan, mediaOf, resolveClip, soundingClips, trackLayers, tracksOf, type Placed, type TrackClip } from '../../../../shared/tracks'
+import { needsBase } from '../../../../shared/tracks/compositing'
 import { isKeyed, type Anim } from '../../../../shared/anim'
 import { ClipPanel } from '../components/ClipPanel'
 import { Lanes, type Lane, type Snap } from '../components/Lanes'
@@ -106,6 +107,7 @@ import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
 import { Working } from '../components/Working'
 import { deckStyle } from '../deck-style'
 import { useFxRender, useFxScene } from '../fx-preview'
+import { captureLayerBase, useDeckFrames } from '../layer-base'
 import { grainTile } from '../grain'
 import { FilmOver, filmFps } from '../components/FilmOver'
 import { weaveTransform } from '../../../../shared/edit/film'
@@ -493,6 +495,11 @@ function Preview({
   const fxOverlay = useRef<HTMLCanvasElement>(null)
   const fx = useFxScene(doc, resolved)
   useFxRender({ ...fx, time, playing, box, decks: decksBox, picture: fxPicture, overlay: fxOverlay })
+  // The picture under the layer tracks, for clips that blend with it or grade it (layer-base), and whether it can be read.
+  const frameBox = useRef<HTMLDivElement>(null)
+  const [unreadable, setUnreadable] = useState(false)
+  const onUnreadable = useCallback(() => setUnreadable(true), [])
+  const deckFrames = useDeckFrames(decks, (layers.scene?.layers ?? NO_LAYERS).some(needsBase))
   const source = doc.sources[0]
   const ratio = ASPECT[cut.aspect] ?? (source.width > 0 && source.height > 0 ? source.width / source.height : 16 / 9)
 
@@ -536,6 +543,7 @@ function Preview({
   const onScreen = resolved.pieces.find((p) => time >= pictureSpan(p).outStart && time < pictureSpan(p).outEnd)
   const inset = onScreen && !onScreen.reverse ? insetFor(cut, onScreen, doc.sources) : null
   const across = ratio > 1
+  const layerBase = useCallback((w: number, h: number) => captureLayerBase(frameBox.current, w, h, look), [look])
   const mainBox: CSSProperties | undefined =
     inset?.layout === 'side' ? (across ? { right: '50%' } : { bottom: '50%' }) : undefined
 
@@ -543,7 +551,7 @@ function Preview({
     <div className="cl-well" ref={well}>
       {cut.music && <Bed music={cut.music} resolved={resolved} time={time} playing={playing} />}
       <Effects doc={doc} resolved={resolved} time={time} playing={playing} />
-      <div className="cl-frame" style={{ width: box.w, height: box.h }}>
+      <div className="cl-frame" ref={frameBox} style={{ width: box.w, height: box.h }}>
         {grade && (
           <svg className="cl-look-defs" aria-hidden="true" focusable="false">
             <filter id="cl-look" colorInterpolationFilters="sRGB">
@@ -619,7 +627,9 @@ function Preview({
             width={box.w}
             height={box.h}
             video={clips.frame}
-            redraw={clips.version}
+            redraw={clips.version + deckFrames}
+            base={layerBase}
+            onUnreadable={onUnreadable}
           />
         )}
         <Subtitles
@@ -635,6 +645,11 @@ function Preview({
           <RegionPicker item={selected} onPick={onRegion} />
         )}
       </div>
+      {unreadable && (
+        <p className="cl-layers-note" role="status">
+          The preview cannot read this picture, so adjustment clips show ungraded here. The export grades them.
+        </p>
+      )}
     </div>
   )
 }
@@ -1684,6 +1699,7 @@ function clipLabel(c: TrackClip, assets: EditDoc['assets']): string {
   if (c.name) return c.name
   if (c.kind === 'text') return c.text?.value ?? 'Title'
   if (c.kind === 'solid') return 'Colour'
+  if (c.kind === 'adjustment') return 'Adjustment'
   const asset = assets.find((a) => a.id === c.src)
   return asset?.title ?? (c.src ?? '').split(/[\\/]/).pop() ?? c.kind
 }
@@ -1764,6 +1780,10 @@ function AddMenu({ doc, time, onAdd }: { doc: EditDoc; time: number; onAdd: (ops
           <button type="button" role="menuitem" onClick={() => add({ kind: 'solid', color: '#000000', opacity: 0.5, to: '3s' }, 'A colour goes over the edit.')}>
             A colour
             <span className="meta">A tint over the whole frame</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => add({ kind: 'adjustment', to: '3s', grade: { contrast: 0.2 } }, 'An adjustment grades what is under it.')}>
+            An adjustment
+            <span className="meta">Grades everything under it while it plays</span>
           </button>
           {material.map((a) => (
             <button

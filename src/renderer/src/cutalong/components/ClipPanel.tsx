@@ -3,7 +3,9 @@ import { EASE_NAMES, isKeyed, num, type Anim, type Ease, type Key } from '../../
 import type { Op } from '../../../../shared/edit'
 import { BLEND_MODES } from '../../../../shared/motion'
 import type { KeyedProp, TrackClip } from '../../../../shared/tracks'
+import { exprOf } from '../../../../shared/motion/anim'
 import { clock, seconds } from '../format'
+import { ExprField, ExprToggle, GradeFields } from './ClipCompositing'
 import { whenSettled } from './GraphicPanel'
 import { Button, Icon, IconButton } from './ui'
 
@@ -26,7 +28,8 @@ interface Setting {
   kinds?: TrackClip['kind'][]
 }
 
-const PICTURE: TrackClip['kind'][] = ['video', 'image', 'text', 'solid']
+const PICTURE: TrackClip['kind'][] = ['video', 'image', 'text', 'solid', 'adjustment']
+const CROPPED: TrackClip['kind'][] = ['video', 'image', 'adjustment']
 
 const SETTINGS: Setting[] = [
   { prop: 'x', label: 'Across', usual: (f) => f.width / 2, step: 10, unit: 'px', kinds: PICTURE },
@@ -34,10 +37,10 @@ const SETTINGS: Setting[] = [
   { prop: 'scale', label: 'Size', usual: () => 1, step: 0.05, kinds: PICTURE },
   { prop: 'rotation', label: 'Turn', usual: () => 0, step: 1, unit: '°', kinds: PICTURE },
   { prop: 'opacity', label: 'Opacity', usual: () => 1, step: 0.05, kinds: PICTURE },
-  { prop: 'crop.left', label: 'Crop left', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
-  { prop: 'crop.right', label: 'Crop right', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
-  { prop: 'crop.top', label: 'Crop top', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
-  { prop: 'crop.bottom', label: 'Crop bottom', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
+  { prop: 'crop.left', label: 'Crop left', usual: () => 0, step: 0.02, kinds: CROPPED },
+  { prop: 'crop.right', label: 'Crop right', usual: () => 0, step: 0.02, kinds: CROPPED },
+  { prop: 'crop.top', label: 'Crop top', usual: () => 0, step: 0.02, kinds: CROPPED },
+  { prop: 'crop.bottom', label: 'Crop bottom', usual: () => 0, step: 0.02, kinds: CROPPED },
   { prop: 'volume', label: 'Level', usual: () => 0, step: 1, unit: 'dB', kinds: ['video', 'sound'] }
 ]
 
@@ -65,7 +68,8 @@ const KIND_NAME: Record<TrackClip['kind'], string> = {
   image: 'Picture',
   text: 'Title',
   solid: 'Colour',
-  sound: 'Sound'
+  sound: 'Sound',
+  adjustment: 'Adjustment'
 }
 
 export function ClipPanel({
@@ -119,6 +123,7 @@ export function ClipPanel({
             onCommit={(color) => onOps([{ op: 'clip-update', clip: clip.id, color } as Op], 'The colour changes.')}
           />
         )}
+        {clip.kind === 'adjustment' && <GradeFields clip={clip} onOps={onOps} />}
 
         {settings.map((s) => (
           <KeyedField
@@ -223,6 +228,8 @@ function KeyedField({
   const here = keys.find((k) => Math.abs(k.t - local) <= SAME) ?? null
   const now = round(num(value, local, length, usual), setting.step < 1 ? 0.001 : 1)
   const name = setting.label.toLowerCase()
+  const hasExpr = !!exprOf(value)
+  const [writing, setWriting] = useState(false)
 
   const commit = (v: number): void => {
     if (keyed && canKey) onOps([{ op: 'key-set', clip: clip.id, prop: setting.prop, t: local, v, ...(here?.ease ? { ease: here.ease } : {}) } as Op], `A key on its ${name} is set.`)
@@ -245,7 +252,11 @@ function KeyedField({
               : onOps([{ op: 'key-set', clip: clip.id, prop: setting.prop, t: local, v: now } as Op], `A key on its ${name} is set.`)
           }
         />
+        <ExprToggle name={name} open={hasExpr || writing} set={hasExpr} onToggle={() => setWriting((w) => !w)} />
       </NumberField>
+      {(hasExpr || writing) && (
+        <ExprField clip={clip} prop={setting.prop} name={name} value={value} onOps={onOps} onDone={() => setWriting(false)} />
+      )}
       {keyed && (
         <div className="cl-keyrow">
           <div className="cl-keyrow-track" aria-label={`Keys on ${name}`}>
