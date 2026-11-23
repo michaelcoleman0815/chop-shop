@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
-import { changesFor, parseChangelog, shippedOn } from './changelog'
+import { changesFor, compareVersions, parseChangelog, shippedOn, whatsNewSince } from './changelog'
 
 const root = join(__dirname, '../..')
 const text = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
@@ -66,4 +66,37 @@ describe('the changelog', () => {
     expect(shippedOn('2026-11-23')).toBe('23 November 2026')
     expect(shippedOn(null)).toBe('')
   })
+
+  it('orders versions by their numbers, not as text', () => {
+    expect(compareVersions('0.4.10', '0.4.9')).toBeGreaterThan(0)
+    expect(compareVersions('v0.4.2', '0.4.2')).toBe(0)
+    expect(compareVersions('0.3.9', '0.4.0')).toBeLessThan(0)
+  })
 })
+
+describe('what is new on the first open of an update', () => {
+  const versions = parseChangelog(
+    ['## 0.4.2 — 2026-11-23', '- C', '## 0.4.1 — 2026-11-23', '- B', '## 0.4.0 — 2026-11-23', '- A', '## 0.3.9 — 2026-11-22', '- Z'].join(
+      '\n'
+    )
+  )
+  const shown = (r: ReturnType<typeof whatsNewSince>): string[] | null => r && r.versions.map((v) => v.version)
+
+  it('shows every version since the one last opened, however many updates were skipped', () => {
+    expect(shown(whatsNewSince('0.3.9', '0.4.2', true, versions))).toEqual(['0.4.2', '0.4.1', '0.4.0'])
+    expect(whatsNewSince('0.3.9', '0.4.2', true, versions)?.from).toBe('0.3.9')
+    expect(shown(whatsNewSince('0.4.1', '0.4.2', true, versions))).toEqual(['0.4.2'])
+  })
+
+  it('shows the latest release to someone who used it before it kept track, and nothing to someone new', () => {
+    expect(whatsNewSince(null, '0.4.2', true, versions)).toEqual({ from: null, versions: [versions[0]] })
+    expect(whatsNewSince(null, '0.4.2', false, versions)).toBeNull()
+  })
+
+  it('shows nothing for the same version again, an older one, or one the changelog lacks', () => {
+    expect(whatsNewSince('0.4.2', '0.4.2', true, versions)).toBeNull()
+    expect(whatsNewSince('0.4.2', '0.4.1', true, versions)).toBeNull()
+    expect(whatsNewSince('0.4.1', '0.4.3', true, versions)).toBeNull()
+  })
+})
+

@@ -1107,10 +1107,16 @@ export function useCutalong() {
     setScreen(next)
   }, [])
 
-  // Reopening Cutalong lands back where the person was.
+  // Reopening Cutalong lands back where the person was. Once it has (or there was nowhere to go back to), the
+  // launch has settled, and what waits on it (App's what's new) does not then pull the person somewhere else.
+  const [launchSettled, setLaunchSettled] = useState(false)
   useEffect(() => {
     const last = recallPlace()
-    if (last) void openProject(last.path, last.screen, 'launch')
+    if (!last) {
+      setLaunchSettled(true)
+      return
+    }
+    void Promise.resolve(openProject(last.path, last.screen, 'launch')).finally(() => setLaunchSettled(true))
   }, [openProject])
 
   // Keep track of the chat or editor the person is in, across the rail's other places and restarts.
@@ -5146,6 +5152,7 @@ export function useCutalong() {
     presets,
     recent,
     recentSettled,
+    launchSettled,
     busy,
     toast,
     setToast,

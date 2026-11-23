@@ -6489,6 +6489,10 @@ a.cl-btn {
   text-wrap: pretty;
 }
 
+.cl-changelog-go {
+  margin: 0 0 var(--space-6);
+}
+
 @media (max-width: 760px) {
   .cl-changelog {
     padding: var(--space-1) var(--space-5);

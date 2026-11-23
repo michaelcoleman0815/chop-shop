@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { whatsNewSince } from '../../../shared/changelog'
 import { onWindows, SHOW_FILE } from '../../../shared/platform'
 import { api, device } from './api'
+import { CHANGES } from './changelog'
 import { ScreenGuard } from './components/ScreenGuard'
 import { Sidebar, type Place } from './components/Sidebar'
 import { Button, Mark } from './components/ui'
 import { moveRail, useLingering, useMotion } from './motion'
 import { BrandPage } from './screens/Brand'
-import { ChangelogPage } from './screens/Changelog'
+import { ChangelogPage, type News } from './screens/Changelog'
 import { CrewPage } from './screens/Crew'
 import { Editor } from './screens/Editor'
 import { BackToWork, MakeRunning } from './screens/Header'
@@ -14,8 +16,9 @@ import { PresetsPage, ProjectsPage } from './screens/Library'
 import { SettingsPage } from './screens/Settings'
 import { Start } from './screens/Start'
 import { Thread } from './screens/Thread'
-import { exportedOnce, setupSteps, type SetupStepId } from './firstRun'
+import { exportedOnce, onboarded, setupSteps, type SetupStepId } from './firstRun'
 import { forgetPlace, useCutalong } from './useCutalong'
+import { lastOpened, rememberOpened } from './whatsNew'
 
 const SIDEBAR_KEY = 'cutalong:sidebar-open'
 
@@ -89,6 +92,37 @@ export default function App(): JSX.Element {
       setToast({ text: updateReady(s.version), restart: true })
     })
   }, [setToast])
+
+  // The first open of a new version opens on what changed since the one opened before, however many updates
+  // ago that was (shared/changelog whatsNewSince), over wherever the app opened (Start, or the edit it reopened),
+  // and its button goes back there. Decided as soon as the list of projects is in and the edit is reopened, so it
+  // lands before anyone has started on anything: someone with projects, or past the welcome, has used Cutalong
+  // before; someone new is shown nothing.
+  const [news, setNews] = useState<News | null>(null)
+  const newsBack = useRef<typeof app.screen>('start')
+  const newsDecided = useRef(false)
+  const screenNow = useRef(app.screen)
+  screenNow.current = app.screen
+  const { recentSettled, launchSettled, recent, setScreen } = app
+  useEffect(() => {
+    if (newsDecided.current || !recentSettled || !launchSettled) return
+    newsDecided.current = true
+    void api.getVersion().then((now) => {
+      const before = lastOpened()
+      rememberOpened(now)
+      const fresh = whatsNewSince(before, now, onboarded() || recent.length > 0, CHANGES)
+      if (!fresh) return
+      newsBack.current = screenNow.current
+      setNews({ from: fresh.from, now, versions: fresh.versions.map((v) => v.version) })
+      setScreen('changelog')
+    })
+  }, [recentSettled, launchSettled, recent.length, setScreen])
+  // Said once: after the page is left, the changelog is the changelog again.
+  useEffect(() => {
+    if (app.screen !== 'changelog') setNews(null)
+  }, [app.screen])
+  const back = newsBack.current
+  const backToWork = (back === 'editor' && app.doc) || back === 'thread'
 
   /** Restarts into the downloaded update, unless that would stop work in progress. */
   const restart = (): void => {
@@ -170,7 +204,12 @@ export default function App(): JSX.Element {
               {app.screen === 'brand' && <BrandPage app={app} />}
               {app.screen === 'presets' && <PresetsPage app={app} />}
               {app.screen === 'crew' && <CrewPage app={app} />}
-              {app.screen === 'changelog' && <ChangelogPage />}
+              {app.screen === 'changelog' && (
+                <ChangelogPage
+                  news={news}
+                  done={backToWork ? { label: 'Back to your edit', go: () => app.setScreen(back) } : { label: 'Start editing', go: app.goStart }}
+                />
+              )}
               {app.screen === 'settings' && <SettingsPage app={app} />}
             </MakeRunning.Provider>
           </BackToWork.Provider>

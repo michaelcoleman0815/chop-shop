@@ -67,3 +67,38 @@ export function shippedOn(date: string | null): string {
   ][m - 1]
   return month ? `${d} ${month} ${y}` : date
 }
+
+/** Which of two versions is newer: above 0 when a is, below when b is, 0 when they are the same. */
+export function compareVersions(a: string, b: string): number {
+  const parts = (v: string): number[] => v.replace(/^v/, '').split(/[.-]/).map((p) => Number.parseInt(p, 10) || 0)
+  const [x, y] = [parts(a), parts(b)]
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0)
+    if (d !== 0) return d
+  }
+  return 0
+}
+
+/**
+ * What to show on the first open of a new version: the versions since the one
+ * opened before, however many updates ago that was. `from` is that version,
+ * or null when it is not known (someone who used Cutalong before it kept
+ * track), and then only the latest release is new. Null when there is nothing
+ * to show: a first open ever, the same version again, an older one, or a
+ * version the changelog does not have.
+ */
+export function whatsNewSince(
+  before: string | null,
+  now: string,
+  usedBefore: boolean,
+  versions: ChangelogVersion[]
+): { from: string | null; versions: ChangelogVersion[] } | null {
+  if (!versions.some((v) => compareVersions(v.version, now) === 0)) return null
+  if (!before) {
+    if (!usedBefore) return null
+    return { from: null, versions: versions.filter((v) => compareVersions(v.version, now) === 0) }
+  }
+  if (compareVersions(now, before) <= 0) return null
+  const fresh = versions.filter((v) => compareVersions(v.version, before) > 0 && compareVersions(v.version, now) <= 0)
+  return fresh.length > 0 ? { from: before, versions: fresh } : null
+}

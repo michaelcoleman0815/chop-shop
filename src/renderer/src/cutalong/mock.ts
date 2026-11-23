@@ -76,6 +76,7 @@ import {
 import type { CutalongApi } from './api'
 import { measureRun } from '../../../shared/channel-habits'
 import { mockCutouts } from './mattes-mock'
+import { CHANGES } from './changelog'
 
 /**
  * A stand-in for the main process, used only when the UI runs in a plain
@@ -508,7 +509,8 @@ export function createMockApi(): CutalongApi {
     }),
     // A video made from nothing, quoted over a stand-in script; nothing is made in the preview.
     ...mockMakeApi(),
-    getVersion: async () => '0.2.13',
+    // The newest version in the changelog, as a copy built now would be.
+    getVersion: async () => CHANGES[0]?.version ?? '0.4.2',
     pathForFile: (file: File) => `/Users/you/Movies/${file.name}`,
     openVideo: async () => null,
     hasApiKey: async () => key !== null,

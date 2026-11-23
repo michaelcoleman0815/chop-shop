@@ -10,6 +10,7 @@ Changes waiting for the next version go under "Unreleased". When the version goe
 
 - Settings has one AI section instead of two. Pick Claude or Local AI from the "Edits with" menu, and only what that one needs shows below it.
 - A Changelog page in the sidebar says what changed in each version.
+- The first time you open a new version, it shows what changed since the version you last opened, however many updates ago that was.
 
 ## 0.4.1 — 2026-11-23
 
