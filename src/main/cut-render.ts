@@ -59,6 +59,8 @@ import { makeSfx } from './sfx'
 import { heardFrom } from '../shared/vision/offset'
 import { captionMatrix, colorConversion, hasZscale, liveChannel } from './intake'
 import { bedVolume, limiter, roomClean, voiceFinish, voicePolish, type RoomClean } from './render/audio'
+import { busChains, effectChains, levelFilters, mixPlan, panFilters, type MixPlan } from './render/mix'
+import type { MixKey } from '../shared/mix'
 import { measureSound, pauseKeys, planSound, printRuns, writePrint, type SoundSpan } from './render/levels'
 import { cropMove, perspectiveFor } from './render/camera'
 import { changesSpeed, reverseSlices, speedPts, speedSound } from './render/speed'
@@ -272,6 +274,11 @@ export interface ClipSoundOptions {
   speed: number
   gainDb: number
   keys: LevelKey[]
+  /** The track it plays on, whose strip in the mixer it goes through (render/mix); straight to the mix when absent. */
+  track?: string
+  /** Where it sits between the speakers, -1 left to 1 right, and how that moves (output seconds). */
+  pan?: number
+  panKeys?: MixKey[]
 }
 
 /** atempo steps for a speed: each between 0.5 and 2, multiplying to it. */
@@ -335,6 +342,8 @@ export interface GraphOptions {
   pauses?: LevelKey[]
   /** A music bed under everything. */
   music?: BedOptions | null
+  /** The mixer's strips (render/mix): the voice's, the music's and each track's level, pan and effects. */
+  mix?: MixPlan | null
   /** A look over the whole picture, before captions and the logo. */
   look?: Look | null
   /** Whether the look's LUT is a 3D one (most are) or a 1D curve per channel. */
@@ -1467,6 +1476,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${aOut}]${polish},apad,atrim=duration=${exact(totalSec)}[avoice]`)
     aOut = 'avoice'
   }
+  const mix = opts.mix ?? null
+  if (sounds && mix?.voice && !mix.voice.silent && mix.voice.effects.length > 0) {
+    // The voice's own effects (render/mix), after the polish and before the loudness, as the polish is.
+    chains.push(...effectChains(mix.voice.effects, aOut, 'avfx', totalSec))
+    aOut = 'avfx'
+  }
   if (sounds && opts.loudness !== null) {
     // loudnorm works in 100 ms frames and looks 3 s ahead; at the end of sound
     // that is not a whole number of frames it puts those last seconds late by
@@ -1482,6 +1497,15 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     // After loudness, which holds its gain through a pause: in 5 ms frames, so the ramps are smooth.
     chains.push(`[${aOut}]asetnsamples=n=240,${bedVolume(0, opts.pauses)}[apause]`)
     aOut = 'apause'
+  }
+  // The voice's fader, pan and mute, once its loudness is set, so the target does not undo them.
+  // Whatever the mixer turns up is caught by a limiter last of all.
+  let limited = true
+  const voiceLevel = mix?.voice ? levelFilters(mix.voice) : []
+  if (voiceLevel.length > 0) {
+    chains.push(`[${aOut}]${voiceLevel.join(',')}[avlevel]`)
+    aOut = 'avlevel'
+    limited = false
   }
   const effects = opts.sfx ?? []
   if (effects.length > 0) {
@@ -1514,33 +1538,49 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       `[${aOut}]${labels.join('')}amix=inputs=${labels.length + 1}:duration=first:normalize=0,${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[asfx]`
     )
     aOut = 'asfx'
+    limited = true
   }
-  const clipSounds = (opts.sounds ?? []).filter((c) => c.durationSec > 0.01 && c.startSec < totalSec)
+  // A track the mixer silences gives nothing to read.
+  const busOf = (c: ClipSoundOptions): MixPlan['tracks'][string] | null => (c.track ? (mix?.tracks[c.track] ?? null) : null)
+  const clipSounds = (opts.sounds ?? []).filter((c) => c.durationSec > 0.01 && c.startSec < totalSec && !busOf(c)?.silent)
   if (clipSounds.length > 0) {
     // The layer tracks' sounds: each from its point in its file, at its speed,
     // to the sample where it lands, at its level (moving along its keys, which
-    // count in the edit's seconds once it is in place); mixed like the effects,
-    // after the voice's loudness is set.
+    // count in the edit's seconds once it is in place) and its pan; mixed like
+    // the effects, after the voice's loudness is set. A track with a strip in
+    // the mixer (render/mix) mixes its own clips first, through its effects,
+    // fader and pan.
     const labels: string[] = []
+    const onBus = new Map<string, string[]>()
     for (const [i, c] of clipSounds.entries()) {
       inputs.push('-ss', fixed(Math.max(0, c.inSec)), '-t', fixed(c.durationSec * c.speed + 0.25), '-i', c.path)
       const k = next++
       const tempo = tempoSteps(c.speed).map((s) => `atempo=${s.toFixed(6)}`)
       const level =
         c.keys.length > 0 ? `asetnsamples=n=480,${bedVolume(c.gainDb, c.keys)}` : `volume=${c.gainDb.toFixed(2)}dB`
+      const pan = panFilters(c.pan ?? 0, c.panKeys ?? [])
       chains.push(
         `[${k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS${tempo.length ? `,${tempo.join(',')}` : ''},` +
           `atrim=duration=${exact(c.durationSec)},adelay=delays=${Math.round(c.startSec * 48000)}S:all=1,asetpts=N/SR/TB,${level},` +
-          `apad,atrim=duration=${exact(totalSec)}[clip${i}]`
+          `${pan.length ? `${pan.join(',')},` : ''}apad,atrim=duration=${exact(totalSec)}[clip${i}]`
       )
-      labels.push(`[clip${i}]`)
+      if (c.track && busOf(c)) onBus.set(c.track, [...(onBus.get(c.track) ?? []), `[clip${i}]`])
+      else labels.push(`[clip${i}]`)
+    }
+    for (const [id, clips] of onBus) {
+      const label = `bus${id}`
+      const summed = clips.length > 1 ? `${label}sum` : clips[0].slice(1, -1)
+      if (clips.length > 1) chains.push(`${clips.join('')}amix=inputs=${clips.length}:duration=first:normalize=0[${summed}]`)
+      chains.push(...busChains((mix as MixPlan).tracks[id], summed, label, totalSec))
+      labels.push(`[${label}]`)
     }
     chains.push(
       `[${aOut}]${labels.join('')}amix=inputs=${labels.length + 1}:duration=first:normalize=0,${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[aclips]`
     )
     aOut = 'aclips'
+    limited = true
   }
-  const bed = opts.music
+  const bed = mix?.music?.silent ? null : opts.music
   if (bed) {
     // The track loops for as long as the video runs, sits at its gain, dips
     // along its keys, and fades; then the two are mixed without either being
@@ -1559,10 +1599,18 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       `[${m}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=duration=${exact(totalSec)},asetpts=PTS-STARTPTS,` +
         `asetnsamples=n=480,${bedVolume(bed.gainDb, bed.keys)}${fades.length ? `,${fades.join(',')}` : ''}[abed]`
     )
+    // The music's strip in the mixer, when it has one: its effects, fader and pan, after its own level and fades.
+    const bedOut = mix?.music ? 'abedmix' : 'abed'
+    if (mix?.music) chains.push(...busChains(mix.music, 'abed', bedOut, totalSec))
     chains.push(
-      `[${aOut}][abed]amix=inputs=2:duration=first:normalize=0,${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[amixed]`
+      `[${aOut}][${bedOut}]amix=inputs=2:duration=first:normalize=0,${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[amixed]`
     )
     aOut = 'amixed'
+    limited = true
+  }
+  if (!limited) {
+    chains.push(`[${aOut}]${limiter(0.84)},apad,atrim=duration=${exact(totalSec)}[amaster]`)
+    aOut = 'amaster'
   }
   if (fade && (fade.inSec > 0 || fade.outSec > 0)) {
     const parts: string[] = []
@@ -2093,6 +2141,7 @@ export async function renderCut(
     room,
     pauses,
     music: cut.music ? bedFor(cut.music, resolved, plan.lufs, cut) : null,
+    mix: mixPlan(cut, total),
     look: cut.look ?? null,
     lutKind: cut.look?.lut ? await lutKindOf(cut.look.lut.path) : undefined,
     film:

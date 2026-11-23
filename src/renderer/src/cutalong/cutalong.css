@@ -5802,3 +5802,329 @@ a.cl-btn {
     color: var(--ink);
   }
 }
+
+/* ---------- The Mix tab (components/Mixer) ---------- */
+
+/* Each sound is a strip of the sheet, with a hairline above, as a note is. */
+.cl-mix-strips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-mix-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--line);
+}
+
+.cl-mix-strip:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+/* A strip that is not heard (muted, or another soloed) reads quieter; its controls still work. */
+.cl-mix-strip.unheard .cl-mix-title,
+.cl-mix-strip.unheard .cl-mix-readout {
+  color: var(--muted);
+}
+
+.cl-mix-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cl-mix-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cl-mix-title {
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.cl-mix-toggles {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+/* Mute, solo and bypass: small pills, filled in ink while on. */
+.cl-mix-toggle {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-mid);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.cl-mix-toggle.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--card);
+}
+
+.cl-mix-toggle:focus-visible,
+.cl-mix-fader input[type='range']:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* A fader: its name, the slider, the number it is at, and the key diamond (its column wide enough for its corners). */
+.cl-mix-fader {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 62px 20px;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.cl-mix-fader .cl-key-toggle {
+  justify-self: center;
+}
+
+/* The strips' controls reach the sheet's right edge, so the scrollbar sits out in the sheet's margin, never over them. */
+.cl-mixer .cl-notes-scroll {
+  overflow-x: hidden;
+  margin-right: calc(-1 * var(--space-4));
+  padding-right: var(--space-4);
+}
+
+.cl-mix-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.cl-mix-readout {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cl-mix-keys {
+  grid-column: 2 / -1;
+  margin: 0;
+}
+
+.cl-mix-fader input[type='range'] {
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cl-mix-fader input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cl-mix-fader input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-tab);
+}
+
+.cl-mix-fader input[type='range']::-moz-range-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cl-mix-fader input[type='range']::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-tab);
+}
+
+/* The effects, in the order they run: each a small card of paper, its few settings under its name. */
+.cl-mix-fx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-mix-fx {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card-2);
+}
+
+.cl-mix-fx.bypassed .cl-mix-fx-name,
+.cl-mix-fx.bypassed .cl-mix-fx-fields,
+.cl-mix-fx.bypassed .cl-mix-bands {
+  opacity: 0.55;
+}
+
+.cl-mix-fx-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cl-mix-fx-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-mix-fx-head .cl-icon-btn {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+
+.cl-mix-fx-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--space-2);
+}
+
+.cl-mix-number > span:first-child {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.cl-field.cl-mix-number input:not([type='color']):not([type='checkbox']) {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-mix-bands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A band: its shape on a line with the button that takes it off, its numbers in a row under it. */
+.cl-mix-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 28px;
+  align-items: end;
+  gap: var(--space-2);
+}
+
+.cl-mix-band + .cl-mix-band {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.cl-mix-band > select {
+  grid-column: 1 / 4;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.cl-mix-band .cl-icon-btn {
+  grid-column: 4;
+  grid-row: 1;
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+
+.cl-mix-band-add {
+  align-self: flex-start;
+  height: 32px;
+}
+
+/* A choice from a list (a band's shape, an effect to add): drawn as the fields are, with the same halo. */
+.cl-mixer select {
+  appearance: none;
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  padding: 7px 28px 7px 10px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%),
+    linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 10px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  outline: none;
+  cursor: pointer;
+}
+
+.cl-mixer select:focus-visible {
+  border-color: var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+.cl-mixer select.cl-mix-add {
+  align-self: flex-start;
+  border-radius: var(--radius-pill);
+  padding: 7px 30px 7px 14px;
+  font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-mix-toggle:hover:not(.on) {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+
+  .cl-mix-fader input[type='range']:hover::-webkit-slider-thumb {
+    border-color: var(--ink);
+  }
+}
+
+/* On a phone the Mix tab is one more tool in the header's second row: the tools sit closer, so the versions keep their room,
+   and the panel gives its last line to the strips. */
+@media (max-width: 640px) {
+  .cl-header:has(> .cl-revisions) > .cl-btn.text {
+    padding: 0 var(--space-2);
+  }
+
+  .cl-mixer > .cl-project-meta {
+    display: none;
+  }
+}

@@ -1,6 +1,7 @@
 import { addMotion, removeMotion, updateMotion, type MotionOpContext, type MotionResult } from '../motion/apply'
 import { addFx, removeFx, updateFx, type FxResult } from '../fx/apply'
 import { applyTrackOp, type TrackResult } from '../tracks/apply'
+import { applyMixOp } from '../mix/apply'
 import { timelineFor } from '../motion/timing'
 import { DEFAULT_MUSIC, MusicSchema, type Music } from './audio'
 import { fillMode } from './fill'
@@ -643,6 +644,9 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
           }
         })
       )
+    // The mixer. The checks live in shared/mix.
+    case 'mix':
+      return tracksCut(applyMixOp(cut, op))
   }
 }
 

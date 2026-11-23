@@ -3,6 +3,7 @@ import { num } from '../../../shared/anim'
 import type { Layer, VideoLayer } from '../../../shared/motion'
 import type { Placed } from '../../../shared/tracks'
 import { MEDIA_CORS, mediaUrlFor } from './api'
+import type { MixGraph } from './mix-graph'
 
 /**
  * The layer tracks' video and sound in the preview: one hidden <video> per
@@ -42,7 +43,9 @@ export function useClipMedia(
   layers: Layer[],
   sounding: Placed[],
   time: number,
-  playing: boolean
+  playing: boolean,
+  /** The preview's mixer (mix-graph): each clip's sound through its track's strip, at its own pan. */
+  mixer?: MixGraph
 ): { frame: (layer: VideoLayer, local: number) => CanvasImageSource | null; version: number } {
   const media = useRef(new Map<string, Media>())
   const [version, setVersion] = useState(0)
@@ -66,7 +69,7 @@ export function useClipMedia(
       const el = document.createElement(w.kind)
       el.preload = 'auto'
       if (el instanceof HTMLVideoElement) el.playsInline = true
-      // Read with leave, so a canvas that draws its frames can still be read by an adjustment clip over them.
+      // Read with CORS, as the decks are, so an adjustment clip over its frames can read them and the mixer may hear it.
       if (MEDIA_CORS) el.crossOrigin = MEDIA_CORS
       el.addEventListener('seeked', bump)
       el.addEventListener('loadeddata', bump)
@@ -78,6 +81,11 @@ export function useClipMedia(
   // Every clip on its moment, at its level.
   useEffect(() => {
     const heard = new Map(sounding.map((p) => [p.clip.id, p]))
+    // Through its track's strip at its own pan, or, where the mixer cannot hear it, at the strip's fader.
+    const level = (el: HTMLMediaElement, p: Placed, local: number): number => {
+      if (!mixer) return 1
+      return mixer.route(el, p.track.id, num(p.clip.pan, local, p.end - p.start, 0)) ? 1 : mixer.fallback(p.track.id, time)
+    }
     for (const l of layers) {
       if (l.kind !== 'video' || !l.id) continue
       const m = media.current.get(l.id)
@@ -86,7 +94,7 @@ export function useClipMedia(
       const local = time - l.start
       const sound = heard.get(l.id)
       m.el.muted = !sound
-      if (sound) m.el.volume = gain(num(sound.clip.volume, local, l.end - l.start, 0))
+      if (sound) m.el.volume = gain(num(sound.clip.volume, local, l.end - l.start, 0)) * level(m.el, sound, local)
       if (on) sync(m.el, l.in + local * (l.speed ?? 1), l.speed ?? 1, playing)
       else if (!m.el.paused) m.el.pause()
     }
@@ -96,11 +104,11 @@ export function useClipMedia(
       if (!m) continue
       const on = time >= p.start && time < p.end
       const local = time - p.start
-      m.el.volume = gain(num(p.clip.volume, local, p.end - p.start, 0))
+      m.el.volume = gain(num(p.clip.volume, local, p.end - p.start, 0)) * level(m.el, p, local)
       if (on) sync(m.el, p.clip.in + local * p.clip.speed, p.clip.speed, playing)
       else if (!m.el.paused) m.el.pause()
     }
-  }, [layers, sounding, time, playing])
+  }, [layers, sounding, time, playing, mixer])
 
   // Nothing plays on once the editor closes.
   useEffect(() => {

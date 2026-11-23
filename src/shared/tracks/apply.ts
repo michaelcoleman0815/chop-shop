@@ -138,13 +138,15 @@ type NumAnim = Anim<number> | undefined
 function getProp(clip: TrackClip, prop: KeyedProp): NumAnim {
   if (prop === 'opacity') return clip.opacity
   if (prop === 'volume') return clip.volume
+  if (prop === 'pan') return clip.pan
   if (prop.startsWith('crop.')) return clip.crop?.[prop.slice(5) as 'left' | 'top' | 'right' | 'bottom']
-  return clip.transform?.[prop as Exclude<KeyedProp, 'opacity' | 'volume' | `crop.${string}`>]
+  return clip.transform?.[prop as Exclude<KeyedProp, 'opacity' | 'volume' | 'pan' | `crop.${string}`>]
 }
 
 function setProp(clip: TrackClip, prop: KeyedProp, value: NumAnim): TrackClip {
   if (prop === 'opacity') return { ...clip, opacity: value }
   if (prop === 'volume') return { ...clip, volume: value }
+  if (prop === 'pan') return { ...clip, pan: value }
   if (prop.startsWith('crop.')) return { ...clip, crop: { ...clip.crop, [prop.slice(5)]: value } }
   return { ...clip, transform: { ...clip.transform, [prop]: value } }
 }
@@ -195,7 +197,8 @@ const KEYED_ALL: KeyedProp[] = [
   'crop.top',
   'crop.right',
   'crop.bottom',
-  'volume'
+  'volume',
+  'pan'
 ]
 
 // ---------- The ops ----------
@@ -354,7 +357,8 @@ function step(tracks: Track[], op: Op, ctx: TrackOpContext): Track[] {
       const at = findClip(tracks, op.clip)
       unlocked(tracks[at.t])
       const clip = tracks[at.t].clips[at.c]
-      if (op.prop === 'volume' && clip.kind !== 'sound' && clip.kind !== 'video') refuse(`${aClip(clip.kind)} has no sound to set.`)
+      if ((op.prop === 'volume' || op.prop === 'pan') && clip.kind !== 'sound' && clip.kind !== 'video') refuse(`${aClip(clip.kind)} has no sound to set.`)
+      if (op.prop === 'pan' && (op.v < -1 || op.v > 1)) refuse('Pan goes from -1, all the way left, to 1, all the way right.')
       return replaceClip(tracks, at, setProp(clip, op.prop, withKey(getProp(clip, op.prop), op.t, op.v, op.ease)))
     }
 

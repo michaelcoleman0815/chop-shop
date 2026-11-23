@@ -101,6 +101,8 @@ import { ClipPanel } from '../components/ClipPanel'
 import { Lanes, type Lane, type Snap } from '../components/Lanes'
 import { timelineFor } from '../../../../shared/motion/timing'
 import { useClipMedia } from '../useClipMedia'
+import { useMixGraph, type MixGraph } from '../mix-graph'
+import { Mixer } from '../components/Mixer'
 import { RegionPicker } from '../components/RegionPicker'
 import { Subtitles } from '../components/Subtitles'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
@@ -142,8 +144,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
   // The look of the brand this edit is made in, for a grid's ground and labels, as its graphics have.
   const theme = useMemo(() => themeFrom(app.chatBrand), [app.chatBrand])
   const player = usePlayer(decks, seen.resolved, { sources: seen.sources, urlFor: mediaUrlFor, sounds })
-  const [side, setSide] = useState<'notes' | 'script' | 'takes'>('notes')
-  const toggle = (which: 'script' | 'takes'): void => setSide((s) => (s === which ? 'notes' : which))
+  const [side, setSide] = useState<'notes' | 'script' | 'takes' | 'mix'>('notes')
+  const toggle = (which: 'script' | 'takes' | 'mix'): void => setSide((s) => (s === which ? 'notes' : which))
   // Captions take the colours of the brand this version is made in, where the export gives them those:
   // when that brand applies itself.
   const captionColors = useMemo(
@@ -285,6 +287,9 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
         >
           Takes
         </Button>
+        <Button variant="text" className={side === 'mix' ? 'on' : ''} aria-pressed={side === 'mix'} onClick={() => toggle('mix')}>
+          Mix
+        </Button>
         <Button
           variant="text"
           className={side === 'script' ? 'on' : ''}
@@ -332,6 +337,8 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
             />
           ) : side === 'takes' ? (
             <TakesPanel app={app} doc={doc} resolved={resolved} onSeek={player.seek} />
+          ) : side === 'mix' ? (
+            <Mixer cut={cut} time={player.time} durationSec={resolved.durationSec} onOps={app.applyOpsDirect} onSeek={player.seek} />
           ) : pickedClip ? (
             <ClipPanel
               clip={pickedClip}
@@ -487,8 +494,13 @@ function Preview({
   const well = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
   const cut = currentCut(doc)
+  // The mixer (mix-graph): the voice, the music and each track through their strips.
+  const mixer = useMixGraph(cut, resolved.durationSec, time, playing)
+  useEffect(() => {
+    for (const d of [...decks, ...sounds]) mixer.route(d.current, 'voice')
+  })
   // The layer tracks' videos and sounds, kept on the player's moment.
-  const clips = useClipMedia(layers.scene?.layers ?? NO_LAYERS, layers.sounding, time, playing)
+  const clips = useClipMedia(layers.scene?.layers ?? NO_LAYERS, layers.sounding, time, playing, mixer)
   // Scene effects, drawn as the export draws them (fx-preview): the picture's inside the decks, the rest over the look.
   const decksBox = useRef<HTMLDivElement>(null)
   const fxPicture = useRef<HTMLCanvasElement>(null)
@@ -549,7 +561,7 @@ function Preview({
 
   return (
     <div className="cl-well" ref={well}>
-      {cut.music && <Bed music={cut.music} resolved={resolved} time={time} playing={playing} />}
+      {cut.music && <Bed music={cut.music} resolved={resolved} time={time} playing={playing} mixer={mixer} />}
       <Effects doc={doc} resolved={resolved} time={time} playing={playing} />
       <div className="cl-frame" ref={frameBox} style={{ width: box.w, height: box.h }}>
         {grade && (
@@ -867,12 +879,15 @@ function Bed({
   music,
   resolved,
   time,
-  playing
+  playing,
+  mixer
 }: {
   music: Music
   resolved: Resolved
   time: number
   playing: boolean
+  /** Through the music's strip, or at its fader where the mixer cannot hear it. */
+  mixer: MixGraph
 }): JSX.Element {
   const ref = useRef<HTMLAudioElement>(null)
   const keys = useMemo(() => duckingKeys(resolved.words, music.duckDb, resolved.durationSec), [resolved, music.duckDb])
@@ -885,11 +900,12 @@ function Bed({
     const db = RECORDED_VOICE_LUFS + music.levelDb + levelAt(keys, time) - (music.lufs ?? -14)
     const fadeIn = music.fadeInSec > 0 ? Math.min(1, time / music.fadeInSec) : 1
     const fadeOut = music.fadeOutSec > 0 ? Math.min(1, Math.max(0, resolved.durationSec - time) / music.fadeOutSec) : 1
-    a.volume = Math.min(1, Math.max(0, 10 ** (db / 20) * fadeIn * fadeOut))
+    const strip = mixer.route(a, 'music') ? 1 : mixer.fallback('music', time)
+    a.volume = Math.min(1, Math.max(0, 10 ** (db / 20) * fadeIn * fadeOut * strip))
     if (playing && a.paused) void a.play().catch(() => undefined)
     if (!playing && !a.paused) a.pause()
-  }, [music, keys, time, playing, resolved.durationSec])
-  return <audio ref={ref} src={mediaUrlFor(music.path)} preload="auto" />
+  }, [music, keys, time, playing, resolved.durationSec, mixer])
+  return <audio ref={ref} src={mediaUrlFor(music.path)} crossOrigin={MEDIA_CORS} preload="auto" />
 }
 
 /**

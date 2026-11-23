@@ -209,6 +209,7 @@ function described(clip: TrackClip, length: number): string {
   const anims: [string, unknown][] = [
     ['opacity', clip.opacity],
     ['volume', clip.volume],
+    ['pan', clip.pan],
     ...Object.entries(clip.transform ?? {}),
     ...Object.entries(clip.crop ?? {}).map(([k, v]) => [`crop.${k}`, v] as [string, unknown])
   ]
