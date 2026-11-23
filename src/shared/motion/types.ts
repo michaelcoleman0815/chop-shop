@@ -1,4 +1,5 @@
 import type { Chrome } from './chrome'
+import type { ParticleSettings } from '../particles/presets'
 /**
  * The motion layer model: what gets drawn over the picture, and how it moves.
  *
@@ -455,7 +456,20 @@ export interface MapLayer<T = number> extends Base<T> {
   map: MapPaint
 }
 
-export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | GroupLayer<T> | MapLayer<T> | VideoLayer<T>
+/** Snow, sparks, confetti: a particle system stepped from the layer's start over a frame w by h centred on the origin (shared/particles). */
+export interface ParticlesLayer<T = number> extends Base<T> {
+  kind: 'particles'
+  /** Its settings, whole and scaled to the frame. */
+  particles: ParticleSettings
+  /** What the system is, so a frame carries on from the last one drawn of it. */
+  key: string
+  w: number
+  h: number
+  /** The picture each particle is, for the image sprite, by path (DrawResources.images, `file:` and the path). */
+  file?: string
+}
+
+export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | GroupLayer<T> | MapLayer<T> | VideoLayer<T> | ParticlesLayer<T>
 
 /** A Lucide icon: element name and attributes, as lucide-static ships them. */
 export type IconNode = [string, Record<string, string | number>]

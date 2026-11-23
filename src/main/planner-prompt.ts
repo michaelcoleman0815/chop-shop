@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { scopeLine } from '../shared/scopes/maths'
 import {
   CAMERA_KINDS,
   currentCut,
@@ -99,6 +100,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"voice","polish":0.6}: clean up the voice: rumble, hiss and harsh esses out, levels evened, presence lifted. 0 leaves it as recorded, 1 is the most.
 - {"op":"music","path":"","set":[{"key":"levelDb","value":-15},{"key":"duckDb","value":12}],"off":false}: change the music bed, naming only the settings that change: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. "path" stays "" unless the request names a file to use. "off":true takes the music out.
 - {"op":"look","name":"warm","set":[],"replace":true,"off":false}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage, with these settings: ${NAMED_LIST}. "name" starts from one of them, or stays "". "set" names only the settings that change: [{"key":"grain","value":0.2}]. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1; 0 takes one away. "replace":false changes the look already there, true starts afresh. "off":true takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
+  For the look, <scopes> measures each recording: luma from black 0 to white 100, how much is clipped, saturation and the cast (u, v). Grade by it: a warm cast wants temperature below 0, a magenta one tint below 0; most of the luma in a narrow band wants contrast; lows clipped want lift, highs clipped exposure down.
 - {"op":"sfx","beats":["b4"],"kind":"whoosh","word":"","gainDb":0}: a sound effect, made here, on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12), 0 for the usual. "kind":"none" takes a beat's sounds away. The person's own sound files are added with /sfx.
 - {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":[]} takes them out.
 - {"op":"angle","beats":["b4"],"source":"s2","layout":"full"}: another camera of the same take on beats: "full" shows it instead of the recording, "pip" in a box over it, "side" beside it. The sound stays the recording's. Only a source the transcript marks camera-of the beat's recording; "source":"" shows the beat's own recording again.
@@ -809,6 +811,9 @@ export function renderRequest(
     const sound = map ? renderSound(map, text) : ''
     if (sound) parts.push(sound)
   }
+  // What each recording's picture measures (main/scopes), for grading by numbers.
+  const scoped = doc.sources.filter((s) => s.scopes)
+  if (scoped.length) parts.push(`<scopes>\n${scoped.map((s) => scopeLine(s.id, s.scopes!)).join('\n')}\n</scopes>`)
   // Several players' views of one session, and the reactions heard in them (shared/pov).
   const povs = renderPovs(doc)
   if (povs) parts.push(povs)

@@ -96,8 +96,10 @@ import { boxStyle, GridPanels, gridViewFor } from '../components/GridPanels'
 import { MotionCanvas } from '../components/MotionCanvas'
 import { clipSpan, mediaOf, resolveClip, soundingClips, trackLayers, tracksOf, type Placed, type TrackClip } from '../../../../shared/tracks'
 import { needsBase } from '../../../../shared/tracks/compositing'
+import { particleTitle } from '../../../../shared/particles/presets'
 import { isKeyed, type Anim } from '../../../../shared/anim'
 import { ClipPanel } from '../components/ClipPanel'
+import { Scopes } from '../components/Scopes'
 import { Lanes, type Lane, type Snap } from '../components/Lanes'
 import { timelineFor } from '../../../../shared/motion/timing'
 import { useClipMedia } from '../useClipMedia'
@@ -662,6 +664,7 @@ function Preview({
           The preview cannot read this picture, so adjustment clips show ungraded here. The export grades them.
         </p>
       )}
+      {mediaUrl && <Scopes decks={decksBox} look={look} time={time} playing={playing} />}
     </div>
   )
 }
@@ -1707,7 +1710,7 @@ function TakesPanel({
 
 /** The settings that can carry keys, as a clip holds them. */
 function animsOf(c: TrackClip): (Anim<number> | undefined)[] {
-  return [c.opacity, c.volume, ...Object.values(c.transform ?? {}), ...Object.values(c.crop ?? {})] as (Anim<number> | undefined)[]
+  return [c.opacity, c.volume, c.particles?.rate, ...Object.values(c.transform ?? {}), ...Object.values(c.crop ?? {})] as (Anim<number> | undefined)[]
 }
 
 /** What a clip is called in its lane: its name, a title's words, a file's name. */
@@ -1716,6 +1719,7 @@ function clipLabel(c: TrackClip, assets: EditDoc['assets']): string {
   if (c.kind === 'text') return c.text?.value ?? 'Title'
   if (c.kind === 'solid') return 'Colour'
   if (c.kind === 'adjustment') return 'Adjustment'
+  if (c.kind === 'particles') return particleTitle(c.particles)
   const asset = assets.find((a) => a.id === c.src)
   return asset?.title ?? (c.src ?? '').split(/[\\/]/).pop() ?? c.kind
 }
@@ -1800,6 +1804,10 @@ function AddMenu({ doc, time, onAdd }: { doc: EditDoc; time: number; onAdd: (ops
           <button type="button" role="menuitem" onClick={() => add({ kind: 'adjustment', to: '3s', grade: { contrast: 0.2 } }, 'An adjustment grades what is under it.')}>
             An adjustment
             <span className="meta">Grades everything under it while it plays</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => add({ kind: 'particles', particles: { preset: 'snow' }, to: '5s' }, 'Snow falls over the edit.')}>
+            Particles
+            <span className="meta">Snow, sparks, confetti and more, over the picture</span>
           </button>
           {material.map((a) => (
             <button

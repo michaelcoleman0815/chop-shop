@@ -6128,3 +6128,143 @@ a.cl-btn {
     display: none;
   }
 }
+
+/* ---------- Colour scopes over the preview (components/Scopes) ---------- */
+
+/*
+ * A toggle in the well's corner, and under it the scopes on the stage: a
+ * waveform or parade, a vectorscope and a histogram of the picture as the
+ * look leaves it. The well scopes ink, lines and paper to the stage's.
+ */
+.cl-scopes {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-3));
+  max-height: calc(100% - 2 * var(--space-3));
+}
+
+.cl-scopes-toggle {
+  background: var(--stage);
+}
+
+.cl-scopes-panel {
+  width: min(300px, 100%);
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--stage-line);
+  border-radius: var(--radius-card);
+  background: var(--stage-2);
+  box-shadow: var(--shadow-float);
+  color: var(--on-stage);
+}
+
+.cl-scopes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cl-scopes-head .cl-segments {
+  background: var(--stage);
+}
+
+.cl-scopes-head .cl-segments button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  color: var(--on-stage-soft);
+}
+
+.cl-scopes-head .cl-segments button.on {
+  background: var(--stage-2);
+  color: var(--on-stage);
+}
+
+.cl-scopes-panel canvas {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-thumb);
+  background: var(--stage);
+}
+
+.cl-scopes-wave {
+  aspect-ratio: 2 / 1;
+}
+
+.cl-scopes-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.cl-scopes-row canvas {
+  aspect-ratio: 1 / 1;
+}
+
+.cl-scopes-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--on-stage-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-scopes-head .cl-segments button:not(.on):hover {
+    color: var(--on-stage);
+  }
+}
+
+/* A phone's well is short: the toggle sits beside the panel, and the three scopes share one row. */
+@media (max-width: 640px) {
+  .cl-scopes {
+    top: var(--space-2);
+    right: var(--space-2);
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    max-width: calc(100% - 2 * var(--space-2));
+    max-height: calc(100% - 2 * var(--space-2));
+  }
+
+  .cl-scopes-panel {
+    width: auto;
+    flex: 1 1 auto;
+    max-height: 100%;
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+
+  .cl-scopes-head,
+  .cl-scopes-note {
+    grid-column: 1 / -1;
+  }
+
+  .cl-scopes-row {
+    display: contents;
+  }
+
+  .cl-scopes-wave {
+    aspect-ratio: auto;
+    align-self: stretch;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .cl-scopes-note {
+    font-size: 11.5px;
+    line-height: 15px;
+  }
+}

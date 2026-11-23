@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { followObjects, type Track } from './plan-follow'
 import { platform } from './platform'
+import { withScopes } from './scopes'
 import { claudeKeyStatus, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
 import {
   commandThing,
@@ -147,10 +148,11 @@ export interface PlanInput extends RequestExtra {
 export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } = {}): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
-  const doc = parsedDoc.data
 
   const apiKey = await keyDeps().read()
   if (!apiKey) return { ok: false, message: keyMessage('none'), needsKey: true, keyState: 'none' }
+  // Each recording's scopes, measured now for an edit brought in before they were (main/scopes).
+  const doc = await withScopes(parsedDoc.data)
   const client = claude(apiKey, deps.fetch ? { fetch: deps.fetch } : {})
   const commands = renderCommands(input.commands ?? [])
 

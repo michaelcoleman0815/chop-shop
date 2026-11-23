@@ -1,5 +1,6 @@
 import { BoxSchema } from './box'
 import { z } from 'zod'
+import { ScopeReadingSchema } from '../scopes/maths'
 import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
@@ -108,7 +109,9 @@ export const SourceSchema = z.object({
     })
     .optional(),
   /** Where the speaker was across the recording, found by face finding, for following them into a narrower frame. */
-  subject: SubjectSchema.optional()
+  subject: SubjectSchema.optional(),
+  /** What its picture measures (shared/scopes): luma, clipping, saturation and cast, for grading by numbers. */
+  scopes: ScopeReadingSchema.optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 

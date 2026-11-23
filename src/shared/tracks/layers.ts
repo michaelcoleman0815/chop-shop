@@ -1,6 +1,7 @@
 import type { Layer, Size } from '../motion/types'
 import type { Timeline } from '../motion/timing'
 import { bindExprs } from './compositing'
+import { particlesLayer } from '../particles/layer'
 import type { ClipMedia } from './media'
 import { placeClips, tracksOf, type Placed } from './resolve'
 import type { Track, TrackClip } from './schema'
@@ -66,6 +67,8 @@ export function layerFor(p: Placed, design: Size): Layer | null {
         adjust: { ...look, ...(blur ? { blur } : {}), w: W, h: H, ...(clip.crop ? { crop: clip.crop } : {}) }
       }
     }
+    case 'particles':
+      return particlesLayer(base, clip, p.end - p.start, design)
     case 'sound':
       return null
   }

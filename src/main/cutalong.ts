@@ -1,4 +1,5 @@
 import { app, clipboard, dialog, ipcMain, type WebContents } from 'electron'
+import { measureScopes } from './scopes'
 import { downloadSpeakerModel, findSpeakers } from './speakers'
 import { anthropicKeyIn } from '../shared/keys'
 import { promises as fs } from 'fs'
@@ -122,6 +123,8 @@ export const macWork: WorkHost = {
   fontsDir: () => FONTS_DIR(),
   hearInCloud: (path, durationSec, progress) => hearInCloud(path, durationSec, progress),
   watch: (input) => watchClip(input, detectFaces, FFMPEG_PATH),
+  // What each recording's picture measures, for Claude to grade by (main/scopes).
+  scopes: (path, durationSec) => measureScopes(FFMPEG_PATH, path, durationSec),
   speakers: async (path, words) => {
     await downloadSpeakerModel()
     return (await findSpeakers(FFMPEG_PATH, path, words)).words
