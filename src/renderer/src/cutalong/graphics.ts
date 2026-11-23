@@ -20,6 +20,7 @@ import {
   type LogoEntry,
   type LogoMark
 } from '../../../shared/motion'
+import { MEDIA_CORS } from './api'
 
 /**
  * What the editor's motion canvas needs from the page: the faces graphics
@@ -107,6 +108,8 @@ export function loadPicture(url: string): Promise<HTMLImageElement | null> {
       const img = new Image()
       img.onload = () => resolve(img)
       img.onerror = () => resolve(null)
+      // Read with leave, as the decks read theirs, so a canvas that draws it can still be read (an adjustment clip over it).
+      if (MEDIA_CORS && !url.startsWith('data:') && !url.startsWith('blob:')) img.crossOrigin = MEDIA_CORS
       img.src = url
     })
     images.set(url, hit)

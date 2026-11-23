@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isKeyed, num } from '../anim'
+import { exprOf } from '../motion/anim'
 import type { Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
 import { timelineFor } from '../motion/timing'
@@ -200,6 +201,11 @@ function described(clip: TrackClip, length: number): string {
   if (clip.blend !== 'normal') bits.push(`blend ${clip.blend}`)
   if (clip.fit !== 'contain') bits.push(`fit ${clip.fit}`)
   if (clip.muted) bits.push('muted')
+  // An adjustment's grade, setting by setting.
+  if (clip.grade) {
+    const grade = Object.entries(clip.grade).filter(([, v]) => v !== undefined)
+    if (grade.length) bits.push(`grade ${grade.map(([k, v]) => `${k} ${v}`).join(' ')}`)
+  }
   const anims: [string, unknown][] = [
     ['opacity', clip.opacity],
     ['volume', clip.volume],
@@ -208,6 +214,9 @@ function described(clip: TrackClip, length: number): string {
   ]
   for (const [name, a] of anims) {
     if (a === undefined) continue
+    const expr = exprOf(a as never)
+    if (expr) bits.push(`${name} expr ${JSON.stringify(expr)}`)
+    if (isKeyed(a as never) && (a as { keys: unknown[] }).keys.length === 0) continue
     if (isKeyed(a as never)) {
       const keys = (a as { keys: { t: number; v: number }[] }).keys
       bits.push(`${name} keys ${keys.map((k) => `${k.t}:${k.v}`).join(' ')}`)

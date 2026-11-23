@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AnimNumSchema, ColorSchema, EaseSchema, TransformSchema } from '../anim'
 import { AnchorRefSchema, EndRefSchema } from '../motion/schema'
 import { BLEND_MODES } from '../motion/types'
+import { GradeSchema } from './grade'
 
 /**
  * Layer tracks: what the edit stacks over its own picture and mixes under its
@@ -19,7 +20,7 @@ import { BLEND_MODES } from '../motion/types'
  * include it without a cycle.
  */
 
-export const CLIP_KINDS = ['video', 'image', 'text', 'solid', 'sound'] as const
+export const CLIP_KINDS = ['video', 'image', 'text', 'solid', 'sound', 'adjustment'] as const
 export type ClipKind = (typeof CLIP_KINDS)[number]
 
 export const TRACK_KINDS = ['picture', 'sound'] as const
@@ -27,7 +28,7 @@ export type TrackKind = (typeof TRACK_KINDS)[number]
 
 /** Which clips a track holds. */
 export const KINDS_ON: Record<TrackKind, readonly ClipKind[]> = {
-  picture: ['video', 'image', 'text', 'solid'],
+  picture: ['video', 'image', 'text', 'solid', 'adjustment'],
   sound: ['sound']
 }
 
@@ -109,7 +110,9 @@ export const ClipFieldsSchema = z.object({
   /** A sound's level, or a video's own sound, in dB: 0 as recorded. */
   volume: AnimNumSchema.optional(),
   /** A video's own sound left out. */
-  muted: z.boolean().default(false)
+  muted: z.boolean().default(false),
+  /** An adjustment clip's grade, over everything under it while it plays. */
+  grade: GradeSchema.optional()
 })
 export type ClipFields = z.infer<typeof ClipFieldsSchema>
 
@@ -134,7 +137,17 @@ export type Track = z.infer<typeof TrackSchema>
 export const MAX_TRACKS = 24
 
 const Id = z.string().min(1).max(16)
-const ClipChangeSchema = ClipFieldsSchema.omit({ kind: true }).partial()
+/**
+ * A clip's settings, any of them, with no defaults: zod 4 fills a default in
+ * even where `.partial()` made the field optional, so a change to one setting
+ * put every other defaulted one back (a blend went back to normal when the
+ * opacity changed). Only what a change says, it changes.
+ */
+const ClipChangeSchema = z.object(
+  Object.fromEntries(
+    Object.entries(ClipFieldsSchema.omit({ kind: true }).shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? v.unwrap() : v).optional()])
+  )
+) as unknown as ReturnType<ReturnType<typeof ClipFieldsSchema.omit<{ kind: true }>>['partial']>
 
 export const TrackOpSchemas = [
   z.object({
@@ -185,7 +198,9 @@ export const TrackOpSchemas = [
     v: z.number().finite(),
     ease: EaseSchema.optional()
   }),
-  z.object({ op: z.literal('key-remove'), clip: Id, prop: z.enum(KEYED_PROPS), t: z.number().min(0).max(86_400) })
+  z.object({ op: z.literal('key-remove'), clip: Id, prop: z.enum(KEYED_PROPS), t: z.number().min(0).max(86_400) }),
+  /** An expression on one setting (shared/anim/expr), over its keys; empty takes it off. */
+  z.object({ op: z.literal('clip-expr'), clip: Id, prop: z.enum(KEYED_PROPS), expr: z.string().max(400) })
 ] as const
 
 export const TRACK_OP_NAMES = [
@@ -199,6 +214,7 @@ export const TRACK_OP_NAMES = [
   'clip-split',
   'clip-remove',
   'key-set',
-  'key-remove'
+  'key-remove',
+  'clip-expr'
 ] as const
 export type TrackOpName = (typeof TRACK_OP_NAMES)[number]

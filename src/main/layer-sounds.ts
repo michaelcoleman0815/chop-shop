@@ -1,4 +1,5 @@
 import { isKeyed, num } from '../shared/anim'
+import { exprOf } from '../shared/motion/anim'
 import type { Resolved } from '../shared/edit/resolve'
 import type { Cut, Source, Word } from '../shared/edit/schema'
 import { timelineFor } from '../shared/motion/timing'
@@ -38,14 +39,24 @@ export async function clipSounds(input: LayerSoundsInput, hasSound: (path: strin
       if (!heard.get(src)) continue
     }
     const volume = p.clip.volume
+    const length = p.end - p.start
+    // An expression on the level is read off at twenty moments a second, as keys the mix follows.
+    const steps = exprOf(volume) ? Math.max(2, Math.min(4000, Math.ceil(length * 20) + 1)) : 0
     sounds.push({
       path: src,
       startSec: p.start,
-      durationSec: p.end - p.start,
+      durationSec: length,
       inSec: p.clip.in,
       speed: p.clip.speed,
-      gainDb: isKeyed(volume) ? 0 : num(volume, 0, p.end - p.start, 0),
-      keys: isKeyed(volume) ? volume.keys.map((k) => ({ t: p.start + k.t, db: k.v })) : []
+      gainDb: isKeyed(volume) ? 0 : num(volume, 0, length, 0),
+      keys: steps
+        ? Array.from({ length: steps }, (_, i) => {
+            const t = (length * i) / (steps - 1)
+            return { t: p.start + t, db: num(volume, t, length, 0) }
+          })
+        : isKeyed(volume)
+          ? volume.keys.map((k) => ({ t: p.start + k.t, db: k.v }))
+          : []
     })
   }
   return sounds

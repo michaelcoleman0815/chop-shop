@@ -258,6 +258,12 @@ export interface OverlaySpan {
  * `durationSec` of the edit, at its gain, its level moving along `keys` (output
  * seconds) when it has them.
  */
+/** Frames of the output by number: from `first`, `count` of them. */
+export interface FrameRange {
+  first: number
+  count: number
+}
+
 export interface ClipSoundOptions {
   path: string
   startSec: number
@@ -296,6 +302,12 @@ export interface GraphOptions {
   layers?: OverlaySpan[] | null
   /** The layer tracks' sounds, mixed with the finished voice like the sound effects. */
   sounds?: ClipSoundOptions[]
+  /**
+   * Instead of the video: the picture as it is where the layer tracks go,
+   * only these frames, as raw RGBA on stdout, for layers that blend with it
+   * or grade it (main/base-frames).
+   */
+  baseOut?: { frames: FrameRange[] } | null
   /**
    * Scene effects (main/fx-render): their picture work on the joined picture
    * before the look, and what they draw over it after the look and under the
@@ -1333,6 +1345,30 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     vOut = drawn.out
   }
   // ---- Layer tracks (src/main/layers-render.ts) ----
+  // The picture as the layers find it, for the stretches where they blend with it or grade it: nothing after.
+  if (opts.baseOut) {
+    const pick = opts.baseOut.frames.map((r) => `between(n,${r.first},${r.first + r.count - 1})`).join('+')
+    chains.push(`[${vOut}]select='${pick}',${TO_RGB},format=rgba[vbase]`, '[acat]anullsink')
+    return [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      ...inputs,
+      '-filter_complex',
+      chains.join(';'),
+      '-map',
+      '[vbase]',
+      '-frames:v',
+      String(opts.baseOut.frames.reduce((n, r) => n + r.count, 0)),
+      '-fps_mode',
+      'passthrough',
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      'rgba',
+      'pipe:1'
+    ]
+  }
   // Placed on the output's frames by count, as the graphics are, under the captions.
   for (const [i, o] of (opts.layers ?? []).entries()) {
     inputs.push('-i', o.path)
@@ -1642,8 +1678,16 @@ export interface RenderCutOptions {
   brand?: { colors: { text: string; accent: string }; logo: LogoMark | null } | null
   /** Motion graphics from renderCutMotion, laid over the joined picture in the last pass. */
   overlays?: OverlaySpan[] | null
-  /** The layer tracks from renderCutLayers: pictures under the captions, and sounds mixed in. */
-  layers?: { overlays: OverlaySpan[]; sounds: ClipSoundOptions[] } | null
+  /**
+   * The layer tracks from renderCutLayers: pictures under the captions, and
+   * sounds mixed in. `overBase` draws the stretches where a layer blends with
+   * the picture or grades it, given the arguments that pipe that picture out.
+   */
+  layers?: {
+    overlays: OverlaySpan[]
+    sounds: ClipSoundOptions[]
+    overBase?: ((baseArgs: (frames: FrameRange[]) => string[]) => Promise<OverlaySpan[]>) | null
+  } | null
   /** Scene effects from renderCutFx (main/fx-render), worked into the joined picture in the last pass. */
   fx?: GraphOptions['fx']
   /** Where the built-in sound effects are kept once made; the work folder when absent. */
@@ -2080,8 +2124,16 @@ export async function renderCut(
   // maxInputs, given, renders in passes of it only past that many inputs.
   const inputsNeeded = segments.reduce((n, s) => n + inputsFor(s), 0)
   const inPasses = opts.maxInputs !== undefined ? inputsNeeded > opts.maxInputs : segments.length > 1
+  // Layers that blend with the picture or grade it are drawn over it first, from the last pass's own picture.
+  const overBase = async (last: Segment[]): Promise<void> => {
+    const draw = opts.layers?.overBase
+    if (!draw) return
+    const drawn = await draw((frames) => buildRenderArgs(last, { ...base, ...finishing, baseOut: { frames } }))
+    finishing.layers = [...(finishing.layers ?? []), ...drawn]
+  }
 
   if (!inPasses) {
+    await overBase(segments)
     await runRender(opts.ffmpeg, buildRenderArgs(segments, { ...base, ...finishing }), total, progress, opts.signal)
     return opts.outputPath
   }
@@ -2141,6 +2193,7 @@ export async function renderCut(
     broll: null,
     outStart: spans[0].outStart
   }
+  await overBase([whole])
   const args = buildRenderArgs([whole], { ...base, ...finishing })
   await runRender(opts.ffmpeg, args, total, (f) => progress(0.8 + f * 0.2), opts.signal)
   return opts.outputPath

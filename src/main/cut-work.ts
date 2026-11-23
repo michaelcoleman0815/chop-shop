@@ -10,7 +10,7 @@ import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { placeFile } from './export-paths'
 import { claudeWriter, writeUploadKit } from './upload-kit'
 import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
-import { renderCut, type ClipSoundOptions, type GraphOptions, type OverlaySpan, type RenderSource } from './cut-render'
+import { renderCut, type ClipSoundOptions, type GraphOptions, type OverlaySpan, type RenderCutOptions, type RenderSource } from './cut-render'
 import type { CutLayersInput } from './layers-render'
 import type { Encoder } from './render/encoder'
 import { loudnessEnvelope } from './audio-envelope'
@@ -110,9 +110,10 @@ export interface WorkHost {
   motion(input: CutMotionInput): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }>
   /**
    * The cut's layer tracks for the export (main/layers-render): their pictures as
-   * overlay files and the clips that sound. Absent where they are not drawn yet.
+   * overlay files and the clips that sound, and the stretches drawn over the
+   * picture once it is there (overBase). Absent where they are not drawn yet.
    */
-  layers?: (input: CutLayersInput) => Promise<{ overlays: OverlaySpan[]; sounds: ClipSoundOptions[] }>
+  layers?: (input: CutLayersInput) => Promise<{ overlays: OverlaySpan[]; sounds: ClipSoundOptions[]; overBase?: NonNullable<RenderCutOptions['layers']>['overBase'] }>
   /**
    * The cut's scene effects for the export, from the cut-outs this computer can
    * make (main/fx-ipc); null when it has none. Absent where they are not drawn.

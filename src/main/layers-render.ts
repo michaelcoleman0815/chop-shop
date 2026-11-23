@@ -3,9 +3,11 @@ import type { Cut, Source, Word } from '../shared/edit/schema'
 import { timelineFor } from '../shared/motion/timing'
 import type { VideoLayer } from '../shared/motion/types'
 import { mediaOf, soundingClips, trackLayers, tracksOf } from '../shared/tracks'
-import { frameRate, frameSize, type ClipSoundOptions, type OverlaySpan } from './cut-render'
+import { baseSpans, withoutSpans } from '../shared/tracks/compositing'
+import { baseFrames } from './base-frames'
+import { frameRate, frameSize, type ClipSoundOptions, type FrameRange, type OverlaySpan } from './cut-render'
 import { clipSounds } from './layer-sounds'
-import { renderMotion } from './motion-render'
+import { overlaySpans, renderMotion, spanFrames } from './motion-render'
 import { decodeSize, videoFacts, videoFrames, type VideoFacts } from './video-frames'
 
 /**
@@ -31,9 +33,21 @@ export interface CutLayersInput {
   signal?: AbortSignal
 }
 
-export async function renderCutLayers(input: CutLayersInput): Promise<{ overlays: OverlaySpan[]; sounds: ClipSoundOptions[] }> {
+export interface CutLayers {
+  overlays: OverlaySpan[]
+  sounds: ClipSoundOptions[]
+  /**
+   * The stretches where a clip blends with the edit's picture or grades it:
+   * drawn by renderCut once its picture is there to draw them over, from the
+   * arguments that pipe that picture out (main/base-frames). Null when every
+   * clip is plain and the overlays are the whole of it.
+   */
+  overBase: ((baseArgs: (frames: FrameRange[]) => string[]) => Promise<OverlaySpan[]>) | null
+}
+
+export async function renderCutLayers(input: CutLayersInput): Promise<CutLayers> {
   const tracks = tracksOf(input.cut)
-  if (tracks.length === 0 || tracks.every((t) => t.clips.length === 0)) return { overlays: [], sounds: [] }
+  if (tracks.length === 0 || tracks.every((t) => t.clips.length === 0)) return { overlays: [], sounds: [], overBase: null }
   const { cut, resolved } = input
   const tl = timelineFor(cut, resolved, input.words)
   const first = input.sources.find((s) => s.id === resolved.pieces[0]?.source) ?? input.sources[0]
@@ -55,25 +69,45 @@ export async function renderCutLayers(input: CutLayersInput): Promise<{ overlays
   const sizes = new Map<string, { width: number; height: number }>()
   for (const [f, fact] of facts) if (fact) sizes.set(f, decodeSize(fact, pixels))
 
+  const common = {
+    ffmpeg: input.ffmpeg,
+    workDir: input.workDir,
+    width: pixels.width,
+    height: pixels.height,
+    fps,
+    design,
+    duration: resolved.durationSec,
+    fontsDir: input.fontsDir,
+    signal: input.signal
+  }
+  // Where a clip blends with the picture or grades it, the picture goes under the layers (shared/tracks/compositing);
+  // everywhere else they are a see-through overlay, which is cheaper.
+  const based = baseSpans(layers, resolved.durationSec)
+  const plain = withoutSpans(overlaySpans(layers, resolved.durationSec), based)
   const overlays =
-    layers.length > 0
+    plain.length > 0
       ? await renderMotion(layers, {
-          ffmpeg: input.ffmpeg,
-          workDir: input.workDir,
-          width: pixels.width,
-          height: pixels.height,
-          fps,
-          design,
-          duration: resolved.durationSec,
-          fontsDir: input.fontsDir,
+          ...common,
+          spans: plain,
           video: videoFrames(input.ffmpeg, fps, sizes),
           prefix: 'layers',
-          onProgress: input.onProgress,
-          signal: input.signal
+          onProgress: input.onProgress
         })
       : []
+  const overBase =
+    based.length > 0
+      ? async (baseArgs: (frames: FrameRange[]) => string[]): Promise<OverlaySpan[]> => {
+          const frames = spanFrames(based, fps)
+          const base = baseFrames(input.ffmpeg, baseArgs(frames), pixels, frames, input.signal)
+          try {
+            return await renderMotion(layers, { ...common, spans: based, base, video: videoFrames(input.ffmpeg, fps, sizes), prefix: 'layers-base' })
+          } finally {
+            base.close()
+          }
+        }
+      : null
 
   // Every sounding video's file was read above.
   const sounds = await clipSounds(input, async (path) => facts.get(path)?.hasAudio ?? false)
-  return { overlays, sounds }
+  return { overlays, sounds, overBase }
 }

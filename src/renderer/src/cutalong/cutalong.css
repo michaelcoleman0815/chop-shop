@@ -5711,3 +5711,94 @@ a.cl-btn {
   border-radius: 50%;
   background: var(--muted);
 }
+
+/* ---------- Compositing on the layer tracks: expressions, adjustment clips (components/ClipCompositing) ---------- */
+
+/* Beside a setting's key diamond: its expression, an italic f, ink once one is set. */
+.cl-expr-toggle {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.cl-expr-toggle[aria-pressed='true'] {
+  border-color: var(--line-mid);
+  color: var(--ink-soft);
+}
+
+.cl-expr-toggle.on {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.cl-expr-toggle:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Room on the right of a clip's settings, so an overlay scrollbar never sits over the toggles that end each row. */
+.cl-clip-panel .cl-notes-scroll {
+  padding-right: var(--space-3);
+}
+
+/* The expression itself, in the face for things typed as code. */
+.cl-field.cl-expr input:not([type='color']):not([type='checkbox']) {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.cl-keyed .cl-field.cl-expr {
+  margin-top: var(--space-2);
+}
+
+/* An adjustment's grade: its numbers two to a row. */
+.cl-grade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.cl-grade .cl-field input:not([type='color']):not([type='checkbox']) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* An adjustment clip draws nothing of its own: its edge is dashed, as a pencilled outline over what it grades. */
+.cl-lclip.adjustment {
+  border-style: dashed;
+}
+
+/* Said under the frame when the preview cannot read the picture an adjustment clip grades. */
+.cl-layers-note {
+  position: absolute;
+  left: var(--space-6);
+  right: var(--space-6);
+  bottom: var(--space-2);
+  margin: 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--on-stage-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-expr-toggle:hover {
+    border-color: var(--line-mid);
+    color: var(--ink);
+  }
+}

@@ -10,7 +10,7 @@ import { decodeArgs, decodeSize, videoFacts } from './video-frames'
 
 /**
  * Layer tracks through the whole export: a video clip moved, scaled and
- * trimmed into its second half, a solid multiplied over it, a white solid
+ * trimmed into its second half, a solid multiplied over it and the edit, a white solid
  * faded in by its keys, a sound and the video's own sound mixed in. Each is
  * read back from the finished file: colours from regions of frames, tones
  * from bands of the sound.
@@ -105,10 +105,10 @@ describe.skipIf(!FFMPEG)('layer tracks in the export', () => {
     expect(near(frameColour(ffmpeg, out, 1.8, region(0.85)), [128, 128, 128])).toBe(true)
   })
 
-  it('multiplies the solid with the layer under it, and lays it over the edit where there is none', () => {
-    // Where blue meets red: black. Where blue meets green (later): black too. Over nothing: blue.
+  it('multiplies the solid with the layer under it, and with the edit where there is no layer', () => {
+    // Where blue meets red: black. Where blue meets green (later): black too. Over the grey edit: blue times grey.
     expect(near(frameColour(ffmpeg, out, 1.2, region(0.38)), [0, 0, 0])).toBe(true)
-    expect(near(frameColour(ffmpeg, out, 1.2, region(0.6)), [0, 0, 255])).toBe(true)
+    expect(near(frameColour(ffmpeg, out, 1.2, region(0.6)), [0, 0, 128])).toBe(true)
   })
 
   it('fades a layer in along its keys', () => {

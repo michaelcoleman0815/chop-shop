@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { renderFrame, type DrawResources, type IconNode, type Layer, type LogoMark, type MotionScene } from '../../../../shared/motion'
 import type { Asset } from '../../../../shared/edit'
+import { needsBaseAt } from '../../../../shared/tracks/compositing'
 import { mediaUrlFor } from '../api'
 import { loadIconNodes, loadLogoMarks, loadMotionFonts, loadPicture } from '../graphics'
 import { useMapResources } from '../map-resources'
@@ -35,7 +36,9 @@ export function MotionCanvas({
   height,
   video,
   redraw = 0,
-  className = 'cl-motion'
+  className = 'cl-motion',
+  base,
+  onUnreadable
 }: {
   scene: MotionScene
   assets: Asset[]
@@ -47,6 +50,14 @@ export function MotionCanvas({
   /** Changes when a video frame arrives, so the frame is drawn again with it. */
   redraw?: number
   className?: string
+  /**
+   * The picture under the canvas at its pixel size, drawn first while a layer
+   * blends with it or grades it (shared/tracks/compositing), so it works on
+   * the picture and not only on the layers.
+   */
+  base?: (width: number, height: number) => CanvasImageSource | null
+  /** Told when an adjustment layer cannot read the picture under it. */
+  onUnreadable?: (why: string) => void
 }): JSX.Element | null {
   const canvas = useRef<HTMLCanvasElement>(null)
   // Bumped when a face, the icons or an image finishes loading, so the frame redraws with it.
@@ -114,17 +125,20 @@ export function MotionCanvas({
     if (el.height !== ph) el.height = ph
     const ctx = el.getContext('2d')
     if (!ctx) return
+    const under = base && needsBaseAt(scene.layers, time) ? base(pw, ph) : null
     renderFrame(
       ctx,
       time,
       scene.layers,
       scene.size,
       { width: pw, height: ph },
-      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map, video }
+      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map, video, base: under, unreadable: onUnreadable }
     )
+    // Whether it covers the picture now, drawn over it while a layer blends with it.
+    el.dataset.base = under ? 'on' : 'off'
     // The moment drawn, for anyone checking the preview against the export.
     el.dataset.time = time.toFixed(4)
-  }, [scene, time, width, height, loaded, icons, logos, pictures, map, video, redraw])
+  }, [scene, time, width, height, loaded, icons, logos, pictures, map, video, redraw, base, onUnreadable])
 
   if (scene.layers.length === 0) return null
   return <canvas ref={canvas} className={className} style={{ width, height }} aria-hidden="true" />
