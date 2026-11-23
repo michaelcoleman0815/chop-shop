@@ -24,6 +24,8 @@ export interface ParticleSettings {
   turbulence: number
   /** How large the swirls of the turbulence are, in pixels. */
   swirl: number
+  /** How hard each particle sways on its own, side to side, in pixels a second, a second. */
+  sway: number
   drag: number
   spin: number
   size: number
@@ -71,8 +73,9 @@ export const PRESETS: Record<ParticlePreset, Look> = {
     spread: 30,
     gravity: 70,
     wind: 12,
-    turbulence: 28,
+    turbulence: 8,
     swirl: 260,
+    sway: 55,
     drag: 0.45,
     spin: 0,
     size: 12,
@@ -105,8 +108,9 @@ export const PRESETS: Record<ParticlePreset, Look> = {
     spread: 30,
     gravity: 320,
     wind: 0,
-    turbulence: 70,
+    turbulence: 20,
     swirl: 220,
+    sway: 120,
     drag: 1.3,
     spin: 220,
     size: 22,
@@ -141,6 +145,7 @@ export const PRESETS: Record<ParticlePreset, Look> = {
     wind: 0,
     turbulence: 0,
     swirl: 200,
+    sway: 0,
     drag: 0.7,
     spin: 0,
     size: 5,
@@ -175,6 +180,7 @@ export const PRESETS: Record<ParticlePreset, Look> = {
     wind: 0,
     turbulence: 14,
     swirl: 320,
+    sway: 6,
     drag: 0.5,
     spin: 0,
     size: 6,
@@ -209,6 +215,7 @@ export const PRESETS: Record<ParticlePreset, Look> = {
     wind: 0,
     turbulence: 130,
     swirl: 180,
+    sway: 0,
     drag: 0.3,
     spin: 0,
     size: 14,
@@ -244,6 +251,7 @@ export const PRESETS: Record<ParticlePreset, Look> = {
     wind: 0,
     turbulence: 0,
     swirl: 200,
+    sway: 0,
     drag: 0,
     spin: 0,
     size: 2,
@@ -277,6 +285,7 @@ export const PRESETS: Record<ParticlePreset, Look> = {
     wind: 0,
     turbulence: 6,
     swirl: 500,
+    sway: 4,
     drag: 0.2,
     spin: 0,
     size: 90,
@@ -311,6 +320,7 @@ export const PRESETS: Record<ParticlePreset, Look> = {
     wind: 0,
     turbulence: 30,
     swirl: 420,
+    sway: 0,
     drag: 0.3,
     spin: 0,
     size: 220,
@@ -335,7 +345,7 @@ export const PRESETS: Record<ParticlePreset, Look> = {
 /** The preset a clip starts from when it names none. */
 export const DEFAULT_PRESET: ParticlePreset = 'snow'
 
-const LENGTHS = ['speed', 'gravity', 'wind', 'turbulence', 'swirl', 'size', 'sizeEnd'] as const
+const LENGTHS = ['speed', 'gravity', 'wind', 'turbulence', 'swirl', 'sway', 'size', 'sizeEnd'] as const
 
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v)
 

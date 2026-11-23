@@ -144,6 +144,8 @@ async function fileKey(path: string): Promise<string | null> {
 export async function withScopes(doc: EditDoc, ffmpeg?: string): Promise<EditDoc> {
   if (doc.sources.every((s) => s.scopes)) return doc
   try {
+    // A phone runs ffmpeg inside the app, without the filters' log this reads: it plans without scopes for now.
+    if (!ffmpeg && platform().kind === 'phone') return doc
     const bin = ffmpeg ?? platform().tool('ffmpeg')
     const sources = await Promise.all(
       doc.sources.map(async (s) => {

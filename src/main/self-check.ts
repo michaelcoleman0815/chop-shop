@@ -90,8 +90,9 @@ function toneDb(path: string, sec: number, length: number, hz: number): number {
 
 /**
  * A short edit with layer tracks exported the way the app exports one: a red
- * solid over the left half of the picture, a title in the app's own font, and
- * a sound clip mixed with the voice, each read back from the file.
+ * solid over the left half of the picture, a title in the app's own font, a
+ * cloud of particles, and a sound clip mixed with the voice, each read back
+ * from the file.
  */
 async function layersExport(): Promise<string> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'cutalong-self-check-layers-'))
@@ -123,7 +124,9 @@ async function layersExport(): Promise<string> {
         { op: 'loudness', lufs: null },
         { op: 'clip-add', kind: 'solid', color: '#FF0000', from: 'start+1', to: '1.5s', transform: { scale: 0.5, x: W * 0.25, y: H / 2 } },
         { op: 'clip-add', kind: 'text', text: { value: 'LAYERS', size: 24 }, from: 'start+1', to: '1.5s', transform: { y: H * 0.2 } },
-        { op: 'clip-add', kind: 'sound', src: sound, from: 'start+0.5', to: '1s', volume: -6 }
+        { op: 'clip-add', kind: 'sound', src: sound, from: 'start+0.5', to: '1s', volume: -6 },
+        // Particles: a still cloud of large flakes in the lower right (shared/particles).
+        { op: 'clip-add', kind: 'particles', from: 'start+1', to: '1.5s', particles: { preset: 'snow', emitter: 'box', area: [0.78, 0.5, 0.94, 0.88], rate: 0, burst: 400, size: 90, speed: 0, gravity: 0, sway: 0, prerun: 0 } }
       ],
       { words: doc.words, sources: doc.sources }
     )
@@ -157,10 +160,12 @@ async function layersExport(): Promise<string> {
     // The title's white letters lift the top middle of the frame while it shows.
     const lit = colourAt(out, 1.6, 0.3, 0.12, 0.4, 0.16)
     if (!(lit[0] > grey[0] + 8)) throw new Error(`no title drawn: ${lit.join(',')} against ${grey.join(',')}`)
+    const flakes = colourAt(out, 1.6, 0.8, 0.55, 0.12, 0.28)
+    if (!(flakes[0] > grey[0] + 30)) throw new Error(`no particles drawn: ${flakes.join(',')} against ${grey.join(',')}`)
     const during = toneDb(out, 0.7, 0.6, 2500)
     const after = toneDb(out, 2.2, 0.6, 2500)
     if (!(during > -40 && during - after > 20)) throw new Error(`the sound clip is not in the mix: ${during} dB while it plays, ${after} dB after`)
-    return `${layers.overlays.length} overlay, ${layers.sounds.length} sound, in ${Date.now() - started} ms: red ${red.join(',')}, title ${lit.join(',')}, the sound at ${during.toFixed(1)} dB`
+    return `${layers.overlays.length} overlay, ${layers.sounds.length} sound, in ${Date.now() - started} ms: red ${red.join(',')}, title ${lit.join(',')}, particles ${flakes.join(',')}, the sound at ${during.toFixed(1)} dB`
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }

@@ -1,5 +1,5 @@
 import { num } from '../anim'
-import { rand, turbulence } from '../fx/noise'
+import { rand, turbulence, wiggle } from '../fx/noise'
 import { letterSegments, pointAlong } from './letters'
 import type { ParticleSettings } from './presets'
 
@@ -83,6 +83,12 @@ export class ParticleSim {
   private readonly burstStep: number
   private readonly letters: ReturnType<typeof letterSegments> | null
   private readonly saved = new Map<number, Snapshot>()
+  /** Steps taken since it was made, for seeing what a seek cost. */
+  stepsTaken = 0
+  /** Steps of simulated time between the copies kept. */
+  get copyEvery(): number {
+    return this.every
+  }
   private highest = 0
   // The live state.
   private step = 0
@@ -99,9 +105,9 @@ export class ParticleSim {
     const reach = Math.max(settings.size, settings.sizeEnd) * 1.5 + settings.speed * settings.stretch + 0.2 * Math.max(frame.width, frame.height)
     this.bounds = [-reach, -reach, frame.width + reach, frame.height + reach]
     this.damp = Math.exp(-settings.drag * DT)
-    // A copy a second, or fewer for a long clip, at most about 300 of them.
+    // A copy a second, or fewer for a long clip, at most about 120 of them: a seek then steps a few seconds at most.
     const steps = Math.ceil((length + settings.prerun) * STEPS_PER_SEC)
-    this.every = Math.max(STEPS_PER_SEC, Math.ceil(steps / 300))
+    this.every = Math.max(STEPS_PER_SEC, Math.ceil(steps / 120))
     this.burstStep = Math.round(settings.prerun * STEPS_PER_SEC)
     const [x0, y0, x1, y1] = settings.area
     this.letters =
@@ -155,9 +161,9 @@ export class ParticleSim {
       let y = d[o + Y]
       let tx = d[o + TX]
       let ty = d[o + TY]
-      if (s.turbulence > 0 && (this.step + id) % AIR_EVERY === 0) {
-        tx = turbulence(x / swirl, y / swirl, s.seed * 7 + 1, 2, time * 0.3) * s.turbulence
-        ty = turbulence(x / swirl + 31.7, y / swirl - 12.3, s.seed * 7 + 2, 2, time * 0.3) * s.turbulence
+      if ((s.turbulence > 0 || s.sway > 0) && (this.step + id) % AIR_EVERY === 0) {
+        tx = this.airX(id, x, y, time)
+        ty = this.airY(x, y, time)
       }
       const ax = s.wind + tx
       const ay = s.gravity + ty
@@ -180,10 +186,13 @@ export class ParticleSim {
     }
     this.count = w
     this.step++
+    this.stepsTaken++
     // Born over this step: the clip's rate at its own clock, and the burst when the clip starts.
     const local = this.step * DT - s.prerun
     const rate = Math.max(0, num(s.rate, Math.max(0, local), this.length, 0))
-    this.carry += rate * DT
+    // Thinned to what the cap holds over a life, so a rate past it stays even rather than leaving a gap at the emitter.
+    const held = Math.min(1, s.max / Math.max(1, rate * s.life))
+    this.carry += rate * held * DT
     let n = Math.floor(this.carry)
     this.carry -= n
     if (this.step === Math.max(1, this.burstStep)) n += s.burst
@@ -268,16 +277,34 @@ export class ParticleSim {
     d[o + ID] = id
     d[o + LIFE] = this.lifeOf(id)
     // The air's push from where it is born, until its first turn comes.
-    d[o + TX] = s.turbulence > 0 ? turbulence(x / Math.max(1, s.swirl), y / Math.max(1, s.swirl), s.seed * 7 + 1, 2, this.step * DT * 0.3) * s.turbulence : 0
-    d[o + TY] =
-      s.turbulence > 0 ? turbulence(x / Math.max(1, s.swirl) + 31.7, y / Math.max(1, s.swirl) - 12.3, s.seed * 7 + 2, 2, this.step * DT * 0.3) * s.turbulence : 0
+    d[o + TX] = this.airX(id, x, y, this.step * DT)
+    d[o + TY] = this.airY(x, y, this.step * DT)
     this.count++
+  }
+
+  /**
+   * The air across: the turbulence where it is, which every particle there
+   * shares, and its own sway, which it does not, so a fall of snow drifts
+   * about without gathering into streams.
+   */
+  private airX(id: number, x: number, y: number, time: number): number {
+    const s = this.s
+    const swirl = Math.max(1, s.swirl)
+    let a = s.turbulence > 0 ? turbulence(x / swirl, y / swirl, s.seed * 7 + 1, 2, time * 0.3) * s.turbulence : 0
+    if (s.sway > 0) a += wiggle(time, 0.35 + 0.4 * rand(s.seed, id, R.spin), Math.floor(rand(s.seed, id, R.phase) * 1e9)) * s.sway
+    return a
+  }
+
+  private airY(x: number, y: number, time: number): number {
+    const s = this.s
+    const swirl = Math.max(1, s.swirl)
+    return s.turbulence > 0 ? turbulence(x / swirl + 31.7, y / swirl - 12.3, s.seed * 7 + 2, 2, time * 0.3) * s.turbulence : 0
   }
 }
 
 /** Particle systems kept between frames, by what they are: a few, the most recently drawn. */
 const kept = new Map<string, ParticleSim>()
-const KEEP = 12
+const KEEP = 8
 
 /** The system for these settings, kept from the last frame that drew it, or a new one. */
 export function simFor(key: string, settings: ParticleSettings, frame: { width: number; height: number }, length: number): ParticleSim {

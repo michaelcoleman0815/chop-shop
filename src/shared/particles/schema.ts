@@ -57,6 +57,8 @@ export const ParticleSpecSchema = z.object({
   wind: z.number().min(-20_000).max(20_000).optional(),
   /** How hard a swirling air pushes them about, in pixels a second, a second. */
   turbulence: z.number().min(0).max(20_000).optional(),
+  /** How hard each sways side to side on its own, as a flake or a scrap of paper does. */
+  sway: z.number().min(0).max(20_000).optional(),
   /** How much of their speed the air takes each second: 0 none, 1 a lot. */
   drag: z.number().min(0).max(20).optional(),
   /** Degrees a second each turns, either way. */

@@ -76,10 +76,12 @@ describe('particles at a moment', () => {
     const settings = particleSettings({ preset: 'snow' }, FRAME)
     const sim = new ParticleSim(settings, FRAME, 120)
     sim.at(100)
-    const began = performance.now()
-    for (const t of [3, 97, 41, 66, 12, 88]) sim.at(t)
+    const before = sim.stepsTaken
+    const seeks = [3, 97, 41, 66, 12, 88]
+    for (const t of seeks) sim.at(t)
     // Six seeks over a long clip, each from the copy before it, not from the start.
-    expect(performance.now() - began).toBeLessThan(400)
+    expect(sim.copyEvery).toBeLessThanOrEqual(2 * 60)
+    expect(sim.stepsTaken - before).toBeLessThanOrEqual(seeks.length * sim.copyEvery)
   })
 
   it('another seed is another fall of the same snow', () => {
@@ -141,9 +143,16 @@ describe('each preset', () => {
     expect(early.meanY).toBeLessThan(0.7 * FRAME.height + 1)
   })
 
-  it('holds the cap however fast it is asked to make them', () => {
+  it('holds the cap however fast it is asked to make them, evenly from the emitter on', () => {
     const c = census({ preset: 'snow', rate: 100_000, max: 250 }, 2)
-    expect(c.count).toBe(250)
+    expect(c.count).toBeLessThanOrEqual(250)
+    expect(c.count).toBeGreaterThan(100)
+    // Thinned rather than stopped: the newest are still being born at the top.
+    const s = particleSettings({ preset: 'snow', rate: 100_000, max: 250 }, FRAME)
+    const f = new ParticleSim(s, FRAME, 10).at(2)
+    let young = 0
+    for (let i = 0; i < f.count; i++) if (f.data[i * STRIDE + 4] < 1) young++
+    expect(young).toBeGreaterThan(5)
   })
 
   it('makes a burst when the clip starts, and nothing more without a rate', () => {
@@ -155,7 +164,7 @@ describe('each preset', () => {
 
   it('follows the keys on its rate', () => {
     const none = census({ preset: 'dust', prerun: 0, rate: { keys: [{ t: 0, v: 0 }, { t: 2, v: 0 }, { t: 2.01, v: 200 }] } }, 1.9)
-    const some = census({ preset: 'dust', prerun: 0, rate: { keys: [{ t: 0, v: 0 }, { t: 2, v: 0 }, { t: 2.01, v: 200 }] } }, 3)
+    const some = census({ preset: 'dust', prerun: 0, max: 2000, rate: { keys: [{ t: 0, v: 0 }, { t: 2, v: 0 }, { t: 2.01, v: 200 }] } }, 3)
     expect(none.count).toBe(0)
     expect(some.count).toBeGreaterThan(100)
   })

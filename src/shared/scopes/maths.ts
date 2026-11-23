@@ -91,7 +91,11 @@ export function measure(px: ArrayLike<number>, width: number, height: number, op
       const r = px[i]
       const g = px[i + 1]
       const b = px[i + 2]
-      const [Y, U, V] = yuv(r, g, b)
+      // yuv(), inline: this runs for every pixel a few times a second.
+      const yl = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+      const Y = 16 + 219 * yl
+      const U = 128 + 224 * ((b / 255 - yl) / 1.8556)
+      const V = 128 + 224 * ((r / 255 - yl) / 1.5748)
       const col = Math.floor((x * cols) / width)
       // Full-range luma for the waveform and histogram: 0 is black, 255 white, as the frame shows.
       const yf = Math.round(Math.min(255, Math.max(0, ((Y - 16) / 219) * 255)))
@@ -111,7 +115,7 @@ export function measure(px: ArrayLike<number>, width: number, height: number, op
       sumY += Y
       sumU += U
       sumV += V
-      sumSat += Math.hypot(U - 128, V - 128)
+      sumSat += Math.sqrt((U - 128) * (U - 128) + (V - 128) * (V - 128))
       if (yi >= CLIP_HIGH_Y) high++
       if (yi <= CLIP_LOW_Y) low++
       n++

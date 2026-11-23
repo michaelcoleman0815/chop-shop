@@ -98,6 +98,7 @@ import { clipSpan, mediaOf, resolveClip, soundingClips, trackLayers, tracksOf, t
 import { particleTitle } from '../../../../shared/particles/presets'
 import { isKeyed, type Anim } from '../../../../shared/anim'
 import { ClipPanel } from '../components/ClipPanel'
+import { Scopes } from '../components/Scopes'
 import { Lanes, type Lane, type Snap } from '../components/Lanes'
 import { timelineFor } from '../../../../shared/motion/timing'
 import { useClipMedia } from '../useClipMedia'
@@ -636,6 +637,7 @@ function Preview({
           <RegionPicker item={selected} onPick={onRegion} />
         )}
       </div>
+      {mediaUrl && <Scopes decks={decksBox} look={look} time={time} playing={playing} />}
     </div>
   )
 }

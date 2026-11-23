@@ -15,7 +15,7 @@ import { NumberField, TextField } from './ClipPanel'
 type Numeric = 'size' | 'speed' | 'wind'
 
 const NUMBERS: { key: Numeric; label: string; step: number; unit: string; min: number }[] = [
-  { key: 'size', label: 'Size', step: 1, unit: 'px', min: 0.5 },
+  { key: 'size', label: 'Particle size', step: 1, unit: 'px', min: 0.5 },
   { key: 'speed', label: 'Speed', step: 10, unit: 'px a second', min: 0 },
   { key: 'wind', label: 'Wind', step: 10, unit: 'to the right', min: -20_000 }
 ]
@@ -47,7 +47,7 @@ export function ParticleFields({ clip, onOps }: { clip: TrackClip; onOps: (ops: 
       </label>
       <p className="cl-particle-about muted">{look.summary}.</p>
       <TextField
-        label={colours.length > 1 ? `Colour (it has ${colours.length})` : 'Colour'}
+        label={colours.length > 1 ? `Colour, the first of ${colours.length}` : 'Colour'}
         value={colours[0]}
         onCommit={(c) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c) && change({ colors: [c] }, 'Its colour changes.')}
       />
