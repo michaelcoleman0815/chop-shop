@@ -7,6 +7,8 @@ import { frameRate, frameSize, type ClipSoundOptions, type OverlaySpan } from '.
 import { clipSounds } from './layer-sounds'
 import { renderMotion } from './motion-render'
 import { decodeSize, videoFacts, videoFrames, type VideoFacts } from './video-frames'
+import type { CutoutTrack } from '../shared/fx'
+import { exportMattes } from './matte-cutouts'
 
 /**
  * The layer tracks for the export: the picture tracks drawn frame by frame by
@@ -27,6 +29,8 @@ export interface CutLayersInput {
   ffmpeg: string
   workDir: string
   fontsDir: string | null
+  /** The cut-outs made for the clips' person and object mattes (main/matte-cutouts); none off a Mac. */
+  cutouts?: CutoutTrack[]
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
 }
@@ -42,7 +46,8 @@ export async function renderCutLayers(input: CutLayersInput): Promise<{ overlays
   const fps = frameRate(first.fps)
 
   const media = mediaOf(input.assets ?? [], input.sources)
-  const layers = trackLayers(cut, tl, design, media)
+  // Clips that follow an object in the edit's picture are placed through the cut (shared/tracks/roto-layers).
+  const layers = trackLayers(cut, tl, design, media, { cut, resolved, pictures: input.sources })
   const sounding = soundingClips(tracks, tl, media)
   // What each file is: its picture's size, and whether it has sound.
   const facts = new Map<string, VideoFacts | null>()
@@ -67,6 +72,7 @@ export async function renderCutLayers(input: CutLayersInput): Promise<{ overlays
           duration: resolved.durationSec,
           fontsDir: input.fontsDir,
           video: videoFrames(input.ffmpeg, fps, sizes),
+          mattes: await exportMattes(cut, resolved, input.sources, input.cutouts),
           prefix: 'layers',
           onProgress: input.onProgress,
           signal: input.signal

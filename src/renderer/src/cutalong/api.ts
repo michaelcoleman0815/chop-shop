@@ -127,6 +127,7 @@ export type CutalongApi = Pick<
   | 'mapData'
   | 'fxCan'
   | 'fxCutouts'
+  | 'followClips'
   | 'downloadMaps'
   | 'onMapProgress'
   | 'updateState'

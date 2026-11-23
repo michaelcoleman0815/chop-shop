@@ -75,6 +75,7 @@ import {
 } from '../../../shared/clipping'
 import type { CutalongApi } from './api'
 import { measureRun } from '../../../shared/channel-habits'
+import { mockCutouts } from './mattes-mock'
 
 /**
  * A stand-in for the main process, used only when the UI runs in a plain
@@ -1308,7 +1309,9 @@ export function createMockApi(): CutalongApi {
     mapData: async () => ({ status: maps, tilesDir: null, plates: null }),
     // No Vision in a browser: every effect does its version without a cut-out.
     fxCan: async () => ({ person: false, objects: false }),
-    fxCutouts: async () => ({ tracks: [], missing: [] }),
+    // The speaker's cut-out, for an edit with a matte on the person or a graphic behind them (mattes-mock).
+    fxCutouts: async (doc) => mockCutouts(doc),
+    followClips: async () => ({ ops: [], said: 'Following something in the picture needs Cutalong on a Mac, so it stays where it is put.' }),
     downloadMaps: async () => {
       for (const percent of [8, 30, 55, 80, 100]) {
         await new Promise((r) => setTimeout(r, 150))

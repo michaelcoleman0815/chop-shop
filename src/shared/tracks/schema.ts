@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AnimNumSchema, ColorSchema, EaseSchema, TransformSchema } from '../anim'
 import { AnchorRefSchema, EndRefSchema } from '../motion/schema'
 import { BLEND_MODES } from '../motion/types'
+import { ROTO_CHANGE, ROTO_FIELDS } from './roto'
 
 /**
  * Layer tracks: what the edit stacks over its own picture and mixes under its
@@ -109,7 +110,9 @@ export const ClipFieldsSchema = z.object({
   /** A sound's level, or a video's own sound, in dB: 0 as recorded. */
   volume: AnimNumSchema.optional(),
   /** A video's own sound left out. */
-  muted: z.boolean().default(false)
+  muted: z.boolean().default(false),
+  /** Masks, a track matte, a chroma key and following an object (tracks/roto). */
+  ...ROTO_FIELDS
 })
 export type ClipFields = z.infer<typeof ClipFieldsSchema>
 
@@ -134,7 +137,23 @@ export type Track = z.infer<typeof TrackSchema>
 export const MAX_TRACKS = 24
 
 const Id = z.string().min(1).max(16)
-const ClipChangeSchema = ClipFieldsSchema.omit({ kind: true }).partial()
+/**
+ * What a change may set: any of a clip's settings, and only those it names.
+ * The settings with a default are restated without it, since a default
+ * inside .partial() still applies and would put every one back (a trimmed,
+ * sped-up, blended clip given an opacity lost its trim, speed and blend).
+ */
+const ClipChangeSchema = ClipFieldsSchema.omit({ kind: true })
+  .partial()
+  .extend({
+    to: EndRefSchema.optional(),
+    in: z.number().min(0).max(86_400).optional(),
+    speed: z.number().min(0.1).max(8).optional(),
+    fit: z.enum(['contain', 'cover', 'fill']).optional(),
+    blend: z.enum(BLEND_MODES).optional(),
+    muted: z.boolean().optional(),
+    ...ROTO_CHANGE
+  })
 
 export const TrackOpSchemas = [
   z.object({

@@ -2,6 +2,7 @@ import type { Layer, Size } from '../motion/types'
 import type { Timeline } from '../motion/timing'
 import type { ClipMedia } from './media'
 import { placeClips, tracksOf, type Placed } from './resolve'
+import { matteClipIds, withRoto, type FollowContext } from './roto-layers'
 import type { Track, TrackClip } from './schema'
 
 /**
@@ -60,10 +61,32 @@ export function layerFor(p: Placed, design: Size): Layer | null {
   }
 }
 
-/** Every picture clip that plays, as layers in stacking order. */
-export function trackLayers(cut: { tracks?: Track[] }, tl: Timeline, design: Size, media?: Map<string, ClipMedia>): Layer[] {
-  return placeClips(tracksOf(cut), tl, 'picture', media)
-    .map((p) => layerFor(p, design))
+/**
+ * Every picture clip that plays, as layers in stacking order, with their
+ * masks, mattes, keys and following (tracks/roto-layers). `follow` places an
+ * object followed in the edit's picture; without it such a clip stays put.
+ */
+export function trackLayers(
+  cut: { tracks?: Track[] },
+  tl: Timeline,
+  design: Size,
+  media?: Map<string, ClipMedia>,
+  follow?: FollowContext
+): Layer[] {
+  const tracks = tracksOf(cut)
+  const placed = placeClips(tracks, tl, 'picture', media)
+  const mattes = matteClipIds(placed)
+  // A clip that is a matte cuts whether or not its track is shown, as a matte track is often hidden.
+  if (mattes.size > 0) {
+    const shown = new Set(placed.map((p) => p.clip.id))
+    const hidden = placeClips(tracks.map((t) => ({ ...t, hidden: false })), tl, 'picture', media)
+    placed.push(...hidden.filter((p) => mattes.has(p.clip.id) && !shown.has(p.clip.id)))
+  }
+  return placed
+    .map((p) => {
+      const layer = layerFor(p, design)
+      return layer ? withRoto(layer, p, design, mattes, follow) : null
+    })
     .filter((l): l is Layer => l !== null)
 }
 

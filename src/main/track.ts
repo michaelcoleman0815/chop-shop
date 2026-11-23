@@ -76,7 +76,51 @@ export async function detectFaces(
 export interface TrackedObject {
   /** How it was chosen: given, nearest a hand, or the biggest thing that stands out. */
   found: 'given' | 'hand' | 'salient'
-  samples: { t: number; box: [number, number, number, number] | null; c: number }[]
+  samples: { t: number; box: [number, number, number, number] | null; c: number; /** Its size against the first box, when measured. */ s?: number }[]
+  /** Whether the boxes' sizes were measured frame by frame; a helper from before kept the first box's size. */
+  sized?: boolean
+  /** The picture's size as the helper read it, when it says. */
+  width?: number
+  height?: number
+}
+
+/**
+ * The helper's answer to --track, from before it measured sizes or after:
+ * a lost frame may say `null` or leave the box out, and only a helper that
+ * measures says `sized` and gives each box its scale. Null when it is not an
+ * answer at all.
+ */
+export function readTracked(json: string): TrackedObject | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(json)
+  } catch {
+    return null
+  }
+  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { samples?: unknown }).samples)) return null
+  const r = raw as { found?: unknown; sized?: unknown; width?: unknown; height?: unknown; samples: unknown[] }
+  const found = r.found === 'hand' || r.found === 'salient' ? r.found : 'given'
+  const box = (b: unknown): [number, number, number, number] | null =>
+    Array.isArray(b) && b.length === 4 && b.every((v) => typeof v === 'number' && Number.isFinite(v)) ? (b as [number, number, number, number]) : null
+  const samples: TrackedObject['samples'] = []
+  for (const x of r.samples) {
+    if (!x || typeof x !== 'object') continue
+    const o = x as { t?: unknown; box?: unknown; c?: unknown; s?: unknown }
+    if (typeof o.t !== 'number' || !Number.isFinite(o.t)) continue
+    const b = box(o.box)
+    samples.push({
+      t: o.t,
+      box: b,
+      c: typeof o.c === 'number' ? o.c : 0,
+      ...(b && typeof o.s === 'number' && Number.isFinite(o.s) && o.s > 0 ? { s: o.s } : {})
+    })
+  }
+  return {
+    found,
+    samples,
+    ...(r.sized === true ? { sized: true } : {}),
+    ...(typeof r.width === 'number' && typeof r.height === 'number' ? { width: r.width, height: r.height } : {})
+  }
 }
 
 /**
@@ -107,9 +151,9 @@ export async function trackObject(
     child.on('error', reject)
     child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(err.trim() || `vision exit ${code}`))))
   })
-  const r = JSON.parse(json) as TrackedObject
-  if (!Array.isArray(r.samples) || r.samples.length === 0) throw new Error('The helper followed nothing.')
-  return { found: r.found, samples: r.samples }
+  const r = readTracked(json)
+  if (!r || r.samples.length === 0) throw new Error('The helper followed nothing.')
+  return r
 }
 
 export interface TrackOptions {

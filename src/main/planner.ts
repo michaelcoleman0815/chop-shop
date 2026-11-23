@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { followPlannedClips } from './clip-follow'
 import { followObjects, type Track } from './plan-follow'
 import { platform } from './platform'
 import { claudeKeyStatus, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
@@ -250,7 +251,9 @@ export async function offerTrackedPlan(
   track?: Track
 ): Promise<PlanEditResult> {
   const { result, pinned } = offered(doc, plan, notes, commands)
-  return pinned.length ? followObjects(doc, result, pinned, track) : result
+  const followed = pinned.length ? await followObjects(doc, result, pinned, track) : result
+  // Clips and masks the plan asks to follow an object, followed too (main/clip-follow).
+  return followPlannedClips(doc, followed, track)
 }
 
 /** offerPlan, with the plan's ops (by index) that are graphics pinned to an object. */

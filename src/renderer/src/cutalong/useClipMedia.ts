@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { num } from '../../../shared/anim'
 import type { Layer, VideoLayer } from '../../../shared/motion'
 import type { Placed } from '../../../shared/tracks'
-import { mediaUrlFor } from './api'
+import { MEDIA_CORS, mediaUrlFor } from './api'
 
 /**
  * The layer tracks' video and sound in the preview: one hidden <video> per
@@ -66,6 +66,8 @@ export function useClipMedia(
       const el = document.createElement(w.kind)
       el.preload = 'auto'
       if (el instanceof HTMLVideoElement) el.playsInline = true
+      // Read with leave to, as the decks are, so a chroma key can pass over its frames.
+      if (MEDIA_CORS) el.crossOrigin = MEDIA_CORS
       el.addEventListener('seeked', bump)
       el.addEventListener('loadeddata', bump)
       el.src = mediaUrlFor(w.src)

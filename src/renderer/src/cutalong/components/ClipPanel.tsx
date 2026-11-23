@@ -5,6 +5,7 @@ import { BLEND_MODES } from '../../../../shared/motion'
 import type { KeyedProp, TrackClip } from '../../../../shared/tracks'
 import { clock, seconds } from '../format'
 import { whenSettled } from './GraphicPanel'
+import { RotoFields, type RotoProps } from './RotoFields'
 import { Button, Icon, IconButton } from './ui'
 
 /**
@@ -75,8 +76,11 @@ export function ClipPanel({
   time,
   onOps,
   onSeek,
-  onClose
+  onClose,
+  roto
 }: {
+  /** Masks, a matte, following and a key, for a picture clip (RotoFields). */
+  roto?: RotoProps
   clip: TrackClip
   /** Where it plays on the edit, or null when it is not in the cut. */
   span: { start: number; end: number } | null
@@ -186,6 +190,7 @@ export function ClipPanel({
             />
           </>
         )}
+        {roto && clip.kind !== 'sound' && <RotoFields clip={clip} span={span} frame={frame} time={time} onOps={onOps} {...roto} />}
       </div>
       <Button variant="text" onClick={() => onOps([{ op: 'clip-remove', clips: [clip.id] } as Op], 'One clip is gone.')}>
         Remove this clip
@@ -288,7 +293,7 @@ function KeyedField({
 }
 
 /** A number that becomes a change when the field is left or Return is pressed. */
-function NumberField({
+export function NumberField({
   label: name,
   unit,
   value,
