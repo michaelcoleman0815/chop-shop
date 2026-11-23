@@ -1,6 +1,7 @@
 import { Keyboard } from '@capacitor/keyboard'
 import type { EnginePlugin, PickedFile } from 'cutalong-engine'
 import { platform } from '../../../src/main/platform'
+import { lastOpened } from '../../../src/renderer/src/cutalong/whatsNew'
 import { Engine } from './engine'
 import { anthropicStandIn, type StandIn } from './standin'
 
@@ -11,16 +12,19 @@ import { anthropicStandIn, type StandIn } from './standin'
  * documents, which only the runner can put there (adb run-as on a debuggable
  * build, or the simulator's container).
  *
- * The flow: Start without a key is the steps to get one, so the drive pastes
+ * The flow: the drive's person has used Cutalong before but not this version,
+ * so the app opens on what's new in it (Settings' changelog), and its button
+ * goes on to Start. Start without a key is the steps to get one, so the drive pastes
  * a key Anthropic turns down and then one it takes; then it picks footage,
  * sorts and transcribes it, makes v1, applies a command, opens the editor
- * and exports, watches the crew at the export from the thread, then opens
- * the Crew page, Brand and Settings' Licences. Then the runner turns the
+ * and exports, watches the export's steps from the thread, then opens
+ * What I've learned, Brand and Settings' Licences. Then the runner turns the
  * system dark, adds "tour": "dark" to the plan and starts the app again,
- * and the tour, with the key saved and Anthropic down, asks for a change in
+ * and the tour, on a version already opened so with nothing new to show,
+ * with the key saved and Anthropic down, asks for a change in
  * the thread (the gate stays open for a key accepted before), then opens the
- * same project from its card on the Projects page: the editor, the crew at another export in
- * the thread, the thread with it in, the Crew page and Brand.
+ * same project from its card on the Projects page: the editor, another export's steps in
+ * the thread, the thread with it in, What I've learned and Brand.
  *
  * On Start, in the thread and in the editor's note box the drive types with
  * the keyboard up, as the box is at rest and grown past six lines, and in the
@@ -192,24 +196,31 @@ const replies = (): string[] =>
   [...document.querySelectorAll('.cl-msg-assistant')].map((m) => (m as HTMLElement).innerText.replace(/\n+/g, ' | '))
 
 /**
- * Animations running on what moves while work goes on: the living mark and the crew at work.
- * Asked of those elements and what is in them, never of the whole document: on the iOS
- * simulator WebKit's web process crashed sorting the whole document's animations
- * (Document::getAnimations) just after the screen changed from the editor to the chat.
+ * Animations running on what moves while work goes on: the assistant's mark while it thinks and
+ * the dot of the step under way (motion.css, quiet by default). Asked of those elements and what
+ * is in them, never of the whole document: on the iOS simulator WebKit's web process crashed
+ * sorting the whole document's animations (Document::getAnimations) just after the screen changed
+ * from the editor to the chat.
  */
-function moving(): { living: number; crew: number; properties: string[] } {
+function moving(): { mark: number; step: number; properties: string[] } {
   const on = (selector: string): Animation[] =>
     [...document.querySelectorAll(selector)].flatMap((el) => el.getAnimations({ subtree: true }))
-  const living = on('.cl-living')
-  const crew = on('.cl-crew-row')
+  const mark = on('.cl-assistant-avatar.living')
+  const now = on('.cl-steps-done > li.now')
   const properties = new Set<string>()
-  for (const a of [...living, ...crew]) {
+  for (const a of [...mark, ...now]) {
     for (const k of (a.effect as KeyframeEffect).getKeyframes()) {
       for (const p of Object.keys(k))
         if (!['offset', 'easing', 'composite', 'computedOffset'].includes(p)) properties.add(p)
     }
   }
-  return { living: living.length, crew: crew.length, properties: [...properties].sort() }
+  return { mark: mark.length, step: now.length, properties: [...properties].sort() }
+}
+
+/** The steps long work shows (Working): the ones done and the one under way, or its stage when it shows no list. */
+function workSteps(): string[] {
+  const listed = [...document.querySelectorAll('.cl-progress .cl-steps-done > li')].map((li) => text(li))
+  return listed.length > 0 ? listed : [...document.querySelectorAll('.cl-progress-stage')].map((e) => text(e))
 }
 
 /** How the page looks and moves here: the scheme, reduced motion and what the engine has of view transitions. */
@@ -327,7 +338,7 @@ export async function drive(): Promise<void> {
     }
   }
 
-  // What the work in hand says, as it says it: the crew's lines, or the stage when no one has it.
+  // What the work in hand says, as it says it: the step under way, or the stage when it shows no list.
   const stageNow = (): string => shown('.cl-progress')
   const record = (): void => {
     const stage = stageNow()
@@ -508,24 +519,21 @@ export async function drive(): Promise<void> {
     if (toast) button('Close', toast)?.click()
   }
 
-  // From the editor, export, then watch the crew at it from the thread, and wait for the file.
+  // From the editor, export, then watch its steps from the thread, and wait for the file.
   const exportFromEditor = async (): Promise<string> => {
     ;(await until('Export', () => button('Export'), 10)).click()
     await until('the export to start', () => /Exporting/.test(shown('.cl-toast')), 60).catch(() =>
       keep('the export showed no progress')
     )
     await step('exporting')
-    // Back to the chat, where the export's reply shows the crew at work.
+    // Back to the chat, where the export's reply shows its steps as it takes them.
     const back = await until('Back', () => button('Back'), 10)
     console.log(`[drive] back to the chat at ${seconds()} s, ${new Date().toISOString()}`)
     back.click()
-    await until('the crew at the export', () => document.querySelector('.cl-progress'), 60)
+    await until("the export's steps", () => document.querySelector('.cl-progress'), 60)
     await sleep(2500)
     record()
-    report.crewAtWork = {
-      rows: [...document.querySelectorAll('.cl-crew-row')].map((r) => text(r)),
-      moving: moving()
-    }
+    report.workAtExport = { steps: workSteps(), moving: moving() }
     await step('thread-exporting')
     const exporting = Date.now()
     const toast = await until(
@@ -551,7 +559,8 @@ export async function drive(): Promise<void> {
       planned.push({ path, name, bytes: facts.size })
     }
 
-    // Start, or without a key the steps to get one there.
+    // What's new in this version when the app opens on it, then Start, or without a key the steps to get one there.
+    await whatsNew()
     await until('the app', () => document.querySelector('#cl-ask, .cl-setup'), 60)
     report.looks = looks()
     if (earlier && !/ done$/.test(earlier)) {
@@ -576,6 +585,27 @@ export async function drive(): Promise<void> {
     await files.writeText(at(tour ? 'tour-report.json' : 'drive-report.json'), JSON.stringify(report, null, 1))
     await files.writeText(at('drive-progress.txt'), `${steps.length + 1} done\n`)
     console.log(`[drive] done: ${report.ok ? 'ok' : `failed (${String(report.failed)})`}`)
+  }
+
+  // The first open of a version opens Settings on what changed in it (App, shared/changelog whatsNewSince).
+  // The app remembers the version as it decides, and opens Settings in the same breath, so the drive waits
+  // for that first. The flow's person is past the welcome with no version remembered, so it is shown this
+  // version's changes; the tour opens the same version again, so nothing.
+  async function whatsNew(): Promise<void> {
+    await until('the app to know which version it is', () => lastOpened() !== null, 60)
+    const news = await until('what is new', () => document.querySelector<HTMLElement>('.cl-changelog-news'), 3).catch(
+      () => null
+    )
+    report.whatsNew = news && {
+      said: shown('.cl-changelog-lede'),
+      versions: [...document.querySelectorAll('.cl-changelog > li h3')].map((h) => text(h)),
+      marked: [...document.querySelectorAll('.cl-changelog .cl-set-tag')].map((t) => text(t)),
+      button: text(news.querySelector('button'))
+    }
+    if (!news) return
+    news.scrollIntoView({ block: 'start' })
+    await step('whats-new')
+    ;(await until('the way on from what is new', () => news.querySelector('button'), 10)).click()
   }
 
   // Without a key, Start is the steps to get one and the cost: a key Anthropic turns down marks the
@@ -621,14 +651,11 @@ export async function drive(): Promise<void> {
     await step('composer')
     ;(await until('Send', () => button('Send'), 10)).click()
     const sent = Date.now()
-    // Transcribing, with the crew at it, on screen while it runs.
+    // Transcribing, with the steps so far, on screen while it runs.
     let firstCut = false
     const working = until('transcribing', () => firstCut || /transcrib/i.test(stageNow()), stepSec).then(async () => {
       if (firstCut) return keep('transcribing never showed')
-      report.crewTranscribing = {
-        rows: [...document.querySelectorAll('.cl-crew-row')].map((r) => text(r)),
-        moving: moving()
-      }
+      report.workTranscribing = { steps: workSteps(), moving: moving() }
       await step('transcribing')
     })
     await settle('the first cut')
@@ -695,8 +722,8 @@ export async function drive(): Promise<void> {
     report.exports = (await files.list(platform().paths.exports())).filter((e) => e.file).map((e) => e.name)
 
     closeToast()
-    await go('Crew', '.cl-callsheet')
-    await step('crew')
+    await go('Learned', '.cl-callsheet')
+    await step('learned')
     await go('Brand', '.cl-brand-hero')
     await step('brand')
 
@@ -768,7 +795,7 @@ export async function drive(): Promise<void> {
     await editor()
     await step('editor')
     report.toast = await exportFromEditor()
-    // The thread with the new export in it, and the crew credited under it.
+    // The thread with the new export in it.
     closeToast()
     report.exportOpensOn = await openingPicture(
       [...document.querySelectorAll<HTMLVideoElement>('.cl-export video')].pop()
@@ -777,8 +804,8 @@ export async function drive(): Promise<void> {
     const exports = document.querySelectorAll('.cl-export')
     exports[exports.length - 1]?.scrollIntoView({ block: 'start' })
     await step('thread')
-    await go('Crew', '.cl-callsheet')
-    await step('crew')
+    await go('Learned', '.cl-callsheet')
+    await step('learned')
     await go('Brand', '.cl-brand-hero')
     await step('brand')
   }
