@@ -2,15 +2,17 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { ThisComputer } from '../../../../shared/platform'
 import type { Settings } from '../../../../shared/types'
 import { api, device } from '../api'
+import { Button } from '../components/ui'
 import { type ColourName } from '../shapes'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { Licences } from './Licences'
 import { AccountSection } from './settings/Account'
 import { AiSection } from './settings/Ai'
+import { ChangelogSection, type News } from './settings/Changelog'
 import { BrollSection } from './settings/Broll'
 import { MadeSection } from './settings/Made'
-import { SettingsFind } from './settings/rows'
+import { SetGroup, SetRow, SettingsFind } from './settings/rows'
 import { ServicesSection } from './settings/Services'
 import { ThisComputerSection } from './settings/ThisComputer'
 import { WordsSection } from './settings/Words'
@@ -24,7 +26,7 @@ import { WordsSection } from './settings/Words'
  * to the other devices too (main/account).
  */
 
-type SectionId = 'account' | 'ai' | 'services' | 'words' | 'broll' | 'made' | 'device' | 'licences'
+type SectionId = 'account' | 'ai' | 'services' | 'words' | 'broll' | 'made' | 'device' | 'changelog' | 'licences'
 
 const phone = device.kind === 'phone'
 /** "This Mac", "This PC", or on a phone "This phone". */
@@ -65,6 +67,7 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M1.5 14.5h15" />
     </>
   ),
+  changelog: <path d="M7 5h7.5M7 9h7.5M7 13h7.5M3.5 5h.01M3.5 9h.01M3.5 13h.01" />,
   licences: <path d="M5 2.5h5.5L14 6v9a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5ZM10.5 2.5V6H14M7 9h5M7 12h4" />
 }
 
@@ -86,6 +89,8 @@ const SECTIONS: Section[] = (
     { id: 'broll', label: 'B-roll', colour: 'yellow', group: 1, show: !device.away['feature:broll'] },
     { id: 'made', label: 'Made videos', colour: 'pink', group: 1, show: !device.away['feature:make'] },
     { id: 'device', label: here, colour: 'gold', group: 2, show: true },
+    // What changed in each version; Settings opens here on the first open of a new one (App, settings/Changelog).
+    { id: 'changelog', label: 'Changelog', colour: 'green', group: 2, show: true },
     { id: 'licences', label: 'Licences', colour: 'blue', group: 2, show: !!device.licences }
   ] satisfies (Section & { show: boolean })[]
 ).filter((s) => s.show)
@@ -121,9 +126,18 @@ function Tile({ id, colour, big = false }: { id: SectionId; colour: ColourName; 
   )
 }
 
-export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
+export function SettingsPage({
+  app,
+  news,
+  done
+}: {
+  app: Cutalong
+  /** What's new on the first open of a new version: Settings opens on the changelog with it. */
+  news?: News | null
+  done?: { label: string; go: () => void }
+}): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [current, setCurrent] = useState<SectionId>(remembered)
+  const [current, setCurrent] = useState<SectionId>(() => (news ? 'changelog' : remembered()))
   const [query, setQuery] = useState('')
   const [version, setVersion] = useState('')
   // A section picked arrives; the first, which comes with the screen, does not again.
@@ -133,6 +147,9 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
     void api.getSettings().then(setSettings)
     void api.getVersion().then(setVersion)
   }, [])
+  useEffect(() => {
+    if (news) setCurrent('changelog')
+  }, [news])
 
   const go = (id: SectionId): void => {
     setQuery('')
@@ -146,6 +163,7 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
     document.querySelector('.cl-page')?.scrollTo({ top: 0 })
   }
 
+  const find = query.trim().toLowerCase()
   const body = (id: SectionId): ReactNode => {
     switch (id) {
       case 'account':
@@ -161,19 +179,30 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
       case 'made':
         return <MadeSection settings={settings} onSettings={setSettings} />
       case 'device':
-        return (
-          <ThisComputerSection
-            settings={settings}
-            onSettings={setSettings}
-            onChangelog={() => app.setScreen('changelog')}
-          />
+        return <ThisComputerSection settings={settings} onSettings={setSettings} />
+      case 'changelog':
+        // In a search, a row that finds it; the whole changelog only when it is the section picked.
+        return find ? (
+          <SetGroup>
+            <SetRow
+              title="Changelog"
+              desc="What changed in each version, newest first."
+              find="changelog what's new whats new changes version release notes update"
+              control={
+                <Button small onClick={() => go('changelog')}>
+                  Open
+                </Button>
+              }
+            />
+          </SetGroup>
+        ) : (
+          <ChangelogSection news={news} done={done} />
         )
       case 'licences':
         return device.licences ? <Licences where={device.licences} version={version} /> : null
     }
   }
 
-  const find = query.trim().toLowerCase()
   const shown = find ? SECTIONS.filter((s) => s.id !== 'licences') : SECTIONS.filter((s) => s.id === current)
 
   return (

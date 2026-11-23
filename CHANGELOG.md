@@ -1,6 +1,6 @@
 # Changelog
 
-What changed in each version of Cutalong, newest first. The app shows this on its Changelog page, and GitHub's release notes use each version's section too.
+What changed in each version of Cutalong, newest first. The app shows this in Settings, under Changelog, and GitHub's release notes use each version's section too.
 
 Changes waiting for the next version go under "Unreleased". When the version goes up, rename that heading to the new version and the day it ships.
 
@@ -9,8 +9,8 @@ Changes waiting for the next version go under "Unreleased". When the version goe
 ## 0.4.2 — 2026-11-23
 
 - Settings has one AI section instead of two. Pick Claude or Local AI from the "Edits with" menu, and only what that one needs shows below it.
-- A Changelog page in the sidebar says what changed in each version.
-- The first time you open a new version, it shows what changed since the version you last opened, however many updates ago that was.
+- Settings has a Changelog that says what changed in each version.
+- The first time you open a new version, Settings opens on the Changelog and shows what changed since the version you last opened, however many updates ago that was.
 
 ## 0.4.1 — 2026-11-23
 

@@ -1,7 +1,7 @@
 /**
  * The changelog (CHANGELOG.md at the top of the repository), read into
  * versions: each `## 0.4.1 — 2026-11-23` heading and the `- ` lines under it.
- * The app shows it on its Changelog page; the release workflow sends
+ * The app shows it in Settings, under Changelog; the release workflow sends
  * the version's own section as GitHub's release notes
  * (scripts/release-notes.mjs), which the updater then has too. "Unreleased"
  * holds what waits for the next version and is not a version of its own.

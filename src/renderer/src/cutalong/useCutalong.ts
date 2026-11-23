@@ -206,7 +206,6 @@ export type Screen =
   | 'brand'
   | 'presets'
   | 'crew'
-  | 'changelog'
   | 'settings'
 
 export interface Toast {
