@@ -6,6 +6,7 @@ import { mediaOf, soundingClips, trackLayers, tracksOf } from '../shared/tracks'
 import { frameRate, frameSize, type ClipSoundOptions, type OverlaySpan } from './cut-render'
 import { clipSounds } from './layer-sounds'
 import { renderMotion } from './motion-render'
+import { scene3dFrames } from './three-render'
 import { decodeSize, videoFacts, videoFrames, type VideoFacts } from './video-frames'
 
 /**
@@ -67,6 +68,10 @@ export async function renderCutLayers(input: CutLayersInput): Promise<{ overlays
           duration: resolved.durationSec,
           fontsDir: input.fontsDir,
           video: videoFrames(input.ffmpeg, fps, sizes),
+          // 3D clips, drawn by the scene builder the editor previews with, in a page of their own.
+          ...(layers.some((l) => l.kind === '3d')
+            ? { scene3d: scene3dFrames({ ffmpeg: input.ffmpeg, fps, pixels, fontsDir: input.fontsDir, signal: input.signal }) }
+            : {}),
           prefix: 'layers',
           onProgress: input.onProgress,
           signal: input.signal

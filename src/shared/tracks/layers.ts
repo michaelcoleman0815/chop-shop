@@ -55,6 +55,10 @@ export function layerFor(p: Placed, design: Size): Layer | null {
       }
     case 'solid':
       return { ...base, kind: 'shape', shape: { type: 'rect', w: W, h: H }, fill: clip.color ?? '#000000' }
+    case '3d':
+      if (!clip.scene) return null
+      // Drawn by three.js over the whole frame (shared/three), then moved and faded like any clip.
+      return { ...base, kind: '3d', scene: clip.scene, w: W, h: H }
     case 'sound':
       return null
   }

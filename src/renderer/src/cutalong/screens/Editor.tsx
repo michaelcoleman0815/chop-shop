@@ -100,6 +100,8 @@ import { ClipPanel } from '../components/ClipPanel'
 import { Lanes, type Lane, type Snap } from '../components/Lanes'
 import { timelineFor } from '../../../../shared/motion/timing'
 import { useClipMedia } from '../useClipMedia'
+import { useScene3D } from '../useScene3D'
+import { flyInTitle, scene3dLabel, sceneAnims } from '../../../../shared/three/spec'
 import { RegionPicker } from '../components/RegionPicker'
 import { Subtitles } from '../components/Subtitles'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
@@ -487,6 +489,8 @@ function Preview({
   const cut = currentCut(doc)
   // The layer tracks' videos and sounds, kept on the player's moment.
   const clips = useClipMedia(layers.scene?.layers ?? NO_LAYERS, layers.sounding, time, playing)
+  // The layer tracks' 3D clips, each drawn to a WebGL canvas of its own at the player's moment.
+  const solid = useScene3D(layers.scene?.layers ?? NO_LAYERS, { width: box.w, height: box.h }, time, playing)
   // Scene effects, drawn as the export draws them (fx-preview): the picture's inside the decks, the rest over the look.
   const decksBox = useRef<HTMLDivElement>(null)
   const fxPicture = useRef<HTMLCanvasElement>(null)
@@ -619,7 +623,8 @@ function Preview({
             width={box.w}
             height={box.h}
             video={clips.frame}
-            redraw={clips.version}
+            scene3d={solid.frame}
+            redraw={clips.version + solid.version}
           />
         )}
         <Subtitles
@@ -1676,7 +1681,13 @@ function TakesPanel({
 
 /** The settings that can carry keys, as a clip holds them. */
 function animsOf(c: TrackClip): (Anim<number> | undefined)[] {
-  return [c.opacity, c.volume, ...Object.values(c.transform ?? {}), ...Object.values(c.crop ?? {})] as (Anim<number> | undefined)[]
+  return [
+    c.opacity,
+    c.volume,
+    ...Object.values(c.transform ?? {}),
+    ...Object.values(c.crop ?? {}),
+    ...sceneAnims(c.scene).map((s) => s.anim)
+  ] as (Anim<number> | undefined)[]
 }
 
 /** What a clip is called in its lane: its name, a title's words, a file's name. */
@@ -1684,6 +1695,7 @@ function clipLabel(c: TrackClip, assets: EditDoc['assets']): string {
   if (c.name) return c.name
   if (c.kind === 'text') return c.text?.value ?? 'Title'
   if (c.kind === 'solid') return 'Colour'
+  if (c.kind === '3d') return scene3dLabel(c.scene)
   const asset = assets.find((a) => a.id === c.src)
   return asset?.title ?? (c.src ?? '').split(/[\\/]/).pop() ?? c.kind
 }
@@ -1764,6 +1776,10 @@ function AddMenu({ doc, time, onAdd }: { doc: EditDoc; time: number; onAdd: (ops
           <button type="button" role="menuitem" onClick={() => add({ kind: 'solid', color: '#000000', opacity: 0.5, to: '3s' }, 'A colour goes over the edit.')}>
             A colour
             <span className="meta">A tint over the whole frame</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => add({ kind: '3d', scene: flyInTitle('Title'), to: '4s' }, 'A 3D title goes over the edit.')}>
+            A 3D title
+            <span className="meta">Words in 3D that fly in, at the playhead</span>
           </button>
           {material.map((a) => (
             <button

@@ -1,4 +1,5 @@
 import type { Cut } from '../shared/edit'
+import { THREE_D_GUIDE } from '../shared/three/planner'
 
 /**
  * The families of ops whose full guide is long and needed only now and then:
@@ -25,7 +26,10 @@ export interface FamilyGuide {
 }
 
 /** Every family, in the order their guides are sent. Each family's branch adds its one entry here. */
-export const FAMILY_GUIDES: FamilyGuide[] = []
+export const FAMILY_GUIDES: FamilyGuide[] = [
+  // 3D clips: cards, extruded titles, shapes, models, lights and a camera (shared/three).
+  THREE_D_GUIDE
+]
 
 /** The always-on lines, under a heading, or nothing while there are no families. */
 export function familyIndex(families: FamilyGuide[] = FAMILY_GUIDES): string {

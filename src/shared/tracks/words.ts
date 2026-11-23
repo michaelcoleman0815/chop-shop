@@ -9,7 +9,14 @@ type OpLike = { op: string } & Record<string, unknown>
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 const count = (n: number, one: string, many: string): string => `${NUMBER_WORDS[n] ?? n} ${n === 1 ? one : many}`
 
-const NOUN: Record<string, string> = { video: 'a video', image: 'a picture', text: 'a title', solid: 'a colour', sound: 'a sound' }
+const NOUN: Record<string, string> = {
+  video: 'a video',
+  image: 'a picture',
+  text: 'a title',
+  solid: 'a colour',
+  sound: 'a sound',
+  '3d': 'a 3D scene'
+}
 
 export function trackPhrases(ops: OpLike[]): string[] {
   const said: string[] = []
@@ -18,7 +25,10 @@ export function trackPhrases(ops: OpLike[]): string[] {
   if (added.length > 0 && added.length <= 2)
     for (const o of added) said.push(o.kind === 'sound' ? `${NOUN.sound} plays under the edit` : `${NOUN[String(o.kind)] ?? 'a clip'} goes over the edit`)
   else if (added.length > 2) said.push(`${count(added.length, 'clip', 'clips')} go on the tracks`)
-  const changed = of('clip-update').length + of('clip-move').length
+  // A 3D scene's change is said as one: what moves in it is in the scene.
+  const scenes = of('clip-update').filter((o) => o.scene !== undefined).length
+  if (scenes > 0) said.push(scenes === 1 ? 'the 3D scene changes' : `${count(scenes, '3D scene changes', '3D scenes change')}`)
+  const changed = of('clip-update').length - scenes + of('clip-move').length
   if (changed > 0) said.push(`${count(changed, 'clip', 'clips')} ${changed === 1 ? 'changes' : 'change'}`)
   const trimmed = of('clip-trim').length + of('trim').length
   if (trimmed > 0) said.push(`${count(trimmed, 'edge is', 'edges are')} trimmed`)

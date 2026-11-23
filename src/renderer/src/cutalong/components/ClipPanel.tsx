@@ -5,6 +5,7 @@ import { BLEND_MODES } from '../../../../shared/motion'
 import type { KeyedProp, TrackClip } from '../../../../shared/tracks'
 import { clock, seconds } from '../format'
 import { whenSettled } from './GraphicPanel'
+import { Scene3DFields } from './Scene3DFields'
 import { Button, Icon, IconButton } from './ui'
 
 /**
@@ -65,7 +66,8 @@ const KIND_NAME: Record<TrackClip['kind'], string> = {
   image: 'Picture',
   text: 'Title',
   solid: 'Colour',
-  sound: 'Sound'
+  sound: 'Sound',
+  '3d': '3D scene'
 }
 
 export function ClipPanel({
@@ -117,6 +119,18 @@ export function ClipPanel({
             label="Colour"
             value={clip.color ?? '#000000'}
             onCommit={(color) => onOps([{ op: 'clip-update', clip: clip.id, color } as Op], 'The colour changes.')}
+          />
+        )}
+
+        {clip.kind === '3d' && (
+          <Scene3DFields
+            clip={clip}
+            local={local}
+            length={length}
+            canKey={inside}
+            frame={frame}
+            onOps={onOps}
+            onSeek={(t) => span && onSeek(span.start + t)}
           />
         )}
 
@@ -288,7 +302,7 @@ function KeyedField({
 }
 
 /** A number that becomes a change when the field is left or Return is pressed. */
-function NumberField({
+export function NumberField({
   label: name,
   unit,
   value,

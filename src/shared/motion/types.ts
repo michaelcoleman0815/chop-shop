@@ -14,6 +14,7 @@ import type { Chrome } from './chrome'
 
 import type { MapResources } from '../maps/paint'
 import type { MapPaint } from '../maps/types'
+import type { Scene3D } from '../three/spec'
 
 /** After Effects-style curves, CSS-style curves, and physical ones. */
 export const EASE_NAMES = [
@@ -408,6 +409,20 @@ export interface VideoLayer<T = number> extends Base<T> {
   crop?: Crop
 }
 
+/**
+ * A 3D scene playing in the frame: a 3D clip on one of the edit's layer
+ * tracks (shared/three). three.js draws it to a canvas of its own, which is
+ * laid in w by h around the origin like a video's frame, so it blends, fades
+ * and stacks as any layer does. Its frame at a moment comes from
+ * DrawResources.scene3d: a WebGL canvas in the editor, the export's 3D page.
+ */
+export interface Scene3DLayer<T = number> extends Base<T> {
+  kind: '3d'
+  scene: Scene3D
+  w: number
+  h: number
+}
+
 export interface GroupLayer<T = number> extends Base<T> {
   kind: 'group'
   children: Layer<T>[]
@@ -419,7 +434,7 @@ export interface MapLayer<T = number> extends Base<T> {
   map: MapPaint
 }
 
-export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | GroupLayer<T> | MapLayer<T> | VideoLayer<T>
+export type Layer<T = number> = TextLayer<T> | ShapeLayer<T> | ImageLayer<T> | GroupLayer<T> | MapLayer<T> | VideoLayer<T> | Scene3DLayer<T>
 
 /** A Lucide icon: element name and attributes, as lucide-static ships them. */
 export type IconNode = [string, Record<string, string | number>]
@@ -445,6 +460,8 @@ export interface DrawResources {
   map?: MapResources
   /** A video layer's frame, `local` seconds into the layer; null when it is not ready. */
   video?: (layer: VideoLayer, local: number) => CanvasImageSource | null
+  /** A 3D layer's frame, drawn `local` seconds into the layer; null when it is not ready. */
+  scene3d?: (layer: Scene3DLayer, local: number) => CanvasImageSource | null
 }
 
 export interface Size {

@@ -11,10 +11,12 @@ import {
   type Layer,
   type LogoMark,
   type MotionScene,
+  type Scene3DLayer,
   type Size,
   type VideoLayer
 } from '../shared/motion'
 import type { VideoFrames } from './video-frames'
+import type { Scene3DFrames } from './three-render'
 import { frameRate, frameSize, type OverlaySpan } from './cut-render'
 import { mapResourcesFor, usesMap } from './map-data'
 import { sceneForCut, type CutMotionInput } from './motion-scene'
@@ -70,6 +72,8 @@ export interface MotionRenderOptions {
   map?: MapResources
   /** Video clips' frames, for the layer tracks' video layers (main/video-frames). */
   video?: VideoFrames
+  /** 3D clips' frames, for the layer tracks' 3D layers (main/three-render). */
+  scene3d?: Scene3DFrames
   /** The overlay files' names start with this: "motion" unless said. */
   prefix?: string
   onProgress?: (fraction: number) => void
@@ -81,6 +85,15 @@ function videoLayersOf(layers: Layer[], out: VideoLayer[] = []): VideoLayer[] {
   for (const l of layers) {
     if (l.kind === 'video') out.push(l)
     else if (l.kind === 'group') videoLayersOf(l.children, out)
+  }
+  return out
+}
+
+/** Every 3D layer, inside groups too. */
+function scene3dLayersOf(layers: Layer[], out: Scene3DLayer[] = []): Scene3DLayer[] {
+  for (const l of layers) {
+    if (l.kind === '3d') out.push(l)
+    else if (l.kind === 'group') scene3dLayersOf(l.children, out)
   }
   return out
 }
@@ -139,9 +152,11 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
     map: opts.map,
     // Scratch canvases, for motion blur.
     createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>,
-    ...(opts.video ? { video: (layer: VideoLayer, local: number) => opts.video?.frame(layer, local) ?? null } : {})
+    ...(opts.video ? { video: (layer: VideoLayer, local: number) => opts.video?.frame(layer, local) ?? null } : {}),
+    ...(opts.scene3d ? { scene3d: (layer: Scene3DLayer) => opts.scene3d?.frame(layer) ?? null } : {})
   }
   const videos = opts.video ? videoLayersOf(layers) : []
+  const solids = opts.scene3d ? scene3dLayersOf(layers) : []
 
   const { width, height, fps } = opts
   const frames = spans.map((s) => {
@@ -164,6 +179,7 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
         for (let n = 0; n < count; n++) {
           const t = (first + n) / fps
           if (videos.length) await opts.video?.prepare(t, videos)
+          if (solids.length) await opts.scene3d?.prepare(t, solids)
           renderFrame(ctx, t, layers, opts.design, { width, height }, resources)
           const pixels = ctx.getImageData(0, 0, width, height).data
           await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength))
@@ -175,6 +191,7 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
     }
   } finally {
     opts.video?.close()
+    opts.scene3d?.close()
   }
   opts.onProgress?.(1)
   return out

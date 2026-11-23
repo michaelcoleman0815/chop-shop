@@ -4,6 +4,8 @@ import type { Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
 import { timelineFor } from '../motion/timing'
 import { BLEND_MODES, EASE_NAMES } from '../motion/types'
+import { sceneLine, sceneRefusal } from '../three/planner'
+import { Scene3DPatchSchema } from '../three/spec'
 import { clipSpan, tracksOf } from './resolve'
 import { ClipFieldsSchema, CLIP_KINDS, KEYED_PROPS, type TrackClip } from './schema'
 
@@ -68,7 +70,9 @@ export const TRACK_PLANNER_OP_NAMES = ['track', 'clip-add', 'clip-update', 'clip
 type PlannerTrackOp = z.infer<(typeof TRACK_PLANNER_OPS)[number]>
 
 /** What `spec` may carry: any of a clip's settings, the deep ones (transform, crop, a title's style) included. */
-const SpecSchema = ClipFieldsSchema.omit({ kind: true }).partial().extend({
+const SpecSchema = ClipFieldsSchema.omit({ kind: true, scene: true }).partial().extend({
+  // A 3D clip's scene (shared/three): whole for a new clip, its objects and lights by id for a change.
+  scene: Scene3DPatchSchema.optional(),
   text: z
     .object({
       value: z.string().optional(),
@@ -125,7 +129,9 @@ export function fromTrackPlannerOp(op: PlannerTrackOp): unknown {
     case 'clip-add': {
       const read = readSpec(op.spec)
       if (!read.ok) return { refused: read.reason }
-      const { text: style, ...rest } = read.spec as { text?: Record<string, unknown> }
+      const { text: style, ...rest } = read.spec as { text?: Record<string, unknown>; scene?: unknown }
+      const unbuilt = op.kind === '3d' ? sceneRefusal(rest.scene) : null
+      if (unbuilt) return { refused: unbuilt }
       return {
         op: 'clip-add',
         kind: op.kind,
@@ -200,6 +206,7 @@ function described(clip: TrackClip, length: number): string {
   if (clip.blend !== 'normal') bits.push(`blend ${clip.blend}`)
   if (clip.fit !== 'contain') bits.push(`fit ${clip.fit}`)
   if (clip.muted) bits.push('muted')
+  if (clip.scene) bits.push(`scene: ${sceneLine(clip.scene)}`)
   const anims: [string, unknown][] = [
     ['opacity', clip.opacity],
     ['volume', clip.volume],

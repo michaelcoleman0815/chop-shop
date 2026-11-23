@@ -1,5 +1,5 @@
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { spawn, spawnSync } from 'child_process'
 import { existsSync, promises as fs, readdirSync } from 'fs'
 import { arch, cpus, release, tmpdir } from 'os'
@@ -166,6 +166,122 @@ async function layersExport(): Promise<string> {
   }
 }
 
+/**
+ * A short edit with a 3D clip exported the way the app exports one: a green
+ * card and an extruded title under a camera that trucks right, drawn by the
+ * export's 3D page. Read back from the file: grey before the clip, the card
+ * in the middle as it starts and to the left by the end, as green as its
+ * picture, and the title lifting the frame above it.
+ */
+async function threeLayersExport(): Promise<string> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'cutalong-self-check-3d-'))
+  try {
+    const W = 320
+    const H = 180
+    const base = join(dir, 'base.mp4')
+    const green = join(dir, 'green.png')
+    const run = (args: string[]): void => {
+      const r = spawnSync(FFMPEG_PATH, ['-hide_banner', '-loglevel', 'error', '-y', ...args], { encoding: 'utf8', timeout: 60_000 })
+      if (r.status !== 0) throw new Error(r.stderr?.trim() || `ffmpeg exited with ${r.status}`)
+    }
+    run([
+      ...['-f', 'lavfi', '-i', `color=c=0x808080:s=${W}x${H}:r=30:d=3`, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=3'],
+      ...['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', base]
+    ])
+    run(['-f', 'lavfi', '-i', 'color=c=0x00FF00:s=64x36', '-frames:v', '1', green])
+    const source = { id: 's1', path: base, durationSec: 3, width: W, height: H, fps: 30 }
+    const words = wordsFromTranscript(
+      ['one', 'two', 'three', 'four', 'five'].map((text, i) => ({ text, startSec: 0.2 + i * 0.5, endSec: 0.6 + i * 0.5 })),
+      's1'
+    )
+    const doc = createDoc({ id: 'self-check', title: '3D', source, words })
+    const truck = { keys: [{ t: 0, v: 0 }, { t: 2, v: W * 0.3 }] }
+    const r = applyOps(
+      currentCut(doc),
+      [
+        { op: 'aspect', aspect: 'original' },
+        { op: 'captions', set: { on: false } },
+        { op: 'loudness', lufs: null },
+        {
+          op: 'clip-add',
+          kind: '3d',
+          from: 'start+0.5',
+          to: '2s',
+          scene: {
+            objects: [
+              { id: 'o1', type: 'card', src: green, w: W * 0.4 },
+              { id: 'o2', type: 'text', text: '3D', size: 40, y: 58 }
+            ],
+            camera: { x: truck, tx: truck }
+          }
+        }
+      ],
+      { words: doc.words, sources: doc.sources }
+    )
+    if (r.rejected.length) throw new Error(r.rejected.map((x) => x.reason).join(' '))
+    const resolved = resolveCut(r.cut, doc.words, doc.sources)
+    const sources = doc.sources.map((s) => ({ ...s, hasAudio: true }))
+    const started = Date.now()
+    const layers = await renderCutLayers({
+      cut: r.cut,
+      resolved,
+      words: doc.words,
+      sources,
+      quality: 'final',
+      ffmpeg: FFMPEG_PATH,
+      workDir: join(dir, 'layers'),
+      fontsDir: FONTS_DIR()
+    })
+    const drawn = Date.now() - started
+    const out = await renderCut(r.cut, resolved, sources, {
+      ffmpeg: FFMPEG_PATH,
+      outputPath: join(dir, 'out.mp4'),
+      workDir: join(dir, 'work'),
+      quality: 'final',
+      fontsDir: FONTS_DIR(),
+      layers
+    })
+    const keep = process.env.CUTALONG_SELF_CHECK_KEEP
+    if (keep) await fs.copyFile(out, join(keep, '3d-layers.mp4'))
+    const near = (c: number[], want: number[]): boolean => c.length === 3 && c.every((v, i) => Math.abs(v - want[i]) <= 24)
+    const before = colourAt(out, 0.3, 0.45, 0.45, 0.1, 0.1)
+    const first = colourAt(out, 0.6, 0.45, 0.45, 0.1, 0.1)
+    // By 2.4 s the camera has trucked 91 px right, so the card's middle is at 69 px of 320.
+    const moved = colourAt(out, 2.4, 0.18, 0.45, 0.07, 0.1)
+    const left = colourAt(out, 2.4, 0.48, 0.45, 0.04, 0.1)
+    if (!near(before, [128, 128, 128])) throw new Error(`the picture is not as it was before the 3D clip: ${before.join(',')}`)
+    if (!near(first, [0, 255, 0])) throw new Error(`the card is not in the middle as the clip starts: ${first.join(',')} at 0.6 s`)
+    if (!near(moved, [0, 255, 0])) throw new Error(`the card did not move left as the camera trucked right: ${moved.join(',')} at 2.4 s`)
+    if (!near(left, [128, 128, 128])) throw new Error(`the card is still in the middle at 2.4 s: ${left.join(',')}`)
+    const lit = colourAt(out, 0.6, 0.4, 0.1, 0.2, 0.18)
+    if (!(lit[0] > before[0] + 8)) throw new Error(`no 3D title drawn: ${lit.join(',')} against ${before.join(',')}`)
+    if (BrowserWindow.getAllWindows().length > 0) throw new Error('the 3D page was left open after the export')
+    // Cancelled part way, the export stops and its 3D page closes.
+    const stop = new AbortController()
+    const cancelled = renderCutLayers({
+      cut: r.cut,
+      resolved,
+      words: doc.words,
+      sources,
+      quality: 'final',
+      ffmpeg: FFMPEG_PATH,
+      workDir: join(dir, 'cancelled'),
+      fontsDir: FONTS_DIR(),
+      signal: stop.signal,
+      onProgress: (f) => f > 0.1 && stop.abort()
+    }).then(
+      () => 'finished',
+      () => 'stopped'
+    )
+    const how = await cancelled
+    if (how !== 'stopped') throw new Error('a cancelled 3D export ran to the end')
+    if (BrowserWindow.getAllWindows().length > 0) throw new Error('the 3D page was left open after the export was cancelled')
+    return `${layers.overlays.length} overlay drawn in ${drawn} ms: card ${first.join(',')} then ${moved.join(',')} to the left, title ${lit.join(',')}; a cancelled export stopped and closed its page`
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
 async function check(name: string, run: () => Promise<string> | string): Promise<Check> {
   try {
     return { name, ok: true, detail: await run() }
@@ -181,6 +297,13 @@ export async function selfCheck(reportPath: string): Promise<number> {
     console.log(`[self-check] ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`)
   }
   const bin = resourcePath('bin')
+  // Only the 3D export, for checking it from a checkout (scripts/three-export-check.mjs).
+  if (process.env.CUTALONG_SELF_CHECK_ONLY === '3d') {
+    add(await check('3D layers', threeLayersExport))
+    const failed = checks.filter((c) => !c.ok)
+    await fs.writeFile(reportPath, JSON.stringify({ ok: failed.length === 0, checks }, null, 2))
+    return failed.length === 0 ? 0 : 1
+  }
 
   add({
     name: 'app',
@@ -254,6 +377,7 @@ export async function selfCheck(reportPath: string): Promise<number> {
     })
   )
   add(await check('layer tracks', layersExport))
+  add(await check('3D layers', threeLayersExport))
   add(
     await check('face finder', async () => {
       if (!hasFaceFinder())

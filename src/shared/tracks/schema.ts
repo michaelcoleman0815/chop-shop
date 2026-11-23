@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AnimNumSchema, ColorSchema, EaseSchema, TransformSchema } from '../anim'
 import { AnchorRefSchema, EndRefSchema } from '../motion/schema'
 import { BLEND_MODES } from '../motion/types'
+import { Scene3DPatchSchema, Scene3DSchema } from '../three/spec'
 
 /**
  * Layer tracks: what the edit stacks over its own picture and mixes under its
@@ -19,7 +20,7 @@ import { BLEND_MODES } from '../motion/types'
  * include it without a cycle.
  */
 
-export const CLIP_KINDS = ['video', 'image', 'text', 'solid', 'sound'] as const
+export const CLIP_KINDS = ['video', 'image', 'text', 'solid', 'sound', '3d'] as const
 export type ClipKind = (typeof CLIP_KINDS)[number]
 
 export const TRACK_KINDS = ['picture', 'sound'] as const
@@ -27,7 +28,7 @@ export type TrackKind = (typeof TRACK_KINDS)[number]
 
 /** Which clips a track holds. */
 export const KINDS_ON: Record<TrackKind, readonly ClipKind[]> = {
-  picture: ['video', 'image', 'text', 'solid'],
+  picture: ['video', 'image', 'text', 'solid', '3d'],
   sound: ['sound']
 }
 
@@ -109,7 +110,9 @@ export const ClipFieldsSchema = z.object({
   /** A sound's level, or a video's own sound, in dB: 0 as recorded. */
   volume: AnimNumSchema.optional(),
   /** A video's own sound left out. */
-  muted: z.boolean().default(false)
+  muted: z.boolean().default(false),
+  /** A 3D clip's objects, lights and camera (shared/three). */
+  scene: Scene3DSchema.optional()
 })
 export type ClipFields = z.infer<typeof ClipFieldsSchema>
 
@@ -134,7 +137,21 @@ export type Track = z.infer<typeof TrackSchema>
 export const MAX_TRACKS = 24
 
 const Id = z.string().min(1).max(16)
-const ClipChangeSchema = ClipFieldsSchema.omit({ kind: true }).partial()
+/**
+ * A clip's settings as a change names them. Zod fills a default in even
+ * under .partial(), which would reset a clip's length, speed and blend on
+ * every change that does not name them, so the defaults are taken off: what
+ * a change leaves out stays as it was.
+ */
+function changeOf<S extends z.ZodRawShape>(shape: S): z.ZodObject<{ [K in keyof S]: z.ZodOptional<S[K]> }> {
+  const loose = Object.fromEntries(
+    Object.entries(shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? (v.unwrap() as z.ZodType) : (v as z.ZodType)).optional()])
+  )
+  return z.object(loose) as unknown as z.ZodObject<{ [K in keyof S]: z.ZodOptional<S[K]> }>
+}
+
+// A 3D clip's scene changes by its objects and lights, each by id, merged into what it has.
+const ClipChangeSchema = changeOf(ClipFieldsSchema.omit({ kind: true, scene: true }).shape).extend({ scene: Scene3DPatchSchema.optional() })
 
 export const TrackOpSchemas = [
   z.object({
