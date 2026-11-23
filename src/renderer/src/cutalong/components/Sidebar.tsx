@@ -4,12 +4,12 @@ import type { SetupStep, SetupStepId } from '../firstRun'
 import { Mark } from './ui'
 
 /**
- * The rail down the left: a new edit, projects, your brand, presets, and at
- * the bottom settings. Collapsed it is icons; open it adds names, recent edits
+ * The rail down the left: a new edit, projects, your brand, presets, what I've
+ * learned, the changelog, and at the bottom settings. Collapsed it is icons; open it adds names, recent edits
  * and, until setup is done, a card saying what is left.
  */
 
-export type Place = 'start' | 'projects' | 'brand' | 'presets' | 'crew' | 'settings'
+export type Place = 'start' | 'projects' | 'brand' | 'presets' | 'crew' | 'changelog' | 'settings'
 
 const stroke = {
   width: 20,
@@ -57,6 +57,12 @@ const ICONS: Record<Place | 'toggle', JSX.Element> = {
       <path d="M7 4.5h10v15l-5-3.6-5 3.6z" />
     </svg>
   ),
+  changelog: (
+    <svg {...stroke}>
+      <path d="M8.5 7h10M8.5 12h10M8.5 17h10" />
+      <path d="M5 7h.01M5 12h.01M5 17h.01" />
+    </svg>
+  ),
   settings: (
     <svg {...stroke}>
       <path d="M4.5 7.5h9" />
@@ -74,7 +80,8 @@ const PLACES: { place: Place; label: string }[] = [
   { place: 'projects', label: 'Projects' },
   { place: 'brand', label: 'Brand' },
   { place: 'presets', label: 'Presets' },
-  { place: 'crew', label: 'Learned' }
+  { place: 'crew', label: 'Learned' },
+  { place: 'changelog', label: 'Changelog' }
 ].filter((p) => !device.away[`feature:${p.place}`]) as { place: Place; label: string }[]
 
 export function Sidebar({

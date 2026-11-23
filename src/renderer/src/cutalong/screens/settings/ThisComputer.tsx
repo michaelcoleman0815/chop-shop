@@ -3,13 +3,15 @@ import type { MapStatus } from '../../../../../shared/maps'
 import { SIGN_IN_LOCKED, signInBrowsers } from '../../../../../shared/platform'
 import type { Settings, UpdateState } from '../../../../../shared/types'
 import { api, device } from '../../api'
+import { CHANGES } from '../../changelog'
 import { Button } from '../../components/ui'
 import { grow } from '../../motion'
 import { SetGroup, SetRow, SetSelect } from './rows'
 
 /**
  * What belongs to this computer itself: where exports go, whose sign-in
- * video links may borrow, the sharper map pictures, and updates.
+ * video links may borrow, the sharper map pictures, updates, and the way to
+ * the changelog.
  */
 
 const phone = device.kind === 'phone'
@@ -51,6 +53,24 @@ function updateLine(s: UpdateState, version: string): string {
     default:
       return `Version ${version}.`
   }
+}
+
+/** A row that opens the Changelog page: what changed in each version (CHANGELOG.md). */
+function ChangelogRow({ onOpen }: { onOpen: () => void }): JSX.Element | null {
+  const latest = CHANGES[0]
+  if (!latest) return null
+  return (
+    <SetRow
+      title="Changelog"
+      desc={`What changed in ${latest.version} and the versions before it.`}
+      find="changelog what's new changes version release notes"
+      control={
+        <Button small onClick={onOpen}>
+          Open
+        </Button>
+      }
+    />
+  )
 }
 
 /** The sharper satellite pictures and plate boundaries, and a download for them with its progress. */
@@ -124,10 +144,13 @@ function MapsRow(): JSX.Element {
 
 export function ThisComputerSection({
   settings,
-  onSettings
+  onSettings,
+  onChangelog
 }: {
   settings: Settings | null
   onSettings: (next: Settings) => void
+  /** Opens the Changelog page. */
+  onChangelog: () => void
 }): JSX.Element {
   const [version, setVersion] = useState('')
   const [update, setUpdate] = useState<UpdateState>({ status: 'idle' })
@@ -207,6 +230,7 @@ export function ThisComputerSection({
           }
         />
       )}
+      <ChangelogRow onOpen={onChangelog} />
     </SetGroup>
   )
 }

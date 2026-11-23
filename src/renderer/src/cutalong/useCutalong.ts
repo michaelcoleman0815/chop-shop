@@ -198,7 +198,16 @@ import { clock, fileName, findLink, isAudioFile, isVideoFile } from './format'
  * commit(), so each one is a version the notes panel can name and undo.
  */
 
-export type Screen = 'start' | 'thread' | 'editor' | 'projects' | 'brand' | 'presets' | 'crew' | 'settings'
+export type Screen =
+  | 'start'
+  | 'thread'
+  | 'editor'
+  | 'projects'
+  | 'brand'
+  | 'presets'
+  | 'crew'
+  | 'changelog'
+  | 'settings'
 
 export interface Toast {
   text: string

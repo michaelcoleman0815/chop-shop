@@ -6,6 +6,7 @@ import { Sidebar, type Place } from './components/Sidebar'
 import { Button, Mark } from './components/ui'
 import { moveRail, useLingering, useMotion } from './motion'
 import { BrandPage } from './screens/Brand'
+import { ChangelogPage } from './screens/Changelog'
 import { CrewPage } from './screens/Crew'
 import { Editor } from './screens/Editor'
 import { BackToWork, MakeRunning } from './screens/Header'
@@ -120,6 +121,7 @@ export default function App(): JSX.Element {
     app.screen === 'brand' ||
     app.screen === 'presets' ||
     app.screen === 'crew' ||
+    app.screen === 'changelog' ||
     app.screen === 'settings'
       ? app.screen
       : null
@@ -168,6 +170,7 @@ export default function App(): JSX.Element {
               {app.screen === 'brand' && <BrandPage app={app} />}
               {app.screen === 'presets' && <PresetsPage app={app} />}
               {app.screen === 'crew' && <CrewPage app={app} />}
+              {app.screen === 'changelog' && <ChangelogPage />}
               {app.screen === 'settings' && <SettingsPage app={app} />}
             </MakeRunning.Provider>
           </BackToWork.Provider>
