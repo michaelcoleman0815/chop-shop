@@ -1,3 +1,4 @@
+import { sceneWithPaths } from '../three/spec'
 import type { TrackClip } from './schema'
 
 /**
@@ -29,6 +30,8 @@ export const isMediaId = (src: string): boolean => /^[A-Za-z][A-Za-z0-9_]*$/.tes
 
 /** The clip with its src as a path, and its file's length filled in when the edit knows it. */
 export function resolveClip(clip: TrackClip, media?: Map<string, ClipMedia>): TrackClip {
+  // A 3D clip's cards and models name material the same way.
+  if (clip.scene && media) clip = { ...clip, scene: sceneWithPaths(clip.scene, (id) => (isMediaId(id) ? media.get(id)?.path : undefined)) }
   if (!clip.src || !media || !isMediaId(clip.src)) return clip
   const m = media.get(clip.src)
   if (!m) return clip

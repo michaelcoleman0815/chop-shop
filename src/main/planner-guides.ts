@@ -3,6 +3,7 @@ import { COMPOSITING_INDEX, compositingGuide, wantsCompositing } from '../shared
 import { MIX_INDEX, mixGuide, wantsMix } from '../shared/mix/planner'
 import { hasParticles, PARTICLE_ASK, PARTICLES_INDEX, particlesGuide } from '../shared/particles/planner'
 import { ROTO_GUIDE } from './roto-guide'
+import { THREE_D_GUIDE } from '../shared/three/planner'
 
 /**
  * The families of ops whose full guide is long and needed only now and then:
@@ -37,7 +38,9 @@ export const FAMILY_GUIDES: FamilyGuide[] = [
   // Particles (shared/particles/planner).
   { name: 'particles', index: PARTICLES_INDEX, wanted: (ask, cut) => PARTICLE_ASK.test(ask) || hasParticles(cut), guide: particlesGuide },
   // Masks, mattes, keying and following (main/roto-guide).
-  ROTO_GUIDE
+  ROTO_GUIDE,
+  // 3D clips: cards, extruded titles, shapes, models, lights and a camera (shared/three).
+  THREE_D_GUIDE
 ]
 
 /** The always-on lines, under a heading, or nothing while there are no families. */

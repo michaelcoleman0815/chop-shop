@@ -7,6 +7,8 @@ import { timelineFor } from '../motion/timing'
 import { liftParticles, particleSlots, particleWords } from '../particles/planner'
 import type { ParticleSpec } from '../particles/schema'
 import { BLEND_MODES, EASE_NAMES } from '../motion/types'
+import { sceneLine, sceneRefusal } from '../three/planner'
+import { Scene3DPatchSchema } from '../three/spec'
 import { clipSpan, tracksOf } from './resolve'
 import { ROTO_CHANGE, withoutCleared } from './roto'
 import { rotoBits } from './roto-words'
@@ -73,9 +75,11 @@ export const TRACK_PLANNER_OP_NAMES = ['track', 'clip-add', 'clip-update', 'clip
 type PlannerTrackOp = z.infer<(typeof TRACK_PLANNER_OPS)[number]>
 
 /** What `spec` may carry: any of a clip's settings, the deep ones (transform, crop, a title's style) included. */
-const SpecSchema = ClipFieldsSchema.omit({ kind: true }).partial().extend({
+const SpecSchema = ClipFieldsSchema.omit({ kind: true, scene: true }).partial().extend({
   // Masks, a matte, a key and following (tracks/roto); null takes a matte, key or follow off.
   ...ROTO_CHANGE,
+  // A 3D clip's scene (shared/three): whole for a new clip, its objects and lights by id for a change.
+  scene: Scene3DPatchSchema.optional(),
   text: z
     .object({
       value: z.string().optional(),
@@ -133,7 +137,9 @@ export function fromTrackPlannerOp(op: PlannerTrackOp): unknown {
     case 'clip-add': {
       const read = readSpec(op.spec, op.kind)
       if (!read.ok) return { refused: read.reason }
-      const { text: style, ...rest } = read.spec as { text?: Record<string, unknown>; particles?: ParticleSpec }
+      const { text: style, ...rest } = read.spec as { text?: Record<string, unknown>; particles?: ParticleSpec; scene?: unknown }
+      const unbuilt = op.kind === '3d' ? sceneRefusal(rest.scene) : null
+      if (unbuilt) return { refused: unbuilt }
       return {
         op: 'clip-add',
         kind: op.kind,
@@ -217,6 +223,7 @@ function described(clip: TrackClip, length: number): string {
   }
   if (clip.kind === 'particles') bits.push(particleWords(clip.particles))
   bits.push(...rotoBits(clip))
+  if (clip.scene) bits.push(`scene: ${sceneLine(clip.scene)}`)
   const anims: [string, unknown][] = [
     ['opacity', clip.opacity],
     ['volume', clip.volume],

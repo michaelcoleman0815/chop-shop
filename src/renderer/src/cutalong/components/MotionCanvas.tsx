@@ -38,6 +38,7 @@ export function MotionCanvas({
   video,
   mattes,
   keySize,
+  scene3d,
   redraw = 0,
   className = 'cl-motion',
   base,
@@ -54,6 +55,8 @@ export function MotionCanvas({
   mattes?: DrawResources['mattes']
   /** The longest side a chroma key is worked at, so the preview keeps up. */
   keySize?: number
+  /** 3D layers' frames (the layer tracks' 3D clips, from useScene3D). */
+  scene3d?: DrawResources['scene3d']
   /** Changes when a video frame arrives, so the frame is drawn again with it. */
   redraw?: number
   className?: string
@@ -145,13 +148,13 @@ export function MotionCanvas({
       scene.layers,
       scene.size,
       { width: pw, height: ph },
-      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map, video, base: under, unreadable: onUnreadable, mattes, keySize }
+      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map, video, base: under, unreadable: onUnreadable, mattes, keySize, scene3d }
     )
     // Whether it covers the picture now, drawn over it while a layer blends with it.
     el.dataset.base = under ? 'on' : 'off'
     // The moment drawn, for anyone checking the preview against the export.
     el.dataset.time = time.toFixed(4)
-  }, [scene, time, width, height, loaded, icons, logos, pictures, map, video, redraw, base, onUnreadable, mattes, keySize])
+  }, [scene, time, width, height, loaded, icons, logos, pictures, map, video, redraw, base, onUnreadable, mattes, keySize, scene3d])
 
   if (scene.layers.length === 0) return null
   return <canvas ref={canvas} className={className} style={{ width, height }} aria-hidden="true" />

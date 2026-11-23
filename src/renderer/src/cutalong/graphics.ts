@@ -45,6 +45,9 @@ const URLS: Record<string, string> = {
   'ArchivoExpanded-Black.ttf': archivoWideUrl
 }
 
+/** Where a bundled face's file is served in this page, for reading its outlines (shared/three). */
+export const motionFontUrl = (file: string): string | undefined => URLS[file]
+
 let fonts: Promise<void> | null = null
 
 /**

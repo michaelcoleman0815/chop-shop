@@ -70,6 +70,10 @@ export function layerFor(p: Placed, design: Size): Layer | null {
     }
     case 'particles':
       return particlesLayer(base, clip, p.end - p.start, design)
+    case '3d':
+      if (!clip.scene) return null
+      // Drawn by three.js over the whole frame (shared/three), then moved and faded like any clip.
+      return { ...base, kind: '3d', scene: clip.scene, w: W, h: H }
     case 'sound':
       return null
   }

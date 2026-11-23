@@ -10,6 +10,7 @@ import { ExprField, ExprToggle, GradeFields } from './ClipCompositing'
 import { whenSettled } from './GraphicPanel'
 import { ParticleFields } from './ParticleFields'
 import { RotoFields, type RotoProps } from './RotoFields'
+import { Scene3DFields } from './Scene3DFields'
 import { Button, Icon, IconButton } from './ui'
 
 /**
@@ -80,7 +81,8 @@ const KIND_NAME: Record<TrackClip['kind'], string> = {
   solid: 'Colour',
   sound: 'Sound',
   adjustment: 'Adjustment',
-  particles: 'Particles'
+  particles: 'Particles',
+  '3d': '3D scene'
 }
 
 export function ClipPanel({
@@ -140,6 +142,18 @@ export function ClipPanel({
         {clip.kind === 'adjustment' && <GradeFields clip={clip} onOps={onOps} />}
 
         {clip.kind === 'particles' && <ParticleFields clip={clip} onOps={onOps} />}
+
+        {clip.kind === '3d' && (
+          <Scene3DFields
+            clip={clip}
+            local={local}
+            length={length}
+            canKey={inside}
+            frame={frame}
+            onOps={onOps}
+            onSeek={(t) => span && onSeek(span.start + t)}
+          />
+        )}
 
         {settings.map((s) => (
           <KeyedField

@@ -4,6 +4,7 @@ import { parseAnchor, parseLength } from '../motion/schema'
 import type { Timeline } from '../motion/timing'
 import { trackExprProblem, withExpr } from './compositing'
 import { continuedParticles } from '../particles/presets'
+import { mergeScene, shiftSceneKeys, type Scene3DPatch } from '../three/spec'
 import { isMediaId } from './media'
 import { withoutCleared, type ClipFollow, type ClipMatte, type ChromaKey } from './roto'
 import { clipSpan, timeOf, tracksOf } from './resolve'
@@ -51,7 +52,7 @@ type Op =
     }
   | { op: 'track-remove'; track: string }
   | ({ op: 'clip-add'; track?: string } & ClipFields)
-  | ({ op: 'clip-update'; clip: string } & Partial<Omit<ClipFields, 'kind' | 'matte' | 'key' | 'follow'>> & ClipCleared)
+  | ({ op: 'clip-update'; clip: string; scene?: Scene3DPatch } & Partial<Omit<ClipFields, 'kind' | 'scene' | 'matte' | 'key' | 'follow'>> & ClipCleared)
   | { op: 'clip-move'; clip: string; track?: string; from?: string; to?: string }
   | { op: 'clip-trim'; clip: string; edge: 'in' | 'out' | 'slip'; to?: string; by?: number }
   | { op: 'clip-split'; clip: string; at: string }
@@ -118,6 +119,14 @@ function wholeClip(clip: TrackClip, ctx: TrackOpContext): TrackClip {
   if (clip.src && isMediaId(clip.src) && ctx.hasMedia && !ctx.hasMedia(clip.src))
     refuse(`There is no ${clip.src} in this edit's material.`)
   if (clip.kind === 'text' && !clip.text) refuse('A title needs its words.')
+  if (clip.kind === '3d') {
+    if (!clip.scene) refuse('A 3D clip needs its scene.')
+    for (const o of clip.scene?.objects ?? []) {
+      if (o.src && isMediaId(o.src) && ctx.hasMedia && !ctx.hasMedia(o.src)) refuse(`There is no ${o.src} in this edit's material for ${o.id}.`)
+      if (o.type === 'text' && !o.text) refuse(`${o.id} is a 3D title, so it needs its words.`)
+      if (o.type === 'model' && !o.src) refuse(`${o.id} is a model, so it needs its file.`)
+    }
+  }
   return clip
 }
 
@@ -300,8 +309,16 @@ function step(tracks: Track[], op: Op, ctx: TrackOpContext): Track[] {
       const was = tracks[at.t].clips[at.c]
       // Particles change setting by setting, unless a preset is named, which starts afresh from it.
       if (change.particles && !change.particles.preset) change.particles = { ...was.particles, ...change.particles }
+      // A scene changes by its objects and lights, merged into the one it has.
+      let scene = was.scene
+      if (change.scene) {
+        if (was.kind !== '3d') refuse(`${aClip(was.kind)} has no 3D scene to change.`)
+        const merged = mergeScene(was.scene ?? { objects: [], lights: [], camera: {} }, change.scene)
+        if (!merged.ok) return refuse(merged.reason)
+        scene = merged.scene
+      }
       // A matte, key or follow set to null comes off (tracks/roto).
-      const clip = wholeClip(TrackClipSchema.parse(withoutCleared({ ...was, ...change, id: was.id, kind: was.kind })), ctx)
+      const clip = wholeClip(TrackClipSchema.parse(withoutCleared({ ...was, ...change, scene, id: was.id, kind: was.kind })), ctx)
       return replaceClip(tracks, at, clip)
     }
 
@@ -350,6 +367,7 @@ function step(tracks: Track[], op: Op, ctx: TrackOpContext): Track[] {
         if (isKeyed(anim)) tail = setProp(tail, prop, shiftKeys(anim, by, length))
       }
       if (tail.kind === 'particles') tail = { ...tail, particles: continuedParticles(tail.particles, by) }
+      if (tail.scene) tail = { ...tail, scene: shiftSceneKeys(tail.scene, by, (a) => num(a, by, length)) }
       const clips = [...tracks[at.t].clips]
       clips.splice(at.c, 1, head, tail)
       return replaceTrack(tracks, at.t, { ...tracks[at.t], clips })

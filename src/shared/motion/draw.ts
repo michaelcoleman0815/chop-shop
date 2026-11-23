@@ -35,6 +35,7 @@ import type {
   Layer,
   LogoMark,
   Mask,
+  Scene3DLayer,
   ShapeLayer,
   Size,
   Stroke,
@@ -293,6 +294,9 @@ function drawKind(
     case 'particles':
       drawParticles(ctx, layer, local, length, opacity, st.res.images)
       break
+    case '3d':
+      drawScene3DLayer(ctx, layer, local, opacity, st)
+      break
   }
 }
 
@@ -305,7 +309,7 @@ function drawKind(
  */
 function localExtent(layer: Layer, local: number, length: number): [number, number, number, number] | null {
   let box: { x: number; y: number; w: number; h: number }
-  if (layer.kind === 'image' || layer.kind === 'video') box = { x: -layer.w / 2, y: -layer.h / 2, w: layer.w, h: layer.h }
+  if (layer.kind === 'image' || layer.kind === 'video' || layer.kind === '3d') box = { x: -layer.w / 2, y: -layer.h / 2, w: layer.w, h: layer.h }
   else if (layer.kind === 'shape') box = bounds(shapeCmds(layer.shape))
   else return null
   const fx = layer.effects
@@ -943,6 +947,18 @@ function drawVideoLayer(ctx: Ctx, layer: VideoLayer, local: number, length: numb
   ctx.globalAlpha = opacity
   withEffects(ctx, layer.effects, (pass) => {
     if (pass !== 'glow') drawPicture(ctx, img, iw, ih, layer.w, layer.h, layer.fit ?? 'contain', layer.crop, local, length)
+  })
+}
+
+/** A 3D scene's frame, drawn by three.js elsewhere (shared/three), stretched over its box. */
+function drawScene3DLayer(ctx: Ctx, layer: Scene3DLayer, local: number, opacity: number, st: DrawState): void {
+  const img = st.res.scene3d?.(layer, local)
+  if (!img) return
+  const { width: iw, height: ih } = imageSize(img)
+  if (!iw || !ih) return
+  ctx.globalAlpha = opacity
+  withEffects(ctx, layer.effects, (pass) => {
+    if (pass !== 'glow') ctx.drawImage(img, -layer.w / 2, -layer.h / 2, layer.w, layer.h)
   })
 }
 

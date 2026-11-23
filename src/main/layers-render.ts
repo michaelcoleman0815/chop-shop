@@ -89,13 +89,21 @@ export async function renderCutLayers(input: CutLayersInput): Promise<CutLayers>
   // everywhere else they are a see-through overlay, which is cheaper.
   const based = baseSpans(layers, resolved.durationSec)
   const plain = withoutSpans(overlaySpans(layers, resolved.durationSec), based)
+  // The person and objects as mattes, for clips cut to them (main/matte-cutouts), in either pass.
+  const mattes = await exportMattes(cut, resolved, input.sources, input.cutouts)
+  // 3D clips are drawn by the scene builder the editor previews with, in a page of their own, opened only for an
+  // edit that has one (and so Electron is loaded only then). Each pass opens its own, as each closes it when done.
+  const has3d = layers.some((l) => l.kind === '3d')
+  const scene3d = async () =>
+    has3d ? { scene3d: (await import('./three-render')).scene3dFrames({ ffmpeg: input.ffmpeg, fps, pixels, fontsDir: input.fontsDir, signal: input.signal }) } : {}
   const overlays =
     plain.length > 0
       ? await renderMotion(layers, {
           ...common,
           spans: plain,
           video: videoFrames(input.ffmpeg, fps, sizes),
-          mattes: await exportMattes(cut, resolved, input.sources, input.cutouts),
+          mattes,
+          ...(await scene3d()),
           prefix: 'layers',
           onProgress: input.onProgress
         })
@@ -106,7 +114,15 @@ export async function renderCutLayers(input: CutLayersInput): Promise<CutLayers>
           const frames = spanFrames(based, fps)
           const base = baseFrames(input.ffmpeg, baseArgs(frames), pixels, frames, input.signal)
           try {
-            return await renderMotion(layers, { ...common, spans: based, base, video: videoFrames(input.ffmpeg, fps, sizes), prefix: 'layers-base' })
+            return await renderMotion(layers, {
+              ...common,
+              spans: based,
+              base,
+              video: videoFrames(input.ffmpeg, fps, sizes),
+              mattes,
+              ...(await scene3d()),
+              prefix: 'layers-base'
+            })
           } finally {
             base.close()
           }

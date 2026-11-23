@@ -107,6 +107,8 @@ import { timelineFor } from '../../../../shared/motion/timing'
 import { useClipMedia } from '../useClipMedia'
 import { useMixGraph, type MixGraph } from '../mix-graph'
 import { Mixer } from '../components/Mixer'
+import { useScene3D } from '../useScene3D'
+import { flyInTitle, scene3dLabel, sceneAnims } from '../../../../shared/three/spec'
 import { RegionPicker } from '../components/RegionPicker'
 import { Subtitles } from '../components/Subtitles'
 import { AssistantAvatar, Button, Icon, IconButton } from '../components/ui'
@@ -537,6 +539,8 @@ function Preview({
   })
   // The layer tracks' videos and sounds, kept on the player's moment.
   const clips = useClipMedia(layers.scene?.layers ?? NO_LAYERS, layers.sounding, time, playing, mixer)
+  // The layer tracks' 3D clips, each drawn to a WebGL canvas of its own at the player's moment.
+  const solid = useScene3D(layers.scene?.layers ?? NO_LAYERS, { width: box.w, height: box.h }, time, playing)
   // Scene effects, drawn as the export draws them (fx-preview): the picture's inside the decks, the rest over the look.
   const decksBox = useRef<HTMLDivElement>(null)
   const fxPicture = useRef<HTMLCanvasElement>(null)
@@ -678,7 +682,8 @@ function Preview({
             width={box.w}
             height={box.h}
             video={clips.frame}
-            redraw={clips.version + deckFrames}
+            scene3d={solid.frame}
+            redraw={clips.version + deckFrames + solid.version}
             base={layerBase}
             onUnreadable={onUnreadable}
             mattes={mattes}
@@ -1759,7 +1764,15 @@ function TakesPanel({
 
 /** The settings that can carry keys, as a clip holds them. */
 function animsOf(c: TrackClip): (Anim<number> | undefined)[] {
-  return [c.opacity, c.volume, c.particles?.rate, ...Object.values(c.transform ?? {}), ...Object.values(c.crop ?? {})] as (Anim<number> | undefined)[]
+  return [
+    c.opacity,
+    c.volume,
+    c.pan,
+    c.particles?.rate,
+    ...Object.values(c.transform ?? {}),
+    ...Object.values(c.crop ?? {}),
+    ...sceneAnims(c.scene).map((s) => s.anim)
+  ] as (Anim<number> | undefined)[]
 }
 
 /** What a clip is called in its lane: its name, a title's words, a file's name. */
@@ -1769,6 +1782,7 @@ function clipLabel(c: TrackClip, assets: EditDoc['assets']): string {
   if (c.kind === 'solid') return 'Colour'
   if (c.kind === 'adjustment') return 'Adjustment'
   if (c.kind === 'particles') return particleTitle(c.particles)
+  if (c.kind === '3d') return scene3dLabel(c.scene)
   const asset = assets.find((a) => a.id === c.src)
   return asset?.title ?? (c.src ?? '').split(/[\\/]/).pop() ?? c.kind
 }
@@ -1857,6 +1871,10 @@ function AddMenu({ doc, time, onAdd }: { doc: EditDoc; time: number; onAdd: (ops
           <button type="button" role="menuitem" onClick={() => add({ kind: 'particles', particles: { preset: 'snow' }, to: '5s' }, 'Snow falls over the edit.')}>
             Particles
             <span className="meta">Snow, sparks, confetti and more, over the picture</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => add({ kind: '3d', scene: flyInTitle('Title'), to: '4s' }, 'A 3D title goes over the edit.')}>
+            A 3D title
+            <span className="meta">Words in 3D that fly in, at the playhead</span>
           </button>
           {material.map((a) => (
             <button
