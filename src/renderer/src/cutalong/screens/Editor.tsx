@@ -85,7 +85,7 @@ import {
   type MotionTheme
 } from '../../../../shared/motion'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
-import { captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords } from '../../../../shared/subtitles'
+import { captionSeams, captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords, wordSpeakers } from '../../../../shared/subtitles'
 import { isImagePath } from '../../../../shared/assets'
 import { api, MEDIA_CORS, mediaUrlFor } from '../api'
 import { Backdrop } from '../components/Backdrop'
@@ -586,8 +586,9 @@ function Preview({
     // Captions the graphics draw are on the motion canvas instead.
     if (!cut.captions.on || drawsCaptions(cut.captions)) return []
     const words = subtitleWords(cut, resolved, scene).words
-    return styleCues(shownWords(words, cut.captions, resolved.words), captionStyle)
-  }, [cut, resolved, scene, captionStyle])
+    const seams = captionSeams(cut, resolved.words)
+    return styleCues(shownWords(words, cut.captions, resolved.words, seams, wordSpeakers(doc.words)), captionStyle)
+  }, [cut, resolved, scene, captionStyle, doc.words])
   const cue = subtitleAt(cues, time)
   const big = treatment?.bigWord ? resolved.words.find((w) => w.id === treatment.bigWord) : undefined
   const showBig = big && time >= big.outStart - 0.1 && time <= big.outEnd + 0.7
@@ -1117,7 +1118,8 @@ function Deck({
         )}
         {view.layer && !grid && t?.broll && t.frame !== 'speaker' && at && (
           <Cutaway
-            frame={t.frame}
+            frame={t.frame === 'split' && t.broll.below ? 'split below' : t.frame}
+            seam={t.frame === 'split' ? t.broll.seam : undefined}
             path={t.broll.path}
             srcSec={at.srcSec}
             rate={at.rate}
@@ -1160,9 +1162,12 @@ function Cutaway({
   bw,
   camera,
   fitFor,
-  aspect
+  aspect,
+  seam
 }: {
   frame: string
+  /** A split's seam line, in its colour. */
+  seam?: string
   path: string
   /** Where the cutaway is in its footage now. */
   srcSec: number
@@ -1216,6 +1221,7 @@ function Cutaway({
   const style = { filter: bw ? 'grayscale(1)' : undefined, transform, objectFit: fit === 'cover' ? undefined : 'contain' } as const
   return (
     <div className={`cl-cutaway ${frame}${fit === 'black' ? ' bars' : ''}`}>
+      {seam && <div className="cl-seam" style={{ background: seam }} />}
       {fit === 'blur' && <Backdrop of={still ? image : ref} aspect={aspect} bw={bw} />}
       {still ? (
         <img

@@ -15,7 +15,7 @@ import { register, type BuildContext } from './registry'
  * the editor lets the person drag the region onto the right spot.
  */
 
-const STYLES = ['spec', 'arrow', 'circle', 'underline', 'box', 'pointer', 'label'] as const
+const STYLES = ['spec', 'arrow', 'block', 'circle', 'underline', 'box', 'pointer', 'label'] as const
 type Style = (typeof STYLES)[number]
 
 interface Region {
@@ -47,7 +47,7 @@ export function regionOf(box: number[], frame: Frame, style: string): Region {
   }
   // Nothing given: a region in the middle of the frame, the same size in either shape,
   // until the person drags it onto the thing it is about.
-  const pointLike = style === 'spec' || style === 'pointer' || style === 'arrow'
+  const pointLike = style === 'spec' || style === 'pointer' || style === 'arrow' || style === 'block'
   const w = (pointLike ? 130 : 420) * frame.u
   const h = (pointLike ? 130 : 170) * frame.u
   return { x: (W - w) / 2, y: H * 0.42 - h / 2, w, h, px: W / 2, py: H * 0.42 }
@@ -203,6 +203,48 @@ function build(ctx: BuildContext): Layer[] {
     return layers
   }
 
+  if (style === 'block') {
+    // A thick solid arrow with a dark edge, coming down at the target from above and outside it (the frame's
+    // nearer edge, or the side place names), its tip just short of it, so it never covers the middle: the red
+    // arrow reaction Shorts point with (Impaulsive's "too far back"). There at once, and still, as theirs is.
+    const length = 310 * u
+    const from = item.place === 'left' ? -1 : item.place === 'right' ? 1 : r.px >= frame.width / 2 ? 1 : -1
+    const angle = Math.atan2(0.62, -from * 0.78)
+    const stop = Math.min(r.w, r.h) / 2 + 10 * u
+    const tip: Point = [r.px - Math.cos(angle) * stop, r.py - Math.sin(angle) * stop]
+    const tail0: Point = [tip[0] - Math.cos(angle) * length, tip[1] - Math.sin(angle) * length]
+    const shaft = 28 * u
+    const half = 70 * u
+    const headLen = 115 * u
+    const along = (d: number, across: number): Point => [
+      tail0[0] + Math.cos(angle) * d - Math.sin(angle) * across,
+      tail0[1] + Math.sin(angle) * d + Math.cos(angle) * across
+    ]
+    const points: Point[] = [
+      along(0, -shaft),
+      along(length - headLen, -shaft),
+      along(length - headLen, -half),
+      along(length, 0),
+      along(length - headLen, half),
+      along(length - headLen, shaft),
+      along(0, shaft)
+    ]
+    const d = `M ${points.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' L ')} Z`
+    layers.push({
+      kind: 'shape',
+      start,
+      end,
+      shape: { type: 'path', d },
+      fill: accent,
+      stroke: { color: 'rgba(0, 0, 0, 0.55)', width: 4 * u, join: 'miter' },
+      effects: shadow(u),
+      transform: out(false)
+    })
+    const near = tail0[0] < frame.width / 2 ? 1 : -1
+    layers.push(...label(ctx, [tail0[0] - near * 30 * u, tail0[1] + 40 * u], near as 1 | -1, 0.1, start, end, accent))
+    return layers
+  }
+
   if (style === 'arrow') {
     // From open space toward the target, curving a little, landing just short of it.
     const tail0: Point = [
@@ -330,7 +372,7 @@ register({
   kind: 'callout',
   title: 'Callout',
   about:
-    'Points at something in the frame. Styles: spec (a dot and a leader line to a label: text is the part, then its value, like ["48 MP main camera", "f/1.78"]), label (the same, as an explainer labels a diagram: dark words on a white pill, an ink leader line), arrow, circle, underline and box (a highlight), each with an optional label in text, and pointer (a pulsing dot). box is the region as fractions of the frame [x, y, width, height], or a point [x, y]; leave it empty if you cannot know where the thing is, and the person places it. place left or right puts the label on that side.',
+    'Points at something in the frame. Styles: spec (a dot and a leader line to a label: text is the part, then its value, like ["48 MP main camera", "f/1.78"]), label (the same, as an explainer labels a diagram: dark words on a white pill, an ink leader line), arrow, block (a thick solid arrow, as reaction Shorts point with), circle, underline and box (a highlight), each with an optional label in text, and pointer (a pulsing dot). box is the region as fractions of the frame [x, y, width, height], or a point [x, y]; leave it empty if you cannot know where the thing is, and the person places it. place left or right puts the label on that side.',
   styles: STYLES,
   places: ['', 'left', 'right', 'bottom'],
   length: 3,

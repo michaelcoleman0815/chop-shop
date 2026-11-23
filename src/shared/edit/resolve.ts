@@ -2,6 +2,7 @@ import { isFiller } from '../fillers'
 import { cutInAt, cutOutAt } from '../vision/cuts'
 import type { Beat, Cut, Source, Word } from './schema'
 import { outLength, outToSrc, sliceSteps, srcToOut, stepsForSource, type SpeedStep } from './timing'
+import { punchable } from './punch'
 import { MIN_TRANSITION_SEC, shownTransition, type TransitionKind } from './transitions'
 
 /**
@@ -198,6 +199,49 @@ interface Draft {
 /** Overlaps up to this long between neighbouring pieces are padding, not a deliberate repeat. */
 const MAX_SEAM_OVERLAP_SEC = 0.5
 
+/**
+ * In a recording framed a shot at a time (a seated conversation, a switched feed), a pause inside one shot
+ * shorter than this stays: taking it out jumps the speaker's head within the same picture, which reads as a
+ * glitch. A pause the camera or the framing cuts across is taken out at the tightening's own length.
+ */
+export const KEEP_IN_SHOT_SEC = 1
+
+/** A piece's own picture ending or starting this close to a cut in the recording's picture would flash the other shot. */
+const SLIVER_SEC = 0.4
+/** An edit point set onto a cut sits this much before its first frame, so that frame opens the picture after it. */
+const EDGE_SEC = 0.001
+
+/** Whether two beats frame their picture alike: the same place by hand or none, the same size, no move. */
+function framedAlike(a: Beat, b: Beat): boolean {
+  const x = a.treatment
+  const y = b.treatment
+  return (
+    (x.framing ?? null) === (y.framing ?? null) &&
+    x.zoom === y.zoom &&
+    (x.zoomAt ?? 0.5) === (y.zoomAt ?? 0.5) &&
+    !x.camera &&
+    !y.camera
+  )
+}
+
+/** Whether a beat shows its own recording filling the frame: not a cutaway, a card, a grid or another camera. */
+function ownPicture(beat: Beat): boolean {
+  const t = beat.treatment
+  return t.frame === 'speaker' && !t.grid && !t.angle && !t.broll
+}
+
+/** Tightening never leaves a run of words shorter than this on its own: it would flash past. */
+export const MIN_RUN_SEC = 0.5
+/** The longest pause kept to save a short run from flashing past. */
+const MAX_KEPT_PAUSE_SEC = 1.2
+
+/** Where a recording's picture changes of itself: its camera cuts and turns to another speaker. */
+function pictureCuts(source: Source | undefined): number[] | null {
+  const subject = source?.subject
+  if (!subject || !((subject.seats?.length ?? 0) > 1 || (subject.cuts?.length ?? 0) > 0)) return null
+  return subject.cuts ?? []
+}
+
 const stepsOf = (d: { srcStart: number; srcEnd: number; steps?: SpeedStep[] }): SpeedStep[] =>
   d.steps ?? [{ srcSec: d.srcEnd - d.srcStart, speed: 1 }]
 /** How long a draft plays for. */
@@ -237,13 +281,54 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
         // was dropped between two kept ones, or where tightening says the pause
         // is too long to keep.
         const runs: number[][] = []
+        // A pause in one shot is kept to spare a jump, unless the jump will be punched and the recording can
+        // take the punch (edit/jumps, edit/punch): the top clips cut a phrase at a time and punch every jump.
+        const source = bySource.get(beat.source)
+        const punched = !!cut.punchJumps && !!source && punchable(cut, source)
+        const shotCuts = tighten && !punched ? pictureCuts(source) : null
         for (const i of kept) {
           const run = runs[runs.length - 1]
           const prev = run?.[run.length - 1]
           const contiguous = prev !== undefined && i === prev + 1
           const gap = prev !== undefined ? index.words[i].startSec - index.words[prev].endSec : 0
-          if (run && contiguous && !(tighten && gap > tighten.maxGapSec)) run.push(i)
+          // Framed a shot at a time, a pause inside one shot is kept unless it is long.
+          const inShot =
+            shotCuts !== null &&
+            prev !== undefined &&
+            !shotCuts.some((c) => c > index.words[prev].endSec - 0.05 && c < index.words[i].startSec + 0.05)
+          const longest = inShot ? Math.max(tighten?.maxGapSec ?? 0, KEEP_IN_SHOT_SEC) : (tighten?.maxGapSec ?? 0)
+          if (run && contiguous && !(tighten && gap > longest)) run.push(i)
           else runs.push([i])
+        }
+        // A run too short to read joins its neighbour across the pause that split it, the shorter pause first.
+        if (tighten) {
+          const runSec = (r: number[]): number => index.words[r[r.length - 1]].endSec - index.words[r[0]].startSec
+          const joins = (a: number[], b: number[]): boolean => b[0] === a[a.length - 1] + 1
+          // Never across a long silence: keeping it would be worse than the flash.
+          const gapOf = (a: number[], b: number[]): number => {
+            const gap = index.words[b[0]].startSec - index.words[a[a.length - 1]].endSec
+            return gap <= MAX_KEPT_PAUSE_SEC ? gap : Infinity
+          }
+          for (let k = 0; k < runs.length && runs.length > 1; ) {
+            if (runSec(runs[k]) >= MIN_RUN_SEC) {
+              k++
+              continue
+            }
+            const before = k > 0 && joins(runs[k - 1], runs[k]) ? gapOf(runs[k - 1], runs[k]) : Infinity
+            const after = k < runs.length - 1 && joins(runs[k], runs[k + 1]) ? gapOf(runs[k], runs[k + 1]) : Infinity
+            if (before === Infinity && after === Infinity) {
+              k++
+              continue
+            }
+            if (before <= after) {
+              runs[k - 1] = [...runs[k - 1], ...runs[k]]
+              runs.splice(k, 1)
+              k = Math.max(0, k - 1)
+            } else {
+              runs[k] = [...runs[k], ...runs[k + 1]]
+              runs.splice(k + 1, 1)
+            }
+          }
         }
 
         runs.forEach((run, r) => {
@@ -284,6 +369,29 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
       p.srcEnd = meet
       q.srcStart = meet
     }
+  }
+
+  // Two beats that follow each other in the recording, in one shot of a recording framed a shot at a time (a
+  // sentence split in two, or beats a long pause made): the pause between them plays, as it would inside one
+  // beat, rather than jumping the speaker's head across it. Framed differently (a punch-in on the second, as
+  // Impaulsive cuts a phrase at a time), the change of framing hides the jump, and the pause goes.
+  for (let i = 1; i < drafts.length; i++) {
+    const p = drafts[i - 1]
+    const q = drafts[i]
+    const last = p.words[p.words.length - 1]
+    const first = q.words[0]
+    if (last === undefined || first === undefined || first !== last + 1) continue
+    if (p.beat.source !== q.beat.source || q.beat.transition || !ownPicture(p.beat) || !ownPicture(q.beat)) continue
+    if (!framedAlike(p.beat, q.beat)) continue
+    const recording = bySource.get(p.beat.source)
+    if (cut.punchJumps && recording && punchable(cut, recording)) continue
+    const cuts = pictureCuts(bySource.get(p.beat.source))
+    const gap = q.srcStart - p.srcEnd
+    if (!cuts || gap <= 0 || gap >= KEEP_IN_SHOT_SEC) continue
+    if (cuts.some((c) => c > p.srcEnd - 0.05 && c < q.srcStart + 0.05)) continue
+    const meet = (p.srcEnd + q.srcStart) / 2
+    p.srcEnd = meet
+    q.srcStart = meet
   }
 
   drafts = freezeFrames(drafts, index)
@@ -354,7 +462,8 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
       const at = (sec: number): number => piece.outStart + srcToOut(steps, sec - piece.srcStart)
       const outStart = clamp(at(w.startSec), piece.outStart, piece.outEnd)
       const outEnd = clamp(at(w.endSec), outStart, piece.outEnd)
-      out.push({ id: w.id, text: w.text, beat: d.beat.id, outStart, outEnd })
+      // As the edit spells it where the transcript misheard it (the respell op).
+      out.push({ id: w.id, text: cut.spelled?.[w.id] ?? w.text, beat: d.beat.id, outStart, outEnd })
       rb.words.push(w.id)
     }
   }
@@ -376,6 +485,40 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
         asked: beat.splitEdit.sec,
         at: q.outStart
       })
+  }
+  // Slivers: where a piece's own picture starts or ends just short of a cut in the recording's picture (another
+  // camera, or a turn to the other person), those few frames of the other shot would flash past. The picture's
+  // edit point moves onto the cut's first frame instead: a J cut runs the piece before on until it, an L cut
+  // brings the piece after in from it. The sound is untouched. Two pieces that carry straight on from each
+  // other, framed alike, play the recording's own cut as it is; framed differently (a crop on one seat, then
+  // on the other), the cut still lands in the wrong frame and moves too.
+  for (let i = 1; i < pieces.length; i++) {
+    const p = pieces[i - 1]
+    const q = pieces[i]
+    const pb = playing[i - 1].beat
+    const qb = playing[i].beat
+    // p's picture may have moved at its own start, which this does not touch; q's has not been moved yet.
+    if (q.picture || q.transition || (p.picture && Math.abs(p.picture.outEnd - p.outEnd) > 1e-9)) continue
+    if (!ownPicture(pb) || !ownPicture(qb)) continue
+    const pc = pictureCuts(bySource.get(p.source))
+    const qc = pictureCuts(bySource.get(q.source))
+    if (!pc || !qc) continue
+    const onFrom = p.source === q.source && Math.abs(p.srcEnd - q.srcStart) < 0.02
+    if (onFrom && framedAlike(pb, qb)) continue
+    const inside = (cuts: number[], a: number, b: number): boolean => cuts.some((c) => c > a + 0.005 && c < b - 0.005)
+    const qCuts = qc.filter((c) => c > q.srcStart + 0.002 && c - q.srcStart < SLIVER_SEC)
+    const pEnd = pictureSpan(p).srcEnd
+    const pCuts = pc.filter((c) => c < pEnd - 0.002 && pEnd - c < SLIVER_SEC)
+    if (qCuts.length) {
+      // q's picture starts on the cut's first frame; p's runs on to just before it.
+      const d = Math.max(...qCuts) - EDGE_SEC - q.srcStart
+      if (!inside(pc, pEnd, pEnd + d)) moveEditPoint(p, q, 'j', d / (stepsOf(q)[0]?.speed ?? 1), bySource, 1e-3)
+    } else if (pCuts.length) {
+      // p's picture ends just before the cut's first frame; q's comes in that much sooner.
+      const d = pEnd - (Math.min(...pCuts) - EDGE_SEC)
+      if (!inside(qc, q.srcStart - d, q.srcStart))
+        moveEditPoint(p, q, 'l', d / (stepsOf(p)[stepsOf(p).length - 1]?.speed ?? 1), bySource, 1e-3)
+    }
   }
   for (const rb of beats) {
     const first = pieces.find((p) => p.beat === rb.id)
@@ -465,7 +608,14 @@ function extend(d: Draft, side: 'start' | 'end', srcSec: number): void {
  * only show footage the recording has, each picture keeps a moment to itself,
  * and a piece played backwards or frozen keeps its edit point.
  */
-function moveEditPoint(p: Piece, q: Piece, kind: 'j' | 'l', sec: number, sources: Map<string, Source>): number {
+function moveEditPoint(
+  p: Piece,
+  q: Piece,
+  kind: 'j' | 'l',
+  sec: number,
+  sources: Map<string, Source>,
+  least = MIN_TRANSITION_SEC
+): number {
   if (p.reverse || q.reverse || p.hold !== undefined || q.hold !== undefined) return 0
   const pp = pictureSpan(p)
   const qq = pictureSpan(q)
@@ -478,7 +628,7 @@ function moveEditPoint(p: Piece, q: Piece, kind: 'j' | 'l', sec: number, sources
   } else {
     move = Math.min(sec, qq.srcStart / (qSteps[0]?.speed ?? 1), pp.outEnd - pp.outStart - SOLO_SEC)
   }
-  if (!(move >= MIN_TRANSITION_SEC)) return 0
+  if (!(move >= least)) return 0
   const sign = kind === 'j' ? 1 : -1
   const pEnd = pp.outEnd + sign * move
   const qStart = qq.outStart + sign * move

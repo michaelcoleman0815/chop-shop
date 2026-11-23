@@ -12,6 +12,7 @@ import {
   frameFor,
   hierarchyPages,
   MOTION_FONTS,
+  OTHER_VOICE,
   renderFrame,
   splitPage,
   textUnits,
@@ -110,6 +111,20 @@ function wordBox(layer: TextLayer, index: number, t: number) {
 }
 
 describe('hierarchy captions', () => {
+  it('opens on a caption: the first page’s first word is in on the first frame, the rest as they are said', () => {
+    // The first word, "Then", is said at 0.5 s.
+    const scene = sceneOf(docWith('vertical'))
+    const first = captionsIn(scene)[0]
+    expect(first.start).toBeLessThan(0)
+    const { lit } = draw(scene, 0)
+    const { size } = scene
+    expect(lit(0, 0, size.width, size.height)).toBeGreaterThan(200)
+    // Only "Then": the next word, said at 0.86 s, is not up yet.
+    const second = wordBox(first, 1, 0 - first.start)
+    expect(draw(scene, 0).lit(second.x, second.y, second.w, second.h)).toBeLessThan(20)
+    expect(draw(scene, 1.4).lit(second.x, second.y, second.w, second.h)).toBeGreaterThan(20)
+  })
+
   it('pages at sentence ends, cuts and pauses, sharing a long sentence out evenly at good breaks', () => {
     const doc = docWith('vertical')
     const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
@@ -153,6 +168,68 @@ describe('hierarchy captions', () => {
     const s = splitPage(long, undefined, 16)
     const big = s.big === 'first' ? long.slice(0, s.at) : long.slice(s.at)
     expect(big.map((w) => w.text).join(' ').length).toBeLessThanOrEqual(16)
+  })
+
+  it('sets big only the key words the edit chose, and the pages without one as one small centred line', () => {
+    const doc = docWith('vertical')
+    const cut = currentCut(doc)
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const asset = resolved.words.find((w) => w.text.startsWith('asset'))!
+    const chosen = commit(doc, [{ op: 'captions', set: { keys: [asset.id] } }], 'x').doc
+    const pages = captionsIn(sceneOf(chosen))
+    const withKey = pages.find((p) => p.spans!.some((s) => s.text.includes('asset')))!
+    expect(withKey.spans!.filter((s) => s.scale === 1).map((s) => s.text.trim())).toEqual(['asset'])
+    // The first page has no chosen word: every word small and centred, on one line.
+    const first = pages[0]
+    expect(new Set(first.spans!.map((s) => s.scale))).toEqual(new Set([0.6]))
+    expect(first.spans!.every((s) => s.align === 'center' && !s.text.includes('\n'))).toBe(true)
+  })
+
+  it('sets a key word in the look its meaning asks for: serif, red serif or heavy capitals', () => {
+    const doc = docWith('vertical')
+    const resolved = resolveCut(currentCut(doc), doc.words, doc.sources)
+    const id = (t: string) => resolved.words.find((w) => w.text.startsWith(t))!.id
+    const looked = commit(
+      doc,
+      [{ op: 'captions', set: { keyLooks: { [id('asset')]: 'dark', [id('$999')]: 'punch', [id('settings')]: 'serif' } } }],
+      'x'
+    ).doc
+    const spans = captionsIn(sceneOf(looked)).flatMap((p) => p.spans!)
+    const span = (t: string) => spans.find((s) => s.text.trim().startsWith(t))!
+    expect(span('asset')).toMatchObject({ family: 'Instrument Serif', color: '#E5322D', scale: 1.6 })
+    expect(span('$999')).toMatchObject({ family: 'Inter ExtraBold', uppercase: true })
+    expect(span('settings')).toMatchObject({ family: 'Instrument Serif' })
+    expect(span('settings').color).toBeUndefined()
+    // A chosen word mid-sentence closes its page, so it alone takes the big line.
+    const mid = commit(doc, [{ op: 'captions', set: { keyLooks: { [id('people')]: 'serif' } } }], 'x').doc
+    const people = captionsIn(sceneOf(mid)).find((p) => p.spans!.some((s) => s.text.trim() === 'people'))!
+    expect(people.spans!.map((s) => s.text.trim()).join(' ')).toBe('Most people')
+    expect(people.spans!.filter((s) => s.scale! > 1).map((s) => s.text.trim())).toEqual(['people'])
+    // A run of key words stays together on its page.
+    const run = commit(doc, [{ op: 'captions', set: { keys: [id('Most'), id('people')] } }], 'x').doc
+    expect(captionsIn(sceneOf(run)).some((p) => p.spans!.map((s) => s.text.trim()).join(' ') === 'Most')).toBe(false)
+    // A word with a look is a chosen key word: it goes big without being listed in keys.
+    expect(span('asset').scale).toBeGreaterThan(1)
+    // And it draws in its own face.
+    const scene = sceneOf(looked)
+    const page = captionsIn(scene).find((p) => p.spans!.some((s) => s.text.includes('asset')))!
+    expect(() => draw(scene, page.start + 0.9)).not.toThrow()
+  })
+
+  it('sets a page said by the other voice in yellow, and the voice heard most in white', () => {
+    const doc = docWith('vertical')
+    // The last sentence is the host's.
+    const host = doc.words.findIndex((w) => w.text === 'Most')
+    const told = { ...doc, words: doc.words.map((w, i) => ({ ...w, speaker: i >= host ? 1 : 0 })) }
+    const pages = captionsIn(sceneOf(told))
+    const fills = pages.map((p) => [p.spans!.map((s) => s.text.trim()).join(' '), p.fill])
+    expect(fills.filter(([, f]) => f === OTHER_VOICE).map(([t]) => t).join(' ')).toMatch(/^Most people never open/)
+    expect(fills[0][1]).toBe(DEFAULT_THEME.text)
+    // One voice, or voices not told apart: every page in the text colour.
+    expect(captionsIn(sceneOf(doc)).every((p) => p.fill === DEFAULT_THEME.text)).toBe(true)
+    // A voice heard in only a word or two is the finder slipping, not someone else: no yellow.
+    const slip = { ...doc, words: doc.words.map((w) => ({ ...w, speaker: w.text === 'Most' ? 2 : 0 })) }
+    expect(captionsIn(sceneOf(slip)).every((p) => p.fill === DEFAULT_THEME.text)).toBe(true)
   })
 
   it('fades each word up as it is said, the big line bigger, and changes page when the next begins', () => {

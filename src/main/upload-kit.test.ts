@@ -273,7 +273,8 @@ describe.skipIf(!FFMPEG)('ready to upload', () => {
     for (const c of srt) expect(ink(ffmpeg, r.outputPath, (c.start + c.end) / 2)).toBeGreaterThan(0.002)
     expect(srt.slice(1).filter((c, i) => c.start - srt[i].end > 0.05)).toHaveLength(1)
     const gap = srt.findIndex((c, i) => i > 0 && c.start - srt[i - 1].end > 0.5)
-    expect(srt[gap].text).toBe('The camera is')
+    // A page never ends on a word that leads into the next (shared/words), so "is" opens the next one.
+    expect(srt[gap].text).toBe('The camera')
     expect(ink(ffmpeg, r.outputPath, (srt[gap - 1].end + srt[gap].start) / 2)).toBe(0)
     expect(kit.captions).toEqual({ pages: srt.length, burned: true })
   }, 180000)

@@ -1,6 +1,7 @@
 import { keys, onColor, tail } from '../anim'
 import { METALS, type Chrome } from '../chrome'
 import type { Count, Layer } from '../types'
+import { speakerFace } from './chips'
 import { register, type BuildContext } from './registry'
 
 /**
@@ -59,7 +60,7 @@ function keyword(ctx: BuildContext): Layer[] {
   const value = (item.text[0] ?? '').trim()
   const label = (item.text[1] ?? '').trim()
   const style = (STYLES as readonly string[]).includes(item.style) ? item.style : 'plate'
-  const place = (PLACES as readonly string[]).includes(item.place) ? item.place : 'top'
+  const asked = (PLACES as readonly string[]).includes(item.place) ? item.place : 'top'
   const accent = item.color.trim() || theme.accent
   // Chrome lettering is bigger, as far as the frame's width allows: its depth and outline want room.
   const chrome = style === 'chrome' || style === 'gold'
@@ -72,6 +73,11 @@ function keyword(ctx: BuildContext): Layer[] {
   const gap = size * 0.28
   const heights = [icon ? disc : 0, size * 1.25, label ? size * 0.42 : 0]
   const total = heights.reduce((a, b) => a + b, 0) + gap * (heights.filter(Boolean).length - 1)
+  // Never over the speaker's eyes: at the top, where face tracking shows a close-up leaving no room above the
+  // head, it goes low in the frame instead, under the captions at the chest.
+  const face = speakerFace(frame, ctx.faces)
+  const topFoot = frame.safe.top + total + H * 0.02
+  const place = asked === 'top' && ctx.faces.length > 0 && topFoot > (face.y + face.h * 0.15) * H ? 'bottom' : asked
   const middle =
     place === 'center'
       ? H * 0.5

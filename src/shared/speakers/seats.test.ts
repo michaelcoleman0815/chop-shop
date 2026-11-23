@@ -56,17 +56,25 @@ describe('who sits where', () => {
 })
 
 describe('the frame on whoever is talking', () => {
-  it('leaves a turn too short to count with the one before it', () => {
-    const words = spoken([
-      [0, 0, 3],
-      [1, 3, 3.5],
-      [0, 3.5, 6],
-      [1, 6, 9]
-    ])
+  it('leaves a turn too short to count with the one before it, and cuts on no dash', () => {
+    // An "mm" of 0.4 s stays with the speaker before it; a reply of 0.9 s gets its own shot.
+    const words = [
+      ...spoken([[0, 0, 3]]),
+      { startSec: 3, endSec: 3.4, speaker: 1, text: 'Mm.' },
+      ...spoken([
+        [0, 3.5, 6],
+        [1, 6, 6.9],
+        [0, 7, 9]
+      ])
+    ]
     expect(turnsOf(words).map((t) => [t.speaker, t.startSec])).toEqual([
       [0, 0],
-      [1, 6]
+      [1, 6],
+      [0, 7]
     ])
+    // A transcriber's dash where the voice changes, timed early, is no word to cut on.
+    const dashed = [...spoken([[0, 0, 3]]), { startSec: 2.6, endSec: 2.7, speaker: 1, text: '-' }, ...spoken([[1, 3, 5]])]
+    expect(turnsOf(dashed).map((t) => t.startSec)).toEqual([0, 3])
   })
 
   it('sits on the speaker’s face and cuts when the floor changes hands, never gliding across', () => {
@@ -115,6 +123,30 @@ describe('the frame on whoever is talking', () => {
     const samples = Array.from({ length: 12 }, (_, i) => ({ t: i / 2, faces: i < 6 ? [{ x: 0.26, w: 0.08 }, { x: 0.66, w: 0.08 }] : [{ x: 0.4, w: 0.2 }] }))
     const subject = subjectOfSpeakers(samples, words, seats, 6, 2)
     expect(subject?.x[8]).toBeCloseTo(0.5, 2)
+  })
+
+  it('goes to the speaker’s seat when the wide shot finds only the listener’s face', () => {
+    // A two-shot: the host at 0.3, the guest at 0.72, both found until 2 s; after that only the host is
+    // found (the guest turned in profile) while the guest speaks. A close shot of the guest from 3 s, alone
+    // and big, is followed as it is.
+    const seats = new Map([
+      [0, { x: 0.3 }],
+      [1, { x: 0.72 }]
+    ])
+    const words = spoken([
+      [0, 0, 1],
+      [1, 1, 4]
+    ])
+    const samples = Array.from({ length: 16 }, (_, i) => {
+      const t = i / 4
+      const host = { x: 0.3 - 0.045, w: 0.09 }
+      const guest = { x: 0.72 - 0.045, w: 0.09 }
+      return { t, faces: t < 2 ? [host, guest] : t < 3 ? [host] : [{ x: 0.5 - 0.11, w: 0.22 }] }
+    })
+    const subject = subjectOfSpeakers(samples, words, seats, 4, 4)!
+    const at = (t: number): number | null => subject.x[Math.round(t * 4)]
+    expect(at(2.5)).toBeCloseTo(0.72, 2)
+    expect(at(3.5)).toBeCloseTo(0.5, 2)
   })
 
   it('does nothing with fewer than two speakers placed', () => {

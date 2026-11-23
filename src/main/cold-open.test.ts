@@ -25,19 +25,20 @@ describe('a cold open', () => {
   const bites = [sentence(9), sentence(2), sentence(10), sentence(5), sentence(11)]
   const cut = opened(base, bites)
 
-  it('plays its moments first, in the order given, cut close, ahead of the whole conversation', () => {
+  it('plays its moments first, in the order given, ahead of the whole conversation', () => {
     const open = cut.beats.filter((b) => b.coldOpen)
     expect(open.map((b) => [b.from, b.to])).toEqual(bites.map((b) => [b.from, b.to]))
     expect(cut.beats.slice(0, bites.length).every((b) => b.coldOpen)).toBe(true)
-    expect(open.every((b) => b.padIn < 0.08 && b.padOut < 0.12)).toBe(true)
+    // The breath before a word and the end of the last one kept, as the conversation's beats keep them.
+    expect(open.every((b) => b.padIn >= 0.08 && b.padOut >= 0.12)).toBe(true)
     // The conversation is all still there after it.
     expect(cut.beats.slice(bites.length).map((b) => b.id)).toEqual(base.beats.map((b) => b.id))
     // Beat ids stay unique.
     expect(new Set(cut.beats.map((b) => b.id)).size).toBe(cut.beats.length)
   })
 
-  it('flashes white on every third cut and dips to black into the conversation', () => {
-    expect(cut.beats.slice(0, bites.length).map((b) => b.transition?.kind ?? 'cut')).toEqual(['cut', 'cut', 'cut', 'flash', 'cut'])
+  it('hard cuts between its moments, and dips to black into the conversation', () => {
+    expect(cut.beats.slice(0, bites.length).every((b) => b.transition === undefined)).toBe(true)
     expect(cut.beats[bites.length].transition?.kind).toBe('dip-to-black')
   })
 

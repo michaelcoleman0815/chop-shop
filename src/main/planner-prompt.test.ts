@@ -68,6 +68,24 @@ describe('the planner request', () => {
     )
   })
 
+  it('says where each speaker sits in a two-shot, and turns key-word looks into the caption spec', () => {
+    const told = words.map((w, i) => ({ ...w, speaker: i < 4 ? 0 : 1 }))
+    const seated = { ...source, subject: { hz: 4, x: [0.5], seats: [{ speaker: 0, x: 0.23 }, { speaker: 1, x: 0.8 }] } }
+    const doc = createDoc({ id: 'd', title: 't', source: seated, words: told })
+    expect(renderTranscript(doc).split('\n')[0]).toBe(
+      '<source id="s1" file="take.mov" length="0:12" speaker="found" speakers="2" seats="S1 0.23, S2 0.80">'
+    )
+    const planned = PlannerOpSchema.parse({
+      op: 'captions',
+      set: { preset: 'hierarchy', keys: ['w4'], looks: [{ word: 'w7', look: 'dark' }] }
+    })
+    const op = fromPlannerOp(planned)
+    expect(op).toEqual({ op: 'captions', set: { preset: 'hierarchy', keys: ['w4'], keyLooks: { w7: 'dark' } } })
+    const r = commit(doc, [op], 'x')
+    expect(r.rejected).toEqual([])
+    expect(currentCut(r.doc).captions).toMatchObject({ keys: ['w4'], keyLooks: { w7: 'dark' } })
+  })
+
   it('describes the cut, its looks, struck words and the notes', () => {
     let doc = createDoc({ id: 'd', title: 't', source, words })
     doc = commit(

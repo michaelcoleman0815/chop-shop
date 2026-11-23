@@ -20,6 +20,7 @@ import {
   sfxName,
   ALL_TRANSITION_KINDS,
   shownTransition,
+  KEY_LOOKS,
   type EditDoc,
   type Note
 } from '../shared/edit'
@@ -77,9 +78,9 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"split","beat":"b4","at":"w31"}: split before a word, which must be inside the beat and not its first word. The second half gets the next free id.
 - {"op":"join","beat":"b4"}: join a beat with the one after it. Only when they sit together in the recording.
 - {"op":"insert","to":2,"beat":{"source":"s1","from":"w40","to":"w52"}}: bring words back as a new beat.
-- {"op":"cold-open","bites":[{"from":"w812","to":"w830"},{"from":"w120","to":"w131"}]}: a cold open, as a podcast's: these moments, in this order, played first, ahead of the conversation they come from, cut close, with a white flash on every third cut and a dip to black into the conversation. A music bed plays under the cold open only. Again, it replaces the cold open there was; "bites":[] takes it out.
+- {"op":"cold-open","bites":[{"from":"w812","to":"w830"},{"from":"w120","to":"w131"}]}: a cold open, as a podcast's: these moments, in this order, played first, ahead of the conversation they come from, hard cut into each other, with a short dip to black into the conversation. A music bed plays under the cold open only. Again, it replaces the cold open there was; "bites":[] takes it out.
 - {"op":"treat","beats":["b2","b5"],"set":{"bw":true}}: set treatment fields. A bigWord set names exactly one beat.
-- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest; "preset":"boxed" for drawn captions a few words at a time with the word being said in a solid box of the brand's accent; "preset":"clean" goes back to plain subtitles.
+- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest. With hierarchy, "keys":["w31","w42"] picks the words that go big, one every page or two, and only they do: a page with none is one small centred line, and a page ends on its key word. "looks":[{"word":"w46","look":"dark"}] sets a key word by its meaning, as The Diary of a CEO does: serif for a tender or grave word ("family", "impact"), dark (red serif) for horror or contempt ("insanity", "Hitler"), punch (heavy capitals) for a word that hits ("CORRUPT", "SENSE"); a word with a look is a key word too. Use looks on a few words a minute, not every key; "preset":"boxed" for drawn captions a few words at a time with the word being said in a solid box of the brand's accent; "preset":"clean" goes back to plain subtitles.
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
 - {"op":"aspect","aspect":"vertical"}: vertical, wide, square or original.
 - {"op":"loudness","lufs":-14}.
@@ -123,6 +124,7 @@ ${familyIndex() ? `\n${familyIndex()}\n` : ''}
 - "This", "here" and "that bit" in a note mean the beat the note was left on.
 - A note left on a stretch ("on b3 to b6 only") is about those beats alone, and "this" means all of them: change nothing outside them, nothing that changes the whole video (a look, music, captions, the shape), and when it cannot be done inside them, make no op for it and say why in reply.
 - To open on a stronger line, move the beat that holds it to position 0; if it sits inside a long beat, split it out first.
+- A podcast or interview clip for Shorts is cut every 1.5 to 2.5 s, as the most-watched shows cut theirs: split long beats at phrase ends and change the framing on each cut, wide then close (zoom 1.4 to 1.5) then extreme close on the line that lands (1.7 to 1.8, with "zoomAt":0.3 to keep the face), never the same framing twice running. Where the picture holds both people (a wide two-shot cropped to the frame), cut to the one listening for a line that lands on them ("are you a...?" on the one asked, a laugh, a deadpan): split it out and frame it on their seat: a source's seats="S1 0.23, S2 0.80" says where each sits across a two-shot, as framing's x. Only where the picture is that two-shot; on a single of one person, leave the framing to follow the speaker. End on the laugh when there is one.
 - Keep sentences whole unless asked to cut inside one. Never strike the only words of a beat; remove the beat instead.
 - If a request needs footage, a file or a decision you do not have, make no op for it and say what you need in needs, one full sentence for each.
 - If nothing can be done, return no ops and say why in reply.
@@ -131,7 +133,7 @@ ${familyIndex() ? `\n${familyIndex()}\n` : ''}
 - Add sound effects only when asked, sparingly: a whoosh through a whip or push transition, a hit on a hard cut to something new, a riser into a new section, a pop on a big word. Never one on every cut.
 - Switch to another camera only when asked, or when asked for variety: at a change of thought, never mid-sentence, and back to the recording often enough that it stays the main view. "pip" and "side" suit a reaction or a second person.
 - Show videos in a grid only when asked, or when the words set finished videos or takes side by side ("here are four edits of the same clip"). A grid covers its whole beat, as a cutaway does, so split first and give it only the words that show them.
-- Make a cold open only when asked for one (a cold open, a hook or a teaser for a podcast or an interview). Choose 6 to 12 bites from across the whole recording, 3 to 8 s each and most 4 to 6, 30 to 90 s in all, each a whole phrase. Open on the guest's most surprising claim with no context. Then go back and forth: a one-line question from the host, then the answer, so each bite is set up by the one before. Rise as it goes: the premise, then numbers and credentials, then the personal or the taboo. End on a question left hanging, or a line that makes the viewer need the next minute. Never use a bite that only makes sense with what came before it in the recording. Where the transcript says who speaks (S1, S2, a source with speakers="2"), the host is usually the one asking.
+- Make a cold open only when asked for one (a cold open, a hook or a teaser for a podcast or an interview). Fit it to the show. A comedy or banter show teases with one funny exchange played whole, 20 to 45 s, with its setup and its laugh, and no music: one bite. A show of stories, claims or interviews with stakes builds a montage: choose 6 to 12 bites from across the whole recording, 3 to 8 s each and most 4 to 6, 30 to 90 s in all, each a whole phrase. Open on the guest's most surprising claim with no context. Then go back and forth: a one-line question from the host, then the answer, so each bite is set up by the one before. Rise as it goes: the premise, then numbers and credentials, then the personal or the taboo. End on a question left hanging, or a line that makes the viewer need the next minute. Never use a bite that only makes sense with what came before it in the recording. Where the transcript says who speaks (S1, S2, a source with speakers="2"), the host is usually the one asking.
 - Make chapters only when asked. Start one where the subject changes, and name it in two to five words for what that part is about, never a whole sentence.
 - Leave the colour alone unless asked. For tech and product videos, "clean" keeps colour true; save warm, cool, cinematic and vintage for when someone asks for a mood.
 - Leave speed alone unless asked. Someone talking sped past 1.25 is hard to follow; slow motion and speed ramps belong on footage without speech, such as a cutaway of a product turning or hands at work.
@@ -228,7 +230,9 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
       wordsPerScreen: z.number().optional(),
       position: z.enum(['top', 'middle', 'chest', 'bottom']).optional(),
       uppercase: z.boolean().optional(),
-      preset: z.enum(['clean', 'hierarchy', 'boxed']).optional()
+      preset: z.enum(['clean', 'hierarchy', 'boxed']).optional(),
+      keys: z.array(z.string()).optional(),
+      looks: z.array(z.object({ word: z.string(), look: z.enum(KEY_LOOKS) })).optional()
     })
   }),
   z.object({
@@ -488,6 +492,11 @@ export function fromPlannerOp(op: PlannerOp): unknown {
       return op.of ? op : { op: op.op, source: op.source, of: null }
     case 'framing':
       return { op: op.op, beats: op.beats, x: op.x >= 0 && op.x <= 1 ? op.x : null }
+    case 'captions': {
+      // Looks as the planner lists them, word by word, as the caption spec keeps them, by word.
+      const { looks, ...set } = op.set
+      return { op: op.op, set: { ...set, ...(looks?.length ? { keyLooks: Object.fromEntries(looks.map((l) => [l.word, l.look])) } : {}) } }
+    }
     case 'grid':
       return { op: 'treat', beats: op.beats, set: { grid: plannedGrid(op) } }
     case 'look': {
@@ -557,10 +566,14 @@ export function renderTranscript(doc: EditDoc): string {
     const angle = (currentCut(doc).angles ?? []).find((a) => a.source === source.id)
     const camera = angle ? ` camera-of="${angle.of}" offset="${angle.offsetSec.toFixed(2)}"` : ''
     const found = source.subject ? ' speaker="found"' : ''
+    // Where each sits in a two-shot, for framing a beat on the one listening.
+    const sat = source.subject?.seats?.length
+      ? ` seats="${source.subject.seats.map((s) => `S${s.speaker + 1} ${s.x.toFixed(2)}`).join(', ')}"`
+      : ''
     const voices = new Set(doc.words.filter((w) => w.source === source.id && w.speaker !== undefined).map((w) => w.speaker)).size
     const told = voices > 1 ? ` speakers="${voices}"` : ''
     lines.push(
-      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}${camera}${found}${told}>`
+      `<source id="${source.id}" file="${attr(fileName(source.path))}" length="${clock(source.durationSec)}"${sound}${camera}${found}${told}${sat}>`
     )
     const words = doc.words.filter((w) => w.source === source.id)
     // One line per sentence keeps it readable without losing a single id. Where the voices are told apart

@@ -487,7 +487,9 @@ async function snapped(
       endSec: Math.max(0, w.endSec - from)
     }))
     const onSound = snapWords(local, env)
-    return (restarts ? cutsOnPauses(onSound, env) : onSound).map((w) => ({
+    // Everything else a word knows (who says it, whether it is leaned on) stays with it.
+    return (restarts ? cutsOnPauses(onSound, env) : onSound).map((w, i) => ({
+      ...words[i],
       text: w.text,
       startSec: w.startSec + from,
       endSec: w.endSec + from
@@ -511,7 +513,15 @@ async function closely(tools: ClippingTools, path: string, recordingSec: number,
     const close = withoutSoundNotes(await tools.hear(path, from, to - from, recordingSec))
     const heard = heardClosely(words, close)
     if (!heard) console.warn('[clipping] the close hearing disagreed with the first; keeping the first')
-    return heard ?? words
+    // Words heard again are whoever said the word first heard under them.
+    const said = (t: number): number | undefined =>
+      words.find((w) => t >= w.startSec - 0.05 && t <= w.endSec + 0.05)?.speaker
+    return heard
+      ? heard.map((w) => {
+          const speaker = w.speaker ?? said((w.startSec + w.endSec) / 2)
+          return speaker === undefined ? w : { ...w, speaker }
+        })
+      : words
   } catch (err) {
     console.warn('[clipping] could not hear a clip again:', message(err))
     return words
@@ -540,7 +550,9 @@ async function speakerIn(
     const cuts = (await tools.shots(path, from, length)).map((t) => Math.round((from + t) * 1000) / 1000)
     const subject = (await followTalk(tools, path, samples, from, length, words)) ?? subjectFrom(samples, length, FACE_HZ, from)
     const all = [...new Set([...(subject.cuts ?? []), ...cuts])].sort((a, b) => a - b)
-    return { subject: all.length > 0 ? { ...subject, cuts: all } : subject, crowd }
+    // The camera's cuts kept apart from the turns to another speaker, which only move a crop.
+    const shots = cuts.length > 0 ? { shots: cuts } : {}
+    return { subject: all.length > 0 ? { ...subject, cuts: all, ...shots } : subject, crowd }
   } catch {
     return { subject: null, crowd: 0 }
   }
@@ -574,7 +586,10 @@ async function followTalk(
     const frames = await tools.mouth(path, samples, from, length)
     if (!frames) return null
     const seats = seatsOfSpeakers(frames, said)
-    return subjectOfSpeakers(samples, said, seats, length, FACE_HZ, from)
+    const subject = subjectOfSpeakers(samples, said, seats, length, FACE_HZ, from)
+    // Kept, so an edit can cut to the one listening.
+    const sat = [...seats.entries()].map(([speaker, seat]) => ({ speaker, x: seat.x })).sort((a, b) => a.speaker - b.speaker)
+    return subject && sat.length > 0 ? { ...subject, seats: sat } : subject
   } catch (err) {
     console.warn('[clipping] could not tell whose face is whose', message(err))
     return null

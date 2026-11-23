@@ -7,7 +7,7 @@ import { readClipAsk } from './ask'
 import { measureRecording, planRecording } from './plan'
 import { fitPick, shapePicks } from './shape'
 import { clipDoc } from './doc'
-import { CLIP_PROFILES } from './profile'
+import { clipBounds, CLIP_PROFILES, LONGEST_CLIP_SEC } from './profile'
 import { clipsReply, recordingNames, type ClipsFound } from './reply'
 import { leaveOut, overlapWith } from './leave-out'
 import { sentencesOf } from './sentences'
@@ -364,6 +364,9 @@ describe('reading what is asked', () => {
     expect(readClipAsk('ten clips under 30 seconds')).toMatchObject({ count: 10, length: { minSec: 12, maxSec: 30 } })
     expect(readClipAsk('about a minute each').length).toEqual({ minSec: 48, maxSec: 72 })
     expect(readClipAsk('30-45 seconds').length).toEqual({ minSec: 30, maxSec: 45 })
+    // Up to ten minutes, as shows post their long clips: eight minutes is eight, not three.
+    expect(clipBounds(CLIP_PROFILES.podcast, readClipAsk('8 minute clips').length).maxSec).toBe(480)
+    expect(clipBounds(CLIP_PROFILES.podcast, readClipAsk('10 minute clips').length).maxSec).toBe(LONGEST_CLIP_SEC)
     expect(readClipAsk('the funny parts')).toMatchObject({ funny: true, topic: null })
     expect(readClipAsk('the part about forgiveness')).toMatchObject({ topic: 'forgiveness', single: true, count: null })
     expect(readClipAsk('3 clips about faith')).toMatchObject({ topic: 'faith', single: false, count: 3 })

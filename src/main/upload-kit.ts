@@ -96,7 +96,8 @@ export function drawnCues(scene: MotionScene): Cue[] {
     .map((l) => {
       const words = (l.spans ?? [{ text: l.text }]).map((s) => s.text.replace(/^\n/, '')).filter(Boolean)
       const text = words.join(' ')
-      return { start: l.start, end: l.end, text: l.font.uppercase ? text.toUpperCase() : text }
+      // An opening page starts before the video does, so its first word is in on the first frame: it shows from 0.
+      return { start: Math.max(0, l.start), end: l.end, text: l.font.uppercase ? text.toUpperCase() : text }
     })
     .filter((c) => c.text && c.end > c.start)
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Piece } from './resolve'
+import { pictureSpan, type Piece } from './resolve'
 import { srcToOut } from './timing'
 
 /**
@@ -30,7 +30,20 @@ export const SubjectSchema = z.object({
    * (main/shots): the window cuts with the camera instead of gliding
    * through a shot it was never measuring.
    */
-  cuts: z.array(z.number().nonnegative()).max(20000).optional()
+  cuts: z.array(z.number().nonnegative()).max(20000).optional(),
+  /**
+   * Of the cuts, the camera's own, in seconds of the recording; the rest are turns to another speaker. A beat
+   * framed by hand keeps its framing through a turn, and gives it up only where the camera cuts away.
+   */
+  shots: z.array(z.number().nonnegative()).max(20000).optional(),
+  /**
+   * Where each speaker sits across a shot that holds them all (shared/speakers/seats), by speaker: what
+   * framing a beat on the one listening uses, in a two-shot cropped to a narrower frame.
+   */
+  seats: z
+    .array(z.object({ speaker: z.number().int().nonnegative(), x: z.number().min(0).max(1) }))
+    .max(16)
+    .optional()
 })
 export type Subject = z.infer<typeof SubjectSchema>
 
@@ -114,6 +127,12 @@ export interface ReframeOptions {
    * sample as it comes. For a punched-in window, which a walking preacher leaves before a glide lands.
    */
   close?: boolean
+  /**
+   * One framing a shot, as podcast editors frame a seated conversation: the window holds on the middle of
+   * where the speaker was across each stretch between cuts (the camera's, or a turn to the other person),
+   * and moves only by cutting at those cuts, never by gliding or following a gesture.
+   */
+  locked?: boolean
 }
 
 export const DEFAULT_REFRAME: ReframeOptions = { deadzone: 0.06, glideSec: 0.6, cutOver: 0.3, smoothing: 2 }
@@ -131,6 +150,7 @@ export function planReframe(subject: Subject, opts: ReframeOptions = DEFAULT_REF
   const step = 1 / subject.hz
   const from = subject.from ?? 0
   const cuts = [...(subject.cuts ?? [])].sort((a, b) => a - b)
+  if (opts.locked) return lockedPath(xs, step, from, cuts)
   // Which shot a moment is in: samples either side of a camera cut are never mixed.
   const shotAt = (t: number): number => {
     let n = 0
@@ -161,7 +181,7 @@ export function planReframe(subject: Subject, opts: ReframeOptions = DEFAULT_REF
     if (x === null) continue
     // The first look at a new shot: the window cuts where the camera did.
     if (shots[i] !== shot) {
-      const hold = Math.max(cuts[shots[i] - 1] - 1e-3, keys[keys.length - 1].t + 1e-6)
+      const hold = Math.max(cuts[shots[i] - 1] - SWITCH_SEC - 1e-3, keys[keys.length - 1].t + 1e-6)
       if (Math.abs(x - at) > 1e-6) keys.push({ t: hold, x: at }, { t: hold + 1e-3, x })
       at = x
       shot = shots[i]
@@ -189,6 +209,50 @@ export function planReframe(subject: Subject, opts: ReframeOptions = DEFAULT_REF
     at = x
   }
   return keys
+}
+
+/** How long before a cut's first frame the window takes the new shot's framing. */
+const SWITCH_SEC = 2e-3
+
+/** Locked, a stretch whose speaker sits within this of the last framing keeps it. */
+const LOCKED_STAY = 0.02
+
+/** One framing a stretch between cuts, cutting from each to the next: ReframeOptions.locked. */
+function lockedPath(xs: (number | null)[], step: number, from: number, cuts: number[]): FrameKey[] {
+  const end = from + xs.length * step
+  const bounds = [from, ...cuts.filter((c) => c > from && c < end), end]
+  const keys: FrameKey[] = []
+  let at: number | null = null
+  for (let k = 0; k < bounds.length - 1; k++) {
+    const [a, b] = [bounds[k], bounds[k + 1]]
+    const seen = xs.filter((x, i): x is number => x !== null && from + i * step >= a && from + i * step < b)
+    // A stretch with no face seen holds where the window was.
+    if (seen.length === 0) continue
+    const sorted = [...seen].sort((p, q) => p - q)
+    const x = sorted[Math.floor(sorted.length / 2)]
+    if (at === null) {
+      keys.push({ t: from, x })
+      at = x
+    }
+    // Across a cut to much the same place, the window stays where it is rather than jolt a hair.
+    else if (Math.abs(x - at) > LOCKED_STAY) {
+      // Switched a hair before the cut's first frame, so a picture that opens on that frame (an edit point set
+      // just before it) opens framed for it; no frame falls between.
+      const before = Math.max(a - SWITCH_SEC - 1e-3, keys[keys.length - 1].t + 1e-6)
+      keys.push({ t: before, x: at }, { t: before + 1e-3, x })
+      at = x
+    }
+  }
+  return keys.length ? keys : [{ t: from, x: 0.5 }]
+}
+
+/**
+ * Whether a recording's speaker is framed one shot at a time (ReframeOptions.locked): a seated conversation,
+ * with the seats found, or a switched feed of several cameras. Someone walking about a single camera's
+ * picture is followed instead.
+ */
+export function framedByShot(subject: Subject | undefined): boolean {
+  return !!subject && ((subject.seats?.length ?? 0) > 1 || (subject.cuts?.length ?? 0) > 0)
 }
 
 /** Where the window looks at a moment of the recording. */
@@ -236,8 +300,18 @@ export function pieceFraming(
   subject: Subject | undefined,
   opts: ReframeOptions = DEFAULT_REFRAME
 ): FrameKey[] | null {
-  if (typeof treatment.framing === 'number') return [{ t: 0, x: treatment.framing }]
-  if (!cut.reframe || !subject) return null
+  const hand = typeof treatment.framing === 'number' ? treatment.framing : null
+  // Framed by hand on one camera's picture, a beat the feed cuts away from mid-way follows the new shot from
+  // the cut: a crop on one seat of a two-shot shows a wall in the other camera's single.
+  const handCut =
+    hand !== null && framedByShot(subject)
+      ? (subject?.shots ?? subject?.cuts ?? []).find(
+          (c) => c > pictureSpan(piece).srcStart + 0.01 && c < pictureSpan(piece).srcEnd - 0.01
+        )
+      : undefined
+  if (hand !== null && handCut === undefined) return [{ t: 0, x: hand }]
+  if (hand === null && (!cut.reframe || !subject)) return null
+  if (!subject) return [{ t: 0, x: hand ?? 0.5 }]
   // A beat punched in shows a narrower window: the speaker may stray only as far within it before it moves,
   // and it keeps up sooner, or a preacher who walks is out of it before it follows.
   const zoom = treatment.zoom ?? 1
@@ -248,15 +322,29 @@ export function pieceFraming(
     smoothing: Math.max(1, Math.round(opts.smoothing / zoom)),
     close: true
   }
-  const path = planReframe(subject, zoom > 1.001 ? close : opts)
+  // A seated conversation or a switched feed holds one framing a shot, punched in or not.
+  const path = planReframe(subject, framedByShot(subject) ? { ...opts, locked: true } : zoom > 1.001 ? close : opts)
   const pic = piece.picture ?? piece
   if (piece.reverse || piece.hold !== undefined) return [{ t: 0, x: frameAt(path, pic.srcStart) }]
   const steps = piece.steps ?? [{ srcSec: piece.srcEnd - piece.srcStart, speed: 1 }]
   // Seconds of output from the picture's start for a moment of the recording.
   const out = (src: number): number => srcToOut(steps, src - piece.srcStart) - (pic.outStart - piece.outStart)
+  if (hand !== null && handCut !== undefined) {
+    // By hand until the cut, then the shot's own framing.
+    const at = handCut - SWITCH_SEC
+    const after = path.filter((k) => k.t > at && k.t < pic.srcEnd)
+    const keys = [
+      { t: 0, x: hand },
+      { t: out(at - 1e-3), x: hand },
+      { t: out(at), x: frameAt(path, handCut) },
+      ...after.map((k) => ({ t: out(k.t), x: k.x })),
+      { t: out(pic.srcEnd), x: frameAt(path, pic.srcEnd) }
+    ]
+    return keys.filter((k, i) => i === 0 || k.t > keys[i - 1].t + 1e-6)
+  }
   const inside = path.filter((k) => k.t > pic.srcStart && k.t < pic.srcEnd)
   const keys = [
-    { t: 0, x: frameAt(path, pic.srcStart) },
+    { t: 0, x: frameAt(path, pic.srcStart + SWITCH_SEC) },
     ...inside.map((k) => ({ t: out(k.t), x: k.x })),
     { t: out(pic.srcEnd), x: frameAt(path, pic.srcEnd) }
   ]

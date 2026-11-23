@@ -1,5 +1,7 @@
 import { spawn } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, promises as fs } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { findFaces } from './face-finder'
 import { FFMPEG_PATH } from './ffmpeg'
 import { resourcePath } from './resources'
@@ -51,25 +53,86 @@ export async function detectFaces(
   }
   const bin = VISION_PATH()
   if (!existsSync(bin)) throw new Error('chopshop-vision is missing. Run scripts/build-native.sh.')
+  const read = async (path: string, from: number): Promise<VisionSample[]> =>
+    JSON.parse(
+      await runVision(bin, [path, from.toFixed(3), durationSec.toFixed(3), String(samplesPerSec)])
+    ) as VisionSample[]
+  // The Mac could not open the picture when the helper fails or answers with not one sample (readableStretch).
+  const samples = await read(sourcePath, startSec).catch(() => null)
+  if (samples && (samples.length > 0 || durationSec < 1)) return samples
+  return readableStretch(sourcePath, startSec, durationSec, samplesPerSec * 4, (copy) => read(copy, 0))
+}
 
-  const json = await new Promise<string>((resolve, reject) => {
-    const child = spawn(bin, [
-      sourcePath,
-      startSec.toFixed(3),
-      durationSec.toFixed(3),
-      String(samplesPerSec)
-    ])
+/** The Vision helper's output, or its own words when it fails. */
+function runVision(bin: string, args: string[]): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(bin, args)
     let out = ''
     let err = ''
     child.stdout.on('data', (d) => (out += d.toString()))
     child.stderr.on('data', (d) => (err += d.toString()))
     child.on('error', reject)
-    child.on('close', (code) =>
-      code === 0 ? resolve(out) : reject(new Error(err.trim() || `vision exit ${code}`))
-    )
+    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(err.trim() || `vision exit ${code}`))))
   })
+}
 
-  return JSON.parse(json) as VisionSample[]
+/** Widest a stretch is copied for the Vision helper: two faces in a wide shot stay big enough to find. */
+const READABLE_WIDTH = 1920
+
+/**
+ * A stretch of a recording the Mac's own reader cannot open (VP9 or AV1, as
+ * YouTube and some screen recorders write), copied by ffmpeg into H.264 that
+ * it can, at the given frame rate, for `use` to read from its start. Without
+ * it the Vision helper returns no samples at all, and the clip neither
+ * follows anyone nor cuts with the camera. Its times count from the
+ * stretch's start, as a read from startSec does.
+ */
+export async function readableStretch<T>(
+  sourcePath: string,
+  startSec: number,
+  durationSec: number,
+  fps: number,
+  use: (copy: string) => Promise<T>
+): Promise<T> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'cutalong-vision-'))
+  const copy = join(dir, 'stretch.mp4')
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(FFMPEG_PATH, [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-ss',
+        startSec.toFixed(3),
+        '-t',
+        durationSec.toFixed(3),
+        '-i',
+        sourcePath,
+        '-an',
+        '-sn',
+        '-dn',
+        '-vf',
+        `fps=${fps},scale='min(${READABLE_WIDTH},iw)':-2`,
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-g',
+        String(Math.max(1, Math.round(fps))),
+        '-pix_fmt',
+        'yuv420p',
+        '-y',
+        copy
+      ])
+      let err = ''
+      child.stderr.on('data', (d) => (err += d.toString()))
+      child.on('error', reject)
+      child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.trim() || `ffmpeg exit ${code}`))))
+    })
+    return await use(copy)
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
 }
 
 /** An object followed through a stretch of a recording (the Vision helper's --track). */
@@ -140,18 +203,17 @@ export async function trackObject(
   if (process.platform !== 'darwin') throw new Error('Following an object needs the Mac’s Vision.')
   const bin = VISION_PATH()
   if (!existsSync(bin)) throw new Error('chopshop-vision is missing. Run scripts/build-native.sh.')
-  const args = ['--track', sourcePath, startSec.toFixed(3), durationSec.toFixed(3), String(samplesPerSec)]
-  if (box) args.push(...box.map((v) => v.toFixed(4)))
-  const json = await new Promise<string>((resolve, reject) => {
-    const child = spawn(bin, args)
-    let out = ''
-    let err = ''
-    child.stdout.on('data', (d) => (out += d.toString()))
-    child.stderr.on('data', (d) => (err += d.toString()))
-    child.on('error', reject)
-    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(err.trim() || `vision exit ${code}`))))
-  })
-  const r = readTracked(json)
+  // The helper's answer with each box's size when it measures them (readTracked); null when it is not one.
+  const read = async (path: string, from: number): Promise<TrackedObject | null> => {
+    const args = ['--track', path, from.toFixed(3), durationSec.toFixed(3), String(samplesPerSec)]
+    if (box) args.push(...box.map((v) => v.toFixed(4)))
+    return readTracked(await runVision(bin, args))
+  }
+  // The helper failing or answering with not one sample: the Mac could not open the picture, so it is read from
+  // a copy it can (readableStretch).
+  let r = await read(sourcePath, startSec).catch(() => null)
+  if ((!r || r.samples.length === 0) && durationSec >= 1)
+    r = await readableStretch(sourcePath, startSec, durationSec, samplesPerSec * 2, (copy) => read(copy, 0))
   if (!r || r.samples.length === 0) throw new Error('The helper followed nothing.')
   return r
 }
