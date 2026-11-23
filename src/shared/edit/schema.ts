@@ -23,6 +23,7 @@ import { AudioMapSchema } from '../audio/map'
 import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 import { FxItemSchema, FxOpSchemas } from '../fx/schema'
 import { MAX_TRACKS, TrackOpSchemas, TrackSchema } from '../tracks/schema'
+import { MixOpSchema, OwnMixSchema } from '../mix/schema'
 import { MouthModeSchema } from '../vision/mode'
 import { VlogSchema } from '../vlog/schema'
 import { MakeSchema } from '../make/schema'
@@ -301,7 +302,14 @@ export const CutSchema = z.object({
    * cut says them: a version's ops never carry the track ops (edit/doc), so
    * 0.2.13, which drops this field, still opens the edit (without them).
    */
-  tracks: z.array(TrackSchema).max(MAX_TRACKS).optional()
+  tracks: z.array(TrackSchema).max(MAX_TRACKS).optional(),
+  /**
+   * The mixer's strips for the voice and the music bed (shared/mix): level,
+   * pan, effects, mute and solo; each track's is on the track. Only the cut
+   * says them: a version's ops never carry the mix op (edit/doc).
+   */
+  voiceMix: OwnMixSchema.optional(),
+  musicMix: OwnMixSchema.optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -450,7 +458,9 @@ export const OpSchema = z.discriminatedUnion('op', [
   // fx-add, fx-update, fx-remove: scene effects on the picture (shared/fx), never kept in a version's ops.
   ...FxOpSchemas,
   // track-*, clip-*, key-*: layer tracks over and under the edit (shared/tracks), never kept in a version's ops.
-  ...TrackOpSchemas
+  ...TrackOpSchemas,
+  // mix: a strip's level, pan, effects, mute and solo (shared/mix), never kept in a version's ops.
+  MixOpSchema
 ])
 export type Op = z.infer<typeof OpSchema>
 export type OpName = Op['op']

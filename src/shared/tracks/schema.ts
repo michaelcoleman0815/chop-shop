@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AnimNumSchema, ColorSchema, EaseSchema, TransformSchema } from '../anim'
 import { AnchorRefSchema, EndRefSchema } from '../motion/schema'
 import { BLEND_MODES } from '../motion/types'
+import { BusMixSchema } from '../mix/schema'
 
 /**
  * Layer tracks: what the edit stacks over its own picture and mixes under its
@@ -31,7 +32,7 @@ export const KINDS_ON: Record<TrackKind, readonly ClipKind[]> = {
   sound: ['sound']
 }
 
-/** Settings a key can be set on, by name: the transform's, opacity, the crop's sides, and a sound's level. */
+/** Settings a key can be set on, by name: the transform's, opacity, the crop's sides, and a sound's level and pan. */
 export const KEYED_PROPS = [
   'x',
   'y',
@@ -48,7 +49,8 @@ export const KEYED_PROPS = [
   'crop.top',
   'crop.right',
   'crop.bottom',
-  'volume'
+  'volume',
+  'pan'
 ] as const
 export type KeyedProp = (typeof KEYED_PROPS)[number]
 
@@ -108,6 +110,8 @@ export const ClipFieldsSchema = z.object({
   crop: CropSchema.optional(),
   /** A sound's level, or a video's own sound, in dB: 0 as recorded. */
   volume: AnimNumSchema.optional(),
+  /** Where a sound sits between the speakers, -1 left to 1 right: 0, the middle, when absent. */
+  pan: AnimNumSchema.optional(),
   /** A video's own sound left out. */
   muted: z.boolean().default(false)
 })
@@ -126,7 +130,9 @@ export const TrackSchema = z.object({
   locked: z.boolean().default(false),
   mute: z.boolean().default(false),
   solo: z.boolean().default(false),
-  clips: z.array(TrackClipSchema).max(200).default([])
+  clips: z.array(TrackClipSchema).max(200).default([]),
+  /** Its strip in the mixer (shared/mix): level, pan and effects over all its clips' sound. */
+  mix: BusMixSchema.optional()
 })
 export type Track = z.infer<typeof TrackSchema>
 

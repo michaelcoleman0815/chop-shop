@@ -27,6 +27,7 @@ import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from
 import { FX_PLANNER_OPS, fromFxPlannerOp, fxGuide, fxLines } from '../shared/fx/planner'
 import { TRACK_PLANNER_OPS, fromTrackPlannerOp, tracksGuide, tracksLines } from '../shared/tracks/planner'
 import { familyGuides, familyIndex } from './planner-guides'
+import { MIX_PLANNER_OPS, fromMixPlannerOp, mixLines, wantsMix } from '../shared/mix/planner'
 import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { renderPovs } from '../shared/pov/choose'
@@ -320,6 +321,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   ...FX_PLANNER_OPS,
   // Layer tracks, clips, keys and trims (shared/tracks/planner), the same way; deep settings travel in spec.
   ...TRACK_PLANNER_OPS,
+  // The mixer (shared/mix/planner), the same way; effects travel in spec.
+  ...MIX_PLANNER_OPS,
   // Cutalong's own commands (shared/plan/commands.ts), run by the editor in the order given.
   ...planCommandSchemas()
 ])
@@ -522,6 +525,8 @@ export function fromPlannerOp(op: PlannerOp): unknown {
     case 'key-remove':
     case 'trim':
       return fromTrackPlannerOp(op)
+    case 'mix':
+      return fromMixPlannerOp(op)
     default:
       return op
   }
@@ -755,6 +760,9 @@ export function renderRequest(
   if (effects.length > 0) parts.push('<effects>', ...effects, '</effects>')
   const layered = tracksLines(cut, resolved, doc.words)
   if (layered.length > 0) parts.push('<tracks>', ...layered, '</tracks>')
+  // The mixer's strips: those mixed, or all of them when the ask is about mixing (shared/mix/planner).
+  const mixed = mixLines(cut, wantsMix([request, ...notes.map((n) => n.text)].join('\n'), cut))
+  if (mixed.length > 0) parts.push('<mix>', ...mixed, '</mix>')
   // The full guide of each family this ask or this cut needs (planner-guides.ts).
   parts.push(...familyGuides([request, ...notes.map((n) => n.text)].join('\n'), cut))
   if (doc.assets.length > 0) {

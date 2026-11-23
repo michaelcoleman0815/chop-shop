@@ -3,6 +3,7 @@ import type { Resolved } from '../shared/edit/resolve'
 import type { Cut, Source, Word } from '../shared/edit/schema'
 import { timelineFor } from '../shared/motion/timing'
 import { mediaOf, soundingClips, trackLayers, tracksOf } from '../shared/tracks'
+import { heardOf, rampKeys } from '../shared/mix'
 import { frameSize, type ClipSoundOptions } from './cut-render'
 
 /**
@@ -29,15 +30,18 @@ export async function clipSounds(input: LayerSoundsInput, hasSound: (path: strin
   const tl = timelineFor(input.cut, input.resolved, input.words)
   const sounds: ClipSoundOptions[] = []
   const heard = new Map<string, boolean>()
+  // A track muted in the mixer, or left out while another strip is soloed, gives nothing.
+  const mixed = heardOf(input.cut)
   for (const p of soundingClips(tracks, tl, mediaOf(input.assets ?? [], input.sources))) {
     const src = p.clip.src
-    if (!src) continue
+    if (!src || !mixed.track(p.track)) continue
     // A video with no sound in its file has none to give.
     if (p.clip.kind === 'video') {
       if (!heard.has(src)) heard.set(src, await hasSound(src))
       if (!heard.get(src)) continue
     }
     const volume = p.clip.volume
+    const pan = p.clip.pan
     sounds.push({
       path: src,
       startSec: p.start,
@@ -45,7 +49,10 @@ export async function clipSounds(input: LayerSoundsInput, hasSound: (path: strin
       inSec: p.clip.in,
       speed: p.clip.speed,
       gainDb: isKeyed(volume) ? 0 : num(volume, 0, p.end - p.start, 0),
-      keys: isKeyed(volume) ? volume.keys.map((k) => ({ t: p.start + k.t, db: k.v })) : []
+      keys: isKeyed(volume) ? volume.keys.map((k) => ({ t: p.start + k.t, db: k.v })) : [],
+      track: p.track.id,
+      pan: isKeyed(pan) ? 0 : num(pan, 0, p.end - p.start, 0),
+      panKeys: isKeyed(pan) ? rampKeys(pan, p.end - p.start).map((k) => ({ t: p.start + k.t, v: k.v })) : []
     })
   }
   return sounds

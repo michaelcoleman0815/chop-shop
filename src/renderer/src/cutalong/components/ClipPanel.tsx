@@ -38,13 +38,16 @@ const SETTINGS: Setting[] = [
   { prop: 'crop.right', label: 'Crop right', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
   { prop: 'crop.top', label: 'Crop top', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
   { prop: 'crop.bottom', label: 'Crop bottom', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
-  { prop: 'volume', label: 'Level', usual: () => 0, step: 1, unit: 'dB', kinds: ['video', 'sound'] }
+  { prop: 'volume', label: 'Level', usual: () => 0, step: 1, unit: 'dB', kinds: ['video', 'sound'] },
+  // -1 all the way left, 1 all the way right (shared/mix pans it as the export does).
+  { prop: 'pan', label: 'Pan', usual: () => 0, step: 0.1, kinds: ['video', 'sound'] }
 ]
 
 /** A setting's value as the clip holds it: a number, keys, or nothing. */
 function valueOf(clip: TrackClip, prop: KeyedProp): Anim<number> | undefined {
   if (prop === 'opacity') return clip.opacity
   if (prop === 'volume') return clip.volume
+  if (prop === 'pan') return clip.pan
   if (prop.startsWith('crop.')) return clip.crop?.[prop.slice(5) as 'left' | 'top' | 'right' | 'bottom']
   return clip.transform?.[prop as 'x' | 'y' | 'scale' | 'rotation']
 }
@@ -53,6 +56,7 @@ function valueOf(clip: TrackClip, prop: KeyedProp): Anim<number> | undefined {
 function setTo(clip: TrackClip, prop: KeyedProp, v: number): Op {
   if (prop === 'opacity') return { op: 'clip-update', clip: clip.id, opacity: v } as Op
   if (prop === 'volume') return { op: 'clip-update', clip: clip.id, volume: v } as Op
+  if (prop === 'pan') return { op: 'clip-update', clip: clip.id, pan: Math.min(1, Math.max(-1, v)) } as Op
   if (prop.startsWith('crop.')) return { op: 'clip-update', clip: clip.id, crop: { ...clip.crop, [prop.slice(5)]: v } } as Op
   return { op: 'clip-update', clip: clip.id, transform: { ...clip.transform, [prop]: v } } as Op
 }
