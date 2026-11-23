@@ -1975,6 +1975,297 @@ button:disabled {
   cursor: pointer;
 }
 
+/* ---------- Layer tracks in the strip (components/Lanes) ---------- */
+
+/* With the lanes showing, the strip holds them above and below its beats, on the same clock. */
+.cl-stack {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cl-stack > .cl-beats {
+  flex: 0 0 auto;
+}
+
+.cl-strip-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.cl-strip-toggle {
+  border: 1px solid var(--line-mid);
+  background: transparent;
+  color: var(--ink);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.cl-strip-toggle.on {
+  background: var(--ink);
+  color: var(--card);
+  border-color: var(--ink);
+}
+
+.cl-menu.up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.cl-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cl-lane {
+  position: relative;
+  height: 28px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cl-lane.off {
+  opacity: 0.45;
+}
+
+.cl-lane-name {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.cl-lclip {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 6px;
+  display: flex;
+  align-items: center;
+  border-radius: 5px;
+  /* The stage's second tone, the same in both themes: a clip reads apart from the lane and from the beats' tints. */
+  background: var(--card-2);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.cl-lclip.sound {
+  background: transparent;
+}
+
+.cl-lclip.on {
+  border-color: var(--pick);
+  box-shadow: 0 0 0 2px var(--pick);
+}
+
+.cl-lclip[data-dragging] {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+
+.cl-lane.locked .cl-lclip {
+  cursor: default;
+}
+
+.cl-lclip-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* Either end: grab it to trim. */
+.cl-lclip-edge {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 7px;
+  cursor: ew-resize;
+}
+
+.cl-lclip-key {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  transform: rotate(45deg);
+  background: var(--ink-soft);
+  pointer-events: none;
+}
+
+/* A beat's ends, while the lanes show: grab one to trim the edit itself. */
+.cl-beat {
+  position: relative;
+}
+
+.cl-beat-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 1;
+}
+
+.cl-beat-edge.in {
+  left: 0;
+}
+
+.cl-beat-edge.out {
+  right: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-lclip-edge:hover,
+  .cl-beat-edge:hover {
+    background: var(--line-strong);
+  }
+
+  .cl-strip-toggle:hover {
+    border-color: var(--ink);
+  }
+}
+
+/* ---------- A clip's settings (components/ClipPanel) ---------- */
+
+.cl-clip-panel .cl-notes-scroll {
+  overflow-x: hidden;
+}
+
+.cl-number-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cl-number-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The key at the playhead: a diamond, filled when there is one. */
+.cl-key-toggle {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  transform: rotate(45deg);
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cl-key-toggle.on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.cl-key-toggle:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cl-keyrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -4px 0 6px;
+}
+
+.cl-keyrow-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--card-2);
+}
+
+.cl-keyrow-key {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  padding: 0;
+  transform: rotate(45deg);
+  border: 0;
+  border-radius: 1px;
+  background: var(--ink-soft);
+  cursor: pointer;
+}
+
+.cl-keyrow-key.on {
+  background: var(--ink);
+}
+
+.cl-keyrow-now {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 1.5px;
+  background: var(--pick);
+  pointer-events: none;
+}
+
+/* A setting chosen from a list (a blend, an ease): drawn as the fields are, with the same halo. */
+.cl-clip-panel select {
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  padding: 10px 34px 10px 14px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%),
+    linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  outline: none;
+  cursor: pointer;
+}
+
+.cl-clip-panel select:focus-visible {
+  border-color: var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+.cl-clip-panel select.cl-keyrow-ease {
+  flex: 0 0 auto;
+  max-width: 45%;
+  padding: 6px 30px 6px 12px;
+  font-size: 12.5px;
+}
+
 .cl-mark:focus-visible {
   opacity: 0.7;
 }
@@ -5440,4 +5731,699 @@ a.cl-btn {
   height: 7px;
   border-radius: 50%;
   background: var(--muted);
+}
+
+/* ---------- Compositing on the layer tracks: expressions, adjustment clips (components/ClipCompositing) ---------- */
+
+/* Beside a setting's key diamond: its expression, an italic f, ink once one is set. */
+.cl-expr-toggle {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.cl-expr-toggle[aria-pressed='true'] {
+  border-color: var(--line-mid);
+  color: var(--ink-soft);
+}
+
+.cl-expr-toggle.on {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.cl-expr-toggle:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Room on the right of a clip's settings, so an overlay scrollbar never sits over the toggles that end each row. */
+.cl-clip-panel .cl-notes-scroll {
+  padding-right: var(--space-3);
+}
+
+/* The expression itself, in the face for things typed as code. */
+.cl-field.cl-expr input:not([type='color']):not([type='checkbox']) {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.cl-keyed .cl-field.cl-expr {
+  margin-top: var(--space-2);
+}
+
+/* An adjustment's grade: its numbers two to a row. */
+.cl-grade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.cl-grade .cl-field input:not([type='color']):not([type='checkbox']) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* An adjustment clip draws nothing of its own: its edge is dashed, as a pencilled outline over what it grades. */
+.cl-lclip.adjustment {
+  border-style: dashed;
+}
+
+/* Said under the frame when the preview cannot read the picture an adjustment clip grades. */
+.cl-layers-note {
+  position: absolute;
+  left: var(--space-6);
+  right: var(--space-6);
+  bottom: var(--space-2);
+  margin: 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--on-stage-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-expr-toggle:hover {
+    border-color: var(--line-mid);
+    color: var(--ink);
+  }
+}
+
+/* ---------- The Mix tab (components/Mixer) ---------- */
+
+/* Each sound is a strip of the sheet, with a hairline above, as a note is. */
+.cl-mix-strips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-mix-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--line);
+}
+
+.cl-mix-strip:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+/* A strip that is not heard (muted, or another soloed) reads quieter; its controls still work. */
+.cl-mix-strip.unheard .cl-mix-title,
+.cl-mix-strip.unheard .cl-mix-readout {
+  color: var(--muted);
+}
+
+.cl-mix-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cl-mix-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cl-mix-title {
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.cl-mix-toggles {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+/* Mute, solo and bypass: small pills, filled in ink while on. */
+.cl-mix-toggle {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-mid);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.cl-mix-toggle.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--card);
+}
+
+.cl-mix-toggle:focus-visible,
+.cl-mix-fader input[type='range']:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* A fader: its name, the slider, the number it is at, and the key diamond (its column wide enough for its corners). */
+.cl-mix-fader {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 62px 20px;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.cl-mix-fader .cl-key-toggle {
+  justify-self: center;
+}
+
+/* The strips' controls reach the sheet's right edge, so the scrollbar sits out in the sheet's margin, never over them. */
+.cl-mixer .cl-notes-scroll {
+  overflow-x: hidden;
+  margin-right: calc(-1 * var(--space-4));
+  padding-right: var(--space-4);
+}
+
+.cl-mix-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.cl-mix-readout {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cl-mix-keys {
+  grid-column: 2 / -1;
+  margin: 0;
+}
+
+.cl-mix-fader input[type='range'] {
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cl-mix-fader input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cl-mix-fader input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-tab);
+}
+
+.cl-mix-fader input[type='range']::-moz-range-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cl-mix-fader input[type='range']::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-tab);
+}
+
+/* The effects, in the order they run: each a small card of paper, its few settings under its name. */
+.cl-mix-fx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cl-mix-fx {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card-2);
+}
+
+.cl-mix-fx.bypassed .cl-mix-fx-name,
+.cl-mix-fx.bypassed .cl-mix-fx-fields,
+.cl-mix-fx.bypassed .cl-mix-bands {
+  opacity: 0.55;
+}
+
+.cl-mix-fx-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cl-mix-fx-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-mix-fx-head .cl-icon-btn {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+
+.cl-mix-fx-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--space-2);
+}
+
+.cl-mix-number > span:first-child {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.cl-field.cl-mix-number input:not([type='color']):not([type='checkbox']) {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-mix-bands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A band: its shape on a line with the button that takes it off, its numbers in a row under it. */
+.cl-mix-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 28px;
+  align-items: end;
+  gap: var(--space-2);
+}
+
+.cl-mix-band + .cl-mix-band {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.cl-mix-band > select {
+  grid-column: 1 / 4;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.cl-mix-band .cl-icon-btn {
+  grid-column: 4;
+  grid-row: 1;
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+
+.cl-mix-band-add {
+  align-self: flex-start;
+  height: 32px;
+}
+
+/* A choice from a list (a band's shape, an effect to add): drawn as the fields are, with the same halo. */
+.cl-mixer select {
+  appearance: none;
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  padding: 7px 28px 7px 10px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%),
+    linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 10px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  outline: none;
+  cursor: pointer;
+}
+
+.cl-mixer select:focus-visible {
+  border-color: var(--ink);
+  outline: 4px solid color-mix(in oklch, var(--pick) 18%, transparent);
+  outline-offset: 0;
+}
+
+.cl-mixer select.cl-mix-add {
+  align-self: flex-start;
+  border-radius: var(--radius-pill);
+  padding: 7px 30px 7px 14px;
+  font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-mix-toggle:hover:not(.on) {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+
+  .cl-mix-fader input[type='range']:hover::-webkit-slider-thumb {
+    border-color: var(--ink);
+  }
+}
+
+/* On a phone the Mix tab is one more tool in the header's second row: the tools sit closer, so the versions keep their room,
+   and the panel gives its last line to the strips. */
+@media (max-width: 640px) {
+  .cl-header:has(> .cl-revisions) > .cl-btn.text {
+    padding: 0 var(--space-2);
+  }
+
+  .cl-mixer > .cl-project-meta {
+    display: none;
+  }
+}
+
+/* ---------- Colour scopes over the preview (components/Scopes) ---------- */
+
+/*
+ * A toggle in the well's corner, and under it the scopes on the stage: a
+ * waveform or parade, a vectorscope and a histogram of the picture as the
+ * look leaves it. The well scopes ink, lines and paper to the stage's.
+ */
+.cl-scopes {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-3));
+  max-height: calc(100% - 2 * var(--space-3));
+}
+
+.cl-scopes-toggle {
+  background: var(--stage);
+}
+
+.cl-scopes-panel {
+  width: min(300px, 100%);
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--stage-line);
+  border-radius: var(--radius-card);
+  background: var(--stage-2);
+  box-shadow: var(--shadow-float);
+  color: var(--on-stage);
+}
+
+.cl-scopes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cl-scopes-head .cl-segments {
+  background: var(--stage);
+}
+
+.cl-scopes-head .cl-segments button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  color: var(--on-stage-soft);
+}
+
+.cl-scopes-head .cl-segments button.on {
+  background: var(--stage-2);
+  color: var(--on-stage);
+}
+
+.cl-scopes-panel canvas {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-thumb);
+  background: var(--stage);
+}
+
+.cl-scopes-wave {
+  aspect-ratio: 2 / 1;
+}
+
+.cl-scopes-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.cl-scopes-row canvas {
+  aspect-ratio: 1 / 1;
+}
+
+.cl-scopes-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--on-stage-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cl-scopes-head .cl-segments button:not(.on):hover {
+    color: var(--on-stage);
+  }
+}
+
+/* A phone's well is short: the toggle sits beside the panel, and the three scopes share one row. */
+@media (max-width: 640px) {
+  .cl-scopes {
+    top: var(--space-2);
+    right: var(--space-2);
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    max-width: calc(100% - 2 * var(--space-2));
+    max-height: calc(100% - 2 * var(--space-2));
+  }
+
+  .cl-scopes-panel {
+    width: auto;
+    flex: 1 1 auto;
+    max-height: 100%;
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+
+  .cl-scopes-head,
+  .cl-scopes-note {
+    grid-column: 1 / -1;
+  }
+
+  .cl-scopes-row {
+    display: contents;
+  }
+
+  .cl-scopes-wave {
+    aspect-ratio: auto;
+    align-self: stretch;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .cl-scopes-note {
+    font-size: 11.5px;
+    line-height: 15px;
+  }
+}
+
+/* ---------- Masks, mattes, keys and following on a clip (components/RotoFields, MaskDraw) ---------- */
+
+.cl-roto-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cl-roto-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.cl-roto-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* One mask: paper with a hairline; blue pencil while its points are being moved on the picture. */
+.cl-roto-mask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-thumb);
+  background: var(--card);
+}
+
+.cl-roto-mask.on {
+  border-color: var(--pick);
+}
+
+.cl-roto-mask-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cl-roto-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.cl-roto-pair > * {
+  min-width: 0;
+}
+
+.cl-roto-hex {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Over the picture while a mask is drawn or moved, or a key's colour picked. */
+.cl-roto {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.cl-roto-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The path in the stage's own light, over a shadow of the stage so it reads on any footage. */
+.cl-roto-under {
+  fill: none;
+  stroke: var(--stage);
+  stroke-width: 3.5;
+  stroke-opacity: 0.55;
+}
+
+.cl-roto-line {
+  fill: color-mix(in oklch, var(--pick) 14%, transparent);
+  stroke: var(--on-stage);
+  stroke-width: 1.5;
+}
+
+.cl-roto-point {
+  fill: var(--on-stage);
+  stroke: var(--stage);
+  stroke-width: 1.5;
+}
+
+.cl-roto-point.on {
+  fill: var(--pick);
+}
+
+/* The first point, once there are enough to close the shape on it. */
+.cl-roto-point.first {
+  stroke: var(--pick);
+  stroke-width: 3;
+}
+
+/* A key's diamond reaches past its box when turned: room for it, so the clip panel never scrolls sideways. */
+.cl-clip-panel .cl-key-toggle {
+  margin-inline: 3px;
+}
+
+/* A mask's own choices sit in a narrow card: smaller segments, so three fit on one line, and its text buttons at the start. */
+.cl-roto-mask .cl-segments button {
+  height: 30px;
+  padding: 0 10px;
+}
+
+.cl-roto-mask > .cl-btn {
+  align-self: flex-start;
+}
+
+/* ---------- A 3D clip's scene (components/Scene3DFields) ---------- */
+
+/* The camera, then the objects: each under a small label, a hairline above it. */
+.cl-3d-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.cl-3d-group .cl-segments button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

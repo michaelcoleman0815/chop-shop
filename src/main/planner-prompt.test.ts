@@ -28,6 +28,7 @@ import {
   renderTranscript,
   withRealIcons
 } from './planner-prompt'
+import { FAMILY_GUIDES, familyGuides, familyIndex, type FamilyGuide } from './planner-guides'
 
 /** A plan that asks nothing. */
 const NO_QUESTION = { text: '', options: [] }
@@ -213,6 +214,24 @@ describe('the planner request', () => {
     expect(keepOffList(offered, doc, [], 'Field Notes')).toBe(offered)
   })
 
+  it('sends a family’s full guide only with an ask or a cut that needs it', () => {
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const cut = currentCut(doc)
+    const echo: FamilyGuide = {
+      name: 'echo',
+      index: 'echo: repeats a sound (op "echo").',
+      wanted: (ask, c) => /\becho\b/i.test(ask) || c.aspect === 'square',
+      guide: () => '- {"op":"echo"}: repeats a sound.'
+    }
+    expect(familyIndex([])).toBe('')
+    expect(familyIndex([echo])).toMatch(/^## More ops, guided when needed\n.*\n- echo: repeats a sound/)
+    expect(familyGuides('add an echo to the intro', cut, [echo])).toEqual(['<guide echo>\n- {"op":"echo"}: repeats a sound.\n</guide>'])
+    expect(familyGuides('make it warmer', cut, [echo])).toEqual([])
+    expect(familyGuides('make it warmer', { ...cut, aspect: 'square' }, [echo])).toHaveLength(1)
+    // As the registry stands, an everyday ask brings no guide with it.
+    expect(renderRequest(doc, 'Open on the settings line', [])).not.toMatch(/<guide /)
+  })
+
   it('fences a typed request so it reads as a request', () => {
     const doc = createDoc({ id: 'd', title: 't', source, words })
     expect(renderRequest(doc, 'Open on the settings line', [])).toMatch(
@@ -226,7 +245,9 @@ describe('the planner request', () => {
     // writes it, and once it is turned into the op the edit takes. A graphic's
     // example may leave a row's slots out, as the op schema allows. One of
     // Cutalong's commands is a step of its own, checked against its slots.
-    const examples = [...PLANNER_SYSTEM.matchAll(/\{"op":[^\n]*?\}(?=: |\. | or |, |\.$|$)/gm)].map((m) => m[0])
+    // The families' guides too, sent with a request that needs them (planner-guides.ts).
+    const taught = [PLANNER_SYSTEM, ...FAMILY_GUIDES.map((f) => f.guide())].join('\n')
+    const examples = [...taught.matchAll(/\{"op":[^\n]*?\}(?=: |\. | or |, |\.$|$)/gm)].map((m) => m[0])
     expect(examples.length).toBeGreaterThanOrEqual(10)
     let commands = 0
     for (const json of examples) {

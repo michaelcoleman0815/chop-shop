@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import type { BeatPick } from '../../../../shared/edit'
 import { clock } from '../format'
 import { along } from '../motion'
@@ -54,7 +54,9 @@ export function BeatStrip({
   onMark,
   pick = null,
   onPick,
-  onCutPick
+  onCutPick,
+  layers = null,
+  onTrimBeat
 }: {
   beats: StripBeat[]
   duration: number
@@ -70,6 +72,10 @@ export function BeatStrip({
   onPick?: (pick: BeatPick | null) => void
   /** Delete or Backspace with a stretch picked. */
   onCutPick?: () => void
+  /** The layer tracks' lanes, shown with the strip's Layers toggle: picture lanes above the beats, sound lanes below. */
+  layers?: { on: boolean; toggle: () => void; above: ReactNode; below: ReactNode; add: ReactNode } | null
+  /** A beat's edge dragged by seconds, while the lanes show: a trim of the edit itself. */
+  onTrimBeat?: (beat: string, edge: 'in' | 'out', bySec: number) => void
 }): JSX.Element {
   const track = useRef<HTMLDivElement>(null)
   // Inside a transition two beats overlap; the one coming in is the one playing.
@@ -187,19 +193,31 @@ export function BeatStrip({
     return () => ro.disconnect()
   }, [first, last, beats])
 
+  // A beat's edge, dragged while the lanes show: how far, in seconds, on release.
+  const edge = useRef<{ beat: string; edge: 'in' | 'out'; x: number; pointer: number } | null>(null)
+  const edgeDown = (e: PointerEvent<HTMLSpanElement>, beat: string, which: 'in' | 'out'): void => {
+    if (e.button !== 0 || !onTrimBeat) return
+    e.stopPropagation()
+    edge.current = { beat, edge: which, x: e.clientX, pointer: e.pointerId }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const edgeUp = (e: PointerEvent<HTMLSpanElement>): void => {
+    const g = edge.current
+    edge.current = null
+    if (!g || g.pointer !== e.pointerId || !track.current || duration <= 0) return
+    e.stopPropagation()
+    const dx = e.clientX - g.x
+    if (Math.abs(dx) < DRAG_PX) return
+    onTrimBeat?.(g.beat, g.edge, (dx / track.current.getBoundingClientRect().width) * duration)
+  }
+  const trimming = !!layers?.on && !!onTrimBeat
+
   const pickedSay =
     first && last
       ? `${picked.length === 1 ? 'One beat' : `${picked.length} beats`} picked, ${clock(first.start)} to ${clock(last.end)}. A note or a command acts on ${picked.length === 1 ? 'it' : 'them'}; Delete cuts ${picked.length === 1 ? 'it' : 'them'}, Escape lets go.`
       : ''
 
-  return (
-    <div className="cl-strip">
-      <IconButton label={playing ? 'Pause' : 'Play'} filled onClick={onToggle}>
-        {playing ? <Icon.pause /> : <Icon.play />}
-      </IconButton>
-      <span className="cl-timecode">
-        {clock(time)} <span className="muted">/ {clock(duration)}</span>
-      </span>
+  const beatsRow = (
       <div
         ref={track}
         className={`cl-beats${picked.length ? ' picking' : ''}`}
@@ -225,7 +243,25 @@ export function BeatStrip({
             style={{ flexGrow: Math.max(0.05, b.end - b.start) }}
             title={`${b.label} · ${clock(b.start)}${b.comesIn ? ` · comes in with ${b.comesIn}` : ''}${b.splitEdit ? ` · ${b.splitEdit}` : ''}${b.plays ? ` · ${b.plays}` : ''}`}
           >
+            {trimming && (
+              <span
+                className="cl-beat-edge in"
+                aria-hidden="true"
+                title="Drag to trim where it starts"
+                onPointerDown={(e) => edgeDown(e, b.id, 'in')}
+                onPointerUp={edgeUp}
+              />
+            )}
             {b === now && <span className="cl-beat-label">{b.label}</span>}
+            {trimming && (
+              <span
+                className="cl-beat-edge out"
+                aria-hidden="true"
+                title="Drag to trim where it ends"
+                onPointerDown={(e) => edgeDown(e, b.id, 'out')}
+                onPointerUp={edgeUp}
+              />
+            )}
           </span>
         ))}
         {bar && <span className="cl-pick" style={{ left: bar.left, width: bar.width }} aria-hidden="true" />}
@@ -251,6 +287,33 @@ export function BeatStrip({
           ))}
         {duration > 0 && <span className="cl-playhead" style={along(Math.min(time, duration) / duration)} />}
       </div>
+  )
+
+  return (
+    <div className={`cl-strip${layers?.on ? ' layered' : ''}`}>
+      <IconButton label={playing ? 'Pause' : 'Play'} filled onClick={onToggle}>
+        {playing ? <Icon.pause /> : <Icon.play />}
+      </IconButton>
+      <span className="cl-timecode">
+        {clock(time)} <span className="muted">/ {clock(duration)}</span>
+      </span>
+      {layers?.on ? (
+        <div className="cl-stack">
+          {layers.above}
+          {beatsRow}
+          {layers.below}
+        </div>
+      ) : (
+        beatsRow
+      )}
+      {layers && (
+        <span className="cl-strip-tools">
+          {layers.on && layers.add}
+          <button type="button" className={`cl-strip-toggle${layers.on ? ' on' : ''}`} aria-pressed={layers.on} onClick={layers.toggle}>
+            Layers
+          </button>
+        </span>
+      )}
       <span id="cl-picked" className="sr-only" aria-live="polite">
         {pickedSay}
       </span>

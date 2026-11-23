@@ -11,7 +11,8 @@ import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { placeFile } from './export-paths'
 import { claudeWriter, writeUploadKit } from './upload-kit'
 import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
-import { renderCut, type GraphOptions, type OverlaySpan, type RenderSource } from './cut-render'
+import { renderCut, type ClipSoundOptions, type GraphOptions, type OverlaySpan, type RenderCutOptions, type RenderSource } from './cut-render'
+import type { CutLayersInput } from './layers-render'
 import type { Encoder } from './render/encoder'
 import { loudnessEnvelope } from './audio-envelope'
 import { snapWords, type Envelope } from '../shared/audio/snap'
@@ -20,6 +21,7 @@ import { assignRoles, factsFor, separateSameTakes, type FileFacts, type Roles } 
 import type { LinedRecording } from '../shared/pov/lineup'
 import { listenFrames } from './audio-map'
 import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
+import type { ScopeReading } from '../shared/scopes/maths'
 import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply, probeSource, type SourceFacts } from './intake'
 import { projectName } from '../shared/project-name'
@@ -97,6 +99,8 @@ export interface WorkHost {
    * nobody is told apart (a phone, for now).
    */
   speakers?: (path: string, words: Word[]) => Promise<(number | null)[]>
+  /** What a recording's picture measures (main/scopes), for Claude to grade by. Absent where it is not measured. */
+  scopes?: (path: string, durationSec: number) => Promise<ScopeReading | null>
   /** Watching the speaker's mouth, with the Mac's face finder. */
   watch?: (input: {
     source: Source
@@ -108,6 +112,12 @@ export interface WorkHost {
   }) => Promise<Watched>
   /** Draws the cut's motion graphics to overlay files; empty overlays when it has none. */
   motion(input: CutMotionInput): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }>
+  /**
+   * The cut's layer tracks for the export (main/layers-render): their pictures as
+   * overlay files and the clips that sound, and the stretches drawn over the
+   * picture once it is there (overBase). Absent where they are not drawn yet.
+   */
+  layers?: (input: CutLayersInput) => Promise<{ overlays: OverlaySpan[]; sounds: ClipSoundOptions[]; overBase?: NonNullable<RenderCutOptions['layers']>['overBase'] }>
   /**
    * The cut's scene effects for the export, from the cut-outs this computer can
    * make (main/fx-ipc); null when it has none. Absent where they are not drawn.
@@ -439,7 +449,25 @@ export async function renderEdit(
           onProgress: (f) => progress(share + f * 0.15)
         })
       : null
-    const before = share + (fx ? 0.15 : 0)
+    const afterFx = share + (fx ? 0.15 : 0)
+    // The layer tracks: their pictures drawn the same way, their sounds placed for the mix.
+    const hasLayers = (cut.tracks ?? []).some((t) => t.clips.length > 0)
+    const layers =
+      hasLayers && host.layers
+        ? await host.layers({
+            cut,
+            resolved,
+            words: doc.words,
+            sources,
+            assets: doc.assets,
+            quality: req.quality,
+            ffmpeg: host.ffmpeg(),
+            workDir: join(workDir, 'layers'),
+            fontsDir: host.fontsDir(),
+            onProgress: (f) => progress(afterFx + f * 0.25)
+          })
+        : null
+    const before = afterFx + (layers ? 0.25 : 0)
     const pass = subtitlePass(cut, resolved, motion.scene)
     // The subtitles leave out what a card holds back; the music and the sounds still follow every word.
     await renderCut(pass.cut, resolved, sources, {
@@ -450,6 +478,7 @@ export async function renderEdit(
       fontsDir: host.fontsDir(),
       brand: brand.autoApply ? { colors: brand.colors, logo: brand.logo } : null,
       overlays: motion.overlays,
+      layers,
       fx,
       captionWords: pass.resolved.words,
       speakers: Object.fromEntries(wordSpeakers(doc.words)),
@@ -748,6 +777,9 @@ export async function readFootage(
       notes.push(`I couldn't transcribe ${name}, so it is one long beat for now. ${message(err)}`)
       details.push(...saidDetails(toolSaid(err), paths.length > 1 ? name : undefined))
     }
+    // What the picture measures, kept with the recording for Claude to grade by.
+    const scopes = host.scopes ? await host.scopes(path, source.durationSec).catch(() => null) : null
+    if (scopes) source = { ...source, scopes }
     sources.push(source)
   }
   const intake =

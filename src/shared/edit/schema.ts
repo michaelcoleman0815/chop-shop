@@ -1,5 +1,6 @@
 import { BoxSchema } from './box'
 import { z } from 'zod'
+import { ScopeReadingSchema } from '../scopes/maths'
 import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
@@ -22,6 +23,8 @@ import {
 import { AudioMapSchema } from '../audio/map'
 import { MotionItemSchema, MotionOpSchemas } from '../motion/schema'
 import { FxItemSchema, FxOpSchemas } from '../fx/schema'
+import { MAX_TRACKS, TrackOpSchemas, TrackSchema } from '../tracks/schema'
+import { MixOpSchema, OwnMixSchema } from '../mix/schema'
 import { MouthModeSchema } from '../vision/mode'
 import { VlogSchema } from '../vlog/schema'
 import { MakeSchema } from '../make/schema'
@@ -106,7 +109,9 @@ export const SourceSchema = z.object({
     })
     .optional(),
   /** Where the speaker was across the recording, found by face finding, for following them into a narrower frame. */
-  subject: SubjectSchema.optional()
+  subject: SubjectSchema.optional(),
+  /** What its picture measures (shared/scopes): luma, clipping, saturation and cast, for grading by numbers. */
+  scopes: ScopeReadingSchema.optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 
@@ -310,7 +315,21 @@ export const CutSchema = z.object({
    * 9:16 video, the hook above it and the captions below. Absent fills the
    * frame. Only the cut says it: a version's ops never carry a box (edit/doc).
    */
-  box: BoxSchema.optional()
+  box: BoxSchema.optional(),
+  /**
+   * Layer tracks (shared/tracks): pictures stacked over the edit's own and
+   * sounds mixed with it, each clip placed by anchors and keyframed. Only the
+   * cut says them: a version's ops never carry the track ops (edit/doc), so
+   * 0.2.13, which drops this field, still opens the edit (without them).
+   */
+  tracks: z.array(TrackSchema).max(MAX_TRACKS).optional(),
+  /**
+   * The mixer's strips for the voice and the music bed (shared/mix): level,
+   * pan, effects, mute and solo; each track's is on the track. Only the cut
+   * says them: a version's ops never carry the mix op (edit/doc).
+   */
+  voiceMix: OwnMixSchema.optional(),
+  musicMix: OwnMixSchema.optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -354,6 +373,18 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('split'), beat: beatId, at: wordId }),
   z.object({ op: z.literal('join'), beat: beatId }),
   z.object({ op: z.literal('pad'), beat: beatId, padIn: pad.optional(), padOut: pad.optional() }),
+  /**
+   * A beat's edge moved, as a trim in a timeline: its first or last word (a
+   * word beat), or its in or out point in seconds (a beat that is a stretch of
+   * a recording). Two trims on neighbouring beats move the cut between them.
+   */
+  z.object({
+    op: z.literal('trim'),
+    beat: beatId,
+    edge: z.enum(['in', 'out']),
+    word: wordId.optional(),
+    sec: z.number().nonnegative().optional()
+  }),
   z.object({ op: z.literal('treat'), beats: z.array(beatId).min(1), set: TreatmentSchema.partial() }),
   z.object({ op: z.literal('insert'), to: z.number().int().min(0), beat: BeatInputSchema }),
   z.object({ op: z.literal('captions'), set: CaptionSpecSchema.partial() }),
@@ -447,7 +478,11 @@ export const OpSchema = z.discriminatedUnion('op', [
   // motion-add, motion-update, motion-remove: graphics over the picture (shared/motion).
   ...MotionOpSchemas,
   // fx-add, fx-update, fx-remove: scene effects on the picture (shared/fx), never kept in a version's ops.
-  ...FxOpSchemas
+  ...FxOpSchemas,
+  // track-*, clip-*, key-*: layer tracks over and under the edit (shared/tracks), never kept in a version's ops.
+  ...TrackOpSchemas,
+  // mix: a strip's level, pan, effects, mute and solo (shared/mix), never kept in a version's ops.
+  MixOpSchema
 ])
 export type Op = z.infer<typeof OpSchema>
 export type OpName = Op['op']

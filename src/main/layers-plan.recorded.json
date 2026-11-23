@@ -1,0 +1,117 @@
+{
+  "recorded": "2026-11-22",
+  "model": "claude-opus-5-5",
+  "note": "Plans Claude made for the asks in layers-plan.cases.ts, replayed in every run by layers-plan.recorded.test.ts.",
+  "plans": [
+    {
+      "request": "Put the laptop B-roll in a small box in the top right corner from \"new\" to \"fast\", fading in.",
+      "ops": [
+        {
+          "kind": "video",
+          "from": "w8",
+          "to": "w18.end",
+          "in": 0,
+          "speed": 1,
+          "src": "a1",
+          "fit": "contain",
+          "transform": {
+            "x": 1592,
+            "y": 202,
+            "scale": 0.3
+          },
+          "opacity": {
+            "keys": [
+              {
+                "t": 0,
+                "v": 0
+              },
+              {
+                "t": 0.4,
+                "v": 1,
+                "ease": "easy-ease"
+              }
+            ]
+          },
+          "blend": "normal",
+          "muted": true,
+          "op": "clip-add"
+        }
+      ],
+      "reply": "I put the laptop clip in a small box in the top right corner, muted, from \"new\" to \"fast\", with a 0.4-second fade-in. I placed it for a 1920x1080 frame, so if the corner looks off you can drag the box into place."
+    },
+    {
+      "request": "Add a big yellow title that says ALL DAY over the last two words, flying in from below.",
+      "ops": [
+        {
+          "kind": "title",
+          "from": "w23",
+          "to": "w24.end+0.8",
+          "text": [
+            "ALL DAY"
+          ],
+          "items": [],
+          "values": [],
+          "box": [],
+          "icon": "",
+          "style": "rise",
+          "place": "",
+          "color": "#FFD400",
+          "fx": [],
+          "layers": [],
+          "op": "motion-add"
+        }
+      ],
+      "reply": "I added a big yellow title that says ALL DAY. It rises in from below on \"all day\" at the end of the battery line and stays up for just under a second after."
+    },
+    {
+      "request": "Trim the start so the video begins on the word \"show\".",
+      "ops": [
+        {
+          "op": "trim",
+          "beat": "b1",
+          "edge": "in",
+          "word": "w5"
+        }
+      ],
+      "reply": "I trimmed the start, so the video now opens on \"show you the new laptop I have been using\". Nothing else in the cut changed."
+    },
+    {
+      "request": "Lay a black layer at 40% over the whole video so text stands out, then put the laptop B-roll over the first sentence with its sound off.",
+      "ops": [
+        {
+          "op": "split",
+          "beat": "b1",
+          "at": "w14"
+        },
+        {
+          "op": "treat",
+          "beats": [
+            "b1"
+          ],
+          "set": {
+            "frame": "broll",
+            "broll": {
+              "path": "/footage/laptop-broll.mp4",
+              "inSec": 0,
+              "muted": true
+            }
+          }
+        },
+        {
+          "kind": "solid",
+          "from": "start",
+          "to": "end",
+          "in": 0,
+          "speed": 1,
+          "color": "#000000",
+          "fit": "contain",
+          "opacity": 0.4,
+          "blend": "normal",
+          "muted": false,
+          "op": "clip-add"
+        }
+      ],
+      "reply": "I put the laptop typing footage over the opening sentence, up to \"the new laptop I have been using\", with its own sound off so you hear only your voice. A black layer at 40% now covers the whole video, from the first frame to the last, so the text stands out."
+    }
+  ]
+}

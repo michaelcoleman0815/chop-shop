@@ -8,7 +8,7 @@ import type { LevelKey } from '../../shared/edit'
 const n = (v: number, digits = 6): string => (Math.abs(v) < 1e-12 ? '0' : v.toFixed(digits))
 
 /** How late afftdn returns sound, in seconds. */
-const AFFTDN_DELAY_SEC = 0.025
+export const AFFTDN_DELAY_SEC = 0.025
 
 /**
  * A peak limiter that leaves the sound where it was, for 48 kHz sound.

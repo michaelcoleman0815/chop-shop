@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { scopeLine } from '../shared/scopes/maths'
 import {
   CAMERA_KINDS,
   currentCut,
@@ -26,6 +27,10 @@ import {
 import { chaptersOf, clock, describeCamera, describeSpeed, seconds } from '../shared/presets'
 import { drawsCaptions, graphicsGuide, graphicsLines, template, templates } from '../shared/motion'
 import { FX_PLANNER_OPS, fromFxPlannerOp, fxGuide, fxLines } from '../shared/fx/planner'
+import { TRACK_PLANNER_OPS, fromTrackPlannerOp, tracksGuide, tracksLines } from '../shared/tracks/planner'
+import { COMPOSITING_PLANNER_OPS } from '../shared/tracks/compositing-planner'
+import { familyGuides, familyIndex } from './planner-guides'
+import { MIX_PLANNER_OPS, fromMixPlannerOp, mixLines, wantsMix } from '../shared/mix/planner'
 import { searchIcons } from '../shared/assets'
 import { lineName, playingTake, takesOf } from '../shared/raw/plan'
 import { renderPovs } from '../shared/pov/choose'
@@ -96,6 +101,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"voice","polish":0.6}: clean up the voice: rumble, hiss and harsh esses out, levels evened, presence lifted. 0 leaves it as recorded, 1 is the most.
 - {"op":"music","path":"","set":[{"key":"levelDb","value":-15},{"key":"duckDb","value":12}],"off":false}: change the music bed, naming only the settings that change: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. "path" stays "" unless the request names a file to use. "off":true takes the music out.
 - {"op":"look","name":"warm","set":[],"replace":true,"off":false}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage, with these settings: ${NAMED_LIST}. "name" starts from one of them, or stays "". "set" names only the settings that change: [{"key":"grain","value":0.2}]. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1; 0 takes one away. "replace":false changes the look already there, true starts afresh. "off":true takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
+  For the look, <scopes> measures each recording: luma from black 0 to white 100, how much is clipped, saturation and the cast (u, v). Grade by it: a warm cast wants temperature below 0, a magenta one tint below 0; most of the luma in a narrow band wants contrast; lows clipped want lift, highs clipped exposure down.
 - {"op":"sfx","beats":["b4"],"kind":"whoosh","word":"","gainDb":0}: a sound effect, made here, on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12), 0 for the usual. "kind":"none" takes a beat's sounds away. The person's own sound files are added with /sfx.
 - {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":[]} takes them out.
 - {"op":"angle","beats":["b4"],"source":"s2","layout":"full"}: another camera of the same take on beats: "full" shows it instead of the recording, "pip" in a box over it, "side" beside it. The sound stays the recording's. Only a source the transcript marks camera-of the beat's recording; "source":"" shows the beat's own recording again.
@@ -110,6 +116,8 @@ ${graphicsGuide()}
 
 ${fxGuide()}
 
+${tracksGuide()}
+${familyIndex() ? `\n${familyIndex()}\n` : ''}
 ## How to edit
 - Do exactly what was asked and nothing else. A note about one moment changes that moment.
 - A <chat> block, when present, is what was said just before the request: read a short answer ("yes", "the second one", a button's words) in its light.
@@ -318,6 +326,12 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) }),
   // Scene effects (shared/fx/planner), every slot required in the same way.
   ...FX_PLANNER_OPS,
+  // Layer tracks, clips, keys and trims (shared/tracks/planner), the same way; deep settings travel in spec.
+  ...TRACK_PLANNER_OPS,
+  // An expression on a clip's setting (shared/tracks/compositing-planner), taken by the edit as it is written.
+  ...COMPOSITING_PLANNER_OPS,
+  // The mixer (shared/mix/planner), the same way; effects travel in spec.
+  ...MIX_PLANNER_OPS,
   // Cutalong's own commands (shared/plan/commands.ts), run by the editor in the order given.
   ...planCommandSchemas()
 ])
@@ -515,6 +529,18 @@ export function fromPlannerOp(op: PlannerOp): unknown {
     case 'fx-update':
     case 'fx-remove':
       return fromFxPlannerOp(op)
+    case 'track':
+    case 'clip-add':
+    case 'clip-update':
+    case 'clip-trim':
+    case 'clip-split':
+    case 'clip-remove':
+    case 'key-set':
+    case 'key-remove':
+    case 'trim':
+      return fromTrackPlannerOp(op)
+    case 'mix':
+      return fromMixPlannerOp(op)
     default:
       return op
   }
@@ -750,6 +776,13 @@ export function renderRequest(
   if (graphics.length > 0) parts.push('<graphics>', ...graphics, '</graphics>')
   const effects = fxLines(cut, resolved, doc.words)
   if (effects.length > 0) parts.push('<effects>', ...effects, '</effects>')
+  const layered = tracksLines(cut, resolved, doc.words)
+  if (layered.length > 0) parts.push('<tracks>', ...layered, '</tracks>')
+  // The mixer's strips: those mixed, or all of them when the ask is about mixing (shared/mix/planner).
+  const mixed = mixLines(cut, wantsMix([request, ...notes.map((n) => n.text)].join('\n'), cut))
+  if (mixed.length > 0) parts.push('<mix>', ...mixed, '</mix>')
+  // The full guide of each family this ask or this cut needs (planner-guides.ts).
+  parts.push(...familyGuides([request, ...notes.map((n) => n.text)].join('\n'), cut))
   if (doc.assets.length > 0) {
     // Where each piece already shows, so the planner neither repeats nor forgets one.
     const shows = new Map<string, string[]>()
@@ -791,6 +824,9 @@ export function renderRequest(
     const sound = map ? renderSound(map, text) : ''
     if (sound) parts.push(sound)
   }
+  // What each recording's picture measures (main/scopes), for grading by numbers.
+  const scoped = doc.sources.filter((s) => s.scopes)
+  if (scoped.length) parts.push(`<scopes>\n${scoped.map((s) => scopeLine(s.id, s.scopes!)).join('\n')}\n</scopes>`)
   // Several players' views of one session, and the reactions heard in them (shared/pov).
   const povs = renderPovs(doc)
   if (povs) parts.push(povs)

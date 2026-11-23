@@ -1,5 +1,5 @@
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { spawn, spawnSync } from 'child_process'
 import { existsSync, promises as fs, readdirSync } from 'fs'
 import { arch, cpus, release, tmpdir } from 'os'
@@ -10,6 +10,9 @@ import { FONTS_DIR, resourcePath, WHISPER_PATH } from './resources'
 import { detectFaces, FACE_MODEL_PATH, hasFaceFinder, VISION_PATH } from './track'
 import { RELEASES_URL } from './updater'
 import { makeRenderer, take } from '../shared/vision/synthetic'
+import { applyOps, createDoc, currentCut, resolveCut, wordsFromTranscript } from '../shared/edit'
+import { renderCut } from './cut-render'
+import { renderCutLayers } from './layers-render'
 
 /**
  * The packaged app checking itself, for the build that makes it. Started
@@ -58,6 +61,244 @@ async function faceClip(path: string): Promise<{ durationSec: number }> {
   return { durationSec }
 }
 
+/** One frame's colour over a region, as fractions of the frame, read back with this ffmpeg. */
+function colourAt(path: string, sec: number, x: number, y: number, w: number, h: number): number[] {
+  const r = spawnSync(
+    FFMPEG_PATH,
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-ss', sec.toFixed(3), '-i', path, '-frames:v', '1'],
+      ...['-vf', `crop=iw*${w}:ih*${h}:iw*${x}:ih*${y},scale=in_color_matrix=bt709:in_range=tv,format=gbrp,scale=1:1:flags=area,format=rgb24`, '-f', 'rawvideo', '-']
+    ],
+    { timeout: 60_000 }
+  )
+  return [...(r.stdout ?? Buffer.alloc(0)).subarray(0, 3)]
+}
+
+/** How loud a tone is in a stretch of a file's sound, in dB, through a narrow band around it. */
+function toneDb(path: string, sec: number, length: number, hz: number): number {
+  const r = spawnSync(
+    FFMPEG_PATH,
+    [
+      ...['-hide_banner', '-ss', sec.toFixed(3), '-t', length.toFixed(3), '-i', path, '-map', '0:a:0'],
+      ...['-af', `bandpass=f=${hz}:width_type=q:w=12,bandpass=f=${hz}:width_type=q:w=12,volumedetect`, '-f', 'null', '-']
+    ],
+    { encoding: 'utf8', timeout: 60_000 }
+  )
+  const m = /mean_volume:\s*(-?[\d.]+) dB/.exec(r.stderr ?? '')
+  return m ? Number(m[1]) : -120
+}
+
+/**
+ * A short edit with layer tracks exported the way the app exports one: a red
+ * solid over the left half of the picture, a blue one multiplied with the
+ * picture in the lower left (drawn over the picture itself, main/base-frames), a
+ * title in the app's own font, a cloud of particles, and a sound clip mixed
+ * with the voice, each read back from the file.
+ */
+export async function layersExport(): Promise<string> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'cutalong-self-check-layers-'))
+  try {
+    const W = 320
+    const H = 180
+    const base = join(dir, 'base.mp4')
+    const sound = join(dir, 'ding.wav')
+    const run = (args: string[]): void => {
+      const r = spawnSync(FFMPEG_PATH, ['-hide_banner', '-loglevel', 'error', '-y', ...args], { encoding: 'utf8', timeout: 60_000 })
+      if (r.status !== 0) throw new Error(r.stderr?.trim() || `ffmpeg exited with ${r.status}`)
+    }
+    run([
+      ...['-f', 'lavfi', '-i', `color=c=0x808080:s=${W}x${H}:r=30:d=3`, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=3'],
+      ...['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', base]
+    ])
+    run(['-f', 'lavfi', '-i', 'sine=f=2500:sample_rate=48000:d=2', sound])
+    const source = { id: 's1', path: base, durationSec: 3, width: W, height: H, fps: 30 }
+    const words = wordsFromTranscript(
+      ['one', 'two', 'three', 'four', 'five'].map((text, i) => ({ text, startSec: 0.2 + i * 0.5, endSec: 0.6 + i * 0.5 })),
+      's1'
+    )
+    const doc = createDoc({ id: 'self-check', title: 'Layers', source, words })
+    const r = applyOps(
+      currentCut(doc),
+      [
+        { op: 'aspect', aspect: 'original' },
+        { op: 'captions', set: { on: false } },
+        { op: 'loudness', lufs: null },
+        { op: 'clip-add', kind: 'solid', color: '#FF0000', from: 'start+1', to: '1.5s', transform: { scale: 0.5, x: W * 0.25, y: H / 2 } },
+        { op: 'clip-add', kind: 'text', text: { value: 'LAYERS', size: 24 }, from: 'start+1', to: '1.5s', transform: { y: H * 0.2 } },
+        // Blue multiplied with the picture in the lower left, clear of the red, the title and the particles.
+        { op: 'clip-add', kind: 'solid', color: '#0000FF', from: 'start+1', to: '1.5s', blend: 'multiply', transform: { scale: 0.2, x: W * 0.2, y: H * 0.88 } },
+        { op: 'clip-add', kind: 'sound', src: sound, from: 'start+0.5', to: '1s', volume: -6 },
+        // Particles: a still cloud of large flakes in the lower right (shared/particles).
+        { op: 'clip-add', kind: 'particles', from: 'start+1', to: '1.5s', particles: { preset: 'snow', emitter: 'box', area: [0.78, 0.5, 0.94, 0.88], rate: 0, burst: 400, size: 90, speed: 0, gravity: 0, sway: 0, prerun: 0 } },
+        // Blue cut to a soft box in the middle of the frame (shared/motion/roto).
+        { op: 'clip-add', kind: 'solid', color: '#0000FF', from: 'start+2.2', to: '0.7s', masks: [{ rect: [W * 0.25, H * 0.25, W * 0.5, H * 0.5], feather: 8 }] }
+      ],
+      { words: doc.words, sources: doc.sources }
+    )
+    if (r.rejected.length) throw new Error(r.rejected.map((x) => x.reason).join(' '))
+    const resolved = resolveCut(r.cut, doc.words, doc.sources)
+    const sources = doc.sources.map((s) => ({ ...s, hasAudio: true }))
+    const started = Date.now()
+    const layers = await renderCutLayers({
+      cut: r.cut,
+      resolved,
+      words: doc.words,
+      sources,
+      quality: 'final',
+      ffmpeg: FFMPEG_PATH,
+      workDir: join(dir, 'layers'),
+      fontsDir: FONTS_DIR()
+    })
+    const out = await renderCut(r.cut, resolved, sources, {
+      ffmpeg: FFMPEG_PATH,
+      outputPath: join(dir, 'out.mp4'),
+      workDir: join(dir, 'work'),
+      quality: 'final',
+      fontsDir: FONTS_DIR(),
+      layers
+    })
+    const near = (c: number[], want: number[]): boolean => c.length === 3 && c.every((v, i) => Math.abs(v - want[i]) <= 24)
+    const red = colourAt(out, 1.6, 0.05, 0.4, 0.15, 0.2)
+    const grey = colourAt(out, 0.5, 0.05, 0.4, 0.15, 0.2)
+    if (!near(red, [255, 0, 0])) throw new Error(`the solid is not over the picture: ${red.join(',')} at 1.6 s`)
+    if (!near(grey, [128, 128, 128])) throw new Error(`the picture is not as it was before the solid: ${grey.join(',')}`)
+    // Blue multiplied with the grey picture under it: half a blue, no red or green.
+    const multiplied = colourAt(out, 1.6, 0.15, 0.82, 0.1, 0.1)
+    if (!near(multiplied, [0, 0, 128])) throw new Error(`the multiplied solid did not blend with the picture: ${multiplied.join(',')} at 1.6 s`)
+    // The title's white letters lift the top middle of the frame while it shows.
+    const lit = colourAt(out, 1.6, 0.3, 0.12, 0.4, 0.16)
+    if (!(lit[0] > grey[0] + 8)) throw new Error(`no title drawn: ${lit.join(',')} against ${grey.join(',')}`)
+    const flakes = colourAt(out, 1.6, 0.8, 0.55, 0.12, 0.28)
+    if (!(flakes[0] > grey[0] + 30)) throw new Error(`no particles drawn: ${flakes.join(',')} against ${grey.join(',')}`)
+    // The masked blue shows inside its box and not in the corner.
+    const masked = colourAt(out, 2.5, 0.4, 0.4, 0.2, 0.2)
+    const corner = colourAt(out, 2.5, 0.02, 0.02, 0.1, 0.1)
+    if (!near(masked, [0, 0, 255]) || !near(corner, [128, 128, 128])) throw new Error(`the mask does not cut the clip: ${masked.join(',')} inside, ${corner.join(',')} outside`)
+    const during = toneDb(out, 0.7, 0.6, 2500)
+    const after = toneDb(out, 2.2, 0.6, 2500)
+    if (!(during > -40 && during - after > 20)) throw new Error(`the sound clip is not in the mix: ${during} dB while it plays, ${after} dB after`)
+    return `${layers.overlays.length} overlay, ${layers.sounds.length} sound, in ${Date.now() - started} ms: red ${red.join(',')}, multiplied ${multiplied.join(',')}, title ${lit.join(',')}, particles ${flakes.join(',')}, masked ${masked.join(',')}, the sound at ${during.toFixed(1)} dB`
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+/**
+ * A short edit with a 3D clip exported the way the app exports one: a green
+ * card and an extruded title under a camera that trucks right, drawn by the
+ * export's 3D page. Read back from the file: grey before the clip, the card
+ * in the middle as it starts and to the left by the end, as green as its
+ * picture, and the title lifting the frame above it.
+ */
+async function threeLayersExport(): Promise<string> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'cutalong-self-check-3d-'))
+  try {
+    const W = 320
+    const H = 180
+    const base = join(dir, 'base.mp4')
+    const green = join(dir, 'green.png')
+    const run = (args: string[]): void => {
+      const r = spawnSync(FFMPEG_PATH, ['-hide_banner', '-loglevel', 'error', '-y', ...args], { encoding: 'utf8', timeout: 60_000 })
+      if (r.status !== 0) throw new Error(r.stderr?.trim() || `ffmpeg exited with ${r.status}`)
+    }
+    run([
+      ...['-f', 'lavfi', '-i', `color=c=0x808080:s=${W}x${H}:r=30:d=3`, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=3'],
+      ...['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', base]
+    ])
+    run(['-f', 'lavfi', '-i', 'color=c=0x00FF00:s=64x36', '-frames:v', '1', green])
+    const source = { id: 's1', path: base, durationSec: 3, width: W, height: H, fps: 30 }
+    const words = wordsFromTranscript(
+      ['one', 'two', 'three', 'four', 'five'].map((text, i) => ({ text, startSec: 0.2 + i * 0.5, endSec: 0.6 + i * 0.5 })),
+      's1'
+    )
+    const doc = createDoc({ id: 'self-check', title: '3D', source, words })
+    const truck = { keys: [{ t: 0, v: 0 }, { t: 2, v: W * 0.3 }] }
+    const r = applyOps(
+      currentCut(doc),
+      [
+        { op: 'aspect', aspect: 'original' },
+        { op: 'captions', set: { on: false } },
+        { op: 'loudness', lufs: null },
+        {
+          op: 'clip-add',
+          kind: '3d',
+          from: 'start+0.5',
+          to: '2s',
+          scene: {
+            objects: [
+              { id: 'o1', type: 'card', src: green, w: W * 0.4 },
+              { id: 'o2', type: 'text', text: '3D', size: 40, y: 58 }
+            ],
+            camera: { x: truck, tx: truck }
+          }
+        }
+      ],
+      { words: doc.words, sources: doc.sources }
+    )
+    if (r.rejected.length) throw new Error(r.rejected.map((x) => x.reason).join(' '))
+    const resolved = resolveCut(r.cut, doc.words, doc.sources)
+    const sources = doc.sources.map((s) => ({ ...s, hasAudio: true }))
+    const started = Date.now()
+    const layers = await renderCutLayers({
+      cut: r.cut,
+      resolved,
+      words: doc.words,
+      sources,
+      quality: 'final',
+      ffmpeg: FFMPEG_PATH,
+      workDir: join(dir, 'layers'),
+      fontsDir: FONTS_DIR()
+    })
+    const drawn = Date.now() - started
+    const out = await renderCut(r.cut, resolved, sources, {
+      ffmpeg: FFMPEG_PATH,
+      outputPath: join(dir, 'out.mp4'),
+      workDir: join(dir, 'work'),
+      quality: 'final',
+      fontsDir: FONTS_DIR(),
+      layers
+    })
+    const keep = process.env.CUTALONG_SELF_CHECK_KEEP
+    if (keep) await fs.copyFile(out, join(keep, '3d-layers.mp4'))
+    const near = (c: number[], want: number[]): boolean => c.length === 3 && c.every((v, i) => Math.abs(v - want[i]) <= 24)
+    const before = colourAt(out, 0.3, 0.45, 0.45, 0.1, 0.1)
+    const first = colourAt(out, 0.6, 0.45, 0.45, 0.1, 0.1)
+    // By 2.4 s the camera has trucked 91 px right, so the card's middle is at 69 px of 320.
+    const moved = colourAt(out, 2.4, 0.18, 0.45, 0.07, 0.1)
+    const left = colourAt(out, 2.4, 0.48, 0.45, 0.04, 0.1)
+    if (!near(before, [128, 128, 128])) throw new Error(`the picture is not as it was before the 3D clip: ${before.join(',')}`)
+    if (!near(first, [0, 255, 0])) throw new Error(`the card is not in the middle as the clip starts: ${first.join(',')} at 0.6 s`)
+    if (!near(moved, [0, 255, 0])) throw new Error(`the card did not move left as the camera trucked right: ${moved.join(',')} at 2.4 s`)
+    if (!near(left, [128, 128, 128])) throw new Error(`the card is still in the middle at 2.4 s: ${left.join(',')}`)
+    const lit = colourAt(out, 0.6, 0.4, 0.1, 0.2, 0.18)
+    if (!(lit[0] > before[0] + 8)) throw new Error(`no 3D title drawn: ${lit.join(',')} against ${before.join(',')}`)
+    if (BrowserWindow.getAllWindows().length > 0) throw new Error('the 3D page was left open after the export')
+    // Cancelled part way, the export stops and its 3D page closes.
+    const stop = new AbortController()
+    const cancelled = renderCutLayers({
+      cut: r.cut,
+      resolved,
+      words: doc.words,
+      sources,
+      quality: 'final',
+      ffmpeg: FFMPEG_PATH,
+      workDir: join(dir, 'cancelled'),
+      fontsDir: FONTS_DIR(),
+      signal: stop.signal,
+      onProgress: (f) => f > 0.1 && stop.abort()
+    }).then(
+      () => 'finished',
+      () => 'stopped'
+    )
+    const how = await cancelled
+    if (how !== 'stopped') throw new Error('a cancelled 3D export ran to the end')
+    if (BrowserWindow.getAllWindows().length > 0) throw new Error('the 3D page was left open after the export was cancelled')
+    return `${layers.overlays.length} overlay drawn in ${drawn} ms: card ${first.join(',')} then ${moved.join(',')} to the left, title ${lit.join(',')}; a cancelled export stopped and closed its page`
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
 async function check(name: string, run: () => Promise<string> | string): Promise<Check> {
   try {
     return { name, ok: true, detail: await run() }
@@ -73,6 +314,13 @@ export async function selfCheck(reportPath: string): Promise<number> {
     console.log(`[self-check] ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`)
   }
   const bin = resourcePath('bin')
+  // Only the 3D export, for checking it from a checkout (scripts/three-export-check.mjs).
+  if (process.env.CUTALONG_SELF_CHECK_ONLY === '3d') {
+    add(await check('3D layers', threeLayersExport))
+    const failed = checks.filter((c) => !c.ok)
+    await fs.writeFile(reportPath, JSON.stringify({ ok: failed.length === 0, checks }, null, 2))
+    return failed.length === 0 ? 0 : 1
+  }
 
   add({
     name: 'app',
@@ -145,6 +393,8 @@ export async function selfCheck(reportPath: string): Promise<number> {
       return `drew a ${png.length} byte PNG with Skia`
     })
   )
+  add(await check('layer tracks', layersExport))
+  add(await check('3D layers', threeLayersExport))
   add(
     await check('face finder', async () => {
       if (!hasFaceFinder())

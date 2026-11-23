@@ -15,6 +15,7 @@ import { removePreset, savedPresets, savePreset } from '../../../src/main/preset
 import { accountStatus, requestCode, signOut, syncAccount, verifyCode } from '../../../src/main/account'
 import { createProject, openProject, recentProjects, saveProject } from './projects'
 import { sceneForCut } from '../../../src/main/motion-scene'
+import { clipSounds, drawsOverPicture } from '../../../src/main/layer-sounds'
 import { phoneEncoder } from '../../../src/main/render/encoder'
 import { detectProvider } from '../../../src/shared/keys'
 import { isServiceId, type ServiceId } from '../../../src/shared/services'
@@ -77,6 +78,12 @@ export function phoneWork(parts: Pick<PhoneApiParts, 'info' | 'settings' | 'serv
       const scene = sceneForCut(input)
       if (scene.layers.length > 0) throw new Error(ON_THE_MAC.graphics)
       return { overlays: [], scene }
+    },
+    // The layer tracks' sounds mix here; their pictures are drawn on the Mac's canvas for now.
+    layers: async (input) => {
+      if (drawsOverPicture(input)) throw new Error(ON_THE_MAC.layers)
+      const sounds = await clipSounds(input, async (path) => (await probeFile('ffprobe', path)).facts.audio !== null)
+      return { overlays: [], sounds }
     },
     encoder: encoder ?? undefined,
     perspective: false,
@@ -331,6 +338,8 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
     // Nothing is cut out of a picture here: that is the Mac's Vision.
     fxCan: async () => ({ person: false, objects: false }),
     fxCutouts: async () => ({ tracks: [], missing: [] }),
+    // Following needs the Mac's Vision.
+    followClips: async () => ({ ops: [], said: 'Following something in the picture needs Cutalong on a Mac, so it stays where it is put.' }),
     setVideoSignIn: async () => null,
     getBrand: () => readBrand(),
     saveBrand: (brand) => saveBrand(brand),

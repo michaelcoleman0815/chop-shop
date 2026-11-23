@@ -11,12 +11,20 @@ import {
   type Layer,
   type LogoMark,
   type MotionScene,
-  type Size
+  type Scene3DLayer,
+  type Size,
+  type VideoLayer
 } from '../shared/motion'
+import type { BaseFrames } from './base-frames'
+import type { VideoFrames } from './video-frames'
+import type { Scene3DFrames } from './three-render'
 import { frameRate, frameSize, type OverlaySpan } from './cut-render'
 import { mapResourcesFor, usesMap } from './map-data'
 import { sceneForCut, type CutMotionInput } from './motion-scene'
 import type { MapResources } from '../shared/maps'
+import type { CutoutTrack } from '../shared/fx'
+import { drawsBehind } from '../shared/tracks/mattes'
+import { exportMattes } from './matte-cutouts'
 
 /**
  * Motion graphics for the export: the same scene the editor draws, painted
@@ -66,8 +74,38 @@ export interface MotionRenderOptions {
   logos?: (slug: string) => LogoMark | undefined
   /** Map data and satellite tiles, for map graphics. */
   map?: MapResources
+  /** Video clips' frames, for the layer tracks' video layers (main/video-frames). */
+  video?: VideoFrames
+  /** The person and objects as mattes, from the cut-outs (main/matte-cutouts), for layers cut to them or drawn behind the person. */
+  mattes?: DrawResources['mattes']
+  /** 3D clips' frames, for the layer tracks' 3D layers (main/three-render). */
+  scene3d?: Scene3DFrames
+  /** The overlay files' names start with this: "motion" unless said. */
+  prefix?: string
+  /** The stretches to draw, instead of every stretch something is on screen. */
+  spans?: { start: number; end: number }[]
+  /** The edit's own picture for each frame drawn, laid under the layers (main/base-frames). */
+  base?: BaseFrames
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
+}
+
+/** Every video layer, inside groups too. */
+function videoLayersOf(layers: Layer[], out: VideoLayer[] = []): VideoLayer[] {
+  for (const l of layers) {
+    if (l.kind === 'video') out.push(l)
+    else if (l.kind === 'group') videoLayersOf(l.children, out)
+  }
+  return out
+}
+
+/** Every 3D layer, inside groups too. */
+function scene3dLayersOf(layers: Layer[], out: Scene3DLayer[] = []): Scene3DLayer[] {
+  for (const l of layers) {
+    if (l.kind === '3d') out.push(l)
+    else if (l.kind === 'group') scene3dLayersOf(l.children, out)
+  }
+  return out
 }
 
 /** The stretches to draw, merged until there are few enough for the final pass. */
@@ -86,6 +124,7 @@ function assetIds(layers: Layer[], out = new Set<string>()): Set<string> {
   for (const l of layers) {
     if (l.kind === 'image' && l.asset) out.add(l.asset)
     if (l.kind === 'image' && l.file) out.add(`file:${l.file}`)
+    if (l.kind === 'particles' && l.file) out.add(`file:${l.file}`)
     if (l.kind === 'group') assetIds(l.children, out)
   }
   return out
@@ -99,9 +138,18 @@ function usesLogos(layers: Layer[]): boolean {
   return layers.some((l) => (l.kind === 'image' && !!l.logo) || (l.kind === 'group' && usesLogos(l.children)))
 }
 
+/** The output frames whose time falls inside each span, on the output's own grid. */
+export function spanFrames(spans: { start: number; end: number }[], fps: number): { first: number; count: number }[] {
+  return spans.map((s) => {
+    const first = Math.ceil(s.start * fps - 1e-6)
+    const last = Math.max(first, Math.ceil(s.end * fps - 1e-6) - 1)
+    return { first, count: last - first + 1 }
+  })
+}
+
 /** Draws every active stretch of the layers into its own overlay file. */
 export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): Promise<OverlaySpan[]> {
-  const spans = overlaySpans(layers, opts.duration)
+  const spans = opts.spans ?? overlaySpans(layers, opts.duration)
   if (spans.length === 0) return []
   registerMotionFonts(opts.fontsDir)
   await fs.mkdir(opts.workDir, { recursive: true })
@@ -123,36 +171,45 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
     logos: opts.logos,
     map: opts.map,
     // Scratch canvases, for motion blur.
-    createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>
+    createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>,
+    ...(opts.video ? { video: (layer: VideoLayer, local: number) => opts.video?.frame(layer, local) ?? null } : {}),
+    ...(opts.mattes ? { mattes: opts.mattes } : {}),
+    ...(opts.scene3d ? { scene3d: (layer: Scene3DLayer) => opts.scene3d?.frame(layer) ?? null } : {})
   }
+  const videos = opts.video ? videoLayersOf(layers) : []
+  const solids = opts.scene3d ? scene3dLayersOf(layers) : []
 
   const { width, height, fps } = opts
-  const frames = spans.map((s) => {
-    // Frames whose time falls inside the span, on the output's own grid.
-    const first = Math.ceil(s.start * fps - 1e-6)
-    const last = Math.max(first, Math.ceil(s.end * fps - 1e-6) - 1)
-    return { first, count: last - first + 1 }
-  })
+  const frames = spanFrames(spans, fps)
   const total = frames.reduce((n, f) => n + f.count, 0)
   const canvas = createCanvas(width, height)
   const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D
   const out: OverlaySpan[] = []
   let done = 0
 
-  for (let i = 0; i < spans.length; i++) {
-    const { first, count } = frames[i]
-    const path = join(opts.workDir, `motion-${String(i).padStart(3, '0')}.mov`)
-    await encode(opts.ffmpeg, path, width, height, fps, opts.signal, async (write) => {
-      for (let n = 0; n < count; n++) {
-        const t = (first + n) / fps
-        renderFrame(ctx, t, layers, opts.design, { width, height }, resources)
-        const pixels = ctx.getImageData(0, 0, width, height).data
-        await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength))
-        done++
-        if (done % 10 === 0) opts.onProgress?.(done / total)
-      }
-    })
-    out.push({ path, startSec: first / fps, durationSec: count / fps })
+  try {
+    for (let i = 0; i < spans.length; i++) {
+      const { first, count } = frames[i]
+      const path = join(opts.workDir, `${opts.prefix ?? 'motion'}-${String(i).padStart(3, '0')}.mov`)
+      await encode(opts.ffmpeg, path, width, height, fps, opts.signal, async (write) => {
+        for (let n = 0; n < count; n++) {
+          const t = (first + n) / fps
+          if (videos.length) await opts.video?.prepare(t, videos)
+          // The picture under the layers, for blends and adjustments that work on it.
+          if (opts.base) resources.base = (await opts.base.advance(first + n)) ? opts.base.canvas : null
+          if (solids.length) await opts.scene3d?.prepare(t, solids)
+          renderFrame(ctx, t, layers, opts.design, { width, height }, resources)
+          const pixels = ctx.getImageData(0, 0, width, height).data
+          await write(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength))
+          done++
+          if (done % 10 === 0) opts.onProgress?.(done / total)
+        }
+      })
+      out.push({ path, startSec: first / fps, durationSec: count / fps })
+    }
+  } finally {
+    opts.video?.close()
+    opts.scene3d?.close()
   }
   opts.onProgress?.(1)
   return out
@@ -224,7 +281,9 @@ function encode(
 export { sceneForCut, subtitleCut, subtitlePass, type CutMotionInput } from './motion-scene'
 
 /** Renders a cut's graphics to overlay files for renderCut. Empty when the cut has none. */
-export async function renderCutMotion(input: CutMotionInput): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }> {
+export async function renderCutMotion(
+  input: CutMotionInput & { /** The cut-outs made for graphics drawn behind the person (main/matte-cutouts). */ cutouts?: CutoutTrack[] }
+): Promise<{ overlays: OverlaySpan[]; scene: MotionScene }> {
   const scene = sceneForCut(input)
   if (scene.layers.length === 0) return { overlays: [], scene }
   const first = input.sources.find((s) => s.id === input.resolved.pieces[0]?.source) ?? input.sources[0]
@@ -245,6 +304,7 @@ export async function renderCutMotion(input: CutMotionInput): Promise<{ overlays
     map: usesMap(scene.layers)
       ? await mapResourcesFor(scene.layers, { design: scene.size, pixels: { width, height }, fps: frameRate(first.fps) })
       : undefined,
+    mattes: drawsBehind(scene.layers) ? await exportMattes(input.cut, input.resolved, input.sources, input.cutouts) : undefined,
     onProgress: input.onProgress,
     signal: input.signal
   })

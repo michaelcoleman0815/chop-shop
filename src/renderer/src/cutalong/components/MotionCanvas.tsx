@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { renderFrame, type IconNode, type Layer, type LogoMark, type MotionScene } from '../../../../shared/motion'
+import { renderFrame, type DrawResources, type IconNode, type Layer, type LogoMark, type MotionScene } from '../../../../shared/motion'
 import type { Asset } from '../../../../shared/edit'
-import { mediaUrlFor } from '../api'
+import { needsBaseAt } from '../../../../shared/tracks/compositing'
+import { MEDIA_CORS, mediaUrlFor } from '../api'
+import { loadReadablePicture } from '../mattes-preview'
 import { loadIconNodes, loadLogoMarks, loadMotionFonts, loadPicture } from '../graphics'
 import { useMapResources } from '../map-resources'
 
@@ -32,13 +34,40 @@ export function MotionCanvas({
   assets,
   time,
   width,
-  height
+  height,
+  video,
+  mattes,
+  keySize,
+  scene3d,
+  redraw = 0,
+  className = 'cl-motion',
+  base,
+  onUnreadable
 }: {
   scene: MotionScene
   assets: Asset[]
   time: number
   width: number
   height: number
+  /** Video layers' frames (the layer tracks' clips, from useClipMedia). */
+  video?: DrawResources['video']
+  /** The person and objects as mattes, from the cut-outs (mattes-preview), for layers cut to them or drawn behind the person. */
+  mattes?: DrawResources['mattes']
+  /** The longest side a chroma key is worked at, so the preview keeps up. */
+  keySize?: number
+  /** 3D layers' frames (the layer tracks' 3D clips, from useScene3D). */
+  scene3d?: DrawResources['scene3d']
+  /** Changes when a video frame arrives, so the frame is drawn again with it. */
+  redraw?: number
+  className?: string
+  /**
+   * The picture under the canvas at its pixel size, drawn first while a layer
+   * blends with it or grades it (shared/tracks/compositing), so it works on
+   * the picture and not only on the layers.
+   */
+  base?: (width: number, height: number) => CanvasImageSource | null
+  /** Told when an adjustment layer cannot read the picture under it. */
+  onUnreadable?: (why: string) => void
 }): JSX.Element | null {
   const canvas = useRef<HTMLCanvasElement>(null)
   // Bumped when a face, the icons or an image finishes loading, so the frame redraws with it.
@@ -57,14 +86,19 @@ export function MotionCanvas({
     let icon = false
     let logo = false
     const ids = new Set<string>()
+    // Pictures a key passes over are loaded with leave to read them.
+    const keyed = new Set<string>()
     walk(scene.layers, (l) => {
+      if (l.kind === 'image' && l.key && l.file) keyed.add(`file:${l.file}`)
       if (l.kind === 'image' && l.icon) icon = true
       if (l.kind === 'image' && l.logo) logo = true
       if (l.kind === 'image' && l.asset) ids.add(l.asset)
       // The brand's own logos are files on this computer, keyed by their path.
       if (l.kind === 'image' && l.file) ids.add(`file:${l.file}`)
+      // A particle sprite's picture, the same way.
+      if (l.kind === 'particles' && l.file) ids.add(`file:${l.file}`)
     })
-    return { icon, logo, ids: [...ids].sort().join('\n') }
+    return { icon, logo, ids: [...ids].sort().join('\n'), keyed: [...keyed].sort().join('\n') }
   }, [scene])
 
   useEffect(() => {
@@ -84,7 +118,8 @@ export function MotionCanvas({
     void Promise.all(
       needs.ids.split('\n').map(async (id) => {
         const path = id.startsWith('file:') ? id.slice(5) : byId.get(id)?.path
-        const img = path ? await loadPicture(mediaUrlFor(path)) : null
+        const readable = needs.keyed.split('\n').includes(id)
+        const img = path ? await (readable ? loadReadablePicture(mediaUrlFor(path), MEDIA_CORS) : loadPicture(mediaUrlFor(path))) : null
         return [id, img] as const
       })
     ).then((pairs) => {
@@ -94,7 +129,7 @@ export function MotionCanvas({
     return () => {
       live = false
     }
-  }, [needs.ids, assets])
+  }, [needs.ids, needs.keyed, assets])
 
   useLayoutEffect(() => {
     const el = canvas.current
@@ -106,18 +141,21 @@ export function MotionCanvas({
     if (el.height !== ph) el.height = ph
     const ctx = el.getContext('2d')
     if (!ctx) return
+    const under = base && needsBaseAt(scene.layers, time) ? base(pw, ph) : null
     renderFrame(
       ctx,
       time,
       scene.layers,
       scene.size,
       { width: pw, height: ph },
-      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map }
+      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map, video, base: under, unreadable: onUnreadable, mattes, keySize, scene3d }
     )
+    // Whether it covers the picture now, drawn over it while a layer blends with it.
+    el.dataset.base = under ? 'on' : 'off'
     // The moment drawn, for anyone checking the preview against the export.
     el.dataset.time = time.toFixed(4)
-  }, [scene, time, width, height, loaded, icons, logos, pictures, map])
+  }, [scene, time, width, height, loaded, icons, logos, pictures, map, video, redraw, base, onUnreadable, mattes, keySize, scene3d])
 
   if (scene.layers.length === 0) return null
-  return <canvas ref={canvas} className="cl-motion" style={{ width, height }} aria-hidden="true" />
+  return <canvas ref={canvas} className={className} style={{ width, height }} aria-hidden="true" />
 }

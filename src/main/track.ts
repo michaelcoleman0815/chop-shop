@@ -139,7 +139,51 @@ export async function readableStretch<T>(
 export interface TrackedObject {
   /** How it was chosen: given, nearest a hand, or the biggest thing that stands out. */
   found: 'given' | 'hand' | 'salient'
-  samples: { t: number; box: [number, number, number, number] | null; c: number }[]
+  samples: { t: number; box: [number, number, number, number] | null; c: number; /** Its size against the first box, when measured. */ s?: number }[]
+  /** Whether the boxes' sizes were measured frame by frame; a helper from before kept the first box's size. */
+  sized?: boolean
+  /** The picture's size as the helper read it, when it says. */
+  width?: number
+  height?: number
+}
+
+/**
+ * The helper's answer to --track, from before it measured sizes or after:
+ * a lost frame may say `null` or leave the box out, and only a helper that
+ * measures says `sized` and gives each box its scale. Null when it is not an
+ * answer at all.
+ */
+export function readTracked(json: string): TrackedObject | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(json)
+  } catch {
+    return null
+  }
+  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { samples?: unknown }).samples)) return null
+  const r = raw as { found?: unknown; sized?: unknown; width?: unknown; height?: unknown; samples: unknown[] }
+  const found = r.found === 'hand' || r.found === 'salient' ? r.found : 'given'
+  const box = (b: unknown): [number, number, number, number] | null =>
+    Array.isArray(b) && b.length === 4 && b.every((v) => typeof v === 'number' && Number.isFinite(v)) ? (b as [number, number, number, number]) : null
+  const samples: TrackedObject['samples'] = []
+  for (const x of r.samples) {
+    if (!x || typeof x !== 'object') continue
+    const o = x as { t?: unknown; box?: unknown; c?: unknown; s?: unknown }
+    if (typeof o.t !== 'number' || !Number.isFinite(o.t)) continue
+    const b = box(o.box)
+    samples.push({
+      t: o.t,
+      box: b,
+      c: typeof o.c === 'number' ? o.c : 0,
+      ...(b && typeof o.s === 'number' && Number.isFinite(o.s) && o.s > 0 ? { s: o.s } : {})
+    })
+  }
+  return {
+    found,
+    samples,
+    ...(r.sized === true ? { sized: true } : {}),
+    ...(typeof r.width === 'number' && typeof r.height === 'number' ? { width: r.width, height: r.height } : {})
+  }
 }
 
 /**
@@ -159,19 +203,19 @@ export async function trackObject(
   if (process.platform !== 'darwin') throw new Error('Following an object needs the Mac’s Vision.')
   const bin = VISION_PATH()
   if (!existsSync(bin)) throw new Error('chopshop-vision is missing. Run scripts/build-native.sh.')
-  const read = async (path: string, from: number): Promise<TrackedObject> => {
+  // The helper's answer with each box's size when it measures them (readTracked); null when it is not one.
+  const read = async (path: string, from: number): Promise<TrackedObject | null> => {
     const args = ['--track', path, from.toFixed(3), durationSec.toFixed(3), String(samplesPerSec)]
     if (box) args.push(...box.map((v) => v.toFixed(4)))
-    return JSON.parse(await runVision(bin, args)) as TrackedObject
+    return readTracked(await runVision(bin, args))
   }
   // The helper failing or answering with not one sample: the Mac could not open the picture, so it is read from
   // a copy it can (readableStretch).
   let r = await read(sourcePath, startSec).catch(() => null)
-  if ((!r || !Array.isArray(r.samples) || r.samples.length === 0) && durationSec >= 1)
+  if ((!r || r.samples.length === 0) && durationSec >= 1)
     r = await readableStretch(sourcePath, startSec, durationSec, samplesPerSec * 2, (copy) => read(copy, 0))
-  if (!r) throw new Error('The helper followed nothing.')
-  if (!Array.isArray(r.samples) || r.samples.length === 0) throw new Error('The helper followed nothing.')
-  return { found: r.found, samples: r.samples }
+  if (!r || r.samples.length === 0) throw new Error('The helper followed nothing.')
+  return r
 }
 
 export interface TrackOptions {

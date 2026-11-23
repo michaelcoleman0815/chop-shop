@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { platform, setPlatform, type Platform } from '../../../src/main/platform'
-import { findFfmpeg, findFfprobe } from '../../../src/main/test-media'
+import { findFfmpeg, findFfprobe, toneLevel } from '../../../src/main/test-media'
 import { filterPath } from '../../../src/main/cut-render'
 import { missingOnPhone } from '../../../src/main/render/lgpl'
 import { applyOps, currentCut, type EditDoc, type Op } from '../../../src/shared/edit'
@@ -399,6 +399,42 @@ describe.skipIf(!FFMPEG || !FFPROBE)('Cutalong on a phone', () => {
     ).streams as { codec_type: string }[]
     expect(streams.map((s) => s.codec_type).sort()).toEqual(['audio', 'video'])
     // A whole export at 1080 x 1920, beside the rest of the suite.
+  }, 180_000)
+
+  it('mixes the layer tracks’ sounds into an export here, and says their pictures are on the Mac', async () => {
+    // A 1.2 kHz tone, clear of the voice's 180 Hz, as material a9, played from 1 s for 2 s.
+    const ding = join(root, 'Picked', 'ding.wav')
+    execFileSync(FFMPEG as string, [
+      ...['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=1200:d=4:sample_rate=48000', ding]
+    ])
+    const origin = { type: 'file' as const, url: null, author: null, license: null, range: null }
+    const material: EditDoc = {
+      ...doc,
+      assets: [...doc.assets, { id: 'a9', kind: 'audio', path: ding, title: 'Ding', durationSec: 4, width: null, height: null, origin }]
+    }
+    const ctx = { words: material.words, sources: material.sources, assets: material.assets }
+    const version = (ops: Op[], n: number): EditDoc => {
+      const r = applyOps(currentCut(material), ops, ctx)
+      expect(r.rejected).toEqual([])
+      return { ...material, versions: [...material.versions, { ...material.versions[0], n, cut: r.cut, summary: `v${n}` }] }
+    }
+    const sounded = version([{ op: 'clip-add', kind: 'sound', src: 'a9', from: 'start+1', to: '2s', volume: -6 }] as Op[], 3)
+    engine.calls.length = 0
+    const r = await api.renderCut({ doc: sounded, quality: 'preview' })
+    if (!r.ok) throw new Error(r.message)
+    const renders = engine.calls.filter((c) => c.tool === 'ffmpeg' && c.args.includes('-filter_complex'))
+    for (const c of renders) expect(missingOnPhone(c.args)).toEqual([])
+    expect(renders[renders.length - 1].args).toContain(ding)
+    // Heard while it plays, and not before it starts.
+    const during = toneLevel(FFMPEG as string, r.outputPath, 1.3, 1.4, 1200)
+    const before = toneLevel(FFMPEG as string, r.outputPath, 0.1, 0.7, 1200)
+    expect(during).toBeGreaterThan(-40)
+    expect(during - before).toBeGreaterThan(20)
+
+    // A title over the picture needs the Mac's canvas: the export says so in one sentence, and makes nothing.
+    const titled = version([{ op: 'clip-add', kind: 'text', text: { value: 'NEW' }, from: 'start', to: '2s' }] as Op[], 4)
+    const refused = await api.renderCut({ doc: titled, quality: 'preview' })
+    expect(refused).toMatchObject({ ok: false, message: ON_THE_MAC.layers })
   }, 180_000)
 
   it('keeps projects, presets and settings in the app, and offers the models sized for phones', async () => {
