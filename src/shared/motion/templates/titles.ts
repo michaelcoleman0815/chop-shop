@@ -1,4 +1,4 @@
-import { keys, tail } from '../anim'
+import { keys, mixColor, tail } from '../anim'
 import type { Animator, Effects, Layer, Span, TextLayer } from '../types'
 import { accentOf, inkOn, TIMING } from './kit'
 import { register, type BuildContext } from './registry'
@@ -195,12 +195,18 @@ register({
 
 // ---------- Hook banner ----------
 
-const BANNER_STYLES = ['box', 'accent', 'outline', 'title', 'card'] as const
+const BANNER_STYLES = ['box', 'accent', 'outline', 'title', 'card', 'ink', 'marker', 'header'] as const
 
 /** The face the sermon hooks are set in (shared/motion/fonts): title case, never shouted. */
 const HOOK_FACE = 'Inter ExtraBold'
 
-function banner(ctx: BuildContext): Layer[] {
+/** How long before the video starts an opening banner starts, so it has landed by the first frame (OPEN_SEC). */
+const OPENING_LEAD_SEC = 0.5
+
+function banner(ctx0: BuildContext): Layer[] {
+  // A hook that opens the video is already in on its first frame, the face of the video in a feed: it starts
+  // just before the video does, its entrance over by then.
+  const ctx = ctx0.span.start <= 0.05 ? { ...ctx0, span: { ...ctx0.span, start: -OPENING_LEAD_SEC } } : ctx0
   const { frame, theme, item, span } = ctx
   const { start, end } = span
   const u = frame.u
@@ -219,6 +225,9 @@ function banner(ctx: BuildContext): Layer[] {
         : frame.height - frame.safe.bottom - 24 * u
   const valign = place === 'top' ? 'top' : place === 'middle' ? 'middle' : 'bottom'
   if (style === 'title' || style === 'card') return sermonHook(ctx, style, place)
+  if (style === 'ink') return inkHook(ctx, place)
+  if (style === 'header') return headerHook(ctx)
+  if (style === 'marker') return markerHook(ctx, place)
   const outline = style === 'outline'
   const plateColor = style === 'accent' ? accent : '#FFFFFF'
   const ink = outline ? theme.text : inkOn(plateColor, theme)
@@ -264,6 +273,200 @@ function banner(ctx: BuildContext): Layer[] {
       }
     }
   ]
+}
+
+/**
+ * The interview shows' hook (The Diary of a CEO's own Shorts, measured): heavy white capitals whose capitals
+ * stand about 4.7% of the frame's width, each line on its own black plate hugging it, the words between
+ * asterisks (or else the last word) in the accent, over the speaker's chest, for the opening seconds.
+ */
+function inkHook(ctx: BuildContext, place: 'top' | 'middle' | 'bottom'): Layer[] {
+  const { frame, theme, item, span } = ctx
+  const { start, end } = span
+  const u = frame.u
+  const accent = accentOf(item.color, theme)
+  const width = frame.width - 2 * frame.safe.left
+  const y =
+    place === 'top'
+      ? frame.safe.top + 24 * u
+      : place === 'middle'
+        ? frame.height * 0.56
+        : frame.height - frame.safe.bottom - 24 * u
+  const valign = place === 'top' ? 'top' : place === 'middle' ? 'middle' : 'bottom'
+  return [
+    {
+      kind: 'text',
+      start,
+      end,
+      text: '',
+      spans: inkSpans((item.text[0] ?? '').trim(), accent),
+      font: { family: HOOK_FACE, size: 70 * u, uppercase: true, lineHeight: 1.1 },
+      fill: '#FFFFFF',
+      align: 'center',
+      valign,
+      maxWidth: width * 0.8,
+      balance: true,
+      plate: {
+        color: '#000000',
+        perLine: true,
+        hug: true,
+        stagger: 0.06,
+        radius: 2 * u,
+        padX: 16 * u,
+        padY: 14 * u,
+        originX: 0.5,
+        scaleX: keys([0, 0, 'snap'], [0.22, 1])
+      },
+      animators: [
+        { by: 'word', delay: 0.1, stagger: 0.04, duration: 0.28, ease: 'snap', from: { y: 22 * u, opacity: 0 }, clip: true }
+      ],
+      transform: {
+        x: frame.width / 2,
+        y,
+        anchorY: 0,
+        opacity: { keys: [{ t: 0, v: 1 }, ...tail([0.16, 1, 'ease-in'], [0, 0])] },
+        scale: { keys: [{ t: 0, v: 1 }, ...tail([0.16, 1, 'ease-in'], [0, 0.97])] }
+      }
+    }
+  ]
+}
+
+/** How much of the frame's height a show's header takes from the top: its logo band, and the title bar under it. */
+export const HEADER_FRAC = 0.22
+/** The title bar's share of the header, at its foot. */
+const HEADER_BAR = 0.4
+
+/**
+ * A show's standing header, as Club Shay Shay frames every Short (measured): a dark band across the top with the
+ * show's logo, a bar the frame's width in the show's colour under it with the clip's title in dark capitals,
+ * centred on two lines, and the picture boxed beneath it (the box op, its top where the header ends,
+ * HEADER_FRAC). The logo is the brand's own, by the name in icon or the brand's name, else its first; without
+ * one the band carries the brand's name. There from the first frame to the last, and still: nothing moves.
+ */
+function headerHook(ctx: BuildContext): Layer[] {
+  const { frame, theme, item, span } = ctx
+  const { start, end } = span
+  const u = frame.u
+  const W = frame.width
+  const bar = accentOf(item.color, theme)
+  const height = frame.height * HEADER_FRAC
+  const barH = height * HEADER_BAR
+  const bandH = height - barH
+  const named = (item.icon ?? theme.name).trim().toLowerCase()
+  const logo = theme.logos.find((l) => l.name.trim().toLowerCase() === named) ?? theme.logos[0]
+  const band: Layer = {
+    kind: 'shape',
+    start,
+    end,
+    shape: { type: 'rect', w: W, h: bandH },
+    fill: { gradient: 'linear', angle: 90, stops: [[0, '#1C1A17'], [1, '#070707']] },
+    transform: { x: W / 2, y: bandH / 2 }
+  }
+  const mark: Layer[] = logo
+    ? [{ kind: 'image', start, end, file: logo.path, w: W, h: bandH, fit: 'contain', transform: { x: W / 2, y: bandH / 2 } }]
+    : theme.name
+      ? [
+          {
+            kind: 'text',
+            start,
+            end,
+            text: theme.name,
+            font: { family: theme.display, size: 64 * u, uppercase: true },
+            fill: bar,
+            align: 'center',
+            valign: 'middle',
+            maxWidth: W * 0.8,
+            transform: { x: W / 2, y: bandH / 2 }
+          }
+        ]
+      : []
+  return [
+    band,
+    ...mark,
+    {
+      kind: 'shape',
+      start,
+      end,
+      shape: { type: 'rect', w: W, h: barH },
+      // Lit from the right, as a foil bar is: a shade darker at the left, a shade lighter at the right.
+      fill: {
+        gradient: 'linear',
+        angle: 0,
+        stops: [
+          [0, mixColor(bar, '#000000', 0.08)],
+          [1, mixColor(bar, '#FFFFFF', 0.08)]
+        ]
+      },
+      transform: { x: W / 2, y: bandH + barH / 2 }
+    },
+    {
+      kind: 'text',
+      start,
+      end,
+      text: '',
+      spans: [{ text: (item.text[0] ?? '').trim() }],
+      // Heavy, filling the first line before it breaks, as a title is set rather than balanced.
+      font: { family: theme.display, size: 60 * u, weight: 800, uppercase: true, lineHeight: 1.08 },
+      fill: inkOn(bar, theme),
+      align: 'center',
+      valign: 'middle',
+      maxWidth: W * 0.66,
+      transform: { x: W / 2, y: bandH + barH / 2 }
+    }
+  ]
+}
+
+/**
+ * Colin & Samir's hook (their Shorts, measured): black words in title case on a highlighter-yellow box a line,
+ * the boxes touching, about three quarters of the frame wide, over the chest. It is there from the first frame,
+ * since the speaker is already mid-thought, and fades in a fifth of a second as the first cut comes.
+ */
+function markerHook(ctx: BuildContext, place: 'top' | 'middle' | 'bottom'): Layer[] {
+  const { frame, theme, item, span } = ctx
+  const { start, end } = span
+  const u = frame.u
+  const yellow = item.color ? accentOf(item.color, theme) : '#FFE81A'
+  const width = frame.width - 2 * frame.safe.left
+  const y =
+    place === 'top'
+      ? frame.safe.top + 24 * u
+      : place === 'middle'
+        ? frame.height * 0.57
+        : frame.height - frame.safe.bottom - 24 * u
+  const valign = place === 'top' ? 'top' : place === 'middle' ? 'middle' : 'bottom'
+  return [
+    {
+      kind: 'text',
+      start,
+      end,
+      text: '',
+      spans: [{ text: (item.text[0] ?? '').trim() }],
+      font: { family: HOOK_FACE, size: 78 * u, uppercase: false, lineHeight: 1.08, tracking: -0.01 * 78 * u },
+      fill: '#0A0A0A',
+      align: 'center',
+      valign,
+      // The first line runs long and the rest takes what is left ("How Much 120M Views / Pays in India").
+      maxWidth: width * 0.94,
+      plate: { color: yellow, perLine: true, hug: true, radius: 0, padX: 14 * u, padY: 16 * u, originX: 0.5 },
+      transform: {
+        x: frame.width / 2,
+        y,
+        anchorY: 0,
+        opacity: { keys: [{ t: 0, v: 1 }, ...tail([0.2, 1, 'ease-in'], [0, 0])] }
+      }
+    }
+  ]
+}
+
+/** The hook's words, those between asterisks in the accent, or else its last word. */
+export function inkSpans(hook: string, accent: string): Span[] {
+  if (/\*[^*]+\*/.test(hook))
+    return hook
+      .split(/(\*[^*]+\*)/)
+      .filter(Boolean)
+      .map((part) => (/^\*[^*]+\*$/.test(part) ? { text: part.slice(1, -1), color: accent } : { text: part }))
+  const at = hook.search(/\S+$/)
+  return at > 0 ? [{ text: hook.slice(0, at) }, { text: hook.slice(at), color: accent }] : [{ text: hook }]
 }
 
 /**
@@ -342,9 +545,11 @@ register({
   kind: 'banner',
   title: 'Hook banner',
   about:
-    'States the payoff at the top of the frame from the first frame and is gone by about five seconds: text is the hook in a few words, then an optional smaller line. box is a white box with dark capitals. title is white words in title case above a square picture, for the whole clip; card is dark words in title case on a white card.',
+    'States the payoff at the top of the frame from the first frame and is gone by about five seconds: text is the hook in a few words, then an optional smaller line. box is a white box with dark capitals. ink is white capitals on a black plate per line, the last word (or the words between *asterisks*) in the accent, as The Diary of a CEO sets its hooks; place middle sets it over the speaker’s chest. marker is black words in title case on a yellow box a line, there from the first frame, as Colin & Samir open their Shorts. title is white words in title case above a square picture, for the whole clip; card is dark words in title case on a white card. header is a show’s standing header for the whole clip, as Club Shay Shay frames its Shorts: the brand’s logo on a dark band across the top and the title in dark capitals on a bar of the colour (color) under it, over a picture boxed beneath (box with top 0.22); icon names which of the brand’s logos.',
   styles: BANNER_STYLES,
   places: ['top', 'middle', 'bottom'],
+  // The ink and marker hooks say the opening line themselves, so the captions wait for them to go.
+  coversFor: (call) => (call.style === 'ink' || call.style === 'marker' ? 'card' : undefined),
   length: 5,
   lead: 0,
   fields: [

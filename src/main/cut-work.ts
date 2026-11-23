@@ -6,6 +6,7 @@ import { downloadModel, hasModel, transcribe, type WhisperModel } from './transc
 import { creditsText } from '../shared/assets'
 import { brandOfDoc, readBrand, readBrandById } from './brand-store'
 import { stampBrand } from '../shared/brands'
+import { wordSpeakers } from '../shared/subtitles'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { placeFile } from './export-paths'
 import { claudeWriter, writeUploadKit } from './upload-kit'
@@ -451,6 +452,7 @@ export async function renderEdit(
       overlays: motion.overlays,
       fx,
       captionWords: pass.resolved.words,
+      speakers: Object.fromEntries(wordSpeakers(doc.words)),
       // A grid's panels show material, on a ground in the brand's look.
       assets: doc.assets,
       theme: themeFrom(brand),

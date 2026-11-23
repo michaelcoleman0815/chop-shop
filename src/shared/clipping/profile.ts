@@ -267,14 +267,15 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     tighten: tightenOf('podcast', { maxGapSec: 0.6, padSec: 0.08, fillers: false }),
     keepsLaughter: true,
     genre: 'podcast',
-    // As the most-watched podcast clips are set (docs/research/podcasts.md): two or three words at a time in
-    // heavy capitals with a thick edge, mid-frame; no zooms, which few of them use.
-    captions: { preset: 'plate', wordsPerScreen: 2, position: 'middle', uppercase: true },
+    // As the most-watched podcast clips are set (docs/research/podcasts.md): a phrase at a time in heavy white
+    // capitals with a dark edge, low in the frame, clear of the title Shorts lays over the foot; no zooms,
+    // which few of them use.
+    captions: { preset: 'podcast', wordsPerScreen: 5, position: 'bottom', uppercase: true },
     looks: [
       {
         name: 'headline',
         says: 'the headline across the top',
-        captions: { preset: 'plate', wordsPerScreen: 2, position: 'middle', uppercase: true },
+        captions: { preset: 'podcast', wordsPerScreen: 5, position: 'bottom', uppercase: true },
         // The headline over the opening, as The Diary of a CEO, Club Shay Shay and Shawn Ryan put one on every clip.
         hook: { style: 'title', place: 'top', sec: 3 }
       },
@@ -375,13 +376,19 @@ export function pickProfile(e: ProfileEvidence): ClipProfile {
   return niche ?? CLIP_PROFILES.talk
 }
 
+/**
+ * The longest clip anyone can ask for: ten minutes. Shows post clips of eight (Club Shay Shay's run 8 to 10), and a
+ * Short told as a story is often cut down from a stretch this long, so the stretch has to come whole.
+ */
+export const LONGEST_CLIP_SEC = 600
+
 /** How long clips run: what was asked, inside what any clip can be, or the profile's own. */
 export function clipBounds(
   profile: ClipProfile,
   asked: { minSec: number; maxSec: number } | null
 ): { minSec: number; maxSec: number; targetSec: number } {
   if (!asked) return { minSec: profile.minSec, maxSec: profile.maxSec, targetSec: profile.targetSec }
-  const maxSec = Math.max(10, Math.min(180, asked.maxSec))
+  const maxSec = Math.max(10, Math.min(LONGEST_CLIP_SEC, asked.maxSec))
   const minSec = Math.max(5, Math.min(maxSec - 5, asked.minSec))
   return { minSec, maxSec, targetSec: Math.round((minSec + maxSec * 2) / 3) }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { captionStyleFor } from '../shared/subtitles'
+import { captionStyleFor, shownWords } from '../shared/subtitles'
 import { DEFAULT_CAPTIONS } from '../shared/edit'
-import { bt601Equivalent, bt601Style, escapeAss } from './captions'
+import { bt601Equivalent, bt601Style, buildAss, escapeAss } from './captions'
 
 describe('caption text in ASS', () => {
   it('shows braces and backslashes as typed, never as codes', () => {
@@ -59,5 +59,51 @@ describe('caption colours for a subtitle filter that speaks BT.601', () => {
     expect(bt601Style({ ...feature, second: { ...tier, textColor: '#FF5A1F' } })?.second?.textColor).toBe(
       bt601Equivalent('#FF5A1F')
     )
+  })
+})
+
+describe('a caption that sits on a split’s seam', () => {
+  it('gives its events their own margin, and leaves the rest on the look’s', () => {
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'slant', position: 'bottom' }, 1080)
+    const ass = buildAss(
+      [
+        { text: 'You', startSec: 0, endSec: 0.3 },
+        { text: 'saved', startSec: 0.3, endSec: 0.6, at: 0.488 },
+        { text: 'him', startSec: 0.6, endSec: 0.9, at: 0.488 }
+      ],
+      1080,
+      1920,
+      style
+    )
+    const events = ass.split('\n').filter((l) => l.startsWith('Dialogue:'))
+    const margins = events.map((l) => l.split(',')[7])
+    // 1920 × (1 - 0.488): its foot 983 px up from the bottom.
+    expect(margins).toEqual(['0', '983', '983'])
+    // Slanted, as the look asks.
+    expect(ass).toMatch(/Style: Chop,Inter ExtraBold,\d+,[^,]+,[^,]+,[^,]+,[^,]+,0,-1,/)
+  })
+})
+
+describe('captions coloured by voice', () => {
+  it('sets the voice heard most in the text colour and the others in the look’s other colour', () => {
+    const style = { ...captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'slant', position: 'bottom' }, 1080), otherColor: '#FFFFFF', textColor: '#F5F04B' }
+    const words = shownWords(
+      [
+        { id: 'a', text: 'Can', outStart: 0, outEnd: 0.3 },
+        { id: 'b', text: 'you?', outStart: 0.3, outEnd: 0.6 },
+        { id: 'c', text: 'I', outStart: 1, outEnd: 1.2 },
+        { id: 'd', text: "don't", outStart: 1.2, outEnd: 1.5 },
+        { id: 'e', text: 'know.', outStart: 1.5, outEnd: 1.8 }
+      ],
+      { keys: [] },
+      undefined,
+      undefined,
+      new Map([['a', 2], ['b', 2], ['c', 0], ['d', 0], ['e', 0]])
+    )
+    expect(words.map((w) => !!w.other)).toEqual([true, true, false, false, false])
+    const ass = buildAss(words, 1080, 1920, style)
+    // The asker in white over the guest's yellow: tagged where it differs from the style's own colour.
+    expect(ass).toContain('{\\c&H00FFFFFF}Can')
+    expect(ass).not.toContain('{\\c&H00FFFFFF}I')
   })
 })

@@ -32,10 +32,14 @@ export interface SpeakerWord {
   startSec: number
   endSec: number
   speaker?: number
+  /** What was said: a lone dash or mark is no word to cut on. */
+  text?: string
 }
 
 /** Faces whose centres are closer than this share of the width sit in one seat. */
 const SEAT_GAP = 0.08
+/** A lone face less than this many times as wide as faces in the two-shot is in the two-shot itself. */
+const WIDE_FACE = 1.4
 /** A seat needs at least this many frames heard from each side to be judged. */
 const LEAST_FRAMES = 12
 /**
@@ -44,8 +48,14 @@ const LEAST_FRAMES = 12
  * 26% more while its own voice was heard.
  */
 const LEAST_CONTRAST = 0.12
-/** A turn shorter than this does not move the frame. */
-export const LEAST_TURN_SEC = 1
+/**
+ * A turn shorter than this does not move the frame: an "mm" stays where it is, but a "Has she?" of half a
+ * second gets its own shot, as the most-watched clips give it (docs/research/podcasts.md).
+ */
+export const LEAST_TURN_SEC = 0.5
+
+/** A dash or stray punctuation a transcriber writes where the voice changes: no word, and no time to cut on. */
+const MARK = /^[\p{P}\p{S}]+$/u
 
 const median = (v: number[]): number => {
   if (v.length === 0) return NaN
@@ -144,7 +154,7 @@ export function seatsOfSpeakers(frames: MouthFrames, words: SpeakerWord[]): Map<
 export function turnsOf(words: SpeakerWord[], leastSec = LEAST_TURN_SEC): { speaker: number; startSec: number; endSec: number }[] {
   const runs: { speaker: number; startSec: number; endSec: number }[] = []
   for (const w of [...words].sort((a, b) => a.startSec - b.startSec)) {
-    if (w.speaker === undefined) continue
+    if (w.speaker === undefined || MARK.test(w.text?.trim() ?? '')) continue
     const last = runs[runs.length - 1]
     if (last && last.speaker === w.speaker) last.endSec = w.endSec
     else runs.push({ speaker: w.speaker, startSec: w.startSec, endSec: w.endSec })
@@ -184,16 +194,23 @@ export function subjectOfSpeakers(
     placed.reduce((a, b) => (Math.abs(c - b[1].x) < Math.abs(c - a[1].x) ? b : a))[0]
   const faceAt = new Map<number, { x: number; w: number }[]>()
   for (const s of samples) faceAt.set(Math.round(s.t * hz), s.faces)
+  // How wide a face is in the two-shot, for telling a wide shot with one face found from a close shot of one.
+  const twoShotWidth = median(samples.filter((s) => s.faces.length >= 2).flatMap((s) => s.faces.map((f) => f.w)))
   let k = 0
   for (let i = 0; i < x.length; i++) {
     const t = from + i / hz
     while (k + 1 < turns.length && turns[k + 1].startSec <= t) k++
     const seat = seats.get(turns[k].speaker)
     if (!seat) continue
-    const faces = (faceAt.get(i) ?? []).map((f) => f.x + f.w / 2)
-    // One face is a shot of one person, which a switched feed cuts to: the frame stays on them.
+    const found = faceAt.get(i) ?? []
+    const faces = found.map((f) => f.x + f.w / 2)
+    // One face is a shot of one person, which a switched feed cuts to: the frame stays on them. Unless it is
+    // the size faces are in the two-shot and sits in someone else's seat: then it is the wide shot with the
+    // speaker turned away from the camera, out of the face finder's sight, and the frame goes to their seat.
     if (faces.length === 1) {
-      x[i] = Math.round(faces[0] * 1e4) / 1e4
+      const wide = twoShotWidth > 0 && found[0].w < WIDE_FACE * twoShotWidth
+      const theirs = nearestSeat(faces[0]) !== turns[k].speaker
+      x[i] = Math.round((wide && theirs ? seat.x : faces[0]) * 1e4) / 1e4
       continue
     }
     // Each face is whoever's seat it is nearest; the speaker's is the one of theirs nearest their seat.

@@ -1548,6 +1548,27 @@ button:disabled {
   bottom: 50%;
 }
 
+/* The cutaway under the speaker (Broll.below). */
+.cl-cutaway.split.below {
+  top: 50%;
+  bottom: 0;
+}
+
+/* A line along a split's seam, in the colour the edit gives it: the footage's own colour, not the app's. */
+.cl-seam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0.3%;
+  z-index: 1;
+}
+
+.cl-cutaway.split.below .cl-seam {
+  top: 0;
+  bottom: auto;
+}
+
 .cl-cutaway.card {
   background: var(--ground);
   display: grid;

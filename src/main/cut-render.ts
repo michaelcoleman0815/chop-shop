@@ -40,6 +40,7 @@ import {
   type Fade,
   type Look,
   type Music,
+  type Piece,
   type Resolved,
   type Asset,
   type Source,
@@ -49,7 +50,7 @@ import {
 import { LABEL_FADE } from '../shared/motion/grid-plate'
 import type { MotionTheme } from '../shared/motion/theme'
 import { prepareGrids } from './grid-render'
-import { captionStyleFor, shownWords } from '../shared/subtitles'
+import { captionSeams, captionStyleFor, shownWords } from '../shared/subtitles'
 import { boxRect } from '../shared/edit/box'
 import type { TranscriptWord } from '../shared/types'
 import type { ToolSaid } from '../shared/failure'
@@ -186,6 +187,14 @@ export interface Segment {
    * picture clock (edit/reframe). Absent: the middle.
    */
   framing?: FrameKey[]
+  /**
+   * A camera cut in the recording right at the end of the speaker's picture:
+   * its first frame, in source seconds, which the picture stops short of.
+   * A picture reads on from its first frame for as long as it plays, which
+   * can take one frame past where its piece ends; past a cut, that frame is
+   * the next camera's, cropped for this one, and flashes.
+   */
+  pictureStop?: number
   /**
    * Two to four pictures at once in a grid, instead of the frame the
    * treatment gives (edit/grid, main/grid-render): each panel's file and
@@ -548,6 +557,8 @@ export function cameraSegments(
     const source = bySource.get(p.source)
     const framing = beat ? pieceFraming(cut, beat.treatment, p, source?.subject) : null
     if (framing) segments[i].framing = framing
+    const stop = pictureStopFor(p, source)
+    if (stop !== undefined && !p.reverse && p.hold === undefined) segments[i].pictureStop = stop
     // A box on black, for the speaker's own picture: a cutaway, a second camera or a camera move fills the frame.
     const plain = !segments[i].broll && !segments[i].inset && !segments[i].noPicture
     if (frame && beat && cut.box && beat.treatment.frame === 'speaker' && !beat.treatment.camera && plain) {
@@ -564,21 +575,42 @@ export function cameraSegments(
 }
 
 /**
- * A crop's left edge that keeps its window's centre on a path across the
- * picture: eased between keys as the preview eases, never past an edge. `t`
- * is the crop filter's own clock, the segment's picture from its start.
+ * Where a piece's picture must stop: the first frame of a camera cut in its
+ * recording at the picture's end, or up to a frame past it, which the read
+ * would otherwise run on into (Segment.pictureStop). Cut times are kept to the
+ * millisecond, so the frame itself may be half a millisecond either side.
  */
-export function framingX(keys: FrameKey[], w: number): string {
+export function pictureStopFor(
+  piece: Piece,
+  source: { fps?: number; subject?: { cuts?: number[]; shots?: number[] } } | undefined
+): number | undefined {
+  const cuts = source?.subject?.shots ?? source?.subject?.cuts
+  if (!cuts?.length) return undefined
+  const end = pictureSpan(piece).srcEnd
+  const frame = 1 / Math.max(1, source?.fps ?? 30)
+  const c = cuts.find((t) => t > end - 0.0015 && t < end + frame + 0.002)
+  return c === undefined ? undefined : c - 0.0006
+}
+
+/**
+ * A crop's left edge that keeps its window's centre on a path across the
+ * picture: eased between keys as the preview eases, never past an edge. The
+ * keys' clock is the segment's picture from its start: the crop filter's own
+ * `t` plus `clock`, how far the filter's clock runs behind it.
+ */
+export function framingX(keys: FrameKey[], w: number, clock = 0): string {
   const n = (v: number): string => v.toFixed(4)
+  // To the microsecond: a cut's first frame and the one before it are a few milliseconds either side of a key.
+  const t = Math.abs(clock) < 5e-7 ? 't' : `(t${clock < 0 ? '-' : '+'}${Math.abs(clock).toFixed(6)})`
   let centre = n(keys[keys.length - 1].x)
   for (let i = keys.length - 1; i >= 1; i--) {
     const a = keys[i - 1]
     const b = keys[i]
     if (b.t - a.t <= 1e-6) continue
-    const k = `((t-${n(a.t)})/${n(b.t - a.t)})`
-    centre = `if(lt(t,${n(b.t)}),${n(a.x)}+${n(b.x - a.x)}*${k}*${k}*(3-2*${k}),${centre})`
+    const k = `((${t}-${n(a.t)})/${n(b.t - a.t)})`
+    centre = `if(lt(${t},${n(b.t)}),${n(a.x)}+${n(b.x - a.x)}*${k}*${k}*(3-2*${k}),${centre})`
   }
-  return `clip((if(lt(t,${n(keys[0].t)}),${n(keys[0].x)},${centre}))*iw-${w}/2,0,iw-${w})`
+  return `clip((if(lt(${t},${n(keys[0].t)}),${n(keys[0].x)},${centre}))*iw-${w}/2,0,iw-${w})`
 }
 
 /**
@@ -593,6 +625,9 @@ export function filterPath(path: string): string {
   const inner = path.replace(/\\/g, '/').replace(/[':]/g, '\\$&')
   return `'${inner.replace(/'/g, "'\\''")}'`
 }
+
+/** How thick the line along a split's seam is (Broll.seam), in pixels of a 1080-wide frame's height. */
+const SEAM_PX = 6
 
 const fixed = (n: number): string => n.toFixed(3)
 /** Times that must land on a frame or a sample: microseconds, which ffmpeg reads exactly. */
@@ -765,6 +800,16 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   /**
    * Scale to cover w x h, crop the overflow, then apply the look; or, with a
    * fill, show the picture whole and fill the rest of the box (`whole`).
+   *
+   * A crop that follows framing keys is made on the recording's own frames,
+   * before they are brought to the frame rate, when `clock` says how the
+   * picture's timestamps stand to the start of its piece: each frame is then
+   * cropped where the piece's framing stands at that frame's own moment, so a
+   * camera cut and the crop's move to the other seat land on the same frame.
+   * After the frame rate, a frame's time is the output's, up to half a frame
+   * from the recording's (29.97 made 30), and a piece's clock may start at its
+   * first frame rather than where it starts: either puts the move a frame
+   * late, and that frame shows the new camera cropped for the old one.
    */
   const look = (
     w: number,
@@ -772,13 +817,19 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     t: Treatment | null,
     zoom: boolean,
     framing?: FrameKey[],
-    fill?: { fit: 'blur' | 'black'; name: string }
+    fill?: { fit: 'blur' | 'black'; name: string },
+    clock?: number
   ): string => {
     // Cropped to the frame's shape: in the middle, or where the speaker is.
-    const crop = framing?.length ? `crop=${w}:${h}:x='${framingX(framing, w)}':y=(ih-${h})/2` : `crop=${w}:${h}`
+    const crop = framing?.length
+      ? `crop=${w}:${h}:x='${framingX(framing, w, clock ?? 0)}':y=(ih-${h})/2`
+      : `crop=${w}:${h}`
+    const cover = `scale=${w}:${h}:force_original_aspect_ratio=increase,${crop},setsar=1`
     let f = fill
       ? `fps=${fps},${whole(w, h, fill.fit, fill.name)}`
-      : `fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=increase,${crop},setsar=1`
+      : framing?.length && clock !== undefined
+        ? `${cover},fps=${fps}`
+        : `fps=${fps},${cover}`
     const z = t?.zoom ?? 1
     // A punch-in rarely crops to exactly the frame's shape (1080/1.12 is 964.3), so
     // scaling it back up stretches the pixels a hair; square them again, or the
@@ -934,6 +985,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     const showFor = s.picture ? s.picture.durationSec : s.durationSec
     // Where the speaker's picture looks when cropped; a camera move frames it itself.
     const aim = s.camera ? undefined : s.framing
+    // How far the speaker picture's timestamps run behind its piece's own clock (look's `clock`), where
+    // they keep the recording's timing: read from a seek, which keeps each frame's time from the seek point,
+    // and not retimed. Where they don't, the crop keeps the output's clock as before.
+    let clock: number | undefined
+    const seekPoint = (start: number): number => Number(fixed(Math.max(0, start)))
+    const timed = !!aim && !changesSpeed(pic.steps) && !s.noPicture
 
     // The speaker: its picture ready for a look, built only if something
     // shows it, and its sound cut from the same input, ready to be timed; or,
@@ -961,7 +1018,11 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       // The picture alone from this input, the sound from the recording it is lined up with: read
       // from the frame the editor shows where this segment's first output frame falls (onGrid).
       const main = input(s.path, pic.startSec + onGrid(k), pic.srcSec)
-      speaker = () => `${sourcePicture(main, s.convert)}${steady}${retime(pic.steps)}`
+      if (timed) clock = seekPoint(pic.startSec + onGrid(k)) - pic.startSec
+      // Short of a camera cut just past its end (pictureStop), on the read's clock.
+      const seek = seekPoint(pic.startSec + onGrid(k))
+      const end = s.pictureStop !== undefined ? `trim=end=${exact(s.pictureStop - seek)},` : ''
+      speaker = () => `${sourcePicture(main, s.convert)}${end}${steady}${retime(pic.steps)}`
       sound = linedSound(s.audio, s.startSec, soundSrc, false, a)
     } else {
       // One input covers both the sound and the picture; each is cut from it.
@@ -970,9 +1031,22 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       const main = input(s.path, inStart, inEnd - inStart)
       const differs = (from: number, len: number): boolean =>
         Math.abs(from - inStart) > 1e-9 || Math.abs(from + len - inEnd) > 1e-9
+      // On the read's own clock (each frame's time from the seek). A duration, trim's or the input's -t,
+      // counts from the first frame kept, so the picture runs on up to a frame past its piece's end, which
+      // keeps it whole on the output's frames; it stops short of a camera cut there (pictureStop).
+      const seek = STILL.test(s.path) || GIF.test(s.path) ? 0 : seekPoint(inStart)
+      const from = pic.startSec - seek
+      const stop = s.pictureStop !== undefined ? `end=${exact(s.pictureStop - seek)}` : ''
+      // Cut from the input, the picture's clock starts where its piece does, not at the first frame it keeps,
+      // which can be most of a frame later, when the crop keeps to the recording's own timing.
       const cutPicture = differs(pic.startSec, pic.srcSec)
-        ? `trim=start=${exact(pic.startSec - inStart)}:duration=${exact(pic.srcSec)},setpts=PTS-STARTPTS,`
-        : ''
+        ? // Two trims: given a duration, trim ignores an end.
+          `trim=start=${exact(Math.max(0, from))}:duration=${exact(pic.srcSec)},${stop ? `trim=${stop},` : ''}` +
+          (timed ? `setpts=PTS-${exact(from)}/TB,` : 'setpts=PTS-STARTPTS,')
+        : stop
+          ? `trim=${stop},`
+          : ''
+      if (timed) clock = differs(pic.startSec, pic.srcSec) ? 0 : -from
       speaker = () => `${sourcePicture(main, s.convert)}${cutPicture}${steady}${retime(pic.steps)}`
       if (s.hasAudio) {
         const cutSound = differs(s.startSec, soundSrc)
@@ -1040,10 +1114,16 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       }
       chains.push(`[${under}]format=yuv420p,${AS_BT709},${frames}[${v}]`)
     } else if (s.broll && t.frame === 'split') {
+      // The cutaway over the speaker, or under it (Broll.below), with a line along the seam when asked.
       const half = even(H / 2)
+      const below = !!t.broll?.below
       chains.push(`${cutaway()}${moveOver(s.broll.camera, W, half)}${look(W, half, t, false)}[${v}t]`)
-      chains.push(`${speaker()}${moveOver(s.camera, W, H - half)}${look(W, H - half, t, true, aim)}[${v}b]`)
-      chains.push(`[${v}t][${v}b]vstack,format=yuv420p,${AS_BT709},${frames}[${v}]`)
+      chains.push(`${speaker()}${moveOver(s.camera, W, H - half)}${look(W, H - half, t, true, aim, undefined, clock)}[${v}b]`)
+      const seamAt = below ? H - half : half
+      const seam = t.broll?.seam
+        ? `,drawbox=x=0:y=${seamAt - SEAM_PX / 2}:w=${W}:h=${SEAM_PX}:color=0x${t.broll.seam.slice(1)}:t=fill`
+        : ''
+      chains.push(`${below ? `[${v}b][${v}t]` : `[${v}t][${v}b]`}vstack${seam},format=yuv420p,${AS_BT709},${frames}[${v}]`)
     } else if (s.broll && t.frame === 'card') {
       // A card: the picture centred on Cutalong's ground, at most 60% of the
       // frame, with the speaker's voice carrying on underneath.
@@ -1072,12 +1152,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
         const across = W > H
         const [aw, ah] = across ? [even(W / 2), H] : [W, even(H / 2)]
         const [bw, bh] = across ? [W - aw, H] : [W, H - ah]
-        chains.push(`${speaker()}${moveOver(s.camera, aw, ah)}${look(aw, ah, t, true, aim)}[${v}a]`)
+        chains.push(`${speaker()}${moveOver(s.camera, aw, ah)}${look(aw, ah, t, true, aim, undefined, clock)}[${v}a]`)
         chains.push(`${other()}${look(bw, bh, t, false)}[${v}b]`)
         chains.push(`[${v}a][${v}b]${across ? 'hstack' : 'vstack'},format=yuv420p,${AS_BT709},${frames}[${v}]`)
       } else {
         const box = pipBox({ width: W, height: H }, inset.size)
-        chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim)}[${v}m]`)
+        chains.push(`${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim, undefined, clock)}[${v}m]`)
         chains.push(`${other()}${look(box.width, box.height, t, false)}[${v}p]`)
         chains.push(`[${v}m][${v}p]overlay=x=${box.x}:y=${box.y},format=yuv420p,${AS_BT709},${frames}[${v}]`)
       }
@@ -1085,12 +1165,12 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       // The speaker as a box on black: cropped to the box, following them, then set at its height in the frame.
       const b = s.box
       chains.push(
-        `${speaker()}${look(b.width, b.height, t, true, aim)},pad=${W}:${H}:0:${b.y}:black,format=yuv420p,${AS_BT709},${frames}[${v}]`
+        `${speaker()}${look(b.width, b.height, t, true, aim, undefined, clock)},pad=${W}:${H}:0:${b.y}:black,format=yuv420p,${AS_BT709},${frames}[${v}]`
       )
     } else {
       const fill = s.fill ? { fit: s.fill, name: `${v}fs` } : undefined
       chains.push(
-        `${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim, fill)},format=yuv420p,${AS_BT709},${frames}[${v}]`
+        `${speaker()}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim, fill, clock)},format=yuv420p,${AS_BT709},${frames}[${v}]`
       )
     }
 
@@ -1579,6 +1659,8 @@ export interface RenderCutOptions {
    * every word when absent. The music still dips and sounds still land on all of them.
    */
   captionWords?: Resolved['words']
+  /** Who says each word, by id, where speakers are told apart: a look may set other voices apart. */
+  speakers?: Record<string, number>
   /** How the picture is encoded: x264 when absent, as on a computer. */
   encoder?: Encoder
   /** False for an ffmpeg without the perspective filter, as a phone's is. */
@@ -1946,7 +2028,13 @@ export async function renderCut(
   let captionsInRgb = false
   const shown = opts.captionWords ?? resolved.words
   if (cut.captions.on && shown.length > 0) {
-    const words: TranscriptWord[] = shownWords(shown, cut.captions, resolved.words)
+    const words: TranscriptWord[] = shownWords(
+      shown,
+      cut.captions,
+      resolved.words,
+      captionSeams(cut, resolved.words),
+      new Map(Object.entries(opts.speakers ?? {}))
+    )
     const style = captionStyleFor(cut.captions, width, opts.brand?.colors ?? null)
     // libass colours captions in YUV, with BT.709 on 7.0 and BT.601 on 6.0 and 6.1, where the colours are
     // moved to the ones BT.601 turns into BT.709's values. Going through RGB instead is exact everywhere

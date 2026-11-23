@@ -1,4 +1,5 @@
-import { coverWindow } from './camera'
+import { JUMP_PUNCH, punchable } from './punch'
+import { framedByShot } from './reframe'
 import { applyOps, type OpContext } from './ops'
 import { pictureSpan, resolveCut, type Piece, type Resolved } from './resolve'
 import type { Beat, Cut, Op, Source } from './schema'
@@ -26,11 +27,12 @@ import type { Beat, Cut, Op, Source } from './schema'
  * the first time a change makes a jump, when Settings say to (jumpOpsFor).
  */
 
-/** How close the picture after a jump goes. */
-export const JUMP_PUNCH = 1.15
+export { JUMP_PUNCH } from './punch'
 
 /** Less of the recording skipped than this is a pause taken out: the speaker has hardly moved. */
 export const MIN_JUMP_SEC = 1
+/** In a seated conversation or a switched feed, framed a shot at a time (edit/reframe), this much is a jump. */
+export const MIN_SHOT_JUMP_SEC = 0.25
 
 /**
  * A stretch shorter than this between two jumps keeps the framing it comes in on: punched in for a
@@ -38,8 +40,6 @@ export const MIN_JUMP_SEC = 1
  */
 export const MIN_HOLD_SEC = 0.8
 
-/** A crop keeping less of the recording than this is already close; a punch on top would show the pixels. */
-const MIN_KEPT_AREA = 0.45
 
 /** A join the picture jumps across: the piece after it, where in the recording the picture leaves and lands, and how much was left out. */
 export interface JumpJoin {
@@ -50,13 +50,6 @@ export interface JumpJoin {
   skippedSec: number
 }
 
-/** The shape of the finished frame, width over height. */
-function frameAspect(cut: Pick<Cut, 'aspect'>, source: Pick<Source, 'width' | 'height'>): number {
-  if (cut.aspect === 'vertical') return 9 / 16
-  if (cut.aspect === 'wide') return 16 / 9
-  if (cut.aspect === 'square') return 1
-  return source.width / Math.max(1, source.height)
-}
 
 /** Whether a piece shows the speaker's own picture, filling the frame on its own. */
 function ownPicture(beat: Beat | undefined): boolean {
@@ -69,8 +62,9 @@ function ownPicture(beat: Beat | undefined): boolean {
  * a second or more of it left out (or gone back over), and nothing laid over
  * the join to hide it.
  */
-export function jumpJoins(cut: Cut, resolved: Resolved): JumpJoin[] {
+export function jumpJoins(cut: Cut, resolved: Resolved, sources: Pick<Source, 'id' | 'subject'>[] = []): JumpJoin[] {
   const beats = new Map(cut.beats.map((b) => [b.id, b]))
+  const bySource = new Map(sources.map((s) => [s.id, s]))
   const joins: JumpJoin[] = []
   let prev: Piece | null = null
   resolved.pieces.forEach((p, i) => {
@@ -84,7 +78,13 @@ export function jumpJoins(cut: Cut, resolved: Resolved): JumpJoin[] {
       const fromSec = pictureSpan(prev).srcEnd
       const toSec = pictureSpan(p).srcStart
       const skipped = toSec - fromSec
-      if (skipped >= MIN_JUMP_SEC || skipped < -0.05) joins.push({ piece: i, source: p.source, fromSec, toSec, skippedSec: skipped })
+      // In a picture framed a shot at a time, the head jumps visibly after much less; inside one shot only.
+      const shot = framedByShot(bySource.get(p.source)?.subject)
+      const cutBetween = (bySource.get(p.source)?.subject?.cuts ?? []).some((c) => c >= fromSec - 0.05 && c <= toSec + 0.05)
+      const least = shot ? MIN_SHOT_JUMP_SEC : MIN_JUMP_SEC
+      if (shot && cutBetween && skipped >= 0) {
+        // The camera or the framing changes across it already: no jump to see.
+      } else if (skipped >= least || skipped < -0.05) joins.push({ piece: i, source: p.source, fromSec, toSec, skippedSec: skipped })
     }
     prev = p
   })
@@ -97,10 +97,14 @@ export function jumpJoins(cut: Cut, resolved: Resolved): JumpJoin[] {
  * punch its jumps. The framing holds across a join that is not a jump, so a
  * beat split in the middle of a sentence does not punch in on its own.
  */
-export function jumpZooms(cut: Cut, resolved: Resolved, sources: Pick<Source, 'id' | 'width' | 'height'>[]): number[] {
+export function jumpZooms(
+  cut: Cut,
+  resolved: Resolved,
+  sources: Pick<Source, 'id' | 'width' | 'height' | 'subject'>[]
+): number[] {
   const out = resolved.pieces.map(() => 1)
   if (cut.punchJumps !== true) return out
-  const joins = jumpJoins(cut, resolved)
+  const joins = jumpJoins(cut, resolved, sources)
   if (joins.length === 0) return out
   // Each jump changes the framing, unless what follows it lasts too little before the next jump or the end.
   const at = new Set<number>()
@@ -129,19 +133,22 @@ export function jumpZooms(cut: Cut, resolved: Resolved, sources: Pick<Source, 'i
     // A punch-in, a move or a freeze of the beat's own stays as it was made.
     if (t.camera || t.zoom > 1.001 || p.hold !== undefined) return
     const source = bySource.get(p.source)
-    if (!source || source.width <= 0 || source.height <= 0) return
-    const { fw, fh } = coverWindow(source.width / source.height, frameAspect(cut, source))
-    if (fw * fh < MIN_KEPT_AREA) return
+    // Already close: a punch on top would show the pixels, unless the recording has them (edit/punch).
+    if (!source || !punchable(cut, source)) return
     out[i] = JUMP_PUNCH
   })
   return out
 }
 
 /** How many joins a cut punches: its jumps where the framing changes, which is all of them once it punches any. */
-export function punchedJumps(cut: Cut, resolved: Resolved, sources: Pick<Source, 'id' | 'width' | 'height'>[]): number {
+export function punchedJumps(
+  cut: Cut,
+  resolved: Resolved,
+  sources: Pick<Source, 'id' | 'width' | 'height' | 'subject'>[]
+): number {
   const zooms = jumpZooms({ ...cut, punchJumps: true }, resolved, sources)
   if (!zooms.some((z) => z > 1)) return 0
-  return jumpJoins(cut, resolved).length
+  return jumpJoins(cut, resolved, sources).length
 }
 
 /**
@@ -157,9 +164,9 @@ export function jumpOpsFor(before: Cut, proposed: Op[], context: OpContext, on: 
   // A jump this change makes: a join that was not there before. Striking a retake between two pauses
   // the first cut already skipped can leave fewer joins than before, and still one new jump.
   const key = (j: JumpJoin): string => `${j.source}|${j.fromSec.toFixed(2)}|${j.toSec.toFixed(2)}`
-  const had = new Set(jumpJoins(before, resolveCut(before, context.words, context.sources)).map(key))
+  const had = new Set(jumpJoins(before, resolveCut(before, context.words, context.sources), context.sources).map(key))
   const after = resolveCut(trial.cut, context.words, context.sources)
-  if (!jumpJoins(trial.cut, after).some((j) => !had.has(key(j)))) return []
+  if (!jumpJoins(trial.cut, after, context.sources).some((j) => !had.has(key(j)))) return []
   return punchedJumps(trial.cut, after, context.sources) > 0 ? [{ op: 'punch-jumps', on: true }] : []
 }
 

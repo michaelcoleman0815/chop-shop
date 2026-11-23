@@ -15,7 +15,7 @@ import {
   type EditDoc
 } from '../../../../shared/edit'
 import { buildScene, designSize, themeFrom } from '../../../../shared/motion'
-import { captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords } from '../../../../shared/subtitles'
+import { captionSeams, captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords, wordSpeakers } from '../../../../shared/subtitles'
 import type { Brand } from '../../../../shared/brand'
 import { api } from '../api'
 import { MotionCanvas } from './MotionCanvas'
@@ -73,7 +73,13 @@ export function ClipStill({
   const cue = useMemo(() => {
     if (!cut.captions.on) return null
     const words = subtitleWords(cut, resolved, scene).words
-    return subtitleAt(styleCues(shownWords(words, cut.captions, resolved.words), captionStyle), time)
+    return subtitleAt(
+      styleCues(
+        shownWords(words, cut.captions, resolved.words, captionSeams(cut, resolved.words), wordSpeakers(doc.words)),
+        captionStyle
+      ),
+      time
+    )
   }, [cut, resolved, scene, captionStyle, time])
 
   // The picture on screen at that moment, and where in its recording that is.

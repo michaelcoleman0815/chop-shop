@@ -96,6 +96,7 @@ export function buildScene(input: SceneInput): MotionScene {
     duration: tl.duration,
     faces: input.faces,
     emphasis: input.emphasis,
+    speakers: speakersOf(input.words),
     covers
   })
   // Backdrops replace the picture, so they go under the captions; everything else goes over. Cards hold
@@ -192,4 +193,10 @@ export function activeSpans(layers: Layer[], duration: number, mergeGap = 0.25):
 /** The graphics on screen at t, topmost last. */
 export function itemsAt(scene: MotionScene, t: number): SceneItem[] {
   return scene.items.filter((i) => t >= i.start && t < i.end)
+}
+
+/** Who says each word, by word id, when the speakers were told apart. */
+function speakersOf(words: Word[]): Record<string, number> | undefined {
+  const known = words.filter((w) => w.speaker !== undefined)
+  return known.length ? Object.fromEntries(known.map((w) => [w.id, w.speaker as number])) : undefined
 }

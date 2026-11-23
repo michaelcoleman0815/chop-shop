@@ -1,7 +1,7 @@
 import { presetById } from './caption-presets'
 import { captionedWords, type Resolved } from './edit/resolve'
 import type { CaptionSpec } from './edit/schema'
-import { fontInfo, fontString, type MotionScene } from './motion'
+import { fontInfo, fontString, OPEN_SEC, type MotionScene } from './motion'
 import type { CaptionStyle, TranscriptWord } from './types'
 import { groupWords } from './words'
 
@@ -36,7 +36,9 @@ export const POSITION_FRAC: Record<CaptionSpec['position'], number> = {
   top: 0.22,
   middle: 0.52,
   chest: 0.66,
-  bottom: 0.84
+  // Clear of what Shorts, Reels and TikTok lay over the foot of the frame (the title, the channel, the
+  // buttons), which covers the lowest fifth; the most-watched podcast clips set their captions' foot here.
+  bottom: 0.78
 }
 
 /** The caption look for a spec, sized for the frame being rendered, in the brand's colours when there is one. */
@@ -51,7 +53,8 @@ export function captionStyleFor(
     ...base,
     // The brand's colours; a plain look keeps every word in the text colour, rather than painting each
     // one in the accent as it is said.
-    ...(colors
+    // A look that colours by voice keeps its colours: they say who is talking.
+    ...(colors && !base.otherColor
       ? {
           textColor: colors.text,
           activeColor: base.plain || base.steady ? colors.text : colors.accent,
@@ -61,7 +64,7 @@ export function captionStyleFor(
       : {}),
     wordsPerGroup: spec.wordsPerScreen,
     uppercase: spec.uppercase || base.uppercase,
-    positionFrac: POSITION_FRAC[spec.position],
+    positionFrac: base.positions?.[spec.position] ?? POSITION_FRAC[spec.position],
     fontSizePx: Math.max(8, Math.round(base.fontSizePx * scale)),
     // A look with no outline has none, rather than a pixel of black round thin letters; a plate keeps its padding.
     outlinePx: base.outlinePx > 0 || base.boxColor ? Math.max(1, Math.round(base.outlinePx * scale)) : 0,
@@ -100,10 +103,21 @@ export function shownWords(
   words: { id: string; text: string; outStart: number; outEnd: number }[],
   spec: Pick<CaptionSpec, 'keys'>,
   /** Every word the edit plays, shown or not: a word followed by one not shown clears as it ends (until). */
-  all: { id: string }[] = words
+  all: { id: string }[] = words,
+  /** Where some words' captions sit instead of the look's own height, by id (captionSeams). */
+  sits: Map<string, number> = new Map(),
+  /** Who says each word, by id, where speakers are told apart (wordSpeakers): the rest are marked other. */
+  speakers: Map<string, number> = new Map()
 ): TranscriptWord[] {
   const keys = new Set(spec.keys ?? [])
   const shown = new Set(words.map((w) => w.id))
+  // The voice heard most among the words shown; the others are marked, for a look that sets them apart.
+  const heard = new Map<number, number>()
+  for (const w of words) {
+    const s = speakers.get(w.id)
+    if (s !== undefined) heard.set(s, (heard.get(s) ?? 0) + 1)
+  }
+  const main = heard.size > 1 ? [...heard.entries()].sort((a, b) => b[1] - a[1])[0][0] : null
   const at = new Map(all.map((w, i) => [w.id, i]))
   return words.map((w) => {
     const i = at.get(w.id)
@@ -114,9 +128,40 @@ export function shownWords(
       endSec: w.outEnd,
       ...(keys.has(w.id) ? { key: true } : {}),
       // A card or a beat without captions may start before its first word does: the caption ends with its word.
-      ...(next && !shown.has(next.id) ? { until: w.outEnd } : {})
+      ...(next && !shown.has(next.id) ? { until: w.outEnd } : {}),
+      ...(sits.has(w.id) ? { at: sits.get(w.id) } : {}),
+      ...(main !== null && speakers.has(w.id) && speakers.get(w.id) !== main ? { other: true } : {})
     }
   })
+}
+
+/** Who says each word, by id, for the words whose speaker is known: for shownWords. */
+export function wordSpeakers(words: { id: string; speaker?: number }[]): Map<string, number> {
+  return new Map(words.filter((w) => w.speaker !== undefined).map((w) => [w.id, w.speaker as number]))
+}
+
+/**
+ * A word's colour in a caption, outside its key colour: the active one picked out, else its voice's. A look
+ * that colours by voice (otherColor) picks out no word: the colour says who is talking.
+ */
+export function voiceColor(w: Pick<TranscriptWord, 'other'>, active: boolean, style: CaptionStyle): string {
+  if (active && style.activeColor !== style.textColor && !style.otherColor) return style.activeColor
+  return w.other && style.otherColor ? style.otherColor : style.textColor
+}
+
+/**
+ * Where a caption sits over a split (a cutaway above or below the speaker): on the seam, its foot just above
+ * the line, as Impaulsive and The Diary of a CEO set theirs, rather than over the middle of either picture.
+ */
+export const SEAM_FRAC = 0.488
+
+/** The words said over a split, by id, with where their captions sit (SEAM_FRAC): for shownWords. */
+export function captionSeams(
+  cut: { beats: { id: string; treatment: { frame: string; broll: unknown } }[] },
+  words: { id: string; beat: string }[]
+): Map<string, number> {
+  const split = new Set(cut.beats.filter((b) => b.treatment.frame === 'split' && b.treatment.broll).map((b) => b.id))
+  return new Map(words.filter((w) => split.has(w.beat)).map((w) => [w.id, SEAM_FRAC]))
 }
 
 /** One subtitle event: a group of words on screen while one of them is said. */
@@ -269,6 +314,18 @@ export function landedGroups<T extends TranscriptWord>(words: T[], perGroup: num
   return groups
 }
 
+/**
+ * Groups as a bare look shows them: each group grouped by its punctuation first, then its last word's comma,
+ * full stop, colon or semicolon taken off, and a comma inside it too. A question or exclamation mark stays.
+ */
+export function bareGroups(groups: TranscriptWord[][]): TranscriptWord[][] {
+  const bare = (text: string, last: boolean): string => {
+    const t = text.replace(last ? /[.,;:…]+(["'”’)]*)$/ : /,+(["'”’)]*)$/, '$1')
+    return t || text
+  }
+  return groups.map((g) => g.map((w, i) => ({ ...w, text: bare(w.text, i === g.length - 1) })))
+}
+
 /** Whether a cue is set as a landed line: big, in the key face, its key words on their own line. */
 export function landsLine(cue: SubtitleCue, style: Pick<CaptionStyle, 'keyFont'>): boolean {
   return !!style.keyFont && cue.words.some((w) => w.key)
@@ -277,14 +334,21 @@ export function landsLine(cue: SubtitleCue, style: Pick<CaptionStyle, 'keyFont'>
 /** The cues of a caption look, as the export burns them and the preview draws them. */
 export function styleCues(
   words: TranscriptWord[],
-  style: Pick<CaptionStyle, 'wordsPerGroup' | 'plain' | 'build' | 'keyFont' | 'lowercase'>
+  style: Pick<CaptionStyle, 'wordsPerGroup' | 'plain' | 'build' | 'keyFont' | 'lowercase' | 'bare'>
 ): SubtitleCue[] {
   // Words only: never a dash or a stray mark Whisper wrote at a turn, whatever the look.
   const spoken = words.filter((w) => SAYS.test(w.text))
   const said = style.lowercase ? spoken.map((w) => ({ ...w, text: w.text.toLowerCase() })) : spoken
-  if (!style.keyFont) return subtitleCues(said, style.wordsPerGroup, style.plain === true, style.build === true)
-  const shown = style.plain ? plainWords(said) : said
-  return cuesOf(landedGroups(shown, style.wordsPerGroup))
+  const cues =
+    style.bare && !style.keyFont && !style.plain && !style.build
+      ? cuesOf(bareGroups(groupWords(said, style.wordsPerGroup)))
+      : !style.keyFont
+        ? subtitleCues(said, style.wordsPerGroup, style.plain === true, style.build === true)
+        : cuesOf(landedGroups(style.plain ? plainWords(said) : said, style.wordsPerGroup))
+  // Up from the first frame when the first word is said that soon (OPEN_SEC).
+  const first = cues[0]
+  if (first && first.start > 0 && first.start <= OPEN_SEC) cues[0] = { ...first, start: 0 }
+  return cues
 }
 
 /** The size a landed line is set at: the key face at its scale, smaller where its longest word would not fit. */
@@ -370,6 +434,7 @@ interface Look {
   outlinePx: number
   shadowPx: number
   bold: boolean
+  italic: boolean
   box: string | null
 }
 
@@ -395,7 +460,8 @@ export function layoutSubtitle(
   measure: TextMeasurer
 ): SubtitleLayout {
   const marginX = captionMarginX(style, frame.width)
-  const marginV = Math.round(frame.height * (1 - style.positionFrac))
+  // A word set to sit elsewhere (on a split's seam) moves its caption there, as the export moves it.
+  const marginV = Math.round(frame.height * (1 - (cue.words[cue.active]?.at ?? style.positionFrac)))
   const area = { left: marginX, width: frame.width - 2 * marginX, foot: frame.height - marginV }
   const upper = (text: string, on: boolean): string => (on ? text.toUpperCase() : text)
   const blocks: SubtitleBlock[] = []
@@ -424,6 +490,7 @@ export function layoutSubtitle(
             outlinePx: tier.outlinePx,
             shadowPx: tier.shadowPx,
             bold: tier.bold === true,
+            italic: false,
             box: null
           },
           { ...area, foot: frame.height - Math.max(0, marginV - tier.gapPx) },
@@ -438,7 +505,7 @@ export function layoutSubtitle(
       block(
         cue.words.map((w, i) => ({
           text: upper(w.text, style.uppercase),
-          color: w.key && style.keyColor ? style.keyColor : style.textColor,
+          color: w.key && style.keyColor ? style.keyColor : voiceColor(w, false, style),
           scale: 1,
           ...(i === first && i > 0 ? { breakBefore: true } : {})
         })),
@@ -467,8 +534,7 @@ export function layoutSubtitle(
       block(
         cue.words.map((w, i) => ({
           text: upper(w.text, style.uppercase),
-          color:
-            w.key && style.keyColor ? style.keyColor : i === cue.active ? style.activeColor : style.textColor,
+          color: w.key && style.keyColor ? style.keyColor : voiceColor(w, i === cue.active, style),
           scale: i === cue.active && !(w.key && style.keyFace) ? style.activeScale : 1,
           // A key word in the editorial look: its own face, bigger, where it is said (keyFace).
           ...(w.key && style.keyFace ? { face: { family: style.keyFace, size: keyFacePx(style, size) } } : {}),
@@ -515,6 +581,7 @@ function lookOf(style: CaptionStyle, size = style.fontSizePx): Look {
     outlinePx: style.outlinePx,
     shadowPx: style.shadowPx,
     bold: style.bold === true,
+    italic: style.italic === true,
     box: style.boxColor ?? null
   }
 }
@@ -540,7 +607,8 @@ function block(
     own?: Piece['face']
   ): { width: number; ink: SubtitleRun['ink']; font: string } => {
     const set = faceOf(own)
-    const font = fontString({ family: set.face.family, weight: 400 }, set.em * scale)
+    // Slanted as libass slants it: the face's own italic where it has one, else drawn from it.
+    const font = `${look.italic ? 'italic ' : ''}${fontString({ family: set.face.family, weight: 400 }, set.em * scale)}`
     measure.font = font
     if ('fontKerning' in measure) measure.fontKerning = 'none'
     const m = measure.measureText(text)

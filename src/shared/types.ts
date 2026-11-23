@@ -173,6 +173,13 @@ export interface TranscriptWord {
    * without captions follows, so a caption held between words never runs on into either.
    */
   until?: number
+  /**
+   * Where a caption showing it sits instead of the look's own height, as a share of the frame's height to its
+   * foot: on the seam of a split (shared/subtitles captionSeams).
+   */
+  at?: number
+  /** Said by someone other than the voice heard most in the clip: set in the look's otherColor (shownWords). */
+  other?: boolean
 }
 
 export interface Transcript {
@@ -198,6 +205,13 @@ export interface CaptionStyle {
   activeScale: number
   /** Faux-bold, for families that ship only one weight. */
   bold?: boolean
+  /** Slanted, as Impaulsive sets its captions: the face's own italic, or one drawn from it. */
+  italic?: boolean
+  /**
+   * The colour of words said by anyone but the voice heard most, where speakers are told apart: Flagrant sets
+   * its guest in yellow (textColor) and its hosts in white. Absent, every voice is in the text colour.
+   */
+  otherColor?: string
   /**
    * How wide the face's letters run on average, in ems, so a word too wide for the frame is set smaller
    * until it fits (shared/subtitles fitFontPx). Absent leaves every word at its size.
@@ -207,6 +221,13 @@ export interface CaptionStyle {
   plain?: boolean
   /** Never picks out the word being said either, but keeps the words as said, punctuation and capitals. */
   steady?: boolean
+  /**
+   * A group's closing comma, full stop, colon or semicolon left off, a question or an exclamation mark kept,
+   * as interview shows caption a phrase ("Even at 120 million views", "biggest show ever in India?").
+   */
+  bare?: boolean
+  /** Where this look puts a named position's foot, as a share of the height, when it sits other than the usual. */
+  positions?: Partial<Record<'top' | 'middle' | 'chest' | 'bottom', number>>
   /**
    * Builds the sentence as it is said: each group is laid out whole from its first word, and a word shows
    * from the moment it is said until the group clears, so the lines fill in place and never move. The

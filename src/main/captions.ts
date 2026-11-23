@@ -1,6 +1,6 @@
 import type { CaptionStyle, TranscriptWord } from '../shared/types'
 import { CAPTION_PRESETS } from '../shared/caption-presets'
-import { captionMarginX, fitFontPx, keyFacePx, landedFontPx, landsLine, styleCues } from '../shared/subtitles'
+import { captionMarginX, fitFontPx, keyFacePx, landedFontPx, landsLine, styleCues, voiceColor } from '../shared/subtitles'
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = CAPTION_PRESETS[0].style
 
@@ -126,7 +126,7 @@ export function buildAss(
       assColor(style.boxColor ?? style.outlineColor),
       style.boxColor ? assColor(style.boxColor) : '&H64000000',
       style.bold ? '-1' : '0',
-      '0',
+      style.italic ? '-1' : '0',
       '0',
       '0',
       '100',
@@ -183,6 +183,9 @@ export function buildAss(
 
   // One event per word (shared/subtitles, which the editor's preview draws from too).
   for (const cue of styleCues(words, style)) {
+    // A word set to sit elsewhere (a split's seam) gives its event its own margin; 0 keeps the style's.
+    const at = cue.words[cue.active]?.at
+    const own = (less: number): number => (at === undefined ? 0 : Math.max(1, Math.round(height * (1 - at)) - less))
     const word = cue.words[cue.active]
     const from = assTime(cue.start)
     const until = assTime(cue.end)
@@ -191,8 +194,8 @@ export function buildAss(
       const big = escapeAss(style.uppercase ? word.text.toUpperCase() : word.text)
       const restWords = cue.words.filter((_, j) => j !== cue.active).map((w) => w.text)
       const rest = escapeAss(style.second.uppercase ? restWords.join(' ').toUpperCase() : restWords.join(' '))
-      events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${big}`)
-      if (rest) events.push(`Dialogue: 0,${from},${until},Chop2,,0,0,0,,${rest}`)
+      events.push(`Dialogue: 0,${from},${until},Chop,,0,0,${own(0)},,${big}`)
+      if (rest) events.push(`Dialogue: 0,${from},${until},Chop2,,0,0,${own(style.second.gapPx)},,${rest}`)
       continue
     }
 
@@ -213,7 +216,7 @@ export function buildAss(
           return j === 0 ? said : `${j === first ? '\\N' : ' '}${said}`
         })
         .join('')
-      events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,{${face}}${landed}`)
+      events.push(`Dialogue: 0,${from},${until},Chop,,0,0,${own(0)},,{${face}}${landed}`)
       continue
     }
 
@@ -235,14 +238,16 @@ export function buildAss(
         const own = w.key && keyFace ? keyFace : ''
         // A built caption's words not said yet keep their places, unseen, outline and shadow too.
         if (style.build && j > cue.active) return `{\\alpha&HFF&${own}}${text}${reset}`
-        const colour = w.key && key ? key : j === cue.active ? active : null
+        // The active word picked out, else another voice's colour; the style's own colour needs no tag.
+        const voice = voiceColor(w, j === cue.active, style)
+        const colour = w.key && key ? key : voice !== style.textColor ? assColor(voice) : null
         const scale = j === cue.active && style.activeScale !== 1 && !own ? `\\fscx${scalePct}\\fscy${scalePct}` : ''
         if (!colour && !scale && !own) return text
         return `{${colour ? `\\c${colour}` : ''}${scale}${own}}${text}${reset}`
       })
       .join(' ')
 
-    events.push(`Dialogue: 0,${from},${until},Chop,,0,0,0,,${fit}${line}`)
+    events.push(`Dialogue: 0,${from},${until},Chop,,0,0,${own(0)},,${fit}${line}`)
   }
 
   return [...header, ...events].join('\n') + '\n'

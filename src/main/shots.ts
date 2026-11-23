@@ -15,11 +15,19 @@ import { FFMPEG_PATH } from './ffmpeg'
  * between two different camera angles drifts through a shot it was never
  * measuring, which reads as the frame wandering for no reason.
  */
+/**
+ * How different a frame must be from the one before to be a cut. A podcast's cameras look into one room, so a
+ * cut between them can score as little as 0.28 (four of a Bobbi Althoff episode's 37 cuts did, and 0.3 missed
+ * them, leaving a few frames of the other camera at a shot's edge), while nothing else in those 150 seconds
+ * scored over 0.15.
+ */
+export const SHOT_THRESHOLD = 0.22
+
 export async function detectShots(
   sourcePath: string,
   startSec: number,
   durationSec: number,
-  threshold = 0.3
+  threshold = SHOT_THRESHOLD
 ): Promise<number[]> {
   const out = await new Promise<string>((resolve) => {
     const child = spawn(FFMPEG_PATH, [

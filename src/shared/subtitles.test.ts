@@ -13,8 +13,10 @@ import {
   subtitleCues,
   subtitleWords,
   type SubtitleCue,
-  type TextMeasurer, fitFontPx, plainWords, buildGroups, BUILD_HOLD_SEC, shownWords, landedGroups, styleCues, landsLine, CAPTION_HOLD_SEC } from './subtitles'
+  type TextMeasurer, fitFontPx, plainWords, buildGroups, BUILD_HOLD_SEC, shownWords, landedGroups, styleCues, landsLine, CAPTION_HOLD_SEC,
+  captionSeams, SEAM_FRAC } from './subtitles'
 import type { TranscriptWord } from './types'
+import { groupWords } from './words'
 
 /**
  * Burned-in captions as the export draws them and the preview copies: the
@@ -64,20 +66,67 @@ const cueOf = (texts: string[], active = 0): SubtitleCue => ({
 })
 
 describe('subtitle cues', () => {
+  it('has the first caption up on the first frame when the first word is said within a moment of it', () => {
+    const podcast = CAPTION_PRESETS.find((p) => p.id === 'podcast')!.style
+    // "I saw you at the roast." from 0.1 s: the first frame is the video's face in the feed, never bare.
+    const opening = styleCues(said(['I', 'saw', 'you', 'at', 'the', 'roast.'], 0.1), podcast)
+    expect(opening[0].start).toBe(0)
+    expect(opening[1].start).toBeCloseTo(0.5)
+    // A first word two seconds in waits for itself.
+    expect(styleCues(said(['I', 'saw', 'you.'], 2), podcast)[0].start).toBe(2)
+  })
+
+  it('leaves a phrase’s comma and full stop off in a bare look, and keeps its question mark', () => {
+    const note = CAPTION_PRESETS.find((p) => p.id === 'note')!.style
+    const cues = styleCues(said(['Even', 'at', '120', 'million', 'views.', 'Is', 'it', 'India?', 'No,', 'but', 'yes.']), {
+      ...note,
+      wordsPerGroup: 3
+    })
+    const pages = [...new Set(cues.map((c) => c.words.map((w) => w.text).join(' ')))]
+    // Its chest sits lower than the usual chest.
+    expect(captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'note', position: 'chest' }, 1080).positionFrac).toBe(0.72)
+    expect(captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'podcast', position: 'chest' }, 1080).positionFrac).toBe(0.66)
+    // A sentence within two words of the group's size stays whole; a comma inside a phrase goes too.
+    expect(pages).toEqual(['Even at 120 million views', 'Is it India?', 'No but yes'])
+  })
+
+  it('ends each caption where a phrase does', () => {
+    const groups = (texts: string[], n: number): string[] =>
+      groupWords(said(texts), n).map((g) => g.map((w) => w.text).join(' '))
+    // A sentence that finishes within two more words stays whole.
+    expect(groups(['I', 'saw', 'you', 'at', 'the', 'roast.', 'And'], 5)).toEqual(['I saw you at the roast.', 'And'])
+    // A full group breaks after its last comma.
+    expect(groups(['I', 'was', 'like,', 'wow', "that's", 'so', 'nice', 'of', 'her'], 5)).toEqual([
+      'I was like,',
+      "wow that's so nice",
+      'of her'
+    ])
+    // And never on a word that leads into the next.
+    expect(groups(['and', 'she', 'jammed', 'her', 'tongue', 'down', 'my', 'throat', 'and', 'then'], 4)).toEqual([
+      'and she jammed',
+      'her tongue down',
+      'my throat and then'
+    ])
+    // One or two words at a time are counted as they were.
+    expect(groups(['one', 'two', 'three.'], 2)).toEqual(['one two', 'three.'])
+  })
+
   it('shows each group with one word picked out, held until the next word starts', () => {
-    const cues = subtitleCues(said(['one', 'two', 'three', 'four.', 'five']), 3)
+    const cues = subtitleCues(said(['one', 'two', 'three', 'four', 'five', 'six.', 'seven']), 3)
     expect(cues.map((c) => [c.words.map((w) => w.text).join(' '), c.active])).toEqual([
       ['one two three', 0],
       ['one two three', 1],
       ['one two three', 2],
-      ['four.', 0],
-      ['five', 0]
+      ['four five six.', 0],
+      ['four five six.', 1],
+      ['four five six.', 2],
+      ['seven', 0]
     ])
     // Held to the next word's start, the group's last word too, so nothing blinks off between groups.
     expect(cues[0]).toMatchObject({ start: 1, end: 1.4 })
     expect(cues[2].end).toBeCloseTo(2.2)
     // The last word stays a moment after it is said.
-    expect(cues[4].end).toBeCloseTo(cues[4].words[0].endSec + CAPTION_HOLD_SEC)
+    expect(cues[6].end).toBeCloseTo(cues[6].words[0].endSec + CAPTION_HOLD_SEC)
     // A pause of more than CAPTION_JOIN_SEC clears the screen, CAPTION_HOLD_SEC after the word.
     const paused = subtitleCues([...said(['Amen.']), { text: 'Next', startSec: 3, endSec: 3.3 }], 3)
     expect(paused[0].end).toBeCloseTo(1.3 + CAPTION_HOLD_SEC)
@@ -146,6 +195,50 @@ describe('subtitle layout', () => {
     // The outline and the shadow are around and below the ink.
     expect(layout.bounds.x).toBeCloseTo(first.x - style.outlinePx)
     expect(layout.bounds.y + layout.bounds.h).toBeCloseTo(line.baseline + 0.2 * em + style.outlinePx + style.shadowPx)
+  })
+
+  it('sets a caption said over a split on the seam, in the preview and the export alike', () => {
+    const doc = createDoc({
+      id: 'd',
+      title: 't',
+      source: { id: 's1', path: '/x.mp4', durationSec: 10, width: 1920, height: 1080, fps: 30 },
+      words: wordsFromTranscript(
+        [
+          { text: 'You', startSec: 0.5, endSec: 0.8 },
+          { text: 'saved', startSec: 0.8, endSec: 1.2 },
+          { text: 'him.', startSec: 1.2, endSec: 1.6 },
+          { text: 'Right?', startSec: 3, endSec: 3.5 }
+        ],
+        's1'
+      )
+    })
+    const cut = applyOps(
+      currentCut(doc),
+      [
+        {
+          op: 'treat',
+          beats: [currentCut(doc).beats[1].id],
+          set: { frame: 'split', broll: { path: '/b.mp4', inSec: 0, muted: true, below: true } }
+        }
+      ],
+      doc
+    ).cut
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const words = shownWords(resolved.words, cut.captions, resolved.words, captionSeams(cut, resolved.words))
+    const style = captionStyleFor({ ...DEFAULT_CAPTIONS, preset: 'slant', position: 'bottom' }, tall.width)
+    const cues = styleCues(words, style)
+    const over = cues.find((c) => c.words.some((w) => w.text === 'Right?'))!
+    const before = cues[0]
+    expect(over.words[over.active].at).toBe(SEAM_FRAC)
+    expect(before.words[before.active].at).toBeUndefined()
+    // Its foot just above the middle of the frame, where the footage below meets the speaker above.
+    const foot = (c: typeof over): number => {
+      const b = layoutSubtitle(c, style, tall, fakeMeasurer()).bounds
+      return b.y + b.h
+    }
+    expect(foot(over)).toBeLessThan(tall.height * 0.5)
+    expect(foot(over)).toBeGreaterThan(tall.height * 0.45)
+    expect(foot(before)).toBeGreaterThan(tall.height * 0.75)
   })
 
   it('scales the word being said from its pen, which makes its line a taller cell', () => {

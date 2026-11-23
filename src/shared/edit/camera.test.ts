@@ -27,6 +27,16 @@ describe('camera moves', () => {
     expect(coverWindow(TALL, WIDE).fw).toBe(1)
   })
 
+  it('hold a closer frame still from the first frame, where asked', () => {
+    const plan = cameraPlan({ kind: 'hold', zoom: 1.3, to: { x: 0.5, y: 0.35 } }, 3, null, WIDE, TALL)
+    for (const t of [0, 1.5, 3]) {
+      expect(viewAt(plan, t).zoom).toBeCloseTo(1.3, 9)
+      expect(viewAt(plan, t).y).toBeCloseTo(viewAt(plan, 0).y, 9)
+    }
+    // Higher than the middle, so the foot of the picture (a broadcast's banner) is left out.
+    expect(viewAt(plan, 0).y).toBeLessThan(0.5)
+  })
+
   it('push in from the whole frame, eased, to the zoom asked for', () => {
     const plan = cameraPlan({ kind: 'push-in', zoom: 1.5 }, 4, null, WIDE, WIDE)
     expect(viewAt(plan, 0)).toEqual({ zoom: 1, x: 0.5, y: 0.5 })

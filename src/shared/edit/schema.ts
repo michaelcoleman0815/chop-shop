@@ -122,7 +122,14 @@ export const BrollSchema = z.object({
   /** Played backwards: a spin that turns the other way. */
   reverse: z.boolean().optional(),
   /** The frame moving over it: a Ken Burns drift across a product still. */
-  camera: CameraSchema.optional()
+  camera: CameraSchema.optional(),
+  /** In a split, the cutaway in the lower half and the speaker above it, as Impaulsive stacks footage under Logan. */
+  below: z.boolean().optional(),
+  /** In a split, a line of this colour along the seam between the halves (Impaulsive's green, #36E05A). */
+  seam: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional()
 })
 export type Broll = z.infer<typeof BrollSchema>
 
@@ -198,6 +205,8 @@ export const BeatSchema = z.object({
 export type Beat = z.infer<typeof BeatSchema>
 
 export const CAPTION_POSITIONS = ['top', 'middle', 'chest', 'bottom'] as const
+export const KEY_LOOKS = ['serif', 'dark', 'punch'] as const
+export type KeyLook = (typeof KEY_LOOKS)[number]
 
 export const CaptionSpecSchema = z.object({
   on: z.boolean(),
@@ -209,7 +218,13 @@ export const CaptionSpecSchema = z.object({
   uppercase: z.boolean(),
   // Added later, so optional: absent is no word picked out.
   /** Words set in the look's key colour, by id: the ones the speaker leans on. */
-  keys: z.array(z.string()).optional()
+  keys: z.array(z.string()).optional(),
+  /**
+   * How a key word is set, by id, where its meaning asks for more than size (drawn captions): serif for a
+   * tender or grave word, dark for a word of horror or contempt (red serif), punch for a word that hits
+   * (heavy capitals). The Diary of a CEO sets its big words this way.
+   */
+  keyLooks: z.record(z.string(), z.enum(KEY_LOOKS)).optional()
 })
 export type CaptionSpec = z.infer<typeof CaptionSpecSchema>
 
@@ -254,6 +269,8 @@ export const CutSchema = z.object({
   chapters: z.array(ChapterSchema).optional(),
   /** Other cameras of the same takes, each lined up with its recording (edit/angles). */
   angles: z.array(AngleSchema).max(16).optional(),
+  /** Words as they should read, by id, where the transcript misheard them: what the captions and the script show. */
+  spelled: z.record(z.string(), z.string()).optional(),
   /** Cropped to a narrower frame, the picture follows the speaker rather than staying in the middle (edit/reframe). */
   reframe: z.boolean().optional(),
   /**
@@ -330,6 +347,8 @@ export const OpSchema = z.discriminatedUnion('op', [
     why: z.string().min(1).optional()
   }),
   z.object({ op: z.literal('strike'), from: wordId, to: wordId }),
+  // A word as it should read where the transcript misheard it ("Okay, a loss" that was "obey the laws").
+  z.object({ op: z.literal('respell'), word: wordId, text: z.string().trim().min(1).max(60) }),
   z.object({ op: z.literal('unstrike'), from: wordId, to: wordId }),
   z.object({ op: z.literal('move'), beat: beatId, to: z.number().int().min(0) }),
   z.object({ op: z.literal('split'), beat: beatId, at: wordId }),
@@ -385,9 +404,9 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('look'), set: LookPatchSchema.nullable(), replace: z.boolean().optional() }),
   // A music bed, or changes to it; null takes it out.
   z.object({ op: z.literal('music'), set: MusicSchema.partial().nullable() }),
-  // A cold open: these moments, in this order, played first, ahead of the conversation they come from, with a white
-  // flash on every third cut and a dip to black into the conversation. Again, it replaces the cold open there was;
-  // with no bites, it takes the cold open out (edit/cold-open).
+  // A cold open: these moments, in this order, played first, ahead of the conversation they come from, hard cut
+  // into each other, with a short dip to black into the conversation. Again, it replaces the cold open there was;
+  // with no bites, it takes the cold open out.
   z.object({
     op: z.literal('cold-open'),
     bites: z.array(z.object({ from: wordId, to: wordId })).max(16)

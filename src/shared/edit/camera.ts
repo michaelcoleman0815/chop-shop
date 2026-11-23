@@ -29,7 +29,8 @@ export const CAMERA_KINDS = [
   'pan-down',
   'punch-in',
   'shake',
-  'focus'
+  'focus',
+  'hold'
 ] as const
 export type CameraKind = (typeof CAMERA_KINDS)[number]
 
@@ -89,7 +90,8 @@ export const CAMERA_INFO: Record<CameraKind, CameraInfo> = {
   'pan-down': { label: 'a pan down', zoom: 1.2 },
   'punch-in': { label: 'a punch-in', zoom: 1.15, sec: 0.25 },
   shake: { label: 'a shake', zoom: 1.05, sec: 0.5 },
-  focus: { label: 'a move in on what matters', zoom: 2, sec: 0.6 }
+  focus: { label: 'a move in on what matters', zoom: 2, sec: 0.6 },
+  hold: { label: 'a closer frame held still', zoom: 1.25 }
 }
 
 export type Ease = 'linear' | 'in-out' | 'out'
@@ -214,6 +216,10 @@ export function cameraPlan(
       ]
       break
     }
+    case 'hold':
+      // Still, closer, centred where asked from the first frame: a broadcast's banner or bug left out of a cutaway.
+      keys = [key(0, at(move.to, zoom))]
+      break
     case 'shake':
       keys = [key(0, at(move.to, zoom))]
       shake = {

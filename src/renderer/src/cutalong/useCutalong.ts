@@ -2970,7 +2970,7 @@ export function useCutalong() {
       const words = rest.trim().toLowerCase()
       const on = /^(off|no|none|leave|stop|remove)$/.test(words) ? false : /^(on|yes|hide|punch|)$/.test(words) ? true : null
       const cut = currentCut(d)
-      const n = jumpJoins(cut, resolveCut(cut, d.words, d.sources)).length
+      const n = jumpJoins(cut, resolveCut(cut, d.words, d.sources), d.sources).length
       if (on === null) {
         const now = cut.punchJumps ? 'punched in, wide and close in turn' : 'left as they are'
         say(`This edit has ${n === 1 ? 'one jump cut' : `${n} jump cuts`}, ${now}. /jumpcuts punches in on them and /jumpcuts off leaves them.`)

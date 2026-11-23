@@ -90,11 +90,14 @@ export function applyOp(cut: Cut, op: Op, context: OpContext): Cut {
   return step(cut, OpSchema.parse(op), makeCtx(context))
 }
 
-/** A cold open's bites are cut close, each running into the next. */
-const COLD_PAD_IN = 0.04
-const COLD_PAD_OUT = 0.08
-/** Out of a cold open and into the conversation: a short dip to black. */
-const COLD_DIP_SEC = 0.5
+/**
+ * A cold open's bites keep the breath before a word and the end of the last one, as the beats of the
+ * conversation do: cut closer, they start and stop mid-breath.
+ */
+const COLD_PAD_IN = DEFAULT_PAD_IN
+const COLD_PAD_OUT = DEFAULT_PAD_OUT
+/** Out of a cold open and into the conversation: a short dip to black, the one transition it makes itself. */
+const COLD_DIP_SEC = 0.3
 
 function step(cut: Cut, op: Op, ctx: Ctx): Cut {
   switch (op.op) {
@@ -271,14 +274,8 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       const opened = op.bites.map((bite, i): Beat => {
         const [a] = wordRange(ctx, bite.from, bite.to)
         const beat = buildBeat({ source: ctx.index.words[a].source, from: bite.from, to: bite.to }, `b${n++}`, ctx)
-        return {
-          ...beat,
-          // Cut close: a cold open runs bite into bite.
-          padIn: COLD_PAD_IN,
-          padOut: COLD_PAD_OUT,
-          coldOpen: true,
-          ...(i > 0 && i % 3 === 0 ? { transition: keptTransition('flash', TRANSITION_INFO.flash.defaultSec) } : {})
-        }
+        // Hard cuts between bites: a flash on a pattern lands at random (the owner, 22 November).
+        return { ...beat, padIn: COLD_PAD_IN, padOut: COLD_PAD_OUT, coldOpen: true }
       })
       const [first, ...rest] = body
       return { ...cut, beats: [...opened, { ...strip(first), transition: keptTransition('dip-to-black', COLD_DIP_SEC) }, ...rest] }
@@ -485,6 +482,19 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       const { reframe: _was, ...rest } = cut
       return op.on ? { ...rest, reframe: true } : rest
     }
+    case 'respell': {
+      const word = ctx.index.words[ctx.index.pos.get(op.word) ?? -1]
+      if (!word) throw new OpError(`There is no word ${op.word}.`)
+      const { [op.word]: _was, ...rest } = cut.spelled ?? {}
+      // Set back to what was heard, it is no longer a correction.
+      const spelled = op.text === word.text ? rest : { ...rest, [op.word]: op.text }
+      if (Object.keys(spelled).length === 0) {
+        const { spelled: _old, ...without } = cut
+        return without
+      }
+      return { ...cut, spelled }
+    }
+
     case 'punch-jumps': {
       if (cut.punchJumps === op.on) return cut
       return { ...cut, punchJumps: op.on }

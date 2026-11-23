@@ -182,6 +182,61 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     }
   },
   {
+    id: 'voices',
+    name: 'Condensed, coloured by voice',
+    style: {
+      ...BASE,
+      // Flagrant's Shorts (measured): three or four words at a time in small condensed capitals, a little below
+      // the middle, the guest (the voice heard most) in yellow and the hosts in white, with a thin black edge.
+      // Nothing marks the word being said: the colour says who is talking.
+      wordsPerGroup: 3,
+      fontFamily: 'Anton',
+      fontSizePx: 108,
+      bare: true,
+      steady: true,
+      ownKey: true,
+      positionFrac: 0.6,
+      positions: { middle: 0.6, chest: 0.6 },
+      textColor: '#F6F04E',
+      activeColor: '#F6F04E',
+      otherColor: '#FFFFFF',
+      outlineColor: '#000000',
+      outlinePx: 3,
+      shadowPx: 2,
+      uppercase: true,
+      activeScale: 1
+    }
+  },
+  {
+    id: 'slant',
+    name: 'Slanted, keywords in yellow',
+    style: {
+      ...BASE,
+      // Impaulsive's Shorts (measured): two or three words at a time in a heavy sans slanted forward, white
+      // with a soft shadow, the words the speaker leans on in yellow (the edit's keys), about 58 px tall on a
+      // 1080 × 1920 frame and low on it. Nothing marks the word being said.
+      wordsPerGroup: 3,
+      fontFamily: 'Inter ExtraBold',
+      fontSizePx: 74,
+      letterEm: 0.6,
+      italic: true,
+      bare: true,
+      // Its yellow and white are the look itself, whatever the brand's colours.
+      steady: true,
+      ownKey: true,
+      positionFrac: 0.82,
+      positions: { bottom: 0.82 },
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      keyColor: '#FFE81A',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1
+    }
+  },
+  {
     id: 'sermon-word',
     name: 'Sermon one word',
     style: {
@@ -487,6 +542,29 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     style: BASE
   },
   {
+    // As the most-watched podcast clips set them (docs/research/podcasts.md; Bobbi Althoff's own clips,
+    // measured): a phrase at a time in bold white capitals with a thin dark edge and a soft shadow, two short
+    // lines whose capitals stand 3.5% of the frame's height, the foot of the last about three quarters of the
+    // way down, every word white, nothing growing as it is said.
+    id: 'podcast',
+    name: 'Podcast',
+    style: {
+      ...BASE,
+      fontFamily: 'Inter ExtraBold',
+      wordsPerGroup: 5,
+      fontSizePx: 112,
+      positionFrac: 0.78,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 6,
+      shadowPx: 4,
+      activeScale: 1,
+      // Every word white, a brand's accent or not.
+      steady: true
+    }
+  },
+  {
     id: 'punch',
     name: 'Punch',
     style: {
@@ -508,6 +586,31 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
       positionFrac: 0.86,
       outlinePx: 6,
       activeScale: 1.0
+    }
+  },
+  {
+    // As Colin & Samir caption their Shorts (measured): a short phrase at a time in small white sentence case,
+    // no edge, a soft shadow, every word white and nothing growing as it is said, with no comma or full stop
+    // hanging off a phrase.
+    id: 'note',
+    name: 'Note',
+    style: {
+      ...BASE,
+      fontFamily: 'Inter SemiBold',
+      wordsPerGroup: 5,
+      fontSizePx: 64,
+      positionFrac: 0.66,
+      textColor: '#ffffff',
+      activeColor: '#ffffff',
+      outlineColor: '#000000',
+      outlinePx: 0,
+      shadowPx: 3,
+      uppercase: false,
+      activeScale: 1,
+      steady: true,
+      bare: true,
+      // Their chest is lower than most looks': under the hands, about seven tenths down.
+      positions: { chest: 0.72 }
     }
   },
   {

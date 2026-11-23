@@ -1,4 +1,5 @@
 import type { Resolved, ResolvedWord } from '../edit/resolve'
+import type { KeyLook } from '../edit/schema'
 import type { CaptionSpec } from '../edit/schema'
 import { onColor, tail } from './anim'
 import { textWidth } from './templates/measure'
@@ -77,8 +78,16 @@ export interface CaptionInput {
   faces?: FaceSample[]
   /** How strongly each word is stressed, 0 to 1, by word id. The most stressed run goes big. */
   emphasis?: Record<string, number>
+  /** Who says each word, by word id (shared/speakers): another voice than the one heard most is set in OTHER_VOICE. */
+  speakers?: Record<string, number>
   covers?: CaptionCover[]
 }
+
+/**
+ * The colour of a page said by someone other than the voice heard most, as The Diary of a CEO sets its
+ * host's questions in yellow under the guest's white, so a cut to the other chair reads at once.
+ */
+export const OTHER_VOICE = '#F6D04D'
 
 const SENTENCE_END = /[.!?…]["')\]’”]*$/
 const CLAUSE_END = /[,;:—–]["')\]’”]*$/
@@ -282,10 +291,41 @@ export function pageHeight(
   emphasis?: Record<string, number>
 ): number {
   const { big, small, maxBigChars } = hierarchyLook(frame)
+  if (plainPage(page, emphasis)) return big * 1.04 * PLAIN
   const split = splitPage(page, emphasis, maxBigChars)
   const lines = split.at > 0 && split.at < page.length ? 2 : 1
   return big * 1.04 * (lines === 2 ? 1 + small : 1)
 }
+
+/** A plain page's words, as a share of the big line's size. */
+const PLAIN = 0.6
+
+/**
+ * Whether a page carries none of the words the edit chose to set big: with key words chosen (a score of
+ * exactly 1 against 0 for the rest), a page without one is one small centred line, as The Diary of a CEO sets
+ * the lines between its big words.
+ */
+function plainPage(page: Pick<ResolvedWord, 'id'>[], emphasis?: Record<string, number>): boolean {
+  return emphasis?.[CHOSEN] === 1 && !page.some((w) => emphasis[w.id] === 1)
+}
+
+/**
+ * A key word's look on the big line, as The Diary of a CEO sets its big words: a condensed serif, larger to stand as tall, for
+ * the tender and the grave ("Sanders", "horrible"), the same serif in red for horror or contempt ("insanity",
+ * "narcissist"), heavy capitals for a word that hits ("CORRUPT", "THE USA").
+ */
+export const KEY_LOOK_STYLE: Record<KeyLook, Pick<Span, 'family' | 'color' | 'uppercase' | 'scale' | 'weight'>> = {
+  serif: { family: 'Instrument Serif', scale: 1.6, weight: 400 },
+  dark: { family: 'Instrument Serif', scale: 1.6, weight: 400, color: '#E5322D' },
+  punch: { family: 'Inter ExtraBold', uppercase: true, scale: 0.92, weight: 800 }
+}
+
+function lookOf(look: KeyLook | undefined): Partial<Span> {
+  return look ? KEY_LOOK_STYLE[look] : {}
+}
+
+/** Marks an emphasis map made from chosen key words rather than heard stress. */
+const CHOSEN = '#chosen'
 
 /**
  * One hierarchy page as a text layer: its top centred on `at`, on screen from
@@ -296,21 +336,32 @@ export function hierarchyPage(
   start: number,
   end: number,
   at: { x: number; y: number },
-  opts: { frame: Frame; theme: MotionTheme; uppercase?: boolean; emphasis?: Record<string, number> }
+  opts: {
+    frame: Frame
+    theme: MotionTheme
+    uppercase?: boolean
+    emphasis?: Record<string, number>
+    fill?: string
+    looks?: Partial<Record<string, KeyLook>>
+    /** The page opens the video: its first word is already in when the page starts (captionLayers). */
+    landed?: boolean
+  }
 ): TextLayer {
   const { frame, theme } = opts
   const u = frame.u
   const { big, small, maxWidth, maxBigChars } = hierarchyLook(frame)
-  const split = splitPage(page, opts.emphasis, maxBigChars)
-  const isBig = (i: number): boolean => (split.big === 'first' ? i < split.at : i >= split.at)
+  const plain = plainPage(page, opts.emphasis)
+  const split = plain ? { at: 0, big: 'second' as const } : splitPage(page, opts.emphasis, maxBigChars)
+  const isBig = (i: number): boolean => !plain && (split.big === 'first' ? i < split.at : i >= split.at)
   // The small line hangs from the big one's start when it leads, and tucks under its end when it trails.
-  const smallAlign = split.big === 'first' ? ('right' as const) : ('left' as const)
+  const smallAlign = plain ? ('center' as const) : split.big === 'first' ? ('right' as const) : ('left' as const)
   const spans: Span[] = page.map((w, i) => ({
     text: `${i === split.at && i > 0 ? '\n' : ''}${shown(w.text)}`,
-    t: Math.max(0, w.outStart - start),
-    scale: isBig(i) ? 1 : small,
+    t: opts.landed && i === 0 ? 0 : Math.max(0, w.outStart - start),
+    scale: isBig(i) ? 1 : plain ? PLAIN : small,
     weight: isBig(i) ? 600 : 500,
-    align: isBig(i) ? 'left' : smallAlign
+    align: isBig(i) ? 'left' : smallAlign,
+    ...(isBig(i) ? lookOf(opts.looks?.[w.id]) : {})
   }))
   return {
     kind: 'text',
@@ -326,7 +377,7 @@ export function hierarchyPage(
       tracking: -0.03 * big,
       uppercase: opts.uppercase
     },
-    fill: theme.text,
+    fill: opts.fill ?? theme.text,
     align: 'center',
     valign: 'top',
     maxWidth,
@@ -420,6 +471,18 @@ export function boxedPage(
 }
 
 /** Captions the graphics draw, as text layers, one a page, on the output clock. Empty unless the cut asks for them. */
+/**
+ * A first word said this soon after the video starts has its caption up from the first frame, drawn or burned
+ * in (shared/subtitles styleCues). That frame is the video's face in a feed and the still it is shared with,
+ * and the top Shorts never open on a bare picture; a caption appearing a few frames in also reads as a
+ * flicker. Kept short: words said under an opening card are not captioned, so a first caption this early
+ * means nothing covers the start.
+ */
+export const OPEN_SEC = 0.6
+
+/** How long before the video starts an opening page starts: longer than a word takes to land (0.32 s less 0.03). */
+const LANDED_SEC = 0.35
+
 export function captionLayers(input: CaptionInput): Layer[] {
   const { spec, resolved, frame, theme } = input
   if (!drawsCaptions(spec) || resolved.words.length === 0) return []
@@ -429,12 +492,23 @@ export function captionLayers(input: CaptionInput): Layer[] {
     ? Math.max(2, Math.min(5, spec.wordsPerScreen + 1))
     : Math.max(3, Math.min(8, spec.wordsPerScreen * 2))
   const covers = input.covers ?? []
-  const pages = hierarchyPages(resolved.words, maxWords)
+  // Key words the edit chose go big, and only they; otherwise the stress heard, or each word's own weight.
+  const chosen = [...(spec.keys ?? []), ...Object.keys(spec.keyLooks ?? {})]
+  const pages = endOnKeys(hierarchyPages(resolved.words, maxWords), new Set(chosen))
+  const emphasis = chosen.length ? chosenEmphasis(resolved.words, chosen) : input.emphasis
+  const other = otherVoice(resolved.words, input.speakers)
   const layers: Layer[] = []
 
+  // The first page is up on the first frame when its first word is said that soon and no card holds the
+  // opening (OPEN_SEC): started early enough that its first word has landed by then.
+  const opens =
+    pages.length > 0 &&
+    pages[0][0].outStart <= OPEN_SEC &&
+    !covers.some((c) => c.kind === 'card' && c.start <= OPEN_SEC)
   pages.forEach((page, pi) => {
     const next = pages[pi + 1]
-    let start = Math.max(0, page[0].outStart - 0.06)
+    const landed = opens && pi === 0
+    let start = landed ? -LANDED_SEC : Math.max(0, page[0].outStart - 0.06)
     const said = page[page.length - 1].outEnd
     let end = Math.min(said + 0.6, next ? next[0].outStart - 0.06 : Infinity, input.duration)
     // A card with its own words holds the screen: the page waits, or stops short.
@@ -443,16 +517,81 @@ export function captionLayers(input: CaptionInput): Layer[] {
       if (start < c.start && end > c.start) end = c.start
     }
     if (end - start < 0.2) return
-    const backdrop = covers.some((c) => c.kind === 'backdrop' && start >= c.start - 0.05 && start < c.end)
+    // Where it shows from: an opening page starts before the video does.
+    const shows = Math.max(0, start)
+    const backdrop = covers.some((c) => c.kind === 'backdrop' && shows >= c.start - 0.05 && shows < c.end)
     const height = boxed
       ? boxedHeight(page, frame, theme, spec.uppercase)
-      : pageHeight(page, frame, input.emphasis)
-    const at = placePage(frame, spec.position, facesNear(input.faces, start), height, maxWidth / 2, backdrop)
+      : pageHeight(page, frame, emphasis)
+    const at = placePage(frame, spec.position, facesNear(input.faces, shows), height, maxWidth / 2, backdrop)
     layers.push(
       boxed
         ? boxedPage(page, start, end, at, { frame, theme, uppercase: spec.uppercase })
-        : hierarchyPage(page, start, end, at, { frame, theme, uppercase: spec.uppercase, emphasis: input.emphasis })
+        : hierarchyPage(page, start, end, at, {
+            frame,
+            theme,
+            uppercase: spec.uppercase,
+            emphasis,
+            looks: spec.keyLooks,
+            fill: other !== null && voiceOf(page, input.speakers) === other ? OTHER_VOICE : undefined,
+            landed
+          })
     )
   })
   return layers
+}
+
+/** The chosen key words as emphasis: 1 for each, 0 for the rest, marked as chosen. */
+function chosenEmphasis(words: Pick<ResolvedWord, 'id'>[], keys: string[]): Record<string, number> {
+  const chosen = new Set(keys)
+  return Object.fromEntries([[CHOSEN, 1], ...words.map((w) => [w.id, chosen.has(w.id) ? 1 : 0])])
+}
+
+/** How many of the cut's words a second voice must say to be set apart: fewer is a slip of the voice finder. */
+const OTHER_SHARE = 0.08
+
+/** How many words each voice says, most first. */
+function voices(words: Pick<ResolvedWord, 'id'>[], speakers?: Record<string, number>): [number, number][] {
+  const count = new Map<number, number>()
+  for (const w of words) {
+    const s = speakers?.[w.id]
+    if (s !== undefined) count.set(s, (count.get(s) ?? 0) + 1)
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1])
+}
+
+/**
+ * The voice set apart: the one heard second most, when it says at least OTHER_SHARE of the words. A voice
+ * heard less (the finder splitting one person in a few raised words) stays in the text colour.
+ */
+function otherVoice(words: Pick<ResolvedWord, 'id'>[], speakers?: Record<string, number>): number | null {
+  const [, second] = voices(words, speakers)
+  return second && second[1] >= OTHER_SHARE * words.length ? second[0] : null
+}
+
+/** Who says most of a page, or null when nobody is known. */
+function voiceOf(page: Pick<ResolvedWord, 'id'>[], speakers?: Record<string, number>): number | null {
+  return voices(page, speakers)[0]?.[0] ?? null
+}
+
+/**
+ * Pages broken after each chosen key word that falls mid-page, so the word can close its page on the big
+ * line ("certainly had a big / impact"), rather than a page whose big line must run on past it ("impact on my
+ * life.", too long for one line) setting other words big instead.
+ */
+function endOnKeys(pages: ResolvedWord[][], chosen: Set<string>): ResolvedWord[][] {
+  if (chosen.size === 0) return pages
+  return pages.flatMap((page) => {
+    const out: ResolvedWord[][] = []
+    let from = 0
+    page.forEach((w, i) => {
+      // After the last of a run of key words ("truck driver"), never inside it.
+      if (chosen.has(w.id) && !chosen.has(page[i + 1]?.id) && i > from && i < page.length - 1) {
+        out.push(page.slice(from, i + 1))
+        from = i + 1
+      }
+    })
+    out.push(page.slice(from))
+    return out
+  })
 }

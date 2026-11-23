@@ -83,7 +83,7 @@ function tokens(layer: TextLayer, text: string): Token[] {
   const out: Token[] = []
   let pendingBreak = false
   spans.forEach((s, i) => {
-    const t = layer.font.uppercase ? s.text.toUpperCase() : s.text
+    const t = (s.uppercase ?? layer.font.uppercase) ? s.text.toUpperCase() : s.text
     const lines = t.split('\n')
     lines.forEach((line, li) => {
       if (li > 0) pendingBreak = true
@@ -113,8 +113,9 @@ export function layoutText(measure: Measure, layer: TextLayer, text = layer.text
   for (const tok of tokens(layer, text)) {
     const span = spans[tok.span]
     const size = font.size * (span?.scale ?? 1)
-    const weight = fontWeight(family, span?.weight ?? font.weight)
-    const css = fontString({ family, weight }, size)
+    const face = span?.family ? fontInfo(span.family) : info
+    const weight = fontWeight(face.family, span?.weight ?? font.weight)
+    const css = fontString({ family: face.family, weight }, size)
     const chars: CharBox[] = []
     const glyphs = Array.from(tok.text)
     if (font.tabular) {
@@ -136,7 +137,7 @@ export function layoutText(measure: Measure, layer: TextLayer, text = layer.text
     }
     const last = chars[chars.length - 1]
     const w = last ? last.x + last.w : 0
-    placed.push({ span: tok.span, text: tok.text, w, size, font: css, cap: info.cap * size, chars })
+    placed.push({ span: tok.span, text: tok.text, w, size, font: css, cap: face.cap * size, chars })
     breaks.push(tok.breakBefore)
   }
 

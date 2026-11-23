@@ -74,14 +74,15 @@ function docWith(aspect: 'vertical' | 'wide', ops: unknown[], script = SCRIPT): 
   return r.doc
 }
 
-function sceneOf(doc: EditDoc): MotionScene {
+function sceneOf(doc: EditDoc, faces?: Parameters<typeof buildScene>[0]['faces']): MotionScene {
   const cut = currentCut(doc)
   return buildScene({
     cut,
     resolved: resolveCut(cut, doc.words, doc.sources),
     words: doc.words,
     size: designSize(cut.aspect, doc.sources[0]),
-    theme: DEFAULT_THEME
+    theme: DEFAULT_THEME,
+    faces
   })
 }
 
@@ -188,7 +189,7 @@ describe('callouts', () => {
       sources: doc.sources
     })
     expect(r.rejected.map((x) => x.reason)).toEqual([
-      'A callout is spec, arrow, circle, underline, box, pointer, label; glitter is not one of them.',
+      'A callout is spec, arrow, block, circle, underline, box, pointer, label; glitter is not one of them.',
       'A callout’s region is x and y, or x, y, width and height.'
     ])
   })
@@ -275,6 +276,35 @@ describe('titles', () => {
     // A white box under the words at the top.
     expect(box(0.6)).toEqual([255, 255, 255, 255])
     expect(box(5)[3]).toBe(0)
+  })
+
+  it('sets the interview hooks: white capitals on black with the last word in red, and black words on yellow', () => {
+    const hook = (style: string, text: string) =>
+      sceneOf(docWith('vertical', [{ op: 'motion-add', kind: 'banner', from: 'start', to: '2s', text: [text], style, place: 'middle' }]))
+    // ink: black boxes over the chest, the last word in the accent, there by half a second.
+    const inkScene = hook('ink', 'I worry about what is *coming*')
+    const blackAt = (t: number): number => {
+      const f = draw(inkScene, t)
+      let n = 0
+      for (let y = 900; y < 1250; y += 6) for (let x = 100; x < 980; x += 6) if (f.at(x, y)[0] < 20 && f.at(x, y)[3] > 250) n++
+      return n
+    }
+    expect(blackAt(0.6)).toBeGreaterThan(200)
+    // Opening the video, it is all there on the first frame, as it will be once it has landed.
+    expect(blackAt(0)).toBe(blackAt(0.6))
+    // marker: yellow boxes from the very first frame, about 57% down, gone at the end.
+    const scene = hook('marker', 'How Much 120M Views Pays in India')
+    const yellow = (t: number) => {
+      const f = draw(scene, t)
+      let n = 0
+      for (let y = 900; y < 1300; y += 6) for (let x = 40; x < 1040; x += 6) {
+        const [r, g, b] = f.at(x, y)
+        if (r > 230 && g > 200 && b < 90) n++
+      }
+      return n
+    }
+    expect(yellow(0)).toBeGreaterThan(300)
+    expect(yellow(2)).toBe(0)
   })
 
   it('centres the sermon hooks on the frame, as the captions are, not on the safe area', () => {
@@ -850,6 +880,20 @@ describe('keyword pops', () => {
       expect(lowest).toBeLessThan(H * (aspect === 'vertical' ? 0.34 : 0.45))
       expect(draw(scene, item.start - 0.05).lit(0, 0, W, H)).toBe(0)
       expect(draw(scene, item.end).lit(0, 0, W, H)).toBe(0)
+      // A close-up whose face fills the top: it goes low in the frame rather than over the eyes.
+      if (aspect === 'vertical') {
+        const close = sceneOf(
+          doc,
+          Array.from({ length: 60 }, (_, i) => ({ t: i / 2, faces: [{ x: 0.2, y: 0.08, w: 0.6, h: 0.42 }] }))
+        )
+        const pop = close.items[0]
+        const g = draw(close, pop.start + 1.2)
+        let top = H
+        for (let y = 0; y < H; y += 4)
+          for (let x = W * 0.3; x < W * 0.7; x += 4) if (yellow(g.at(x, y))) top = Math.min(top, y)
+        // Clear of the face, which ends half-way down.
+        expect(top).toBeGreaterThanOrEqual(H * 0.5 - 8)
+      }
       // It counts up: $0 as it lands, $999 once it has.
       const text = (item.layers[0] as { children: Layer[] }).children.find(
         (l): l is TextLayer => l.kind === 'text' && !!l.count

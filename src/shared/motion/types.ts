@@ -168,6 +168,10 @@ export interface Span {
   /** Size relative to the layer's font. */
   scale?: number
   weight?: number
+  /** Another face for this span's words (motion/fonts), instead of the layer's. */
+  family?: string
+  /** This span's words in capitals, or not, whatever the layer says. */
+  uppercase?: boolean
   /** Lines that begin in this span sit this way inside the block, rather than as the layer aligns. */
   align?: 'left' | 'center' | 'right'
 }

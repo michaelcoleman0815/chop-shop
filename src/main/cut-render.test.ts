@@ -191,6 +191,19 @@ describe('render arguments', () => {
     )
     expect(split).toContain('vstack')
     expect(split).toContain('[1:v]')
+    // The footage under the speaker, a green line along the seam (Impaulsive's stack): the speaker's half first.
+    const under = graph(
+      seg({
+        treatment: {
+          ...DEFAULT_TREATMENT,
+          frame: 'split',
+          broll: { path: '/b.mov', inSec: 0, muted: true, below: true, seam: '#36E05A' }
+        },
+        broll: { path: '/b.mov', startSec: 3 }
+      })
+    )
+    expect(under).toMatch(/\[v0b\]\[v0t\]vstack,drawbox=x=0:y=\d+:w=\d+:h=6:color=0x36E05A:t=fill/)
+    expect(split).not.toContain('drawbox')
   })
 
   it('keeps a logo in its corner and captions in the brand colours', () => {
