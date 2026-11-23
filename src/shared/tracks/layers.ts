@@ -1,5 +1,6 @@
 import type { Layer, Size } from '../motion/types'
 import type { Timeline } from '../motion/timing'
+import { particlesLayer } from '../particles/layer'
 import type { ClipMedia } from './media'
 import { placeClips, tracksOf, type Placed } from './resolve'
 import type { Track, TrackClip } from './schema'
@@ -55,6 +56,8 @@ export function layerFor(p: Placed, design: Size): Layer | null {
       }
     case 'solid':
       return { ...base, kind: 'shape', shape: { type: 'rect', w: W, h: H }, fill: clip.color ?? '#000000' }
+    case 'particles':
+      return particlesLayer(base, clip, p.end - p.start, design)
     case 'sound':
       return null
   }

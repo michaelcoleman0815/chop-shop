@@ -101,6 +101,7 @@ function assetIds(layers: Layer[], out = new Set<string>()): Set<string> {
   for (const l of layers) {
     if (l.kind === 'image' && l.asset) out.add(l.asset)
     if (l.kind === 'image' && l.file) out.add(`file:${l.file}`)
+    if (l.kind === 'particles' && l.file) out.add(`file:${l.file}`)
     if (l.kind === 'group') assetIds(l.children, out)
   }
   return out

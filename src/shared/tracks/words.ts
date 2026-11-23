@@ -4,6 +4,8 @@
  * is trimmed", "two keys are set".
  */
 
+import { particlePhrase } from '../particles/words'
+
 type OpLike = { op: string } & Record<string, unknown>
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
@@ -16,7 +18,14 @@ export function trackPhrases(ops: OpLike[]): string[] {
   const of = (name: string): OpLike[] => ops.filter((o) => o.op === name)
   const added = of('clip-add')
   if (added.length > 0 && added.length <= 2)
-    for (const o of added) said.push(o.kind === 'sound' ? `${NOUN.sound} plays under the edit` : `${NOUN[String(o.kind)] ?? 'a clip'} goes over the edit`)
+    for (const o of added)
+      said.push(
+        o.kind === 'sound'
+          ? `${NOUN.sound} plays under the edit`
+          : o.kind === 'particles'
+            ? particlePhrase(o)
+            : `${NOUN[String(o.kind)] ?? 'a clip'} goes over the edit`
+      )
   else if (added.length > 2) said.push(`${count(added.length, 'clip', 'clips')} go on the tracks`)
   const changed = of('clip-update').length + of('clip-move').length
   if (changed > 0) said.push(`${count(changed, 'clip', 'clips')} ${changed === 1 ? 'changes' : 'change'}`)

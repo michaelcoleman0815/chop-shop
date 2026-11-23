@@ -20,6 +20,7 @@ import { assignRoles, factsFor, separateSameTakes, type FileFacts, type Roles } 
 import type { LinedRecording } from '../shared/pov/lineup'
 import { listenFrames } from './audio-map'
 import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
+import type { ScopeReading } from '../shared/scopes/maths'
 import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply, probeSource, type SourceFacts } from './intake'
 import { projectName } from '../shared/project-name'
@@ -97,6 +98,8 @@ export interface WorkHost {
    * nobody is told apart (a phone, for now).
    */
   speakers?: (path: string, words: Word[]) => Promise<(number | null)[]>
+  /** What a recording's picture measures (main/scopes), for Claude to grade by. Absent where it is not measured. */
+  scopes?: (path: string, durationSec: number) => Promise<ScopeReading | null>
   /** Watching the speaker's mouth, with the Mac's face finder. */
   watch?: (input: {
     source: Source
@@ -771,6 +774,9 @@ export async function readFootage(
       notes.push(`I couldn't transcribe ${name}, so it is one long beat for now. ${message(err)}`)
       details.push(...saidDetails(toolSaid(err), paths.length > 1 ? name : undefined))
     }
+    // What the picture measures, kept with the recording for Claude to grade by.
+    const scopes = host.scopes ? await host.scopes(path, source.durationSec).catch(() => null) : null
+    if (scopes) source = { ...source, scopes }
     sources.push(source)
   }
   const intake =

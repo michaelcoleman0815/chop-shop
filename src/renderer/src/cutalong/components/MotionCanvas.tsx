@@ -71,6 +71,8 @@ export function MotionCanvas({
       if (l.kind === 'image' && l.asset) ids.add(l.asset)
       // The brand's own logos are files on this computer, keyed by their path.
       if (l.kind === 'image' && l.file) ids.add(`file:${l.file}`)
+      // A particle sprite's picture, the same way.
+      if (l.kind === 'particles' && l.file) ids.add(`file:${l.file}`)
     })
     return { icon, logo, ids: [...ids].sort().join('\n') }
   }, [scene])

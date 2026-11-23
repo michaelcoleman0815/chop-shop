@@ -3,6 +3,8 @@ import { isKeyed, num } from '../anim'
 import type { Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
 import { timelineFor } from '../motion/timing'
+import { liftParticles, particleSlots, particleWords } from '../particles/planner'
+import type { ParticleSpec } from '../particles/schema'
 import { BLEND_MODES, EASE_NAMES } from '../motion/types'
 import { clipSpan, tracksOf } from './resolve'
 import { ClipFieldsSchema, CLIP_KINDS, KEYED_PROPS, type TrackClip } from './schema'
@@ -83,12 +85,13 @@ const SpecSchema = ClipFieldsSchema.omit({ kind: true }).partial().extend({
 })
 
 /** The settings in `spec`, or a sentence saying why it could not be read. */
-export function readSpec(spec: string): { ok: true; spec: Record<string, unknown> } | { ok: false; reason: string } {
+export function readSpec(spec: string, kind?: string): { ok: true; spec: Record<string, unknown> } | { ok: false; reason: string } {
   const text = spec.trim()
   if (!text) return { ok: true, spec: {} }
   let raw: unknown
   try {
-    raw = JSON.parse(text)
+    // A particles clip's settings are written flat; they belong under `particles` (shared/particles/planner).
+    raw = liftParticles(JSON.parse(text), kind)
   } catch {
     return { ok: false, reason: 'Its spec is not JSON.' }
   }
@@ -123,9 +126,9 @@ export function fromTrackPlannerOp(op: PlannerTrackOp): unknown {
       return { op: 'track-update', track: op.track, ...set }
     }
     case 'clip-add': {
-      const read = readSpec(op.spec)
+      const read = readSpec(op.spec, op.kind)
       if (!read.ok) return { refused: read.reason }
-      const { text: style, ...rest } = read.spec as { text?: Record<string, unknown> }
+      const { text: style, ...rest } = read.spec as { text?: Record<string, unknown>; particles?: ParticleSpec }
       return {
         op: 'clip-add',
         kind: op.kind,
@@ -136,12 +139,13 @@ export function fromTrackPlannerOp(op: PlannerTrackOp): unknown {
         ...(op.track ? { track: op.track } : {}),
         ...(op.src ? { src: op.src } : {}),
         ...(op.kind === 'text' ? { text: { ...style, value: op.text || (style?.value as string | undefined) || '' } } : {}),
-        ...(op.color ? { color: op.color } : {}),
+        ...(op.color && op.kind !== 'particles' ? { color: op.color } : {}),
         ...(op.fit ? { fit: op.fit } : {}),
         ...(op.blend ? { blend: op.blend } : {}),
         ...(op.opacity > 0 && op.opacity < 1 ? { opacity: op.opacity } : {}),
         ...(op.volume !== 0 ? { volume: op.volume } : {}),
-        ...rest
+        ...rest,
+        ...(op.kind === 'particles' ? { particles: particleSlots(op, rest.particles) } : {})
       }
     }
     case 'clip-update': {
@@ -200,6 +204,7 @@ function described(clip: TrackClip, length: number): string {
   if (clip.blend !== 'normal') bits.push(`blend ${clip.blend}`)
   if (clip.fit !== 'contain') bits.push(`fit ${clip.fit}`)
   if (clip.muted) bits.push('muted')
+  if (clip.kind === 'particles') bits.push(particleWords(clip.particles))
   const anims: [string, unknown][] = [
     ['opacity', clip.opacity],
     ['volume', clip.volume],

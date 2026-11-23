@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AnimNumSchema, ColorSchema, EaseSchema, TransformSchema } from '../anim'
 import { AnchorRefSchema, EndRefSchema } from '../motion/schema'
 import { BLEND_MODES } from '../motion/types'
+import { ParticleSpecSchema } from '../particles/schema'
 
 /**
  * Layer tracks: what the edit stacks over its own picture and mixes under its
@@ -19,7 +20,7 @@ import { BLEND_MODES } from '../motion/types'
  * include it without a cycle.
  */
 
-export const CLIP_KINDS = ['video', 'image', 'text', 'solid', 'sound'] as const
+export const CLIP_KINDS = ['video', 'image', 'text', 'solid', 'sound', 'particles'] as const
 export type ClipKind = (typeof CLIP_KINDS)[number]
 
 export const TRACK_KINDS = ['picture', 'sound'] as const
@@ -27,11 +28,11 @@ export type TrackKind = (typeof TRACK_KINDS)[number]
 
 /** Which clips a track holds. */
 export const KINDS_ON: Record<TrackKind, readonly ClipKind[]> = {
-  picture: ['video', 'image', 'text', 'solid'],
+  picture: ['video', 'image', 'text', 'solid', 'particles'],
   sound: ['sound']
 }
 
-/** Settings a key can be set on, by name: the transform's, opacity, the crop's sides, and a sound's level. */
+/** Settings a key can be set on, by name: the transform's, opacity, the crop's sides, a sound's level, and particles' rate. */
 export const KEYED_PROPS = [
   'x',
   'y',
@@ -48,7 +49,9 @@ export const KEYED_PROPS = [
   'crop.top',
   'crop.right',
   'crop.bottom',
-  'volume'
+  'volume',
+  // Particles born a second (shared/particles).
+  'rate'
 ] as const
 export type KeyedProp = (typeof KEYED_PROPS)[number]
 
@@ -109,7 +112,9 @@ export const ClipFieldsSchema = z.object({
   /** A sound's level, or a video's own sound, in dB: 0 as recorded. */
   volume: AnimNumSchema.optional(),
   /** A video's own sound left out. */
-  muted: z.boolean().default(false)
+  muted: z.boolean().default(false),
+  /** Particles: a preset and what changes from it (shared/particles); `src` is the picture an image sprite draws. */
+  particles: ParticleSpecSchema.optional()
 })
 export type ClipFields = z.infer<typeof ClipFieldsSchema>
 

@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { EASE_NAMES, isKeyed, num, type Anim, type Ease, type Key } from '../../../../shared/anim'
 import type { Op } from '../../../../shared/edit'
 import { BLEND_MODES } from '../../../../shared/motion'
+import { particleSettings } from '../../../../shared/particles/presets'
 import type { KeyedProp, TrackClip } from '../../../../shared/tracks'
 import { clock, seconds } from '../format'
 import { whenSettled } from './GraphicPanel'
+import { ParticleFields } from './ParticleFields'
 import { Button, Icon, IconButton } from './ui'
 
 /**
@@ -18,15 +20,15 @@ import { Button, Icon, IconButton } from './ui'
 interface Setting {
   prop: KeyedProp
   label: string
-  /** Its value when nothing sets it, from the frame's size. */
-  usual: (frame: { width: number; height: number }) => number
+  /** Its value when nothing sets it, from the frame's size (or the clip's preset). */
+  usual: (frame: { width: number; height: number }, clip: TrackClip) => number
   step: number
   unit?: string
   /** The kinds it applies to; all picture kinds when absent. */
   kinds?: TrackClip['kind'][]
 }
 
-const PICTURE: TrackClip['kind'][] = ['video', 'image', 'text', 'solid']
+const PICTURE: TrackClip['kind'][] = ['video', 'image', 'text', 'solid', 'particles']
 
 const SETTINGS: Setting[] = [
   { prop: 'x', label: 'Across', usual: (f) => f.width / 2, step: 10, unit: 'px', kinds: PICTURE },
@@ -38,11 +40,13 @@ const SETTINGS: Setting[] = [
   { prop: 'crop.right', label: 'Crop right', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
   { prop: 'crop.top', label: 'Crop top', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
   { prop: 'crop.bottom', label: 'Crop bottom', usual: () => 0, step: 0.02, kinds: ['video', 'image'] },
-  { prop: 'volume', label: 'Level', usual: () => 0, step: 1, unit: 'dB', kinds: ['video', 'sound'] }
+  { prop: 'volume', label: 'Level', usual: () => 0, step: 1, unit: 'dB', kinds: ['video', 'sound'] },
+  { prop: 'rate', label: 'Amount', usual: (_f, c) => particleSettings(c.particles, { width: 1080, height: 1080 }).rate as number, step: 5, unit: 'a second', kinds: ['particles'] }
 ]
 
 /** A setting's value as the clip holds it: a number, keys, or nothing. */
 function valueOf(clip: TrackClip, prop: KeyedProp): Anim<number> | undefined {
+  if (prop === 'rate') return clip.particles?.rate
   if (prop === 'opacity') return clip.opacity
   if (prop === 'volume') return clip.volume
   if (prop.startsWith('crop.')) return clip.crop?.[prop.slice(5) as 'left' | 'top' | 'right' | 'bottom']
@@ -51,6 +55,7 @@ function valueOf(clip: TrackClip, prop: KeyedProp): Anim<number> | undefined {
 
 /** The change that sets a setting to one value for the whole clip. */
 function setTo(clip: TrackClip, prop: KeyedProp, v: number): Op {
+  if (prop === 'rate') return { op: 'clip-update', clip: clip.id, particles: { rate: v } } as Op
   if (prop === 'opacity') return { op: 'clip-update', clip: clip.id, opacity: v } as Op
   if (prop === 'volume') return { op: 'clip-update', clip: clip.id, volume: v } as Op
   if (prop.startsWith('crop.')) return { op: 'clip-update', clip: clip.id, crop: { ...clip.crop, [prop.slice(5)]: v } } as Op
@@ -65,7 +70,8 @@ const KIND_NAME: Record<TrackClip['kind'], string> = {
   image: 'Picture',
   text: 'Title',
   solid: 'Colour',
-  sound: 'Sound'
+  sound: 'Sound',
+  particles: 'Particles'
 }
 
 export function ClipPanel({
@@ -120,13 +126,15 @@ export function ClipPanel({
           />
         )}
 
+        {clip.kind === 'particles' && <ParticleFields clip={clip} onOps={onOps} />}
+
         {settings.map((s) => (
           <KeyedField
             key={s.prop}
             setting={s}
             clip={clip}
             value={valueOf(clip, s.prop)}
-            usual={s.usual(frame)}
+            usual={s.usual(frame, clip)}
             local={local}
             length={length}
             canKey={inside}
@@ -288,7 +296,7 @@ function KeyedField({
 }
 
 /** A number that becomes a change when the field is left or Return is pressed. */
-function NumberField({
+export function NumberField({
   label: name,
   unit,
   value,
@@ -340,7 +348,7 @@ function NumberField({
   )
 }
 
-function TextField({ label: name, value, onCommit }: { label: string; value: string; onCommit: (v: string) => void }): JSX.Element {
+export function TextField({ label: name, value, onCommit }: { label: string; value: string; onCommit: (v: string) => void }): JSX.Element {
   const [draft, setDraft] = useState(value)
   useEffect(() => setDraft(value), [value])
   return (

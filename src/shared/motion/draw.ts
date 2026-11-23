@@ -18,6 +18,7 @@ import {
 } from './geometry'
 import { layoutText, measurer, type TextBlock, type WordBox } from './layout'
 import { drawMap } from '../maps/paint'
+import { drawParticles } from '../particles/draw'
 import type {
   Anim,
   Animator,
@@ -254,6 +255,9 @@ function drawKind(
       break
     case 'video':
       drawVideoLayer(ctx, layer, local, length, opacity, st)
+      break
+    case 'particles':
+      drawParticles(ctx, layer, local, length, opacity, st.res.images)
       break
   }
 }
