@@ -85,17 +85,35 @@ export function captionStyleFor(
  * captions wait for them too. The same object when nothing is left out.
  */
 export function subtitleWords(
-  cut: { beats: { id: string; treatment: { captions?: boolean } }[] },
+  cut: { beats: { id: string; treatment: { captions?: boolean } }[]; captions?: CaptionSpec },
   resolved: Resolved,
-  scene: Pick<MotionScene, 'items'>
+  scene: {
+    items: Pick<MotionScene['items'][number], 'start' | 'end' | 'covers' | 'band'>[]
+    frame?: { width: number; height: number }
+  }
 ): Resolved {
   // What covers the screen is the graphic's own say: a full-frame map holds the captions, a map inset does not.
   const cards = scene.items.filter((i) => i.covers === 'card')
+  // A graphic across the picture where the subtitles sit (a keyword pop) holds them too, while it is up.
+  const own = cut.captions && scene.frame ? subtitleBand(cut.captions, scene.frame) : null
+  const across = own ? scene.items.filter((i) => i.band && i.band.top < own.bottom && i.band.bottom > own.top) : []
+  const held = [...cards, ...across]
   // Beats whose captions are off are left out too.
   const words = captionedWords(cut, resolved).words.filter(
-    (w) => !cards.some((c) => w.outEnd > c.start && w.outStart < c.end)
+    (w) => !held.some((c) => w.outEnd > c.start && w.outStart < c.end)
   )
   return words.length === resolved.words.length ? resolved : { ...resolved, words }
+}
+
+/**
+ * The stretch of the frame's height a caption look's lines take, in pixels: from two lines over its foot (a
+ * landed line's bigger face, a second tier) to a little under it, for what keeps out of the subtitles' way.
+ */
+export function subtitleBand(spec: CaptionSpec, frame: { width: number; height: number }): { top: number; bottom: number } {
+  const style = captionStyleFor(spec, frame.width)
+  const foot = style.positionFrac * frame.height
+  const second = style.second ? style.second.fontSizePx * 1.2 + style.second.gapPx : 0
+  return { top: foot - style.fontSizePx * (style.keyScale ?? 1) * 2.4 - second, bottom: foot + style.fontSizePx * 0.3 }
 }
 
 /** The words a caption shows, in output time, with the ones the spec marks key (CaptionSpec.keys) marked. */

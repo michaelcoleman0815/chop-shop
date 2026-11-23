@@ -14,7 +14,7 @@ import {
   subtitleWords,
   type SubtitleCue,
   type TextMeasurer, fitFontPx, plainWords, buildGroups, BUILD_HOLD_SEC, shownWords, landedGroups, styleCues, landsLine, CAPTION_HOLD_SEC,
-  captionSeams, SEAM_FRAC } from './subtitles'
+  captionSeams, SEAM_FRAC, subtitleBand } from './subtitles'
 import type { TranscriptWord } from './types'
 import { groupWords } from './words'
 
@@ -167,6 +167,24 @@ describe('subtitle cues', () => {
     const kept = subtitleWords(off, resolveCut(off, doc.words, doc.sources), { items: [] }).words.map((w) => w.text)
     expect(kept).not.toContain(resolved.words[0].text)
     expect(kept.length).toBeLessThan(resolved.words.length)
+  })
+
+  it('holds the words said while a keyword pop sits where the subtitles do, and not while it sits clear of them', () => {
+    const words = wordsFromTranscript(said(['If', 'you', 'get', 'paged', 'at', 'night', 'you', 'go.']), 's1')
+    const source = { id: 's1', path: '/a.mov', durationSec: 5, width: 1080, height: 1920, fps: 30 }
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const cut = { ...currentCut(doc), captions: { ...DEFAULT_CAPTIONS, on: true, preset: 'slant', position: 'chest' as const } }
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const frame = { width: 1080, height: 1920 }
+    const own = subtitleBand(cut.captions, frame)
+    // Up from "paged" to "night": those three are said under it.
+    const at = (text: string) => resolved.words.find((w) => w.text === text)!
+    const [start, end] = [at('paged').outStart - 0.05, at('night').outEnd]
+    const pop = (top: number, bottom: number) => ({ items: [{ start, end, band: { top, bottom } }], frame })
+    const across = subtitleWords(cut, resolved, pop(own.top + 20, own.bottom + 200)).words.map((w) => w.text)
+    expect(across).toEqual(['If', 'you', 'get', 'you', 'go.'])
+    // A pop at the top of the frame leaves the subtitles at the chest be.
+    expect(subtitleWords(cut, resolved, pop(170, 540))).toBe(resolved)
   })
 })
 

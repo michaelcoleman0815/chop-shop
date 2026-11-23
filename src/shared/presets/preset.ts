@@ -158,6 +158,15 @@ export const CAPTION_STYLE_PRESETS: Preset[] = [
     builtIn: true,
     style: { captions: { on: true, preset: 'boxed', position: 'chest', wordsPerScreen: 3 } },
     inspiration: null
+  },
+  {
+    command: 'pop',
+    title: 'Pop captions',
+    summary:
+      'Captions a few words at a time in a heavy slanted face, each word popping up as you say it and lit yellow while you do.',
+    builtIn: true,
+    style: { captions: { on: true, preset: 'pop', position: 'chest', wordsPerScreen: 3 } },
+    inspiration: null
   }
 ]
 

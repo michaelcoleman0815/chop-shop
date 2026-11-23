@@ -136,7 +136,8 @@ function fitsGuide(): string[] {
     '- One number said that matters: a keyword pop. A number that grows from one figure to another, or up to a milestone ("683,594 views, and today a million"): a counter, pill style, each figure in items on the word that says it. With one figure, start it about a second before the word ("w14-1") so it lands as the word is said.',
     '- Days or weeks going by ("day one, day two, day three"): a counter, flip style, one figure a day. When a screenshot is up at the same time, the calendar stands beside it: the screenshot at place right, the calendar at place left, both with the same from and to so they come and go together.',
     '- The speaker talking about videos (their own, ones that did well) with their thumbnails in the material: video cards. A web page or channel page with one part that matters: a screenshot, slide style, with that part in box, or empty for the person to drag.',
-    '- Captions with the word being said in a solid box of the accent: {"op":"captions","set":{"on":true,"preset":"boxed"}}.'
+    '- Captions with the word being said in a solid box of the accent: {"op":"captions","set":{"on":true,"preset":"boxed"}}.',
+    '- Captions that move, each word popping up lit as it is said, for a podcast or talking-head Short: {"op":"captions","set":{"on":true,"preset":"pop"}}.'
   ]
 }
 

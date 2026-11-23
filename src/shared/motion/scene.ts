@@ -1,6 +1,6 @@
 import { captionedWords, type Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
-import { captionLayers, facesNear, type CaptionCover, type FaceSample } from './captions'
+import { captionLayers, facesNear, type CaptionBand, type CaptionCover, type FaceSample } from './captions'
 import { followPath, type FollowPicture } from './follow'
 import type { MotionItem, MotionKind } from './schema'
 import { template } from './templates'
@@ -26,6 +26,8 @@ export interface SceneItem {
   layers: Layer[]
   /** How it meets the captions: its template's, or this call's own. */
   covers?: 'backdrop' | 'card'
+  /** The stretch of the frame's height it holds while up, in pixels, that captions keep out of (Template.band). */
+  band?: { top: number; bottom: number }
 }
 
 export interface MotionScene {
@@ -97,7 +99,8 @@ export function buildScene(input: SceneInput): MotionScene {
     faces: input.faces,
     emphasis: input.emphasis,
     speakers: speakersOf(input.words),
-    covers
+    covers,
+    bands: graphicBands(items)
   })
   // Backdrops replace the picture, so they go under the captions; everything else goes over. Cards hold
   // the screen, so what stands beside one (a counter by a page) goes over it, whichever came first.
@@ -141,21 +144,25 @@ function buildItem(
   // A graphic that points at something, told nothing to point at, points at the object.
   const pointsAt = path && item.box.length === 0 && tpl.fields?.some((f) => f.slot === 'box')
   const call = pointsAt && path ? { ...item, box: [...path.land] } : item
+  const ctx = {
+    item: call,
+    frame,
+    theme,
+    span,
+    tl,
+    time: (ref: string) => anchorTime(tl, ref),
+    faces: facesNear(faces, span.at),
+    picture: (id: string) => {
+      const a = assets.find((x) => x.id === id && x.kind === 'image')
+      return a ? { width: a.width ?? 0, height: a.height ?? 0 } : null
+    }
+  }
   let layers: Layer[]
+  // What it holds of the frame's height, unless it moves with an object.
+  let band: SceneItem['band'] | null = null
   try {
-    layers = tpl.build({
-      item: call,
-      frame,
-      theme,
-      span,
-      tl,
-      time: (ref) => anchorTime(tl, ref),
-      faces: facesNear(faces, span.at),
-      picture: (id) => {
-        const a = assets.find((x) => x.id === id && x.kind === 'image')
-        return a ? { width: a.width ?? 0, height: a.height ?? 0 } : null
-      }
-    })
+    layers = tpl.build(ctx)
+    band = path ? null : (tpl.band?.(ctx) ?? null)
   } catch (err) {
     return { reason: `It could not be drawn: ${err instanceof Error ? err.message : String(err)}` }
   }
@@ -172,7 +179,16 @@ function buildItem(
     ]
   }
   const covers = tpl.coversFor ? tpl.coversFor(item) : tpl.covers
-  return { id: item.id, kind: item.kind, at: span.at, start: span.start, end: span.end, layers, ...(covers ? { covers } : {}) }
+  return {
+    id: item.id,
+    kind: item.kind,
+    at: span.at,
+    start: span.start,
+    end: span.end,
+    layers,
+    ...(covers ? { covers } : {}),
+    ...(band && !covers ? { band } : {})
+  }
 }
 
 /** Every stretch of output time when something is drawn, merged where gaps are short. */
@@ -193,6 +209,11 @@ export function activeSpans(layers: Layer[], duration: number, mergeGap = 0.25):
 /** The graphics on screen at t, topmost last. */
 export function itemsAt(scene: MotionScene, t: number): SceneItem[] {
   return scene.items.filter((i) => t >= i.start && t < i.end)
+}
+
+/** The stretches of the frame graphics hold while they are up, on the output clock, for captions to keep out of. */
+export function graphicBands(items: Pick<SceneItem, 'start' | 'end' | 'band'>[]): CaptionBand[] {
+  return items.flatMap((i) => (i.band ? [{ start: i.start, end: i.end, top: i.band.top, bottom: i.band.bottom }] : []))
 }
 
 /** Who says each word, by word id, when the speakers were told apart. */

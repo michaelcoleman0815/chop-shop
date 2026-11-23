@@ -34,6 +34,13 @@ export const MOTION_CAPTION_LOOKS: MotionCaptionLook[] = [
     id: 'boxed',
     name: 'Boxed',
     phrase: 'captions come a few words at a time, with the word being said in a box of your accent colour'
+  },
+  {
+    // Pop: Impaulsive's slanted captions, moving: each word springs up as it is said and is lit while it is.
+    id: 'pop',
+    name: 'Pop',
+    phrase:
+      'captions come a few words at a time in a heavy slanted face, each word popping up as it is said and lit yellow while it is, with the key words kept yellow'
   }
 ]
 
@@ -68,6 +75,17 @@ export interface CaptionCover {
   kind: 'backdrop' | 'card'
 }
 
+/**
+ * A stretch of the frame's height, in pixels, a graphic holds over the speaker's picture while it is up (a
+ * keyword pop), on the output clock: a page that would run under it moves out of its way, or waits for it.
+ */
+export interface CaptionBand {
+  start: number
+  end: number
+  top: number
+  bottom: number
+}
+
 export interface CaptionInput {
   spec: CaptionSpec
   resolved: Resolved
@@ -81,6 +99,7 @@ export interface CaptionInput {
   /** Who says each word, by word id (shared/speakers): another voice than the one heard most is set in OTHER_VOICE. */
   speakers?: Record<string, number>
   covers?: CaptionCover[]
+  bands?: CaptionBand[]
 }
 
 /**
@@ -268,6 +287,46 @@ function placePage(
     if (crossesX && crossesY) y = (f.y + f.h * 1.1) * H
   }
   return { x, y: Math.min(y, lowest) }
+}
+
+/** Room kept between a page and a graphic it steps aside for, as a share of the frame's height. */
+const BAND_GAP = 0.015
+
+/** The graphics up while a page is, across where it would sit (CaptionBand). */
+function crossing(bands: CaptionBand[], start: number, end: number, y: number, height: number, frame: Frame): CaptionBand[] {
+  const gap = frame.height * BAND_GAP
+  return bands.filter((b) => b.start < end && b.end > start && b.top - gap < y + height && b.bottom + gap > y)
+}
+
+/**
+ * Where a page goes to keep out of the graphics across its place: just under them, inside the safe area, or
+ * just over them, where the faces are known and it keeps off every one (where they are not known, over a
+ * graphic low in the frame may be over the speaker's mouth). The nearer of the two to where it was; null when
+ * neither is clear.
+ */
+function stepAside(
+  bands: CaptionBand[],
+  start: number,
+  end: number,
+  at: { x: number; y: number },
+  height: number,
+  halfWidth: number,
+  frame: Frame,
+  faces: FaceBox[]
+): number | null {
+  const H = frame.height
+  const W = frame.width
+  const gap = H * BAND_GAP
+  const under = crossing(bands, start, end, at.y, height, frame)
+  const offFaces = (y: number): boolean =>
+    faces.every((f) => (f.y + f.h) * H <= y || f.y * H >= y + height || (f.x + f.w) * W <= at.x - halfWidth || f.x * W >= at.x + halfWidth)
+  const clear = (y: number): boolean =>
+    y >= frame.safe.top && y + height <= H - frame.safe.bottom && crossing(bands, start, end, y, height, frame).length === 0 && offFaces(y)
+  const below = Math.max(...under.map((b) => b.bottom)) + gap
+  const above = Math.min(...under.map((b) => b.top)) - gap - height
+  const options = [below, ...(faces.length > 0 ? [above] : [])].filter(clear)
+  if (options.length === 0) return null
+  return options.reduce((a, b) => (Math.abs(b - at.y) < Math.abs(a - at.y) ? b : a))
 }
 
 /** A word as a caption shows it: without the full stop or comma it was transcribed with, abbreviations aside. */
@@ -470,6 +529,88 @@ export function boxedPage(
   }
 }
 
+/** The pop look's yellow, Impaulsive's: the word being said, and the key words. */
+export const POP_LIT = '#FFE81A'
+
+/** How far a slanted face leans: libass's oblique for a look set italic (FreeType's), so the two agree. */
+export const OBLIQUE = 0.2126
+
+/** The pop look in a frame: Inter ExtraBold, about the size Impaulsive sets its captions. */
+export function popLook(frame: Frame): { size: number; maxWidth: number; lineHeight: number; family: string } {
+  const vertical = frame.shape === 'vertical'
+  const safeWidth = frame.width - frame.safe.left - frame.safe.right
+  return {
+    size: (vertical ? 84 : 72) * frame.u,
+    maxWidth: vertical ? safeWidth * 0.9 : frame.shape === 'wide' ? frame.width * 0.5 : safeWidth * 0.84,
+    lineHeight: 1.12,
+    family: 'Inter ExtraBold'
+  }
+}
+
+/** A pop page's height, near enough to place it by: one line, or two when it wraps. */
+export function popHeight(page: Pick<ResolvedWord, 'text'>[], frame: Frame, uppercase = false): number {
+  const { size, maxWidth, lineHeight, family } = popLook(frame)
+  // The lit word is set a little bigger, and the lean runs past the last letter.
+  const wide = textWidth(page.map((w) => shown(w.text)).join(' '), family, size, uppercase) * 1.08
+  const lines = Math.min(3, Math.max(1, Math.ceil(wide / maxWidth)))
+  return lines * size * lineHeight
+}
+
+/**
+ * One pop page as a text layer, its top centred on `at`: white heavy slanted words with a thin dark edge and
+ * a shadow, each springing up from small as it is said, the word being said lit yellow and a touch bigger,
+ * and the key words yellow throughout.
+ */
+export function popPage(
+  page: ResolvedWord[],
+  start: number,
+  end: number,
+  at: { x: number; y: number },
+  opts: { frame: Frame; uppercase?: boolean; keys?: Set<string>; landed?: boolean }
+): TextLayer {
+  const { frame } = opts
+  const u = frame.u
+  const { size, maxWidth, lineHeight, family } = popLook(frame)
+  const height = popHeight(page, frame, opts.uppercase)
+  return {
+    kind: 'text',
+    start,
+    end,
+    text: '',
+    spans: page.map((w, i) => ({
+      text: shown(w.text),
+      t: opts.landed && i === 0 ? 0 : Math.max(0, w.outStart - start),
+      end: w.outEnd - start,
+      ...(opts.keys?.has(w.id) ? { color: POP_LIT } : {})
+    })),
+    font: { family, size, weight: 800, lineHeight, slant: OBLIQUE, uppercase: opts.uppercase },
+    fill: '#FFFFFF',
+    stroke: { color: 'rgba(0, 0, 0, 0.8)', width: 2.5 * u, join: 'round' },
+    align: 'center',
+    valign: 'top',
+    maxWidth,
+    balance: true,
+    effects: { shadow: { color: 'rgba(0, 0, 0, 0.55)', blur: 10 * u, y: 5 * u } },
+    active: { color: POP_LIT, scale: 1.06 },
+    animators: [
+      {
+        by: 'word',
+        timing: 'spoken',
+        delay: -0.04,
+        duration: 0.22,
+        ease: { spring: 0.45 },
+        from: { opacity: 0, scale: 0.45, y: 16 * u }
+      }
+    ],
+    transform: {
+      x: at.x,
+      y: at.y,
+      anchorY: height / 2,
+      opacity: { keys: [{ t: 0, v: 1 }, ...tail([0.1, 1, 'ease-in'], [0, 0])] }
+    }
+  }
+}
+
 /** Captions the graphics draw, as text layers, one a page, on the output clock. Empty unless the cut asks for them. */
 /**
  * A first word said this soon after the video starts has its caption up from the first frame, drawn or burned
@@ -487,10 +628,13 @@ export function captionLayers(input: CaptionInput): Layer[] {
   const { spec, resolved, frame, theme } = input
   if (!drawsCaptions(spec) || resolved.words.length === 0) return []
   const boxed = spec.preset === 'boxed'
-  const maxWidth = boxed ? boxedLook(frame).maxWidth : hierarchyLook(frame).maxWidth
+  const pop = spec.preset === 'pop'
+  const maxWidth = boxed ? boxedLook(frame).maxWidth : pop ? popLook(frame).maxWidth : hierarchyLook(frame).maxWidth
   const maxWords = boxed
     ? Math.max(2, Math.min(5, spec.wordsPerScreen + 1))
-    : Math.max(3, Math.min(8, spec.wordsPerScreen * 2))
+    : pop
+      ? Math.max(2, Math.min(5, spec.wordsPerScreen))
+      : Math.max(3, Math.min(8, spec.wordsPerScreen * 2))
   const covers = input.covers ?? []
   // Key words the edit chose go big, and only they; otherwise the stress heard, or each word's own weight.
   const chosen = [...(spec.keys ?? []), ...Object.keys(spec.keyLooks ?? {})]
@@ -517,17 +661,40 @@ export function captionLayers(input: CaptionInput): Layer[] {
       if (start < c.start && end > c.start) end = c.start
     }
     if (end - start < 0.2) return
-    // Where it shows from: an opening page starts before the video does.
-    const shows = Math.max(0, start)
-    const backdrop = covers.some((c) => c.kind === 'backdrop' && shows >= c.start - 0.05 && shows < c.end)
     const height = boxed
       ? boxedHeight(page, frame, theme, spec.uppercase)
-      : pageHeight(page, frame, emphasis)
-    const at = placePage(frame, spec.position, facesNear(input.faces, shows), height, maxWidth / 2, backdrop)
+      : pop
+        ? popHeight(page, frame, spec.uppercase)
+        : pageHeight(page, frame, emphasis)
+    // Where it shows from: an opening page starts before the video does.
+    const placed = (): { at: { x: number; y: number }; backdrop: boolean; faces: FaceBox[] } => {
+      const shows = Math.max(0, start)
+      const backdrop = covers.some((c) => c.kind === 'backdrop' && shows >= c.start - 0.05 && shows < c.end)
+      const faces = facesNear(input.faces, shows)
+      return { at: placePage(frame, spec.position, faces, height, maxWidth / 2, backdrop), backdrop, faces }
+    }
+    let { at, backdrop, faces } = placed()
+    // A graphic across the picture (a keyword pop) where the page would sit: the page steps out of its way, or
+    // waits for it to go, or stops short as it comes.
+    const under = crossing(input.bands ?? [], start, end, at.y, height, frame)
+    if (under.length > 0 && !backdrop) {
+      const aside = stepAside(input.bands ?? [], start, end, at, height, maxWidth / 2, frame, faces)
+      if (aside !== null) at = { ...at, y: aside }
+      else {
+        for (const b of under) {
+          if (start >= b.start) start = Math.max(start, b.end)
+          else end = Math.min(end, b.start)
+        }
+        if (end - start < 0.2) return
+        ;({ at, backdrop, faces } = placed())
+      }
+    }
     layers.push(
       boxed
         ? boxedPage(page, start, end, at, { frame, theme, uppercase: spec.uppercase })
-        : hierarchyPage(page, start, end, at, {
+        : pop
+          ? popPage(page, start, end, at, { frame, uppercase: spec.uppercase, keys: new Set(chosen), landed })
+          : hierarchyPage(page, start, end, at, {
             frame,
             theme,
             uppercase: spec.uppercase,

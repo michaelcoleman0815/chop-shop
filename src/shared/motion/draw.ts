@@ -1136,6 +1136,12 @@ function drawText(ctx: Ctx, layer: TextLayer, local: number, length: number, opa
         if (pass === 'shadow' && isActive && layer.active?.box) clearShadow(ctx)
         unitTransform(ctx, { ...wu, scale: wu.scale * activeScale }, word.x + word.w / 2, word.baseline - word.cap / 2)
         if (wu.clip || wu.wipe < 0.999) clipBox(ctx, word.x, line.top, word.w, line.height, wu, word.size)
+        // Slanted about the word's own baseline, so it stays where layout put it.
+        if (layer.font.slant) {
+          ctx.translate(word.x, word.baseline)
+          ctx.transform(1, 0, -layer.font.slant, 1, 0, 0)
+          ctx.translate(-word.x, -word.baseline)
+        }
         const blurred = wu.blur + lu.blur
         ctx.font = word.font
         const plain: string | CanvasGradient = layer.spans?.[word.span]?.color ?? baseFill

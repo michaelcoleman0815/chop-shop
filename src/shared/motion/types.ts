@@ -188,6 +188,11 @@ export interface Font {
   uppercase?: boolean
   /** Digits all as wide as a zero, so counting numbers do not jitter. */
   tabular?: boolean
+  /**
+   * Leaned forward by this much across for each pixel up, about each word's baseline: a face with no italic
+   * of its own slanted, as libass slants one for a caption look set italic (0.2126, FreeType's oblique).
+   */
+  slant?: number
 }
 
 /** How far a unit of text is from rest. Rest is opacity 1, no offset, scale 1, no blur. */

@@ -13,6 +13,7 @@ import {
   hierarchyPages,
   MOTION_FONTS,
   OTHER_VOICE,
+  POP_LIT,
   renderFrame,
   splitPage,
   textUnits,
@@ -300,6 +301,84 @@ describe('hierarchy captions', () => {
       for (const f of [speaker, other]) expect(lit(f.x * W, f.y * H, f.w * W, f.h * H)).toBe(0)
       expect(lit(0, 0, W, H)).toBeGreaterThan(300)
     }
+  })
+
+  it('never runs under a keyword pop: it steps over one when the face is clear of it, else waits for it', () => {
+    // The pager Short: "PAGED" on a plate with a bell, low in a vertical frame, and the captions at the chest.
+    const base = docWith('vertical')
+    const said = base.words.find((w) => w.text === '$999')!.id
+    const doc = commit(
+      base,
+      [{ op: 'motion-add', kind: 'keyword', from: said, text: ['$999'], icon: 'tag', style: 'plate', place: 'bottom' }],
+      'x'
+    ).doc
+    const words = (page: TextLayer, t: number) => page.spans!.map((_, i) => wordBox(page, i, t))
+    const under = (scene: MotionScene) => {
+      const pop = scene.items[0]
+      expect(pop.band).toBeDefined()
+      const { top, bottom } = pop.band!
+      return captionsIn(scene)
+        .filter((p) => p.start < pop.end && p.end > pop.start)
+        .filter((p) => words(p, Math.max(p.start, pop.start) + 0.01).some((w) => w.y < bottom && w.y + w.h > top))
+    }
+    // No faces known, as in an export: over the pop may be over the mouth, and there is no room under it.
+    const blind = sceneOf(doc)
+    expect(under(blind)).toEqual([])
+    const pop = blind.items[0]
+    const during = captionsIn(blind).filter((p) => p.start < pop.end && p.end > pop.start)
+    expect(during).toEqual([])
+    // The page before it stops as it comes, and the one after waits for it to go.
+    expect(captionsIn(blind).some((p) => Math.abs(p.end - pop.start) < 1e-6)).toBe(true)
+    // A close-up whose face ends well above the pop: the page goes just over the pop, off the face.
+    const face = { x: 0.3, y: 0.12, w: 0.4, h: 0.26 }
+    const seen = sceneOf(
+      doc,
+      Array.from({ length: 40 }, (_, i) => ({ t: i * 0.5, faces: [face] }))
+    )
+    expect(under(seen)).toEqual([])
+    const over = captionsIn(seen).filter((p) => p.start < seen.items[0].end && p.end > seen.items[0].start)
+    expect(over.length).toBeGreaterThan(0)
+    for (const p of over) {
+      const y = p.transform?.y as number
+      expect(y).toBeLessThan(seen.items[0].band!.top)
+      expect(y).toBeGreaterThan((face.y + face.h) * seen.size.height)
+    }
+  })
+
+  it('pops each word up as it is said, slanted, the word being said lit yellow and the key words kept yellow', () => {
+    const base = docWith('vertical')
+    const id = (text: string) => base.words.find((w) => w.text === text)!.id
+    const doc = commit(base, [{ op: 'captions', set: { preset: 'pop', wordsPerScreen: 3, keys: [id('asset.')] } }], 'x').doc
+    const scene = sceneOf(doc)
+    const pages = captionsIn(scene)
+    expect(pages.length).toBeGreaterThan(5)
+    for (const p of pages) expect(p.font.slant).toBeCloseTo(0.2126)
+    // The second word of a page past the opening, with a word after it on the page.
+    const page = pages.slice(1).find((p) => p.spans!.length >= 3)!
+    const at = 1
+    const said = page.start + page.spans![at].t!
+    const yellow = (t: number) => {
+      const { ctx } = draw(scene, t)
+      const box = wordBox(page, at, t)
+      const data = ctx.getImageData(box.x, box.y, box.w, box.h).data
+      let lit = 0
+      let white = 0
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] < 200) continue
+        if (data[i] > 200 && data[i + 1] > 200 && data[i + 2] < 90) lit++
+        else if (data[i] > 220 && data[i + 1] > 220 && data[i + 2] > 220) white++
+      }
+      return { lit, white }
+    }
+    // Not up before it is said; up and yellow while it is; white once the next word is said.
+    expect(yellow(Math.max(page.start + 0.02, said - 0.1))).toEqual({ lit: 0, white: 0 })
+    expect(yellow(said + 0.12).lit).toBeGreaterThan(200)
+    const next = page.start + page.spans![at + 1].t! + 0.15
+    expect(yellow(next).white).toBeGreaterThan(200)
+    expect(yellow(next).lit).toBeLessThan(20)
+    // A key word stays yellow after it is said.
+    const keyPage = pages.find((p) => p.spans!.some((s) => s.text === 'asset'))!
+    expect(keyPage.spans!.find((s) => s.text === 'asset')!.color).toBe(POP_LIT)
   })
 
   it('waits while a card holds the screen, and comes back over a backdrop in the middle', () => {

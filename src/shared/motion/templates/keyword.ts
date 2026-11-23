@@ -50,31 +50,28 @@ function chromeFor(color: string, length: number): Chrome {
   }
 }
 
-function keyword(ctx: BuildContext): Layer[] {
-  const { frame, theme, item, span } = ctx
-  const { start, end } = span
+/** A pop's stack, top to bottom (icon, value, label), its sizes and where its middle sits on the frame. */
+function stackOf(ctx: BuildContext) {
+  const { frame, item } = ctx
   const W = frame.width
   const H = frame.height
-  const u = frame.u
   const vertical = frame.shape === 'vertical'
   const value = (item.text[0] ?? '').trim()
   const label = (item.text[1] ?? '').trim()
   const style = (STYLES as readonly string[]).includes(item.style) ? item.style : 'plate'
   const asked = (PLACES as readonly string[]).includes(item.place) ? item.place : 'top'
-  const accent = item.color.trim() || theme.accent
   // Chrome lettering is bigger, as far as the frame's width allows: its depth and outline want room.
   const chrome = style === 'chrome' || style === 'gold'
-  const plain = (vertical ? 132 : 112) * u * (value.length > 10 ? 0.75 : 1)
+  const plain = (vertical ? 132 : 112) * frame.u * (value.length > 10 ? 0.75 : 1)
   const size = chrome ? Math.min(plain * 1.4, (W * 0.8) / Math.max(1, value.length * 0.62)) : plain
   const icon = item.icon.trim() && item.icon.trim() !== 'none' ? item.icon.trim() : ''
   const disc = size * 1.3
-
   // The stack, top to bottom: icon, value, label; placed by its middle.
   const gap = size * 0.28
   const heights = [icon ? disc : 0, size * 1.25, label ? size * 0.42 : 0]
   const total = heights.reduce((a, b) => a + b, 0) + gap * (heights.filter(Boolean).length - 1)
   // Never over the speaker's eyes: at the top, where face tracking shows a close-up leaving no room above the
-  // head, it goes low in the frame instead, under the captions at the chest.
+  // head, it goes low in the frame instead (the captions step out of its way: scene.ts).
   const face = speakerFace(frame, ctx.faces)
   const topFoot = frame.safe.top + total + H * 0.02
   const place = asked === 'top' && ctx.faces.length > 0 && topFoot > (face.y + face.h * 0.15) * H ? 'bottom' : asked
@@ -84,6 +81,16 @@ function keyword(ctx: BuildContext): Layer[] {
       : place === 'bottom'
         ? H - frame.safe.bottom - total / 2 - H * 0.08
         : frame.safe.top + total / 2 + H * 0.02
+  return { value, label, style, chrome, size, icon, disc, gap, heights, total, middle }
+}
+
+function keyword(ctx: BuildContext): Layer[] {
+  const { frame, theme, item, span } = ctx
+  const { start, end } = span
+  const W = frame.width
+  const u = frame.u
+  const accent = item.color.trim() || theme.accent
+  const { value, label, style, chrome, size, icon, disc, gap, heights, middle, total } = stackOf(ctx)
   let y = middle - total / 2
   const land = 0.1
   const number = numberIn(value)
@@ -196,6 +203,11 @@ register({
   places: PLACES,
   length: 2.2,
   lead: 0.1,
+  // Its stack, and a little over for the plate's padding and the spring it lands on.
+  band: (ctx) => {
+    const { middle, total, size } = stackOf(ctx)
+    return { top: middle - total / 2 - size * 0.12, bottom: middle + total / 2 + size * 0.12 }
+  },
   fields: [
     { slot: 'text', index: 0, label: 'Word or number' },
     { slot: 'text', index: 1, label: 'Label' },

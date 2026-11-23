@@ -48,11 +48,12 @@ const POSITIONS = [
   ['bottom', 'Low']
 ] as const
 
-/** Subtitles, or captions the graphics draw: two lines with the key words big, or the word being said in a box. */
+/** Subtitles, or captions the graphics draw: two lines with the key words big, the word being said in a box, or each word popping up lit. */
 const LOOKS = [
   ['clean', 'Subtitles'],
   ['hierarchy', 'Hierarchy'],
-  ['boxed', 'Boxed']
+  ['boxed', 'Boxed'],
+  ['pop', 'Pop']
 ] as const
 
 /**

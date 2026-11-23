@@ -62,6 +62,12 @@ export interface Template {
    * comes in rather than staying on top of it.
    */
   aroundSpeaker?: boolean
+  /**
+   * The stretch of the frame's height it holds while it is up, in pixels, for one that sits across the
+   * speaker's picture (a keyword pop): drawn captions step out of its way, or wait for it, rather than run
+   * under it. Null when it holds no such stretch.
+   */
+  band?(ctx: BuildContext): { top: number; bottom: number } | null
   fields: Field[]
   /** A call the planner's instructions show, and what it does, in a few words. */
   example: { call: Omit<MotionCallInput, 'kind'>; says: string }
