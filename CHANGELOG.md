@@ -6,6 +6,8 @@ Changes waiting for the next version go under "Unreleased". When the version goe
 
 ## Unreleased
 
+## 0.4.2 — 2026-11-23
+
 - Settings has one AI section instead of two. Pick Claude or Local AI from the "Edits with" menu, and only what that one needs shows below it.
 - A Changelog page in the sidebar says what changed in each version.
 
