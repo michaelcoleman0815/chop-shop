@@ -1254,5 +1254,7 @@ app.on('will-quit', () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // The self-check opens no window of its own, only the 3D export's hidden page (main/three-render): that page
+  // closing is not the last window going, and the self-check quits by itself once its report is written.
+  if (process.platform !== 'darwin' && !selfCheckReport) app.quit()
 })
