@@ -135,7 +135,7 @@ jobs:
           name: android-engine
           path: mobile/engine/android/src/main/jniLibs
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
   ios:
     name: iOS
@@ -226,7 +226,7 @@ jobs:
           name: ios-engine
           path: ios-frameworks.tar.gz
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
   # The self-test's sample media, made with the runner's ffmpeg (libx264,
   # libx265, libwebp, an AV1 encoder, zscale), and what each test render
@@ -254,7 +254,7 @@ jobs:
           name: selftest-media
           path: ${{ runner.temp }}/media
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
   android-test:
     name: Android self-test
@@ -391,14 +391,14 @@ jobs:
         with:
           name: android-selftest
           path: ${{ runner.temp }}/selftest
-          retention-days: 14
+          retention-days: 1
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: android-example-apk
           path: mobile/engine/example/android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 14
+          retention-days: 1
 
   ios-test:
     name: iOS self-test
@@ -492,14 +492,14 @@ jobs:
         with:
           name: ios-selftest
           path: ${{ runner.temp }}/selftest
-          retention-days: 14
+          retention-days: 1
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-example-app
           path: ${{ runner.temp }}/Engine-Test-simulator.zip
-          retention-days: 14
+          retention-days: 1
 
   # What each phone made, measured here with the same ffmpeg that made the
   # expectations: length, sound, picture size and colours at known moments.
@@ -599,21 +599,21 @@ jobs:
           name: app-web-drive
           path: ${{ runner.temp }}/web-drive
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
       - uses: actions/upload-artifact@v7
         with:
           name: app-web-store
           path: ${{ runner.temp }}/web-store
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
       - uses: actions/upload-artifact@v7
         with:
           name: drive-footage
           path: ${{ runner.temp }}/footage
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
   app-android:
     name: Android app
@@ -687,7 +687,7 @@ jobs:
           name: cutalong-android-debug-apk
           path: ${{ runner.temp }}/Cutalong-debug.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
       - name: Start the emulator
         run: |
@@ -709,7 +709,7 @@ jobs:
         with:
           name: android-app-drive
           path: ${{ runner.temp }}/drive
-          retention-days: 14
+          retention-days: 1
 
   app-ios:
     name: iOS app
@@ -784,7 +784,7 @@ jobs:
           name: cutalong-ios-simulator-app
           path: ${{ runner.temp }}/Cutalong-simulator.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
       - name: Run the app's own flow on the simulator
         run: |
@@ -797,7 +797,7 @@ jobs:
         with:
           name: ios-app-drive
           path: ${{ runner.temp }}/drive
-          retention-days: 14
+          retention-days: 1
 
       # The APIs Apple asks a reason for, as the built app's binaries use them, against the
       # privacy manifests in it (ios/App/App/PrivacyInfo.xcprivacy and the frameworks' own).
@@ -1020,7 +1020,7 @@ jobs:
           name: cutalong-play-bundle
           path: ${{ runner.temp }}/Cutalong-${{ github.run_number }}.aab
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
       - name: Release on the internal track
         env:
@@ -1029,3 +1029,41 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/play"
           "$RUNNER_TEMP/play/bin/pip" install --quiet google-api-python-client==2.190.0 google-auth==2.55.0
           "$RUNNER_TEMP/play/bin/python" mobile/ci/play-upload.py "$RUNNER_TEMP/Cutalong-${{ github.run_number }}.aab" social.brewed.cutalong internal
+
+  # Artifacts count against the account's Actions storage by the hour (0.5 GB on
+  # GitHub Free, billed beyond it), and on 2026-11-24 this workflow's made up
+  # most of 43.5 GB. So once the run is over: the phone builds before this run's
+  # are deleted, keeping only the newest of each, and the files the jobs handed
+  # one another are deleted when nothing failed. A failed run keeps them for a
+  # day, to look into.
+  tidy:
+    name: Tidy the artifacts
+    needs: [android, ios, media, android-test, ios-test, exports, app-web, app-android, app-ios, app-exports, testflight, play-internal]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
+
+      - name: The Android builds before this one
+        if: needs.app-android.result == 'success'
+        run: bash scripts/tidy-artifacts.sh older cutalong-android-debug-apk
+
+      - name: The iPhone simulator builds before this one
+        if: needs.app-ios.result == 'success'
+        run: bash scripts/tidy-artifacts.sh older cutalong-ios-simulator-app
+
+      - name: The files the jobs handed one another
+        if: ${{ !contains(needs.*.result, 'failure') }}
+        run: >-
+          bash scripts/tidy-artifacts.sh run
+          android-engine ios-engine selftest-media android-selftest android-example-apk
+          ios-selftest ios-example-app app-web-drive app-web-store drive-footage
+          android-app-drive ios-app-drive
