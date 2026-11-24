@@ -1,3 +1,4 @@
+import { usageTicket } from './usage'
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
@@ -40,7 +41,9 @@ export type StoryCall = (params: Record<string, unknown>) => Promise<{
 export function claudeStoryCall(apiKey: string): StoryCall {
   const client = new Anthropic({ apiKey })
   return async (params) => {
+    const bill = usageTicket('story')
     const response = await client.beta.messages.parse(params as never)
+    bill(response.model, response.usage)
     return { parsed_output: (response.parsed_output ?? null) as StoryAnswer | null, stop_reason: response.stop_reason }
   }
 }

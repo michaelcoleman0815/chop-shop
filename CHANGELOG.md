@@ -6,6 +6,8 @@ Changes waiting for the next version go under "Unreleased". When the version goe
 
 ## Unreleased
 
+- Every paid call to Claude is now written down against the video it was for, so Cutalong can say what your videos really cost. Settings, under AI, shows the average for a Short and for a long-form video, and the editor's script says what the open video has cost so far.
+
 ## 0.4.2 — 2026-11-23
 
 - Settings has one AI section instead of two. Pick Claude or Local AI from the "Edits with" menu, and only what that one needs shows below it.

@@ -1,3 +1,4 @@
+import { usageTicket } from './usage'
 import Anthropic from '@anthropic-ai/sdk'
 import { followPlannedClips } from './clip-follow'
 import { followObjects, type Track } from './plan-follow'
@@ -156,6 +157,7 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
   const doc = await withScopes(parsedDoc.data)
   const client = claude(apiKey, deps.fetch ? { fetch: deps.fetch } : {})
   const commands = renderCommands(input.commands ?? [])
+  const bill = usageTicket('plan')
 
   try {
     const response = await client.beta.messages.create({
@@ -201,6 +203,7 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
       ],
       output_config: { effort: 'medium' }
     })
+    bill(response.model, response.usage)
 
     if (response.stop_reason === 'refusal') {
       return { ok: false, message: 'Claude declined this one. Try saying it another way.' }

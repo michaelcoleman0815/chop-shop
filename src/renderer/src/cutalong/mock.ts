@@ -1,3 +1,4 @@
+import { summarise } from '../../../shared/costs'
 import { STILL_LIST } from './media'
 import { anthropicKeyIn } from '../../../shared/keys'
 import { accountEmail, type AccountStatus } from '../../../shared/account'
@@ -511,6 +512,19 @@ export function createMockApi(): CutalongApi {
     ...mockMakeApi(),
     // The newest version in the changelog, as a copy built now would be.
     getVersion: async () => CHANGES[0]?.version ?? '0.4.2',
+    // What chats cost, as a Mac that has made a few would say: five Shorts from a sermon, two of its own, one long video.
+    costsOpen: async () => undefined,
+    costsChat: async () => 0.42,
+    costsSummary: async () =>
+      summarise(
+        [
+          { id: 'sermon', dollars: 0.61, shape: { kind: 'short', videos: 5 }, unpriced: 0 },
+          { id: 'take-3', dollars: 0.27, shape: { kind: 'short', videos: 1 }, unpriced: 0 },
+          { id: 'desk', dollars: 0.94, shape: { kind: 'short', videos: 1 }, unpriced: 0 },
+          { id: 'lisbon', dollars: 1.12, shape: { kind: 'long', videos: 1 }, unpriced: 0 }
+        ],
+        []
+      ),
     pathForFile: (file: File) => `/Users/you/Movies/${file.name}`,
     openVideo: async () => null,
     hasApiKey: async () => key !== null,

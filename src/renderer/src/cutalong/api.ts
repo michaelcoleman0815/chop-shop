@@ -12,6 +12,9 @@ type ChopApi = Window['chop']
 export type CutalongApi = Pick<
   ChopApi,
   | 'getVersion'
+  | 'costsOpen'
+  | 'costsChat'
+  | 'costsSummary'
   | 'pathForFile'
   | 'openVideo'
   | 'prepareCut'

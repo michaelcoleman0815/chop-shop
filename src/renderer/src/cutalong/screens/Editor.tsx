@@ -87,7 +87,8 @@ import {
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
 import { captionSeams, captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords, wordSpeakers } from '../../../../shared/subtitles'
 import { isImagePath } from '../../../../shared/assets'
-import { api, MEDIA_CORS, mediaUrlFor } from '../api'
+import { api, device, MEDIA_CORS, mediaUrlFor } from '../api'
+import { videoCostLine } from '../../../../shared/costs'
 import { Backdrop } from '../components/Backdrop'
 import { BeatStrip, type StripBeat, type StripMark } from '../components/BeatStrip'
 import { fitHeight } from '../components/Composer'
@@ -368,6 +369,7 @@ export function Editor({ app }: { app: Cutalong }): JSX.Element {
               resolved={resolved}
               onSeek={player.seek}
               onApply={app.applyOpsDirect}
+              chat={app.openChat.current}
             />
           ) : side === 'takes' ? (
             <TakesPanel app={app} doc={doc} resolved={resolved} onSeek={player.seek} />
@@ -1551,20 +1553,46 @@ function Revisions({ doc, onShow }: { doc: EditDoc; onShow: (n: number) => void 
   )
 }
 
+/**
+ * What this chat has cost so far (main/costs): asked again each time a version is made, since a new version
+ * is what a paid call leaves behind. Null until it answers, and where nothing is written down (a phone).
+ */
+function useChatCost(chat: { id: string; path: string | null } | null, versions: number): number | null {
+  const [spent, setSpent] = useState<number | null>(null)
+  const id = chat?.id ?? null
+  const path = chat?.path ?? null
+  useEffect(() => {
+    if (!id || device.kind === 'phone') return setSpent(null)
+    let live = true
+    void api
+      .costsChat({ id, path })
+      .then((d) => live && setSpent(d))
+      .catch(() => live && setSpent(null))
+    return () => {
+      live = false
+    }
+  }, [id, path, versions])
+  return spent
+}
+
 function ScriptPanel({
   doc,
   time,
   resolved,
   onSeek,
-  onApply
+  onApply,
+  chat
 }: {
   doc: EditDoc
   time: number
   resolved: Resolved
   onSeek: (sec: number) => void
   onApply: (ops: Op[], fallback: string) => void
+  /** The chat this edit is in, for what it has cost so far. */
+  chat: { id: string; path: string | null } | null
 }): JSX.Element {
   const cut = currentCut(doc)
+  const spent = useChatCost(chat, doc.versions.length)
   const struck = useMemo(() => new Set(cut.removed), [cut.removed])
   const [marked, setMarked] = useState<Set<string>>(new Set())
   const timing = useMemo(() => new Map(resolved.words.map((w) => [w.id, w])), [resolved])
@@ -1651,6 +1679,7 @@ function ScriptPanel({
       )}
       <p className="cl-project-meta">
         Click words to mark them. Double-click a word to jump to it. {clock(resolved.durationSec)} in the cut.
+        {spent !== null && ` ${videoCostLine(spent)}`}
       </p>
     </aside>
   )

@@ -1,3 +1,4 @@
+import { usageTicket } from './usage'
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { promises as fs } from 'fs'
@@ -43,7 +44,9 @@ export const FRAMES_PER_STRIP = 3
 export function claudeParse(apiKey: string): ParseCall {
   const client = new Anthropic({ apiKey })
   return async (params) => {
+    const bill = usageTicket('describe')
     const response = await client.beta.messages.parse(params as never)
+    bill(response.model, response.usage)
     return {
       parsed_output: (response.parsed_output ?? null) as DescribeAnswer | null,
       stop_reason: response.stop_reason

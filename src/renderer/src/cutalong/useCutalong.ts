@@ -644,7 +644,8 @@ export function useCutalong() {
   const [brandProgress, setBrandProgress] = useState<Progress | null>(null)
 
   const docRef = useRef<EditDoc | null>(null)
-  const projectRef = useRef<Project | null>(null)
+  /** The chat open now. Main is told whenever it changes, so what each paid call costs is written against it (main/costs). */
+  const projectRef = useMemo(() => chatRef(), [])
   /**
    * Which chat is open, counted up each time another is opened or a new one started: what a made video
    * left waiting (questions, a read-back, a quote) belongs to the chat it was asked in (useMake).
@@ -5161,6 +5162,8 @@ export function useCutalong() {
     onAction,
     make,
     openProject,
+    /** The chat open now (read, never set, outside this hook): for what it has cost so far. */
+    openChat: projectRef as { readonly current: Project | null },
     runCommand,
     /** Other B-roll for a beat that cuts to some, offered in the editor's panel. */
     otherBroll,
@@ -5301,3 +5304,22 @@ function takesFound(doc: EditDoc): string {
 }
 
 export type Cutalong = ReturnType<typeof useCutalong>
+
+/**
+ * A ref for the open chat that tells main when another opens, or none (Start), however it is set: paid calls
+ * from then on are written against it (main/costs). Telling main is a record, never part of the work.
+ */
+function chatRef(): { current: Project | null } {
+  let value: Project | null = null
+  return {
+    get current() {
+      return value
+    },
+    set current(next: Project | null) {
+      const was = value
+      value = next
+      if (next?.id === was?.id && next?.name === was?.name && next?.path === was?.path) return
+      void api.costsOpen(next ? { id: next.id, name: next.name, path: next.path } : null).catch(() => undefined)
+    }
+  }
+}

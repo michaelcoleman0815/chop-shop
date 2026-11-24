@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { readApiKey } from './apikey'
 import { BED_MOODS, type BedMood } from './pads'
 import { claude, MODEL } from './planner'
+import { usageTicket } from './usage'
 
 /**
  * The words a preacher leans on, picked by Claude for each clip of a set, so
@@ -111,6 +112,7 @@ export async function keyWordsFor(clips: string[][]): Promise<ClipMarks> {
   }
   const apiKey = readApiKey()
   if (!apiKey || clips.length === 0) return none
+  const bill = usageTicket('key-words')
   try {
     const response = await claude(apiKey).beta.messages.parse({
       model: MODEL,
@@ -122,6 +124,7 @@ export async function keyWordsFor(clips: string[][]): Promise<ClipMarks> {
       messages: [{ role: 'user', content: keyWordsRequest(clips) }],
       output_config: { effort: 'low', format: betaZodOutputFormat(KeyWordsSchema) }
     })
+    bill(response.model, response.usage)
     const parsed = response.parsed_output
     return parsed ? readKeyWords(parsed, clips) : none
   } catch {

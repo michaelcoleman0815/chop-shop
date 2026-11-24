@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useState } from 'react'
+import { averageLine, type CostSummary } from '../../../../../shared/costs'
 import { thisComputer } from '../../../../../shared/platform'
 import { doneSteps, fixingStep, keyGuide, planCostLine } from '../../../../../shared/setup'
 import type { Settings } from '../../../../../shared/types'
@@ -232,7 +233,47 @@ function ClaudeRows({
           }
         />
       )}
+      <SpentRow alongside={alongside} />
     </SetGroup>
+  )
+}
+
+/**
+ * What each video has really cost, Shorts and long-form apart: from the
+ * ledger of every paid call (main/costs, shared/costs), each written down
+ * against the chat it was for. Where nothing is written down (a phone), it
+ * does not show.
+ */
+function SpentRow({ alongside }: { alongside: boolean }): JSX.Element | null {
+  const [summary, setSummary] = useState<CostSummary | null>(null)
+  useEffect(() => {
+    let live = true
+    void api
+      .costsSummary()
+      .then((s) => live && setSummary(s))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
+  if (!summary?.kept || (alongside && summary.total <= 0)) return null
+  const none = summary.shorts.videos + summary.long.videos === 0
+  return (
+    <SetRow
+      title="What each video has cost"
+      desc={
+        none ? (
+          'Nothing counted yet. From now on, every paid call is written down against the video it was for.'
+        ) : (
+          <>
+            {averageLine(summary.shorts, 'short')}
+            <br />
+            {averageLine(summary.long, 'long')}
+          </>
+        )
+      }
+      find="average spent spend money dollars cents shorts long-form per video cost so far"
+    />
   )
 }
 
