@@ -10,9 +10,10 @@
  */
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 
 const version = (process.argv[2] ?? '').replace(/^v/, '')
-const root = new URL('..', import.meta.url).pathname
+const root = fileURLToPath(new URL('..', import.meta.url))
 const lines = readFileSync(join(root, 'CHANGELOG.md'), 'utf8').split(/\r?\n/)
 const heading = new RegExp(`^##\\s+${version.replace(/\./g, '\\.')}(\\s|$)`)
 const start = version ? lines.findIndex((l) => heading.test(l)) : -1
