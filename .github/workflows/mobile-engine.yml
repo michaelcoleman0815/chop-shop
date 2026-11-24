@@ -234,19 +234,17 @@ jobs:
   media:
     name: Sample media
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # ffmpeg can take up to 15 minutes of it when the mirrors stall (mobile/ci/install-ffmpeg.sh).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
-      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
-      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
+      # From Ubuntu's own packages, each try capped and a stalled one tried again from the main archive
+      # (mobile/ci/install-ffmpeg.sh): the plain apt-get here sat silent until its 10 minutes ran out
+      # five times in a day, and the jobs after it never tested the app.
       - name: ffmpeg
-        timeout-minutes: 10
-        run: |
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
-          sudo apt-get $APT update -qq
-          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
-          ffmpeg -hide_banner -version | head -1
+        timeout-minutes: 15
+        run: mobile/ci/install-ffmpeg.sh
 
       - name: Make the sample media and what each render should come out as
         run: python3 mobile/engine/example/tools/make_media.py "$RUNNER_TEMP/media" .
@@ -510,18 +508,17 @@ jobs:
     needs: [media, android-test, ios-test]
     if: ${{ !cancelled() && needs.media.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # ffmpeg can take up to 15 minutes of it when the mirrors stall (mobile/ci/install-ffmpeg.sh).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
-      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
-      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
+      # From Ubuntu's own packages, each try capped and a stalled one tried again from the main archive
+      # (mobile/ci/install-ffmpeg.sh): the plain apt-get here sat silent until its 10 minutes ran out
+      # five times in a day, and the jobs after it never tested the app.
       - name: ffmpeg
-        timeout-minutes: 10
-        run: |
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
-          sudo apt-get $APT update -qq
-          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
+        timeout-minutes: 15
+        run: mobile/ci/install-ffmpeg.sh
 
       - uses: actions/download-artifact@v8
         with:
@@ -587,14 +584,12 @@ jobs:
             exit 1
           fi
 
-      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
-      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
+      # From Ubuntu's own packages, each try capped and a stalled one tried again from the main archive
+      # (mobile/ci/install-ffmpeg.sh): the plain apt-get here sat silent until its 10 minutes ran out
+      # five times in a day, and the jobs after it never tested the app.
       - name: ffmpeg
-        timeout-minutes: 10
-        run: |
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
-          sudo apt-get $APT update -qq
-          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
+        timeout-minutes: 15
+        run: mobile/ci/install-ffmpeg.sh
 
       - name: The footage the app's flow picks
         run: python3 mobile/ci/make-footage.py "$RUNNER_TEMP/footage"
@@ -818,18 +813,17 @@ jobs:
     needs: [app-web, app-android, app-ios]
     if: ${{ !cancelled() && needs.app-web.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # ffmpeg can take up to 15 minutes of it when the mirrors stall (mobile/ci/install-ffmpeg.sh).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
-      # apt's mirrors have stalled this step for 15–20 minutes twice: each fetch now gives up after
-      # 30 s and is tried again, and the step stops at 10 minutes rather than eating the job's limit.
+      # From Ubuntu's own packages, each try capped and a stalled one tried again from the main archive
+      # (mobile/ci/install-ffmpeg.sh): the plain apt-get here sat silent until its 10 minutes ran out
+      # five times in a day, and the jobs after it never tested the app.
       - name: ffmpeg
-        timeout-minutes: 10
-        run: |
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
-          sudo apt-get $APT update -qq
-          sudo apt-get $APT install -y -qq ffmpeg >/dev/null
+        timeout-minutes: 15
+        run: mobile/ci/install-ffmpeg.sh
 
       - uses: actions/download-artifact@v8
         with:
