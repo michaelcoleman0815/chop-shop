@@ -4,17 +4,21 @@
 #
 # A plain apt-get install usually took 20 to 45 seconds, but now and then sat
 # silent for 5 to 10 minutes and was stopped, and the jobs after it never
-# tested the app; retrying from another mirror did not help, since the
-# download itself crawled. So the packages are downloaded once and kept:
+# tested the app. The runner's nearby mirror (us-east-2.ec2 on 2026-11-24)
+# was the slow part: 15 of 60 MB in three minutes. So the packages are
+# downloaded once and kept:
 # with FFMPEG_DEBS set (.github/actions/ffmpeg keeps that folder in the
 # Actions cache, one per runner image), they are installed from there with
 # nothing to download, and a fresh download leaves them there for the next
 # run. A download says how much it is before it starts; each part is timed
 # and said as it starts; each try is capped and a stalled one tried again
-# from Ubuntu's main archive; and a try that runs out of time shows what apt
-# last said and what apt and dpkg were doing, so the log says where it stuck.
-# Only Ubuntu's own sources are read (the runner's other ones, Microsoft's and
-# the rest, are not needed and can stall too); the man-page index, which apt
+# from Ubuntu's main archive by name (the runner's sources name their mirror
+# only through a list file, apt's mirror+file); and a try that runs out of
+# time shows what apt last said and what apt and dpkg were doing, so the log
+# says where it stuck. Only Ubuntu's own sources are read, and of those only
+# what ffmpeg comes from (main and universe, no backports, no translations):
+# the runner's other sources, Microsoft's and the rest, are not needed and can
+# stall too, and the lists are a third of the size. The man-page index, which apt
 # rebuilds after every install, is not rebuilt; and the check for services to
 # restart is skipped.
 #
@@ -59,6 +63,16 @@ else
   echo "::error::this runner has no Ubuntu package sources to install ffmpeg from"
   exit 1
 fi
+# Only what ffmpeg and its libraries come from.
+sed -i -E -e 's/^Components:.*/Components: main universe/' -e 's/^(Suites:.*) [a-z]+-backports/\1/' "$sources"/*
+sed -i -E '/^deb(-src)? .*-backports /d' "$sources"/*
+say "Ubuntu's sources here: $(grep -hoE '^URIs:.*|^deb [^ ]+ [^ ]+' "$sources"/* | sort -u | tr '\n' ';')"
+
+# The next try names Ubuntu's main archive itself, whatever mirror or mirror list the runner had.
+main_archive() {
+  sed -i -E -e 's#^URIs:.*#URIs: http://archive.ubuntu.com/ubuntu/#' \
+    -e 's#^(deb(-src)?( \[[^]]*\])?) [^ ]+#\1 http://archive.ubuntu.com/ubuntu/#' "$sources"/*
+}
 
 apt_opts=(
   -o Dir::Etc::SourceList=/dev/null
@@ -68,6 +82,7 @@ apt_opts=(
   -o Acquire::https::Timeout=20
   -o DPkg::Lock::Timeout=120
   -o Dpkg::Use-Pty=0
+  -o Acquire::Languages=none
   -o APT::Keep-Downloaded-Packages=true
 )
 if [ -n "$debs" ]; then
@@ -104,8 +119,9 @@ fi
 
 for n in $(seq 1 "$tries"); do
   if [ "$n" -gt 1 ]; then
-    # The next try asks Ubuntu's main archive rather than the runner's nearby mirror.
-    sed -i -E 's#https?://[a-z0-9.-]*\.archive\.ubuntu\.com/ubuntu/?#http://archive.ubuntu.com/ubuntu/#g' "$sources"/*
+    # Ubuntu's main archive rather than the runner's nearby mirror; what the last try fetched is kept.
+    main_archive
+    say "trying Ubuntu's main archive, archive.ubuntu.com"
     # A try stopped partway can leave packages half set up.
     as_root dpkg --configure -a || true
   fi
