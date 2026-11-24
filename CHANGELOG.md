@@ -6,6 +6,8 @@ Changes waiting for the next version go under "Unreleased". When the version goe
 
 ## Unreleased
 
+## 0.4.3 — 2026-11-23
+
 - Every paid call to Claude is now written down against the video it was for, so Cutalong can say what your videos really cost. Settings, under AI, shows the average for a Short and for a long-form video, and the editor's script says what the open video has cost so far.
 
 ## 0.4.2 — 2026-11-23
