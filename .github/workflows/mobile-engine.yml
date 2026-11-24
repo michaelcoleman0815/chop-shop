@@ -239,12 +239,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # From Ubuntu's own packages, each try capped and a stalled one tried again from the main archive
-      # (mobile/ci/install-ffmpeg.sh): the plain apt-get here sat silent until its 10 minutes ran out
-      # five times in a day, and the jobs after it never tested the app.
+      # Downloaded once for each runner image and kept in the cache (.github/actions/ffmpeg): a plain
+      # apt-get here sat silent until its 10 minutes ran out five times in a day, and the jobs after it
+      # never tested the app.
       - name: ffmpeg
         timeout-minutes: 15
-        run: mobile/ci/install-ffmpeg.sh
+        uses: ./.github/actions/ffmpeg
 
       - name: Make the sample media and what each render should come out as
         run: python3 mobile/engine/example/tools/make_media.py "$RUNNER_TEMP/media" .
@@ -513,12 +513,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # From Ubuntu's own packages, each try capped and a stalled one tried again from the main archive
-      # (mobile/ci/install-ffmpeg.sh): the plain apt-get here sat silent until its 10 minutes ran out
-      # five times in a day, and the jobs after it never tested the app.
+      # Downloaded once for each runner image and kept in the cache (.github/actions/ffmpeg): a plain
+      # apt-get here sat silent until its 10 minutes ran out five times in a day, and the jobs after it
+      # never tested the app.
       - name: ffmpeg
         timeout-minutes: 15
-        run: mobile/ci/install-ffmpeg.sh
+        uses: ./.github/actions/ffmpeg
 
       - uses: actions/download-artifact@v8
         with:
@@ -584,12 +584,12 @@ jobs:
             exit 1
           fi
 
-      # From Ubuntu's own packages, each try capped and a stalled one tried again from the main archive
-      # (mobile/ci/install-ffmpeg.sh): the plain apt-get here sat silent until its 10 minutes ran out
-      # five times in a day, and the jobs after it never tested the app.
+      # Downloaded once for each runner image and kept in the cache (.github/actions/ffmpeg): a plain
+      # apt-get here sat silent until its 10 minutes ran out five times in a day, and the jobs after it
+      # never tested the app.
       - name: ffmpeg
         timeout-minutes: 15
-        run: mobile/ci/install-ffmpeg.sh
+        uses: ./.github/actions/ffmpeg
 
       - name: The footage the app's flow picks
         run: python3 mobile/ci/make-footage.py "$RUNNER_TEMP/footage"
@@ -818,12 +818,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # From Ubuntu's own packages, each try capped and a stalled one tried again from the main archive
-      # (mobile/ci/install-ffmpeg.sh): the plain apt-get here sat silent until its 10 minutes ran out
-      # five times in a day, and the jobs after it never tested the app.
+      # Downloaded once for each runner image and kept in the cache (.github/actions/ffmpeg): a plain
+      # apt-get here sat silent until its 10 minutes ran out five times in a day, and the jobs after it
+      # never tested the app.
       - name: ffmpeg
         timeout-minutes: 15
-        run: mobile/ci/install-ffmpeg.sh
+        uses: ./.github/actions/ffmpeg
 
       - uses: actions/download-artifact@v8
         with:

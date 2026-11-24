@@ -1,0 +1,31 @@
+name: ffmpeg
+description: >-
+  ffmpeg and ffprobe from Ubuntu's own packages (mobile/ci/install-ffmpeg.sh), downloaded once for each
+  runner image and kept in the Actions cache, so a run installs them with nothing to download.
+
+runs:
+  using: composite
+  steps:
+    # One set of packages for each runner image: a new image may already have some of them, or need others.
+    - id: image
+      shell: bash
+      run: echo "key=ffmpeg-debs-${ImageOS:-ubuntu}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+    - id: kept
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/ffmpeg-debs
+        key: ${{ steps.image.outputs.key }}
+
+    - shell: bash
+      env:
+        FFMPEG_DEBS: ${{ runner.temp }}/ffmpeg-debs
+      run: mobile/ci/install-ffmpeg.sh
+
+    # Another job of the same run may have kept them first; that is only a warning.
+    - if: steps.kept.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      continue-on-error: true
+      with:
+        path: ${{ runner.temp }}/ffmpeg-debs
+        key: ${{ steps.image.outputs.key }}
