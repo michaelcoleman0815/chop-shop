@@ -1,6 +1,7 @@
 """Checks what the app's own flow in CI did (src/host/drive.ts), on the
 runner, with its ffprobe and ffmpeg: every step of the flow and of the dark
-tour reached, the key gate both ways (Start without a key is the steps to
+tour reached, what's new on the first open of the version and not on the
+next (Settings' changelog, its button going on to Start), the key gate both ways (Start without a key is the steps to
 get one, a key Anthropic turns down marks the step that fixes it, one it
 takes opens Start, and in the tour a key accepted before keeps the gate open
 while Anthropic is down), the text box on Start, in the thread and in the
@@ -8,7 +9,7 @@ editor's note box with the keyboard up (one thin line at rest, its hint on
 that line, six lines when it grows, then it scrolls, and it and its buttons
 above the keyboard), Back from the note box with the keyboard up, the editor's preview with a picture whether it was
 opened from the chat or from its card on the Projects page, that card with its picture
-across it, a new version from the command, the crew at the export, an export
+across it, a new version from the command, the export's steps as it took them, an export
 in the chat started a hair in showing its picture before it plays (Android's,
 where the web view would draw a grey play sign), and each export itself, a vertical H.264 video with
 AAC sound the length of the talking less what was cut, speech in it, and a
@@ -28,10 +29,10 @@ import sys
 
 OUT = sys.argv[1]
 FOOTAGE = sys.argv[2]
-FLOW = ["key", "key-refused", "start", "start-typing", "start-typing-grown", "composer", "transcribing", "v1",
+FLOW = ["whats-new", "key", "key-refused", "start", "start-typing", "start-typing-grown", "composer", "transcribing", "v1",
         "thread-typing", "thread-typing-grown", "command", "editor", "note-typing", "note-typing-grown",
-        "back-from-note", "exporting", "thread-exporting", "export-in-chat", "crew", "brand", "licences"]
-TOUR = ["thread-down", "start", "editor", "exporting", "thread-exporting", "thread", "crew", "brand"]
+        "back-from-note", "exporting", "thread-exporting", "export-in-chat", "learned", "brand", "licences"]
+TOUR = ["thread-down", "start", "editor", "exporting", "thread-exporting", "thread", "learned", "brand"]
 
 problems = []
 
@@ -75,10 +76,11 @@ def steps_of(label, report, expected):
             print(f"      on screen: {s['screen']}")
     for p in report.get("progress", []):
         print(f"  {p['atSec']:>7} s  {p['stage']}")
-    for key in ("crewTranscribing", "crewAtWork"):
-        crew = report.get(key)
-        if crew:
-            print(f"  {key}: {crew.get('rows')}; moving {crew.get('moving')}")
+    print(f"  what's new: {report.get('whatsNew')}")
+    for key in ("workTranscribing", "workAtExport"):
+        work = report.get(key)
+        if work:
+            print(f"  {key}: {work.get('steps')}; moving {work.get('moving')}")
     for t in report.get("transitions", []):
         print(f"  view transition at {t['atSec']} s, {t['form']}: {t.get('threw') or t.get('finished') or 'running'}")
     print(f"  the editor's preview had a picture: {report.get('previewReady')}")
@@ -108,8 +110,8 @@ def steps_of(label, report, expected):
     missing = [s for s in expected if s not in reached]
     if missing:
         problem(f"{label}: steps not reached: {', '.join(missing)}")
-    if report.get("ok") and not (report.get("crewAtWork") or {}).get("rows"):
-        problem(f"{label}: no one of the crew was at the export")
+    if report.get("ok") and not any((report.get("workAtExport") or {}).get("steps") or []):
+        problem(f"{label}: the export in the chat showed none of its steps")
     if report.get("ok") and report.get("previewReady") is not True:
         problem(f"{label}: the editor's preview showed no picture")
     opens = report.get("exportOpensOn") or {}
@@ -179,6 +181,13 @@ print(f"    cost: {setup.get('cost')}")
 print(f"  a key turned down: {refused.get('said')!r}, the step marked: {refused.get('marked')!r}")
 print(f"    {refused.get('kept')}")
 print(f"  a key taken: {flow.get('keyAccepted')!r}")
+news = flow.get("whatsNew") or {}
+if flow.get("ok"):
+    # The drive's person is past the welcome with no version remembered: this version's changes, marked new.
+    if not news.get("versions") or "New" not in (news.get("marked") or []):
+        problem(f"the first open of this version did not show what is new in it: {news or 'nothing'}")
+    elif news.get("button") != "Start editing":
+        problem(f"what's new went on with {news.get('button')!r}, not Start editing")
 asked = flow.get("anthropic", [])
 checks = [r["status"] for r in asked if r.get("kind") == "key check"]
 if flow.get("ok"):
@@ -223,6 +232,8 @@ if tour is None:
     problem("no tour-report.json came back: the dark tour did not run")
 else:
     steps_of("the tour, dark", tour, TOUR)
+    if tour.get("whatsNew"):
+        problem(f"opening the same version again showed what's new again: {tour.get('whatsNew')}")
     if not (tour.get("looks") or {}).get("dark"):
         problem("the web view did not report the system's dark: the tour set the page dark itself")
     down = tour.get("whileDown") or {}

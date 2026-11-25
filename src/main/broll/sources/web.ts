@@ -1,3 +1,4 @@
+import { usageTicket } from '../../usage'
 import Anthropic from '@anthropic-ai/sdk'
 import type { BetaMessage, MessageCreateParamsNonStreaming } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { promises as fs } from 'fs'
@@ -150,7 +151,10 @@ export function webSource(deps: WebDeps): BrollSource {
       const key = deps.apiKey()
       if (!key) throw new Error('Add your Anthropic API key in Settings to look on the web.')
       const client = new Anthropic({ apiKey: key, timeout: 90_000, maxRetries: 1 })
-      return client.beta.messages.create(params)
+      const bill = usageTicket('web-search')
+      const answer = await client.beta.messages.create(params)
+      bill(answer.model, answer.usage)
+      return answer
     })
   return {
     id: 'web',

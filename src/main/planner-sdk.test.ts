@@ -19,6 +19,9 @@ import { FFMPEG_PATH } from './ffmpeg'
 import { keyMessage } from '../shared/setup'
 import { readApiKey } from './apikey'
 import { forgetSent } from './plan-quote'
+import { setUsageSink } from './usage'
+import { CLAUDE_PRICES } from '../shared/costs'
+import { PLANNER_PRICE } from '../shared/setup'
 import { MODEL, planEdit } from './planner'
 
 /**
@@ -236,6 +239,19 @@ describe('planning through the SDK', () => {
     const first = inTurn([called({ ...PLAN, ops: [] })])
     await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: first.fetch, prefs: { planQuality: 'best' } })
     expect(first.sent[0].messages[0].content.map((b) => b.text ?? '').join('\n')).toContain('<designs>\nOne graphic may be designed')
+  }, 60000)
+
+  it('writes the planner’s call and its critic’s in the ledger, at the prices the quote was made from', async () => {
+    const billed: string[] = []
+    setUsageSink((purpose) => (model) => void billed.push(`${purpose} ${model}`))
+    try {
+      const claude = inTurn([called({ ...PLAN, ops: [pop('A')] }), judged({ 1: 9 })])
+      await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: claude.fetch, prefs: { planQuality: 'best' } })
+    } finally {
+      setUsageSink(null)
+    }
+    expect(billed).toEqual([`plan ${MODEL}`, `critic ${MODEL}`])
+    expect(PLANNER_PRICE).toMatchObject(CLAUDE_PRICES[MODEL])
   }, 60000)
 
   it('offers the plan as it was when nobody can judge it', async () => {

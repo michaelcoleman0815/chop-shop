@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 75
     permissions:
       contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v7
 
@@ -119,7 +120,16 @@ jobs:
           name: cutalong-test-${{ github.run_number }}
           path: release/*.dmg
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
+
+      # Only the newest Mac test build is kept: each one before it is
+      # about 230 MB of the account's Actions storage, which is 0.5 GB on
+      # GitHub Free and billed by the hour beyond it.
+      - name: Remove the Mac test builds before this one
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/tidy-artifacts.sh older cutalong-test
 
   windows:
     # Windows 10 and 11 on x64: an unsigned installer for trying Cutalong on a
@@ -129,6 +139,7 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+      actions: write
     defaults:
       run:
         shell: bash
@@ -295,4 +306,13 @@ jobs:
           name: cutalong-windows-test-${{ github.run_number }}
           path: release/Cutalong-Setup-*.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
+
+      # Only the newest Windows test build is kept: each one before it is
+      # about 200 MB of the account's Actions storage, which is 0.5 GB on
+      # GitHub Free and billed by the hour beyond it.
+      - name: Remove the Windows test builds before this one
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/tidy-artifacts.sh older cutalong-windows-test

@@ -7,6 +7,7 @@ import { claude, describeError, keyDeps, MODEL } from './planner'
 import { noteKeyFailure } from './claude-key'
 import { chatLocally } from './local-llm'
 import { renderCommands, type CommandLine } from './planner-prompt'
+import { usageTicket } from './usage'
 
 /**
  * What a message asks Cutalong to make, read by Claude before any footage is
@@ -217,6 +218,7 @@ export async function triage(
   }
   // Over the platform's network, or a fetch a test stands in.
   const client = claude(apiKey, deps.fetch ? { fetch: deps.fetch } : {})
+  const bill = usageTicket('read')
   try {
     const response = await client.beta.messages.parse({
       model: MODEL,
@@ -228,6 +230,7 @@ export async function triage(
       messages: [{ role: 'user', content: triageRequest(input) }],
       output_config: { effort: 'low', format: betaZodOutputFormat(TriageSchema) }
     })
+    bill(response.model, response.usage)
     if (response.stop_reason === 'refusal') {
       return { ok: false, message: 'Claude declined this one. Try saying it another way.' }
     }

@@ -36,6 +36,7 @@ import { recentProjects, createProject, openProject, saveProject, removeFromRece
 import type { Kept } from '../shared/make/kept'
 import { transcribe, downloadModel, hasModel, modelSizeMb, type WhisperModel } from './transcribe'
 import { suggestClips, listModels } from './clips'
+import { noteSaved, registerCosts } from './costs'
 import { localHost } from './local-server'
 import { localModels, isLocalUp } from './local-llm'
 import { hasApiKey, setApiKey, clearApiKey, currentProvider } from './apikey'
@@ -1118,7 +1119,12 @@ function registerIpc(): void {
 
   ipcMain.handle('project:recent', () => recentProjects())
   ipcMain.handle('project:create', (_e, name: string, mode: ProjectMode) => createProject(name, mode))
-  ipcMain.handle('project:save', (_e, project: Project) => saveProject(project))
+  ipcMain.handle('project:save', async (_e, project: Project) => {
+    await saveProject(project)
+    void noteSaved(project).catch(() => undefined)
+  })
+  // What each chat has cost (main/costs): every paid call is written down against the chat open when it went.
+  registerCosts(async () => (await recentProjects()).map((p) => ({ id: p.id, path: p.path })))
   // A paid result for a chat not open, read, merged and written in that file's turn (useMake's keepFor).
   ipcMain.handle('project:keep', (_e, req: { path: string | null; name: string; kept: Kept }) =>
     keepInFile(req.path, String(req.name ?? '') || 'New video', req.kept)
@@ -1254,5 +1260,7 @@ app.on('will-quit', () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // The self-check opens no window of its own, only the 3D export's hidden page (main/three-render): that page
+  // closing is not the last window going, and the self-check quits by itself once its report is written.
+  if (process.platform !== 'darwin' && !selfCheckReport) app.quit()
 })

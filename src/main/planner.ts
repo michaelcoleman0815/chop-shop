@@ -1,3 +1,5 @@
+import { usageTicket } from './usage'
+import { priceOf } from '../shared/costs'
 import Anthropic from '@anthropic-ai/sdk'
 import { followPlannedClips } from './clip-follow'
 import { followObjects, type Track } from './plan-follow'
@@ -458,11 +460,15 @@ async function counted(
   call: Promise<Anthropic.Beta.Messages.BetaMessage>
 ): Promise<Anthropic.Beta.Messages.BetaMessage> {
   const from = Date.now()
+  // Written against the chat open as it goes, whatever is open when the answer comes back (main/usage).
+  const bill = usageTicket(what)
   const r = await call
+  bill(r.model, r.usage)
   const u = r.usage
   const cached = u.cache_read_input_tokens ?? 0
   const kept = u.cache_creation_input_tokens ?? 0
-  const p = PLANNER_PRICE
+  // At the price of the model that answered, should the API have fallen back to another.
+  const p = priceOf(r.model ?? '') ?? PLANNER_PRICE
   meter.spent += (u.input_tokens * p.input + cached * p.cacheRead + kept * p.cacheWrite + u.output_tokens * p.output) / 1_000_000
   console.info(
     `[planner] ${what}: ${((Date.now() - from) / 1000).toFixed(0)} s, in ${u.input_tokens}, cached ${cached}, kept ${kept}, out ${u.output_tokens}; ${meter.spent.toFixed(2)} dollars so far`

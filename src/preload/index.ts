@@ -28,6 +28,7 @@ import type { AccountStatus } from '../shared/account'
 import type { AudioMap } from '../shared/audio/map'
 import type { VideoRun } from '../shared/channel-habits'
 import type { Brands } from '../shared/brands'
+import type { CostSummary } from '../shared/costs'
 import type { UploadKit } from '../shared/upload'
 import type { LearnRunResult, LearnState } from '../shared/learn/state'
 import type { MemoryChange, MemoryView, Signal } from '../shared/memory'
@@ -809,6 +810,13 @@ const api = {
     ipcRenderer.invoke('project:create', name, mode),
   openProject: (path?: string): Promise<Project | null> => ipcRenderer.invoke('project:open', path),
   saveProject: (project: Project): Promise<void> => ipcRenderer.invoke('project:save', project),
+  /** The chat open now, or null on Start: paid calls from here on are written against it (main/costs). */
+  costsOpen: (ref: { id: string; name: string; path: string | null } | null): Promise<void> =>
+    ipcRenderer.invoke('costs:open', ref),
+  /** What one chat has cost so far, in dollars. */
+  costsChat: (req: { id: string; path: string | null }): Promise<number> => ipcRenderer.invoke('costs:chat', req),
+  /** The average cost of a video, Shorts and long-form apart (shared/costs). */
+  costsSummary: (): Promise<CostSummary> => ipcRenderer.invoke('costs:summary'),
   /**
    * A paid result kept in its own chat's file while another chat is open: read, merged and written in that file's
    * turn. A new made video never replaces an edit; it goes in a new chat then, as with no file to keep it in.

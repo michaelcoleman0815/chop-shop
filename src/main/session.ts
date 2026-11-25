@@ -1,3 +1,4 @@
+import { usageTicket } from './usage'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { basename } from 'path'
 import { z } from 'zod'
@@ -289,6 +290,7 @@ export async function assignRoles(request: string, files: FileFacts[], apiKey: s
         }${f.createdAt ? `, recorded ${f.createdAt}` : ''}`
     )
     .join('\n')
+  const bill = usageTicket('roles')
   try {
     const client = claude(apiKey)
     const response = await client.beta.messages.parse({
@@ -304,6 +306,7 @@ export async function assignRoles(request: string, files: FileFacts[], apiKey: s
       ],
       output_config: { effort: 'low', format: betaZodOutputFormat(RoleSchema) }
     })
+    bill(response.model, response.usage)
     const r = response.parsed_output
     if (!r) return guess
     const pick = (list: number[]): FileFacts[] =>

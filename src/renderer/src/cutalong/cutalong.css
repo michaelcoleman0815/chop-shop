@@ -6427,3 +6427,88 @@ a.cl-btn {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- The changelog in Settings (settings/Changelog): one card, a row a version ---------- */
+
+.cl-changelog-lede {
+  margin: 0 0 var(--space-4) var(--space-1);
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+/* What's new on the first open of a new version: what it is, and the one way back to work. */
+.cl-changelog-news {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  margin-bottom: var(--space-4);
+}
+
+.cl-changelog-news .cl-changelog-lede {
+  flex: 1 1 24rem;
+  margin: 0 0 0 var(--space-1);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink);
+}
+
+.cl-changelog {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-page);
+}
+
+.cl-changelog > li {
+  display: grid;
+  gap: var(--space-3);
+  padding: 18px 22px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.cl-changelog > li:first-child {
+  border-top: 0;
+}
+
+.cl-changelog-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.cl-changelog-when h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-changelog-when time {
+  font-size: 13.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cl-changelog-changes {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: 1.1em;
+  max-width: 62ch;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 24px;
+  text-wrap: pretty;
+}

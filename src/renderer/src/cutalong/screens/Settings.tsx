@@ -2,16 +2,17 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { ThisComputer } from '../../../../shared/platform'
 import type { Settings } from '../../../../shared/types'
 import { api, device } from '../api'
+import { Button } from '../components/ui'
 import { type ColourName } from '../shapes'
 import type { Cutalong } from '../useCutalong'
 import { Header } from './Header'
 import { Licences } from './Licences'
 import { AccountSection } from './settings/Account'
+import { AiSection } from './settings/Ai'
+import { ChangelogSection, type News } from './settings/Changelog'
 import { BrollSection } from './settings/Broll'
-import { ClaudeSection } from './settings/Claude'
-import { LocalAiSection } from './settings/LocalAi'
 import { MadeSection } from './settings/Made'
-import { SettingsFind } from './settings/rows'
+import { SetGroup, SetRow, SettingsFind } from './settings/rows'
 import { ServicesSection } from './settings/Services'
 import { ThisComputerSection } from './settings/ThisComputer'
 import { WordsSection } from './settings/Words'
@@ -25,7 +26,7 @@ import { WordsSection } from './settings/Words'
  * to the other devices too (main/account).
  */
 
-type SectionId = 'account' | 'claude' | 'local' | 'services' | 'words' | 'broll' | 'made' | 'device' | 'licences'
+type SectionId = 'account' | 'ai' | 'services' | 'words' | 'broll' | 'made' | 'device' | 'changelog' | 'licences'
 
 const phone = device.kind === 'phone'
 /** "This Mac", "This PC", or on a phone "This phone". */
@@ -39,13 +40,7 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M3.5 15.5c.8-2.9 3-4.5 5.5-4.5s4.7 1.6 5.5 4.5" />
     </>
   ),
-  claude: <path d="M3.5 4.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H8l-3.5 2.5V13.5h-1A1.5 1.5 0 0 1 2 12V6a1.5 1.5 0 0 1 1.5-1.5Z" />,
-  local: (
-    <>
-      <rect x="4.5" y="4.5" width="9" height="9" rx="2" />
-      <path d="M7 2v2.5M11 2v2.5M7 13.5V16M11 13.5V16M2 7h2.5M2 11h2.5M13.5 7H16M13.5 11H16" />
-    </>
-  ),
+  ai: <path d="M3.5 4.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H8l-3.5 2.5V13.5h-1A1.5 1.5 0 0 1 2 12V6a1.5 1.5 0 0 1 1.5-1.5Z" />,
   services: (
     <>
       <circle cx="6" cy="9" r="3.2" />
@@ -72,6 +67,7 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M1.5 14.5h15" />
     </>
   ),
+  changelog: <path d="M7 5h7.5M7 9h7.5M7 13h7.5M3.5 5h.01M3.5 9h.01M3.5 13h.01" />,
   licences: <path d="M5 2.5h5.5L14 6v9a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5ZM10.5 2.5V6H14M7 9h5M7 12h4" />
 }
 
@@ -86,14 +82,15 @@ interface Section {
 const SECTIONS: Section[] = (
   [
     { id: 'account', label: 'Account', colour: 'blue', group: 0, show: true },
-    { id: 'claude', label: 'Claude', colour: 'salmon', group: 0, show: true },
-    // A phone plans with Claude: it has no local AI server to run models on.
-    { id: 'local', label: 'Local AI', colour: 'green', group: 0, show: !phone },
+    // Which AI edits with you, Claude or a model on this computer, and what it needs (settings/Ai).
+    { id: 'ai', label: 'AI', colour: 'salmon', group: 0, show: true },
     { id: 'services', label: 'Services', colour: 'lavender', group: 0, show: true },
     { id: 'words', label: 'Words', colour: 'blue', group: 1, show: true },
     { id: 'broll', label: 'B-roll', colour: 'yellow', group: 1, show: !device.away['feature:broll'] },
     { id: 'made', label: 'Made videos', colour: 'pink', group: 1, show: !device.away['feature:make'] },
     { id: 'device', label: here, colour: 'gold', group: 2, show: true },
+    // What changed in each version; Settings opens here on the first open of a new one (App, settings/Changelog).
+    { id: 'changelog', label: 'Changelog', colour: 'green', group: 2, show: true },
     { id: 'licences', label: 'Licences', colour: 'blue', group: 2, show: !!device.licences }
   ] satisfies (Section & { show: boolean })[]
 ).filter((s) => s.show)
@@ -103,11 +100,13 @@ const REMEMBERED = 'cutalong:settings-section'
 function remembered(): SectionId {
   try {
     const kept = localStorage.getItem(REMEMBERED)
+    // Claude and Local AI were two sections before they were one.
+    if (kept === 'claude' || kept === 'local') return 'ai'
     if (SECTIONS.some((s) => s.id === kept)) return kept as SectionId
   } catch {
-    // Storage may be off: Claude it is.
+    // Storage may be off: the AI it is.
   }
-  return 'claude'
+  return 'ai'
 }
 
 function Tile({ id, colour, big = false }: { id: SectionId; colour: ColourName; big?: boolean }): JSX.Element {
@@ -127,9 +126,18 @@ function Tile({ id, colour, big = false }: { id: SectionId; colour: ColourName; 
   )
 }
 
-export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
+export function SettingsPage({
+  app,
+  news,
+  done
+}: {
+  app: Cutalong
+  /** What's new on the first open of a new version: Settings opens on the changelog with it. */
+  news?: News | null
+  done?: { label: string; go: () => void }
+}): JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [current, setCurrent] = useState<SectionId>(remembered)
+  const [current, setCurrent] = useState<SectionId>(() => (news ? 'changelog' : remembered()))
   const [query, setQuery] = useState('')
   const [version, setVersion] = useState('')
   // A section picked arrives; the first, which comes with the screen, does not again.
@@ -139,6 +147,9 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
     void api.getSettings().then(setSettings)
     void api.getVersion().then(setVersion)
   }, [])
+  useEffect(() => {
+    if (news) setCurrent('changelog')
+  }, [news])
 
   const go = (id: SectionId): void => {
     setQuery('')
@@ -152,14 +163,13 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
     document.querySelector('.cl-page')?.scrollTo({ top: 0 })
   }
 
+  const find = query.trim().toLowerCase()
   const body = (id: SectionId): ReactNode => {
     switch (id) {
       case 'account':
         return <AccountSection onSynced={app.refreshFromAccount} />
-      case 'claude':
-        return <ClaudeSection app={app} settings={settings} onSettings={setSettings} />
-      case 'local':
-        return <LocalAiSection settings={settings} onSettings={setSettings} onPlanner={app.chooseLocalAi} />
+      case 'ai':
+        return <AiSection app={app} settings={settings} onSettings={setSettings} />
       case 'services':
         return <ServicesSection settings={settings} onSettings={setSettings} />
       case 'words':
@@ -170,12 +180,29 @@ export function SettingsPage({ app }: { app: Cutalong }): JSX.Element {
         return <MadeSection settings={settings} onSettings={setSettings} />
       case 'device':
         return <ThisComputerSection settings={settings} onSettings={setSettings} />
+      case 'changelog':
+        // In a search, a row that finds it; the whole changelog only when it is the section picked.
+        return find ? (
+          <SetGroup>
+            <SetRow
+              title="Changelog"
+              desc="What changed in each version, newest first."
+              find="changelog what's new whats new changes version release notes update"
+              control={
+                <Button small onClick={() => go('changelog')}>
+                  Open
+                </Button>
+              }
+            />
+          </SetGroup>
+        ) : (
+          <ChangelogSection news={news} done={done} />
+        )
       case 'licences':
         return device.licences ? <Licences where={device.licences} version={version} /> : null
     }
   }
 
-  const find = query.trim().toLowerCase()
   const shown = find ? SECTIONS.filter((s) => s.id !== 'licences') : SECTIONS.filter((s) => s.id === current)
 
   return (

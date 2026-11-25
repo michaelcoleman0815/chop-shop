@@ -20,14 +20,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      # For the version's own section of CHANGELOG.md, which becomes the release's notes.
+      - uses: actions/checkout@v7
+
       - name: Make the release as a draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
+          # The notes are the version's changes from CHANGELOG.md, as the app shows them in What's new (and the
+          # updater hands them on); with no section for it, GitHub writes them from the commits instead.
+          if node scripts/release-notes.mjs "$GITHUB_REF_NAME" > notes.md; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
           # A run again of the same tag finds the release already there, drafted or published, and leaves it.
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" "${notes[@]}"
 
   mac:
     needs: draft

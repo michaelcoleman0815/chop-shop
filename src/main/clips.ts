@@ -1,3 +1,4 @@
+import { usageTicket } from './usage'
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { z } from 'zod'
@@ -247,6 +248,7 @@ export async function suggestClips(
   }
 
   const client = new Anthropic({ apiKey: apiKey as string })
+  const bill = usageTicket('clips')
 
   const response = await client.messages.parse({
     model,
@@ -256,6 +258,7 @@ export async function suggestClips(
     messages: [{ role: 'user', content: prompt }],
     output_config: { format: zodOutputFormat(ClipsSchema) }
   })
+  bill(response.model, response.usage)
 
   if (response.stop_reason === 'refusal') {
     throw new Error(

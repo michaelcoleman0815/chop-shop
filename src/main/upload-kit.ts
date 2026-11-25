@@ -1,3 +1,4 @@
+import { usageTicket } from './usage'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { basename } from 'path'
 import type { Brand } from '../shared/brand'
@@ -51,7 +52,9 @@ const CLAUDE_WAIT_MS = 90_000
 export function claudeWriter(apiKey: string): WriteCall {
   const client = claude(apiKey, { timeout: CLAUDE_WAIT_MS, maxRetries: 1 })
   return async (params) => {
+    const bill = usageTicket('upload')
     const response = await client.beta.messages.parse(params as never)
+    bill(response.model, response.usage)
     return { parsed_output: response.parsed_output ?? null, stop_reason: response.stop_reason }
   }
 }

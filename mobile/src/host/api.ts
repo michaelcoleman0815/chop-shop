@@ -1,6 +1,7 @@
 import type { EngineInfo, EnginePlugin } from 'cutalong-engine'
 import type { CutalongApi } from '../../../src/renderer/src/cutalong/api'
 import { platform } from '../../../src/main/platform'
+import { summarise } from '../../../src/shared/costs'
 import { probeFile } from '../../../src/main/intake'
 import { extendCut, prepareCut, renderEdit, sortFootage, type WorkHost } from '../../../src/main/cut-work'
 import { checkKey, keyDeps, planEdit } from '../../../src/main/planner'
@@ -163,6 +164,10 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
 
   return {
     getVersion: async () => parts.version,
+    // The phone keeps no record of what its calls cost yet (main/costs is the Mac's): nothing to average.
+    costsOpen: async () => undefined,
+    costsChat: async () => 0,
+    costsSummary: async () => ({ ...summarise([], []), kept: false }),
     // Phones have no drag and drop: files come in through + (openMedia).
     pathForFile: () => '',
     openVideo: async () => null,

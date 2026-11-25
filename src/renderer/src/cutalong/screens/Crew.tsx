@@ -52,7 +52,7 @@ function useNeeds(): Partial<Record<CrewId, Need>> {
               : 'in this computer’s keychain'
         next.quill = {
           text: `Your Anthropic key, so Claude writes your titles, descriptions and chapters. Without it, I write them on ${device.here}.`,
-          steps: ['Open Settings.', `Under Claude, add your Anthropic key. It stays ${kept}.`]
+          steps: ['Open Settings.', `Under AI, add your Anthropic key. It stays ${kept}.`]
         }
       }
       if (live) setNeeds(next)
