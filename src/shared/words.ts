@@ -11,8 +11,12 @@ import type { TranscriptWord } from './types'
  * ("I saw you at the roast." is one caption, not "I saw you at the" and
  * "roast."), a full group breaks after its last comma, and never on a word that
  * leads into the next ("the", "at", "and", "I").
+ *
+ * Held exact, groups are the count as said, ending early only at a sentence's
+ * end, a comma or a pause: "some of the", "illustrations,", "like dynamic
+ * things.", as Lecrae's quiet captions run.
  */
-export function groupWords(words: TranscriptWord[], perGroup: number): TranscriptWord[][] {
+export function groupWords(words: TranscriptWord[], perGroup: number, exact = false): TranscriptWord[][] {
   const groups: TranscriptWord[][] = []
   let current: TranscriptWord[] = []
   const phrased = perGroup >= 3
@@ -20,19 +24,20 @@ export function groupWords(words: TranscriptWord[], perGroup: number): Transcrip
 
   for (let i = 0; i < words.length; i++) {
     current.push(words[i])
-    if (ENDS_SENTENCE.test(words[i].text) || gapAfter(i) > 0.6) {
+    // Held to the count, a page also ends at a comma, as said: "illustrations," then "like dynamic things."
+    if (ENDS_SENTENCE.test(words[i].text) || gapAfter(i) > 0.6 || (exact && /,["'”’)]*$/.test(words[i].text))) {
       groups.push(current)
       current = []
       continue
     }
     if (current.length < perGroup) continue
-    if (!phrased) {
+    if (!phrased || exact) {
       groups.push(current)
       current = []
       continue
     }
     // The sentence ends within the words allowed over: keep it whole.
-    if (current.length < perGroup + MOST_OVER && endsWithin(words, i, perGroup + MOST_OVER - current.length)) continue
+    if (!exact && current.length < perGroup + MOST_OVER && endsWithin(words, i, perGroup + MOST_OVER - current.length)) continue
     const at = phraseBreak(current)
     groups.push(current.slice(0, at))
     current = current.slice(at)

@@ -287,7 +287,9 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     style: {
       ...BASE,
       // The Life Church's newest Shorts: small lower-case words, three at a time, as said, under a hook card.
+      // Lecrae's set the same look a fifth bigger (CaptionSpec.size 1.2), and neither runs a page over its count.
       steady: true,
+      exact: true,
       wordsPerGroup: 3,
       fontFamily: 'Inter SemiBold',
       fontSizePx: 48,
@@ -540,6 +542,27 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
     id: 'chop',
     name: 'Chop Shop',
     style: BASE
+  },
+  {
+    // A podcast cold open's captions, as Deep End with Lecrae sets them (measured): plain white semibold, three
+    // words to a page that swap on a cut, a soft shadow and no edge, low in a wide frame (position chest). Its
+    // letters are 110 px to the em in a 1080p frame; sizes here are libass's, the face's ascent and descent
+    // together (1.21 em for Inter), and a wide frame sets them at three quarters.
+    id: 'cold-open',
+    name: 'Cold open',
+    style: {
+      ...BASE,
+      fontFamily: 'Inter SemiBold',
+      wordsPerGroup: 3,
+      fontSizePx: 178,
+      textColor: '#FFFFFF',
+      activeColor: '#FFFFFF',
+      outlinePx: 0,
+      shadowPx: 5,
+      uppercase: false,
+      activeScale: 1,
+      steady: true
+    }
   },
   {
     // As the most-watched podcast clips set them (docs/research/podcasts.md; Bobbi Althoff's own clips,

@@ -1,6 +1,7 @@
 import { BoxSchema } from './box'
 import { z } from 'zod'
 import { ScopeReadingSchema } from '../scopes/maths'
+import { ScreenReadingSchema } from '../screen'
 import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
@@ -111,7 +112,9 @@ export const SourceSchema = z.object({
   /** Where the speaker was across the recording, found by face finding, for following them into a narrower frame. */
   subject: SubjectSchema.optional(),
   /** What its picture measures (shared/scopes): luma, clipping, saturation and cast, for grading by numbers. */
-  scopes: ScopeReadingSchema.optional()
+  scopes: ScopeReadingSchema.optional(),
+  /** What is on screen now and then (shared/screen): lines of text and where they sit, and the speaker's window. */
+  screen: ScreenReadingSchema.optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 
@@ -178,7 +181,17 @@ export const TreatmentSchema = z.object({
   /** False hides the captions while this beat plays (over a title, a screen recording); absent follows the video's. */
   captions: z.boolean().optional(),
   /** A shaky handheld shot held still in the export, the picture cropped in a little to hide the edges it moves. */
-  steady: z.boolean().optional()
+  steady: z.boolean().optional(),
+  /**
+   * Its own sound left out: the picture plays, the music and the sound effects with it, but no voice. Under a
+   * title slug, or a moment held under the music alone.
+   */
+  mute: z.boolean().optional(),
+  /**
+   * Played as it was said: its pauses and ums kept when the video is tightened. A reaction whose timing is the
+   * joke ("That's... that is... um... yeah."), a beat the person wants to breathe.
+   */
+  asSaid: z.boolean().optional()
 })
 export type Treatment = z.infer<typeof TreatmentSchema>
 
@@ -229,7 +242,12 @@ export const CaptionSpecSchema = z.object({
    * tender or grave word, dark for a word of horror or contempt (red serif), punch for a word that hits
    * (heavy capitals). The Diary of a CEO sets its big words this way.
    */
-  keyLooks: z.record(z.string(), z.enum(KEY_LOOKS)).optional()
+  keyLooks: z.record(z.string(), z.enum(KEY_LOOKS)).optional(),
+  /**
+   * How big the captions are against their look's own size: 1 as the look is, 1.2 a fifth bigger. Lecrae's
+   * Shorts set the quiet sermon captions about a fifth bigger than The Life Church does.
+   */
+  size: z.number().min(0.5).max(2).optional()
 })
 export type CaptionSpec = z.infer<typeof CaptionSpecSchema>
 
@@ -329,7 +347,15 @@ export const CutSchema = z.object({
    * says them: a version's ops never carry the mix op (edit/doc).
    */
   voiceMix: OwnMixSchema.optional(),
-  musicMix: OwnMixSchema.optional()
+  musicMix: OwnMixSchema.optional(),
+  /**
+   * The highest beat number the edit has given, 31 once there has been a b31, kept when that beat is cut
+   * out, so a beat made later (a split, an insert, a cold open) goes above it and never takes the id of one
+   * that notes, graphics or earlier versions still name (edit/ops nextBeatId). Absent, as in an edit saved
+   * before it or one that has never lost its highest beat, the highest of the cut's own beats; an edit saved
+   * before it gets it from every version when it is opened (edit/doc withBeatsCounted). 0.2.13 drops it.
+   */
+  lastBeat: z.number().int().nonnegative().optional()
 })
 export type Cut = z.infer<typeof CutSchema>
 
@@ -402,7 +428,8 @@ export const OpSchema = z.discriminatedUnion('op', [
     op: z.literal('fade'),
     inSec: z.number().min(0).max(5).optional(),
     outSec: z.number().min(0).max(5).optional(),
-    color: z.enum(['black', 'white']).optional()
+    color: z.enum(['black', 'white']).optional(),
+    blurInSec: z.number().min(0).max(3).optional()
   }),
   // Split edits into beats: sec 0 puts picture and sound back together.
   z.object({ op: z.literal('jcut'), beats: z.array(beatId).min(1), sec: z.number().min(0).max(MAX_SPLIT_EDIT_SEC) }),
@@ -440,7 +467,11 @@ export const OpSchema = z.discriminatedUnion('op', [
   // with no bites, it takes the cold open out.
   z.object({
     op: z.literal('cold-open'),
-    bites: z.array(z.object({ from: wordId, to: wordId })).max(16)
+    // The Diary of a CEO's cold opens run to 29 lines from 20 places.
+    bites: z.array(z.object({ from: wordId, to: wordId })).max(40),
+    // The show's title between the cold open and the conversation: a silent beat of white words on black, a hard
+    // cut in and out, as The Diary of a CEO and Impaulsive cut theirs. An empty title is the edit's own.
+    slug: z.object({ title: z.string().max(80), sec: z.number().min(0.8).max(4) }).optional()
   }),
   // Another camera of a recording, lined up by offsetSec; of null takes the camera out of the edit.
   z.object({

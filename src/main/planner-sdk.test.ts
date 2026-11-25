@@ -10,7 +10,12 @@ vi.mock('electron', async () => {
 })
 vi.mock('./apikey', () => ({ readApiKey: vi.fn(() => 'sk-ant-api03-test'), hasApiKey: () => true }))
 
+import { execFileSync } from 'child_process'
+import { mkdtempSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { createDoc, wordsFromTranscript, type EditDoc } from '../shared/edit'
+import { FFMPEG_PATH } from './ffmpeg'
 import { keyMessage } from '../shared/setup'
 import { readApiKey } from './apikey'
 import { MODEL, planEdit } from './planner'
@@ -85,6 +90,36 @@ const PLAN = {
 }
 
 describe('planning through the SDK', () => {
+  it('looks at the footage before planning, and at its own edit before offering it', async () => {
+    // A real little recording, so there are frames to see and stills to draw.
+    const dir = mkdtempSync(join(tmpdir(), 'cutalong-look-'))
+    const path = join(dir, 'talk.mp4')
+    execFileSync(FFMPEG_PATH, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=6', '-pix_fmt', 'yuv420p', path])
+    const doc = { ...talk(), sources: [{ ...talk().sources[0], path, width: 640, height: 360 }] }
+    const pop = (text: string) => ({
+      op: 'motion-add', kind: 'keyword', from: 'w6', to: '', text: [text], items: [], values: [], box: [], icon: '', style: 'plate', place: '', color: '', fx: [], pin: ''
+    })
+    const answers = [called({ ...PLAN, ops: [pop('Settings')] }), called({ ...PLAN, ops: [pop('Open the settings')], summary: 'Fixed.' })]
+    const sent: { messages: { role: string; content: { type: string; text?: string; tool_use_id?: string }[] }[] }[] = []
+    const fake = vi.fn(async (_u: string | URL | Request, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)))
+      return (answers.shift() ?? answers[0])()
+    })
+    const r = await planEdit({ doc, request: 'make it pop', notes: [] }, { fetch: fake as unknown as typeof fetch })
+    // The first ask carries a frame of the footage every few seconds, each labelled.
+    const first = sent[0].messages[0].content
+    expect(first.filter((b) => b.type === 'image').length).toBeGreaterThanOrEqual(4)
+    expect(first.some((b) => b.type === 'text' && /^s1 at 0:0\d\.\d/.test(b.text ?? ''))).toBe(true)
+    // The second carries the plan's own stills back, and its answer is the plan offered.
+    expect(sent).toHaveLength(2)
+    const back = sent[1].messages[2].content
+    expect(back[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'toolu_plan' })
+    expect(back.filter((b) => b.type === 'image').length).toBeGreaterThan(0)
+    expect(r.ok && r.summary).toBe('Fixed.')
+    expect(r.ok && (r.ops[0] as { text: string[] }).text).toEqual(['Open the settings'])
+  }, 60000)
+
+
   it('sends the commands with the cut, and takes a plan of edit ops and commands as steps in order', async () => {
     const claude = standIn(text(JSON.stringify(PLAN)))
     const r = await planEdit(

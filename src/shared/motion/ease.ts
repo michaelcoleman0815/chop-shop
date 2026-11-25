@@ -35,6 +35,27 @@ export function ease(curve: Ease | undefined, p: number): number {
   switch (curve) {
     case 'hold':
       return x >= 1 ? 1 : 0
+    case 'out-quad':
+      return 1 - (1 - x) ** 2
+    case 'out-cubic':
+      return 1 - (1 - x) ** 3
+    case 'out-quart':
+      return 1 - (1 - x) ** 4
+    case 'out-quint':
+      return 1 - (1 - x) ** 5
+    case 'out-expo':
+      return x >= 1 ? 1 : 1 - 2 ** (-10 * x)
+    case 'in-quad':
+      return x * x
+    case 'in-cubic':
+      return x * x * x
+    case 'in-out-quad':
+      return x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2
+    case 'in-out-cubic':
+      return x < 0.5 ? 4 * x ** 3 : 1 - (-2 * x + 2) ** 3 / 2
+    case 'in-out-quart':
+      return x < 0.5 ? 8 * x ** 4 : 1 - (-2 * x + 2) ** 4 / 2
+    case 'back-out':
     case 'overshoot':
       return backOut(x)
     case 'bounce':

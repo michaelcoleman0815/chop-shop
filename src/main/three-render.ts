@@ -3,6 +3,7 @@ import { is } from '@electron-toolkit/utils'
 import { BrowserWindow } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
+import { shutterFor } from '../shared/motion/draw'
 import { fontInfo } from '../shared/motion/fonts'
 import type { Scene3DLayer, Size, VideoLayer } from '../shared/motion/types'
 import type { HostAsk, HostReply } from '../shared/three/host-protocol'
@@ -257,7 +258,7 @@ export function scene3dFrames(opts: Scene3DFramesOptions): Scene3DFrames {
             frames.push({ object: c.object, data: new Uint8Array(px.buffer, px.byteOffset, px.byteLength), width: img.width, height: img.height })
           }
         }
-        const r = await open().ask({ kind: 'frame', clip: h.key, local: t - layer.start, length: layer.end - layer.start, videos: frames })
+        const r = await open().ask({ kind: 'frame', clip: h.key, local: t - layer.start, length: layer.end - layer.start, videos: frames, shutter: shutterFor(opts.fps) })
         if (!r.data || !r.width || !r.height) continue
         const data = new Uint8ClampedArray(r.data.buffer, r.data.byteOffset, r.data.byteLength)
         h.canvas.getContext('2d').putImageData(new ImageData(data, r.width, r.height), 0, 0)

@@ -94,10 +94,7 @@ describe.skipIf(!FFMPEG)('rendering speed, freeze frames and reverse', () => {
     spoken = flat(createDoc({ id: 'd', title: 'T', source, words: wordsFromTranscript(WORDS, 's1') }), [])
     // The whole recording as one beat, with no words to frame it.
     const none = createDoc({ id: 'e', title: 'T', source, words: [] })
-    silent = flat(none, [
-      { op: 'remove', beats: ['b1'] },
-      { op: 'insert', to: 0, beat: { source: 's1', inSec: 0, outSec: 6 } }
-    ])
+    silent = flat(none, [])
   })
 
   afterAll(() => {
@@ -166,8 +163,9 @@ describe.skipIf(!FFMPEG)('rendering speed, freeze frames and reverse', () => {
     const r = applyOps(
       currentCut(base),
       [
-        { op: 'remove', beats: ['b1'] },
-        { op: 'insert', to: 0, beat: { source: 's1', inSec: 0.5, outSec: 2.5 } },
+        // The recording's own beat trimmed to the stretch, so it is still b1.
+        { op: 'trim', beat: 'b1', edge: 'in', sec: 0.5 },
+        { op: 'trim', beat: 'b1', edge: 'out', sec: 2.5 },
         { op: 'speed', beats: ['b1'], speed: 0.5 },
         { op: 'aspect', aspect: 'original' },
         { op: 'loudness', lufs: null }

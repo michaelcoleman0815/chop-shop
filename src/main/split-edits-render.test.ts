@@ -33,8 +33,9 @@ describe.skipIf(!FFMPEG)('rendering J and L cuts', () => {
     const r = applyOps(
       currentCut(base),
       [
-        { op: 'remove', beats: ['b1'] },
-        { op: 'insert', to: 0, beat: { source: 's1', inSec: 0.5, outSec: 2.5 } },
+        // The recording's own beat trimmed to the first shot, so the shots are b1 and b2.
+        { op: 'trim', beat: 'b1', edge: 'in', sec: 0.5 },
+        { op: 'trim', beat: 'b1', edge: 'out', sec: 2.5 },
         { op: 'insert', to: 1, beat: { source: 's1', inSec: 3.5, outSec: 5.5 } },
         { op: 'aspect', aspect: 'original' },
         { op: 'loudness', lufs: null }

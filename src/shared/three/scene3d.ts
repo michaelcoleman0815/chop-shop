@@ -1,6 +1,8 @@
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { num } from '../anim'
-import type { Size } from '../motion/types'
+import { bounds, flatten, iconElementCmds, parsePath } from '../motion/geometry'
+import type { IconNode, Size } from '../motion/types'
 import { layoutGlyphs, type GlyphFont } from './glyphs'
 import { HOME_FOV, homeDistance, TITLE_3D_FACE, type Camera3D, type Light3D, type Object3D, type Scene3D } from './spec'
 
@@ -38,6 +40,12 @@ export interface Scene3DSources {
   words?(obj: Object3D, w: number, h: number): Picture | null
   /** A model's graph once it has loaded, shared: the scene builds its own copy of it. */
   model?(src: string): THREE.Object3D | null
+  /** A brand's mark by its Simple Icons slug: its outline as SVG path data in a 24-unit box, and its colour. */
+  logo?(slug: string): { path: string; hex: string } | null
+  /** A mark's icon drawn flat in its colour on nothing, w by h pixels; null while the icons load. */
+  icon?(obj: Object3D, w: number, h: number): Picture | null
+  /** A Lucide icon's shapes by name, for a mark made solid; null while the icons load, or when there is none. */
+  iconNodes?(name: string): IconNode[] | null
 }
 
 const rad = (deg: number): number => (deg * Math.PI) / 180
@@ -104,7 +112,9 @@ interface Built {
   /** Every material it draws with, and the opacity each has of its own, which a fade multiplies. */
   materials: { m: THREE.Material; opacity: number; transparent: boolean }[]
   /** A card's picture, kept fresh as its video plays. */
-  texture?: { tex: THREE.Texture; face: THREE.MeshBasicMaterial; stamp: number | string | null; from: 'picture' | 'words' }
+  texture?: { tex: THREE.Texture; face: THREE.MeshBasicMaterial | THREE.MeshStandardMaterial; stamp: number | string | null; from: 'picture' | 'words' }
+  /** Pictures drawn once for it (a mark's icon), freed with it. */
+  drawn?: THREE.Texture[]
 }
 
 interface BuiltLight {
@@ -168,6 +178,76 @@ export function titleShapes(font: GlyphFont, text: string, size: number): THREE.
   return shapes
 }
 
+/**
+ * A brand mark's outline as shapes, `size` across its longer side, centred on the origin, the right way up:
+ * SVG runs down the page and three.js up it. Holes (the play button cut from YouTube's) stay holes.
+ */
+export function markShapes(path: string, size: number): THREE.Shape[] {
+  const cmds = parsePath(path)
+  const box = bounds(cmds)
+  const k = size / Math.max(box.w, box.h, 1e-6)
+  const cx = box.x + box.w / 2
+  const cy = box.y + box.h / 2
+  const X = (x: number): number => (x - cx) * k
+  const Y = (y: number): number => -(y - cy) * k
+  const shapes = new THREE.ShapePath()
+  for (const c of cmds) {
+    if (c[0] === 'M') shapes.moveTo(X(c[1]), Y(c[2]))
+    else if (c[0] === 'L') shapes.lineTo(X(c[1]), Y(c[2]))
+    else if (c[0] === 'C') shapes.bezierCurveTo(X(c[1]), Y(c[2]), X(c[3]), Y(c[4]), X(c[5]), Y(c[6]))
+  }
+  return shapes.toShapes()
+}
+
+/** How wide a Lucide icon's strokes are, in its 24-unit grid, as the icons draw them. */
+const ICON_STROKE = 2
+
+/**
+ * A Lucide icon made solid: every stroke a rod of the stroke's width with round ends, each filled part a slab,
+ * `size` across its 24-unit grid, centred on the origin, the right way up, `depth` deep. The rods overlap where
+ * strokes meet, which rounds every join as the drawn icon has it.
+ */
+export function iconSolid(nodes: IconNode[], size: number, depth: number): THREE.BufferGeometry | null {
+  const k = size / 24
+  const r = (ICON_STROKE / 2) * k
+  const at = (p: [number, number]): THREE.Vector2 => new THREE.Vector2((p[0] - 12) * k, -(p[1] - 12) * k)
+  const shapes: THREE.Shape[] = []
+  for (const node of nodes) {
+    const { cmds, filled } = iconElementCmds(node)
+    for (const line of flatten(cmds, 0.25)) {
+      const pts = line.map(at)
+      if (filled && pts.length > 2) shapes.push(new THREE.Shape(pts))
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i]
+        const b = pts[i + 1]
+        const len = a.distanceTo(b)
+        if (len < 1e-6) continue
+        // A rod from a to b: its two long sides, and a half circle round each end.
+        const ang = Math.atan2(b.y - a.y, b.x - a.x)
+        const s = new THREE.Shape()
+        s.absarc(b.x, b.y, r, ang - Math.PI / 2, ang + Math.PI / 2, false)
+        s.absarc(a.x, a.y, r, ang + Math.PI / 2, ang + (3 * Math.PI) / 2, false)
+        s.closePath()
+        shapes.push(s)
+      }
+      // A lone point still shows, as a dot.
+      if (pts.length === 1) shapes.push(new THREE.Shape().absarc(pts[0].x, pts[0].y, r, 0, Math.PI * 2, false))
+    }
+  }
+  if (!shapes.length) return null
+  const pieces = shapes.map((s) => {
+    const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 5 })
+    // Merged pieces must carry the same attributes: an extrusion has no index to drop, its groups are cleared.
+    g.clearGroups()
+    return g
+  })
+  const merged = mergeGeometries(pieces, false)
+  for (const g of pieces) g.dispose()
+  if (!merged) return null
+  merged.translate(0, 0, -depth / 2)
+  return merged
+}
+
 /** The size a card is when it names none: most of the frame's short side wide, as tall as its picture is. */
 export function cardSize(o: Object3D, design: Size, aspect: number | null): { w: number; h: number } {
   const ratio = aspect && aspect > 0 ? aspect : 16 / 9
@@ -229,6 +309,7 @@ export class Scene3DView {
       const built = this.build(o, key)
       built.root.name = o.id
       built.root.renderOrder = order
+      built.root.userData.built = true
       this.scene.add(built.root)
       this.objects.set(o.id, built)
     })
@@ -237,12 +318,29 @@ export class Scene3DView {
         this.drop(b)
         this.objects.delete(id)
       }
+    // Each object under its parent, when it names one that is there and is not its own child; else the scene.
+    const parentOf = new Map(spec.objects.map((o) => [o.id, o.parent]))
+    const loops = (id: string): boolean => {
+      const met = new Set<string>()
+      for (let at: string | undefined = id; at; at = parentOf.get(at)) {
+        if (met.has(at)) return true
+        met.add(at)
+      }
+      return false
+    }
+    for (const o of spec.objects) {
+      const b = this.objects.get(o.id)
+      if (!b) continue
+      const under = o.parent && o.parent !== o.id && !loops(o.id) ? this.objects.get(o.parent)?.root : undefined
+      const holder = under ?? this.scene
+      if (b.root.parent !== holder) holder.add(b.root)
+    }
 
     const lights = spec.lights.length ? spec.lights : defaultLights(this.design)
     const lit = new Set<string>()
     for (const l of lights) {
       lit.add(l.id)
-      const key = `${l.type}|${l.color ?? ''}|${l.angle ?? ''}`
+      const key = `${l.type}|${l.color ?? ''}|${l.angle ?? ''}|${l.shadow ? 1 : 0}`
       const was = this.lights.get(l.id)
       if (was && was.key === key) continue
       if (was) this.dropLight(was)
@@ -268,7 +366,9 @@ export class Scene3DView {
       b.root.position.set(...p.position)
       b.root.rotation.set(p.rotation[0], p.rotation[1], p.rotation[2], 'XYZ')
       b.root.scale.setScalar(Math.abs(p.scale) < 1e-6 ? 1e-6 : p.scale)
-      b.root.visible = p.opacity > 0.002
+      // Faded out, its own meshes hide; objects parented to it keep their own opacity, as After Effects has it.
+      const shown = p.opacity > 0.002
+      for (const c of b.root.children) if (!c.userData.built) c.visible = shown
       for (const { m, opacity, transparent } of b.materials) {
         const fades = p.opacity < 0.999
         const see = transparent || fades
@@ -290,6 +390,7 @@ export class Scene3DView {
       light.position.set(num(l.x, local, length, 0), num(l.y, local, length, 0), num(l.z, local, length, homeDistance(this.design)))
       if (light instanceof THREE.SpotLight || light instanceof THREE.DirectionalLight)
         light.target.position.set(num(l.tx, local, length, 0), num(l.ty, local, length, 0), num(l.tz, local, length, 0))
+      if (light.castShadow) this.fitShadow(light)
     }
     const cam = cameraPose(this.spec.camera, this.design, local, length)
     this.camera.position.set(...cam.position)
@@ -300,6 +401,38 @@ export class Scene3DView {
       this.camera.updateProjectionMatrix()
     }
     this.scene.updateMatrixWorld(true)
+  }
+
+  /**
+   * A shadow-casting light's shadow camera fitted round the whole scene as it stands: a scene measured in
+   * pixels is thousands of units across, far past three's defaults, and a tight fit keeps the shadow sharp.
+   */
+  private fitShadow(light: THREE.Light): void {
+    this.scene.updateMatrixWorld(true)
+    const box = new THREE.Box3()
+    for (const b of this.objects.values()) box.expandByObject(b.root)
+    if (box.isEmpty()) return
+    const sphere = box.getBoundingSphere(new THREE.Sphere())
+    const r = Math.max(1, sphere.radius)
+    if (light instanceof THREE.DirectionalLight) {
+      const cam = light.shadow.camera
+      const to = light.position.clone().sub(light.target.position)
+      const reach = to.length() || 1
+      // The light stands where its keys put it, looking at its target; its view is fitted round the scene.
+      const centreDepth = to.normalize().dot(light.position.clone().sub(sphere.center))
+      cam.left = -r
+      cam.right = r
+      cam.top = r
+      cam.bottom = -r
+      cam.near = Math.max(1, centreDepth - r * 1.1)
+      cam.far = centreDepth + r * 1.1 + reach * 0.01
+      cam.updateProjectionMatrix()
+    } else if (light instanceof THREE.SpotLight) {
+      const d = light.position.distanceTo(sphere.center)
+      light.shadow.camera.near = Math.max(1, d - r * 1.1)
+      light.shadow.camera.far = d + r * 1.1
+      light.shadow.camera.updateProjectionMatrix()
+    }
   }
 
   dispose(): void {
@@ -316,7 +449,26 @@ export class Scene3DView {
     if (o.type === 'text') ready = !!this.sources.font?.(o.font ?? TITLE_3D_FACE)
     if (o.type === 'model') ready = !!o.src && !!this.sources.model?.(o.src)
     if (o.type === 'card') ready = this.cardAspect(o)
+    if (o.type === 'mark')
+      ready = o.logo ? !!this.sources.logo?.(o.logo) : !!o.icon && (!!this.solidIcon(o) || !!this.markPicture(o))
     return JSON.stringify([shape, ready])
+  }
+
+  /** The longest side a mark is drawn at: a fifth of the frame's short side when it names none. */
+  private markSize(o: Object3D): number {
+    return o.size ?? Math.min(this.design.width, this.design.height) * 0.2
+  }
+
+  /** A mark's icon's shapes, when it is made solid (any depth but 0) and the icons are in. */
+  private solidIcon(o: Object3D): IconNode[] | null {
+    if (!o.icon || o.depth === 0) return null
+    return this.sources.iconNodes?.(o.icon) ?? null
+  }
+
+  /** A mark's icon as a picture, at most 512 pixels a side. */
+  private markPicture(o: Object3D): Picture | null {
+    const side = Math.max(8, Math.min(512, Math.round(this.markSize(o))))
+    return this.sources.icon?.(o, side, side) ?? null
   }
 
   /** A card's picture's shape once it is known, or null while it is not. */
@@ -344,7 +496,7 @@ export class Scene3DView {
         const r = o.radius ?? Math.min(w, h) * 0.04
         const shape = roundedRect(w, h, r)
         const depth = o.depth ?? 0
-        const shows = !!o.src || !!o.title
+        const shows = !!o.src || !!o.title || !!o.pattern?.length
         const back = standard(o, '#F2F2F0', 0, 0.6)
         if (depth > 0) {
           const body = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 8 })
@@ -363,7 +515,10 @@ export class Scene3DView {
           tex.generateMipmaps = false
           tex.minFilter = THREE.LinearFilter
           tex.magFilter = THREE.LinearFilter
-          const face = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, transparent: false })
+          // A picture or words show as a screen does, unlit; a papered card is a surface, lit and shadowed.
+          const face = o.pattern?.length
+            ? new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.9, metalness: 0 })
+            : new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, transparent: false })
           // Until its picture is in, the card shows its own colour.
           face.visible = false
           mesh(front, face)
@@ -411,6 +566,43 @@ export class Scene3DView {
       case 'torus':
         mesh(new THREE.TorusGeometry(o.radius ?? 160, o.tube ?? 50, 32, 96), standard(o))
         break
+      case 'mark': {
+        const size = this.markSize(o)
+        const logo = o.logo ? this.sources.logo?.(o.logo) : null
+        if (logo) {
+          // The brand's outline in its colour, extruded, its edges just softened.
+          const depth = o.depth ?? size * 0.16
+          const bevel = Math.min(size * 0.015, depth / 3)
+          const geometry = new THREE.ExtrudeGeometry(markShapes(logo.path, size), {
+            depth,
+            curveSegments: 10,
+            bevelEnabled: bevel > 0.01,
+            bevelThickness: bevel,
+            bevelSize: bevel * 0.6,
+            bevelSegments: 2
+          })
+          geometry.translate(0, 0, -depth / 2)
+          mesh(geometry, standard(o, `#${logo.hex}`, 0.05, 0.35))
+          break
+        }
+        const nodes = this.solidIcon(o)
+        const solid = nodes ? iconSolid(nodes, size, o.depth ?? size / 8) : null
+        if (solid) {
+          mesh(solid, standard(o, '#FFFFFF', 0, 0.45))
+          break
+        }
+        const pic = o.icon ? this.markPicture(o) : null
+        if (!pic) break
+        // The icon cut out flat: drawn where its strokes are, nothing round them.
+        const tex = new THREE.Texture(pic.image)
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.needsUpdate = true
+        const m = new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.04, roughness: 0.55, side: THREE.DoubleSide })
+        const plane = mesh(new THREE.PlaneGeometry(size, size), m)
+        plane.userData.flat = true
+        out.drawn = [tex]
+        break
+      }
       case 'model': {
         const loaded = o.src ? this.sources.model?.(o.src) : null
         if (!loaded) break
@@ -437,6 +629,14 @@ export class Scene3DView {
         break
       }
     }
+    // Everything casts shadows and takes them, from a light that casts them (Light3D.shadow); a cut-out casts none,
+    // its see-through round its strokes would shadow as a square.
+    group.traverse((n) => {
+      const m = n as THREE.Mesh
+      if (!m.isMesh) return
+      m.castShadow = !m.userData.flat
+      m.receiveShadow = true
+    })
     return out
   }
 
@@ -448,7 +648,8 @@ export class Scene3DView {
     if (t.from === 'picture') pic = this.sources.picture?.(o, local) ?? null
     else {
       const { w, h } = cardSize(o, this.design, null)
-      const k = Math.min(1, 2048 / Math.max(w, h))
+      // A papered wall is big and seen close: it gets a larger picture than a card's words need.
+      const k = Math.min(1, (o.pattern?.length ? 4096 : 2048) / Math.max(w, h))
       pic = this.sources.words?.(o, Math.round(w * k), Math.round(h * k)) ?? null
     }
     if (!pic) return
@@ -461,13 +662,16 @@ export class Scene3DView {
   }
 
   private drop(b: Built): void {
-    this.scene.remove(b.root)
+    // Objects parented to it go back to the scene until set() puts them where they belong.
+    for (const c of [...b.root.children]) if (c.userData.built) this.scene.add(c)
+    b.root.parent?.remove(b.root)
     b.root.traverse((n) => {
       const m = n as THREE.Mesh
       if (m.isMesh && !m.userData.shared) m.geometry.dispose()
     })
     for (const { m } of b.materials) m.dispose()
     b.texture?.tex.dispose()
+    for (const t of b.drawn ?? []) t.dispose()
   }
 
   private dropLight(b: BuiltLight): void {
@@ -483,13 +687,24 @@ function makeLight(l: Light3D): THREE.Light {
     case 'ambient':
       return new THREE.AmbientLight(color, LEVEL)
     case 'directional':
-      return new THREE.DirectionalLight(color, LEVEL)
+      return casting(new THREE.DirectionalLight(color, LEVEL), l)
     case 'point':
       // No falloff: a scene measured in pixels is thousands of units across.
       return new THREE.PointLight(color, LEVEL, 0, 0)
     case 'spot':
-      return new THREE.SpotLight(color, LEVEL, 0, rad(l.angle ?? 30), 0.3, 0)
+      return casting(new THREE.SpotLight(color, LEVEL, 0, rad(l.angle ?? 30), 0.3, 0), l)
   }
+}
+
+/** A light set to cast soft shadows when the scene asks it to. */
+function casting<T extends THREE.DirectionalLight | THREE.SpotLight>(light: T, l: Light3D): T {
+  if (!l.shadow) return light
+  light.castShadow = true
+  light.shadow.mapSize.set(2048, 2048)
+  light.shadow.bias = -0.0004
+  light.shadow.normalBias = 0.6
+  light.shadow.radius = 6
+  return light
 }
 
 /** A renderer for 3D clips: transparent where nothing is drawn, colours as the 2D layers have them. */
@@ -506,10 +721,35 @@ export function createRenderer(canvas?: HTMLCanvasElement | OffscreenCanvas): TH
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.NoToneMapping
   renderer.setPixelRatio(1)
+  // Soft shadows, cast only by a light that asks (Light3D.shadow).
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
   return renderer
 }
 
 /** Draws a scene at a moment onto the renderer's canvas, `pixels` big. */
+/**
+ * Whether anything in a scene moves between two moments: an object, the camera or a light whose keys or
+ * expression give another value. A still moment needs drawing once; a moving one is averaged across the shutter.
+ */
+export function sceneMoves(spec: Scene3D, a: number, b: number, length: number): boolean {
+  const differs = (o: object | undefined): boolean => {
+    if (!o) return false
+    for (const v of Object.values(o)) {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) continue
+      if (!('keys' in v) && !('expr' in v)) continue
+      const x = num(v as never, a, length, 0)
+      const y = num(v as never, b, length, 0)
+      if (Math.abs(x - y) > 1e-3) return true
+    }
+    return false
+  }
+  return differs(spec.camera) || spec.objects.some(differs) || (spec.lights ?? []).some(differs)
+}
+
+/** How many moments a moving 3D frame is averaged from across its shutter. */
+export const SCENE3D_MOMENTS = 8
+
 export function renderScene3D(renderer: THREE.WebGLRenderer, view: Scene3DView, spec: Scene3D, local: number, length: number, pixels: Size): void {
   view.set(spec)
   view.pose(local, length)

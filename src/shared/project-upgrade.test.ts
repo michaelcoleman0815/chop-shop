@@ -48,6 +48,26 @@ describe('opening a project saved by an earlier version', () => {
     expect(project.chat).toHaveLength(1)
   })
 
+  it('gives an edit saved before cuts kept their highest beat number one, so no new beat takes an old id', () => {
+    const words = wordsFromTranscript(
+      [
+        { text: 'One.', startSec: 0.5, endSec: 0.9 },
+        { text: 'Two.', startSec: 2.0, endSec: 2.4 }
+      ],
+      's1'
+    )
+    const doc = commit(createDoc({ id: 'd', title: 'Old', source: SOURCE, words }), [{ op: 'remove', beats: ['b2'] }], 'x').doc
+    expect(currentCut(doc).lastBeat).toBe(2)
+    // 0.2.13 reads it, leaving out what it does not know.
+    const there = SHIPPED_0_2_13.safeParse(JSON.parse(JSON.stringify(doc)))
+    expect(there.success ? [] : there.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`)).toEqual([])
+    // As a build before it saved it: no cut says the number, and only v1 still has b2.
+    const old = JSON.parse(JSON.stringify(doc))
+    for (const v of old.versions) delete v.cut.lastBeat
+    const { project } = upgradeProject(projectWith(old))
+    expect(currentCut(project.edit!).lastBeat).toBe(2)
+  })
+
   it('opens the chat alone, and says why, when the edit cannot be read at all', () => {
     const { project, unreadable } = upgradeProject(projectWith({ versions: 'not a list' }))
     expect(project.edit).toBeNull()

@@ -106,6 +106,21 @@ describe('the planner request', () => {
     expect(currentCut(doc).removed).toEqual(['w5'])
   })
 
+  it('says what is on screen in each beat that shows a page of words, and where the speaker is', () => {
+    // A screen recording read every two seconds: a page of words, the speaker kept in a window on the right.
+    const page = [
+      { text: 'Most people never open the settings at all', box: [0.02, 0.3, 0.6, 0.04] as [number, number, number, number] },
+      { text: 'Here is the thing about defaults', box: [0.02, 0.2, 0.5, 0.04] as [number, number, number, number] },
+      { text: 'Settings', box: [0.02, 0.1, 0.1, 0.04] as [number, number, number, number] }
+    ]
+    const screen = { everySec: 2, samples: [0, 2, 4].map((t) => ({ t, lines: page, window: [0.76, 0.23, 0.23, 0.55] as [number, number, number, number] })) }
+    const doc = createDoc({ id: 'd', title: 't', source: { ...source, screen }, words })
+    const text = renderRequest(doc, '', doc.notes)
+    expect(text).toContain('<screen>')
+    expect(text).toMatch(/b2: a page of words over \[0\.02, 0\.10, 0\.60, 0\.24\]; the speaker in a window at \[0\.76, 0\.23, 0\.23, 0\.55\], room beside it \[0\.00, 0\.00, 0\.74, 1\.00\]; talked about: "Most people never open the settings at all"/)
+    expect(PLANNER_SYSTEM).toContain('A <screen> block, when present, says what is on screen in each beat')
+  })
+
   it('holds a note left on a stretch picked on the strip to its beats', () => {
     let doc = createDoc({ id: 'd', title: 't', source, words })
     doc = addNote(doc, 'Make this black and white.', 'b2', { from: 'b2', to: 'b1' })

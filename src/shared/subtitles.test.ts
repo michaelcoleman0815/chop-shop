@@ -3,7 +3,7 @@ import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import { fileURLToPath } from 'url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { applyOps, createDoc, currentCut, DEFAULT_CAPTIONS, resolveCut, wordsFromTranscript } from './edit'
-import { fontInfo, MOTION_FONTS } from './motion'
+import { buildScene, DEFAULT_THEME, designSize, fontInfo, MOTION_FONTS } from './motion'
 import {
   captionStyleFor,
   drawSubtitle,
@@ -14,7 +14,7 @@ import {
   subtitleWords,
   type SubtitleCue,
   type TextMeasurer, fitFontPx, plainWords, buildGroups, BUILD_HOLD_SEC, shownWords, landedGroups, styleCues, landsLine, CAPTION_HOLD_SEC,
-  captionSeams, SEAM_FRAC, subtitleBand } from './subtitles'
+  captionSeams, SEAM_FRAC, subtitleBand, WIDE_POSITION_FRAC, captionSits, sentenceStarts } from './subtitles'
 import type { TranscriptWord } from './types'
 import { groupWords } from './words'
 
@@ -29,6 +29,8 @@ const FONTS = fileURLToPath(new URL('../../resources/fonts/', import.meta.url))
 beforeAll(() => {
   for (const f of MOTION_FONTS) GlobalFonts.registerFromPath(FONTS + f.file, f.family)
 })
+
+const presetStyle = (id: string) => CAPTION_PRESETS.find((p) => p.id === id)!.style
 
 const said = (texts: string[], from = 1, step = 0.4, each = 0.3): TranscriptWord[] =>
   texts.map((text, i) => ({ text, startSec: from + i * step, endSec: from + i * step + each }))
@@ -74,6 +76,14 @@ describe('subtitle cues', () => {
     expect(opening[1].start).toBeCloseTo(0.5)
     // A first word two seconds in waits for itself.
     expect(styleCues(said(['I', 'saw', 'you.'], 2), podcast)[0].start).toBe(2)
+  })
+
+  it('starts a sentence with a capital where the cut starts one', () => {
+    // "right now." then a bite that began after an um: "a lot of the crazy stuff", as Deep End's cold open cuts it.
+    const texts = sentenceStarts(said(['crazy', 'right', 'now.', 'a', 'lot', 'of', 'iPhone', 'fans.', 'iPhone', 'too.'])).map((w) => w.text)
+    expect(texts).toEqual(['Crazy', 'right', 'now.', 'A', 'lot', 'of', 'iPhone', 'fans.', 'iPhone', 'too.'])
+    // Words heard without full stops are left as they were heard.
+    expect(sentenceStarts(said(['one', 'two', 'three']))[0].text).toBe('one')
   })
 
   it('leaves a phrase’s comma and full stop off in a bare look, and keeps its question mark', () => {
@@ -169,7 +179,7 @@ describe('subtitle cues', () => {
     expect(kept.length).toBeLessThan(resolved.words.length)
   })
 
-  it('holds the words said while a keyword pop sits where the subtitles do, and not while it sits clear of them', () => {
+  it('drops the words said under a keyword pop below it, holds them when there is no room, and leaves a clear one be', () => {
     const words = wordsFromTranscript(said(['If', 'you', 'get', 'paged', 'at', 'night', 'you', 'go.']), 's1')
     const source = { id: 's1', path: '/a.mov', durationSec: 5, width: 1080, height: 1920, fps: 30 }
     const doc = createDoc({ id: 'd', title: 't', source, words })
@@ -181,10 +191,98 @@ describe('subtitle cues', () => {
     const at = (text: string) => resolved.words.find((w) => w.text === text)!
     const [start, end] = [at('paged').outStart - 0.05, at('night').outEnd]
     const pop = (top: number, bottom: number) => ({ items: [{ start, end, band: { top, bottom } }], frame })
-    const across = subtitleWords(cut, resolved, pop(own.top + 20, own.bottom + 200)).words.map((w) => w.text)
-    expect(across).toEqual(['If', 'you', 'get', 'you', 'go.'])
+    // Room under it: the three said under it drop below it, and none is held.
+    expect(subtitleWords(cut, resolved, pop(own.top + 20, own.bottom + 200)).words).toHaveLength(resolved.words.length)
+    const sits = captionSits(cut, resolved.words, pop(own.top + 20, own.bottom + 200))
+    expect(resolved.words.filter((w) => sits.has(w.id)).map((w) => w.text)).toEqual(['paged', 'at', 'night'])
+    for (const foot of sits.values()) expect(foot * 1920).toBeGreaterThan(own.bottom + 200)
+    // A pop down to the foot of the frame leaves no room under it: they wait for it to go.
+    const low = subtitleWords(cut, resolved, pop(own.top + 20, 1800)).words.map((w) => w.text)
+    expect(low).toEqual(['If', 'you', 'get', 'you', 'go.'])
     // A pop at the top of the frame leaves the subtitles at the chest be.
     expect(subtitleWords(cut, resolved, pop(170, 540))).toBe(resolved)
+  })
+})
+
+describe('Lecrae’s title and captions', () => {
+  // "TEACHING BEYOND WORDS" over the chest for the opening seconds, the quiet captions three at a time under it.
+  const text = ['So', 'some', 'of', 'the', 'most', 'theatrical', 'sermons,', 'illustrations,', 'like', 'dynamic', 'things.', 'You', 'see', 'it']
+  const lecrae = (size?: number) => {
+    const words = wordsFromTranscript(said(text, 0.2, 0.35, 0.3), 's1')
+    const source = { id: 's1', path: '/a.mov', durationSec: 8, width: 1080, height: 1920, fps: 30 }
+    const doc = createDoc({ id: 'd', title: 't', source, words })
+    const cut = applyOps(
+      currentCut(doc),
+      [
+        { op: 'captions', set: { on: true, preset: 'sermon-quiet', position: 'middle', wordsPerScreen: 3, uppercase: false, ...(size ? { size } : {}) } },
+        { op: 'motion-add', kind: 'banner', from: 'start', to: '3s', text: ['Teaching beyond words'], style: 'condensed', place: 'middle' }
+      ],
+      { words: doc.words, sources: doc.sources }
+    ).cut
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const scene = buildScene({ cut, resolved, words: doc.words, size: designSize(cut.aspect, source), theme: DEFAULT_THEME })
+    return { cut, resolved, scene }
+  }
+
+  it('sets the quiet captions a fifth bigger when asked, and three words a page, never more', () => {
+    const { cut } = lecrae(1.2)
+    const style = captionStyleFor(cut.captions, 1080, null, 1920)
+    const own = presetStyle('sermon-quiet')
+    expect(style.fontSizePx).toBe(Math.round(own.fontSizePx * 1.2))
+    // The sentence ending two words past a page's third word is not run on to finish it.
+    const pages = new Set(styleCues(said(text), style).map((c) => c.words.map((w) => w.text).join(' ')))
+    expect([...pages].every((p) => p.split(' ').length <= 3)).toBe(true)
+    expect([...pages]).toEqual(['so some of', 'the most theatrical', 'sermons,', 'illustrations,', 'like dynamic things.', 'you see it'])
+  })
+
+  it('drops the captions below a title held over the chest while it is up, and back after', () => {
+    const { cut, resolved, scene } = lecrae()
+    const band = scene.items[0].band!
+    // Two lines of condensed capitals centred about 52% down.
+    expect((band.top + band.bottom) / 2 / 1920).toBeCloseTo(0.524, 1)
+    expect(band.bottom - band.top).toBeGreaterThan(190)
+    expect(band.bottom - band.top).toBeLessThan(260)
+    // None of the words said under it are held back: they drop below it instead.
+    expect(subtitleWords(cut, resolved, scene).words).toHaveLength(resolved.words.length)
+    const sits = captionSits(cut, resolved.words, scene)
+    const under = resolved.words.filter((w) => w.outStart < 3)
+    const after = resolved.words.filter((w) => w.outStart >= 3.05)
+    expect(under.length).toBeGreaterThan(5)
+    for (const w of under) {
+      const foot = sits.get(w.id)!
+      // Clear of the title by more than a line, and well off the foot of the frame: a line's foot about 136 px
+      // under the band, as the Short sets its captions (their tops 88 px under it, the 58 px caption measured).
+      const size = captionStyleFor(cut.captions, 1080, null, 1920).fontSizePx
+      expect(foot * 1920 - band.bottom).toBeGreaterThan(size * 2)
+      expect(foot * 1920 - band.bottom).toBeLessThan(size * 2.45)
+      expect(foot).toBeLessThan(0.75)
+    }
+    for (const w of after) expect(sits.has(w.id)).toBe(false)
+  })
+})
+
+describe('long-form captions', () => {
+  it('starts a wide recording without captions and an upright one with them', () => {
+    const words = wordsFromTranscript(said(['One', 'two.']), 's1')
+    const wide = createDoc({ id: 'w', title: 't', source: { id: 's1', path: '/w.mov', durationSec: 3, width: 1920, height: 1080, fps: 30 }, words })
+    const upright = createDoc({ id: 'u', title: 't', source: { id: 's1', path: '/u.mov', durationSec: 3, width: 1080, height: 1920, fps: 30 }, words })
+    expect(currentCut(wide).captions.on).toBe(false)
+    expect(currentCut(upright).captions.on).toBe(true)
+  })
+
+  it('sizes a wide frame’s captions by its height, smaller than a Short’s, low and still', () => {
+    const spec = { ...DEFAULT_CAPTIONS, preset: 'clean', position: 'chest' as const }
+    const short = captionStyleFor(spec, 1080, { text: '#FFFFFF', accent: '#FFD400' }, 1920)
+    const long = captionStyleFor(spec, 1920, { text: '#FFFFFF', accent: '#FFD400' }, 1080)
+    // Sora 70 on a Short; three quarters of it on a 1080 high wide frame, not 124 as by its width.
+    expect(short.fontSizePx).toBe(70)
+    expect(long.fontSizePx).toBe(53)
+    expect(captionStyleFor(spec, 3840, null, 2160).fontSizePx).toBe(105)
+    // Low in the frame, as long-form subtitles stand, and still: the word said is not lit in the accent.
+    expect(long.positionFrac).toBe(WIDE_POSITION_FRAC.chest)
+    expect(short.activeColor).toBe('#FFD400')
+    expect(long.activeColor).toBe(long.textColor)
+    expect(long.outlinePx).toBeLessThan(short.outlinePx)
   })
 })
 

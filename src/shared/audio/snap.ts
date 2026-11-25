@@ -61,6 +61,8 @@ export interface SnapOptions {
   postRollSec: number
   /** No word ends up shorter than this. */
   minWordSec: number
+  /** A silence this long inside a word that began in the last word's tail means the word starts after it. */
+  breathSec: number
 }
 
 export const DEFAULT_SNAP: SnapOptions = {
@@ -69,7 +71,8 @@ export const DEFAULT_SNAP: SnapOptions = {
   trailSec: 0.2,
   preRollSec: 0.01,
   postRollSec: 0.03,
-  minWordSec: 0.06
+  minWordSec: 0.06,
+  breathSec: 0.2
 }
 
 /**
@@ -88,6 +91,8 @@ export function snapWords(words: Word[], env: Envelope, opts: SnapOptions = DEFA
 
   const sorted = [...words].sort((a, b) => a.startSec - b.startSec)
   const out: Word[] = []
+  // Where the word before found this word's sound already begun, inside its own span.
+  let pulled: number | null = null
   sorted.forEach((w, i) => {
     const prev = out[out.length - 1]
     const next = sorted[i + 1]
@@ -105,21 +110,69 @@ export function snapWords(words: Word[], env: Envelope, opts: SnapOptions = DEFA
         break
       }
     }
+    const pulledHere = pulled !== null
+    if (pulled !== null) start = Math.max(floor, pulled)
+    pulled = null
+
+    // A recogniser that leaves no gaps stretches a word back over the pause
+    // before it: "a" heard as 5.28-6.21 s when it is said at 6.17, the sound at
+    // its start being the last word's tail. When the sound at a word's start
+    // began before it and then stops for a breath inside the word, the word is
+    // what comes after the pause, and the tail goes back to the word before.
+    let afterBreath = false
+    const at = frameAt(w.startSec)
+    if (!pulledHere && loud(at) && loud(at - 1) && sameSource(prev)) {
+      let quiet = at
+      while (quiet < frames && loud(quiet) && quiet * hop < w.endSec) quiet++
+      let back = quiet
+      while (back < frames && !loud(back) && back * hop < w.endSec) back++
+      if (back * hop < w.endSec && (back - quiet) * hop >= opts.breathSec) {
+        start = back * hop - opts.preRollSec
+        afterBreath = true
+        prev.endSec = Math.max(prev.endSec, Math.min(start, quiet * hop + opts.postRollSec))
+      }
+    }
 
     // Offset: the last loud frame, looking back from a little past the
     // recogniser's end as far as the onset, so an end that trails far into
     // the pause is pulled all the way back.
     let end = w.endSec
+    // And forward over the pause after it: a word heard from its onset, then a
+    // breath, then more sound before the recogniser's end that runs straight
+    // into the next word. That sound is the next word's, begun early.
+    let split = false
+    const breath = Math.ceil(opts.breathSec / hop - 1e-9)
+    if (sameSource(next) && next.startSec - w.endSec < 0.03) {
+      const last = frameAt(w.endSec)
+      let f = frameAt(start + opts.minWordSec)
+      while (f < last && !split) {
+        if (loud(f)) {
+          f++
+          continue
+        }
+        let back = f
+        while (back < last && !loud(back)) back++
+        if (back < last && back - f >= breath && loud(f - 1)) {
+          end = f * hop + opts.postRollSec
+          pulled = back * hop - opts.preRollSec
+          split = true
+        }
+        f = back
+      }
+    }
     const tailFrom = frameAt(Math.min(ceiling, w.endSec + opts.trailSec))
     const tailTo = frameAt(start)
-    for (let f = tailFrom; f >= tailTo; f--) {
+    for (let f = tailFrom; f >= tailTo && !split; f--) {
       if (loud(f)) {
         end = Math.min(ceiling, (f + 1) * hop + opts.postRollSec)
         break
       }
     }
 
-    if (end - start < opts.minWordSec) {
+    if (afterBreath && end - start < opts.minWordSec) {
+      // A short word said into the next one ("a lot"): heard where it starts, given room to be whole.
+      end = start + opts.minWordSec
+    } else if (end - start < opts.minWordSec) {
       // Too little heard to trust: keep the recogniser's edges, inside the neighbours.
       start = Math.max(floor, w.startSec)
       end = Math.max(start + opts.minWordSec, Math.min(ceiling, w.endSec))

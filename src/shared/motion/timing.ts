@@ -100,16 +100,19 @@ export function spanFor(tl: Timeline, from: string, to: string, length: number, 
   if (at === null) return null
   const start = Math.max(0, at - lead)
   let end: number | null = null
+  // A length asked for is kept however short: a flash or a wipe is a few frames ("0.18s" had run 5 s).
+  let asked = false
   const trimmed = to.trim()
   if (trimmed) {
     const sec = parseLength(trimmed)
+    asked = sec !== null && sec > 0
     end = sec !== null ? at + sec : anchorTime(tl, trimmed)
   }
-  // An end that is missing, or that lands before the start once the cut is
-  // rearranged, falls back to the template's own length.
-  if (end === null || end <= start + 0.2) end = at + length
+  // An end that is missing, or an anchor that lands at or before the start once the cut is rearranged, falls
+  // back to the template's own length.
+  if (end === null || (!asked && end <= start + 0.2)) end = at + length
   end = Math.min(tl.duration, end)
-  if (end - start < 0.05) return null
+  if (end - start < (asked ? 0.02 : 0.05)) return null
   return { at, start, end }
 }
 

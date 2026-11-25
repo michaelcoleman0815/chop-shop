@@ -14,6 +14,7 @@ import {
   restore,
   setNoteStatus,
   sourceTimeAt,
+  withBeatsCounted,
   wordsFromTranscript,
   type Cut,
   type EditDoc,
@@ -163,6 +164,18 @@ describe('resolving a cut', () => {
     }
   })
 
+  it('keeps the pauses and ums of a beat played as it was said', () => {
+    const doc = makeDoc()
+    const tight = { op: 'tighten', set: { maxGapSec: 0.05, padSec: 0.02, fillers: true } } as const
+    const { cut } = applyOps(currentCut(doc), [tight, { op: 'treat', beats: ['b2'], set: { asSaid: true } }], ctx(doc))
+    const r = resolve(doc, cut)
+    // The beat plays whole, its "Um" and every pause in it, while the beat before it is still tightened.
+    expect(r.words.map((w) => w.text)).toContain('Um')
+    expect(r.pieces.filter((p) => p.beat === 'b2')).toHaveLength(1)
+    const before = resolve(doc, applyOps(currentCut(doc), [tight], ctx(doc)).cut)
+    expect(r.pieces.filter((p) => p.beat === 'b1')).toEqual(before.pieces.filter((p) => p.beat === 'b1'))
+  })
+
   it('maps output time back to the source across pieces', () => {
     const doc = makeDoc()
     const r = resolve(doc)
@@ -256,6 +269,13 @@ describe('ops', () => {
     expect(cut.beats).toHaveLength(3)
   })
 
+  it('says what is wrong with an op it knows, and where, rather than that it does not know it', () => {
+    const doc = createDoc({ id: 'd', title: 't', source: { id: 's1', path: '/a.mov', durationSec: 9, width: 1920, height: 1080, fps: 30 }, words: wordsFromTranscript([{ text: 'One', startSec: 0.1, endSec: 0.5 }], 's1') })
+    const { rejected } = applyOps(currentCut(doc), [{ op: 'cold-open', bites: 'w1' }, { op: 'frobnicate' }], { words: doc.words, sources: doc.sources })
+    expect(rejected[0].reason).toMatch(/^The cold-open op is not right: bites: /)
+    expect(rejected[1].reason).toMatch(/^Not an op I know/)
+  })
+
   it('checks big words and cutaways', () => {
     const doc = makeDoc()
     const ok = applyOps(currentCut(doc), [{ op: 'treat', beats: ['b2'], set: { bigWord: 'w11', bw: true } }], ctx(doc))
@@ -298,6 +318,140 @@ describe('ops', () => {
     const cut = currentCut(doc)
     const broken: Cut = { ...cut, beats: [...cut.beats, { ...cut.beats[0], to: 'w99' }] }
     expect(checkCut(broken, ctx(doc))).toEqual(['b1 appears twice.', 'b1: There is no word w99.'])
+  })
+})
+
+describe('beat ids', () => {
+  const ids = (cut: Cut): string[] => cut.beats.map((b) => `${b.id}:${b.from}-${b.to}`)
+
+  it('gives a new beat a number above every beat the edit has had, after the last ones are cut out', () => {
+    const doc = makeDoc()
+    const { cut, rejected } = applyOps(
+      currentCut(doc),
+      [
+        { op: 'remove', beats: ['b2', 'b3'] },
+        { op: 'split', beat: 'b1', at: 'w3' },
+        // The id the planner gave the new beat in the same batch: the next after b3, the highest it saw.
+        { op: 'treat', beats: ['b4'], set: { bw: true } },
+        { op: 'treat', beats: ['b3'], set: { bw: true } }
+      ],
+      ctx(doc)
+    )
+    expect(ids(cut)).toEqual(['b1:w1-w2', 'b4:w3-w4'])
+    expect(cut.beats[1].treatment.bw).toBe(true)
+    // b3 is gone, and no other beat answers to it.
+    expect(rejected.map((r) => r.reason)).toEqual(['There is no beat b3.'])
+    expect(cut.lastBeat).toBe(4)
+  })
+
+  it('gives the same ids op by op, as the planner checks a plan, as in one batch', () => {
+    const doc = makeDoc()
+    const ops = [
+      { op: 'remove', beats: ['b3'] },
+      { op: 'insert', to: 2, beat: { source: 's1', from: 'w12', to: 'w14' } },
+      { op: 'remove', beats: ['b4'] },
+      { op: 'split', beat: 'b2', at: 'w8' }
+    ]
+    let cut = currentCut(doc)
+    for (const op of ops) cut = applyOps(cut, [op], ctx(doc)).cut
+    expect(ids(cut)).toEqual(['b1:w1-w4', 'b2:w5-w7', 'b5:w8-w11'])
+    expect(applyOps(currentCut(doc), ops, ctx(doc)).cut).toEqual(cut)
+  })
+
+  it('does not give the id of a beat joined away, or of one a cold open took out, to a new one', () => {
+    const doc = makeDoc()
+    const split = applyOps(currentCut(doc), [{ op: 'split', beat: 'b2', at: 'w8' }], ctx(doc)).cut
+    const joined = applyOps(split, [{ op: 'join', beat: 'b2' }], ctx(doc)).cut
+    expect(joined.beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b3'])
+    const again = applyOps(joined, [{ op: 'split', beat: 'b2', at: 'w8' }], ctx(doc)).cut
+    expect(again.beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b5', 'b3'])
+
+    const opened = applyOps(currentCut(doc), [{ op: 'cold-open', bites: [{ from: 'w12', to: 'w14' }] }], ctx(doc)).cut
+    expect(opened.beats.map((b) => b.id)).toEqual(['b4', 'b1', 'b2', 'b3'])
+    const closed = applyOps(opened, [{ op: 'cold-open', bites: [] }], ctx(doc)).cut
+    const after = applyOps(closed, [{ op: 'split', beat: 'b2', at: 'w8' }], ctx(doc)).cut
+    expect(after.beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b5', 'b3'])
+  })
+
+  it('puts the show’s title between a cold open and the conversation: a silent beat under it, gone with it', () => {
+    const doc = makeDoc()
+    const opened = applyOps(
+      currentCut(doc),
+      [{ op: 'cold-open', bites: [{ from: 'w12', to: 'w14' }], slug: { title: 'The Diary of a CEO', sec: 1.5 } }],
+      ctx(doc)
+    )
+    expect(opened.rejected).toEqual([])
+    const cut = opened.cut
+    expect(cut.beats.map((b) => b.id)).toEqual(['b4', 'b5', 'b1', 'b2', 'b3'])
+    const slug = cut.beats[1]
+    // A stretch of the recording, silent and without captions, a cold-open beat so the next cold open takes it out.
+    expect(slug.from).toBeNull()
+    expect((slug.outSec ?? 0) - (slug.inSec ?? 0)).toBeCloseTo(1.5)
+    expect(slug.treatment).toMatchObject({ mute: true, captions: false })
+    expect(slug.coldOpen).toBe(true)
+    // Cut to hard, and the conversation still dips up from it.
+    expect(slug.transition).toBeUndefined()
+    expect(cut.beats[2].transition?.kind).toBe('dip-to-black')
+    // Its title: white on black, over the whole beat.
+    expect(cut.motion).toHaveLength(1)
+    expect(cut.motion?.[0]).toMatchObject({ kind: 'end-card', style: 'slug', from: 'b5', to: 'b5.end', text: ['The Diary of a CEO'] })
+    // A new cold open takes the slug and its title out with the bites.
+    const again = applyOps(cut, [{ op: 'cold-open', bites: [{ from: 'w12', to: 'w14' }] }], ctx(doc)).cut
+    expect(again.beats.some((b) => b.id === 'b5')).toBe(false)
+    expect(again.motion ?? []).toEqual([])
+    // Muted, the beat plays its picture with none of its own sound.
+    const muted = applyOps(currentCut(doc), [{ op: 'treat', beats: ['b2'], set: { mute: true } }], ctx(doc))
+    expect(muted.rejected).toEqual([])
+    expect(muted.cut.beats[1].treatment.mute).toBe(true)
+  })
+
+  it('leaves a cut that has never lost its highest beat as it always was', () => {
+    const doc = makeDoc()
+    const { cut } = applyOps(
+      currentCut(doc),
+      [
+        { op: 'split', beat: 'b2', at: 'w8' },
+        { op: 'remove', beats: ['b1'] },
+        { op: 'cold-open', bites: [] }
+      ],
+      ctx(doc)
+    )
+    expect(ids(cut)).toEqual(['b2:w5-w7', 'b4:w8-w11', 'b3:w12-w14'])
+    expect('lastBeat' in cut).toBe(false)
+  })
+
+  it('keeps counting across versions, a restore, and saving and opening the edit again', () => {
+    let doc = commit(makeDoc(), [{ op: 'split', beat: 'b2', at: 'w8' }], 'Split the middle.').doc
+    expect(currentCut(doc).beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b4', 'b3'])
+    // Back to v1, which never had a b4: a new beat still goes above it.
+    doc = restore(doc, 1)
+    expect(currentCut(doc).beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b3'])
+    doc = commit(doc, [{ op: 'split', beat: 'b1', at: 'w3' }], 'Split the opener.').doc
+    expect(currentCut(doc).beats.map((b) => b.id)).toEqual(['b1', 'b5', 'b2', 'b3'])
+    doc = commit(doc, [{ op: 'remove', beats: ['b5', 'b3'] }], 'Cut two.').doc
+    const opened = EditDocSchema.parse(JSON.parse(JSON.stringify(doc)))
+    expect(opened).toEqual(doc)
+    const next = commit(opened, [{ op: 'insert', to: 2, beat: { source: 's1', from: 'w12', to: 'w14' } }], 'Back in.').doc
+    expect(currentCut(next).beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b6'])
+  })
+
+  it('gives an edit saved before cuts kept the count fresh ids, from every version, when it is opened', () => {
+    const made = commit(makeDoc(), [{ op: 'remove', beats: ['b3'] }], 'Cut the ending.').doc
+    // As an earlier build saved it: no cut says the highest beat number it gave.
+    const saved = JSON.parse(JSON.stringify(made))
+    for (const v of saved.versions) delete v.cut.lastBeat
+    const old = EditDocSchema.parse(saved)
+    expect(currentCut(old).lastBeat).toBeUndefined()
+    // Its newest cut alone has lost b3; v1 still has it.
+    const opened = withBeatsCounted(old)
+    expect(currentCut(opened).lastBeat).toBe(3)
+    const split = commit(opened, [{ op: 'split', beat: 'b2', at: 'w8' }], 'Split.').doc
+    expect(currentCut(split).beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b4'])
+    // One that has lost nothing comes back as it was, and counts from its own beats.
+    const whole = makeDoc()
+    expect(withBeatsCounted(whole)).toBe(whole)
+    const fresh = commit(whole, [{ op: 'split', beat: 'b3', at: 'w13' }], 'Split.').doc
+    expect(currentCut(fresh).beats.map((b) => b.id)).toEqual(['b1', 'b2', 'b3', 'b4'])
   })
 })
 

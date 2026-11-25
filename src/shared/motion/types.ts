@@ -29,6 +29,20 @@ export const EASE_NAMES = [
   'easy-ease-out',
   'snap',
   'smooth',
+  // The standard power curves motion designers name, measured on creators' own moves: a fade or a small rise
+  // eases out on a quad, a card slides in on a quint over most of a second, a row or a fill eases in and out.
+  'out-quad',
+  'out-cubic',
+  'out-quart',
+  'out-quint',
+  'out-expo',
+  'in-out-quad',
+  'in-out-cubic',
+  'in-out-quart',
+  // Exits that leave faster and faster: a collage falling out of frame.
+  'in-quad',
+  'in-cubic',
+  'back-out',
   'overshoot',
   'bounce',
   'spring',
@@ -135,6 +149,8 @@ export interface Stroke {
   width: Anim<number>
   cap?: 'butt' | 'round' | 'square'
   join?: 'miter' | 'round' | 'bevel'
+  /** A dashed line: dash and gap lengths, repeating, in the layer's pixels. A dashed stroke draws whole (no trim). */
+  dash?: number[]
 }
 
 export interface Shadow {
@@ -249,6 +265,11 @@ interface Base<T> {
   mask?: Mask
   /** Drawn under the person in the frame, once a person matte is available. */
   behind?: boolean
+  /**
+   * Animated at its own frame rate, held between: 12 is "on twos", the stop-motion step a collage title moves in
+   * (Deep End with Lecrae's). Everything inside a group steps with it. Smooth when absent.
+   */
+  fps?: number
   /** Cut to these, in order (shared/motion/roto). */
   masks?: LayerMask[]
   /** Shown only where a matte says. */
@@ -307,6 +328,8 @@ export interface Font {
    * of its own slanted, as libass slants one for a caption look set italic (0.2126, FreeType's oblique).
    */
   slant?: number
+  /** Extra room between words, in design pixels: a slanted face leans into its spaces. */
+  wordSpacing?: number
 }
 
 /** How far a unit of text is from rest. Rest is opacity 1, no offset, scale 1, no blur. */
@@ -462,8 +485,8 @@ export interface ImageLayer<T = number> extends Base<T> {
   file?: string
   /** A tile it sits on: an app icon (square) or a coin (round). A logo's colour fills it; a picture is cut to it. */
   tile?: 'square' | 'round'
-  /** Drawn instead when the logo or picture is not there: a letter or two, on the tile when there is one. */
-  fallback?: { text: string; family: string }
+  /** Drawn instead when the logo or picture is not there: a letter or two, on the tile when there is one, in `color` (white when absent). */
+  fallback?: { text: string; family: string; color?: string }
   w: number
   h: number
   /** Fill stretches the picture to the box (with a crop, or for a clip on a track). */
@@ -472,10 +495,14 @@ export interface ImageLayer<T = number> extends Base<T> {
   color?: Anim<Color>
   /** Icon stroke width, in the icon's 24-unit grid. */
   strokeWidth?: number
+  /** Solid: an icon's closed outlines filled in its colour as well as stroked, as a filled heart. */
+  iconFill?: boolean
   /** Icons draw on like strokes. */
   trim?: { start?: Anim<number>; end?: Anim<number> }
   /** Cut from a picture's sides before it is fitted. */
   crop?: Crop
+  /** Drawn as a mosaic of square blocks this many of the layer's pixels across: a teaser that hides what it is. */
+  pixelate?: number
 }
 
 /**
@@ -583,6 +610,13 @@ export interface DrawResources {
   keySize?: number
   /** A 3D layer's frame, drawn `local` seconds into the layer; null when it is not ready. */
   scene3d?: (layer: Scene3DLayer, local: number) => CanvasImageSource | null
+  /**
+   * The seconds a fast-moving layer's motion blur spans when it names none of its own (Layer.motionBlur): the
+   * export gives half a frame, After Effects' 180-degree shutter, so a move across the frame (a push, a whip)
+   * streaks as a camera sees it rather than jumping between frames; slower moves stay crisp, as creators keep
+   * them. Absent, only layers that ask for it are blurred.
+   */
+  shutter?: number
 }
 
 export interface Size {

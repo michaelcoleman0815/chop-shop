@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { scopeLine } from '../shared/scopes/maths'
+import { screenLine } from '../shared/screen'
 import {
   CAMERA_KINDS,
   currentCut,
@@ -9,6 +10,7 @@ import {
   FILL_MODES,
   fillMode,
   indexWords,
+  nextBeatId,
   ANGLE_LAYOUTS,
   LOOK_SETTINGS,
   NAMED_LOOKS,
@@ -54,6 +56,17 @@ const NAMED_LIST = Object.values(NAMED_LOOKS)
   .map(({ look: { name, ...settings } }) => `${name} ${JSON.stringify(settings)}`)
   .join('; ')
 
+/**
+ * How creators people name edit, measured frame by frame from their own videos (docs and the remake lab), in the
+ * templates' own terms, so "like Ali Abdaal" means what his videos do rather than a guess.
+ */
+const STYLE_CARDS = `## Styles people ask for
+When the request names one of these creators or their kind of video, edit as their videos are made, measured from them:
+- Ali Abdaal (productivity explainers, long-form): no captions. He opens on a title set behind him (title, style behind) and a shelf of icons for a list (chips, place shelf). Ideas go on paper: a board (wave, or plain for lists and documents) keeping him in his window on the right, with one idea at a time on it: a cloud for everything a field holds, drawn into one point; topics for the fields it draws on, with badges; a prompt going into an AI; a checklist of the method's steps, ticked as done; a doc for what it gives you. Each board holds one idea for about 3 to 8 seconds and changes on a hard cut. On a screen recording he stays in his window and the camera glides in on the line he is reading. Words and cards come into focus from a blur rather than sliding; nothing bounces. Verdicts and lists go on a checklist or a doc, not on keyword pops.
+- Deep End with Lecrae (podcast cold opens): every pause cut. Key lines as two-tier stair titles on the speaker's open side (title, style stair), plain white captions three words a page (preset cold-open), the show's title on black between (cold-open slug), and the guest's name card as a collage (end-card, collage), under a steady beat.
+- Jordan Welch (business explainers): long, gentle camera moves with no overshoot and no motion blur; products and pages shown on devices and screenshots (device, screenshot) and kept still while he talks over them.
+`
+
 export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video editor people talk to. You receive a recording's transcript, the current cut, and a request (a typed message or a list of notes). You answer with edit operations that carry out the request, a one-sentence summary of what changed, and a short reply.
 
 ## The edit
@@ -61,7 +74,7 @@ export const PLANNER_SYSTEM = `You are the editor inside Cutalong, a video edito
 - An edit can be cut from several recordings, in the order they were shot. Each <source> names its file. When it says sound="...", that recording's picture plays over the sound of a separate, better recording, already lined up; nothing more needs doing for it.
 - The cut is an ordered list of beats. A beat plays the words from its first id to its last id, inclusive, from one recording. Beats play in list order, so moving a beat moves that moment in the video.
 - Struck words are inside a beat but cut out of it. Words in no beat are not in the video.
-- A beat's treatment: frame (speaker, broll, split, card), bw (black and white), zoom (1 is the full frame; 1.08 to 1.2 is a punch-in), bigWord (the id of one word in that beat shown big on screen), broll (a cutaway from the material: {"asset":"a1","inSec":0} shows material a1 from that second, muted, over the beat's sound), captions (false hides the captions while the beat plays, true shows them again), steady (true holds a shaky handheld shot still in the export, cropping in a little; for a wobbly phone shot or cutaway, not for a steady talking head).
+- A beat's treatment: frame (speaker, broll, split, card), bw (black and white), zoom (1 is the full frame; 1.08 to 1.2 is a punch-in), bigWord (the id of one word in that beat shown big on screen), broll (a cutaway from the material: {"asset":"a1","inSec":0} shows material a1 from that second, muted, over the beat's sound), captions (false hides the captions while the beat plays, true shows them again), steady (true holds a shaky handheld shot still in the export, cropping in a little; for a wobbly phone shot or cutaway, not for a steady talking head), mute (true plays the beat with none of its own sound, the music and sound effects still playing: under a title card, or a moment held under the music alone; false brings its sound back), asSaid (true plays the beat as it was said, its pauses and ums kept when the video is tightened: a reaction whose timing is the joke; false tightens it with the rest).
 
 ## Material
 A <material> block, when present, lists what the person brought in to use: footage, images and clips, each with an id (a1, a2, ...), its length and where the cut already shows it.
@@ -78,15 +91,16 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"split","beat":"b4","at":"w31"}: split before a word, which must be inside the beat and not its first word. The second half gets the next free id.
 - {"op":"join","beat":"b4"}: join a beat with the one after it. Only when they sit together in the recording.
 - {"op":"insert","to":2,"beat":{"source":"s1","from":"w40","to":"w52"}}: bring words back as a new beat.
-- {"op":"cold-open","bites":[{"from":"w812","to":"w830"},{"from":"w120","to":"w131"}]}: a cold open, as a podcast's: these moments, in this order, played first, ahead of the conversation they come from, hard cut into each other, with a short dip to black into the conversation. A music bed plays under the cold open only. Again, it replaces the cold open there was; "bites":[] takes it out.
+- {"op":"insert","to":3,"beat":{"source":"s1","from":"","to":"","inSec":61.2,"outSec":62.1}}: a stretch of a recording by its seconds, words or none: a reaction, a laugh, a pause to hold a title over.
+- {"op":"cold-open","bites":[{"from":"w812","to":"w830"},{"from":"w120","to":"w131"}]}: a cold open, as a podcast's: these moments, in this order, played first, ahead of the conversation they come from, hard cut into each other, with a short dip to black into the conversation. A music bed plays under the cold open only. Again, it replaces the cold open there was; "bites":[] takes it out. Add "slug":{"title":"The Diary of a CEO","sec":1.6} for the show's title between the cold open and the conversation, as The Diary of a CEO and Impaulsive cut theirs: a silent beat of white words on black, a hard cut in and out (sec 0.8 to 4; the show's name as title, which it needs).
 - {"op":"treat","beats":["b2","b5"],"set":{"bw":true}}: set treatment fields. A bigWord set names exactly one beat.
-- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest. With hierarchy, "keys":["w31","w42"] picks the words that go big, one every page or two, and only they do: a page with none is one small centred line, and a page ends on its key word. "looks":[{"word":"w46","look":"dark"}] sets a key word by its meaning, as The Diary of a CEO does: serif for a tender or grave word ("family", "impact"), dark (red serif) for horror or contempt ("insanity", "Hitler"), punch (heavy capitals) for a word that hits ("CORRUPT", "SENSE"); a word with a look is a key word too. Use looks on a few words a minute, not every key; "preset":"boxed" for drawn captions a few words at a time with the word being said in a solid box of the brand's accent; "preset":"pop" for drawn captions a few words at a time in a heavy slanted face, each word springing up as it is said and lit yellow while it is, with "keys" kept yellow, as the most-watched podcast Shorts move theirs; "preset":"clean" goes back to plain subtitles.
+- {"op":"captions","set":{"on":true,"wordsPerScreen":2,"position":"chest","uppercase":false}}: positions are top, middle, chest, bottom. Add "preset":"hierarchy" for drawn captions: two lines a page, a small line and a big one with the key words, each word fading in as it is said, on the speaker's chest. With hierarchy, "keys":["w31","w42"] picks the words that go big, one every page or two, and only they do: a page with none is one small centred line, and a page ends on its key word. "looks":[{"word":"w46","look":"dark"}] sets a key word by its meaning, as The Diary of a CEO does: serif for a tender or grave word ("family", "impact"), dark (red serif) for horror or contempt ("insanity", "Hitler"), punch (heavy capitals) for a word that hits ("CORRUPT", "SENSE"); a word with a look is a key word too. Use looks on a few words a minute, not every key; "preset":"boxed" for drawn captions a few words at a time with the word being said in a solid box of the brand's accent; "preset":"pop" for drawn captions a few words at a time in a heavy slanted face, each word springing up as it is said and lit yellow while it is, with "keys" kept yellow, as the most-watched podcast Shorts move theirs; "preset":"cold-open" is a podcast cold open's captions, plain white semibold three words a page with a soft shadow and no edge, low in a wide frame (position chest), with the key lines as two-tier titles (the title graphic's stair style) while plain captions wait; "preset":"clean" goes back to plain subtitles. "size":1.2 sets any look a fifth bigger, 0.8 a fifth smaller (0.5 to 2; 1 is the look's own size): match a reference's caption height with it.
 - {"op":"tighten","set":{"maxGapSec":0.35,"padSec":0.06,"fillers":true}} or {"op":"tighten","set":null}.
 - {"op":"aspect","aspect":"vertical"}: vertical, wide, square or original.
 - {"op":"loudness","lufs":-14}.
 - {"op":"transition","beats":["b4"],"kind":"dissolve","sec":0.5}: how a beat comes in from the one before. Kinds: dissolve, dip-to-black, dip-to-white, flash, whip-left, whip-right, push-left, push-right, push-up, push-down, slide-left, slide-right, slide-up, slide-down, wipe-left, wipe-right, wipe-up, wipe-down, smooth-left, smooth-right, smooth-up, smooth-down, zoom, circle-open, circle-close, clock, doors-open, pixelate, blur, squeeze, and the looks: glitch (the pictures flicker into each other, rows torn and colours pulled apart, for an energetic or techy beat), rgb-split (a dissolve with red and blue pulled apart) and vhs (tape noise, scanlines and a rolling band, for a retro or archival beat). sec is 0.04 to 3, or 0 for the usual length. The first beat has nothing before it, so it cannot have one.
 - {"op":"transition","beats":["b4","b7"],"kind":"cut","sec":0}: back to a hard cut.
-- {"op":"fade","inSec":0.5,"outSec":1,"color":"black"}: fade the whole video in from, and out to, black or white. 0 turns that end off, and an end you are not changing keeps the length the settings give it.
+- {"op":"fade","inSec":0.5,"outSec":1,"color":"black"}: fade the whole video in from, and out to, black or white. 0 turns that end off, and an end you are not changing keeps the length the settings give it. Add "blurInSec":0.4 to open on a focus pull: the whole frame, graphics and captions too, blurred on the first frame and sharp 0.4 s later, as Lecrae's Shorts open (0 turns it off).
 - {"op":"jcut","beats":["b5"],"sec":0.3}: a J cut into b5. Its sound starts on time but the picture before stays 0.3 s longer, so the next line is heard before it is seen. Coming back from B-roll to the speaker, this reads naturally.
 - {"op":"lcut","beats":["b5"],"sec":0.3}: an L cut into b5. Its picture comes in 0.3 s early, under the end of the sound before. Going into B-roll, the cutaway leads the words it shows.
 - {"op":"lcut","beats":["b5"],"sec":0}: picture and sound cut together again (also for jcut). A beat has a transition or a J or L cut, not both; setting one replaces the other.
@@ -102,6 +116,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"music","path":"","set":[{"key":"levelDb","value":-15},{"key":"duckDb","value":12}],"off":false}: change the music bed, naming only the settings that change: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. "path" stays "" unless the request names a file to use. "off":true takes the music out.
 - {"op":"look","name":"warm","set":[],"replace":true,"off":false}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage, with these settings: ${NAMED_LIST}. "name" starts from one of them, or stays "". "set" names only the settings that change: [{"key":"grain","value":0.2}]. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1; 0 takes one away. "replace":false changes the look already there, true starts afresh. "off":true takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
   For the look, <scopes> measures each recording: luma from black 0 to white 100, how much is clipped, saturation and the cast (u, v). Grade by it: a warm cast wants temperature below 0, a magenta one tint below 0; most of the luma in a narrow band wants contrast; lows clipped want lift, highs clipped exposure down.
+  A <screen> block, when present, says what is on screen in each beat it names: a page of words (a screen recording, a slide, a document) and where it lies, the window the speaker is kept in, and the lines on screen that match what is said, each with its box [x, y, width, height]. On those beats the words on screen are the picture: never set words over them, and never white words on a bright picture (luma above 70 in <scopes>). Show what is talked about with a camera "focus" gliding in on the line's box (a region a little bigger than the line, kept to the page). With the speaker in a window, the focus fits its region into the room beside the window and the window stays put, so a region as wide as that room cannot get any closer: glide in on the words that matter (the phrase being said, the highlighted words), a region at most about half the room's width, for a push-in that shows. Start the region at the left edge of the page's words, so its lines still read from their start, and let them run on past its right side. Set ideas on graphics with their own ground: a board with the speaker's window as its box, so they stay on screen beside it, and cloud, topics, checklist or doc on it, or a keyword pop on its plate. Keep the speaker's window clear. No captions over a page of words: they would cover it.
 - {"op":"sfx","beats":["b4"],"kind":"whoosh","word":"","gainDb":0}: a sound effect, made here, on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12), 0 for the usual. "kind":"none" takes a beat's sounds away. The person's own sound files are added with /sfx.
 - {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":[]} takes them out.
 - {"op":"angle","beats":["b4"],"source":"s2","layout":"full"}: another camera of the same take on beats: "full" shows it instead of the recording, "pip" in a box over it, "side" beside it. The sound stays the recording's. Only a source the transcript marks camera-of the beat's recording; "source":"" shows the beat's own recording again.
@@ -110,9 +125,10 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"framing","beats":["b4"],"x":0.25}: frames beats by hand when cropped: 0 is the recording's left edge, 0.5 its middle, 1 its right; -1 follows the speaker again.
 - {"op":"grid","beats":["b4"],"panels":[{"show":"","label":"Raw","inSec":0},{"show":"a2","label":"Edited","inSec":0}],"sound":""}: shows a beat as two to four videos at once, side by side on a soft ground, each with a small label (one to three words, or ""). "show":"" is the beat's own picture; otherwise a recording (s2) or material (a2) by id, from inSec seconds into it. "sound":"" leaves the sound as it is (a new grid plays the beat's own), "1" to "4" plays that panel's, "music" leaves only the music. "panels":[] takes the grid away.
 - {"op":"fill","mode":"black"}: how a picture of another shape than the frame fills it. "auto" is what a new edit does unless asked: a picture taller than the frame (an upright phone clip in a wide video), a still or a screen recording shows whole on a blurred copy of itself, and other footage is cropped to fill the frame, as Shorts and Reels expect. "blur" shows every picture of another shape whole on a blurred copy, "black" between black bars, "crop" cropped to fill the frame. Someone talking whose recording is wider than the frame is always cropped to them.
-Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. If a split creates a beat, the new id is the next number after the highest beat id.
+Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. A split, an insert or a cold open makes new beats numbered from the cut's "next new beat" on, one more for each; ids freed by a remove are never given again.
 
 ${graphicsGuide()}
+${STYLE_CARDS}
 
 ${fxGuide()}
 
@@ -178,7 +194,9 @@ const TreatmentSet = z.object({
   bigWord: z.string().nullable().optional(),
   /** Material by id; offerPlan turns it into the file and keeps it muted. */
   broll: z.object({ asset: z.string(), inSec: z.number() }).nullable().optional(),
-  captions: z.boolean().optional()
+  captions: z.boolean().optional(),
+  mute: z.boolean().optional(),
+  asSaid: z.boolean().optional()
 })
 
 /** The graphics the planner can make: every built template but hand-built layers. */
@@ -219,9 +237,15 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('insert'),
     to: z.number(),
-    beat: z.object({ source: z.string(), from: z.string(), to: z.string() })
+    // A run of words, or a stretch of the recording by seconds (from and to empty): a pause, a reaction, a beat
+    // of silence to hold a title card over.
+    beat: z.object({ source: z.string(), from: z.string(), to: z.string(), inSec: z.number().optional(), outSec: z.number().optional() })
   }),
-  z.object({ op: z.literal('cold-open'), bites: z.array(z.object({ from: z.string(), to: z.string() })) }),
+  z.object({
+    op: z.literal('cold-open'),
+    bites: z.array(z.object({ from: z.string(), to: z.string() })),
+    slug: z.object({ title: z.string(), sec: z.number() }).optional()
+  }),
   z.object({ op: z.literal('treat'), beats: z.array(z.string()), set: TreatmentSet }),
   z.object({
     op: z.literal('captions'),
@@ -230,9 +254,10 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
       wordsPerScreen: z.number().optional(),
       position: z.enum(['top', 'middle', 'chest', 'bottom']).optional(),
       uppercase: z.boolean().optional(),
-      preset: z.enum(['clean', 'hierarchy', 'boxed', 'pop']).optional(),
+      preset: z.enum(['clean', 'hierarchy', 'boxed', 'pop', 'cold-open']).optional(),
       keys: z.array(z.string()).optional(),
-      looks: z.array(z.object({ word: z.string(), look: z.enum(KEY_LOOKS) })).optional()
+      looks: z.array(z.object({ word: z.string(), look: z.enum(KEY_LOOKS) })).optional(),
+      size: z.number().optional()
     })
   }),
   z.object({
@@ -250,7 +275,7 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     kind: z.enum(['cut', ...ALL_TRANSITION_KINDS]),
     sec: z.number()
   }),
-  z.object({ op: z.literal('fade'), inSec: z.number(), outSec: z.number(), color: z.enum(['black', 'white']) }),
+  z.object({ op: z.literal('fade'), inSec: z.number(), outSec: z.number(), color: z.enum(['black', 'white']), blurInSec: z.number().optional() }),
   z.object({ op: z.literal('jcut'), beats: z.array(z.string()), sec: z.number() }),
   z.object({ op: z.literal('lcut'), beats: z.array(z.string()), sec: z.number() }),
   z.object({
@@ -471,6 +496,12 @@ export function fromPlannerOp(op: PlannerOp): unknown {
   switch (op.op) {
     case 'remove':
       return { op: op.op, beats: op.beats, ...(op.why.trim() ? { why: op.why.trim() } : {}) }
+    case 'insert': {
+      // A stretch by its seconds when it names them and no words; else the run of words.
+      const { inSec, outSec, from, to, source } = op.beat
+      const bySec = inSec !== undefined && outSec !== undefined && !from.trim() && !to.trim()
+      return { op: op.op, to: op.to, beat: bySec ? { source, inSec, outSec } : { source, from, to } }
+    }
     case 'transition':
       return { op: op.op, beats: op.beats, kind: op.kind, ...(op.sec > 0 ? { sec: op.sec } : {}) }
     case 'speed': {
@@ -494,8 +525,16 @@ export function fromPlannerOp(op: PlannerOp): unknown {
       return { op: op.op, beats: op.beats, x: op.x >= 0 && op.x <= 1 ? op.x : null }
     case 'captions': {
       // Looks as the planner lists them, word by word, as the caption spec keeps them, by word.
-      const { looks, ...set } = op.set
-      return { op: op.op, set: { ...set, ...(looks?.length ? { keyLooks: Object.fromEntries(looks.map((l) => [l.word, l.look])) } : {}) } }
+      const { looks, size, ...set } = op.set
+      return {
+        op: op.op,
+        set: {
+          ...set,
+          ...(looks?.length ? { keyLooks: Object.fromEntries(looks.map((l) => [l.word, l.look])) } : {}),
+          // 0 is the usual: the look's own size. Out of range, the nearest size there is.
+          ...(size ? { size: Math.min(2, Math.max(0.5, size)) } : {})
+        }
+      }
     }
     case 'grid':
       return { op: 'treat', beats: op.beats, set: { grid: plannedGrid(op) } }
@@ -698,7 +737,9 @@ export function renderRequest(
     cut.tighten
       ? `pauses over ${cut.tighten.maxGapSec} s cut${cut.tighten.fillers ? ', fillers cut' : ''}`
       : 'pauses as recorded',
-    cut.loudness === null ? 'loudness as recorded' : `loudness ${cut.loudness} LUFS`
+    cut.loudness === null ? 'loudness as recorded' : `loudness ${cut.loudness} LUFS`,
+    // Beat numbers are never given twice, so the next is not always one past the highest here.
+    `next new beat ${nextBeatId(cut)}`
   ]
   // A vlog is told as a story, and asks of its story go to the vlog command.
   if (doc.vlog) settings.push('a vlog told as a story')
@@ -725,6 +766,7 @@ export function renderRequest(
     ].filter(Boolean)
     settings.push(`fades ${ends.join(' and ')} through ${cut.fade.color}`)
   }
+  if (cut.fade?.blurInSec) settings.push(`opens on a focus pull over ${seconds(cut.fade.blurInSec)}`)
 
   const beats = cut.beats.map((beat) => {
     const t = beat.treatment
@@ -747,6 +789,8 @@ export function renderRequest(
       t.angle ? `shows ${t.angle.source} ${ANGLE_WORDS[t.angle.layout]}` : null,
       typeof t.framing === 'number' ? `framed by hand at ${t.framing}` : null,
       t.captions === false ? 'no captions' : null,
+      t.mute ? 'muted' : null,
+      t.asSaid ? 'played as said, pauses and ums kept' : null,
       t.broll?.camera ? `cutaway camera ${describeCamera(t.broll.camera)}` : null,
       t.broll ? `cutaway ${assetFor(t.broll.path)} from ${t.broll.inSec.toFixed(1)} s` : null,
       t.grid ? gridLine(t.grid) : null,
@@ -827,6 +871,20 @@ export function renderRequest(
   // What each recording's picture measures (main/scopes), for grading by numbers.
   const scoped = doc.sources.filter((s) => s.scopes)
   if (scoped.length) parts.push(`<scopes>\n${scoped.map((s) => scopeLine(s.id, s.scopes!)).join('\n')}\n</scopes>`)
+  // What is on screen in each beat (shared/screen): a page of words and where it lies, the speaker's window, and
+  // the lines that match what is said, so a graphic keeps off the words and a camera can glide in on the line.
+  const screenLines = cut.beats.flatMap((b) => {
+    const pieces = resolved.pieces.filter((p) => p.beat === b.id)
+    const source = doc.sources.find((x) => x.id === pieces[0]?.source)
+    if (!source?.screen || pieces.length === 0) return []
+    const said = resolved.words
+      .filter((w) => w.beat === b.id)
+      .map((w) => text(w.id))
+      .join(' ')
+    const line = screenLine(source.screen, Math.min(...pieces.map((p) => p.srcStart)), Math.max(...pieces.map((p) => p.srcEnd)), said)
+    return line ? [`${b.id}: ${line}`] : []
+  })
+  if (screenLines.length) parts.push(`<screen>\n${screenLines.join('\n')}\n</screen>`)
   // Several players' views of one session, and the reactions heard in them (shared/pov).
   const povs = renderPovs(doc)
   if (povs) parts.push(povs)

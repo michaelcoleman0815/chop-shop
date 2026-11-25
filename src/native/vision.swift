@@ -44,6 +44,9 @@ if args.count >= 2 && (args[1] == "--masks" || args[1] == "--masks-check") {
 if args.count >= 2 && args[1] == "--track" {
     runTrack(Array(args.dropFirst()))
 }
+if args.count >= 2 && args[1] == "--screen" {
+    runScreen(Array(args.dropFirst()))
+}
 guard args.count >= 2 else { fail("usage: chopshop-vision <video> [startSec] [durationSec] [samplesPerSec]") }
 
 let url = URL(fileURLWithPath: args[1])
@@ -638,4 +641,92 @@ func runTrack(_ a: [String]) -> Never {
         }
     }
     emit(TrackResult(found: found, start: startBox, width: width, height: height, sized: true, samples: samples))
+}
+
+
+// MARK: - What is on screen
+//
+// chopshop-vision --screen <video> <startSec> <durationSec> <samplesPerSec>
+//     [{"t":0,"lines":[{"text":"...","x":0.02,"y":0.1,"w":0.5,"h":0.03}],"faces":[...],"windows":[...]}]
+// The lines of text Vision reads in the picture, each with where it sits (top-left origin, shares of the frame),
+// the faces, and the windows a face sits in: a screen recording with the speaker kept in a box in a corner, so
+// an edit knows what the picture shows, where its words are, and where the speaker is.
+
+struct ScreenLine: Codable {
+    let text: String
+    let x: Double
+    let y: Double
+    let w: Double
+    let h: Double
+}
+
+struct ScreenSample: Codable {
+    let t: Double
+    let lines: [ScreenLine]
+    let faces: [Face]
+    let windows: [Face]
+}
+
+func runScreen(_ a: [String]) -> Never {
+    guard a.count >= 2 else { fail("usage: chopshop-vision --screen <video> [startSec] [durationSec] [samplesPerSec]") }
+    let url = URL(fileURLWithPath: a[1])
+    let start = a.count > 2 ? Double(a[2]) ?? 0 : 0
+    let wanted = a.count > 3 ? Double(a[3]) ?? 0 : 0
+    let rate = a.count > 4 ? max(0.05, min(4, Double(a[4]) ?? 0.5)) : 0.5
+    let asset = AVURLAsset(url: url)
+    let total = CMTimeGetSeconds(asset.duration)
+    guard total.isFinite, total > 0 else { fail("could not read duration") }
+    let duration = wanted > 0 ? min(wanted, total - start) : total - start
+    guard duration > 0 else { fail("range is outside the video") }
+
+    let generator = AVAssetImageGenerator(asset: asset)
+    generator.appliesPreferredTrackTransform = true
+    generator.requestedTimeToleranceBefore = CMTime(seconds: 0.1, preferredTimescale: 600)
+    generator.requestedTimeToleranceAfter = CMTime(seconds: 0.1, preferredTimescale: 600)
+    // Words on a screen recording read at this size; smaller loses the small print.
+    generator.maximumSize = CGSize(width: 1920, height: 1920)
+
+    func flipped(_ box: CGRect) -> Face {
+        return Face(x: Double(box.origin.x), y: Double(1.0 - box.origin.y - box.height), w: Double(box.width), h: Double(box.height))
+    }
+    var samples: [ScreenSample] = []
+    var n = 0
+    while Double(n) / rate < duration {
+        let t = Double(n) / rate
+        n += 1
+        guard let image = try? generator.copyCGImage(at: CMTime(seconds: start + t, preferredTimescale: 600), actualTime: nil) else { continue }
+        let text = VNRecognizeTextRequest()
+        // Fast reads a page of text in a few tens of milliseconds: enough to know what it says and where.
+        text.recognitionLevel = .fast
+        text.usesLanguageCorrection = false
+        let faces = VNDetectFaceRectanglesRequest()
+        let boxes = VNDetectRectanglesRequest()
+        boxes.minimumSize = 0.08
+        boxes.maximumObservations = 8
+        boxes.minimumConfidence = 0.5
+        boxes.minimumAspectRatio = 0.3
+        boxes.maximumAspectRatio = 1.0
+        boxes.quadratureTolerance = 12
+        let handler = VNImageRequestHandler(cgImage: image, orientation: .up, options: [:])
+        try? handler.perform([text, faces, boxes])
+        let lines: [ScreenLine] = (text.results ?? []).compactMap { obs in
+            guard let read = obs.topCandidates(1).first?.string, !read.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            let f = flipped(obs.boundingBox)
+            return ScreenLine(text: String(read.prefix(160)), x: f.x, y: f.y, w: f.w, h: f.h)
+        }
+        let found = (faces.results ?? []).map { flipped($0.boundingBox) }
+        // A window is a box smaller than the frame with a face inside it.
+        let windows: [Face] = (boxes.results ?? []).map { flipped($0.boundingBox) }.filter { box in
+            box.w * box.h < 0.5 && found.contains { f in
+                let cx = f.x + f.w / 2
+                let cy = f.y + f.h / 2
+                return cx > box.x && cx < box.x + box.w && cy > box.y && cy < box.y + box.h
+            }
+        }
+        samples.append(ScreenSample(t: t, lines: lines, faces: found, windows: windows))
+    }
+    let encoder = JSONEncoder()
+    guard let data = try? encoder.encode(samples), let json = String(data: data, encoding: .utf8) else { fail("could not encode results") }
+    print(json)
+    exit(0)
 }

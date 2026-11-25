@@ -104,8 +104,9 @@ export function matteWants(cut: Cut, tl: Timeline, media?: Map<string, ClipMedia
     if (kind) out.push({ kind, start: p.start, end: p.end })
   }
   for (const item of cut.motion ?? []) {
-    if (!hasBehind((item.layers ?? []) as { behind?: boolean }[])) continue
     const tpl = template(item.kind)
+    // Hand-built layers drawn behind, or a template that draws behind for this call (a title set behind the speaker).
+    if (!hasBehind((item.layers ?? []) as { behind?: boolean }[]) && !tpl?.behind?.(item)) continue
     const span = tpl ? spanFor(tl, item.from, item.to, tpl.length, tpl.lead) : null
     if (span) out.push({ kind: 'person', start: span.start, end: span.end })
   }

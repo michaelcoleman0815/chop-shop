@@ -6,6 +6,7 @@ import {
   activeSpans,
   MOTION_FONTS,
   renderFrame,
+  shutterFor,
   type DrawResources,
   type IconNode,
   type Layer,
@@ -172,6 +173,8 @@ export async function renderMotion(layers: Layer[], opts: MotionRenderOptions): 
     map: opts.map,
     // Scratch canvases, for motion blur.
     createCanvas: (w, h) => createCanvas(w, h) as unknown as ReturnType<NonNullable<DrawResources['createCanvas']>>,
+    // Everything that moves is blurred across half a frame, as a camera's 180-degree shutter sees it.
+    shutter: shutterFor(opts.fps),
     ...(opts.video ? { video: (layer: VideoLayer, local: number) => opts.video?.frame(layer, local) ?? null } : {}),
     ...(opts.mattes ? { mattes: opts.mattes } : {}),
     ...(opts.scene3d ? { scene3d: (layer: Scene3DLayer) => opts.scene3d?.frame(layer) ?? null } : {})

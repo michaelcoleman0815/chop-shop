@@ -114,10 +114,14 @@ describe('jump cuts, hidden with a punch-in', () => {
     const own = cutWith([strike(LINES[1]), { op: 'treat', beats: [after], set: { zoom: 1.08 } }, { op: 'punch-jumps', on: true }])
     const i = jumpJoins(own.cut, own.resolved)[0].piece
     expect(jumpZooms(own.cut, own.resolved, [UPRIGHT])[i]).toBe(1)
-    // A wide recording in an upright frame keeps a third of itself already.
+    // A 720p wide recording in an upright frame keeps a third of itself, too few pixels to punch.
+    const SMALL: Source = { ...WIDE, width: 1280, height: 720 }
+    const small = cutWith([strike(LINES[1]), { op: 'punch-jumps', on: true }], SMALL)
+    expect(jumpZooms(small.cut, small.resolved, [SMALL]).every((z) => z === 1)).toBe(true)
+    expect(punchedJumps(small.cut, small.resolved, [SMALL])).toBe(0)
+    // A 1080p one has them, as the podcast Shorts punch theirs.
     const wide = cutWith([strike(LINES[1]), { op: 'punch-jumps', on: true }], WIDE)
-    expect(jumpZooms(wide.cut, wide.resolved, [WIDE]).every((z) => z === 1)).toBe(true)
-    expect(punchedJumps(wide.cut, wide.resolved, [WIDE])).toBe(0)
+    expect(punchedJumps(wide.cut, wide.resolved, [WIDE])).toBeGreaterThan(0)
   })
 })
 
@@ -145,8 +149,9 @@ describe('turning it on', () => {
     expect(jumpOpsFor(before, [{ op: 'captions', set: { on: false } }], ctx(), true)).toEqual([])
     const said = applyOps(before, [{ op: 'punch-jumps', on: false }], ctx()).cut
     expect(jumpOpsFor(said, [strike(LINES[1])], ctx(), true)).toEqual([])
-    // Nothing it could punch: a wide recording in an upright frame.
-    expect(jumpOpsFor(made(WIDE), [strike(LINES[1])], ctx(WIDE), true)).toEqual([])
+    // Nothing it could punch: a 720p wide recording in an upright frame.
+    const SMALL: Source = { ...WIDE, width: 1280, height: 720 }
+    expect(jumpOpsFor(made(SMALL), [strike(LINES[1])], ctx(SMALL), true)).toEqual([])
   })
 
   it('says so in the version, and the never list keeps a brand that never punches in clear of it', () => {

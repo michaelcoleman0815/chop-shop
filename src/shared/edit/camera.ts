@@ -30,7 +30,8 @@ export const CAMERA_KINDS = [
   'punch-in',
   'shake',
   'focus',
-  'hold'
+  'hold',
+  'settle'
 ] as const
 export type CameraKind = (typeof CAMERA_KINDS)[number]
 
@@ -91,7 +92,10 @@ export const CAMERA_INFO: Record<CameraKind, CameraInfo> = {
   'punch-in': { label: 'a punch-in', zoom: 1.15, sec: 0.25 },
   shake: { label: 'a shake', zoom: 1.05, sec: 0.5 },
   focus: { label: 'a move in on what matters', zoom: 2, sec: 0.6 },
-  hold: { label: 'a closer frame held still', zoom: 1.25 }
+  hold: { label: 'a closer frame held still', zoom: 1.25 },
+  // After a flash cut, as Deep End with Lecrae lands every new beat (measured): 6.4% in over 14 frames on an
+  // ease-out, then the same slow linear push every talking head runs, 2.4% a second. `zoom` is where it ends.
+  settle: { label: 'a settle after a flash', zoom: 1.12 }
 }
 
 export type Ease = 'linear' | 'in-out' | 'out'
@@ -144,22 +148,65 @@ export function ease(kind: Ease, u: number): number {
 
 const CENTRE: Point = { x: 0.5, y: 0.5 }
 
-/** The view that shows a region whole, with a tenth of the frame to spare around it. */
-export function regionView(r: Region, fw: number, fh: number): View {
-  const zoom = Math.min(MAX_CAMERA_ZOOM, Math.max(1, 0.9 * Math.min(fw / r.w, fh / r.h)))
-  return { zoom, x: r.x + r.w / 2, y: r.y + r.h / 2 }
+/** Part of the finished frame, as shares of it: x and y from the top left, then width and height. */
+export interface Room {
+  x: number
+  y: number
+  w: number
+  h: number
+  /**
+   * Where a page of words in the room starts across the recording, as a share of its width: a focus on it takes in
+   * the page from there, so its lines read from their start rather than from halfway along.
+   */
+  pageLeft?: number
+}
+
+/** A gap kept between what a focus shows and a window held still beside it, as a share of the frame. */
+const ROOM_GAP = 0.02
+
+/**
+ * The room a move has beside a window held still over the frame (a speaker kept in their box on a screen
+ * recording, [x, y, width, height] as shares of the frame): the wider side of it, short of its edge. Null with no
+ * window, or none worth having.
+ */
+export function roomBeside(keep: readonly [number, number, number, number] | null | undefined): Room | null {
+  if (!keep) return null
+  const [kx, , kw] = keep
+  const left = kx - ROOM_GAP
+  const right = 1 - (kx + kw) - ROOM_GAP
+  if (Math.max(left, right) < 0.2) return null
+  return left >= right ? { x: 0, y: 0, w: left, h: 1 } : { x: 1 - right, y: 0, w: right, h: 1 }
+}
+
+/**
+ * The view that shows a region whole, with a tenth of the room to spare around it, in the middle of the room:
+ * the whole frame, or with a window held still over part of it, the room beside it (roomBeside), so nothing the
+ * focus is on slides under the window. A region as wide as the room has no closer view than the whole frame. With
+ * the room's page edge known, a region further right is taken from that edge, so its lines read from their start.
+ */
+export function regionView(region: Region, fw: number, fh: number, room?: Room | null): View {
+  const R = room ?? { x: 0, y: 0, w: 1, h: 1 }
+  const from = R.pageLeft !== undefined ? Math.max(0, R.pageLeft - 0.01) : region.x
+  const r = from < region.x ? { ...region, x: from, w: region.w + (region.x - from) } : region
+  const zoom = Math.min(MAX_CAMERA_ZOOM, Math.max(1, 0.9 * Math.min((R.w * fw) / r.w, (R.h * fh) / r.h)))
+  // The region's middle where the room's is: a share u of the frame is (x - view) * zoom / fw + 0.5 across it.
+  const cx = R.x + R.w / 2
+  const cy = R.y + R.h / 2
+  return { zoom, x: r.x + r.w / 2 - ((cx - 0.5) * fw) / zoom, y: r.y + r.h / 2 - ((cy - 0.5) * fh) / zoom }
 }
 
 /**
  * The keyframes of a move over a beat's picture `length` seconds long.
- * `wordAt` is when the move's word starts, in seconds into the picture.
+ * `wordAt` is when the move's word starts, in seconds into the picture. `room`, with a window held still over the
+ * frame, is the part of it beside the window that a focus shows its regions in (roomBeside).
  */
 export function cameraPlan(
   move: Camera,
   length: number,
   wordAt: number | null,
   sourceAspect: number,
-  frameAspect: number
+  frameAspect: number,
+  room?: Room | null
 ): CameraPlan {
   const { fw, fh } = coverWindow(sourceAspect, frameAspect)
   const info = CAMERA_INFO[move.kind]
@@ -181,6 +228,14 @@ export function cameraPlan(
     case 'drift':
       keys = [key(0, at(move.from ?? move.to, 1)), key(span, at(move.to, zoom), 'linear')]
       break
+    case 'settle': {
+      // In fast and settled by 0.58 s, then creeping on at 2.4% a second to the end (or to `zoom`, if given).
+      const snap = Math.min(0.58, span / 2)
+      const landed = 1.064
+      const end = move.zoom !== undefined ? Math.max(landed, zoom) : landed + 0.024 * Math.max(0, span - snap)
+      keys = [key(0, at(move.from ?? move.to, 1)), key(snap, at(move.to, landed), 'out'), key(span, at(move.to, Math.min(MAX_CAMERA_ZOOM, end)), 'linear')]
+      break
+    }
     case 'pull-out':
       keys = [key(0, at(move.from ?? move.to, zoom)), key(span, at(move.to ?? move.from, 1))]
       break
@@ -237,7 +292,7 @@ export function cameraPlan(
         const t = Math.min(len, r.at)
         const prev = keys[keys.length - 1]
         if (t > prev.t) keys.push({ ...prev, t, ease: 'linear' })
-        const target = regionView(r, fw, fh)
+        const target = regionView(r, fw, fh, room)
         const end = Math.min(len, t + glide)
         if (end > keys[keys.length - 1].t) keys.push(key(end, target))
         else keys[keys.length - 1] = key(keys[keys.length - 1].t, target)

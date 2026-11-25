@@ -1,4 +1,4 @@
-import { EditDocSchema, withSavedOps } from './edit'
+import { EditDocSchema, withBeatsCounted, withSavedOps } from './edit'
 import { readClipSet } from './clipping/set'
 import type { ChatMessage, Project } from './types'
 
@@ -24,7 +24,7 @@ export function upgradeProject(raw: Project): { project: Project; unreadable: st
   const { set, dropped, note } = readClipSet(raw.clipping)
   const project: Project = {
     ...read.project,
-    clipping: set && { ...set, clips: set.clips.map((c) => ({ ...c, doc: withSavedOps(c.doc) })) },
+    clipping: set && { ...set, clips: set.clips.map((c) => ({ ...c, doc: withBeatsCounted(withSavedOps(c.doc)) })) },
     chat: note ? [...(read.project.chat ?? []), note] : read.project.chat
   }
   const why = note
@@ -39,7 +39,8 @@ function upgradeEdit(raw: Project): { project: Project; unreadable: string | nul
   if (!raw.edit) return { project: raw, unreadable: null }
   const parsed = EditDocSchema.safeParse(raw.edit)
   // Saved by a build that kept the brand op in its versions: as it is saved now, so an older build reads it.
-  if (parsed.success) return { project: { ...raw, edit: withSavedOps(parsed.data) }, unreadable: null }
+  // Saved before cuts kept their highest beat number: the newest one knows it, so no new beat takes an old id.
+  if (parsed.success) return { project: { ...raw, edit: withBeatsCounted(withSavedOps(parsed.data)) }, unreadable: null }
   const why = parsed.error.issues
     .slice(0, 3)
     .map((i) => `${i.path.join('.')}: ${i.message}`)

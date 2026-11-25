@@ -14,8 +14,9 @@ import {
   windowShare,
   type EditDoc
 } from '../../../../shared/edit'
-import { buildScene, designSize, themeFrom } from '../../../../shared/motion'
-import { captionSeams, captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords, wordSpeakers } from '../../../../shared/subtitles'
+import { buildScene, designSize, shutterFor, themeFrom } from '../../../../shared/motion'
+import { outputRate } from '../../../../shared/fx/apply'
+import { captionSits, captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords, wordSpeakers } from '../../../../shared/subtitles'
 import type { Brand } from '../../../../shared/brand'
 import { api } from '../api'
 import { MotionCanvas } from './MotionCanvas'
@@ -67,7 +68,7 @@ export function ClipStill({
     [cut, resolved, doc.words, doc.sources, doc.assets, brand]
   )
   const captionStyle = useMemo(
-    () => captionStyleFor(cut.captions, scene.size.width, brand.autoApply ? brand.colors : null),
+    () => captionStyleFor(cut.captions, scene.size.width, brand.autoApply ? brand.colors : null, scene.size.height),
     [cut.captions, scene.size.width, brand]
   )
   const cue = useMemo(() => {
@@ -75,7 +76,7 @@ export function ClipStill({
     const words = subtitleWords(cut, resolved, scene).words
     return subtitleAt(
       styleCues(
-        shownWords(words, cut.captions, resolved.words, captionSeams(cut, resolved.words), wordSpeakers(doc.words)),
+        shownWords(words, cut.captions, resolved.words, captionSits(cut, resolved.words, scene), wordSpeakers(doc.words)),
         captionStyle
       ),
       time
@@ -155,7 +156,14 @@ export function ClipStill({
       {size.w > 0 && (
         <>
           <Subtitles cue={cue} style={captionStyle} frame={scene.size} time={time} width={size.w} height={size.h} />
-          <MotionCanvas scene={scene} assets={doc.assets} time={time} width={size.w} height={size.h} />
+          <MotionCanvas
+            scene={scene}
+            assets={doc.assets}
+            time={time}
+            width={size.w}
+            height={size.h}
+            shutter={shutterFor(outputRate(doc.sources[0]?.fps ?? 30))}
+          />
         </>
       )}
     </span>

@@ -1,10 +1,13 @@
 import { basename, join } from 'path'
+import { pageRoom, windowDuring } from '../shared/screen'
 import {
   BACKDROP_LEVEL,
   BACKDROP_SIGMA,
   backdropSize,
   cameraClock,
   cameraPlan,
+  roomBeside,
+  type Room,
   changesColour,
   chaptersMetadata,
   cutawayFit,
@@ -50,7 +53,7 @@ import {
 import { LABEL_FADE } from '../shared/motion/grid-plate'
 import type { MotionTheme } from '../shared/motion/theme'
 import { prepareGrids } from './grid-render'
-import { captionSeams, captionStyleFor, shownWords } from '../shared/subtitles'
+import { captionSeams, captionStyleFor, sentenceStarts, shownWords } from '../shared/subtitles'
 import { boxRect } from '../shared/edit/box'
 import type { TranscriptWord } from '../shared/types'
 import type { ToolSaid } from '../shared/failure'
@@ -71,6 +74,7 @@ import { renderFilm } from './render/film'
 import { weaveFilter } from '../shared/edit/film'
 import { hasFilm } from '../shared/edit/look'
 import { overlayChains, pictureFxChains, type FxOverlayFile, type FxPass } from '../shared/fx/ffmpeg'
+import { outputRate } from '../shared/fx/apply'
 
 /**
  * Renders a resolved cut: the renderer of record for an edit document.
@@ -243,9 +247,19 @@ export interface SegmentCamera {
   length: number
   wordAt: number | null
   size: { width: number; height: number }
+  /**
+   * The window the speaker is kept in on a screen recording ([x, y, width, height], shares of the frame), held
+   * where it is while the camera moves over the page, as the creator's own edit keeps its picture-in-picture.
+   */
+  keep?: [number, number, number, number]
+  /** With a window kept: the room beside it a focus shows its regions in, and where the page in it starts (pageRoom). */
+  room?: Room
 }
 
 export type Quality = 'preview' | 'final' | 'intermediate'
+
+/** How close to the frame's side a kept window is, as a share of its width, for the strip beside it to be kept too. */
+const KEEP_TO_EDGE = 0.05
 
 export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
@@ -476,8 +490,7 @@ export function frameSize(
 
 /** Common frame rates only: 29.97 renders as 30, 59.94 as 60. */
 export function frameRate(fps: number): number {
-  const options = [24, 25, 30, 50, 60]
-  return options.reduce((best, f) => (Math.abs(f - fps) < Math.abs(best - fps) ? f : best), 30)
+  return outputRate(fps)
 }
 
 // The caption look is shared with the editor's preview, so both draw captions alike.
@@ -532,6 +545,11 @@ export function segmentsFor(
       outStart: p.outStart
     }
     if (!pictured(source)) segment.noPicture = true
+    // A muted beat plays its picture with none of its own sound: the music and the effects still play.
+    if (t.mute) {
+      segment.hasAudio = false
+      segment.audio = null
+    }
     if (Math.abs(srcSec - segment.durationSec) > 1e-9) segment.srcSec = srcSec
     if (p.steps) segment.steps = p.steps
     if (p.reverse) segment.reverse = true
@@ -580,7 +598,16 @@ export function segmentsFor(
         segment.broll.camera = moving(t.broll.camera, p.beat, picture.outStart, sizes.get(t.broll.path) ?? WIDE)
       }
     }
-    if (t.camera) segment.camera = moving(t.camera, p.beat, picture.outStart, pictured(source) ? source : WIDE)
+    if (t.camera) {
+      segment.camera = moving(t.camera, p.beat, picture.outStart, pictured(source) ? source : WIDE)
+      // On a screen recording with the speaker in a window, the move goes over the page and leaves them be.
+      const keep = source.screen && !showsCutaway ? windowDuring(source.screen, p.srcStart, p.srcEnd) : null
+      if (keep) {
+        segment.camera.keep = keep
+        const room = pageRoom(source.screen!, p.srcStart, p.srcEnd)
+        if (room) segment.camera.room = room
+      }
+    }
     return segment
   })
 }
@@ -908,7 +935,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
    */
   const moveOver = (cam: SegmentCamera | undefined, w: number, h: number): string => {
     if (!cam) return ''
-    const plan = cameraPlan(cam.move, cam.length, cam.wordAt, cam.size.width / Math.max(1, cam.size.height), w / h)
+    const plan = cameraPlan(cam.move, cam.length, cam.wordAt, cam.size.width / Math.max(1, cam.size.height), w / h, cam.room ?? roomBeside(cam.keep))
     const read = even(Math.min(cam.size.width, Math.ceil((w * maxZoom(plan)) / plan.fw)))
     if (opts.perspective === false) {
       // An ffmpeg without its GPL parts, as a phone's: the same window, scaled and cropped.
@@ -927,6 +954,8 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
   const base = Math.round(spans[0].outStart * fps)
   const frameAt = (sec: number): number => Math.round(sec * fps) - base
   const framesOf = (k: number): number => Math.max(1, frameAt(pics[k].outEnd) - frameAt(pics[k].outStart))
+  /** How far a segment's first output frame sits from where its piece starts: up to half a frame either way. */
+  const gridShift = (k: number): number => Math.round(pics[k].outStart * fps) / fps - pics[k].outStart
   /**
    * How far to move a read that serves a segment's picture alone, so its
    * first frame is the one the editor's player shows where the segment's
@@ -936,7 +965,7 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
    * nearest is taken. Another camera of a recording (edit/angles), and each
    * panel of a grid, then show the frame the editor does.
    */
-  const onGrid = (k: number): number => Math.round(pics[k].outStart * fps) / fps - pics[k].outStart - 0.5 / fps
+  const onGrid = (k: number): number => gridShift(k) - 0.5 / fps
   /**
    * A picture made exactly `frames` long: held on its last frame if it runs
    * short, cut if it runs long. A freeze is one frame held for `padSec`.
@@ -1083,7 +1112,16 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       sound = linedSound(s.audio, s.startSec, soundSrc, false, a)
     } else {
       // One input covers both the sound and the picture; each is cut from it.
-      const inStart = Math.min(s.startSec, pic.startSec)
+      const still = STILL.test(s.path) || GIF.test(s.path)
+      // The picture keeps the first frame at or after the moment that plays on the segment's first output
+      // frame, as a Premiere sequence of it does (premiere-cut). Read from where the piece itself starts, a
+      // segment landing on the output frame before that (one starting in the first half of a frame) played
+      // every frame one early: a frame ahead of its sound and of anything drawn on the output's clock over it
+      // (Ali Abdaal's hard cut showed a frame before it was due). Two milliseconds of slack: a moment a hair
+      // past a frame, as sums of word times land, is that frame.
+      const picAt = still ? pic.startSec : Math.max(0, pic.startSec + gridShift(k) - 0.002)
+      const picSec = pic.startSec + pic.srcSec - picAt
+      const inStart = Math.min(s.startSec, picAt)
       const inEnd = Math.max(s.startSec + soundSrc, pic.startSec + pic.srcSec)
       const main = input(s.path, inStart, inEnd - inStart)
       const differs = (from: number, len: number): boolean =>
@@ -1091,19 +1129,20 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       // On the read's own clock (each frame's time from the seek). A duration, trim's or the input's -t,
       // counts from the first frame kept, so the picture runs on up to a frame past its piece's end, which
       // keeps it whole on the output's frames; it stops short of a camera cut there (pictureStop).
-      const seek = STILL.test(s.path) || GIF.test(s.path) ? 0 : seekPoint(inStart)
-      const from = pic.startSec - seek
+      const seek = still ? 0 : seekPoint(inStart)
+      const from = picAt - seek
       const stop = s.pictureStop !== undefined ? `end=${exact(s.pictureStop - seek)}` : ''
-      // Cut from the input, the picture's clock starts where its piece does, not at the first frame it keeps,
+      // Cut from the input, the picture's clock starts where its read does, not at the first frame it keeps,
       // which can be most of a frame later, when the crop keeps to the recording's own timing.
-      const cutPicture = differs(pic.startSec, pic.srcSec)
+      const cutPicture = differs(picAt, picSec)
         ? // Two trims: given a duration, trim ignores an end.
-          `trim=start=${exact(Math.max(0, from))}:duration=${exact(pic.srcSec)},${stop ? `trim=${stop},` : ''}` +
+          `trim=start=${exact(Math.max(0, from))}:duration=${exact(picSec)},${stop ? `trim=${stop},` : ''}` +
           (timed ? `setpts=PTS-${exact(from)}/TB,` : 'setpts=PTS-STARTPTS,')
         : stop
           ? `trim=${stop},`
           : ''
-      if (timed) clock = differs(pic.startSec, pic.srcSec) ? 0 : -from
+      // Where the picture's own clock starts, from its piece's start: its read, or the seek it is not cut from.
+      if (timed) clock = differs(picAt, picSec) ? picAt - pic.startSec : seek - pic.startSec
       speaker = () => `${sourcePicture(main, s.convert)}${cutPicture}${steady}${retime(pic.steps)}`
       if (s.hasAudio) {
         const cutSound = differs(s.startSec, soundSrc)
@@ -1224,6 +1263,32 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
       chains.push(
         `${speaker()}${look(b.width, b.height, t, true, aim, undefined, clock)},pad=${W}:${H}:0:${b.y}:black,format=yuv420p,${AS_BT709},${frames}[${v}]`
       )
+    } else if (s.camera?.keep) {
+      // The move over the page, and the speaker's window laid back where it was, from the picture as it stands.
+      const [kx, ky, kw, kh] = s.camera.keep
+      // A window close to the frame's side keeps the thin strip beside it still too, or the moving page's words
+      // would peek out between the window and the edge.
+      const toLeft = kx < KEEP_TO_EDGE
+      const toRight = 1 - (kx + kw) < KEEP_TO_EDGE
+      const x = toLeft ? 0 : Math.max(0, Math.min(W - 2, even(kx * W)))
+      const y = Math.max(0, Math.min(H - 2, even(ky * H)))
+      const w = toRight ? W - x : Math.max(2, Math.min(W - x, even((kx + kw) * W) - x))
+      const h = Math.max(2, Math.min(H - y, even(kh * H)))
+      const fill = s.fill ? { fit: s.fill, name: `${v}fs` } : undefined
+      const still = s.fill ? { fit: s.fill, name: `${v}fk` } : undefined
+      // The window taken out of the moving copy first (filled from the page round it), or it would slide along
+      // under the one held still. On the recording's own pixels, a little bigger than the window for its rim.
+      const sw = s.camera.size.width
+      const sh = s.camera.size.height
+      const gx = Math.max(1, Math.floor((kx - 0.006) * sw))
+      const gy = Math.max(1, Math.floor((ky - 0.006) * sh))
+      const gw = Math.min(sw - gx - 2, Math.ceil((kw + 0.012) * sw))
+      const gh = Math.min(sh - gy - 2, Math.ceil((kh + 0.012) * sh))
+      const out = gw > 4 && gh > 4 ? `delogo=x=${gx}:y=${gy}:w=${gw}:h=${gh},` : ''
+      chains.push(`${speaker()}split[${v}mv][${v}st]`)
+      chains.push(`[${v}mv]${out}${moveOver(s.camera, W, H)}${look(W, H, t, true, aim, fill, clock)}[${v}m]`)
+      chains.push(`[${v}st]${look(W, H, t, true, aim, still, clock)},crop=${w}:${h}:${x}:${y}[${v}k]`)
+      chains.push(`[${v}m][${v}k]overlay=x=${x}:y=${y},format=yuv420p,${AS_BT709},${frames}[${v}]`)
     } else {
       const fill = s.fill ? { fit: s.fill, name: `${v}fs` } : undefined
       chains.push(
@@ -1529,6 +1594,22 @@ export function buildRenderArgs(segments: Segment[], opts: GraphOptions): string
     chains.push(`[${vOut}]${parts.join(',')}[vfade]`)
     vOut = 'vfade'
   }
+  if (fade?.blurInSec) {
+    // An opening focus pull over everything drawn, captions and the logo too: a strongly blurred copy of the
+    // opening and a lightly blurred one laid over the picture, the strong one clearing first, the light one
+    // after it, so the frame comes into focus rather than dissolving into it. (The blur's own strength cannot be
+    // moved frame by frame: ffmpeg 6.0 takes the command and keeps blurring as before.)
+    const d = Math.min(fade.blurInSec, totalFrames / fps)
+    const strong = H / 80
+    const soft = `gblur=sigma=${(strong / 3).toFixed(3)},format=yuva420p,fade=t=out:st=${exact(d * 0.15)}:d=${exact(d * 0.75)}:alpha=1`
+    const hard = `gblur=sigma=${strong.toFixed(3)},format=yuva420p,fade=t=out:st=0:d=${exact(d * 0.45)}:alpha=1`
+    chains.push(`[${vOut}]split=3[vfa][vfb][vfc]`)
+    chains.push(`[vfb]trim=end=${exact(d)},${soft}[vfsoft]`)
+    chains.push(`[vfc]trim=end=${exact(d)},${hard}[vfhard]`)
+    chains.push(`[vfa][vfsoft]overlay=eof_action=pass[vfas]`)
+    chains.push(`[vfas][vfhard]overlay=eof_action=pass,format=yuv420p[vfocus]`)
+    vOut = 'vfocus'
+  }
   // What the picture is, said on its last frames as on the file (TAGS).
   chains.push(`[${vOut}]${AS_BT709}[vout]`)
   vOut = 'vout'
@@ -1825,6 +1906,8 @@ export interface RenderCutOptions {
    * every word when absent. The music still dips and sounds still land on all of them.
    */
   captionWords?: Resolved['words']
+  /** Where some words' captions sit instead of the look's own height, by id (shared/subtitles captionSits): the seams when absent. */
+  captionSits?: Record<string, number>
   /** Who says each word, by id, where speakers are told apart: a look may set other voices apart. */
   speakers?: Record<string, number>
   /** How the picture is encoded: x264 when absent, as on a computer. */
@@ -2192,16 +2275,17 @@ export async function renderCut(
 
   let assPath: string | null = null
   let captionsInRgb = false
-  const shown = opts.captionWords ?? resolved.words
+  // A cut's own words, read for where its sentences start (shared/subtitles), when the pass has not said which are shown.
+  const shown = opts.captionWords ?? sentenceStarts(resolved.words)
   if (cut.captions.on && shown.length > 0) {
     const words: TranscriptWord[] = shownWords(
       shown,
       cut.captions,
       resolved.words,
-      captionSeams(cut, resolved.words),
+      opts.captionSits ? new Map(Object.entries(opts.captionSits)) : captionSeams(cut, resolved.words),
       new Map(Object.entries(opts.speakers ?? {}))
     )
-    const style = captionStyleFor(cut.captions, width, opts.brand?.colors ?? null)
+    const style = captionStyleFor(cut.captions, width, opts.brand?.colors ?? null, height)
     // libass colours captions in YUV, with BT.709 on 7.0 and BT.601 on 6.0 and 6.1, where the colours are
     // moved to the ones BT.601 turns into BT.709's values. Going through RGB instead is exact everywhere
     // but four times the work, so it is kept for a colour that cannot be moved, or an ffmpeg that says neither.

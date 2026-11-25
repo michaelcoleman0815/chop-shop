@@ -1,10 +1,11 @@
 import type * as THREE from 'three'
 import { fontInfo } from '../../shared/motion/fonts'
 import type { Size } from '../../shared/motion/types'
-import { fontOutlines, parseModel, setFontBytes, wordsPicture } from '../../shared/three/browser'
+import { fontOutlines, iconPicture, iconShapes, logoPath, parseModel, sceneMarks, setFontBytes, setMarkLookups, wordsPicture } from '../../shared/three/browser'
 import type { HostBridge, HostMessage, HostReply } from '../../shared/three/host-protocol'
-import { createRenderer, renderScene3D, Scene3DView, type Picture } from '../../shared/three/scene3d'
+import { createRenderer, renderScene3D, Scene3DView, SCENE3D_MOMENTS, sceneMoves, type Picture } from '../../shared/three/scene3d'
 import { isVideoFile, type Scene3D } from '../../shared/three/spec'
+import { loadIconNodes, loadLogoMarks } from './marks'
 
 /**
  * The export's 3D page: an offscreen window (main/three-render.ts) that runs
@@ -51,7 +52,14 @@ async function picture(bytes: Uint8Array): Promise<Picture | null> {
       bitmap.close()
       bitmap = await createImageBitmap(blob, { resizeWidth: Math.round(bitmap.width * k), resizeHeight: Math.round(bitmap.height * k), resizeQuality: 'high' })
     }
-    return { image: bitmap, width: bitmap.width, height: bitmap.height, stamp: 0 }
+    // On a canvas, as the editor's preview has its pictures (shared/three/browser): WebGL takes no flip from an
+    // ImageBitmap, so a card's picture went on upside down in the export and right way up in the preview.
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    return { image: canvas, width: canvas.width, height: canvas.height, stamp: 0 }
   } catch {
     return null
   }
@@ -75,6 +83,10 @@ async function handle(m: HostMessage): Promise<HostReply> {
       return { ok: true }
     }
     case 'clip': {
+      // The icons and brand marks it draws, in before its first frame.
+      const marks = sceneMarks(m.scene)
+      if (marks.icons) setMarkLookups({ icons: await loadIconNodes() })
+      if (marks.logos) setMarkLookups({ logos: await loadLogoMarks() })
       const pictures = new Map<string, Picture>()
       for (const p of m.pictures) {
         const pic = await picture(p.bytes)
@@ -94,7 +106,10 @@ async function handle(m: HostMessage): Promise<HostReply> {
         font: (family) => fontOutlines(fontInfo(family).family) ?? null,
         picture: (o) => (!o.src ? null : isVideoFile(o.src) ? (videos.get(o.id)?.picture ?? null) : (pictures.get(o.src) ?? null)),
         words: (o, w, h) => wordsPicture(o, w, h),
-        model: (src) => models.get(src) ?? null
+        model: (src) => models.get(src) ?? null,
+        logo: (slug) => logoPath(slug),
+        icon: (o, w, h) => iconPicture(o, w, h),
+        iconNodes: (name) => iconShapes(name)
       })
       clips.get(m.clip)?.view.dispose()
       clips.set(m.clip, { view, scene: m.scene, pixels: m.pixels, pictures, models, videos })
@@ -118,14 +133,29 @@ async function handle(m: HostMessage): Promise<HostReply> {
       }
       renderer ??= createRenderer()
       const { width, height } = clip.pixels
-      renderScene3D(renderer, clip.view, clip.scene, m.local, m.length, clip.pixels)
       if (!back) return { ok: false, error: 'This page has no 2D canvas to read the frame from.' }
       if (readback.width !== width || readback.height !== height) {
         readback.width = width
         readback.height = height
       }
       back.clearRect(0, 0, width, height)
-      back.drawImage(renderer.domElement, 0, 0, width, height)
+      // While the camera or anything in the scene moves, the frame is the average of moments across the shutter,
+      // as the 2D graphics are, so a move streaks rather than steps; a still frame is drawn once.
+      const shutter = m.shutter ?? 0
+      const moments = shutter > 0 && sceneMoves(clip.scene, m.local - shutter / 2, m.local + shutter / 2, m.length) ? SCENE3D_MOMENTS : 1
+      if (moments === 1) {
+        renderScene3D(renderer, clip.view, clip.scene, m.local, m.length, clip.pixels)
+        back.drawImage(renderer.domElement, 0, 0, width, height)
+      } else {
+        back.globalCompositeOperation = 'lighter'
+        back.globalAlpha = 1 / moments
+        for (let k = 0; k < moments; k++) {
+          renderScene3D(renderer, clip.view, clip.scene, m.local + shutter * (k / (moments - 1) - 0.5), m.length, clip.pixels)
+          back.drawImage(renderer.domElement, 0, 0, width, height)
+        }
+        back.globalCompositeOperation = 'source-over'
+        back.globalAlpha = 1
+      }
       const pixels = back.getImageData(0, 0, width, height).data
       return { ok: true, data: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength), width, height }
     }

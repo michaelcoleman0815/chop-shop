@@ -1,6 +1,8 @@
-import { keys, mixColor, tail } from '../anim'
+import { keys, luminance, mixColor, onColor, tail } from '../anim'
+import type { MotionTheme } from '../theme'
 import type { Animator, Effects, Layer, Span, TextLayer } from '../types'
-import { accentOf, inkOn, TIMING } from './kit'
+import { accentOf, centred, inkOn, TIMING, whenSaid } from './kit'
+import { textWidth } from './measure'
 import { register, type BuildContext } from './registry'
 
 /**
@@ -38,9 +40,129 @@ function nameSpans(name: string, role: string, roleColor: string, nameWeight: nu
 
 // ---------- Lower third ----------
 
-const LOWER_STYLES = ['bar', 'product', 'plate', 'line'] as const
+const LOWER_STYLES = ['bar', 'product', 'plate', 'line', 'card'] as const
+
+/**
+ * A card lower third, as Ali Abdaal names himself (measured): a paper card with a soft shadow, the name in a soft
+ * display serif over the role in a sans. It rises 16 px as it fades in on an S-curve; then the role's words come in
+ * as they are said, the card widening to hold each on an in-out curve and the word fading in as it finishes.
+ */
+function cardThird(ctx: BuildContext): Layer[] {
+  const { frame, theme, item, span } = ctx
+  const { start, end } = span
+  const u = frame.u
+  const W = frame.width
+  const H = frame.height
+  const length = end - start
+  const name = (item.text[0] ?? '').trim() || theme.name
+  const words = (item.text[1] ?? '').trim().split(/\s+/).filter(Boolean)
+  const vertical = frame.shape === 'vertical'
+  const nameSize = 64 * u
+  const subSize = 40 * u
+  const padX = 31 * u
+  const h = (words.length ? 160 : 112) * u
+  const radius = 22 * u
+  const left = vertical ? frame.safe.left + 8 * u : W * 0.0516
+  const bottom = vertical ? H - frame.safe.bottom - 90 * u : H * 0.956
+  const top = bottom - h
+  // When each word of the role comes in: as it is said, else one after another.
+  const times: number[] = []
+  let after = span.at - 0.2
+  words.forEach((w, i) => {
+    // "Doctor-turned" is said as "doctor turned", "&" as "and".
+    const heard = w === '&' ? 'and' : (w.split(/[-–]/)[0] ?? w).replace(/[^\p{L}\p{N}'’]/gu, '')
+    const said = whenSaid(ctx.tl, heard, after, end - 0.4)
+    const t = said !== null ? said - start : (times[i - 1] ?? 0.4) + 0.3
+    times.push(Math.max(0.36, Math.min(length - 0.5, t)))
+    if (said !== null) after = said + 0.05
+  })
+  const nameW = textWidth(name, 'Fraunces SemiBold', nameSize)
+  const widthAt = (k: number): number =>
+    Math.max(nameW, k ? textWidth(words.slice(0, k).join(' '), 'Inter SemiBold', subSize) : 0) + padX * 1.8
+  const shape = (w: number) => ({ type: 'rect' as const, w, h, radius, x: w / 2, y: 0 })
+  const life = {
+    keys: [{ t: 0, v: 0, ease: 'in-out-cubic' as const }, { t: 0.32, v: 1 }, ...tail([TIMING.exit, 1, 'ease-in'], [0, 0])]
+  }
+  // The card: one shape for each width it takes, each morphing from the width before, shown in turn.
+  const widths = [widthAt(0), ...words.map((_, i) => widthAt(i + 1))]
+  const card: Layer[] = []
+  let shown = 0
+  widths.forEach((w, k) => {
+    if (k > 0 && w <= widths[shown] + 1) return
+    const from = widths[shown]
+    const at = k === 0 ? 0 : times[k - 1] - 0.2
+    // Visible from its widen until the next one starts.
+    const next = widths.findIndex((v, j) => j > k && v > w + 1)
+    const until = next > 0 ? times[next - 1] - 0.2 : length + 1
+    card.push({
+      kind: 'shape',
+      start,
+      end,
+      shape: shape(k === 0 ? w : from),
+      ...(k > 0 ? { morph: { to: shape(w), progress: { keys: [{ t: at, v: 0, ease: 'in-out-cubic' as const }, { t: at + 0.34, v: 1 }] } } } : {}),
+      fill: '#F8F6F2',
+      effects: { shadow: { color: 'rgba(0, 0, 0, 0.18)', blur: 30 * u, y: 8 * u } },
+      transform: {
+        opacity: {
+          keys: [
+            { t: 0, v: k === 0 ? 1 : 0, ease: 'hold' },
+            ...(k > 0 ? [{ t: at, v: 1, ease: 'hold' as const }] : []),
+            ...(until < length ? [{ t: until, v: 0, ease: 'hold' as const }] : [])
+          ]
+        }
+      }
+    })
+    shown = k
+  })
+  return [
+    {
+      kind: 'group',
+      start,
+      end,
+      transform: {
+        x: left,
+        y: { keys: [{ t: 0, v: top + h / 2 + 16 * u, ease: 'out-quad' }, { t: 0.52, v: top + h / 2 }] },
+        opacity: life
+      },
+      children: [
+        ...card,
+        {
+          kind: 'text',
+          start,
+          end,
+          text: name,
+          font: { family: 'Fraunces SemiBold', size: nameSize },
+          fill: '#120F0D',
+          align: 'left',
+          valign: words.length ? 'bottom' : 'middle',
+          transform: { x: padX, y: words.length ? -h * 0.03 : 0 }
+        },
+        ...(words.length
+          ? [
+              {
+                kind: 'text' as const,
+                start,
+                end,
+                text: '',
+                spans: words.map((w, i) => ({ text: i ? ` ${w}` : w, t: times[i] })),
+                font: { family: 'Inter SemiBold', size: subSize },
+                fill: '#403B38',
+                align: 'left' as const,
+                valign: 'top' as const,
+                transform: { x: padX, y: h * 0.06 },
+                animators: [
+                  { by: 'word' as const, timing: 'spoken' as const, delay: 0.18, duration: 0.16, ease: 'out-quad' as const, from: { opacity: 0 } }
+                ]
+              }
+            ]
+          : [])
+      ]
+    }
+  ]
+}
 
 function lowerThird(ctx: BuildContext): Layer[] {
+  if (ctx.item.style === 'card') return cardThird(ctx)
   const { frame, theme, item, span } = ctx
   const { start, end } = span
   const u = frame.u
@@ -165,7 +287,7 @@ register({
   kind: 'lower-third',
   title: 'Lower third',
   about:
-    'Names who is speaking or what is on screen, low in the frame: text is the name, then a role or a model line, like ["Sam Lee", "Founder"] or ["Pixel 9 Pro", "Google, 128 GB"]. bar suits a person, product suits a device, plate and line are lighter.',
+    'Names who is speaking or what is on screen, low in the frame: text is the name, then a role or a model line, like ["Sam Lee", "Founder"] or ["Pixel 9 Pro", "Google, 128 GB"]. bar suits a person, product suits a device, plate and line are lighter; card is a paper card whose role comes in word by word as it is said, the card widening to hold each.',
   styles: LOWER_STYLES,
   places: ['left', 'right'],
   length: 4,
@@ -195,7 +317,7 @@ register({
 
 // ---------- Hook banner ----------
 
-const BANNER_STYLES = ['box', 'accent', 'outline', 'title', 'card', 'ink', 'marker', 'header'] as const
+const BANNER_STYLES = ['box', 'accent', 'outline', 'title', 'card', 'ink', 'marker', 'header', 'condensed'] as const
 
 /** The face the sermon hooks are set in (shared/motion/fonts): title case, never shouted. */
 const HOOK_FACE = 'Inter ExtraBold'
@@ -215,7 +337,7 @@ function banner(ctx0: BuildContext): Layer[] {
   const hook = (item.text[0] ?? '').trim()
   const sub = (item.text[1] ?? '').trim()
   const width = frame.width - frame.safe.left - frame.safe.right
-  const cx = frame.safe.left + width / 2
+  const { cx, width: across } = centred(frame)
   const place = item.place === 'middle' || item.place === 'bottom' ? item.place : 'top'
   const y =
     place === 'top'
@@ -228,11 +350,13 @@ function banner(ctx0: BuildContext): Layer[] {
   if (style === 'ink') return inkHook(ctx, place)
   if (style === 'header') return headerHook(ctx)
   if (style === 'marker') return markerHook(ctx, place)
+  if (style === 'condensed') return condensedHook(ctx, place)
   const outline = style === 'outline'
   const plateColor = style === 'accent' ? accent : '#FFFFFF'
   const ink = outline ? theme.text : inkOn(plateColor, theme)
   const size = (outline ? 74 : 60) * u
-  const spans: Span[] = [{ text: hook }]
+  // The starred words: in the accent over the picture, as the second line is; on a plate, in a colour that reads on it.
+  const spans: Span[] = starSpans(hook, outline ? accent : markOn(plateColor, ink, accent, theme))
   if (sub) spans.push({ text: `\n${sub}`, scale: 0.55, color: outline ? accent : ink })
   return [
     {
@@ -247,7 +371,7 @@ function banner(ctx0: BuildContext): Layer[] {
       effects: outline ? soft(u) : { shadow: { color: 'rgba(0, 0, 0, 0.3)', blur: 24 * u, y: 6 * u } },
       align: 'center',
       valign,
-      maxWidth: width * 0.84,
+      maxWidth: Math.min(width * 0.84, across),
       balance: true,
       plate: outline
         ? undefined
@@ -270,6 +394,102 @@ function banner(ctx0: BuildContext): Layer[] {
         anchorY: 0,
         opacity: { keys: [{ t: 0, v: 1 }, ...tail([0.18, 1, 'ease-in'], [0, 0])] },
         scale: { keys: [{ t: 0, v: 1 }, ...tail([0.18, 1, 'ease-in'], [0, 0.96])] }
+      }
+    }
+  ]
+}
+
+/** The face Lecrae's Shorts hold their title in: a condensed grotesque in heavy capitals. */
+const CONDENSED_FACE = 'Barlow Condensed ExtraBold'
+
+/**
+ * Where a condensed title sits and how big, for its layers and the stretch of the frame it holds: Lecrae's
+ * Shorts, measured. Capitals stand 85 px in a 1080 by 1920 frame on lines 0.88 of the size apart, two lines
+ * centred 52% of the way down, over the chest; the captions drop below it while it is up.
+ */
+function condensedLayout(ctx: BuildContext, place: 'top' | 'middle' | 'bottom') {
+  const { frame, item } = ctx
+  const u = frame.u
+  const size = 121 * u
+  const lineHeight = 0.88
+  const width = frame.width - frame.safe.left - frame.safe.right
+  const { cx, width: across } = centred(frame)
+  const maxWidth = Math.min(width * 0.84, across)
+  // Lines as the words wrap at the wrap width: balancing them evens their lengths, never their count. The
+  // asterisks round starred words are not drawn, so they take no width.
+  const words = unstarred((item.text[0] ?? '').trim()).split(/\s+/).filter(Boolean)
+  let lines = words.length ? 1 : 0
+  let run = ''
+  for (const w of words) {
+    const next = run ? `${run} ${w}` : w
+    if (run && textWidth(next, CONDENSED_FACE, size, true) > maxWidth) {
+      lines++
+      run = w
+    } else run = next
+  }
+  const sub = (item.text[1] ?? '').trim()
+  // The block: its lines, and a second line under them at a third of the size.
+  const height = lines * size * lineHeight + (sub ? size * 0.34 * 1.3 + size * 0.18 : 0)
+  const y =
+    place === 'top'
+      ? frame.safe.top + 24 * u + height / 2
+      : place === 'middle'
+        ? frame.height * 0.524
+        : frame.height - frame.safe.bottom - 24 * u - height / 2
+  return { size, lineHeight, maxWidth, height, y, cx }
+}
+
+/** The stretch of the frame's height a condensed title holds while it is up, in pixels, for captions to drop below. */
+function condensedBand(ctx: BuildContext): { top: number; bottom: number } | null {
+  const place = ctx.item.place === 'top' || ctx.item.place === 'bottom' ? ctx.item.place : 'middle'
+  const { y, height, size } = condensedLayout(ctx, place)
+  return { top: y - height / 2 - size * 0.1, bottom: y + height / 2 + size * 0.06 }
+}
+
+/**
+ * Lecrae's hook: the title in heavy condensed white capitals on tight lines over the chest, no plate and no
+ * edge, only a soft shadow to lift it off a white shirt; an optional second line under it, smaller. Opening the
+ * video it is there from the first frame; later, its words rise in quickly. It holds as long as it is asked.
+ */
+function condensedHook(ctx: BuildContext, place: 'top' | 'middle' | 'bottom'): Layer[] {
+  const { frame, theme, item, span } = ctx
+  const { start, end } = span
+  const u = frame.u
+  const { size, lineHeight, maxWidth, y, cx } = condensedLayout(ctx, place)
+  const hook = (item.text[0] ?? '').trim()
+  const sub = (item.text[1] ?? '').trim()
+  // The starred words in the accent, over the picture as the words are.
+  const spans: Span[] = starSpans(hook, accentOf(item.color, theme))
+  // White, as the title is, unless the call names a colour for it.
+  if (sub) spans.push({ text: `\n${sub}`, scale: 0.34, color: item.color ? accentOf(item.color, theme) : '#FFFFFF' })
+  return [
+    {
+      kind: 'text',
+      start,
+      end,
+      text: '',
+      spans,
+      font: { family: CONDENSED_FACE, size, uppercase: true, lineHeight },
+      fill: '#FFFFFF',
+      effects: { shadow: { color: 'rgba(0, 0, 0, 0.42)', blur: 20 * u, y: 3 * u } },
+      align: 'center',
+      valign: 'middle',
+      maxWidth,
+      balance: true,
+      animators: [
+        {
+          by: 'word',
+          delay: 0.04,
+          stagger: 0.035,
+          duration: 0.26,
+          ease: 'snap',
+          from: { y: 18 * u, opacity: 0 }
+        }
+      ],
+      transform: {
+        x: cx,
+        y,
+        opacity: { keys: [{ t: 0, v: 1 }, ...tail([0.14, 1, 'ease-in'], [0, 0])] }
       }
     }
   ]
@@ -349,6 +569,7 @@ function headerHook(ctx: BuildContext): Layer[] {
   const u = frame.u
   const W = frame.width
   const bar = accentOf(item.color, theme)
+  const ink = inkOn(bar, theme)
   const height = frame.height * HEADER_FRAC
   const barH = height * HEADER_BAR
   const bandH = height - barH
@@ -404,10 +625,11 @@ function headerHook(ctx: BuildContext): Layer[] {
       start,
       end,
       text: '',
-      spans: [{ text: (item.text[0] ?? '').trim() }],
+      // The bar is the accent, so the starred words take a colour that reads on it.
+      spans: starSpans((item.text[0] ?? '').trim(), markOn(bar, ink, bar, theme)),
       // Heavy, filling the first line before it breaks, as a title is set rather than balanced.
       font: { family: theme.display, size: 60 * u, weight: 800, uppercase: true, lineHeight: 1.08 },
-      fill: inkOn(bar, theme),
+      fill: ink,
       align: 'center',
       valign: 'middle',
       maxWidth: W * 0.66,
@@ -426,6 +648,7 @@ function markerHook(ctx: BuildContext, place: 'top' | 'middle' | 'bottom'): Laye
   const { start, end } = span
   const u = frame.u
   const yellow = item.color ? accentOf(item.color, theme) : '#FFE81A'
+  const ink = '#0A0A0A'
   const width = frame.width - 2 * frame.safe.left
   const y =
     place === 'top'
@@ -440,9 +663,10 @@ function markerHook(ctx: BuildContext, place: 'top' | 'middle' | 'bottom'): Laye
       start,
       end,
       text: '',
-      spans: [{ text: (item.text[0] ?? '').trim() }],
+      // The starred words in a colour that reads on the box: the accent, unless the box is the accent too.
+      spans: starSpans((item.text[0] ?? '').trim(), markOn(yellow, ink, accentOf(item.color, theme), theme)),
       font: { family: HOOK_FACE, size: 78 * u, uppercase: false, lineHeight: 1.08, tracking: -0.01 * 78 * u },
-      fill: '#0A0A0A',
+      fill: ink,
       align: 'center',
       valign,
       // The first line runs long and the rest takes what is left ("How Much 120M Views / Pays in India").
@@ -458,13 +682,57 @@ function markerHook(ctx: BuildContext, place: 'top' | 'middle' | 'bottom'): Laye
   ]
 }
 
+/** Words between asterisks, to find and split them out of a hook, and to tell a part that is starred. */
+const STARRED = /(\*[^*]+\*)/
+const STARRED_PART = /^\*[^*]+\*$/
+
+/**
+ * A hook's words as spans, those between asterisks in colour and the asterisks dropped, so a planner can star
+ * words in any banner style. A hook with none is one plain span, as it always was.
+ */
+function starSpans(hook: string, color: string): Span[] {
+  if (!STARRED.test(hook)) return [{ text: hook }]
+  return hook
+    .split(STARRED)
+    .filter(Boolean)
+    .map((part) => (STARRED_PART.test(part) ? { text: part.slice(1, -1), color } : { text: part }))
+}
+
+/** A hook as it is drawn, without the asterisks round its starred words, for measuring it. */
+function unstarred(hook: string): string {
+  return starSpans(hook, '')
+    .map((s) => s.text)
+    .join('')
+}
+
+/** How far apart two colours read, as WCAG counts it: 1 for the same colour, 21 for black on white. */
+function contrast(a: string, b: string): number {
+  const x = luminance(a)
+  const y = luminance(b)
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+}
+
+/**
+ * The colour for starred words on a plate of ground whose other words are in ink: the accent when it reads
+ * there (3 to 1, as large type needs), else white or the theme's ink, whichever the words are not, else the
+ * accent taken darker or lighter until it reads: a yellow accent on a white box goes to a deep gold.
+ */
+function markOn(ground: string, ink: string, accent: string, theme: MotionTheme): string {
+  const reads = (c: string): boolean => contrast(c, ground) >= 3
+  if (reads(accent)) return accent
+  const other = luminance(ink) > 0.5 ? theme.ink : '#FFFFFF'
+  if (reads(other)) return other
+  const toward = onColor(ground, '#000000', '#FFFFFF')
+  for (let i = 1; i < 10; i++) {
+    const c = mixColor(accent, toward, i / 10)
+    if (reads(c)) return c
+  }
+  return toward
+}
+
 /** The hook's words, those between asterisks in the accent, or else its last word. */
 export function inkSpans(hook: string, accent: string): Span[] {
-  if (/\*[^*]+\*/.test(hook))
-    return hook
-      .split(/(\*[^*]+\*)/)
-      .filter(Boolean)
-      .map((part) => (/^\*[^*]+\*$/.test(part) ? { text: part.slice(1, -1), color: accent } : { text: part }))
+  if (STARRED.test(hook)) return starSpans(hook, accent)
   const at = hook.search(/\S+$/)
   return at > 0 ? [{ text: hook.slice(0, at) }, { text: hook.slice(at), color: accent }] : [{ text: hook }]
 }
@@ -497,7 +765,9 @@ function sermonHook(ctx: BuildContext, style: 'title' | 'card', place: 'top' | '
         : frame.height - frame.safe.bottom - 24 * u
   const valign = place === 'top' ? (card ? 'top' : 'bottom') : place === 'middle' ? 'middle' : 'bottom'
   const ink = card ? '#111111' : '#FFFFFF'
-  const spans: Span[] = [{ text: hook }]
+  // The starred words: in the accent over the picture; on the white card, in a colour that reads on it.
+  const accent = accentOf(item.color, theme)
+  const spans: Span[] = starSpans(hook, card ? markOn('#FFFFFF', ink, accent, theme) : accent)
   if (sub) spans.push({ text: `\n${sub}`, scale: 0.6, color: card ? '#444444' : 'rgba(255, 255, 255, 0.78)' })
   return [
     {
@@ -545,11 +815,13 @@ register({
   kind: 'banner',
   title: 'Hook banner',
   about:
-    'States the payoff at the top of the frame from the first frame and is gone by about five seconds: text is the hook in a few words, then an optional smaller line. box is a white box with dark capitals. ink is white capitals on a black plate per line, the last word (or the words between *asterisks*) in the accent, as The Diary of a CEO sets its hooks; place middle sets it over the speaker’s chest. marker is black words in title case on a yellow box a line, there from the first frame, as Colin & Samir open their Shorts. title is white words in title case above a square picture, for the whole clip; card is dark words in title case on a white card. header is a show’s standing header for the whole clip, as Club Shay Shay frames its Shorts: the brand’s logo on a dark band across the top and the title in dark capitals on a bar of the colour (color) under it, over a picture boxed beneath (box with top 0.22); icon names which of the brand’s logos.',
+    'States the payoff at the top of the frame from the first frame and is gone by about five seconds: text is the hook in a few words, then an optional smaller line. In every style, words between *asterisks* are set apart in the accent (or a colour that reads on the plate) and the asterisks are not drawn. box is a white box with dark capitals. ink is white capitals on a black plate per line, the starred words (or else the last word) in the accent, as The Diary of a CEO sets its hooks; place middle sets it over the speaker’s chest. marker is black words in title case on a yellow box a line, there from the first frame, as Colin & Samir open their Shorts. title is white words in title case above a square picture, for the whole clip; card is dark words in title case on a white card. header is a show’s standing header for the whole clip, as Club Shay Shay frames its Shorts: the brand’s logo on a dark band across the top and the title in dark capitals on a bar of the colour (color) under it, over a picture boxed beneath (box with top 0.22); icon names which of the brand’s logos. condensed is heavy condensed white capitals on tight lines, no plate or edge, as Lecrae holds the title of his Shorts over the speaker’s chest (place middle) for as long as to says, often the opening eight seconds across the cuts; the captions drop below it while it is up.',
   styles: BANNER_STYLES,
   places: ['top', 'middle', 'bottom'],
   // The ink and marker hooks say the opening line themselves, so the captions wait for them to go.
   coversFor: (call) => (call.style === 'ink' || call.style === 'marker' ? 'card' : undefined),
+  // A condensed title held over the chest: the captions drop below it while it is up.
+  band: (ctx) => (ctx.item.style === 'condensed' ? condensedBand(ctx) : null),
   length: 5,
   lead: 0,
   fields: [
@@ -572,20 +844,222 @@ register({
 
 // ---------- End card ----------
 
-const END_STYLES = ['scrim', 'solid', 'accent'] as const
+const END_STYLES = ['scrim', 'solid', 'accent', 'slug', 'collage'] as const
+
+/**
+ * The episode title that becomes the guest's name card, as Deep End with Lecrae makes one (measured frame by
+ * frame): a printed-paper collage on ultramarine, animated on twos. Halftone cut-outs of the guest, a huge
+ * ultra-condensed yellow title behind their heads letter by letter, the title again small on a purple brush
+ * stroke, a hand-drawn arrow drawing on; it settles up, then falls away as the guest rises in with a torn yellow
+ * edge, their name types on beside them and their roles step down under it.
+ *
+ * text: the title, the guest's name, then their roles. items are pictures by id: mark collage (up to four, the
+ * first big at the top), guest (the name card's cut-out), sticker (its yellow edge), ground (the paper).
+ */
+/** A hand-drawn curve through points: Catmull-Rom, sampled finely enough to read as one stroke of a pen. */
+function penCurve(points: [number, number][], per = 14): [number, number][] {
+  const out: [number, number][] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[Math.min(points.length - 1, i + 2)]
+    for (let k = 0; k < per; k++) {
+      const t = k / per
+      const t2 = t * t
+      const t3 = t2 * t
+      const at = (a: number, b: number, c: number, d: number): number =>
+        0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3)
+      out.push([at(p0[0], p1[0], p2[0], p3[0]), at(p0[1], p1[1], p2[1], p3[1])])
+    }
+  }
+  out.push(points[points.length - 1])
+  return out
+}
+
+function collageCard(ctx: BuildContext): Layer[] {
+  const { frame, item, span } = ctx
+  const { start, end } = span
+  const W = frame.width
+  const H = frame.height
+  const u = frame.u
+  const sx = W / 1920
+  const sy = H / 1080
+  const length = end - start
+  const title = (item.text[0] ?? '').trim()
+  const name = (item.text[1] ?? '').trim()
+  const roles = item.text.slice(2).map((t) => t.trim()).filter(Boolean).slice(0, 4)
+  const pics = (mark: string) => item.items.filter((r) => r.mark.trim().toLowerCase() === mark && /^a\d+$/.test(r.value.trim())).map((r) => r.value.trim())
+  const collage = pics('collage').slice(0, 4)
+  const [guest] = pics('guest')
+  const [sticker] = pics('sticker')
+  const [ground] = pics('ground')
+  const yellow = '#F5C316'
+  const yellowSoft = '#FFCB12'
+  const pic = (id: string, x: number, y: number, h: number): Layer => {
+    const size = ctx.picture(id)
+    const w = size ? (h * size.width) / size.height : h
+    return { kind: 'image', start, end, asset: id, w, h, transform: { x, y } }
+  }
+  // When the title falls away and the guest rises in; scaled to the card's length (3.96 s as measured).
+  const k = Math.max(0.6, length / 3.96)
+  const fall = 1.08 * k
+  const rise = 1.58 * k
+  const titleLayers: Layer[] = []
+  if (title)
+    titleLayers.push({
+      kind: 'text',
+      start,
+      end,
+      text: title.toUpperCase(),
+      font: { family: 'Bebas Neue', size: 330 * u },
+      fill: yellow,
+      // Heavier than Bebas draws: an edge of its own colour thickens it toward an ultra-condensed black.
+      stroke: { color: yellow, width: 12 * u, join: 'round' },
+      align: 'center',
+      valign: 'middle',
+      animators: [{ by: 'char', delay: 0.08, stagger: 0.04, duration: 0.08, ease: 'out-quad', from: { opacity: 0 } }],
+      transform: { x: 920 * sx, y: 355 * sy, scaleY: 1.42 }
+    })
+  // The cut-outs: the first big at the top, two faces either side below it, the last a body in front.
+  const slots = [
+    [900, 250, 560],
+    [660, 520, 430],
+    [1110, 510, 430],
+    [850, 840, 760]
+  ] as const
+  collage.forEach((id, i) => {
+    const [x, y, h] = slots[i]
+    titleLayers.push(pic(id, x * sx, y * sy, h * u))
+  })
+  if (title) {
+    titleLayers.push(
+      {
+        kind: 'shape',
+        start,
+        end,
+        // A dry-brush stroke: a ragged band, wiped on from its left end.
+        shape: { type: 'polygon', points: [[0, 18], [40, 0], [300, 8], [610, -4], [640, 30], [620, 128], [380, 140], [90, 150], [10, 132], [24, 70]] },
+        fill: '#4337E3',
+        transform: {
+          x: 370 * sx,
+          y: 720 * sy,
+          rotation: -5,
+          scale: u,
+          scaleX: { keys: [{ t: 0.08, v: 0, ease: 'out-quad' }, { t: 0.25, v: 1 }] }
+        }
+      },
+      {
+        kind: 'text',
+        start,
+        end,
+        text: title.toUpperCase(),
+        font: { family: 'Bebas Neue', size: 150 * u },
+        fill: yellowSoft,
+        align: 'left',
+        valign: 'middle',
+        transform: {
+          x: 410 * sx,
+          y: 795 * sy,
+          rotation: -5,
+          scaleY: 1.22,
+          opacity: { keys: [{ t: 0.17, v: 0, ease: 'out-quad' }, { t: 0.5, v: 1 }] }
+        }
+      },
+      {
+        kind: 'shape',
+        start,
+        end,
+        shape: { type: 'arrow', points: penCurve([[1730, 712], [1560, 780], [1400, 700], [1540, 620], [1330, 600], [1190, 572]].map(([x, y]) => [x * sx, y * sy] as [number, number])), head: 30 * u },
+        stroke: { color: '#FAB717', width: 9 * u, cap: 'round', join: 'round' },
+        trim: { end: { keys: [{ t: 0.08, v: 0, ease: 'out-quad' }, { t: 0.3, v: 1 }] } }
+      }
+    )
+  }
+  const layers: Layer[] = [
+    ground
+      ? { kind: 'image', start, end, asset: ground, w: W, h: H, fit: 'cover', transform: { x: W / 2, y: H / 2 } }
+      : { kind: 'shape', start, end, shape: { type: 'rect', w: W, h: H }, fill: '#06007E', transform: { x: W / 2, y: H / 2 } },
+    {
+      kind: 'group',
+      start,
+      end,
+      transform: {
+        // Settles up 40 px, holds, then falls away, faster and faster.
+        y: { keys: [{ t: 0.5, v: 40 * u, ease: 'out-cubic' }, { t: 0.92, v: 0 }, { t: fall, v: 0, ease: 'in-cubic' }, { t: fall + 0.75, v: H * 1.1 }] }
+      },
+      children: titleLayers
+    }
+  ]
+  if (guest) {
+    const g: Layer[] = []
+    if (sticker) g.push({ ...pic(sticker, 1450 * sx, 540 * sy, H), transform: { x: 1450 * sx, y: 540 * sy, opacity: { keys: [{ t: rise + 0.33, v: 0, ease: 'hold' }, { t: rise + 0.34, v: 1 }] } } })
+    g.push(pic(guest, 1400 * sx, 540 * sy, H))
+    layers.push({
+      kind: 'group',
+      start,
+      end,
+      transform: { y: { keys: [{ t: rise, v: H * 0.95, ease: 'out-expo' }, { t: rise + 0.75, v: 0 }] } },
+      children: g
+    })
+  }
+  if (name)
+    layers.push({
+      kind: 'text',
+      start,
+      end,
+      text: name.toUpperCase(),
+      font: { family: 'Bebas Neue', size: 205 * u },
+      fill: yellowSoft,
+      align: 'left',
+      valign: 'top',
+      animators: [{ by: 'char', delay: rise + 0.17, stagger: 0.025, duration: 0.1, ease: 'out-quad', from: { opacity: 0 } }],
+      transform: { x: 128 * sx, y: 262 * sy, scaleY: 1.12 }
+    })
+  roles.forEach((role, i) =>
+    layers.push({
+      kind: 'text',
+      start,
+      end,
+      text: role,
+      font: { family: 'Inter SemiBold', size: 66 * u, weight: 400 },
+      fill: '#C7B153',
+      align: 'left',
+      valign: 'top',
+      animators: [{ by: 'char', delay: rise + 1.0 + i * 0.2, stagger: 0.012, duration: 0.06, ease: 'out-quad', from: { opacity: 0 } }],
+      transform: { x: (152 + [0, 24, 64, 96][i]) * sx, y: (484 + i * 84) * sy }
+    })
+  )
+  if (name)
+    layers.push({
+      kind: 'shape',
+      start,
+      end,
+      shape: { type: 'arrow', points: penCurve([[860, 470], [800, 600], [900, 730], [1130, 700]].map(([x, y]) => [x * sx, y * sy] as [number, number])), head: 26 * u },
+      stroke: { color: '#FAB717', width: 8 * u, cap: 'round', join: 'round' },
+      trim: { end: { keys: [{ t: rise + 0.75, v: 0, ease: 'out-quad' }, { t: rise + 1.37, v: 1 }] } }
+    })
+  // On twos, as stop-motion collage moves: 12 poses a second. Out on a cut.
+  return [{ kind: 'group', start, end, fps: 12, children: layers }]
+}
 
 function endCard(ctx: BuildContext): Layer[] {
+  if (ctx.item.style === 'collage') return collageCard(ctx)
   const { frame, theme, item, span } = ctx
   const { start, end } = span
   const u = frame.u
   const accent = accentOf(item.color, theme)
   const style = (END_STYLES as readonly string[]).includes(item.style) ? item.style : 'scrim'
-  const ground = style === 'solid' ? theme.paper : style === 'accent' ? accent : 'rgba(10, 10, 12, 0.78)'
-  const ink = style === 'scrim' ? theme.text : inkOn(ground, theme)
+  // A slug is the show's title on black between a cold open and the conversation: there on its first frame,
+  // a hard cut in and out, as The Diary of a CEO and Impaulsive put their titles between the two.
+  const slug = style === 'slug'
+  const ground =
+    style === 'solid' ? theme.paper : style === 'accent' ? accent : slug ? '#0B0B0D' : 'rgba(10, 10, 12, 0.78)'
+  const ink = style === 'scrim' ? theme.text : slug ? '#FFFFFF' : inkOn(ground, theme)
   const title = (item.text[0] ?? '').trim()
   const sub = (item.text[1] ?? '').trim()
   const width = frame.width - frame.safe.left - frame.safe.right
-  const cx = frame.safe.left + width / 2
+  const { cx, width: across } = centred(frame)
   const cy = frame.safe.top + (frame.height - frame.safe.top - frame.safe.bottom) * 0.48
   const layers: Layer[] = [
     {
@@ -594,7 +1068,7 @@ function endCard(ctx: BuildContext): Layer[] {
       end,
       shape: { type: 'rect', w: frame.width, h: frame.height },
       fill: ground,
-      transform: { x: frame.width / 2, y: frame.height / 2, opacity: keys([0, 0, 'easy-ease'], [0.35, 1]) }
+      transform: { x: frame.width / 2, y: frame.height / 2, ...(slug ? {} : { opacity: keys([0, 0, 'easy-ease'], [0.35, 1]) }) }
     }
   ]
   if (item.icon) {
@@ -630,10 +1104,13 @@ function endCard(ctx: BuildContext): Layer[] {
       fill: ink,
       align: 'center',
       valign: 'middle',
-      maxWidth: width * 0.86,
+      maxWidth: Math.min(width * 0.86, across),
       balance: true,
       animators: [
-        { by: 'word', delay: 0.2, stagger: 0.05, duration: 0.38, ease: 'snap', from: { y: 30 * u, opacity: 0 } }
+        slug
+          ? // The title opens out from a little small as the cut lands, rather than waiting for a ground to fade.
+            { by: 'line', delay: 0.02, duration: 0.5, ease: 'ease-out', from: { scale: 0.86, opacity: 0 } }
+          : { by: 'word', delay: 0.2, stagger: 0.05, duration: 0.38, ease: 'snap', from: { y: 30 * u, opacity: 0 } }
       ],
       transform: { x: cx, y: cy }
     })
@@ -645,7 +1122,7 @@ register({
   kind: 'end-card',
   title: 'End card',
   about:
-    'Closes the video over its last seconds: text is the line to end on, then an optional smaller line such as a handle; an optional icon sits above. scrim darkens the picture, solid and accent fill the frame.',
+    'Closes the video over its last seconds: text is the line to end on, then an optional smaller line such as a handle; an optional icon sits above. scrim darkens the picture, solid and accent fill the frame. slug is the show’s title in white on black from its first frame, for the moment between a cold open and the conversation (the cold-open op’s slug makes one). collage is a podcast episode’s title card that becomes the guest’s name card, on twos: text is the title, the guest’s name, then their roles; items are cut-out pictures by id with mark collage (up to four), guest, sticker (its yellow edge) and ground.',
   styles: END_STYLES,
   places: [],
   length: 2,

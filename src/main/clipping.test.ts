@@ -75,7 +75,7 @@ import { PODCAST, SERVICE, STREAM, type Planted } from '../shared/clipping/fixtu
 import { factsOf, momentSpan } from '../shared/clipping/testing'
 import { EMPTY_BRAND } from '../shared/brand'
 import { currentCut, resolveCut } from '../shared/edit'
-import { overlapWith } from '../shared/clipping'
+import { overlapWith, sentencesOf } from '../shared/clipping'
 import { NO_FACE_FINDER, thisComputer } from '../shared/platform'
 
 const PATHS: Record<string, Planted> = {
@@ -570,6 +570,80 @@ describe('the clips Claude picks', () => {
       expect(facts.words.some((w) => w.endSec === c.endSec)).toBe(true)
     }
     expect(lineAt(lines[0])).toBeGreaterThan(0)
+  })
+
+  /**
+   * The worst-day question in the podcast, and a pick ending two minutes and eight and a half seconds on: the answer,
+   * the laugh and the talk after it, past the 90 seconds most podcast clips land inside.
+   */
+  const longAnswer = (seconds = 128.5): { startSec: number; endSec: number; end: number } => {
+    const facts = factsOf(PODCAST)
+    const startSec = momentSpan(facts.timeline, PODCAST.moments[0]).startSec
+    const end = sentencesOf(facts.words).filter((s) => s.endSec <= startSec + seconds).pop()!.endSec
+    fake.key = 'sk-ant-test'
+    fake.parse = () => ({
+      stop_reason: 'end_turn',
+      parsed_output: {
+        clips: [
+          {
+            startSec,
+            endSec: startSec + seconds,
+            title: 'The worst day',
+            hook: 'What was the worst day you ever had on the job?',
+            reason: 'A war story told whole.',
+            score: 90
+          }
+        ]
+      }
+    })
+    return { startSec, endSec: startSec + seconds, end }
+  }
+  const lastPrompt = (): string =>
+    (fake.requests[fake.requests.length - 1] as { messages: { content: string }[] }).messages[0].content
+  const claude = (): ClippingTools => tools({ engine: async () => ({ by: 'claude', model: MODEL }) })
+
+  it('keeps a podcast answer Claude picked past 90 seconds whole, up to the three minutes a Short runs', async () => {
+    const pick = longAnswer()
+    const r = await findClips({ paths: ['/rec/Long Table 41.mp4'], ask: 'podcast clips' }, claude(), quiet)
+    if (!r.ok) throw new Error(r.message)
+    expect(r.recordings[0].profile).toBe('podcast')
+    // Told where clips usually land, and that one may run to three minutes when its moment needs the room.
+    expect(lastPrompt()).toMatch(/Each clip should run between 30 and 90 seconds\. .*may run up to 180 seconds/)
+    // Kept as long as it was picked, to the end of the sentence it ends in, and nothing said of a cut.
+    expect(r.clips).toHaveLength(1)
+    expect(r.clips[0].startSec).toBe(pick.startSec)
+    expect(r.clips[0].endSec).toBe(pick.end)
+    expect(r.clips[0].endSec - r.clips[0].startSec).toBeGreaterThan(120)
+    expect(r.notes.join(' ')).not.toMatch(/instead of/)
+    // Past three minutes, it ends at the last sentence inside them, and says so.
+    longAnswer(200)
+    const over = await findClips({ paths: ['/rec/Long Table 41.mp4'], ask: 'podcast clips' }, claude(), quiet)
+    if (!over.ok) throw new Error(over.message)
+    expect(over.clips[0].endSec - over.clips[0].startSec).toBeLessThanOrEqual(180)
+    expect(over.notes[0]).toBe(
+      'I ended “The worst day” at 9:34 instead of 9:54 to keep it under 3 minutes, the longest a Short can run.'
+    )
+  })
+
+  it('keeps the same pick to the minute asked for, and says where it ended instead and why', async () => {
+    const pick = longAnswer()
+    const r = await findClips(
+      { paths: ['/rec/Long Table 41.mp4'], ask: 'podcast clips under a minute' },
+      claude(),
+      quiet
+    )
+    if (!r.ok) throw new Error(r.message)
+    // Told the length asked, and nothing of a longer one.
+    expect(lastPrompt()).toMatch(/Each clip should run between 24 and 60 seconds\./)
+    expect(lastPrompt()).not.toMatch(/may run up to/)
+    const clip = r.clips[0]
+    expect(clip.startSec).toBe(pick.startSec)
+    expect(clip.endSec).toBeLessThan(pick.end)
+    expect(clip.endSec - clip.startSec).toBeLessThanOrEqual(60)
+    // Never silently: where it ends, where it would have, and why, in the notes and the reply beside the clips.
+    const note = 'I ended “The worst day” at 7:32 instead of 8:43 to keep it under a minute, as you asked.'
+    expect(r.notes).toContain(note)
+    expect(r.reply.aside).toContain(note)
   })
 
   it('sorts them by measuring, and says why, when Claude cannot be reached', async () => {

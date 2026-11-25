@@ -370,6 +370,8 @@ function build(ctx: BuildContext): Layer[] {
 
 register({
   kind: 'callout',
+  // Its plate is its own pill (a label's), not a plate behind its words.
+  ownFx: ['plate'],
   title: 'Callout',
   about:
     'Points at something in the frame. Styles: spec (a dot and a leader line to a label: text is the part, then its value, like ["48 MP main camera", "f/1.78"]), label (the same, as an explainer labels a diagram: dark words on a white pill, an ink leader line), arrow, block (a thick solid arrow, as reaction Shorts point with), circle, underline and box (a highlight), each with an optional label in text, and pointer (a pulsing dot). box is the region as fractions of the frame [x, y, width, height], or a point [x, y]; leave it empty if you cannot know where the thing is, and the person places it. place left or right puts the label on that side.',

@@ -2,6 +2,7 @@ import { keys, onColor, tail } from '../anim'
 import { METALS, type Chrome } from '../chrome'
 import type { Count, Layer } from '../types'
 import { speakerFace } from './chips'
+import { popFade, popScale } from './kit'
 import { register, type BuildContext } from './registry'
 
 /**
@@ -105,8 +106,10 @@ function keyword(ctx: BuildContext): Layer[] {
       transform: {
         x: W / 2,
         y: cy,
-        scale: keys([0, 0, { spring: 0.45 }], [0.5, 1]),
-        rotation: keys([0, -25, 'snap'], [0.45, 0])
+        // A pop from four-fifths of its size with a quarter-turn that settles, as creators pop an icon.
+        scale: { keys: popScale(0, 0.75) },
+        opacity: { keys: popFade(0) },
+        rotation: keys([0, -18, 'out-cubic'], [0.5, 0])
       },
       children: [
         {
@@ -154,8 +157,8 @@ function keyword(ctx: BuildContext): Layer[] {
     transform: {
       x: W / 2,
       y: valueY,
-      scale: keys([0, chrome ? 0.7 : 0.55, { spring: 0.5 }], [0.55, 1]),
-      rotation: keys([0, -4, 'snap'], [0.4, 0])
+      scale: { keys: popScale(0, chrome ? 0.8 : 0.72) },
+      rotation: keys([0, -4, 'out-cubic'], [0.45, 0])
     }
   })
   y += heights[1] + gap

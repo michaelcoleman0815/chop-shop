@@ -126,7 +126,7 @@ export interface KitInput {
  * is up. With nothing burned in, they are for viewers to turn on, and every
  * word said is in them, cards or not.
  */
-export function exportCues(input: Pick<KitInput, 'cut' | 'resolved' | 'pass' | 'scene' | 'width'>): {
+export function exportCues(input: Pick<KitInput, 'cut' | 'resolved' | 'pass' | 'scene' | 'width'> & Partial<Pick<KitInput, 'height'>>): {
   cues: Cue[]
   burned: boolean
 } {
@@ -135,7 +135,7 @@ export function exportCues(input: Pick<KitInput, 'cut' | 'resolved' | 'pass' | '
   const from = burned ? input.pass : { cut: input.cut, resolved: input.resolved }
   // The words as burned in, the ones the speaker leans on marked, so the groups are the burned ones.
   const words = shownWords(from.resolved.words, from.cut.captions, input.resolved.words)
-  const style = captionStyleFor(from.cut.captions, input.width, null)
+  const style = captionStyleFor(from.cut.captions, input.width, null, input.height)
   return { cues: subtitleCues(words, style), burned }
 }
 

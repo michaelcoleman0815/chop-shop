@@ -14,6 +14,8 @@ import {
   type EditDoc
 } from '../edit'
 import { creditsText } from '../assets'
+import { matteWants } from '../tracks/mattes'
+import { timelineFor } from './timing'
 import {
   buildScene,
   DEFAULT_THEME,
@@ -31,7 +33,14 @@ import {
   type IconNode,
   marketSeries,
   type MotionScene,
-  type TextLayer
+  type TextLayer,
+  checklistParts,
+  cloudLayout,
+  cloudWords,
+  docParts,
+  frameFor,
+  promptParts,
+  teaserParts
 } from '.'
 
 /**
@@ -278,6 +287,46 @@ describe('titles', () => {
     expect(box(5)[3]).toBe(0)
   })
 
+  it('holds Lecrae’s condensed title over the chest: heavy white capitals with no plate or edge', () => {
+    const scene = sceneOf(
+      docWith('vertical', [
+        { op: 'motion-add', kind: 'banner', from: 'start', to: '8s', text: ['Teaching beyond words'], style: 'condensed', place: 'middle' }
+      ])
+    )
+    const layer = scene.items[0].layers[0] as TextLayer
+    expect(layer.font.family).toBe('Barlow Condensed ExtraBold')
+    expect(layer.plate).toBeUndefined()
+    expect(layer.stroke).toBeUndefined()
+    // On from the first frame, opening the video, in two lines over the chest.
+    const f = draw(scene, 0)
+    let top = Infinity
+    let bottom = 0
+    let left = Infinity
+    let right = 0
+    let dark = 0
+    for (let y = 600; y < 1400; y += 2)
+      for (let x = 0; x < 1080; x += 2) {
+        const [r, , , a] = f.at(x, y)
+        if (r > 245 && a > 250) {
+          top = Math.min(top, y)
+          bottom = Math.max(bottom, y)
+          left = Math.min(left, x)
+          right = Math.max(right, x)
+        }
+        // A black edge round the letters would be solid black; the shadow is only ever part see-through.
+        if (a > 200 && r < 30) dark++
+      }
+    expect(dark).toBe(0)
+    // Capitals 85 px tall on lines 106 px apart: two lines run about 190 px from the first cap to the last baseline.
+    expect(bottom - top).toBeGreaterThan(170)
+    expect(bottom - top).toBeLessThan(215)
+    expect((top + bottom) / 2 / 1920).toBeCloseTo(0.524, 1)
+    // Condensed: the longer line, BEYOND WORDS, runs about two thirds of the frame's width.
+    expect((right - left) / 1080).toBeGreaterThan(0.55)
+    expect((right - left) / 1080).toBeLessThan(0.75)
+    expect(draw(scene, 8.1).lit(0, 600, 1080, 800)).toBe(0)
+  })
+
   it('sets the interview hooks: white capitals on black with the last word in red, and black words on yellow', () => {
     const hook = (style: string, text: string) =>
       sceneOf(docWith('vertical', [{ op: 'motion-add', kind: 'banner', from: 'start', to: '2s', text: [text], style, place: 'middle' }]))
@@ -305,6 +354,32 @@ describe('titles', () => {
     }
     expect(yellow(0)).toBeGreaterThan(300)
     expect(yellow(2)).toBe(0)
+  })
+
+  it('reads the words between asterisks in every banner style: set apart in colour, the asterisks never drawn', () => {
+    const words = (style: string, text: string): TextLayer => {
+      const scene = sceneOf(
+        docWith('vertical', [{ op: 'motion-add', kind: 'banner', from: 'start', to: '3s', text: [text], style, place: 'middle' }])
+      )
+      // The hook's own words: the header's title is its last text, under the band's.
+      const texts = scene.items[0].layers.filter((l): l is TextLayer => l.kind === 'text')
+      return texts[texts.length - 1]
+    }
+    for (const style of ['box', 'accent', 'outline', 'title', 'card', 'ink', 'marker', 'header', 'condensed']) {
+      const layer = words(style, 'I worry about what is *coming*')
+      const spans = layer.spans ?? []
+      expect(`${layer.text}${spans.map((s) => s.text).join('')}`, style).not.toContain('*')
+      expect(spans.map((s) => s.text).join(''), style).toBe('I worry about what is coming')
+      const starred = spans.find((s) => s.text === 'coming')
+      expect(starred?.color, style).toBeDefined()
+      expect(starred?.color, style).not.toBe(layer.fill)
+      // The rest is in the words' own colour, and the starred word reads apart from the plate it sits on.
+      for (const s of spans) if (s !== starred) expect(s.color ?? layer.fill, style).toBe(layer.fill)
+      if (layer.plate) expect(starred?.color, style).not.toBe(layer.plate.color)
+    }
+    // Without asterisks, a hook is one plain span, as it was.
+    for (const style of ['box', 'accent', 'condensed', 'marker'])
+      expect(words(style, 'The one setting I change first').spans, style).toEqual([{ text: 'The one setting I change first' }])
   })
 
   it('centres the sermon hooks on the frame, as the captions are, not on the safe area', () => {
@@ -355,6 +430,34 @@ describe('titles', () => {
     expect(corner[0]).toBeLessThan(30)
     // The bell sits above the line.
     expect(f.lit(960 - 60, 540 - 260, 120, 120)).toBeGreaterThan(300)
+  })
+
+  it('cuts to a slug: the show’s title in white on solid black from its very first frame', () => {
+    const scene = sceneOf(
+      docWith('vertical', [{ op: 'motion-add', kind: 'end-card', from: 'w3', to: '1.6s', text: ['The Diary of a CEO'], style: 'slug' }])
+    )
+    const item = scene.items[0]
+    expect(item.covers).toBe('card')
+    // Black and whole on the first frame: no fade up from the picture.
+    const first = draw(scene, item.start + 0.001)
+    expect(first.at(40, 40)).toEqual([11, 11, 13, 255])
+    expect(first.at(1040, 1880)).toEqual([11, 11, 13, 255])
+    // The title, white, once it has opened out.
+    const f = draw(scene, item.start + 0.6)
+    let white = 0
+    let top = Infinity
+    let bottom = 0
+    for (let y = 0; y < 1920; y += 4)
+      for (let x = 0; x < 1080; x += 4)
+        if (f.at(x, y)[0] > 240) {
+          white++
+          top = Math.min(top, y)
+          bottom = Math.max(bottom, y)
+        }
+    expect(white).toBeGreaterThan(300)
+    // In the middle of the frame, a little above its centre.
+    expect(top / 1920).toBeGreaterThan(0.35)
+    expect(bottom / 1920).toBeLessThan(0.55)
   })
 
   it('keeps long titles inside the frame, in both shapes', () => {
@@ -409,22 +512,73 @@ describe('kinetic title', () => {
     expect(draw(scene, item.end).lit(0, 0, 1920, 1080)).toBe(0)
   })
 
-  it('smears the keyword line along its slide with real motion blur', () => {
-    const scene = sceneOf(docWith('wide', [title()], QUOTE))
+  it('sets the stair on the speaker’s open side, its lines stepping right, and a lone short word twice as big', () => {
+    const at = (extra: Record<string, unknown>) => {
+      const layers = sceneOf(docWith('wide', [title({ style: 'stair', ...extra })], QUOTE)).items[0].layers as TextLayer[]
+      return layers.map((l) => ({ x: l.transform!.x as number, size: l.font.size }))
+    }
+    const text = ['scare the', 'Jesus out of people.']
+    const [leadL, firstL, secondL] = at({ text, place: 'left' })
+    const [, firstR] = at({ text, place: 'right' })
+    // Deep End's "Jesus out of / people.": two lines, the second stepped about an eighth of the width right.
+    expect(secondL.x - firstL.x).toBeCloseTo(1920 * 0.12, 0)
+    expect(firstL.x).toBeLessThan(1920 * 0.25)
+    expect(firstR.x - firstL.x).toBeGreaterThan(1920 * 0.2)
+    expect(leadL.x).toBe(firstL.x)
+    // "and more like / ISIS.": the lone word fills about a third of the width, its small line larger too.
+    const [leadIsis, isis] = at({ text: ['and more like', 'ISIS.'] })
+    expect(isis.size).toBeGreaterThan(firstL.size * 1.6)
+    expect(leadIsis.size).toBeGreaterThan(leadL.size * 1.3)
+    // No little word left alone on the last line: "smarter / than me.".
+    const smarter = sceneOf(docWith('wide', [title({ style: 'stair', text: ['I called somebody', 'smarter than me.'] })], QUOTE)).items[0]
+      .layers as TextLayer[]
+    expect(smarter.slice(1).map((l) => l.spans!.map((sp) => sp.text).join(''))).toEqual(['smarter', 'than me.'])
+  })
+
+  it('keeps a long keyword wholly hidden until it slides out from behind its own edge', () => {
+    // One long word in a Short: started less than its own width back, its tail showed before it moved.
+    const said = 'The one setting that matters most is EXPOSURE and nothing else at all.'
+    const doc = docWith('vertical', [{ op: 'motion-add', kind: 'title', from: 'w1', to: '6s', text: ['The one setting', 'EXPOSURE'] }], said)
+    const scene = sceneOf(doc)
     const keyword = scene.items[0].layers[1] as TextLayer
-    const t = scene.items[0].start + keyword.spans![0].t! - 0.12 + 0.05
-    const soft = (f: ReturnType<typeof draw>): number => {
+    const at = scene.items[0].start + keyword.spans![0].t!
+    const top = (keyword.transform!.y as number) - 10
+    // Just before it starts to slide: the lead-in up, and nothing at all where the keyword will be.
+    expect(draw(scene, at - 0.2).lit(0, top, 1080, 260)).toBe(0)
+    // Out as soon as it moves, and landed in full once it has slid.
+    expect(draw(scene, at).lit(0, top, 1080, 260)).toBeGreaterThan(1000)
+    expect(draw(scene, at + 1).lit(0, top, 1080, 260)).toBeGreaterThan(8000)
+  })
+
+  it('streaks the punch as it smashes in, and keeps a sliding keyword crisp as creators do', () => {
+    const soft = (f: ReturnType<typeof draw>, y: number): number => {
       let n = 0
       for (let x = 0; x < 1920; x += 2) {
-        const a = f.at(x, 0.42 * 1080 + 75)[3]
+        const a = f.at(x, y)[3]
         if (a > 20 && a < 200) n++
       }
       return n
     }
-    const blurred = draw(scene, t)
-    const sharp = draw({ ...scene, layers: scene.layers.map((l) => ({ ...l, motionBlur: undefined })) }, t)
-    // Along the line, part-covered pixels: many more where the move is smeared.
-    expect(soft(blurred)).toBeGreaterThan(soft(sharp) * 3)
+    const at = (style: string) => {
+      const scene = sceneOf(docWith('wide', [title({ style })], QUOTE))
+      const keyword = scene.items[0].layers[1] as TextLayer
+      return { scene, keyword, t: scene.items[0].start + keyword.spans![0].t! }
+    }
+    // The punch, a few frames into its fall from twice its size: smeared, many more part-covered pixels.
+    const punch = at('punch')
+    const t = punch.t - 0.1 + 0.07
+    const y = (punch.keyword.transform!.y as number) + 60
+    const blurred = draw(punch.scene, t)
+    const sharp = draw({ ...punch.scene, layers: punch.scene.layers.map((l) => ({ ...l, motionBlur: undefined })) }, t)
+    // The streak moves the letters' edges outward as they shrink: across the frame, many pixels differ from the
+    // sharp frame's (already soft, as the punch comes in blurred).
+    let moved = 0
+    for (let yy = 0; yy < 1080; yy += 3) for (let x = 0; x < 1920; x += 3) if (Math.abs(blurred.at(x, yy)[3] - sharp.at(x, yy)[3]) > 8) moved++
+    expect(moved).toBeGreaterThan(400)
+    expect(soft(blurred, y)).toBeGreaterThan(soft(sharp, y))
+    // The slide asks for no blur of its own: its words stay as crisp as the creators' do.
+    const slide = at('slide')
+    expect(slide.keyword.motionBlur).toBeUndefined()
   })
 
   it('keeps every style inside the frame, arriving and settled, in both shapes', () => {
@@ -998,5 +1152,409 @@ describe('rows as text', () => {
     expect(textToRows(text, rows)).toEqual(rows)
     // A number with a minus sign is not a con.
     expect(textToRows('-12%: battery', [])[0]).toMatchObject({ label: '-12%', value: 'battery', mark: '' })
+  })
+})
+
+describe('fx on any graphic, and titles beside the speaker', () => {
+  const texts = (layers: Layer[]): TextLayer[] =>
+    layers.flatMap((l) => (l.kind === 'text' ? [l] : l.kind === 'group' ? texts(l.children) : []))
+  const title = (place: string, fx: string[]) =>
+    sceneOf(docWith('wide', [{ op: 'motion-add', kind: 'title', from: 'w1', to: '3s', text: ['What causes it', 'TO BURST?'], place, fx }])).items[0]
+
+  it('puts the fx asked for on a graphic’s words, as the guide promises for every template', () => {
+    for (const l of texts(title('middle', ['plate']).layers)) expect(l.plate).toBeDefined()
+    for (const l of texts(title('middle', ['outline']).layers)) expect(l.stroke).toBeDefined()
+    for (const l of texts(title('middle', ['glow']).layers)) expect(l.effects?.glow).toBeDefined()
+    for (const l of texts(title('middle', []).layers)) expect(l.plate ?? l.stroke ?? l.effects?.glow).toBeUndefined()
+    // A callout's plate is its own pill: not a second plate behind its words.
+    const callout = sceneOf(docWith('wide', [{ op: 'motion-add', kind: 'callout', from: 'w5', text: ['Main camera'], box: [0.5, 0.4], style: 'spec', fx: ['plate'] }])).items[0]
+    expect(texts(callout.layers).filter((l) => l.plate?.perLine && l.plate?.hug)).toEqual([])
+  })
+
+  it('sets a title beside the speaker, from the edge it is asked at, and gives its two lines room', () => {
+    const W = 1920
+    for (const [place, align] of [['left', 'left'], ['right', 'right']] as const) {
+      const lines = texts(title(place, []).layers)
+      expect(lines).toHaveLength(2)
+      for (const l of lines) {
+        expect(l.align).toBe(align)
+        const x = l.transform?.x as number
+        if (place === 'left') expect(x).toBeLessThan(W * 0.1)
+        else expect(x).toBeGreaterThan(W * 0.9)
+        expect(l.maxWidth!).toBeLessThan(W * 0.45)
+      }
+    }
+    const [lead, keyword] = texts(title('bottom', []).layers)
+    const gap = (keyword.transform?.y as number) - (lead.transform?.y as number)
+    expect(gap).toBeGreaterThan(keyword.font.size * 0.1)
+  })
+})
+
+
+describe('centred titles', () => {
+  /** Where the lit part of the picture runs across, from its leftmost bright pixel to its rightmost. */
+  function across(scene: MotionScene, t: number): { left: number; right: number } {
+    const f = draw(scene, t)
+    let left = Infinity
+    let right = 0
+    for (let y = 0; y < 1920; y += 3)
+      for (let x = 0; x < 1080; x += 1) {
+        const [r, g, , a] = f.at(x, y)
+        if (a > 250 && (r > 200 || g > 200)) {
+          left = Math.min(left, x)
+          right = Math.max(right, x)
+        }
+      }
+    return { left, right }
+  }
+
+  // The Lecrae Short holds its title 543 px across a 1080 frame, over captions centred on 540. A vertical
+  // frame's safe area keeps more clear on the right for the like and share column, and a title centred on that
+  // instead sat 49 px left of the captions under it.
+  const CALLS: [string, Record<string, unknown>][] = [
+    ...['box', 'accent', 'outline', 'condensed', 'title', 'card', 'ink', 'marker'].map(
+      (style): [string, Record<string, unknown>] => [
+        `the ${style} banner`,
+        { kind: 'banner', from: 'start', to: '3s', text: ['Teaching beyond words'], style, place: 'middle' }
+      ]
+    ),
+    // Its words come in as they are said: these are all said by two seconds in.
+    ['a kinetic title', { kind: 'title', from: 'start', to: '3s', text: ['Most people', 'never open'], style: 'rise' }],
+    ['an engraved title', { kind: 'title', from: 'w2', to: '3s', text: ['Kingston, Jamaica', '1976'], style: 'engraved' }],
+    ['an end card', { kind: 'end-card', from: 'w2', to: '3s', text: ['The Diary of a CEO'], style: 'slug' }]
+  ]
+  for (const [name, call] of CALLS)
+    it(`sets ${name} on the frame’s middle in a Short`, () => {
+      const scene = sceneOf(docWith('vertical', [{ op: 'motion-add', ...call }]))
+      const { left, right } = across(scene, 2)
+      expect(right).toBeGreaterThan(left)
+      expect(Math.abs((left + right) / 2 - 540)).toBeLessThan(8)
+    })
+
+  it('keeps a centred title clear of the like and share column', () => {
+    const long = 'Everything you were told about sermons is wrong and here is why'
+    const scene = sceneOf(
+      docWith('vertical', [{ op: 'motion-add', kind: 'banner', from: 'start', to: '3s', text: [long], style: 'condensed', place: 'middle' }])
+    )
+    const { left, right } = across(scene, 2)
+    expect(right).toBeLessThanOrEqual(1080 - 0.15 * 1080)
+    expect(left).toBeGreaterThanOrEqual(0.15 * 1080)
+  })
+})
+
+describe('boards, steps, clouds, cards: what ranking and career videos show', () => {
+  const SAID =
+    'Over the last fifteen years I have tried basically every productivity app and here is how they rank from the very worst to the best one'
+
+  it('builds a tier list: rows in, entries into their rows as named, and a row lit up while the rest dim', () => {
+    const items = [
+      { label: 'Notion', value: 'si:notion', mark: 'S', at: 'w4' },
+      { label: 'Todoist', value: 'si:todoist', mark: 'B', at: 'w6' },
+      { label: '', value: '', note: 'highlight', mark: 'B', at: 'w14' }
+    ]
+    const scene = sceneOf(docWith('wide', [{ op: 'motion-add', kind: 'tier', from: 'w1', to: '8s', items }], SAID))
+    const doc = docWith('wide', [], SAID)
+    const words = resolveCut(currentCut(doc), doc.words, doc.sources).words
+    // Six rows by default, each led by its letter.
+    const letters = scene.items[0].layers.flatMap((l) => (l.kind === 'group' ? l.children : [])).filter((c) => c.kind === 'text') as TextLayer[]
+    expect(letters.map((t) => t.text)).toEqual(['S', 'A', 'B', 'C', 'D', 'F'])
+    // Todoist sits in row B: a third of the way down, beside the letter tiles.
+    const todoist = scene.items[0].layers.find((l) => l.kind === 'image' && l.logo === 'todoist')!
+    const y = sampleTransform(todoist.transform, 1, 8).y
+    expect(y / 1080).toBeGreaterThan(0.38)
+    expect(y / 1080).toBeLessThan(0.5)
+    // Lit: row B's tile keeps its colour while row S's dims.
+    const lit = draw(scene, words[14].outStart + 0.8)
+    const before = draw(scene, words[14].outStart - 1.2)
+    // On the tile beside its letter, not on the letter.
+    const sTile = (f: ReturnType<typeof draw>) => f.at(66, 120)
+    expect(Math.abs(sTile(lit)[0] - sTile(before)[0])).toBeGreaterThan(30)
+  })
+
+  it('fills steps along the line as each is reached, its name turning from grey to white', () => {
+    const items = [
+      { label: 'Student', at: '' },
+      { label: 'Doctor', at: 'w10' },
+      { label: 'Author', at: 'w18' }
+    ]
+    const scene = sceneOf(docWith('wide', [{ op: 'motion-add', kind: 'steps', from: 'w1', to: '9s', items }], SAID))
+    const doc = docWith('wide', [], SAID)
+    const words = resolveCut(currentCut(doc), doc.words, doc.sources).words
+    const doctor = scene.items[0].layers.find((l) => l.kind === 'text' && l.text === 'Doctor') as TextLayer
+    const ink = (t: number) => {
+      const f = draw(scene, t)
+      const x = sampleTransform(doctor.transform, 0, 1).x
+      let best = 0
+      // Under the ring, where the name is.
+      for (let yy = 932; yy < 1000; yy++) for (let xx = x - 60; xx < x + 60; xx++) best = Math.max(best, f.at(xx, yy)[2])
+      return best
+    }
+    expect(ink(words[10].outStart - 0.8)).toBeLessThan(200)
+    expect(ink(words[10].outStart + 0.6)).toBeGreaterThan(245)
+  })
+
+  it('pops a cloud of app icons either side of the speaker, clear of their face, behind them when asked', () => {
+    const items = Array.from({ length: 24 }, (_, i) => ({ label: `App ${i}`, value: '' }))
+    const doc = docWith('wide', [{ op: 'motion-add', kind: 'logo', place: 'cloud', from: 'w2', to: '8s', items, fx: ['behind'] }], SAID)
+    const faces = [{ t: 0, faces: [{ x: 0.45, y: 0.15, w: 0.1, h: 0.22 }] }]
+    const scene = sceneOf(doc, faces as never)
+    const tiles = scene.items[0].layers
+    expect(tiles.length).toBeGreaterThan(18)
+    for (const t of tiles) {
+      expect(t.behind).toBe(true)
+      const x = sampleTransform(t.transform, 3, 8).x / 1920
+      // Clear of the face and the body under it.
+      expect(x < 0.42 || x > 0.58).toBe(true)
+    }
+  })
+
+  it('widens a card lower third as each word of the role is said', () => {
+    const said = 'Hello my name is Ali I am a doctor turned entrepreneur and author and I make videos'
+    const doc = docWith('wide', [{ op: 'motion-add', kind: 'lower-third', style: 'card', from: 'w1', to: '9s', text: ['Ali Abdaal', 'Doctor-turned entrepreneur & author'] }], said)
+    const scene = sceneOf(doc)
+    const words = resolveCut(currentCut(doc), doc.words, doc.sources).words
+    const width = (t: number) => {
+      const f = draw(scene, t)
+      let right = 0
+      for (let x = 0; x < 1920; x += 2) if (f.at(x, 1000)[3] > 200) right = x
+      return right
+    }
+    const named = width(words[3].outStart)
+    const doctor = width(words[8].outStart + 0.6)
+    const all = width(words[12].outStart + 0.8)
+    expect(doctor).toBeGreaterThanOrEqual(named)
+    expect(all).toBeGreaterThan(doctor + 150)
+  })
+
+  it('slides a list of videos in from off the right, one after another, and settles them inside the frame', () => {
+    const items = [
+      { label: 'I Tried 137 Productivity Tools', note: '1.3M views • 3 years ago' },
+      { label: 'My Most Productive Desk Setup Ever', note: '489K views • 3 years ago' },
+      { label: 'Stop Wasting Time', note: '783K views • 2 years ago' }
+    ]
+    const scene = sceneOf(docWith('wide', [{ op: 'motion-add', kind: 'video-cards', style: 'list', from: 'w2', to: '6s', items }], SAID))
+    const groups = scene.items[0].layers.filter((l) => l.kind === 'group')
+    expect(groups).toHaveLength(3)
+    const xAt = (g: Layer, t: number) => sampleTransform(g.transform, t, 6).x
+    // The second is still off the frame when the first has landed; all are in by the end.
+    expect(xAt(groups[0], 1.4)).toBeLessThan(1920 * 0.6)
+    expect(xAt(groups[1], 0.5)).toBeGreaterThan(1920)
+    for (const g of groups) expect(xAt(g, 5)).toBeLessThan(1920 * 0.5)
+  })
+})
+
+describe('graphics on paper, as Ali Abdaal explains an idea', () => {
+  const WINDOW = [1477 / 1920, 250 / 1080, 408 / 1920, 577 / 1080]
+  const add = (kind: string, extra: Record<string, unknown>) => ({ op: 'motion-add', kind, from: 'w2', to: '8s', ...extra })
+  const groupsOf = (scene: MotionScene) => scene.items[0].layers.filter((l) => l.kind === 'group')
+  const at = (l: Layer, t: number) => sampleTransform(l.transform, t, l.end - l.start)
+
+  it('lays soft paper with a wave over the frame and keeps the speaker in a window on the right', () => {
+    const wave = draw(sceneOf(docWith('wide', [add('board', { box: WINDOW })])), 2)
+    expect(wave.at(60, 60).slice(0, 3)).toEqual([0xf7, 0xf0, 0xee])
+    // The wave crosses the lower left, a shade darker.
+    expect(wave.at(240, 900).slice(0, 3)).toEqual([0xf0, 0xe7, 0xe2])
+    // The window is open: nothing is drawn inside it but its rim.
+    expect(wave.at(1680, 540)[3]).toBe(0)
+    expect(wave.at(1475, 540)[3]).toBeGreaterThan(200)
+    const plain = draw(sceneOf(docWith('wide', [add('board', { style: 'plain', box: WINDOW })])), 2)
+    expect(plain.at(240, 900).slice(0, 3)).toEqual(plain.at(60, 60).slice(0, 3))
+  })
+
+  it('brings a board up with the first graphic set on it, never as empty paper', () => {
+    // The board from w2, its cards from w2 too, but the first card only lands on w8.
+    const scene = sceneOf(
+      docWith('wide', [
+        add('board', { box: WINDOW, to: '6s' }),
+        add('topics', { to: '6s', items: [{ label: 'Prioritise', value: 'list-ordered', at: 'w8' }] })
+      ])
+    )
+    const board = scene.items.find((i) => i.kind === 'board')!
+    const cards = scene.items.find((i) => i.kind === 'topics')!
+    expect(board.start).toBeGreaterThan(cards.start + 1)
+    expect(board.layers.every((l) => l.start >= board.start)).toBe(true)
+    // Its first frame shows a card coming in.
+    const card = cards.layers.find((l) => l.kind === 'group')!
+    expect(sampleTransform(card.transform, board.start + 1 / 30 - card.start, card.end - card.start).opacity).toBeGreaterThan(0)
+  })
+
+  it('opens a board’s window on the speaker’s own window when the recording holds one, not a hair off it', () => {
+    // The planner's box a little bigger than the window the screen reading found in the recording.
+    const own: [number, number, number, number] = [0.77, 0.23, 0.21, 0.53]
+    const doc = docWith('wide', [add('board', { box: [0.76, 0.23, 0.22, 0.55] })])
+    const screen = { everySec: 2, samples: [0, 2, 4, 6, 8].map((t) => ({ t, lines: [], window: own })) }
+    const sources = doc.sources.map((x) => ({ ...x, screen }))
+    const cut = currentCut(doc)
+    const scene = buildScene({
+      cut,
+      resolved: resolveCut(cut, doc.words, sources),
+      words: doc.words,
+      size: designSize(cut.aspect, sources[0]),
+      theme: DEFAULT_THEME,
+      pictures: sources
+    })
+    const frame = draw(scene, 2)
+    // Open just inside his window; the planner's wider box is paper there, as his own window's rim is.
+    expect(frame.at(Math.round(0.775 * 1920), 540)[3]).toBe(0)
+    expect(frame.at(Math.round(0.762 * 1920), 540)[3]).toBeGreaterThan(200)
+    // The recording frames its window itself: no periwinkle rim of the board's beside his.
+    expect(frame.at(Math.round(0.77 * 1920) - 2, 540)[0]).toBeGreaterThan(200)
+    // Without a reading, the box is the planner's own.
+    expect(draw(sceneOf(doc), 2).at(Math.round(0.765 * 1920), 540)[3]).toBe(0)
+  })
+
+  it('scatters a cloud of ideas without overlaps, sets the far ones back, and draws them into one point', () => {
+    const items = ['Time blocking', 'Deep work', 'Pomodoro', 'OKRs', 'Eat the frog', 'SMART goals', 'Batching', 'Saying no'].map((label, i) => ({
+      label,
+      mark: i % 3 === 1 ? 'far' : ''
+    }))
+    const words = cloudWords({ items: items.map((r) => ({ ...r, value: '', note: '', at: '' })), text: [] })
+    expect(words.filter((w) => w.far).map((w) => w.text)).toEqual(['Deep work', 'Eat the frog', 'Saying no'])
+    const pills = cloudLayout(words, frameFor({ width: 1920, height: 1080 }), 'left')
+    const placed = pills.filter((p): p is NonNullable<typeof p> => p !== null)
+    expect(placed).toHaveLength(words.length)
+    for (const [i, p] of placed.entries())
+      for (const q of placed.slice(i + 1)) expect(Math.abs(p.x - q.x) < (p.w + q.w) / 2 && Math.abs(p.y - q.y) < (p.h + q.h) / 2).toBe(false)
+    // All left of the speaker's window.
+    for (const p of placed) expect(p.x + p.w / 2).toBeLessThan(1420)
+    const scene = sceneOf(docWith('wide', [add('cloud', { items })]))
+    const groups = groupsOf(scene)
+    const length = groups[0].end - groups[0].start
+    const ends = groups.map((g) => at(g, length - 0.001))
+    // Gathered: every word near the same point at the end, and faded.
+    for (const e of ends) {
+      expect(Math.abs(e.x - ends[0].x)).toBeLessThan(2)
+      expect(e.opacity).toBeLessThan(0.05)
+    }
+    // A far word is soft and fainter once in; a near one sharp.
+    const far = groups[1]
+    const near = groups[0]
+    expect(at(far, 2).opacity).toBeCloseTo(0.55, 2)
+    expect(at(near, 2).opacity).toBe(1)
+  })
+
+  it('pops topic cards as they are named, sets badges under them, then lifts and drops them in turn', () => {
+    const items = [
+      { label: 'Productivity', value: 'zap:solid', at: 'w3' },
+      { label: 'Time Management', value: 'alarm-clock', at: 'w5' },
+      { label: 'Evidence-based', value: 'badge-check', mark: 'badge', at: 'w7' }
+    ]
+    const scene = sceneOf(docWith('wide', [add('topics', { items })]))
+    const [first, second, badge] = groupsOf(scene)
+    const words = resolveCut(currentCut(docWith('wide', [])), docWith('wide', []).words, docWith('wide', []).sources).words
+    const start = first.start
+    expect(at(second, words[3].outStart - start).opacity).toBe(0)
+    expect(at(second, words[5].outStart - start + 0.3).opacity).toBe(1)
+    expect(at(badge, 4).y).toBeGreaterThan(at(first, 4).y + 150)
+    // The zap is solid.
+    expect(JSON.stringify(first)).toContain('"iconFill":true')
+    // Gone by the end, the first falling before the second.
+    const length = first.end - first.start
+    expect(at(first, length - 0.3).y).toBeGreaterThan(at(second, length - 0.3).y)
+    expect(at(second, length - 0.001).opacity).toBeLessThan(0.05)
+  })
+
+  it('types a prompt a letter at a time after the file fills, lights the send button, and settles to the middle', () => {
+    const call = {
+      text: ['Help me organise my life'],
+      items: [
+        { label: 'The Life Organiser', note: '2,140 words', value: 'file-text', mark: '', at: '' },
+        { label: '', value: 'zap:solid', note: '', mark: '', at: 'w4' },
+        { label: '', value: 'target', note: '', mark: '', at: 'w5' },
+        { label: '', value: '', note: '', mark: 'send', at: 'w14' }
+      ]
+    }
+    expect(promptParts(call).marks).toHaveLength(2)
+    expect(promptParts(call).hint).toBe('Ask anything')
+    const scene = sceneOf(docWith('wide', [add('prompt', { ...call, to: '7s' })]))
+    const box = scene.items[0].layers[0] as Extract<Layer, { kind: 'group' }>
+    const typed = box.children.find((l): l is TextLayer => l.kind === 'text' && l.text === 'Help me organise my life')!
+    const marks = box.children.filter((l) => l.kind === 'image' && (l.icon === 'zap' || l.icon === 'target'))
+    // Typing starts once both marks are in, a letter every 0.062 s, ending before the send.
+    const markAt = Math.max(...marks.map((m) => (m.transform!.opacity as { keys: { t: number }[] }).keys[0].t))
+    expect(typed.start - box.start).toBeGreaterThan(markAt)
+    expect(typed.animators?.[0]).toMatchObject({ by: 'char', stagger: 0.062 })
+    const words = resolveCut(currentCut(docWith('wide', [])), docWith('wide', []).words, docWith('wide', []).sources).words
+    expect(typed.start + 24 * 0.062).toBeLessThan(words[14].outStart)
+    // It lands low and rises to the middle before typing starts.
+    const length = box.end - box.start
+    const landed = sampleTransform(box.transform, 0.2, length).y
+    const settled = sampleTransform(box.transform, typed.start - box.start, length).y
+    expect(landed - settled).toBeGreaterThan(60)
+  })
+
+  it('raises a numbered list from below a row at a time, hides the words to come, and ticks the rows off in turn', () => {
+    expect(teaserParts('Map your [life]')).toEqual({ shown: 'Map your', hidden: 'life' })
+    const items = [
+      { label: 'Map your [life]' },
+      { label: 'Define [quarterly quests]' },
+      { label: 'Build your [GPS]' },
+      { label: '', mark: 'done', at: 'w9' }
+    ]
+    expect(checklistParts({ text: [], items: items.map((r) => ({ value: '', note: '', mark: '', at: '', ...r })) }).rows).toHaveLength(3)
+    const scene = sceneOf(docWith('wide', [add('checklist', { items })]))
+    const rows = groupsOf(scene).filter((g) => (g as { children: Layer[] }).children.some((c) => c.kind === 'text' && /^\d$/.test(c.text)))
+    expect(rows).toHaveLength(3)
+    // The second row is still below the frame while the first is nearly home.
+    expect(at(rows[0], 0.45).y).toBeLessThan(400)
+    expect(at(rows[1], 0.12).y).toBeGreaterThan(1080)
+    // Ticks a row at a time, 0.12 s apart.
+    const tickAt = (g: Layer) => {
+      const tick = (g as { children: Layer[] }).children.find((c) => c.kind === 'image' && c.icon === 'check')!
+      return (tick.transform!.opacity as { keys: { t: number; v: number }[] }).keys[1].t
+    }
+    expect(tickAt(rows[1]) - tickAt(rows[0])).toBeCloseTo(0.12, 5)
+    expect(tickAt(rows[2]) - tickAt(rows[1])).toBeCloseTo(0.12, 5)
+  })
+
+  it('sets a document a section at a time, its lines carried on by rows without a heading, and sweeps the headings in turn', () => {
+    const items = [
+      { label: 'Where your life is going', value: 'This season is about getting fit.', at: 'w6' },
+      { label: '', value: 'Everything else stays in maintenance mode.' },
+      { label: 'Your quarterly quests', value: 'Life: Run a half marathon | Work: Launch the podcast', note: 'blur', at: 'w9' }
+    ]
+    const parts = docParts({ text: ['Your Season Plan'], items: items.map((r) => ({ note: '', mark: '', at: '', ...r })) })
+    expect(parts.sections.map((s) => s.lines.length)).toEqual([2, 2])
+    expect(parts.sections[1].lines.every((l) => l.blur)).toBe(true)
+    const scene = sceneOf(docWith('wide', [add('doc', { text: ['Your Season Plan', 'November 2026'], items })]))
+    const sweeps = scene.items[0].layers.filter((l) => l.kind === 'shape' && l.fill === '#FFCA5A')
+    expect(sweeps).toHaveLength(2)
+    const sweepAt = (l: Layer) => (l.transform!.scaleX as { keys: { t: number }[] }).keys[0].t
+    expect(sweepAt(sweeps[1])).toBeGreaterThan(sweepAt(sweeps[0]) + 0.5)
+    // The key of a blurred line is sharp; the rest is blurred.
+    const life = scene.items[0].layers.find((l): l is TextLayer => l.kind === 'text' && l.text === 'Life:')!
+    const rest = scene.items[0].layers.find((l): l is TextLayer => l.kind === 'text' && l.text === 'Run a half marathon')!
+    expect(life.effects).toBeUndefined()
+    expect(rest.effects?.blur).toBeGreaterThan(0)
+  })
+
+  it('sets a title behind the speaker with its outline over them, each word sliding in from the right', () => {
+    const doc = docWith('wide', [{ op: 'motion-add', kind: 'title', style: 'behind', from: 'w1', to: '4s', text: ['Most people never', 'open'] }])
+    const scene = sceneOf(doc)
+    // The export has the person cut out over its stretch, so it can pass behind them.
+    const cut = currentCut(doc)
+    const wants = matteWants(cut, timelineFor(cut, resolveCut(cut, doc.words, doc.sources), doc.words))
+    expect(wants).toEqual([{ kind: 'person', start: scene.items[0].start, end: scene.items[0].end }])
+    const texts = scene.items[0].layers.filter((l): l is TextLayer => l.kind === 'text')
+    // Both lines behind the speaker, and the keyword line's outline over them.
+    expect(texts).toHaveLength(3)
+    expect(texts.filter((t) => t.behind)).toHaveLength(2)
+    expect(texts.filter((t) => !t.behind).map((t) => t.spans?.map((s) => s.text).join(''))).toEqual(['open'])
+    expect(texts[0].animators?.[1]).toMatchObject({ by: 'word', from: { x: 1920 * 0.032 } })
+    // The keyword line is huge, the lead-in line smaller, both centred.
+    expect(texts[1].font.size).toBeGreaterThan(texts[0].font.size * 1.8)
+    expect(texts.every((t) => t.align === 'center')).toBe(true)
+  })
+
+  it('raises a shelf of glass along the foot of the frame and pops its tiles on left to right', () => {
+    const items = ['Health', 'Family', 'Friends', 'Work'].map((label, i) => ({ label, value: i === 0 ? 'heart:solid' : 'users' }))
+    const scene = sceneOf(docWith('wide', [{ op: 'motion-add', kind: 'chips', place: 'shelf', from: 'w2', to: '4s', items }]))
+    const [glass, ...tiles] = scene.items[0].layers
+    expect(at(glass, 0).y).toBeGreaterThan(1080)
+    expect(at(glass, 0.6).y).toBeCloseTo(905, 0)
+    const popAt = (g: Layer) => (g.transform!.opacity as { keys: { t: number }[] }).keys[0].t
+    for (let i = 1; i < tiles.length; i++) expect(popAt(tiles[i]) - popAt(tiles[i - 1])).toBeCloseTo(0.11, 5)
+    expect(at(tiles[0], 0.5).x).toBeLessThan(at(tiles[3], 0.5).x)
+    expect(JSON.stringify(tiles[0])).toContain('"iconFill":true')
   })
 })

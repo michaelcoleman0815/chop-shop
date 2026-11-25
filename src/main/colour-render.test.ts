@@ -254,9 +254,10 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
       w: 180,
       h: 180
     })
-    // The caption's block: its padding above the word, which no letter reaches.
-    const marker = { fontSizePx: Math.round((78 * W) / 1080), outlinePx: Math.round((12 * W) / 1080) }
-    const lineTop = Math.round(H * 0.22) - marker.fontSizePx
+    // The caption's block: its padding above the word, which no letter reaches. A wide frame's captions are
+    // long-form's (shared/subtitles captionStyleFor), sized by its height and placed low or high by it.
+    const marker = captionStyleFor(cut.captions, W, null, H)
+    const lineTop = Math.round(H * marker.positionFrac) - marker.fontSizePx
     const caption = seen(ffmpeg, out, 1.5, {
       x: W / 2 - 20,
       y: lineTop - Math.round(marker.outlinePx * 0.8),
@@ -290,7 +291,7 @@ describe.skipIf(!FFMPEG || !FFPROBE)('colour, as a player shows HD', () => {
     const out = await exportOf('red', doc, cut, { colors: red })
     // Where the first I stands, laid out as libass lays it out (shared/subtitles).
     for (const f of MOTION_FONTS) GlobalFonts.registerFromPath(FONTS + f.file, f.family)
-    const style = captionStyleFor(cut.captions, W, red)
+    const style = captionStyleFor(cut.captions, W, red, H)
     const cue = subtitleCues([{ text: 'IIII', startSec: 0.3, endSec: 2.6 }], style.wordsPerGroup)[0]
     const ctx = createCanvas(8, 8).getContext('2d') as unknown as TextMeasurer
     const line = layoutSubtitle(cue, style, { width: W, height: H }, ctx).blocks[0].lines[0]

@@ -11,15 +11,15 @@ import instrumentSerifUrl from '../../../../resources/fonts/InstrumentSerif-Regu
 import instrumentItalicUrl from '../../../../resources/fonts/InstrumentSerif-Italic.ttf?url'
 import instrumentSansUrl from '../../../../resources/fonts/InstrumentSans-Bold.ttf?url'
 import archivoWideUrl from '../../../../resources/fonts/ArchivoExpanded-Black.ttf?url'
-import {
-  forgetMeasures,
-  logoLookup,
-  marksFrom,
-  MOTION_FONTS,
-  type IconNode,
-  type LogoEntry,
-  type LogoMark
-} from '../../../shared/motion'
+import barlowUrl from '../../../../resources/fonts/BarlowCondensed-ExtraBold.ttf?url'
+import frauncesUrl from '../../../../resources/fonts/Fraunces-Soft.ttf?url'
+import frauncesBoldUrl from '../../../../resources/fonts/Fraunces-SoftSemiBold.ttf?url'
+import frauncesHeavyUrl from '../../../../resources/fonts/Fraunces-SoftBold.ttf?url'
+import figtreeUrl from '../../../../resources/fonts/Figtree-Regular.ttf?url'
+import figtreeSemiUrl from '../../../../resources/fonts/Figtree-SemiBold.ttf?url'
+import figtreeBoldUrl from '../../../../resources/fonts/Figtree-Bold.ttf?url'
+import figtreeItalicUrl from '../../../../resources/fonts/Figtree-Italic.ttf?url'
+import { forgetMeasures, MOTION_FONTS } from '../../../shared/motion'
 import { MEDIA_CORS } from './api'
 
 /**
@@ -42,7 +42,15 @@ const URLS: Record<string, string> = {
   'InstrumentSerif-Regular.ttf': instrumentSerifUrl,
   'InstrumentSerif-Italic.ttf': instrumentItalicUrl,
   'InstrumentSans-Bold.ttf': instrumentSansUrl,
-  'ArchivoExpanded-Black.ttf': archivoWideUrl
+  'ArchivoExpanded-Black.ttf': archivoWideUrl,
+  'BarlowCondensed-ExtraBold.ttf': barlowUrl,
+  'Fraunces-Soft.ttf': frauncesUrl,
+  'Fraunces-SoftSemiBold.ttf': frauncesBoldUrl,
+  'Fraunces-SoftBold.ttf': frauncesHeavyUrl,
+  'Figtree-Regular.ttf': figtreeUrl,
+  'Figtree-SemiBold.ttf': figtreeSemiUrl,
+  'Figtree-Bold.ttf': figtreeBoldUrl,
+  'Figtree-Italic.ttf': figtreeItalicUrl
 }
 
 /** Where a bundled face's file is served in this page, for reading its outlines (shared/three). */
@@ -77,29 +85,8 @@ export function loadMotionFonts(): Promise<void> {
   return fonts
 }
 
-let icons: Promise<(name: string) => IconNode[] | undefined> | null = null
-
-/** Lucide's shapes, loaded the first time a graphic has an icon. */
-export function loadIconNodes(): Promise<(name: string) => IconNode[] | undefined> {
-  icons ??= import('lucide-static/icon-nodes.json').then((m) => {
-    const nodes = m.default as unknown as Record<string, IconNode[]>
-    return (name: string) => nodes[name]
-  })
-  return icons
-}
-
-let logos: Promise<(slug: string) => LogoMark | undefined> | null = null
-
-/** Brand marks from Simple Icons (CC0), loaded the first time a graphic has a logo. */
-export function loadLogoMarks(): Promise<(slug: string) => LogoMark | undefined> {
-  logos ??= Promise.all([import('simple-icons'), import('simple-icons/icons.json')]).then(([marks, index]) =>
-    logoLookup(
-      ((index as { default?: unknown }).default ?? index) as LogoEntry[],
-      marksFrom(marks as unknown as Record<string, unknown>)
-    )
-  )
-  return logos
-}
+// The icon and logo loaders live beside the 3D page's, which loads them too.
+export { loadIconNodes, loadLogoMarks } from '../marks'
 
 const images = new Map<string, Promise<HTMLImageElement | null>>()
 

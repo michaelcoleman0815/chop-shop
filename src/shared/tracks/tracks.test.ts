@@ -57,6 +57,19 @@ describe('tracks and clips', () => {
     ])
   })
 
+  it('keeps a length asked for however short: a flash of a few frames, not five seconds', () => {
+    const { cut, rejected } = run([
+      { op: 'clip-add', kind: 'solid', color: '#FFFFFF', from: 'start+1', to: '0.1s' },
+      { op: 'clip-add', kind: 'solid', color: '#000000', from: 'start+2', to: '0.034s' }
+    ])
+    expect(rejected).toEqual([])
+    const tl = timeline(cut)
+    const flash = clipSpan(tl, clip(cut, 'c1'))!
+    expect(flash.end - flash.start).toBeCloseTo(0.1, 5)
+    const frame = clipSpan(tl, clip(cut, 'c2'))!
+    expect(frame.end - frame.start).toBeCloseTo(0.034, 5)
+  })
+
   it('refuses a clip on a word the edit does not have, a video with no file, and a title with no words', () => {
     const { rejected } = run([
       { op: 'clip-add', kind: 'image', src: '/p.png', from: 'w99' },
@@ -182,6 +195,36 @@ describe('tracks and clips', () => {
     expect(placeClips(tracksOf(hidden), tl).map((p) => p.clip.id)).toEqual(['c2'])
     const solo = run([{ op: 'track-update', track: 't1', solo: true }], base).cut
     expect(placeClips(tracksOf(solo), tl).map((p) => p.clip.id)).toEqual(['c1'])
+  })
+
+  it('draws a title clip with the shadow, glow, edge, lean and spacing asked for', () => {
+    const { cut, rejected } = run([
+      {
+        op: 'clip-add',
+        kind: 'text',
+        from: 'w2',
+        text: {
+          value: 'NOT COOKED',
+          size: 160,
+          color: '#FFFFFF',
+          shadow: true,
+          glow: { color: '#FF3B30', blur: 40 },
+          outline: { color: '#000000', width: 6 },
+          slant: true,
+          tracking: 8,
+          lineHeight: 0.9,
+          uppercase: true
+        }
+      }
+    ])
+    expect(rejected).toEqual([])
+    const [title] = trackLayers(cut, timeline(cut), { width: 1920, height: 1080 })
+    expect(title).toMatchObject({
+      kind: 'text',
+      font: { size: 160, tracking: 8, lineHeight: 0.9, uppercase: true, slant: 0.2126 },
+      stroke: { color: '#000000', width: 6 },
+      effects: { glow: { color: '#FF3B30', blur: 40 }, shadow: { color: 'rgba(0, 0, 0, 0.6)' } }
+    })
   })
 
   it('hands the compositor one layer per picture clip, centred, blended and faded as set', () => {

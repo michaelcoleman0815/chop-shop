@@ -1,5 +1,6 @@
 import { app, clipboard, dialog, ipcMain, type WebContents } from 'electron'
 import { measureScopes } from './scopes'
+import { readScreen } from './screen-read'
 import { downloadSpeakerModel, findSpeakers } from './speakers'
 import { anthropicKeyIn } from '../shared/keys'
 import { promises as fs } from 'fs'
@@ -125,6 +126,8 @@ export const macWork: WorkHost = {
   watch: (input) => watchClip(input, detectFaces, FFMPEG_PATH),
   // What each recording's picture measures, for Claude to grade by (main/scopes).
   scopes: (path, durationSec) => measureScopes(FFMPEG_PATH, path, durationSec),
+  // What is on screen in each recording, for the planner to know where its words are (main/screen-read).
+  screen: (path, durationSec) => readScreen(path, durationSec),
   speakers: async (path, words) => {
     await downloadSpeakerModel()
     return (await findSpeakers(FFMPEG_PATH, path, words)).words

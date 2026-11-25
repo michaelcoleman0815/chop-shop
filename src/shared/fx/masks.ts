@@ -4,6 +4,7 @@ import { cameraClock, layersAt } from '../edit/playback'
 import { frameAt, pieceFraming, windowShare } from '../edit/reframe'
 import { pictureSpan, type Resolved } from '../edit/resolve'
 import type { Cut, Source } from '../edit/schema'
+import { pageRoom } from '../screen'
 import { mixMasks, placeMask, type Mask } from './pixels'
 
 /**
@@ -91,7 +92,8 @@ export function pictureWindow(
   let win: FrameWindow['window']
   const clock = tr.camera ? cameraClock(resolved, beat.id, t, tr.camera.word) : null
   if (tr.camera && clock) {
-    const plan = cameraPlan(tr.camera, clock.length, clock.wordAt, sourceAspect, frameAspect)
+    const room = source.screen ? pageRoom(source.screen, piece.srcStart, piece.srcEnd) : null
+    const plan = cameraPlan(tr.camera, clock.length, clock.wordAt, sourceAspect, frameAspect, room)
     win = windowAt(viewAt(plan, clock.t), plan.fw, plan.fh)
   } else {
     const fit = pictureFit(cut, beat, source, frame)

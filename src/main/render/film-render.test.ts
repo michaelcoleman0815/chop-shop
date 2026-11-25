@@ -65,8 +65,7 @@ describe.skipIf(!FFMPEG)('a documentary’s look, in the export as in the editor
     const r = applyOps(
       currentCut(none),
       [
-        { op: 'remove', beats: ['b1'] },
-        { op: 'insert', to: 0, beat: { source: 's1', inSec: 0, outSec: 3 } },
+        // The recording's own beat, b1, is already the whole 3 s.
         { op: 'aspect', aspect: 'original' },
         { op: 'loudness', lufs: null }
       ],

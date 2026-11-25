@@ -142,7 +142,7 @@ export function layoutText(measure: Measure, layer: TextLayer, text = layer.text
   }
 
   // Greedy wrapping, with a space as wide as the face's own.
-  const spaces = placed.map((word) => measure(word.font, ' ') + tracking)
+  const spaces = placed.map((word) => measure(word.font, ' ') + tracking + (font.wordSpacing ?? 0))
   const wrap = (max: number): { words: number[]; w: number }[] => {
     const out: { words: number[]; w: number }[] = []
     placed.forEach((word, i) => {
@@ -202,7 +202,7 @@ export function layoutText(measure: Measure, layer: TextLayer, text = layer.text
     let x = line.x
     for (const i of line.words) {
       const p = placed[i]
-      const space = measure(p.font, ' ') + tracking
+      const space = measure(p.font, ' ') + tracking + (font.wordSpacing ?? 0)
       words.push({ ...p, index: words.length, x, baseline: line.baseline, line: line.index, charStart })
       charStart += p.chars.length
       x += p.w + space

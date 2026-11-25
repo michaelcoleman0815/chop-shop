@@ -16,17 +16,18 @@ import { AnimNumSchema, ColorSchema, isKeyed, type Anim } from '../anim'
  * (shared/anim), counted in seconds from the clip's start.
  *
  * Real 3D, but no modelling and no physics: objects are cards, extruded
- * titles, a handful of primitives and glTF models, posed by keys.
+ * titles, brand marks and icons, a handful of primitives and glTF models,
+ * posed by keys.
  */
 
-export const OBJECT_TYPES = ['card', 'text', 'box', 'sphere', 'plane', 'cylinder', 'torus', 'model'] as const
+export const OBJECT_TYPES = ['card', 'text', 'box', 'sphere', 'plane', 'cylinder', 'torus', 'model', 'mark'] as const
 export type ObjectType = (typeof OBJECT_TYPES)[number]
 
 export const LIGHT_TYPES = ['ambient', 'directional', 'point', 'spot'] as const
 export type LightType = (typeof LIGHT_TYPES)[number]
 
-/** Objects and lights a scene holds at most. */
-export const MAX_OBJECTS = 24
+/** Objects and lights a scene holds at most: enough for a built thing, a vending machine with its shelves and wares. */
+export const MAX_OBJECTS = 64
 export const MAX_LIGHTS = 8
 
 /** The face an extruded title, or a card's words, is set in when it names none. */
@@ -57,13 +58,36 @@ export const Object3DSchema = z.object({
   in: z.number().min(0).max(86_400).optional(),
   /** Words a card shows, set flat on it in a bundled face. */
   title: z.string().max(200).optional(),
+  /** A card's words' size in design pixels: a fifth of the card's height when left out, small for a big number. */
+  titleSize: z.number().positive().max(2000).optional(),
+  /** A card's words' colour: the ink that reads on its colour when left out. */
+  titleColor: ColorSchema.optional(),
+  /** A card's words' weight, 100 to 900: 700 when left out. */
+  titleWeight: z.number().int().min(100).max(900).optional(),
+  /**
+   * A card papered with these Lucide icons, small, turned this way and that and faint on its colour, under its
+   * words: a wall of doodles behind a product, as Jordan Welch sets his.
+   */
+  pattern: z.array(z.string().min(1).max(40)).max(24).optional(),
+  /** A mark's brand, by its Simple Icons slug ("youtube", "shopify"): its outline extruded, in the brand's colour unless color says. */
+  logo: z.string().min(1).max(60).optional(),
+  /**
+   * A mark's Lucide icon by name ("user", "pencil", "book"): its strokes made solid and as deep as `depth`
+   * (an eighth of its size when left out), in its colour, white when left out; depth 0 cuts it out flat.
+   */
+  icon: z.string().min(1).max(60).optional(),
+  /**
+   * Another object it moves with, by id, as a layer parented in After Effects does: its place, turns and size
+   * count from that object's, so a machine and everything on it move as one.
+   */
+  parent: IdSchema.optional(),
   /** An extruded title's words. */
   text: z.string().max(200).optional(),
   /** A bundled face by family name, for a title or a card's words. */
   font: z.string().max(60).optional(),
-  /** A title's size in design pixels, or a model's longest side. */
+  /** A title's size in design pixels, or a model's or a mark's longest side. */
   size: Length,
-  /** How deep a title or a card is. */
+  /** How deep a title, a card or a logo is. */
   depth: z.number().min(0).max(10_000).optional(),
   /** Width, height and depth: a card's, a box's, a plane's, a cylinder's height. */
   w: Length,
@@ -101,7 +125,9 @@ export const Light3DSchema = z.object({
   ty: Keyed,
   tz: Keyed,
   /** A spot's cone, in degrees from its axis. */
-  angle: z.number().min(1).max(89).optional()
+  angle: z.number().min(1).max(89).optional(),
+  /** A directional or spot light that casts soft shadows: every object casts them and takes them. */
+  shadow: z.boolean().optional()
 })
 export type Light3D = z.infer<typeof Light3DSchema>
 

@@ -8,6 +8,7 @@ import {
   currentCut,
   focusSource,
   resolveCut,
+  roomBeside,
   viewAt,
   windowAt,
   wordsFromTranscript,
@@ -103,6 +104,34 @@ describe('camera moves', () => {
     // Held until the next region's time, then on to it.
     expect(viewAt(plan, 2.99)).toEqual(first)
     expect(viewAt(plan, 4).x).toBeCloseTo(0.725, 9)
+  })
+
+  it('beside a window held still, show the region in the room left of it, never under the window', () => {
+    // Ali Abdaal's chat: the page on the left, him in a window on the right from 0.77 to 0.98 across.
+    const keep = [0.77, 0.23, 0.21, 0.53] as const
+    const room = roomBeside(keep)!
+    expect(room.x).toBe(0)
+    expect(room.w).toBeCloseTo(0.75, 9)
+    const at = (r: { x: number; y: number; w: number; h: number }) => {
+      const plan = cameraPlan({ kind: 'focus', regions: [{ at: 0, ...r }] }, 3, null, WIDE, WIDE, room)
+      const v = viewAt(plan, 2)
+      const win = windowAt(v, plan.fw, plan.fh)
+      // Where the region's edges land in the finished frame, as shares of it.
+      return { zoom: v.zoom, left: (r.x - win.x) / win.w, right: (r.x + r.w - win.x) / win.w }
+    }
+    // A phrase: a real push-in, kept clear of the window.
+    const phrase = at({ x: 0.02, y: 0.3, w: 0.3, h: 0.05 })
+    expect(phrase.zoom).toBeGreaterThan(2)
+    expect(phrase.left).toBeGreaterThanOrEqual(0)
+    expect(phrase.right).toBeLessThanOrEqual(0.75)
+    // A line as wide as the room cannot get closer: the frame stays whole, as the recording has it.
+    const line = at({ x: 0.02, y: 0.3, w: 0.71, h: 0.08 })
+    expect(line.zoom).toBe(1)
+    expect(line.right).toBeLessThan(0.77)
+    // Without a window, the same line fills the whole frame.
+    expect(cameraPlan({ kind: 'focus', regions: [{ at: 0, x: 0.02, y: 0.3, w: 0.71, h: 0.08 }] }, 3, null, WIDE, WIDE).keys[1].zoom).toBeGreaterThan(1.2)
+    expect(roomBeside(null)).toBeNull()
+    expect(roomBeside([0.1, 0.1, 0.8, 0.8])).toBeNull()
   })
 })
 

@@ -45,7 +45,14 @@ export const MOTION_KINDS = [
   'device',
   'chips',
   'video-cards',
+  'tier',
   'map',
+  'board',
+  'cloud',
+  'topics',
+  'prompt',
+  'checklist',
+  'doc',
   'layers'
 ] as const
 export const MotionKindSchema = z.enum(MOTION_KINDS)
@@ -102,7 +109,8 @@ export const EndRefSchema = z
 /** A row in a list-shaped graphic: a spec, a benchmark, a pro or a con, a step. */
 export const MotionRowSchema = z.object({
   label: z.string().max(120).default(''),
-  value: z.string().max(80).default(''),
+  // Up to a sentence: a document's line or a quote is a row's value.
+  value: z.string().max(200).default(''),
   /** A second value: the right side of a versus row, an old price. */
   note: z.string().max(80).default(''),
   /** pro, con, hi (highlight), left, right, or empty. */
@@ -148,7 +156,8 @@ const StrokeSchema = z.object({
   color: AnimColor,
   width: AnimNum,
   cap: z.enum(['butt', 'round', 'square']).optional(),
-  join: z.enum(['miter', 'round', 'bevel']).optional()
+  join: z.enum(['miter', 'round', 'bevel']).optional(),
+  dash: z.array(n.positive()).max(8).optional()
 })
 export const TransformSchema = z.object({
   x: AnimNum.optional(),
@@ -339,13 +348,15 @@ const ImageLayerSchema = z.object({
   logo: z.string().max(64).optional(),
   file: z.string().max(1024).optional(),
   tile: z.enum(['square', 'round']).optional(),
-  fallback: z.object({ text: z.string().max(4), family: z.string().max(64) }).optional(),
+  fallback: z.object({ text: z.string().max(4), family: z.string().max(64), color: ColorSchema.optional() }).optional(),
   w: z.number().positive().max(10_000),
   h: z.number().positive().max(10_000),
   fit: z.enum(['contain', 'cover']).optional(),
   color: AnimColor.optional(),
   strokeWidth: n.optional(),
-  trim: TrimSchema.optional()
+  iconFill: z.boolean().optional(),
+  trim: TrimSchema.optional(),
+  pixelate: z.number().positive().max(400).optional()
 })
 
 /** A hand-built layer as stored: times are seconds from the graphic's start, or anchors. */
@@ -366,7 +377,7 @@ const slots = {
   /** The template's lines: a name and a role, a hook, a word to pop. */
   text: z.array(z.string().max(300)).max(12).default([]),
   /** Rows for lists, cards and charts. */
-  items: z.array(MotionRowSchema).max(12).default([]),
+  items: z.array(MotionRowSchema).max(32).default([]),
   /** Numbers: a rating and what it is out of, a counter's start, a step and the total. */
   values: z.array(z.number().finite()).max(12).default([]),
   /** A region of the frame as fractions: x, y, width, height. A point is x, y. */
@@ -379,7 +390,7 @@ const slots = {
   place: z.string().max(32).default(''),
   /** #RRGGBB, or empty for the brand's accent. */
   color: z.string().max(16).default(''),
-  /** Effects on top of the style: shadow, glow, outline, gradient, plate, blur. */
+  /** Effects on top of the style: shadow, glow, outline, gradient, plate, blur, push. */
   fx: z.array(z.string().max(16)).max(6).default([])
 }
 
@@ -426,7 +437,7 @@ export const MotionChangeSchema = z.object({
     .optional(),
   to: EndRefSchema.optional(),
   text: z.array(z.string().max(300)).max(12).optional(),
-  items: z.array(MotionRowSchema).max(12).optional(),
+  items: z.array(MotionRowSchema).max(32).optional(),
   values: z.array(z.number().finite()).max(12).optional(),
   box: z.array(z.number().min(-0.5).max(1.5)).max(4).optional(),
   icon: z.string().max(64).optional(),

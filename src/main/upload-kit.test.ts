@@ -218,7 +218,7 @@ describe.skipIf(!FFMPEG)('ready to upload', () => {
   it('writes captions with the very pages the render burns in, to the hundredth, and they are on screen when they say', async () => {
     // A shot held for 1.5 s with nothing said in it, after the first sentence: no caption is on screen there.
     const doc = docOver(clip, 16, [640, 360], SAID, [
-      { op: 'captions', set: { wordsPerScreen: 3, position: 'bottom' } },
+      { op: 'captions', set: { on: true, wordsPerScreen: 3, position: 'bottom' } },
       { op: 'insert', to: 1, beat: { source: 's1', inSec: 13, outSec: 14.5 } }
     ])
     const r = await invoke<Rendered>('cut:render', { doc, quality: 'final' })
@@ -270,7 +270,8 @@ describe.skipIf(!FFMPEG)('ready to upload', () => {
 
     // On screen: words in the middle of each page, none in the long pause between the sentences once the
     // last word's moment has passed. Shorter pauses keep the page up, so captions never blink.
-    for (const c of srt) expect(ink(ffmpeg, r.outputPath, (c.start + c.end) / 2)).toBeGreaterThan(0.002)
+    // (A wide frame's captions are long-form's, sized by its height: a small share of the picture, but there.)
+    for (const c of srt) expect(ink(ffmpeg, r.outputPath, (c.start + c.end) / 2)).toBeGreaterThan(0.0002)
     expect(srt.slice(1).filter((c, i) => c.start - srt[i].end > 0.05)).toHaveLength(1)
     const gap = srt.findIndex((c, i) => i > 0 && c.start - srt[i - 1].end > 0.5)
     // A page never ends on a word that leads into the next (shared/words), so "is" opens the next one.
@@ -280,7 +281,7 @@ describe.skipIf(!FFMPEG)('ready to upload', () => {
   }, 180000)
 
   it('writes the pages the graphics draw when they draw the captions', async () => {
-    const doc = docOver(clip, 16, [640, 360], SAID, [{ op: 'captions', set: { preset: 'hierarchy' } }])
+    const doc = docOver(clip, 16, [640, 360], SAID, [{ op: 'captions', set: { on: true, preset: 'hierarchy' } }])
     const r = await invoke<Rendered>('cut:render', { doc, quality: 'final' })
     if (!r.ok || !r.upload) throw new Error('no export')
     const srt = readCues(readFileSync(r.upload.files.srt!, 'utf8'))

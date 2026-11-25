@@ -100,6 +100,8 @@ export interface CaptionInput {
   speakers?: Record<string, number>
   covers?: CaptionCover[]
   bands?: CaptionBand[]
+  /** Words said over a split, by id, with where their page's foot sits as a share of the height (SEAM_FRAC). */
+  sits?: Record<string, number>
 }
 
 /**
@@ -529,6 +531,43 @@ export function boxedPage(
   }
 }
 
+/**
+ * Where a caption's foot sits over a split (b-roll stacked with the speaker): just above the seam between the
+ * two, as Impaulsive sets its captions on the line between Logan and the match. Burned-in and drawn alike.
+ */
+export const SEAM_FRAC = 0.488
+
+/** A page said quicker than this is folded into the one before it, or after, in the same beat: shown alone it would blink. */
+const QUICK_PAGE_SEC = 0.3
+
+/**
+ * Pages said too quickly to read alone joined to a neighbour in the same beat, when they follow on with no
+ * pause: a key word ending its page ("I did / save") had left "save" a page of 0.16 s, which never showed.
+ */
+export function joinQuickPages<W extends Pick<ResolvedWord, 'beat' | 'outStart' | 'outEnd'>>(pages: W[][], most = Infinity): W[][] {
+  const out: W[][] = []
+  for (const page of pages) {
+    const quick = page[page.length - 1].outEnd - page[0].outStart < QUICK_PAGE_SEC
+    const prev = out[out.length - 1]
+    const fits = prev && prev.length + page.length <= most
+    if (quick && prev && fits && prev[0].beat === page[0].beat && page[0].outStart - prev[prev.length - 1].outEnd < 0.3) {
+      out[out.length - 1] = [...prev, ...page]
+      continue
+    }
+    out.push(page)
+  }
+  // A quick page left at a beat's start goes on to the page after it instead.
+  for (let i = out.length - 2; i >= 0; i--) {
+    const page = out[i]
+    const next = out[i + 1]
+    const quick = page[page.length - 1].outEnd - page[0].outStart < QUICK_PAGE_SEC
+    if (quick && page.length + next.length <= most && next[0].beat === page[0].beat && next[0].outStart - page[page.length - 1].outEnd < 0.3) {
+      out.splice(i, 2, [...page, ...next])
+    }
+  }
+  return out
+}
+
 /** The pop look's yellow, Impaulsive's: the word being said, and the key words. */
 export const POP_LIT = '#FFE81A'
 
@@ -583,7 +622,8 @@ export function popPage(
       end: w.outEnd - start,
       ...(opts.keys?.has(w.id) ? { color: POP_LIT } : {})
     })),
-    font: { family, size, weight: 800, lineHeight, slant: OBLIQUE, uppercase: opts.uppercase },
+    // The lean carries a word's top into the space after it, and the lit word grows into both: room for both.
+    font: { family, size, weight: 800, lineHeight, slant: OBLIQUE, wordSpacing: size * 0.14, uppercase: opts.uppercase },
     fill: '#FFFFFF',
     stroke: { color: 'rgba(0, 0, 0, 0.8)', width: 2.5 * u, join: 'round' },
     align: 'center',
@@ -598,8 +638,9 @@ export function popPage(
         timing: 'spoken',
         delay: -0.04,
         duration: 0.22,
-        ease: { spring: 0.45 },
-        from: { opacity: 0, scale: 0.45, y: 16 * u }
+        // A light spring: a bigger one swings a slanted word into its neighbour as it lands.
+        ease: { spring: 0.3 },
+        from: { opacity: 0, scale: 0.55, y: 16 * u }
       }
     ],
     transform: {
@@ -625,7 +666,9 @@ export const OPEN_SEC = 0.6
 const LANDED_SEC = 0.35
 
 export function captionLayers(input: CaptionInput): Layer[] {
-  const { spec, resolved, frame, theme } = input
+  const { spec, resolved, theme } = input
+  // A size asked for scales every size the look takes from the frame (CaptionSpec.size); widths and places stay.
+  const frame = spec.size && spec.size !== 1 ? { ...input.frame, u: input.frame.u * spec.size } : input.frame
   if (!drawsCaptions(spec) || resolved.words.length === 0) return []
   const boxed = spec.preset === 'boxed'
   const pop = spec.preset === 'pop'
@@ -638,7 +681,7 @@ export function captionLayers(input: CaptionInput): Layer[] {
   const covers = input.covers ?? []
   // Key words the edit chose go big, and only they; otherwise the stress heard, or each word's own weight.
   const chosen = [...(spec.keys ?? []), ...Object.keys(spec.keyLooks ?? {})]
-  const pages = endOnKeys(hierarchyPages(resolved.words, maxWords), new Set(chosen))
+  const pages = joinQuickPages(endOnKeys(hierarchyPages(resolved.words, maxWords), new Set(chosen)), maxWords)
   const emphasis = chosen.length ? chosenEmphasis(resolved.words, chosen) : input.emphasis
   const other = otherVoice(resolved.words, input.speakers)
   const layers: Layer[] = []
@@ -671,6 +714,9 @@ export function captionLayers(input: CaptionInput): Layer[] {
       const shows = Math.max(0, start)
       const backdrop = covers.some((c) => c.kind === 'backdrop' && shows >= c.start - 0.05 && shows < c.end)
       const faces = facesNear(input.faces, shows)
+      // Over a split, on its seam, as the burned-in captions sit there too.
+      const sit = page.map((w) => input.sits?.[w.id]).find((s) => s !== undefined)
+      if (sit !== undefined && !backdrop) return { at: { x: frame.width / 2, y: sit * frame.height - height }, backdrop, faces: [] }
       return { at: placePage(frame, spec.position, faces, height, maxWidth / 2, backdrop), backdrop, faces }
     }
     let { at, backdrop, faces } = placed()
@@ -689,8 +735,21 @@ export function captionLayers(input: CaptionInput): Layer[] {
         ;({ at, backdrop, faces } = placed())
       }
     }
+    const seated = page.map((w) => input.sits?.[w.id]).find((s) => s !== undefined)
+    const footed = (l: TextLayer): TextLayer =>
+      seated === undefined || backdrop
+        ? l
+        : {
+            ...l,
+            valign: 'bottom',
+            transform: {
+              ...l.transform,
+              y: seated * frame.height,
+              ...(typeof l.transform?.anchorY === 'number' ? { anchorY: -l.transform.anchorY } : {})
+            }
+          }
     layers.push(
-      boxed
+      footed(boxed
         ? boxedPage(page, start, end, at, { frame, theme, uppercase: spec.uppercase })
         : pop
           ? popPage(page, start, end, at, { frame, uppercase: spec.uppercase, keys: new Set(chosen), landed })
@@ -702,7 +761,7 @@ export function captionLayers(input: CaptionInput): Layer[] {
             looks: spec.keyLooks,
             fill: other !== null && voiceOf(page, input.speakers) === other ? OTHER_VOICE : undefined,
             landed
-          })
+          }))
     )
   })
   return layers

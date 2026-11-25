@@ -256,6 +256,12 @@ export interface CaptionStyle {
   /** Every word in lower case, as The Life Church sets its quiet captions. */
   lowercase?: boolean
   /**
+   * Pages hold to the count (wordsPerGroup), never running a word or two over to finish a sentence: three
+   * words at a time means three, as Lecrae's and The Life Church's quiet captions are set. A sentence's end or
+   * a pause still breaks a page early.
+   */
+  exact?: boolean
+  /**
    * Fills a solid plate behind the words instead of outlining them. The outline
    * width becomes the plate's padding, which is how ASS BorderStyle 3 works.
    */

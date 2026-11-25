@@ -236,6 +236,8 @@ describe('keeping changes off the list', () => {
     const busy = commit(
       d,
       [
+        // A wide recording starts without captions: these were asked for.
+        { op: 'captions', set: { on: true } },
         { op: 'sfx', beats: ['b2'], add: { kind: 'whoosh' } },
         { op: 'sfx', beats: ['b2'], add: { kind: 'pop' } },
         { op: 'transition', beats: ['b2'], kind: 'zoom' },

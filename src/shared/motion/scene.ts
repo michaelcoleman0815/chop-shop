@@ -1,12 +1,16 @@
 import { captionedWords, type Resolved } from '../edit/resolve'
 import type { Cut, Word } from '../edit/schema'
-import { captionLayers, facesNear, type CaptionBand, type CaptionCover, type FaceSample } from './captions'
+import { captionLayers, facesNear, SEAM_FRAC, type CaptionBand, type CaptionCover, type FaceSample } from './captions'
 import { followPath, type FollowPicture } from './follow'
+import { pushed, withFx } from './fx'
 import type { MotionItem, MotionKind } from './schema'
 import { template } from './templates'
+import { OWN_RIM } from './templates/boards'
 import { TIMING } from './templates/kit'
 import { frameFor, type Frame, type MotionTheme } from './theme'
 import { anchorTime, spanFor, timelineFor, type Timeline } from './timing'
+import { sampleTransform } from './draw'
+import { windowDuring, type ScreenBox } from '../screen'
 import type { Layer, Size } from './types'
 
 /**
@@ -65,6 +69,21 @@ interface FollowContext {
   pictures: FollowPicture[]
 }
 
+/** The window the speaker is kept in on the screen recording playing at a moment of the output, if it holds one. */
+function speakerWindow(f: FollowContext, at: number): ScreenBox | null {
+  const piece = f.resolved.pieces.find((p) => p.outStart <= at + 1e-6 && at < p.outEnd) ?? f.resolved.pieces.find((p) => p.outStart >= at)
+  const screen = piece ? f.pictures.find((p) => p.id === piece.source)?.screen : undefined
+  return piece && screen ? windowDuring(screen, piece.srcStart, piece.srcEnd) : null
+}
+
+/** How much two boxes share: their overlap over their union. */
+function overlapShare(a: ScreenBox, b: ScreenBox): number {
+  const w = Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0])
+  const h = Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1])
+  const shared = Math.max(0, w) * Math.max(0, h)
+  return shared / Math.max(1e-9, a[2] * a[3] + b[2] * b[3] - shared)
+}
+
 /** Builds every graphic in the cut. Never throws on a bad call: it is hidden instead. */
 export function buildScene(input: SceneInput): MotionScene {
   const frame = frameFor(input.size)
@@ -88,6 +107,27 @@ export function buildScene(input: SceneInput): MotionScene {
     const again = buildItem(item, tl, frame, input.theme, input.faces, input.assets ?? [], following, card.start + TIMING.exit)
     if (!('reason' in again)) items[n] = again
   })
+  // A board's window over a screen recording is the speaker's own window, as read off the picture: a box a hair
+  // off it would show the recording's rim beside the board's.
+  items.forEach((built, n) => {
+    if (built.kind !== 'board') return
+    const item = (input.cut.motion ?? []).find((m) => m.id === built.id)
+    const box = item?.box && item.box.length === 4 ? (item.box as ScreenBox) : null
+    const own = box ? speakerWindow(following, built.start) : null
+    if (!item || !box || !own || overlapShare(own, box) < 0.5) return
+    // The recording frames its window already: the board cuts the hole and draws no rim of its own.
+    const snapped = { ...item, box: [...own], fx: [...(item.fx ?? []).filter((f) => f !== OWN_RIM), OWN_RIM] }
+    const again = buildItem(snapped, tl, frame, input.theme, input.faces, input.assets ?? [], following)
+    if (!('reason' in again)) items[n] = again
+  })
+  // A paper board shows nothing of its own: it comes up with the first graphic set on it, never as empty paper.
+  items.forEach((board, n) => {
+    if (board.kind !== 'board') return
+    const on = items.filter((c) => c !== board && c.kind !== 'board' && c.start < board.end && c.end > board.start + 0.05)
+    const first = Math.min(...on.map((c) => firstShown(c.layers, c.start, c.end)))
+    if (!Number.isFinite(first) || first <= board.start + 0.25 || first >= board.end - 0.1) return
+    items[n] = { ...board, start: first, layers: board.layers.map((l) => ({ ...l, start: Math.max(l.start, first) })) }
+  })
   const covers: CaptionCover[] = items.flatMap((i) => (i.covers ? [{ start: i.start, end: i.end, kind: i.covers }] : []))
   const captions = captionLayers({
     spec: input.cut.captions,
@@ -100,7 +140,8 @@ export function buildScene(input: SceneInput): MotionScene {
     emphasis: input.emphasis,
     speakers: speakersOf(input.words),
     covers,
-    bands: graphicBands(items)
+    bands: graphicBands(items),
+    sits: seamSits(input.cut, input.resolved)
   })
   // Backdrops replace the picture, so they go under the captions; everything else goes over. Cards hold
   // the screen, so what stands beside one (a counter by a page) goes over it, whichever came first.
@@ -161,7 +202,8 @@ function buildItem(
   // What it holds of the frame's height, unless it moves with an object.
   let band: SceneItem['band'] | null = null
   try {
-    layers = tpl.build(ctx)
+    // The fx any graphic takes (motion/fx), on top of what its template makes of its own.
+    layers = pushed(withFx(tpl.build(ctx), call.fx ?? [], theme, frame.u, tpl.ownFx), call.fx ?? [], frame.height)
     band = path ? null : (tpl.band?.(ctx) ?? null)
   } catch (err) {
     return { reason: `It could not be drawn: ${err instanceof Error ? err.message : String(err)}` }
@@ -191,6 +233,13 @@ function buildItem(
   }
 }
 
+/** The first moment any of a graphic's layers can be seen, in thirtieths of a second; Infinity when never. */
+function firstShown(layers: Layer[], start: number, end: number): number {
+  for (let t = start; t < end; t += 1 / 30)
+    if (layers.some((l) => l.start <= t && t < l.end && sampleTransform(l.transform, t - l.start, l.end - l.start).opacity > 0.05)) return t
+  return Infinity
+}
+
 /** Every stretch of output time when something is drawn, merged where gaps are short. */
 export function activeSpans(layers: Layer[], duration: number, mergeGap = 0.25): { start: number; end: number }[] {
   const spans = layers
@@ -214,6 +263,13 @@ export function itemsAt(scene: MotionScene, t: number): SceneItem[] {
 /** The stretches of the frame graphics hold while they are up, on the output clock, for captions to keep out of. */
 export function graphicBands(items: Pick<SceneItem, 'start' | 'end' | 'band'>[]): CaptionBand[] {
   return items.flatMap((i) => (i.band ? [{ start: i.start, end: i.end, top: i.band.top, bottom: i.band.bottom }] : []))
+}
+
+/** The words said over a split (b-roll stacked with the speaker), by id, seated on its seam (SEAM_FRAC). */
+function seamSits(cut: Cut, resolved: Resolved): Record<string, number> | undefined {
+  const split = new Set(cut.beats.filter((b) => b.treatment.frame === 'split' && b.treatment.broll).map((b) => b.id))
+  if (split.size === 0) return undefined
+  return Object.fromEntries(resolved.words.filter((w) => split.has(w.beat)).map((w) => [w.id, SEAM_FRAC]))
 }
 
 /** Who says each word, by word id, when the speakers were told apart. */

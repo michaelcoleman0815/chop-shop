@@ -163,7 +163,7 @@ describe('the steps to every key', () => {
 
   it('says what a plan costs in one line, from the published prices, and where to see the spend', () => {
     expect(costLine()).toBe(
-      'A plan on a 10-minute video costs about 5 to 35 cents at Anthropic’s prices on 16 November 2026. The Console’s Usage page shows what you actually spend.'
+      'A plan on a 10-minute video costs about 5 to 40 cents at Anthropic’s prices on 16 November 2026. The Console’s Usage page shows what you actually spend.'
     )
   })
 })

@@ -14,6 +14,7 @@ import {
   MOTION_FONTS,
   planMotionCommand,
   renderFrame,
+  shutterFor,
   type IconNode,
   type Layer,
   type MotionScene,
@@ -346,7 +347,9 @@ function inSkia(
   renderFrame(ctx, t, scene.layers, scene.size, pixels, {
     icons: (n) => ICONS[n],
     images,
-    createCanvas: (w, h) => createCanvas(w, h) as unknown as HTMLCanvasElement
+    createCanvas: (w, h) => createCanvas(w, h) as unknown as HTMLCanvasElement,
+    // The shutter the export and the editor both blur moving graphics across.
+    shutter: shutterFor(FPS)
   })
   return ctx.getImageData(0, 0, pixels.width, pixels.height).data
 }
@@ -366,7 +369,7 @@ async function inChromium(
 ): Promise<Uint8ClampedArray> {
   const images = pngsOf(doc)
   const b64 = await (page as Page).evaluate(
-    async ({ layers, t, design, pixels, icons, images }) => {
+    async ({ layers, t, design, pixels, icons, images, shutter }) => {
       const pictures = new Map<string, ImageBitmap>()
       for (const [id, data] of Object.entries(images)) {
         const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
@@ -380,6 +383,7 @@ async function inChromium(
       m.renderFrame(ctx, t, layers, design, pixels, {
         icons: (n: string) => icons[n],
         images: pictures,
+        shutter,
         createCanvas: (w: number, h: number) => {
           const c = document.createElement('canvas')
           c.width = w
@@ -392,7 +396,7 @@ async function inChromium(
       for (let i = 0; i < data.length; i += 0x8000) s += String.fromCharCode(...data.subarray(i, i + 0x8000))
       return btoa(s)
     },
-    { layers: scene.layers, t, design: scene.size, pixels, icons: iconsOf(scene.layers), images }
+    { layers: scene.layers, t, design: scene.size, pixels, icons: iconsOf(scene.layers), images, shutter: shutterFor(FPS) }
   )
   return new Uint8ClampedArray(Buffer.from(b64, 'base64'))
 }

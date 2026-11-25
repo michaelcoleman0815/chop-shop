@@ -2,6 +2,7 @@ import { keys, tail } from '../anim'
 import { initials } from '../logos'
 import type { MotionCall } from '../schema'
 import type { Key, Layer, Transform } from '../types'
+import { popFade, popScale } from './kit'
 import { logoSource } from './logos'
 import { register, type BuildContext } from './registry'
 import { shotAsset } from './screenshot'
@@ -68,8 +69,9 @@ function device(ctx: BuildContext): Layer[] {
   const sh = ph - bezel * 2
   const sr = radius - bezel * 0.8
 
-  // Rising in a little turned, then settling into a slow sway.
-  const settle = Math.min(0.75, length * 0.4)
+  // Rising in a little turned, then settling into a slow sway: over a second on a quint ease, as Jordan Welch's
+  // phones glide in, never more than a twelfth of the frame a frame.
+  const settle = Math.min(1, length * 0.4)
   const sway = (amp: number, base: number): { keys: Key<number>[] } => {
     const list: Key<number>[] = [{ t: settle, v: base, ease: 'easy-ease' }]
     for (let t = settle + 1.6, k = 1; t < length; t += 1.6, k++)
@@ -77,16 +79,16 @@ function device(ctx: BuildContext): Layer[] {
     return { keys: list }
   }
   const rotation = sway(1.2, -2.5)
-  rotation.keys.unshift({ t: 0, v: -9, ease: 'snap' })
+  rotation.keys.unshift({ t: 0, v: -9, ease: 'out-quint' })
   const skewY = sway(0.8, 2)
-  skewY.keys.unshift({ t: 0, v: 7, ease: 'snap' })
+  skewY.keys.unshift({ t: 0, v: 7, ease: 'out-quint' })
   const phone: Transform = {
     x: cx,
-    y: keys([0, cy + H * 0.42, 'snap'], [settle, cy]),
+    y: keys([0, cy + H * 0.28, 'out-quint'], [settle, cy]),
     rotation,
     skewY,
     scaleX: 0.96,
-    scale: keys([0, 0.9, 'snap'], [settle, 1], [length, 1.04]),
+    scale: keys([0, 0.9, 'out-quint'], [settle, 1], [length, 1.04]),
     opacity: { keys: [{ t: 0, v: 0 }, { t: 0.15, v: 1 }, ...tail([0.18, 1, 'ease-in'], [0, 0])] }
   }
 
@@ -207,10 +209,8 @@ function device(ctx: BuildContext): Layer[] {
     }
     // Each one pops in after the phone, one after another.
     const t0 = Math.min(Math.max(0, length - 0.6), settle * 0.6 + i * 0.07)
-    const pop = {
-      keys: [{ t: t0, v: 0, ease: { spring: 0.5 } }, { t: t0 + 0.5, v: 1 }, ...tail([0.18, 1, 'ease-in'], [0, 0.6])]
-    }
-    const fade = { keys: [{ t: t0, v: 0 }, { t: t0 + 0.1, v: 1 }, ...tail([0.18, 1, 'ease-in'], [0, 0])] }
+    const pop = { keys: [...popScale(t0), ...tail([0.18, 1, 'ease-in'], [0, 0.6])] }
+    const fade = { keys: [...popFade(t0), ...tail([0.18, 1, 'ease-in'], [0, 0])] }
     const coin = (): Layer => {
       const effects = { glow: { color: 'rgba(255, 255, 255, 0.3)', blur: 26 * u }, blur: { keys: blur } }
       if (o.icon)

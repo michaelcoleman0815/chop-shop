@@ -70,8 +70,9 @@ describe.skipIf(!FFMPEG)('rendering the better sound from another recording', ()
     const one = applyOps(
       currentCut(doc),
       [
-        { op: 'remove', beats: ['b1'] },
-        { op: 'insert', to: 0, beat: { source: 's1', inSec, outSec } },
+        // The recording's own beat trimmed to the stretch, so it is still b1.
+        { op: 'trim', beat: 'b1', edge: 'in', sec: inSec },
+        { op: 'trim', beat: 'b1', edge: 'out', sec: outSec },
         { op: 'aspect', aspect: 'original' },
         { op: 'loudness', lufs: null }
       ],

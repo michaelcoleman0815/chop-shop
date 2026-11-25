@@ -103,6 +103,110 @@ describe('motion blur', () => {
     drawFrame(c.ctx, 0.5, [moving({ shutter: 0.05 })], { width: 1200, height: 1000 })
     expect(px(c.ctx, 665, 500)[3]).toBe(0)
   })
+
+  it('blurs a fast move at the frame’s shutter, as the export draws it, and leaves slower moves and stills sharp', () => {
+    // The export's shutter at 30 fps: half a frame. A square whipping across at 7200 px a second, 240 px a
+    // frame, a fifth of the frame's width: across 1/60 s it spans 490 to 710.
+    const withShutter = { ...scratch, shutter: 0.5 / 30 }
+    const whip = rect({ fill: '#ffffff', transform: { x: keys([0, -3000], [1, 4200]), y: 500 } })
+    const blurred = frame(1200, 1000)
+    drawFrame(blurred.ctx, 0.5, [whip], { width: 1200, height: 1000 }, withShutter)
+    // It moves further than it is wide while the shutter is open, so even its middle is part see-through.
+    expect(px(blurred.ctx, 600, 500)[3]).toBeGreaterThan(180)
+    expect(px(blurred.ctx, 600, 500)[3]).toBeLessThan(245)
+    for (const x of [500, 700]) {
+      const a = px(blurred.ctx, x, 500)[3]
+      expect(a, `blurred ${x}`).toBeGreaterThan(20)
+      expect(a, `blurred ${x}`).toBeLessThan(160)
+    }
+    expect(px(blurred.ctx, 716, 500)[3]).toBe(0)
+    // 33 px a frame, slower than a creator's sliding card: crisp, as theirs are.
+    const slow = frame(1200, 1000)
+    drawFrame(slow.ctx, 0.5, [moving()], { width: 1200, height: 1000 }, withShutter)
+    expect(px(slow.ctx, 546, 500)[3]).toBe(0)
+    expect(px(slow.ctx, 554, 500)[3]).toBe(255)
+    // A layer that names a shutter keeps its own.
+    const own = frame(1200, 1000)
+    drawFrame(own.ctx, 0.5, [moving({ shutter: 0.05, samples: 12 })], { width: 1200, height: 1000 }, withShutter)
+    expect(px(own.ctx, 665, 500)[3]).toBeGreaterThan(30)
+    // Still: the same pixels as with no shutter at all.
+    const a = frame(400, 400)
+    drawFrame(a.ctx, 1, [rect({ fill: '#ffffff' })], { width: 400, height: 400 }, withShutter)
+    const b = frame(400, 400)
+    drawFrame(b.ctx, 1, [rect({ fill: '#ffffff' })], { width: 400, height: 400 })
+    expect(
+      Buffer.from(a.ctx.getImageData(0, 0, 400, 400).data).equals(Buffer.from(b.ctx.getImageData(0, 0, 400, 400).data))
+    ).toBe(true)
+  })
+
+  it('streaks words as they rise in, and a card as it grows, by how far they go', () => {
+    const withShutter = { ...scratch, shutter: 0.5 / 30 }
+    // A word rising 480 px in a quarter second on an expo ease-out: fast at the start.
+    const word: TextLayer = {
+      kind: 'text',
+      start: 0,
+      end: 3,
+      text: 'RISE',
+      font: { family: 'Inter ExtraBold', size: 120 },
+      fill: '#ffffff',
+      align: 'center',
+      valign: 'middle',
+      transform: { x: 600, y: 500 },
+      animators: [{ by: 'word', duration: 0.25, ease: 'snap', from: { y: 480 } }]
+    }
+    const rows = (ctx: C2D): number => {
+      // How many rows across the word's middle column are part lit: a streak has many, a sharp word few.
+      let n = 0
+      for (let y = 300; y < 900; y++) {
+        const a = px(ctx, 600, y)[3]
+        if (a > 10 && a < 245) n++
+      }
+      return n
+    }
+    // Its first frame, 132 px across the shutter: fast enough to blur.
+    const sharp = frame(1200, 1000)
+    drawFrame(sharp.ctx, 0.02, [word], { width: 1200, height: 1000 }, scratch)
+    const streaked = frame(1200, 1000)
+    drawFrame(streaked.ctx, 0.02, [word], { width: 1200, height: 1000 }, withShutter)
+    expect(rows(streaked.ctx)).toBeGreaterThan(rows(sharp.ctx) + 20)
+    // A big card bursting up from a tenth of its size streaks outward at its edges.
+    const card = rect({ fill: '#ffffff', shape: { type: 'rect', w: 800, h: 800 }, transform: { x: 600, y: 500, scale: keys([0, 0.1, 'snap'], [0.25, 1]) } })
+    const grown = frame(1200, 1000)
+    drawFrame(grown.ctx, 0.02, [card], { width: 1200, height: 1000 }, withShutter)
+    const plain = frame(1200, 1000)
+    drawFrame(plain.ctx, 0.02, [card], { width: 1200, height: 1000 }, scratch)
+    const soft = (ctx: C2D): number => {
+      let n = 0
+      for (let x = 600; x < 1200; x++) {
+        const a = px(ctx, x, 500)[3]
+        if (a > 10 && a < 245) n++
+      }
+      return n
+    }
+    expect(soft(grown.ctx)).toBeGreaterThan(soft(plain.ctx) + 10)
+  })
+
+  it('keeps a moving layer’s own parts over each other: dark lines on white paper stay dark', () => {
+    // A white page with a dark rule across it, sliding slowly up: each moment is drawn whole before they are
+    // averaged. Drawn straight into the average, the rule was added onto the paper and washed out to white.
+    const page: Layer = {
+      kind: 'group',
+      start: 0,
+      end: 3,
+      transform: { x: 600, y: keys([0, 520], [1, 480]) },
+      children: [
+        { kind: 'shape', start: 0, end: 3, shape: { type: 'rect', w: 400, h: 300 }, fill: '#ffffff' },
+        { kind: 'shape', start: 0, end: 3, shape: { type: 'rect', w: 300, h: 40 }, fill: '#202020' }
+      ]
+    }
+    const f = frame(1200, 1000)
+    drawFrame(f.ctx, 0.5, [page], { width: 1200, height: 1000 }, { ...scratch, shutter: 0.05 })
+    const [r, g, b, a] = px(f.ctx, 600, 500)
+    expect(a).toBeGreaterThan(250)
+    expect(Math.max(r, g, b)).toBeLessThan(60)
+    // And the paper round it is still white.
+    expect(px(f.ctx, 600, 440)[0]).toBeGreaterThan(245)
+  })
 })
 
 describe('easing', () => {
@@ -415,6 +519,67 @@ describe('drawing frames', () => {
     )
     expect(glowing.mean).toBeLessThan(2)
   })
+
+  it('blurs words, and a group of them on a pill, on canvases their own size too, as a filter on the frame would', () => {
+    const size = { width: 900, height: 600 }
+    const sizes: number[] = []
+    const scratch = {
+      ...resources,
+      createCanvas: (w: number, h: number) => {
+        sizes.push(w * h)
+        return createCanvas(w, h) as unknown as HTMLCanvasElement
+      }
+    }
+    const compare = (layer: Layer): number => {
+      const fast = frame(900, 600)
+      renderFrame(fast.ctx, 1, [layer], size, size, scratch)
+      const plain = frame(900, 600)
+      renderFrame(plain.ctx, 1, [layer], size, size, resources)
+      const a = fast.ctx.getImageData(0, 0, 900, 600).data
+      const b = plain.ctx.getImageData(0, 0, 900, 600).data
+      let diff = 0
+      for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i])
+      return diff / a.length
+    }
+    const words: TextLayer = {
+      kind: 'text',
+      start: 0,
+      end: 3,
+      text: 'Deep work',
+      font: { family: 'Sora', size: 48 },
+      fill: '#18160F',
+      align: 'center',
+      valign: 'middle',
+      effects: { blur: 4 },
+      transform: { x: 450, y: 200 },
+      animators: [{ by: 'word', duration: 0.4, from: { opacity: 0, x: 40 } }]
+    }
+    expect(compare(words)).toBeLessThan(0.1)
+    // A far word in a cloud: a pill with a shadow and its word, the group turned a little and blurred.
+    const pill: Layer = {
+      kind: 'group',
+      start: 0,
+      end: 3,
+      effects: { blur: 5 },
+      transform: { x: 450, y: 400, rotation: -6, scale: 0.9 },
+      children: [
+        {
+          kind: 'shape',
+          start: 0,
+          end: 3,
+          shape: { type: 'rect', w: 300, h: 80, radius: 40 },
+          fill: '#FFFFFF',
+          effects: { shadow: { color: 'rgba(0, 0, 0, 0.3)', blur: 20, y: 8 } }
+        },
+        { ...words, effects: undefined, transform: { x: 0, y: 0 }, animators: undefined }
+      ]
+    }
+    // Its shadow is blurred in a different order the two ways, so the soft edge differs by a fraction of a level.
+    expect(compare(pill)).toBeLessThan(0.5)
+    // Never a canvas as big as the frame: each a fraction of it.
+    expect(sizes.length).toBeGreaterThan(0)
+    expect(Math.max(...sizes)).toBeLessThan(900 * 600 * 0.5)
+  })
 })
 
 describe('text', () => {
@@ -633,5 +798,92 @@ describe('text', () => {
     // Hidden on the person's side, drawn on the other.
     expect(px(ctx, 150, 200)[3]).toBe(0)
     expect(px(ctx, 300, 200)[3]).toBe(255)
+  })
+})
+
+describe('dashes and mosaics', () => {
+  const scratch = { createCanvas: (w: number, h: number) => createCanvas(w, h) as unknown as HTMLCanvasElement }
+
+  it('dashes a stroke: lit dashes with gaps between, along the whole edge', () => {
+    const f = frame(400, 200)
+    drawFrame(
+      f.ctx,
+      0,
+      [rect({ fill: undefined, shape: { type: 'rect', w: 300, h: 100 }, stroke: { color: '#ffffff', width: 4, cap: 'butt', dash: [10, 10] }, transform: { x: 200, y: 100 } })],
+      { width: 400, height: 200 }
+    )
+    // Along the top edge, at y = 50: on for ten pixels, off for ten.
+    let on = 0
+    let off = 0
+    for (let x = 60; x < 340; x++) (px(f.ctx, x, 50)[3] > 128 ? on++ : off++)
+    expect(on).toBeGreaterThan(100)
+    expect(off).toBeGreaterThan(100)
+  })
+
+  it('draws a picture as a mosaic of square blocks', () => {
+    // A white circle as a mosaic of 20 px blocks: every block is one flat colour.
+    const scratchCanvas = createCanvas(40, 40)
+    const sc = scratchCanvas.getContext('2d')
+    sc.fillStyle = '#ffffff'
+    sc.beginPath()
+    sc.arc(20, 20, 18, 0, Math.PI * 2)
+    sc.fill()
+    const images = new Map([['a1', scratchCanvas as unknown as CanvasImageSource]])
+    const f = frame(200, 200)
+    drawFrame(f.ctx, 0, [{ kind: 'image', start: 0, end: 1, asset: 'a1', w: 160, h: 160, pixelate: 20, transform: { x: 100, y: 100 } }], { width: 200, height: 200 }, { ...scratch, images })
+    for (const [bx, by] of [
+      [20, 20],
+      [80, 80],
+      [100, 40]
+    ]) {
+      const first = px(f.ctx, bx + 3, by + 3)
+      for (const [dx, dy] of [
+        [16, 3],
+        [3, 16],
+        [16, 16]
+      ])
+        expect(px(f.ctx, bx + dx, by + dy), `block at ${bx},${by}`).toEqual(first)
+    }
+    // Lit in the middle, clear at the corners.
+    expect(px(f.ctx, 100, 100)[3]).toBe(255)
+    expect(px(f.ctx, 25, 25)[3]).toBeLessThan(200)
+  })
+})
+
+describe('blurring what moves inside a still group', () => {
+  it('keeps a board’s still paper exactly its colour while a card slides fast across it', () => {
+    const scratch = { createCanvas: (w: number, h: number) => createCanvas(w, h) as unknown as HTMLCanvasElement, shutter: 0.5 / 30 }
+    const board: Layer = {
+      kind: 'group',
+      start: 0,
+      end: 2,
+      children: [
+        { kind: 'shape', start: 0, end: 2, shape: { type: 'rect', w: 1200, h: 1000 }, fill: '#FAF5F2', transform: { x: 600, y: 500 } },
+        // A card whipping across at 240 px a frame.
+        { kind: 'shape', start: 0, end: 2, shape: { type: 'rect', w: 200, h: 120 }, fill: '#FFFFFF', transform: { x: keys([0, -3000], [1, 4200]), y: 300 } }
+      ]
+    }
+    const f = frame(1200, 1000)
+    drawFrame(f.ctx, 0.5, [board], { width: 1200, height: 1000 }, scratch)
+    // Far from the card, the paper is the paper.
+    expect(px(f.ctx, 300, 800)).toEqual([250, 245, 242, 255])
+    // The card streaks: part-covered along its path.
+    expect(px(f.ctx, 700, 300)[0]).toBeGreaterThanOrEqual(250)
+  })
+})
+
+describe('animating on twos', () => {
+  it('holds each pose for two frames at 24 fps when a layer steps at 12', () => {
+    const slide = (fps?: number): Layer => rect({ fill: '#ffffff', fps, transform: { x: keys([0, 100], [1, 1100]), y: 500 } })
+    const leftEdge = (l: Layer, t: number): number => {
+      const f = frame(1200, 1000)
+      drawFrame(f.ctx, t, [l], { width: 1200, height: 1000 })
+      for (let x = 0; x < 1200; x++) if (px(f.ctx, x, 500)[3] > 128) return x
+      return -1
+    }
+    // Smooth: every frame moves. On twos: frames 3 and 4 of a 24 fps second show the same pose.
+    expect(leftEdge(slide(), 3 / 24)).not.toBe(leftEdge(slide(), 4 / 24))
+    expect(leftEdge(slide(12), 2 / 24 + 0.001)).toBe(leftEdge(slide(12), 3 / 24 + 0.001))
+    expect(leftEdge(slide(12), 3 / 24 + 0.001)).not.toBe(leftEdge(slide(12), 4 / 24 + 0.001))
   })
 })

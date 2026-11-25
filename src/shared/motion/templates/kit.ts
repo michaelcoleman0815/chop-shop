@@ -48,6 +48,16 @@ export const PLACES = [
   'bottom-right'
 ] as const
 
+/**
+ * Where a centred graphic goes across the frame, and the widest it may run: on the frame's own middle, where the
+ * captions centre, and no wider than stays in the safe area on both sides. A vertical frame keeps more clear on
+ * the right, for the like and share column, so centring on the safe area's middle instead set every title 49 px
+ * left of the captions under it.
+ */
+export function centred(frame: Frame): { cx: number; width: number } {
+  return { cx: frame.width / 2, width: frame.width - 2 * Math.max(frame.safe.left, frame.safe.right) }
+}
+
 /** A named place inside the safe area. Unknown names use the fallback. */
 export function placeAt(frame: Frame, place: string, fallback: string): Placement {
   const { width: W, height: H, safe } = frame
@@ -56,7 +66,7 @@ export function placeAt(frame: Frame, place: string, fallback: string): Placemen
   const right = W - safe.right
   const top = safe.top
   const bottom = H - safe.bottom
-  const cx = (left + right) / 2
+  const { cx } = centred(frame)
   switch (name) {
     case 'top':
       return { x: cx, y: top, align: 'center', valign: 'top' }
@@ -138,6 +148,53 @@ export function inOut(
     ...tail([outSec, to, outEase], [0, out])
   ]
   return { keys: k }
+}
+
+/**
+ * A pop's size, as creators make one (Ali Abdaal's icon tiles, measured frame by frame): from four-fifths of its
+ * size up past it to 106% in a sixth of a second, then settling back by 0.4 s. Grown from nothing instead, a
+ * tile spans a tenth of the frame in one frame and reads as a jump, not a pop. Its fade is popFade.
+ */
+export function popScale(t: number, from = 0.8): Key<number>[] {
+  return [
+    { t, v: from, ease: 'out-cubic' },
+    { t: t + 0.17, v: 1.06, ease: 'in-out-quad' },
+    { t: t + 0.4, v: 1 }
+  ]
+}
+
+/** A pop's fade: in over three frames, as the size starts to move (popScale). */
+export function popFade(t: number): Key<number>[] {
+  return [
+    { t, v: 0, ease: 'out-quad' },
+    { t: t + 0.1, v: 1 }
+  ]
+}
+
+/**
+ * A window in a graphic that fills the frame, where the picture under it shows through: the speaker's picture in
+ * a corner, as Ali Abdaal keeps himself on screen beside his boards and lists. `box` is x, y, width, height as
+ * shares of the frame; null without four numbers. The mask hides what is inside it; the rim draws round it.
+ */
+export function frameWindow(frame: Frame, box: number[], withRim = true): { mask: import('../types').Mask; rim: Layer[] } | null {
+  if (box.length < 4) return null
+  const [bx, by, bw, bh] = box
+  const W = frame.width
+  const H = frame.height
+  const w = bw * W
+  const h = bh * H
+  const x = (bx + bw / 2) * W
+  const y = (by + bh / 2) * H
+  const radius = Math.min(w, h) * 0.088
+  const rect = (pad: number) => ({ type: 'rect' as const, w: w + pad * 2, h: h + pad * 2, radius: radius + pad, x, y })
+  return {
+    mask: { shape: rect(0), invert: true },
+    // A thin rim of glass: a periwinkle line with a lighter one just inside it; none where the picture has its own.
+    rim: !withRim ? [] : [
+      { kind: 'shape', start: 0, end: 0, shape: rect(2 * frame.u), stroke: { color: '#5F6AA8', width: 3.5 * frame.u } },
+      { kind: 'shape', start: 0, end: 0, shape: rect(-1.5 * frame.u), stroke: { color: 'rgba(184, 198, 242, 0.9)', width: 2 * frame.u } }
+    ] as Layer[]
+  }
 }
 
 /** Keyframes that only arrive: from, then to, eased. */

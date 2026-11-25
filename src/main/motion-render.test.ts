@@ -150,7 +150,9 @@ describe('the final pass with graphics', () => {
       subtitlePass(plain, r, sceneForCut({ cut: plain, resolved: r, words, sources: [source], brand: null }))
     ).toEqual({
       cut: plain,
-      resolved: r
+      resolved: r,
+      // No split and nothing across the captions: every caption at the look's own height.
+      sits: {}
     })
   })
 

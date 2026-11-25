@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { applyOps, createDoc, currentCut, resolveCut, wordsFromTranscript } from '../shared/edit'
-import { renderFrame, type Layer } from '../shared/motion'
+import { renderFrame, shutterFor, type Layer } from '../shared/motion'
 import { buildRenderArgs, renderCut, TO_YUVA, type OverlaySpan } from './cut-render'
 import { renderMotion } from './motion-render'
 import { ffmpegRun, findFfmpeg } from './test-media'
@@ -121,6 +121,8 @@ describe.skipIf(!FFMPEG)('graphics in an export, frame by frame', () => {
             end: (first + 6) / fps,
             shape: { type: 'rect', w: 16, h: 16 },
             fill: '#ff0000',
+            // Sharp, so its edge tells which frame it is on: blur is checked in shared/motion's draw tests.
+            motionBlur: { shutter: 0 },
             transform: {
               x: {
                 keys: [
@@ -189,8 +191,12 @@ describe.skipIf(!FFMPEG)('graphics in an export, frame by frame', () => {
         let shown = 0
         for (let n = 0; n < frames; n++) {
           const exported = leftEdge(raw.subarray(n * size, (n + 1) * size), 3)
-          // The preview's drawing of the same frame: the shared code at the frame's own time.
-          renderFrame(ctx, n / fps, layers, { width: W, height: H }, { width: W, height: H })
+          // The preview's drawing of the same frame: the shared code at the frame's own time, blurred across the
+          // same shutter.
+          renderFrame(ctx, n / fps, layers, { width: W, height: H }, { width: W, height: H }, {
+            createCanvas: (w, h) => createCanvas(w, h) as unknown as HTMLCanvasElement,
+            shutter: shutterFor(fps)
+          })
           const drawn = leftEdge(new Uint8Array(ctx.getImageData(0, BAND.y, W, BAND.h).data.buffer), 4)
           if (drawn !== null) shown++
           if (exported === drawn || (exported !== null && drawn !== null && Math.abs(exported - drawn) <= 1)) continue

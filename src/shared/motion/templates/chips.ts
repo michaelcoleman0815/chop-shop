@@ -4,7 +4,7 @@ import { initials } from '../logos'
 import type { MotionCall } from '../schema'
 import type { Frame, MotionTheme } from '../theme'
 import type { Layer } from '../types'
-import { accentOf, clamp, inkOn, TIMING, whenSaid } from './kit'
+import { accentOf, clamp, inkOn, popFade, popScale, TIMING, whenSaid } from './kit'
 import { logoSource } from './logos'
 import { textWidth } from './measure'
 import { register, type BuildContext } from './registry'
@@ -26,7 +26,7 @@ import { register, type BuildContext } from './registry'
 
 const STYLES = ['light', 'dark', 'accent'] as const
 type Style = (typeof STYLES)[number]
-const PLACES = ['around', 'left', 'right', 'top'] as const
+const PLACES = ['around', 'left', 'right', 'top', 'shelf'] as const
 
 export interface Chip {
   label: string
@@ -355,10 +355,119 @@ export function chipTimes(ctx: BuildContext, list: Chip[]): number[] {
   return times
 }
 
+/** Each shelf tile's icon colour and the soft tint of the square it sits on: red, violet, orange, blue, gold, green. */
+const SHELF_TONES: { ink: string; tint: string }[] = [
+  { ink: '#DF5150', tint: '#FFE6E6' },
+  { ink: '#7B5BD0', tint: '#F1E9FB' },
+  { ink: '#E8734C', tint: '#FFEEE7' },
+  { ink: '#396FC0', tint: '#DFEEFD' },
+  { ink: '#C99A2E', tint: '#FEF2DC' },
+  { ink: '#409B47', tint: '#E0F4E4' }
+]
+
+/**
+ * Chips as tiles on a shelf of tinted glass along the foot of the frame, as Ali Abdaal sets out the areas of a life
+ * (measured frame by frame): the glass rises from below the frame on an out-cubic over half a second, then white
+ * tiles pop onto it left to right a tenth of a second apart, or each on its word: a Lucide icon on a soft square
+ * of its colour, the word under it in the soft serif. "heart:solid" fills an icon.
+ */
+function chipShelf(ctx: BuildContext, list: Chip[]): Layer[] {
+  const { frame, item, span } = ctx
+  const { start, end } = span
+  const W = frame.width
+  const H = frame.height
+  const u = frame.u
+  const length = end - start
+  const n = Math.min(list.length, frame.shape === 'vertical' ? 4 : 7)
+  const tileW = Math.min(210 * u, (W * 0.88) / n - 42 * u)
+  const k = tileW / (210 * u)
+  const tileH = 200 * u * k
+  const gap = 42 * u * k
+  const rowW = n * tileW + (n - 1) * gap
+  const panelW = rowW + 60 * u * k
+  const panelH = 260 * u * k
+  const cy = H - (frame.shape === 'vertical' ? H * 0.22 : 45 * u) - panelH / 2
+  const glass = /^#[0-9a-fA-F]{6}$/.test(item.color.trim()) ? item.color.trim() : '#EB7658'
+  const out = tail([TIMING.exit, 1, 'ease-in'], [0, 0])
+  const rise = { keys: [{ t: 0, v: cy + H * 0.3, ease: 'out-cubic' as const }, { t: 0.48, v: cy }] }
+  const layers: Layer[] = [
+    // What is behind the glass, softened, then the glass over it.
+    {
+      kind: 'shape',
+      start,
+      end,
+      shape: { type: 'rect', w: panelW, h: panelH, radius: 40 * u * k },
+      fill: `${glass}8C`,
+      stroke: { color: 'rgba(255, 226, 214, 0.75)', width: 2 * u },
+      effects: { shadow: { color: 'rgba(90, 30, 15, 0.18)', blur: 30 * u, y: 8 * u } },
+      transform: { x: W / 2, y: rise, opacity: { keys: [{ t: 0, v: 1 }, ...out] } }
+    }
+  ]
+  const x0 = W / 2 - rowW / 2 + tileW / 2
+  list.slice(0, n).forEach((chip, i) => {
+    const said = chip.at ? ctx.time(chip.at) : null
+    const t = clamp(said !== null ? said - start - 0.1 : 0.56 + i * 0.11, 0.3, Math.max(0.3, length - 0.4))
+    const tone = SHELF_TONES[i % SHELF_TONES.length]
+    const [icon, solid] = chip.value.split(':')
+    const sq = 100 * u * k
+    layers.push({
+      kind: 'group',
+      start,
+      end,
+      transform: {
+        x: x0 + i * (tileW + gap),
+        y: rise,
+        scale: { keys: [...popScale(t), ...tail([TIMING.exit, 1, 'ease-in'], [0, 0.9])] },
+        opacity: { keys: [...popFade(t), ...out] }
+      },
+      children: [
+        {
+          kind: 'shape',
+          start,
+          end,
+          shape: { type: 'rect', w: tileW, h: tileH, radius: 36 * u * k },
+          fill: '#FFFFFF',
+          effects: { shadow: { color: 'rgba(90, 30, 15, 0.16)', blur: 18 * u, y: 5 * u } }
+        },
+        { kind: 'shape', start, end, shape: { type: 'rect', w: sq, h: sq, radius: 26 * u * k, y: -27 * u * k }, fill: tone.tint },
+        ...(icon
+          ? [
+              {
+                kind: 'image' as const,
+                start,
+                end,
+                icon,
+                w: sq * 0.56,
+                h: sq * 0.56,
+                color: tone.ink,
+                strokeWidth: 2.6,
+                ...(solid === 'solid' ? { iconFill: true } : {}),
+                transform: { y: -27 * u * k }
+              }
+            ]
+          : []),
+        {
+          kind: 'text',
+          start,
+          end,
+          text: chip.label,
+          font: { family: 'Fraunces SemiBold', size: 40 * u * k * Math.min(1, (tileW * 0.92) / Math.max(1, textWidth(chip.label, 'Fraunces SemiBold', 40 * u * k))) },
+          fill: '#1A1512',
+          align: 'center',
+          valign: 'middle',
+          transform: { y: 57 * u * k }
+        }
+      ]
+    })
+  })
+  return layers
+}
+
 function chips(ctx: BuildContext): Layer[] {
   const { frame, theme, item } = ctx
   const list = chipList(item)
   if (!list.length) return []
+  if (item.place === 'shelf') return chipShelf(ctx, list)
   const sizes = list.map((c) => ({ w: chipWidth(c.label, theme, frame), h: chipMetrics(frame).height }))
   const place = (PLACES as readonly string[]).includes(item.place) ? item.place : 'around'
   const { spots, scale } = chipPlaces(frame, ctx.faces, sizes, place)
@@ -376,7 +485,7 @@ register({
   kind: 'chips',
   title: 'Chips',
   about:
-    'A cloud of small pills, each an icon and a word, that pop in one by one around the speaker as each is named and hold while the list goes on; they keep clear of the face. For a list of four or more things said one after another: the tools someone uses, apps, ingredients, places. items are the chips, label the word and at the word that names it, like [{"label":"Notion","at":"w31"},{"label":"Figma","at":"w34"}]; value is empty for the brand’s own logo (its letters when there is none), or a Lucide icon name for a thing that is not a brand, like {"label":"Email","value":"mail"}. Up to twelve. light is white pills, dark is dark pills, accent is pills in the accent. place around puts them all round the speaker; left, right or top keeps them to one side.',
+    'A cloud of small pills, each an icon and a word, that pop in one by one around the speaker as each is named and hold while the list goes on; they keep clear of the face. For a list of four or more things said one after another: the tools someone uses, apps, ingredients, places. items are the chips, label the word and at the word that names it, like [{"label":"Notion","at":"w31"},{"label":"Figma","at":"w34"}]; value is empty for the brand’s own logo (its letters when there is none), or a Lucide icon name for a thing that is not a brand, like {"label":"Email","value":"mail"}. Up to twelve. light is white pills, dark is dark pills, accent is pills in the accent. place around puts them all round the speaker; left, right or top keeps them to one side; shelf sets them as tiles on a shelf of tinted glass that rises along the foot of the frame, each a Lucide icon over its word (value heart:solid fills one), as Ali Abdaal sets out the areas of a life, like [{"label":"Health","value":"heart:solid"},{"label":"Family","value":"users"}]; color tints the glass.',
   styles: STYLES,
   places: PLACES,
   length: 6,

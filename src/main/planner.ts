@@ -3,6 +3,7 @@ import { followPlannedClips } from './clip-follow'
 import { followObjects, type Track } from './plan-follow'
 import { platform } from './platform'
 import { withScopes } from './scopes'
+import { editStills, footageFrames, type Still } from './plan-look'
 import { claudeKeyStatus, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
 import {
   commandThing,
@@ -18,6 +19,7 @@ import { findMotionCommand } from '../shared/motion'
 import type { Settings } from '../shared/types'
 import {
   applyOps,
+  commit,
   currentCut,
   EditDocSchema,
   NAMED_LOOKS,
@@ -156,52 +158,58 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
   const doc = await withScopes(parsedDoc.data)
   const client = claude(apiKey, deps.fetch ? { fetch: deps.fetch } : {})
   const commands = renderCommands(input.commands ?? [])
+  // The footage itself, a frame every few seconds, so the plan is made by looking as well as reading.
+  const frames = await footageFrames(doc).catch(() => [] as Still[])
+  const footage = stillBlocks(frames, FOOTAGE_NOTE)
 
   try {
-    const response = await client.beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      // If this model declines, the API retries the request on a fallback
-      // model chosen for the refusal's category, inside the same call.
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      thinking: { type: 'adaptive' },
-      system: [
-        { type: 'text', text: PLANNER_SYSTEM },
-        { type: 'text', text: PLAN_TOOL_INSTRUCTION, cache_control: { type: 'ephemeral' } }
-      ],
-      // The plan goes as a tool, not as structured output: its schema is past what the API compiles into a
-      // grammar, so every op is checked here instead (planner-prompt readPlan).
-      tools: [{ name: PLAN_TOOL, description: PLAN_TOOL_DESCRIPTION, input_schema: PLAN_TOOL_SCHEMA }],
-      tool_choice: { type: 'auto' },
-      messages: [
+    const userTurn = {
+      role: 'user' as const,
+      content: [
+        // The commands change only when a style is saved, and the transcript and
+        // frames only with the footage, so they are cached; the cut and the ask
+        // follow the breakpoints.
+        ...(commands ? [{ type: 'text' as const, text: commands, cache_control: { type: 'ephemeral' as const } }] : []),
+        footage.length
+          ? { type: 'text' as const, text: renderTranscript(doc) }
+          : { type: 'text' as const, text: renderTranscript(doc), cache_control: { type: 'ephemeral' as const } },
+        ...footage.map((b, i) => (i === footage.length - 1 ? { ...b, cache_control: { type: 'ephemeral' as const } } : b)),
         {
-          role: 'user',
-          content: [
-            // The commands change only when a style is saved, and the
-            // transcript only with the footage, so both are cached; the cut
-            // and the ask follow the breakpoints.
-            ...(commands ? [{ type: 'text' as const, text: commands, cache_control: { type: 'ephemeral' as const } }] : []),
-            { type: 'text', text: renderTranscript(doc), cache_control: { type: 'ephemeral' } },
-            {
-              type: 'text',
-              text: renderRequest(
-                doc,
-                input.request,
-                input.notes,
-                input.voice,
-                input.preferences ?? [],
-                input.logos,
-                input.never,
-                { offers: input.offers, chat: input.chat, brands: input.brands, habits: input.habits }
-              )
-            }
-          ]
+          type: 'text' as const,
+          text: renderRequest(
+            doc,
+            input.request,
+            input.notes,
+            input.voice,
+            input.preferences ?? [],
+            input.logos,
+            input.never,
+            { offers: input.offers, chat: input.chat, brands: input.brands, habits: input.habits }
+          )
         }
-      ],
-      output_config: { effort: 'medium' }
-    })
-
+      ]
+    }
+    const ask = (messages: Anthropic.Beta.Messages.BetaMessageParam[]) =>
+      client.beta.messages.create({
+        model: MODEL,
+        max_tokens: 16000,
+        // If this model declines, the API retries the request on a fallback
+        // model chosen for the refusal's category, inside the same call.
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        thinking: { type: 'adaptive' },
+        system: [
+          { type: 'text', text: PLANNER_SYSTEM },
+          { type: 'text', text: PLAN_TOOL_INSTRUCTION, cache_control: { type: 'ephemeral' } }
+        ],
+        // The plan goes as a tool, not as structured output: its schema is past what the API compiles into a
+        // grammar, so every op is checked here instead (planner-prompt readPlan).
+        tools: [{ name: PLAN_TOOL, description: PLAN_TOOL_DESCRIPTION, input_schema: PLAN_TOOL_SCHEMA }],
+        tool_choice: { type: 'auto' },
+        messages,
+        output_config: { effort: 'medium' }
+      })
+    const response = await ask([userTurn])
     if (response.stop_reason === 'refusal') {
       return { ok: false, message: 'Claude declined this one. Try saying it another way.' }
     }
@@ -212,7 +220,34 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
     if (!read) return { ok: false, message: 'The plan came back in a shape I could not read. Try again.' }
     const plan = read.unread ? { ...read.plan, needs: [...read.plan.needs, unreadNote(read.unread)] } : read.plan
     // Icons Lucide does not have become the closest one it does.
-    return offerTrackedPlan(doc, { ...plan, ops: await withRealIcons(plan.ops) }, input.notes, input.commands)
+    const first = await offerTrackedPlan(doc, { ...plan, ops: await withRealIcons(plan.ops) }, input.notes, input.commands)
+    // A second look, as an editor watches their cut before handing it over: the plan's graphics drawn over the
+    // footage, sent back for a whole corrected plan. Kept as it was when it cannot be looked at or comes back
+    // unreadable.
+    const call = response.content.find(
+      (b): b is Anthropic.Beta.Messages.BetaToolUseBlock => b.type === 'tool_use' && b.name === PLAN_TOOL
+    )
+    const looks = first.ok && call && frames.length > 0 && first.ops.some((o) => isShownOp(o))
+    if (!looks || !first.ok || !call) return first
+    const planned = commit(doc, first.ops as never, 'Planned').doc
+    const stills = await editStills(planned).catch(() => [] as Still[])
+    if (stills.length === 0) return first
+    const again = await ask([
+      userTurn,
+      { role: 'assistant', content: response.content as never },
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: call.id, content: 'Drawn. Here is how it looks.' },
+          ...stillBlocks(stills, LOOK_NOTE)
+        ]
+      }
+    ]).catch(() => null)
+    if (!again || again.stop_reason === 'refusal' || again.stop_reason === 'max_tokens') return first
+    const reread = readPlan(planHandedOver(again.content))
+    if (!reread) return first
+    const revised = reread.unread ? { ...reread.plan, needs: [...reread.plan.needs, unreadNote(reread.unread)] } : reread.plan
+    return offerTrackedPlan(doc, { ...revised, ops: await withRealIcons(revised.ops) }, input.notes, input.commands)
   } catch (err) {
     const keyState = noteKeyFailure(err, keyDeps())
     return {
@@ -222,6 +257,30 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
       ...(keyState ? { keyState } : {})
     }
   }
+}
+
+/** Stills as the API takes them: a note, then each still's label and picture. */
+function stillBlocks(stills: Still[], note: string): (Anthropic.Beta.Messages.BetaTextBlockParam | Anthropic.Beta.Messages.BetaImageBlockParam)[] {
+  if (stills.length === 0) return []
+  return [
+    { type: 'text', text: note },
+    ...stills.flatMap((s): (Anthropic.Beta.Messages.BetaTextBlockParam | Anthropic.Beta.Messages.BetaImageBlockParam)[] => [
+      { type: 'text', text: s.label },
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: s.jpeg.toString('base64') } }
+    ])
+  ]
+}
+
+const FOOTAGE_NOTE =
+  'The footage: a frame of each recording every few seconds, each labelled with its recording, its time and the word said nearest. Look before you plan: what the picture shows (the speaker, a screen, b-roll, the creator\'s own graphics already in it), where the speaker is, what is bright or busy, and where a graphic can sit without covering anything that matters.'
+
+const LOOK_NOTE =
+  'Before this goes to the person, here is your edit as it looks: each still is the footage at that moment with your graphics drawn over it by the export\'s own drawing (a camera\'s move, and words set behind the speaker, are not drawn here; the label says what is up). Look at each as a top editor would, against the request and any style it names: anything covering the words on screen, the speaker\'s face or their window; words you cannot read against what is behind them; a board standing empty; a graphic fighting the footage\'s own; anything generic rather than made for this video, or too much or too little. Then call the plan tool again with the whole plan, corrected (every op, not only the changes), or the same plan when nothing needs changing.'
+
+/** Whether an op puts something on screen worth looking at: a graphic, a camera move, captions, a cutaway. */
+function isShownOp(op: unknown): boolean {
+  const o = op as { op?: string }
+  return o.op === 'motion-add' || o.op === 'camera' || o.op === 'captions' || o.op === 'treat' || o.op === 'clip-add'
 }
 
 /**

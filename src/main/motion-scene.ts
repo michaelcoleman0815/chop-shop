@@ -9,7 +9,7 @@ import {
   type LogoMark,
   type MotionScene
 } from '../shared/motion'
-import { subtitleWords } from '../shared/subtitles'
+import { captionSits, subtitleWords } from '../shared/subtitles'
 import { frameSize } from './cut-render'
 
 /**
@@ -75,7 +75,15 @@ export function subtitleCut(cut: Cut): Cut {
  * speech) left out of the subtitles, as drawn captions wait for them too.
  * Only the subtitles read the words, so the picture is unchanged.
  */
-export function subtitlePass(cut: Cut, resolved: Resolved, scene: MotionScene): { cut: Cut; resolved: Resolved } {
-  // Which words those are is shared with the editor's preview (shared/subtitles).
-  return { cut: subtitleCut(cut), resolved: subtitleWords(cut, resolved, scene) }
+export function subtitlePass(
+  cut: Cut,
+  resolved: Resolved,
+  scene: MotionScene
+): { cut: Cut; resolved: Resolved; sits: Record<string, number> } {
+  // Which words those are, and where their captions sit, is shared with the editor's preview (shared/subtitles).
+  return {
+    cut: subtitleCut(cut),
+    resolved: subtitleWords(cut, resolved, scene),
+    sits: Object.fromEntries(captionSits(cut, resolved.words, scene))
+  }
 }

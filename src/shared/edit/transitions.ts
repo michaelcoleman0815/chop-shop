@@ -145,7 +145,12 @@ export type SplitEdit = z.infer<typeof SplitEditSchema>
 export const FadeSchema = z.object({
   inSec: z.number().min(0).max(5),
   outSec: z.number().min(0).max(5),
-  color: z.enum(['black', 'white'])
+  color: z.enum(['black', 'white']),
+  /**
+   * The whole picture comes into focus over this long as the video starts, everything on it (graphics,
+   * captions, the logo) with it, as Lecrae's Shorts open: blurred on the first frame, sharp by the end of it.
+   */
+  blurInSec: z.number().min(0).max(3).optional()
 })
 export type Fade = z.infer<typeof FadeSchema>
 

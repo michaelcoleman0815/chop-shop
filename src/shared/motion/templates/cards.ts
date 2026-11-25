@@ -1,9 +1,11 @@
 import { fade, mixColor, tail } from '../anim'
 import type { MotionCall } from '../schema'
 import type { Layer } from '../types'
-import { accentOf, clamp, inkOn, TIMING } from './kit'
+import { accentOf, centred, clamp, inkOn, TIMING } from './kit'
 import { textWidth } from './measure'
 import { register, type BuildContext } from './registry'
+import { initials } from '../logos'
+import { withWindow } from './boards'
 
 /**
  * Video cards: a row of videos as YouTube shows them, each a thumbnail and
@@ -15,7 +17,7 @@ import { register, type BuildContext } from './registry'
  * a tall one.
  */
 
-const STYLES = ['dark', 'light'] as const
+const STYLES = ['dark', 'light', 'list'] as const
 const PLACES = ['bottom', 'middle', 'top'] as const
 
 export interface VideoCard {
@@ -71,7 +73,135 @@ export function twoLines(title: string, family: string, size: number, width: num
   return `${(out || words[0]).replace(/[\s,.;:–—-]+$/, '')}…`
 }
 
+/**
+ * The list: a creator's past videos stacked on paper, filling the frame as Ali Abdaal shows his (measured): wide
+ * white cards with a soft shadow, the thumbnail on the left and the title, views line and channel beside it, each
+ * sliding in from off the right edge on a long quint ease-out as it is named, a beat after the one before.
+ */
+function listCards(ctx: BuildContext): Layer[] {
+  const { frame, theme, item, span } = ctx
+  const { start, end } = span
+  const W = frame.width
+  const H = frame.height
+  const u = frame.u
+  const length = end - start
+  const list = videoCards(item).slice(0, 3)
+  const vertical = frame.shape === 'vertical'
+  const left = W * (vertical ? 0.04 : 0.02)
+  const cw = vertical ? W * 0.92 : W * 0.716
+  const ch = vertical ? H * 0.2 : H * 0.282
+  const gap = (H - list.length * ch) / (list.length + 1)
+  const pad = ch * 0.098
+  const thumbH = ch - pad * 2
+  const thumbW = (thumbH * 16) / 9
+  const titleSize = ch * 0.145
+  // Out on a cut, as creators end a board: a frame's fade at most.
+  const exit = Math.min(1 / 60, length / 4)
+  const out = tail([exit, 1, 'ease-in'], [0, 0])
+  const layers: Layer[] = [
+    { kind: 'shape', start, end, shape: { type: 'rect', w: W, h: H }, fill: '#FAF5F2', transform: { x: W / 2, y: H / 2, opacity: { keys: [{ t: 0, v: 1 }, ...out] } } },
+    {
+      kind: 'shape',
+      start,
+      end,
+      shape: { type: 'polygon', points: [[W * 0.57, H], [W, H * 0.28], [W, H]] },
+      fill: '#F3ECE7',
+      transform: { opacity: { keys: [{ t: 0, v: 1 }, ...out] } }
+    }
+  ]
+  // The channel each card names: the row's mark, else the brand's name.
+  const channels = item.items.filter((r) => r.label.trim() || ASSET.test(r.value.trim())).map((r) => r.mark.trim() || theme.name || '')
+  list.forEach((c, i) => {
+    const said = c.at ? ctx.time(c.at) : null
+    const t = Math.max(0.05, said !== null ? said - start - 0.05 : 0.05 + i * 0.8)
+    const channel = channels[i] ?? ''
+    const cy = gap + ch / 2 + i * (ch + gap)
+    const x = left + cw / 2
+    const tx = -cw / 2 + pad + thumbW + pad * 1.35
+    const room = cw / 2 - tx - pad
+    layers.push({
+      kind: 'group',
+      start,
+      end,
+      transform: {
+        x: { keys: [{ t, v: W + cw / 2 + 40 * u, ease: 'out-quint' }, { t: t + 1.1, v: x }] },
+        y: cy,
+        opacity: { keys: [{ t: 0, v: 1 }, ...out] }
+      },
+      children: [
+        {
+          kind: 'shape',
+          start,
+          end,
+          shape: { type: 'rect', w: cw, h: ch, radius: ch * 0.13 },
+          fill: '#FFFFFF',
+          effects: { shadow: { color: 'rgba(40, 30, 20, 0.12)', blur: 46 * u, y: 10 * u } }
+        },
+        ...(ASSET.test(c.thumb)
+          ? [{ kind: 'image' as const, start, end, asset: c.thumb, w: thumbW, h: thumbH, fit: 'cover' as const, transform: { x: -cw / 2 + pad + thumbW / 2 } }]
+          : [{ kind: 'shape' as const, start, end, shape: { type: 'rect' as const, w: thumbW, h: thumbH, radius: thumbH * 0.08 }, fill: '#E9E4DF', transform: { x: -cw / 2 + pad + thumbW / 2 } }]),
+        {
+          kind: 'text',
+          start,
+          end,
+          text: twoLines(c.title, 'Inter SemiBold', titleSize, room),
+          font: { family: 'Inter SemiBold', size: titleSize, lineHeight: 1.18 },
+          fill: '#090909',
+          align: 'left',
+          valign: 'top',
+          maxWidth: room,
+          transform: { x: tx, y: -thumbH / 2 + titleSize * 0.05 }
+        },
+        ...(c.line
+          ? [
+              {
+                kind: 'text' as const,
+                start,
+                end,
+                text: c.line,
+                font: { family: 'Inter SemiBold', size: titleSize * 0.66, weight: 500 },
+                fill: '#626262',
+                align: 'left' as const,
+                valign: 'top' as const,
+                transform: { x: tx, y: -thumbH / 2 + titleSize * 2.62 }
+              }
+            ]
+          : []),
+        ...(channel
+          ? [
+              {
+                kind: 'image' as const,
+                start,
+                end,
+                // The channel's avatar: its letters on a round tile in the brand's accent.
+                fallback: { text: initials(channel), family: theme.body },
+                tile: 'round' as const,
+                w: titleSize * 1.05,
+                h: titleSize * 1.05,
+                transform: { x: tx + titleSize * 0.52, y: -thumbH / 2 + titleSize * 4.05 }
+              }
+            ]
+          : []),
+        {
+          kind: 'text',
+          start,
+          end,
+          text: channel,
+          font: { family: 'Inter SemiBold', size: titleSize * 0.66, weight: 500 },
+          fill: '#848484',
+          align: 'left',
+          valign: 'middle',
+          transform: { x: tx + titleSize * 1.4, y: -thumbH / 2 + titleSize * 4.05 }
+        }
+      ]
+    })
+  })
+  // The cards pass under the speaker's picture, when the call leaves a window for it.
+  return withWindow(ctx, layers)
+}
+
 function cards(ctx: BuildContext): Layer[] {
+  if (ctx.item.style === 'list') return listCards(ctx)
   const { frame, theme, item, span } = ctx
   const { start, end } = span
   const list = videoCards(item)
@@ -86,7 +216,8 @@ function cards(ctx: BuildContext): Layer[] {
   const perRow = vertical ? Math.min(2, n) : n
   const rows = Math.ceil(n / perRow)
   const gap = 26 * u
-  const safeW = W - frame.safe.left - frame.safe.right
+  // Centred on the frame's middle, where the captions centre, as wide as clears the safe area both sides.
+  const { cx: centreX, width: safeW } = centred(frame)
   const cw = Math.min(vertical ? W * 0.4 : W * 0.25, (safeW - gap * (perRow - 1)) / perRow)
   const pad = cw * 0.045
   const thumbW = cw - pad * 2
@@ -105,7 +236,6 @@ function cards(ctx: BuildContext): Layer[] {
       : place === 'middle'
         ? H * 0.55 - blockH / 2
         : H - frame.safe.bottom - H * 0.02 - blockH
-  const centreX = (frame.safe.left + W - frame.safe.right) / 2
   // The brand's own light and dark, so the cards follow a new look.
   const panel = light ? theme.paper : fade(theme.ink, 0.94)
   const titleInk = light ? theme.ink : theme.text
@@ -248,12 +378,14 @@ register({
   kind: 'video-cards',
   title: 'Video cards',
   about:
-    'A row of videos as YouTube shows them: each a thumbnail, its title, and a pill under it with its views and age. For when the speaker talks about videos: their own uploads, ones that did well, ones to watch next. items are the videos, label the title, value the thumbnail’s picture id, note the views line, at the word it comes in on, like [{"label":"I tried every AI editor","value":"a2","note":"492K views · 1 mo ago","at":"w20"}]. They are made from links with /videos, which reads each video’s title, views and thumbnail without downloading it. Up to four. dark cards suit most footage; light is white cards. place bottom, middle or top. Captions wait while they are up.',
+    'A row of videos as YouTube shows them: each a thumbnail, its title, and a pill under it with its views and age. For when the speaker talks about videos: their own uploads, ones that did well, ones to watch next. items are the videos, label the title, value the thumbnail’s picture id, note the views line, at the word it comes in on, like [{"label":"I tried every AI editor","value":"a2","note":"492K views · 1 mo ago","at":"w20"}]. They are made from links with /videos, which reads each video’s title, views and thumbnail without downloading it. Up to four. dark cards suit most footage; light is white cards; list stacks up to three wide cards on paper filling the frame, each sliding in from the right as it is named, as Ali Abdaal shows his. place bottom, middle or top. Captions wait while they are up.',
   styles: STYLES,
   places: PLACES,
   length: 4,
   lead: TIMING.lead,
   covers: 'card',
+  // The list fills the frame: drawn captions move over it to the middle.
+  coversFor: (call) => (call.style === 'list' ? 'backdrop' : 'card'),
   fields: [{ slot: 'items', label: 'Videos, one a line: the title, then | and its views line' }],
   example: {
     call: {

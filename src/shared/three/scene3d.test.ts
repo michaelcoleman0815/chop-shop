@@ -3,7 +3,7 @@ import { join } from 'path'
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { parseFont, layoutGlyphs } from './glyphs'
-import { cameraPose, cardSize, objectPose, Scene3DView, titleShapes, titleSize, TITLE_3D_FACE } from './scene3d'
+import { cameraPose, cardSize, iconSolid, markShapes, objectPose, sceneMoves, Scene3DView, titleShapes, titleSize, TITLE_3D_FACE } from './scene3d'
 import { homeDistance, mergeScene, Scene3DSchema, shiftSceneKeys } from './spec'
 import { num } from '../anim'
 
@@ -236,5 +236,171 @@ describe('changing a scene', () => {
     const s = Scene3DSchema.parse({ objects: [{ id: 'o1', type: 'box', ry: { keys: [{ t: 0, v: 0 }, { t: 4, v: 360 }] } }] })
     const tail = shiftSceneKeys(s, 1, (a) => num(a, 1, 4))
     expect(tail.objects[0].ry).toEqual({ keys: [{ t: 0, v: 90 }, { t: 3, v: 360 }] })
+  })
+})
+
+describe('marks and shadows', () => {
+  // YouTube's mark as Simple Icons draws it: a rounded box with the play button cut out of it.
+  const YOUTUBE =
+    'M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z'
+
+  it('extrudes a brand mark the right way up, as big as asked, its hole kept', () => {
+    const shapes = markShapes(YOUTUBE, 240)
+    expect(shapes).toHaveLength(1)
+    expect(shapes[0].holes).toHaveLength(1)
+    const box = new THREE.Box2().setFromPoints(shapes[0].getPoints())
+    expect(box.max.x - box.min.x).toBeCloseTo(240, 0)
+    // Wider than tall, centred on the origin.
+    expect(box.max.y - box.min.y).toBeLessThan(200)
+    expect(Math.abs(box.max.x + box.min.x)).toBeLessThan(1)
+    // The play button points right, as it does on the page: its tip is to the right of its middle.
+    const hole = new THREE.Box2().setFromPoints(shapes[0].holes[0].getPoints())
+    const tip = shapes[0].holes[0].getPoints().reduce((a, b) => (b.x > a.x ? b : a))
+    expect(tip.x).toBeCloseTo(hole.max.x, 6)
+    expect(Math.abs(tip.y - (hole.max.y + hole.min.y) / 2)).toBeLessThan(2)
+    const view = new Scene3DView(vertical, { logo: (slug) => (slug === 'youtube' ? { path: YOUTUBE, hex: 'FF0000' } : null) })
+    view.set(Scene3DSchema.parse({ objects: [{ id: 'yt', type: 'mark', logo: 'youtube', size: 240, depth: 40 }] }))
+    const mesh = view.object('yt')!.children[0] as THREE.Mesh
+    expect(((mesh.material as THREE.MeshStandardMaterial).color.getHexString())).toBe('ff0000')
+    mesh.geometry.computeBoundingBox()
+    const b = mesh.geometry.boundingBox!
+    expect(b.max.z - b.min.z).toBeGreaterThan(39)
+    // Waits for the marks: a logo not in yet builds nothing, and builds once it is.
+    const empty = new Scene3DView(vertical, {})
+    empty.set(Scene3DSchema.parse({ objects: [{ id: 'yt', type: 'mark', logo: 'youtube' }] }))
+    expect(empty.object('yt')!.children).toHaveLength(0)
+  })
+
+  it('cuts an icon out flat, and lets it cast no square shadow', () => {
+    const canvas = { width: 64, height: 64 } as unknown as HTMLCanvasElement
+    const view = new Scene3DView(vertical, { icon: (o, w, h) => (o.icon === 'user' ? { image: canvas, width: w, height: h, stamp: 1 } : null) })
+    view.set(Scene3DSchema.parse({ objects: [{ id: 'me', type: 'mark', icon: 'user', size: 120 }] }))
+    const mesh = view.object('me')!.children[0] as THREE.Mesh
+    const m = mesh.material as THREE.MeshStandardMaterial
+    expect(m.transparent).toBe(true)
+    expect(m.map).not.toBeNull()
+    expect(mesh.castShadow).toBe(false)
+    expect(mesh.receiveShadow).toBe(true)
+  })
+
+  it('casts shadows from a light that asks, fitted round the scene', () => {
+    const view = new Scene3DView(vertical)
+    view.set(
+      Scene3DSchema.parse({
+        objects: [
+          { id: 'body', type: 'box', w: 600, h: 1200, d: 300 },
+          { id: 'floor', type: 'plane', w: 4000, h: 3000, rx: -90, y: -600 }
+        ],
+        lights: [
+          { id: 'fill', type: 'ambient', intensity: 0.6 },
+          { id: 'key', type: 'directional', intensity: 0.8, x: 900, y: 1600, z: 1400, shadow: true },
+          { id: 'rim', type: 'directional', intensity: 0.2, x: -900, y: 200, z: 600 }
+        ]
+      })
+    )
+    view.pose(0, 1)
+    const key = view.scene.getObjectByName('key') as THREE.DirectionalLight
+    const rim = view.scene.getObjectByName('rim') as THREE.DirectionalLight
+    expect(key.castShadow).toBe(true)
+    expect(rim.castShadow).toBe(false)
+    expect((view.object('body')!.children[0] as THREE.Mesh).castShadow).toBe(true)
+    expect((view.object('floor')!.children[0] as THREE.Mesh).receiveShadow).toBe(true)
+    // Its view reaches round the whole floor, from in front of the scene to behind it.
+    const cam = key.shadow.camera
+    expect(cam.right - cam.left).toBeGreaterThan(4000)
+    expect(cam.near).toBeGreaterThan(0)
+    expect(cam.far).toBeGreaterThan(cam.near + 4000)
+  })
+})
+
+describe('solid icons and parents', () => {
+  const icons = JSON.parse(readFileSync(join(__dirname, '../../../node_modules/lucide-static/icon-nodes.json'), 'utf8')) as Record<
+    string,
+    [string, Record<string, string | number>][]
+  >
+
+  it('makes an icon solid: its strokes as deep as asked, as big as asked, the right way up', () => {
+    const g = iconSolid(icons.pencil, 240, 30)!
+    g.computeBoundingBox()
+    const b = g.boundingBox!
+    expect(b.max.z - b.min.z).toBeCloseTo(30, 3)
+    // The pencil runs corner to corner of its grid, with its stroke's width round it.
+    expect(b.max.x - b.min.x).toBeGreaterThan(180)
+    expect(b.max.x - b.min.x).toBeLessThan(250)
+    // Lucide's pencil points down and left: its tip is the lowest, leftmost part.
+    const pos = g.getAttribute('position')
+    let low = { x: 0, y: Infinity }
+    for (let i = 0; i < pos.count; i++) if (pos.getY(i) < low.y) low = { x: pos.getX(i), y: pos.getY(i) }
+    expect(low.x).toBeLessThan(0)
+  })
+
+  it('builds a mark’s icon solid when the shapes are in, and flat when its depth is 0', () => {
+    const canvas = { width: 64, height: 64 } as unknown as HTMLCanvasElement
+    const view = new Scene3DView(vertical, {
+      iconNodes: (name) => icons[name] ?? null,
+      icon: (_o, w, h) => ({ image: canvas, width: w, height: h, stamp: 1 })
+    })
+    view.set(
+      Scene3DSchema.parse({
+        objects: [
+          { id: 'book', type: 'mark', icon: 'book', size: 200, color: '#B3221B' },
+          { id: 'flat', type: 'mark', icon: 'book', size: 200, depth: 0 }
+        ]
+      })
+    )
+    const solid = view.object('book')!.children[0] as THREE.Mesh
+    expect(solid.geometry).toBeInstanceOf(THREE.BufferGeometry)
+    expect((solid.material as THREE.MeshStandardMaterial).map).toBeNull()
+    expect((solid.material as THREE.MeshStandardMaterial).color.getHexString()).toBe('b3221b')
+    solid.geometry.computeBoundingBox()
+    expect(solid.geometry.boundingBox!.max.z - solid.geometry.boundingBox!.min.z).toBeCloseTo(25, 3)
+    expect(((view.object('flat')!.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial).map).not.toBeNull()
+  })
+
+  it('moves an object with its parent, and lets it fade on its own', () => {
+    const view = new Scene3DView(vertical)
+    view.set(
+      Scene3DSchema.parse({
+        objects: [
+          { id: 'body', type: 'box', w: 400, h: 800, d: 300, x: { keys: [{ t: 0, v: 0 }, { t: 1, v: 500 }] }, ry: 90 },
+          { id: 'label', type: 'card', title: '01', w: 100, h: 40, parent: 'body', z: 160 },
+          { id: 'loop1', type: 'box', parent: 'loop2' },
+          { id: 'loop2', type: 'box', parent: 'loop1' }
+        ]
+      })
+    )
+    view.pose(1, 1)
+    view.scene.updateMatrixWorld(true)
+    const label = view.object('label')!
+    expect(label.parent).toBe(view.object('body'))
+    const at = label.getWorldPosition(new THREE.Vector3())
+    // 160 in front of the body, turned a quarter round with it: 160 along x, from where the body has moved to.
+    expect(at.x).toBeCloseTo(660, 3)
+    expect(at.z).toBeCloseTo(0, 3)
+    // A parent that is its own grandchild is no parent: both stay in the scene.
+    expect(view.object('loop1')!.parent).toBe(view.scene)
+    expect(view.object('loop2')!.parent).toBe(view.scene)
+    // The body faded out hides its own box, not the label on it.
+    view.set(Scene3DSchema.parse({ objects: [{ id: 'body', type: 'box', opacity: 0 }, { id: 'label', type: 'card', title: '01', parent: 'body' }] }))
+    view.pose(0, 1)
+    expect((view.object('body')!.children.find((c) => !c.userData.built) as THREE.Mesh).visible).toBe(false)
+    expect(view.object('label')!.children.every((c) => c.visible)).toBe(true)
+  })
+})
+
+describe('motion blur in 3D', () => {
+  it('averages a frame only while the camera or something in the scene moves', () => {
+    const scene = Scene3DSchema.parse({
+      objects: [{ id: 'o1', type: 'box', w: 100, h: 100, d: 100, ry: { keys: [{ t: 1, v: 0 }, { t: 2, v: 90 }] } }],
+      camera: { z: { keys: [{ t: 3, v: 800 }, { t: 4, v: 0, ease: 'ease-out' }] } }
+    })
+    const half = 0.5 / 30 / 2
+    // Before anything moves, between the box's turn and the camera's push, and after both: still.
+    expect(sceneMoves(scene, 0.5 - half, 0.5 + half, 6)).toBe(false)
+    expect(sceneMoves(scene, 2.5 - half, 2.5 + half, 6)).toBe(false)
+    expect(sceneMoves(scene, 5 - half, 5 + half, 6)).toBe(false)
+    // The box turning, the camera pushing in.
+    expect(sceneMoves(scene, 1.5 - half, 1.5 + half, 6)).toBe(true)
+    expect(sceneMoves(scene, 3.5 - half, 3.5 + half, 6)).toBe(true)
   })
 })

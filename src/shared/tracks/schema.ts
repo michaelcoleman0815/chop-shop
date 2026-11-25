@@ -80,7 +80,23 @@ export const ClipTextSchema = z.object({
   weight: z.number().min(100).max(900).default(700),
   align: z.enum(['left', 'center', 'right']).default('center'),
   /** Wrap width in design pixels; most of the frame when absent. */
-  maxWidth: z.number().min(40).max(4000).optional()
+  maxWidth: z.number().min(40).max(4000).optional(),
+  /** A drop shadow under the words: true for a soft one, or its colour, blur and drop in design pixels. */
+  shadow: z
+    .union([z.boolean(), z.object({ color: ColorSchema.optional(), blur: z.number().min(0).max(400).optional(), y: z.number().min(-400).max(400).optional() })])
+    .optional(),
+  /** A soft halo of a colour behind the words, as glowing kinetic type has. */
+  glow: z.object({ color: ColorSchema, blur: z.number().min(0).max(400).optional(), strength: z.number().min(0).max(2).optional() }).optional(),
+  /** An edge round the letters. */
+  outline: z.object({ color: ColorSchema, width: z.number().min(0.5).max(100) }).optional(),
+  /** Leaned forward, as italic: true for libass's lean (0.21), or how far, 0 to 0.5. */
+  slant: z.union([z.boolean(), z.number().min(0).max(0.5)]).optional(),
+  /** Extra room between letters, in design pixels (below 0 tightens). */
+  tracking: z.number().min(-100).max(400).optional(),
+  /** Line height as a multiple of the size. */
+  lineHeight: z.number().min(0.6).max(3).optional(),
+  /** All in capitals. */
+  uppercase: z.boolean().optional()
 })
 export type ClipText = z.infer<typeof ClipTextSchema>
 

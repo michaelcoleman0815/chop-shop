@@ -33,6 +33,7 @@ import { commit, crowdShare, currentCut, subjectFrom, type Source, type Subject,
 import {
   clipDoc,
   clipsReply,
+  listOf,
   measureRecording,
   MIN_RECORDING_SEC,
   planRecording,
@@ -60,6 +61,7 @@ import { withoutSoundNotes } from './whisper-parse'
 import { sermonPad, type BedMood } from './pads'
 import { keyWordsFor } from './key-words'
 import { presetById } from '../shared/caption-presets'
+import { clock } from '../shared/presets/preset'
 import type { CaptionSpec } from '../shared/edit/schema'
 
 /**
@@ -385,6 +387,36 @@ export async function chooseEngine(): Promise<{ by: Picker; model: string | null
 /** Words per request: Claude reads a long service whole; a local model's window is 32k tokens. */
 const CHUNK_WORDS = { claude: 30000, local: 9000 }
 
+/** A pick ended sooner than the model chose: where it would have ended, the length it was kept under, and why. */
+export interface Shortened {
+  endSec: number
+  underSec: number
+  why: string
+}
+
+/** A moment a model picked, held to the rules. */
+type ModelPick = SuggestedClip & { fromWord?: number; toWord?: number; shortened?: Shortened }
+
+/**
+ * The longest a model's pick may run before it is ended sooner, and why that is the limit: the length asked, when
+ * one was; else as long as its kind of clip may run (ClipProfile.longestSec, what a Short allows), not the length
+ * most of its clips land inside. A podcast's answer told whole in two minutes keeps its two minutes.
+ */
+export function longestPick(plan: RecordingPlan, ask: ClipAsk): { sec: number; why: string } {
+  if (ask.length) return { sec: plan.bounds.maxSec, why: 'as you asked' }
+  const longest = plan.profile.longestSec ?? 0
+  if (longest > plan.bounds.maxSec) return { sec: longest, why: 'the longest a Short can run' }
+  return { sec: plan.bounds.maxSec, why: `the longest I make a ${plan.profile.label.toLowerCase()} clip` }
+}
+
+/** A length as said: "45 seconds", "a minute", "3 minutes", "2:30". */
+function lengthSaid(sec: number): string {
+  const s = Math.round(sec)
+  if (s === 60) return 'a minute'
+  if (s % 60 === 0) return `${s / 60} minutes`
+  return s < 120 ? `${s} seconds` : clock(s)
+}
+
 /** The moments a model picks, read in parts small enough for it, then held to the rules. */
 async function pickWithModel(
   tools: ClippingTools,
@@ -393,7 +425,7 @@ async function pickWithModel(
   plan: RecordingPlan,
   ask: ClipAsk,
   avoid: { startSec: number; endSec: number }[]
-): Promise<{ startSec: number; endSec: number; title: string; hook: string; reason: string; score: number }[]> {
+): Promise<ModelPick[]> {
   const words = wordsToRead(facts.words, plan.regions)
   const size = CHUNK_WORDS[engine.by]
   // A couple more than are wanted, so a moment filmed through the crowd can give way to one filmed from the front.
@@ -413,6 +445,13 @@ async function pickWithModel(
   ]
     .filter(Boolean)
     .join('\n')
+  // Told where clips usually land, and how far one may run when its moment needs the room.
+  const longest = longestPick(plan, ask)
+  const length = {
+    minSec: plan.bounds.minSec,
+    maxSec: plan.bounds.maxSec,
+    ...(longest.sec > plan.bounds.maxSec ? { longestSec: longest.sec } : {})
+  }
   const picked: SuggestedClip[] = []
   for (const part of parts) {
     const share = part.length / Math.max(1, words.length)
@@ -424,20 +463,31 @@ async function pickWithModel(
         facts.durationSec,
         maxClips,
         model,
-        { minSec: plan.bounds.minSec, maxSec: plan.bounds.maxSec },
+        length,
         steer || undefined,
         plan.profile.genre,
         music
       ))
     )
   }
-  return shapePicks(picked, {
-    words: facts.words,
-    sentences: plan.sentences,
-    regions: plan.regions,
-    bounds: plan.bounds,
-    avoid
-  }).slice(0, want)
+  // Held to the longest a clip may run, not the length most land inside, so a story told whole stays whole. Past
+  // it, a pick ends at the last sentence that fits, and keeps where it would have ended so the reply can say so.
+  const shaped = shapePicks(
+    picked.map((p) => ({ ...p, pickedEndSec: Math.max(p.startSec, p.endSec) })),
+    {
+      words: facts.words,
+      sentences: plan.sentences,
+      regions: plan.regions,
+      bounds: { minSec: plan.bounds.minSec, maxSec: longest.sec },
+      avoid
+    }
+  ).slice(0, want)
+  return shaped.map(({ pickedEndSec, ...p }: ModelPick & { pickedEndSec: number }) =>
+    // Ended sooner for its length: from where it starts, the end picked lies past the longest it may run.
+    pickedEndSec - p.startSec > longest.sec + 0.5 && p.endSec < pickedEndSec - 0.5
+      ? { ...p, shortened: { endSec: pickedEndSec, underSec: longest.sec, why: longest.why } }
+      : p
+  )
 }
 
 /**
@@ -769,6 +819,8 @@ export async function findClips(
     /** The clip's first and last words in the recording's words, where the fitting said (shared/clipping/shape). */
     fromWord?: number
     toWord?: number
+    /** Ended sooner than the model picked it, to keep to the length asked or the longest a clip may run. */
+    shortened?: Shortened
   }
   const picks: Pick[] = []
   for (const r of read) {
@@ -931,6 +983,22 @@ export async function findClips(
       doc
     })
   }
+  // A clip ended sooner than the model picked it is never ended silently: the reply says where, instead of
+  // where, and why, a sentence for each reason.
+  const ended = new Map<string, { under: string; why: string; at: string[] }>()
+  for (const [k, p] of picks.entries()) {
+    if (!p.shortened) continue
+    const key = `${p.shortened.underSec} ${p.shortened.why}`
+    const e = ended.get(key) ?? { under: lengthSaid(p.shortened.underSec), why: p.shortened.why, at: [] }
+    e.at.push(`“${clips[k].title}” at ${clock(clips[k].endSec)} instead of ${clock(p.shortened.endSec)}`)
+    ended.set(key, e)
+  }
+  for (const e of ended.values())
+    notes.push(
+      e.at.length === 1
+        ? `I ended ${e.at[0]} to keep it under ${e.under}, ${e.why}.`
+        : `I ended ${e.at.length} clips sooner to keep them under ${e.under}, ${e.why}: ${listOf(e.at)}.`
+    )
   const wide = read.some((r) => r.meta.width > r.meta.height)
   if (clips.length > 0 && wide && followed < clips.length) {
     notes.push(

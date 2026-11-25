@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type * as THREE from 'three'
 import type { Layer, Scene3DLayer } from '../../../shared/motion'
 import { fontInfo } from '../../../shared/motion/fonts'
-import { fontOutlines, markFontAsked, parseModel, setFontBytes, wordsPicture } from '../../../shared/three/browser'
+import { fontOutlines, iconPicture, iconShapes, logoPath, markFontAsked, parseModel, sceneMarks, setFontBytes, setMarkLookups, wordsPicture } from '../../../shared/three/browser'
 import { createRenderer, renderScene3D, Scene3DView, type Picture, type Scene3DSources } from '../../../shared/three/scene3d'
 import { isVideoFile, type Object3D } from '../../../shared/three/spec'
 import { mediaUrlFor } from './api'
-import { motionFontUrl } from './graphics'
+import { loadIconNodes, loadLogoMarks, motionFontUrl } from './graphics'
 
 /**
  * The layer tracks' 3D clips in the preview: a WebGL canvas for each 3D clip
@@ -90,6 +90,9 @@ export function useScene3D(
         return hit && hit !== 'loading' ? ({ image: hit, width: hit.naturalWidth, height: hit.naturalHeight, stamp: 0 } satisfies Picture) : null
       },
       words: (o, w, h) => wordsPicture(o, w, h),
+      logo: (slug) => logoPath(slug),
+      icon: (o, w, h) => iconPicture(o, w, h),
+        iconNodes: (name) => iconShapes(name),
       model: (src) => {
         const hit = models.current.get(src)
         if (hit === undefined) {
@@ -112,6 +115,16 @@ export function useScene3D(
     }),
     [bump]
   )
+
+  // The icons and brand marks the scenes draw, loaded once one asks for them: each arrival draws again.
+  const wantsIcons = solids.some((l) => sceneMarks(l.scene).icons)
+  const wantsLogos = solids.some((l) => sceneMarks(l.scene).logos)
+  useEffect(() => {
+    if (wantsIcons) void loadIconNodes().then((icons) => (setMarkLookups({ icons }), bump()))
+  }, [wantsIcons, bump])
+  useEffect(() => {
+    if (wantsLogos) void loadLogoMarks().then((logos) => (setMarkLookups({ logos }), bump()))
+  }, [wantsLogos, bump])
 
   // A hidden <video> for each video card, kept on the moment the player is at.
   useEffect(() => {

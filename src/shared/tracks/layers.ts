@@ -5,7 +5,7 @@ import { particlesLayer } from '../particles/layer'
 import type { ClipMedia } from './media'
 import { placeClips, tracksOf, type Placed } from './resolve'
 import { matteClipIds, withRoto, type FollowContext } from './roto-layers'
-import type { Track, TrackClip } from './schema'
+import type { ClipText, Track, TrackClip } from './schema'
 
 /**
  * The picture tracks as the graphics engine's layers, lowest track first, so
@@ -45,17 +45,7 @@ export function layerFor(p: Placed, design: Size): Layer | null {
       return { ...base, kind: 'image', file: clip.src, w: W, h: H, fit: clip.fit, crop: clip.crop ?? {} }
     case 'text':
       if (!clip.text) return null
-      return {
-        ...base,
-        kind: 'text',
-        text: clip.text.value,
-        font: { family: clip.text.font ?? TITLE_FACE, size: clip.text.size, weight: clip.text.weight },
-        fill: clip.text.color,
-        align: clip.text.align,
-        valign: 'middle',
-        maxWidth: clip.text.maxWidth ?? W * 0.86,
-        balance: true
-      }
+      return textLayer(base, clip.text, W)
     case 'solid':
       return { ...base, kind: 'shape', shape: { type: 'rect', w: W, h: H }, fill: clip.color ?? '#000000' }
     case 'adjustment': {
@@ -114,3 +104,37 @@ export function clipFiles(cut: { tracks?: Track[] }): { videos: string[]; images
   const unique = (kind: TrackClip['kind']): string[] => [...new Set(clips.filter((c) => c.kind === kind && c.src).map((c) => c.src as string))]
   return { videos: unique('video'), images: unique('image') }
 }
+
+/** A title clip's words as the 2D engine draws them, with their shadow, glow, edge and lean (ClipText). */
+function textLayer(base: object, t: ClipText, W: number): Layer {
+  const shadow = t.shadow === true ? {} : t.shadow || null
+  return {
+    ...base,
+    kind: 'text',
+    text: t.value,
+    font: {
+      family: t.font ?? TITLE_FACE,
+      size: t.size,
+      weight: t.weight,
+      ...(t.tracking !== undefined ? { tracking: t.tracking } : {}),
+      ...(t.lineHeight !== undefined ? { lineHeight: t.lineHeight } : {}),
+      ...(t.uppercase ? { uppercase: true } : {}),
+      ...(t.slant ? { slant: t.slant === true ? 0.2126 : t.slant } : {})
+    },
+    fill: t.color,
+    ...(t.outline ? { stroke: { color: t.outline.color, width: t.outline.width, join: 'round' as const } } : {}),
+    align: t.align,
+    valign: 'middle',
+    maxWidth: t.maxWidth ?? W * 0.86,
+    balance: true,
+    ...(shadow || t.glow
+      ? {
+          effects: {
+            ...(shadow ? { shadow: { color: shadow.color ?? 'rgba(0, 0, 0, 0.6)', blur: shadow.blur ?? t.size * 0.18, y: shadow.y ?? t.size * 0.05 } } : {}),
+            ...(t.glow ? { glow: { color: t.glow.color, blur: t.glow.blur ?? t.size * 0.3, strength: t.glow.strength ?? 1 } } : {})
+          }
+        }
+      : {})
+  } as Layer
+}
+

@@ -1,5 +1,5 @@
 import { picturesIn } from '../motion/apply'
-import { applyOps, type OpsResult } from './ops'
+import { applyOps, highestBeat, type OpsResult } from './ops'
 import { pickedBeats } from './range'
 import { sameValue } from './same'
 import { isTransitionLook } from './transitions'
@@ -145,12 +145,15 @@ export function createDoc(input: {
   const words = input.words.filter((w) => ids.has(w.source))
   const beats = recordingBeats(sources, words)
   const first = sources[0]
+  const upright = first.height > first.width
   const cut: Cut = {
     beats,
     removed: [],
     tighten: null,
-    captions: { ...DEFAULT_CAPTIONS },
-    aspect: first.height > first.width ? 'vertical' : 'original',
+    // A phone's upright recording is a Short, and a Short has captions. A wide one is long-form, which does
+    // not need them: they wait until someone asks.
+    captions: { ...DEFAULT_CAPTIONS, on: upright },
+    aspect: upright ? 'vertical' : 'original',
     loudness: DEFAULT_LOUDNESS,
     motion: [],
     // Said outright: an edit that says nothing was made before the fill, and keeps its crop.
@@ -425,7 +428,10 @@ export function mergeExtension(current: EditDoc, before: EditDoc, extended: Edit
   return next
 }
 
-/** Brings back an earlier version's cut as the newest version. */
+/**
+ * Brings back an earlier version's cut as the newest version. It keeps the highest beat number any version
+ * has given, so a beat made after going back does not take the id of one a later version made.
+ */
 export function restore(doc: EditDoc, n: number, at = new Date().toISOString()): EditDoc {
   const target = doc.versions.find((v) => v.n === n)
   if (!target) throw new Error(`There is no v${n}.`)
@@ -434,10 +440,33 @@ export function restore(doc: EditDoc, n: number, at = new Date().toISOString()):
     at,
     summary: `Back to v${n}.`,
     ops: [],
-    cut: target.cut,
+    cut: countedTo(target.cut, highestBeatEver(doc)),
     restores: n
   }
   return { ...doc, versions: [...doc.versions, version] }
+}
+
+/** The highest beat number any version of the edit has given (Cut.lastBeat). */
+export function highestBeatEver(doc: EditDoc): number {
+  let max = 0
+  for (const v of doc.versions) max = Math.max(max, highestBeat(v.cut))
+  return max
+}
+
+/** The cut knowing that beat number n has been given, or as it was when it knows already. */
+function countedTo(cut: Cut, n: number): Cut {
+  return n > highestBeat(cut) ? { ...cut, lastBeat: n } : cut
+}
+
+/**
+ * The edit with its newest cut knowing the highest beat number any version has given (Cut.lastBeat), for
+ * an edit saved before cuts kept it: one whose newest cut has lost beats an earlier version had would
+ * otherwise give their ids to new beats. Anything else comes back as it was. Run when an edit is opened.
+ */
+export function withBeatsCounted(doc: EditDoc): EditDoc {
+  const last = currentVersion(doc)
+  const cut = countedTo(last.cut, highestBeatEver(doc))
+  return cut === last.cut ? doc : { ...doc, versions: [...doc.versions.slice(0, -1), { ...last, cut }] }
 }
 
 /** The number of the version a restore brings back; versions saved before restores were marked say so in their summary. */

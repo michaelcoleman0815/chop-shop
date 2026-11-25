@@ -7,7 +7,7 @@ import { wordsBetween } from '../timing'
 import type { Ease, Key, Layer, Shadow } from '../types'
 import { numberIn } from './keyword'
 import { chipKeepOut, speakerFace } from './chips'
-import { accentOf, clamp, inkOn, TIMING } from './kit'
+import { accentOf, centred, clamp, inkOn, TIMING } from './kit'
 import { textWidth } from './measure'
 import { register, type BuildContext } from './registry'
 
@@ -159,7 +159,7 @@ function centreFor(frame: Frame, place: string, w: number, h: number, fallback: 
   const right = W - safe.right - w / 2 - m
   const top = safe.top + h / 2 + m
   const bottom = H - safe.bottom - h / 2 - m
-  const cx = (safe.left + W - safe.right) / 2
+  const { cx } = centred(frame)
   const cy = H * 0.45
   const x = name.endsWith('left') ? left : name.endsWith('right') ? right : cx
   const y = name.startsWith('top') ? top : name.startsWith('bottom') ? bottom : name === 'middle' ? H * 0.5 : cy

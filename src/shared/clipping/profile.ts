@@ -28,6 +28,12 @@ export interface ClipProfile {
   label: string
   minSec: number
   maxSec: number
+  /**
+   * The longest a clip of this kind may run when its moment needs the room, past maxSec: what the platform it is
+   * posted to allows. A model is told it may go this far, and its pick is ended sooner only past it; maxSec stays
+   * where clips usually land, and what measuring makes. Absent, maxSec is the longest too.
+   */
+  longestSec?: number
   /** Where a clip of this kind usually lands, inside the bounds. */
   targetSec: number
   /** One clip for about this many minutes of usable talk. */
@@ -89,6 +95,9 @@ export interface ClipLook {
   /** Into its first frame and out of its last: a white flash in, a fade to black at the end (edit fade). */
   fade?: { inSec?: number; outSec?: number; color?: 'black' | 'white' }
 }
+
+/** The longest a Short runs: YouTube Shorts and Instagram Reels both take three minutes. */
+export const SHORT_LONGEST_SEC = 180
 
 /** The cutting profile's tightening, as a clip takes it. */
 function tightenOf(id: string, fallback: TightenSpec | null): TightenSpec | null {
@@ -260,6 +269,9 @@ export const CLIP_PROFILES: Record<ClipProfileId, ClipProfile> = {
     label: 'Podcast',
     minSec: 30,
     maxSec: 90,
+    // A Short runs to three minutes, and the most-watched podcast Shorts often run one to two: an answer or a
+    // story told whole keeps the room it needs, rather than ending at the 90 seconds most clips land inside.
+    longestSec: SHORT_LONGEST_SEC,
     targetSec: 55,
     minutesPerClip: 4,
     maxClips: 12,

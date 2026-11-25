@@ -18,6 +18,7 @@ import {
   titleToSlug,
   type FaceSample,
   type ImageLayer,
+  type TextLayer,
   type LogoEntry,
   type MotionScene,
   type MotionTheme
@@ -148,6 +149,44 @@ describe('logo pops', () => {
     expect(draw(scene, ethereum + 0.6).lit(...at(eth), 1, 1)).toBeGreaterThan(0)
     // Gone at the end.
     expect(draw(scene, item.end).lit(0, 0, 1920, 1080)).toBe(0)
+  })
+
+  it('sets an end card’s row: a heading, then small platform marks in a line across the middle', () => {
+    const scene = sceneOf(
+      docWith('vertical', [
+        {
+          op: 'motion-add',
+          kind: 'logo',
+          from: 'w1',
+          to: '4s',
+          place: 'row',
+          text: ['Watch now'],
+          items: [{ label: 'YouTube' }, { label: 'Spotify' }, { label: 'Apple Podcasts' }]
+        }
+      ])
+    )
+    const layers = scene.items[0].layers
+    const heading = layers[0] as TextLayer
+    expect(heading.kind).toBe('text')
+    expect(heading.text).toBe('Watch now')
+    const marks = layers.slice(1) as ImageLayer[]
+    expect(marks.map((m) => m.logo)).toEqual(['youtube', 'spotify', 'applepodcasts'])
+    const xs = marks.map((m) => m.transform?.x as number)
+    const ys = marks.map((m) => m.transform?.y as number)
+    // In a line, left to right, centred on the frame, low in it and under the heading.
+    expect(new Set(ys).size).toBe(1)
+    expect(xs[0]).toBeLessThan(xs[1])
+    expect(xs[1]).toBeLessThan(xs[2])
+    expect((xs[0] + xs[2]) / 2).toBeCloseTo(540, 0)
+    expect(ys[0] / 1920).toBeGreaterThan(0.65)
+    expect((heading.transform?.y as number) < ys[0]).toBe(true)
+    // Small: a row of three fits well inside the frame.
+    expect(marks[0].w).toBeLessThan(150)
+    expect(xs[2] - xs[0] + marks[0].w).toBeLessThan(1080 * 0.6)
+    // The heading lands before the marks, which pop in a beat apart.
+    const f = draw(scene, scene.items[0].start + 0.15)
+    expect(f.lit(xs[2] - 20, ys[2] - 20, 40, 40)).toBe(0)
+    expect(draw(scene, scene.items[0].start + 1).lit(xs[2] - 20, ys[2] - 20, 40, 40)).toBeGreaterThan(0)
   })
 
   it('finds a brand by an older name, and shows letters for one it does not know', () => {

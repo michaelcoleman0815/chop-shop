@@ -209,7 +209,8 @@ describe.skipIf(!FFMPEG)('a brand and a project from before there could be more 
       | { ok: true; outputPath: string }
       | { ok: false; message: string }
     if (!r.ok) throw new Error(r.message)
-    // The word being said is in the brand's green, on a blue picture.
+    // A wide recording's captions are long-form's: still, in the brand's text colour (white), on a blue picture;
+    // the word being said is not lit in its green as a Short's would be.
     const frame = spawnSync(
       ffmpeg,
       [
@@ -231,8 +232,12 @@ describe.skipIf(!FFMPEG)('a brand and a project from before there could be more 
       { maxBuffer: 64 * 1024 * 1024 }
     ).stdout as Buffer
     let green = 0
-    for (let i = 0; i + 2 < frame.length; i += 3)
+    let white = 0
+    for (let i = 0; i + 2 < frame.length; i += 3) {
       if (frame[i + 1] > 170 && frame[i] < 120 && frame[i + 2] < 140) green++
-    expect(green).toBeGreaterThan(50)
+      if (frame[i] > 215 && frame[i + 1] > 215 && frame[i + 2] > 215) white++
+    }
+    expect(white).toBeGreaterThan(50)
+    expect(green).toBe(0)
   }, 120000)
 })

@@ -186,6 +186,82 @@ export const MOTION_FONTS: MotionFont[] = [
     label: 'Archivo Expanded Black, wide heavy capitals'
   },
   {
+    // Barlow Condensed at ExtraBold, a static instance (SIL Open Font License 1.1, BarlowCondensed-OFL.txt):
+    // a condensed grotesque in heavy capitals with tight lines, the title Lecrae's Shorts hold over the chest.
+    family: 'Barlow Condensed ExtraBold',
+    file: 'BarlowCondensed-ExtraBold.ttf',
+    weights: [400, 400],
+    cap: 0.7,
+    ascent: 1,
+    descent: 0.2,
+    // OS/2 usWinAscent 1075 and usWinDescent 274 of 1000 units, read from the file.
+    winAscent: 1.075,
+    winDescent: 0.274,
+    label: 'Barlow Condensed ExtraBold, heavy condensed capitals'
+  },
+  {
+    // Fraunces at its softest, unwonky, weight 420, at optical size 80: static instances cut from the variable
+    // family (SIL Open Font License 1.1, Fraunces-OFL.txt). A soft display serif with ball terminals, the face
+    // Ali Abdaal's videos set their words in, measured to his proportions ("AI Prompt" 6.2 capitals long, at the
+    // display size of 144 only 5.9); his names and labels take the semibold.
+    family: 'Fraunces',
+    file: 'Fraunces-Soft.ttf',
+    weights: [400, 400],
+    cap: 0.7,
+    ascent: 0.978,
+    descent: 0.255,
+    // OS/2 usWinAscent 2340 and usWinDescent 609 of 2000 units, read from the file.
+    winAscent: 2340 / 2000,
+    winDescent: 609 / 2000,
+    label: 'Fraunces, a soft display serif'
+  },
+  {
+    family: 'Fraunces SemiBold',
+    file: 'Fraunces-SoftSemiBold.ttf',
+    weights: [400, 400],
+    cap: 0.7,
+    ascent: 0.978,
+    descent: 0.255,
+    winAscent: 2340 / 2000,
+    winDescent: 609 / 2000,
+    label: 'Fraunces SemiBold, a soft display serif for names and labels'
+  },
+  {
+    // The same soft cut at weight 760: the heavy words of Ali Abdaal's numbered rows ("Map your", "Define").
+    family: 'Fraunces Bold',
+    file: 'Fraunces-SoftBold.ttf',
+    weights: [400, 400],
+    cap: 0.7,
+    ascent: 0.978,
+    descent: 0.255,
+    winAscent: 2340 / 2000,
+    winDescent: 609 / 2000,
+    label: 'Fraunces Bold, a heavy soft serif'
+  },
+  // Figtree, a clean geometric sans (SIL Open Font License 1.1, Figtree-OFL.txt): the type of an app on screen,
+  // a document or a chat box, as Ali Abdaal draws them. Static instances cut from the variable family.
+  ...(
+    [
+      ['Figtree', 'Figtree-Regular.ttf', 'Figtree, a clean geometric sans'],
+      ['Figtree SemiBold', 'Figtree-SemiBold.ttf', 'Figtree SemiBold, for labels on an app'],
+      ['Figtree Bold', 'Figtree-Bold.ttf', 'Figtree Bold, for an app’s headings'],
+      ['Figtree Italic', 'Figtree-Italic.ttf', 'Figtree Italic, for dates and asides']
+    ] as const
+  ).map(
+    ([family, file, label]): MotionFont => ({
+      family,
+      file,
+      weights: [400, 400],
+      cap: 0.7,
+      ascent: 0.95,
+      descent: 0.25,
+      // OS/2 usWinAscent 979 and usWinDescent 222 of 1000 units, read from the files.
+      winAscent: 0.979,
+      winDescent: 0.222,
+      label
+    })
+  ),
+  {
     // Igino Marini's revival of the Fell types (SIL Open Font License): the vintage map's lettering.
     family: 'IM Fell English',
     file: 'IMFellEnglish-Regular.ttf',

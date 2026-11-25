@@ -136,6 +136,11 @@ function fitsGuide(): string[] {
     '- One number said that matters: a keyword pop. A number that grows from one figure to another, or up to a milestone ("683,594 views, and today a million"): a counter, pill style, each figure in items on the word that says it. With one figure, start it about a second before the word ("w14-1") so it lands as the word is said.',
     '- Days or weeks going by ("day one, day two, day three"): a counter, flip style, one figure a day. When a screenshot is up at the same time, the calendar stands beside it: the screenshot at place right, the calendar at place left, both with the same from and to so they come and go together.',
     '- The speaker talking about videos (their own, ones that did well) with their thumbnails in the material: video cards. A web page or channel page with one part that matters: a screenshot, slide style, with that part in box, or empty for the person to drag.',
+    ...(template('board') && template('cloud') && template('checklist')
+      ? [
+          '- An idea explained a piece at a time, as an explainer channel does (everything a field holds, the topics it draws on, a prompt going into an AI, the steps of a method, what it gives you): a board over the whole stretch with the speaker kept in its window, box [0.77, 0.23, 0.21, 0.53], and on it, one after another, cloud, topics, prompt, checklist and doc, each from the word it starts on to where the next starts. Topic cards just before a prompt end with drop, falling into it. A board hides the speaker’s picture but for the window, so give it only the stretch the graphics carry.'
+        ]
+      : []),
     '- Captions with the word being said in a solid box of the accent: {"op":"captions","set":{"on":true,"preset":"boxed"}}.',
     '- Captions that move, each word popping up lit as it is said, for a podcast or talking-head Short: {"op":"captions","set":{"on":true,"preset":"pop"}}.'
   ]
@@ -155,7 +160,7 @@ export function graphicsGuide(): string {
     `- ${op({ op: 'motion-update', id: 'm1' }, { place: 'right' })}: move graphic m1. Empty slots and lists keep what is there; "none" clears an icon, a style, a place, a colour or an end.`,
     '- {"op":"motion-remove","ids":["m1"]}: take graphics out.',
     'from and to put a graphic on the edit: a word id (w12) is the moment the word is said, "w12.end" when it finishes; a beat id (b3) is when that beat starts, "b3.end" when it ends; "start" and "end" are the cut’s first and last frame. Any of them can take an offset in seconds, like "w12-0.5" or "end-2". to can also be a length like "4s", or empty for the template’s own length.',
-    'The slots: text is the template’s lines; items are rows {"label","value","note","mark","at"}, where at is an anchor for when the row shows, or empty; values are numbers; box is a region of the frame as fractions [x, y, width, height], or a point [x, y]; icon is a Lucide icon name; style and place pick the template’s variants; color is #RRGGBB, empty for the brand’s accent; fx adds effects: shadow, glow, outline, gradient, plate, blur.',
+    'The slots: text is the template’s lines; items are rows {"label","value","note","mark","at"}, where at is an anchor for when the row shows, or empty; values are numbers; box is a region of the frame as fractions [x, y, width, height], or a point [x, y]; icon is a Lucide icon name; style and place pick the template’s variants; color is #RRGGBB, empty for the brand’s accent; fx adds effects: shadow, glow, outline, gradient, plate, blur, and push, which brings the whole graphic up from below the frame as a full-frame transition.',
     'The templates:',
     ...list.map((t) => {
       const styles = t.styles.filter(Boolean)

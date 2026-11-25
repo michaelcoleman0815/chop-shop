@@ -376,9 +376,62 @@ describe('hierarchy captions', () => {
     const next = page.start + page.spans![at + 1].t! + 0.15
     expect(yellow(next).white).toBeGreaterThan(200)
     expect(yellow(next).lit).toBeLessThan(20)
+    // Room between slanted words: the lean of one never closes the gap to the next.
+    const settled = page.end - 0.2
+    const first = wordBox(page, 0, settled)
+    const second = wordBox(page, 1, settled)
+    expect(second.x - (first.x + first.w)).toBeGreaterThan(page.font.size * 0.35)
     // A key word stays yellow after it is said.
     const keyPage = pages.find((p) => p.spans!.some((s) => s.text === 'asset'))!
     expect(keyPage.spans!.find((s) => s.text === 'asset')!.color).toBe(POP_LIT)
+  })
+
+  it('never leaves a word said quickly on a page of its own, where it would blink: "I did / save"', () => {
+    // Quick speech, the key word "did" mid-sentence: it ends its page, and "save" follows in 0.16 s.
+    const timed = [
+      ['I', 4.0, 4.12], ['did', 4.14, 4.4], ['save', 4.46, 4.62], ['Rey', 4.68, 4.9], ['Mysterio.', 4.92, 5.5]
+    ] as const
+    const words = wordsFromTranscript(timed.map(([text, startSec, endSec]) => ({ text, startSec, endSec })), 's1')
+    const source = { id: 's1', path: '/take.mov', durationSec: 7, width: 1080, height: 1920, fps: 30 }
+    let doc = createDoc({ id: 'd', title: 't', source, words })
+    const did = doc.words.find((w) => w.text === 'did')!.id
+    doc = commit(doc, [{ op: 'captions', set: { on: true, preset: 'pop', wordsPerScreen: 3, keys: [did] } }], 'x').doc
+    const pages = captionsIn(sceneOf(doc))
+    const shown = pages.flatMap((p) => p.spans!.map((s) => s.text))
+    expect(shown).toEqual(['I', 'did', 'save', 'Rey', 'Mysterio'])
+    for (const p of pages) expect(p.end - p.start).toBeGreaterThan(0.3)
+  })
+
+  it('sits drawn captions on a split’s seam, as the burned-in ones sit', () => {
+    const base = docWith('vertical')
+    const beat = currentCut(base).beats[1].id
+    const doc = commit(
+      base,
+      [
+        { op: 'captions', set: { preset: 'pop' } },
+        { op: 'treat', beats: [beat], set: { frame: 'split', broll: { path: '/match.mp4', inSec: 0, muted: true } } }
+      ],
+      'x'
+    )
+    expect(doc.rejected).toEqual([])
+    const scene = sceneOf(doc.doc)
+    const resolved = resolveCut(currentCut(doc.doc), doc.doc.words, doc.doc.sources)
+    const over = new Set(resolved.words.filter((w) => w.beat === beat).map((w) => w.text.replace(/[.,]$/, '')))
+    const pages = captionsIn(scene)
+    const onSplit = pages.filter((p) => p.spans!.some((s) => over.has(s.text)))
+    expect(onSplit.length).toBeGreaterThan(0)
+    for (const p of onSplit) {
+      // Anchored by its foot, however many lines its words take.
+      expect(p.valign).toBe('bottom')
+      expect(p.transform?.y as number).toBeCloseTo(0.488 * scene.size.height, 3)
+      // Its foot just above the seam: the page's top is its height above 0.488 of the frame.
+      const box = wordBox(p, 0, p.end - p.start - 0.05)
+      expect(box.y + box.h).toBeLessThan(0.488 * scene.size.height + 4)
+      expect(box.y + box.h).toBeGreaterThan(0.488 * scene.size.height - 60)
+    }
+    // Pages elsewhere stay on the chest.
+    const rest = pages.filter((p) => !onSplit.includes(p))
+    for (const p of rest) expect(p.transform?.y as number).toBeGreaterThan(0.55 * scene.size.height)
   })
 
   it('waits while a card holds the screen, and comes back over a backdrop in the middle', () => {

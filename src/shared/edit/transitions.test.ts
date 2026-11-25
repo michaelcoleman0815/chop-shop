@@ -142,8 +142,8 @@ describe('transitions on the output clock', () => {
       { op: 'remove', beats: ['b1'] },
       { op: 'insert', to: 0, beat: { source: 's1', inSec: 5, outSec: 6 } },
       { op: 'insert', to: 1, beat: { source: 's1', inSec: 1, outSec: 2 } },
-      // With the cut emptied first, the inserted shots are b1 and b2 again.
-      { op: 'transition', beats: ['b2'], kind: 'slide-left', sec: 0.5 }
+      // With the cut emptied first, the inserted shots are b2 and b3: b1's id is not given again.
+      { op: 'transition', beats: ['b3'], kind: 'slide-left', sec: 0.5 }
     ])
     const r = resolve(doc, cut)
     // The first shot ends the recording, so the whole handle comes from the second.

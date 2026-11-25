@@ -59,6 +59,7 @@ import {
   type Source,
   type Treatment
 } from '../../../../shared/edit'
+import { pageRoom } from '../../../../shared/screen'
 import { memberForNote } from '../crew'
 import { changedBeats, revisionOf } from '../revisions'
 import { toggleLabel, toggleOps } from '../word-track'
@@ -77,6 +78,7 @@ import {
   designSize,
   drawsCaptions,
   graphicTitle,
+  shutterFor,
   template,
   themeFrom,
   type MotionItem,
@@ -85,7 +87,7 @@ import {
   type MotionTheme
 } from '../../../../shared/motion'
 import { lineName, ordinal, playingTake, takesOf, type TakeGroup } from '../../../../shared/raw'
-import { captionSeams, captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords, wordSpeakers } from '../../../../shared/subtitles'
+import { captionSits, captionStyleFor, shownWords, styleCues, subtitleAt, subtitleWords, wordSpeakers } from '../../../../shared/subtitles'
 import { isImagePath } from '../../../../shared/assets'
 import { api, MEDIA_CORS, mediaUrlFor } from '../api'
 import { Backdrop } from '../components/Backdrop'
@@ -579,14 +581,14 @@ function Preview({
   // The captions the export burns in: its words (none from beats with captions off, or while a card
   // is up), its cues, and its look at its own size, in the brand's colours when it has them.
   const captionStyle = useMemo(
-    () => captionStyleFor(cut.captions, scene.size.width, captionColors),
+    () => captionStyleFor(cut.captions, scene.size.width, captionColors, scene.size.height),
     [cut.captions, scene.size.width, captionColors]
   )
   const cues = useMemo(() => {
     // Captions the graphics draw are on the motion canvas instead.
     if (!cut.captions.on || drawsCaptions(cut.captions)) return []
     const words = subtitleWords(cut, resolved, scene).words
-    const seams = captionSeams(cut, resolved.words)
+    const seams = captionSits(cut, resolved.words, scene)
     return styleCues(shownWords(words, cut.captions, resolved.words, seams, wordSpeakers(doc.words)), captionStyle)
   }, [cut, resolved, scene, captionStyle, doc.words])
   const cue = subtitleAt(cues, time)
@@ -689,6 +691,7 @@ function Preview({
             onUnreadable={onUnreadable}
             mattes={mattes}
             keySize={playing ? 640 : 1280}
+            shutter={shutterFor(filmFps(doc.sources[0]?.fps ?? 30))}
           />
         )}
         <Subtitles
@@ -699,7 +702,15 @@ function Preview({
           width={box.w}
           height={box.h}
         />
-        <MotionCanvas scene={scene} assets={doc.assets} time={time} width={box.w} height={box.h} mattes={mattes} />
+        <MotionCanvas
+          scene={scene}
+          assets={doc.assets}
+          time={time}
+          width={box.w}
+          height={box.h}
+          mattes={mattes}
+          shutter={shutterFor(filmFps(doc.sources[0]?.fps ?? 30))}
+        />
         {roto && (
           <MaskDraw
             {...roto}
@@ -1049,7 +1060,10 @@ function Deck({
   if (rb && t?.camera && source && source.height > 0) {
     const clock = cameraClock(resolved, rb.id, time, t.camera.word)
     if (clock) {
-      const plan = cameraPlan(t.camera, clock.length, clock.wordAt, source.width / source.height, frameAspect)
+      // On a screen recording with the speaker in a window, a focus fits the room beside it, as the export's does.
+      const cutaway = (t.frame === 'broll' || t.frame === 'split' || t.frame === 'card') && t.broll !== null
+      const room = source.screen && piece && !cutaway ? pageRoom(source.screen, piece.srcStart, piece.srcEnd) : null
+      const plan = cameraPlan(t.camera, clock.length, clock.wordAt, source.width / source.height, frameAspect, room)
       transform = cameraTransform(viewAt(plan, clock.t), plan.fw, plan.fh, zoom)
       transformOrigin = undefined
     }

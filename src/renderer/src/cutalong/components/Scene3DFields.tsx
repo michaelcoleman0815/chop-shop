@@ -55,7 +55,8 @@ const TYPE_NAME: Record<Object3D['type'], string> = {
   plane: 'Plane',
   cylinder: 'Cylinder',
   torus: 'Ring',
-  model: 'Model'
+  model: 'Model',
+  mark: 'Logo'
 }
 
 /** What an object is called in the list: its name, a title's words, or what it is. */

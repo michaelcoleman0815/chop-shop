@@ -69,6 +69,18 @@ function makeCtx(ctx: OpContext): Ctx {
   }
 }
 
+/**
+ * Why an op was refused, in words: an op it does not know by name, or one it knows whose shape is wrong, saying
+ * where ("The cold-open op is not right: bites: Too big..." rather than "Not an op I know" for an op it knows).
+ */
+function refusal(raw: unknown, issue: { message: string; path?: PropertyKey[]; code?: string } | undefined): string {
+  const name = raw && typeof raw === 'object' && typeof (raw as { op?: unknown }).op === 'string' ? (raw as { op: string }).op : null
+  const unknown = !issue || /discriminator/i.test(issue.message) || issue.code === 'invalid_union'
+  if (name === null || unknown) return `Not an op I know: ${issue?.message ?? 'bad shape'}`
+  const where = issue.path?.length ? `${issue.path.map(String).join('.')}: ` : ''
+  return `The ${name} op is not right: ${where}${issue.message}`
+}
+
 export function applyOps(cut: Cut, ops: unknown[], context: OpContext): OpsResult {
   const ctx = makeCtx(context)
   let current = cut
@@ -77,7 +89,7 @@ export function applyOps(cut: Cut, ops: unknown[], context: OpContext): OpsResul
   for (const raw of ops) {
     const parsed = OpSchema.safeParse(raw)
     if (!parsed.success) {
-      rejected.push({ op: raw, reason: `Not an op I know: ${parsed.error.issues[0]?.message ?? 'bad shape'}` })
+      rejected.push({ op: raw, reason: refusal(raw, parsed.error.issues[0]) })
       continue
     }
     try {
@@ -110,7 +122,7 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
     case 'remove': {
       for (const id of op.beats) findBeat(cut, id)
       const drop = new Set(op.beats)
-      return { ...cut, beats: cut.beats.filter((b) => !drop.has(b.id)) }
+      return withBeats(cut, cut.beats.filter((b) => !drop.has(b.id)))
     }
 
     case 'strike':
@@ -193,7 +205,7 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       }
       const beats = [...cut.beats]
       beats.splice(at, 1, head, tail)
-      return { ...cut, beats }
+      return withBeats(cut, beats)
     }
 
     case 'join': {
@@ -218,7 +230,8 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       const joined: Beat = { ...beat, to: next.to, padOut: next.padOut, ...(kept.length ? { sfx: kept } : {}) }
       const beats = [...cut.beats]
       beats.splice(at, 2, joined)
-      return { ...cut, beats }
+      // The beat joined on is gone, and its id with it.
+      return withBeats(cut, beats)
     }
 
     case 'trim': {
@@ -291,15 +304,20 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
     }
 
     case 'cold-open': {
-      // The cold open there was goes; the conversation's first beat can have no way in, with nothing before it.
+      // The cold open there was goes, its slug's title with it; the conversation's first beat can have no way
+      // in, with nothing before it.
       const body = cut.beats.filter((b) => !b.coldOpen)
+      const gone = new Set(cut.beats.filter((b) => b.coldOpen).map((b) => b.id))
+      const unslugged: Cut = cut.motion?.some((m) => isSlug(m, gone))
+        ? { ...cut, motion: cut.motion.filter((m) => !isSlug(m, gone)) }
+        : cut
       const strip = (b: Beat): Beat => {
         const { transition: _t, ...rest } = b
         return rest
       }
-      if (op.bites.length === 0) return { ...cut, beats: body.map((b, i) => (i === 0 ? strip(b) : b)) }
+      if (op.bites.length === 0) return withBeats(unslugged, body.map((b, i) => (i === 0 ? strip(b) : b)))
       if (body.length === 0) throw new OpError('There is no conversation to open on.')
-      let n = Number(/^b(\d+)$/.exec(nextBeatId(cut))?.[1] ?? cut.beats.length + 1)
+      let n = highestBeat(cut) + 1
       const opened = op.bites.map((bite, i): Beat => {
         const [a] = wordRange(ctx, bite.from, bite.to)
         const beat = buildBeat({ source: ctx.index.words[a].source, from: bite.from, to: bite.to }, `b${n++}`, ctx)
@@ -307,14 +325,25 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
         return { ...beat, padIn: COLD_PAD_IN, padOut: COLD_PAD_OUT, coldOpen: true }
       })
       const [first, ...rest] = body
-      return { ...cut, beats: [...opened, { ...strip(first), transition: keptTransition('dip-to-black', COLD_DIP_SEC) }, ...rest] }
+      // The show's title between the two (a slug): a silent stretch of the conversation's own recording, its
+      // captions off, under the title on black, a hard cut in; the dip after it fades the conversation up.
+      const slug = op.slug && op.slug.title.trim() ? slugBeat(first, op.slug.sec, `b${n++}`, ctx) : null
+      const made = withBeats(unslugged, [
+        ...opened,
+        ...(slug ? [slug] : []),
+        { ...strip(first), transition: keptTransition('dip-to-black', COLD_DIP_SEC) },
+        ...rest
+      ])
+      if (!slug || !op.slug) return made
+      const call = { kind: 'end-card', from: slug.id, to: `${slug.id}.end`, text: [op.slug.title.trim()], style: 'slug' }
+      return motionCut(addMotion(made, call, motionContext(made, ctx)))
     }
 
     case 'insert': {
       const beat = buildBeat(op.beat, nextBeatId(cut), ctx)
       const beats = [...cut.beats]
       beats.splice(Math.min(op.to, beats.length), 0, beat)
-      return { ...cut, beats }
+      return withBeats(cut, beats)
     }
 
     case 'captions':
@@ -605,8 +634,14 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
 
     case 'fade': {
       const was = cut.fade ?? { inSec: 0, outSec: 0, color: 'black' as const }
-      const fade = { inSec: op.inSec ?? was.inSec, outSec: op.outSec ?? was.outSec, color: op.color ?? was.color }
-      return { ...cut, fade: fade.inSec > 0 || fade.outSec > 0 ? fade : null }
+      const blur = op.blurInSec ?? was.blurInSec ?? 0
+      const fade = {
+        inSec: op.inSec ?? was.inSec,
+        outSec: op.outSec ?? was.outSec,
+        color: op.color ?? was.color,
+        ...(blur > 0 ? { blurInSec: blur } : {})
+      }
+      return { ...cut, fade: fade.inSec > 0 || fade.outSec > 0 || blur > 0 ? fade : null }
     }
 
     // Graphics over the picture. The checks and the merging live in shared/motion.
@@ -679,6 +714,25 @@ function motionContext(cut: Cut, ctx: Ctx): MotionOpContext {
   }
 }
 
+/** A slug's title: the end card on black (motion titles) that a cold open put on one of its own beats. */
+function isSlug(m: { kind: string; style: string; from: string }, beats: Set<string>): boolean {
+  return m.kind === 'end-card' && m.style === 'slug' && beats.has(m.from)
+}
+
+/**
+ * The beat a slug plays: `sec` of the recording the conversation starts in, from where it starts, muted and
+ * without captions. Its picture is under the title card; what plays is only there to be cut to.
+ */
+function slugBeat(first: Beat, sec: number, id: string, ctx: Ctx): Beat {
+  const source = ctx.sources.get(first.source)
+  if (!source) throw new OpError(`There is no recording ${first.source}.`)
+  const pos = first.from !== null ? ctx.index.pos.get(first.from) : undefined
+  const at = pos !== undefined ? ctx.index.words[pos].startSec : (first.inSec ?? 0)
+  const inSec = Math.max(0, Math.min(at, source.durationSec - sec))
+  const beat = buildBeat({ source: source.id, inSec, outSec: Math.min(source.durationSec, inSec + sec) }, id, ctx)
+  return { ...beat, padIn: 0, padOut: 0, coldOpen: true, treatment: { ...beat.treatment, mute: true, captions: false } }
+}
+
 function motionCut(result: MotionResult): Cut {
   if (!result.ok) throw new OpError(result.reason)
   return result.cut
@@ -711,14 +765,36 @@ function beatRange(ctx: Ctx, beat: Beat): [number, number] {
   return wordRange(ctx, beat.from as string, beat.to as string)
 }
 
-/** b1, b2, ... continuing after the highest number in use. */
-export function nextBeatId(cut: Cut): string {
-  let max = 0
+/**
+ * The highest beat number a cut has given: the one it keeps (Cut.lastBeat), or the highest of its own beats
+ * when it keeps none or they run past it.
+ */
+export function highestBeat(cut: Pick<Cut, 'beats' | 'lastBeat'>): number {
+  let max = cut.lastBeat ?? 0
   for (const b of cut.beats) {
     const n = /^b(\d+)$/.exec(b.id)
     if (n) max = Math.max(max, Number(n[1]))
   }
-  return `b${max + 1}`
+  return max
+}
+
+/**
+ * b1, b2, ... continuing after the highest number the edit has given, beats since cut out included, so a new
+ * beat never takes the id of one that notes, graphics or earlier versions still name.
+ */
+export function nextBeatId(cut: Cut): string {
+  return `b${highestBeat(cut) + 1}`
+}
+
+/**
+ * The cut playing these beats in place of its own, still knowing the highest beat number it has given
+ * (Cut.lastBeat) once that beat is no longer among them. A cut that has never lost its highest beat says
+ * nothing, as before, so it serialises as it always did.
+ */
+function withBeats(cut: Cut, beats: Beat[]): Cut {
+  const shown = highestBeat({ beats })
+  const given = Math.max(highestBeat(cut), shown)
+  return given > shown || cut.lastBeat !== undefined ? { ...cut, beats, lastBeat: given } : { ...cut, beats }
 }
 
 function buildBeat(input: BeatInput, id: string, ctx: Ctx): Beat {

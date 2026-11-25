@@ -97,7 +97,8 @@ is needed first, the moment is weaker. Skip banter, warm-up, plugs and inside
 references.
 
 Length: aim for 30 to 60 seconds. Go up to 90 only when a complete story
-genuinely needs the room, and under 30 only for a single devastating line or a
+genuinely needs the room, and past 90 only as far as the request allows when it
+says a clip may run longer. Go under 30 only for a single devastating line or a
 sharp exchange that fully resolves. Never pad to reach a length, and never
 truncate a resolved arc to hit one. Find the natural boundary of the thought
 first, then check it against the range.
@@ -172,12 +173,22 @@ makes sense to someone watching live.`,
     'This is comedy or a performance. A bit starts at its first setup word and ends a beat after its punchline; never cut between a setup and its payoff, and never include a punchline whose setup is off-screen.'
 }
 
+/**
+ * How long the clips should run, in seconds; and, past that, the longest one may run when its moment needs the
+ * room (shared/clipping ClipProfile.longestSec), where it is longer.
+ */
+export interface ClipLength {
+  minSec: number
+  maxSec: number
+  longestSec?: number
+}
+
 /** The same words go to whichever model is chosen, or the comparison is meaningless. */
 function buildPrompt(
   transcript: Transcript,
   durationSec: number,
   maxClips: number,
-  length?: { minSec: number; maxSec: number },
+  length?: ClipLength,
   lookFor?: string,
   genre?: string,
   music?: { startSec: number; endSec: number }[]
@@ -198,6 +209,10 @@ ${genre && GENRE_NOTE[genre] ? `${GENRE_NOTE[genre]}\n\n` : ''}${
         }Return at most ${maxClips} clips.${
           length ? `\nEach clip should run between ${length.minSec} and ${length.maxSec} seconds.` : ''
         }${
+          length?.longestSec && length.longestSec > length.maxSec
+            ? ` A story or an answer that needs more room to finish whole may run up to ${length.longestSec} seconds; never stretch one to fill it.`
+            : ''
+        }${
           // Tagged rather than run together with the transcript: a recording
           // that happens to contain instructions must not read as one.
           lookFor && lookFor.trim()
@@ -211,7 +226,7 @@ export async function suggestClips(
   durationSec: number,
   maxClips: number,
   model: string,
-  length?: { minSec: number; maxSec: number },
+  length?: ClipLength,
   lookFor?: string,
   genre?: string,
   music?: { startSec: number; endSec: number }[]

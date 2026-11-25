@@ -255,11 +255,12 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
   const index = indexWords(words)
   const bySource = new Map(sources.map((s) => [s.id, s]))
   const removed = new Set(cut.removed)
-  const tighten = cut.tighten
   let drafts: Draft[] = []
 
   cut.beats.forEach((beat, beatIndex) => {
     const duration = bySource.get(beat.source)?.durationSec ?? Infinity
+    // A beat played as it was said keeps its pauses and ums however tight the rest is.
+    const tighten = beat.treatment.asSaid ? null : cut.tighten
 
     if (beat.from === null || beat.to === null) {
       const span = beatSpan(beat, index, bySource)

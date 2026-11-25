@@ -22,6 +22,7 @@ import type { LinedRecording } from '../shared/pov/lineup'
 import { listenFrames } from './audio-map'
 import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
 import type { ScopeReading } from '../shared/scopes/maths'
+import type { ScreenReading } from '../shared/screen'
 import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply, probeSource, type SourceFacts } from './intake'
 import { projectName } from '../shared/project-name'
@@ -101,6 +102,8 @@ export interface WorkHost {
   speakers?: (path: string, words: Word[]) => Promise<(number | null)[]>
   /** What a recording's picture measures (main/scopes), for Claude to grade by. Absent where it is not measured. */
   scopes?: (path: string, durationSec: number) => Promise<ScopeReading | null>
+  /** What is on screen in a recording (main/screen-read): its words and the speaker's window. Absent off a Mac. */
+  screen?: (path: string, durationSec: number) => Promise<ScreenReading | null>
   /** Watching the speaker's mouth, with the Mac's face finder. */
   watch?: (input: {
     source: Source
@@ -481,6 +484,7 @@ export async function renderEdit(
       layers,
       fx,
       captionWords: pass.resolved.words,
+      captionSits: pass.sits,
       speakers: Object.fromEntries(wordSpeakers(doc.words)),
       // A grid's panels show material, on a ground in the brand's look.
       assets: doc.assets,
@@ -780,6 +784,9 @@ export async function readFootage(
     // What the picture measures, kept with the recording for Claude to grade by.
     const scopes = host.scopes ? await host.scopes(path, source.durationSec).catch(() => null) : null
     if (scopes) source = { ...source, scopes }
+    // What is on screen, for an edit that knows a screen recording from a talking head and where its words are.
+    const screen = host.screen ? await host.screen(path, source.durationSec).catch(() => null) : null
+    if (screen) source = { ...source, screen }
     sources.push(source)
   }
   const intake =

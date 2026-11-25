@@ -1,6 +1,6 @@
 import { fade, keys, tail } from '../anim'
 import type { MotionCall } from '../schema'
-import type { Layer, Transform } from '../types'
+import type { Ease, Layer, Transform } from '../types'
 import { accentOf, clamp } from './kit'
 import { register, type BuildContext } from './registry'
 
@@ -59,7 +59,8 @@ function screenshot(ctx: BuildContext): Layer[] {
   // Too short to scroll and then push in: it only scrolls.
   const zooms = !slide && (box !== null || header) && length >= 2.4
   // Every moment in order however short it is: in, scrolled, then pushed in.
-  const settle = Math.min(slide ? 0.5 : 0.45, length * 0.35)
+  // Slid in on the long quint ease creators slide cards on; risen in on a gentler cubic.
+  const settle = Math.min(slide ? 1 : 0.55, length * 0.35)
   const scrollEnd = zooms ? length * 0.55 : Math.max(settle + 0.05, length - 0.3)
 
   // Scrolling moves the card, no faster than a reader can follow.
@@ -70,8 +71,8 @@ function screenshot(ctx: BuildContext): Layer[] {
   let finalZoom = 1
 
   const card: Transform = { x: cx }
-  const opening: [number, number, 'snap' | 'smooth'][] = [
-    [0, y0 + 70 * u, 'snap'],
+  const opening: [number, number, Ease][] = [
+    [0, y0 + 70 * u, 'out-cubic'],
     [settle, y0, 'smooth'],
     [scrollEnd, y1, 'smooth']
   ]
@@ -80,9 +81,9 @@ function screenshot(ctx: BuildContext): Layer[] {
     // and out the way it came, only a little, as it fades.
     const side = aside === 'left' ? -1 : 1
     const from = side < 0 ? -cw / 2 - 40 * u : W + cw / 2 + 40 * u
-    card.x = { keys: [{ t: 0, v: from, ease: 'snap' }, { t: settle, v: cx }, ...tail([0.16, cx, 'snap'], [0, cx + side * 48 * u])] }
+    card.x = { keys: [{ t: 0, v: from, ease: 'out-quint' }, { t: settle, v: cx }, ...tail([0.16, cx, 'snap'], [0, cx + side * 48 * u])] }
     card.y = atTop
-    card.scale = keys([0, 0.98, 'snap'], [settle, 1], [length, 1.03])
+    card.scale = keys([0, 0.98, 'out-quint'], [settle, 1], [length, 1.03])
   } else if (zooms) {
     const at = scrollEnd + 0.1
     const done = Math.min(length - 0.3, at + 0.9)
@@ -113,11 +114,11 @@ function screenshot(ctx: BuildContext): Layer[] {
     card.x = aside ? keys([at, cx, 'smooth'], [done, x], [length, inner + (side * z * 1.035 * cw) / 2]) : keys([at, cx, 'smooth'], [done, x])
     card.y = keys(...opening, [at, y1, 'smooth'], [done, y])
     // A slow push on after it lands, so the frame never sits dead.
-    card.scale = keys([0, 0.96, 'snap'], [settle, 1], [at, 1, 'smooth'], [done, z], [length, z * 1.035])
+    card.scale = keys([0, 0.96, 'out-cubic'], [settle, 1], [at, 1, 'smooth'], [done, z], [length, z * 1.035])
     finalZoom = z
   } else {
     card.y = keys(...opening)
-    card.scale = keys([0, 0.96, 'snap'], [settle, 1], [length, style === 'still' ? 1.06 : 1])
+    card.scale = keys([0, 0.96, 'out-cubic'], [settle, 1], [length, style === 'still' ? 1.06 : 1])
   }
   if (item.fx.some((f) => f.toLowerCase() === 'tilt')) {
     // Leaning back while it scrolls, flat again as it settles.

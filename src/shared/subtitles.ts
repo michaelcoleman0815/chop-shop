@@ -1,7 +1,7 @@
 import { presetById } from './caption-presets'
 import { captionedWords, type Resolved } from './edit/resolve'
 import type { CaptionSpec } from './edit/schema'
-import { fontInfo, fontString, OPEN_SEC, type MotionScene } from './motion'
+import { fontInfo, fontString, OPEN_SEC, SEAM_FRAC, type MotionScene } from './motion'
 import type { CaptionStyle, TranscriptWord } from './types'
 import { groupWords } from './words'
 
@@ -41,15 +41,39 @@ export const POSITION_FRAC: Record<CaptionSpec['position'], number> = {
   bottom: 0.78
 }
 
-/** The caption look for a spec, sized for the frame being rendered, in the brand's colours when there is one. */
+/**
+ * Where captions stand on a wide frame: low, as long-form subtitles stand, clear of the player's controls
+ * (the safe area's bottom tenth). A Short's chest height would put them over a seated speaker's face.
+ */
+export const WIDE_POSITION_FRAC: Record<CaptionSpec['position'], number> = {
+  top: 0.14,
+  middle: 0.55,
+  chest: 0.84,
+  bottom: 0.88
+}
+
+/**
+ * A wide frame's captions against a Short's, both sized by the frame's height: long-form subtitles are a
+ * smaller share of the picture, read from further off on a bigger screen. Sora's 70 is 52 on a 1080 high frame.
+ */
+export const WIDE_CAPTION_SCALE = 0.75
+
+/**
+ * The caption look for a spec, sized for the frame being rendered, in the brand's colours when there is one.
+ * Given the frame's height, a wide frame gets long-form captions: sized by its height rather than its width
+ * (sized by width, a 1920 wide frame set them at 1.8 times a Short's, 124 px on a 1080 px picture), low in the
+ * frame, with a thinner edge, and still: the word being said is not picked out in another colour.
+ */
 export function captionStyleFor(
   spec: CaptionSpec,
   width: number,
-  colors: { text: string; accent: string } | null = null
+  colors: { text: string; accent: string } | null = null,
+  height?: number
 ): CaptionStyle {
   const base = presetById(spec.preset).style
-  const scale = width / 1080
-  return {
+  const wide = height !== undefined && width > height * 1.2
+  const scale = (wide ? (height / 1080) * WIDE_CAPTION_SCALE : width / 1080) * (spec.size ?? 1)
+  const style: CaptionStyle = {
     ...base,
     // The brand's colours; a plain look keeps every word in the text colour, rather than painting each
     // one in the accent as it is said.
@@ -64,7 +88,7 @@ export function captionStyleFor(
       : {}),
     wordsPerGroup: spec.wordsPerScreen,
     uppercase: spec.uppercase || base.uppercase,
-    positionFrac: base.positions?.[spec.position] ?? POSITION_FRAC[spec.position],
+    positionFrac: wide ? WIDE_POSITION_FRAC[spec.position] : (base.positions?.[spec.position] ?? POSITION_FRAC[spec.position]),
     fontSizePx: Math.max(8, Math.round(base.fontSizePx * scale)),
     // A look with no outline has none, rather than a pixel of black round thin letters; a plate keeps its padding.
     outlinePx: base.outlinePx > 0 || base.boxColor ? Math.max(1, Math.round(base.outlinePx * scale)) : 0,
@@ -76,6 +100,16 @@ export function captionStyleFor(
           gapPx: Math.round(base.second.gapPx * scale)
         }
       : base.second
+  }
+  if (!wide) return style
+  // Long-form: still lines, the word being said in the words' own colour, and a thinner edge.
+  const text = style.textColor
+  return {
+    ...style,
+    activeColor: text,
+    activeScale: 1,
+    steady: true,
+    outlinePx: style.outlinePx > 0 ? Math.max(1, Math.round(style.outlinePx * 0.6)) : 0
   }
 }
 
@@ -94,15 +128,71 @@ export function subtitleWords(
 ): Resolved {
   // What covers the screen is the graphic's own say: a full-frame map holds the captions, a map inset does not.
   const cards = scene.items.filter((i) => i.covers === 'card')
-  // A graphic across the picture where the subtitles sit (a keyword pop) holds them too, while it is up.
+  // A graphic across the picture where the subtitles sit (a keyword pop, a title over the chest) holds them
+  // too, while it is up, unless they drop below it (captionsUnder).
   const own = cut.captions && scene.frame ? subtitleBand(cut.captions, scene.frame) : null
   const across = own ? scene.items.filter((i) => i.band && i.band.top < own.bottom && i.band.bottom > own.top) : []
-  const held = [...cards, ...across]
-  // Beats whose captions are off are left out too.
-  const words = captionedWords(cut, resolved).words.filter(
-    (w) => !held.some((c) => w.outEnd > c.start && w.outStart < c.end)
+  const under = across.length ? captionsUnder(cut, resolved.words, scene) : new Map<string, number>()
+  const during = (w: { outStart: number; outEnd: number }, c: { start: number; end: number }) => w.outEnd > c.start && w.outStart < c.end
+  // A sentence's capital is read from every word said, before any are left out: a bite after one hidden under
+  // a cutaway ("…their Muslim neighbors." then "politicians on") still starts its sentence.
+  const cased = new Map(
+    sentenceStarts(resolved.words)
+      .filter((w, i) => w !== resolved.words[i])
+      .map((w) => [w.id, w.text])
   )
-  return words.length === resolved.words.length ? resolved : { ...resolved, words }
+  // Beats whose captions are off are left out too.
+  const words = captionedWords(cut, resolved)
+    .words.filter((w) => !cards.some((c) => during(w, c)) && (under.has(w.id) || !across.some((c) => during(w, c))))
+    .map((w) => (cased.has(w.id) ? { ...w, text: cased.get(w.id) as string } : w))
+  return words.length === resolved.words.length && cased.size === 0 ? resolved : { ...resolved, words }
+}
+
+/**
+ * How far under a graphic a caption's foot drops, in its look's size: one line's foot where Lecrae's Shorts set
+ * it, measured (its top 1.5 sizes under the band), and room still for a page that wraps to two lines.
+ */
+const UNDER_SIZES = 2.34
+
+/** The lowest a caption's foot drops to, as a share of the frame's height: lower, it would sit under a feed's buttons. */
+const LOWEST_FOOT = 0.9
+
+/**
+ * The words said while a graphic sits across the subtitles (a title held over the chest, a keyword pop), by id,
+ * with where their caption's foot drops to instead, as a share of the frame's height: below the graphic, as
+ * Lecrae's Shorts drop theirs under the title while it is up. A graphic with no room under it leaves its words
+ * out of this, and subtitleWords holds them until it is gone.
+ */
+export function captionsUnder(
+  cut: { captions?: CaptionSpec },
+  words: { id: string; outStart: number; outEnd: number }[],
+  scene: { items: Pick<MotionScene['items'][number], 'start' | 'end' | 'band'>[]; frame?: { width: number; height: number } }
+): Map<string, number> {
+  const out = new Map<string, number>()
+  if (!cut.captions || !scene.frame) return out
+  const own = subtitleBand(cut.captions, scene.frame)
+  const size = captionStyleFor(cut.captions, scene.frame.width, null, scene.frame.height).fontSizePx
+  for (const item of scene.items) {
+    if (!item.band || item.band.top >= own.bottom || item.band.bottom <= own.top) continue
+    const foot = (item.band.bottom + size * UNDER_SIZES) / scene.frame.height
+    if (foot > LOWEST_FOOT) continue
+    for (const w of words) {
+      if (w.outEnd > item.start && w.outStart < item.end) out.set(w.id, Math.max(out.get(w.id) ?? 0, foot))
+    }
+  }
+  return out
+}
+
+/**
+ * Where words' burned-in captions sit instead of the look's own height, by id, as shares of the frame's height
+ * for the caption's foot: on a split's seam (captionSeams), or under a graphic across them (captionsUnder).
+ */
+export function captionSits(
+  cut: Parameters<typeof captionSeams>[0] & { captions?: CaptionSpec },
+  words: { id: string; beat: string; outStart: number; outEnd: number }[],
+  scene: Parameters<typeof captionsUnder>[2]
+): Map<string, number> {
+  return new Map([...captionSeams(cut, words), ...captionsUnder(cut, words, scene)])
 }
 
 /**
@@ -110,7 +200,7 @@ export function subtitleWords(
  * landed line's bigger face, a second tier) to a little under it, for what keeps out of the subtitles' way.
  */
 export function subtitleBand(spec: CaptionSpec, frame: { width: number; height: number }): { top: number; bottom: number } {
-  const style = captionStyleFor(spec, frame.width)
+  const style = captionStyleFor(spec, frame.width, null, frame.height)
   const foot = style.positionFrac * frame.height
   const second = style.second ? style.second.fontSizePx * 1.2 + style.second.gapPx : 0
   return { top: foot - style.fontSizePx * (style.keyScale ?? 1) * 2.4 - second, bottom: foot + style.fontSizePx * 0.3 }
@@ -171,7 +261,7 @@ export function voiceColor(w: Pick<TranscriptWord, 'other'>, active: boolean, st
  * Where a caption sits over a split (a cutaway above or below the speaker): on the seam, its foot just above
  * the line, as Impaulsive and The Diary of a CEO set theirs, rather than over the middle of either picture.
  */
-export const SEAM_FRAC = 0.488
+export { SEAM_FRAC }
 
 /** The words said over a split, by id, with where their captions sit (SEAM_FRAC): for shownWords. */
 export function captionSeams(
@@ -214,12 +304,29 @@ export function plainWords<T extends { text: string }>(words: T[]): T[] {
   })
 }
 
-export function subtitleCues(words: TranscriptWord[], perGroup: number, plain = false, build = false): SubtitleCue[] {
+/**
+ * The words with a capital where the cut starts a sentence: a bite cut in after one that ended ("right now." then
+ * "a lot of the crazy stuff") reads "A lot", as the creators' cold opens caption it. Only an all-lower-case word
+ * is touched, so "iPhone" stays as it is, and only in words written in sentences: a transcript with no full stops
+ * is left as it was heard. Read from every word the cut says (subtitleWords), before any are held under a card: a
+ * word after hidden ones is not a sentence's start because the hidden ones are gone.
+ */
+export function sentenceStarts<T extends { text: string }>(words: T[]): T[] {
+  if (!words.some((w) => /[.!?]["'”’)]*$/.test(w.text.trim()))) return words
+  return words.map((w, i) => {
+    const starts = i === 0 || /[.!?…]["'”’)]*$/.test(words[i - 1].text.trim())
+    if (!starts || !/^[a-z][^A-Z]*$/.test(w.text.trim())) return w
+    const t = w.text.trim()
+    return { ...w, text: t[0].toUpperCase() + t.slice(1) }
+  })
+}
+
+export function subtitleCues(words: TranscriptWord[], perGroup: number, plain = false, build = false, exact = false): SubtitleCue[] {
   // A plain caption shows words, never a dash or a stray mark Whisper wrote at a turn.
   if (plain) words = words.filter((w) => SAYS.test(w.text))
   if (build) return buildCues(words, perGroup, plain)
   if (plain) words = plainWords(words)
-  return cuesOf(groupWords(words, perGroup))
+  return cuesOf(groupWords(words, perGroup, exact))
 }
 
 /** A pause between words this long or shorter keeps the caption up: the next one replaces it, with no blink. */
@@ -352,16 +459,16 @@ export function landsLine(cue: SubtitleCue, style: Pick<CaptionStyle, 'keyFont'>
 /** The cues of a caption look, as the export burns them and the preview draws them. */
 export function styleCues(
   words: TranscriptWord[],
-  style: Pick<CaptionStyle, 'wordsPerGroup' | 'plain' | 'build' | 'keyFont' | 'lowercase' | 'bare'>
+  style: Pick<CaptionStyle, 'wordsPerGroup' | 'plain' | 'build' | 'keyFont' | 'lowercase' | 'bare' | 'exact'>
 ): SubtitleCue[] {
   // Words only: never a dash or a stray mark Whisper wrote at a turn, whatever the look.
   const spoken = words.filter((w) => SAYS.test(w.text))
   const said = style.lowercase ? spoken.map((w) => ({ ...w, text: w.text.toLowerCase() })) : spoken
   const cues =
     style.bare && !style.keyFont && !style.plain && !style.build
-      ? cuesOf(bareGroups(groupWords(said, style.wordsPerGroup)))
+      ? cuesOf(bareGroups(groupWords(said, style.wordsPerGroup, style.exact === true)))
       : !style.keyFont
-        ? subtitleCues(said, style.wordsPerGroup, style.plain === true, style.build === true)
+        ? subtitleCues(said, style.wordsPerGroup, style.plain === true, style.build === true, style.exact === true)
         : cuesOf(landedGroups(style.plain ? plainWords(said) : said, style.wordsPerGroup))
   // Up from the first frame when the first word is said that soon (OPEN_SEC).
   const first = cues[0]

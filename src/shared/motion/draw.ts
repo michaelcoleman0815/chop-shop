@@ -124,6 +124,14 @@ export function forgetMeasures(): void {
   layouts = new WeakMap()
 }
 
+/**
+ * Half a frame at the output's frame rate: the seconds a moving layer's blur spans (DrawResources.shutter), as a
+ * camera's 180-degree shutter sees a move. The export and the editor's preview both draw with it.
+ */
+export function shutterFor(outputFps: number): number {
+  return 0.5 / Math.max(1, outputFps)
+}
+
 /** Whether a layer is on screen at t. */
 export function isActive(layer: Layer, t: number): boolean {
   return t >= layer.start && t < layer.end
@@ -205,8 +213,10 @@ function drawLayer(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st:
   ctx.restore()
 }
 
-function drawPlain(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st: DrawState): void {
-  if (!isActive(layer, t)) return
+function drawPlain(ctx: Ctx, layer: Layer, t0: number, parentOpacity: number, st: DrawState): void {
+  if (!isActive(layer, t0)) return
+  // On its own steps: held from one of its frames to the next.
+  const t = layer.fps && layer.fps > 0 ? layer.start + Math.floor((t0 - layer.start) * layer.fps + 1e-6) / layer.fps : t0
   if (layer.asMatte && st.asMatte !== layer) return
   const local = t - layer.start
   const length = layer.end - layer.start
@@ -236,9 +246,15 @@ function drawPlain(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st:
     drawBehind(ctx, layer, t, parentOpacity, st)
     return
   }
-  if (layer.motionBlur && layer.motionBlur.shutter > 0 && !st.smearing && st.res.createCanvas) {
-    if (moving(ctx, layer, t, layer.motionBlur.shutter, st)) {
-      drawSmeared(ctx, layer, t, parentOpacity, st)
+  // Motion blur: the layer's own, else the frame's shutter for a fast move (DrawResources.shutter). Particles
+  // streak by their own sprites, and a layer inside one being blurred is not blurred again.
+  const shutter = layer.motionBlur?.shutter ?? (layer.kind === 'particles' ? 0 : (st.res.shutter ?? 0))
+  if (shutter > 0 && !st.smearing && st.res.createCanvas) {
+    // A group that holds still is not blurred whole: what moves inside it blurs on its own, and its still parts (a
+    // board's paper round a card sliding in) stay exactly as they are, rather than averaged with themselves.
+    const travel = (layer.kind === 'group' && !layer.motionBlur ? ownTravel(layer, t, shutter) : travelOf(ctx, layer, t, shutter, st)) * pixelScale(ctx)
+    if (layer.motionBlur ? travel > 0 : travel >= fastAcross(ctx)) {
+      drawSmeared(ctx, layer, t, parentOpacity, st, shutter, layer.motionBlur?.samples ?? samplesFor(travel))
       return
     }
   }
@@ -249,7 +265,7 @@ function drawPlain(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st:
   const blur = num(layer.effects?.blur, local, length, 0)
   if (blur > 0.01) {
     const px = blur * pixelScale(ctx)
-    const extent = st.softening ? null : localExtent(layer, local, length)
+    const extent = st.softening ? null : softExtent(ctx, layer, t, st)
     if (
       extent &&
       drawSoftened(ctx, extent, px, st, (c, inner) => drawKind(c, layer, t, local, length, opacity, inner))
@@ -317,6 +333,73 @@ function localExtent(layer: Layer, local: number, length: number): [number, numb
   if (fx?.glow) pad += fx.glow.blur * 2
   if (fx?.shadow) pad += fx.shadow.blur * 2 + Math.max(Math.abs(fx.shadow.x ?? 0), Math.abs(fx.shadow.y ?? 0))
   return [box.x - pad, box.y - pad, box.x + box.w + pad, box.y + box.h + pad]
+}
+
+/**
+ * How far a layer reaches from its origin now, in its own pixels, for blurring it on a small canvas of its own:
+ * a picture's or a shape's box (localExtent), a line of text's laid-out block with room for its moves, and a
+ * group's children's reach where they are. Without it a blurred title, or a card coming into focus, is blurred
+ * with a filter on the whole frame, which on Skia costs a second or two a frame (a cloud of soft words, 2.1 s).
+ * Null for what cannot be bounded this way (text on a path, chrome lettering, a child drawn behind the person,
+ * cut to a matte or masks, or mixed by a blend): that is blurred in place.
+ */
+function softExtent(ctx: Ctx, layer: Layer, t: number, st: DrawState): [number, number, number, number] | null {
+  const length = layer.end - layer.start
+  const local = t - layer.start
+  const own = localExtent(layer, local, length)
+  if (own) return own
+  const fx = layer.effects
+  const effectPad = (fx?.glow ? fx.glow.blur * 2 : 0) + (fx?.shadow ? fx.shadow.blur * 2 + Math.max(Math.abs(fx.shadow.x ?? 0), Math.abs(fx.shadow.y ?? 0)) : 0)
+  if (layer.kind === 'text') {
+    if (layer.chrome || layer.path) return null
+    const block = layoutFor(ctx, layer, st, layer.count ? countText(layer.count, local, length) : null)
+    const big = Math.max(block.w, block.h)
+    let pad = effectPad + num(layer.stroke?.width, local, length, 0) + (layer.cursor ? layer.cursor.width * 3 : 0)
+    if (layer.plate) pad += Math.max(layer.plate.padX ?? 0, layer.plate.padY ?? 0) + num(layer.plate.stroke?.width, local, length, 0) + (layer.plate.edge?.width ?? 0)
+    if (layer.active) pad += Math.max(0, (layer.active.scale ?? 1) - 1) * big + Math.max(layer.active.box?.padX ?? 0, layer.active.box?.padY ?? 0)
+    for (const a of layer.animators ?? []) {
+      const f = a.from
+      pad +=
+        Math.max(Math.abs(f.x ?? 0), Math.abs(f.y ?? 0)) +
+        Math.abs((f.scale ?? 1) - 1) * big +
+        (f.rotation ? big / 2 : 0) +
+        (f.tracking ? Math.abs(f.tracking) * block.chars : 0) +
+        (f.blur ?? 0) * 3
+    }
+    return [block.left - pad, block.top - pad, block.left + block.w + pad, block.top + block.h + pad]
+  }
+  if (layer.kind === 'group') {
+    let box: [number, number, number, number] | null = null
+    for (const c of layer.children) {
+      if (!isActive(c, t)) continue
+      if (c.behind || c.matte || c.masks?.length || (c.blend && c.blend !== 'normal') || c.adjust) return null
+      const e = softExtent(ctx, c, t, st)
+      if (!e) return null
+      const m = sampleTransform(c.transform, t - c.start, c.end - c.start)
+      const cos = Math.cos((m.rot * Math.PI) / 180)
+      const sin = Math.sin((m.rot * Math.PI) / 180)
+      const tx = Math.tan((m.kx * Math.PI) / 180)
+      const ty = Math.tan((m.ky * Math.PI) / 180)
+      for (const [px, py] of [
+        [e[0], e[1]],
+        [e[2], e[1]],
+        [e[0], e[3]],
+        [e[2], e[3]]
+      ]) {
+        // As applyTransform: the anchor back, scaled, skewed, turned, then moved to its place.
+        const sx = (px - m.ax) * m.sx
+        const sy = (py - m.ay) * m.sy
+        const kx = sx + tx * sy
+        const ky = ty * sx + sy
+        const x = m.x + cos * kx - sin * ky
+        const y = m.y + sin * kx + cos * ky
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y]
+      }
+    }
+    if (!box) return [0, 0, 1, 1]
+    return [box[0] - effectPad, box[1] - effectPad, box[2] + effectPad, box[3] + effectPad]
+  }
+  return null
 }
 
 /** Two small canvases per frame canvas for blurred layers, sharp and soft, grown as needed and kept. */
@@ -428,84 +511,151 @@ function drawBehind(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st
 
 /** A scratch canvas the size of the one being drawn on, kept for the next frame. */
 const scratches = new WeakMap<object, { canvas: object; ctx: Ctx }>()
-function scratchFor(ctx: Ctx, st: DrawState): { canvas: object; ctx: Ctx } | null {
+/** A second full-size canvas per frame canvas: one moment of a motion-blurred layer, drawn whole before it is averaged in. */
+const momentScratches = new WeakMap<object, { canvas: object; ctx: Ctx }>()
+
+function scratchFor(ctx: Ctx, st: DrawState, cache = scratches): { canvas: object; ctx: Ctx } | null {
   const canvas = (ctx as unknown as { canvas: { width: number; height: number } }).canvas
   if (!canvas || !st.res.createCanvas) return null
-  let s = scratches.get(canvas)
+  let s = cache.get(canvas)
   const sc = s?.canvas as { width: number; height: number } | undefined
   if (!s || !sc || sc.width !== canvas.width || sc.height !== canvas.height) {
     const made = st.res.createCanvas(canvas.width, canvas.height)
     const mctx = made.getContext('2d')
     if (!mctx) return null
     s = { canvas: made, ctx: mctx }
-    scratches.set(canvas, s)
+    cache.set(canvas, s)
   }
   return s
 }
 
-const near = (a: number, b: number, eps: number): boolean => Math.abs(a - b) <= eps
-
-/** Whether anything about the layer's place changes across the shutter. */
-function moving(ctx: Ctx, layer: Layer, t: number, shutter: number, st: DrawState): boolean {
+/**
+ * How far a layer moves across the shutter, in its frame's units: the furthest any part of it goes, from its
+ * move, its turn and its growth (each measured at its edge), and, for text, its words' and letters' own moves. 0
+ * when it holds still, when nothing needs blurring.
+ */
+function travelOf(ctx: Ctx, layer: Layer, t: number, shutter: number, st: DrawState): number {
   const length = layer.end - layer.start
   const a = t - shutter / 2 - layer.start
   const b = t + shutter / 2 - layer.start
   const ta = sampleTransform(layer.transform, a, length)
   const tb = sampleTransform(layer.transform, b, length)
-  const still =
-    near(ta.x, tb.x, 0.2) &&
-    near(ta.y, tb.y, 0.2) &&
-    near(ta.sx, tb.sx, 0.002) &&
-    near(ta.sy, tb.sy, 0.002) &&
-    near(ta.rot, tb.rot, 0.05)
-  if (!still) return true
-  if (layer.kind === 'group') return layer.children.some((c) => moving(ctx, c, t, shutter, st))
-  if (layer.kind !== 'text' || !(layer.animators ?? []).length) return false
-  const block = layoutFor(ctx, layer, st, layer.count ? countText(layer.count, a, length) : null)
-  const fa = textFrame(layer, block, a, length)
-  const fb = textFrame(layer, block, b, length)
-  const differ = (x: Unit[], y: Unit[]): boolean =>
-    x.some(
-      (u, i) =>
-        !near(u.x, y[i].x, 0.2) ||
-        !near(u.y, y[i].y, 0.2) ||
-        !near(u.scale, y[i].scale, 0.002) ||
-        !near(u.rotation, y[i].rotation, 0.05)
-    )
-  return differ(fa.lines, fb.lines) || differ(fa.words, fb.words) || differ(fa.chars, fb.chars)
+  const ext = localExtent(layer, a, length)
+  // Half its diagonal: how far its corners sit from its anchor, for a turn or a change of size.
+  const reach = ext ? Math.hypot(ext[2] - ext[0], ext[3] - ext[1]) / 2 : layer.kind === 'text' ? textReach(ctx, layer, st, a, length) : 200
+  const s = Math.max(Math.abs(ta.sx), Math.abs(tb.sx), Math.abs(ta.sy), Math.abs(tb.sy))
+  let travel =
+    Math.hypot(tb.x - ta.x, tb.y - ta.y) +
+    Math.max(Math.abs(tb.sx - ta.sx), Math.abs(tb.sy - ta.sy)) * reach +
+    ((Math.abs(tb.rot - ta.rot) * Math.PI) / 180) * reach * s +
+    (Math.abs(tb.kx - ta.kx) + Math.abs(tb.ky - ta.ky)) * (Math.PI / 180) * reach * s
+  if (layer.kind === 'group') {
+    for (const c of layer.children) travel = Math.max(travel, travelOf(ctx, c, t, shutter, st) * s)
+  } else if (layer.kind === 'text' && (layer.animators ?? []).length) {
+    const block = layoutFor(ctx, layer, st, layer.count ? countText(layer.count, a, length) : null)
+    const fa = textFrame(layer, block, a, length)
+    const fb = textFrame(layer, block, b, length)
+    const size = num(layer.font.size, a, length, 48)
+    const most = (x: Unit[], y: Unit[]): number =>
+      x.reduce(
+        (m, u, i) =>
+          Math.max(
+            m,
+            Math.hypot(u.x - y[i].x, u.y - y[i].y) + Math.abs(u.scale - y[i].scale) * size + ((Math.abs(u.rotation - y[i].rotation) * Math.PI) / 180) * size
+          ),
+        0
+      )
+    travel = Math.max(travel, Math.max(most(fa.lines, fb.lines), most(fa.words, fb.words), most(fa.chars, fb.chars)) * s)
+  }
+  // Under a fifth of a unit nothing would show.
+  return travel < 0.2 ? 0 : travel
 }
 
 /**
- * The layer drawn at several moments across the shutter onto a scratch
- * canvas, each at 1/n of its opacity and added together, which averages
- * them; the average goes onto the frame. Where the copies overlap it is as
+ * How far any part of a layer moves between t and t + dt, in design pixels: its move, turn and growth, and its
+ * words' and letters' own moves. For checking that graphics glide rather than jump from one frame to the next.
+ */
+export function layerTravel(ctx: CanvasRenderingContext2D, layer: Layer, t: number, dt: number, size: Size, res: DrawResources = {}): number {
+  if (!isActive(layer, t) || !isActive(layer, t + dt)) return 0
+  return travelOf(ctx, layer, t + dt / 2, dt, { res, size, measure: measurerFor(ctx) })
+}
+
+/** How far a group's own transform moves it across the shutter, leaving out its children's own moves. */
+function ownTravel(layer: Layer, t: number, shutter: number): number {
+  const length = layer.end - layer.start
+  const ta = sampleTransform(layer.transform, t - shutter / 2 - layer.start, length)
+  const tb = sampleTransform(layer.transform, t + shutter / 2 - layer.start, length)
+  const reach = 300
+  return Math.hypot(tb.x - ta.x, tb.y - ta.y) + Math.max(Math.abs(tb.sx - ta.sx), Math.abs(tb.sy - ta.sy)) * reach + (Math.abs(tb.rot - ta.rot) * Math.PI) / 180 * reach
+}
+
+/** Half a text block's diagonal, for its turn or its growth. */
+function textReach(ctx: Ctx, layer: TextLayer, st: DrawState, local: number, length: number): number {
+  const block = layoutFor(ctx, layer, st, layer.count ? countText(layer.count, local, length) : null)
+  return Math.hypot(block.w, block.h) / 2 || 200
+}
+
+/**
+ * How far a layer must move across the frame's shutter before the frame's own blur takes it: an eighth of the
+ * frame's width a frame (a half-frame shutter sees half of that). Creators keep ordinary moves crisp (Jordan
+ * Welch's dials and pans, up to 80 px a frame in 1080p, and Ali Abdaal's cards sliding in at 200 px a frame show
+ * no blur) and blur only what crosses the frame faster, like his full-frame push at up to 260 px a frame;
+ * slower, a smear only softens the words.
+ */
+function fastAcross(ctx: Ctx): number {
+  const canvas = (ctx as unknown as { canvas?: { width: number } }).canvas
+  return (canvas?.width ?? 1920) / 16
+}
+
+/**
+ * How many moments to draw a smear from: one every two pixels it moves, so the streak never breaks into copies,
+ * and at most 16. Each moment goes into the average at 1/n of its colour, rounded to a whole level, so more
+ * moments shift a solid colour further (by up to half of n levels).
+ */
+function samplesFor(travelPx: number): number {
+  return Math.max(2, Math.min(16, Math.ceil(travelPx / 2) + 1))
+}
+
+/**
+ * A moving layer drawn at several moments across the shutter and averaged: each moment is drawn whole on a canvas
+ * of its own, as it would be on the frame, then added to the sum at 1/n. Drawing the moments straight into the sum
+ * added each one's parts together where they overlap (a page's lines on its paper, a shadow under its words), so
+ * the parts washed out; averaged whole moments are what a camera's open shutter sees. Where they overlap it is as
  * solid as the layer, and along a fast move it streaks.
  */
-function drawSmeared(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st: DrawState): void {
-  const pair = scratchFor(ctx, st)
+function drawSmeared(ctx: Ctx, layer: Layer, t: number, parentOpacity: number, st: DrawState, shutter: number, samples: number): void {
+  const sum = scratchFor(ctx, st)
+  const one = scratchFor(ctx, st, momentScratches)
   const canvas = (ctx as unknown as { canvas: { width: number; height: number } }).canvas
-  const blur = layer.motionBlur
-  if (!pair || !blur) {
+  if (!sum || !one) {
     drawLayer(ctx, layer, t, parentOpacity, { ...st, smearing: true })
     return
   }
-  const scratch = pair.ctx
-  const n = Math.max(2, Math.min(24, Math.round(blur.samples ?? 10)))
-  scratch.setTransform(1, 0, 0, 1, 0, 0)
-  scratch.globalCompositeOperation = 'source-over'
-  scratch.clearRect(0, 0, canvas.width, canvas.height)
-  scratch.globalCompositeOperation = 'lighter'
-  const inner = { ...st, smearing: true, measure: measurerFor(scratch) }
+  const n = Math.max(2, Math.min(24, Math.round(samples)))
+  const acc = sum.ctx
+  acc.setTransform(1, 0, 0, 1, 0, 0)
+  acc.globalCompositeOperation = 'source-over'
+  acc.globalAlpha = 1
+  acc.clearRect(0, 0, canvas.width, canvas.height)
+  const moment = one.ctx
+  const inner = { ...st, smearing: true, measure: measurerFor(moment) }
   for (let k = 0; k < n; k++) {
-    scratch.setTransform(ctx.getTransform())
-    drawLayer(scratch, layer, t + blur.shutter * (k / (n - 1) - 0.5), parentOpacity / n, inner)
+    moment.setTransform(1, 0, 0, 1, 0, 0)
+    moment.globalCompositeOperation = 'source-over'
+    moment.globalAlpha = 1
+    moment.clearRect(0, 0, canvas.width, canvas.height)
+    moment.setTransform(ctx.getTransform())
+    drawLayer(moment, layer, t + shutter * (k / (n - 1) - 0.5), parentOpacity, inner)
+    acc.globalCompositeOperation = 'lighter'
+    acc.globalAlpha = 1 / n
+    acc.drawImage(one.canvas as unknown as CanvasImageSource, 0, 0)
   }
-  scratch.setTransform(1, 0, 0, 1, 0, 0)
-  scratch.globalCompositeOperation = 'source-over'
+  acc.globalCompositeOperation = 'source-over'
+  acc.globalAlpha = 1
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.globalAlpha = 1
-  ctx.drawImage(pair.canvas as unknown as CanvasImageSource, 0, 0)
+  ctx.drawImage(sum.canvas as unknown as CanvasImageSource, 0, 0)
   ctx.restore()
 }
 
@@ -686,7 +836,14 @@ function drawShape(ctx: Ctx, layer: ShapeLayer, local: number, length: number, o
     }
     if (layer.stroke && strokeW > 0) {
       applyStroke(ctx, layer.stroke, local, length, strokeW, override)
-      strokeTrimmed(ctx, cmds, trimA, trimB)
+      if (layer.stroke.dash?.length) {
+        // Dashed, whole: trim draws with dashes of its own, so the two do not mix.
+        ctx.setLineDash(layer.stroke.dash)
+        ctx.beginPath()
+        tracePath(ctx, cmds)
+        ctx.stroke()
+        ctx.setLineDash([])
+      } else strokeTrimmed(ctx, cmds, trimA, trimB)
     }
   })
 }
@@ -720,6 +877,37 @@ function drawImageLayer(
   st: DrawState
 ): void {
   ctx.globalAlpha = opacity
+  if (layer.pixelate && layer.pixelate > 1 && st.res.createCanvas) {
+    // A mosaic: the picture drawn a block to a pixel on a small canvas, then laid back over its box unsmoothed.
+    const cols = Math.max(1, Math.round(layer.w / layer.pixelate))
+    const rows = Math.max(1, Math.round(layer.h / layer.pixelate))
+    let small = mosaics.get(layer)
+    if (!small || small.width !== cols || small.height !== rows) {
+      const made = st.res.createCanvas(cols, rows)
+      const mctx = made.getContext('2d')
+      if (mctx) {
+        small = { canvas: made, ctx: mctx as unknown as Ctx, width: cols, height: rows }
+        mosaics.set(layer, small)
+      }
+    }
+    if (small) {
+      const s = small.ctx
+      s.setTransform(1, 0, 0, 1, 0, 0)
+      s.clearRect(0, 0, cols, rows)
+      s.setTransform(cols / layer.w, 0, 0, rows / layer.h, cols / 2, rows / 2)
+      drawImageLayer(s, { ...layer, pixelate: undefined, effects: undefined }, local, length, 1, st)
+      const picture = small.canvas as unknown as CanvasImageSource
+      ctx.globalAlpha = opacity
+      withEffects(ctx, layer.effects, (pass) => {
+        if (pass === 'glow') return
+        const smooth = ctx.imageSmoothingEnabled
+        ctx.imageSmoothingEnabled = false
+        ctx.drawImage(picture, -layer.w / 2, -layer.h / 2, layer.w, layer.h)
+        ctx.imageSmoothingEnabled = smooth
+      })
+      return
+    }
+  }
   if (layer.icon) {
     const nodes = st.res.icons?.(layer.icon)
     if (!nodes || nodes.length === 0) return
@@ -739,7 +927,7 @@ function drawImageLayer(
       strokeTrimmed(ctx, all, trimA, trimB)
       if (trimB >= 0.999) {
         for (const e of elements) {
-          if (!e.filled) continue
+          if (!e.filled && !(layer.iconFill && e.cmds.some((c) => c[0] === 'Z'))) continue
           ctx.beginPath()
           tracePath(ctx, e.cmds)
           ctx.fill()
@@ -811,6 +999,9 @@ function tilePath(ctx: Ctx, layer: ImageLayer): void {
   else ctx.roundRect(-layer.w / 2, -layer.h / 2, layer.w, layer.h, Math.min(layer.w, layer.h) * 0.225)
 }
 
+/** Each mosaic layer's small canvas, kept while the layer is. */
+const mosaics = new WeakMap<object, { canvas: object; ctx: Ctx; width: number; height: number }>()
+
 const marks = new Map<string, Cmd[]>()
 function markCmds(slug: string, path: string): Cmd[] {
   let cmds = marks.get(slug)
@@ -870,7 +1061,7 @@ function drawFallback(ctx: Ctx, layer: ImageLayer): void {
       if (override) return
     }
     ctx.font = fontString({ family: info.family, weight: 700 }, size)
-    ctx.fillStyle = override ?? '#FFFFFF'
+    ctx.fillStyle = override ?? fb.color ?? '#FFFFFF'
     ctx.fillText(fb.text, -ctx.measureText(fb.text).width / 2, (info.cap * size) / 2)
   })
 }

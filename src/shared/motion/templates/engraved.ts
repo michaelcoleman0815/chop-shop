@@ -1,6 +1,6 @@
 import { keys, tail } from '../anim'
 import type { Layer, TextLayer } from '../types'
-import { clamp, fitSize } from './kit'
+import { centred, clamp, fitSize } from './kit'
 import type { BuildContext } from './registry'
 
 /**
@@ -31,8 +31,8 @@ export function engravedTitle(ctx: BuildContext): Layer[] {
   const big = (lines.length >= 2 ? lines[1] : lines[0]).toUpperCase()
   const small = lines.length >= 2 ? lines[0].toUpperCase() : ''
   const vertical = frame.shape === 'vertical'
-  const safeWidth = frame.width - frame.safe.left - frame.safe.right
-  const cx = frame.safe.left + safeWidth / 2
+  // Centred on the frame's middle, where the captions centre, as wide as clears the safe area both sides.
+  const { cx, width: safeWidth } = centred(frame)
   const place = item.place === 'top' || item.place === 'lower' || item.place === 'bottom' ? item.place : 'middle'
   const cy =
     place === 'top'

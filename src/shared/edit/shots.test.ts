@@ -93,8 +93,8 @@ describe('a seated conversation, framed a shot at a time', () => {
     expect(spans.some(([a, b]) => a < 2.3 && b > 3.1)).toBe(false)
     const zooms = jumpZooms(cut, resolved, [SEATED])
     expect(zooms.filter((z) => z > 1).length).toBeGreaterThan(0)
-    // A 1080p picture cropped to vertical has no pixels to spare: the pause stays.
-    const small = { ...SEATED, width: 1920, height: 1080 }
+    // A 720p picture cropped to vertical has no pixels to spare: the pause stays.
+    const small = { ...SEATED, width: 1280, height: 720 }
     const kept = cutWith([tighten, { op: 'punch-jumps', on: true }], small).resolved
     const plays = kept.pieces.some((p) => p.srcStart < 2.3 && p.srcEnd > 3.1)
     const joined = kept.pieces.some((p, i) => i > 0 && Math.abs(kept.pieces[i - 1].srcEnd - p.srcStart) < 1e-6 && p.srcStart > 2.2 && p.srcStart < 3.15)

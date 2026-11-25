@@ -136,7 +136,9 @@ describe.skipIf(!FFMPEG)('the memory an export of many pieces holds', () => {
       [
         { op: 'remove', beats: currentCut(doc).beats.map((b) => b.id) },
         ...pieces.map((p, k) => ({ op: 'insert', to: k, beat: { source: 's1', ...p } })),
-        { op: 'aspect', aspect: 'vertical' }
+        { op: 'aspect', aspect: 'vertical' },
+        // A wide recording starts without captions: these are asked for.
+        { op: 'captions', set: { on: true } }
       ],
       { words: doc.words, sources: doc.sources }
     )

@@ -192,6 +192,8 @@ describe.skipIf(!FFMPEG)('sound effects', () => {
       [
         { op: 'aspect', aspect: 'original' },
         { op: 'loudness', lufs: null },
+        // A wide recording starts without captions: these are asked for.
+        { op: 'captions', set: { on: true } },
         { op: 'sfx', beats: ['b3'], add: { kind: 'pop', word: word.id } }
       ],
       { words: doc.words, sources: doc.sources }

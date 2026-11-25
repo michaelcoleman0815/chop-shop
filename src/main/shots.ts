@@ -30,8 +30,13 @@ export async function detectShots(
   threshold = SHOT_THRESHOLD
 ): Promise<number[]> {
   const out = await new Promise<string>((resolve) => {
+    // Its progress line and warnings are not read: kept quiet and dropped, or a long recording's stderr fills
+    // the pipe and ffmpeg waits on it for good (a 295 s 4K podcast scan hung so under load).
     const child = spawn(FFMPEG_PATH, [
       '-hide_banner',
+      '-nostats',
+      '-loglevel',
+      'error',
       '-ss',
       startSec.toFixed(3),
       '-t',
@@ -45,7 +50,7 @@ export async function detectShots(
       '-f',
       'null',
       '-'
-    ])
+    ], { stdio: ['ignore', 'pipe', 'ignore'] })
     let text = ''
     child.stdout.on('data', (d) => (text += d.toString()))
     child.on('close', () => resolve(text))

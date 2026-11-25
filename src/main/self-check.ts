@@ -187,8 +187,8 @@ export async function layersExport(): Promise<string> {
  * A short edit with a 3D clip exported the way the app exports one: a green
  * card and an extruded title under a camera that trucks right, drawn by the
  * export's 3D page. Read back from the file: grey before the clip, the card
- * in the middle as it starts and to the left by the end, as green as its
- * picture, and the title lifting the frame above it.
+ * in the middle as it starts and to the left by the end, its picture the right
+ * way up (green over blue), and the title lifting the frame above it.
  */
 async function threeLayersExport(): Promise<string> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'cutalong-self-check-3d-'))
@@ -205,7 +205,8 @@ async function threeLayersExport(): Promise<string> {
       ...['-f', 'lavfi', '-i', `color=c=0x808080:s=${W}x${H}:r=30:d=3`, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=3'],
       ...['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', base]
     ])
-    run(['-f', 'lavfi', '-i', 'color=c=0x00FF00:s=64x36', '-frames:v', '1', green])
+    // Green over blue: a picture put on upside down shows blue on top.
+    run(['-f', 'lavfi', '-i', 'color=c=0x00FF00:s=64x18', '-f', 'lavfi', '-i', 'color=c=0x0000FF:s=64x18', '-filter_complex', '[0][1]vstack', '-frames:v', '1', green])
     const source = { id: 's1', path: base, durationSec: 3, width: W, height: H, fps: 30 }
     const words = wordsFromTranscript(
       ['one', 'two', 'three', 'four', 'five'].map((text, i) => ({ text, startSec: 0.2 + i * 0.5, endSec: 0.6 + i * 0.5 })),
@@ -262,12 +263,16 @@ async function threeLayersExport(): Promise<string> {
     if (keep) await fs.copyFile(out, join(keep, '3d-layers.mp4'))
     const near = (c: number[], want: number[]): boolean => c.length === 3 && c.every((v, i) => Math.abs(v - want[i]) <= 24)
     const before = colourAt(out, 0.3, 0.45, 0.45, 0.1, 0.1)
-    const first = colourAt(out, 0.6, 0.45, 0.45, 0.1, 0.1)
+    // The card is 128 by 72 in the middle: its top half from 54 to 90 px of 180, its bottom from 90 to 126.
+    const first = colourAt(out, 0.6, 0.45, 0.36, 0.1, 0.08)
+    const under = colourAt(out, 0.6, 0.45, 0.56, 0.1, 0.08)
     // By 2.4 s the camera has trucked 91 px right, so the card's middle is at 69 px of 320.
-    const moved = colourAt(out, 2.4, 0.18, 0.45, 0.07, 0.1)
+    const moved = colourAt(out, 2.4, 0.18, 0.36, 0.07, 0.08)
     const left = colourAt(out, 2.4, 0.48, 0.45, 0.04, 0.1)
     if (!near(before, [128, 128, 128])) throw new Error(`the picture is not as it was before the 3D clip: ${before.join(',')}`)
+    if (near(first, [0, 0, 255]) && near(under, [0, 255, 0])) throw new Error(`the card's picture is upside down: blue ${first.join(',')} over green ${under.join(',')}`)
     if (!near(first, [0, 255, 0])) throw new Error(`the card is not in the middle as the clip starts: ${first.join(',')} at 0.6 s`)
+    if (!near(under, [0, 0, 255])) throw new Error(`the card's picture is not green over blue: ${under.join(',')} under ${first.join(',')}`)
     if (!near(moved, [0, 255, 0])) throw new Error(`the card did not move left as the camera trucked right: ${moved.join(',')} at 2.4 s`)
     if (!near(left, [128, 128, 128])) throw new Error(`the card is still in the middle at 2.4 s: ${left.join(',')}`)
     const lit = colourAt(out, 0.6, 0.4, 0.1, 0.2, 0.18)
@@ -293,7 +298,7 @@ async function threeLayersExport(): Promise<string> {
     const how = await cancelled
     if (how !== 'stopped') throw new Error('a cancelled 3D export ran to the end')
     if (BrowserWindow.getAllWindows().length > 0) throw new Error('the 3D page was left open after the export was cancelled')
-    return `${layers.overlays.length} overlay drawn in ${drawn} ms: card ${first.join(',')} then ${moved.join(',')} to the left, title ${lit.join(',')}; a cancelled export stopped and closed its page`
+    return `${layers.overlays.length} overlay drawn in ${drawn} ms: card ${first.join(',')} over ${under.join(',')} then ${moved.join(',')} to the left, title ${lit.join(',')}; a cancelled export stopped and closed its page`
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }

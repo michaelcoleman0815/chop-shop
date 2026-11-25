@@ -42,7 +42,8 @@ export function MotionCanvas({
   redraw = 0,
   className = 'cl-motion',
   base,
-  onUnreadable
+  onUnreadable,
+  shutter
 }: {
   scene: MotionScene
   assets: Asset[]
@@ -68,6 +69,8 @@ export function MotionCanvas({
   base?: (width: number, height: number) => CanvasImageSource | null
   /** Told when an adjustment layer cannot read the picture under it. */
   onUnreadable?: (why: string) => void
+  /** The seconds a moving graphic's blur spans, as the export draws it (shutterFor): none when absent. */
+  shutter?: number
 }): JSX.Element | null {
   const canvas = useRef<HTMLCanvasElement>(null)
   // Bumped when a face, the icons or an image finishes loading, so the frame redraws with it.
@@ -148,13 +151,13 @@ export function MotionCanvas({
       scene.layers,
       scene.size,
       { width: pw, height: ph },
-      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map, video, base: under, unreadable: onUnreadable, mattes, keySize, scene3d }
+      { icons: icons ?? undefined, logos: logos ?? undefined, images: pictures, createCanvas: makeCanvas, map, video, base: under, unreadable: onUnreadable, mattes, keySize, scene3d, shutter }
     )
     // Whether it covers the picture now, drawn over it while a layer blends with it.
     el.dataset.base = under ? 'on' : 'off'
     // The moment drawn, for anyone checking the preview against the export.
     el.dataset.time = time.toFixed(4)
-  }, [scene, time, width, height, loaded, icons, logos, pictures, map, video, redraw, base, onUnreadable, mattes, keySize, scene3d])
+  }, [scene, time, width, height, loaded, icons, logos, pictures, map, video, redraw, base, onUnreadable, mattes, keySize, scene3d, shutter])
 
   if (scene.layers.length === 0) return null
   return <canvas ref={canvas} className={className} style={{ width, height }} aria-hidden="true" />

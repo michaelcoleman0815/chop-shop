@@ -30,6 +30,8 @@ export type HostMessage =
       local: number
       length: number
       videos: { object: string; data: Uint8Array; width: number; height: number }[]
+      /** Seconds across which a moving scene is averaged, a camera's shutter (shutterFor); sharp when absent. */
+      shutter?: number
     }
   /** A clip that has ended: everything it held is let go. */
   | { id: number; kind: 'drop'; clip: string }

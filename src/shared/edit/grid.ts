@@ -195,14 +195,17 @@ export function gridHeard(grid: Grid): 'own' | 'none' | number {
 
 /**
  * The cut as the preview hears it: the pieces of a grid that plays another
- * panel's sound, or none, are silent on their own picture's deck.
+ * panel's sound, or none, and of a muted beat (a title slug, a moment played
+ * under the music alone), are silent on their own picture's deck.
  */
 export function silenceGrids<R extends { pieces: { beat: string; silent?: boolean }[] }>(
-  cut: { beats: { id: string; treatment: { grid?: Grid | null } }[] },
+  cut: { beats: { id: string; treatment: { grid?: Grid | null; mute?: boolean } }[] },
   resolved: R
 ): R {
   const quiet = new Set(
-    cut.beats.filter((b) => b.treatment.grid && gridHeard(b.treatment.grid) !== 'own').map((b) => b.id)
+    cut.beats
+      .filter((b) => b.treatment.mute || (b.treatment.grid && gridHeard(b.treatment.grid) !== 'own'))
+      .map((b) => b.id)
   )
   if (quiet.size === 0) return resolved
   return { ...resolved, pieces: resolved.pieces.map((p) => (quiet.has(p.beat) ? { ...p, silent: true } : p)) }

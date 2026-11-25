@@ -68,6 +68,13 @@ export interface Template {
    * under it. Null when it holds no such stretch.
    */
   band?(ctx: BuildContext): { top: number; bottom: number } | null
+  /**
+   * Whether this call draws behind the person (a title set behind the speaker, logos with fx behind), so the
+   * export has the person cut out over its stretch.
+   */
+  behind?(call: MotionCall): boolean
+  /** The generic fx words (motion/fx) it reads itself, so they are not put on its words again: a callout's plate. */
+  ownFx?: readonly string[]
   fields: Field[]
   /** A call the planner's instructions show, and what it does, in a few words. */
   example: { call: Omit<MotionCallInput, 'kind'>; says: string }

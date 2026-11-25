@@ -77,7 +77,8 @@ describe('captions off: the closed captions beside the export', () => {
 
 describe('captions burned in: the files beside the export', () => {
   it('match the picture: the words under the card wait, as they do on screen', () => {
-    const { cut, resolved, scene, pass } = talk([TITLE])
+    // A wide recording starts without captions: these are asked for.
+    const { cut, resolved, scene, pass } = talk([{ op: 'captions', set: { on: true } } as Op, TITLE])
     const { cues, burned } = exportCues({ cut, resolved, pass, scene, width: 1920 })
     expect(burned).toBe(true)
     if (drawsCaptions(cut.captions)) return // drawn by the graphics: drawnCues, in upload-kit.test
