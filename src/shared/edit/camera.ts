@@ -31,7 +31,8 @@ export const CAMERA_KINDS = [
   'shake',
   'focus',
   'hold',
-  'settle'
+  'settle',
+  'glide'
 ] as const
 export type CameraKind = (typeof CAMERA_KINDS)[number]
 
@@ -67,7 +68,13 @@ export const CameraSchema = z.object({
   /** How long the move takes: a punch-in's ease, a shake, a focus's glide. Push-ins and pans span the beat. */
   sec: z.number().min(0.05).max(30).optional(),
   /** For a focus: the regions to show, in order of time. */
-  regions: z.array(RegionSchema).min(1).max(240).optional()
+  regions: z.array(RegionSchema).min(1).max(240).optional(),
+  /**
+   * For a glide: when it sets off and when it sets off back, in seconds into the beat's picture, before it or after
+   * it too, since a glide runs on through the beats of one take. Absent, it is there already, and stays.
+   */
+  in: z.number().min(-60).max(600).optional(),
+  back: z.number().min(-60).max(600).optional()
 })
 export type Camera = z.infer<typeof CameraSchema>
 
@@ -95,10 +102,13 @@ export const CAMERA_INFO: Record<CameraKind, CameraInfo> = {
   hold: { label: 'a closer frame held still', zoom: 1.25 },
   // After a flash cut, as Deep End with Lecrae lands every new beat (measured): 6.4% in over 14 frames on an
   // ease-out, then the same slow linear push every talking head runs, 2.4% a second. `zoom` is where it ends.
-  settle: { label: 'a settle after a flash', zoom: 1.12 }
+  settle: { label: 'a settle after a flash', zoom: 1.12 },
+  // The whole take moving over to one side for something beside the speaker, as Iman Gadzhi's does (measured: about
+  // 2.4 s on an in-out-cubic, with no cut). Made for graphics that need the room (edit/room).
+  glide: { label: 'a glide to one side', zoom: 1.2, sec: 2.2 }
 }
 
-export type Ease = 'linear' | 'in-out' | 'out'
+export type Ease = 'linear' | 'in-out' | 'out' | 'glide'
 
 /** The frame at a moment: how close, and where it is centred, as fractions of the recording. */
 export interface View {
@@ -143,6 +153,8 @@ export function ease(kind: Ease, u: number): number {
   const v = Math.min(1, Math.max(0, u))
   if (kind === 'linear') return v
   if (kind === 'out') return 1 - (1 - v) ** 3
+  // In and out on a cube: it sets off and lands so softly that neither end is seen.
+  if (kind === 'glide') return v < 0.5 ? 4 * v ** 3 : 1 - (2 - 2 * v) ** 3 / 2
   return v * v * (3 - 2 * v)
 }
 
@@ -283,6 +295,19 @@ export function cameraPlan(
         amp: 0.3 * (1 - 1 / zoom)
       }
       break
+    case 'glide': {
+      const sec = move.sec ?? info.sec ?? 2.2
+      const there = at(move.to, zoom)
+      const whole = at(move.from, 1)
+      // Times before the beat are a glide that set off in the one before it, carried on from there.
+      keys = move.in === undefined ? [key(Math.min(0, move.back ?? 0), there)] : [key(move.in, whole), key(move.in + sec, there, 'glide')]
+      if (move.back !== undefined) {
+        // Never before it has arrived.
+        const back = Math.max(move.back, keys[keys.length - 1].t)
+        keys.push({ ...key(back, there, 'linear') }, key(back + sec, whole, 'glide'))
+      }
+      break
+    }
     case 'focus': {
       // From the whole frame, a glide to each region at its time, holding between.
       const glide = move.sec ?? info.sec ?? 0.6

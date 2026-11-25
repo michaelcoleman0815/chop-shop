@@ -280,6 +280,8 @@ describe('long-form captions', () => {
     expect(captionStyleFor(spec, 3840, null, 2160).fontSizePx).toBe(105)
     // Low in the frame, as long-form subtitles stand, and still: the word said is not lit in the accent.
     expect(long.positionFrac).toBe(WIDE_POSITION_FRAC.chest)
+    // Never higher than the foot, at the chest or the middle either.
+    for (const position of ['chest', 'middle', 'bottom'] as const) expect(captionStyleFor({ ...spec, position }, 1920, null, 1080).positionFrac).toBe(0.88)
     expect(short.activeColor).toBe('#FFD400')
     expect(long.activeColor).toBe(long.textColor)
     expect(long.outlinePx).toBeLessThan(short.outlinePx)

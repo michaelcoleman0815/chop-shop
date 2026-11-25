@@ -1,4 +1,7 @@
+import type { FaceBox } from '../captions'
+import type { Frame } from '../theme'
 import type { Animator, Layer, Span, TextLayer } from '../types'
+import { speakerFace } from './chips'
 import { accentOf, centred, fitSize, spokenTimes, TIMING } from './kit'
 import { register, type BuildContext } from './registry'
 import { engravedTitle } from './engraved'
@@ -277,6 +280,20 @@ function behindTitle(ctx: BuildContext, lead: string, keyword: string): Layer[] 
   })
 }
 
+/**
+ * Where a title goes so it never runs over the speaker's face, where the faces are known: one asked for across the
+ * top or the middle goes to the bottom, over the chest, when the face is in its way. Beside them only when asked.
+ */
+type TitlePlace = 'top' | 'middle' | 'bottom' | 'left' | 'right'
+function offFace(frame: Frame, faces: FaceBox[], asked: TitlePlace): TitlePlace {
+  if ((asked !== 'top' && asked !== 'middle') || faces.length === 0) return asked
+  const face = speakerFace(frame, faces)
+  // The band the title holds, as shares of the frame's height, across its middle.
+  const [from, to] = asked === 'top' ? [0.02, 0.4] : [0.22, 0.62]
+  const inWay = face.y < to && face.y + face.h > from && face.x < 0.75 && face.x + face.w > 0.25
+  return inWay ? 'bottom' : asked
+}
+
 function kinetic(ctx: BuildContext): Layer[] {
   const { frame, theme, item, span } = ctx
   const { start, end } = span
@@ -290,7 +307,8 @@ function kinetic(ctx: BuildContext): Layer[] {
   if (style === 'behind') return behindTitle(ctx, lead, keyword)
   const vertical = frame.shape === 'vertical'
   const safeWidth = frame.width - frame.safe.left - frame.safe.right
-  const place = (['top', 'bottom', 'left', 'right'] as const).find((p) => p === item.place) ?? 'middle'
+  const asked = (['top', 'bottom', 'left', 'right'] as const).find((p) => p === item.place) ?? 'middle'
+  const place = offFace(frame, ctx.faces, asked)
   // Beside the speaker, as Elevation and The Diary of a CEO set theirs: in the outer part of a wide frame, set
   // from its edge. Elsewhere, centred.
   const side = place === 'left' || place === 'right'

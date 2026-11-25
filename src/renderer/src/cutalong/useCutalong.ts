@@ -89,6 +89,7 @@ import {
   type Camera
 } from '../../../shared/edit'
 import { cutShape, likeness, type InspirationStudy } from '../../../shared/inspiration'
+import type { PlanQuality } from '../../../shared/plan-quality'
 import { mouthForNiche, setMouthModeAll } from '../../../shared/vision'
 import { brandPreset, styleOfVideos, type Brand, type BrandVideo } from '../../../shared/brand'
 import {
@@ -153,9 +154,12 @@ import {
   gateOpen,
   keyMessage,
   keyStatus,
+  money,
+  quoteLines,
   type Blocked,
   type ClaudeKeyState,
-  type ClaudeKeyStatus
+  type ClaudeKeyStatus,
+  type PlanQuote
 } from '../../../shared/setup'
 import type { PlannedCommand } from '../../../shared/plan/commands'
 import { joinViews, planPovs, readPovWords, type PovAsk } from '../../../shared/pov'
@@ -221,6 +225,17 @@ export interface PanelStatus {
   error?: boolean
   /** Answers to a question Claude asked, as buttons that send their words, or the way to the key's steps. */
   actions?: Action[]
+}
+
+/** An edit waiting on its price: what was asked, of which edit, and what was said yes to when its button is pressed. */
+interface PlanAsk {
+  docId: string
+  /** The words asked, or the notes left in the editor when there are none. */
+  text: string | null
+  first?: boolean
+  quality: PlanQuality
+  about: number
+  most: number
 }
 
 /** Commands that do something rather than set a style. They sit in the slash menu with the presets. */
@@ -449,7 +464,7 @@ const BARE_CLIP_MIN_SEC = 10 * 60
 const PLACE_MATERIAL = 'Put the material I just brought in where it fits what I am saying.'
 
 /** The actions that change the edit or bring something into it: they wait for a working key. */
-const CHANGES: ReadonlySet<Action['kind']> = new Set(['use-style', 'strip-never', 'add-clip', 'add-icon', 'sign-in', 'add-broll', 'broll-web'])
+const CHANGES: ReadonlySet<Action['kind']> = new Set(['plan', 'use-style', 'strip-never', 'add-clip', 'add-icon', 'sign-in', 'add-broll', 'broll-web'])
 
 /** "a", "a and b", "a, b and c". */
 function listOf(names: string[]): string {
@@ -4041,15 +4056,49 @@ export function useCutalong() {
    * reply. `first` is set for the words sent with the footage the edit was
    * just made from, which shape its first version.
    */
+  /**
+   * An edit's price said before it starts, with what it is made of and the buttons that go ahead: at how hard the
+   * person has me work, or planned once for less. Nothing is spent until one is pressed.
+   */
+  const sayPrice = useCallback(
+    (q: PlanQuote, ask: { text: string | null; first?: boolean }): void => {
+      const d = docRef.current
+      if (!d) return
+      const { text, aside } = quoteLines(q)
+      const payload = (quality: PlanQuality, price: { about: number; most: number }): string =>
+        JSON.stringify({ docId: d.id, ...ask, quality, about: price.about, most: price.most } satisfies PlanAsk)
+      const actions: Action[] = [
+        { kind: 'plan', label: q.change || ask.text === null ? 'Go ahead' : 'Edit it', tail: ` · ${money(q.about)}`, primary: true, payload: payload(q.quality, q) },
+        ...(q.quick ? [{ kind: 'plan' as const, label: 'Quick instead', tail: ` · ${money(q.quick.about)}`, payload: payload('quick', q.quick) }] : [])
+      ]
+      if (ask.text === null) setPanel({ text: `${text} ${aside}`, actions })
+      else push({ role: 'assistant', text, aside, actions })
+    },
+    [push]
+  )
+
   /** Claude plans what was said, and the plan is carried out; the version it made, or null. */
   const planWords = useCallback(
-    async (text: string, opts: { first?: boolean } = {}): Promise<number | null> => {
+    async (text: string, opts: { first?: boolean; agreed?: { quality: PlanQuality; most: number } } = {}): Promise<number | null> => {
       const d = docRef.current
       if (!d) return null
-      // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs.
-      const thinking = { stage: 'Thinking', percent: null }
+      // A price waiting on another ask is not waited on any more.
+      setMessages((ms) => (ms.some((m) => m.actions?.some((a) => a.kind === 'plan')) ? ms.map((m) => ({ ...m, actions: m.actions?.filter((a) => a.kind !== 'plan') })) : ms))
+      const context = planContext(text)
+      const quote = opts.agreed ? null : await api.planQuote({ doc: d, request: text, notes: [], commands: context.commands, chat: context.chat }).catch(() => null)
+      if (quote?.ask) {
+        sayPrice(quote, { text, ...(opts.first ? { first: true } : {}) })
+        return null
+      }
+      const agreed = opts.agreed ?? (quote ? { quality: quote.quality, most: quote.most } : undefined)
+      // Claude thinking has no percent to give, so the bar sweeps and the stopwatch runs. What it will cost is said with it.
+      const thinking = { stage: quote ? `Thinking, about ${money(quote.about)}` : 'Thinking', percent: null }
       const id = push({ role: 'assistant', text: '', progress: thinking })
-      const r = await api.planEdit({ doc: d, request: text, notes: [], voice: brandNow().voice, ...planContext(text) })
+      // Once there is a plan, it is looked at and what is not good enough redone: each step is said as it starts.
+      const off = api.onCutProgress((p) => patch(id, { progress: p }))
+      const r = await api
+        .planEdit({ doc: d, request: text, notes: [], voice: brandNow().voice, ...context, ...(agreed ? { agreed } : {}) })
+        .finally(off)
       if (docRef.current?.id !== d.id) {
         patch(id, { progress: null, text: 'Another edit is open now, so I left this one as it was.' })
         return null
@@ -4073,7 +4122,7 @@ export function useCutalong() {
       patch(id, {
         progress: null,
         text: done.reply.text,
-        aside: done.reply.aside,
+        aside: [done.reply.aside, r.cost !== undefined ? `It cost ${money(r.cost)}.` : null].filter(Boolean).join(' ') || null,
         actions: done.reply.actions.length ? done.reply.actions : undefined,
         details: done.reply.details.length ? done.reply.details : undefined
       })
@@ -4087,7 +4136,7 @@ export function useCutalong() {
       if (wanted.length > 0) await offerBroll(wanted.map((w) => ({ search: w.search, beat: w.beat })))
       return done.n
     },
-    [brandNow, carryPlan, offerBroll, noteKey, patch, planContext, push]
+    [brandNow, carryPlan, offerBroll, noteKey, patch, planContext, push, sayPrice]
   )
 
   /** A request in words: Claude reads it, and Cutalong carries out the plan. */
@@ -4681,6 +4730,9 @@ export function useCutalong() {
   /** An export tried again from its reply: the version on screen, or the clips that did not go out. Set below, with exportFinal. */
   const retry = useRef<(payload: string) => void>(() => undefined)
 
+  /** An edit whose price was said, gone ahead with. Set below, with applyNotes. */
+  const goAhead = useRef<(payload: string) => void>(() => undefined)
+
   /** An action's own work, once it may run. */
   const act = useCallback(
     (a: Action): void => {
@@ -4693,6 +4745,7 @@ export function useCutalong() {
       else if (a.kind === 'save-style' && a.payload) void saveStyle(a.payload)
       else if (a.kind === 'reveal' && a.payload) void api.reveal(a.payload)
       else if (a.kind === 'strip-never') void during(async () => stripNever('thread'))
+      else if (a.kind === 'plan' && a.payload) goAhead.current(a.payload)
       else if (a.kind === 'copy' && a.payload) {
         void navigator.clipboard.writeText(a.payload).then(
           () => setToast({ text: 'Copied.' }),
@@ -4773,7 +4826,7 @@ export function useCutalong() {
     [setDoc]
   )
 
-  const applyNotes = useCallback(async (): Promise<void> => {
+  const applyNotes = useCallback(async (agreed?: { quality: PlanQuality; most: number }): Promise<void> => {
     const d = docRef.current
     if (!d) return
     if (!(await keyOpen())) {
@@ -4798,11 +4851,22 @@ export function useCutalong() {
     const held = picks.every((p) => p.length > 0) ? [...new Set(picks.flat())] : null
     const heldSpan = held ? rangeTimes(resolveCut(currentCut(d), d.words, d.sources), held) : null
     const since = Date.now()
-    const thinking = { stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}`, percent: null }
+    const context = planContext('')
+    const quote = agreed ? null : await api.planQuote({ doc: d, request: '', notes, commands: context.commands, chat: context.chat }).catch(() => null)
+    if (docRef.current?.id !== d.id) return
+    if (quote?.ask) {
+      sayPrice(quote, { text: null })
+      return
+    }
+    const yes = agreed ?? (quote ? { quality: quote.quality, most: quote.most } : undefined)
+    const thinking = {
+      stage: `Thinking about ${notes.length === 1 ? 'the note' : `${notes.length} notes`}${quote ? `, about ${money(quote.about)}` : ''}`,
+      percent: null
+    }
     setPanel({ text: '', progress: thinking, since })
     // Claude reads every note, a word or a whole prompt, and plans them as one version.
     const r = await during(() =>
-      api.planEdit({ doc: d, request: '', notes, voice: brandNow().voice, ...planContext('') })
+      api.planEdit({ doc: d, request: '', notes, voice: brandNow().voice, ...context, ...(yes ? { agreed: yes } : {}) })
     )
     // The answer is about this edit; should another be open by now, it is not applied to that one.
     if (docRef.current?.id !== d.id) return
@@ -4840,12 +4904,44 @@ export function useCutalong() {
           : `I left out ${done.outside} changes that reached outside ${name}.`
         : ''
     const reply = allOutside ? `I left the edit as it was: what the plan changed reached outside ${name}.` : done.reply.text
-    const extra = [leftOut, done.reply.aside ?? ''].map((t) => sentence(t)).filter(Boolean).join(' ')
+    const extra = [leftOut, done.reply.aside ?? '', r.cost !== undefined ? `It cost ${money(r.cost)}.` : ''].map((t) => sentence(t)).filter(Boolean).join(' ')
     setPanel({
       text: `${lead}${reply}${extra ? ` ${extra}` : ''}`,
       actions: done.reply.actions.filter((a) => a.kind === 'say' || a.kind === 'setup-key')
     })
-  }, [applyAsVersion, brandNow, carryPlan, during, keyOpen, noteKey, planContext, setDoc, stopped])
+  }, [applyAsVersion, brandNow, carryPlan, during, keyOpen, noteKey, planContext, sayPrice, setDoc, stopped])
+
+  goAhead.current = (payload: string): void => {
+    const ask = JSON.parse(payload) as PlanAsk
+    const d = docRef.current
+    // Priced for one edit, it goes ahead for that one only.
+    if (!d || d.id !== ask.docId) {
+      setToast({ text: 'That price was for another edit, so I left this one as it was.' })
+      return
+    }
+    void during(async () => {
+      // What Anthropic keeps runs out in minutes: where the price has gone up since it was said, it is said again.
+      const notes = ask.text === null ? openNotes(d) : []
+      const context = planContext(ask.text ?? '')
+      const now = await api
+        .planQuote({ doc: d, request: ask.text ?? '', notes, commands: context.commands, chat: context.chat, quality: ask.quality })
+        .catch(() => null)
+      if (now && now.about > ask.about + 0.05) {
+        sayPrice(now, { text: ask.text, ...(ask.first ? { first: true } : {}) })
+        return
+      }
+      const agreed = { quality: ask.quality, most: ask.most }
+      if (ask.text === null) await applyNotes(agreed)
+      else {
+        setBusy(true)
+        try {
+          await planWords(ask.text, { agreed, ...(ask.first && d.versions.length === 1 ? { first: true } : {}) })
+        } finally {
+          setBusy(false)
+        }
+      }
+    })
+  }
 
   const applyOpsDirect = useCallback(
     (ops: Op[], fallback: string): void => {

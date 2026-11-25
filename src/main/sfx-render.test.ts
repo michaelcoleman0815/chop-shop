@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -17,6 +17,9 @@ import {
   type SfxKind
 } from '../shared/edit'
 import { renderCut, type RenderSource } from './cut-render'
+import { withOwnSounds } from '../shared/sounds'
+import { ownSounds } from './own-sounds'
+import { fromPlannerOp } from './planner-prompt'
 import { makeSfx, readSound } from './sfx'
 import { ffmpegRun, findFfmpeg, makeClip, meanLevel, onsets, toneLevel } from './test-media'
 
@@ -182,6 +185,36 @@ describe.skipIf(!FFMPEG)('sound effects', () => {
       )?.[1]
     )
     expect(Math.abs(peak + 7)).toBeLessThan(0.8)
+  })
+
+  it('peaks one of their whooshes on the cut, and ends one of their risers on it, as the planner picks them', async () => {
+    // A library as a person keeps it: a whoosh with silence before it and its loudest a third of the way in, and
+    // a riser swelling to its end. Each is read, chosen and planned as a real one is.
+    const sounds = join(dir, 'mine')
+    mkdirSync(join(sounds, 'whoosh'), { recursive: true })
+    mkdirSync(join(sounds, 'riser'), { recursive: true })
+    ffmpegRun(ffmpeg, ['-f', 'lavfi', '-i', "aevalsrc=exprs='0.6*sin(2*PI*400*t)*if(lt(t,0.25),0,if(lt(t,0.5),pow((t-0.25)/0.25,2),pow((1-t)/0.5,2)))':s=48000:d=1", join(sounds, 'whoosh', 'Air.wav')])
+    ffmpegRun(ffmpeg, ['-f', 'lavfi', '-i', "aevalsrc=exprs='0.6*sin(2*PI*400*t)*pow(t/1.5,3)':s=48000:d=1.5", join(sounds, 'riser', 'Rise.wav')])
+    const library = await ownSounds(ffmpeg, [sounds], join(dir, 'mine.json'))
+    expect(library.map((s) => [s.kind, s.name])).toEqual([
+      ['whoosh', 'Air'],
+      ['riser', 'Rise']
+    ])
+    const planned = withOwnSounds(
+      [
+        { op: 'sfx' as const, beats: ['b2'], kind: 'whoosh' as const, sound: '', word: '', gainDb: 0 },
+        { op: 'sfx' as const, beats: ['b4'], kind: 'riser' as const, sound: 's2', word: '', gainDb: 0 }
+      ],
+      library
+    )
+    const { out, cut } = await render(planned.map((o) => fromPlannerOp(o)) as Op[], 'mine')
+    const at = new Map(placeSfx(cut.beats, resolveCut(cut, doc.words, doc.sources)).map((p) => [p.beat, p.atSec]))
+    const b2 = at.get('b2')!
+    expect(Math.abs(loudestAt(ffmpeg, out, b2 - 0.5, b2 + 0.6) - b2)).toBeLessThan(0.05)
+    const b4 = at.get('b4')!
+    // Loud right up to the cut, and gone after it.
+    expect(Math.abs(loudestAt(ffmpeg, out, b4 - 1.4, b4 + 0.4) - b4)).toBeLessThan(0.06)
+    expect(meanLevel(ffmpeg, out, b4 + 0.1, 0.2)).toBeLessThan(-60)
   })
 
   it('keeps a word’s sound where graphics hold the word out of the subtitles', async () => {

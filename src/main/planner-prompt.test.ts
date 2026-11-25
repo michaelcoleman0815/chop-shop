@@ -206,7 +206,7 @@ describe('the planner request', () => {
       doc,
       {
         ops: [
-          { op: 'sfx', beats: ['b2'], kind: 'whoosh', word: '', gainDb: 0 },
+          { op: 'sfx', beats: ['b2'], kind: 'whoosh', sound: '', word: '', gainDb: 0 },
           { op: 'transition', beats: ['b2'], kind: 'zoom', sec: 0 },
           { op: 'treat', beats: ['b2'], set: { bw: true } }
         ].map((o) => o as never),
@@ -307,12 +307,12 @@ describe('the planner request', () => {
       beats: ['b2'],
       move: null
     })
-    expect(fromPlannerOp({ op: 'sfx', beats: ['b2'], kind: 'whoosh', word: '', gainDb: 0 })).toEqual({
+    expect(fromPlannerOp({ op: 'sfx', beats: ['b2'], kind: 'whoosh', sound: '', word: '', gainDb: 0 })).toEqual({
       op: 'sfx',
       beats: ['b2'],
       add: { kind: 'whoosh' }
     })
-    expect(fromPlannerOp({ op: 'sfx', beats: ['b2'], kind: 'none', word: '', gainDb: 0 })).toEqual({
+    expect(fromPlannerOp({ op: 'sfx', beats: ['b2'], kind: 'none', sound: '', word: '', gainDb: 0 })).toEqual({
       op: 'sfx',
       beats: ['b2'],
       add: null
@@ -479,8 +479,8 @@ describe('the planner request', () => {
     const word = doc.words.find((w) => w.text === 'thing.')!
     const plan = PlanSchema.parse({
       ops: [
-        { op: 'sfx', beats: [ids[1]], kind: 'hit', word: '', gainDb: 0 },
-        { op: 'sfx', beats: [ids[0]], kind: 'pop', word: word.id, gainDb: -3 }
+        { op: 'sfx', beats: [ids[1]], kind: 'hit', sound: '', word: '', gainDb: 0 },
+        { op: 'sfx', beats: [ids[0]], kind: 'pop', sound: '', word: word.id, gainDb: -3 }
       ],
       summary: 'A hit and a pop.',
       reply: 'Done.',

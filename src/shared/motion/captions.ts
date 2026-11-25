@@ -274,8 +274,9 @@ function placePage(
   const middle = W / 2
   if (backdrop) return { x: middle, y: H * 0.5 - height / 2 }
   if (position === 'top') return { x: middle, y: frame.safe.top + H * 0.02 }
+  // On a wide frame, along the foot and nowhere higher: the chest is the middle of the picture there.
+  if (position === 'bottom' || frame.shape === 'wide') return { x: middle, y: lowest }
   if (position === 'middle') return { x: middle, y: H * 0.45 - height / 2 }
-  if (position === 'bottom') return { x: middle, y: lowest }
   const resting = H * (frame.shape === 'vertical' ? 0.6 : 0.62)
   if (faces.length === 0) return { x: middle, y: Math.min(resting, lowest) }
   const speaker = faces.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a))
@@ -326,7 +327,8 @@ function stepAside(
     y >= frame.safe.top && y + height <= H - frame.safe.bottom && crossing(bands, start, end, y, height, frame).length === 0 && offFaces(y)
   const below = Math.max(...under.map((b) => b.bottom)) + gap
   const above = Math.min(...under.map((b) => b.top)) - gap - height
-  const options = [below, ...(faces.length > 0 ? [above] : [])].filter(clear)
+  // A wide frame's captions wait for a graphic along the foot rather than climbing over it.
+  const options = [below, ...(faces.length > 0 && frame.shape !== 'wide' ? [above] : [])].filter(clear)
   if (options.length === 0) return null
   return options.reduce((a, b) => (Math.abs(b - at.y) < Math.abs(a - at.y) ? b : a))
 }
@@ -339,7 +341,7 @@ const shown = (text: string): string =>
 export function hierarchyLook(frame: Frame): { big: number; small: number; maxWidth: number; maxBigChars: number } {
   const vertical = frame.shape === 'vertical'
   // Sizes from the look this follows: the big line about a tenth of the frame's short side, the small one two thirds of it.
-  const big = (vertical ? 86 : 96) * frame.u
+  const big = (vertical ? 86 : 96) * frame.u * sized(frame)
   const safeWidth = frame.width - frame.safe.left - frame.safe.right
   const maxWidth = vertical ? safeWidth * 0.94 : frame.shape === 'wide' ? frame.width * 0.46 : safeWidth * 0.8
   return { big, small: 0.68, maxWidth, maxBigChars: Math.max(8, Math.floor(maxWidth / (big * 0.58))) }
@@ -457,12 +459,19 @@ export function hierarchyPage(
   }
 }
 
+/**
+ * A wide frame's drawn captions against a Short's: long-form captions are small, low and still, whatever look they
+ * wear and wherever they were asked to stand (the owner, 2026-11-24: "never that high"). Only the top is another place.
+ */
+export const WIDE_DRAWN_SCALE = 0.72
+const sized = (frame: Frame): number => (frame.shape === 'wide' ? WIDE_DRAWN_SCALE : 1)
+
 /** The look of boxed pages in a frame: the size, the wrap width, and the box that follows the spoken word. */
 export function boxedLook(frame: Frame): { size: number; maxWidth: number; lineHeight: number } {
   const vertical = frame.shape === 'vertical'
   const safeWidth = frame.width - frame.safe.left - frame.safe.right
   return {
-    size: (vertical ? 76 : 68) * frame.u,
+    size: (vertical ? 76 : 68) * frame.u * sized(frame),
     maxWidth: vertical ? safeWidth * 0.92 : frame.shape === 'wide' ? frame.width * 0.5 : safeWidth * 0.84,
     lineHeight: 1.24
   }
@@ -579,7 +588,7 @@ export function popLook(frame: Frame): { size: number; maxWidth: number; lineHei
   const vertical = frame.shape === 'vertical'
   const safeWidth = frame.width - frame.safe.left - frame.safe.right
   return {
-    size: (vertical ? 84 : 72) * frame.u,
+    size: (vertical ? 84 : 72) * frame.u * sized(frame),
     maxWidth: vertical ? safeWidth * 0.9 : frame.shape === 'wide' ? frame.width * 0.5 : safeWidth * 0.84,
     lineHeight: 1.12,
     family: 'Inter ExtraBold'

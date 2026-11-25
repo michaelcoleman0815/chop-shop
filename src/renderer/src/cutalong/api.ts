@@ -46,6 +46,7 @@ export type CutalongApi = Pick<
   | 'onClipsProgress'
   | 'clipPoster'
   | 'planEdit'
+  | 'planQuote'
   | 'triage'
   | 'studyInspiration'
   | 'onInspirationProgress'

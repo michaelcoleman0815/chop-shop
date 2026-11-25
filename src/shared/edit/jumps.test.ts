@@ -70,6 +70,16 @@ describe('jump cuts, hidden with a punch-in', () => {
     expect(zoomAt(zooms, resolved, 11)).toBe(JUMP_PUNCH)
   })
 
+  it('leaves a screen recording with the speaker kept in a window as it is: a punch would push them off the edge', () => {
+    const window: [number, number, number, number] = [0.763, 0.226, 0.224, 0.552]
+    const screen = { everySec: 2, samples: Array.from({ length: 30 }, (_, i) => ({ t: i * 2, lines: [], window })) }
+    const ops = [strike(LINES[1]), { op: 'punch-jumps', on: true } as Op]
+    const { cut, resolved } = cutWith(ops, WIDE)
+    expect(jumpZooms(cut, resolved, [{ ...WIDE, screen }]).every((z) => z === 1)).toBe(true)
+    // The same jump in a talking head is punched.
+    expect(jumpZooms(cut, resolved, [UPRIGHT]).some((z) => z === JUMP_PUNCH)).toBe(true)
+  })
+
   it('goes wide, close, wide across two jumps', () => {
     const { cut, resolved } = cutWith([strike(LINES[1]), strike(LINES[3]), { op: 'punch-jumps', on: true }])
     expect(jumpJoins(cut, resolved)).toHaveLength(2)

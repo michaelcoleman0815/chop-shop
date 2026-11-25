@@ -37,6 +37,8 @@ export interface Action {
     | 'say'
     /** Opens the steps for the Anthropic key, on Start. */
     | 'setup-key'
+    /** Goes ahead with an edit whose price has been said, at the price said (useCutalong PlanAsk, as JSON). */
+    | 'plan'
     | 'strip-never'
   label: string
   /** Words after the label that stay whole when a narrow column shortens the label: " · NASA", where a B-roll choice is from. */

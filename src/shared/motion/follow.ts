@@ -3,6 +3,7 @@ import { pictureSpan, srcTimeAt, type Resolved } from '../edit/resolve'
 import type { Cut } from '../edit/schema'
 import type { Follow } from './schema'
 import type { Key, Size } from './types'
+import type { FacesReading } from '../faces-reading'
 import type { ScreenReading } from '../screen'
 
 /**
@@ -30,6 +31,8 @@ export interface FollowPicture extends Size {
   subject?: unknown
   /** What is on screen in it, when it is a page of words (shared/screen): the window the speaker is kept in. */
   screen?: ScreenReading
+  /** Where the faces in it are (shared/faces). */
+  faces?: FacesReading
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v))

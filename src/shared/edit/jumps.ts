@@ -1,3 +1,4 @@
+import { windowDuring } from '../screen'
 import { JUMP_PUNCH, punchable } from './punch'
 import { framedByShot } from './reframe'
 import { applyOps, type OpContext } from './ops'
@@ -100,7 +101,7 @@ export function jumpJoins(cut: Cut, resolved: Resolved, sources: Pick<Source, 'i
 export function jumpZooms(
   cut: Cut,
   resolved: Resolved,
-  sources: Pick<Source, 'id' | 'width' | 'height' | 'subject'>[]
+  sources: Pick<Source, 'id' | 'width' | 'height' | 'subject' | 'screen'>[]
 ): number[] {
   const out = resolved.pieces.map(() => 1)
   if (cut.punchJumps !== true) return out
@@ -135,6 +136,8 @@ export function jumpZooms(
     const source = bySource.get(p.source)
     // Already close: a punch on top would show the pixels, unless the recording has them (edit/punch).
     if (!source || !punchable(cut, source)) return
+    // A screen recording with the speaker kept in a window: a punch would crop the page and push them off the edge.
+    if (source.screen && windowDuring(source.screen, p.srcStart, p.srcEnd)) return
     out[i] = JUMP_PUNCH
   })
   return out
@@ -144,7 +147,7 @@ export function jumpZooms(
 export function punchedJumps(
   cut: Cut,
   resolved: Resolved,
-  sources: Pick<Source, 'id' | 'width' | 'height' | 'subject'>[]
+  sources: Pick<Source, 'id' | 'width' | 'height' | 'subject' | 'screen'>[]
 ): number {
   const zooms = jumpZooms({ ...cut, punchJumps: true }, resolved, sources)
   if (!zooms.some((z) => z > 1)) return 0

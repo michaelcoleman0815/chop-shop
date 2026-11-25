@@ -206,6 +206,9 @@ const MAX_SEAM_OVERLAP_SEC = 0.5
  */
 export const KEEP_IN_SHOT_SEC = 1
 
+/** A pause between two beats of one take shorter than this, once padded, is not worth a jump. */
+const JUMP_SEC = 0.25
+
 /** A piece's own picture ending or starting this close to a cut in the recording's picture would flash the other shot. */
 const SLIVER_SEC = 0.4
 /** An edit point set onto a cut sits this much before its first frame, so that frame opens the picture after it. */
@@ -390,6 +393,21 @@ export function resolveCut(cut: Cut, words: Word[], sources: Source[]): Resolved
     const gap = q.srcStart - p.srcEnd
     if (!cuts || gap <= 0 || gap >= KEEP_IN_SHOT_SEC) continue
     if (cuts.some((c) => c > p.srcEnd - 0.05 && c < q.srcStart + 0.05)) continue
+    const meet = (p.srcEnd + q.srcStart) / 2
+    p.srcEnd = meet
+    q.srcStart = meet
+  }
+
+  // A sliver of a pause between two beats that follow each other in the recording: taking out a fifth of a second
+  // saves nothing and jumps the speaker's head, so it plays. Tightened, only what is shorter still does.
+  for (let i = 1; i < drafts.length; i++) {
+    const p = drafts[i - 1]
+    const q = drafts[i]
+    const last = p.words[p.words.length - 1]
+    const first = q.words[0]
+    if (last === undefined || first === undefined || first !== last + 1 || p.beat.source !== q.beat.source || q.beat.transition) continue
+    const gap = q.srcStart - p.srcEnd
+    if (gap <= 0 || gap >= (cut.tighten ? 0.1 : JUMP_SEC)) continue
     const meet = (p.srcEnd + q.srcStart) / 2
     p.srcEnd = meet
     q.srcStart = meet

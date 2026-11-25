@@ -43,7 +43,8 @@ import type {
   SourceId as BrollSourceId
 } from '../shared/broll/types'
 import type { ClipAsk, ClipsFound, ClipsReply } from '../shared/clipping'
-import type { ClaudeKeyState } from '../shared/setup'
+import type { ClaudeKeyState, PlanQuote } from '../shared/setup'
+import type { PlanQuality } from '../shared/plan-quality'
 import type { PlanQuestion, PlanStep } from '../shared/plan/commands'
 import type { Vlog } from '../shared/vlog/schema'
 import type { VlogReply } from '../shared/vlog/reply'
@@ -520,6 +521,8 @@ const api = {
     chat?: { role: 'user' | 'assistant'; text: string }[]
     /** The person's brands by name, and whether this chat is in each. */
     brands?: { name: string; current: boolean }[]
+    /** What the person said yes to before it started: how hard to work on it, and the most it may come to. */
+    agreed?: { quality: PlanQuality; most: number }
   }): Promise<
     | {
         ok: true
@@ -534,9 +537,20 @@ const api = {
         needs: string[]
         rejected: string[]
         brollWanted?: { beat: string; search: string }[]
+        /** What it came to, in dollars, from what Anthropic counted. */
+        cost?: number
       }
     | { ok: false; message: string; needsKey?: boolean; keyState?: ClaudeKeyState }
   > => ipcRenderer.invoke('cut:plan', req),
+  /** What an edit will cost, worked out before it starts without asking Claude anything; null where it costs nothing. */
+  planQuote: (req: {
+    doc: EditDoc
+    request: string
+    notes: Note[]
+    commands?: { command: string; summary: string }[]
+    chat?: { role: 'user' | 'assistant'; text: string }[]
+    quality?: PlanQuality
+  }): Promise<PlanQuote | null> => ipcRenderer.invoke('cut:quote', req),
   /**
    * What a message asks Cutalong to make, read by Claude before any footage
    * is: an edit, a vlog, clips from a long recording, words to wait for

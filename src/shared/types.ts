@@ -1,5 +1,6 @@
 import type { EditDoc } from './edit/schema'
 import type { ClipSet } from './clipping/schema'
+import type { PlanQuality } from './plan-quality'
 
 export type AspectPreset = 'original' | 'vertical' | 'square' | 'wide' | 'preset'
 
@@ -121,11 +122,18 @@ export interface Settings {
    */
   claudeKeyAccepted?: string | null
   /**
-   * Whether Claude may see small stills from the person's footage, to say
-   * what is in each moment of a vlog. On unless turned off, as other AI
-   * services are; nothing is sent without an Anthropic key either way.
+   * Whether Claude may see small stills from the person's footage: with each plan, so it edits what it has seen
+   * and its critic can judge what it made, and to say what is in each moment of a vlog. On unless turned off, as
+   * other AI services are; nothing is sent without an Anthropic key either way.
    */
   claudeSeesFrames?: boolean
+  /** How hard Claude works on each edit (shared/plan-quality). Absent is quick: planned once. */
+  planQuality?: PlanQuality
+  /**
+   * An edit priced at more than this many dollars waits for the person to say yes before it starts; every edit says
+   * its price either way. Absent is ASK_OVER (shared/setup/cost); 0 always waits, null never does.
+   */
+  planAskOver?: number | null
   /**
    * Whether Claude writes each export's three titles, the description's
    * opening and its tags from the words. On unless turned off; nothing is

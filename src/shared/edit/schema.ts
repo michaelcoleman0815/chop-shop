@@ -2,6 +2,8 @@ import { BoxSchema } from './box'
 import { z } from 'zod'
 import { ScopeReadingSchema } from '../scopes/maths'
 import { ScreenReadingSchema } from '../screen'
+import { FacesReadingSchema } from '../faces-reading'
+import { DirectionSchema } from '../motion/direction'
 import { MusicSchema, VoiceSchema } from './audio'
 import { LookPatchSchema, LookSchema } from './look'
 import { ChapterSchema } from './chapters'
@@ -114,7 +116,9 @@ export const SourceSchema = z.object({
   /** What its picture measures (shared/scopes): luma, clipping, saturation and cast, for grading by numbers. */
   scopes: ScopeReadingSchema.optional(),
   /** What is on screen now and then (shared/screen): lines of text and where they sit, and the speaker's window. */
-  screen: ScreenReadingSchema.optional()
+  screen: ScreenReadingSchema.optional(),
+  /** Where the faces are now and then (shared/faces), for graphics to keep off them. */
+  faces: FacesReadingSchema.optional()
 })
 export type Source = z.infer<typeof SourceSchema>
 
@@ -288,6 +292,8 @@ export const CutSchema = z.object({
   music: MusicSchema.nullable().optional(),
   /** A look over the whole picture: colour, a LUT, sharpening, a vignette, grain. */
   look: LookSchema.nullable().optional(),
+  /** The video's art direction: what its graphics wear (motion/direction). */
+  direction: DirectionSchema.optional(),
   /** YouTube chapters, each starting at a beat (edit/chapters). */
   chapters: z.array(ChapterSchema).optional(),
   /** Other cameras of the same takes, each lined up with its recording (edit/angles). */
@@ -460,6 +466,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('chapters'), set: z.array(ChapterSchema).max(100).nullable() }),
   // A look over the whole picture, or changes to it; replace starts it afresh, keeping the LUT; null takes it off.
   z.object({ op: z.literal('look'), set: LookPatchSchema.nullable(), replace: z.boolean().optional() }),
+  // The video's art direction, or changes to it; null takes it off.
+  z.object({ op: z.literal('direction'), set: DirectionSchema.nullable() }),
   // A music bed, or changes to it; null takes it out.
   z.object({ op: z.literal('music'), set: MusicSchema.partial().nullable() }),
   // A cold open: these moments, in this order, played first, ahead of the conversation they come from, hard cut

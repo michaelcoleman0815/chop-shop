@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   blockedSentence,
   costLine,
+  planQualityCost,
   doneSteps,
   fixingStep,
   gateOpen,
@@ -163,7 +164,11 @@ describe('the steps to every key', () => {
 
   it('says what a plan costs in one line, from the published prices, and where to see the spend', () => {
     expect(costLine()).toBe(
-      'A plan on a 10-minute video costs about 5 to 40 cents at Anthropic’s prices on 16 November 2026. The Console’s Usage page shows what you actually spend.'
+      'A plan on a 10-minute video costs about 6 to 55 cents at Anthropic’s prices on 16 November 2026. The Console’s Usage page shows what you actually spend.'
     )
+    // Beside the choice of how hard to work, what more it costs.
+    expect(planQualityCost('quick')).toBe('A plan costs up to about 55 cents.')
+    expect(planQualityCost('careful')).toBe('It costs more on your Anthropic account: up to about 80 cents a plan, where Quick is up to about 55 cents.')
+    expect(planQualityCost('best')).toBe('It costs more on your Anthropic account: up to about $1.25 a plan, where Quick is up to about 55 cents.')
   })
 })

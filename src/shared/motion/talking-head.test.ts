@@ -361,7 +361,7 @@ describe('chips', () => {
     expect(item.from).toBe(idOf(doc, 'Notion'))
     expect(item.to).toBe(`${idOf(doc, 'Linear')}.end+1.5`)
     const scene = sceneOf(doc)
-    const chips = scene.layers.filter((l) => l.kind === 'group')
+    const chips = scene.items[0].layers.filter((l) => l.kind === 'group')
     expect(chips).toHaveLength(3)
     const shown = (t: number): number =>
       chips.filter((g) => {

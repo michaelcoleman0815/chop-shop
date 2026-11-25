@@ -1,8 +1,15 @@
 import { z } from 'zod'
 import { scopeLine } from '../shared/scopes/maths'
 import { screenLine } from '../shared/screen'
+import { talkLines, talkStretches } from '../shared/plan-talk'
+import { faceLine, facesThrough } from '../shared/faces'
+import { FONT_FAMILIES } from '../shared/motion/fonts'
+import { designSize } from '../shared/motion/theme'
+import { designedOp, type DesignOp } from './plan-design'
+import { soundsLines, type OwnSound, type PlannedSound } from '../shared/sounds'
 import {
   CAMERA_KINDS,
+  type CameraKind,
   currentCut,
   currentVersion,
   describeLook,
@@ -60,10 +67,31 @@ const NAMED_LIST = Object.values(NAMED_LOOKS)
  * How creators people name edit, measured frame by frame from their own videos (docs and the remake lab), in the
  * templates' own terms, so "like Ali Abdaal" means what his videos do rather than a guess.
  */
-const STYLE_CARDS = `## Styles people ask for
+/** How a video gets a look of its own, and graphics no other video has. */
+const LOOK_OF_ITS_OWN = `## A look of its own
+Edits that all look alike are the commonest failing here. Before choosing graphics, decide what this video is: its subject, its mood, the one picture it makes you think of. Then:
+- Start an edit that adds graphics with {"op":"direction","idea":"a courtroom: ink on cream, one red stamp","accent":"#C8102E","second":"#1B2A41","display":"DM Serif Display","body":"Instrument Sans Bold","script":"Instrument Serif Italic","ground":"light"}: the idea in a few words and the colours and faces its graphics wear. Take the colours from the footage itself (the set, the lights, the product, the brand being talked about), so the graphics look shot with it; pick a display face with the subject's character (a heavy grotesque for tech, a serif for money or history, condensed capitals for sport and challenge, a soft serif for wellbeing); ground light where the picture is bright, dark where it is dark. Skip it only when the edit has a direction already and the request does not change it, or the request asks for the brand's look. An accent of #FFD84D, or Archivo Black with Sora, is the house default and means nobody decided.
+- A <lately> block says what the last edits used. Use another accent, another display face, and other graphics.
+- Use each kind and style of graphic once in an edit, unless it is a series meant to return (a dial at each part, a list ticked off as it goes). One that is perfect for its moment beats three that fit anywhere.
+- Choose by what is being said, not by what is easy: a comparison, a change over time, a flow of money, a part of a whole, a figure to feel, words to quote, a thing to look at each want a different graphic. Where the words only state something, let the shot play.
+- Never jump the speaker about. A take keeps one framing while they talk; no zoom on every cut, no punch-in without a word that earns it (two or three in a minute at most). Moving them aside for a graphic is done by itself, as one slow glide. When the frames show that the recording is already edited (cutaways, graphics, changes of shot), play it as it is: no tighten, no striking fillers, no cuts inside a sentence.
+- For punch, energy or an explainer, something new comes on screen every 6 to 10 seconds. A <talk> block lists the stretches where only the speaker is on screen: spread what you add over them, one thing for about every 10 seconds, so none goes more than 12 with nothing new; footage that changes by itself is something new already. Go through the transcript sentence by sentence before you plan, and think what each could be shown as. Never leave bare a figure, money changing hands, a comparison, a list of things, a change of direction or a line worth quoting.
+- Show real things: a figure, the companies named, a headline that exists, words quoted, what adds up to what. Never draw a figure of speech as an object: "spinning your wheels" is not a wheel, "the AI race" is not a track, "in the background" is not something put behind them. If a stranger would ask why it is there, leave it out.
+- Footage that shows what is being said (a cutaway, a screen, an article) needs no graphic over it. Move the camera in on the part being talked about, or mark the words on it, and otherwise leave it alone.
+- The words of an aside build are the ones being said while it is up, in their order, so each lands as it is said: never a summary of something said earlier.
+- A wide video has no captions unless the request asks for them; when it does, they stand small along the foot whatever position is given.
+- Over someone talking, go for aside and band before anything else: they make their own room. A keyword pop, a banner or a plate is a last resort, never more than one in an edit.
+- Only what is said, or what is in the material: no figure, date, quote, source, headline or comment made up. A quote is the speaker's reading of it word for word; a headline is one that is shown or read out.
+- A <designs> block means graphics may be drawn for this video alone: {"op":"design","from":"w51","to":"w73.end","room":"left","brief":"..."}. Spend them on the moment the video turns on, where how a thing works or what adds up to what can be drawn and no template has it (who pays whom and what for, the parts of a product apart, a change over time at its true size), and make them carry the idea of the direction. Never for a figure of speech, and never over footage that already shows it. room is where it goes: left or right (the shot is reframed), foot, full (the whole frame, 2 to 4 seconds), over. The brief says what it must make clear in one sentence, the picture you have in mind, which words it lands on and what must not be shown. A designer who sees the shot draws it. Where there is no such block, leave design out.
+`
+
+export const STYLE_CARDS = `## Styles people ask for
 When the request names one of these creators or their kind of video, edit as their videos are made, measured from them:
 - Ali Abdaal (productivity explainers, long-form): no captions. He opens on a title set behind him (title, style behind) and a shelf of icons for a list (chips, place shelf). Ideas go on paper: a board (wave, or plain for lists and documents) keeping him in his window on the right, with one idea at a time on it: a cloud for everything a field holds, drawn into one point; topics for the fields it draws on, with badges; a prompt going into an AI; a checklist of the method's steps, ticked as done; a doc for what it gives you. Each board holds one idea for about 3 to 8 seconds and changes on a hard cut. On a screen recording he stays in his window and the camera glides in on the line he is reading. Words and cards come into focus from a blur rather than sliding; nothing bounces. Verdicts and lists go on a checklist or a doc, not on keyword pops.
 - Deep End with Lecrae (podcast cold opens): every pause cut. Key lines as two-tier stair titles on the speaker's open side (title, style stair), plain white captions three words a page (preset cold-open), the show's title on black between (cold-open slug), and the guest's name card as a collage (end-card, collage), under a steady beat.
+- MKBHD (tech explainers): bright, clean, unhurried. Talks to camera; a story is a headline card, a statement a quote beside them (aside, quote), a figure one huge number beside them on a light wash (aside, stat, fx light) with a pen line and a word by hand; what one company does for another is a flow along the foot. One accent, often a strong blue or red, on white and near-black; heavy grotesque, tight. No captions, no pops, no icons over words.
+- Iman Gadzhi (principles, money): dark set, one idea with its own object for the whole video (a compass whose dial turns to each principle). What is being explained stands along the foot while he keeps talking over it (band: split, track, flow, line), two colours taken from his lights. Full-frame objects for chapters (dial). Big plain words with a little script.
+- Mark Tilbury (challenges, money): the line being said builds beside him in white and yellow, the word that matters twice as big (aside, build), in a shot punched in with him on one side; comments and lists beside him; a big gold figure counting along the foot (band, figure); how long is left on a grid between parts (clock); articles with the line being read swept in yellow.
 - Jordan Welch (business explainers): long, gentle camera moves with no overshoot and no motion blur; products and pages shown on devices and screenshots (device, screenshot) and kept still while he talks over them.
 `
 
@@ -116,8 +144,9 @@ A <material> block, when present, lists what the person brought in to use: foota
 - {"op":"music","path":"","set":[{"key":"levelDb","value":-15},{"key":"duckDb","value":12}],"off":false}: change the music bed, naming only the settings that change: levelDb is how far it sits under the voice (-40 to 0), duckDb how much further it dips while anyone speaks (0 to 30, 0 never dips), fadeInSec and fadeOutSec its fades, inSec where in the track it starts. "path" stays "" unless the request names a file to use. "off":true takes the music out.
 - {"op":"look","name":"warm","set":[],"replace":true,"off":false}: a look over the whole picture, under the captions. The named looks are clean (true colour, crisper), warm, cool, cinematic and vintage, with these settings: ${NAMED_LIST}. "name" starts from one of them, or stays "". "set" names only the settings that change: [{"key":"grain","value":0.2}]. Settings: exposure in stops (-2 to 2), contrast, saturation, temperature (warmer above 0) and tint (magenta above 0) from -1 to 1, lift (faded blacks), sharpen, vignette and grain from 0 to 1; 0 takes one away. "replace":false changes the look already there, true starts afresh. "off":true takes the whole look off and a LUT with it; a LUT itself is chosen by the person with /lut.
   For the look, <scopes> measures each recording: luma from black 0 to white 100, how much is clipped, saturation and the cast (u, v). Grade by it: a warm cast wants temperature below 0, a magenta one tint below 0; most of the luma in a narrow band wants contrast; lows clipped want lift, highs clipped exposure down.
-  A <screen> block, when present, says what is on screen in each beat it names: a page of words (a screen recording, a slide, a document) and where it lies, the window the speaker is kept in, and the lines on screen that match what is said, each with its box [x, y, width, height]. On those beats the words on screen are the picture: never set words over them, and never white words on a bright picture (luma above 70 in <scopes>). Show what is talked about with a camera "focus" gliding in on the line's box (a region a little bigger than the line, kept to the page). With the speaker in a window, the focus fits its region into the room beside the window and the window stays put, so a region as wide as that room cannot get any closer: glide in on the words that matter (the phrase being said, the highlighted words), a region at most about half the room's width, for a push-in that shows. Start the region at the left edge of the page's words, so its lines still read from their start, and let them run on past its right side. Set ideas on graphics with their own ground: a board with the speaker's window as its box, so they stay on screen beside it, and cloud, topics, checklist or doc on it, or a keyword pop on its plate. Keep the speaker's window clear. No captions over a page of words: they would cover it.
-- {"op":"sfx","beats":["b4"],"kind":"whoosh","word":"","gainDb":0}: a sound effect, made here, on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12), 0 for the usual. "kind":"none" takes a beat's sounds away. The person's own sound files are added with /sfx.
+  A <screen> block, when present, says what is on screen in each beat it names: a page of words (a screen recording, a slide, a document) and where it lies, the window the speaker is kept in, and the lines on screen that match what is said, each with its box [x, y, width, height]. On those beats the words on screen are the picture: never set words over them, and never white words on a bright picture (luma above 70 in <scopes>). Show what is talked about with a camera "focus" gliding in on its box (a region a little bigger than it, kept to the page). With the speaker in a window, the focus fits its region into the room beside the window and the window stays put, so a region as wide as that room gets no closer, and a push-in on part of a line hides the rest of it: push in only on something at most about half the room's width (a short line, a list, a heading, a button, a figure), starting at the left edge of the page's words. Where the lines being read run the width of the page, leave the camera be: a highlight already shows the place, and three or four moves that help beat one on every line. Set ideas on graphics with their own ground: a board with the speaker's window as its box, so they stay on screen beside it, and cloud, topics, checklist or doc on it, or a keyword pop on its plate. Keep the speaker's window clear. No captions over a page of words: they would cover it.
+  A <faces> block, when present, says where the speaker's face is in each beat as it is framed, [x, y, width, height] of the frame, and the room round it. Nothing ever goes over the face, not even for a moment. In a close-up there is no room above it: a title or a keyword pop goes at the bottom, over the chest; logos, pictures and chips go in the room beside the face (place left or right, the side with more). A title style behind sets big words behind them instead.
+- {"op":"sfx","beats":["b4"],"kind":"whoosh","sound":"","word":"","gainDb":0}: a sound effect on a beat: whoosh (peaks in the middle of the transition the beat comes in with, or on its cut), hit (on the cut), riser (ends where the beat comes in), and pop, click or ding (on the cut, or on a word with "word":"w31"). "gainDb" turns one up or down from its usual level (-30 to 12), 0 for the usual. "kind":"none" takes a beat's sounds away. "sound" names one of the person's own from <sounds>, like "s12", when that block is there; "" leaves it to "kind", which then plays one of theirs of that kind if they have one, else one made here. Prefer theirs, and name one when a particular sound suits the moment (paper for a page, a key for typing, a till for money, a boom for a reveal). A video is not improved by a sound on everything: put one where a graphic lands, a board changes or a number is said, usually one every 4 to 10 seconds in a tutorial and more only in a fast edit, never two on the same moment, and none under a quiet or serious line. Sounds for a run of the same thing (cards coming in one after another) are the same sound, quieter as they go.
 - {"op":"chapters","set":[{"beat":"b1","title":"Why I switched"},{"beat":"b7","title":"Battery life"},{"beat":"b12","title":"Camera"}]}: YouTube chapters, each starting at a beat; the first plays from 0:00 whatever its beat. YouTube shows them only with three or more, each at least 10 s long, so chapters closer than that are dropped. The set replaces every chapter there is; {"op":"chapters","set":[]} takes them out.
 - {"op":"angle","beats":["b4"],"source":"s2","layout":"full"}: another camera of the same take on beats: "full" shows it instead of the recording, "pip" in a box over it, "side" beside it. The sound stays the recording's. Only a source the transcript marks camera-of the beat's recording; "source":"" shows the beat's own recording again.
 - {"op":"sync","source":"s2","of":"s1","offsetSec":1.25}: lines a camera up with its recording: what s1 shows at t, s2 shows at t + offsetSec. Only when asked to move it; "of":"" takes the camera out of the edit.
@@ -128,6 +157,7 @@ A <material> block, when present, lists what the person brought in to use: foota
 Ops apply in order, and a later op sees the ids an earlier split created. Use only ids that exist. A split, an insert or a cold open makes new beats numbered from the cut's "next new beat" on, one more for each; ids freed by a remove are never given again.
 
 ${graphicsGuide()}
+${LOOK_OF_ITS_OWN}
 ${STYLE_CARDS}
 
 ${fxGuide()}
@@ -297,6 +327,7 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     op: z.literal('sfx'),
     beats: z.array(z.string()),
     kind: z.enum([...SFX_KINDS, 'none']),
+    sound: z.string(),
     word: z.string(),
     gainDb: z.number()
   }),
@@ -313,6 +344,17 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     replace: z.boolean(),
     off: z.boolean()
   }),
+  // The video's art direction (motion/direction), every slot given; an empty one leaves it as it is.
+  z.object({
+    op: z.literal('direction'),
+    idea: z.string(),
+    accent: z.string(),
+    second: z.string(),
+    display: z.enum(['', ...FONT_FAMILIES]),
+    body: z.enum(['', ...FONT_FAMILIES]),
+    script: z.enum(['', ...FONT_FAMILIES]),
+    ground: z.enum(['', 'dark', 'light'])
+  }),
   z.object({
     op: z.literal('music'),
     path: z.string(),
@@ -322,7 +364,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('camera'),
     beats: z.array(z.string()),
-    kind: z.enum([...CAMERA_KINDS, 'none']),
+    // A glide is made by the graphics that need the room (edit/room), never asked for.
+    kind: z.enum([...CAMERA_KINDS.filter((k) => k !== 'glide'), 'none'] as unknown as [CameraKind | 'none', ...(CameraKind | 'none')[]]),
     zoom: z.number(),
     to: z.array(z.number()),
     word: z.string(),
@@ -347,6 +390,8 @@ export const PlannerOpSchema = z.discriminatedUnion('op', [
     // graphic's own follow, which is the path itself.
     pin: z.enum(['', 'object'])
   }),
+  // A graphic drawn for this video (main/plan-design), where the request says some may be.
+  z.object({ op: z.literal('design'), from: z.string(), to: z.string(), room: z.enum(['left', 'right', 'foot', 'full', 'over']), brief: z.string() }),
   z.object({ op: z.literal('motion-update'), id: z.string(), ...graphicSlots() }),
   z.object({ op: z.literal('motion-remove'), ids: z.array(z.string()) }),
   // Scene effects (shared/fx/planner), every slot required in the same way.
@@ -511,6 +556,9 @@ export function fromPlannerOp(op: PlannerOp): unknown {
     case 'reverse':
       return { op: op.op, beats: op.beats, on: op.on, ...of }
     case 'sfx': {
+      // One of the person's own, as it was found (shared/sounds withOwnSounds).
+      const own = (op as PlannedSound).own
+      if (own) return { op: op.op, beats: op.beats, add: own }
       if (op.kind === 'none') return { op: op.op, beats: op.beats, add: null }
       const add = { kind: op.kind, ...(op.word ? { word: op.word } : {}), ...(op.gainDb ? { gainDb: op.gainDb } : {}) }
       return { op: op.op, beats: op.beats, add }
@@ -543,6 +591,12 @@ export function fromPlannerOp(op: PlannerOp): unknown {
       // A named look comes with its own settings; what the planner names goes over them.
       const named = op.name ? NAMED_LOOKS[op.name]?.look : undefined
       return { op: op.op, set: { ...named, ...fieldsOf(op.set) }, ...(op.replace ? { replace: true } : {}) }
+    }
+    case 'design':
+      return designedOp(op as DesignOp)
+    case 'direction': {
+      const { op: name, ...slots } = op
+      return { op: name, set: Object.fromEntries(Object.entries(slots).filter(([, v]) => v !== '')) }
     }
     case 'music':
       if (op.off) return { op: op.op, set: null }
@@ -705,6 +759,12 @@ export interface RequestExtra {
   brands?: { name: string; current: boolean }[]
   /** How the brand's own videos usually run, in a line or two (shared/channel-habits); none until some are learned. */
   habits?: string[]
+  /** The person's own sound effects (shared/sounds), each with an id in the order given. */
+  sounds?: OwnSound[]
+  /** The graphics and looks of the last few edits, so this one is not the same again. */
+  lately?: string[]
+  /** How many graphics may be designed for this video (main/plan-design); none when absent. */
+  designs?: number
 }
 
 /** The cut as it stands, the notes and the ask: the part that changes every time. */
@@ -854,6 +914,11 @@ export function renderRequest(
   }
   const takes = renderTakes(doc)
   if (takes) parts.push(takes)
+  const lately = (extra.lately ?? []).map((l) => l.trim()).filter(Boolean)
+  if (lately.length) parts.push(`<lately>\n${lately.join('\n')}\n</lately>`)
+  if (extra.designs) parts.push(`<designs>\n${extra.designs === 1 ? 'One graphic' : `Up to ${extra.designs} graphics`} may be designed for this video (the design op).\n</designs>`)
+  const ownSounds = soundsLines(extra.sounds ?? [])
+  if (ownSounds.length) parts.push(`<sounds>\n${ownSounds.join('\n')}\n</sounds>`)
   // What was cut on request and is still out, by the name it went under, for "bring back …".
   const held = cutOnRequest(doc)
   if (held.length) parts.push(`<cut-on-request>\n${held.join('\n')}\n</cut-on-request>`)
@@ -885,6 +950,17 @@ export function renderRequest(
     return line ? [`${b.id}: ${line}`] : []
   })
   if (screenLines.length) parts.push(`<screen>\n${screenLines.join('\n')}\n</screen>`)
+  // Where the speaker's face is in each beat as it is framed (shared/faces), so what goes over them keeps off it.
+  const through = facesThrough(cut, resolved, doc.sources, designSize(cut.aspect, doc.sources.find((x) => x.id === resolved.pieces[0]?.source) ?? doc.sources[0]))
+  const talk = talkLines(talkStretches(resolved, doc.sources))
+  if (talk.length) parts.push(`<talk>\n${talk.join('\n')}\n</talk>`)
+  const faceLines = through.length
+    ? resolved.beats.flatMap((b) => {
+        const line = faceLine(through, b.outStart, b.outEnd)
+        return line ? [`${b.id}: ${line}`] : []
+      })
+    : []
+  if (faceLines.length) parts.push(`<faces>\n${faceLines.join('\n')}\n</faces>`)
   // Several players' views of one session, and the reactions heard in them (shared/pov).
   const povs = renderPovs(doc)
   if (povs) parts.push(povs)

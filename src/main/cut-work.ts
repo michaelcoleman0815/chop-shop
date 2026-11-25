@@ -9,6 +9,7 @@ import { stampBrand } from '../shared/brands'
 import { wordSpeakers } from '../shared/subtitles'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { placeFile } from './export-paths'
+import { onItsOwnCuts } from './own-cuts'
 import { claudeWriter, writeUploadKit } from './upload-kit'
 import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
 import { renderCut, type ClipSoundOptions, type GraphOptions, type OverlaySpan, type RenderCutOptions, type RenderSource } from './cut-render'
@@ -22,7 +23,7 @@ import type { LinedRecording } from '../shared/pov/lineup'
 import { listenFrames } from './audio-map'
 import { buildAudioMap, type AudioMap, type Frames } from '../shared/audio/map'
 import type { ScopeReading } from '../shared/scopes/maths'
-import type { ScreenReading } from '../shared/screen'
+import type { PictureReading } from './screen-read'
 import { vocabulary } from '../shared/raw/prompt'
 import { intakeReply, probeSource, type SourceFacts } from './intake'
 import { projectName } from '../shared/project-name'
@@ -102,8 +103,8 @@ export interface WorkHost {
   speakers?: (path: string, words: Word[]) => Promise<(number | null)[]>
   /** What a recording's picture measures (main/scopes), for Claude to grade by. Absent where it is not measured. */
   scopes?: (path: string, durationSec: number) => Promise<ScopeReading | null>
-  /** What is on screen in a recording (main/screen-read): its words and the speaker's window. Absent off a Mac. */
-  screen?: (path: string, durationSec: number) => Promise<ScreenReading | null>
+  /** What is on screen in a recording (main/screen-read): its words, the speaker's window and the faces. Absent off a Mac. */
+  picture?: (path: string, durationSec: number) => Promise<PictureReading | null>
   /** Watching the speaker's mouth, with the Mac's face finder. */
   watch?: (input: {
     source: Source
@@ -200,7 +201,9 @@ export async function prepareCut(
     // How each recording sounds, word by word: what takes and the planner read.
     const heard = Object.keys(read.maps).length > 0 ? { ...created, audio: read.maps } : created
     // Made in the chat's brand when it named one, so it stays in it whatever becomes the default.
-    const doc = typeof input !== 'string' && input.brand ? stampBrand(heard, brand.id) : heard
+    const stamped = typeof input !== 'string' && input.brand ? stampBrand(heard, brand.id) : heard
+    // Footage that was edited before it came here keeps its own cuts and its own timing.
+    const doc = await onItsOwnCuts(host.ffmpeg(), stamped).catch(() => stamped)
     progress('Ready', 100)
     return {
       ok: true as const,
@@ -784,9 +787,11 @@ export async function readFootage(
     // What the picture measures, kept with the recording for Claude to grade by.
     const scopes = host.scopes ? await host.scopes(path, source.durationSec).catch(() => null) : null
     if (scopes) source = { ...source, scopes }
-    // What is on screen, for an edit that knows a screen recording from a talking head and where its words are.
-    const screen = host.screen ? await host.screen(path, source.durationSec).catch(() => null) : null
-    if (screen) source = { ...source, screen }
+    // What is on screen, for an edit that knows a screen recording from a talking head, and where its words and
+    // the faces are.
+    const seen = host.picture ? await host.picture(path, source.durationSec).catch(() => null) : null
+    if (seen?.screen) source = { ...source, screen: seen.screen }
+    if (seen?.faces) source = { ...source, faces: seen.faces }
     sources.push(source)
   }
   const intake =

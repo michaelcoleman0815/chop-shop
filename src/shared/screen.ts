@@ -61,9 +61,7 @@ export function screenLine(reading: ScreenReading, fromSec: number, toSec: numbe
   const x1 = Math.max(...all.map((l) => l.box[0] + l.box[2]))
   const y1 = Math.max(...all.map((l) => l.box[1] + l.box[3]))
   // The speaker's window, as most readings found it.
-  const windows = seen.map((s) => s.window).filter((w): w is ScreenBox => !!w)
-  const mid = (k: number): number => windows.map((w) => w[k]).sort((a, b) => a - b)[Math.floor(windows.length / 2)]
-  const window = windows.length ? ([mid(0), mid(1), mid(2), mid(3)] as ScreenBox) : null
+  const window = windowDuring(reading, fromSec, toSec)
   // The lines that share the most words with what is said, each once, best first.
   const want = new Set(tokens(said))
   const scored = new Map<string, { text: string; box: ScreenBox; score: number }>()
@@ -87,13 +85,37 @@ export function screenLine(reading: ScreenReading, fromSec: number, toSec: numbe
   return parts.join('; ')
 }
 
+/** How much two boxes share: their overlap over their union. */
+function shared(a: ScreenBox, b: ScreenBox): number {
+  const w = Math.max(0, Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0]))
+  const h = Math.max(0, Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]))
+  return (w * h) / Math.max(1e-9, a[2] * a[3] + b[2] * b[3] - w * h)
+}
+
+const steady = new WeakMap<ScreenReading, ScreenBox[]>()
+/**
+ * The windows a recording really keeps its speaker in: boxes seen in the same place in several readings. A doorway
+ * or a pane of glass behind someone talking is now and then taken for one, in a different place each time.
+ */
+function windowsOf(reading: ScreenReading): ScreenBox[] {
+  const had = steady.get(reading)
+  if (had) return had
+  const all = reading.samples.map((s) => s.window).filter((w): w is ScreenBox => !!w)
+  const need = Math.max(2, Math.ceil(reading.samples.length * 0.08))
+  const kept = all.filter((w) => all.filter((v) => shared(w, v) > 0.7).length >= Math.min(need, 12))
+  steady.set(reading, kept)
+  return kept
+}
+
 /**
  * The window the speaker is kept in over a stretch of the recording, as most of its readings found it: where a
  * camera moving over the page leaves the speaker be. Null when fewer than half the readings found one.
  */
 export function windowDuring(reading: ScreenReading, fromSec: number, toSec: number): ScreenBox | null {
+  const real = windowsOf(reading)
+  if (real.length === 0) return null
   const seen = reading.samples.filter((s) => s.t >= fromSec - reading.everySec / 2 && s.t <= toSec + reading.everySec / 2)
-  const windows = seen.map((s) => s.window).filter((w): w is ScreenBox => !!w)
+  const windows = seen.map((s) => s.window).filter((w): w is ScreenBox => !!w && real.includes(w))
   if (seen.length === 0 || windows.length * 2 < seen.length) return null
   const mid = (k: number): number => windows.map((w) => w[k]).sort((a, b) => a - b)[Math.floor(windows.length / 2)]
   return [mid(0), mid(1), mid(2), mid(3)]

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', async () => {
   const os = await import('os')
@@ -14,10 +14,11 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { createDoc, wordsFromTranscript, type EditDoc } from '../shared/edit'
+import { commit, createDoc, wordsFromTranscript, type EditDoc } from '../shared/edit'
 import { FFMPEG_PATH } from './ffmpeg'
 import { keyMessage } from '../shared/setup'
 import { readApiKey } from './apikey'
+import { forgetSent } from './plan-quote'
 import { MODEL, planEdit } from './planner'
 
 /**
@@ -64,13 +65,13 @@ const text = (t: string) => () =>
   })
 
 /** Claude calling the plan tool with the plan. */
-const called = (plan: unknown) => () =>
+const called = (plan: unknown, tool = 'plan') => () =>
   respond({
     id: 'msg_plan',
     type: 'message',
     role: 'assistant',
     model: MODEL,
-    content: [{ type: 'tool_use', id: 'toolu_plan', name: 'plan', input: plan }],
+    content: [{ type: 'tool_use', id: `toolu_${tool}`, name: tool, input: plan }],
     stop_reason: 'tool_use',
     stop_sequence: null,
     usage: { input_tokens: 1, output_tokens: 1 }
@@ -90,35 +91,162 @@ const PLAN = {
 }
 
 describe('planning through the SDK', () => {
-  it('looks at the footage before planning, and at its own edit before offering it', async () => {
-    // A real little recording, so there are frames to see and stills to draw.
-    const dir = mkdtempSync(join(tmpdir(), 'cutalong-look-'))
-    const path = join(dir, 'talk.mp4')
+  beforeEach(() => forgetSent())
+  /** A real little recording, so there are frames to see and stills to draw. */
+  const filmed = (): EditDoc => {
+    const path = join(mkdtempSync(join(tmpdir(), 'cutalong-look-')), 'talk.mp4')
     execFileSync(FFMPEG_PATH, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=6', '-pix_fmt', 'yuv420p', path])
-    const doc = { ...talk(), sources: [{ ...talk().sources[0], path, width: 640, height: 360 }] }
-    const pop = (text: string) => ({
-      op: 'motion-add', kind: 'keyword', from: 'w6', to: '', text: [text], items: [], values: [], box: [], icon: '', style: 'plate', place: '', color: '', fx: [], pin: ''
-    })
-    const answers = [called({ ...PLAN, ops: [pop('Settings')] }), called({ ...PLAN, ops: [pop('Open the settings')], summary: 'Fixed.' })]
-    const sent: { messages: { role: string; content: { type: string; text?: string; tool_use_id?: string }[] }[] }[] = []
+    return { ...talk(), sources: [{ ...talk().sources[0], path, width: 640, height: 360 }] }
+  }
+  const pop = (text: string, from = 'w6') => ({
+    op: 'motion-add', kind: 'keyword', from, to: '', text: [text], items: [], values: [], box: [], icon: '', style: 'plate', place: '', color: '', fx: [], pin: ''
+  })
+  const judged = (scores: Record<number, number>, missing = '') =>
+    called({ pieces: Object.entries(scores).map(([piece, score]) => ({ piece: Number(piece), score, problem: score < 8 ? 'Too small to read.' : '', fix: score < 8 ? 'Twice the size.' : '' })), missing }, 'verdict')
+  type Sent = { system: { text: string }[]; tools: { name: string }[]; messages: { role: string; content: { type: string; text?: string; content?: string; tool_use_id?: string }[] }[] }
+  const inTurn = (answers: (() => Response)[]): { fetch: typeof fetch; sent: Sent[] } => {
+    const sent: Sent[] = []
     const fake = vi.fn(async (_u: string | URL | Request, init?: RequestInit) => {
       sent.push(JSON.parse(String(init?.body)))
-      return (answers.shift() ?? answers[0])()
+      const next = answers.shift()
+      return next ? next() : respond({ error: { type: 'api_error', message: 'nothing left' } }, 500)
     })
-    const r = await planEdit({ doc, request: 'make it pop', notes: [] }, { fetch: fake as unknown as typeof fetch })
+    return { fetch: fake as unknown as typeof fetch, sent }
+  }
+
+  it('looks at the footage before planning, and has a critic who has not seen the plan score what it made', async () => {
+    const claude = inTurn([called({ ...PLAN, ops: [pop('Settings')] }), judged({ 1: 9 })])
+    const steps: string[] = []
+    const r = await planEdit({ doc: filmed(), request: 'make it pop', notes: [] }, { fetch: claude.fetch, progress: (s) => steps.push(s), prefs: { planQuality: 'best' } })
     // The first ask carries a frame of the footage every few seconds, each labelled.
-    const first = sent[0].messages[0].content
+    const first = claude.sent[0].messages[0].content
     expect(first.filter((b) => b.type === 'image').length).toBeGreaterThanOrEqual(4)
     expect(first.some((b) => b.type === 'text' && /^s1 at 0:0\d\.\d/.test(b.text ?? ''))).toBe(true)
-    // The second carries the plan's own stills back, and its answer is the plan offered.
-    expect(sent).toHaveLength(2)
-    const back = sent[1].messages[2].content
-    expect(back[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'toolu_plan' })
-    expect(back.filter((b) => b.type === 'image').length).toBeGreaterThan(0)
-    expect(r.ok && r.summary).toBe('Fixed.')
-    expect(r.ok && (r.ops[0] as { text: string[] }).text).toEqual(['Open the settings'])
+    // The critic is asked afresh: its own instructions, the request and the stills, and none of the planner's turns.
+    expect(claude.sent).toHaveLength(2)
+    const critic = claude.sent[1]
+    expect(critic.tools.map((t) => t.name)).toEqual(['verdict'])
+    expect(critic.messages).toHaveLength(1)
+    expect(critic.messages[0].content.some((b) => b.type === 'image')).toBe(true)
+    expect(critic.messages[0].content[0].text).toContain('make it pop')
+    expect(JSON.stringify(critic)).not.toContain('motion-add')
+    // Nothing failed: the plan is offered as it was, with what it scored.
+    expect(r.ok && (r.ops[0] as { text: string[] }).text).toEqual(['Settings'])
+    expect(r.ok && r.judged).toMatchObject([[{ n: 1, score: 9 }]])
+    expect(steps).toEqual(['Checking how it looks'])
   }, 60000)
 
+  it('redoes only what fails, locks what passes, and has someone new judge what came back', async () => {
+    const claude = inTurn([
+      called({ ...PLAN, ops: [pop('Here', 'w2'), pop('Settings')] }),
+      judged({ 1: 9, 2: 5 }),
+      // Handed back with the failed one bigger, and the locked one meddled with.
+      called({ ...PLAN, ops: [pop('There', 'w2'), pop('Open the settings')], summary: 'Fixed.' }),
+      judged({ 2: 8 })
+    ])
+    const steps: string[] = []
+    const r = await planEdit({ doc: filmed(), request: 'make it pop', notes: [] }, { fetch: claude.fetch, progress: (s) => steps.push(s), prefs: { planQuality: 'best' } })
+    expect(claude.sent.map((s) => s.tools[0].name)).toEqual(['plan', 'verdict', 'plan', 'verdict'])
+    // The planner hears the score and the problem, in answer to its own call, with a still of what failed.
+    const back = claude.sent[2].messages[2].content
+    expect(back[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'toolu_plan' })
+    expect(back[0].content).toContain('5/10. Too small to read. Twice the size.')
+    expect(back.filter((b) => b.type === 'image').length).toBeGreaterThan(0)
+    // The second critic sees the new piece alone.
+    expect(claude.sent[3].messages[0].content[0].text).toContain('The pieces to score: 2.')
+    expect(r.ok && r.ops.map((o) => (o as { text: string[] }).text[0])).toEqual(['Here', 'Open the settings'])
+    expect(r.ok && r.summary).toBe('Fixed.')
+    expect(r.ok && r.judged?.map((round) => round.map((j) => j.score))).toEqual([[9, 5], [8]])
+    expect(steps).toEqual(['Checking how it looks', 'Redoing one thing', 'Checking again'])
+  }, 60000)
+
+  it('keeps the first try when the redo is worse, and stops after two', async () => {
+    const worse = inTurn([called({ ...PLAN, ops: [pop('Settings')] }), judged({ 1: 6 }), called({ ...PLAN, ops: [pop('Nope')] }), judged({ 1: 3 })])
+    const kept = await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: worse.fetch, prefs: { planQuality: 'best' } })
+    expect(kept.ok && (kept.ops[0] as { text: string[] }).text).toEqual(['Settings'])
+    const never = inTurn([
+      called({ ...PLAN, ops: [pop('A')] }), judged({ 1: 5 }),
+      called({ ...PLAN, ops: [pop('B')] }), judged({ 1: 6 }),
+      called({ ...PLAN, ops: [pop('C')] }), judged({ 1: 7 }),
+      called({ ...PLAN, ops: [pop('D')] }), judged({ 1: 7 })
+    ])
+    const last = await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: never.fetch, prefs: { planQuality: 'best' } })
+    expect(never.sent).toHaveLength(6)
+    expect(last.ok && (last.ops[0] as { text: string[] }).text).toEqual(['C'])
+  }, 90000)
+
+  it('judges only where the quality is turned up, redoes as often as it says, and sends no frames where they are off', async () => {
+    const quick = inTurn([called({ ...PLAN, ops: [pop('Settings')] })])
+    const r = await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: quick.fetch, prefs: {} })
+    expect(quick.sent).toHaveLength(1)
+    expect(quick.sent[0].messages[0].content.some((b) => b.type === 'image')).toBe(true)
+    expect(r.ok && r.judged).toBeUndefined()
+    const careful = inTurn([called({ ...PLAN, ops: [pop('A')] }), judged({ 1: 5 }), called({ ...PLAN, ops: [pop('B')] }), judged({ 1: 6 }), called({ ...PLAN, ops: [pop('C')] })])
+    const once = await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: careful.fetch, prefs: { planQuality: 'careful' } })
+    expect(careful.sent).toHaveLength(4)
+    expect(once.ok && (once.ops[0] as { text: string[] }).text).toEqual(['B'])
+    const unseen = inTurn([called({ ...PLAN, ops: [pop('Settings')] })])
+    await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: unseen.fetch, prefs: { planQuality: 'best', claudeSeesFrames: false } })
+    expect(unseen.sent).toHaveLength(1)
+    expect(unseen.sent[0].messages[0].content.some((b) => b.type === 'image')).toBe(false)
+  }, 60000)
+
+  it('begins no redo and no design that would take the plan past what its quality may cost', async () => {
+    // A reply that took this many tokens, as the API counts them.
+    const took = (answer: () => Response, output_tokens: number) => () => {
+      const held = answer()
+      return new Response(
+        new ReadableStream({
+          async start(c) {
+            const body = (await held.json()) as Record<string, unknown>
+            c.enqueue(new TextEncoder().encode(JSON.stringify({ ...body, usage: { input_tokens: 1, output_tokens } })))
+            c.close()
+          }
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    }
+    // 55,000 tokens of answer is $1.10: the check is still made, and the redo it asks for is not begun.
+    const dear = inTurn([took(called({ ...PLAN, ops: [pop('A')] }), 55000), judged({ 1: 5 }), called({ ...PLAN, ops: [pop('B')] }), judged({ 1: 9 })])
+    const r = await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: dear.fetch, prefs: { planQuality: 'best' } })
+    expect(dear.sent.map((s) => s.tools[0].name)).toEqual(['plan', 'verdict'])
+    expect(r.ok && (r.ops[0] as { text: string[] }).text).toEqual(['A'])
+    // With that much spent, a design asked for is left out rather than drawn.
+    forgetSent()
+    const design = { op: 'design', from: 'w1', to: 'w5.end', room: 'left', brief: 'A door opening.' }
+    const spent = inTurn([took(called({ ...PLAN, ops: [pop('A'), design] }), 55000), judged({ 1: 9 })])
+    const left = await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: spent.fetch, prefs: { planQuality: 'best' } })
+    expect(spent.sent.map((s) => s.tools[0].name)).toEqual(['plan', 'verdict'])
+    expect(left.ok && left.ops).toHaveLength(1)
+  }, 60000)
+
+  it('checks a change to an edit that has its graphics, redoes it once at most, and designs nothing for it', async () => {
+    const made = commit(filmed(), [{ ...pop('Here', 'w2'), op: 'motion-add', layers: [] } as never], 'Planned').doc
+    const claude = inTurn([
+      called({ ...PLAN, ops: [pop('A')] }), judged({ 1: 5 }),
+      called({ ...PLAN, ops: [pop('B')] }), judged({ 1: 6 }),
+      called({ ...PLAN, ops: [pop('C')] }), judged({ 1: 7 })
+    ])
+    const r = await planEdit({ doc: made, request: 'say it bigger', notes: [] }, { fetch: claude.fetch, prefs: { planQuality: 'best' } })
+    expect(claude.sent.map((s) => s.tools[0].name)).toEqual(['plan', 'verdict', 'plan', 'verdict'])
+    expect(r.ok && (r.ops[0] as { text: string[] }).text).toEqual(['B'])
+    const asked = claude.sent[0].messages[0].content.map((b) => b.text ?? '').join('\n')
+    expect(asked).not.toContain('<designs>')
+    // A first edit may have one designed.
+    const first = inTurn([called({ ...PLAN, ops: [] })])
+    await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: first.fetch, prefs: { planQuality: 'best' } })
+    expect(first.sent[0].messages[0].content.map((b) => b.text ?? '').join('\n')).toContain('<designs>\nOne graphic may be designed')
+  }, 60000)
+
+  it('offers the plan as it was when nobody can judge it', async () => {
+    const down = inTurn([called({ ...PLAN, ops: [pop('Settings')] }), text('I would rather not say.')])
+    const r = await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: down.fetch, prefs: { planQuality: 'best' } })
+    expect(r.ok && (r.ops[0] as { text: string[] }).text).toEqual(['Settings'])
+    // A plan with nothing to look at asks no one.
+    const plain = inTurn([called({ ...PLAN, ops: [] })])
+    await planEdit({ doc: filmed(), request: 'x', notes: [] }, { fetch: plain.fetch })
+    expect(plain.sent).toHaveLength(1)
+  }, 60000)
 
   it('sends the commands with the cut, and takes a plan of edit ops and commands as steps in order', async () => {
     const claude = standIn(text(JSON.stringify(PLAN)))

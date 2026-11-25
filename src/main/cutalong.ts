@@ -1,6 +1,6 @@
 import { app, clipboard, dialog, ipcMain, type WebContents } from 'electron'
 import { measureScopes } from './scopes'
-import { readScreen } from './screen-read'
+import { readPicture } from './screen-read'
 import { downloadSpeakerModel, findSpeakers } from './speakers'
 import { anthropicKeyIn } from '../shared/keys'
 import { promises as fs } from 'fs'
@@ -19,6 +19,11 @@ import { freePath } from './export-paths'
 import { readApiKey } from './apikey'
 import { findFocus } from './focus'
 import { analyzeTrack, findTracks } from './music'
+import { lately, remember } from './lately'
+import { ownSounds } from './own-sounds'
+import { soundsLines, type OwnSound } from '../shared/sounds'
+import type { PlanQuality } from '../shared/plan-quality'
+import { planQuote, type QuoteInput } from './plan-quote'
 import { findSounds, makeAllSfx, readSound } from './sfx'
 import { findPremiere, openInPremiere, writePremiere } from './premiere-cut'
 import { importPremiere, returnName, writePremiereReturn } from './premiere-import'
@@ -109,6 +114,32 @@ const soundFolders = (): string[] => [
   join(app.getPath('userData'), 'sounds')
 ]
 
+/** Where what the last edits looked like is kept. */
+const latelyPath = (): string => join(app.getPath('userData'), 'lately.json')
+
+/** Their own sounds, read and chosen among once for all who ask at the same time (main/own-sounds). */
+let readingSounds: Promise<OwnSound[]> | null = null
+function readSounds(): Promise<OwnSound[]> {
+  readingSounds ??= ownSounds(FFMPEG_PATH, soundFolders(), join(app.getPath('userData'), 'sounds-index.json'))
+    .catch(() => [])
+    .finally(() => (readingSounds = null))
+  return readingSounds
+}
+/** What the app asks a plan for: the edit, the words or notes, and what the person said yes to first (main/plan-quote). */
+type PlanRequest = {
+  doc: unknown
+  request: string
+  notes: Note[]
+  voice?: string
+  commands?: CommandLine[]
+  agreed?: { quality: PlanQuality; most: number }
+} & RequestExtra
+
+/** The same, for a plan to use: none when a big library, read for the first time, is not ready in time. */
+function soundsInTime(): Promise<OwnSound[]> {
+  return Promise.race([readSounds(), new Promise<OwnSound[]>((resolve) => setTimeout(() => resolve([]), 15000).unref?.())])
+}
+
 /**
  * The Mac as the shared work sees it (cut-work.ts): its ffmpeg, settings in
  * userData, other AI services, the face finder, drawing motion graphics and
@@ -126,8 +157,8 @@ export const macWork: WorkHost = {
   watch: (input) => watchClip(input, detectFaces, FFMPEG_PATH),
   // What each recording's picture measures, for Claude to grade by (main/scopes).
   scopes: (path, durationSec) => measureScopes(FFMPEG_PATH, path, durationSec),
-  // What is on screen in each recording, for the planner to know where its words are (main/screen-read).
-  screen: (path, durationSec) => readScreen(path, durationSec),
+  // What is on screen in each recording and where the faces are, for the planner and the graphics (main/screen-read).
+  picture: (path, durationSec) => readPicture(path, durationSec),
   speakers: async (path, words) => {
     await downloadSpeakerModel()
     return (await findSpeakers(FFMPEG_PATH, path, words)).words
@@ -153,13 +184,16 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
    */
   ipcMain.handle(
     'cut:prepare',
-    (e, input: string | { paths: string[]; soundPaths?: string[]; brand?: string | null }) =>
-      prepareCut(
+    (e, input: string | { paths: string[]; soundPaths?: string[]; brand?: string | null }) => {
+      // Their sounds are read while the footage is, so the first plan has them.
+      void readSounds()
+      return prepareCut(
         macWork,
         input,
         (stage, percent) => deps.send(e.sender, 'cut:progress', { stage, percent }),
         deps.mediaUrlFor
       )
+    }
   )
 
   // Where a screen recording changes, stretch by stretch, for a camera to follow.
@@ -442,8 +476,8 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
   ipcMain.handle(
     'cut:plan',
     async (
-      _e,
-      req: { doc: unknown; request: string; notes: Note[]; voice?: string; commands?: CommandLine[] } & RequestExtra
+      e,
+      req: PlanRequest
     ) => {
       const parsed = EditDocSchema.safeParse(req.doc)
       const brand = parsed.success ? await brandOfDoc(parsed.data) : await readBrand()
@@ -454,16 +488,34 @@ export function registerCutalongIpc(deps: { send: Send; mediaUrlFor: (path: stri
       const said = neverForPlanner(never)
       // How the brand's own videos run, when any were learned: a Short asked for aims at their usual length.
       const habits = habitLines(brand.videos)
+      // Their own sound effects, so the edit reaches for those before the made ones.
+      const sounds = await soundsInTime()
+      // What the last edits looked like, so this one is not the same again.
+      const before = parsed.success ? await lately(latelyPath(), parsed.data.id).catch(() => []) : []
       const local = getSettings().localPlanner
       const result = local
         ? await planEditLocally(
             { ...req, preferences, logos, never: said, habits },
             { host: await localHost(), model: local }
           )
-        : await planEdit({ ...req, preferences, logos, never: said, habits })
-      return parsed.success ? keepOffList(result, parsed.data, never, brandInSentence(brand)) : result
+        : await planEdit(
+            { ...req, preferences, logos, never: said, habits, sounds, lately: before },
+            { progress: (stage) => deps.send(e.sender, 'cut:progress', { stage, percent: null }) }
+          )
+      if (!parsed.success) return result
+      const offered = keepOffList(result, parsed.data, never, brandInSentence(brand))
+      if (offered.ok) await remember(latelyPath(), parsed.data, offered.ops).catch(() => undefined)
+      return offered
     }
   )
+
+  // What an edit will cost, before it starts: worked out here from what it would send, with nothing asked of Claude.
+  // Null where it costs nothing (a local AI) or cannot run (no key).
+  ipcMain.handle('cut:quote', async (_e, req: Omit<QuoteInput, 'more'>) => {
+    if (getSettings().localPlanner || !(await keyDeps().read())) return null
+    const sounds = await soundsInTime()
+    return planQuote({ ...req, more: soundsLines(sounds).join('\n').length + 1200 }, getSettings())
+  })
 
   // Claude reads a message before any footage is read: one edit, a vlog,
   // clips from a long recording, words kept for footage still to come, or a

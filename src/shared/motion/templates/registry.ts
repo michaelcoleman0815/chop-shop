@@ -73,6 +73,11 @@ export interface Template {
    * export has the person cut out over its stretch.
    */
   behind?(call: MotionCall): boolean
+  /**
+   * The side of the frame this call takes, when it needs the speaker on the other: the shot is reframed to make the
+   * room over the beats it is up in (edit/room).
+   */
+  room?(call: MotionCall): 'left' | 'right' | null
   /** The generic fx words (motion/fx) it reads itself, so they are not put on its words again: a callout's plate. */
   ownFx?: readonly string[]
   fields: Field[]

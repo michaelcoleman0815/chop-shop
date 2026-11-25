@@ -121,7 +121,7 @@ export function overlaySpans(layers: Layer[], duration: number, max = MAX_OVERLA
 }
 
 /** The pictures the layers draw: asset ids, and `file:` keys for the brand's own logos. */
-function assetIds(layers: Layer[], out = new Set<string>()): Set<string> {
+export function assetIds(layers: Layer[], out = new Set<string>()): Set<string> {
   for (const l of layers) {
     if (l.kind === 'image' && l.asset) out.add(l.asset)
     if (l.kind === 'image' && l.file) out.add(`file:${l.file}`)

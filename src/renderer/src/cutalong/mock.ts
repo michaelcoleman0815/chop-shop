@@ -46,7 +46,8 @@ import { fillDescription, isShort, writeLocally, type UploadKit } from '../../..
 import { groupWords } from '../../../shared/words'
 import { detectProvider } from '../../../shared/keys'
 import { thisComputer } from '../../../shared/platform'
-import { keyMessage, type ClaudeKeyState } from '../../../shared/setup'
+import { planQualityOf } from '../../../shared/plan-quality'
+import { ASK_OVER, keyMessage, planPrice, typicalTokens, type ClaudeKeyState } from '../../../shared/setup'
 import { serviceName, SERVICES, wrongServiceKey, type ServiceId } from '../../../shared/services'
 import { syncNotice } from '../../../shared/vision/offset'
 import { mockVlogApi } from './vlog-mock'
@@ -809,6 +810,15 @@ export function createMockApi(): CutalongApi {
       return () => listeners.clips.delete(cb)
     },
     clipPoster: async (source, at) => generatedStill(`${source}@${at}`, 180, 320),
+    // Priced by the same reckoning as the app, for a typical edit.
+    planQuote: async ({ quality }) => {
+      if (settings.localPlanner || key === null) return null
+      const at = quality ?? planQualityOf(settings.planQuality)
+      const price = planPrice(typicalTokens(), { quality: at })
+      const once = planPrice(typicalTokens(), { quality: 'quick' })
+      const over = settings.planAskOver === undefined ? ASK_OVER : settings.planAskOver
+      return { ...price, quality: at, change: false, ask: over !== null && price.about > over, quick: at === 'quick' ? null : { about: once.about, most: once.most } }
+    },
     // Planning takes Claude a moment; the preview waits as long before saying it cannot reach it.
     planEdit: async () => {
       await sleep(1600)

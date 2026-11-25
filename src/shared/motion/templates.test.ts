@@ -154,10 +154,10 @@ describe('callouts', () => {
     // The value is in the accent colour.
     // Gone at the end.
     expect(draw(scene, item.end + 0.01).lit(0, 0, 1080, 1920)).toBe(0)
-    // Fading on the way out.
-    const leaving = draw(scene, item.end - 0.04).at(px, py)[3]
-    expect(leaving).toBeLessThan(230)
-    expect(leaving).toBeGreaterThan(0)
+    // It drops away as it goes: still on screen, and no longer on the point.
+    const leaving = draw(scene, item.end - 0.08)
+    expect(leaving.at(px, py)[3]).toBeLessThan(60)
+    expect(leaving.lit(0, 0, 1080, 1920)).toBeGreaterThan(0)
   })
 
   it('draws a circle on around the region and leaves the inside clear', () => {
@@ -569,7 +569,8 @@ describe('kinetic title', () => {
     const t = punch.t - 0.1 + 0.07
     const y = (punch.keyword.transform!.y as number) + 60
     const blurred = draw(punch.scene, t)
-    const sharp = draw({ ...punch.scene, layers: punch.scene.layers.map((l) => ({ ...l, motionBlur: undefined })) }, t)
+    const still = (l: Layer): Layer => ({ ...l, motionBlur: undefined, ...(l.kind === 'group' ? { children: l.children.map(still) } : {}) }) as Layer
+    const sharp = draw({ ...punch.scene, layers: punch.scene.layers.map(still) }, t)
     // The streak moves the letters' edges outward as they shrink: across the frame, many pixels differ from the
     // sharp frame's (already soft, as the punch comes in blurred).
     let moved = 0

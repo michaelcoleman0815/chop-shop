@@ -167,7 +167,7 @@ export function graphicsGuide(): string {
       const places = t.places.filter(Boolean)
       return `- ${t.kind}: ${t.about} Styles: ${styles.join(', ')}, the first by default.${places.length ? ` Places: ${places.join(', ')}.` : ''}`
     }),
-    'Put a graphic on the word it is about, so it lands as the word is said. Keep its text short, about six words a line. Leave color empty unless the request names one. You cannot see the picture, so never guess where something is in the frame: leave box empty, and say in the reply that the person can drag it into place.',
+    'Put a graphic on the word it is about, so it lands as the word is said. Keep its text short, about six words a line. Leave color empty unless the request names one. Place by the frames of the footage when they are given; without them never guess where something is in the frame: leave box empty, and say in the reply that the person can drag it into place.',
     'A motion-add also takes pin: "object" pins the graphic to the thing the speaker holds up or shows in the beat it lands on (a phone, a product, a page), so it moves as the thing moves: Cutalong finds it in the picture and follows it on a Mac. A callout or a box pinned to an object points at it, so leave its box empty. Pin only when the words show something held up ("this one", "look at this"), on the speaker’s own picture, not over a cutaway or a card. Leave pin empty otherwise.',
     ...(template('chips') && template('counter') && template('video-cards') ? fitsGuide() : []),
     ...(template('market') && template('screenshot') && template('device') ? busyGuide() : [])

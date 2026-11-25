@@ -65,22 +65,41 @@ function stackOf(ctx: BuildContext) {
   const chrome = style === 'chrome' || style === 'gold'
   const plain = (vertical ? 132 : 112) * frame.u * (value.length > 10 ? 0.75 : 1)
   const size = chrome ? Math.min(plain * 1.4, (W * 0.8) / Math.max(1, value.length * 0.62)) : plain
-  const icon = item.icon.trim() && item.icon.trim() !== 'none' ? item.icon.trim() : ''
+  const named = item.icon.trim() && item.icon.trim() !== 'none' ? item.icon.trim() : ''
   const disc = size * 1.3
   // The stack, top to bottom: icon, value, label; placed by its middle.
   const gap = size * 0.28
-  const heights = [icon ? disc : 0, size * 1.25, label ? size * 0.42 : 0]
-  const total = heights.reduce((a, b) => a + b, 0) + gap * (heights.filter(Boolean).length - 1)
-  // Never over the speaker's eyes: at the top, where face tracking shows a close-up leaving no room above the
-  // head, it goes low in the frame instead (the captions step out of its way: scene.ts).
+  const stack = (icon: string): { heights: number[]; total: number } => {
+    const heights = [icon ? disc : 0, size * 1.25, label ? size * 0.42 : 0]
+    return { heights, total: heights.reduce((a, b) => a + b, 0) + gap * (heights.filter(Boolean).length - 1) }
+  }
+  let icon = named
+  let { heights, total } = stack(icon)
+  // Never over the speaker's face: at the top, where face tracking shows a close-up leaving no room above the
+  // head, it goes low in the frame instead (the captions step out of its way: scene.ts), and low it stays under
+  // their chin, without its icon when there is no room for both.
   const face = speakerFace(frame, ctx.faces)
+  const known = ctx.faces.length > 0
+  // Across the middle of the frame, where a pop is.
+  const across = known && face.x < 0.75 && face.x + face.w > 0.25
+  const inWay = (from: number, to: number): boolean => across && from < (face.y + face.h) * H && to > face.y * H
   const topFoot = frame.safe.top + total + H * 0.02
-  const place = asked === 'top' && ctx.faces.length > 0 && topFoot > (face.y + face.h * 0.15) * H ? 'bottom' : asked
+  const place =
+    asked !== 'bottom' && (asked === 'top' ? across && topFoot > (face.y + face.h * 0.15) * H : inWay(H * 0.5 - total / 2, H * 0.5 + total / 2)) ? 'bottom' : asked
+  const chin = (face.y + face.h) * H + H * 0.05
+  const foot = H - frame.safe.bottom * 0.75
+  if (place === 'bottom' && across && chin + total > foot) {
+    icon = ''
+    ;({ heights, total } = stack(icon))
+  }
+  const low = H - frame.safe.bottom - total / 2 - H * 0.08
   const middle =
     place === 'center'
       ? H * 0.5
       : place === 'bottom'
-        ? H - frame.safe.bottom - total / 2 - H * 0.08
+        ? across
+          ? Math.max(low, foot - total / 2)
+          : low
         : frame.safe.top + total / 2 + H * 0.02
   return { value, label, style, chrome, size, icon, disc, gap, heights, total, middle }
 }

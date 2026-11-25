@@ -259,7 +259,7 @@ export interface SegmentCamera {
 export type Quality = 'preview' | 'final' | 'intermediate'
 
 /** How close to the frame's side a kept window is, as a share of its width, for the strip beside it to be kept too. */
-const KEEP_TO_EDGE = 0.05
+export const KEEP_TO_EDGE = 0.05
 
 export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 

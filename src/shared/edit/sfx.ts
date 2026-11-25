@@ -46,7 +46,11 @@ export const SfxSchema = z
     /** A file's silence before the sound starts, skipped so it lands on its moment. */
     leadSec: z.number().min(0).max(30).optional(),
     /** A file's loudest sample, in dBFS, so it plays at the same level as the built-in ones. */
-    peakDb: z.number().min(-120).max(0).optional()
+    peakDb: z.number().min(-120).max(0).optional(),
+    /** How far into a file's sound (past its silence) the moment falls: a whoosh's loudest point, a riser's end. */
+    landSec: z.number().min(0).max(30).optional(),
+    /** Which made sound a file stands in for, so "never use whooshes" covers their own whooshes as well. */
+    as: z.enum(SFX_KINDS).optional()
   })
   .refine((s) => !!s.kind !== !!s.path, { message: 'A sound is one of the built-in ones or a file, not both.' })
 export type Sfx = z.infer<typeof SfxSchema>
@@ -91,7 +95,7 @@ export function placeSfx(
       if (moment === undefined) continue
       const len = sfx.kind ? SFX_INFO[sfx.kind].sec : lengthOf(sfx)
       const lands = sfx.kind ? SFX_INFO[sfx.kind].lands : 'start'
-      const lead = lands === 'peak' ? len / 2 : lands === 'end' ? len : 0
+      const lead = sfx.kind ? (lands === 'peak' ? len / 2 : lands === 'end' ? len : 0) : (sfx.landSec ?? 0)
       const start = moment - lead
       const trimSec = Math.max(0, -start) + (sfx.leadSec ?? 0)
       out.push({ sfx, beat: beat.id, atSec: moment, startSec: Math.max(0, start), trimSec })

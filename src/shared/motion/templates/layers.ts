@@ -31,9 +31,12 @@ register({
   title: 'Custom graphic',
   about: 'Layers built by hand, for anything no other graphic does.',
   styles: [''],
-  places: [],
+  places: ['', 'left', 'right', 'foot', 'full', 'over'],
   length: 3,
   lead: 0,
+  // Drawn for one side of the frame, as a designed one may be (main/plan-design), or on a ground of its own.
+  room: (call) => (call.place === 'left' || call.place === 'right' ? call.place : null),
+  coversFor: (call) => (call.place === 'full' ? 'card' : undefined),
   fields: [],
   example: { call: { from: 'w1', layers: [] }, says: 'hand-built layers' },
   check: (call) => (call.layers.length === 0 ? 'A custom graphic needs at least one layer.' : null),

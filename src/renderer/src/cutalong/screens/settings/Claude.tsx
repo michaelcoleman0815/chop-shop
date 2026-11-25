@@ -1,12 +1,21 @@
 import { useState } from 'react'
-import { doneSteps, fixingStep, keyGuide, planCostLine } from '../../../../../shared/setup'
+import { PLAN_QUALITIES, PLAN_QUALITY_INFO, planQualityOf } from '../../../../../shared/plan-quality'
+import { ASK_OVER, doneSteps, fixingStep, keyGuide, money, planCostLine, planQualityCost } from '../../../../../shared/setup'
 import type { Settings } from '../../../../../shared/types'
 import { api, device } from '../../api'
 import { ClaudeKeyField } from '../../components/ClaudeKeyField'
 import { KeySteps } from '../../components/KeySteps'
 import { Button, Icon } from '../../components/ui'
 import type { Cutalong } from '../../useCutalong'
-import { SetGroup, SetRow, SetSwitch } from './rows'
+import { SetGroup, SetRow, SetSegments, SetSelect, SetSwitch } from './rows'
+
+/** What an edit may come to before it waits for a yes, in dollars. */
+const ASKS = [
+  { id: '0', label: 'Always ask' },
+  { id: String(ASK_OVER), label: `Ask over ${money(ASK_OVER)}` },
+  { id: '0.5', label: 'Ask over 50 cents' },
+  { id: 'never', label: 'Don’t ask' }
+] as const
 
 /**
  * Claude in Settings: the Anthropic key, what Claude may see and write, and
@@ -31,6 +40,8 @@ export function ClaudeSection({
   const anthropic = keyGuide('anthropic')
   const frames = settings?.claudeSeesFrames !== false
   const writes = settings?.claudeWritesUpload !== false
+  const quality = planQualityOf(settings?.planQuality)
+  const over = settings?.planAskOver === undefined ? ASK_OVER : settings.planAskOver
   const set = (patch: Partial<Settings>): void => void api.setSettings(patch).then(onSettings)
 
   return (
@@ -65,15 +76,56 @@ export function ClaudeSection({
           />
         )}
       </SetRow>
+      {/* Claude's alone: a local AI plans for nothing, and has no critic. */}
+      {!device.away['feature:vlog'] && !app.localAi && (
+        <SetRow
+          title="How hard I work on each edit"
+          desc={
+            quality !== 'quick' && !frames
+              ? `The critic needs to see the edit, and frames from your footage are off below, so I plan it once. ${planQualityCost('quick')}`
+              : `${PLAN_QUALITY_INFO[quality].does} ${planQualityCost(quality)}`
+          }
+          find="quality better critic score check redo graphics cost slower"
+          control={
+            <SetSegments
+              value={quality}
+              options={PLAN_QUALITIES.map((id) => ({ id, label: PLAN_QUALITY_INFO[id].label }))}
+              disabled={!settings}
+              onChange={(id) => set({ planQuality: id })}
+            />
+          }
+        />
+      )}
+      {!app.localAi && (
+        <SetRow
+          title="Tell me the cost first"
+          desc={
+            over === null
+              ? 'I price every edit and say it as I start.'
+              : over === 0
+                ? 'I price every edit before it starts and wait for your OK. I never go over what I said.'
+                : `I price every edit before it starts, and wait for your OK on anything over ${money(over)}. I never go over what I said.`
+          }
+          find="price money quote confirm ask before spend"
+          control={
+            <SetSelect
+              value={over === null ? 'never' : (ASKS.find((a) => a.id === String(over))?.id ?? String(ASK_OVER))}
+              options={[...ASKS]}
+              disabled={!settings}
+              onChange={(id) => set({ planAskOver: id === 'never' ? null : Number(id) })}
+            />
+          }
+        />
+      )}
       {!device.away['feature:vlog'] && (
         <SetRow
           title="See frames from your footage"
           desc={
             !frames
-              ? 'Each moment of a vlog is described from what I measure, or by your local AI.'
+              ? 'I plan from the words alone, and each moment of a vlog is described from what I measure, or by your local AI.'
               : saved
-                ? `Three small stills a moment, to say what is in each part of a vlog. The footage stays on ${device.here}.`
-                : 'With a key, three small stills a moment, to say what is in each part of a vlog.'
+                ? `Small stills go to Claude with each plan and each moment of a vlog, so it sees what it edits. The footage stays on ${device.here}.`
+                : 'With a key, small stills go to Claude with each plan and each moment of a vlog, so it sees what it edits.'
           }
           find="vlog stills pictures privacy"
           control={<SetSwitch checked={frames} disabled={!settings} onChange={(on) => set({ claudeSeesFrames: on })} />}
@@ -91,20 +143,22 @@ export function ClaudeSection({
         find="upload youtube export"
         control={<SetSwitch checked={writes} disabled={!settings} onChange={(on) => set({ claudeWritesUpload: on })} />}
       />
-      <SetRow
-        title="What it costs"
-        desc={planCostLine()}
-        find="price money spend usage cents"
-        control={
-          anthropic.spend && (
-            <a className="cl-btn secondary small" href={anthropic.spend.url} target="_blank" rel="noreferrer">
-              {anthropic.spend.label}
-              <Icon.external />
-              <span className="sr-only">, opens in your browser</span>
-            </a>
-          )
-        }
-      />
+      {!app.localAi && (
+        <SetRow
+          title="What it costs"
+          desc={planCostLine(frames ? quality : 'quick')}
+          find="price money spend usage cents"
+          control={
+            anthropic.spend && (
+              <a className="cl-btn secondary small" href={anthropic.spend.url} target="_blank" rel="noreferrer">
+                {anthropic.spend.label}
+                <Icon.external />
+                <span className="sr-only">, opens in your browser</span>
+              </a>
+            )
+          }
+        />
+      )}
     </SetGroup>
   )
 }

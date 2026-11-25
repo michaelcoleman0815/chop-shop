@@ -615,6 +615,11 @@ function step(cut: Cut, op: Op, ctx: Ctx): Cut {
       return look ? { ...rest, look } : rest
     }
 
+    case 'direction': {
+      const { direction: was, ...rest } = cut
+      return op.set ? { ...rest, direction: { ...was, ...op.set } } : rest
+    }
+
     case 'voice': {
       const { voice: _v, ...rest } = cut
       const room = op.room ?? cut.voice?.room ?? false

@@ -1,12 +1,13 @@
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
+import type { FacesReading } from '../shared/faces-reading'
 import type { ScreenBox, ScreenReading } from '../shared/screen'
 import { VISION_PATH } from './track'
 
 /**
  * What is on screen in a recording, read on a Mac by the Vision helper (chopshop-vision --screen): its lines of
- * text and where each sits, and the window the speaker is kept in, every couple of seconds, so the planner knows
- * a screen recording from a talking head (shared/screen). Null where there is no helper, nothing could be read,
+ * text and where each sits, the window the speaker is kept in and the faces in it, every couple of seconds, so the
+ * planner knows a screen recording from a talking head (shared/screen) and graphics keep off faces (shared/faces). Null where there is no helper, nothing could be read,
  * or the picture never holds a page of words: a talking head carries nothing.
  */
 
@@ -44,7 +45,28 @@ export function readingOf(raw: RawSample[], everySec: number): ScreenReading | n
   }
 }
 
-export async function readScreen(path: string, durationSec: number): Promise<ScreenReading | null> {
+/** The faces found in each reading, biggest first; null when none were found at all. */
+export function facesOf(raw: RawSample[], everySec: number): FacesReading | null {
+  if (!raw.some((s) => s.faces.length > 0)) return null
+  return {
+    everySec,
+    samples: raw.slice(0, 3000).map((s) => ({
+      t: round(s.t),
+      faces: [...s.faces]
+        .sort((a, b) => b.w * b.h - a.w * a.h)
+        .slice(0, 12)
+        .map(boxOf)
+    }))
+  }
+}
+
+/** What is on screen in a recording and where the faces are, from one reading of its picture. */
+export interface PictureReading {
+  screen: ScreenReading | null
+  faces: FacesReading | null
+}
+
+export async function readPicture(path: string, durationSec: number): Promise<PictureReading | null> {
   const bin = VISION_PATH()
   if (process.platform !== 'darwin' || !existsSync(bin) || !(durationSec > 0)) return null
   const everySec = screenEvery(durationSec)
@@ -57,5 +79,6 @@ export async function readScreen(path: string, durationSec: number): Promise<Scr
     child.on('error', reject)
     child.on('close', (code) => (code === 0 ? resolve(text) : reject(new Error(err.trim() || `vision exit ${code}`))))
   })
-  return readingOf(JSON.parse(out) as RawSample[], everySec)
+  const raw = JSON.parse(out) as RawSample[]
+  return { screen: readingOf(raw, everySec), faces: facesOf(raw, everySec) }
 }

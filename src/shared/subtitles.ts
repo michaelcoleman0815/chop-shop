@@ -43,12 +43,13 @@ export const POSITION_FRAC: Record<CaptionSpec['position'], number> = {
 
 /**
  * Where captions stand on a wide frame: low, as long-form subtitles stand, clear of the player's controls
- * (the safe area's bottom tenth). A Short's chest height would put them over a seated speaker's face.
+ * (the safe area's bottom tenth), and never higher than that: a Short's chest height, or the middle, would put them
+ * over a seated speaker.
  */
 export const WIDE_POSITION_FRAC: Record<CaptionSpec['position'], number> = {
   top: 0.14,
-  middle: 0.55,
-  chest: 0.84,
+  middle: 0.88,
+  chest: 0.88,
   bottom: 0.88
 }
 

@@ -261,13 +261,14 @@ describe('hierarchy captions', () => {
     expect(first.spans!.map((s) => s.text.trim()).join(' ')).toBe('Then once after you buy')
   })
 
-  it('sits low in the middle without faces, inside the safe area, in both shapes', () => {
+  it('sits low in the middle without faces, inside the safe area, in both shapes, and along the foot of a wide one', () => {
     for (const aspect of ['vertical', 'wide'] as const) {
       const scene = sceneOf(docWith(aspect))
       const frame = frameFor(scene.size)
       for (const page of captionsIn(scene)) {
         expect(page.transform?.x).toBeCloseTo(scene.size.width / 2)
-        expect(page.transform?.y as number).toBeCloseTo(scene.size.height * (aspect === 'vertical' ? 0.6 : 0.62))
+        if (aspect === 'vertical') expect(page.transform?.y as number).toBeCloseTo(scene.size.height * 0.6)
+        else expect(page.transform?.y as number).toBeGreaterThan(scene.size.height * 0.75)
       }
       // Drawn at a moment every word of a page is in: nothing outside the safe area.
       const page = captionsIn(scene)[1]
@@ -282,6 +283,20 @@ describe('hierarchy captions', () => {
       expect(inside, aspect).toBeGreaterThan(500)
       expect(lit(0, 0, width, height), aspect).toBe(inside)
     }
+  })
+
+  it('never stands higher than the foot of a wide frame, whatever look it wears or place it is asked for', () => {
+    const faces: FaceSample[] = [{ t: 0, faces: [{ x: 0.4, y: 0.18, w: 0.18, h: 0.34 }] }]
+    for (const preset of ['hierarchy', 'boxed', 'pop'])
+      for (const position of ['chest', 'middle', 'bottom']) {
+        const doc = docWith('wide', [{ op: 'captions', set: { on: true, preset, position } }])
+        const scene = sceneOf(doc, faces)
+        const pages = scene.layers.filter((l): l is TextLayer => l.kind === 'text')
+        expect(pages.length, preset).toBeGreaterThan(0)
+        for (const page of pages) expect(page.transform?.y as number, `${preset} ${position}`).toBeGreaterThan(scene.size.height * 0.72)
+        // Small with it: nothing near a Short's size.
+        for (const page of pages) expect(page.font.size, preset).toBeLessThan(scene.size.height * 0.075)
+      }
   })
 
   it('goes on the speaker’s chest, under their face, and keeps off every face', () => {

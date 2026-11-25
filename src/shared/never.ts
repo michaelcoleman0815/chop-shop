@@ -543,7 +543,8 @@ function outside(path: string, ctx: NeverContext): boolean {
 }
 
 function sfxItem(s: Sfx): NeverItem {
-  return s.kind ? `sfx:${s.kind}` : 'sfx'
+  const kind = s.kind ?? s.as
+  return kind ? `sfx:${kind}` : 'sfx'
 }
 
 /**

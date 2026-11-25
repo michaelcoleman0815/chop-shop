@@ -38,7 +38,7 @@ export function AiOptions({ pick, onPick }: { pick: AiPick; onPick: (pick: AiPic
       id: 'claude',
       name: 'Claude',
       tag: 'Best edits',
-      what: 'Plans every edit with you. A few cents a video, on your own Anthropic account.'
+      what: 'Plans every edit with you. Usually under a dollar a video, on your own Anthropic account.'
     },
     {
       id: 'local',

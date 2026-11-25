@@ -18,6 +18,10 @@ const LINES: [RegExp, string][] = [
   [/^looking for b-roll\b/i, 'Looking through your sources for shots that fit what is said.'],
   [/^finding you in the picture\b/i, 'Finding where you are in each frame, so a crop keeps you in it.'],
   [/^downloading model\b/i, 'Once only: after this, words are written down on this computer.'],
+  // A plan judged before it is offered (main/plan-critic).
+  [/^checking (how it looks|again)\b/i, 'Scoring every graphic and camera move as it will look.'],
+  [/^redoing \S+ things?\b/i, 'Changing only what was not good enough.'],
+  [/^filling a quiet stretch\b/i, 'Finding something worth showing where only you are on screen.'],
   // A video made from nothing (main/make).
   [/^downloading the voice\b/i, 'Once only: after this, the voice reads on this computer.'],
   [/^writing the script\b/i, 'Part by part, in words written to be read aloud.'],

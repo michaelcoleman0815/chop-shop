@@ -3,7 +3,28 @@ import { followPlannedClips } from './clip-follow'
 import { followObjects, type Track } from './plan-follow'
 import { platform } from './platform'
 import { withScopes } from './scopes'
-import { editStills, footageFrames, type Still } from './plan-look'
+import { cutBefore, DESIGN_SYSTEM, designBrief, GRAPHIC_DESCRIPTION, GRAPHIC_SCHEMA, GRAPHIC_TOOL, isDesign, MAX_DESIGNS, MAX_REDESIGNS, otherGraphics, readGraphic, type DesignOp } from './plan-design'
+import { editStills, footageFrames, frameSize, type Still } from './plan-look'
+import {
+  criticAsk,
+  criticSystem,
+  holdTo,
+  judgedOf,
+  lockedOps,
+  looksAt,
+  PASS,
+  piecesOf,
+  readVerdict,
+  redoAsk,
+  VERDICT_DESCRIPTION,
+  VERDICT_SCHEMA,
+  VERDICT_TOOL,
+  withoutTakenOut,
+  worth,
+  type Judged,
+  type MadeOp,
+  type Piece
+} from './plan-critic'
 import { claudeKeyStatus, noteKeyFailure, stateOfError, type KeyDeps } from './claude-key'
 import {
   commandThing,
@@ -16,6 +37,10 @@ import {
   thingsIn
 } from '../shared/never'
 import { findMotionCommand } from '../shared/motion'
+import { template } from '../shared/motion/templates'
+import { sceneForCut } from './motion-scene'
+import { withOwnSounds } from '../shared/sounds'
+import { PLAN_QUALITY_INFO, type PlanQuality } from '../shared/plan-quality'
 import type { Settings } from '../shared/types'
 import {
   applyOps,
@@ -24,12 +49,19 @@ import {
   EditDocSchema,
   NAMED_LOOKS,
   plainIds,
+  resolveCut,
+  roomOps,
+  settleOps,
   sentence,
+  type Cut,
   type EditDoc,
   type Note,
   type Op
 } from '../shared/edit'
-import { keyMessage, type ClaudeKeyState, type ClaudeKeyStatus } from '../shared/setup'
+import { callMost, keyMessage, MAX_CHANGE_OUTPUT, MAX_OUTPUT, PLANNER_PRICE, planPrice, type ClaudeKeyState, type ClaudeKeyStatus } from '../shared/setup'
+import { isChange, keptNow, noteSent, planSize, qualityFor } from './plan-quote'
+import { inItsRoom, withoutUninvitedCaptions } from './plan-tidy'
+import { bareLines, bareStretches, talkStretches } from '../shared/plan-talk'
 import {
   isPlanCommand,
   readPlanCommand,
@@ -49,6 +81,7 @@ import {
   readPlan,
   renderCommands,
   renderRequest,
+  STYLE_CARDS,
   renderTranscript,
   unreadNote,
   withRealIcons,
@@ -98,6 +131,10 @@ export type PlanEditResult =
       rejected: string[]
       /** Moments that want B-roll the edit does not have yet, with a search for it. */
       brollWanted: { beat: string; search: string }[]
+      /** What the plan came to, in dollars, from what Anthropic counted. */
+      cost?: number
+      /** What the critic gave each piece, round by round (main/plan-critic); none for a plan with nothing to judge. */
+      judged?: Judged[][]
     }
   | {
       ok: false
@@ -107,6 +144,11 @@ export type PlanEditResult =
       keyState?: ClaudeKeyState
     }
 
+/** What the person has set, as this device keeps it; nothing when it cannot be read. */
+async function savedSettings(): Promise<Partial<Settings>> {
+  return ((await platform().settings.read().catch(() => null)) as Partial<Settings> | null) ?? {}
+}
+
 /**
  * The key as this device keeps it, in the platform's secrets (the Mac's
  * keychain, Windows' own encryption, a phone's Keychain or Keystore), checked
@@ -115,8 +157,7 @@ export type PlanEditResult =
  */
 export function keyDeps(): KeyDeps {
   const host = platform()
-  const settings = async (): Promise<Partial<Settings>> =>
-    ((await host.settings.read().catch(() => null)) as Partial<Settings> | null) ?? {}
+  const settings = savedSettings
   return {
     read: () => host.secrets.get('anthropic'),
     saved: async () => (host.secrets.has ? host.secrets.has('anthropic') : (await host.secrets.get('anthropic')) !== null),
@@ -146,9 +187,14 @@ export interface PlanInput extends RequestExtra {
   never?: string[]
   /** The slash commands there are, the person's own among them: a plan may run any of them. */
   commands?: CommandLine[]
+  /** What the person said yes to before it started: how hard to work on it, and the most it may come to (main/plan-quote). */
+  agreed?: { quality: PlanQuality; most: number }
 }
 
-export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } = {}): Promise<PlanEditResult> {
+export async function planEdit(
+  input: PlanInput,
+  deps: { fetch?: typeof fetch; progress?: (stage: string) => void; prefs?: Pick<Settings, 'planQuality' | 'claudeSeesFrames'> } = {}
+): Promise<PlanEditResult> {
   const parsedDoc = EditDocSchema.safeParse(input.doc)
   if (!parsedDoc.success) return { ok: false, message: 'The edit could not be read.' }
 
@@ -158,9 +204,34 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
   const doc = await withScopes(parsedDoc.data)
   const client = claude(apiKey, deps.fetch ? { fetch: deps.fetch } : {})
   const commands = renderCommands(input.commands ?? [])
-  // The footage itself, a frame every few seconds, so the plan is made by looking as well as reading.
-  const frames = await footageFrames(doc).catch(() => [] as Still[])
+  // The footage itself, a frame every few seconds, so the plan is made by looking as well as reading: where the
+  // person lets Claude see frames.
+  const prefs = deps.prefs ?? (await savedSettings())
+  const frames = prefs.claudeSeesFrames === false ? [] : await footageFrames(doc).catch(() => [] as Still[])
+  const quality = qualityFor(prefs, input.agreed?.quality)
+  // A change to an edit that has its graphics already is checked, and redone once at most: it should cost a change.
+  const change = isChange(doc)
+  const redos = change ? Math.min(1, PLAN_QUALITY_INFO[quality].redos) : PLAN_QUALITY_INFO[quality].redos
+  // At the best, a graphic is drawn for the video rather than picked (main/plan-design).
+  const designs = quality === 'best' && !change && frames.length > 0 ? MAX_DESIGNS : 0
   const footage = stillBlocks(frames, FOOTAGE_NOTE)
+  const transcript = renderTranscript(doc)
+  const request = renderRequest(
+    doc,
+    input.request,
+    input.notes,
+    input.voice,
+    input.preferences ?? [],
+    input.logos,
+    input.never,
+    { offers: input.offers, chat: input.chat, brands: input.brands, habits: input.habits, sounds: input.sounds, lately: input.lately, ...(designs ? { designs } : {}) }
+  )
+  // What the plan has cost so far, and the most it may come to: nothing more is begun that could take it past that.
+  const size = planSize({ commands, transcript, request }, frames.map(() => frameSize(doc, doc.sources[0]?.id ?? '')))
+  const meter: Meter = { spent: 0 }
+  const ceiling = input.agreed?.most ?? planPrice(size, { quality, change, kept: keptNow(doc) }).most
+  const affords = (dollars: number): boolean => meter.spent + dollars <= ceiling
+  const paid = (r: PlanEditResult): PlanEditResult => (r.ok ? { ...r, cost: meter.spent } : r)
 
   try {
     const userTurn = {
@@ -171,28 +242,16 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
         // follow the breakpoints.
         ...(commands ? [{ type: 'text' as const, text: commands, cache_control: { type: 'ephemeral' as const } }] : []),
         footage.length
-          ? { type: 'text' as const, text: renderTranscript(doc) }
-          : { type: 'text' as const, text: renderTranscript(doc), cache_control: { type: 'ephemeral' as const } },
+          ? { type: 'text' as const, text: transcript }
+          : { type: 'text' as const, text: transcript, cache_control: { type: 'ephemeral' as const } },
         ...footage.map((b, i) => (i === footage.length - 1 ? { ...b, cache_control: { type: 'ephemeral' as const } } : b)),
-        {
-          type: 'text' as const,
-          text: renderRequest(
-            doc,
-            input.request,
-            input.notes,
-            input.voice,
-            input.preferences ?? [],
-            input.logos,
-            input.never,
-            { offers: input.offers, chat: input.chat, brands: input.brands, habits: input.habits }
-          )
-        }
+        { type: 'text' as const, text: request }
       ]
     }
-    const ask = (messages: Anthropic.Beta.Messages.BetaMessageParam[]) =>
-      client.beta.messages.create({
+    const ask = (messages: Anthropic.Beta.Messages.BetaMessageParam[], max: number = MAX_OUTPUT.plan) =>
+      counted('plan', meter, client.beta.messages.create({
         model: MODEL,
-        max_tokens: 16000,
+        max_tokens: max,
         // If this model declines, the API retries the request on a fallback
         // model chosen for the refusal's category, inside the same call.
         betas: ['server-side-fallback-2026-07-01'],
@@ -208,8 +267,9 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
         tool_choice: { type: 'auto' },
         messages,
         output_config: { effort: 'medium' }
-      })
+      }))
     const response = await ask([userTurn])
+    noteSent(doc)
     if (response.stop_reason === 'refusal') {
       return { ok: false, message: 'Claude declined this one. Try saying it another way.' }
     }
@@ -219,35 +279,162 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
     const read = readPlan(planHandedOver(response.content))
     if (!read) return { ok: false, message: 'The plan came back in a shape I could not read. Try again.' }
     const plan = read.unread ? { ...read.plan, needs: [...read.plan.needs, unreadNote(read.unread)] } : read.plan
-    // Icons Lucide does not have become the closest one it does.
-    const first = await offerTrackedPlan(doc, { ...plan, ops: await withRealIcons(plan.ops) }, input.notes, input.commands)
-    // A second look, as an editor watches their cut before handing it over: the plan's graphics drawn over the
-    // footage, sent back for a whole corrected plan. Kept as it was when it cannot be looked at or comes back
-    // unreadable.
-    const call = response.content.find(
-      (b): b is Anthropic.Beta.Messages.BetaToolUseBlock => b.type === 'tool_use' && b.name === PLAN_TOOL
-    )
-    const looks = first.ok && call && frames.length > 0 && first.ops.some((o) => isShownOp(o))
-    if (!looks || !first.ok || !call) return first
-    const planned = commit(doc, first.ops as never, 'Planned').doc
-    const stills = await editStills(planned).catch(() => [] as Still[])
-    if (stills.length === 0) return first
-    const again = await ask([
-      userTurn,
-      { role: 'assistant', content: response.content as never },
-      {
-        role: 'user',
-        content: [
-          { type: 'tool_result', tool_use_id: call.id, content: 'Drawn. Here is how it looks.' },
-          ...stillBlocks(stills, LOOK_NOTE)
-        ]
-      }
-    ]).catch(() => null)
-    if (!again || again.stop_reason === 'refusal' || again.stop_reason === 'max_tokens') return first
-    const reread = readPlan(planHandedOver(again.content))
-    if (!reread) return first
-    const revised = reread.unread ? { ...reread.plan, needs: [...reread.plan.needs, unreadNote(reread.unread)] } : reread.plan
-    return offerTrackedPlan(doc, { ...revised, ops: await withRealIcons(revised.ops) }, input.notes, input.commands)
+    // Icons Lucide does not have become the closest one it does, and sounds the person's own where they have one.
+    const finish = async (ops: Plan['ops']): Promise<Plan['ops']> =>
+      designed(withOwnSounds(await withRealIcons(withoutUninvitedCaptions(doc, input.request, input.notes, ops)), input.sounds ?? []))
+    /** The designs a plan asks for, drawn: each by a designer who sees the shot it goes on. One that cannot be is left out. */
+    let drawings = 0
+    const designed = async (ops: Plan['ops']): Promise<Plan['ops']> => {
+      const may = drawings <= MAX_REDESIGNS && affords(callMost('design')) ? designs : 0
+      const asked = ops.filter((o) => isDesign(o) && !(o as unknown as DesignOp).layers?.length).slice(0, may)
+      if (asked.length) drawings++
+      if (asked.length === 0) return ops.filter((o) => !isDesign(o) || (o as unknown as DesignOp).layers?.length)
+      deps.progress?.(asked.length === 1 ? 'Designing a graphic for this video' : `Designing ${asked.length} graphics for this video`)
+      const made = madeOps(doc, { ...plan, ops })
+      const drawn = await Promise.all(
+        asked.map(async (o): Promise<[unknown, DesignOp['layers'] | null]> => {
+          const op = o as unknown as DesignOp
+          const brief = designBrief(doc, cutBefore(doc, made, ops.indexOf(o)), op, otherGraphics(ops, o))
+          if (!brief) return [o, null]
+          const [shot] = await editStills(doc, [{ label: 'The shot, as it is framed under the graphic:', at: brief.at }], undefined, brief.cut).catch(() => [null])
+          const reply = await counted('design', meter, client.beta.messages.create({
+            model: MODEL,
+            max_tokens: MAX_OUTPUT.design,
+            betas: ['server-side-fallback-2026-07-01'],
+            fallbacks: 'default',
+            thinking: { type: 'adaptive' },
+            system: [{ type: 'text', text: DESIGN_SYSTEM, cache_control: { type: 'ephemeral' } }],
+            tools: [{ name: GRAPHIC_TOOL, description: GRAPHIC_DESCRIPTION, input_schema: GRAPHIC_SCHEMA }],
+            tool_choice: { type: 'auto' },
+            messages: [{ role: 'user', content: [{ type: 'text', text: brief.text }, ...stillBlocks(shot ? [shot] : [], '')] }],
+            output_config: { effort: 'medium' }
+          })).catch(() => null)
+          const layers = reply && reply.stop_reason !== 'refusal' ? readGraphic(reply.content) : null
+          // Kept in the room it was given, whatever it was drawn at.
+          return [o, layers && inItsRoom(layers, op.room, brief.size.width, brief.size.height)]
+        })
+      )
+      const layers = new Map(drawn)
+      return ops.flatMap((o) => {
+        if (!isDesign(o)) return [o]
+        const got = layers.get(o) ?? (o as unknown as DesignOp).layers
+        return got?.length ? [{ ...o, layers: got } as typeof o] : []
+      })
+    }
+    const finished: Plan = { ...plan, ops: await finish(plan.ops) }
+    const first = await offerTrackedPlan(doc, finished, input.notes, input.commands)
+    // Nobody judges their own work well: where the person has turned it up (shared/plan-quality), each piece is
+    // scored by a critic that has not seen the plan, and only what fails is redone (main/plan-critic). The plan
+    // stands as it was wherever any of that cannot be done.
+    const call = planCall(response.content)
+    if (!first.ok || !call || frames.length === 0 || redos === 0) return paid(first)
+    const pieces = piecesOf(doc, madeOps(doc, finished))
+    if (pieces.length === 0 || !affords(callMost('critic', 0, change))) return paid(first)
+    const critic = (blocks: Anthropic.Beta.Messages.BetaContentBlockParam[]): Promise<Anthropic.Beta.Messages.BetaMessage> =>
+      counted('critic', meter, client.beta.messages.create({
+        model: MODEL,
+        max_tokens: (change ? MAX_CHANGE_OUTPUT : MAX_OUTPUT).critic,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        thinking: { type: 'adaptive' },
+        system: [{ type: 'text', text: criticSystem(STYLE_CARDS), cache_control: { type: 'ephemeral' } }],
+        tools: [{ name: VERDICT_TOOL, description: VERDICT_DESCRIPTION, input_schema: VERDICT_SCHEMA }],
+        tool_choice: { type: 'auto' },
+        messages: [{ role: 'user', content: blocks }],
+        output_config: { effort: 'medium' }
+      }))
+    /** The pieces given, as they look in the edit, scored by someone new. */
+    const judge = async (
+      ops: Op[],
+      some: Piece[]
+    ): Promise<{ judged: (Judged & { piece: Piece })[]; missing: string; stills: { n: number; still: Still }[] } | null> => {
+      const looks = looksAt(some)
+      const drawn = await editStills(commit(doc, ops as never, 'Planned').doc, looks).catch(() => [])
+      const stills = looks.flatMap((l, i) => (drawn[i] ? [{ n: l.piece.n, still: drawn[i] as Still }] : []))
+      const seen = new Set(stills.map((x) => x.n))
+      const scored = some.filter((p) => seen.has(p.n))
+      if (scored.length === 0) return some.some((p) => p.hidden) ? { judged: judgedOf(some, { scores: new Map(), missing: '' }), missing: '', stills } : null
+      const said = await critic([{ type: 'text', text: criticAsk(input.request, scored) }, ...stillBlocks(stills.map((x) => x.still), '')]).catch(() => null)
+      const verdict = said && said.stop_reason !== 'refusal' ? readVerdict(said.content) : null
+      return verdict ? { judged: judgedOf(some, verdict), missing: verdict.missing, stills } : null
+    }
+    deps.progress?.('Checking how it looks')
+    let best = { plan: finished, result: first }
+    let seen = await judge(first.ops, pieces)
+    const rounds: Judged[][] = []
+    const log = (list: (Judged & { piece: Piece })[]): void => {
+      rounds.push(list.map(({ piece: _piece, ...j }) => j))
+    }
+    if (!seen) return paid(first)
+    log(seen.judged)
+    let messages: Anthropic.Beta.Messages.BetaMessageParam[] = [userTurn]
+    let turn: { content: unknown; id: string } = { content: response.content, id: call.id }
+    /** Where the speaker talks on with nothing new on screen for too long, in the edit as these ops leave it. */
+    const bare = (ops: Op[]): string[] => {
+      if (change) return []
+      const cut = currentCut(commit(doc, ops as never, 'Planned').doc)
+      const resolved = resolveCut(cut, doc.words, doc.sources)
+      const scene = sceneForCut({ cut, resolved, words: doc.words, sources: doc.sources, brand: null })
+      return bareLines(bareStretches(talkStretches(resolved, doc.sources), scene.items, resolved.words), doc.words)
+    }
+    /** Every piece's latest score, so a round that judges a few keeps what the rest got. */
+    let current = seen.judged
+    for (let round = 0; round < redos; round++) {
+      const failed = current.filter((j) => j.score < PASS)
+      const empty = best.result.ok ? bare(best.result.ops) : []
+      if ((failed.length === 0 && empty.length === 0) || !affords(callMost('redo', size.instructions + size.footage, change) + callMost('critic', 0, change))) break
+      deps.progress?.(failed.length === 0 ? 'Filling a quiet stretch' : failed.length === 1 ? 'Redoing one thing' : `Redoing ${failed.length} things`)
+      const locked = lockedOps(best.plan.ops, current)
+      const numbers = new Set(failed.map((j) => j.n))
+      messages = [
+        ...messages,
+        { role: 'assistant', content: turn.content as never },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: turn.id, content: redoAsk(current, seen.missing, best.plan.ops, empty) },
+            ...stillBlocks(seen.stills.filter((x) => numbers.has(x.n)).map((x) => x.still), 'What did not pass, as it looks:')
+          ]
+        }
+      ]
+      const again = await ask(messages, (change ? MAX_CHANGE_OUTPUT : MAX_OUTPUT).redo).catch(() => null)
+      if (!again || again.stop_reason === 'refusal' || again.stop_reason === 'max_tokens') break
+      const reread = readPlan(planHandedOver(again.content))
+      const next = planCall(again.content)
+      if (!reread || !next) break
+      const ops = await finish(holdTo(best.plan.ops, locked, reread.plan.ops))
+      const redone: Plan = { ...reread.plan, ops }
+      const result = await offerTrackedPlan(doc, redone, input.notes, input.commands)
+      if (!result.ok) break
+      const now = piecesOf(doc, madeOps(doc, redone))
+      // Only what is new is judged: a locked piece is the op it was, whatever its place in the plan now.
+      const kept = new Map([...locked].map((i) => [JSON.stringify(best.plan.ops[i]), i]))
+      const scoreOf = new Map(current.map((j) => [j.piece.op, j]))
+      const fresh = now.filter((p) => !kept.has(JSON.stringify(ops[p.op])))
+      deps.progress?.('Checking again')
+      const then = fresh.length ? await judge(result.ops, fresh) : { judged: [], missing: '', stills: [] }
+      if (!then) break
+      log(then.judged)
+      // A redo worth less than what it redid is not taken; a piece taken out is worth nothing either way.
+      if (worth(then.judged.map((j) => j.score)) < worth(failed.map((j) => j.score))) break
+      current = now.map((p) => {
+        const scored = then.judged.find((j) => j.piece.op === p.op)
+        if (scored) return scored
+        const was = kept.get(JSON.stringify(ops[p.op]))
+        const old = was === undefined ? undefined : scoreOf.get(was)
+        return { piece: p, n: p.n, what: p.what, score: old?.score ?? PASS, problem: '', fix: '' }
+      })
+      best = { plan: redone, result }
+      seen = then
+      turn = { content: again.content, id: next.id }
+    }
+    // What still fails and is better gone goes.
+    const left = withoutTakenOut(best.plan.ops, current)
+    if (left.length < best.plan.ops.length) {
+      const lighter = await offerTrackedPlan(doc, { ...best.plan, ops: left }, input.notes, input.commands)
+      if (lighter.ok) best = { plan: { ...best.plan, ops: left }, result: lighter }
+    }
+    return paid(best.result.ok ? { ...best.result, judged: rounds } : best.result)
   } catch (err) {
     const keyState = noteKeyFailure(err, keyDeps())
     return {
@@ -259,11 +446,45 @@ export async function planEdit(input: PlanInput, deps: { fetch?: typeof fetch } 
   }
 }
 
+/** What a plan has cost so far, in dollars. */
+interface Meter {
+  spent: number
+}
+
+/** A call to Claude, its tokens written to the log and its price added up, so what a plan costs is measured rather than guessed. */
+async function counted(
+  what: 'plan' | 'critic' | 'design',
+  meter: Meter,
+  call: Promise<Anthropic.Beta.Messages.BetaMessage>
+): Promise<Anthropic.Beta.Messages.BetaMessage> {
+  const from = Date.now()
+  const r = await call
+  const u = r.usage
+  const cached = u.cache_read_input_tokens ?? 0
+  const kept = u.cache_creation_input_tokens ?? 0
+  const p = PLANNER_PRICE
+  meter.spent += (u.input_tokens * p.input + cached * p.cacheRead + kept * p.cacheWrite + u.output_tokens * p.output) / 1_000_000
+  console.info(
+    `[planner] ${what}: ${((Date.now() - from) / 1000).toFixed(0)} s, in ${u.input_tokens}, cached ${cached}, kept ${kept}, out ${u.output_tokens}; ${meter.spent.toFixed(2)} dollars so far`
+  )
+  return r
+}
+
+/** The plan tool's call in a reply, when it made one. */
+function planCall(content: Anthropic.Beta.Messages.BetaContentBlock[]): Anthropic.Beta.Messages.BetaToolUseBlock | undefined {
+  return content.find((b): b is Anthropic.Beta.Messages.BetaToolUseBlock => b.type === 'tool_use' && b.name === PLAN_TOOL)
+}
+
+/** The edit ops a plan comes to, each with the plan's op it came from. */
+function madeOps(doc: EditDoc, plan: Plan): MadeOp[] {
+  return offered(doc, plan, []).made
+}
+
 /** Stills as the API takes them: a note, then each still's label and picture. */
 function stillBlocks(stills: Still[], note: string): (Anthropic.Beta.Messages.BetaTextBlockParam | Anthropic.Beta.Messages.BetaImageBlockParam)[] {
   if (stills.length === 0) return []
   return [
-    { type: 'text', text: note },
+    ...(note ? [{ type: 'text' as const, text: note }] : []),
     ...stills.flatMap((s): (Anthropic.Beta.Messages.BetaTextBlockParam | Anthropic.Beta.Messages.BetaImageBlockParam)[] => [
       { type: 'text', text: s.label },
       { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: s.jpeg.toString('base64') } }
@@ -273,15 +494,6 @@ function stillBlocks(stills: Still[], note: string): (Anthropic.Beta.Messages.Be
 
 const FOOTAGE_NOTE =
   'The footage: a frame of each recording every few seconds, each labelled with its recording, its time and the word said nearest. Look before you plan: what the picture shows (the speaker, a screen, b-roll, the creator\'s own graphics already in it), where the speaker is, what is bright or busy, and where a graphic can sit without covering anything that matters.'
-
-const LOOK_NOTE =
-  'Before this goes to the person, here is your edit as it looks: each still is the footage at that moment with your graphics drawn over it by the export\'s own drawing (a camera\'s move, and words set behind the speaker, are not drawn here; the label says what is up). Look at each as a top editor would, against the request and any style it names: anything covering the words on screen, the speaker\'s face or their window; words you cannot read against what is behind them; a board standing empty; a graphic fighting the footage\'s own; anything generic rather than made for this video, or too much or too little. Then call the plan tool again with the whole plan, corrected (every op, not only the changes), or the same plan when nothing needs changing.'
-
-/** Whether an op puts something on screen worth looking at: a graphic, a camera move, captions, a cutaway. */
-function isShownOp(op: unknown): boolean {
-  const o = op as { op?: string }
-  return o.op === 'motion-add' || o.op === 'camera' || o.op === 'captions' || o.op === 'treat' || o.op === 'clip-add'
-}
 
 /**
  * A plan as it is offered, whichever model made it: a dry run on a copy of
@@ -317,19 +529,20 @@ export async function offerTrackedPlan(
   return followPlannedClips(doc, followed, track)
 }
 
-/** offerPlan, with the plan's ops (by index) that are graphics pinned to an object. */
+/** offerPlan, with the plan's ops (by index) that are graphics pinned to an object, and which of its ops each applied one came from. */
 function offered(
   doc: EditDoc,
   plan: Plan,
   notes: Note[],
   commands?: CommandLine[]
-): { result: PlanEditResult; pinned: number[] } {
+): { result: PlanEditResult; pinned: number[]; made: MadeOp[] } {
   const unknown: string[] = []
   const pinned: number[] = []
   const context = { words: doc.words, sources: doc.sources, assets: doc.assets }
   const named = commands ? new Set(commands.map((c) => c.command)) : null
   let cut = currentCut(doc)
   const applied: Op[] = []
+  const made: MadeOp[] = []
   const steps: PlanStep[] = []
   const reasons: string[] = []
   let run: Op[] = []
@@ -340,7 +553,7 @@ function offered(
     if (run.length) steps.push({ ops: run })
     run = []
   }
-  for (const raw of plan.ops) {
+  for (const [at, raw] of plan.ops.entries()) {
     if (isPlanCommand(raw)) {
       const command = readPlanCommand(raw)
       const problem = command ? commandProblem(doc, command, named) : 'its slots do not have their shape'
@@ -368,8 +581,31 @@ function offered(
     }
     cut = r.cut
     applied.push(...r.applied)
+    made.push(...r.applied.map((op) => ({ op, from: at })))
     run.push(...r.applied)
     if (raw.op === 'motion-add' && raw.pin === 'object') pinned.push(applied.length - 1)
+    // A graphic beside the speaker has the shot reframed to make its room (edit/room).
+    for (const room of raw.op === 'motion-add' ? roomFor(doc, cut) : []) {
+      const moved = applyOps(cut, [room], context)
+      if (moved.applied.length === 0) continue
+      cut = moved.cut
+      applied.push(...moved.applied)
+      made.push(...moved.applied.map((op) => ({ op, from: at, room: true })))
+      run.push(...moved.applied)
+    }
+  }
+  // A move that ends close, in a take that runs on, is let back out rather than snapping (edit/settle).
+  if (!commanded && plan.ops.some((o) => o.op === 'camera')) {
+    const resolved = resolveCut(cut, doc.words, doc.sources)
+    const size = sceneForCut({ cut, resolved, words: doc.words, sources: doc.sources, brand: null }).size
+    for (const back of settleOps(cut, resolved, doc.sources, size.width / Math.max(1, size.height))) {
+      const r = applyOps(cut, [back], context)
+      if (r.applied.length === 0) continue
+      cut = r.cut
+      applied.push(...r.applied)
+      made.push(...r.applied.map((op) => ({ op, from: plan.ops.length - 1, room: true })))
+      run.push(...r.applied)
+    }
   }
   flush()
   const handled = new Set(notes.map((n) => n.id))
@@ -406,7 +642,18 @@ function offered(
       .slice(0, 3)
       .map((w) => ({ beat: w.beat, search: w.search.trim() }))
   }
-  return { result, pinned }
+  return { result, pinned, made }
+}
+
+/** The ops that make room for the graphic just added, when it is one that sits beside the speaker. */
+function roomFor(doc: EditDoc, cut: Cut): Op[] {
+  const item = cut.motion?.[cut.motion.length - 1]
+  const side = item && template(item.kind)?.room?.(item)
+  if (!item || !side) return []
+  const resolved = resolveCut(cut, doc.words, doc.sources)
+  const scene = sceneForCut({ cut, resolved, words: doc.words, sources: doc.sources, brand: null })
+  const up = scene.items.find((i) => i.id === item.id)
+  return up ? roomOps(cut, resolved, doc.sources, up, side, scene.size.width / Math.max(1, scene.size.height)) : []
 }
 
 /** An edit op as the planner wrote it, as the edit takes it; null for a cutaway to material the edit does not have. */

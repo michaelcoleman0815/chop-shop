@@ -53,6 +53,11 @@ export const MOTION_KINDS = [
   'prompt',
   'checklist',
   'doc',
+  'aside',
+  'band',
+  'headline',
+  'clock',
+  'dial',
   'layers'
 ] as const
 export const MotionKindSchema = z.enum(MOTION_KINDS)

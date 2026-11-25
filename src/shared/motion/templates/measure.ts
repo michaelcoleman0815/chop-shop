@@ -1,4 +1,5 @@
 import { fontInfo } from '../fonts'
+import { ADVANCE, GLYPHS } from './glyphs'
 
 /**
  * How wide a line of text will draw, before there is a canvas to measure it
@@ -38,6 +39,25 @@ const ADVANCES: Record<string, Advances> = {
   'Figtree SemiBold': { digit: 0.645, upper: 0.68, lower: 0.52, punct: 0.255, space: 0.241 },
   'Figtree Bold': { digit: 0.648, upper: 0.686, lower: 0.528, punct: 0.268, space: 0.238 },
   'Figtree Italic': { digit: 0.641, upper: 0.67, lower: 0.511, punct: 0.236, space: 0.247 }
+}
+
+/** Where each character is in a face's advances. */
+const AT = new Map([...GLYPHS].map((ch, i) => [ch, i]))
+
+/**
+ * The width a line of text draws at, in design pixels, from each character's own advance (kerning aside), so a
+ * marker or a line drawn to fit a word fits it. `tracking` is the space added after each character, in pixels.
+ */
+export function lineWidth(text: string, family: string, size: number, tracking = 0, uppercase = false): number {
+  const a = ADVANCE[fontInfo(family).family]
+  if (!a) return textWidth(text, family, size, uppercase) + tracking * text.length
+  let w = 0
+  let n = 0
+  for (const ch of uppercase ? text.toUpperCase() : text) {
+    w += a[AT.get(ch) ?? 14] ?? 560
+    n++
+  }
+  return (w * size) / 1000 + tracking * Math.max(0, n - 1)
 }
 
 /** The width a line of text draws at, in design pixels, near enough to lay out by. */

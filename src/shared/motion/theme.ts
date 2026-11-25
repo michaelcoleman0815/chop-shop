@@ -1,4 +1,5 @@
 import { FONT_FAMILIES } from './fonts'
+import type { Direction } from './direction'
 import type { Size } from './types'
 
 /**
@@ -80,6 +81,12 @@ export interface MotionTheme {
   display: string
   /** Everything smaller. */
   body: string
+  /** A second colour, for the other side of a comparison. */
+  second: string
+  /** A hand, for a word or two beside the rest. */
+  script: string
+  /** What words beside the speaker sit on: the picture darkened, or washed light. */
+  ground: 'dark' | 'light'
   /** The creator's name, for an end card or a lower third with nothing else to say. */
   name: string
   /** The creator's own logos, by name, for logo pops: their products, their channel. */
@@ -93,6 +100,9 @@ export const DEFAULT_THEME: MotionTheme = {
   paper: '#F5F5F3',
   display: 'Archivo Black',
   body: 'Sora',
+  second: '#2E5BFF',
+  script: 'Instrument Serif Italic',
+  ground: 'dark',
   name: '',
   logos: []
 }
@@ -118,5 +128,23 @@ export function themeFrom(brand: BrandLook | null | undefined): MotionTheme {
     body: font(brand.fonts?.body, DEFAULT_THEME.body),
     name: brand.name?.trim() ?? '',
     logos: (brand.logos ?? []).filter((l) => l.name.trim() && l.path)
+  }
+}
+
+/**
+ * The look one video wears, decided for it (schema DirectionSchema): its own colours and faces over the house ones.
+ * A brand that has set its own keeps them; only what it left as the house's is the video's to choose.
+ */
+export function directed(theme: MotionTheme, d: Direction | undefined): MotionTheme {
+  if (!d) return theme
+  const face = (f: string | undefined, now: string, house: string): string => (f && FONT_FAMILIES.includes(f) && now === house ? f : now)
+  return {
+    ...theme,
+    accent: d.accent && HEX.test(d.accent) && theme.accent === DEFAULT_THEME.accent ? d.accent : theme.accent,
+    second: d.second && HEX.test(d.second) ? d.second : theme.second,
+    display: face(d.display, theme.display, DEFAULT_THEME.display),
+    body: face(d.body, theme.body, DEFAULT_THEME.body),
+    script: d.script && FONT_FAMILIES.includes(d.script) ? d.script : theme.script,
+    ground: d.ground ?? theme.ground
   }
 }

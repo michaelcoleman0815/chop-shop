@@ -4,6 +4,7 @@ import { platform } from '../../../src/main/platform'
 import { probeFile } from '../../../src/main/intake'
 import { extendCut, prepareCut, renderEdit, sortFootage, type WorkHost } from '../../../src/main/cut-work'
 import { checkKey, keyDeps, planEdit } from '../../../src/main/planner'
+import { planQuote } from '../../../src/main/plan-quote'
 import { triage } from '../../../src/main/triage'
 import { downloadModel, hasModel, modelSizeMb, type WhisperModel } from '../../../src/main/transcribe'
 import { analyzeTrack } from '../../../src/main/music'
@@ -264,6 +265,9 @@ export function createPhoneApi(parts: PhoneApiParts): CutalongApi {
         habits: habitLines(brand.videos)
       })
     },
+    // Priced here before it starts; a phone sends no frames, so an edit is planned once.
+    planQuote: async (req) =>
+      (await keyDeps().read()) ? planQuote({ ...req, more: 600 }, { ...(await parts.settings.current()), claudeSeesFrames: false }) : null,
     // What a message asks for, read by Claude before any footage is: each file goes as its name,
     // its length and whether it has a picture and sound, never what is in it.
     triage: async (req) => {
