@@ -29,7 +29,7 @@ import sys
 
 OUT = sys.argv[1]
 FOOTAGE = sys.argv[2]
-FLOW = ["whats-new", "key", "key-refused", "start", "start-typing", "start-typing-grown", "composer", "transcribing", "v1",
+FLOW = ["whats-new", "key", "key-refused", "start", "start-typing", "start-typing-grown", "composer", "transcribing", "price", "v1",
         "thread-typing", "thread-typing-grown", "command", "editor", "note-typing", "note-typing-grown",
         "back-from-note", "exporting", "thread-exporting", "export-in-chat", "learned", "brand", "licences"]
 TOUR = ["thread-down", "start", "editor", "exporting", "thread-exporting", "thread", "learned", "brand"]
@@ -188,6 +188,8 @@ if flow.get("ok"):
         problem(f"the first open of this version did not show what is new in it: {news or 'nothing'}")
     elif news.get("button") != "Start editing":
         problem(f"what's new went on with {news.get('button')!r}, not Start editing")
+price = flow.get("price") or {}
+print(f"  the price: {price}")
 asked = flow.get("anthropic", [])
 checks = [r["status"] for r in asked if r.get("kind") == "key check"]
 if flow.get("ok"):
@@ -200,6 +202,15 @@ if flow.get("ok"):
         problem("a key turned down marked no step to fix it")
     if not any(r.get("kind") == "triage" for r in asked) or not any(r.get("kind") == "plan" for r in asked):
         problem("the words sent with the footage did not go to Claude, to read and then to plan")
+    # Every edit says its price before it starts, and waits: nothing is asked of Claude to plan it until its button.
+    if not re.search(r"will cost about .* and never more than ", str(price.get("said"))):
+        problem(f"the edit did not say what it would cost before it started: {price.get('said')!r}")
+    if price.get("plansBefore") != 0:
+        problem(f"Claude was asked to plan {price.get('plansBefore')} times before the price was agreed")
+    if not price.get("plansAfter"):
+        problem("agreeing to the price did not go to Claude to plan")
+    if not price.get("buttonGone"):
+        problem("the price could be agreed to twice")
 for where, key in (("Start", "typingStart"), ("the thread", "typingThread"), ("the note box", "typingNote")):
     seen = flow.get(key) or {}
     empty, grown = seen.get("empty") or {}, seen.get("grown") or {}

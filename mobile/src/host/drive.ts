@@ -16,7 +16,8 @@ import { anthropicStandIn, type StandIn } from './standin'
  * so the app opens on what's new in it (Settings' changelog), and its button
  * goes on to Start. Start without a key is the steps to get one, so the drive pastes
  * a key Anthropic turns down and then one it takes; then it picks footage,
- * sorts and transcribes it, makes v1, applies a command, opens the editor
+ * sorts and transcribes it, makes v1, is told what the edit will cost and
+ * goes ahead with it, applies a command, opens the editor
  * and exports, watches the export's steps from the thread, then opens
  * What I've learned, Brand and Settings' Licences. Then the runner turns the
  * system dark, adds "tour": "dark" to the plan and starts the app again,
@@ -169,6 +170,15 @@ function type(field: HTMLTextAreaElement | HTMLInputElement, value: string): voi
   Object.getOwnPropertyDescriptor(kind.prototype, 'value')?.set?.call(field, value)
   field.dispatchEvent(new Event('input', { bubbles: true }))
 }
+
+/** The button under a price that goes ahead with it, wherever it stands in the chat: "Edit it · 40 cents". */
+const goAhead = (): HTMLButtonElement | undefined =>
+  [...document.querySelectorAll<HTMLButtonElement>('.cl-msg-assistant button')]
+    .filter((b) => !b.disabled && /^(Edit it|Go ahead)\b.*(cent|\$\d)/.test(text(b)))
+    .pop()
+/** The price said in the newest reply, or null when it says none. */
+const priceSaid = (): string | null => (/will cost about/.test(replies().slice(-1)[0] ?? '') ? replies().slice(-1)[0] : null)
+const planAsks = (): number => (standIn?.requests ?? []).filter((r) => r.kind === 'plan').length
 
 const busy = (): boolean => !!document.querySelector('.cl-progress, .cl-composer.busy')
 
@@ -661,6 +671,14 @@ export async function drive(): Promise<void> {
     await settle('the first cut')
     firstCut = true
     await working
+    // The price first, with nothing asked of Claude to plan it; then the button that goes ahead.
+    await until('the price of the edit and its button', goAhead, 30)
+    const price = { said: priceSaid(), button: text(goAhead()), plansBefore: planAsks() }
+    await step('price')
+    goAhead()?.click()
+    await settle('the edit once its price was agreed')
+    // Agreed to once, it is gone from the whole chat, so it cannot be pressed and paid for again.
+    report.price = { ...price, plansAfter: planAsks(), buttonGone: !goAhead() }
     report.secondsToV1 = Math.round((Date.now() - sent) / 100) / 10
     report.repliesAfterFootage = replies()
     const before = await versions()
@@ -766,11 +784,14 @@ export async function drive(): Promise<void> {
     await until('the chat', () => document.querySelector('.cl-thread-scroll'), 20)
     const before = replies().length
     await send('Make the captions bigger.')
+    // It is priced on the phone, so its price comes even now; Claude is only met once it is agreed.
+    await until('the price while Anthropic is down', () => replies().length > before && !busy() && goAhead(), 60)
+    goAhead()?.click()
     const answered = await until(
       'the answer while Anthropic is down',
       () => {
         const now = replies()
-        return now.length > before && !busy() && now[now.length - 1]
+        return now.length > before + 1 && !busy() && now[now.length - 1]
       },
       180
     )
