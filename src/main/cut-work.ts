@@ -9,7 +9,6 @@ import { stampBrand } from '../shared/brands'
 import { wordSpeakers } from '../shared/subtitles'
 import { saidDetails, toolSaid, type Detail } from '../shared/failure'
 import { placeFile } from './export-paths'
-import { onItsOwnCuts } from './own-cuts'
 import { claudeWriter, writeUploadKit } from './upload-kit'
 import { isShort, UPLOAD_SUFFIXES, type UploadKit } from '../shared/upload'
 import { renderCut, type ClipSoundOptions, type GraphOptions, type OverlaySpan, type RenderCutOptions, type RenderSource } from './cut-render'
@@ -105,6 +104,8 @@ export interface WorkHost {
   scopes?: (path: string, durationSec: number) => Promise<ScopeReading | null>
   /** What is on screen in a recording (main/screen-read): its words, the speaker's window and the faces. Absent off a Mac. */
   picture?: (path: string, durationSec: number) => Promise<PictureReading | null>
+  /** An edit just made, its beats set on the cuts its footage already has (main/own-cuts). Absent off a Mac. */
+  ownCuts?: (doc: EditDoc) => Promise<EditDoc>
   /** Watching the speaker's mouth, with the Mac's face finder. */
   watch?: (input: {
     source: Source
@@ -203,7 +204,7 @@ export async function prepareCut(
     // Made in the chat's brand when it named one, so it stays in it whatever becomes the default.
     const stamped = typeof input !== 'string' && input.brand ? stampBrand(heard, brand.id) : heard
     // Footage that was edited before it came here keeps its own cuts and its own timing.
-    const doc = await onItsOwnCuts(host.ffmpeg(), stamped).catch(() => stamped)
+    const doc = host.ownCuts ? await host.ownCuts(stamped).catch(() => stamped) : stamped
     progress('Ready', 100)
     return {
       ok: true as const,

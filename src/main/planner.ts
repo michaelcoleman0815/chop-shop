@@ -6,7 +6,8 @@ import { followObjects, type Track } from './plan-follow'
 import { platform } from './platform'
 import { withScopes } from './scopes'
 import { cutBefore, DESIGN_SYSTEM, designBrief, GRAPHIC_DESCRIPTION, GRAPHIC_SCHEMA, GRAPHIC_TOOL, isDesign, MAX_DESIGNS, MAX_REDESIGNS, otherGraphics, readGraphic, type DesignOp } from './plan-design'
-import { editStills, footageFrames, frameSize, type Still } from './plan-look'
+import { frameSize, type Still } from './plan-frames'
+import { editStills, footageFrames } from './plan-look'
 import {
   criticAsk,
   criticSystem,

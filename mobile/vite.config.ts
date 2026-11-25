@@ -105,7 +105,9 @@ function phoneWords(): Plugin {
  * render reaches stand-ins that say so (src/shims/grid-render.ts, film.ts).
  * So does following what the speaker holds up (src/main/track.ts, the Mac's
  * Vision helper started as a process), which the planner reaches through
- * src/main/plan-follow.ts (src/shims/track.ts).
+ * src/main/plan-follow.ts (src/shims/track.ts), and its eyes: frames of the
+ * footage and stills of the planned edit (src/main/plan-look.ts,
+ * src/shims/plan-look.ts).
  */
 function phoneStandIns(): Plugin {
   const swaps = [
@@ -123,6 +125,11 @@ function phoneStandIns(): Plugin {
       name: /(^|\/)track(\.ts)?$/,
       computer: resolve(root, 'src/main/track.ts'),
       phone: resolve(here, 'src/shims/track.ts')
+    },
+    {
+      name: /(^|\/)plan-look(\.ts)?$/,
+      computer: resolve(root, 'src/main/plan-look.ts'),
+      phone: resolve(here, 'src/shims/plan-look.ts')
     }
   ]
   return {

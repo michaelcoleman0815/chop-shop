@@ -12,7 +12,7 @@ import {
 import { template } from '../shared/motion/templates'
 import { pageRoom } from '../shared/screen'
 import { sceneForCut } from './motion-scene'
-import { clock } from './plan-look'
+import { clock } from './plan-frames'
 import type { PlannerOp } from './planner-prompt'
 
 /**

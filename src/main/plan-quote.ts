@@ -2,7 +2,7 @@ import { currentCut, EditDocSchema, type EditDoc } from '../shared/edit'
 import { planQualityOf, type PlanQuality } from '../shared/plan-quality'
 import { ASK_OVER, KEPT_SEC, pictureTokens, planPrice, tokensIn, type PlanQuote, type PlanSize } from '../shared/setup'
 import type { Settings } from '../shared/types'
-import { footageMoments, frameSize } from './plan-look'
+import { footageMoments, frameSize } from './plan-frames'
 import {
   PLAN_TOOL_DESCRIPTION,
   PLAN_TOOL_INSTRUCTION,

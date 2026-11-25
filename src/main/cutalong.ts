@@ -24,6 +24,7 @@ import { ownSounds } from './own-sounds'
 import { soundsLines, type OwnSound } from '../shared/sounds'
 import type { PlanQuality } from '../shared/plan-quality'
 import { planQuote, type QuoteInput } from './plan-quote'
+import { onItsOwnCuts } from './own-cuts'
 import { findSounds, makeAllSfx, readSound } from './sfx'
 import { findPremiere, openInPremiere, writePremiere } from './premiere-cut'
 import { importPremiere, returnName, writePremiereReturn } from './premiere-import'
@@ -159,6 +160,7 @@ export const macWork: WorkHost = {
   scopes: (path, durationSec) => measureScopes(FFMPEG_PATH, path, durationSec),
   // What is on screen in each recording and where the faces are, for the planner and the graphics (main/screen-read).
   picture: (path, durationSec) => readPicture(path, durationSec),
+  ownCuts: (doc) => onItsOwnCuts(FFMPEG_PATH, doc),
   speakers: async (path, words) => {
     await downloadSpeakerModel()
     return (await findSpeakers(FFMPEG_PATH, path, words)).words
