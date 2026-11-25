@@ -6,6 +6,21 @@ Changes waiting for the next version go under "Unreleased". When the version goe
 
 ## Unreleased
 
+## 0.5.0 — 2026-11-25
+
+- Claude looks at frames of your footage before it plans an edit, as well as reading the words.
+- Every edit says what it should cost before it starts, and the most it may come to. Anything over 10 cents waits for your OK, and nothing more is started that would go past the most it said. A change soon after an edit costs a few cents. Settings, under AI, has "Tell me the cost first".
+- "How hard I work on each edit", in Settings under AI. At Careful and Best, a critic who has not seen the plan scores every graphic and camera move, and what is not good enough is redone. At Best, one graphic is designed for that video alone. Both cost more than Quick, and the price says how much.
+- New graphics beside you, along the foot of the frame and across it: figures, lists, quotes, money going from one company to another, timelines and headlines.
+- Paper boards that explain an idea, tier lists, a title set behind you, and brand marks in 3D.
+- Graphics settle in softly and leave by moving rather than only fading, and one is gone before the next comes in.
+- On a Mac, the shot glides over to make room for a graphic and glides back, rather than cutting to a new zoom, and graphics keep clear of your face.
+- Each video gets colours and type of its own, unlike your last few.
+- A video that was edited before you brought it in keeps its own cuts and its own timing.
+- A wide video starts without captions, and they sit small along the bottom when you turn them on. Captions step out of the way of a keyword, and there is a new look for them, Pop (/pop).
+- On a Mac, Cutalong reads the lines on a screen recording, and a camera move over one leaves your window where it is.
+- Sound effects of your own, in a Sound Effects, Sounds or SFX folder in Music, are used before the made ones.
+
 ## 0.4.3 — 2026-11-23
 
 - Every paid call to Claude is now written down against the video it was for, so Cutalong can say what your videos really cost. Settings, under AI, shows the average for a Short and for a long-form video, and the editor's script says what the open video has cost so far.
